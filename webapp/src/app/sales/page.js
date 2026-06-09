@@ -4,6 +4,7 @@ import { Truck, Plus } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
+import OrderDetailModal from "@/components/OrderDetailModal";
 
 export default function SalesDashboard() {
   const canAct = useCan("sales:act");
@@ -14,15 +15,27 @@ export default function SalesDashboard() {
   );
   const [userName, setUserName] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
-  const [formData, setFormData] = useState({
-    productId: "",
-    quantity: "",
+  const emptyForm = {
     quotationRef: "",
+    poReference: "",
     deliveryDate: "",
     remarks: "",
-  });
+    items: [{ productId: "", quantity: "" }],
+  };
+  const [formData, setFormData] = useState(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const setItem = (idx, patch) =>
+    setFormData((f) => ({
+      ...f,
+      items: f.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)),
+    }));
+  const addItem = () =>
+    setFormData((f) => ({ ...f, items: [...f.items, { productId: "", quantity: "" }] }));
+  const removeItem = (idx) =>
+    setFormData((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
 
   const fetchData = async () => {
     try {
@@ -57,19 +70,34 @@ export default function SalesDashboard() {
 
   const handleCreateOrder = async (e) => {
     e.preventDefault();
+    const items = formData.items
+      .filter((it) => it.productId && it.quantity)
+      .map((it) => ({ productId: it.productId, quantity: it.quantity }));
+    if (items.length === 0) {
+      alert("กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ");
+      return;
+    }
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, assignee: userName }),
+        body: JSON.stringify({
+          quotationRef: formData.quotationRef,
+          poReference: formData.poReference,
+          deliveryDate: formData.deliveryDate,
+          remarks: formData.remarks,
+          items,
+          assignee: userName,
+        }),
       });
       if (res.ok) {
-        setFormData({ productId: "", quantity: "", quotationRef: "", deliveryDate: "", remarks: "" });
+        setFormData(emptyForm);
         setShowForm(false);
         await fetchData();
       } else {
-        alert("เกิดข้อผิดพลาดในการสร้างใบสั่งซื้อ");
+        const errData = await res.json();
+        alert("เกิดข้อผิดพลาด: " + (errData.error || "ไม่สามารถสร้างใบสั่งซื้อได้"));
       }
     } catch (err) {
       alert("Error creating order");
@@ -150,27 +178,33 @@ export default function SalesDashboard() {
               <thead>
                 <tr>
                   <th>Ref/Date</th>
-                  <th>สินค้า (FG Code)</th>
-                  <th className="text-center">จำนวน (ชิ้น)</th>
-                  <th className="num">ยอดภาษีที่ต้องเก็บรวม</th>
+                  <th className="text-center">จำนวนรายการ</th>
+                  <th className="num">ยอดภาษีรวม</th>
                   <th className="text-center">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {pendingOrders.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="text-center py-10 text-[var(--text-3)]">
+                    <td colSpan="4" className="text-center py-10 text-[var(--text-3)]">
                       ไม่มีออเดอร์รอรับเงิน
                     </td>
                   </tr>
                 ) : (
                   pendingOrders.map((o) => {
-                    const p = o.product;
-                    const isExempt = p?.isExciseTaxable === false;
+                    const isExempt = (o.totalTax || 0) === 0;
+                    const itemCount = o.items?.length || 0;
                     return (
-                      <tr key={o.id} className="clickable-row hover:bg-[var(--red-soft)]">
+                      <tr
+                        key={o.id}
+                        className="clickable-row hover:bg-[var(--red-soft)]"
+                        onClick={() => setSelectedOrder(o)}
+                      >
                         <td>
                           <div className="font-semibold text-[var(--text)] ">{o.quotationRef}</div>
+                          {o.poReference && (
+                            <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">PO: {o.poReference}</div>
+                          )}
                           <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">ส่ง: {o.deliveryDate}</div>
                           <div className="text-[11px] text-[var(--accent)] font-semibold mt-1 flex items-center gap-1">
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -179,11 +213,7 @@ export default function SalesDashboard() {
                             {o.assignee}
                           </div>
                         </td>
-                        <td>
-                          <div className="font-semibold text-[var(--text)] font-mono">{p?.fgCode || "-"}</div>
-                          <div className="text-[11px] text-[var(--text-3)] mt-1">{p?.customerName || "-"}</div>
-                        </td>
-                        <td className="text-center font-bold text-base font-mono text-[var(--text-2)] ">{o.quantity}</td>
+                        <td className="text-center font-bold text-base font-mono text-[var(--text-2)] ">{itemCount}</td>
                         <td className="num font-bold text-[var(--red)] text-lg font-mono">
                           {isExempt ? (
                             <span className="status-pill success text-xs font-sans">ยกเว้นภาษี 0.00 บาท</span>
@@ -194,7 +224,7 @@ export default function SalesDashboard() {
                         <td className="text-center">
                           {canAct ? (
                             <button
-                              onClick={() => handleReceive(o.id, isExempt)}
+                              onClick={(e) => { e.stopPropagation(); handleReceive(o.id, isExempt); }}
                               className="btn btn-primary flex items-center gap-1.5 mx-auto"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
@@ -224,35 +254,66 @@ export default function SalesDashboard() {
           </span>
         </div>
         <form onSubmit={handleCreateOrder} className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-          <div className="form-group col-span-3">
-            <label>เลือกสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
-            <select
-              name="productId"
-              value={formData.productId}
-              onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
-              required
-              className="premium-select w-full"
-            >
-              <option value="">-- เลือกสินค้า (เฉพาะที่อนุมัติแล้ว) --</option>
-              {approvedProducts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.fgCode} | {p.productDescription} ({p.customerName})
-                </option>
-              ))}
-            </select>
+          <div className="form-group">
+            <label>เลขที่ใบเสนอราคา <span className="text-[var(--red)]">*</span></label>
+            <input type="text" name="quotationRef" value={formData.quotationRef} onChange={(e) => setFormData({ ...formData, quotationRef: e.target.value })} required placeholder="เช่น QT-2026-001" className="premium-input w-full" />
           </div>
           <div className="form-group">
-            <label>จำนวนชิ้น (Quantity) <span className="text-[var(--red)]">*</span></label>
-            <input type="number" name="quantity" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} required min="1" className="premium-input w-full font-mono" />
-          </div>
-          <div className="form-group">
-            <label>อ้างอิงใบเสนอราคา (Quotation)</label>
-            <input type="text" name="quotationRef" value={formData.quotationRef} onChange={(e) => setFormData({ ...formData, quotationRef: e.target.value })} placeholder="เช่น QT-2026-001" className="premium-input w-full" />
+            <label>PO Reference <span className="text-[var(--text-3)] text-xs">(ไม่บังคับ)</span></label>
+            <input type="text" name="poReference" value={formData.poReference} onChange={(e) => setFormData({ ...formData, poReference: e.target.value })} placeholder="เลขที่ใบสั่งซื้อลูกค้า" className="premium-input w-full" />
           </div>
           <div className="form-group">
             <label>วันที่คาดว่าจะส่ง (Expected Date)</label>
             <input type="date" name="deliveryDate" value={formData.deliveryDate} onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })} className="premium-input w-full" />
           </div>
+
+          {/* Line items */}
+          <div className="col-span-3">
+            <div className="flex items-center justify-between mb-2">
+              <label className="!mb-0">รายการสินค้า <span className="text-[var(--red)]">*</span></label>
+              <button type="button" onClick={addItem} className="btn btn-sm flex items-center gap-1">
+                <Plus size={14} /> เพิ่มรายการ
+              </button>
+            </div>
+            <div className="space-y-2">
+              {formData.items.map((it, idx) => (
+                <div key={idx} className="flex gap-2 items-start">
+                  <select
+                    value={it.productId}
+                    onChange={(e) => setItem(idx, { productId: e.target.value })}
+                    required
+                    className="premium-select flex-1"
+                  >
+                    <option value="">-- เลือกสินค้า (เฉพาะที่อนุมัติแล้ว) --</option>
+                    {approvedProducts.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.fgCode} | {p.productDescription} ({p.customerName})
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    value={it.quantity}
+                    onChange={(e) => setItem(idx, { quantity: e.target.value })}
+                    required
+                    min="1"
+                    placeholder="จำนวน"
+                    className="premium-input w-28 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeItem(idx)}
+                    disabled={formData.items.length === 1}
+                    className="btn px-3 text-[var(--red)] disabled:opacity-30"
+                    title="ลบรายการ"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="form-group col-span-3">
             <label>หมายเหตุ (Remarks)</label>
             <input type="text" name="remarks" value={formData.remarks} onChange={(e) => setFormData({ ...formData, remarks: e.target.value })} placeholder="ข้อมูลเพิ่มเติม" className="premium-input w-full" />
@@ -260,11 +321,17 @@ export default function SalesDashboard() {
           <div className="col-span-3 flex justify-end gap-2 mt-2 pt-5 border-t border-[var(--border)]">
             <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>
             <button type="submit" disabled={isSubmitting} className="btn btn-primary px-8">
-              {isSubmitting ? "กำลังสร้างออเดอร์..." : "สร้างรอบจัดส่ง"}
+              {isSubmitting ? "กำลังสร้างออเดอร์..." : "สร้างใบสั่งซื้อ"}
             </button>
           </div>
         </form>
       </Modal>
+
+      <OrderDetailModal
+        order={selectedOrder}
+        open={!!selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+      />
     </>
   );
 }

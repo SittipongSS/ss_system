@@ -60,6 +60,7 @@ create table if not exists public.orders (
   "totalExciseTax"       numeric,
   "totalLocalTax"        numeric,
   "totalTax"             numeric,
+  "poReference"          text,
   "receiptNumber"        text,
   "exciseReceiptFileUrl" text,
   "status"               text not null default 'pending',
@@ -68,10 +69,26 @@ create table if not exists public.orders (
 );
 create index if not exists orders_productid_idx on public.orders ("productId");
 
+-- ---------- order_items ----------
+-- One PO (orders row) has many line items, each tied to a product + quantity.
+-- Per-item taxes are summed into the orders rollup (totalExciseTax/...).
+create table if not exists public.order_items (
+  "id"             text primary key,
+  "orderId"        text not null references public.orders("id") on delete cascade,
+  "productId"      text references public.products("id") on delete set null,
+  "quantity"       integer,
+  "totalExciseTax" numeric,
+  "totalLocalTax"  numeric,
+  "totalTax"       numeric
+);
+create index if not exists order_items_orderid_idx on public.order_items ("orderId");
+create index if not exists order_items_productid_idx on public.order_items ("productId");
+
 -- ---------- Row Level Security ----------
 -- Enable RLS so anon/clients cannot read/write directly.
 -- The app talks to these tables ONLY via Next.js API routes using the
 -- service_role key, which bypasses RLS. (No public policies on purpose.)
-alter table public.customers enable row level security;
-alter table public.products  enable row level security;
-alter table public.orders    enable row level security;
+alter table public.customers   enable row level security;
+alter table public.products    enable row level security;
+alter table public.orders      enable row level security;
+alter table public.order_items enable row level security;

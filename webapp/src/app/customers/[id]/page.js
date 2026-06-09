@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Building2 } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
+import OrderDetailModal from "@/components/OrderDetailModal";
 
 export default function CustomerDetails() {
   const params = useParams();
@@ -31,6 +32,7 @@ export default function CustomerDetails() {
 
   // Table Tabs
   const [activeTab, setActiveTab] = useState("products");
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   const fetchCustomerData = async () => {
     try {
@@ -162,32 +164,19 @@ export default function CustomerDetails() {
     }
   };
 
-  // Calculations for Stats
-  const totalExciseTax = orders.reduce(
-    (sum, o) =>
-      sum + (o.product?.isExciseTaxable !== false ? o.totalExciseTax : 0),
-    0,
-  );
-  const totalLocalTax = orders.reduce(
-    (sum, o) =>
-      sum + (o.product?.isExciseTaxable !== false ? o.totalLocalTax : 0),
-    0,
-  );
+  // Calculations for Stats. The order rollup totals already exclude exempt
+  // items (their per-item tax is 0), so we can sum them directly.
+  const totalExciseTax = orders.reduce((sum, o) => sum + (o.totalExciseTax || 0), 0);
+  const totalLocalTax = orders.reduce((sum, o) => sum + (o.totalLocalTax || 0), 0);
   const totalTaxAccrued = totalExciseTax + totalLocalTax;
 
   const totalPaidTax = orders
     .filter((o) => o.status === "complete")
-    .reduce(
-      (sum, o) => sum + (o.product?.isExciseTaxable !== false ? o.totalTax : 0),
-      0,
-    );
+    .reduce((sum, o) => sum + (o.totalTax || 0), 0);
 
   const totalPendingTax = orders
     .filter((o) => o.status === "pending" || o.status === "received")
-    .reduce(
-      (sum, o) => sum + (o.product?.isExciseTaxable !== false ? o.totalTax : 0),
-      0,
-    );
+    .reduce((sum, o) => sum + (o.totalTax || 0), 0);
 
   if (loading) {
     return (
@@ -677,7 +666,7 @@ export default function CustomerDetails() {
           onClick={() => setActiveTab("orders")}
           className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}
         >
-          รายการใบสั่งซื้อ PO ({orders.length})
+          รายการสั่งซื้อ ({orders.length})
         </button>
       </div>
 
@@ -773,17 +762,17 @@ export default function CustomerDetails() {
         <div className="glass-panel">
           <div className="px-4 py-3.5 border-b border-[var(--border)] ">
             <h3 className="font-semibold text-sm text-[var(--text)] ">
-              ใบรับสั่งซื้อ PO ({orders.length} รายการ)
+              รายการสั่งซื้อ ({orders.length} รายการ)
             </h3>
           </div>
           <div className="premium-table-wrapper border-none rounded-t-none">
             <table className="premium-table">
               <thead>
                 <tr>
+                  <th>เลขที่ใบเสนอราคา</th>
                   <th>PO Reference</th>
-                  <th>รหัสสินค้า (FG Code)</th>
-                  <th className="text-center">จำนวนชิ้น</th>
-                  <th className="num">ยอดภาษีคำนวรรครวม</th>
+                  <th className="text-center">จำนวนรายการ</th>
+                  <th className="num">ยอดภาษีรวม</th>
                   <th className="text-center">กำหนดส่ง</th>
                   <th className="text-center">สถานะชำระเงิน</th>
                 </tr>
@@ -795,22 +784,27 @@ export default function CustomerDetails() {
                       colSpan="6"
                       className="text-center py-10 text-[var(--text-3)]"
                     >
-                      ยังไม่มีใบสั่งซื้อ PO ในระบบ
+                      ยังไม่มีรายการสั่งซื้อในระบบ
                     </td>
                   </tr>
                 ) : (
                   orders.map((o) => {
-                    const isExempt = o.product?.isExciseTaxable === false;
+                    const isExempt = (o.totalTax || 0) === 0;
+                    const itemCount = o.items?.length || 0;
                     return (
-                      <tr key={o.id}>
+                      <tr
+                        key={o.id}
+                        className="clickable-row"
+                        onClick={() => setSelectedOrder(o)}
+                      >
                         <td className="font-semibold font-mono text-[var(--text)] ">
                           {o.quotationRef}
                         </td>
-                        <td className="font-mono text-xs">
-                          {o.product?.fgCode || "-"}
+                        <td className="font-mono text-xs text-[var(--text-2)]">
+                          {o.poReference || "-"}
                         </td>
                         <td className="text-center font-mono font-semibold">
-                          {o.quantity}
+                          {itemCount}
                         </td>
                         <td className="num font-mono font-bold text-[var(--text)] ">
                           {isExempt ? (
@@ -844,6 +838,12 @@ export default function CustomerDetails() {
           </div>
         </div>
       )}
+
+      <OrderDetailModal
+        order={selectedOrder}
+        open={!!selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+      />
     </>
   );
 }

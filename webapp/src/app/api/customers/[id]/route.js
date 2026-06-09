@@ -40,12 +40,21 @@ export async function GET(request, { params }) {
 
   let orders = [];
   if (productIds.length) {
-    const { data: ord } = await supabase
-      .from('orders')
-      .select('*, product:products(*)')
-      .in('productId', productIds)
-      .order('createdAt', { ascending: false });
-    orders = ord || [];
+    // PO -> items -> products. Find the line items referencing this customer's
+    // products, then fetch the distinct parent POs with all items embedded.
+    const { data: itemRows } = await supabase
+      .from('order_items')
+      .select('orderId')
+      .in('productId', productIds);
+    const orderIds = [...new Set((itemRows || []).map((r) => r.orderId))];
+    if (orderIds.length) {
+      const { data: ord } = await supabase
+        .from('orders')
+        .select('*, items:order_items(*, product:products(*))')
+        .in('id', orderIds)
+        .order('createdAt', { ascending: false });
+      orders = ord || [];
+    }
   }
 
   return Response.json({ customer, products, orders });

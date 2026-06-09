@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import { Scale } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
+import OrderDetailModal from "@/components/OrderDetailModal";
 export default function LegalDashboard() {
   const canApprove = useCan("legal:approve");
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
   const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
   const [loading, setLoading] = useState(() => !(apiCache.has("/api/products") && apiCache.has("/api/orders")));
   const [activeTab, setActiveTab] = useState("pending");
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   const fetchData = async () => {
     try {
@@ -352,8 +354,8 @@ export default function LegalDashboard() {
                 <table className="premium-table">
                   <thead>
                     <tr>
-                      <th>PO Reference</th>
-                      <th>สินค้า (FG)</th>
+                      <th>เลขที่ใบเสนอราคา</th>
+                      <th className="text-center">จำนวนรายการ</th>
                       <th className="num">ยอดภาษีรวม</th>
                       <th>Receipt S&S</th>
                       <th className="text-center">Action</th>
@@ -368,16 +370,21 @@ export default function LegalDashboard() {
                       </tr>
                     ) : (
                       receivedOrders.map((o) => {
-                        const p = o.product;
-                        const isExempt = p?.isExciseTaxable === false;
+                        const isExempt = (o.totalTax || 0) === 0;
+                        const itemCount = o.items?.length || 0;
                         return (
-                          <tr key={o.id} className="clickable-row">
+                          <tr
+                            key={o.id}
+                            className="clickable-row"
+                            onClick={() => setSelectedOrder(o)}
+                          >
                             <td>
                               <div className="font-semibold text-[var(--text)] ">{o.quotationRef}</div>
+                              {o.poReference && (
+                                <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">PO: {o.poReference}</div>
+                              )}
                             </td>
-                            <td>
-                              <div className="font-semibold text-[var(--text)] font-mono">{p?.fgCode || "-"}</div>
-                            </td>
+                            <td className="text-center font-mono font-semibold">{itemCount}</td>
                             <td className="num font-bold text-[var(--red)] font-mono">
                               {isExempt ? (
                                 <span className="status-pill success text-xs font-sans">ยกเว้นภาษี</span>
@@ -389,7 +396,7 @@ export default function LegalDashboard() {
                             <td className="text-center">
                               {canApprove ? (
                                 <button
-                                  onClick={() => handlePayTax(o.id, isExempt)}
+                                  onClick={(e) => { e.stopPropagation(); handlePayTax(o.id, isExempt); }}
                                   className="btn btn-primary px-4 mx-auto"
                                 >
                                   {isExempt ? "ยืนยัน Complete" : "จ่ายภาษีและอัพโหลด"}
@@ -409,6 +416,12 @@ export default function LegalDashboard() {
           )}
         </>
       )}
+
+      <OrderDetailModal
+        order={selectedOrder}
+        open={!!selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+      />
     </>
   );
 }

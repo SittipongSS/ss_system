@@ -7,7 +7,7 @@ export async function GET(request, { params }) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('orders')
-    .select('*, product:products(*)')
+    .select('*, items:order_items(*, product:products(*))')
     .eq('id', id)
     .maybeSingle();
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -15,7 +15,8 @@ export async function GET(request, { params }) {
   return Response.json(data);
 }
 
-// PATCH /api/orders/[id]
+// PATCH /api/orders/[id] — PO-header / workflow fields only.
+// Editing line items (qty/add/remove) is not supported in v1.
 export async function PATCH(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -35,26 +36,12 @@ export async function PATCH(request, { params }) {
     updates.status = body.status;
     if (body.status === 'complete') updates.clearedAt = new Date().toISOString();
   }
-  
+
   if (body.receiptNumber !== undefined) updates.receiptNumber = body.receiptNumber;
   if (body.exciseReceiptFileUrl !== undefined) updates.exciseReceiptFileUrl = body.exciseReceiptFileUrl;
 
-  if (body.quantity !== undefined) {
-    const qty = parseInt(body.quantity);
-    updates.quantity = qty;
-    const { data: product } = await supabase
-      .from('products')
-      .select('exciseTax, localTax')
-      .eq('id', order.productId)
-      .maybeSingle();
-    if (product) {
-      updates.totalExciseTax = product.exciseTax * qty;
-      updates.totalLocalTax = product.localTax * qty;
-      updates.totalTax = updates.totalExciseTax + updates.totalLocalTax;
-    }
-  }
-
   if (body.quotationRef !== undefined) updates.quotationRef = body.quotationRef;
+  if (body.poReference !== undefined) updates.poReference = body.poReference;
   if (body.deliveryDate !== undefined) updates.deliveryDate = body.deliveryDate;
   if (body.remarks !== undefined) updates.remarks = body.remarks;
   if (body.assignee !== undefined) updates.assignee = body.assignee;
@@ -63,13 +50,13 @@ export async function PATCH(request, { params }) {
     .from('orders')
     .update(updates)
     .eq('id', id)
-    .select()
+    .select('*, items:order_items(*, product:products(*))')
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json(data);
 }
 
-// DELETE /api/orders/[id]
+// DELETE /api/orders/[id] — order_items cascade via FK on delete cascade.
 export async function DELETE(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();

@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
+import OrderDetailModal from "@/components/OrderDetailModal";
 
 export default function TrackingHistory() {
   const canAct = useCan("sales:act");
+  const [selectedOrder, setSelectedOrder] = useState(null);
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
   const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
   const [loading, setLoading] = useState(
@@ -207,9 +209,9 @@ export default function TrackingHistory() {
                   <thead>
                     <tr>
                       <th>วันที่สร้าง Order</th>
-                      <th>Ref. Quotation / วันเคลียร์ภาษี</th>
-                      <th>สินค้า (FG Code)</th>
-                      <th className="num">ยอดเก็บภาษีรวม</th>
+                      <th>เลขที่ใบเสนอราคา / วันเคลียร์ภาษี</th>
+                      <th className="text-center">จำนวนรายการ</th>
+                      <th className="num">ยอดภาษีรวม</th>
                       <th className="text-center">สถานะชำระเงิน</th>
                       <th>ผู้รับผิดชอบ</th>
                       <th className="text-center">Action</th>
@@ -227,14 +229,12 @@ export default function TrackingHistory() {
                       </tr>
                     ) : (
                       orders.map((o) => {
-                        const p = o.product;
-                        const isExempt = p?.isExciseTaxable === false;
+                        const isExempt = (o.totalTax || 0) === 0;
+                        const itemCount = o.items?.length || 0;
                         return (
                           <tr
                             key={o.id}
-                            onClick={() =>
-                              (window.location.href = `/products/${o.productId}`)
-                            }
+                            onClick={() => setSelectedOrder(o)}
                             className="clickable-row"
                           >
                             <td className="text-[var(--text-2)] text-xs font-mono">
@@ -244,6 +244,11 @@ export default function TrackingHistory() {
                               <div className="font-semibold text-[var(--text)] ">
                                 {o.quotationRef}
                               </div>
+                              {o.poReference && (
+                                <div className="text-[10px] text-[var(--text-3)] mt-1 font-mono">
+                                  PO: {o.poReference}
+                                </div>
+                              )}
                               {o.status === "complete" && o.clearedAt && (
                                 <div className="text-[10px] text-[var(--green)] mt-1 font-mono">
                                   เคลียร์:{" "}
@@ -253,17 +258,8 @@ export default function TrackingHistory() {
                                 </div>
                               )}
                             </td>
-                            <td>
-                              <div className="font-semibold text-[var(--text)] font-mono">
-                                {p?.fgCode || "-"}
-                              </div>
-                              <div className="text-[11px] text-[var(--text-3)] mt-0.5">
-                                จำนวน:{" "}
-                                <span className="font-mono font-bold text-[var(--text-2)] ">
-                                  {o.quantity}
-                                </span>{" "}
-                                ชิ้น
-                              </div>
+                            <td className="text-center font-mono font-bold text-[var(--text-2)] ">
+                              {itemCount}
                             </td>
                             <td className="num font-bold font-mono text-[var(--text-2)] ">
                               {isExempt ? (
@@ -352,6 +348,12 @@ export default function TrackingHistory() {
           )}
         </>
       )}
+
+      <OrderDetailModal
+        order={selectedOrder}
+        open={!!selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+      />
     </>
   );
 }
