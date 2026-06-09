@@ -177,17 +177,18 @@ export default function ProductRegistry() {
             <table className="premium-table">
               <thead>
                 <tr>
-                  <th>รหัสสินค้า (FG Code)</th>
+                  <th>รายละเอียดสินค้า (FG Code)</th>
+                  <th>แบรนด์</th>
                   <th>ลูกค้า</th>
                   <th className="num">ปริมาตร</th>
-                  <th className="num">ภาษี/ชิ้น</th>
+                  <th className="num">ราคาขายปลีก</th>
                   <th>สถานะ</th>
                 </tr>
               </thead>
               <tbody>
                 {products.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="text-center py-10 text-[var(--text-3)]">
+                    <td colSpan="6" className="text-center py-10 text-[var(--text-3)]">
                       ยังไม่มีสินค้าในระบบ
                     </td>
                   </tr>
@@ -199,20 +200,13 @@ export default function ProductRegistry() {
                       className="clickable-row"
                     >
                       <td>
-                        <div className="font-semibold text-[var(--text)] font-mono">{p.fgCode}</div>
-                        <div className="text-[11px] text-[var(--text-3)] mt-1">
-                          {p.productDescription} ({p.brandName})
-                        </div>
+                        <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
+                        <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
                       </td>
+                      <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
                       <td className="text-[var(--text-2)]">{p.customerName}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} ml</td>
-                      <td className="num mono">
-                        {p.isExciseTaxable === false ? (
-                          <span className="text-[var(--text-3)]">ยกเว้น</span>
-                        ) : (
-                          formatMoney((p.exciseTax || 0) + (p.localTax || 0))
-                        )}
-                      </td>
+                      <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
                       <td>{statusPill(p.status)}</td>
                     </tr>
                   ))
