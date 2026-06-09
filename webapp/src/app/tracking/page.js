@@ -290,7 +290,7 @@ export default function TrackingHistory() {
                                       d="M5 13l4 4L19 7"
                                     />
                                   </svg>
-                                  ชำระแล้ว (ปล่อยของได้)
+                                  ชำระแล้ว
                                 </span>
                               ) : o.status === "received" ? (
                                 <span className="status-pill warn flex items-center gap-1 mx-auto w-fit">
@@ -302,7 +302,7 @@ export default function TrackingHistory() {
                                   >
                                     <circle cx="12" cy="12" r="10" strokeWidth="2.5"/>
                                   </svg>
-                                  รอชำระ (ห้ามปล่อยของ)
+                                  รอชำระภาษี
                                 </span>
                               ) : (
                                 <span className="status-pill danger flex items-center gap-1 mx-auto w-fit">
@@ -319,7 +319,7 @@ export default function TrackingHistory() {
                                       d="M6 18L18 6M6 6l12 12"
                                     />
                                   </svg>
-                                  ค้างชำระ (ห้ามปล่อยของ)
+                                  รอรับเงิน
                                 </span>
                               )}
                             </td>

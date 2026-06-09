@@ -122,7 +122,7 @@ export default function SalesDashboard() {
           <p>บันทึก PO และยืนยันการเคลียร์ภาษีสรรพสามิตล่วงหน้า</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="pill danger">ค้างชำระ {pendingOrders.length} รายการ</div>
+          <div className="pill danger">รอรับเงิน {pendingOrders.length} รายการ</div>
           {canAct && (
             <button onClick={() => setShowForm(true)} className="btn btn-primary flex items-center gap-1.5">
               <Plus size={16} /> สร้างรอบจัดส่ง
@@ -142,7 +142,7 @@ export default function SalesDashboard() {
         <div className="glass-panel">
           <div className="px-4 py-3.5 border-b border-[var(--border)] flex justify-between items-center">
             <h3 className="font-semibold text-sm text-[var(--text)] ">
-              รายการ PO รอชำระภาษี ({pendingOrders.length} รายการ)
+              รายการ PO รอรับเงิน ({pendingOrders.length} รายการ)
             </h3>
           </div>
           <div className="premium-table-wrapper border-none rounded-t-none">
@@ -160,7 +160,7 @@ export default function SalesDashboard() {
                 {pendingOrders.length === 0 ? (
                   <tr>
                     <td colSpan="5" className="text-center py-10 text-[var(--text-3)]">
-                      ไม่มีออเดอร์ค้างชำระ
+                      ไม่มีออเดอร์รอรับเงิน
                     </td>
                   </tr>
                 ) : (
