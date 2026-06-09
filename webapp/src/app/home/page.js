@@ -90,7 +90,6 @@ export default function HomeHubPage() {
               </p>
             </div>
             <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
-              <span className="status-pill success" style={{ height: "auto", padding: "3px 10px", fontSize: "11px" }}>พร้อมใช้งาน</span>
               <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                 เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
               </span>
