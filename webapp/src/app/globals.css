@@ -778,6 +778,16 @@ h1, h2, h3, h4, h5, h6 {
   border-color: var(--border);
 }
 
+/* System-hub launchpad cards */
+.system-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.system-card:not(.disabled):hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--navy);
+}
+
 /* Stat & Metrics Display - Grid layout for responsiveness */
 .metrics-row,
 .kpi-grid {

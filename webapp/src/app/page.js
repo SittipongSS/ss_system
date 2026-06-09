@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FlaskConical } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
-import { landingFor } from "@/lib/permissions";
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -21,7 +20,7 @@ export default function LoginPage() {
     createClient()
       .auth.getUser()
       .then(({ data: { user } }) => {
-        if (user) router.replace(landingFor(user.user_metadata?.role));
+        if (user) router.replace("/home");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -32,7 +31,7 @@ export default function LoginPage() {
 
     // Dev fallback: no Supabase configured -> skip auth so local dev works.
     if (!SUPABASE_CONFIGURED) {
-      router.replace("/customers");
+      router.replace("/home");
       return;
     }
 
@@ -46,8 +45,7 @@ export default function LoginPage() {
       setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
       return;
     }
-    const role = data.user?.user_metadata?.role;
-    router.replace(landingFor(role));
+    router.replace("/home");
   };
 
   return (

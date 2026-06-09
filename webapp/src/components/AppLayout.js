@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Building2, Package, Scale, Truck, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, Building2, Package, Scale, Truck, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can } from '@/lib/permissions';
@@ -136,6 +136,16 @@ export default function AppLayout({ children }) {
         </div>
 
         <ul className="nav-links">
+          <li className="nav-group">
+            <Link
+              href="/home"
+              className={`nav-item ${pathname === '/home' ? 'active' : ''}`}
+              title={isCollapsed ? 'หน้าแรก' : undefined}
+            >
+              <Home size={18} className="ico" />
+              <span className="nav-label">หน้าแรก</span>
+            </Link>
+          </li>
           {navGroups.map((group, gi) => (
             <li key={gi} className="nav-group">
               {!isCollapsed && <div className="nav-section">{group.label}</div>}
