@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Building2 } from "lucide-react";
+import { apiCache } from "@/lib/apiCache";
 export default function CustomerDirectory() {
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState(() => apiCache.get("/api/customers") ?? []);
+  const [loading, setLoading] = useState(() => !apiCache.has("/api/customers"));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState("list");
 
@@ -19,7 +20,11 @@ export default function CustomerDirectory() {
   const fetchCustomers = async () => {
     try {
       const res = await fetch("/api/customers");
-      if (res.ok) setCustomers(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        apiCache.set("/api/customers", data);
+        setCustomers(data);
+      }
     } catch (err) {
       console.error(err);
     }

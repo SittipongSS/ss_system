@@ -43,3 +43,5 @@ next-env.d.ts
 
 # obsolete local uploads (now using Supabase Storage)
 /public/uploads/
+
+.vercel

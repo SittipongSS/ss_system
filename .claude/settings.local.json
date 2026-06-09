@@ -23,7 +23,14 @@
       "Bash(rm -rf webapp/public/uploads)",
       "Bash(git add *)",
       "Bash(git commit -q -m 'Remove obsolete local upload demo files \\(uploads now on Supabase Storage\\) *)",
-      "Bash(npx --yes vercel@latest whoami)"
+      "Bash(npx --yes vercel@latest whoami)",
+      "Bash(npx --yes vercel@latest link --yes --cwd \"D:/tax/webapp\")",
+      "Bash(npx --yes vercel@latest link --yes --cwd \"D:/tax/webapp\" --scope sittipong-s-projects)",
+      "Bash(npx --yes vercel@latest deploy --prod --yes --cwd \"D:/tax/webapp\" --scope sittipong-s-projects)",
+      "Bash(npx --yes vercel@latest ls --cwd \"D:/tax/webapp\" --scope sittipong-s-projects)",
+      "Bash(npx --yes vercel@latest inspect https://webapp-rl1u5s7uv-sittipong-s-projects.vercel.app --scope sittipong-s-projects)",
+      "Bash(npx --yes vercel@latest alias ls --scope sittipong-s-projects)",
+      "mcp__Claude_in_Chrome__read_console_messages"
     ]
   }
 }

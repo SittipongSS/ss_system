@@ -1,15 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Scale } from "lucide-react";
+import { apiCache } from "@/lib/apiCache";
 export default function LegalDashboard() {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
+  const [loading, setLoading] = useState(() => !apiCache.has("/api/products"));
   const [activeTab, setActiveTab] = useState("pending");
 
   const fetchProducts = async () => {
     const res = await fetch("/api/products");
     if (res.ok) {
       const data = await res.json();
+      apiCache.set("/api/products", data);
       setProducts(data);
     }
     setLoading(false);

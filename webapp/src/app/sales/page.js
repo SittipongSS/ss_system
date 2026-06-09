@@ -1,11 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Truck } from "lucide-react";
+import { apiCache } from "@/lib/apiCache";
 
 export default function SalesDashboard() {
-  const [products, setProducts] = useState([]);
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
+  const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
+  const [loading, setLoading] = useState(
+    () => !(apiCache.has("/api/products") && apiCache.has("/api/orders")),
+  );
   const [userName, setUserName] = useState("");
   const [activeTab, setActiveTab] = useState("list");
 
@@ -20,11 +23,16 @@ export default function SalesDashboard() {
 
   const fetchData = async () => {
     try {
-      const resProducts = await fetch("/api/products");
-      const resOrders = await fetch("/api/orders");
+      const [resProducts, resOrders] = await Promise.all([
+        fetch("/api/products"),
+        fetch("/api/orders"),
+      ]);
       if (resProducts.ok && resOrders.ok) {
-        setProducts(await resProducts.json());
-        setOrders(await resOrders.json());
+        const [p, o] = await Promise.all([resProducts.json(), resOrders.json()]);
+        apiCache.set("/api/products", p);
+        apiCache.set("/api/orders", o);
+        setProducts(p);
+        setOrders(o);
       }
     } catch (err) {
       console.error("Error fetching data", err);

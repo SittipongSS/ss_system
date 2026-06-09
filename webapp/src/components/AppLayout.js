@@ -4,9 +4,21 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, SquarePen, Scale, Truck, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
+import { apiCache } from '@/lib/apiCache';
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+// Warm the data cache right after login so the first click on any menu is
+// instant (data is already fetched in the background).
+function prefetchData() {
+  for (const url of ['/api/products', '/api/customers', '/api/orders']) {
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) apiCache.set(url, d); })
+      .catch(() => {});
+  }
+}
 
 export default function AppLayout({ children }) {
   const router = useRouter();
@@ -28,6 +40,7 @@ export default function AppLayout({ children }) {
     if (!SUPABASE_CONFIGURED) {
       setRole('admin');
       setUserName('Local Dev');
+      prefetchData();
       return;
     }
     const supabase = createClient();
@@ -38,6 +51,7 @@ export default function AppLayout({ children }) {
       }
       setRole(user.user_metadata?.role || 'user');
       setUserName(user.user_metadata?.name || user.email || 'user');
+      prefetchData();
     });
   }, [router]);
 
