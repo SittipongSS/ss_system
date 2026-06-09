@@ -5,12 +5,18 @@ export const dynamic = 'force-dynamic';
 // same as the original logic). We run two queries and merge to avoid issues
 // with commas/special chars in PostgREST `.or()` filter strings.
 async function findLinkedProducts(supabase, customer) {
-  const byName = customer.name
-    ? (await supabase.from('products').select('*').eq('customerName', customer.name)).data || []
-    : [];
-  const byTax = customer.taxId
-    ? (await supabase.from('products').select('*').eq('taxId', customer.taxId)).data || []
-    : [];
+  // Run both lookups in parallel — they're independent, so awaiting them
+  // sequentially just doubles the DB round-trip latency.
+  const [byNameRes, byTaxRes] = await Promise.all([
+    customer.name
+      ? supabase.from('products').select('*').eq('customerName', customer.name)
+      : Promise.resolve({ data: [] }),
+    customer.taxId
+      ? supabase.from('products').select('*').eq('taxId', customer.taxId)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const byName = byNameRes.data || [];
+  const byTax = byTaxRes.data || [];
   const map = new Map();
   for (const p of [...byName, ...byTax]) map.set(p.id, p);
   return [...map.values()];
