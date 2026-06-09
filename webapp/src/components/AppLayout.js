@@ -51,8 +51,10 @@ export default function AppLayout({ children }) {
         router.replace('/');
         return;
       }
+      const name = user.user_metadata?.name || user.email || 'user';
       setRole(user.user_metadata?.role || 'user');
-      setUserName(user.user_metadata?.name || user.email || 'user');
+      setUserName(name);
+      try { localStorage.setItem('userName', name); } catch {}
       prefetchData();
     });
   }, [router]);
@@ -93,7 +95,7 @@ export default function AppLayout({ children }) {
       label: 'ทะเบียน',
       items: [
         { href: '/customers', name: 'ทะเบียนลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/customers' || p.startsWith('/customers/') },
-        { href: '/sa', name: 'ทะเบียนสินค้า', icon: Package, cap: 'products:edit', match: (p) => p === '/sa' || p.startsWith('/products/') },
+        { href: '/sa', name: 'ทะเบียนสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/sa' || p.startsWith('/products/') },
       ],
     },
     {

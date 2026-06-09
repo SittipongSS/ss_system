@@ -1,7 +1,16 @@
 "use client";
 import { useState, useEffect } from "react";
-import { SquarePen } from "lucide-react";
-export default function SAPortal() {
+import { Package, Plus } from "lucide-react";
+import { apiCache } from "@/lib/apiCache";
+import { useCan } from "@/lib/roleContext";
+import Modal from "@/components/Modal";
+
+export default function ProductRegistry() {
+  const canEdit = useCan("products:edit");
+  const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
+  const [loading, setLoading] = useState(() => !apiCache.has("/api/products"));
+  const [showForm, setShowForm] = useState(false);
+
   const [formData, setFormData] = useState({
     fgCode: "",
     productDescription: "",
@@ -13,32 +22,44 @@ export default function SAPortal() {
     costPrice: "",
     retailPriceIncVat: "",
   });
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [userName, setUserName] = useState("");
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
+  const formatMoney = (a) =>
+    a == null ? "-" : a.toLocaleString("th-TH", { style: "currency", currency: "THB", minimumFractionDigits: 2 });
+
+  const fetchProducts = async () => {
+    try {
+      const res = await fetch("/api/products");
+      if (res.ok) {
+        const data = await res.json();
+        apiCache.set("/api/products", data);
+        setProducts(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
-    const fetchCustomers = async () => {
-      const res = await fetch("/api/customers");
-      if (res.ok) setCustomers(await res.json());
-    };
-    fetchCustomers();
+    fetchProducts();
+    fetch("/api/customers")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setCustomers(d || []))
+      .catch(() => {});
   }, []);
 
   const handleChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleCustomerSelect = (e) => {
-    const selectedArCode = e.target.value;
-    if (!selectedArCode) {
-      setSelectedCustomer(null);
-      return;
-    }
-
-    const customer = customers.find((c) => c.arCode === selectedArCode);
+    const arCode = e.target.value;
+    if (!arCode) return setSelectedCustomer(null);
+    const customer = customers.find((c) => c.arCode === arCode);
     setSelectedCustomer(customer || null);
     if (customer) {
       setFormData({
@@ -46,27 +67,38 @@ export default function SAPortal() {
         customerName: customer.name,
         taxId: customer.taxId,
         address: customer.address,
-        brandName: "", // Reset brand when customer changes
+        brandName: "",
       });
     }
   };
 
+  const openForm = () => {
+    setFormData({
+      fgCode: "",
+      productDescription: "",
+      brandName: "",
+      customerName: "",
+      taxId: "",
+      address: "",
+      volume: "",
+      costPrice: "",
+      retailPriceIncVat: "",
+    });
+    setSelectedCustomer(null);
+    setShowForm(true);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!formData.fgCode.includes("01-002")) {
       if (
         !confirm(
-          "⚠️ แจ้งเตือน:\nรหัสสินค้า (FG) ที่คุณระบุ ไม่ได้อยู่ในหมวด 01-002 (น้ำหอมฉีดผิวกาย)\n\nระบบจะตีความว่าสินค้านี้ 'ไม่ต้องเสียภาษีสรรพสามิต'\nคุณต้องการบันทึกข้อมูลนี้ต่อไปหรือไม่?",
+          "⚠️ แจ้งเตือน:\nรหัสสินค้า (FG) ไม่ได้อยู่ในหมวด 01-002 (น้ำหอมฉีดผิวกาย)\n\nระบบจะตีความว่าสินค้านี้ 'ไม่ต้องเสียภาษีสรรพสามิต'\nต้องการบันทึกต่อหรือไม่?",
         )
-      ) {
+      )
         return;
-      }
     }
-
-    setLoading(true);
-    setSuccess(false);
-
+    setSubmitting(true);
     const payload = {
       ...formData,
       assignee: userName,
@@ -75,7 +107,6 @@ export default function SAPortal() {
       costPrice: parseFloat(formData.costPrice),
       retailPriceIncVat: parseFloat(formData.retailPriceIncVat),
     };
-
     try {
       const res = await fetch("/api/products", {
         method: "POST",
@@ -83,72 +114,122 @@ export default function SAPortal() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setSuccess(true);
-        setFormData({
-          fgCode: "",
-          productDescription: "",
-          brandName: "",
-          customerName: "",
-          taxId: "",
-          address: "",
-          volume: "",
-          costPrice: "",
-          retailPriceIncVat: "",
-        });
-        setSelectedCustomer(null);
-        setTimeout(() => setSuccess(false), 4000);
+        setShowForm(false);
+        await fetchProducts();
       } else {
-        const errorData = await res.json();
-        alert(errorData.error || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        const err = await res.json();
+        alert(err.error || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
       }
     } catch (err) {
       alert("Error submitting form");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
+  const statusPill = (s) =>
+    s === "approved" ? (
+      <span className="status-pill ok">อนุมัติแล้ว</span>
+    ) : (
+      <span className="status-pill warn">รออนุมัติ</span>
+    );
+
   return (
     <>
-      <div className="premium-header">
+      <div
+        className="premium-header"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+      >
         <div className="header-content">
           <h1>
             <span className="premium-header-icon">
-              <SquarePen size={22} />
+              <Package size={22} />
             </span>{" "}
-            สร้าง/แก้ไขรหัสสินค้าใหม่
+            ทะเบียนสินค้า
           </h1>
-          <p>ระบบตรวจสอบและบันทึกข้อมูล Master Data สินค้า (SA)</p>
+          <p>ฐานข้อมูลสินค้า (Master Data) และการขึ้นทะเบียนสรรพสามิต</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="pill ok">ทั้งหมด {products.length} รายการ</div>
+          {canEdit && (
+            <button onClick={openForm} className="btn btn-primary flex items-center gap-1.5">
+              <Plus size={16} /> เพิ่มสินค้า
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="glass-panel p-[18px]">
-        {success && (
-          <div className="mb-6 px-4 py-3 bg-[var(--green-soft)] text-[var(--green)] rounded-lg border border-[var(--border)] flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <strong>สำเร็จ!</strong> ส่งข้อมูลให้ Legal ขึ้นทะเบียนเรียบร้อยแล้ว
-            (ผู้รับผิดชอบ: {userName})
+      {loading ? (
+        <div className="flex justify-center p-12">
+          <svg className="animate-spin h-8 w-8 text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      ) : (
+        <div className="glass-panel">
+          <div className="px-4 py-3.5 border-b border-[var(--border)]">
+            <h3 className="font-semibold text-sm text-[var(--text)]">
+              ฐานข้อมูลสินค้า ({products.length} รายการ)
+            </h3>
           </div>
-        )}
+          <div className="premium-table-wrapper border-none rounded-t-none">
+            <table className="premium-table">
+              <thead>
+                <tr>
+                  <th>รหัสสินค้า (FG Code)</th>
+                  <th>ลูกค้า</th>
+                  <th className="num">ปริมาตร</th>
+                  <th className="num">ภาษี/ชิ้น</th>
+                  <th>สถานะ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="text-center py-10 text-[var(--text-3)]">
+                      ยังไม่มีสินค้าในระบบ
+                    </td>
+                  </tr>
+                ) : (
+                  products.map((p) => (
+                    <tr
+                      key={p.id}
+                      onClick={() => (window.location.href = `/products/${p.id}`)}
+                      className="clickable-row"
+                    >
+                      <td>
+                        <div className="font-semibold text-[var(--text)] font-mono">{p.fgCode}</div>
+                        <div className="text-[11px] text-[var(--text-3)] mt-1">
+                          {p.productDescription} ({p.brandName})
+                        </div>
+                      </td>
+                      <td className="text-[var(--text-2)]">{p.customerName}</td>
+                      <td className="num font-mono text-[var(--text-2)]">{p.volume} ml</td>
+                      <td className="num mono">
+                        {p.isExciseTaxable === false ? (
+                          <span className="text-[var(--text-3)]">ยกเว้น</span>
+                        ) : (
+                          formatMoney((p.exciseTax || 0) + (p.localTax || 0))
+                        )}
+                      </td>
+                      <td>{statusPill(p.status)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
+      {/* Add product modal */}
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="เพิ่มสินค้าใหม่ (New Product)" size="lg">
         <form onSubmit={handleSubmit}>
-          {/* Section 1 */}
+          {/* Section 1: customer */}
           <div className="mb-[22px]">
             <div className="flex justify-between items-center border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)] ">
-                1. ข้อมูลลูกค้า (Customer Info)
-              </h3>
+              <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลลูกค้า (Customer Info)</h3>
               {customers.length > 0 && (
                 <select
                   onChange={handleCustomerSelect}
@@ -164,267 +245,90 @@ export default function SAPortal() {
                 </select>
               )}
             </div>
-
-            <div
-              className="grid gap-[18px]"
-              style={{ gridTemplateColumns: "repeat(2, 1fr)" }}
-            >
+            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
               <div className="form-group">
-                <label>
-                  ชื่อบริษัท / ลูกค้า{" "}
-                  <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="customerName"
-                  value={formData.customerName}
-                  onChange={handleChange}
-                  required
-                  className="premium-input w-full"
-                />
+                <label>ชื่อบริษัท / ลูกค้า <span className="text-[var(--red)]">*</span></label>
+                <input type="text" name="customerName" value={formData.customerName} onChange={handleChange} required className="premium-input w-full" />
               </div>
               <div className="form-group">
-                <label>
-                  เลขประจำตัวผู้เสียภาษี{" "}
-                  <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="taxId"
-                  value={formData.taxId}
-                  onChange={handleChange}
-                  required
-                  className="premium-input w-full font-mono"
-                />
+                <label>เลขประจำตัวผู้เสียภาษี <span className="text-[var(--red)]">*</span></label>
+                <input type="text" name="taxId" value={formData.taxId} onChange={handleChange} required className="premium-input w-full font-mono" />
               </div>
               <div className="form-group col-span-2">
-                <label>
-                  ที่อยู่ลูกค้า <span className="text-[var(--red)]">*</span>
-                </label>
-                <textarea
-                  name="address"
-                  value={formData.address}
-                  onChange={handleChange}
-                  required
-                  className="premium-input w-full"
-                  style={{
-                    height: "80px",
-                    padding: "10px 12px",
-                    resize: "none",
-                  }}
-                ></textarea>
+                <label>ที่อยู่ลูกค้า <span className="text-[var(--red)]">*</span></label>
+                <textarea name="address" value={formData.address} onChange={handleChange} required className="premium-input w-full" style={{ height: "80px", padding: "10px 12px", resize: "none" }}></textarea>
               </div>
             </div>
           </div>
 
-          {/* Section 2 */}
+          {/* Section 2: product */}
           <div className="mb-[22px]">
             <div className="flex justify-between items-center border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)] ">
-                2. ข้อมูลหลักสินค้า (Product Details)
-              </h3>
+              <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลหลักสินค้า (Product Details)</h3>
               <span className="text-xs font-semibold text-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 rounded-full">
                 Assignee: {userName}
               </span>
             </div>
-
-            <div
-              className="grid gap-[18px]"
-              style={{ gridTemplateColumns: "repeat(2, 1fr)" }}
-            >
+            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
               <div className="form-group col-span-2">
-                <label>
-                  รหัสสินค้า (FG Code){" "}
-                  <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="fgCode"
-                  value={formData.fgCode}
-                  onChange={handleChange}
-                  required
-                  placeholder="FG-AAA-BB-CCC-DDDD"
-                  className="premium-input w-full font-mono text-base"
-                />
-                <span className="text-xs text-[var(--text-3)] mt-1">
-                  เฉพาะหมวด 01-002 (น้ำหอมฉีดผิวกาย)
-                  เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต
-                </span>
+                <label>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
+                <input type="text" name="fgCode" value={formData.fgCode} onChange={handleChange} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
+                <span className="text-xs text-[var(--text-3)] mt-1">เฉพาะหมวด 01-002 (น้ำหอมฉีดผิวกาย) เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต</span>
                 {formData.fgCode && !formData.fgCode.includes("01-002") && (
-                  <div className="mt-2 p-3 bg-[var(--amber-soft)] text-[var(--amber)] text-xs rounded-lg border border-[var(--border)] flex items-center gap-2 transition-all">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4 flex-shrink-0"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <span>
-                      <strong>หมายเหตุ:</strong> รหัสสินค้าไม่อยู่ในหมวด 01-002
-                      (น้ำหอมฉีดผิวกาย) สินค้านี้จะได้รับการประเมินว่า{" "}
-                      <strong>"ไม่ต้องเสียภาษีสรรพสามิต"</strong>
-                    </span>
+                  <div className="mt-2 p-3 bg-[var(--amber-soft)] text-[var(--amber)] text-xs rounded-lg border border-[var(--border)]">
+                    <strong>หมายเหตุ:</strong> รหัสนี้ไม่อยู่ในหมวด 01-002 จะถูกประเมินว่า <strong>"ไม่ต้องเสียภาษีสรรพสามิต"</strong>
                   </div>
                 )}
               </div>
-
               <div className="form-group">
-                <label>
-                  รายละเอียดสินค้า <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="productDescription"
-                  value={formData.productDescription}
-                  onChange={handleChange}
-                  required
-                  placeholder="เช่น Midnight Bloom 50ml"
-                  className="premium-input w-full"
-                />
+                <label>รายละเอียดสินค้า <span className="text-[var(--red)]">*</span></label>
+                <input type="text" name="productDescription" value={formData.productDescription} onChange={handleChange} required placeholder="เช่น Midnight Bloom 50ml" className="premium-input w-full" />
               </div>
-
               <div className="form-group">
-                <label>
-                  ชื่อแบรนด์ <span className="text-[var(--red)]">*</span>
-                </label>
-                {selectedCustomer &&
-                selectedCustomer.brands &&
-                selectedCustomer.brands.length > 0 ? (
-                  <select
-                    name="brandName"
-                    value={formData.brandName}
-                    onChange={handleChange}
-                    required
-                    className="premium-select w-full"
-                  >
+                <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
+                {selectedCustomer && selectedCustomer.brands && selectedCustomer.brands.length > 0 ? (
+                  <select name="brandName" value={formData.brandName} onChange={handleChange} required className="premium-select w-full">
                     <option value="">-- เลือกแบรนด์ของลูกค้านี้ --</option>
                     {selectedCustomer.brands.map((b, i) => (
-                      <option key={i} value={b}>
-                        {b}
-                      </option>
+                      <option key={i} value={b}>{b}</option>
                     ))}
                   </select>
                 ) : (
-                  <input
-                    type="text"
-                    name="brandName"
-                    value={formData.brandName}
-                    onChange={handleChange}
-                    required
-                    placeholder="Brand Name"
-                    className="premium-input w-full"
-                  />
+                  <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required placeholder="Brand Name" className="premium-input w-full" />
                 )}
               </div>
             </div>
           </div>
 
-          {/* Section 3 */}
+          {/* Section 3: excise */}
           <div className="mb-[22px]">
             <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)] ">
-                3. ข้อมูลสำหรับสรรพสามิต (Excise Metrics)
-              </h3>
+              <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลสำหรับสรรพสามิต (Excise Metrics)</h3>
             </div>
-
-            <div
-              className="grid gap-[18px]"
-              style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
-            >
+            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
               <div className="form-group">
-                <label>
-                  ปริมาตรบรรจุ (ml) <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="number"
-                  name="volume"
-                  value={formData.volume}
-                  onChange={handleChange}
-                  required
-                  min="1"
-                  className="premium-input w-full font-mono"
-                />
+                <label>ปริมาตรบรรจุ (ml) <span className="text-[var(--red)]">*</span></label>
+                <input type="number" name="volume" value={formData.volume} onChange={handleChange} required min="1" className="premium-input w-full font-mono" />
               </div>
               <div className="form-group">
-                <label>
-                  ราคาโรงงาน (บาท) <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="number"
-                  name="costPrice"
-                  value={formData.costPrice}
-                  onChange={handleChange}
-                  required
-                  min="0"
-                  step="0.01"
-                  className="premium-input w-full font-mono"
-                />
+                <label>ราคาโรงงาน (บาท) <span className="text-[var(--red)]">*</span></label>
+                <input type="number" name="costPrice" value={formData.costPrice} onChange={handleChange} required min="0" step="0.01" className="premium-input w-full font-mono" />
               </div>
               <div className="form-group">
-                <label>
-                  ราคาขายปลีก{" "}
-                  <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">
-                    รวม VAT
-                  </span>{" "}
-                  <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="number"
-                  name="retailPriceIncVat"
-                  value={formData.retailPriceIncVat}
-                  onChange={handleChange}
-                  required
-                  min="0"
-                  step="0.01"
-                  placeholder="ระบบจะถอด VAT 7% ให้เอง"
-                  className="premium-input w-full font-mono"
-                />
+                <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span> <span className="text-[var(--red)]">*</span></label>
+                <input type="number" name="retailPriceIncVat" value={formData.retailPriceIncVat} onChange={handleChange} required min="0" step="0.01" placeholder="ถอด VAT 7% ให้เอง" className="premium-input w-full font-mono" />
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end mt-8 pt-6 border-t border-[var(--border)] ">
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-primary px-8"
-            >
-              {loading ? (
-                <>
-                  <svg
-                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  กำลังบันทึกข้อมูล...
-                </>
-              ) : (
-                "บันทึกและส่งข้อมูล"
-              )}
+          <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+            <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>
+            <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+              {submitting ? "กำลังบันทึก..." : "บันทึกและส่งข้อมูล"}
             </button>
           </div>
         </form>
-      </div>
+      </Modal>
     </>
   );
 }
