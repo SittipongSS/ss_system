@@ -114,9 +114,9 @@ export default function LegalDashboard() {
             <span className="premium-header-icon">
               <Scale size={22} />
             </span>{" "}
-            Legal Dashboard
+            ระบบภาษี
           </h1>
-          <p>ตรวจสอบคำนวณราคาและขึ้นทะเบียนสินค้า (Master Data)</p>
+          <p>ขึ้นทะเบียนสินค้าและจัดการภาษีสรรพสามิต</p>
         </div>
         <div className="pill warn">
           <span className="relative flex h-2.5 w-2.5 mr-1">

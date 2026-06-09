@@ -101,7 +101,7 @@ export default function AppLayout({ children }) {
     {
       label: 'ดำเนินการ',
       items: [
-        { href: '/legal', name: 'อนุมัติสินค้า', icon: Scale, cap: 'legal:view', match: (p) => p === '/legal' },
+        { href: '/legal', name: 'ระบบภาษี', icon: Scale, cap: 'legal:view', match: (p) => p === '/legal' },
         { href: '/sales', name: 'แจ้งยื่นภาษี', icon: Truck, cap: 'sales:view', match: (p) => p === '/sales' },
       ],
     },
