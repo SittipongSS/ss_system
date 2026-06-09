@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 // GET /api/orders/[id]
@@ -41,21 +41,31 @@ export async function PATCH(request, { params }) {
   }
 
   const body = await request.json();
+
+  // Sales own the PO header + S&S receipt; legal own the excise/tax fields.
+  // allowedEditFields keeps a sales user out of the excise columns and a
+  // legal user out of the commercial header.
+  const salesEditable = ['quotationRef', 'poReference', 'deliveryDate', 'remarks', 'assignee', 'receiptNumber'];
+  const allowed = allowedEditFields(user, 'orders', salesEditable);
+
   const updates = {};
+  for (const k of allowed) if (body[k] !== undefined) updates[k] = body[k];
 
-  if (body.status !== undefined) {
+  if (allowed.has('status') && body.status !== undefined) {
     updates.status = body.status;
-    if (body.status === 'complete') updates.clearedAt = new Date().toISOString();
+    if (body.status === 'complete') {
+      // Filing is done: stamp who/when + the clearance timestamp.
+      updates.clearedAt = new Date().toISOString();
+      updates.filedAt = new Date().toISOString();
+      updates.filedBy = user?.id ?? null;
+      updates.filedByName = user?.name ?? null;
+    }
+    if (body.status === 'rejected') {
+      if (!body.rejectionReason || !String(body.rejectionReason).trim()) {
+        return Response.json({ error: 'กรุณาระบุเหตุผลที่ตีกลับ' }, { status: 400 });
+      }
+    }
   }
-
-  if (body.receiptNumber !== undefined) updates.receiptNumber = body.receiptNumber;
-  if (body.exciseReceiptFileUrl !== undefined) updates.exciseReceiptFileUrl = body.exciseReceiptFileUrl;
-
-  if (body.quotationRef !== undefined) updates.quotationRef = body.quotationRef;
-  if (body.poReference !== undefined) updates.poReference = body.poReference;
-  if (body.deliveryDate !== undefined) updates.deliveryDate = body.deliveryDate;
-  if (body.remarks !== undefined) updates.remarks = body.remarks;
-  if (body.assignee !== undefined) updates.assignee = body.assignee;
 
   const { data, error } = await supabase
     .from('orders')

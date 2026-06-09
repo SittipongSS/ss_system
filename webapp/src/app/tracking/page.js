@@ -282,6 +282,14 @@ export default function TrackingHistory() {
                                   </svg>
                                   รอชำระภาษี
                                 </span>
+                              ) : o.status === "filing" ? (
+                                <span className="status-pill warn flex items-center gap-1 mx-auto w-fit">
+                                  กำลังยื่นภาษี
+                                </span>
+                              ) : o.status === "rejected" ? (
+                                <span className="status-pill danger flex items-center gap-1 mx-auto w-fit">
+                                  ตีกลับให้แก้ไข
+                                </span>
                               ) : (
                                 <span className="status-pill danger flex items-center gap-1 mx-auto w-fit">
                                   <svg

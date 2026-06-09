@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { departmentFor } from '@/lib/permissions';
 
 // Server-side identity for API route handlers. Reads the signed-in user from
 // the Supabase session cookie and returns the fields needed for access checks:
@@ -12,7 +13,7 @@ export async function getCurrentUser() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) {
-    return { id: 'local-dev', role: 'ae_supervisor', team: null, name: 'Local Dev', devBypass: true };
+    return { id: 'local-dev', role: 'ae_supervisor', team: null, department: 'SALES', name: 'Local Dev', devBypass: true };
   }
 
   const cookieStore = await cookies();
@@ -32,10 +33,12 @@ export async function getCurrentUser() {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
+  const role = user.app_metadata?.role || 'user';
   return {
     id: user.id,
-    role: user.app_metadata?.role || 'user',
+    role,
     team: user.app_metadata?.team || null,
+    department: user.app_metadata?.department || departmentFor(role) || null,
     name: user.user_metadata?.name || user.email || 'user',
   };
 }

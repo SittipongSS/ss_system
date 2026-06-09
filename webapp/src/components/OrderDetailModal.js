@@ -1,18 +1,16 @@
 "use client";
 import Modal from "@/components/Modal";
-
-const fmtMoney = (amount) =>
-  (amount || 0).toLocaleString("th-TH", {
-    style: "currency",
-    currency: "THB",
-    minimumFractionDigits: 2,
-  });
+import { fmtMoney, fmtDate } from "@/lib/format";
 
 function StatusPill({ status }) {
   if (status === "complete")
     return <span className="status-pill success">ชำระแล้ว</span>;
+  if (status === "filing")
+    return <span className="status-pill warn">กำลังยื่นภาษี</span>;
   if (status === "received")
     return <span className="status-pill warn">รอชำระภาษี</span>;
+  if (status === "rejected")
+    return <span className="status-pill danger">ตีกลับให้แก้ไข</span>;
   return <span className="status-pill danger">รอรับเงิน</span>;
 }
 
@@ -62,7 +60,60 @@ export default function OrderDetailModal({ order, open, onClose }) {
               <div className="font-mono text-[var(--text-2)]">{order.receiptNumber}</div>
             </div>
           )}
+          {order.taxDueDate && (
+            <div>
+              <div className="text-[var(--text-3)] text-xs">กำหนดยื่นภาษี</div>
+              <div className="text-[var(--text-2)]">{fmtDate(order.taxDueDate)}</div>
+            </div>
+          )}
         </div>
+
+        {/* Rejection reason */}
+        {order.status === "rejected" && order.rejectionReason && (
+          <div className="text-xs bg-[var(--red-soft)] border border-[var(--border)] rounded-lg p-3">
+            <div className="text-[var(--red)] font-semibold mb-1">เหตุผลที่ตีกลับ</div>
+            <div className="text-[var(--text-2)]">{order.rejectionReason}</div>
+          </div>
+        )}
+
+        {/* Excise filing record (shown once filed) */}
+        {(order.exciseReceiptNumber || order.status === "complete") && (
+          <div className="grid grid-cols-2 gap-3 text-sm bg-[var(--panel-2)] rounded-lg p-3">
+            <div className="col-span-2 text-[var(--text-3)] text-xs font-semibold">บันทึกการยื่นชำระภาษี</div>
+            {order.exciseReceiptNumber && (
+              <div>
+                <div className="text-[var(--text-3)] text-xs">เลขใบเสร็จสรรพสามิต</div>
+                <div className="font-mono text-[var(--text-2)]">{order.exciseReceiptNumber}</div>
+              </div>
+            )}
+            {order.exciseTaxPaidAmount != null && (
+              <div>
+                <div className="text-[var(--text-3)] text-xs">ยอดชำระจริง</div>
+                <div className="font-mono text-[var(--text-2)]">{fmtMoney(order.exciseTaxPaidAmount)}</div>
+              </div>
+            )}
+            {order.taxFormRef && (
+              <div>
+                <div className="text-[var(--text-3)] text-xs">แบบ ภส.</div>
+                <div className="font-mono text-[var(--text-2)]">{order.taxFormRef}</div>
+              </div>
+            )}
+            {order.filedByName && (
+              <div>
+                <div className="text-[var(--text-3)] text-xs">ผู้ยื่น</div>
+                <div className="text-[var(--text-2)]">{order.filedByName} · {fmtDate(order.filedAt)}</div>
+              </div>
+            )}
+            {order.exciseReceiptFileUrl && (
+              <div className="col-span-2">
+                <a href={order.exciseReceiptFileUrl} target="_blank" rel="noreferrer"
+                   className="text-xs font-semibold text-[var(--accent)] hover:underline">
+                  เปิดไฟล์ใบเสร็จ/แบบ ภส.
+                </a>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Items */}
         <div className="premium-table-wrapper">

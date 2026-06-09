@@ -32,7 +32,11 @@ export async function POST(request) {
   }
 
   const { fgCode, volume, costPrice, retailPriceIncVat } = body;
-  const isExciseTaxable = !!(fgCode && fgCode.includes('01-002'));
+  // Taxability is auto-derived from the FG code, but LG may override it.
+  const autoTaxable = !!(fgCode && fgCode.includes('01-002'));
+  const taxableOverride =
+    typeof body.taxableOverride === 'boolean' ? body.taxableOverride : null;
+  const isExciseTaxable = taxableOverride === null ? autoTaxable : taxableOverride;
 
   const retailPriceExVat = isExciseTaxable ? retailPriceIncVat / 1.07 : 0;
   const exciseTax = isExciseTaxable ? retailPriceExVat * 0.08 : 0;
@@ -47,6 +51,7 @@ export async function POST(request) {
   const newProduct = {
     id: 'PRD-' + Date.now().toString().slice(-6),
     ...body,
+    taxableOverride,
     isExciseTaxable,
     retailPriceExVat,
     exciseTax,

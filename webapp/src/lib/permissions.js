@@ -4,7 +4,9 @@
 //   2. scope      — WHOSE records it may do it to       (viewScope / editScope / deleteScope)
 //
 // Identity comes from Supabase app_metadata (service-role-only, not
-// self-editable): app_metadata.role + app_metadata.team.
+// self-editable): app_metadata.role + app_metadata.team + app_metadata.department.
+// department (ฝ่าย: SALES | LEGAL) sits above team and is derived 1:1 from role
+// today (see ROLE_DEPARTMENT); team (ODM/KA/SV) only exists under SALES.
 //
 // Roles (org structure):
 //   ae_supervisor — Sales dept head. Superuser: every capability, all teams.
@@ -21,6 +23,33 @@
 //   legal:view     | legal:approve
 //   sales:view     | sales:act      | sales:delete   (sales = the order/PO workflow)
 //   history:view   | audit:view
+
+// ── Department (ฝ่าย) ─────────────────────────────────────────────────
+// Top-level org division, one level above team. Stored explicitly in
+// app_metadata.department so new departments (e.g. accounting) can be added
+// later, but today every role maps 1:1 to a department (ROLE_DEPARTMENT),
+// which is the default/validation source of truth.
+export const DEPARTMENTS = ['SALES', 'LEGAL'];
+export const DEPARTMENT_LABELS = { SALES: 'ฝ่ายขาย', LEGAL: 'ฝ่ายกฎหมาย' };
+
+// Which department each role belongs to. Teams (ODM/KA/SV) live only under
+// SALES; LEGAL has no teams.
+const ROLE_DEPARTMENT = {
+  ae_supervisor: 'SALES',
+  senior_ae: 'SALES',
+  ac: 'SALES',
+  ae: 'SALES',
+  legal: 'LEGAL',
+};
+
+export function departmentFor(role) {
+  return ROLE_DEPARTMENT[role] || null;
+}
+
+// Roles belonging to a department, in ROLES order (for dependent dropdowns).
+export function rolesForDepartment(department) {
+  return ROLES.filter((r) => ROLE_DEPARTMENT[r] === department);
+}
 
 export const TEAMS = ['ODM', 'KA', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
@@ -138,6 +167,51 @@ export function canEditRecord(user, resource, record) {
 
 export function canDeleteRecord(user, resource, record) {
   return inScope(deleteScope(user?.role, resource), user, record);
+}
+
+// ── Field-level edit gating ───────────────────────────────────────────
+// canEditRecord answers "may this user touch the row at all". But legal and
+// sales touch DIFFERENT columns: sales own the commercial fields (price, cost,
+// quotation…), legal owns the tax/approval fields. A legal user must NOT be
+// able to rewrite costPrice just because they can approve. These lists are the
+// columns each side may set; routes union the lists the user's caps unlock.
+
+// Fields LG sets while approving / filing tax (not the commercial data).
+export const LEGAL_PRODUCT_FIELDS = ['status', 'approvalNumber', 'taxableOverride', 'rejectionReason'];
+export const LEGAL_ORDER_FIELDS = [
+  'status', 'taxDueDate', 'exciseReceiptNumber', 'exciseTaxPaidAmount',
+  'exciseReceiptFileUrl', 'taxFormRef', 'rejectionReason',
+];
+
+// Compute the set of body fields `user` may write to a record, given the
+// resource's full sales-editable list. Supervisor gets both (full edit cap +
+// legal cap). `salesEditable` is the route's existing commercial field list.
+export function allowedEditFields(user, resource, salesEditable) {
+  const allowed = new Set();
+  const editCap = `${resource === 'orders' ? 'sales' : resource}:edit`;
+  const salesActCap = resource === 'orders' ? 'sales:act' : editCap;
+  if (can(user?.role, salesActCap)) salesEditable.forEach((f) => allowed.add(f));
+  if (can(user?.role, 'legal:approve')) {
+    (resource === 'orders' ? LEGAL_ORDER_FIELDS : LEGAL_PRODUCT_FIELDS).forEach((f) => allowed.add(f));
+  }
+  return allowed;
+}
+
+// ── Identity validation (role + team + department) ────────────────────
+// Used by the user-management API. Team-bound roles need a valid team;
+// others must not carry one. Department, if supplied, must match the role's
+// canonical department. Returns an error string, or null when valid.
+export function validateIdentity(role, team, department) {
+  if (!ROLES.includes(role)) return 'role ไม่ถูกต้อง';
+  if (TEAM_ROLES.includes(role)) {
+    if (!TEAMS.includes(team)) return 'ตำแหน่งนี้ต้องระบุทีม (ODM/KA/SV)';
+  } else if (team) {
+    return 'ตำแหน่งนี้ไม่ต้องระบุทีม';
+  }
+  if (department && department !== departmentFor(role)) {
+    return 'ฝ่าย (department) ไม่ตรงกับตำแหน่ง';
+  }
+  return null;
 }
 
 // Default landing route per role (first menu they can act on).

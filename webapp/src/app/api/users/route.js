@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, ROLES, TEAMS, TEAM_ROLES } from '@/lib/permissions';
+import { can, validateIdentity, departmentFor } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,18 +9,6 @@ export const dynamic = 'force-dynamic';
 async function requireAdmin() {
   const user = await getCurrentUser();
   return can(user?.role, 'users:manage') ? user : null;
-}
-
-// Validate role + team together. Team-bound roles must have a valid team;
-// supervisor/legal must not carry one.
-function validateRoleTeam(role, team) {
-  if (!ROLES.includes(role)) return 'role ไม่ถูกต้อง';
-  if (TEAM_ROLES.includes(role)) {
-    if (!TEAMS.includes(team)) return 'ตำแหน่งนี้ต้องระบุทีม (ODM/KA/SV)';
-  } else if (team) {
-    return 'ตำแหน่งนี้ไม่ต้องระบุทีม';
-  }
-  return null;
 }
 
 export async function GET() {
@@ -41,6 +29,7 @@ export async function GET() {
         name: u.user_metadata?.name || '',
         role: u.app_metadata?.role || null,
         team: u.app_metadata?.team || null,
+        department: u.app_metadata?.department || departmentFor(u.app_metadata?.role) || null,
         createdAt: u.created_at,
         lastSignInAt: u.last_sign_in_at,
       });
@@ -63,7 +52,7 @@ export async function POST(request) {
 
   if (!email || !password) return Response.json({ error: 'ต้องระบุอีเมลและรหัสผ่าน' }, { status: 400 });
   if (password.length < 6) return Response.json({ error: 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร' }, { status: 400 });
-  const invalid = validateRoleTeam(role, team);
+  const invalid = validateIdentity(role, team, body.department);
   if (invalid) return Response.json({ error: invalid }, { status: 400 });
 
   const { data, error } = await supabase.auth.admin.createUser({
@@ -71,7 +60,10 @@ export async function POST(request) {
     password,
     email_confirm: true, // no email verification step for internal accounts
     user_metadata: { name },
-    app_metadata: { role, ...(team ? { team } : {}) },
+    // must_change_password forces a self-service password change on first login
+    // (the admin-assigned password is temporary). Stored in app_metadata so the
+    // user can't clear it client-side — only our /api/account/password route does.
+    app_metadata: { role, department: departmentFor(role), must_change_password: true, ...(team ? { team } : {}) },
   });
   if (error) return Response.json({ error: error.message }, { status: 400 });
   return Response.json({ id: data.user.id }, { status: 201 });

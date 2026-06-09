@@ -3,15 +3,18 @@ import { useEffect, useState } from "react";
 import { Users, Plus, Pencil, Trash2 } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import {
-  ROLES,
   ROLE_LABELS,
   TEAMS,
   TEAM_LABELS,
   TEAM_ROLES,
+  DEPARTMENTS,
+  DEPARTMENT_LABELS,
+  departmentFor,
+  rolesForDepartment,
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 
-const emptyForm = { email: "", password: "", name: "", role: "ae", team: "ODM" };
+const emptyForm = { email: "", password: "", name: "", department: "SALES", role: "ae", team: "ODM" };
 
 export default function UserManagement() {
   const canManage = useCan("users:manage");
@@ -74,6 +77,7 @@ export default function UserManagement() {
     setEditUser(u);
     setEditForm({
       name: u.name || "",
+      department: u.department || departmentFor(u.role) || DEPARTMENTS[0],
       role: u.role || "ae",
       team: u.team || TEAMS[0],
       password: "",
@@ -168,6 +172,7 @@ export default function UserManagement() {
                   <th>ชื่อ</th>
                   <th>อีเมล</th>
                   <th>ตำแหน่ง (Role)</th>
+                  <th>ฝ่าย</th>
                   <th>ทีม</th>
                   <th>เข้าใช้ล่าสุด</th>
                   <th className="text-center">จัดการ</th>
@@ -176,7 +181,7 @@ export default function UserManagement() {
               <tbody>
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="text-center py-10 text-[var(--text-3)]">
+                    <td colSpan="7" className="text-center py-10 text-[var(--text-3)]">
                       ยังไม่มีผู้ใช้ในระบบ
                     </td>
                   </tr>
@@ -189,6 +194,12 @@ export default function UserManagement() {
                         {ROLE_LABELS[u.role] || u.role || (
                           <span className="text-[var(--text-3)]">ไม่ระบุ (viewer)</span>
                         )}
+                      </td>
+                      <td className="text-[var(--text-2)]">
+                        {(() => {
+                          const dep = u.department || departmentFor(u.role);
+                          return dep ? DEPARTMENT_LABELS[dep] || dep : "-";
+                        })()}
                       </td>
                       <td className="text-[var(--text-2)]">
                         {u.team ? TEAM_LABELS[u.team] || u.team : "-"}
@@ -269,6 +280,11 @@ export default function UserManagement() {
 function UserFields({ form, setForm, requirePassword, edit }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isTeamRole = TEAM_ROLES.includes(form.role);
+  const deptRoles = rolesForDepartment(form.department);
+
+  // Switching department resets role to the first role of that department.
+  const setDepartment = (dep) =>
+    setForm((f) => ({ ...f, department: dep, role: rolesForDepartment(dep)[0] }));
 
   return (
     <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
@@ -314,6 +330,22 @@ function UserFields({ form, setForm, requirePassword, edit }) {
       </div>
       <div className="form-group">
         <label>
+          ฝ่าย (Department) <span className="text-[var(--red)]">*</span>
+        </label>
+        <select
+          value={form.department}
+          onChange={(e) => setDepartment(e.target.value)}
+          className="premium-input w-full"
+        >
+          {DEPARTMENTS.map((d) => (
+            <option key={d} value={d}>
+              {DEPARTMENT_LABELS[d]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="form-group">
+        <label>
           ตำแหน่ง (Role) <span className="text-[var(--red)]">*</span>
         </label>
         <select
@@ -321,7 +353,7 @@ function UserFields({ form, setForm, requirePassword, edit }) {
           onChange={(e) => set("role", e.target.value)}
           className="premium-input w-full"
         >
-          {ROLES.map((r) => (
+          {deptRoles.map((r) => (
             <option key={r} value={r}>
               {ROLE_LABELS[r]}
             </option>

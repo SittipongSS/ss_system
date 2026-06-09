@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -52,15 +52,38 @@ export async function PATCH(request, { params }) {
     }
   }
 
-  const editable = [
-    'status', 'fgCode', 'productDescription', 'brandName', 'customerName',
-    'taxId', 'address', 'volume', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl', 'approvalNumber'
+  // Commercial fields belong to sales; tax/approval fields belong to legal.
+  // allowedEditFields unions the lists the user's capabilities unlock, so a
+  // legal-only user can approve but cannot rewrite costPrice/price.
+  const salesEditable = [
+    'fgCode', 'productDescription', 'brandName', 'customerName',
+    'taxId', 'address', 'volume', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl',
   ];
-  const updated = { ...product };
-  for (const k of editable) if (body[k] !== undefined) updated[k] = body[k];
+  const allowed = allowedEditFields(user, 'products', salesEditable);
 
-  // Recalculate derived fields
-  const isExciseTaxable = !!(updated.fgCode && updated.fgCode.includes('01-002'));
+  const updated = { ...product };
+  for (const k of allowed) if (body[k] !== undefined) updated[k] = body[k];
+
+  // Approval / rejection audit trail (driven by the status transition).
+  if (allowed.has('status') && body.status !== undefined && body.status !== product.status) {
+    if (body.status === 'approved') {
+      updated.approvedBy = user?.id ?? null;
+      updated.approvedByName = user?.name ?? null;
+      updated.approvedAt = new Date().toISOString();
+      updated.rejectionReason = null;
+    } else if (body.status === 'rejected') {
+      // Reason is required so Sales knows what to fix.
+      if (!body.rejectionReason || !String(body.rejectionReason).trim()) {
+        return Response.json({ error: 'กรุณาระบุเหตุผลที่ตีกลับ' }, { status: 400 });
+      }
+    }
+  }
+
+  // Recalculate derived fields. Taxability follows LG's override when set,
+  // otherwise the automatic FG-code rule.
+  const autoTaxable = !!(updated.fgCode && updated.fgCode.includes('01-002'));
+  const ovr = updated.taxableOverride;
+  const isExciseTaxable = typeof ovr === 'boolean' ? ovr : autoTaxable;
   updated.isExciseTaxable = isExciseTaxable;
   updated.retailPriceExVat = isExciseTaxable ? updated.retailPriceIncVat / 1.07 : 0;
   updated.exciseTax = isExciseTaxable ? updated.retailPriceExVat * 0.08 : 0;

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { ArrowLeft, Package } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import ProductStatusPill from "@/components/ProductStatusPill";
+import ApproveProductModal from "@/components/ApproveProductModal";
+import RejectModal from "@/components/RejectModal";
 
 export default function ProductDetails() {
   const params = useParams();
@@ -18,6 +20,8 @@ export default function ProductDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showApprove, setShowApprove] = useState(false);
+  const [showReject, setShowReject] = useState(false);
 
   const fetchProduct = async () => {
     try {
@@ -50,34 +54,19 @@ export default function ProductDetails() {
     });
   };
 
-  const handleApprove = async () => {
-    const approvalNumber = window.prompt("กรุณาระบุเลขที่อนุมัติ:");
-    if (!approvalNumber) return; // If cancelled or empty, abort
-
-    if (
-      !confirm(
-        `ยืนยันอนุมัติรหัสสินค้านี้เข้าสู่ระบบด้วยเลขที่อนุมัติ ${approvalNumber} (พร้อมให้ Sales เปิดบิลได้)?`,
-      )
-    )
-      return;
-    setIsUpdating(true);
-    try {
-      const res = await fetch(`/api/products/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "approved", approvalNumber }),
-      });
-      if (res.ok) {
-        alert("อนุมัติสินค้าขึ้นทะเบียนเรียบร้อยแล้ว");
-        await fetchProduct();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || "เกิดข้อผิดพลาดในการอนุมัติสินค้า");
-      }
-    } catch (err) {
-      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+  const handleReject = async (reason) => {
+    const res = await fetch(`/api/products/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "rejected", rejectionReason: reason }),
+    });
+    if (res.ok) {
+      setShowReject(false);
+      await fetchProduct();
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      alert(errData.error || "เกิดข้อผิดพลาดในการทำรายการ");
     }
-    setIsUpdating(false);
   };
 
   const handleDelete = async () => {
@@ -198,26 +187,25 @@ export default function ProductDetails() {
 
         <div className="flex gap-2">
           {canApprove && product.status === "pending_legal" && (
-            <button
-              onClick={handleApprove}
-              disabled={isUpdating}
-              className="btn btn-primary px-6 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            <>
+              <button
+                onClick={() => setShowApprove(true)}
+                disabled={isUpdating}
+                className="btn btn-primary px-6 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-              อนุมัติขึ้นทะเบียนสินค้า
-            </button>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+                อนุมัติขึ้นทะเบียนสินค้า
+              </button>
+              <button
+                onClick={() => setShowReject(true)}
+                disabled={isUpdating}
+                className="btn border border-[var(--border)] text-[var(--red)] px-4 py-2 text-xs font-semibold rounded-lg"
+              >
+                ตีกลับ
+              </button>
+            </>
           )}
           {canDeleteProducts && (
             <button
@@ -430,6 +418,18 @@ export default function ProductDetails() {
                 <div className="mt-2 text-xs font-mono bg-[var(--panel-2)] p-2 rounded border border-[var(--border)]">
                   <span className="text-[var(--text-3)]">เลขที่อนุมัติ: </span>
                   {product.approvalNumber}
+                  {product.approvedByName && (
+                    <div className="font-sans text-[var(--text-3)] mt-1">
+                      โดย {product.approvedByName}
+                      {product.approvedAt && ` · ${new Date(product.approvedAt).toLocaleDateString("th-TH")}`}
+                    </div>
+                  )}
+                </div>
+              )}
+              {product.status === "rejected" && product.rejectionReason && (
+                <div className="mt-2 text-xs bg-[var(--red-soft)] p-2 rounded border border-[var(--border)] text-[var(--text-2)]">
+                  <span className="text-[var(--red)] font-semibold">เหตุผลที่ตีกลับ: </span>
+                  {product.rejectionReason}
                 </div>
               )}
             </div>
@@ -529,6 +529,20 @@ export default function ProductDetails() {
           </div>
         </div>
       </div>
+
+      <ApproveProductModal
+        open={showApprove}
+        product={product}
+        onClose={() => setShowApprove(false)}
+        onApproved={fetchProduct}
+      />
+      <RejectModal
+        open={showReject}
+        onClose={() => setShowReject(false)}
+        onConfirm={handleReject}
+        title="ตีกลับสินค้าให้แก้ไข"
+        entityLabel="สินค้านี้"
+      />
     </>
   );
 }

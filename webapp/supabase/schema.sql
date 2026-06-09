@@ -46,7 +46,12 @@ create table if not exists public.products (
   "materialCost"       numeric,
   "factoryProfit"      numeric,
   "approvalNumber"     text,
-  "status"             text not null default 'pending_legal',
+  "approvedBy"         uuid,          -- LG user who registered the product
+  "approvedByName"     text,          -- name snapshot of the approver
+  "approvedAt"         timestamptz,
+  "rejectionReason"    text,          -- set when sent back for correction (status='rejected')
+  "taxableOverride"    boolean,       -- NULL = auto (FG code); TRUE/FALSE = LG override
+  "status"             text not null default 'pending_legal',  -- pending_legal | approved | rejected
   "createdAt"          timestamptz not null default now()
 );
 create unique index if not exists products_fgcode_key on public.products ("fgCode");
@@ -68,9 +73,17 @@ create table if not exists public.orders (
   "totalLocalTax"        numeric,
   "totalTax"             numeric,
   "poReference"          text,
-  "receiptNumber"        text,
-  "exciseReceiptFileUrl" text,
-  "status"               text not null default 'pending',
+  "receiptNumber"        text,          -- S&S invoice/receipt no. (Sales step)
+  "taxDueDate"           text,          -- legal deadline to file/pay excise
+  "exciseReceiptFileUrl" text,          -- scanned Excise receipt / ภส. document
+  "exciseReceiptNumber"  text,          -- Excise Dept receipt no.
+  "exciseTaxPaidAmount"  numeric,       -- amount actually paid to Excise Dept
+  "taxFormRef"           text,          -- ภส. form ref (e.g. ภส.03-07)
+  "filedAt"              timestamptz,   -- when LG completed filing
+  "filedBy"              uuid,          -- LG user who filed
+  "filedByName"          text,          -- name snapshot of the filer
+  "rejectionReason"      text,          -- set when sent back for correction (status='rejected')
+  "status"               text not null default 'pending',  -- pending | received | filing | complete | rejected
   "clearedAt"            timestamptz,
   "createdAt"      timestamptz not null default now()
 );
