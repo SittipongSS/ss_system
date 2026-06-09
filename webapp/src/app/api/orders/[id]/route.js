@@ -33,7 +33,7 @@ export async function PATCH(request, { params }) {
 
   if (body.status !== undefined) {
     updates.status = body.status;
-    if (body.status === 'complete' || body.status === 'cleared') updates.clearedAt = new Date().toISOString();
+    if (body.status === 'complete') updates.clearedAt = new Date().toISOString();
   }
   
   if (body.receiptNumber !== undefined) updates.receiptNumber = body.receiptNumber;
