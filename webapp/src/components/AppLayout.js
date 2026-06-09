@@ -127,7 +127,7 @@ export default function AppLayout({ children }) {
           <Link href="/customers" className="brand-info-link">
             <div className="brand-info">
               <div className="brand-title">Scent &amp; Sense</div>
-              <div className="brand-subtitle">Excise Tax Manager</div>
+              <div className="brand-subtitle">ระบบภาษีสรรพสามิต</div>
             </div>
           </Link>
           <button onClick={toggleSidebar} className="sidebar-toggle" title={isCollapsed ? "ขยายแถบเมนู" : "พับแถบเมนู"}>
