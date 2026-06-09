@@ -16,6 +16,7 @@ export default function CustomerDirectory() {
     arCode: "",
     name: "",
     taxId: "",
+    phone: "",
     address: "",
     brandsStr: "",
   });
@@ -71,6 +72,7 @@ export default function CustomerDirectory() {
       arCode: formData.arCode,
       name: formData.name,
       taxId: formData.taxId,
+      phone: formData.phone,
       address: formData.address,
       brands: formData.brandsStr
         .split(",")
@@ -86,7 +88,7 @@ export default function CustomerDirectory() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setFormData({ arCode: "", name: "", taxId: "", address: "", brandsStr: "" });
+        setFormData({ arCode: "", name: "", taxId: "", phone: "", address: "", brandsStr: "" });
         setMapFile(null);
         setShowForm(false);
         fetchCustomers();
@@ -200,6 +202,11 @@ export default function CustomerDirectory() {
                         <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">
                           Tax ID: {c.taxId}
                         </div>
+                        {c.phone && (
+                          <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">
+                            โทร: {c.phone}
+                          </div>
+                        )}
                       </td>
                       <td className="text-[var(--text-2)] ">
                         <div className="flex flex-wrap gap-1.5">
@@ -297,7 +304,7 @@ export default function CustomerDirectory() {
                 className="premium-input w-full"
               />
             </div>
-            <div className="form-group col-span-2">
+            <div className="form-group">
               <label>
                 เลขประจำตัวผู้เสียภาษี <span className="text-[var(--red)]">*</span>
               </label>
@@ -308,6 +315,17 @@ export default function CustomerDirectory() {
                 onChange={handleChange}
                 required
                 placeholder="เลข 13 หลัก"
+                className="premium-input w-full font-mono"
+              />
+            </div>
+            <div className="form-group">
+              <label>เบอร์โทร</label>
+              <input
+                type="tel"
+                name="phone"
+                value={formData.phone}
+                onChange={handleChange}
+                placeholder="เช่น 02-123-4567"
                 className="premium-input w-full font-mono"
               />
             </div>

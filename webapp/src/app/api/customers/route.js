@@ -30,6 +30,7 @@ export async function POST(request) {
     arCode: body.arCode,
     name: body.name,
     taxId: body.taxId,
+    phone: body.phone || null,
     address: body.address,
     brands: body.brands || [],
     mapFileUrl: body.mapFileUrl || null,

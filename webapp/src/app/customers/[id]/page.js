@@ -27,6 +27,7 @@ export default function CustomerDetails() {
     arCode: "",
     name: "",
     taxId: "",
+    phone: "",
     address: "",
     brandsStr: "",
   });
@@ -49,6 +50,7 @@ export default function CustomerDetails() {
           arCode: data.customer.arCode || "",
           name: data.customer.name || "",
           taxId: data.customer.taxId || "",
+          phone: data.customer.phone || "",
           address: data.customer.address || "",
           brandsStr: (data.customer.brands || []).join(", "),
         });
@@ -114,6 +116,7 @@ export default function CustomerDetails() {
       arCode: formData.arCode,
       name: formData.name,
       taxId: formData.taxId,
+      phone: formData.phone,
       address: formData.address,
       brands: formData.brandsStr
         .split(",")
@@ -372,7 +375,7 @@ export default function CustomerDetails() {
                       className="premium-input w-full text-xs"
                     />
                   </div>
-                  <div className="form-group col-span-2">
+                  <div className="form-group col-span-2 sm:col-span-1">
                     <label>
                       เลขประจำตัวผู้เสียภาษี{" "}
                       <span className="text-[var(--red)]">*</span>
@@ -383,6 +386,17 @@ export default function CustomerDetails() {
                       value={formData.taxId}
                       onChange={handleInputChange}
                       required
+                      className="premium-input w-full font-mono text-xs"
+                    />
+                  </div>
+                  <div className="form-group col-span-2 sm:col-span-1">
+                    <label>เบอร์โทร</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      placeholder="เช่น 02-123-4567"
                       className="premium-input w-full font-mono text-xs"
                     />
                   </div>
@@ -491,6 +505,14 @@ export default function CustomerDetails() {
                     </span>
                     <span className="font-semibold font-mono text-[var(--text)] text-sm">
                       {customer.taxId}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[var(--text-3)] block mb-1">
+                      เบอร์โทร (Phone)
+                    </span>
+                    <span className="font-semibold font-mono text-[var(--text)] text-sm">
+                      {customer.phone || "-"}
                     </span>
                   </div>
                   <div className="md:col-span-2">

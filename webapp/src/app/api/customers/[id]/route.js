@@ -88,7 +88,7 @@ export async function PATCH(request, { params }) {
   const oldTaxId = customer.taxId;
 
   const updates = {};
-  for (const k of ['arCode', 'name', 'taxId', 'address', 'brands', 'mapFileUrl']) {
+  for (const k of ['arCode', 'name', 'taxId', 'phone', 'address', 'brands', 'mapFileUrl']) {
     if (body[k] !== undefined) updates[k] = body[k];
   }
 

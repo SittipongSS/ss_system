@@ -11,6 +11,7 @@ create table if not exists public.customers (
   "arCode"     text not null,
   "name"       text not null,
   "taxId"      text,
+  "phone"      text,
   "address"    text,
   "brands"     jsonb not null default '[]'::jsonb,
   "mapFileUrl" text,
