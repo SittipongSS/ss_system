@@ -117,8 +117,8 @@ export default function HomeHubPage() {
                 ติดตามและบริหารงานโครงการ มอบหมายงาน และดูความคืบหน้า
               </p>
             </div>
-            <div style={{ marginTop: "auto" }}>
-              <span className="status-pill warning" style={{ height: "auto", padding: "3px 10px", fontSize: "11px" }}>เร็วๆ นี้</span>
+            <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span className="status-pill warning" style={{ marginLeft: "auto", height: "auto", padding: "3px 10px", fontSize: "11px" }}>เร็วๆ นี้</span>
             </div>
           </div>
         </div>
