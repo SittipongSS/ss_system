@@ -85,7 +85,7 @@ export default function ProductDetails() {
       const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
       if (res.ok) {
         alert("ลบข้อมูลสินค้าเรียบร้อยแล้ว");
-        router.push("/sa");
+        router.push("/products");
       } else {
         const errData = await res.json();
         alert(errData.error || "ไม่สามารถลบข้อมูลสินค้าได้");
@@ -146,7 +146,7 @@ export default function ProductDetails() {
           สินค้าที่คุณกำลังพยายามเข้าถึงอาจถูกลบหรือไม่มีอยู่ในระบบ
         </p>
         <Link
-          href="/sa"
+          href="/products"
           className="btn btn-primary px-6 inline-flex items-center gap-2"
         >
           <ArrowLeft size={16} />
@@ -163,7 +163,7 @@ export default function ProductDetails() {
       {/* Top Header Section */}
       <button
         type="button"
-        onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/sa"))}
+        onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/products"))}
         style={{
           display: "inline-flex",
           alignItems: "center",

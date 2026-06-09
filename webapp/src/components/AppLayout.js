@@ -95,7 +95,7 @@ export default function AppLayout({ children }) {
       label: 'ทะเบียน',
       items: [
         { href: '/customers', name: 'ทะเบียนลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/customers' || p.startsWith('/customers/') },
-        { href: '/sa', name: 'ทะเบียนสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/sa' || p.startsWith('/products/') },
+        { href: '/products', name: 'ทะเบียนสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/products' || p.startsWith('/products/') },
       ],
     },
     {

@@ -45,6 +45,6 @@ export function can(role, cap) {
 // Default landing route per role (first menu they can act on).
 export function landingFor(role) {
   if (role === 'legal') return '/legal';
-  if (role === 'sa' || role === 'sales') return '/sa';
+  if (role === 'sa' || role === 'sales') return '/products';
   return '/customers'; // admin / viewer
 }
