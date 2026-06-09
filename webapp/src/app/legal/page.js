@@ -2,7 +2,9 @@
 import { useEffect, useState } from "react";
 import { Scale } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
+import { useCan } from "@/lib/roleContext";
 export default function LegalDashboard() {
+  const canApprove = useCan("legal:approve");
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has("/api/products"));
   const [activeTab, setActiveTab] = useState("pending");
@@ -209,12 +211,18 @@ export default function LegalDashboard() {
                             className="text-center"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <button
-                              onClick={() => handleRegister(p.id)}
-                              className="btn btn-primary px-4"
-                            >
-                              อนุมัติสินค้า
-                            </button>
+                            {canApprove ? (
+                              <button
+                                onClick={() => handleRegister(p.id)}
+                                className="btn btn-primary px-4"
+                              >
+                                อนุมัติสินค้า
+                              </button>
+                            ) : (
+                              <span className="text-[var(--text-3)] text-xs">
+                                รอฝ่ายกฎหมาย
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))

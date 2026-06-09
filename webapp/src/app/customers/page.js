@@ -2,7 +2,9 @@
 import { useEffect, useState } from "react";
 import { Building2 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
+import { useCan } from "@/lib/roleContext";
 export default function CustomerDirectory() {
+  const canEdit = useCan("customers:edit");
   const [customers, setCustomers] = useState(() => apiCache.get("/api/customers") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has("/api/customers"));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -132,12 +134,14 @@ export default function CustomerDirectory() {
         >
           ทะเบียนลูกค้าทั้งหมด
         </button>
-        <button
-          onClick={() => setActiveTab("create")}
-          className={`tab-btn ${activeTab === "create" ? "active" : ""}`}
-        >
-          + เพิ่มลูกค้าใหม่
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setActiveTab("create")}
+            className={`tab-btn ${activeTab === "create" ? "active" : ""}`}
+          >
+            + เพิ่มลูกค้าใหม่
+          </button>
+        )}
       </div>
 
       {activeTab === "create" && (

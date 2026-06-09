@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
+import { can } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -48,7 +49,25 @@ export async function proxy(request) {
     return NextResponse.redirect(redirectUrl);
   }
 
+  // Role-based write protection for API routes (defense-in-depth; the UI also
+  // hides actions). GET is always allowed for any signed-in user.
+  if (user && isApi && !apiWriteAllowed(request.method, path, user.user_metadata?.role)) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   return response;
+}
+
+function apiWriteAllowed(method, path, role) {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true; // reads ok
+  if (path.startsWith('/api/customers')) return can(role, 'customers:edit');
+  if (path.startsWith('/api/orders')) return can(role, 'sales:act');
+  if (path.startsWith('/api/products')) {
+    // PATCH covers both edit (sa) and approve (legal)
+    if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'legal:approve');
+    return can(role, 'products:edit'); // create / delete
+  }
+  return true; // e.g. /api/upload — any signed-in user
 }
 
 export const config = {

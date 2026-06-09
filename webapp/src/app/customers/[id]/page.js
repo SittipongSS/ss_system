@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Building2 } from "lucide-react";
+import { useCan } from "@/lib/roleContext";
 
 export default function CustomerDetails() {
   const params = useParams();
   const router = useRouter();
   const id = params.id;
+  const canEdit = useCan("customers:edit");
 
   const [customer, setCustomer] = useState(null);
   const [products, setProducts] = useState([]);
@@ -297,7 +299,7 @@ export default function CustomerDetails() {
         </div>
 
         <div className="flex gap-2">
-          {!isEditing && (
+          {canEdit && !isEditing && (
             <>
               <button
                 onClick={() => setIsEditing(true)}

@@ -3,14 +3,10 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FlaskConical } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
+import { landingFor } from "@/lib/permissions";
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-function landingFor(role) {
-  if (role === "sa" || role === "legal" || role === "sales") return `/${role}`;
-  return "/customers"; // admin / unknown
-}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");

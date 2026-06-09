@@ -2,9 +2,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Building2, SquarePen, Scale, Truck, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Building2, Package, Scale, Truck, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
+import { can } from '@/lib/permissions';
+import { RoleContext } from '@/lib/roleContext';
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -86,23 +88,33 @@ export default function AppLayout({ children }) {
 
   if (!role) return null;
 
-  const navGroups = [
+  const allGroups = [
     {
-      label: 'Workspace',
+      label: 'ทะเบียน',
       items: [
-        { href: '/customers', name: 'ทะเบียนลูกค้า', icon: Building2, match: (p) => p === '/customers' || p.startsWith('/customers/') },
-        { href: '/sa', name: 'SA Portal', icon: SquarePen, match: (p) => p === '/sa' },
-        { href: '/legal', name: 'Legal Dashboard', icon: Scale, match: (p) => p === '/legal' },
-        { href: '/sales', name: 'Sales Clearance', icon: Truck, match: (p) => p === '/sales' },
+        { href: '/customers', name: 'ทะเบียนลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/customers' || p.startsWith('/customers/') },
+        { href: '/sa', name: 'ทะเบียนสินค้า', icon: Package, cap: 'products:edit', match: (p) => p === '/sa' || p.startsWith('/products/') },
       ],
     },
     {
-      label: 'History',
+      label: 'ดำเนินการ',
       items: [
-        { href: '/tracking', name: 'Tracking History', icon: Clock, match: (p) => p === '/tracking' },
+        { href: '/legal', name: 'อนุมัติสินค้า', icon: Scale, cap: 'legal:view', match: (p) => p === '/legal' },
+        { href: '/sales', name: 'เคลียร์ภาษี / จัดส่ง', icon: Truck, cap: 'sales:view', match: (p) => p === '/sales' },
+      ],
+    },
+    {
+      label: 'ประวัติ',
+      items: [
+        { href: '/tracking', name: 'ประวัติทั้งหมด', icon: Clock, cap: 'history:view', match: (p) => p === '/tracking' },
       ],
     },
   ];
+
+  // Show only menus the current role is allowed to see
+  const navGroups = allGroups
+    .map((g) => ({ ...g, items: g.items.filter((it) => can(role, it.cap)) }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <div className="app-container" data-sidebar={isCollapsed ? "icon" : "expanded"}>
@@ -186,7 +198,7 @@ export default function AppLayout({ children }) {
         </header>
 
         <div className="page">
-          {children}
+          <RoleContext.Provider value={role}>{children}</RoleContext.Provider>
         </div>
       </main>
     </div>
