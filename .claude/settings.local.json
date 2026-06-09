@@ -18,7 +18,12 @@
       "Bash(npx --yes prettier@3 --write \"src/app/legal/page.js\" \"src/app/sa/page.js\" \"src/app/sales/page.js\" \"src/app/customers/page.js\" \"src/app/tracking/page.js\" \"src/app/products/[id]/page.js\" \"src/app/customers/[id]/page.js\")",
       "Bash(node -e ' *)",
       "Bash(node scripts/migrate-to-supabase.mjs)",
-      "Bash(node -e \"const d=require\\('./data.json'\\); d.customers.forEach\\(c=>console.log\\(c.id, 'brands=', JSON.stringify\\(c.brands\\)\\)\\); console.log\\('--- any product missing fields? ---'\\); console.log\\('products', d.products.length, 'orders', d.orders.length\\);\")"
+      "Bash(node -e \"const d=require\\('./data.json'\\); d.customers.forEach\\(c=>console.log\\(c.id, 'brands=', JSON.stringify\\(c.brands\\)\\)\\); console.log\\('--- any product missing fields? ---'\\); console.log\\('products', d.products.length, 'orders', d.orders.length\\);\")",
+      "Bash(git rm *)",
+      "Bash(rm -rf webapp/public/uploads)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'Remove obsolete local upload demo files \\(uploads now on Supabase Storage\\) *)",
+      "Bash(npx --yes vercel@latest whoami)"
     ]
   }
 }

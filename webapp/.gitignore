@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# obsolete local uploads (now using Supabase Storage)
+/public/uploads/
