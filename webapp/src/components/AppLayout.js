@@ -123,7 +123,7 @@ export default function AppLayout({ children }) {
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="brand-section">
-          <div className="brand-logo">S&amp;S</div>
+          <img src="/brand-logo.png" alt="Scent &amp; Sense" className="brand-logo-img" />
           <Link href="/customers" className="brand-info-link">
             <div className="brand-info">
               <div className="brand-title">Scent &amp; Sense</div>

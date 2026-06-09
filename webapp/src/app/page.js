@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { FlaskConical } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 
 const SUPABASE_CONFIGURED =
@@ -60,12 +59,11 @@ export default function LoginPage() {
     >
       <div className="glass-panel" style={{ padding: "32px", width: "100%", maxWidth: "420px" }}>
         <div style={{ textAlign: "center", marginBottom: "28px" }}>
-          <div
-            className="brand-logo"
-            style={{ width: "48px", height: "48px", margin: "0 auto 16px", borderRadius: "var(--radius-lg)" }}
-          >
-            <FlaskConical size={24} strokeWidth={1.5} />
-          </div>
+          <img
+            src="/brand-logo.png"
+            alt="Scent &amp; Sense"
+            style={{ width: "56px", height: "56px", margin: "0 auto 16px", borderRadius: "var(--radius-lg)", objectFit: "contain", display: "block" }}
+          />
           <h1 style={{ fontSize: "22px", fontWeight: 600, letterSpacing: "-0.01em" }}>Scent &amp; Sense</h1>
           <p style={{ color: "var(--text-3)", fontSize: "13px", marginTop: "4px" }}>Excise Tax Manager</p>
         </div>

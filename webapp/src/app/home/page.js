@@ -51,12 +51,11 @@ export default function HomeHubPage() {
       <div style={{ width: "100%", maxWidth: "760px" }}>
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: "36px" }}>
-          <div
-            className="brand-logo"
-            style={{ width: "52px", height: "52px", margin: "0 auto 18px", fontSize: "16px" }}
-          >
-            S&amp;S
-          </div>
+          <img
+            src="/brand-logo.png"
+            alt="Scent &amp; Sense"
+            style={{ width: "60px", height: "60px", margin: "0 auto 18px", borderRadius: "var(--radius-lg)", objectFit: "contain", display: "block" }}
+          />
           <h1 style={{ fontSize: "24px", fontWeight: 600, letterSpacing: "-0.01em" }}>
             สวัสดี{userName ? `, ${userName}` : ""}
           </h1>
