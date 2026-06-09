@@ -8,6 +8,7 @@ import ProductStatusPill from "@/components/ProductStatusPill";
 
 export default function TrackingHistory() {
   const canAct = useCan("sales:act");
+  const canDelete = useCan("sales:delete");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
   const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
@@ -304,7 +305,7 @@ export default function TrackingHistory() {
                               {o.assignee || "-"}
                             </td>
                             <td className="text-center">
-                              {canAct ? (
+                              {canDelete ? (
                                 <button
                                   onClick={(e) => handleDeleteOrder(e, o.id)}
                                   className="text-[var(--red)] hover:text-red-700 transition-colors"

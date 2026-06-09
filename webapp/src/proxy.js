@@ -58,18 +58,28 @@ export async function proxy(request) {
   return response;
 }
 
+// Coarse capability gate: does this role do this KIND of write at all?
+// Row-level scope (own team / own record) is enforced inside the route
+// handlers, which can see the target record's team + ownerId — the proxy
+// only sees method + path.
 function apiWriteAllowed(method, path, role) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true; // reads ok
-  if (path.startsWith('/api/customers')) return can(role, 'customers:edit');
+  if (path.startsWith('/api/users')) return can(role, 'users:manage');
+  if (path.startsWith('/api/customers')) {
+    if (method === 'DELETE') return can(role, 'customers:delete');
+    return can(role, 'customers:edit');
+  }
   if (path.startsWith('/api/orders')) {
+    if (method === 'DELETE') return can(role, 'sales:delete');
     // PATCH covers both sales clearance (sales:act) and legal tax payment (legal:approve)
     if (method === 'PATCH') return can(role, 'sales:act') || can(role, 'legal:approve');
-    return can(role, 'sales:act'); // create / delete
+    return can(role, 'sales:act'); // create
   }
   if (path.startsWith('/api/products')) {
+    if (method === 'DELETE') return can(role, 'products:delete');
     // PATCH covers both edit (sa) and approve (legal)
     if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'legal:approve');
-    return can(role, 'products:edit'); // create / delete
+    return can(role, 'products:edit'); // create
   }
   return true; // e.g. /api/upload — any signed-in user
 }

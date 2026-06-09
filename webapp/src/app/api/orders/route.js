@@ -1,20 +1,28 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { getCurrentUser } from '@/lib/authUser';
+import { viewScope } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 export async function GET() {
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+
   // A PO embeds its line items, each with the related product.
-  const { data, error } = await supabase
+  let query = supabase
     .from('orders')
     .select('*, items:order_items(*, product:products(*))')
     .order('createdAt', { ascending: false });
+  // Team-scoped roles only see their own team's orders; 'all' sees everything.
+  if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
 
+  const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json(data);
 }
 
 export async function POST(request) {
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
   const body = await request.json();
 
   // Accept the new multi-item shape: { quotationRef, poReference, deliveryDate,
@@ -67,7 +75,9 @@ export async function POST(request) {
     poReference: body.poReference || null,
     deliveryDate: body.deliveryDate || '-',
     remarks: body.remarks || '-',
-    assignee: body.assignee || 'Sales',
+    assignee: body.assignee || user?.name || 'Sales',
+    team: user?.team ?? null,
+    ownerId: user?.id ?? null,
     totalExciseTax,
     totalLocalTax,
     totalTax,

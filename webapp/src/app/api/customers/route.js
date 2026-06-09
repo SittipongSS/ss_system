@@ -1,6 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { getCurrentUser } from '@/lib/authUser';
 
 export const dynamic = 'force-dynamic';
+// Customers are a central registry — every signed-in user can view all of them
+// (so teams don't re-register the same customer). Edit/delete is team-scoped.
 export async function GET() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -13,6 +16,7 @@ export async function GET() {
 
 export async function POST(request) {
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
   const body = await request.json();
 
   // Duplicate AR Code check
@@ -34,6 +38,9 @@ export async function POST(request) {
     address: body.address,
     brands: body.brands || [],
     mapFileUrl: body.mapFileUrl || null,
+    // Managing team + owner come from the server-side identity.
+    team: user?.team ?? null,
+    ownerId: user?.id ?? null,
     createdAt: new Date().toISOString(),
   };
 

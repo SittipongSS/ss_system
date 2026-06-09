@@ -1,0 +1,354 @@
+"use client";
+import { useEffect, useState } from "react";
+import { Users, Plus, Pencil, Trash2 } from "lucide-react";
+import { useCan } from "@/lib/roleContext";
+import {
+  ROLES,
+  ROLE_LABELS,
+  TEAMS,
+  TEAM_LABELS,
+  TEAM_ROLES,
+} from "@/lib/permissions";
+import Modal from "@/components/Modal";
+
+const emptyForm = { email: "", password: "", name: "", role: "ae", team: "ODM" };
+
+export default function UserManagement() {
+  const canManage = useCan("users:manage");
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState(emptyForm);
+
+  const [editUser, setEditUser] = useState(null); // the user being edited
+  const [editForm, setEditForm] = useState(null);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch("/api/users");
+      if (res.ok) setUsers(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (canManage) fetchUsers();
+    else setLoading(false);
+  }, [canManage]);
+
+  // When a role isn't team-bound, drop the team value.
+  const normalizeTeam = (role, team) => (TEAM_ROLES.includes(role) ? team || TEAMS[0] : "");
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    const payload = {
+      ...createForm,
+      team: normalizeTeam(createForm.role, createForm.team),
+    };
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowCreate(false);
+        setCreateForm(emptyForm);
+        await fetchUsers();
+      } else {
+        alert(data.error || "เพิ่มผู้ใช้ไม่สำเร็จ");
+      }
+    } catch {
+      alert("เกิดข้อผิดพลาด");
+    }
+    setSubmitting(false);
+  };
+
+  const openEdit = (u) => {
+    setEditUser(u);
+    setEditForm({
+      name: u.name || "",
+      role: u.role || "ae",
+      team: u.team || TEAMS[0],
+      password: "",
+    });
+  };
+
+  const handleEdit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    const payload = {
+      name: editForm.name,
+      role: editForm.role,
+      team: normalizeTeam(editForm.role, editForm.team),
+    };
+    if (editForm.password) payload.password = editForm.password;
+    try {
+      const res = await fetch(`/api/users/${editUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEditUser(null);
+        await fetchUsers();
+      } else {
+        alert(data.error || "แก้ไขไม่สำเร็จ");
+      }
+    } catch {
+      alert("เกิดข้อผิดพลาด");
+    }
+    setSubmitting(false);
+  };
+
+  const handleDelete = async (u) => {
+    if (!confirm(`ลบผู้ใช้ ${u.email}?\nการกระทำนี้ย้อนกลับไม่ได้`)) return;
+    try {
+      const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) await fetchUsers();
+      else alert(data.error || "ลบไม่สำเร็จ");
+    } catch {
+      alert("เกิดข้อผิดพลาด");
+    }
+  };
+
+  if (!canManage) {
+    return (
+      <div className="glass-panel p-12 text-center text-[var(--text-3)]">
+        คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการผู้ใช้
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div
+        className="premium-header"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+      >
+        <div className="header-content">
+          <h1>
+            <span className="premium-header-icon">
+              <Users size={22} />
+            </span>{" "}
+            จัดการผู้ใช้งาน
+          </h1>
+          <p>เพิ่ม / แก้ไขสิทธิ์ (Role) และทีม (Team) ของผู้ใช้ในระบบ</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="pill ok">ทั้งหมด {users.length} คน</div>
+          <button
+            onClick={() => {
+              setCreateForm(emptyForm);
+              setShowCreate(true);
+            }}
+            className="btn btn-primary flex items-center gap-1.5"
+          >
+            <Plus size={16} /> เพิ่มผู้ใช้
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center p-12 text-[var(--text-3)]">กำลังโหลด...</div>
+      ) : (
+        <div className="glass-panel">
+          <div className="premium-table-wrapper border-none">
+            <table className="premium-table">
+              <thead>
+                <tr>
+                  <th>ชื่อ</th>
+                  <th>อีเมล</th>
+                  <th>ตำแหน่ง (Role)</th>
+                  <th>ทีม</th>
+                  <th>เข้าใช้ล่าสุด</th>
+                  <th className="text-center">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="text-center py-10 text-[var(--text-3)]">
+                      ยังไม่มีผู้ใช้ในระบบ
+                    </td>
+                  </tr>
+                ) : (
+                  users.map((u) => (
+                    <tr key={u.id}>
+                      <td className="font-medium text-[var(--text)]">{u.name || "-"}</td>
+                      <td className="text-[var(--text-2)] font-mono text-xs">{u.email}</td>
+                      <td className="text-[var(--text-2)]">
+                        {ROLE_LABELS[u.role] || u.role || (
+                          <span className="text-[var(--text-3)]">ไม่ระบุ (viewer)</span>
+                        )}
+                      </td>
+                      <td className="text-[var(--text-2)]">
+                        {u.team ? TEAM_LABELS[u.team] || u.team : "-"}
+                      </td>
+                      <td className="text-[var(--text-3)] text-xs">
+                        {u.lastSignInAt
+                          ? new Date(u.lastSignInAt).toLocaleDateString("th-TH")
+                          : "ยังไม่เคย"}
+                      </td>
+                      <td className="text-center">
+                        <div className="flex items-center justify-center gap-3">
+                          <button
+                            onClick={() => openEdit(u)}
+                            className="text-[var(--accent)] hover:opacity-70"
+                            title="แก้ไข"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(u)}
+                            className="text-[var(--red)] hover:opacity-70"
+                            title="ลบ"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Create user modal */}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="เพิ่มผู้ใช้ใหม่" size="md">
+        <form onSubmit={handleCreate}>
+          <UserFields form={createForm} setForm={setCreateForm} requirePassword />
+          <div className="flex justify-end gap-2 mt-8 pt-6 border-t border-[var(--border)]">
+            <button type="button" onClick={() => setShowCreate(false)} className="btn">
+              ยกเลิก
+            </button>
+            <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+              {submitting ? "กำลังบันทึก..." : "สร้างผู้ใช้"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit user modal */}
+      <Modal
+        open={!!editUser}
+        onClose={() => setEditUser(null)}
+        title={`แก้ไขผู้ใช้: ${editUser?.email || ""}`}
+        size="md"
+      >
+        {editForm && (
+          <form onSubmit={handleEdit}>
+            <UserFields form={editForm} setForm={setEditForm} edit />
+            <div className="flex justify-end gap-2 mt-8 pt-6 border-t border-[var(--border)]">
+              <button type="button" onClick={() => setEditUser(null)} className="btn">
+                ยกเลิก
+              </button>
+              <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+                {submitting ? "กำลังบันทึก..." : "บันทึก"}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+    </>
+  );
+}
+
+// Shared form fields for create + edit. `edit` hides email; password optional.
+function UserFields({ form, setForm, requirePassword, edit }) {
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const isTeamRole = TEAM_ROLES.includes(form.role);
+
+  return (
+    <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+      {!edit && (
+        <div className="form-group">
+          <label>
+            อีเมล <span className="text-[var(--red)]">*</span>
+          </label>
+          <input
+            type="email"
+            value={form.email}
+            onChange={(e) => set("email", e.target.value)}
+            required
+            placeholder="user@company.com"
+            className="premium-input w-full font-mono"
+          />
+        </div>
+      )}
+      <div className="form-group">
+        <label>ชื่อ-นามสกุล</label>
+        <input
+          type="text"
+          value={form.name}
+          onChange={(e) => set("name", e.target.value)}
+          placeholder="ชื่อที่แสดงในระบบ"
+          className="premium-input w-full"
+        />
+      </div>
+      <div className="form-group">
+        <label>
+          {edit ? "รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)" : "รหัสผ่าน"}{" "}
+          {requirePassword && <span className="text-[var(--red)]">*</span>}
+        </label>
+        <input
+          type="password"
+          value={form.password}
+          onChange={(e) => set("password", e.target.value)}
+          required={requirePassword}
+          placeholder="อย่างน้อย 6 ตัวอักษร"
+          className="premium-input w-full"
+          autoComplete="new-password"
+        />
+      </div>
+      <div className="form-group">
+        <label>
+          ตำแหน่ง (Role) <span className="text-[var(--red)]">*</span>
+        </label>
+        <select
+          value={form.role}
+          onChange={(e) => set("role", e.target.value)}
+          className="premium-input w-full"
+        >
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_LABELS[r]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="form-group">
+        <label>
+          ทีม {isTeamRole && <span className="text-[var(--red)]">*</span>}
+        </label>
+        <select
+          value={isTeamRole ? form.team : ""}
+          onChange={(e) => set("team", e.target.value)}
+          disabled={!isTeamRole}
+          className="premium-input w-full"
+        >
+          {isTeamRole ? (
+            TEAMS.map((t) => (
+              <option key={t} value={t}>
+                {TEAM_LABELS[t]}
+              </option>
+            ))
+          ) : (
+            <option value="">— ไม่ต้องระบุ —</option>
+          )}
+        </select>
+      </div>
+    </div>
+  );
+}

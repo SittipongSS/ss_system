@@ -15,6 +15,8 @@ create table if not exists public.customers (
   "address"    text,
   "brands"     jsonb not null default '[]'::jsonb,
   "mapFileUrl" text,
+  "team"       text,          -- managing team: ODM | KA | SV (transferable). Customers are a central registry.
+  "ownerId"    uuid,          -- auth user who owns the record (for 'own' scope)
   "createdAt"  timestamptz not null default now()
 );
 create unique index if not exists customers_arcode_key on public.customers ("arCode");
@@ -31,7 +33,9 @@ create table if not exists public.products (
   "volume"             numeric,
   "costPrice"          numeric,
   "retailPriceIncVat"  numeric,
-  "assignee"           text,
+  "assignee"           text,          -- display label only (name snapshot)
+  "team"               text,          -- owning team: ODM | KA | SV
+  "ownerId"            uuid,          -- auth user who owns the record (for 'own' scope)
   "mapFileUrl"         text,
   "isExciseTaxable"    boolean default true,
   "retailPriceExVat"   numeric,
@@ -57,7 +61,9 @@ create table if not exists public.orders (
   "quotationRef"         text,
   "deliveryDate"         text,
   "remarks"              text,
-  "assignee"             text,
+  "assignee"             text,          -- display label only (name snapshot)
+  "team"                 text,          -- owning team: ODM | KA | SV
+  "ownerId"              uuid,          -- auth user who owns the record (for 'own' scope)
   "totalExciseTax"       numeric,
   "totalLocalTax"        numeric,
   "totalTax"             numeric,

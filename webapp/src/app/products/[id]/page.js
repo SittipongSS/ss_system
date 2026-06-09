@@ -12,6 +12,7 @@ export default function ProductDetails() {
   const id = params.id;
   const canApprove = useCan("legal:approve");
   const canEditProducts = useCan("products:edit");
+  const canDeleteProducts = useCan("products:delete");
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -218,7 +219,7 @@ export default function ProductDetails() {
               อนุมัติขึ้นทะเบียนสินค้า
             </button>
           )}
-          {canEditProducts && (
+          {canDeleteProducts && (
             <button
               onClick={handleDelete}
               disabled={isUpdating}

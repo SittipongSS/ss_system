@@ -1,19 +1,24 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { getCurrentUser } from '@/lib/authUser';
+import { viewScope } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 export async function GET() {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .order('createdAt', { ascending: false });
+  const user = await getCurrentUser();
 
+  let query = supabase.from('products').select('*').order('createdAt', { ascending: false });
+  // Team-scoped roles only see their own team's products; 'all' sees everything.
+  if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+
+  const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json(data);
 }
 
 export async function POST(request) {
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
   const body = await request.json();
 
   // Duplicate FG Code check
@@ -51,6 +56,10 @@ export async function POST(request) {
     materialCost,
     factoryProfit,
     status: 'pending_legal',
+    // Ownership comes from the server-side identity, not the client body.
+    team: user?.team ?? null,
+    ownerId: user?.id ?? null,
+    assignee: body.assignee || user?.name || 'Sales',
     createdAt: new Date().toISOString(),
   };
 

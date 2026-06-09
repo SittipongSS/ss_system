@@ -1,13 +1,20 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { getCurrentUser } from '@/lib/authUser';
+import { canViewRecord, canEditRecord, canDeleteRecord } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
 export async function GET(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
   const { data, error } = await supabase.from('products').select('*').eq('id', id).maybeSingle();
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data) return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
+  // Hide out-of-team products (return 404 so we don't leak their existence).
+  if (!canViewRecord(user, 'products', data)) {
+    return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
+  }
   return Response.json(data);
 }
 
@@ -15,6 +22,7 @@ export async function GET(request, { params }) {
 export async function PATCH(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
 
   const { data: product, error: findErr } = await supabase
     .from('products')
@@ -23,6 +31,12 @@ export async function PATCH(request, { params }) {
     .maybeSingle();
   if (findErr) return Response.json({ error: findErr.message }, { status: 500 });
   if (!product) return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
+
+  // Row-level scope: own-team (sa roles) / own record (ae) / all (supervisor,
+  // legal approval). The proxy already verified the coarse capability.
+  if (!canEditRecord(user, 'products', product)) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
 
   const body = await request.json();
 
@@ -68,10 +82,23 @@ export async function PATCH(request, { params }) {
   return Response.json(data);
 }
 
-// DELETE /api/products/[id]
+// DELETE /api/products/[id] — supervisor only (enforced here + by proxy cap).
 export async function DELETE(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+
+  const { data: product, error: findErr } = await supabase
+    .from('products')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (findErr) return Response.json({ error: findErr.message }, { status: 500 });
+  if (!product) return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
+  if (!canDeleteRecord(user, 'products', product)) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   const { data, error } = await supabase.from('products').delete().eq('id', id).select('id');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });

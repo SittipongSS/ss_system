@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Scale, ReceiptText, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, Building2, Package, Scale, ReceiptText, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can } from '@/lib/permissions';
@@ -40,7 +40,7 @@ export default function AppLayout({ children }) {
     // Auth: read the signed-in user from Supabase. If Supabase isn't configured
     // yet (local dev before setup), fall back to a permissive local session.
     if (!SUPABASE_CONFIGURED) {
-      setRole('admin');
+      setRole('ae_supervisor');
       setUserName('Local Dev');
       prefetchData();
       return;
@@ -110,6 +110,12 @@ export default function AppLayout({ children }) {
       label: 'ประวัติ',
       items: [
         { href: '/tracking', name: 'ประวัติทั้งหมด', icon: Clock, cap: 'history:view', match: (p) => p === '/tracking' },
+      ],
+    },
+    {
+      label: 'ตั้งค่า',
+      items: [
+        { href: '/users', name: 'จัดการผู้ใช้', icon: Users, cap: 'users:manage', match: (p) => p === '/users' },
       ],
     },
   ];
@@ -196,7 +202,7 @@ export default function AppLayout({ children }) {
               <div className="user-avatar">{userName.substring(0, 2).toUpperCase()}</div>
               <div className="user-info" style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="user-name" style={{ fontSize: '12.5px', fontWeight: '600' }}>{userName}</span>
-                <span className={`topbar-user-role ${role === 'admin' || role === 'legal' ? 'admin' : role === 'sales' ? 'editor' : 'viewer'}`} style={{ fontSize: '10px', width: 'fit-content' }}>
+                <span className={`topbar-user-role ${role === 'ae_supervisor' || role === 'legal' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}`} style={{ fontSize: '10px', width: 'fit-content' }}>
                   {role}
                 </span>
               </div>

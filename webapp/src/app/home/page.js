@@ -16,7 +16,7 @@ export default function HomeHubPage() {
   useEffect(() => {
     // Local dev fallback — no Supabase configured yet.
     if (!SUPABASE_CONFIGURED) {
-      setRole("admin");
+      setRole("ae_supervisor");
       setUserName("Local Dev");
       return;
     }

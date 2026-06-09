@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { getCurrentUser } from '@/lib/authUser';
+import { canViewRecord, canEditRecord, canDeleteRecord } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 // Products are linked to a customer by matching name OR taxId (denormalized,
@@ -26,6 +28,7 @@ async function findLinkedProducts(supabase, customer) {
 export async function GET(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
 
   const { data: customer, error } = await supabase
     .from('customers')
@@ -35,7 +38,11 @@ export async function GET(request, { params }) {
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบข้อมูลลูกค้ารายนี้' }, { status: 404 });
 
-  const products = await findLinkedProducts(supabase, customer);
+  // Customer is viewable by all, but only show linked products/orders the
+  // viewer is allowed to see (team scope).
+  const products = (await findLinkedProducts(supabase, customer)).filter((p) =>
+    canViewRecord(user, 'products', p)
+  );
   const productIds = products.map((p) => p.id);
 
   let orders = [];
@@ -53,7 +60,7 @@ export async function GET(request, { params }) {
         .select('*, items:order_items(*, product:products(*))')
         .in('id', orderIds)
         .order('createdAt', { ascending: false });
-      orders = ord || [];
+      orders = (ord || []).filter((o) => canViewRecord(user, 'orders', o));
     }
   }
 
@@ -64,6 +71,7 @@ export async function GET(request, { params }) {
 export async function PATCH(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
 
   const { data: customer, error: findErr } = await supabase
     .from('customers')
@@ -72,6 +80,10 @@ export async function PATCH(request, { params }) {
     .maybeSingle();
   if (findErr) return Response.json({ error: findErr.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบข้อมูลลูกค้ารายนี้' }, { status: 404 });
+
+  if (!canEditRecord(user, 'customers', customer)) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
 
   const body = await request.json();
 
@@ -88,7 +100,9 @@ export async function PATCH(request, { params }) {
   const oldTaxId = customer.taxId;
 
   const updates = {};
-  for (const k of ['arCode', 'name', 'taxId', 'phone', 'address', 'brands', 'mapFileUrl']) {
+  // 'team'/'ownerId' allow transferring a customer to another team (gated above
+  // by canEditRecord — supervisor cross-team, team roles within their scope).
+  for (const k of ['arCode', 'name', 'taxId', 'phone', 'address', 'brands', 'mapFileUrl', 'team', 'ownerId']) {
     if (body[k] !== undefined) updates[k] = body[k];
   }
 
@@ -108,10 +122,23 @@ export async function PATCH(request, { params }) {
   return Response.json(updated);
 }
 
-// DELETE /api/customers/[id]
+// DELETE /api/customers/[id] — supervisor only (enforced here + by proxy cap).
 export async function DELETE(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+
+  const { data: customer, error: findErr } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (findErr) return Response.json({ error: findErr.message }, { status: 500 });
+  if (!customer) return Response.json({ error: 'ไม่พบข้อมูลลูกค้ารายนี้' }, { status: 404 });
+  if (!canDeleteRecord(user, 'customers', customer)) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   const { data, error } = await supabase.from('customers').delete().eq('id', id).select('id');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) {
