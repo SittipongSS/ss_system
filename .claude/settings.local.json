@@ -30,7 +30,27 @@
       "Bash(npx --yes vercel@latest ls --cwd \"D:/tax/webapp\" --scope sittipong-s-projects)",
       "Bash(npx --yes vercel@latest inspect https://webapp-rl1u5s7uv-sittipong-s-projects.vercel.app --scope sittipong-s-projects)",
       "Bash(npx --yes vercel@latest alias ls --scope sittipong-s-projects)",
-      "mcp__Claude_in_Chrome__read_console_messages"
+      "mcp__Claude_in_Chrome__read_console_messages",
+      "Bash(npm run *)",
+      "Bash(git --no-pager diff)",
+      "Bash(git commit --amend -m 'feat: 3-state order status flow with excise-tax payment step' -m 'Migrate order lifecycle from 2 states \\(pending_payment -> cleared\\) to 3 \\(pending -> received -> complete\\), adding a Legal excise-tax payment step between Sales receiving payment and goods release. *)",
+      "Bash(npx --yes vercel@latest --prod --cwd \"D:/tax/webapp\" --scope sittipong-s-projects --yes)",
+      "Bash(curl -s -o /dev/null -w \"ttfb=%{time_starttransfer}s total=%{time_total}s\\\\n\" https://ibqqhhdzjllaueznmzzw.supabase.co/rest/v1/)",
+      "Bash(npx --yes vercel@latest inspect https://ss-nas5hlyy0-sittipong-s-projects.vercel.app --scope sittipong-s-projects)",
+      "Bash(npx --yes vercel@latest project inspect webapp --scope sittipong-s-projects)",
+      "Bash(npx --yes vercel@latest inspect https://ss-bgocrlnm5-sittipong-s-projects.vercel.app --scope sittipong-s-projects)",
+      "Bash(curl -s -o /dev/null -w \"ttfb=%{time_starttransfer}s total=%{time_total}s status=%{http_code}\\\\n\" https://ss-tax.vercel.app/api/products)",
+      "Bash(git rev-list *)",
+      "Bash(npx --yes vercel@latest inspect https://ss-system-i0dp18ijf-sittipong-s-projects.vercel.app --logs --scope sittipong-s-projects)",
+      "Bash(npx --yes vercel@latest logs https://ss-system-i0dp18ijf-sittipong-s-projects.vercel.app --scope sittipong-s-projects)",
+      "Bash(npx --yes vercel@latest project inspect ss-system --scope sittipong-s-projects)",
+      "Bash(node -e 'console.log\\(require\\('\\\\''C:\\\\Users\\\\sitti/AppData/Roaming/xdg.data/com.vercel.cli/auth.json'\\\\''\\).token\\)')",
+      "Bash(curl -s https://api.vercel.com/v2/teams -H 'Authorization: Bearer __TRACKED_VAR__')",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const p=JSON.parse\\(d\\);console.log\\('rootDirectory:',JSON.stringify\\(p.rootDirectory\\),'framework:',p.framework\\)}\\)\")",
+      "Bash(curl -s https://api.vercel.com/v2/teams -H 'Authorization: Bearer vca_86lWn0sP3Hsq9SmXxy1nA5FdQGFF2e7OaerhOJZrh85ZwOEt8b3ZMbF9')",
+      "Bash(curl -s https://api.vercel.com/v9/projects/prj_CO1vQHKf57q0f8TeRH4lkLFpK64z?teamId=team_FA7j0v07wyN9V1eJgh7nS1Vq -H 'Authorization: Bearer vca_86lWn0sP3Hsq9SmXxy1nA5FdQGFF2e7OaerhOJZrh85ZwOEt8b3ZMbF9')",
+      "Bash(npx --yes vercel@latest redeploy https://ss-system-i0dp18ijf-sittipong-s-projects.vercel.app --scope sittipong-s-projects)",
+      "Bash(curl -s -o /dev/null -w \"status=%{http_code} time=%{time_total}s\\\\n\" https://ss-team.vercel.app/)"
     ]
   }
 }
