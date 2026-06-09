@@ -51,7 +51,7 @@ export async function proxy(request) {
 
   // Role-based write protection for API routes (defense-in-depth; the UI also
   // hides actions). GET is always allowed for any signed-in user.
-  if (user && isApi && !apiWriteAllowed(request.method, path, user.user_metadata?.role)) {
+  if (user && isApi && !apiWriteAllowed(request.method, path, user.app_metadata?.role)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

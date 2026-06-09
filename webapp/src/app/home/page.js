@@ -27,7 +27,7 @@ export default function HomeHubPage() {
           router.replace("/");
           return;
         }
-        setRole(user.user_metadata?.role || "user");
+        setRole(user.app_metadata?.role || "user");
         setUserName(user.user_metadata?.name || user.email || "user");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps

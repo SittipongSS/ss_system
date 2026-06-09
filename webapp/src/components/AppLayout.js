@@ -52,7 +52,8 @@ export default function AppLayout({ children }) {
         return;
       }
       const name = user.user_metadata?.name || user.email || 'user';
-      setRole(user.user_metadata?.role || 'user');
+      // Role comes from app_metadata (service-role-only; users cannot self-edit it).
+      setRole(user.app_metadata?.role || 'user');
       setUserName(name);
       try { localStorage.setItem('userName', name); } catch {}
       prefetchData();

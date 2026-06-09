@@ -1,5 +1,6 @@
 // ── Role-based capabilities ──────────────────────────────────────────
-// Role comes from Supabase user_metadata.role. Business rule: SA and Sales
+// Role comes from Supabase app_metadata.role (service-role-only — users cannot
+// self-edit it, unlike user_metadata). Business rule: SA and Sales
 // are the same operational team → both manage products/customers + sales
 // clearance. Legal only views registries and approves. admin = everything.
 //
