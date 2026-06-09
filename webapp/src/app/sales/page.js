@@ -145,15 +145,15 @@ export default function SalesDashboard() {
             <span className="premium-header-icon">
               <Truck size={22} />
             </span>{" "}
-            เคลียร์ภาษี / จัดส่ง
+            แจ้งยื่นภาษี
           </h1>
-          <p>บันทึก PO และยืนยันการเคลียร์ภาษีสรรพสามิตล่วงหน้า</p>
+          <p>บันทึกและแจ้งยื่นภาษีสรรพสามิตของรายการสั่งซื้อ</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="pill danger">รอรับเงิน {pendingOrders.length} รายการ</div>
           {canAct && (
             <button onClick={() => setShowForm(true)} className="btn btn-primary flex items-center gap-1.5">
-              <Plus size={16} /> สร้างรอบจัดส่ง
+              <Plus size={16} /> แจ้งยื่นภาษีใหม่
             </button>
           )}
         </div>
@@ -247,7 +247,7 @@ export default function SalesDashboard() {
       )}
 
       {/* Create shipment batch modal */}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="สร้างรอบจัดส่งใหม่ (Create Shipment Batch)" size="lg">
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="แจ้งยื่นภาษีใหม่ (New Tax Filing)" size="lg">
         <div className="flex justify-end mb-4">
           <span className="text-xs font-semibold text-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 rounded-full">
             Assignee: {userName}
@@ -321,7 +321,7 @@ export default function SalesDashboard() {
           <div className="col-span-3 flex justify-end gap-2 mt-2 pt-5 border-t border-[var(--border)]">
             <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>
             <button type="submit" disabled={isSubmitting} className="btn btn-primary px-8">
-              {isSubmitting ? "กำลังสร้างออเดอร์..." : "สร้างใบสั่งซื้อ"}
+              {isSubmitting ? "กำลังบันทึก..." : "บันทึกการแจ้งยื่นภาษี"}
             </button>
           </div>
         </form>
