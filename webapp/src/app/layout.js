@@ -2,6 +2,11 @@ import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
 
+// Render routes dynamically (not static) so the client Router Cache doesn't
+// reuse stale page segments — pages always re-mount + refetch on navigation,
+// so edits/deletes show up immediately (no 5-min stale window).
+export const dynamic = "force-dynamic";
+
 const ibmPlexSansThai = IBM_Plex_Sans_Thai({
   weight: ['400', '500', '600', '700'],
   subsets: ["thai", "latin"],
