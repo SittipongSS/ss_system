@@ -276,41 +276,63 @@ export default function SalesDashboard() {
               </button>
             </div>
             <div className="space-y-2">
-              {formData.items.map((it, idx) => (
-                <div key={idx} className="flex gap-2 items-start">
-                  <select
-                    value={it.productId}
-                    onChange={(e) => setItem(idx, { productId: e.target.value })}
-                    required
-                    className="premium-select flex-1"
-                  >
-                    <option value="">-- เลือกสินค้า (เฉพาะที่อนุมัติแล้ว) --</option>
-                    {approvedProducts.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.fgCode} | {p.productDescription} ({p.customerName})
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    value={it.quantity}
-                    onChange={(e) => setItem(idx, { quantity: e.target.value })}
-                    required
-                    min="1"
-                    placeholder="จำนวน"
-                    className="premium-input w-28 font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeItem(idx)}
-                    disabled={formData.items.length === 1}
-                    className="btn px-3 text-[var(--red)] disabled:opacity-30"
-                    title="ลบรายการ"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
+              {formData.items.map((it, idx) => {
+                const prod = approvedProducts.find((p) => p.id === it.productId);
+                const taxPerUnit = prod
+                  ? (prod.isExciseTaxable === false ? 0 : (prod.exciseTax || 0) + (prod.localTax || 0))
+                  : 0;
+                return (
+                  <div key={idx}>
+                    <div className="flex gap-2 items-start">
+                      <select
+                        value={it.productId}
+                        onChange={(e) => setItem(idx, { productId: e.target.value })}
+                        required
+                        className="premium-select flex-1"
+                      >
+                        <option value="">-- เลือกสินค้า (เฉพาะที่อนุมัติแล้ว) --</option>
+                        {approvedProducts.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.fgCode} | {p.productDescription} ({p.customerName})
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        value={it.quantity}
+                        onChange={(e) => setItem(idx, { quantity: e.target.value })}
+                        required
+                        min="1"
+                        placeholder="จำนวน"
+                        className="premium-input w-28 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeItem(idx)}
+                        disabled={formData.items.length === 1}
+                        className="btn px-3 text-[var(--red)] disabled:opacity-30"
+                        title="ลบรายการ"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {prod && (
+                      <div className="flex gap-4 mt-1 ml-1 text-[11px] text-[var(--text-3)] font-mono">
+                        <span>
+                          ราคาขายปลีก:{" "}
+                          <span className="font-semibold text-[var(--text-2)]">{formatMoney(prod.retailPriceIncVat || 0)}</span>
+                        </span>
+                        <span>
+                          ภาษี/ชิ้น:{" "}
+                          <span className="font-semibold text-[var(--text-2)]">
+                            {taxPerUnit > 0 ? formatMoney(taxPerUnit) : "ยกเว้น"}
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
