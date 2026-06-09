@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:ss-cj.vercel.app)",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__computer",
+      "mcp__Claude_in_Chrome__browser_batch",
+      "mcp__Claude_in_Chrome__javascript_tool",
+      "PowerShell(Get-ChildItem \"D:\\\\\" -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'ss|cj|scent|forecast|database' } | Select-Object FullName; \"--- also checking common dev folders ---\"; foreach \\($p in @\\(\"$env:USERPROFILE\\\\Desktop\",\"$env:USERPROFILE\\\\Documents\",\"$env:USERPROFILE\\\\source\\\\repos\",\"D:\\\\projects\",\"D:\\\\dev\",\"D:\\\\work\"\\)\\) { if \\(Test-Path $p\\) { Get-ChildItem $p -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'ss|cj|scent|forecast|database' } | Select-Object FullName } })",
+      "Read(//d/SS-CJ-ANG/**)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({'deps':d.get\\('dependencies',{}\\),'dev':d.get\\('devDependencies',{}\\)},indent=1\\)\\)\")",
+      "PowerShell(Copy-Item \"D:\\\\SS-CJ-ANG\\\\src\\\\index.css\" \"D:\\\\tax\\\\webapp\\\\src\\\\app\\\\globals.css\" -Force; \"copied\"; \\(Get-Content \"D:\\\\tax\\\\webapp\\\\src\\\\app\\\\globals.css\" | Measure-Object -Line\\).Lines)",
+      "Bash(node restyle-tokens.mjs)",
+      "Bash(node --input-type=module -e ' *)",
+      "PowerShell(\"script deleted\")",
+      "Bash(npx --yes prettier@3 --write \"src/app/legal/page.js\" \"src/app/sa/page.js\" \"src/app/sales/page.js\" \"src/app/customers/page.js\" \"src/app/tracking/page.js\" \"src/app/products/[id]/page.js\" \"src/app/customers/[id]/page.js\")",
+      "Bash(node -e ' *)",
+      "Bash(node scripts/migrate-to-supabase.mjs)",
+      "Bash(node -e \"const d=require\\('./data.json'\\); d.customers.forEach\\(c=>console.log\\(c.id, 'brands=', JSON.stringify\\(c.brands\\)\\)\\); console.log\\('--- any product missing fields? ---'\\); console.log\\('products', d.products.length, 'orders', d.orders.length\\);\")"
+    ]
+  }
+}
