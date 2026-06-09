@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
 // Products are linked to a customer by matching name OR taxId (denormalized,
 // same as the original logic). We run two queries and merge to avoid issues
 // with commas/special chars in PostgREST `.or()` filter strings.

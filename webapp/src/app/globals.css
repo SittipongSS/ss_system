@@ -3109,13 +3109,6 @@ input[type="number"] {
   background: var(--green);
 }
 
-/* ── Summary card color theming via data-status (theme-aware) ── */
-.prod-summary-card[data-status="all"]       { --card-accent: var(--text); }
-.prod-summary-card[data-status="delivered"] { --card-accent: var(--green); }
-.prod-summary-card[data-status="producing"] { --card-accent: var(--blue); }
-.prod-summary-card[data-status="waiting"]   { --card-accent: var(--amber); }
-.prod-summary-card[data-status="overdue"]   { --card-accent: var(--red); }
-
 /* ── Status badge modifiers – aligned with design system ── */
 .prod-status-badge.status-delivered {
   background: var(--green-soft);

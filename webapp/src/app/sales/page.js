@@ -77,29 +77,34 @@ export default function SalesDashboard() {
     setIsSubmitting(false);
   };
 
-  const handleClear = async (id, isExempt) => {
-    if (
-      !isExempt &&
-      !confirm("ยืนยันว่าได้รับชำระเงินภาษีจากลูกค้าเรียบร้อยแล้ว? (คลังจะสามารถปล่อยของได้)")
-    )
-      return;
-    if (isExempt && !confirm("ออเดอร์นี้ได้รับยกเว้นภาษี ยืนยันอนุญาตให้คลังปล่อยของ?")) return;
+  const handleReceive = async (id, isExempt) => {
+    let receiptNumber = null;
+    if (!isExempt) {
+      receiptNumber = window.prompt("กรุณากรอก เลขที่ Invoice/Receipt/Tax Invoice ของ S&S:");
+      if (!receiptNumber) return;
+    } else {
+      if (!confirm("ออเดอร์นี้ได้รับยกเว้นภาษี ยืนยันว่ารับเงินแล้ว?")) return;
+    }
 
     try {
       const res = await fetch(`/api/orders/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "cleared" }),
+        body: JSON.stringify({ status: "received", receiptNumber }),
       });
-      if (res.ok) await fetchData();
-      else alert("ไม่สามารถเคลียร์ออเดอร์ได้");
+      if (res.ok) {
+        await fetchData();
+      } else {
+        const errData = await res.json();
+        alert("เกิดข้อผิดพลาด: " + (errData.error || "ไม่สามารถทำรายการได้"));
+      }
     } catch (err) {
       alert("Error updating status");
     }
   };
 
   const approvedProducts = products.filter((p) => p.status === "approved");
-  const pendingOrders = orders.filter((o) => o.status === "pending_payment");
+  const pendingOrders = orders.filter((o) => o.status === "pending");
 
   return (
     <>
@@ -189,13 +194,13 @@ export default function SalesDashboard() {
                         <td className="text-center">
                           {canAct ? (
                             <button
-                              onClick={() => handleClear(o.id, isExempt)}
+                              onClick={() => handleReceive(o.id, isExempt)}
                               className="btn btn-primary flex items-center gap-1.5 mx-auto"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                               </svg>
-                              {isExempt ? "ปล่อยของได้เลย" : "รับเงินแล้ว"}
+                              {isExempt ? "ยืนยันรับเงิน" : "รับเงินแล้ว"}
                             </button>
                           ) : (
                             <span className="text-[var(--text-3)] text-xs">—</span>

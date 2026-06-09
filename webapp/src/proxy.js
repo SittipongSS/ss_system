@@ -61,7 +61,11 @@ export async function proxy(request) {
 function apiWriteAllowed(method, path, role) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true; // reads ok
   if (path.startsWith('/api/customers')) return can(role, 'customers:edit');
-  if (path.startsWith('/api/orders')) return can(role, 'sales:act');
+  if (path.startsWith('/api/orders')) {
+    // PATCH covers both sales clearance (sales:act) and legal tax payment (legal:approve)
+    if (method === 'PATCH') return can(role, 'sales:act') || can(role, 'legal:approve');
+    return can(role, 'sales:act'); // create / delete
+  }
   if (path.startsWith('/api/products')) {
     // PATCH covers both edit (sa) and approve (legal)
     if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'legal:approve');

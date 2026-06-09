@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
 export async function GET(request, { params }) {
   const { id } = await params;
@@ -39,7 +40,7 @@ export async function PATCH(request, { params }) {
 
   const editable = [
     'status', 'fgCode', 'productDescription', 'brandName', 'customerName',
-    'taxId', 'address', 'volume', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl',
+    'taxId', 'address', 'volume', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl', 'approvalNumber'
   ];
   const updated = { ...product };
   for (const k of editable) if (body[k] !== undefined) updated[k] = body[k];

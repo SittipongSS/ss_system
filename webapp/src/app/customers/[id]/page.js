@@ -176,14 +176,14 @@ export default function CustomerDetails() {
   const totalTaxAccrued = totalExciseTax + totalLocalTax;
 
   const totalPaidTax = orders
-    .filter((o) => o.status === "cleared")
+    .filter((o) => o.status === "complete")
     .reduce(
       (sum, o) => sum + (o.product?.isExciseTaxable !== false ? o.totalTax : 0),
       0,
     );
 
   const totalPendingTax = orders
-    .filter((o) => o.status === "pending_payment")
+    .filter((o) => o.status === "pending" || o.status === "received")
     .reduce(
       (sum, o) => sum + (o.product?.isExciseTaxable !== false ? o.totalTax : 0),
       0,
@@ -825,11 +825,13 @@ export default function CustomerDetails() {
                           {o.deliveryDate || "-"}
                         </td>
                         <td className="text-center">
-                          {o.status === "cleared" ? (
-                            <span className="status-pill success">Cleared</span>
+                          {o.status === "complete" ? (
+                            <span className="status-pill success">ชำระแล้ว</span>
+                          ) : o.status === "received" ? (
+                            <span className="status-pill warn">รอชำระภาษี</span>
                           ) : (
                             <span className="status-pill danger">
-                              Pending Payment
+                              รอรับเงิน
                             </span>
                           )}
                         </td>

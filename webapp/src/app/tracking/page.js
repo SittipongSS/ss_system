@@ -2,8 +2,10 @@
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
+import { useCan } from "@/lib/roleContext";
 
 export default function TrackingHistory() {
+  const canAct = useCan("sales:act");
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
   const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
   const [loading, setLoading] = useState(
@@ -40,6 +42,22 @@ export default function TrackingHistory() {
       currency: "THB",
       minimumFractionDigits: 2,
     });
+
+  const handleDeleteOrder = async (e, id) => {
+    e.stopPropagation();
+    if (!confirm("ยืนยันว่าต้องการลบประวัติการจัดส่งนี้ออกจากระบบ?")) return;
+    try {
+      const res = await fetch(`/api/orders/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || "ไม่สามารถลบข้อมูลได้");
+      }
+    } catch (err) {
+      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+    }
+  };
 
   return (
     <>
@@ -194,13 +212,14 @@ export default function TrackingHistory() {
                       <th className="num">ยอดเก็บภาษีรวม</th>
                       <th className="text-center">สถานะชำระเงิน</th>
                       <th>ผู้รับผิดชอบ</th>
+                      <th className="text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {orders.length === 0 ? (
                       <tr>
                         <td
-                          colSpan="6"
+                          colSpan="7"
                           className="text-center py-10 text-[var(--text-3)]"
                         >
                           ไม่มีข้อมูล
@@ -225,7 +244,7 @@ export default function TrackingHistory() {
                               <div className="font-semibold text-[var(--text)] ">
                                 {o.quotationRef}
                               </div>
-                              {o.status === "cleared" && o.clearedAt && (
+                              {o.status === "complete" && o.clearedAt && (
                                 <div className="text-[10px] text-[var(--green)] mt-1 font-mono">
                                   เคลียร์:{" "}
                                   {new Date(o.clearedAt).toLocaleString(
@@ -256,7 +275,7 @@ export default function TrackingHistory() {
                               )}
                             </td>
                             <td className="text-center">
-                              {o.status === "cleared" ? (
+                              {o.status === "complete" ? (
                                 <span className="status-pill success flex items-center gap-1 mx-auto w-fit">
                                   <svg
                                     className="w-3 h-3"
@@ -272,6 +291,18 @@ export default function TrackingHistory() {
                                     />
                                   </svg>
                                   ชำระแล้ว (ปล่อยของได้)
+                                </span>
+                              ) : o.status === "received" ? (
+                                <span className="status-pill warn flex items-center gap-1 mx-auto w-fit">
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <circle cx="12" cy="12" r="10" strokeWidth="2.5"/>
+                                  </svg>
+                                  รอชำระ (ห้ามปล่อยของ)
                                 </span>
                               ) : (
                                 <span className="status-pill danger flex items-center gap-1 mx-auto w-fit">
@@ -294,6 +325,21 @@ export default function TrackingHistory() {
                             </td>
                             <td className="text-[var(--text-2)] text-xs font-semibold">
                               {o.assignee || "-"}
+                            </td>
+                            <td className="text-center">
+                              {canAct ? (
+                                <button
+                                  onClick={(e) => handleDeleteOrder(e, o.id)}
+                                  className="text-[var(--red)] hover:text-red-700 transition-colors"
+                                  title="ลบรายการนี้"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mx-auto">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                  </svg>
+                                </button>
+                              ) : (
+                                <span className="text-[var(--text-3)]">—</span>
+                              )}
                             </td>
                           </tr>
                         );

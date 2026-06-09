@@ -49,9 +49,12 @@ export default function ProductDetails() {
   };
 
   const handleApprove = async () => {
+    const approvalNumber = window.prompt("กรุณาระบุเลขที่อนุมัติ:");
+    if (!approvalNumber) return; // If cancelled or empty, abort
+
     if (
       !confirm(
-        "ยืนยันอนุมัติรหัสสินค้านี้เข้าสู่ระบบ (พร้อมให้ Sales เปิดบิลได้)?",
+        `ยืนยันอนุมัติรหัสสินค้านี้เข้าสู่ระบบด้วยเลขที่อนุมัติ ${approvalNumber} (พร้อมให้ Sales เปิดบิลได้)?`,
       )
     )
       return;
@@ -60,7 +63,7 @@ export default function ProductDetails() {
       const res = await fetch(`/api/products/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "approved" }),
+        body: JSON.stringify({ status: "approved", approvalNumber }),
       });
       if (res.ok) {
         alert("อนุมัติสินค้าขึ้นทะเบียนเรียบร้อยแล้ว");
@@ -421,12 +424,20 @@ export default function ProductDetails() {
             </span>
             <div className="flex items-center gap-2 mt-1">
               {product.status === "approved" ? (
-                <>
-                  <span className="h-3.5 w-3.5 rounded-full bg-[var(--green)] inline-block"></span>
-                  <span className="font-bold text-[var(--green)] text-sm">
-                    อนุมัติเรียบร้อย (Approved)
-                  </span>
-                </>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-3.5 w-3.5 rounded-full bg-[var(--green)] inline-block"></span>
+                    <span className="font-bold text-[var(--green)] text-sm">
+                      อนุมัติเรียบร้อย (Approved)
+                    </span>
+                  </div>
+                  {product.approvalNumber && (
+                    <div className="mt-2 text-xs font-mono bg-[var(--panel-2)] p-2 rounded border border-[var(--border)]">
+                      <span className="text-[var(--text-3)]">เลขที่อนุมัติ: </span>
+                      {product.approvalNumber}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <>
                   <span className="h-3.5 w-3.5 rounded-full bg-[var(--amber)] inline-block animate-pulse"></span>

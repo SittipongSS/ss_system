@@ -6,21 +6,31 @@ import { useCan } from "@/lib/roleContext";
 export default function LegalDashboard() {
   const canApprove = useCan("legal:approve");
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
-  const [loading, setLoading] = useState(() => !apiCache.has("/api/products"));
+  const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
+  const [loading, setLoading] = useState(() => !(apiCache.has("/api/products") && apiCache.has("/api/orders")));
   const [activeTab, setActiveTab] = useState("pending");
 
-  const fetchProducts = async () => {
-    const res = await fetch("/api/products");
-    if (res.ok) {
-      const data = await res.json();
-      apiCache.set("/api/products", data);
-      setProducts(data);
+  const fetchData = async () => {
+    try {
+      const [resProducts, resOrders] = await Promise.all([
+        fetch("/api/products"),
+        fetch("/api/orders"),
+      ]);
+      if (resProducts.ok && resOrders.ok) {
+        const [p, o] = await Promise.all([resProducts.json(), resOrders.json()]);
+        apiCache.set("/api/products", p);
+        apiCache.set("/api/orders", o);
+        setProducts(p);
+        setOrders(o);
+      }
+    } catch (err) {
+      console.error("Error fetching data", err);
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchProducts();
+    fetchData();
   }, []);
 
   const formatMoney = (amount) =>
@@ -31,9 +41,12 @@ export default function LegalDashboard() {
     });
 
   const handleRegister = async (id) => {
+    const approvalNumber = window.prompt("กรุณาระบุเลขที่อนุมัติ:");
+    if (!approvalNumber) return;
+
     if (
       !confirm(
-        "ยืนยันอนุมัติรหัสสินค้านี้เข้าสู่ระบบ (พร้อมให้ Sales เปิดบิลได้)?",
+        `ยืนยันอนุมัติรหัสสินค้านี้เข้าสู่ระบบด้วยเลขที่อนุมัติ ${approvalNumber}?`,
       )
     )
       return;
@@ -41,9 +54,40 @@ export default function LegalDashboard() {
       const res = await fetch(`/api/products/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "approved" }),
+        body: JSON.stringify({ status: "approved", approvalNumber }),
       });
-      if (res.ok) fetchProducts();
+      if (res.ok) {
+        fetchData();
+      } else {
+        const errData = await res.json();
+        alert("เกิดข้อผิดพลาด: " + (errData.error || "ไม่สามารถทำรายการได้"));
+      }
+    } catch (err) {
+      alert("Error updating status");
+    }
+  };
+
+  const handlePayTax = async (id, isExempt) => {
+    let exciseReceiptFileUrl = null;
+    if (!isExempt) {
+      exciseReceiptFileUrl = window.prompt("กรุณาระบุ URL ใบเสร็จจากสรรพสามิต (หรือพิมพ์ 'uploaded' เพื่อจำลอง):");
+      if (!exciseReceiptFileUrl) return;
+    }
+
+    if (!confirm("ยืนยันการชำระภาษีและอัพเดทสถานะเป็น Complete?")) return;
+
+    try {
+      const res = await fetch(`/api/orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "complete", exciseReceiptFileUrl }),
+      });
+      if (res.ok) {
+        fetchData();
+      } else {
+        const errData = await res.json();
+        alert("เกิดข้อผิดพลาด: " + (errData.error || "ไม่สามารถทำรายการได้"));
+      }
     } catch (err) {
       alert("Error updating status");
     }
@@ -51,6 +95,7 @@ export default function LegalDashboard() {
 
   const pendingProducts = products.filter((p) => p.status === "pending_legal");
   const approvedProducts = products.filter((p) => p.status === "approved");
+  const receivedOrders = orders.filter((o) => o.status === "received");
 
   return (
     <>
@@ -94,6 +139,12 @@ export default function LegalDashboard() {
           className={`tab-btn ${activeTab === "approved" ? "active" : ""}`}
         >
           คลังสินค้าที่อนุมัติแล้ว ({approvedProducts.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("tax")}
+          className={`tab-btn ${activeTab === "tax" ? "active" : ""}`}
+        >
+          รายการรอชำระภาษี ({receivedOrders.length})
         </button>
       </div>
 
@@ -283,6 +334,73 @@ export default function LegalDashboard() {
                           ยังไม่มีสินค้าที่อนุมัติ
                         </td>
                       </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "tax" && (
+            <div className="glass-panel">
+              <div className="px-4 py-3.5 border-b border-[var(--border)] ">
+                <h3 className="font-semibold text-sm text-[var(--text)] ">
+                  รายการรอชำระภาษีสรรพสามิต ({receivedOrders.length} รายการ)
+                </h3>
+              </div>
+              <div className="premium-table-wrapper border-none rounded-t-none">
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>PO Reference</th>
+                      <th>สินค้า (FG)</th>
+                      <th className="num">ยอดภาษีรวม</th>
+                      <th>Receipt S&S</th>
+                      <th className="text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {receivedOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="text-center py-10 text-[var(--text-3)]">
+                          ไม่มีรายการรอชำระภาษี
+                        </td>
+                      </tr>
+                    ) : (
+                      receivedOrders.map((o) => {
+                        const p = o.product;
+                        const isExempt = p?.isExciseTaxable === false;
+                        return (
+                          <tr key={o.id} className="clickable-row">
+                            <td>
+                              <div className="font-semibold text-[var(--text)] ">{o.quotationRef}</div>
+                            </td>
+                            <td>
+                              <div className="font-semibold text-[var(--text)] font-mono">{p?.fgCode || "-"}</div>
+                            </td>
+                            <td className="num font-bold text-[var(--red)] font-mono">
+                              {isExempt ? (
+                                <span className="status-pill success text-xs font-sans">ยกเว้นภาษี</span>
+                              ) : (
+                                formatMoney(o.totalTax)
+                              )}
+                            </td>
+                            <td className="font-mono text-[var(--text-2)]">{o.receiptNumber || "-"}</td>
+                            <td className="text-center">
+                              {canApprove ? (
+                                <button
+                                  onClick={() => handlePayTax(o.id, isExempt)}
+                                  className="btn btn-primary px-4 mx-auto"
+                                >
+                                  {isExempt ? "ยืนยัน Complete" : "จ่ายภาษีและอัพโหลด"}
+                                </button>
+                              ) : (
+                                <span className="text-[var(--text-3)] text-xs">รอฝ่ายกฎหมาย</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

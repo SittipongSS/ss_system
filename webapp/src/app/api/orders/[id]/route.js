@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
 // GET /api/orders/[id]
 export async function GET(request, { params }) {
   const { id } = await params;
@@ -32,8 +33,11 @@ export async function PATCH(request, { params }) {
 
   if (body.status !== undefined) {
     updates.status = body.status;
-    if (body.status === 'cleared') updates.clearedAt = new Date().toISOString();
+    if (body.status === 'complete' || body.status === 'cleared') updates.clearedAt = new Date().toISOString();
   }
+  
+  if (body.receiptNumber !== undefined) updates.receiptNumber = body.receiptNumber;
+  if (body.exciseReceiptFileUrl !== undefined) updates.exciseReceiptFileUrl = body.exciseReceiptFileUrl;
 
   if (body.quantity !== undefined) {
     const qty = parseInt(body.quantity);

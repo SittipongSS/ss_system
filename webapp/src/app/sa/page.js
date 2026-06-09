@@ -276,7 +276,7 @@ export default function ProductRegistry() {
                 <span className="text-xs text-[var(--text-3)] mt-1">เฉพาะหมวด 01-002 (น้ำหอมฉีดผิวกาย) เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต</span>
                 {formData.fgCode && !formData.fgCode.includes("01-002") && (
                   <div className="mt-2 p-3 bg-[var(--amber-soft)] text-[var(--amber)] text-xs rounded-lg border border-[var(--border)]">
-                    <strong>หมายเหตุ:</strong> รหัสนี้ไม่อยู่ในหมวด 01-002 จะถูกประเมินว่า <strong>"ไม่ต้องเสียภาษีสรรพสามิต"</strong>
+                    <strong>หมายเหตุ:</strong> รหัสนี้ไม่อยู่ในหมวด 01-002 จะถูกประเมินว่า <strong>“ไม่ต้องเสียภาษีสรรพสามิต”</strong>
                   </div>
                 )}
               </div>

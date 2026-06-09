@@ -40,6 +40,7 @@ create table if not exists public.products (
   "shippingCost"       numeric,
   "materialCost"       numeric,
   "factoryProfit"      numeric,
+  "approvalNumber"     text,
   "status"             text not null default 'pending_legal',
   "createdAt"          timestamptz not null default now()
 );
@@ -49,18 +50,20 @@ create index if not exists products_taxid_idx on public.products ("taxId");
 
 -- ---------- orders ----------
 create table if not exists public.orders (
-  "id"             text primary key,
-  "productId"      text references public.products("id") on delete set null,
-  "quantity"       integer,
-  "quotationRef"   text,
-  "deliveryDate"   text,
-  "remarks"        text,
-  "assignee"       text,
-  "totalExciseTax" numeric,
-  "totalLocalTax"  numeric,
-  "totalTax"       numeric,
-  "status"         text not null default 'pending_payment',
-  "clearedAt"      timestamptz,
+  "id"                   text primary key,
+  "productId"            text references public.products("id") on delete set null,
+  "quantity"             integer,
+  "quotationRef"         text,
+  "deliveryDate"         text,
+  "remarks"              text,
+  "assignee"             text,
+  "totalExciseTax"       numeric,
+  "totalLocalTax"        numeric,
+  "totalTax"             numeric,
+  "receiptNumber"        text,
+  "exciseReceiptFileUrl" text,
+  "status"               text not null default 'pending',
+  "clearedAt"            timestamptz,
   "createdAt"      timestamptz not null default now()
 );
 create index if not exists orders_productid_idx on public.orders ("productId");

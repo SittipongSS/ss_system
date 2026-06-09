@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
 export async function GET() {
   const supabase = getSupabaseAdmin();
   // Embed the related product as `product` (FK orders.productId -> products.id)
@@ -39,7 +40,7 @@ export async function POST(request) {
     totalExciseTax,
     totalLocalTax,
     totalTax,
-    status: 'pending_payment',
+    status: 'pending',
     createdAt: new Date().toISOString(),
   };
 
