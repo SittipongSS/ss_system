@@ -82,7 +82,7 @@ export default function ProductDetails() {
       const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
       if (res.ok) {
         alert("ลบข้อมูลสินค้าเรียบร้อยแล้ว");
-        router.push("/legal");
+        router.push("/sa");
       } else {
         const errData = await res.json();
         alert(errData.error || "ไม่สามารถลบข้อมูลสินค้าได้");
@@ -143,23 +143,11 @@ export default function ProductDetails() {
           สินค้าที่คุณกำลังพยายามเข้าถึงอาจถูกลบหรือไม่มีอยู่ในระบบ
         </p>
         <Link
-          href="/legal"
+          href="/sa"
           className="btn btn-primary px-6 inline-flex items-center gap-2"
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10 19l-7-7m0 0l7-7m-7 7h18"
-            />
-          </svg>
-          กลับไปยัง Legal Dashboard
+          <ArrowLeft size={16} />
+          กลับไปทะเบียนสินค้า
         </Link>
       </div>
     );
@@ -170,8 +158,9 @@ export default function ProductDetails() {
   return (
     <>
       {/* Top Header Section */}
-      <Link
-        href="/legal"
+      <button
+        type="button"
+        onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/sa"))}
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -180,11 +169,14 @@ export default function ProductDetails() {
           fontSize: "13px",
           fontWeight: 500,
           marginBottom: "14px",
-          textDecoration: "none",
+          background: "none",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
         }}
       >
-        <ArrowLeft size={16} /> กลับไป Legal Dashboard
-      </Link>
+        <ArrowLeft size={16} /> กลับ
+      </button>
       <div className="premium-header flex justify-between items-center mb-6">
         <div className="header-content">
           <h1 className="flex items-center gap-2 flex-wrap">
