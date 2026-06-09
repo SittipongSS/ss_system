@@ -601,7 +601,7 @@ export default function CustomerDetails() {
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-[var(--text-3)]">
-                  ใบสั่งซื้อ PO ทั้งหมด
+                  ใบสั่งซื้อทั้งหมด
                 </span>
                 <span className="font-bold text-[var(--text)] text-sm font-mono">
                   {orders.length} รายการ
@@ -685,8 +685,8 @@ export default function CustomerDetails() {
                   <th>รหัสสินค้า (FG Code)</th>
                   <th>รายละเอียดสินค้า / แบรนด์</th>
                   <th>ปริมาตร (ml)</th>
+                  <th className="num">ราคาขายปลีก</th>
                   <th className="num">ภาษีคำนวณต่อชิ้น</th>
-                  <th className="num">กำไรเฉลี่ยต่อชิ้น</th>
                   <th className="text-center">สถานะการอนุมัติ</th>
                 </tr>
               </thead>
@@ -725,6 +725,9 @@ export default function CustomerDetails() {
                         </td>
                         <td className="font-mono">{p.volume} ml</td>
                         <td className="num font-mono text-[var(--text-2)] ">
+                          {formatMoney(p.retailPriceIncVat)}
+                        </td>
+                        <td className="num font-mono text-[var(--text-2)] ">
                           {isExempt ? (
                             <span className="status-pill success text-[10px]">
                               ไม่ต้องเสียภาษี
@@ -732,9 +735,6 @@ export default function CustomerDetails() {
                           ) : (
                             formatMoney(taxRate)
                           )}
-                        </td>
-                        <td className="num font-mono text-[var(--accent)] font-bold">
-                          {formatMoney(p.factoryProfit)}
                         </td>
                         <td className="text-center">
                           {p.status === "approved" ? (
