@@ -78,7 +78,7 @@ export default function HomeHubPage() {
           >
             <div
               className="brand-logo"
-              style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "var(--navy)" }}
+              style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
             >
               <Scale size={24} strokeWidth={1.5} />
             </div>
@@ -106,7 +106,7 @@ export default function HomeHubPage() {
           >
             <div
               className="brand-logo"
-              style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "var(--text-3)" }}
+              style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
             >
               <FolderKanban size={24} strokeWidth={1.5} />
             </div>
