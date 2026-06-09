@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Scale, Truck, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, Building2, Package, Scale, ReceiptText, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can } from '@/lib/permissions';
@@ -102,7 +102,7 @@ export default function AppLayout({ children }) {
       label: 'ดำเนินการ',
       items: [
         { href: '/legal', name: 'ระบบภาษี', icon: Scale, cap: 'legal:view', match: (p) => p === '/legal' },
-        { href: '/sales', name: 'แจ้งยื่นภาษี', icon: Truck, cap: 'sales:view', match: (p) => p === '/sales' },
+        { href: '/sales', name: 'แจ้งยื่นภาษี', icon: ReceiptText, cap: 'sales:view', match: (p) => p === '/sales' },
       ],
     },
     {
