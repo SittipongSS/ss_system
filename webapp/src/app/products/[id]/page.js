@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Package } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
+import ProductStatusPill from "@/components/ProductStatusPill";
 
 export default function ProductDetails() {
   const params = useParams();
@@ -422,29 +423,13 @@ export default function ProductDetails() {
             <span className="text-[var(--text-3)] text-[10px] block mb-1">
               สถานะขึ้นทะเบียนสินค้า
             </span>
-            <div className="flex items-center gap-2 mt-1">
-              {product.status === "approved" ? (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-3.5 w-3.5 rounded-full bg-[var(--green)] inline-block"></span>
-                    <span className="font-bold text-[var(--green)] text-sm">
-                      อนุมัติเรียบร้อย (Approved)
-                    </span>
-                  </div>
-                  {product.approvalNumber && (
-                    <div className="mt-2 text-xs font-mono bg-[var(--panel-2)] p-2 rounded border border-[var(--border)]">
-                      <span className="text-[var(--text-3)]">เลขที่อนุมัติ: </span>
-                      {product.approvalNumber}
-                    </div>
-                  )}
+            <div className="mt-1">
+              <ProductStatusPill status={product.status} />
+              {product.status === "approved" && product.approvalNumber && (
+                <div className="mt-2 text-xs font-mono bg-[var(--panel-2)] p-2 rounded border border-[var(--border)]">
+                  <span className="text-[var(--text-3)]">เลขที่อนุมัติ: </span>
+                  {product.approvalNumber}
                 </div>
-              ) : (
-                <>
-                  <span className="h-3.5 w-3.5 rounded-full bg-[var(--amber)] inline-block animate-pulse"></span>
-                  <span className="font-bold text-[var(--amber)] text-sm">
-                    รอฝ่ายกฎหมายอนุมัติ
-                  </span>
-                </>
               )}
             </div>
             <p className="text-[10px] text-[var(--text-3)] mt-2">

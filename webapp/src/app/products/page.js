@@ -4,6 +4,7 @@ import { Package, Plus } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
+import ProductStatusPill from "@/components/ProductStatusPill";
 
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
@@ -127,13 +128,6 @@ export default function ProductRegistry() {
     }
   };
 
-  const statusPill = (s) =>
-    s === "approved" ? (
-      <span className="status-pill ok">อนุมัติแล้ว</span>
-    ) : (
-      <span className="status-pill warn">รออนุมัติ</span>
-    );
-
   return (
     <>
       <div
@@ -207,7 +201,7 @@ export default function ProductRegistry() {
                       <td className="text-[var(--text-2)]">{p.customerName}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} ml</td>
                       <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
-                      <td>{statusPill(p.status)}</td>
+                      <td><ProductStatusPill status={p.status} /></td>
                     </tr>
                   ))
                 )}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Building2 } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import OrderDetailModal from "@/components/OrderDetailModal";
+import ProductStatusPill from "@/components/ProductStatusPill";
 
 export default function CustomerDetails() {
   const params = useParams();
@@ -737,15 +738,7 @@ export default function CustomerDetails() {
                           )}
                         </td>
                         <td className="text-center">
-                          {p.status === "approved" ? (
-                            <span className="status-pill success">
-                              Approved
-                            </span>
-                          ) : (
-                            <span className="status-pill warn">
-                              Pending Legal
-                            </span>
-                          )}
+                          <ProductStatusPill status={p.status} />
                         </td>
                       </tr>
                     );

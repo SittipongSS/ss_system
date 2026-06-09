@@ -4,6 +4,7 @@ import { Clock } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import OrderDetailModal from "@/components/OrderDetailModal";
+import ProductStatusPill from "@/components/ProductStatusPill";
 
 export default function TrackingHistory() {
   const canAct = useCan("sales:act");
@@ -163,27 +164,7 @@ export default function TrackingHistory() {
                             </div>
                           </td>
                           <td>
-                            {p.status === "approved" ? (
-                              <span className="status-pill success flex items-center gap-1 w-fit">
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  className="h-3 w-3"
-                                  viewBox="0 0 20 20"
-                                  fill="currentColor"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                                Approved (Master Data)
-                              </span>
-                            ) : (
-                              <span className="status-pill info flex items-center gap-1 w-fit">
-                                Pending Legal
-                              </span>
-                            )}
+                            <ProductStatusPill status={p.status} />
                           </td>
                           <td className="text-[var(--text-2)] text-xs">
                             {p.assignee || "-"}
