@@ -20,6 +20,9 @@ export default function CustomerDirectory() {
     phone: "",
     address: "",
     brandsStr: "",
+    contactPerson: "",
+    email: "",
+    creditTerms: "",
   });
 
   const fetchCustomers = async () => {
@@ -79,6 +82,9 @@ export default function CustomerDirectory() {
         .split(",")
         .map((b) => b.trim())
         .filter((b) => b),
+      contactPerson: formData.contactPerson || null,
+      email: formData.email || null,
+      creditTerms: formData.creditTerms || null,
       mapFileUrl,
     };
 
@@ -89,7 +95,7 @@ export default function CustomerDirectory() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setFormData({ arCode: "", name: "", taxId: "", phone: "", address: "", brandsStr: "" });
+        setFormData({ arCode: "", name: "", taxId: "", phone: "", address: "", brandsStr: "", contactPerson: "", email: "", creditTerms: "" });
         setMapFile(null);
         setShowForm(false);
         fetchCustomers();
@@ -340,6 +346,39 @@ export default function CustomerDirectory() {
                 onChange={handleChange}
                 placeholder="เช่น 02-123-4567"
                 className="premium-input w-full font-mono"
+              />
+            </div>
+            <div className="form-group">
+              <label>ผู้ติดต่อ</label>
+              <input
+                type="text"
+                name="contactPerson"
+                value={formData.contactPerson}
+                onChange={handleChange}
+                placeholder="ชื่อผู้ติดต่อ"
+                className="premium-input w-full"
+              />
+            </div>
+            <div className="form-group">
+              <label>อีเมล</label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="example@email.com"
+                className="premium-input w-full"
+              />
+            </div>
+            <div className="form-group col-span-2">
+              <label>เงื่อนไขเครดิต (Credit Terms)</label>
+              <input
+                type="text"
+                name="creditTerms"
+                value={formData.creditTerms}
+                onChange={handleChange}
+                placeholder="เช่น เครดิต 30 วัน"
+                className="premium-input w-full"
               />
             </div>
             <div className="form-group col-span-2">

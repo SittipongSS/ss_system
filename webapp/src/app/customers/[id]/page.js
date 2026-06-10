@@ -32,6 +32,9 @@ export default function CustomerDetails() {
     phone: "",
     address: "",
     brandsStr: "",
+    contactPerson: "",
+    email: "",
+    creditTerms: "",
   });
 
   // Table Tabs
@@ -55,6 +58,9 @@ export default function CustomerDetails() {
           phone: data.customer.phone || "",
           address: data.customer.address || "",
           brandsStr: (data.customer.brands || []).join(", "),
+          contactPerson: data.customer.contactPerson || "",
+          email: data.customer.email || "",
+          creditTerms: data.customer.creditTerms || "",
         });
       } else {
         const errData = await res.json();
@@ -124,6 +130,9 @@ export default function CustomerDetails() {
         .split(",")
         .map((b) => b.trim())
         .filter((b) => b),
+      contactPerson: formData.contactPerson || null,
+      email: formData.email || null,
+      creditTerms: formData.creditTerms || null,
       mapFileUrl,
     };
 
@@ -406,6 +415,39 @@ export default function CustomerDetails() {
                       className="premium-input w-full font-mono text-xs"
                     />
                   </div>
+                  <div className="form-group col-span-2 sm:col-span-1">
+                    <label>ผู้ติดต่อ</label>
+                    <input
+                      type="text"
+                      name="contactPerson"
+                      value={formData.contactPerson}
+                      onChange={handleInputChange}
+                      placeholder="ชื่อผู้ติดต่อ"
+                      className="premium-input w-full text-xs"
+                    />
+                  </div>
+                  <div className="form-group col-span-2 sm:col-span-1">
+                    <label>อีเมล</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      placeholder="example@email.com"
+                      className="premium-input w-full text-xs"
+                    />
+                  </div>
+                  <div className="form-group col-span-2">
+                    <label>เงื่อนไขเครดิต (Credit Terms)</label>
+                    <input
+                      type="text"
+                      name="creditTerms"
+                      value={formData.creditTerms}
+                      onChange={handleInputChange}
+                      placeholder="เช่น เครดิต 30 วัน"
+                      className="premium-input w-full text-xs"
+                    />
+                  </div>
                   <div className="form-group col-span-2">
                     <label>
                       ที่อยู่ลูกค้า <span className="text-[var(--red)]">*</span>
@@ -519,6 +561,30 @@ export default function CustomerDetails() {
                     </span>
                     <span className="font-semibold font-mono text-[var(--text)] text-sm">
                       {customer.phone || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[var(--text-3)] block mb-1">
+                      ผู้ติดต่อ (Contact)
+                    </span>
+                    <span className="font-semibold text-[var(--text)] text-sm">
+                      {customer.contactPerson || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[var(--text-3)] block mb-1">
+                      อีเมล (Email)
+                    </span>
+                    <span className="font-semibold text-[var(--text)] text-sm">
+                      {customer.email || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[var(--text-3)] block mb-1">
+                      เงื่อนไขเครดิต (Credit Terms)
+                    </span>
+                    <span className="font-semibold text-[var(--text)] text-sm">
+                      {customer.creditTerms || "-"}
                     </span>
                   </div>
                   <div className="md:col-span-2">

@@ -23,6 +23,8 @@
 //   legal:view     | legal:approve
 //   sales:view     | sales:act      | sales:delete   (sales = the order/PO workflow)
 //   history:view   | audit:view
+//   master:manage  (edit shared master taxonomy, e.g. product_types categories)
+//   pm:view        | pm:edit        (project management — SALES only)
 
 // ── Department (ฝ่าย) ─────────────────────────────────────────────────
 // Top-level org division, one level above team. Stored explicitly in
@@ -57,21 +59,24 @@ export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' }
 // Assignable roles (for the user-management UI), with Thai labels.
 export const ROLES = ['ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal'];
 export const ROLE_LABELS = {
-  ae_supervisor: 'AE Supervisor (ผู้ดูแลระบบ)',
-  senior_ae: 'Senior AE (หัวหน้าทีม)',
-  ac: 'Account Coordinate (หลังบ้าน)',
-  ae: 'Account Executive (หน้าบ้าน)',
-  legal: 'ฝ่ายกฎหมาย (Legal)',
+  ae_supervisor: 'AE Supervisor',
+  senior_ae: 'Senior AE',
+  ac: 'Account Coordinate',
+  ae: 'Account Executive',
+  legal: 'ฝ่ายกฎหมาย',
 };
 
 // Roles that operate within a single team (team is required for them).
 export const TEAM_ROLES = ['senior_ae', 'ac', 'ae'];
 
 // Sales operational base (no delete, no legal). Shared by ae / ac.
+// PM (project management) is a SALES-only tool — every sales role views+edits it
+// (row-level team scope still applies via editScope); legal has no PM access.
 const SALES_OPS = [
   'customers:view', 'customers:edit',
   'products:view', 'products:edit',
   'sales:view', 'sales:act',
+  'pm:view', 'pm:edit',
   'history:view',
 ];
 
@@ -83,6 +88,8 @@ const ROLE_CAPS = {
     'legal:view', 'legal:approve',
     'history:view', 'audit:view',
     'users:manage',
+    'master:manage',  // edit category taxonomy (product_types) + master config
+    'pm:view', 'pm:edit',
   ],
   // team lead: ops + may delete orders (scoped to own team via deleteScope)
   senior_ae: [...SALES_OPS, 'sales:delete'],
@@ -178,21 +185,34 @@ export function canDeleteRecord(user, resource, record) {
 
 // Fields LG sets while approving / filing tax (not the commercial data).
 export const LEGAL_PRODUCT_FIELDS = ['status', 'approvalNumber', 'taxableOverride', 'rejectionReason'];
+// Excise registrations: LG owns the approval/tax columns; SA owns the link
+// (which product + which customer it's submitted for).
+export const LEGAL_REGISTRATION_FIELDS = ['status', 'approvalNumber', 'taxableOverride', 'rejectionReason'];
 export const LEGAL_ORDER_FIELDS = [
   'status', 'taxDueDate', 'exciseReceiptNumber', 'exciseTaxPaidAmount',
   'exciseReceiptFileUrl', 'taxFormRef', 'rejectionReason',
 ];
+
+// The capability a sales user needs to write a resource's commercial fields,
+// and the LG-owned field list, per resource.
+const RESOURCE_SALES_CAP = {
+  orders: 'sales:act',
+  registrations: 'products:edit', // SA submits/edits the registration link
+};
+const LEGAL_FIELDS_BY_RESOURCE = {
+  orders: LEGAL_ORDER_FIELDS,
+  registrations: LEGAL_REGISTRATION_FIELDS,
+};
 
 // Compute the set of body fields `user` may write to a record, given the
 // resource's full sales-editable list. Supervisor gets both (full edit cap +
 // legal cap). `salesEditable` is the route's existing commercial field list.
 export function allowedEditFields(user, resource, salesEditable) {
   const allowed = new Set();
-  const editCap = `${resource === 'orders' ? 'sales' : resource}:edit`;
-  const salesActCap = resource === 'orders' ? 'sales:act' : editCap;
+  const salesActCap = RESOURCE_SALES_CAP[resource] || `${resource}:edit`;
   if (can(user?.role, salesActCap)) salesEditable.forEach((f) => allowed.add(f));
   if (can(user?.role, 'legal:approve')) {
-    (resource === 'orders' ? LEGAL_ORDER_FIELDS : LEGAL_PRODUCT_FIELDS).forEach((f) => allowed.add(f));
+    (LEGAL_FIELDS_BY_RESOURCE[resource] || LEGAL_PRODUCT_FIELDS).forEach((f) => allowed.add(f));
   }
   return allowed;
 }
@@ -214,10 +234,10 @@ export function validateIdentity(role, team, department) {
   return null;
 }
 
-// Default landing route per role (first menu they can act on).
+// Landing route for the EXCISE TAX system (the "ระบบภาษีสรรพสามิต" home card).
+// All excise pages live under /tax/*: LG lands on the registration-approval
+// page, sales roles land on the registration-submission page.
 export function landingFor(role) {
-  if (role === 'legal') return '/legal';
-  if (role === 'ae_supervisor') return '/customers';
-  if (role === 'senior_ae' || role === 'ac' || role === 'ae') return '/products';
-  return '/customers'; // viewer
+  if (role === 'legal') return '/tax/approve-register';
+  return '/tax/register'; // sales roles + viewer
 }

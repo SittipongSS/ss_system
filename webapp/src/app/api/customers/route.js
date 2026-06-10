@@ -38,6 +38,12 @@ export async function POST(request) {
     address: body.address,
     brands: body.brands || [],
     mapFileUrl: body.mapFileUrl || null,
+    // Master-data contact / commercial fields (migration 0005).
+    contactPerson: body.contactPerson || null,
+    email: body.email || null,
+    creditTerms: body.creditTerms || null,
+    jubiliId: body.jubiliId || null,
+    metadata: body.metadata || {},
     // Managing team + owner come from the server-side identity.
     team: user?.team ?? null,
     ownerId: user?.id ?? null,

@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Scale, FolderKanban, ArrowRight, LogOut } from "lucide-react";
+import { Scale, FolderKanban, Database, ArrowRight, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
-import { landingFor } from "@/lib/permissions";
+import { landingFor, can } from "@/lib/permissions";
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -45,10 +45,18 @@ export default function HomeHubPage() {
   if (!role) return null;
 
   const enterTax = () => router.push(landingFor(role));
+  const enterPM = () => router.push("/projects");
+  const enterDB = () => router.push("/products");
+  // Temporary lockdown: all three systems are open to admins only. Keep this in
+  // sync with ADMIN_LOCKDOWN in proxy.js (the server-side gate).
+  const isAdmin = can(role, "users:manage");
+  const canPM = isAdmin;
+  const canTax = isAdmin;
+  const canDB = isAdmin;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px" }}>
-      <div style={{ width: "100%", maxWidth: "760px" }}>
+      <div style={{ width: "100%", maxWidth: "1000px" }}>
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: "36px" }}>
           <img
@@ -66,60 +74,175 @@ export default function HomeHubPage() {
 
         {/* System cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
-          {/* Card 1 — Excise Tax (active) */}
-          <button
-            onClick={enterTax}
-            className="glass-panel system-card"
-            style={{
-              textAlign: "left", padding: "28px", cursor: "pointer",
-              display: "flex", flexDirection: "column", gap: "16px",
-              background: "var(--panel)", color: "inherit",
-            }}
-          >
-            <div
-              className="brand-logo"
-              style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+          {/* Card 1 — Project Management. Active for roles with pm:view (SALES);
+              others (e.g. legal) see it disabled. */}
+          {canPM ? (
+            <button
+              onClick={enterPM}
+              className="glass-panel system-card"
+              style={{
+                textAlign: "left", padding: "28px", cursor: "pointer",
+                display: "flex", flexDirection: "column", gap: "16px",
+                background: "var(--panel)", color: "inherit",
+              }}
             >
-              <Scale size={24} strokeWidth={1.5} />
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <FolderKanban size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบจัดการโครงการ</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  ติดตามและบริหารงานโครงการ มอบหมายงาน และดูความคืบหน้า
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
+                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
+                </span>
+              </div>
+            </button>
+          ) : (
+            <div
+              className="glass-panel system-card disabled"
+              style={{
+                padding: "28px", cursor: "not-allowed", opacity: 0.6,
+                display: "flex", flexDirection: "column", gap: "16px",
+              }}
+              aria-disabled="true"
+            >
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <FolderKanban size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบจัดการโครงการ</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  ติดตามและบริหารงานโครงการ มอบหมายงาน และดูความคืบหน้า
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span className="status-pill" style={{ marginLeft: "auto", height: "auto", padding: "3px 10px", fontSize: "11px" }}>ไม่มีสิทธิ์เข้าถึง</span>
+              </div>
             </div>
-            <div>
-              <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบภาษีสรรพสามิต</h2>
-              <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
-                จัดการทะเบียนสินค้า ลูกค้า ขออนุมัติภาษี และแจ้งยื่นภาษี
-              </p>
-            </div>
-            <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
-              <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
-              </span>
-            </div>
-          </button>
+          )}
 
-          {/* Card 2 — Project Management (coming soon) */}
-          <div
-            className="glass-panel system-card disabled"
-            style={{
-              padding: "28px", cursor: "not-allowed", opacity: 0.6,
-              display: "flex", flexDirection: "column", gap: "16px",
-            }}
-            aria-disabled="true"
-          >
-            <div
-              className="brand-logo"
-              style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+          {/* Card 2 — Excise Tax */}
+          {canTax ? (
+            <button
+              onClick={enterTax}
+              className="glass-panel system-card"
+              style={{
+                textAlign: "left", padding: "28px", cursor: "pointer",
+                display: "flex", flexDirection: "column", gap: "16px",
+                background: "var(--panel)", color: "inherit",
+              }}
             >
-              <FolderKanban size={24} strokeWidth={1.5} />
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <Scale size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบภาษีสรรพสามิต</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  จัดการทะเบียนสินค้า ลูกค้า ขออนุมัติภาษี และแจ้งยื่นภาษี
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
+                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
+                </span>
+              </div>
+            </button>
+          ) : (
+            <div
+              className="glass-panel system-card disabled"
+              style={{
+                padding: "28px", cursor: "not-allowed", opacity: 0.6,
+                display: "flex", flexDirection: "column", gap: "16px",
+              }}
+              aria-disabled="true"
+            >
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <Scale size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบภาษีสรรพสามิต</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  จัดการทะเบียนสินค้า ลูกค้า ขออนุมัติภาษี และแจ้งยื่นภาษี
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span className="status-pill" style={{ marginLeft: "auto", height: "auto", padding: "3px 10px", fontSize: "11px" }}>ไม่มีสิทธิ์เข้าถึง</span>
+              </div>
             </div>
-            <div>
-              <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบจัดการโครงการ</h2>
-              <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
-                ติดตามและบริหารงานโครงการ มอบหมายงาน และดูความคืบหน้า
-              </p>
+          )}
+
+          {/* Card 3 — Master Database (customers / products registry). Any
+              signed-in user with customers:view may open it. */}
+          {canDB ? (
+            <button
+              onClick={enterDB}
+              className="glass-panel system-card"
+              style={{
+                textAlign: "left", padding: "28px", cursor: "pointer",
+                display: "flex", flexDirection: "column", gap: "16px",
+                background: "var(--panel)", color: "inherit",
+              }}
+            >
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <Database size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบฐานข้อมูล</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  จัดการฐานข้อมูลลูกค้าและสินค้า ข้อมูลหลักที่ใช้ร่วมกันทุกระบบ
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
+                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
+                </span>
+              </div>
+            </button>
+          ) : (
+            <div
+              className="glass-panel system-card disabled"
+              style={{
+                padding: "28px", cursor: "not-allowed", opacity: 0.6,
+                display: "flex", flexDirection: "column", gap: "16px",
+              }}
+              aria-disabled="true"
+            >
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <Database size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบฐานข้อมูล</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  จัดการฐานข้อมูลลูกค้าและสินค้า ข้อมูลหลักที่ใช้ร่วมกันทุกระบบ
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span className="status-pill" style={{ marginLeft: "auto", height: "auto", padding: "3px 10px", fontSize: "11px" }}>ไม่มีสิทธิ์เข้าถึง</span>
+              </div>
             </div>
-            <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
-              <span className="status-pill warning" style={{ marginLeft: "auto", height: "auto", padding: "3px 10px", fontSize: "11px" }}>เร็วๆ นี้</span>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Footer logout */}

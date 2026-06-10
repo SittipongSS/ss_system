@@ -3,16 +3,17 @@ import { useEffect, useState } from "react";
 import { ClipboardCheck, Search } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
-import { fmtMoney, fmtDateTime } from "@/lib/format";
-import ProductStatusPill from "@/components/ProductStatusPill";
+import { fmtMoney } from "@/lib/format";
 import ApproveProductModal from "@/components/ApproveProductModal";
 import RejectModal from "@/components/RejectModal";
 
-// LG product-registration workspace. Tax filing now lives on /legal/tax.
+// LG excise-registration workspace. SA submits registrations (product +
+// customer) from /excise; LG approves or rejects them here. Tax filing lives
+// on /legal/tax.
 export default function LegalRegistration() {
   const canApprove = useCan("legal:approve");
-  const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
-  const [loading, setLoading] = useState(() => !apiCache.has("/api/products"));
+  const [regs, setRegs] = useState(() => apiCache.get("/api/excise-registrations") ?? []);
+  const [loading, setLoading] = useState(() => !apiCache.has("/api/excise-registrations"));
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [approveTarget, setApproveTarget] = useState(null);
@@ -20,14 +21,14 @@ export default function LegalRegistration() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch("/api/products");
+      const res = await fetch("/api/excise-registrations");
       if (res.ok) {
         const p = await res.json();
-        apiCache.set("/api/products", p);
-        setProducts(p);
+        apiCache.set("/api/excise-registrations", p);
+        setRegs(p);
       }
     } catch (err) {
-      console.error("Error fetching products", err);
+      console.error("Error fetching registrations", err);
     }
     setLoading(false);
   };
@@ -37,7 +38,7 @@ export default function LegalRegistration() {
   }, []);
 
   const handleReject = async (reason) => {
-    const res = await fetch(`/api/products/${rejectTarget.id}`, {
+    const res = await fetch(`/api/excise-registrations/${rejectTarget.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "rejected", rejectionReason: reason }),
@@ -51,19 +52,19 @@ export default function LegalRegistration() {
     }
   };
 
-  const pendingProducts = products.filter((p) => p.status === "pending_legal");
-  const approvedProducts = products.filter((p) => p.status === "approved");
-  const rejectedProducts = products.filter((p) => p.status === "rejected");
+  const pending = regs.filter((r) => r.status === "pending_legal");
+  const approved = regs.filter((r) => r.status === "approved");
+  const rejected = regs.filter((r) => r.status === "rejected");
 
   const q = search.trim().toLowerCase();
   const filteredApproved = q
-    ? approvedProducts.filter((p) =>
-        [p.fgCode, p.productDescription, p.brandName, p.customerName, p.approvalNumber]
+    ? approved.filter((r) =>
+        [r.fgCode, r.productName, r.brandName, r.customerName, r.approvalNumber]
           .some((v) => (v || "").toLowerCase().includes(q)),
       )
-    : approvedProducts;
+    : approved;
 
-  const taxPerUnit = (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0));
+  const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
 
   return (
     <>
@@ -72,26 +73,26 @@ export default function LegalRegistration() {
           <h1>
             <span className="premium-header-icon"><ClipboardCheck size={22} /></span> ขึ้นทะเบียนสินค้า
           </h1>
-          <p>ตรวจสอบและอนุมัติสินค้าใหม่เข้าสู่ระบบภาษีสรรพสามิต</p>
+          <p>ตรวจสอบและอนุมัติการขึ้นทะเบียนภาษีสรรพสามิต (สินค้า + ลูกค้า)</p>
         </div>
         <div className="pill warn">
           <span className="relative flex h-2.5 w-2.5 mr-1">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--amber)] opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[var(--amber)]"></span>
           </span>
-          รออนุมัติ <strong className="font-mono ml-1">{pendingProducts.length}</strong> รายการ
+          รออนุมัติ <strong className="font-mono ml-1">{pending.length}</strong> รายการ
         </div>
       </div>
 
       <div className="tabs-header">
         <button onClick={() => setActiveTab("pending")} className={`tab-btn ${activeTab === "pending" ? "active" : ""}`}>
-          สินค้าใหม่รออนุมัติ ({pendingProducts.length})
+          รออนุมัติ ({pending.length})
         </button>
         <button onClick={() => setActiveTab("approved")} className={`tab-btn ${activeTab === "approved" ? "active" : ""}`}>
-          คลังสินค้าที่อนุมัติแล้ว ({approvedProducts.length})
+          อนุมัติแล้ว ({approved.length})
         </button>
         <button onClick={() => setActiveTab("rejected")} className={`tab-btn ${activeTab === "rejected" ? "active" : ""}`}>
-          ตีกลับให้แก้ไข ({rejectedProducts.length})
+          ตีกลับให้แก้ไข ({rejected.length})
         </button>
       </div>
 
@@ -108,45 +109,37 @@ export default function LegalRegistration() {
           {activeTab === "pending" && (
             <div className="glass-panel">
               <div className="px-4 py-3.5 border-b border-[var(--border)]">
-                <h3 className="font-semibold text-sm text-[var(--text)]">สินค้าใหม่รออนุมัติ (Pending Approval)</h3>
+                <h3 className="font-semibold text-sm text-[var(--text)]">รายการรออนุมัติ (Pending Approval)</h3>
               </div>
               <div className="premium-table-wrapper border-none rounded-t-none">
                 <table className="premium-table">
                   <thead>
                     <tr>
                       <th>รหัสสินค้า (FG Code)</th>
-                      <th>ปริมาตร</th>
-                      <th className="num">กำไร/ชิ้น</th>
+                      <th>ลูกค้า</th>
                       <th className="num">ภาษี/ชิ้น</th>
                       <th className="text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pendingProducts.length === 0 ? (
-                      <tr><td colSpan="5" className="text-center py-10 text-[var(--text-3)]">ไม่มีรายการค้าง</td></tr>
+                    {pending.length === 0 ? (
+                      <tr><td colSpan="4" className="text-center py-10 text-[var(--text-3)]">ไม่มีรายการค้าง</td></tr>
                     ) : (
-                      pendingProducts.map((p) => (
-                        <tr key={p.id} onClick={() => (window.location.href = `/products/${p.id}`)} className="clickable-row">
+                      pending.map((r) => (
+                        <tr key={r.id} onClick={() => (window.location.href = `/tax/register/${r.id}`)} className="clickable-row">
                           <td>
-                            <div className="font-semibold text-[var(--text)] font-mono">{p.fgCode}</div>
-                            <div className="text-[11px] text-[var(--text-3)] mt-1">{p.productDescription} ({p.brandName})</div>
-                            {p.mapFileUrl && (
-                              <a href={p.mapFileUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
-                                className="inline-flex items-center gap-1 mt-2 text-[11px] font-semibold text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded">
-                                ดูไฟล์แผนที่
-                              </a>
-                            )}
+                            <div className="font-semibold text-[var(--text)] font-mono">{r.fgCode}</div>
+                            <div className="text-[11px] text-[var(--text-3)] mt-1">{r.productName} ({r.brandName})</div>
                           </td>
-                          <td className="text-[var(--text-2)] font-mono">{p.volume} ml</td>
-                          <td className="num mono">{fmtMoney(p.factoryProfit)}</td>
+                          <td className="text-[var(--text-2)]">{r.customerName}</td>
                           <td className="num mono">
-                            {p.isExciseTaxable !== false ? fmtMoney(taxPerUnit(p)) : <span className="status-pill">ไม่ต้องเสียภาษี</span>}
+                            {r.isExciseTaxable !== false ? fmtMoney(taxPerUnit(r)) : <span className="status-pill">ไม่ต้องเสียภาษี</span>}
                           </td>
                           <td className="text-center" onClick={(e) => e.stopPropagation()}>
                             {canApprove ? (
                               <div className="flex items-center justify-center gap-2">
-                                <button onClick={() => setApproveTarget(p)} className="btn btn-primary px-4">อนุมัติ</button>
-                                <button onClick={() => setRejectTarget(p)} className="btn px-3 text-[var(--red)]">ตีกลับ</button>
+                                <button onClick={() => setApproveTarget(r)} className="btn btn-primary px-4">อนุมัติ</button>
+                                <button onClick={() => setRejectTarget(r)} className="btn px-3 text-[var(--red)]">ตีกลับ</button>
                               </div>
                             ) : (
                               <span className="text-[var(--text-3)] text-xs">รอฝ่ายกฎหมาย</span>
@@ -161,11 +154,11 @@ export default function LegalRegistration() {
             </div>
           )}
 
-          {/* ── Approved master data (searchable) ── */}
+          {/* ── Approved (searchable) ── */}
           {activeTab === "approved" && (
             <div className="glass-panel">
               <div className="px-4 py-3.5 border-b border-[var(--border)] flex items-center justify-between gap-3">
-                <h3 className="font-semibold text-sm text-[var(--text)]">คลังสินค้าที่อนุมัติแล้ว ({filteredApproved.length})</h3>
+                <h3 className="font-semibold text-sm text-[var(--text)]">ทะเบียนที่อนุมัติแล้ว ({filteredApproved.length})</h3>
                 <div className="search-bar" style={{ maxWidth: 280 }}>
                   <Search size={15} className="icon-l" />
                   <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ลูกค้า / เลขอนุมัติ..." />
@@ -183,17 +176,17 @@ export default function LegalRegistration() {
                   </thead>
                   <tbody>
                     {filteredApproved.length === 0 ? (
-                      <tr><td colSpan="4" className="text-center py-10 text-[var(--text-3)]">{q ? "ไม่พบรายการที่ค้นหา" : "ยังไม่มีสินค้าที่อนุมัติ"}</td></tr>
+                      <tr><td colSpan="4" className="text-center py-10 text-[var(--text-3)]">{q ? "ไม่พบรายการที่ค้นหา" : "ยังไม่มีทะเบียนที่อนุมัติ"}</td></tr>
                     ) : (
-                      filteredApproved.map((p) => (
-                        <tr key={p.id} onClick={() => (window.location.href = `/products/${p.id}`)} className="clickable-row">
+                      filteredApproved.map((r) => (
+                        <tr key={r.id} onClick={() => (window.location.href = `/tax/register/${r.id}`)} className="clickable-row">
                           <td className="font-mono text-[var(--text-2)]">
-                            {p.fgCode} <span className="font-sans ml-2 text-[var(--text-3)]">{p.productDescription}</span>
+                            {r.fgCode} <span className="font-sans ml-2 text-[var(--text-3)]">{r.productName}</span>
                           </td>
-                          <td className="text-[var(--text-2)]">{p.customerName}</td>
-                          <td className="font-mono text-[var(--text-3)] text-xs">{p.approvalNumber || "-"}</td>
+                          <td className="text-[var(--text-2)]">{r.customerName}</td>
+                          <td className="font-mono text-[var(--text-3)] text-xs">{r.approvalNumber || "-"}</td>
                           <td className="num font-mono text-[var(--text-2)]">
-                            {p.isExciseTaxable === false ? "-" : fmtMoney(taxPerUnit(p))}
+                            {r.isExciseTaxable === false ? "-" : fmtMoney(taxPerUnit(r))}
                           </td>
                         </tr>
                       ))
@@ -208,7 +201,7 @@ export default function LegalRegistration() {
           {activeTab === "rejected" && (
             <div className="glass-panel">
               <div className="px-4 py-3.5 border-b border-[var(--border)]">
-                <h3 className="font-semibold text-sm text-[var(--text)]">สินค้าที่ตีกลับให้แก้ไข ({rejectedProducts.length})</h3>
+                <h3 className="font-semibold text-sm text-[var(--text)]">ทะเบียนที่ตีกลับให้แก้ไข ({rejected.length})</h3>
               </div>
               <div className="premium-table-wrapper border-none rounded-t-none">
                 <table className="premium-table">
@@ -220,16 +213,16 @@ export default function LegalRegistration() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rejectedProducts.length === 0 ? (
+                    {rejected.length === 0 ? (
                       <tr><td colSpan="3" className="text-center py-10 text-[var(--text-3)]">ไม่มีรายการตีกลับ</td></tr>
                     ) : (
-                      rejectedProducts.map((p) => (
-                        <tr key={p.id} onClick={() => (window.location.href = `/products/${p.id}`)} className="clickable-row">
+                      rejected.map((r) => (
+                        <tr key={r.id} onClick={() => (window.location.href = `/tax/register/${r.id}`)} className="clickable-row">
                           <td className="font-mono text-[var(--text-2)]">
-                            {p.fgCode} <span className="font-sans ml-2 text-[var(--text-3)]">{p.productDescription}</span>
+                            {r.fgCode} <span className="font-sans ml-2 text-[var(--text-3)]">{r.productName}</span>
                           </td>
-                          <td className="text-[var(--text-2)]">{p.customerName}</td>
-                          <td className="text-xs text-[var(--red)]">{p.rejectionReason || "-"}</td>
+                          <td className="text-[var(--text-2)]">{r.customerName}</td>
+                          <td className="text-xs text-[var(--red)]">{r.rejectionReason || "-"}</td>
                         </tr>
                       ))
                     )}
@@ -243,7 +236,7 @@ export default function LegalRegistration() {
 
       <ApproveProductModal
         open={!!approveTarget}
-        product={approveTarget}
+        registration={approveTarget}
         onClose={() => setApproveTarget(null)}
         onApproved={fetchData}
       />
@@ -251,8 +244,8 @@ export default function LegalRegistration() {
         open={!!rejectTarget}
         onClose={() => setRejectTarget(null)}
         onConfirm={handleReject}
-        title="ตีกลับสินค้าให้แก้ไข"
-        entityLabel="สินค้านี้"
+        title="ตีกลับการขึ้นทะเบียนให้แก้ไข"
+        entityLabel="ทะเบียนนี้"
       />
     </>
   );

@@ -14,7 +14,7 @@ import {
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 
-const emptyForm = { email: "", password: "", name: "", department: "SALES", role: "ae", team: "ODM" };
+const emptyForm = { email: "", password: "", firstName: "", lastName: "", department: "SALES", role: "ae", team: "ODM" };
 
 export default function UserManagement() {
   const canManage = useCan("users:manage");
@@ -76,7 +76,8 @@ export default function UserManagement() {
   const openEdit = (u) => {
     setEditUser(u);
     setEditForm({
-      name: u.name || "",
+      firstName: u.firstName || "",
+      lastName: u.lastName || "",
       department: u.department || departmentFor(u.role) || DEPARTMENTS[0],
       role: u.role || "ae",
       team: u.team || TEAMS[0],
@@ -88,7 +89,8 @@ export default function UserManagement() {
     e.preventDefault();
     setSubmitting(true);
     const payload = {
-      name: editForm.name,
+      firstName: editForm.firstName,
+      lastName: editForm.lastName,
       role: editForm.role,
       team: normalizeTeam(editForm.role, editForm.team),
     };
@@ -145,7 +147,7 @@ export default function UserManagement() {
             </span>{" "}
             จัดการผู้ใช้งาน
           </h1>
-          <p>เพิ่ม / แก้ไขสิทธิ์ (Role) และทีม (Team) ของผู้ใช้ในระบบ</p>
+          <p>เพิ่ม / แก้ไขสิทธิ์ Role และทีม Team ของผู้ใช้ในระบบ</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="pill ok">ทั้งหมด {users.length} คน</div>
@@ -170,8 +172,9 @@ export default function UserManagement() {
               <thead>
                 <tr>
                   <th>ชื่อ</th>
+                  <th>นามสกุล</th>
                   <th>อีเมล</th>
-                  <th>ตำแหน่ง (Role)</th>
+                  <th>ตำแหน่ง Role</th>
                   <th>ฝ่าย</th>
                   <th>ทีม</th>
                   <th>เข้าใช้ล่าสุด</th>
@@ -181,14 +184,15 @@ export default function UserManagement() {
               <tbody>
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="text-center py-10 text-[var(--text-3)]">
+                    <td colSpan="8" className="text-center py-10 text-[var(--text-3)]">
                       ยังไม่มีผู้ใช้ในระบบ
                     </td>
                   </tr>
                 ) : (
                   users.map((u) => (
                     <tr key={u.id}>
-                      <td className="font-medium text-[var(--text)]">{u.name || "-"}</td>
+                      <td className="font-medium text-[var(--text)]">{u.firstName || "-"}</td>
+                      <td className="font-medium text-[var(--text)]">{u.lastName || "-"}</td>
                       <td className="text-[var(--text-2)] font-mono text-xs">{u.email}</td>
                       <td className="text-[var(--text-2)]">
                         {ROLE_LABELS[u.role] || u.role || (
@@ -304,12 +308,24 @@ function UserFields({ form, setForm, requirePassword, edit }) {
         </div>
       )}
       <div className="form-group">
-        <label>ชื่อ-นามสกุล</label>
+        <label>ชื่อ <span className="text-[var(--red)]">*</span></label>
         <input
           type="text"
-          value={form.name}
-          onChange={(e) => set("name", e.target.value)}
-          placeholder="ชื่อที่แสดงในระบบ"
+          value={form.firstName}
+          onChange={(e) => set("firstName", e.target.value)}
+          placeholder="ชื่อ"
+          required
+          className="premium-input w-full"
+        />
+      </div>
+      <div className="form-group">
+        <label>นามสกุล <span className="text-[var(--red)]">*</span></label>
+        <input
+          type="text"
+          value={form.lastName}
+          onChange={(e) => set("lastName", e.target.value)}
+          placeholder="นามสกุล"
+          required
           className="premium-input w-full"
         />
       </div>
@@ -346,7 +362,7 @@ function UserFields({ form, setForm, requirePassword, edit }) {
       </div>
       <div className="form-group">
         <label>
-          ตำแหน่ง (Role) <span className="text-[var(--red)]">*</span>
+          ตำแหน่ง Role <span className="text-[var(--red)]">*</span>
         </label>
         <select
           value={form.role}

@@ -7,10 +7,10 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
 
-  // A PO embeds its line items, each with the related product.
+  // A PO embeds its line items, each with the master product + its registration.
   let query = supabase
     .from('orders')
-    .select('*, items:order_items(*, product:products(*))')
+    .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
     .order('createdAt', { ascending: false });
   // Team-scoped roles only see their own team's orders; 'all' sees everything.
   if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
@@ -25,8 +25,9 @@ export async function POST(request) {
   const user = await getCurrentUser();
   const body = await request.json();
 
-  // Accept the new multi-item shape: { quotationRef, poReference, deliveryDate,
-  // remarks, assignee, items: [{ productId, quantity }] }.
+  // Accept the multi-item shape: { quotationRef, poReference, deliveryDate,
+  // remarks, assignee, items: [{ registrationId, quantity }] }. A line refers
+  // to an approved excise registration (binds product + customer + tax).
   const items = Array.isArray(body.items) ? body.items : [];
   if (items.length === 0) {
     return Response.json({ error: 'ต้องมีรายการสินค้าอย่างน้อย 1 รายการ' }, { status: 400 });
@@ -44,49 +45,46 @@ export async function POST(request) {
   if (custErr) return Response.json({ error: custErr.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
 
-  // Fetch all referenced products in one query.
-  const productIds = [...new Set(items.map((it) => it.productId).filter(Boolean))];
-  const { data: products, error: prodErr } = await supabase
-    .from('products')
+  // Fetch all referenced registrations in one query.
+  const regIds = [...new Set(items.map((it) => it.registrationId).filter(Boolean))];
+  const { data: regs, error: regErr } = await supabase
+    .from('excise_registrations')
     .select('*')
-    .in('id', productIds);
-  if (prodErr) return Response.json({ error: prodErr.message }, { status: 500 });
-  const productMap = new Map((products || []).map((p) => [p.id, p]));
+    .in('id', regIds);
+  if (regErr) return Response.json({ error: regErr.message }, { status: 500 });
+  const regMap = new Map((regs || []).map((r) => [r.id, r]));
 
-  // Every item must belong to the selected customer (products link to a
-  // customer by name OR taxId — the same denormalized rule used elsewhere).
-  const belongsToCustomer = (p) =>
-    (customer.name && p.customerName === customer.name) ||
-    (customer.taxId && p.taxId === customer.taxId);
-  for (const p of productMap.values()) {
-    if (!belongsToCustomer(p)) {
-      return Response.json(
-        { error: `สินค้า ${p.fgCode} ไม่ใช่ของลูกค้า ${customer.name}` },
-        { status: 400 }
-      );
+  // Every line's registration must be APPROVED and belong to this customer.
+  for (const r of regMap.values()) {
+    if (r.customerId !== customer.id) {
+      return Response.json({ error: `ทะเบียน ${r.fgCode} ไม่ใช่ของลูกค้า ${customer.name}` }, { status: 400 });
+    }
+    if (r.status !== 'approved') {
+      return Response.json({ error: `ทะเบียน ${r.fgCode} ยังไม่ได้รับการอนุมัติ` }, { status: 400 });
     }
   }
 
   const orderId = 'PO-' + Date.now().toString().slice(-6);
 
-  // Build line items + accumulate rollup totals.
+  // Build line items + accumulate rollup totals (tax from the registration).
   let totalExciseTax = 0;
   let totalLocalTax = 0;
   const itemRows = [];
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
-    const product = productMap.get(it.productId);
-    if (!product) return Response.json({ error: `ไม่พบสินค้า ${it.productId}` }, { status: 404 });
+    const reg = regMap.get(it.registrationId);
+    if (!reg) return Response.json({ error: `ไม่พบทะเบียน ${it.registrationId}` }, { status: 404 });
     const qty = parseInt(it.quantity);
     if (!qty || qty < 1) return Response.json({ error: 'จำนวนต้องมากกว่า 0' }, { status: 400 });
-    const itemExcise = (product.exciseTax || 0) * qty;
-    const itemLocal = (product.localTax || 0) * qty;
+    const itemExcise = (reg.exciseTax || 0) * qty;
+    const itemLocal = (reg.localTax || 0) * qty;
     totalExciseTax += itemExcise;
     totalLocalTax += itemLocal;
     itemRows.push({
       id: `OIT-${orderId.slice(3)}-${i + 1}`,
       orderId,
-      productId: it.productId,
+      registrationId: reg.id,
+      productId: reg.productId,
       quantity: qty,
       totalExciseTax: itemExcise,
       totalLocalTax: itemLocal,
@@ -127,7 +125,7 @@ export async function POST(request) {
   // Return the full PO with its items embedded.
   const { data, error } = await supabase
     .from('orders')
-    .select('*, items:order_items(*, product:products(*))')
+    .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
     .eq('id', orderId)
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });

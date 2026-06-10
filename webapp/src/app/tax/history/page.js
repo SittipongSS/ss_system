@@ -10,24 +10,24 @@ export default function TrackingHistory() {
   const canAct = useCan("sales:act");
   const canDelete = useCan("sales:delete");
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
+  const [regs, setRegs] = useState(() => apiCache.get("/api/excise-registrations") ?? []);
   const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
   const [loading, setLoading] = useState(
-    () => !(apiCache.has("/api/products") && apiCache.has("/api/orders")),
+    () => !(apiCache.has("/api/excise-registrations") && apiCache.has("/api/orders")),
   );
   const [activeTab, setActiveTab] = useState("products");
 
   const fetchData = async () => {
     try {
-      const [resProducts, resOrders] = await Promise.all([
-        fetch("/api/products"),
+      const [resRegs, resOrders] = await Promise.all([
+        fetch("/api/excise-registrations"),
         fetch("/api/orders"),
       ]);
-      if (resProducts.ok && resOrders.ok) {
-        const [p, o] = await Promise.all([resProducts.json(), resOrders.json()]);
-        apiCache.set("/api/products", p);
+      if (resRegs.ok && resOrders.ok) {
+        const [p, o] = await Promise.all([resRegs.json(), resOrders.json()]);
+        apiCache.set("/api/excise-registrations", p);
         apiCache.set("/api/orders", o);
-        setProducts(p);
+        setRegs(p);
         setOrders(o);
       }
     } catch (err) {
@@ -121,7 +121,7 @@ export default function TrackingHistory() {
             <div className="glass-panel">
               <div className="px-4 py-3.5 border-b border-[var(--border)] ">
                 <h3 className="font-semibold text-sm text-[var(--text)] ">
-                  ประวัติสินค้าในระบบ ({products.length} รายการ)
+                  ประวัติการขึ้นทะเบียนภาษี ({regs.length} รายการ)
                 </h3>
               </div>
               <div className="premium-table-wrapper border-none rounded-t-none">
@@ -130,45 +130,49 @@ export default function TrackingHistory() {
                     <tr>
                       <th>วันที่ส่งคำขอ</th>
                       <th>สินค้า (FG Code)</th>
+                      <th>ลูกค้า</th>
                       <th>สถานะล่าสุด</th>
                       <th>ผู้สร้างคำขอ</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {products.length === 0 ? (
+                    {regs.length === 0 ? (
                       <tr>
                         <td
-                          colSpan="4"
+                          colSpan="5"
                           className="text-center py-10 text-[var(--text-3)]"
                         >
                           ไม่มีข้อมูล
                         </td>
                       </tr>
                     ) : (
-                      products.map((p) => (
+                      regs.map((r) => (
                         <tr
-                          key={p.id}
+                          key={r.id}
                           onClick={() =>
-                            (window.location.href = `/products/${p.id}`)
+                            (window.location.href = `/tax/register/${r.id}`)
                           }
                           className="clickable-row"
                         >
                           <td className="text-[var(--text-2)] text-xs font-mono">
-                            {new Date(p.createdAt).toLocaleString("th-TH")}
+                            {new Date(r.createdAt).toLocaleString("th-TH")}
                           </td>
                           <td>
                             <div className="font-semibold text-[var(--text)] font-mono">
-                              {p.fgCode}
+                              {r.fgCode}
                             </div>
                             <div className="text-[11px] text-[var(--text-3)] mt-1">
-                              {p.productDescription}
+                              {r.productName}
                             </div>
                           </td>
+                          <td className="text-[var(--text-2)] text-xs">
+                            {r.customerName || "-"}
+                          </td>
                           <td>
-                            <ProductStatusPill status={p.status} />
+                            <ProductStatusPill status={r.status} />
                           </td>
                           <td className="text-[var(--text-2)] text-xs">
-                            {p.assignee || "-"}
+                            {r.assignee || "-"}
                           </td>
                         </tr>
                       ))

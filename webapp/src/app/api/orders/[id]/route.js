@@ -10,7 +10,7 @@ export async function GET(request, { params }) {
   const user = await getCurrentUser();
   const { data, error } = await supabase
     .from('orders')
-    .select('*, items:order_items(*, product:products(*))')
+    .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
     .eq('id', id)
     .maybeSingle();
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -89,30 +89,24 @@ export async function PATCH(request, { params }) {
   // Replaces all line items and recomputes the tax rollups.
   let newItemRows = null;
   if (Array.isArray(body.items) && isSales && (order.status === 'pending' || order.status === 'rejected')) {
-    const items = body.items.filter((it) => it.productId && it.quantity);
+    const items = body.items.filter((it) => it.registrationId && it.quantity);
     if (items.length === 0) {
       return Response.json({ error: 'ต้องมีรายการสินค้าอย่างน้อย 1 รายการ' }, { status: 400 });
     }
-    const productIds = [...new Set(items.map((it) => it.productId))];
-    const { data: products, error: prodErr } = await supabase
-      .from('products').select('*').in('id', productIds);
-    if (prodErr) return Response.json({ error: prodErr.message }, { status: 500 });
-    const productMap = new Map((products || []).map((p) => [p.id, p]));
+    const regIds = [...new Set(items.map((it) => it.registrationId))];
+    const { data: regs, error: regErr } = await supabase
+      .from('excise_registrations').select('*').in('id', regIds);
+    if (regErr) return Response.json({ error: regErr.message }, { status: 500 });
+    const regMap = new Map((regs || []).map((r) => [r.id, r]));
 
-    // Keep all items belonging to the order's customer (legacy orders without
-    // a customerId skip this check — they predate the one-customer rule).
-    if (order.customerId) {
-      const { data: customer } = await supabase
-        .from('customers').select('*').eq('id', order.customerId).maybeSingle();
-      if (customer) {
-        const belongs = (p) =>
-          (customer.name && p.customerName === customer.name) ||
-          (customer.taxId && p.taxId === customer.taxId);
-        for (const p of productMap.values()) {
-          if (!belongs(p)) {
-            return Response.json({ error: `สินค้า ${p.fgCode} ไม่ใช่ของลูกค้า ${customer.name}` }, { status: 400 });
-          }
-        }
+    // Every line's registration must be approved + belong to the order's
+    // customer (legacy orders without a customerId skip the ownership check).
+    for (const r of regMap.values()) {
+      if (order.customerId && r.customerId !== order.customerId) {
+        return Response.json({ error: `ทะเบียน ${r.fgCode} ไม่ใช่ของลูกค้ารายนี้` }, { status: 400 });
+      }
+      if (r.status !== 'approved') {
+        return Response.json({ error: `ทะเบียน ${r.fgCode} ยังไม่ได้รับการอนุมัติ` }, { status: 400 });
       }
     }
 
@@ -120,18 +114,19 @@ export async function PATCH(request, { params }) {
     newItemRows = [];
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      const product = productMap.get(it.productId);
-      if (!product) return Response.json({ error: `ไม่พบสินค้า ${it.productId}` }, { status: 404 });
+      const reg = regMap.get(it.registrationId);
+      if (!reg) return Response.json({ error: `ไม่พบทะเบียน ${it.registrationId}` }, { status: 404 });
       const qty = parseInt(it.quantity);
       if (!qty || qty < 1) return Response.json({ error: 'จำนวนต้องมากกว่า 0' }, { status: 400 });
-      const itemExcise = (product.exciseTax || 0) * qty;
-      const itemLocal = (product.localTax || 0) * qty;
+      const itemExcise = (reg.exciseTax || 0) * qty;
+      const itemLocal = (reg.localTax || 0) * qty;
       totalExciseTax += itemExcise;
       totalLocalTax += itemLocal;
       newItemRows.push({
         id: `OIT-${id.slice(3)}-${i + 1}`,
         orderId: id,
-        productId: it.productId,
+        registrationId: reg.id,
+        productId: reg.productId,
         quantity: qty,
         totalExciseTax: itemExcise,
         totalLocalTax: itemLocal,
@@ -156,7 +151,7 @@ export async function PATCH(request, { params }) {
 
   const { data, error } = await supabase
     .from('orders')
-    .select('*, items:order_items(*, product:products(*))')
+    .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
     .eq('id', id)
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });

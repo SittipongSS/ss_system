@@ -3,10 +3,10 @@ import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtMoney } from "@/lib/format";
 
-// LG approval modal — replaces the old window.prompt flow. Collects a proper
-// approval number and lets LG override the auto taxability decision (they are
-// the legal authority on it). onApproved() is called after a successful PATCH.
-export default function ApproveProductModal({ open, onClose, onApproved, product }) {
+// LG approval modal for an excise registration. Collects the approval number
+// and lets LG override the auto taxability decision (they are the legal
+// authority on it). onApproved() is called after a successful PATCH.
+export default function ApproveProductModal({ open, onClose, onApproved, registration }) {
   const [approvalNumber, setApprovalNumber] = useState("");
   // taxable: "auto" | "taxable" | "exempt"
   const [taxable, setTaxable] = useState("auto");
@@ -19,12 +19,12 @@ export default function ApproveProductModal({ open, onClose, onApproved, product
       setTaxable("auto");
       setError(null);
     }
-  }, [open, product?.id]);
+  }, [open, registration?.id]);
 
-  if (!product) return null;
+  if (!registration) return null;
 
-  const autoTaxable = !!(product.fgCode && product.fgCode.includes("01-002"));
-  const taxPerUnit = (product.exciseTax || 0) + (product.localTax || 0);
+  const autoTaxable = !!(registration.fgCode && registration.fgCode.includes("01-002"));
+  const taxPerUnit = (registration.exciseTax || 0) + (registration.localTax || 0);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -34,7 +34,7 @@ export default function ApproveProductModal({ open, onClose, onApproved, product
     const body = { status: "approved", approvalNumber: approvalNumber.trim() };
     if (taxable !== "auto") body.taxableOverride = taxable === "taxable";
     try {
-      const res = await fetch(`/api/products/${product.id}`, {
+      const res = await fetch(`/api/excise-registrations/${registration.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -53,15 +53,15 @@ export default function ApproveProductModal({ open, onClose, onApproved, product
   };
 
   return (
-    <Modal open={open} onClose={() => !submitting && onClose()} title={`อนุมัติขึ้นทะเบียนสินค้า — ${product.fgCode}`} size="md">
+    <Modal open={open} onClose={() => !submitting && onClose()} title={`อนุมัติขึ้นทะเบียนสินค้า — ${registration.fgCode}`} size="md">
       <form onSubmit={submit} className="p-4 space-y-4">
         <div className="text-xs bg-[var(--panel-2)] rounded-lg p-3 space-y-1">
-          <div className="text-[var(--text-2)]">{product.productDescription} ({product.brandName})</div>
-          <div className="text-[var(--text-3)]">ลูกค้า: {product.customerName || "-"}</div>
+          <div className="text-[var(--text-2)]">{registration.productName} ({registration.brandName})</div>
+          <div className="text-[var(--text-3)]">ลูกค้า: {registration.customerName || "-"}</div>
           <div className="text-[var(--text-3)]">
             ภาษี/ชิ้น (ปัจจุบัน):{" "}
             <span className="font-mono font-semibold text-[var(--text-2)]">
-              {product.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit)}
+              {registration.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit)}
             </span>
           </div>
         </div>

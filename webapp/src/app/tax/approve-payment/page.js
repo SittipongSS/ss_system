@@ -94,9 +94,9 @@ export default function LegalTax() {
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1>
-            <span className="premium-header-icon"><ReceiptText size={22} /></span> ยื่นชำระภาษี
+            <span className="premium-header-icon"><ReceiptText size={22} /></span> อนุมัติชำระภาษี
           </h1>
-          <p>ยื่นชำระภาษีสรรพสามิตและบันทึกใบเสร็จกรมสรรพสามิต</p>
+          <p>ตรวจอนุมัติและยื่นชำระภาษีสรรพสามิต พร้อมบันทึกใบเสร็จกรมสรรพสามิต</p>
         </div>
         <div className="pill warn">
           รอดำเนินการ <strong className="font-mono ml-1">{received.length + filing.length}</strong> รายการ

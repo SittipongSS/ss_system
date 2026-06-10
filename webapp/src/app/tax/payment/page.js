@@ -11,10 +11,10 @@ import EditOrderModal from "@/components/EditOrderModal";
 
 export default function SalesDashboard() {
   const canAct = useCan("sales:act");
-  const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
+  const [registrations, setRegistrations] = useState(() => apiCache.get("/api/excise-registrations") ?? []);
   const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
   const [loading, setLoading] = useState(
-    () => !(apiCache.has("/api/products") && apiCache.has("/api/orders")),
+    () => !(apiCache.has("/api/excise-registrations") && apiCache.has("/api/orders")),
   );
   const [userName, setUserName] = useState("");
   const [activeTab, setActiveTab] = useState("pending");
@@ -30,7 +30,7 @@ export default function SalesDashboard() {
     poReference: "",
     deliveryDate: "",
     remarks: "",
-    items: [{ productId: "", quantity: "" }],
+    items: [{ registrationId: "", quantity: "" }],
   };
   const [formData, setFormData] = useState(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,21 +41,21 @@ export default function SalesDashboard() {
       items: f.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)),
     }));
   const addItem = () =>
-    setFormData((f) => ({ ...f, items: [...f.items, { productId: "", quantity: "" }] }));
+    setFormData((f) => ({ ...f, items: [...f.items, { registrationId: "", quantity: "" }] }));
   const removeItem = (idx) =>
     setFormData((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
 
   const fetchData = async () => {
     try {
-      const [resProducts, resOrders] = await Promise.all([
-        fetch("/api/products"),
+      const [resRegs, resOrders] = await Promise.all([
+        fetch("/api/excise-registrations"),
         fetch("/api/orders"),
       ]);
-      if (resProducts.ok && resOrders.ok) {
-        const [p, o] = await Promise.all([resProducts.json(), resOrders.json()]);
-        apiCache.set("/api/products", p);
+      if (resRegs.ok && resOrders.ok) {
+        const [p, o] = await Promise.all([resRegs.json(), resOrders.json()]);
+        apiCache.set("/api/excise-registrations", p);
         apiCache.set("/api/orders", o);
-        setProducts(p);
+        setRegistrations(p);
         setOrders(o);
       }
     } catch (err) {
@@ -90,8 +90,8 @@ export default function SalesDashboard() {
       return;
     }
     const items = formData.items
-      .filter((it) => it.productId && it.quantity)
-      .map((it) => ({ productId: it.productId, quantity: it.quantity }));
+      .filter((it) => it.registrationId && it.quantity)
+      .map((it) => ({ registrationId: it.registrationId, quantity: it.quantity }));
     if (items.length === 0) {
       alert("กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ");
       return;
@@ -125,15 +125,11 @@ export default function SalesDashboard() {
     setIsSubmitting(false);
   };
 
-  const approvedProducts = products.filter((p) => p.status === "approved");
-  // Form shows only the selected customer's approved products (1 order = 1 customer).
+  const approvedRegs = registrations.filter((r) => r.status === "approved");
+  // Form shows only the selected customer's approved registrations (1 order = 1 customer).
   const selectedCustomer = customers.find((c) => c.id === formData.customerId);
-  const formProducts = selectedCustomer
-    ? approvedProducts.filter(
-        (p) =>
-          (selectedCustomer.name && p.customerName === selectedCustomer.name) ||
-          (selectedCustomer.taxId && p.taxId === selectedCustomer.taxId),
-      )
+  const formRegs = selectedCustomer
+    ? approvedRegs.filter((r) => r.customerId === selectedCustomer.id)
     : [];
   const pendingOrders = orders.filter((o) => o.status === "pending");
   const rejectedOrders = orders.filter((o) => o.status === "rejected");
@@ -150,9 +146,9 @@ export default function SalesDashboard() {
             <span className="premium-header-icon">
               <FileText size={22} />
             </span>{" "}
-            ใบเสนอราคา / PO
+            ยื่นชำระภาษี
           </h1>
-          <p>บันทึกใบเสนอราคา รับเงิน และส่งต่อให้ฝ่ายกฎหมายยื่นภาษี</p>
+          <p>บันทึกใบเสนอราคา / PO รับเงิน และยื่นให้ฝ่ายกฎหมายอนุมัติชำระภาษี</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="pill danger">รอรับเงิน {pendingOrders.length} รายการ</div>
@@ -217,7 +213,7 @@ export default function SalesDashboard() {
                       >
                         <td>
                           <div className="font-semibold text-[var(--text)] ">{o.quotationRef}</div>
-                          <div className="text-[11px] text-[var(--accent)] mt-0.5">{o.customerName || o.items?.[0]?.product?.customerName || "-"}</div>
+                          <div className="text-[11px] text-[var(--accent)] mt-0.5">{o.customerName || o.items?.[0]?.registration?.customerName || "-"}</div>
                           {o.poReference && (
                             <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">PO: {o.poReference}</div>
                           )}
@@ -278,7 +274,7 @@ export default function SalesDashboard() {
             <select
               value={formData.customerId}
               required
-              onChange={(e) => setFormData({ ...formData, customerId: e.target.value, items: [{ productId: "", quantity: "" }] })}
+              onChange={(e) => setFormData({ ...formData, customerId: e.target.value, items: [{ registrationId: "", quantity: "" }] })}
               className="premium-select w-full"
             >
               <option value="">-- เลือกลูกค้า --</option>
@@ -311,23 +307,23 @@ export default function SalesDashboard() {
             </div>
             <div className="space-y-2">
               {formData.items.map((it, idx) => {
-                const prod = formProducts.find((p) => p.id === it.productId);
-                const taxPerUnit = prod
-                  ? (prod.isExciseTaxable === false ? 0 : (prod.exciseTax || 0) + (prod.localTax || 0))
+                const reg = formRegs.find((r) => r.id === it.registrationId);
+                const taxPerUnit = reg
+                  ? (reg.isExciseTaxable === false ? 0 : (reg.exciseTax || 0) + (reg.localTax || 0))
                   : 0;
                 return (
                   <div key={idx}>
                     <div className="flex gap-2 items-start">
                       <select
-                        value={it.productId}
-                        onChange={(e) => setItem(idx, { productId: e.target.value })}
+                        value={it.registrationId}
+                        onChange={(e) => setItem(idx, { registrationId: e.target.value })}
                         required
                         className="premium-select flex-1"
                       >
                         <option value="">{selectedCustomer ? "-- เลือกสินค้า (เฉพาะที่อนุมัติแล้ว) --" : "-- เลือกลูกค้าก่อน --"}</option>
-                        {formProducts.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.fgCode} | {p.productDescription} ({p.customerName})
+                        {formRegs.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.fgCode} | {r.productName}
                           </option>
                         ))}
                       </select>
@@ -350,12 +346,8 @@ export default function SalesDashboard() {
                         ✕
                       </button>
                     </div>
-                    {prod && (
+                    {reg && (
                       <div className="flex gap-4 mt-1 ml-1 text-[11px] text-[var(--text-3)] font-mono">
-                        <span>
-                          ราคาขายปลีก:{" "}
-                          <span className="font-semibold text-[var(--text-2)]">{fmtMoney(prod.retailPriceIncVat || 0)}</span>
-                        </span>
                         <span>
                           ภาษี/ชิ้น:{" "}
                           <span className="font-semibold text-[var(--text-2)]">
@@ -384,7 +376,7 @@ export default function SalesDashboard() {
       </Modal>
 
       <ReceiveModal open={!!receiveTarget} order={receiveTarget} onClose={() => setReceiveTarget(null)} onConfirmed={fetchData} />
-      <EditOrderModal open={!!editTarget} order={editTarget} products={products} onClose={() => setEditTarget(null)} onSaved={fetchData} />
+      <EditOrderModal open={!!editTarget} order={editTarget} registrations={registrations} onClose={() => setEditTarget(null)} onSaved={fetchData} />
       <OrderDetailModal order={selectedOrder} open={!!selectedOrder} onClose={() => setSelectedOrder(null)} />
     </>
   );

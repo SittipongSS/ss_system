@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScope } from '@/lib/permissions';
+import { categoryOf } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
 export async function GET() {
@@ -48,9 +49,22 @@ export async function POST(request) {
   const materialCost = factoryPrice * 0.65;
   const factoryProfit = factoryPrice - materialCost - laborCost - shippingCost;
 
+  // Master catalog only — products are NOT tied to a customer here. Linking a
+  // product to a customer + excise approval happens in the registration flow
+  // (/api/excise-registrations). Category is derived from the FG code.
+  const categoryCode = body.categoryCode || categoryOf(fgCode);
+
+  // Whitelist the catalog fields we accept from the form (don't spread the
+  // whole body — keeps stray customer/status values out of the master row).
   const newProduct = {
     id: 'PRD-' + Date.now().toString().slice(-6),
-    ...body,
+    fgCode,
+    productDescription: body.productDescription ?? null,
+    brandName: body.brandName ?? null,
+    volume,
+    costPrice,
+    retailPriceIncVat,
+    mapFileUrl: body.mapFileUrl ?? null,
     taxableOverride,
     isExciseTaxable,
     retailPriceExVat,
@@ -60,7 +74,8 @@ export async function POST(request) {
     shippingCost,
     materialCost,
     factoryProfit,
-    status: 'pending_legal',
+    categoryCode: categoryCode ?? null,
+    metadata: body.metadata || {},
     // Ownership comes from the server-side identity, not the client body.
     team: user?.team ?? null,
     ownerId: user?.id ?? null,

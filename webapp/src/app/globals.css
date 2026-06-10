@@ -773,6 +773,10 @@ h1, h2, h3, h4, h5, h6 {
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 
+/* Kanban / list card lift on hover (PM Board + Tasks) */
+.hover-card { transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; }
+.hover-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: var(--shadow-md, var(--glass-shadow)); }
+
 .glass-panel.glow-emerald,
 .glass-panel.glow-gold {
   box-shadow: var(--shadow-sm);

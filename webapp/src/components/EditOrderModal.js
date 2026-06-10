@@ -7,9 +7,9 @@ import { fmtMoney } from "@/lib/format";
 // Edit an existing order (quotation-based). Quotation is the primary reference;
 // PO is optional. Editable only while pending or rejected. When the order was
 // rejected by LG, saving resubmits it (status → received) back into LG's queue.
-export default function EditOrderModal({ open, onClose, onSaved, order, products = [] }) {
+export default function EditOrderModal({ open, onClose, onSaved, order, registrations = [] }) {
   const [form, setForm] = useState({ quotationRef: "", poReference: "", deliveryDate: "", remarks: "" });
-  const [items, setItems] = useState([{ productId: "", quantity: "" }]);
+  const [items, setItems] = useState([{ registrationId: "", quantity: "" }]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -22,34 +22,33 @@ export default function EditOrderModal({ open, onClose, onSaved, order, products
         remarks: order.remarks === "-" ? "" : order.remarks || "",
       });
       const seeded = (order.items || []).map((it) => ({
-        productId: it.productId || it.product?.id || "",
+        registrationId: it.registrationId || it.registration?.id || "",
         quantity: String(it.quantity ?? ""),
       }));
-      setItems(seeded.length ? seeded : [{ productId: "", quantity: "" }]);
+      setItems(seeded.length ? seeded : [{ registrationId: "", quantity: "" }]);
       setError(null);
     }
   }, [open, order?.id]);
 
   if (!order) return null;
   const isResubmit = order.status === "rejected";
-  // The customer is fixed on edit. Show only that customer's approved products.
-  // (snapshot fields fall back to the first line item for legacy orders.)
-  const custName = order.customerName || order.items?.[0]?.product?.customerName || "";
-  const custTax = order.customerTaxId || order.items?.[0]?.product?.taxId || "";
-  const approved = products.filter(
-    (p) =>
-      p.status === "approved" &&
-      (((custName && p.customerName === custName) || (custTax && p.taxId === custTax)) ||
-        (!custName && !custTax)),
+  // The customer is fixed on edit. Show only that customer's approved
+  // registrations. (legacy orders without a customerId show all approved.)
+  const custName = order.customerName || order.items?.[0]?.registration?.customerName || "";
+  const custTax = order.customerTaxId || order.items?.[0]?.registration?.taxId || "";
+  const approved = registrations.filter(
+    (r) =>
+      r.status === "approved" &&
+      (order.customerId ? r.customerId === order.customerId : true),
   );
 
   const setItem = (i, patch) => setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
-  const addItem = () => setItems((arr) => [...arr, { productId: "", quantity: "" }]);
+  const addItem = () => setItems((arr) => [...arr, { registrationId: "", quantity: "" }]);
   const removeItem = (i) => setItems((arr) => arr.filter((_, idx) => idx !== i));
 
   const submit = async (e) => {
     e.preventDefault();
-    const cleanItems = items.filter((it) => it.productId && it.quantity).map((it) => ({ productId: it.productId, quantity: it.quantity }));
+    const cleanItems = items.filter((it) => it.registrationId && it.quantity).map((it) => ({ registrationId: it.registrationId, quantity: it.quantity }));
     if (cleanItems.length === 0) {
       setError("ต้องมีรายการสินค้าอย่างน้อย 1 รายการ");
       return;
@@ -126,15 +125,15 @@ export default function EditOrderModal({ open, onClose, onSaved, order, products
             </div>
             <div className="space-y-2">
               {items.map((it, idx) => {
-                const prod = approved.find((p) => p.id === it.productId);
-                const taxPerUnit = prod ? (prod.isExciseTaxable === false ? 0 : (prod.exciseTax || 0) + (prod.localTax || 0)) : 0;
+                const reg = approved.find((r) => r.id === it.registrationId);
+                const taxPerUnit = reg ? (reg.isExciseTaxable === false ? 0 : (reg.exciseTax || 0) + (reg.localTax || 0)) : 0;
                 return (
                   <div key={idx}>
                     <div className="flex gap-2 items-start">
-                      <select value={it.productId} required onChange={(e) => setItem(idx, { productId: e.target.value })} className="premium-select flex-1">
+                      <select value={it.registrationId} required onChange={(e) => setItem(idx, { registrationId: e.target.value })} className="premium-select flex-1">
                         <option value="">-- เลือกสินค้า (เฉพาะที่อนุมัติแล้ว) --</option>
-                        {approved.map((p) => (
-                          <option key={p.id} value={p.id}>{p.fgCode} | {p.productDescription} ({p.customerName})</option>
+                        {approved.map((r) => (
+                          <option key={r.id} value={r.id}>{r.fgCode} | {r.productName}</option>
                         ))}
                       </select>
                       <input type="number" value={it.quantity} required min="1" placeholder="จำนวน"
@@ -143,7 +142,7 @@ export default function EditOrderModal({ open, onClose, onSaved, order, products
                       <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1}
                         className="btn px-3 text-[var(--red)] disabled:opacity-30" title="ลบรายการ">✕</button>
                     </div>
-                    {prod && (
+                    {reg && (
                       <div className="flex gap-4 mt-1 ml-1 text-[11px] text-[var(--text-3)] font-mono">
                         <span>ภาษี/ชิ้น: <span className="font-semibold text-[var(--text-2)]">{taxPerUnit > 0 ? fmtMoney(taxPerUnit) : "ยกเว้น"}</span></span>
                       </div>

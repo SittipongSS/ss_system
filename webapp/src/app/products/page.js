@@ -4,31 +4,28 @@ import { Package, Plus, Search } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
-import ProductStatusPill from "@/components/ProductStatusPill";
 
+// Master product catalog. FG products are CREATED here, independent of any
+// customer. Linking a product to a customer + excise approval happens in the
+// excise registration flow (/excise).
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has("/api/products"));
   const [showForm, setShowForm] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const emptyForm = {
     fgCode: "",
     productDescription: "",
     brandName: "",
-    customerName: "",
-    taxId: "",
-    address: "",
     volume: "",
     costPrice: "",
     retailPriceIncVat: "",
-  });
+  };
+  const [formData, setFormData] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [userName, setUserName] = useState("");
-  const [customers, setCustomers] = useState([]);
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
 
   const formatMoney = (a) =>
     a == null ? "-" : a.toLocaleString("th-TH", { style: "currency", currency: "THB", minimumFractionDigits: 2 });
@@ -50,44 +47,12 @@ export default function ProductRegistry() {
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
     fetchProducts();
-    fetch("/api/customers")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setCustomers(d || []))
-      .catch(() => {});
   }, []);
 
-  const handleChange = (e) =>
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-
-  const handleCustomerSelect = (e) => {
-    const arCode = e.target.value;
-    if (!arCode) return setSelectedCustomer(null);
-    const customer = customers.find((c) => c.arCode === arCode);
-    setSelectedCustomer(customer || null);
-    if (customer) {
-      setFormData({
-        ...formData,
-        customerName: customer.name,
-        taxId: customer.taxId,
-        address: customer.address,
-        brandName: "",
-      });
-    }
-  };
+  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const openForm = () => {
-    setFormData({
-      fgCode: "",
-      productDescription: "",
-      brandName: "",
-      customerName: "",
-      taxId: "",
-      address: "",
-      volume: "",
-      costPrice: "",
-      retailPriceIncVat: "",
-    });
-    setSelectedCustomer(null);
+    setFormData(emptyForm);
     setShowForm(true);
   };
 
@@ -105,7 +70,6 @@ export default function ProductRegistry() {
     const payload = {
       ...formData,
       assignee: userName,
-      mapFileUrl: selectedCustomer ? selectedCustomer.mapFileUrl : null,
       volume: parseFloat(formData.volume),
       costPrice: parseFloat(formData.costPrice),
       retailPriceIncVat: parseFloat(formData.retailPriceIncVat),
@@ -132,10 +96,8 @@ export default function ProductRegistry() {
 
   const q = search.trim().toLowerCase();
   const filteredProducts = products.filter((p) => {
-    if (statusFilter !== "all" && p.status !== statusFilter) return false;
     if (!q) return true;
-    return [p.fgCode, p.productDescription, p.brandName, p.customerName]
-      .some((v) => (v || "").toLowerCase().includes(q));
+    return [p.fgCode, p.productDescription, p.brandName].some((v) => (v || "").toLowerCase().includes(q));
   });
 
   return (
@@ -149,9 +111,9 @@ export default function ProductRegistry() {
             <span className="premium-header-icon">
               <Package size={22} />
             </span>{" "}
-            ทะเบียนสินค้า
+            ข้อมูลสินค้า
           </h1>
-          <p>ฐานข้อมูลสินค้า (Master Data) และการขึ้นทะเบียนสรรพสามิต</p>
+          <p>ฐานข้อมูลสินค้ากลาง (Master Data) — รหัส FG สเปค และต้นทุน/ภาษีต่อหน่วย</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="pill ok">ทั้งหมด {products.length} รายการ</div>
@@ -176,17 +138,9 @@ export default function ProductRegistry() {
             <h3 className="font-semibold text-sm text-[var(--text)]">
               ฐานข้อมูลสินค้า ({filteredProducts.length} รายการ)
             </h3>
-            <div className="flex items-center gap-2">
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ height: 34, fontSize: "12.5px" }}>
-                <option value="all">ทุกสถานะ</option>
-                <option value="pending_legal">รออนุมัติ</option>
-                <option value="approved">อนุมัติแล้ว</option>
-                <option value="rejected">ตีกลับ</option>
-              </select>
-              <div className="search-bar" style={{ maxWidth: 260 }}>
-                <Search size={15} className="icon-l" />
-                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อ / แบรนด์ / ลูกค้า..." />
-              </div>
+            <div className="search-bar" style={{ maxWidth: 260 }}>
+              <Search size={15} className="icon-l" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อ / แบรนด์..." />
             </div>
           </div>
           <div className="premium-table-wrapper border-none rounded-t-none">
@@ -195,37 +149,41 @@ export default function ProductRegistry() {
                 <tr>
                   <th>รายละเอียดสินค้า (FG Code)</th>
                   <th>แบรนด์</th>
-                  <th>ลูกค้า</th>
                   <th className="num">ปริมาตร</th>
                   <th className="num">ราคาขายปลีก</th>
-                  <th>สถานะ</th>
+                  <th className="num">ภาษี/ชิ้น</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="text-center py-10 text-[var(--text-3)]">
-                      {search.trim() || statusFilter !== "all" ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
+                    <td colSpan="5" className="text-center py-10 text-[var(--text-3)]">
+                      {search.trim() ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
                     </td>
                   </tr>
                 ) : (
-                  filteredProducts.map((p) => (
-                    <tr
-                      key={p.id}
-                      onClick={() => (window.location.href = `/products/${p.id}`)}
-                      className="clickable-row"
-                    >
-                      <td>
-                        <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
-                        <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
-                      </td>
-                      <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
-                      <td className="text-[var(--text-2)]">{p.customerName}</td>
-                      <td className="num font-mono text-[var(--text-2)]">{p.volume} ml</td>
-                      <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
-                      <td><ProductStatusPill status={p.status} /></td>
-                    </tr>
-                  ))
+                  filteredProducts.map((p) => {
+                    const isExempt = p.isExciseTaxable === false;
+                    const taxRate = isExempt ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
+                    return (
+                      <tr
+                        key={p.id}
+                        onClick={() => (window.location.href = `/products/${p.id}`)}
+                        className="clickable-row"
+                      >
+                        <td>
+                          <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
+                          <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
+                        </td>
+                        <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
+                        <td className="num font-mono text-[var(--text-2)]">{p.volume} ml</td>
+                        <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
+                        <td className="num mono text-[var(--text-2)]">
+                          {isExempt ? <span className="status-pill success text-[10px]">ยกเว้น</span> : formatMoney(taxRate)}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -233,50 +191,15 @@ export default function ProductRegistry() {
         </div>
       )}
 
-      {/* Add product modal */}
+      {/* Add product modal — catalog only (no customer). */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="เพิ่มสินค้าใหม่ (New Product)" size="lg">
         <form onSubmit={handleSubmit}>
-          {/* Section 1: customer */}
+          {/* Section 1: product */}
           <div className="mb-[22px]">
             <div className="flex justify-between items-center border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลลูกค้า (Customer Info)</h3>
-              {customers.length > 0 && (
-                <select
-                  onChange={handleCustomerSelect}
-                  className="premium-select"
-                  style={{ width: "220px", height: "32px", fontSize: "12.5px" }}
-                >
-                  <option value="">⚡ เลือกรหัสลูกค้า (Auto-fill)</option>
-                  {customers.map((c) => (
-                    <option key={c.arCode} value={c.arCode}>
-                      {c.arCode} : {c.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-              <div className="form-group">
-                <label>ชื่อบริษัท / ลูกค้า <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="customerName" value={formData.customerName} onChange={handleChange} required className="premium-input w-full" />
-              </div>
-              <div className="form-group">
-                <label>เลขประจำตัวผู้เสียภาษี <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="taxId" value={formData.taxId} onChange={handleChange} required className="premium-input w-full font-mono" />
-              </div>
-              <div className="form-group col-span-2">
-                <label>ที่อยู่ลูกค้า <span className="text-[var(--red)]">*</span></label>
-                <textarea name="address" value={formData.address} onChange={handleChange} required className="premium-input w-full" style={{ height: "80px", padding: "10px 12px", resize: "none" }}></textarea>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2: product */}
-          <div className="mb-[22px]">
-            <div className="flex justify-between items-center border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลหลักสินค้า (Product Details)</h3>
+              <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลหลักสินค้า (Product Details)</h3>
               <span className="text-xs font-semibold text-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 rounded-full">
-                Assignee: {userName}
+                ผู้สร้าง: {userName}
               </span>
             </div>
             <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
@@ -296,24 +219,15 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-                {selectedCustomer && selectedCustomer.brands && selectedCustomer.brands.length > 0 ? (
-                  <select name="brandName" value={formData.brandName} onChange={handleChange} required className="premium-select w-full">
-                    <option value="">-- เลือกแบรนด์ของลูกค้านี้ --</option>
-                    {selectedCustomer.brands.map((b, i) => (
-                      <option key={i} value={b}>{b}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required placeholder="Brand Name" className="premium-input w-full" />
-                )}
+                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required placeholder="Brand Name" className="premium-input w-full" />
               </div>
             </div>
           </div>
 
-          {/* Section 3: excise */}
+          {/* Section 2: excise metrics */}
           <div className="mb-[22px]">
             <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลสำหรับสรรพสามิต (Excise Metrics)</h3>
+              <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลสำหรับสรรพสามิต (Excise Metrics)</h3>
             </div>
             <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
               <div className="form-group">
@@ -334,7 +248,7 @@ export default function ProductRegistry() {
           <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
             <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>
             <button type="submit" disabled={submitting} className="btn btn-primary px-8">
-              {submitting ? "กำลังบันทึก..." : "บันทึกและส่งข้อมูล"}
+              {submitting ? "กำลังบันทึก..." : "บันทึกสินค้า"}
             </button>
           </div>
         </form>

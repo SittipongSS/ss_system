@@ -27,6 +27,8 @@ export async function GET() {
         id: u.id,
         email: u.email,
         name: u.user_metadata?.name || '',
+        firstName: u.user_metadata?.firstName || (u.user_metadata?.name ? u.user_metadata.name.split(' ')[0] : ''),
+        lastName: u.user_metadata?.lastName || (u.user_metadata?.name ? u.user_metadata.name.substring(u.user_metadata.name.indexOf(' ') + 1) : ''),
         role: u.app_metadata?.role || null,
         team: u.app_metadata?.team || null,
         department: u.app_metadata?.department || departmentFor(u.app_metadata?.role) || null,
@@ -46,7 +48,9 @@ export async function POST(request) {
 
   const email = (body.email || '').trim();
   const password = body.password || '';
-  const name = (body.name || '').trim();
+  const firstName = (body.firstName || '').trim();
+  const lastName = (body.lastName || '').trim();
+  const name = `${firstName} ${lastName}`.trim();
   const role = body.role;
   const team = body.team || null;
 
@@ -59,7 +63,7 @@ export async function POST(request) {
     email,
     password,
     email_confirm: true, // no email verification step for internal accounts
-    user_metadata: { name },
+    user_metadata: { name, firstName, lastName },
     // must_change_password forces a self-service password change on first login
     // (the admin-assigned password is temporary). Stored in app_metadata so the
     // user can't clear it client-side — only our /api/account/password route does.

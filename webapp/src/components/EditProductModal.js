@@ -2,11 +2,9 @@
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 
-// Edit an existing product. When the product was rejected by LG, saving also
-// resubmits it (status rejected → pending_legal) so it re-enters the approval
-// queue — closing the correction loop. onSaved() refetches after success.
+// Edit a master product's catalog/spec fields. Customer linkage + excise
+// approval are NOT here — they live on the registration (/excise).
 const FIELDS = [
-  "customerName", "taxId", "address",
   "fgCode", "productDescription", "brandName",
   "volume", "costPrice", "retailPriceIncVat",
 ];
@@ -26,7 +24,6 @@ export default function EditProductModal({ open, onClose, onSaved, product }) {
   }, [open, product?.id]);
 
   if (!product) return null;
-  const isResubmit = product.status === "rejected";
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async (e) => {
@@ -39,7 +36,6 @@ export default function EditProductModal({ open, onClose, onSaved, product }) {
       costPrice: form.costPrice === "" ? null : parseFloat(form.costPrice),
       retailPriceIncVat: form.retailPriceIncVat === "" ? null : parseFloat(form.retailPriceIncVat),
     };
-    if (isResubmit) body.status = "pending_legal"; // resubmit for approval
     try {
       const res = await fetch(`/api/products/${product.id}`, {
         method: "PATCH",
@@ -73,30 +69,9 @@ export default function EditProductModal({ open, onClose, onSaved, product }) {
   );
 
   return (
-    <Modal
-      open={open}
-      onClose={() => !submitting && onClose()}
-      title={isResubmit ? `แก้ไขและส่งกลับ — ${product.fgCode}` : `แก้ไขสินค้า — ${product.fgCode}`}
-      size="lg"
-    >
+    <Modal open={open} onClose={() => !submitting && onClose()} title={`แก้ไขสินค้า — ${product.fgCode}`} size="lg">
       <form onSubmit={submit}>
-        {isResubmit && product.rejectionReason && (
-          <div className="mx-4 mt-4 text-xs bg-[var(--red-soft)] border border-[var(--border)] rounded-lg p-3">
-            <span className="text-[var(--red)] font-semibold">เหตุผลที่ถูกตีกลับ: </span>
-            <span className="text-[var(--text-2)]">{product.rejectionReason}</span>
-          </div>
-        )}
-
         <div className="p-4 space-y-5">
-          <div>
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">ข้อมูลลูกค้า</h3>
-            <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-              {field("customerName", "ชื่อบริษัท / ลูกค้า")}
-              {field("taxId", "เลขประจำตัวผู้เสียภาษี")}
-              <div className="col-span-2">{field("address", "ที่อยู่ลูกค้า")}</div>
-            </div>
-          </div>
-
           <div>
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">ข้อมูลสินค้า</h3>
             <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
@@ -124,7 +99,7 @@ export default function EditProductModal({ open, onClose, onSaved, product }) {
         <div className="flex justify-end gap-2 px-4 pb-4 pt-3 border-t border-[var(--border)]">
           <button type="button" onClick={onClose} className="btn" disabled={submitting}>ยกเลิก</button>
           <button type="submit" disabled={submitting} className="btn btn-primary px-6 disabled:opacity-50">
-            {submitting ? "กำลังบันทึก..." : isResubmit ? "บันทึกและส่งกลับให้ตรวจ" : "บันทึกการแก้ไข"}
+            {submitting ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
           </button>
         </div>
       </form>

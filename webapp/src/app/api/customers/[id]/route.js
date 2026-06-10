@@ -1,28 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord } from '@/lib/permissions';
+import { listForCustomer } from '@/lib/excise/registrations';
 
 export const dynamic = 'force-dynamic';
-// Products are linked to a customer by matching name OR taxId (denormalized,
-// same as the original logic). We run two queries and merge to avoid issues
-// with commas/special chars in PostgREST `.or()` filter strings.
-async function findLinkedProducts(supabase, customer) {
-  // Run both lookups in parallel — they're independent, so awaiting them
-  // sequentially just doubles the DB round-trip latency.
-  const [byNameRes, byTaxRes] = await Promise.all([
-    customer.name
-      ? supabase.from('products').select('*').eq('customerName', customer.name)
-      : Promise.resolve({ data: [] }),
-    customer.taxId
-      ? supabase.from('products').select('*').eq('taxId', customer.taxId)
-      : Promise.resolve({ data: [] }),
-  ]);
-  const byName = byNameRes.data || [];
-  const byTax = byTaxRes.data || [];
-  const map = new Map();
-  for (const p of [...byName, ...byTax]) map.set(p.id, p);
-  return [...map.values()];
-}
 
 // GET /api/customers/[id]
 export async function GET(request, { params }) {
@@ -38,17 +19,35 @@ export async function GET(request, { params }) {
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบข้อมูลลูกค้ารายนี้' }, { status: 404 });
 
-  // Customer is viewable by all, but only show linked products/orders the
-  // viewer is allowed to see (team scope).
-  const products = (await findLinkedProducts(supabase, customer)).filter((p) =>
-    canViewRecord(user, 'products', p)
-  );
-  const productIds = products.map((p) => p.id);
+  // The customer's registered products = its excise registrations (team-scoped).
+  // Merge each with its master product so the detail UI can show spec/price.
+  const regs = (await listForCustomer(id)).filter((r) => canViewRecord(user, 'registrations', r));
+  const regProductIds = [...new Set(regs.map((r) => r.productId).filter(Boolean))];
+  let productMap = new Map();
+  if (regProductIds.length) {
+    const { data: prods } = await supabase.from('products').select('*').in('id', regProductIds);
+    productMap = new Map((prods || []).map((p) => [p.id, p]));
+  }
+  // Shape kept backward-compatible with the customer-detail page: product spec
+  // fields from master + the registration's status/tax snapshot.
+  const products = regs.map((r) => {
+    const p = productMap.get(r.productId) || {};
+    return {
+      ...p,
+      id: r.productId || p.id,
+      registrationId: r.id,
+      fgCode: r.fgCode ?? p.fgCode,
+      productDescription: r.productName ?? p.productDescription,
+      brandName: r.brandName ?? p.brandName,
+      status: r.status,
+      isExciseTaxable: r.isExciseTaxable,
+      exciseTax: r.exciseTax,
+      localTax: r.localTax,
+    };
+  });
 
-  // Collect this customer's orders from two sources:
-  //   (a) direct link — orders.customerId (new orders, authoritative)
-  //   (b) legacy derive — PO → items → this customer's products (old orders
-  //       created before customerId existed / were never backfilled)
+  // Collect this customer's orders: direct link (orders.customerId) +
+  // registrations of this customer referenced by any order line.
   const orderIds = new Set();
   const { data: directOrders } = await supabase
     .from('orders')
@@ -56,11 +55,12 @@ export async function GET(request, { params }) {
     .eq('customerId', id);
   (directOrders || []).forEach((o) => orderIds.add(o.id));
 
-  if (productIds.length) {
+  const regIds = regs.map((r) => r.id);
+  if (regIds.length) {
     const { data: itemRows } = await supabase
       .from('order_items')
       .select('orderId')
-      .in('productId', productIds);
+      .in('registrationId', regIds);
     (itemRows || []).forEach((r) => orderIds.add(r.orderId));
   }
 
@@ -69,7 +69,7 @@ export async function GET(request, { params }) {
   if (ids.length) {
     const { data: ord } = await supabase
       .from('orders')
-      .select('*, items:order_items(*, product:products(*))')
+      .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
       .in('id', ids)
       .order('createdAt', { ascending: false });
     orders = (ord || []).filter((o) => canViewRecord(user, 'orders', o));
@@ -113,9 +113,14 @@ export async function PATCH(request, { params }) {
   const updates = {};
   // 'team'/'ownerId' allow transferring a customer to another team (gated above
   // by canEditRecord — supervisor cross-team, team roles within their scope).
-  for (const k of ['arCode', 'name', 'taxId', 'phone', 'address', 'brands', 'mapFileUrl', 'team', 'ownerId']) {
+  for (const k of [
+    'arCode', 'name', 'taxId', 'phone', 'address', 'brands', 'mapFileUrl',
+    'contactPerson', 'email', 'creditTerms', 'jubiliId', 'metadata',  // master-data fields (0005)
+    'team', 'ownerId',
+  ]) {
     if (body[k] !== undefined) updates[k] = body[k];
   }
+  updates.updatedAt = new Date().toISOString();
 
   const { data: updated, error } = await supabase
     .from('customers')
@@ -125,10 +130,11 @@ export async function PATCH(request, { params }) {
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  // Cascade name/taxId changes to linked products
+  // Cascade name/taxId changes to this customer's excise registrations
+  // (they snapshot the customer for display/history).
   const cascade = { customerName: updated.name, taxId: updated.taxId };
-  if (oldName) await supabase.from('products').update(cascade).eq('customerName', oldName);
-  if (oldTaxId) await supabase.from('products').update(cascade).eq('taxId', oldTaxId);
+  await supabase.from('excise_registrations').update(cascade).eq('customerId', id);
+  void oldName; void oldTaxId;
 
   return Response.json(updated);
 }

@@ -49,6 +49,16 @@ export async function proxy(request) {
     return NextResponse.redirect(redirectUrl);
   }
 
+  // ── Temporary system lockdown ─────────────────────────────────────────
+  // All three systems (database / tax / project management) are closed to
+  // everyone except admins. Non-admins may only reach the login page, the hub
+  // (/home) and their own-account endpoints. Flip ADMIN_LOCKDOWN to false to
+  // re-open the systems to all roles.
+  if (user && !isLogin && lockedOut(user.app_metadata?.role, path, isApi)) {
+    if (isApi) return Response.json({ error: 'forbidden' }, { status: 403 });
+    return NextResponse.redirect(new URL('/home', request.url));
+  }
+
   // Role-based write protection for API routes (defense-in-depth; the UI also
   // hides actions). GET is always allowed for any signed-in user.
   if (user && isApi && !apiWriteAllowed(request.method, path, user.app_metadata?.role)) {
@@ -56,6 +66,21 @@ export async function proxy(request) {
   }
 
   return response;
+}
+
+// Master switch for the temporary lockdown. Set to false to re-open all three
+// systems to their normal roles (the per-route capability gate below still
+// applies).
+const ADMIN_LOCKDOWN = true;
+
+// During lockdown, only admins (users:manage) may touch the systems. Everyone
+// else is limited to the hub page and their own-account API. `/` (login) is
+// handled by the caller and never reaches here.
+function lockedOut(role, path, isApi) {
+  if (!ADMIN_LOCKDOWN) return false;
+  if (can(role, 'users:manage')) return false; // admin — full access
+  if (isApi) return !path.startsWith('/api/account'); // own-account APIs only
+  return path !== '/home'; // non-API pages: hub only
 }
 
 // Coarse capability gate: does this role do this KIND of write at all?
@@ -74,6 +99,16 @@ function apiWriteAllowed(method, path, role) {
     // PATCH covers both sales clearance (sales:act) and legal tax payment (legal:approve)
     if (method === 'PATCH') return can(role, 'sales:act') || can(role, 'legal:approve');
     return can(role, 'sales:act'); // create
+  }
+  // Project management (SALES only). Row-level team scope enforced in handlers.
+  if (path.startsWith('/api/pm')) return can(role, 'pm:edit');
+  // Master taxonomy (product categories) — supervisor-only writes.
+  if (path.startsWith('/api/product-types')) return can(role, 'master:manage');
+  // Excise registrations: SA submits/edits the link, LG approves (PATCH).
+  if (path.startsWith('/api/excise-registrations')) {
+    if (method === 'DELETE') return can(role, 'products:delete');
+    if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'legal:approve');
+    return can(role, 'products:edit'); // create
   }
   if (path.startsWith('/api/products')) {
     if (method === 'DELETE') return can(role, 'products:delete');

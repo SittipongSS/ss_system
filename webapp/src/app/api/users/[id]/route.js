@@ -38,7 +38,16 @@ export async function PATCH(request, { params }) {
     updates.app_metadata = { ...existingMeta, must_change_password: mustChange };
   }
 
-  if (body.name !== undefined) {
+  if (body.firstName !== undefined || body.lastName !== undefined) {
+    const fn = (body.firstName !== undefined ? body.firstName : (existing.user.user_metadata?.firstName || '')).trim();
+    const ln = (body.lastName !== undefined ? body.lastName : (existing.user.user_metadata?.lastName || '')).trim();
+    updates.user_metadata = {
+      ...(existing.user.user_metadata || {}),
+      firstName: fn,
+      lastName: ln,
+      name: `${fn} ${ln}`.trim(),
+    };
+  } else if (body.name !== undefined) {
     updates.user_metadata = {
       ...(existing.user.user_metadata || {}),
       name: (body.name || '').trim(),

@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord } from '@/lib/permissions';
+import { categoryOf } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -52,46 +53,24 @@ export async function PATCH(request, { params }) {
     }
   }
 
-  // Commercial fields belong to sales; tax/approval fields belong to legal.
-  // allowedEditFields unions the lists the user's capabilities unlock, so a
-  // legal-only user can approve but cannot rewrite costPrice/price.
-  const salesEditable = [
-    'fgCode', 'productDescription', 'brandName', 'customerName',
-    'taxId', 'address', 'volume', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl',
+  // Master catalog edit — catalog/spec fields only. Customer linkage + excise
+  // approval are NOT here; they live on the registration (/api/excise-registrations).
+  const catalogEditable = [
+    'fgCode', 'productDescription', 'brandName',
+    'volume', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl',
+    'categoryCode', 'metadata',
   ];
-  const allowed = allowedEditFields(user, 'products', salesEditable);
-
   const updated = { ...product };
-  for (const k of allowed) if (body[k] !== undefined) updated[k] = body[k];
+  for (const k of catalogEditable) if (body[k] !== undefined) updated[k] = body[k];
 
-  // Approval / rejection audit trail (driven by the status transition).
-  if (allowed.has('status') && body.status !== undefined && body.status !== product.status) {
-    if (body.status === 'approved') {
-      updated.approvedBy = user?.id ?? null;
-      updated.approvedByName = user?.name ?? null;
-      updated.approvedAt = new Date().toISOString();
-      updated.rejectionReason = null;
-    } else if (body.status === 'rejected') {
-      // Reason is required so Sales knows what to fix.
-      if (!body.rejectionReason || !String(body.rejectionReason).trim()) {
-        return Response.json({ error: 'กรุณาระบุเหตุผลที่ตีกลับ' }, { status: 400 });
-      }
-    }
+  // Re-derive categoryCode from fgCode when fgCode changed and it wasn't given.
+  if (body.fgCode !== undefined && body.categoryCode === undefined) {
+    updated.categoryCode = categoryOf(updated.fgCode) || null;
   }
 
-  // Resubmit: Sales (products:edit, no legal:approve) may send a rejected
-  // product back into the queue after fixing it. This is the only status
-  // change a non-legal editor is allowed to make.
-  if (body.status === 'pending_legal' && product.status === 'rejected' && can(user?.role, 'products:edit')) {
-    updated.status = 'pending_legal';
-    updated.rejectionReason = null;
-  }
-
-  // Recalculate derived fields. Taxability follows LG's override when set,
-  // otherwise the automatic FG-code rule.
-  const autoTaxable = !!(updated.fgCode && updated.fgCode.includes('01-002'));
-  const ovr = updated.taxableOverride;
-  const isExciseTaxable = typeof ovr === 'boolean' ? ovr : autoTaxable;
+  // Taxability is intrinsic to the FG code (auto rule). LG override now lives
+  // on the registration, not the master product.
+  const isExciseTaxable = !!(updated.fgCode && updated.fgCode.includes('01-002'));
   updated.isExciseTaxable = isExciseTaxable;
   updated.retailPriceExVat = isExciseTaxable ? updated.retailPriceIncVat / 1.07 : 0;
   updated.exciseTax = isExciseTaxable ? updated.retailPriceExVat * 0.08 : 0;
@@ -102,6 +81,8 @@ export async function PATCH(request, { params }) {
   updated.shippingCost = 1;
   updated.materialCost = factoryPrice * 0.65;
   updated.factoryProfit = factoryPrice - updated.materialCost - updated.laborCost - updated.shippingCost;
+
+  updated.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase
     .from('products')

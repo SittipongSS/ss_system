@@ -28,7 +28,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
           <div>
             <div className="text-[var(--text-3)] text-xs">ลูกค้า</div>
             <div className="text-[var(--text)] font-medium">
-              {order.customerName || order.items?.[0]?.product?.customerName || "-"}
+              {order.customerName || order.items?.[0]?.registration?.customerName || "-"}
             </div>
           </div>
           <div>

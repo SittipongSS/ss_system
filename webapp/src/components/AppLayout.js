@@ -2,10 +2,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { can } from '@/lib/permissions';
+import { can, ROLE_LABELS } from '@/lib/permissions';
 import { RoleContext } from '@/lib/roleContext';
 import Modal from '@/components/Modal';
 
@@ -15,7 +15,7 @@ const SUPABASE_CONFIGURED =
 // Warm the data cache right after login so the first click on any menu is
 // instant (data is already fetched in the background).
 function prefetchData() {
-  for (const url of ['/api/products', '/api/customers', '/api/orders']) {
+  for (const url of ['/api/products', '/api/customers', '/api/orders', '/api/excise-registrations']) {
     fetch(url)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) apiCache.set(url, d); })
@@ -28,8 +28,10 @@ export default function AppLayout({ children }) {
   const pathname = usePathname();
   const [role, setRole] = useState(null);
   const [userName, setUserName] = useState('');
+  const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [activeSystem, setActiveSystem] = useState('tax');
 
   // Self-service password change (any signed-in user, their own account only).
   const [showPwd, setShowPwd] = useState(false);
@@ -91,7 +93,8 @@ export default function AppLayout({ children }) {
     // yet (local dev before setup), fall back to a permissive local session.
     if (!SUPABASE_CONFIGURED) {
       setRole('ae_supervisor');
-      setUserName('Local Dev');
+      setUserName('Local D.');
+      setUserInitials('LD');
       prefetchData();
       return;
     }
@@ -101,16 +104,47 @@ export default function AppLayout({ children }) {
         router.replace('/');
         return;
       }
-      const name = user.user_metadata?.name || user.email || 'user';
+      let full = user.user_metadata?.name || user.email || 'user';
+      let dName = full;
+      let inits = full.substring(0, 2).toUpperCase();
+
+      if (user.user_metadata) {
+        const { firstName, lastName, name } = user.user_metadata;
+        if (firstName) {
+          dName = `${firstName}${lastName ? ' ' + lastName.charAt(0).toUpperCase() + '.' : ''}`;
+          inits = `${firstName.charAt(0)}${lastName ? lastName.charAt(0) : ''}`.toUpperCase();
+        } else if (name) {
+          const parts = name.split(' ');
+          if (parts.length > 1) {
+            dName = `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
+            inits = `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+          } else {
+            dName = name;
+            inits = name.substring(0, 2).toUpperCase();
+          }
+        }
+      }
+
       // Role comes from app_metadata (service-role-only; users cannot self-edit it).
       setRole(user.app_metadata?.role || 'user');
       // Force a password change on first login / after an admin reset.
       setMustChangePwd(!!user.app_metadata?.must_change_password);
-      setUserName(name);
-      try { localStorage.setItem('userName', name); } catch {}
+      setUserName(dName);
+      setUserInitials(inits);
+      try { localStorage.setItem('userName', full); } catch {}
       prefetchData();
     });
   }, [router]);
+
+  useEffect(() => {
+    const sys =
+      pathname.startsWith('/projects') || pathname.startsWith('/tasks') ? 'pm'
+      : pathname.startsWith('/customers') || pathname.startsWith('/products') ? 'master'
+      : pathname === '/users' ? null
+      : 'tax';
+      
+    if (sys) setActiveSystem(sys);
+  }, [pathname]);
 
   const toggleTheme = () => {
     if (isDark) {
@@ -143,43 +177,62 @@ export default function AppLayout({ children }) {
 
   if (!role) return null;
 
+  // Each group belongs to a "system" (the cards on /home): 'master' (shared
+  // master data), 'tax' (excise tax) or 'pm' (project management). 'both' =
+  // cross-cutting (e.g. settings), always shown. The sidebar shows only the
+  // current system's groups so it changes when you switch systems; "หน้าแรก"
+  // returns to the hub to switch.
   const allGroups = [
     {
-      label: 'ทะเบียน',
+      label: 'ข้อมูลหลัก',
+      system: 'master',
       items: [
-        { href: '/customers', name: 'ทะเบียนลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/customers' || p.startsWith('/customers/') },
-        { href: '/products', name: 'ทะเบียนสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/products' || p.startsWith('/products/') },
-      ],
-    },
-    {
-      label: 'ระบบภาษี (LG)',
-      items: [
-        { href: '/legal', name: 'ขึ้นทะเบียนสินค้า', icon: ClipboardCheck, cap: 'legal:view', match: (p) => p === '/legal' },
-        { href: '/legal/tax', name: 'ยื่นชำระภาษี', icon: ReceiptText, cap: 'legal:view', match: (p) => p === '/legal/tax' },
+        { href: '/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/products' || p.startsWith('/products/') },
+        { href: '/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/customers' || p.startsWith('/customers/') },
       ],
     },
     {
       label: 'งานขาย (SA)',
+      system: 'tax',
       items: [
-        { href: '/sales', name: 'ใบเสนอราคา / PO', icon: FileText, cap: 'sales:view', match: (p) => p === '/sales' },
+        { href: '/tax/register', name: 'ยื่นขึ้นทะเบียนสินค้า', icon: ClipboardCheck, cap: 'products:edit', match: (p) => p === '/tax/register' || p.startsWith('/tax/register/') },
+        { href: '/tax/payment', name: 'ยื่นชำระภาษี', icon: FileText, cap: 'sales:view', match: (p) => p === '/tax/payment' },
+      ],
+    },
+    {
+      label: 'ฝ่ายกฎหมาย (LG)',
+      system: 'tax',
+      items: [
+        { href: '/tax/approve-register', name: 'อนุมัติขึ้นทะเบียน', icon: ClipboardCheck, cap: 'legal:view', match: (p) => p === '/tax/approve-register' },
+        { href: '/tax/approve-payment', name: 'อนุมัติชำระภาษี', icon: ReceiptText, cap: 'legal:view', match: (p) => p === '/tax/approve-payment' },
+      ],
+    },
+    {
+      label: 'ระบบจัดการโครงการ',
+      system: 'pm',
+      items: [
+        { href: '/projects', name: 'โครงการ', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/projects' || p.startsWith('/projects/') },
+        { href: '/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/tasks' },
       ],
     },
     {
       label: 'ประวัติ',
+      system: 'tax',
       items: [
-        { href: '/tracking', name: 'ประวัติทั้งหมด', icon: History, cap: 'history:view', match: (p) => p === '/tracking' },
-      ],
-    },
-    {
-      label: 'ตั้งค่า',
-      items: [
-        { href: '/users', name: 'จัดการผู้ใช้', icon: Users, cap: 'users:manage', match: (p) => p === '/users' },
+        { href: '/tax/history', name: 'ประวัติทั้งหมด', icon: History, cap: 'history:view', match: (p) => p === '/tax/history' },
       ],
     },
   ];
 
-  // Show only menus the current role is allowed to see
+  const systemSubtitle =
+    activeSystem === 'master' ? 'ระบบฐานข้อมูล'
+      : activeSystem === 'pm' ? 'ระบบจัดการโครงการ'
+        : 'ระบบภาษีสรรพสามิต';
+
+  // Show only the current system's groups (+ 'both'), then only menus the role
+  // is allowed to see.
   const navGroups = allGroups
+    .filter((g) => g.system === 'both' || g.system === activeSystem)
     .map((g) => ({ ...g, items: g.items.filter((it) => can(role, it.cap)) }))
     .filter((g) => g.items.length > 0);
 
@@ -189,10 +242,10 @@ export default function AppLayout({ children }) {
       <aside className="sidebar">
         <div className="brand-section">
           <img src="/brand-logo.png" alt="Scent &amp; Sense" className="brand-logo-img" />
-          <Link href="/customers" className="brand-info-link">
+          <Link href="/home" className="brand-info-link">
             <div className="brand-info">
               <div className="brand-title">Scent &amp; Sense</div>
-              <div className="brand-subtitle">ระบบภาษีสรรพสามิต</div>
+              <div className="brand-subtitle">{systemSubtitle}</div>
             </div>
           </Link>
           <button onClick={toggleSidebar} className="sidebar-toggle" title={isCollapsed ? "ขยายแถบเมนู" : "พับแถบเมนู"}>
@@ -257,14 +310,21 @@ export default function AppLayout({ children }) {
           <div className="topbar-actions">
             {/* Login User Info */}
             <div className="topbar-user-info">
-              <div className="user-avatar">{userName.substring(0, 2).toUpperCase()}</div>
-              <div className="user-info" style={{ display: 'flex', flexDirection: 'column' }}>
-                <span className="user-name" style={{ fontSize: '12.5px', fontWeight: '600' }}>{userName}</span>
-                <span className={`topbar-user-role ${role === 'ae_supervisor' || role === 'legal' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}`} style={{ fontSize: '10px', width: 'fit-content' }}>
-                  {role}
+              <div className="user-avatar">{userInitials || userName.substring(0, 2).toUpperCase()}</div>
+              <div className="user-info" style={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '8px' }}>
+                <span className="user-name" style={{ fontSize: '13px', fontWeight: '600' }}>{userName}</span>
+                <span className={`topbar-user-role ${role === 'ae_supervisor' || role === 'legal' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}`} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
+                  {ROLE_LABELS[role] || role}
                 </span>
               </div>
             </div>
+
+            {/* Manage Users (Admins only) */}
+            {can(role, 'users:manage') && (
+              <Link href="/users" className="btn ghost icon-only" title="จัดการผู้ใช้">
+                <Users size={16} strokeWidth={2} />
+              </Link>
+            )}
 
             {/* Change own password */}
             {SUPABASE_CONFIGURED && (
