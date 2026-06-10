@@ -32,6 +32,18 @@ export async function POST(request) {
     return Response.json({ error: 'ต้องมีรายการสินค้าอย่างน้อย 1 รายการ' }, { status: 400 });
   }
 
+  // One quotation = one customer. customerId is required for new orders.
+  if (!body.customerId) {
+    return Response.json({ error: 'กรุณาเลือกลูกค้า' }, { status: 400 });
+  }
+  const { data: customer, error: custErr } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('id', body.customerId)
+    .maybeSingle();
+  if (custErr) return Response.json({ error: custErr.message }, { status: 500 });
+  if (!customer) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
+
   // Fetch all referenced products in one query.
   const productIds = [...new Set(items.map((it) => it.productId).filter(Boolean))];
   const { data: products, error: prodErr } = await supabase
@@ -40,6 +52,20 @@ export async function POST(request) {
     .in('id', productIds);
   if (prodErr) return Response.json({ error: prodErr.message }, { status: 500 });
   const productMap = new Map((products || []).map((p) => [p.id, p]));
+
+  // Every item must belong to the selected customer (products link to a
+  // customer by name OR taxId — the same denormalized rule used elsewhere).
+  const belongsToCustomer = (p) =>
+    (customer.name && p.customerName === customer.name) ||
+    (customer.taxId && p.taxId === customer.taxId);
+  for (const p of productMap.values()) {
+    if (!belongsToCustomer(p)) {
+      return Response.json(
+        { error: `สินค้า ${p.fgCode} ไม่ใช่ของลูกค้า ${customer.name}` },
+        { status: 400 }
+      );
+    }
+  }
 
   const orderId = 'PO-' + Date.now().toString().slice(-6);
 
@@ -71,6 +97,9 @@ export async function POST(request) {
 
   const newOrder = {
     id: orderId,
+    customerId: customer.id,
+    customerName: customer.name,
+    customerTaxId: customer.taxId,
     quotationRef: body.quotationRef || '-',
     poReference: body.poReference || null,
     deliveryDate: body.deliveryDate || '-',

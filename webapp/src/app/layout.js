@@ -20,8 +20,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata = {
-  title: "Scent & Sense | Forecast & PO",
-  description: "ระบบติดตามข้อมูลการจอง Forecast และใบรับสั่งซื้อสินค้า PO ระดับพรีเมียม",
+  title: "Scent & Sense | ระบบภาษีสรรพสามิต",
+  description: "ระบบจัดการทะเบียนสินค้า ลูกค้า ขออนุมัติและยื่นชำระภาษีสรรพสามิต",
 };
 
 export default function RootLayout({ children }) {
@@ -42,7 +42,7 @@ export default function RootLayout({ children }) {
           `,
         }} />
       </head>
-      <body className="font-sans antialiased transition-colors duration-300" style={{ zoom: 0.9 }}>
+      <body className="font-sans antialiased transition-colors duration-300">
         <LayoutWrapper>
           {children}
         </LayoutWrapper>

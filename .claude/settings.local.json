@@ -50,7 +50,21 @@
       "Bash(curl -s https://api.vercel.com/v2/teams -H 'Authorization: Bearer vca_86lWn0sP3Hsq9SmXxy1nA5FdQGFF2e7OaerhOJZrh85ZwOEt8b3ZMbF9')",
       "Bash(curl -s https://api.vercel.com/v9/projects/prj_CO1vQHKf57q0f8TeRH4lkLFpK64z?teamId=team_FA7j0v07wyN9V1eJgh7nS1Vq -H 'Authorization: Bearer vca_86lWn0sP3Hsq9SmXxy1nA5FdQGFF2e7OaerhOJZrh85ZwOEt8b3ZMbF9')",
       "Bash(npx --yes vercel@latest redeploy https://ss-system-i0dp18ijf-sittipong-s-projects.vercel.app --scope sittipong-s-projects)",
-      "Bash(curl -s -o /dev/null -w \"status=%{http_code} time=%{time_total}s\\\\n\" https://ss-team.vercel.app/)"
+      "Bash(curl -s -o /dev/null -w \"status=%{http_code} time=%{time_total}s\\\\n\" https://ss-team.vercel.app/)",
+      "Bash(git push *)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);\\(j.deployments||[]\\).forEach\\(x=>{const age=Math.round\\(\\(1781037780000-x.created\\)/60000\\);console.log\\(x.state.padEnd\\(8\\),'src='+\\(x.meta&&x.meta.githubCommitSha?x.meta.githubCommitSha.slice\\(0,7\\):'cli'\\),x.url\\)}\\)}\\)\")",
+      "Bash(curl -s 'https://api.vercel.com/v6/deployments?projectId=prj_CO1vQHKf57q0f8TeRH4lkLFpK64z&teamId=team_FA7j0v07wyN9V1eJgh7nS1Vq&limit=3' -H 'Authorization: Bearer vca_86lWn0sP3Hsq9SmXxy1nA5FdQGFF2e7OaerhOJZrh85ZwOEt8b3ZMbF9')",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w \"ss-team.vercel.app -> status=%{http_code} time=%{time_total}s\\\\n\" https://ss-team.vercel.app/)",
+      "Bash(git check-ignore *)",
+      "Bash(grep -rnE \"\\(eyJ[A-Za-z0-9_-]{20,}|service_role|sk_live|SUPABASE_SERVICE_ROLE_KEY\\\\s*=\\\\s*[\\\\\"']\\)\" src/)",
+      "Bash(git -c core.quotepath=false ls-files)",
+      "Bash(python -c \"import sys,json;print\\(json.dumps\\(json.load\\(sys.stdin\\).get\\('scripts',{}\\),indent=2\\)\\)\")",
+      "Bash(git commit -m '@ *)",
+      "Bash(git commit --amend -m 'feat\\(account\\): self-service + forced-first-login password change' -m 'Let users change their own password from the topbar \\(current-password re-auth required\\), while preserving admin reset via user management. Force a password change on first login / after an admin reset via a must_change_password flag stored in app_metadata \\(not self-editable\\). *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/customers --max-time 60)",
+      "PowerShell(Test-NetConnection -ComputerName localhost -Port 3000 -InformationLevel Quiet -WarningAction SilentlyContinue)",
+      "PowerShell(Set-Location D:\\\\tax; \"--- webapp/vercel.json ---\"; Get-Content webapp/vercel.json -Raw; \"--- .vercel/project.json ---\"; if \\(Test-Path .vercel/project.json\\) { Get-Content .vercel/project.json -Raw }; \"--- vercel cli ---\"; $v = Get-Command vercel -ErrorAction SilentlyContinue; if \\($v\\) { $v.Source } else { \"vercel CLI not found\" })"
     ]
   }
 }

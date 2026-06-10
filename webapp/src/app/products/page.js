@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Package, Plus } from "lucide-react";
+import { Package, Plus, Search } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
@@ -27,6 +27,8 @@ export default function ProductRegistry() {
   const [userName, setUserName] = useState("");
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const formatMoney = (a) =>
     a == null ? "-" : a.toLocaleString("th-TH", { style: "currency", currency: "THB", minimumFractionDigits: 2 });
@@ -128,6 +130,14 @@ export default function ProductRegistry() {
     }
   };
 
+  const q = search.trim().toLowerCase();
+  const filteredProducts = products.filter((p) => {
+    if (statusFilter !== "all" && p.status !== statusFilter) return false;
+    if (!q) return true;
+    return [p.fgCode, p.productDescription, p.brandName, p.customerName]
+      .some((v) => (v || "").toLowerCase().includes(q));
+  });
+
   return (
     <>
       <div
@@ -162,10 +172,22 @@ export default function ProductRegistry() {
         </div>
       ) : (
         <div className="glass-panel">
-          <div className="px-4 py-3.5 border-b border-[var(--border)]">
+          <div className="px-4 py-3.5 border-b border-[var(--border)] flex items-center justify-between gap-3 flex-wrap">
             <h3 className="font-semibold text-sm text-[var(--text)]">
-              ฐานข้อมูลสินค้า ({products.length} รายการ)
+              ฐานข้อมูลสินค้า ({filteredProducts.length} รายการ)
             </h3>
+            <div className="flex items-center gap-2">
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ height: 34, fontSize: "12.5px" }}>
+                <option value="all">ทุกสถานะ</option>
+                <option value="pending_legal">รออนุมัติ</option>
+                <option value="approved">อนุมัติแล้ว</option>
+                <option value="rejected">ตีกลับ</option>
+              </select>
+              <div className="search-bar" style={{ maxWidth: 260 }}>
+                <Search size={15} className="icon-l" />
+                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อ / แบรนด์ / ลูกค้า..." />
+              </div>
+            </div>
           </div>
           <div className="premium-table-wrapper border-none rounded-t-none">
             <table className="premium-table">
@@ -180,14 +202,14 @@ export default function ProductRegistry() {
                 </tr>
               </thead>
               <tbody>
-                {products.length === 0 ? (
+                {filteredProducts.length === 0 ? (
                   <tr>
                     <td colSpan="6" className="text-center py-10 text-[var(--text-3)]">
-                      ยังไม่มีสินค้าในระบบ
+                      {search.trim() || statusFilter !== "all" ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
                     </td>
                   </tr>
                 ) : (
-                  products.map((p) => (
+                  filteredProducts.map((p) => (
                     <tr
                       key={p.id}
                       onClick={() => (window.location.href = `/products/${p.id}`)}

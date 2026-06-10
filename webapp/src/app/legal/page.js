@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Scale, Search } from "lucide-react";
+import { ClipboardCheck, Search } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
@@ -70,7 +70,7 @@ export default function LegalRegistration() {
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1>
-            <span className="premium-header-icon"><Scale size={22} /></span> ขึ้นทะเบียนสินค้า
+            <span className="premium-header-icon"><ClipboardCheck size={22} /></span> ขึ้นทะเบียนสินค้า
           </h1>
           <p>ตรวจสอบและอนุมัติสินค้าใหม่เข้าสู่ระบบภาษีสรรพสามิต</p>
         </div>

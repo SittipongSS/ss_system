@@ -7,6 +7,8 @@ import { useCan } from "@/lib/roleContext";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import ApproveProductModal from "@/components/ApproveProductModal";
 import RejectModal from "@/components/RejectModal";
+import EditProductModal from "@/components/EditProductModal";
+import { Pencil } from "lucide-react";
 
 export default function ProductDetails() {
   const params = useParams();
@@ -22,6 +24,7 @@ export default function ProductDetails() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showApprove, setShowApprove] = useState(false);
   const [showReject, setShowReject] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   const fetchProduct = async () => {
     try {
@@ -206,6 +209,20 @@ export default function ProductDetails() {
                 ตีกลับ
               </button>
             </>
+          )}
+          {canEditProducts && product.status !== "approved" && (
+            <button
+              onClick={() => setShowEdit(true)}
+              disabled={isUpdating}
+              className={`btn px-5 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg ${
+                product.status === "rejected"
+                  ? "btn-primary"
+                  : "border border-[var(--border)] text-[var(--text-2)]"
+              }`}
+            >
+              <Pencil size={14} />
+              {product.status === "rejected" ? "แก้ไขและส่งกลับ" : "แก้ไขข้อมูล"}
+            </button>
           )}
           {canDeleteProducts && (
             <button
@@ -542,6 +559,12 @@ export default function ProductDetails() {
         onConfirm={handleReject}
         title="ตีกลับสินค้าให้แก้ไข"
         entityLabel="สินค้านี้"
+      />
+      <EditProductModal
+        open={showEdit}
+        product={product}
+        onClose={() => setShowEdit(false)}
+        onSaved={fetchProduct}
       />
     </>
   );

@@ -63,6 +63,9 @@ create table if not exists public.orders (
   "id"                   text primary key,
   "productId"            text references public.products("id") on delete set null,
   "quantity"             integer,
+  "customerId"           text references public.customers("id") on delete set null,  -- billing customer (1 order = 1 customer)
+  "customerName"         text,          -- snapshot at time of order
+  "customerTaxId"        text,          -- snapshot at time of order
   "quotationRef"         text,
   "deliveryDate"         text,
   "remarks"              text,
@@ -88,6 +91,7 @@ create table if not exists public.orders (
   "createdAt"      timestamptz not null default now()
 );
 create index if not exists orders_productid_idx on public.orders ("productId");
+create index if not exists orders_customerid_idx on public.orders ("customerId");
 
 -- ---------- order_items ----------
 -- One PO (orders row) has many line items, each tied to a product + quantity.

@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
+import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -77,6 +77,14 @@ export async function PATCH(request, { params }) {
         return Response.json({ error: 'กรุณาระบุเหตุผลที่ตีกลับ' }, { status: 400 });
       }
     }
+  }
+
+  // Resubmit: Sales (products:edit, no legal:approve) may send a rejected
+  // product back into the queue after fixing it. This is the only status
+  // change a non-legal editor is allowed to make.
+  if (body.status === 'pending_legal' && product.status === 'rejected' && can(user?.role, 'products:edit')) {
+    updated.status = 'pending_legal';
+    updated.rejectionReason = null;
   }
 
   // Recalculate derived fields. Taxability follows LG's override when set,

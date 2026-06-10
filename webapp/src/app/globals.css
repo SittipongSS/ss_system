@@ -11,8 +11,9 @@
   --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   /* UI density: keep in sync with the inline `zoom` on <body> in layout.js.
-     Used to compensate full-viewport heights (100vh) that zoom would shrink. */
-  --ui-scale: 0.9;
+     Used to compensate full-viewport heights (100vh) that zoom would shrink.
+     1 = normal scale (no zoom applied on <body>). */
+  --ui-scale: 1;
   
   /* Light Theme Variables */
   --bg: #ece6da;

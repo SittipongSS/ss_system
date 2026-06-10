@@ -6,6 +6,7 @@ import { ArrowLeft, Building2 } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
+import OrderStatusPill from "@/components/OrderStatusPill";
 
 export default function CustomerDetails() {
   const params = useParams();
@@ -179,8 +180,10 @@ export default function CustomerDetails() {
     .filter((o) => o.status === "complete")
     .reduce((sum, o) => sum + (o.totalTax || 0), 0);
 
+  // Outstanding = everything not yet paid and not rejected (pending awaiting
+  // payment, received, or in the middle of filing).
   const totalPendingTax = orders
-    .filter((o) => o.status === "pending" || o.status === "received")
+    .filter((o) => ["pending", "received", "filing"].includes(o.status))
     .reduce((sum, o) => sum + (o.totalTax || 0), 0);
 
   if (loading) {
@@ -837,15 +840,7 @@ export default function CustomerDetails() {
                           {o.deliveryDate || "-"}
                         </td>
                         <td className="text-center">
-                          {o.status === "complete" ? (
-                            <span className="status-pill success">ชำระแล้ว</span>
-                          ) : o.status === "received" ? (
-                            <span className="status-pill warn">รอชำระภาษี</span>
-                          ) : (
-                            <span className="status-pill danger">
-                              รอรับเงิน
-                            </span>
-                          )}
+                          <OrderStatusPill status={o.status} />
                         </td>
                       </tr>
                     );

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Building2, Plus } from "lucide-react";
+import { Building2, Plus, Search } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
@@ -10,6 +10,7 @@ export default function CustomerDirectory() {
   const [loading, setLoading] = useState(() => !apiCache.has("/api/customers"));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState("");
 
   const [mapFile, setMapFile] = useState(null);
   const [formData, setFormData] = useState({
@@ -102,6 +103,14 @@ export default function CustomerDirectory() {
     setIsSubmitting(false);
   };
 
+  const q = search.trim().toLowerCase();
+  const filteredCustomers = q
+    ? customers.filter((c) =>
+        [c.arCode, c.name, c.taxId, c.phone, ...(c.brands || [])]
+          .some((v) => (v || "").toLowerCase().includes(q)),
+      )
+    : customers;
+
   return (
     <>
       <div
@@ -160,10 +169,14 @@ export default function CustomerDirectory() {
         </div>
       ) : (
         <div className="glass-panel">
-          <div className="px-4 py-3.5 border-b border-[var(--border)] ">
+          <div className="px-4 py-3.5 border-b border-[var(--border)] flex items-center justify-between gap-3">
             <h3 className="font-semibold text-sm text-[var(--text)] ">
-              ฐานข้อมูลลูกค้า ({customers.length} รายการ)
+              ฐานข้อมูลลูกค้า ({filteredCustomers.length} รายการ)
             </h3>
+            <div className="search-bar" style={{ maxWidth: 280 }}>
+              <Search size={15} className="icon-l" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา รหัส / ชื่อ / Tax ID / แบรนด์..." />
+            </div>
           </div>
           <div className="premium-table-wrapper border-none rounded-t-none">
             <table className="premium-table">
@@ -176,17 +189,17 @@ export default function CustomerDirectory() {
                 </tr>
               </thead>
               <tbody>
-                {customers.length === 0 ? (
+                {filteredCustomers.length === 0 ? (
                   <tr>
                     <td
                       colSpan="4"
                       className="text-center py-10 text-[var(--text-3)]"
                     >
-                      ยังไม่มีข้อมูลลูกค้าในระบบ
+                      {search.trim() ? "ไม่พบลูกค้าที่ค้นหา" : "ยังไม่มีข้อมูลลูกค้าในระบบ"}
                     </td>
                   </tr>
                 ) : (
-                  customers.map((c) => (
+                  filteredCustomers.map((c) => (
                     <tr
                       key={c.id}
                       onClick={() => (window.location.href = `/customers/${c.id}`)}

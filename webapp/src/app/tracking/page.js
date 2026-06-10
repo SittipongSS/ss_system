@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Clock } from "lucide-react";
+import { History } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import OrderDetailModal from "@/components/OrderDetailModal";
@@ -69,9 +69,9 @@ export default function TrackingHistory() {
         <div className="header-content">
           <h1>
             <span className="premium-header-icon">
-              <Clock size={22} />
+              <History size={22} />
             </span>{" "}
-            Tracking History
+            ประวัติทั้งหมด
           </h1>
           <p>ประวัติการขึ้นทะเบียนสินค้าและประวัติรอบจัดส่งทั้งหมด</p>
         </div>

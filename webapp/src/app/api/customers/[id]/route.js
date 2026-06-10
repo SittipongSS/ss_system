@@ -45,23 +45,34 @@ export async function GET(request, { params }) {
   );
   const productIds = products.map((p) => p.id);
 
-  let orders = [];
+  // Collect this customer's orders from two sources:
+  //   (a) direct link — orders.customerId (new orders, authoritative)
+  //   (b) legacy derive — PO → items → this customer's products (old orders
+  //       created before customerId existed / were never backfilled)
+  const orderIds = new Set();
+  const { data: directOrders } = await supabase
+    .from('orders')
+    .select('id')
+    .eq('customerId', id);
+  (directOrders || []).forEach((o) => orderIds.add(o.id));
+
   if (productIds.length) {
-    // PO -> items -> products. Find the line items referencing this customer's
-    // products, then fetch the distinct parent POs with all items embedded.
     const { data: itemRows } = await supabase
       .from('order_items')
       .select('orderId')
       .in('productId', productIds);
-    const orderIds = [...new Set((itemRows || []).map((r) => r.orderId))];
-    if (orderIds.length) {
-      const { data: ord } = await supabase
-        .from('orders')
-        .select('*, items:order_items(*, product:products(*))')
-        .in('id', orderIds)
-        .order('createdAt', { ascending: false });
-      orders = (ord || []).filter((o) => canViewRecord(user, 'orders', o));
-    }
+    (itemRows || []).forEach((r) => orderIds.add(r.orderId));
+  }
+
+  let orders = [];
+  const ids = [...orderIds];
+  if (ids.length) {
+    const { data: ord } = await supabase
+      .from('orders')
+      .select('*, items:order_items(*, product:products(*))')
+      .in('id', ids)
+      .order('createdAt', { ascending: false });
+    orders = (ord || []).filter((o) => canViewRecord(user, 'orders', o));
   }
 
   return Response.json({ customer, products, orders });

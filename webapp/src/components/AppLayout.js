@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Scale, ReceiptText, Truck, Clock, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can } from '@/lib/permissions';
@@ -154,20 +154,20 @@ export default function AppLayout({ children }) {
     {
       label: 'ระบบภาษี (LG)',
       items: [
-        { href: '/legal', name: 'ขึ้นทะเบียนสินค้า', icon: Scale, cap: 'legal:view', match: (p) => p === '/legal' },
+        { href: '/legal', name: 'ขึ้นทะเบียนสินค้า', icon: ClipboardCheck, cap: 'legal:view', match: (p) => p === '/legal' },
         { href: '/legal/tax', name: 'ยื่นชำระภาษี', icon: ReceiptText, cap: 'legal:view', match: (p) => p === '/legal/tax' },
       ],
     },
     {
-      label: 'ดำเนินการ',
+      label: 'งานขาย (SA)',
       items: [
-        { href: '/sales', name: 'แจ้งยื่นภาษี', icon: Truck, cap: 'sales:view', match: (p) => p === '/sales' },
+        { href: '/sales', name: 'ใบเสนอราคา / PO', icon: FileText, cap: 'sales:view', match: (p) => p === '/sales' },
       ],
     },
     {
       label: 'ประวัติ',
       items: [
-        { href: '/tracking', name: 'ประวัติทั้งหมด', icon: Clock, cap: 'history:view', match: (p) => p === '/tracking' },
+        { href: '/tracking', name: 'ประวัติทั้งหมด', icon: History, cap: 'history:view', match: (p) => p === '/tracking' },
       ],
     },
     {

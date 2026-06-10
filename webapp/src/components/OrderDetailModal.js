@@ -1,18 +1,7 @@
 "use client";
 import Modal from "@/components/Modal";
 import { fmtMoney, fmtDate } from "@/lib/format";
-
-function StatusPill({ status }) {
-  if (status === "complete")
-    return <span className="status-pill success">ชำระแล้ว</span>;
-  if (status === "filing")
-    return <span className="status-pill warn">กำลังยื่นภาษี</span>;
-  if (status === "received")
-    return <span className="status-pill warn">รอชำระภาษี</span>;
-  if (status === "rejected")
-    return <span className="status-pill danger">ตีกลับให้แก้ไข</span>;
-  return <span className="status-pill danger">รอรับเงิน</span>;
-}
+import OrderStatusPill from "@/components/OrderStatusPill";
 
 // Read-only detail of one PO (orders row) and its line items.
 // `order` is expected to carry `items: [{ ..., product }]`.
@@ -37,6 +26,12 @@ export default function OrderDetailModal({ order, open, onClose }) {
             </div>
           </div>
           <div>
+            <div className="text-[var(--text-3)] text-xs">ลูกค้า</div>
+            <div className="text-[var(--text)] font-medium">
+              {order.customerName || order.items?.[0]?.product?.customerName || "-"}
+            </div>
+          </div>
+          <div>
             <div className="text-[var(--text-3)] text-xs">PO Reference</div>
             <div className="font-mono text-[var(--text-2)]">
               {order.poReference || "-"}
@@ -52,7 +47,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
           </div>
           <div>
             <div className="text-[var(--text-3)] text-xs">สถานะ</div>
-            <StatusPill status={order.status} />
+            <OrderStatusPill status={order.status} />
           </div>
           {order.receiptNumber && (
             <div>
