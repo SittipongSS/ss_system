@@ -141,11 +141,12 @@ export default function ProjectDetailPage() {
   const [view, setView] = useState("list"); // list | document
   const [showAddTask, setShowAddTask] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
-  const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false });
+  const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false });
   const [collapsedPhases, setCollapsedPhases] = useState(() => new Set());
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [insertAfterId, setInsertAfterId] = useState(null); // บั๊ก C: แทรกขั้นตอนตรงตำแหน่ง
+  const [insertBeforeId, setInsertBeforeId] = useState(null); // แทรก "ก่อน" หัวแถวแรกของเฟส
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -273,7 +274,7 @@ export default function ProjectDetailPage() {
     // บั๊ก C: หาตำแหน่งแทรก — ถ้ากดปุ่ม "แทรก" ใช้ task นั้น; ไม่งั้นถ้าเลือกเฟส
     // ที่มีอยู่แล้ว ให้ไปต่อท้ายเฟสนั้น (กันหัวข้อเฟสซ้ำจากการจัดกลุ่มแบบติดกัน)
     let afterTaskId = insertAfterId;
-    if (!afterTaskId && taskForm.phase) {
+    if (!afterTaskId && !insertBeforeId && taskForm.phase) {
       const samePhase = tasks.filter((t) => t.phase === taskForm.phase);
       if (samePhase.length) afterTaskId = samePhase[samePhase.length - 1].id;
     }
@@ -284,6 +285,7 @@ export default function ProjectDetailPage() {
         projectId: data?.id ?? id,
         ...taskForm,
         afterTaskId: afterTaskId || undefined,
+        beforeTaskId: insertBeforeId || undefined,
         durationDays: Number(taskForm.durationDays) || 1,
         startDate: taskForm.startDate || null,
         assignee: taskForm.assignee || null
@@ -292,7 +294,8 @@ export default function ProjectDetailPage() {
     if (res.ok) {
       setShowAddTask(false);
       setInsertAfterId(null);
-      setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false });
+      setInsertBeforeId(null);
+      setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false });
       load();
     } else alert((await res.json()).error || "เพิ่มขั้นตอนไม่สำเร็จ");
   };
@@ -317,6 +320,7 @@ export default function ProjectDetailPage() {
       durationDays: task.durationDays ?? 1, startDate: task.startDate || "",
       isMilestone: !!task.isMilestone, phase: task.phase || "",
       predecessors: task.predecessors || [],
+      note: task.note || "", showNoteInPrint: !!task.showNoteInPrint,
     });
   };
   const saveEditing = async (taskId) => {
@@ -327,6 +331,7 @@ export default function ProjectDetailPage() {
       startDate: editForm.startDate || null,
       isMilestone: editForm.isMilestone, phase: editForm.phase || null,
       predecessors: editForm.predecessors || [],
+      note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
     });
     setEditingTaskId(null);
     setEditForm(null);
@@ -558,7 +563,7 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             {canEdit && (
-              <button onClick={() => { setInsertAfterId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", isMilestone: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+              <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
                 <Plus size={14} /> เพิ่มขั้นตอน
               </button>
             )}
@@ -655,6 +660,13 @@ export default function ProjectDetailPage() {
 
                 {!isCollapsedPhase && (
                   <div style={{ display: "flex", flexDirection: "column", paddingLeft: task.phase ? "12px" : "0" }}>
+                    {isFirstOfPhase && canEdit && !isEditing && (
+                      <div style={{ display: "flex", justifyContent: "center", margin: "0 0 4px", zIndex: 2 }}>
+                        <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอนก่อนหัวแถวแรกของเฟสนี้">
+                          <PlusCircle size={14} />
+                        </button>
+                      </div>
+                    )}
                     <div style={{ display: "flex", alignItems: "stretch", gap: "0" }}>
                       {/* Milestone icon outside card */}
                       <div style={{ width: "28px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -699,7 +711,16 @@ export default function ProjectDetailPage() {
                                 ตั้งเป็น Milestone
                               </label>
                             </div>
-                            
+
+                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                              <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>หมายเหตุ</label>
+                              <textarea className="premium-input" value={editForm.note || ""} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ width: "100%", resize: "vertical", padding: "6px 10px", fontSize: "13px" }} />
+                              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
+                                <input type="checkbox" checked={editForm.showNoteInPrint || false} onChange={(e) => setEditForm({ ...editForm, showNoteInPrint: e.target.checked })} style={{ accentColor: "var(--accent)", cursor: "pointer" }} />
+                                แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
+                              </label>
+                            </div>
+
                             <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
                               <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>งานที่ต้องรอให้เสร็จก่อน (Predecessors):</label>
                               <div style={{ maxHeight: "120px", overflowY: "auto", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -770,6 +791,13 @@ export default function ProjectDetailPage() {
                                 </div>
                               ) : null;
                             })()}
+                            {task.note && (
+                              <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "8px", display: "flex", alignItems: "flex-start", gap: "6px", background: "var(--panel-2)", padding: "6px 8px", borderRadius: "6px" }}>
+                                <span style={{ color: "var(--text-3)", fontWeight: 600, whiteSpace: "nowrap" }}>หมายเหตุ:</span>
+                                <span style={{ flex: 1 }}>{task.note}</span>
+                                {task.showNoteInPrint && <span title="จะแสดงตอนพิมพ์เอกสาร" style={{ fontSize: "10px", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)", borderRadius: "10px", padding: "1px 7px", display: "inline-flex", alignItems: "center", gap: "3px", whiteSpace: "nowrap" }}>🖨 พิมพ์</span>}
+                              </div>
+                            )}
                           </>
                         )}
                       </div>
@@ -784,7 +812,7 @@ export default function ProjectDetailPage() {
 
                     {canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "4px 0", zIndex: 2 }}>
-                        <button onClick={() => { setInsertAfterId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [task.id], assignee: "", startDate: "", isMilestone: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
+                        <button onClick={() => { setInsertBeforeId(null); setInsertAfterId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [task.id], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
                           <PlusCircle size={14} />
                         </button>
                       </div>
@@ -882,6 +910,15 @@ export default function ProjectDetailPage() {
               <input type="checkbox" checked={taskForm.isMilestone} onChange={(e) => setTaskForm((f) => ({ ...f, isMilestone: e.target.checked }))} style={{ accentColor: "var(--amber)", width: "16px", height: "16px", cursor: "pointer" }} />
               ตั้งเป็น Milestone <span style={{ fontSize: "10px", background: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)", padding: "2px 8px", borderRadius: "12px", border: "1px solid color-mix(in srgb, var(--amber) 40%, transparent)", marginLeft: "4px", display: "inline-flex", alignItems: "center", fontWeight: 600 }}><Flag size={10} style={{ marginRight: "4px" }} /> จุดสังเกตหลัก</span>
             </label>
+
+            <div className="form-group">
+              <label>หมายเหตุ</label>
+              <textarea value={taskForm.note} onChange={(e) => setTaskForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ resize: "vertical" }} />
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-2)", marginTop: "8px" }}>
+                <input type="checkbox" checked={taskForm.showNoteInPrint} onChange={(e) => setTaskForm((f) => ({ ...f, showNoteInPrint: e.target.checked }))} style={{ accentColor: "var(--accent)", width: "16px", height: "16px", cursor: "pointer" }} />
+                แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
+              </label>
+            </div>
 
             <div className="form-group border-t border-[var(--border)] pt-[14px]">
               <label>งานที่ต้องรอให้เสร็จก่อน (Predecessors) <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เลือกได้หลายงาน)</span></label>

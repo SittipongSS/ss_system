@@ -1,7 +1,58 @@
 "use client";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Modal from "@/components/Modal";
-import { X } from "lucide-react";
+import { X, ChevronDown } from "lucide-react";
+
+// Searchable dropdown for a list of string values (brand). Lets the user type to
+// filter and pick from existing brands. ("dropdown + ค้นหาได้")
+function SearchableTextSelect({ value, onChange, options, placeholder, disabled }) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+  useEffect(() => {
+    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+  const filtered = useMemo(() => {
+    const s = search.toLowerCase();
+    return options.filter((o) => o.toLowerCase().includes(s)).slice(0, 50);
+  }, [options, search]);
+  return (
+    <div ref={boxRef} style={{ position: "relative", width: "100%" }}>
+      <div style={{ position: "relative" }}>
+        <input
+          className="premium-input w-full"
+          value={open ? search : (value || "")}
+          disabled={disabled}
+          placeholder={placeholder || "เลือกหรือค้นหาแบรนด์..."}
+          onChange={(e) => { setSearch(e.target.value); setOpen(true); onChange(e.target.value); }}
+          onFocus={() => { setSearch(value || ""); setOpen(true); }}
+          style={{ paddingRight: "28px" }}
+        />
+        <ChevronDown size={16} style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", pointerEvents: "none" }} />
+      </div>
+      {open && !disabled && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "6px", maxHeight: "200px", overflowY: "auto", zIndex: 50, marginTop: "4px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "6px 10px", fontSize: "12px", color: "var(--text-3)" }}>ไม่พบแบรนด์ (พิมพ์เพื่อเพิ่มใหม่)</div>
+          ) : filtered.map((opt) => (
+            <div
+              key={opt}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onChange(opt); setOpen(false); }}
+              style={{ padding: "6px 10px", fontSize: "13px", cursor: "pointer", borderBottom: "1px solid var(--border)", color: "var(--text)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--panel-2)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ProjectFormModal({
   open, onClose, editingId, initialData, onSuccess,
@@ -13,10 +64,10 @@ export default function ProjectFormModal({
   const blank = {
     code: "", name: "", customerId: "", type: "NPD",
     startDate: "", dueDate: "", productMainCategory: "", productSubCategory: "", aeOwner: "",
-    mainCode: "", typeCode: "", docNumber: "",
+    mainCode: "", typeCode: "",
     aeSupervisor: "", preparedBy: "", customerEmail: "",
     projectProducts: [],
-    quotationNumber: "",
+    quotationNumber: "", brand: "", poNumber: "",
   };
 
   const [form, setForm] = useState(blank);
@@ -39,6 +90,8 @@ export default function ProjectFormModal({
           ...blank,
           ...initialData,
           quotationNumber: initialData.metadata?.quotationNumber || "",
+          brand: initialData.metadata?.brand || "",
+          poNumber: initialData.metadata?.poNumber || "",
           mainCode: (initialData.productMainCategory || "").split("-")[0] || "",
           typeCode: (initialData.productMainCategory || "").split("-")[1] || "",
           projectProducts: initialData.projectProducts ? initialData.projectProducts.map(pp => ({
@@ -122,8 +175,10 @@ export default function ProjectFormModal({
     setSubmitting(true);
     const payload = { ...form };
     if (form.customerId) payload.customerName = customers.find((c) => c.id === form.customerId)?.name || "";
-    payload.metadata = { ...(initialData?.metadata || {}), quotationNumber: form.quotationNumber };
+    payload.metadata = { ...(initialData?.metadata || {}), quotationNumber: form.quotationNumber, brand: form.brand, poNumber: form.poNumber };
     delete payload.quotationNumber;
+    delete payload.brand;
+    delete payload.poNumber;
     try {
       const res = await fetch(
         editingId ? `/api/pm/projects/${editingId}` : "/api/pm/projects",
@@ -152,6 +207,15 @@ export default function ProjectFormModal({
     });
     return [...seen.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([code, name]) => ({ code, name }));
   }, [categories]);
+
+  // ตัวเลือกแบรนด์ = brandName ที่ไม่ซ้ำจากสินค้า — กรองตามลูกค้าที่เลือกถ้ามี
+  // (ถ้าลูกค้านั้นยังไม่มีแบรนด์ในระบบ ให้ fallback เป็นทุกแบรนด์)
+  const brandOptions = useMemo(() => {
+    const rel = form.customerId ? allProducts.filter((p) => p.customerId === form.customerId) : allProducts;
+    const set = new Set(rel.map((p) => (p.brandName || "").trim()).filter(Boolean));
+    if (form.customerId && set.size === 0) allProducts.forEach((p) => { if (p.brandName) set.add(p.brandName.trim()); });
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [allProducts, form.customerId]);
 
   const subCatOptions = useMemo(
     () => categories.filter((c) => c.mainCategoryCode === form.mainCode && c.typeCode && (c.nameTh || c.nameEn || "").trim()), // ข้ามหมวดรองที่ code ว่าง/มีแต่รหัส
@@ -197,12 +261,12 @@ export default function ProjectFormModal({
             <input type="date" name="dueDate" value={form.dueDate} onChange={change} className="premium-input w-full" />
           </div>
           <div className="form-group">
-            <label>เลขที่เอกสาร <span className="text-[var(--text-3)] font-normal">(ISO)</span></label>
-            <input name="docNumber" value={form.docNumber} onChange={change} className="premium-input w-full" />
-          </div>
-          <div className="form-group">
             <label>เลขที่ใบเสนอราคา</label>
             <input name="quotationNumber" value={form.quotationNumber} onChange={change} className="premium-input w-full" />
+          </div>
+          <div className="form-group">
+            <label>เลขที่ PO <span className="text-[var(--text-3)] font-normal">(ถ้ามี)</span></label>
+            <input name="poNumber" value={form.poNumber} onChange={change} className="premium-input w-full" />
           </div>
 
           <div className="col-span-2 text-[15px] font-semibold text-[var(--text)] border-b border-[var(--border)] pb-2 mt-4 mb-2 flex items-center gap-2">
@@ -224,6 +288,16 @@ export default function ProjectFormModal({
 
         <div className="mt-6 mb-4 text-[15px] font-semibold text-[var(--text)] border-b border-[var(--border)] pb-2 flex items-center gap-2">
           <span className="w-6 h-6 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[12px]">3</span> ข้อมูลสินค้า (Product Info)
+        </div>
+
+        <div className="form-group" style={{ marginBottom: "18px" }}>
+          <label>แบรนด์ (Brand)</label>
+          <SearchableTextSelect
+            value={form.brand}
+            onChange={(v) => setForm((f) => ({ ...f, brand: v }))}
+            options={brandOptions}
+            placeholder={form.customerId ? "เลือกหรือค้นหาแบรนด์ของลูกค้า..." : "เลือกหรือค้นหาแบรนด์..."}
+          />
         </div>
 
         <div style={{ border: "1px dashed var(--border)", borderRadius: "var(--radius)", padding: "14px 16px", background: "var(--panel)", marginBottom: "18px" }}>

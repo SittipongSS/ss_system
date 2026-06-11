@@ -27,7 +27,7 @@ export const NPD_TEMPLATE = [
   { step: 28, name: 'ใบสั่งขายผลิต',                        role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 29, name: 'FM-SA-04 เอกสารระบุรายละเอียดผลิตภัณฑ์', role: 'SA', durationDays: 1, phase: 'เตรียมการผลิต', dependsOnSteps: [28] },
   { step: 30, name: 'FM-SA-07 ใบรายงานติดตามคำสั่งซื้อ',    role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต', dependsOnSteps: [28] },
-  { step: 31, name: 'ขึ้นทะเบียนสรรพสามิต [Optional]',      role: 'LG',  durationDays: 7,  phase: 'เตรียมการผลิต', dependsOnSteps: [29, 30], categoryOnly: '01-002' },
+  { step: 31, name: 'ขึ้นทะเบียนสรรพสามิต [Optional]',      role: 'LG',  durationDays: 7,  isMilestone: true, phase: 'เตรียมการผลิต', dependsOnSteps: [29, 30], categoryOnly: '01-002' },
   { step: 32, name: 'ส่ง Check list Planner',               role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 33, name: 'นัดประชุมระหว่างแผนก',                 role: 'ALL', durationDays: 1,  phase: 'เตรียมการผลิต' },
   // Phase 4.1: ผลิต — New Product
@@ -56,7 +56,8 @@ export const REORDER_TEMPLATE = [
   { step: 3,  name: 'ใบสั่งขายผลิต',                        role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 4,  name: 'FM-SA-04 เอกสารระบุรายละเอียดผลิตภัณฑ์', role: 'SA', durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 5,  name: 'FM-SA-07 ใบรายงานติดตามคำสั่งซื้อ',    role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
-  { step: 6,  name: 'ขึ้นทะเบียนสรรพสามิต [Optional]',      role: 'LG',  durationDays: 7,  phase: 'เตรียมการผลิต', categoryOnly: '01-002' },
+  // RE-ORDER ไม่มีขั้น "ขึ้นทะเบียนสรรพสามิต" — สินค้าขึ้นทะเบียนไว้แล้ว เหลือแค่
+  // ยื่นชำระค่าสรรพสามิตตอนวางบิล (step 16, categoryOnly 01-002). การขึ้นทะเบียนมีเฉพาะ NPD.
   { step: 7,  name: 'ส่ง Check list Planner',               role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 8,  name: 'นัดประชุมระหว่างแผนก',                 role: 'ALL', durationDays: 1,  phase: 'เตรียมการผลิต' },
   // Phase 4.RE: ผลิต — Re-order

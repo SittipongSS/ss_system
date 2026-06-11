@@ -183,7 +183,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
           <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>ข้อมูลเอกสารประจำโปรเจกต์</span>
           {!headerExpanded && (
             <span style={{ fontSize: "13px", color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8, marginLeft: "8px" }}>
-              {[project.customerName, pv("productName") || project.name, pv("docNumber"), fmtDate(project.startDate)].filter(Boolean).join("   ·   ")}
+              {[project.customerName, pv("productName") || project.name, project.metadata?.brand, fmtDate(project.startDate)].filter(Boolean).join("   ·   ")}
             </span>
           )}
           <span style={{ fontSize: "12px", color: "var(--text-3)", marginLeft: "auto", fontWeight: 500 }}>(คลิกเพื่อ{headerExpanded ? "ย่อ" : "ขยาย"})</span>
@@ -201,7 +201,8 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
             </div>
             {/* ขวา */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <Row label="เลขที่เอกสาร"><EditField value={pv("docNumber")} disabled={disabled} onInput={onField("docNumber")} onCommit={commitField("docNumber")} /></Row>
+              <Row label="แบรนด์"><span style={{ fontSize: "13px", fontWeight: 600 }}>{project.metadata?.brand || "-"}</span></Row>
+              <Row label="เลขที่ PO"><span style={{ fontSize: "13px", fontWeight: 600 }}>{project.metadata?.poNumber || "-"}</span></Row>
               <Row label="วันที่"><span style={{ fontSize: "13px", fontWeight: 600 }}>{fmtDate(project.startDate)}</span></Row>
               <Row label="Product Name"><EditField value={pv("productName")} placeholder={project.name} disabled={disabled} onInput={onField("productName")} onCommit={commitField("productName")} /></Row>
               {fgUI && <Row label="สินค้า (FG)">{fgUI}</Row>}
@@ -337,6 +338,11 @@ function PhaseBlock({ group, columns, cellW, freezeLeft, collapsed, onToggleColl
                   style={{ height: "30px", fontSize: "13px", padding: "2px 8px", border: "none", background: "transparent", width: "100%", whiteSpace: "nowrap" }}
                 />
               </div>
+              {task.showNoteInPrint && task.note && (
+                <div style={{ fontSize: "11px", color: "var(--text-3)", fontStyle: "italic", padding: "0 8px", whiteSpace: "normal" }}>
+                  หมายเหตุ: {task.note}
+                </div>
+              )}
             </td>
             <td style={{ ...freezeTd(freezeLeft[2], { textAlign: "center" }) }}>
               <span style={{ fontSize: "11px", fontWeight: 600, color: roleColor(task.role) }}>{task.role}</span>

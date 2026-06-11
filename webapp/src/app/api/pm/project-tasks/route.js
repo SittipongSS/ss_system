@@ -73,7 +73,18 @@ export async function POST(request) {
   const lastOrder = (allTasks || []).reduce((m, t) => Math.max(m, t.stepOrder ?? 0), -1);
   let stepOrder = lastOrder + 1;
   const after = body.afterTaskId ? (allTasks || []).find((t) => t.id === body.afterTaskId) : null;
-  if (after) {
+  // แทรก "ก่อน" task ที่ระบุ (เช่นปุ่ม + ก่อนหัวแถวแรกของเฟส) — stepOrder = ของตัวนั้น
+  // แล้วดันตัวนั้น + ตัวที่อยู่หลังลง 1; ไม่งั้นถ้าระบุ afterTaskId ก็แทรกต่อท้ายตัวนั้น.
+  const before = body.beforeTaskId ? (allTasks || []).find((t) => t.id === body.beforeTaskId) : null;
+  if (before) {
+    stepOrder = before.stepOrder ?? 0;
+    const toShift = (allTasks || []).filter((t) => (t.stepOrder ?? 0) >= stepOrder);
+    if (toShift.length) {
+      await Promise.all(toShift.map((t) =>
+        supabase.from('project_tasks').update({ stepOrder: (t.stepOrder ?? 0) + 1 }).eq('id', t.id)
+      ));
+    }
+  } else if (after) {
     stepOrder = (after.stepOrder ?? 0) + 1;
     const toShift = (allTasks || []).filter((t) => (t.stepOrder ?? 0) >= stepOrder);
     if (toShift.length) {
@@ -99,6 +110,8 @@ export async function POST(request) {
     status: body.status || 'Pending',
     predecessors: body.predecessors || [],
     cellsOverride: body.cellsOverride ?? null,
+    note: body.note || '',
+    showNoteInPrint: !!body.showNoteInPrint,
   };
 
   setHolidays([...(await holidaySet())]);

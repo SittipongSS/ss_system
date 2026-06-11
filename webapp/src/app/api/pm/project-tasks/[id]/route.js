@@ -14,6 +14,7 @@ const EDITABLE = [
   'name', 'role', 'assignee', 'assigneeId', 'phase', 'isMilestone', 'durationDays',
   'startDate', 'finishDate', 'actualFinishDate', 'status',
   'predecessors', 'cellsOverride', 'stepOrder',
+  'note', 'showNoteInPrint',
 ];
 
 // Load the task + its parent project (for team-scope checks).

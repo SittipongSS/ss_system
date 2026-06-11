@@ -95,7 +95,7 @@ export function buildGanttPrintHTML(project) {
       return `
         <tr>
           <td class="c-no">${g.phaseNum}.${ti + 1}</td>
-          <td class="c-desc">${t.isMilestone ? '<span class="ms">◆</span> ' : ''}${esc(t.name)}</td>
+          <td class="c-desc">${t.isMilestone ? '<span class="ms">◆</span> ' : ''}${esc(t.name)}${t.showNoteInPrint && t.note ? `<div class="note">หมายเหตุ: ${esc(t.note)}</div>` : ''}</td>
           <td class="c-team">${esc(t.role || '')}</td>
           <td class="c-dur">${t.durationDays ?? ''}</td>
           <td class="c-date">${fmtShort(t.startDate)}</td>
@@ -139,8 +139,10 @@ export function buildGanttPrintHTML(project) {
   .logo-img { width: 100%; height: 100%; object-fit: contain; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
+  .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
   .doc-title .big { font-size: 17px; font-weight: 800; color: #c96e30; letter-spacing: 2px; text-align: right; white-space: nowrap; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
+  .c-desc .note { font-size: 8px; color: #837868; font-style: italic; line-height: 1.2; margin-top: 1px; }
 
   .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
                  border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; margin-bottom: 7px; }
@@ -213,6 +215,7 @@ export function buildGanttPrintHTML(project) {
         </div>
       </div>
       <div class="doc-title">
+        <div class="formno">FM-PD-05</div>
         <div class="big">TIMELINE PROJECT</div>
         <div class="sub">${esc(project.code || '')}</div>
       </div>
@@ -228,7 +231,8 @@ export function buildGanttPrintHTML(project) {
         <div class="hrow"><span class="k">Email</span><span class="v">${esc(project.customerEmail || '')}</span></div>
       </div>
       <div class="hcol">
-        <div class="hrow"><span class="k">เลขที่เอกสาร</span><span class="v">${esc(project.docNumber || '')}</span></div>
+        <div class="hrow"><span class="k">แบรนด์</span><span class="v">${esc(project.metadata?.brand || '')}</span></div>
+        <div class="hrow"><span class="k">เลขที่ PO</span><span class="v">${esc(project.metadata?.poNumber || '')}</span></div>
         <div class="hrow"><span class="k">วันที่</span><span class="v">${esc(fmtThai(project.startDate))}</span></div>
         <div class="hrow"><span class="k">Product Name</span><span class="v">${esc(productName)}</span></div>
         <div class="hrow" style="flex-direction: column; gap: 4px; margin-top: 4px;">
@@ -236,7 +240,7 @@ export function buildGanttPrintHTML(project) {
           ${(project.projectProducts || []).length > 0 ? (project.projectProducts || []).map(pp => {
             const prod = pp.product || {};
             return `<div style="padding-left: 6px; border-left: 2px solid #c96e30; margin-left: 2px;">
-              <div style="font-weight: 600; font-size: 10px;">${esc(prod.fgCode || '')} — ${esc(prod.productName || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ml)` : ''}</div>
+              <div style="font-weight: 600; font-size: 10px;">${esc(prod.fgCode || '')} — ${esc(prod.productDescription || prod.brandName || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</div>
               <div style="font-size: 9px; color: #5a4f43;">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</div>
             </div>`;
           }).join('') : `<span class="v">-</span>`}
