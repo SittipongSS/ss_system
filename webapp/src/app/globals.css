@@ -31,6 +31,7 @@
   --accent: #c96e30;
   --accent-soft: #f9e8d8;
   --accent-fg: #fff;
+  --origin-edited: #1f2a5c; /* น้ำเงินกรมท่าแบบโลโก้ — เครื่องหมาย task แก้ไขโดยผู้ใช้ */
   
   --navy: #1a1410;
   
@@ -116,6 +117,7 @@
   --accent: #ec8a55;
   --accent-soft: #3a2a1f;
   --accent-fg: #11162b;
+  --origin-edited: #7089e6; /* น้ำเงินโลโก้ เวอร์ชันสว่างขึ้น — ให้เห็นชัดบนบาร์ navy ในธีมมืด */
   
   --navy: #0f1a3a;
   
@@ -3883,6 +3885,7 @@ input[type="number"] {
   --panel: #ffffff;
   --panel-2: #f7f3ec;
   --panel-3: #ece6db;
+  --origin-edited: #1f2a5c;
   --border: rgba(40, 33, 24, 0.12);
   --border-strong: rgba(40, 33, 24, 0.22);
   --text: #221d16;

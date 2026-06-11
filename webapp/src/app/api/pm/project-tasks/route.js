@@ -112,6 +112,7 @@ export async function POST(request) {
     cellsOverride: body.cellsOverride ?? null,
     note: body.note || '',
     showNoteInPrint: !!body.showNoteInPrint,
+    origin: 'custom', // ผู้ใช้เพิ่มเอง (template ใช้ DB default 'template') — migration 0022
   };
 
   setHolidays([...(await holidaySet())]);

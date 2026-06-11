@@ -1,22 +1,53 @@
 "use client";
 // ISO Timeline document view (ported from ss-cj ProjectDocumentView).
-// ss-team ไม่มีตาราง employees → ช่องผู้รับผิดชอบ/ลายเซ็นเป็น text input ธรรมดา
-// (ss-cj ใช้ dropdown จาก employees). ฟิลด์หัว/ท้ายเอกสาร commit ผ่าน onUpdateProject,
-// แถวงาน (Day/Start/Finish/ชื่อ) commit ผ่าน onUpdateTask.
-import { useState, useMemo, useEffect } from "react";
-import { Printer, Flag, ChevronDown, ChevronRight } from "lucide-react";
+// แกนเวลาเป็น "รายวันต่อเนื่อง" + บาร์ลากย้าย/ยืด-หดได้แบบ Monday/ClickUp.
+// การลากบนจอเป็นแค่ UI — commit ผ่าน onUpdateTask (server คำนวณ finishDate/เลื่อน
+// downstream ด้วยวันทำการ แล้ว parent reload). หน้าพิมพ์ (ganttPrint.js) แยกขาด
+// ใช้ตารางสัปดาห์เดิม ไม่ได้รับผลจากแกน/ซูมของหน้าจอนี้.
+// ss-team ไม่มีตาราง employees → ช่องผู้รับผิดชอบ/ลายเซ็นเป็น text input/dropdown จาก users.
+import { useState, useMemo, useEffect, useRef, useReducer, useLayoutEffect } from "react";
+import { Printer, Flag, ChevronDown, ChevronRight, Minus, Plus, RotateCcw, Loader2 } from "lucide-react";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
-import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from "@/lib/pm/weekGrid";
-import { isBusinessDay } from "@/lib/pm/dateHelpers";
+import { isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 
-// นับวันทำการจาก start ถึง finish ให้ตรงกับ addBusinessDays(start, durationDays-1)
+const DAY_MS = 86400000;
+const ROW_H = 34;       // ความสูงแถวงาน (ให้บาร์ align กับช่องซ้าย)
+const MONTH_H = 30;     // ความสูงแถบเดือน (= sticky offset ของแถววัน)
+const DAY_BAND_H = 26;
+
+const THAI_MONTHS_SHORT = [
+  "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+  "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
+];
+
+// ── date helpers (อิงเวลาท้องถิ่น) ──
+const midnight = (v) => { const d = new Date(v); if (isNaN(d.getTime())) return NaN; d.setHours(0, 0, 0, 0); return d.getTime(); };
+const mondayOf = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day)); return d.getTime(); };
+const dayIndexOf = (v, rangeStartMs) => { const t = midnight(v); return isNaN(t) ? NaN : Math.round((t - rangeStartMs) / DAY_MS); };
+const isoFromIndex = (rangeStartMs, idx) => toLocalISODate(new Date(rangeStartMs + idx * DAY_MS));
+
+// นับวันทำการแบบ inclusive (ตรงกับ addBusinessDays(start, durationDays-1))
 const businessDaysBetween = (startISO, finishISO) => {
   const s = new Date(startISO); const f = new Date(finishISO);
   if (isNaN(s.getTime()) || isNaN(f.getTime()) || f <= s) return 1;
-  let count = 0; const d = new Date(s);
-  let guard = 0;
+  let count = 0; const d = new Date(s); let guard = 0;
   while (d < f && guard < 2000) { d.setDate(d.getDate() + 1); if (isBusinessDay(d)) count++; guard++; }
   return count + 1;
+};
+
+// gridline + weekend shading ของพื้นหลัง timeline (rangeStart = วันจันทร์เสมอ → เสาร์-อาทิตย์ = ช่อง 5,6)
+const weekendShade = "color-mix(in srgb, var(--text-3) 9%, transparent)";
+const buildGridBg = (px) => {
+  const wk = px * 7;
+  const layers = [
+    // เส้นแบ่งสัปดาห์ (เข้มกว่า)
+    `repeating-linear-gradient(90deg, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${wk}px)`,
+  ];
+  // เส้นแบ่งวัน (จางลง) เมื่อซูมเข้าพอ
+  if (px >= 14) layers.push(`repeating-linear-gradient(90deg, color-mix(in srgb, var(--border) 45%, transparent) 0, color-mix(in srgb, var(--border) 45%, transparent) 1px, transparent 1px, transparent ${px}px)`);
+  // แรเงาวันหยุดสุดสัปดาห์ (ล่างสุด)
+  layers.push(`repeating-linear-gradient(90deg, transparent 0, transparent ${px * 5}px, ${weekendShade} ${px * 5}px, ${weekendShade} ${wk}px)`);
+  return layers.join(", ");
 };
 
 // ค่าคงที่ของบริษัท (header ฝั่งซ้าย)
@@ -34,6 +65,11 @@ const roleColor = (role) => ({
   SA: "var(--accent)", RD: "var(--purple)", PC: "var(--blue)", PD: "var(--blue)",
   QC: "var(--green)", LG: "var(--amber)", WH: "var(--text-2)", ALL: "var(--red)",
 }[role] || "var(--text-2)");
+
+const statusFill = (status) =>
+  status === "Completed" ? "var(--green)"
+    : status === "In Progress" ? "var(--accent)"
+      : "var(--text-3)";
 
 function EditField({ value, onInput, onCommit, placeholder, disabled, style }) {
   return (
@@ -73,6 +109,63 @@ function SelectUserField({ value, onCommit, users, disabled, style }) {
   );
 }
 
+// ── ตัวควบคุมซูม (px ต่อวัน) — segmented presets + stepper ──
+const ZOOM_MIN = 4, ZOOM_MAX = 48, ZOOM_DEFAULT = 13;
+const ZOOM_PRESETS = [
+  { key: "month", label: "เดือน", px: 5 },
+  { key: "week", label: "สัปดาห์", px: 13 },
+  { key: "day", label: "วัน", px: 34 },
+];
+
+function ZoomControl({ px, onChange }) {
+  const clamp = (v) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(v)));
+  const seg = {
+    padding: "4px 12px", fontSize: "12px", fontWeight: 600, border: "none",
+    background: "transparent", color: "var(--text-2)", cursor: "pointer",
+    borderRadius: "7px", lineHeight: 1.4,
+  };
+  const iconBtn = (disabled) => ({
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    width: "26px", height: "26px", border: "none", borderRadius: "7px",
+    background: "transparent", cursor: disabled ? "default" : "pointer",
+    color: disabled ? "var(--text-3)" : "var(--text-2)",
+  });
+  return (
+    <div
+      title="ปรับความละเอียดของแกนเวลา (เฉพาะบนจอ — ไม่กระทบหน้าพิมพ์)"
+      style={{
+        display: "inline-flex", alignItems: "center", gap: "2px", padding: "3px",
+        background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: "10px",
+      }}
+    >
+      <button type="button" style={iconBtn(px <= ZOOM_MIN)} disabled={px <= ZOOM_MIN}
+        onClick={() => onChange(clamp(px / 1.35))} title="ซูมออก">
+        <Minus size={15} />
+      </button>
+      <div style={{ display: "inline-flex", gap: "1px" }}>
+        {ZOOM_PRESETS.map((p) => {
+          const active = px === p.px;
+          return (
+            <button key={p.key} type="button"
+              onClick={() => onChange(p.px)}
+              style={{ ...seg, background: active ? "var(--accent)" : "transparent", color: active ? "#fff" : "var(--text-2)" }}>
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+      <button type="button" style={iconBtn(px >= ZOOM_MAX)} disabled={px >= ZOOM_MAX}
+        onClick={() => onChange(clamp(px * 1.35))} title="ซูมเข้า">
+        <Plus size={15} />
+      </button>
+      <span style={{ width: "1px", height: "18px", background: "var(--border)", margin: "0 2px" }} />
+      <button type="button" style={iconBtn(px === ZOOM_DEFAULT)} onClick={() => onChange(ZOOM_DEFAULT)} title="รีเซ็ตการซูม">
+        <RotateCcw size={14} />
+      </button>
+    </div>
+  );
+}
+
 export default function ProjectDocumentView({ project, canEdit, onUpdateProject, onUpdateTask, fgUI, statusLabel, statusColor }) {
   const [headerExpanded, setHeaderExpanded] = useState(false); // default: ย่อ เพื่อให้เห็น chart เต็ม
   const [nowMs] = useState(() => Date.now());
@@ -101,14 +194,55 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
   };
   const printProject = { ...project, ...draft };
 
-  // ── ขอบเขตเวลา → คอลัมน์สัปดาห์ ──
-  const { columns, months } = useMemo(() => {
-    const starts = tasks.map((t) => new Date(t.startDate).getTime()).filter((t) => !isNaN(t));
-    const finishes = tasks.map((t) => new Date(t.finishDate).getTime()).filter((t) => !isNaN(t));
-    const startMs = starts.length ? Math.min(...starts) : (project.startDate ? new Date(project.startDate).getTime() : nowMs);
-    const endMs = finishes.length ? Math.max(...finishes) : startMs + 30 * 86400000;
-    return buildWeekColumns(startMs, endMs);
+  // ── ซูม: px ต่อวัน (จำค่าใน localStorage) ──
+  const [pxPerDay, setPxPerDay] = useState(ZOOM_DEFAULT);
+  useEffect(() => {
+    try {
+      const saved = parseInt(localStorage.getItem("pm_gantt_pxPerDay") || "", 10);
+      if (!isNaN(saved) && saved >= ZOOM_MIN && saved <= ZOOM_MAX) setPxPerDay(saved);
+    } catch { /* ignore */ }
+  }, []);
+  const changePx = (v) => {
+    const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(v)));
+    setPxPerDay(clamped);
+    try { localStorage.setItem("pm_gantt_pxPerDay", String(clamped)); } catch { /* ignore */ }
+  };
+
+  // ── ขอบเขตเวลา (แกนรายวัน) — rangeStart เป็นวันจันทร์เสมอ ──
+  const { rangeStartMs, totalDays } = useMemo(() => {
+    const starts = tasks.map((t) => midnight(t.startDate)).filter((n) => !isNaN(n));
+    const finishes = tasks.map((t) => midnight(t.finishDate)).filter((n) => !isNaN(n));
+    const projStart = midnight(project.startDate);
+    const minMs = starts.length ? Math.min(...starts) : (isNaN(projStart) ? midnight(nowMs) : projStart);
+    const maxMs = finishes.length ? Math.max(...finishes) : minMs + 30 * DAY_MS;
+    const start = mondayOf(minMs - 7 * DAY_MS);             // เผื่อ 1 สัปดาห์ก่อนเริ่ม
+    const endMon = mondayOf(maxMs + 10 * DAY_MS);           // เผื่อท้าย + ปัดเป็นสัปดาห์
+    const end = endMon + 6 * DAY_MS;
+    const days = Math.round((end - start) / DAY_MS) + 1;
+    return { rangeStartMs: start, totalDays: Math.max(days, 14) };
   }, [tasks, project.startDate, nowMs]);
+
+  const timelineWidth = totalDays * pxPerDay;
+  const todayIdx = dayIndexOf(nowMs, rangeStartMs);
+  const gridBg = useMemo(() => buildGridBg(pxPerDay), [pxPerDay]);
+
+  // แกน: รายการวัน + การจัดกลุ่มเป็นเดือน
+  const axis = useMemo(() => {
+    const days = [];
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(rangeStartMs + i * DAY_MS);
+      days.push({ i, date: d.getDate(), dow: d.getDay() });
+    }
+    const months = [];
+    let cur = null;
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(rangeStartMs + i * DAY_MS);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!cur || cur.key !== key) { cur = { key, m0: d.getMonth(), year: d.getFullYear(), count: 0 }; months.push(cur); }
+      cur.count++;
+    }
+    return { days, months };
+  }, [rangeStartMs, totalDays]);
 
   // ── จัดกลุ่มตามเฟส (คงลำดับ) ──
   const phaseGroups = useMemo(() => {
@@ -119,8 +253,6 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
       tasks: tasks.filter((t) => (t.phase || "—") === phase),
     }));
   }, [tasks]);
-
-  const cellW = 20; // px ต่อช่องสัปดาห์
 
   // ── วัดความกว้างข้อความจริงด้วย Canvas API ──
   const descW = useMemo(() => {
@@ -139,7 +271,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
   }, [tasks]);
 
   // Freeze left offsets คำนวณจาก descW จริง
-  const NO_W = 40, TEAM_W = 46, DAY_W = 64, START_W = 96;
+  const NO_W = 40, TEAM_W = 46, DAY_W = 64, START_W = 96, FINISH_W = 96;
   const freezeLeft = useMemo(() => [
     0,
     NO_W,
@@ -151,6 +283,39 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
 
   const disabled = !canEdit;
 
+  // ── เส้นเชื่อม dependency (predecessor → ลูก) แบบ Monday ──
+  // วัดตำแหน่งบาร์จริงจาก DOM (กันคลาดเคลื่อนจาก border ตาราง) แล้ววาดเป็น SVG overlay
+  // พิกัดอิง "เนื้อหา" (บวก scrollLeft/Top) → ไม่ต้องคำนวณใหม่ตอน scroll
+  const scrollRef = useRef(null);
+  const [links, setLinks] = useState([]);
+  const [overlay, setOverlay] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const cont = scrollRef.current;
+    if (!cont) return;
+    const cr = cont.getBoundingClientRect();
+    const map = new Map();
+    cont.querySelectorAll("[data-bar-id]").forEach((el) => {
+      const r = el.getBoundingClientRect();
+      map.set(el.getAttribute("data-bar-id"), {
+        x1: r.left - cr.left + cont.scrollLeft,
+        x2: r.right - cr.left + cont.scrollLeft,
+        yc: r.top - cr.top + cont.scrollTop + r.height / 2,
+      });
+    });
+    const ls = [];
+    tasks.forEach((t) => {
+      const child = map.get(t.id);
+      if (!child) return;
+      (Array.isArray(t.predecessors) ? t.predecessors : []).forEach((pid) => {
+        const par = map.get(String(pid));
+        if (!par) return;
+        ls.push({ key: `${pid}->${t.id}`, sx: par.x2, sy: par.yc, ex: child.x1, ey: child.yc });
+      });
+    });
+    setLinks(ls);
+    setOverlay({ w: cont.scrollWidth, h: cont.scrollHeight });
+  }, [tasks, pxPerDay, collapsedPhases, timelineWidth, descW]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       {/* Toolbar */}
@@ -160,16 +325,19 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
           <span style={{ fontSize: "13px", color: statusColor || "var(--text-2)", display: "flex", alignItems: "center", gap: "6px" }}>
             สถานะ: <strong>{statusLabel || project.status}</strong>
           </span>
-          <span style={{ fontSize: "12px", color: "var(--text-3)" }}>· แถบสัปดาห์คำนวณจากวันที่อัตโนมัติ · แก้ Day/วันที่แล้วอัพเดททันที</span>
+          <span style={{ fontSize: "12px", color: "var(--text-3)" }}>· ลากบาร์เพื่อย้าย · ลากขอบเพื่อยืด-หด · อัปเดตวันทันที</span>
         </div>
-        <button
-          onClick={() => openGanttPrintWindow(printProject)}
-          className="btn btn-primary"
-          style={{ padding: "6px 14px", fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "6px", borderRadius: "8px", whiteSpace: "nowrap" }}
-          title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
-        >
-          <Printer size={14} /> พิมพ์เอกสาร
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <ZoomControl px={pxPerDay} onChange={changePx} />
+          <button
+            onClick={() => openGanttPrintWindow(printProject)}
+            className="btn btn-primary"
+            style={{ padding: "6px 14px", fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "6px", borderRadius: "8px", whiteSpace: "nowrap" }}
+            title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
+          >
+            <Printer size={14} /> พิมพ์เอกสาร
+          </button>
+        </div>
       </div>
 
       {/* Document Header — ย่อ/ขยายได้ */}
@@ -211,9 +379,46 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
         )}
       </div>
 
+      {/* Legend: ที่มาของบาร์ */}
+      <div style={{ flexShrink: 0, display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap", fontSize: "11px", color: "var(--text-2)" }}>
+        <span style={{ color: "var(--text-3)" }}>ที่มาของขั้นตอน:</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ width: "18px", height: "12px", borderRadius: "3px", background: "var(--accent)" }} /> จาก template
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ width: "18px", height: "12px", borderRadius: "3px", border: "1.6px dashed var(--accent)", boxSizing: "border-box", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Plus size={9} color="var(--accent)" /></span> เพิ่มใหม่
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ position: "relative", width: "18px", height: "12px", borderRadius: "3px", background: "var(--accent)", overflow: "hidden" }}>
+            <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "4px", background: "var(--origin-edited)" }} />
+          </span> แก้ไขโดยผู้ใช้
+        </span>
+      </div>
+
       {/* ตาราง + ลายเซ็น */}
-      <div style={{ height: "calc(100vh - 280px)", minHeight: "400px", display: "flex", flexDirection: "column", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--panel)", overflow: "hidden" }}>
-        <div style={{ flex: "1 1 auto", overflow: "auto" }}>
+      <div style={{ height: "calc(100vh - 320px)", minHeight: "400px", display: "flex", flexDirection: "column", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--panel)", overflow: "hidden" }}>
+        <div ref={scrollRef} style={{ flex: "1 1 auto", overflow: "auto", position: "relative" }}>
+          {/* SVG overlay เส้น dependency — zIndex 0 อยู่เหนือบาร์ (td z0) แต่ใต้คอลัมน์แช่แข็ง/หัวตาราง (z1+) */}
+          {links.length > 0 && (
+            <svg width={overlay.w} height={overlay.h} style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 0, overflow: "visible" }}>
+              <defs>
+                <marker id="pm-dep-arrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="var(--text-3)" />
+                </marker>
+              </defs>
+              {links.map((l) => {
+                const gap = 9;
+                let d;
+                if (l.ex >= l.sx + gap) {
+                  d = `M ${l.sx} ${l.sy} H ${l.sx + gap} V ${l.ey} H ${l.ex - 3}`;
+                } else {
+                  const ym = l.ey >= l.sy ? l.sy + ROW_H * 0.6 : l.sy - ROW_H * 0.6;
+                  d = `M ${l.sx} ${l.sy} h ${gap} V ${ym} H ${l.ex - gap} V ${l.ey} H ${l.ex - 3}`;
+                }
+                return <path key={l.key} d={d} fill="none" stroke="var(--text-3)" strokeWidth="1.5" strokeOpacity="0.5" markerEnd="url(#pm-dep-arrow)" />;
+              })}
+            </svg>
+          )}
           <table style={{ borderCollapse: "collapse", fontSize: "13px", tableLayout: "fixed", width: "100%", minWidth: "max-content" }}>
             <colgroup>
               <col style={{ width: `${NO_W}px`, minWidth: `${NO_W}px` }} />
@@ -221,8 +426,8 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
               <col style={{ width: `${TEAM_W}px`, minWidth: `${TEAM_W}px` }} />
               <col style={{ width: `${DAY_W}px`, minWidth: `${DAY_W}px` }} />
               <col style={{ width: `${START_W}px`, minWidth: `${START_W}px` }} />
-              <col style={{ width: "96px", minWidth: "96px" }} />
-              {columns.map((c) => <col key={c.key} style={{ width: `${cellW}px`, minWidth: `${cellW}px` }} />)}
+              <col style={{ width: `${FINISH_W}px`, minWidth: `${FINISH_W}px` }} />
+              <col style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px` }} />
             </colgroup>
             <thead>
               <tr style={{ background: "var(--panel-2)" }}>
@@ -231,25 +436,69 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
                 <Th w={TEAM_W} freeze={freezeLeft[2]}>Team</Th>
                 <Th w={DAY_W} freeze={freezeLeft[3]}>Duration</Th>
                 <Th w={START_W} freeze={freezeLeft[4]}>Start</Th>
-                <Th w={96} freeze={freezeLeft[5]}>Finish</Th>
-                {months.map((m) => (
-                  <th key={m.key} colSpan={m.weeks.length} style={thStyle(0)}>{m.label}</th>
-                ))}
+                <Th w={FINISH_W} freeze={freezeLeft[5]}>Finish</Th>
+                <th style={{ ...thStyle(0), padding: 0 }}>
+                  <div style={{ display: "flex", width: timelineWidth, height: MONTH_H }}>
+                    {axis.months.map((m) => (
+                      <div key={m.key} style={{
+                        width: m.count * pxPerDay, height: MONTH_H, lineHeight: `${MONTH_H}px`,
+                        fontSize: "11px", fontWeight: 600, color: "var(--text-2)", textAlign: "center",
+                        borderLeft: "1px solid var(--border)", overflow: "hidden", whiteSpace: "nowrap",
+                      }}>
+                        {m.count * pxPerDay >= 34 ? `${THAI_MONTHS_SHORT[m.m0]} ${String(m.year).slice(2)}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                </th>
               </tr>
               <tr style={{ background: "var(--panel-2)" }}>
-                <Th w={NO_W} top={HROW1} freeze={freezeLeft[0]}></Th><Th w={descW} top={HROW1} freeze={freezeLeft[1]}></Th><Th w={TEAM_W} top={HROW1} freeze={freezeLeft[2]}></Th><Th w={DAY_W} top={HROW1} freeze={freezeLeft[3]}></Th><Th w={START_W} top={HROW1} freeze={freezeLeft[4]}></Th><Th w={96} top={HROW1} freeze={freezeLeft[5]}></Th>
-                {columns.map((c) => (
-                  <th key={c.key} style={{ ...thStyle(HROW1), width: cellW, minWidth: cellW, fontSize: "10px" }}>W{c.week}</th>
-                ))}
+                <Th w={NO_W} top={MONTH_H} freeze={freezeLeft[0]}></Th>
+                <Th w={descW} top={MONTH_H} freeze={freezeLeft[1]}></Th>
+                <Th w={TEAM_W} top={MONTH_H} freeze={freezeLeft[2]}></Th>
+                <Th w={DAY_W} top={MONTH_H} freeze={freezeLeft[3]}></Th>
+                <Th w={START_W} top={MONTH_H} freeze={freezeLeft[4]}></Th>
+                <Th w={FINISH_W} top={MONTH_H} freeze={freezeLeft[5]}></Th>
+                <th style={{ ...thStyle(MONTH_H), padding: 0 }}>
+                  <div style={{ display: "flex", width: timelineWidth, height: DAY_BAND_H }}>
+                    {axis.days.map((d) => {
+                      const weekend = d.dow === 0 || d.dow === 6;
+                      const label = pxPerDay >= 22 ? String(d.date)
+                        : (pxPerDay >= 11 && d.dow === 1 ? String(d.date) : "");
+                      return (
+                        <div key={d.i} style={{
+                          width: pxPerDay, height: DAY_BAND_H, lineHeight: `${DAY_BAND_H}px`,
+                          fontSize: "9.5px", fontWeight: weekend ? 400 : 500,
+                          color: weekend ? "var(--text-3)" : "var(--text-2)", textAlign: "center",
+                          background: weekend ? weekendShade : "transparent",
+                          borderLeft: d.dow === 1 ? "1px solid var(--border)" : (pxPerDay >= 14 ? "1px solid color-mix(in srgb, var(--border) 40%, transparent)" : "none"),
+                          overflow: "hidden",
+                        }}>
+                          {label}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
+              {phaseGroups.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ border: "1px solid var(--border)", padding: "30px", textAlign: "center", color: "var(--text-3)" }}>
+                    ยังไม่มีขั้นตอนในโปรเจกต์นี้
+                  </td>
+                </tr>
+              )}
               {phaseGroups.map((group) => (
                 <PhaseBlock
                   key={group.phase}
                   group={group}
-                  columns={columns}
-                  cellW={cellW}
+                  rangeStartMs={rangeStartMs}
+                  totalDays={totalDays}
+                  pxPerDay={pxPerDay}
+                  timelineWidth={timelineWidth}
+                  gridBg={gridBg}
+                  todayIdx={todayIdx}
                   freezeLeft={freezeLeft}
                   collapsed={collapsedPhases.has(group.phase)}
                   onToggleCollapse={() => togglePhase(group.phase)}
@@ -281,7 +530,6 @@ function Row({ label, children }) {
   );
 }
 
-const HROW1 = 30;
 const thStyle = (top = 0) => ({
   border: "1px solid var(--border)", padding: "6px 10px", fontSize: "12px",
   fontWeight: 600, color: "var(--text-2)", textAlign: "center", whiteSpace: "nowrap",
@@ -297,8 +545,23 @@ const freezeTd = (left, extra = {}) => ({
   position: "sticky", left, zIndex: 1, background: "var(--panel)", ...extra,
 });
 
-function PhaseBlock({ group, columns, cellW, freezeLeft, collapsed, onToggleCollapse, canEdit, onCommitTask }) {
-  const tdBase = { border: "1px solid var(--border)", padding: "4px 8px", verticalAlign: "middle" };
+// แถบเวลาในเซลล์ timeline ของแต่ละแถว (พื้นหลัง gridline + เส้นวันนี้ + บาร์)
+function TimelineCell({ children, pxPerDay, timelineWidth, gridBg, todayIdx, totalDays }) {
+  // zIndex:0 ทำให้ td เป็น stacking context — บาร์/handle ภายในจะไม่ทับคอลัมน์แช่แข็ง (z1) หรือหัวตาราง (z2+) ตอน scroll
+  // ใช้ backgroundImage อย่างเดียว (ไม่ผสม shorthand background) กัน React warning ตอน rerender
+  return (
+    <td style={{ border: "1px solid var(--border)", padding: 0, height: `${ROW_H}px`, position: "relative", zIndex: 0, backgroundImage: gridBg }}>
+      <div style={{ position: "relative", width: timelineWidth, height: ROW_H }}>
+        {todayIdx >= 0 && todayIdx < totalDays && (
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: todayIdx * pxPerDay + pxPerDay / 2 - 1, width: "2px", background: "var(--red)", opacity: 0.55, zIndex: 1, pointerEvents: "none" }} />
+        )}
+        {children}
+      </div>
+    </td>
+  );
+}
+
+function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, gridBg, todayIdx, freezeLeft, collapsed, onToggleCollapse, canEdit, onCommitTask }) {
   const phaseBg = "color-mix(in srgb, var(--accent) 8%, var(--panel))";
   return (
     <>
@@ -315,97 +578,242 @@ function PhaseBlock({ group, columns, cellW, freezeLeft, collapsed, onToggleColl
         <td style={{ ...freezeTd(freezeLeft[3], { background: phaseBg }) }}></td>
         <td style={{ ...freezeTd(freezeLeft[4], { background: phaseBg }) }}></td>
         <td style={{ ...freezeTd(freezeLeft[5], { background: phaseBg }) }}></td>
-        <td style={{ ...tdBase, background: phaseBg }} colSpan={columns.length}></td>
+        <td style={{ border: "1px solid var(--border)", padding: 0, background: phaseBg }}></td>
       </tr>
-      {!collapsed && group.tasks.map((task, ti) => {
-        const filled = autoCellsForTask(task);
-        const statusColor = task.status === "Completed" ? "var(--green)"
-          : task.status === "In Progress" ? "var(--accent)" : "var(--text-3)";
-        const sd = task.startDate ? new Date(task.startDate) : null;
-        const startCellKey = sd && !isNaN(sd.getTime()) ? cellKey(sd.getFullYear(), sd.getMonth(), weekOfDay(sd.getDate())) : null;
-        const startDay = sd && !isNaN(sd.getTime()) ? sd.getDate() : null;
-        return (
-          <tr key={task.id}>
-            <td style={{ ...freezeTd(freezeLeft[0], { textAlign: "center", color: "var(--text-3)", fontSize: "12px" }) }}>{group.phaseNum}.{ti + 1}</td>
-            <td style={{ ...freezeTd(freezeLeft[1]) }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                {task.isMilestone && <Flag size={14} color="var(--amber)" style={{ flexShrink: 0 }} />}
-                <input
-                  className="premium-input"
-                  defaultValue={task.name}
-                  disabled={!canEdit}
-                  onBlur={(e) => { if (e.target.value !== task.name) onCommitTask(task.id, { name: e.target.value }); }}
-                  style={{ height: "30px", fontSize: "13px", padding: "2px 8px", border: "none", background: "transparent", width: "100%", whiteSpace: "nowrap" }}
-                />
-              </div>
-              {task.showNoteInPrint && task.note && (
-                <div style={{ fontSize: "11px", color: "var(--text-3)", fontStyle: "italic", padding: "0 8px", whiteSpace: "normal" }}>
-                  หมายเหตุ: {task.note}
-                </div>
-              )}
-            </td>
-            <td style={{ ...freezeTd(freezeLeft[2], { textAlign: "center" }) }}>
-              <span style={{ fontSize: "11px", fontWeight: 600, color: roleColor(task.role) }}>{task.role}</span>
-            </td>
-            <td style={{ ...freezeTd(freezeLeft[3], { textAlign: "center" }) }}>
+      {!collapsed && group.tasks.map((task, ti) => (
+        <tr key={task.id}>
+          <td style={{ ...freezeTd(freezeLeft[0], { textAlign: "center", color: "var(--text-3)", fontSize: "12px" }) }}>{group.phaseNum}.{ti + 1}</td>
+          <td style={{ ...freezeTd(freezeLeft[1]) }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              {task.isMilestone && <Flag size={14} color="var(--amber)" style={{ flexShrink: 0 }} />}
               <input
-                type="number" min="1"
                 className="premium-input"
-                defaultValue={task.durationDays}
+                defaultValue={task.name}
                 disabled={!canEdit}
-                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                onBlur={(e) => { const n = parseInt(e.target.value, 10) || 1; if (n !== task.durationDays) onCommitTask(task.id, { durationDays: n }); }}
-                title="พิมพ์จำนวนวันแล้วกด Enter เพื่ออัพเดท"
-                style={{ height: "30px", fontSize: "13px", padding: "2px 4px", width: "48px", textAlign: "center", border: "none", background: "transparent" }}
+                onBlur={(e) => { if (e.target.value !== task.name) onCommitTask(task.id, { name: e.target.value }); }}
+                style={{ height: "30px", fontSize: "13px", padding: "2px 8px", border: "none", background: "transparent", width: "100%", whiteSpace: "nowrap" }}
               />
-            </td>
-            <td style={{ ...freezeTd(freezeLeft[4], { textAlign: "center", padding: "2px 4px" }) }}>
-              <input
-                key={`s-${task.startDate || ""}`}
-                type="date"
-                defaultValue={task.startDate || ""}
-                disabled={!canEdit}
-                onChange={(e) => { const v = e.target.value; if (v && v !== task.startDate) onCommitTask(task.id, { startDate: v }); }}
-                title="เลือกวันเริ่ม"
-                style={{ border: "none", background: "transparent", fontSize: "11px", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
-              />
-            </td>
-            <td style={{ ...freezeTd(freezeLeft[5], { textAlign: "center", padding: "2px 4px" }) }}>
-                <input
-                  key={`f-${task.finishDate || ""}`}
-                  type="date"
-                  defaultValue={task.finishDate || ""}
-                  disabled={!canEdit}
-                  min={task.startDate || undefined}
-                  onChange={(e) => { const f = e.target.value; if (f && f !== task.finishDate) onCommitTask(task.id, { durationDays: businessDaysBetween(task.startDate, f) }); }}
-                  title="เลือกวันจบ"
-                  style={{ border: "none", background: "transparent", fontSize: "11px", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
-                />
-            </td>
-            {columns.map((c) => {
-              const on = filled.has(c.key);
-              const isStart = on && c.key === startCellKey;
-              return (
-                <td
-                  key={c.key}
-                  style={{
-                    border: "1px solid var(--border)", width: cellW, minWidth: cellW, height: "32px", padding: 0,
-                    background: on
-                      ? (task.isMilestone && !isStart ? "transparent" : `color-mix(in srgb, ${statusColor} 55%, transparent)`)
-                      : "transparent",
-                    textAlign: "center",
-                  }}
-                >
-                  {isStart
-                    ? <span style={{ fontSize: "10.5px", fontWeight: 600, color: task.status === "Pending" ? "var(--text)" : "#fff" }}>{startDay}</span>
-                    : (on && task.isMilestone && <span style={{ color: "var(--amber)", fontSize: "13px" }}>◆</span>)}
-                </td>
-              );
-            })}
-          </tr>
-        );
-      })}
+            </div>
+            {task.showNoteInPrint && task.note && (
+              <div style={{ fontSize: "11px", color: "var(--text-3)", fontStyle: "italic", padding: "0 8px", whiteSpace: "normal" }}>
+                หมายเหตุ: {task.note}
+              </div>
+            )}
+          </td>
+          <td style={{ ...freezeTd(freezeLeft[2], { textAlign: "center" }) }}>
+            <span style={{ fontSize: "11px", fontWeight: 600, color: roleColor(task.role) }}>{task.role}</span>
+          </td>
+          <td style={{ ...freezeTd(freezeLeft[3], { textAlign: "center" }) }}>
+            <input
+              key={`dur-${task.durationDays}`}
+              type="number" min="1"
+              className="premium-input"
+              defaultValue={task.durationDays}
+              disabled={!canEdit}
+              onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+              onBlur={(e) => { const n = parseInt(e.target.value, 10) || 1; if (n !== task.durationDays) onCommitTask(task.id, { durationDays: n }); }}
+              title="พิมพ์จำนวนวันแล้วกด Enter เพื่ออัพเดท"
+              style={{ height: "30px", fontSize: "13px", padding: "2px 4px", width: "48px", textAlign: "center", border: "none", background: "transparent" }}
+            />
+          </td>
+          <td style={{ ...freezeTd(freezeLeft[4], { textAlign: "center", padding: "2px 4px" }) }}>
+            <input
+              key={`s-${task.startDate || ""}`}
+              type="date"
+              defaultValue={task.startDate || ""}
+              disabled={!canEdit}
+              onChange={(e) => { const v = e.target.value; if (v && v !== task.startDate) onCommitTask(task.id, { startDate: v }); }}
+              title="เลือกวันเริ่ม"
+              style={{ border: "none", background: "transparent", fontSize: "11px", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
+            />
+          </td>
+          <td style={{ ...freezeTd(freezeLeft[5], { textAlign: "center", padding: "2px 4px" }) }}>
+            <input
+              key={`f-${task.finishDate || ""}`}
+              type="date"
+              defaultValue={task.finishDate || ""}
+              disabled={!canEdit}
+              min={task.startDate || undefined}
+              onChange={(e) => { const f = e.target.value; if (f && f !== task.finishDate) onCommitTask(task.id, { durationDays: businessDaysBetween(task.startDate, f) }); }}
+              title="เลือกวันจบ"
+              style={{ border: "none", background: "transparent", fontSize: "11px", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
+            />
+          </td>
+          <TimelineCell pxPerDay={pxPerDay} timelineWidth={timelineWidth} gridBg={gridBg} todayIdx={todayIdx} totalDays={totalDays}>
+            <TaskBar
+              task={task}
+              rangeStartMs={rangeStartMs}
+              totalDays={totalDays}
+              pxPerDay={pxPerDay}
+              canEdit={canEdit}
+              onCommit={onCommitTask}
+            />
+          </TimelineCell>
+        </tr>
+      ))}
     </>
+  );
+}
+
+// ── บาร์ลากได้แบบ Monday/ClickUp ──
+function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit }) {
+  const dragRef = useRef(null);
+  const [, force] = useReducer((x) => x + 1, 0);
+  // pending = ตำแหน่ง optimistic หลังปล่อยเมาส์ (เก็บเป็น ISO) คงไว้จนข้อมูลจริงจาก server กลับมา
+  // → กันบาร์เด้งกลับตำแหน่งเดิมแว้บหนึ่งระหว่างรอ reload
+  const [pending, setPending] = useState(null);
+  useEffect(() => { setPending(null); }, [task.startDate, task.finishDate, task.durationDays]);
+
+  const baseStartIdx = dayIndexOf(task.startDate, rangeStartMs);
+  const fIdxRaw = dayIndexOf(task.finishDate, rangeStartMs);
+  const baseFinishIdx = isNaN(fIdxRaw) ? baseStartIdx : Math.max(fIdxRaw, baseStartIdx);
+
+  const d = dragRef.current;
+  const pendS = pending ? dayIndexOf(pending.s, rangeStartMs) : NaN;
+  const pendF = pending ? dayIndexOf(pending.f, rangeStartMs) : NaN;
+  const sIdx = d ? d.curS : (!isNaN(pendS) ? pendS : baseStartIdx);
+  const fIdx = d ? d.curF : (!isNaN(pendF) ? pendF : baseFinishIdx);
+
+  if (isNaN(baseStartIdx) && !pending) return null; // ยังไม่มีวันเริ่ม → ไม่วาดบาร์
+
+  const commit = (st) => {
+    if (st.mode === "move") {
+      if (st.curS === st.origS) return;
+      onCommit(task.id, { startDate: isoFromIndex(rangeStartMs, st.curS) });
+    } else if (st.mode === "right") {
+      if (st.curF === st.origF) return;
+      onCommit(task.id, { durationDays: businessDaysBetween(task.startDate, isoFromIndex(rangeStartMs, st.curF)) });
+    } else if (st.mode === "left") {
+      if (st.curS === st.origS) return;
+      const newStartISO = isoFromIndex(rangeStartMs, st.curS);
+      onCommit(task.id, { startDate: newStartISO, durationDays: businessDaysBetween(newStartISO, task.finishDate) });
+    }
+  };
+
+  const begin = (mode) => (e) => {
+    if (!canEdit) return;
+    if (task.isMilestone && mode !== "move") return;
+    e.preventDefault(); e.stopPropagation();
+    dragRef.current = { mode, startX: e.clientX, origS: baseStartIdx, origF: baseFinishIdx, curS: baseStartIdx, curF: baseFinishIdx, moved: false };
+    force();
+    const onMove = (ev) => {
+      const cur = dragRef.current; if (!cur) return;
+      const dd = Math.round((ev.clientX - cur.startX) / pxPerDay);
+      if (dd !== 0) cur.moved = true;
+      if (cur.mode === "move") { cur.curS = cur.origS + dd; cur.curF = cur.origF + dd; }
+      else if (cur.mode === "left") { cur.curS = Math.min(cur.origS + dd, cur.origF); }
+      else if (cur.mode === "right") { cur.curF = Math.max(cur.origF + dd, cur.origS); }
+      force();
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      const cur = dragRef.current;
+      dragRef.current = null;
+      const willChange = cur && cur.moved && (
+        cur.mode === "right" ? cur.curF !== cur.origF : cur.curS !== cur.origS
+      );
+      if (willChange) {
+        // ค้างบาร์ไว้ที่ตำแหน่งที่ลาก แล้วค่อย commit (effect จะเคลียร์ pending เมื่อ task อัปเดต)
+        setPending({ s: isoFromIndex(rangeStartMs, cur.curS), f: isoFromIndex(rangeStartMs, cur.curF) });
+        commit(cur);
+      } else {
+        force();
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const fill = statusFill(task.status);
+  const isPending = task.status === "Pending";
+  const dragging = !!d;
+  const saving = !!pending && !d; // ปล่อยเมาส์แล้ว กำลังรอ server ตอบ → โชว์สถานะกำลังบันทึก
+  const spinner = (color) => (
+    <Loader2 size={13} color={color} style={{ animation: "spin 0.7s linear infinite", flexShrink: 0 }} />
+  );
+  // ที่มาของขั้นตอน (เห็นได้ทุกความกว้างของบาร์):
+  //   custom = เพิ่มใหม่ → ขอบประ ; edited = แก้ไขโดยผู้ใช้ → แถบสีซ้าย (amber)
+  const kind = task.origin === "custom" ? "custom" : (task.userEdited ? "edited" : "template");
+
+  // ── milestone = สี่เหลี่ยมขนมเปียกปูน (ลากย้ายอย่างเดียว) ──
+  if (task.isMilestone) {
+    const size = ROW_H - 16;
+    const cx = sIdx * pxPerDay + pxPerDay / 2;
+    const msBorder = kind === "custom"
+      ? "1.6px dashed color-mix(in srgb, var(--amber) 75%, #000)"
+      : kind === "edited"
+        ? "2.5px solid var(--origin-edited)"
+        : "1.5px solid color-mix(in srgb, var(--amber) 60%, #000)";
+    return (
+      <>
+        <div
+          data-bar-id={task.id}
+          onPointerDown={begin("move")}
+          title={`${task.name}\n${fmtDate(task.startDate)} (จุดสำคัญ)${kind === "custom" ? " · เพิ่มใหม่" : kind === "edited" ? " · แก้ไขแล้ว" : ""}`}
+          style={{
+            position: "absolute", top: (ROW_H - size) / 2, left: cx - size / 2, width: size, height: size,
+            background: "var(--amber)", transform: "rotate(45deg)", borderRadius: "3px",
+            border: msBorder, zIndex: 2,
+            cursor: canEdit ? (dragging ? "grabbing" : "grab") : "default",
+            opacity: saving ? 0.7 : 1,
+            boxShadow: dragging ? "0 2px 8px rgba(0,0,0,0.25)" : "none",
+          }}
+        />
+        {saving && (
+          <span style={{ position: "absolute", top: "50%", left: cx + size / 2 + 4, transform: "translateY(-50%)", zIndex: 3, pointerEvents: "none" }}>
+            {spinner("var(--amber)")}
+          </span>
+        )}
+      </>
+    );
+  }
+
+  const barH = ROW_H - 12;
+  const left = sIdx * pxPerDay + 1;
+  const width = Math.max(pxPerDay - 2, (fIdx - sIdx + 1) * pxPerDay - 2);
+  const handle = (side) => ({
+    position: "absolute", top: 0, bottom: 0, [side]: 0, width: "8px",
+    cursor: canEdit ? "ew-resize" : "default", zIndex: 3,
+    display: "flex", alignItems: "center", justifyContent: "center",
+  });
+  const grip = { width: "2px", height: "45%", background: "rgba(255,255,255,0.75)", borderRadius: "2px" };
+
+  const solidBorderColor = isPending ? fill : `color-mix(in srgb, ${fill} 65%, #000)`;
+  const border = kind === "custom"
+    ? `1.6px dashed ${isPending ? fill : `color-mix(in srgb, ${fill} 80%, #000)`}`
+    : `${isPending ? "1.5px" : "1px"} solid ${solidBorderColor}`;
+  const originNote = kind === "custom" ? " · เพิ่มใหม่" : kind === "edited" ? " · แก้ไขโดยผู้ใช้" : "";
+
+  return (
+    <div
+      data-bar-id={task.id}
+      onPointerDown={begin("move")}
+      title={`${task.name}\n${fmtDate(task.startDate)} – ${fmtDate(task.finishDate)} · ${task.durationDays} วันทำการ${originNote}`}
+      style={{
+        position: "absolute", top: (ROW_H - barH) / 2, left, width, height: barH,
+        background: isPending ? "var(--panel-2)" : fill,
+        border,
+        borderRadius: "6px", zIndex: 2, overflow: "hidden",
+        display: "flex", alignItems: "center", gap: "5px", padding: "0 9px",
+        cursor: canEdit ? (dragging ? "grabbing" : "grab") : "default",
+        userSelect: "none", touchAction: "none",
+        opacity: saving ? 0.8 : 1,
+        boxShadow: dragging ? "0 3px 10px rgba(0,0,0,0.25)" : "none",
+        transition: dragging ? "none" : "box-shadow 0.15s, opacity 0.15s",
+      }}
+    >
+      {kind === "edited" && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "4px", background: "var(--origin-edited)", zIndex: 1, pointerEvents: "none" }} />}
+      {canEdit && !saving && <div onPointerDown={begin("left")} style={handle("left")}><span style={grip} /></div>}
+      <span style={{
+        fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        color: isPending ? "var(--text-2)" : "#fff", pointerEvents: "none", flex: 1,
+      }}>
+        {width > 44 ? task.name : ""}
+      </span>
+      {saving && spinner(isPending ? "var(--text-2)" : "#fff")}
+      {canEdit && !saving && <div onPointerDown={begin("right")} style={handle("right")}><span style={grip} /></div>}
+    </div>
   );
 }
 

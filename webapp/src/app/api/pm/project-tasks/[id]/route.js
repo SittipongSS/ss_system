@@ -54,6 +54,15 @@ export async function PATCH(request, { params }) {
     else if (task.status === 'Completed') updates.actualFinishDate = null;
   }
 
+  // ── origin tracking (migration 0022): mark "แก้ไขโดยผู้ใช้" เมื่อแก้ field สำคัญของแผน
+  // ไม่นับ status / actualFinishDate (workflow) และไม่นับการเลื่อน downstream อัตโนมัติ
+  // (อันนั้นเขียนผ่าน .update() แยกด้านล่าง ไม่ผ่าน path นี้)
+  const USER_EDIT_FIELDS = ['name', 'role', 'assignee', 'assigneeId', 'phase', 'isMilestone', 'durationDays', 'startDate', 'finishDate', 'predecessors', 'note', 'showNoteInPrint'];
+  const isUserEdit = USER_EDIT_FIELDS.some((k) =>
+    body[k] !== undefined && JSON.stringify(body[k] ?? null) !== JSON.stringify(task[k] ?? null)
+  );
+  if (isUserEdit && !task.userEdited) updates.userEdited = true;
+
   const { data, error } = await supabase.from('project_tasks').update(updates).eq('id', id).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
