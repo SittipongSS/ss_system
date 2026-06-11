@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Scale, FolderKanban, Database, ArrowRight, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
+import { apiCache } from "@/lib/apiCache";
 import { landingFor, can } from "@/lib/permissions";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 
@@ -45,6 +46,7 @@ export default function HomeHubPage() {
         await createClient().auth.signOut();
       } catch {}
     }
+    apiCache.clear(); // don't leak the outgoing user's cached data to the next login
     router.replace("/");
   };
 

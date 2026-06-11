@@ -129,6 +129,7 @@ export default function AppLayout({ children }) {
         await createClient().auth.signOut();
       } catch {}
     }
+    apiCache.clear(); // don't leak the outgoing user's cached data to the next login
     router.replace('/');
   };
 

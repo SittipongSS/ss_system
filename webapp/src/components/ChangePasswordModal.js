@@ -1,6 +1,11 @@
 "use client";
 import { useState } from "react";
+import { createClient } from "@/lib/supabaseBrowser";
+import { apiCache } from "@/lib/apiCache";
 import Modal from "@/components/Modal";
+
+const SUPABASE_CONFIGURED =
+  !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Self-service change-password modal. Used in two places so the forced
 // first-login flow is enforced everywhere a signed-in user can land:
@@ -20,6 +25,22 @@ export default function ChangePasswordModal({ open, forced = false, onClose, onC
     setError("");
     setDone(false);
     onClose?.();
+  };
+
+  // Changing the password server-side revokes the current session's refresh
+  // token (Supabase security default). The browser still holds the now-stale
+  // cookies, so without intervention the next request bounces to login and the
+  // login attempt fails until a manual refresh. So on success we sign out
+  // cleanly (drops the bad cookies + clears the outgoing user's cached data)
+  // and do a FULL page load to the login page — not a client navigation, which
+  // would land on the hub and also keep the stale client state. A hard reload
+  // guarantees a clean slate so the user can sign in with the new password.
+  const goToLogin = async () => {
+    if (SUPABASE_CONFIGURED) {
+      try { await createClient().auth.signOut(); } catch {}
+    }
+    apiCache.clear();
+    window.location.href = "/"; // force logout + full refresh to the login page
   };
 
   const handleSubmit = async (e) => {
@@ -45,8 +66,10 @@ export default function ChangePasswordModal({ open, forced = false, onClose, onC
       });
       const data = await res.json();
       if (res.ok) {
+        // Don't clear the parent's `forced` flag here: in the forced flow that
+        // would unmount the modal before the "go to login" screen shows. We sign
+        // the user out and redirect anyway, so the flag is moot.
         setDone(true);
-        onChanged?.(); // unblock the app once the forced change is done
       } else {
         setError(data.error || "เปลี่ยนรหัสผ่านไม่สำเร็จ");
       }
@@ -66,9 +89,9 @@ export default function ChangePasswordModal({ open, forced = false, onClose, onC
     >
       {done ? (
         <div className="p-2">
-          <p className="text-[var(--text-2)]">เปลี่ยนรหัสผ่านเรียบร้อยแล้ว ครั้งถัดไปให้เข้าสู่ระบบด้วยรหัสผ่านใหม่</p>
+          <p className="text-[var(--text-2)]">เปลี่ยนรหัสผ่านเรียบร้อยแล้ว กรุณาเข้าสู่ระบบใหม่อีกครั้งด้วยรหัสผ่านใหม่</p>
           <div className="flex justify-end mt-8 pt-6 border-t border-[var(--border)]">
-            <button onClick={close} className="btn btn-primary px-8">เสร็จสิ้น</button>
+            <button onClick={goToLogin} className="btn btn-primary px-8">ไปหน้าเข้าสู่ระบบ</button>
           </div>
         </div>
       ) : (

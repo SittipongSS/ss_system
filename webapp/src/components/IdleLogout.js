@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseBrowser";
+import { apiCache } from "@/lib/apiCache";
 import Modal from "@/components/Modal";
 
 const SUPABASE_CONFIGURED =
@@ -39,6 +40,7 @@ export default function IdleLogout() {
       try {
         await createClient().auth.signOut();
       } catch {}
+      apiCache.clear(); // don't leak the outgoing user's cached data to the next login
       router.replace("/");
     };
 

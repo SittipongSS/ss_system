@@ -20,7 +20,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata = {
-  title: "Scent & Sense | ระบบภาษีสรรพสามิต",
+  title: "ระบบ Scent and Sense",
   description: "ระบบจัดการทะเบียนสินค้า ลูกค้า ขออนุมัติและยื่นชำระภาษีสรรพสามิต",
 };
 
