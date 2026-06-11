@@ -52,7 +52,7 @@ function EditField({ value, onInput, onCommit, placeholder, disabled, style }) {
 
 function SelectUserField({ value, onCommit, users, disabled, style }) {
   const hasValueInList = users.some(u => {
-    const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
+    const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
     return name === value;
   });
   return (
@@ -66,7 +66,7 @@ function SelectUserField({ value, onCommit, users, disabled, style }) {
       <option value="">— ไม่ระบุ —</option>
       {value && !hasValueInList && <option value={value}>{value}</option>}
       {users.map((u) => {
-        const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
+        const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
         return <option key={u.id} value={name}>{name}</option>;
       })}
     </select>
@@ -87,7 +87,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
   const tasks = project.tasks || [];
 
   useEffect(() => {
-    fetch("/api/users").then(r => r.ok ? r.json() : []).then(d => setUsers(d || [])).catch(() => {});
+    fetch("/api/pm/assignable-users").then(r => r.ok ? r.json() : []).then(d => setUsers(d || [])).catch(() => {});
   }, []);
 
   // draft overlay สำหรับฟิลด์หัว/ท้ายเอกสาร — พิมพ์ลื่น + ปุ่มพิมพ์ใช้ค่าล่าสุดทันที

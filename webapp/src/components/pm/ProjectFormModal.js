@@ -5,8 +5,11 @@ import { X } from "lucide-react";
 
 export default function ProjectFormModal({
   open, onClose, editingId, initialData, onSuccess,
-  customers = [], categories = [], allProducts = [], users = []
+  customers = [], categories = [], allProducts = [],
 }) {
+  // Assignable users are fetched fresh every time the modal opens (not at the
+  // parent page's mount) so a newly-added user shows up without a full reload.
+  const [users, setUsers] = useState([]);
   const blank = {
     code: "", name: "", customerId: "", type: "NPD",
     startDate: "", dueDate: "", productMainCategory: "", productSubCategory: "", aeOwner: "",
@@ -20,6 +23,14 @@ export default function ProjectFormModal({
   const [linkFg, setLinkFg] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewCode, setPreviewCode] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/pm/assignable-users")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setUsers(d || []))
+      .catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -315,7 +326,7 @@ export default function ProjectFormModal({
             <select name="aeOwner" value={form.aeOwner} onChange={change} className="premium-input w-full">
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ae" || u.role === "senior_ae").map((u) => {
-                const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
+                const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
                 return <option key={u.id} value={name}>{name}</option>;
               })}
             </select>
@@ -325,7 +336,7 @@ export default function ProjectFormModal({
             <select name="preparedBy" value={form.preparedBy} onChange={change} className="premium-input w-full">
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ac").map((u) => {
-                const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
+                const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
                 return <option key={u.id} value={name}>{name}</option>;
               })}
             </select>
@@ -335,7 +346,7 @@ export default function ProjectFormModal({
             <select name="aeSupervisor" value={form.aeSupervisor} onChange={change} className="premium-input w-full">
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ae_supervisor").map((u) => {
-                const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
+                const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
                 return <option key={u.id} value={name}>{name}</option>;
               })}
             </select>

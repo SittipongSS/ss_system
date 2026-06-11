@@ -73,7 +73,6 @@ export default function ProjectsPage() {
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
-  const [users, setUsers] = useState([]);
   const [search, setSearch] = useState("");
   const [showArchive, setShowArchive] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -97,7 +96,17 @@ export default function ProjectsPage() {
     fetch("/api/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
     fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
     fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
-    fetch("/api/users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(d || [])).catch(() => {});
+
+    // Concurrent editing: while this tab sits open, another user may add or
+    // change projects. Refetch the list whenever the tab regains focus so a
+    // returning user sees the latest instead of a stale snapshot.
+    const onVisible = () => { if (document.visibilityState === "visible") fetchProjects(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, []);
 
   const openCreate = () => { setEditingId(null); setInitialData(null); setShowForm(true); };
@@ -350,7 +359,6 @@ export default function ProjectsPage() {
         customers={customers}
         categories={categories}
         allProducts={allProducts}
-        users={users}
       />
     </div>
   );
