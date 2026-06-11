@@ -31,6 +31,7 @@ create table if not exists public.products (
   "taxId"              text,
   "address"            text,
   "volume"             numeric,
+  "volumeUnit"         text default 'ml',
   "costPrice"          numeric,
   "retailPriceIncVat"  numeric,
   "assignee"           text,          -- display label only (name snapshot)
