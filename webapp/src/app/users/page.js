@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Users, Plus, Pencil, Trash2 } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, Lock, Unlock } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import {
   ROLE_LABELS,
@@ -126,6 +126,28 @@ export default function UserManagement() {
     }
   };
 
+  // Disable (lock) / enable an account. Disabling forces the user out within the
+  // access-token lifetime and blocks re-login until re-enabled.
+  const handleToggleDisabled = async (u) => {
+    const next = !u.disabled;
+    const msg = next
+      ? `ปิดบัญชี ${u.email}?\nผู้ใช้จะถูกบังคับออกจากระบบและเข้าสู่ระบบไม่ได้จนกว่าจะเปิดใช้อีกครั้ง`
+      : `เปิดใช้บัญชี ${u.email} อีกครั้ง?`;
+    if (!confirm(msg)) return;
+    try {
+      const res = await fetch(`/api/users/${u.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disabled: next }),
+      });
+      const data = await res.json();
+      if (res.ok) await fetchUsers();
+      else alert(data.error || "ดำเนินการไม่สำเร็จ");
+    } catch {
+      alert("เกิดข้อผิดพลาด");
+    }
+  };
+
   if (!canManage) {
     return (
       <div className="glass-panel p-12 text-center text-[var(--text-3)]">
@@ -193,7 +215,14 @@ export default function UserManagement() {
                     <tr key={u.id}>
                       <td className="font-medium text-[var(--text)]">{u.firstName || "-"}</td>
                       <td className="font-medium text-[var(--text)]">{u.lastName || "-"}</td>
-                      <td className="text-[var(--text-2)] font-mono text-xs">{u.email}</td>
+                      <td className="text-[var(--text-2)] font-mono text-xs">
+                        {u.email}
+                        {u.disabled && (
+                          <span className="status-pill danger ml-2" style={{ height: "auto", padding: "1px 7px", fontSize: "10px", fontWeight: 600 }}>
+                            ปิดบัญชี
+                          </span>
+                        )}
+                      </td>
                       <td className="text-[var(--text-2)]">
                         {ROLE_LABELS[u.role] || u.role || (
                           <span className="text-[var(--text-3)]">ไม่ระบุ (viewer)</span>
@@ -221,6 +250,13 @@ export default function UserManagement() {
                             title="แก้ไข"
                           >
                             <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleToggleDisabled(u)}
+                            className={`hover:opacity-70 ${u.disabled ? "text-[var(--green,green)]" : "text-[var(--text-3)]"}`}
+                            title={u.disabled ? "เปิดใช้บัญชี" : "ปิดบัญชี (บังคับออกจากระบบ)"}
+                          >
+                            {u.disabled ? <Unlock size={16} /> : <Lock size={16} />}
                           </button>
                           <button
                             onClick={() => handleDelete(u)}

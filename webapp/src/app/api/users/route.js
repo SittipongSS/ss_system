@@ -34,6 +34,9 @@ export async function GET() {
         department: u.app_metadata?.department || departmentFor(u.app_metadata?.role) || null,
         createdAt: u.created_at,
         lastSignInAt: u.last_sign_in_at,
+        // Banned (disabled) accounts can't sign in and lose their session on the
+        // next request. banned_until is an ISO date in the future while banned.
+        disabled: !!u.banned_until && new Date(u.banned_until) > new Date(),
       });
     }
     page++;

@@ -61,6 +61,17 @@ export async function PATCH(request, { params }) {
     updates.password = body.password;
   }
 
+  // Disable / enable account (admin "force logout + lock"). A ban makes the
+  // user fail getUser() validation on their next request (the proxy revalidates
+  // every request) and blocks re-login + token refresh, so the active session
+  // ends within the access-token lifetime at the latest. 'none' lifts it.
+  if (body.disabled !== undefined) {
+    if (body.disabled && id === me.id) {
+      return Response.json({ error: 'ไม่สามารถปิดบัญชีของตัวเองได้' }, { status: 400 });
+    }
+    updates.ban_duration = body.disabled ? '876000h' : 'none'; // ~100 years
+  }
+
   if (Object.keys(updates).length === 0) {
     return Response.json({ error: 'ไม่มีข้อมูลที่จะอัปเดต' }, { status: 400 });
   }
