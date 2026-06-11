@@ -6,6 +6,13 @@ import { createClient } from "@/lib/supabaseBrowser";
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// If the public Supabase env vars are missing in a PRODUCTION build, the client
+// can't authenticate but the server proxy still enforces auth. Silently doing
+// the dev fallback (router.replace("/home")) would then bounce the user right
+// back to login forever. So we only allow the no-auth bypass in development.
+const DEV_BYPASS = !SUPABASE_CONFIGURED && process.env.NODE_ENV !== "production";
+const MISCONFIGURED = !SUPABASE_CONFIGURED && process.env.NODE_ENV === "production";
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,6 +22,10 @@ export default function LoginPage() {
 
   // If already signed in, skip the login screen.
   useEffect(() => {
+    if (MISCONFIGURED) {
+      setError("ระบบยังไม่ได้ตั้งค่าการเชื่อมต่อ (NEXT_PUBLIC_SUPABASE_*) กรุณาแจ้งผู้ดูแลระบบ");
+      return;
+    }
     if (!SUPABASE_CONFIGURED) return;
     createClient()
       .auth.getUser()
@@ -28,8 +39,15 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
 
+    // Production build with missing public env: don't fake-login (that bounces
+    // straight back here) — surface the misconfiguration instead.
+    if (MISCONFIGURED) {
+      setError("ระบบยังไม่ได้ตั้งค่าการเชื่อมต่อ (NEXT_PUBLIC_SUPABASE_*) กรุณาแจ้งผู้ดูแลระบบ");
+      return;
+    }
+
     // Dev fallback: no Supabase configured -> skip auth so local dev works.
-    if (!SUPABASE_CONFIGURED) {
+    if (DEV_BYPASS) {
       router.replace("/home");
       return;
     }

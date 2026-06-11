@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, ROLE_LABELS } from '@/lib/permissions';
 import { RoleContext } from '@/lib/roleContext';
-import Modal from '@/components/Modal';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -34,53 +34,10 @@ export default function AppLayout({ children }) {
   const [activeSystem, setActiveSystem] = useState('tax');
 
   // Self-service password change (any signed-in user, their own account only).
+  // The form itself lives in <ChangePasswordModal>; here we only track whether
+  // it's open and whether the forced first-login change is still pending.
   const [showPwd, setShowPwd] = useState(false);
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
-  const [pwdForm, setPwdForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
-  const [pwdSubmitting, setPwdSubmitting] = useState(false);
-  const [pwdError, setPwdError] = useState('');
-  const [pwdDone, setPwdDone] = useState(false);
-
-  const openPwd = () => {
-    setPwdForm({ currentPassword: '', newPassword: '', confirm: '' });
-    setPwdError('');
-    setPwdDone(false);
-    setShowPwd(true);
-  };
-
-  const handleChangePassword = async (e) => {
-    e.preventDefault();
-    setPwdError('');
-    if (pwdForm.newPassword.length < 6) {
-      setPwdError('รหัสผ่านใหม่ต้องยาวอย่างน้อย 6 ตัวอักษร');
-      return;
-    }
-    if (pwdForm.newPassword !== pwdForm.confirm) {
-      setPwdError('รหัสผ่านใหม่และการยืนยันไม่ตรงกัน');
-      return;
-    }
-    setPwdSubmitting(true);
-    try {
-      const res = await fetch('/api/account/password', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          currentPassword: pwdForm.currentPassword,
-          newPassword: pwdForm.newPassword,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setPwdDone(true);
-        setMustChangePwd(false); // unblock the app once the forced change is done
-      } else {
-        setPwdError(data.error || 'เปลี่ยนรหัสผ่านไม่สำเร็จ');
-      }
-    } catch {
-      setPwdError('เกิดข้อผิดพลาด');
-    }
-    setPwdSubmitting(false);
-  };
 
   useEffect(() => {
     // Load theme + sidebar state (independent of auth)
@@ -329,7 +286,7 @@ export default function AppLayout({ children }) {
 
             {/* Change own password */}
             {SUPABASE_CONFIGURED && (
-              <button onClick={openPwd} className="btn ghost icon-only" title="เปลี่ยนรหัสผ่าน">
+              <button onClick={() => setShowPwd(true)} className="btn ghost icon-only" title="เปลี่ยนรหัสผ่าน">
                 <KeyRound size={16} strokeWidth={2} />
               </button>
             )}
@@ -348,75 +305,12 @@ export default function AppLayout({ children }) {
       </main>
 
       {/* Self-service change-password modal (forced & non-dismissible on first login) */}
-      <Modal
-        open={showPwd || mustChangePwd}
+      <ChangePasswordModal
+        open={showPwd}
+        forced={mustChangePwd}
         onClose={() => setShowPwd(false)}
-        title={mustChangePwd && !pwdDone ? "ตั้งรหัสผ่านใหม่ก่อนเริ่มใช้งาน" : "เปลี่ยนรหัสผ่าน"}
-        size="sm"
-        dismissible={!mustChangePwd}
-      >
-        {pwdDone ? (
-          <div className="p-2">
-            <p className="text-[var(--text-2)]">เปลี่ยนรหัสผ่านเรียบร้อยแล้ว ครั้งถัดไปให้เข้าสู่ระบบด้วยรหัสผ่านใหม่</p>
-            <div className="flex justify-end mt-8 pt-6 border-t border-[var(--border)]">
-              <button onClick={() => setShowPwd(false)} className="btn btn-primary px-8">เสร็จสิ้น</button>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleChangePassword}>
-            {mustChangePwd && (
-              <p className="text-[var(--text-2)] text-sm mb-4">
-                นี่เป็นการเข้าใช้งานครั้งแรก (หรือแอดมินเพิ่งรีเซ็ตรหัสให้) กรุณาตั้งรหัสผ่านใหม่ของคุณเองก่อนเริ่มใช้งานระบบ
-              </p>
-            )}
-            <div className="grid gap-[18px]">
-              <div className="form-group">
-                <label>รหัสผ่านปัจจุบัน <span className="text-[var(--red)]">*</span></label>
-                <input
-                  type="password"
-                  value={pwdForm.currentPassword}
-                  onChange={(e) => setPwdForm((f) => ({ ...f, currentPassword: e.target.value }))}
-                  required
-                  className="premium-input w-full"
-                  autoComplete="current-password"
-                />
-              </div>
-              <div className="form-group">
-                <label>รหัสผ่านใหม่ <span className="text-[var(--red)]">*</span></label>
-                <input
-                  type="password"
-                  value={pwdForm.newPassword}
-                  onChange={(e) => setPwdForm((f) => ({ ...f, newPassword: e.target.value }))}
-                  required
-                  placeholder="อย่างน้อย 6 ตัวอักษร"
-                  className="premium-input w-full"
-                  autoComplete="new-password"
-                />
-              </div>
-              <div className="form-group">
-                <label>ยืนยันรหัสผ่านใหม่ <span className="text-[var(--red)]">*</span></label>
-                <input
-                  type="password"
-                  value={pwdForm.confirm}
-                  onChange={(e) => setPwdForm((f) => ({ ...f, confirm: e.target.value }))}
-                  required
-                  className="premium-input w-full"
-                  autoComplete="new-password"
-                />
-              </div>
-            </div>
-            {pwdError && <p className="text-[var(--red)] text-sm mt-3">{pwdError}</p>}
-            <div className="flex justify-end gap-2 mt-8 pt-6 border-t border-[var(--border)]">
-              {!mustChangePwd && (
-                <button type="button" onClick={() => setShowPwd(false)} className="btn">ยกเลิก</button>
-              )}
-              <button type="submit" disabled={pwdSubmitting} className="btn btn-primary px-8">
-                {pwdSubmitting ? 'กำลังบันทึก...' : 'เปลี่ยนรหัสผ่าน'}
-              </button>
-            </div>
-          </form>
-        )}
-      </Modal>
+        onChanged={() => setMustChangePwd(false)}
+      />
     </div>
   );
 }

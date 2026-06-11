@@ -12,8 +12,19 @@ export async function proxy(request) {
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   // If Supabase isn't configured yet (e.g. local dev before setup), don't
-  // block anything — the app keeps working without auth.
-  if (!url || !anon) return NextResponse.next();
+  // block anything — the app keeps working without auth. In PRODUCTION this is
+  // never intended: it means the deploy is missing env vars and auth is OFF for
+  // the whole app, so make the misconfiguration loud in the server logs.
+  if (!url || !anon) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error(
+        '[proxy] NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY missing at runtime — ' +
+          'auth is DISABLED. Set them in the deployment env (and rebuild, since NEXT_PUBLIC_* ' +
+          'are inlined at build time).'
+      );
+    }
+    return NextResponse.next();
+  }
 
   let response = NextResponse.next({ request });
 
@@ -41,12 +52,22 @@ export async function proxy(request) {
   const isApi = path.startsWith('/api');
   const isLogin = path === '/'; // login page is public
 
+  // getUser() may have rotated the access/refresh token and queued the new
+  // cookies onto `response` (via setAll above). Any time we return a DIFFERENT
+  // response (redirect / 4xx) we must copy those cookies over, or the browser
+  // keeps the stale token — which, after rotation, fails the next request and
+  // bounces the user back to login. (See @supabase/ssr middleware docs.)
+  const withRefreshedCookies = (res) => {
+    response.cookies.getAll().forEach((c) => res.cookies.set(c));
+    return res;
+  };
+
   if (!user && !isLogin) {
     if (isApi) {
-      return Response.json({ error: 'unauthorized' }, { status: 401 });
+      return withRefreshedCookies(NextResponse.json({ error: 'unauthorized' }, { status: 401 }));
     }
     const redirectUrl = new URL('/', request.url);
-    return NextResponse.redirect(redirectUrl);
+    return withRefreshedCookies(NextResponse.redirect(redirectUrl));
   }
 
   // ── Phased rollout lockdown ───────────────────────────────────────────
@@ -55,14 +76,14 @@ export async function proxy(request) {
   // everything. Non-admins also get the hub (/home), their own-account API, and
   // READ-ONLY access to the master/holiday data the PM forms depend on.
   if (user && !isLogin && lockedOut(user.app_metadata?.role, path, request.method, isApi)) {
-    if (isApi) return Response.json({ error: 'forbidden' }, { status: 403 });
-    return NextResponse.redirect(new URL('/home', request.url));
+    if (isApi) return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
+    return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
   }
 
   // Role-based write protection for API routes (defense-in-depth; the UI also
   // hides actions). GET is always allowed for any signed-in user.
   if (user && isApi && !apiWriteAllowed(request.method, path, user.app_metadata?.role)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
   }
 
   return response;

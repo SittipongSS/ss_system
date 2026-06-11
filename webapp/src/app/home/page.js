@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Scale, FolderKanban, Database, ArrowRight, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { landingFor, can } from "@/lib/permissions";
+import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -12,6 +13,7 @@ export default function HomeHubPage() {
   const router = useRouter();
   const [role, setRole] = useState(null);
   const [userName, setUserName] = useState("");
+  const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
 
   useEffect(() => {
     // Local dev fallback — no Supabase configured yet.
@@ -29,6 +31,10 @@ export default function HomeHubPage() {
         }
         setRole(user.app_metadata?.role || "user");
         setUserName(user.user_metadata?.name || user.email || "user");
+        // The hub isn't wrapped by AppLayout, so enforce the forced first-login
+        // password change here too — otherwise a must-change user could sit on
+        // the hub without being prompted.
+        setMustChangePwd(!!user.app_metadata?.must_change_password);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -252,6 +258,10 @@ export default function HomeHubPage() {
           </button>
         </div>
       </div>
+
+      {/* Forced first-login password change (the hub has no manual trigger, so
+          this is forced-only). */}
+      <ChangePasswordModal forced={mustChangePwd} onChanged={() => setMustChangePwd(false)} />
     </div>
   );
 }
