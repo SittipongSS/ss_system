@@ -316,7 +316,17 @@ export default function UserManagement() {
   );
 }
 
+// Small section heading used to group the user form into readable blocks.
+function SectionHeading({ children }) {
+  return (
+    <div className="col-span-2 text-[13px] font-semibold text-[var(--text-2)] border-b border-[var(--border)] pb-1.5 mb-0.5 first:mt-0 mt-3">
+      {children}
+    </div>
+  );
+}
+
 // Shared form fields for create + edit. `edit` hides email; password optional.
+// Grouped into three sections: personal info, login credentials, role & team.
 function UserFields({ form, setForm, requirePassword, edit }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isTeamRole = TEAM_ROLES.includes(form.role);
@@ -327,22 +337,9 @@ function UserFields({ form, setForm, requirePassword, edit }) {
     setForm((f) => ({ ...f, department: dep, role: rolesForDepartment(dep)[0] }));
 
   return (
-    <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-      {!edit && (
-        <div className="form-group">
-          <label>
-            อีเมล <span className="text-[var(--red)]">*</span>
-          </label>
-          <input
-            type="email"
-            value={form.email}
-            onChange={(e) => set("email", e.target.value)}
-            required
-            placeholder="user@company.com"
-            className="premium-input w-full font-mono"
-          />
-        </div>
-      )}
+    <div className="grid gap-x-[18px] gap-y-[16px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+      {/* —— ข้อมูลส่วนตัว —— */}
+      <SectionHeading>ข้อมูลส่วนตัว</SectionHeading>
       <div className="form-group">
         <label>ชื่อ <span className="text-[var(--red)]">*</span></label>
         <input
@@ -365,7 +362,25 @@ function UserFields({ form, setForm, requirePassword, edit }) {
           className="premium-input w-full"
         />
       </div>
-      <div className="form-group">
+
+      {/* —— บัญชีเข้าระบบ —— */}
+      <SectionHeading>บัญชีเข้าระบบ</SectionHeading>
+      {!edit && (
+        <div className="form-group col-span-2">
+          <label>
+            อีเมล <span className="text-[var(--red)]">*</span>
+          </label>
+          <input
+            type="email"
+            value={form.email}
+            onChange={(e) => set("email", e.target.value)}
+            required
+            placeholder="user@company.com"
+            className="premium-input w-full font-mono"
+          />
+        </div>
+      )}
+      <div className="form-group col-span-2">
         <label>
           {edit ? "รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)" : "รหัสผ่าน"}{" "}
           {requirePassword && <span className="text-[var(--red)]">*</span>}
@@ -380,6 +395,9 @@ function UserFields({ form, setForm, requirePassword, edit }) {
           autoComplete="new-password"
         />
       </div>
+
+      {/* —— สิทธิ์และสังกัด —— */}
+      <SectionHeading>สิทธิ์และสังกัด</SectionHeading>
       <div className="form-group">
         <label>
           ฝ่าย (Department) <span className="text-[var(--red)]">*</span>
@@ -412,7 +430,7 @@ function UserFields({ form, setForm, requirePassword, edit }) {
           ))}
         </select>
       </div>
-      <div className="form-group">
+      <div className="form-group col-span-2">
         <label>
           ทีม {isTeamRole && <span className="text-[var(--red)]">*</span>}
         </label>
