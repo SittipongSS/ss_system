@@ -148,13 +148,13 @@ export default function SalesDashboard() {
             </span>{" "}
             ยื่นชำระภาษี
           </h1>
-          <p>บันทึกใบเสนอราคา / PO รับเงิน และยื่นให้ฝ่ายกฎหมายอนุมัติชำระภาษี</p>
+          <p>บันทึกรายการยื่นชำระ / PO รับเงิน และส่งให้ฝ่ายกฎหมายอนุมัติชำระภาษี</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="pill danger">รอรับเงิน {pendingOrders.length} รายการ</div>
           {canAct && (
             <button onClick={() => setShowForm(true)} className="btn btn-primary flex items-center gap-1.5">
-              <Plus size={16} /> สร้างใบเสนอราคา
+              <Plus size={16} /> ยื่นชำระ
             </button>
           )}
         </div>
@@ -180,7 +180,7 @@ export default function SalesDashboard() {
         <div className="glass-panel">
           <div className="px-4 py-3.5 border-b border-[var(--border)] flex justify-between items-center">
             <h3 className="font-semibold text-sm text-[var(--text)] ">
-              {activeTab === "pending" ? "ใบเสนอราคารอรับเงิน" : "รายการที่ถูกตีกลับให้แก้ไข"} ({list.length} รายการ)
+              {activeTab === "pending" ? "รายการรอรับเงิน" : "รายการที่ถูกตีกลับให้แก้ไข"} ({list.length} รายการ)
             </h3>
           </div>
           <div className="premium-table-wrapper border-none rounded-t-none">
@@ -262,7 +262,7 @@ export default function SalesDashboard() {
       )}
 
       {/* Create order modal */}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="สร้างใบเสนอราคาใหม่ (New Quotation)" size="lg">
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="ยื่นชำระภาษีใหม่ (New Payment Request)" size="lg">
         <div className="flex justify-end mb-4">
           <span className="text-xs font-semibold text-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 rounded-full">
             Assignee: {userName}
@@ -369,7 +369,7 @@ export default function SalesDashboard() {
           <div className="col-span-3 flex justify-end gap-2 mt-2 pt-5 border-t border-[var(--border)]">
             <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>
             <button type="submit" disabled={isSubmitting} className="btn btn-primary px-8">
-              {isSubmitting ? "กำลังบันทึก..." : "บันทึกใบเสนอราคา"}
+              {isSubmitting ? "กำลังบันทึก..." : "บันทึกรายการยื่นชำระ"}
             </button>
           </div>
         </form>

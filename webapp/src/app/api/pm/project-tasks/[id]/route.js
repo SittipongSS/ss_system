@@ -2,6 +2,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { editScope, inScope } from '@/lib/permissions';
 import { recalculateForward, todayStr } from '@/lib/pm/schedule';
+import { setHolidays } from '@/lib/pm/dateHelpers';
+import { holidaySet } from '@/lib/master/holidays';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +11,7 @@ export const dynamic = 'force-dynamic';
 const SCHEDULE_FIELDS = ['startDate', 'durationDays', 'predecessors'];
 
 const EDITABLE = [
-  'name', 'role', 'assignee', 'phase', 'isMilestone', 'durationDays',
+  'name', 'role', 'assignee', 'assigneeId', 'phase', 'isMilestone', 'durationDays',
   'startDate', 'finishDate', 'actualFinishDate', 'status',
   'predecessors', 'cellsOverride', 'stepOrder',
 ];
@@ -59,6 +61,7 @@ export async function PATCH(request, { params }) {
   // เฉพาะแถวที่ start/finish/cells เปลี่ยนจริง — mirror updateTaskDetails ของ ss-cj ──
   const schedulingChanged = SCHEDULE_FIELDS.some((k) => body[k] !== undefined);
   if (schedulingChanged && project) {
+    setHolidays([...(await holidaySet())]);
     const { data: all } = await supabase
       .from('project_tasks')
       .select('*')

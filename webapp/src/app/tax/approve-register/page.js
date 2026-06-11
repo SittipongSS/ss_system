@@ -159,8 +159,8 @@ export default function LegalRegistration() {
             <div className="glass-panel">
               <div className="px-4 py-3.5 border-b border-[var(--border)] flex items-center justify-between gap-3">
                 <h3 className="font-semibold text-sm text-[var(--text)]">ทะเบียนที่อนุมัติแล้ว ({filteredApproved.length})</h3>
-                <div className="search-bar" style={{ maxWidth: 280 }}>
-                  <Search size={15} className="icon-l" />
+                <div className="search-glass">
+                  <Search size={18} color="var(--text-3)" />
                   <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ลูกค้า / เลขอนุมัติ..." />
                 </div>
               </div>

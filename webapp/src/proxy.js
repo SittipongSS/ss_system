@@ -49,12 +49,12 @@ export async function proxy(request) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // ── Temporary system lockdown ─────────────────────────────────────────
-  // All three systems (database / tax / project management) are closed to
-  // everyone except admins. Non-admins may only reach the login page, the hub
-  // (/home) and their own-account endpoints. Flip ADMIN_LOCKDOWN to false to
-  // re-open the systems to all roles.
-  if (user && !isLogin && lockedOut(user.app_metadata?.role, path, isApi)) {
+  // ── Phased rollout lockdown ───────────────────────────────────────────
+  // Only the Project Management system (/pm) is open to normal roles right now;
+  // the tax + database systems stay admin-only. Admins (users:manage) reach
+  // everything. Non-admins also get the hub (/home), their own-account API, and
+  // READ-ONLY access to the master/holiday data the PM forms depend on.
+  if (user && !isLogin && lockedOut(user.app_metadata?.role, path, request.method, isApi)) {
     if (isApi) return Response.json({ error: 'forbidden' }, { status: 403 });
     return NextResponse.redirect(new URL('/home', request.url));
   }
@@ -68,19 +68,33 @@ export async function proxy(request) {
   return response;
 }
 
-// Master switch for the temporary lockdown. Set to false to re-open all three
+// Master switch for the phased lockdown. Set to false to re-open all three
 // systems to their normal roles (the per-route capability gate below still
 // applies).
 const ADMIN_LOCKDOWN = true;
 
-// During lockdown, only admins (users:manage) may touch the systems. Everyone
-// else is limited to the hub page and their own-account API. `/` (login) is
-// handled by the caller and never reaches here.
-function lockedOut(role, path, isApi) {
+const startsWithAny = (path, prefixes) => prefixes.some((p) => path === p || path.startsWith(p + '/'));
+
+// Pages a non-admin may open during the phased rollout: hub + PM system.
+const OPEN_PAGES = ['/home', '/pm'];
+// APIs a non-admin may WRITE to: own account + the PM system itself.
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm'];
+// APIs a non-admin may READ (GET) — PM forms/timeline need this master data,
+// but managing those registries stays in the (still-locked) database system.
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users'];
+
+// During the phased lockdown, admins (users:manage) get everything; normal
+// roles get the hub + PM system (+ read-only master data it depends on).
+// `/` (login) is handled by the caller and never reaches here.
+function lockedOut(role, path, method, isApi) {
   if (!ADMIN_LOCKDOWN) return false;
-  if (can(role, 'users:manage')) return false; // admin — full access
-  if (isApi) return !path.startsWith('/api/account'); // own-account APIs only
-  return path !== '/home'; // non-API pages: hub only
+  if (can(role, 'users:manage')) return false; // admin — full access to all systems
+  if (isApi) {
+    if (startsWithAny(path, OPEN_WRITE_APIS)) return false; // PM + own account: read+write
+    if (method === 'GET' && startsWithAny(path, OPEN_READ_APIS)) return false; // supporting reads
+    return true;
+  }
+  return !startsWithAny(path, OPEN_PAGES); // pages: hub + PM only
 }
 
 // Coarse capability gate: does this role do this KIND of write at all?
@@ -104,6 +118,8 @@ function apiWriteAllowed(method, path, role) {
   if (path.startsWith('/api/pm')) return can(role, 'pm:edit');
   // Master taxonomy (product categories) — supervisor-only writes.
   if (path.startsWith('/api/product-types')) return can(role, 'master:manage');
+  // Holiday calendar (working-day source for PM timeline) — supervisor-only writes.
+  if (path.startsWith('/api/holidays')) return can(role, 'master:manage');
   // Excise registrations: SA submits/edits the link, LG approves (PATCH).
   if (path.startsWith('/api/excise-registrations')) {
     if (method === 'DELETE') return can(role, 'products:delete');

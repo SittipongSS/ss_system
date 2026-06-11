@@ -6,11 +6,12 @@ import Modal from "@/components/Modal";
 // approval are NOT here — they live on the registration (/excise).
 const FIELDS = [
   "fgCode", "productDescription", "brandName",
-  "volume", "costPrice", "retailPriceIncVat",
+  "volume", "volumeUnit", "costPrice", "retailPriceIncVat",
 ];
 
 export default function EditProductModal({ open, onClose, onSaved, product }) {
   const [form, setForm] = useState({});
+  const [productTypes, setProductTypes] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -20,8 +21,25 @@ export default function EditProductModal({ open, onClose, onSaved, product }) {
       for (const k of FIELDS) seed[k] = product[k] ?? "";
       setForm(seed);
       setError(null);
+      
+      // Fetch product types if not already fetched
+      if (productTypes.length === 0) {
+        fetch("/api/product-types")
+          .then(res => res.json())
+          .then(data => setProductTypes(data))
+          .catch(err => console.error("Failed to fetch product types", err));
+      }
     }
   }, [open, product?.id]);
+
+  const getCategoryInfo = (fgCode) => {
+    if (!fgCode) return null;
+    const m = fgCode.match(/(\d{2})-(\d{3})/);
+    if (!m) return { found: false, code: null };
+    const code = `${m[1]}-${m[2]}`;
+    const typeInfo = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
+    return { found: !!typeInfo, code, typeInfo };
+  };
 
   if (!product) return null;
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -77,7 +95,33 @@ export default function EditProductModal({ open, onClose, onSaved, product }) {
             <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
               <div className="col-span-2">
                 {field("fgCode", "รหัสสินค้า (FG Code)")}
-                <span className="text-[11px] text-[var(--text-3)]">เฉพาะหมวด 01-002 เท่านั้นที่ระบบคิดภาษีสรรพสามิตอัตโนมัติ</span>
+                
+                {(() => {
+                  const cat = getCategoryInfo(form.fgCode);
+                  if (!form.fgCode) {
+                    return <span className="text-[11px] text-[var(--text-3)]">เฉพาะหมวด 01-002 เท่านั้นที่ระบบคิดภาษีสรรพสามิตอัตโนมัติ</span>;
+                  }
+                  if (!cat.code) {
+                    return <div className="mt-1 text-[11px] text-[var(--text-3)] italic">รูปแบบรหัส FG ไม่ถูกต้อง (ไม่พบโครงสร้างหมวดหมู่ XX-YYY)</div>;
+                  }
+                  if (!cat.found) {
+                    if (productTypes.length === 0) return null; // Still loading
+                    return <div className="mt-1 text-[11px] text-[var(--red)] bg-[var(--red-soft)] p-2 rounded border border-[var(--border)]">พบหมวดหมู่ <strong>{cat.code}</strong> แต่ไม่มีในฐานข้อมูล</div>;
+                  }
+                  
+                  const isExcise = cat.code === "01-002";
+                  return (
+                    <div className={`mt-1 p-2 text-[11px] rounded border border-[var(--border)] flex flex-col gap-0.5 ${isExcise ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-2)] text-[var(--text-2)]"}`}>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono bg-white/50 px-1 rounded text-[9px] font-bold">{cat.code}</span>
+                        <span className="font-semibold">{cat.typeInfo.nameTh || cat.typeInfo.nameEn}</span>
+                      </div>
+                      <div className="opacity-80 pl-1 text-[10px]">
+                        กลุ่มหลัก: {cat.typeInfo.mainCategoryName}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               {field("productDescription", "รายละเอียดสินค้า")}
               {field("brandName", "ชื่อแบรนด์")}
@@ -85,9 +129,34 @@ export default function EditProductModal({ open, onClose, onSaved, product }) {
           </div>
 
           <div>
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">ข้อมูลสรรพสามิต</h3>
+            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">ข้อมูลบรรจุภัณฑ์และราคา</h3>
             <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-              {field("volume", "ปริมาตร (ml)", "number", { min: "1" })}
+              <div className="form-group">
+                <label>ปริมาตร/น้ำหนักบรรจุ</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={form.volume ?? ""}
+                    onChange={(e) => set("volume", e.target.value)}
+                    className="premium-input flex-1 font-mono"
+                    min="0.01"
+                    step="0.01"
+                  />
+                  <select
+                    value={form.volumeUnit || "ml"}
+                    onChange={(e) => set("volumeUnit", e.target.value)}
+                    className="premium-select"
+                    style={{ width: "80px" }}
+                  >
+                    <option value="ml">ml</option>
+                    <option value="g">g</option>
+                    <option value="kg">kg</option>
+                    <option value="oz">oz</option>
+                    <option value="L">L</option>
+                    <option value="pcs">pcs</option>
+                  </select>
+                </div>
+              </div>
               {field("costPrice", "ราคาโรงงาน (บาท)", "number", { min: "0", step: "0.01" })}
               {field("retailPriceIncVat", "ราคาขายปลีก (รวม VAT)", "number", { min: "0", step: "0.01" })}
             </div>

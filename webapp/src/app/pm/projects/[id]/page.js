@@ -13,6 +13,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
+import { setHolidays, countBusinessDays } from "@/lib/pm/dateHelpers";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -75,9 +76,10 @@ const getVariance = (task) => {
   if (task.status !== "Completed" || !task.actualFinishDate || !task.finishDate) return null;
   const plan = new Date(task.finishDate); plan.setHours(0, 0, 0, 0);
   const actual = new Date(task.actualFinishDate); actual.setHours(0, 0, 0, 0);
-  const diff = Math.round((actual - plan) / (1000 * 60 * 60 * 24));
-  if (diff > 0) return { color: "var(--red)", label: `ช้ากว่าแผน ${diff} วัน` };
-  if (diff < 0) return { color: "var(--green)", label: `เร็วกว่าแผน ${Math.abs(diff)} วัน` };
+  // นับเป็น "วันทำการ" ให้ตรงกับไทม์ไลน์ (ข้ามเสาร์-อาทิตย์ + วันหยุด) ไม่ใช่วันปฏิทิน
+  const diff = countBusinessDays(plan, actual);
+  if (diff > 0) return { color: "var(--red)", label: `ช้ากว่าแผน ${diff} วันทำการ` };
+  if (diff < 0) return { color: "var(--green)", label: `เร็วกว่าแผน ${Math.abs(diff)} วันทำการ` };
   return { color: "var(--green)", label: "ตรงตามแผน" };
 };
 
@@ -143,6 +145,7 @@ export default function ProjectDetailPage() {
   const [collapsedPhases, setCollapsedPhases] = useState(() => new Set());
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [insertAfterId, setInsertAfterId] = useState(null); // บั๊ก C: แทรกขั้นตอนตรงตำแหน่ง
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -166,7 +169,11 @@ export default function ProjectDetailPage() {
     fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
     fetch("/api/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
     fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
-    fetch("/api/users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(d || [])).catch(() => {});
+    fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(d || [])).catch(() => {});
+    // โหลดปฏิทินวันหยุดจริงให้ฝั่ง client (Gantt/Document view นับวันทำการถูกต้อง)
+    fetch("/api/holidays").then((r) => (r.ok ? r.json() : [])).then((d) => {
+      if (Array.isArray(d) && d.length) setHolidays(d.map((h) => h.date));
+    }).catch(() => {});
   }, []);
 
   const updateProject = async (patch) => {
@@ -182,18 +189,41 @@ export default function ProjectDetailPage() {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
     });
     if (res.ok) {
-      // a date/duration change may shift downstream steps → reload fully
-      if (patch.startDate || patch.durationDays) { await load(); return; }
+      // บั๊ก A: แก้ startDate/durationDays/predecessors ทำให้ server เลื่อน downstream → reload เต็ม
+      if (patch.startDate || patch.durationDays || patch.predecessors) { await load(); return; }
       const updated = await res.json();
       setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === taskId ? updated : t)) }));
     }
   };
 
+  // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", 01-002 ชนะ) เหมือนในโมดัล
+  // เพื่อให้ resync ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG 01-002 แล้วเงียบ
+  const deriveCategoryFromProducts = (productIds) => {
+    const fgs = productIds.map((pid) => allProducts.find((pr) => pr.id === pid)).filter(Boolean);
+    if (!fgs.length) return null; // ไม่เหลือ FG → ไม่แตะหมวด
+    const code = fgs.some((f) => f.categoryCode === "01-002") ? "01-002" : (fgs[0].categoryCode || "");
+    const [mc = "", tc = ""] = code ? code.split("-") : [];
+    const sub = categories.find((c) => c.mainCategoryCode === mc && c.typeCode === tc)?.nameTh || "";
+    return { productMainCategory: code, productSubCategory: sub };
+  };
+  // ยืนยันก่อน resync ถ้าหมวดที่ derive พลิกสถานะสรรพสามิต (01-002)
+  const confirmExciseFlip = (cat) => {
+    if (!cat) return true;
+    const was = (data.productMainCategory || "") === "01-002";
+    const now = (cat.productMainCategory || "") === "01-002";
+    if (was === now) return true;
+    return confirm(now
+      ? "สินค้าที่ผูกเข้าข่ายสรรพสามิต (01-002)\nระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่\n\nดำเนินการต่อหรือไม่?"
+      : "สินค้าที่ผูกไม่เข้าข่ายสรรพสามิตแล้ว\nระบบจะลบขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่\n\nดำเนินการต่อหรือไม่?");
+  };
+
   const addProduct = async () => {
     if (!addingProduct) return;
     const newProducts = [...(data.projectProducts || []).map(p => ({ productId: p.productId, orderQty: p.orderQty, productionQty: p.productionQty })), { productId: addingProduct, orderQty: "", productionQty: "" }];
+    const cat = deriveCategoryFromProducts(newProducts.map((p) => p.productId));
+    if (!confirmExciseFlip(cat)) return;
     const res = await fetch(`/api/pm/projects/${id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectProducts: newProducts }),
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectProducts: newProducts, ...(cat || {}) }),
     });
     if (res.ok) { setAddingProduct(""); load(); }
     else alert((await res.json()).error || "ผูกสินค้าไม่สำเร็จ");
@@ -201,8 +231,10 @@ export default function ProjectDetailPage() {
 
   const removeProduct = async (productId) => {
     const newProducts = (data.projectProducts || []).filter(p => p.productId !== productId).map(p => ({ productId: p.productId, orderQty: p.orderQty, productionQty: p.productionQty }));
+    const cat = deriveCategoryFromProducts(newProducts.map((p) => p.productId));
+    if (!confirmExciseFlip(cat)) return;
     const res = await fetch(`/api/pm/projects/${id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectProducts: newProducts }),
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectProducts: newProducts, ...(cat || {}) }),
     });
     if (res.ok) load();
   };
@@ -230,7 +262,7 @@ export default function ProjectDetailPage() {
     if (!confirm(`ต้องการลบโปรเจกต์ "${p.code} — ${p.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`)) return;
     const res = await fetch(`/api/pm/projects/${p.id}`, { method: "DELETE" });
     if (res.ok) {
-      router.push("/projects");
+      router.push("/pm/projects");
     } else {
       alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
     }
@@ -238,11 +270,20 @@ export default function ProjectDetailPage() {
 
   const addTask = async (e) => {
     e.preventDefault();
+    // บั๊ก C: หาตำแหน่งแทรก — ถ้ากดปุ่ม "แทรก" ใช้ task นั้น; ไม่งั้นถ้าเลือกเฟส
+    // ที่มีอยู่แล้ว ให้ไปต่อท้ายเฟสนั้น (กันหัวข้อเฟสซ้ำจากการจัดกลุ่มแบบติดกัน)
+    let afterTaskId = insertAfterId;
+    if (!afterTaskId && taskForm.phase) {
+      const samePhase = tasks.filter((t) => t.phase === taskForm.phase);
+      if (samePhase.length) afterTaskId = samePhase[samePhase.length - 1].id;
+    }
     const res = await fetch("/api/pm/project-tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        projectId: id, 
-        ...taskForm, 
+      body: JSON.stringify({
+        // URL may be a project code; tasks FK the internal id, so use the loaded row's id.
+        projectId: data?.id ?? id,
+        ...taskForm,
+        afterTaskId: afterTaskId || undefined,
         durationDays: Number(taskForm.durationDays) || 1,
         startDate: taskForm.startDate || null,
         assignee: taskForm.assignee || null
@@ -250,6 +291,7 @@ export default function ProjectDetailPage() {
     });
     if (res.ok) {
       setShowAddTask(false);
+      setInsertAfterId(null);
       setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false });
       load();
     } else alert((await res.json()).error || "เพิ่มขั้นตอนไม่สำเร็จ");
@@ -271,6 +313,7 @@ export default function ProjectDetailPage() {
     setEditingTaskId(task.id);
     setEditForm({
       name: task.name, role: task.role || "SA", assignee: task.assignee || "",
+      assigneeId: task.assigneeId || "",
       durationDays: task.durationDays ?? 1, startDate: task.startDate || "",
       isMilestone: !!task.isMilestone, phase: task.phase || "",
       predecessors: task.predecessors || [],
@@ -279,6 +322,7 @@ export default function ProjectDetailPage() {
   const saveEditing = async (taskId) => {
     await updateTask(taskId, {
       name: editForm.name, role: editForm.role, assignee: editForm.assignee || null,
+      assigneeId: editForm.assigneeId || null,
       durationDays: Number(editForm.durationDays) || 1,
       startDate: editForm.startDate || null,
       isMilestone: editForm.isMilestone, phase: editForm.phase || null,
@@ -409,21 +453,29 @@ export default function ProjectDetailPage() {
   return (
     <div>
       {/* Top Header Section */}
-      <Link
-        href="/projects"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          color: "var(--text-2)",
-          fontSize: "13px",
-          fontWeight: 500,
-          marginBottom: "14px",
-          textDecoration: "none",
-        }}
-      >
-        <ArrowLeft size={16} /> กลับไปหน้ารวมโปรเจกต์
-      </Link>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "12px" }}>
+        <Link
+          href="/pm/projects"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            color: "var(--text-2)",
+            fontSize: "13px",
+            fontWeight: 500,
+            textDecoration: "none",
+          }}
+        >
+          <ArrowLeft size={16} /> กลับไปหน้ารวมโปรเจกต์
+        </Link>
+        
+        {canEdit && (
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button onClick={() => setShowEditProject(true)} title="แก้ไขโปรเจกต์" style={{ background: "var(--panel)", border: "1px solid var(--border)", color: "var(--text-2)", borderRadius: "8px", cursor: "pointer", padding: "8px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}><Edit2 size={16} /></button>
+            <button onClick={handleDeleteProject} title="ลบโปรเจกต์" style={{ background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 20%, transparent)", color: "var(--red)", borderRadius: "8px", cursor: "pointer", padding: "8px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}><Trash2 size={16} /></button>
+          </div>
+        )}
+      </div>
 
       {/* Header (ss-cj Timeline header style) */}
       <div className="glass-panel" style={{ borderRadius: "16px", overflow: "hidden", marginBottom: "24px" }}>
@@ -435,12 +487,6 @@ export default function ProjectDetailPage() {
                   <GanttChart size={18} />
                 </span>
                 <span>Timeline Project: {p.code}</span>
-                {canEdit && (
-                  <div style={{ display: "flex", gap: "4px", marginLeft: "4px" }}>
-                    <button onClick={() => setShowEditProject(true)} title="แก้ไขโปรเจกต์" style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "4px", display: "flex" }}><Edit2 size={16} /></button>
-                    <button onClick={handleDeleteProject} title="ลบโปรเจกต์" style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "4px", display: "flex" }}><Trash2 size={16} /></button>
-                  </div>
-                )}
               </h2>
               <p style={{ margin: "5px 0 0 40px", fontSize: "12.5px", color: "var(--text-2)" }}>
                 {p.name} | ลูกค้า: {p.customerName || "-"} | AE: {p.aeOwner || "-"}
@@ -459,7 +505,7 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", gap: "24px", fontSize: "12px", flexWrap: "wrap" }}>
             <div><span style={{ color: "var(--text-3)" }}>วันเริ่ม: </span>{p.startDate || "-"}</div>
             <div><span style={{ color: "var(--text-3)" }}>กำหนดส่ง: </span>{p.dueDate || "-"}</div>
-            <div><span style={{ color: "var(--text-3)" }}>หมวดสินค้า: </span>{p.productMainCategory || "-"}</div>
+            <div><span style={{ color: "var(--text-3)" }}>หมวดสินค้า: </span>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span className={`status-pill ${statusPillClass(getComputedStatus(p))}`} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "8px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -512,7 +558,7 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             {canEdit && (
-              <button onClick={() => { setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", isMilestone: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+              <button onClick={() => { setInsertAfterId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", isMilestone: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
                 <Plus size={14} /> เพิ่มขั้นตอน
               </button>
             )}
@@ -632,6 +678,13 @@ export default function ProjectDetailPage() {
                                 {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                               </select>
                             </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ผู้รับผิดชอบ:</label>
+                              <select className="premium-select" value={editForm.assigneeId || ""} onChange={(e) => setEditForm({ ...editForm, assigneeId: e.target.value })} style={{ flex: 1 }} title="มอบหมายให้ผู้ใช้ระบบ (จะไปอยู่ใน 'งานของฉัน' ของคนนั้น)">
+                                <option value="">— ไม่มอบหมาย —</option>
+                                {users.map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+                              </select>
+                            </div>
                             <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                                 <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันที่เริ่ม:</label>
@@ -731,7 +784,7 @@ export default function ProjectDetailPage() {
 
                     {canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "4px 0", zIndex: 2 }}>
-                        <button onClick={() => { setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1 }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
+                        <button onClick={() => { setInsertAfterId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [task.id], assignee: "", startDate: "", isMilestone: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
                           <PlusCircle size={14} />
                         </button>
                       </div>
@@ -868,9 +921,11 @@ export default function ProjectDetailPage() {
           onClose={() => setShowEditProject(false)}
           editingId={p.id}
           initialData={p}
-          onSuccess={(updatedData) => {
+          onSuccess={() => {
+            // บั๊ก D: หลังแก้โปรเจกต์ (อาจ resync ขั้นตอนสรรพสามิตใน DB) ต้อง reload
+            // ทั้งก้อน — PATCH คืนแค่แถว project ไม่มี tasks ที่เปลี่ยน
             setShowEditProject(false);
-            setData((d) => ({ ...d, ...updatedData }));
+            load();
           }}
           customers={customers}
           categories={categories}

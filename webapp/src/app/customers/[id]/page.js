@@ -261,7 +261,7 @@ export default function CustomerDetails() {
               d="M10 19l-7-7m0 0l7-7m-7 7h18"
             />
           </svg>
-          กลับไปยังทะเบียนลูกค้า
+          กลับไปยังข้อมูลลูกค้า
         </Link>
       </div>
     );
@@ -283,7 +283,7 @@ export default function CustomerDetails() {
           textDecoration: "none",
         }}
       >
-        <ArrowLeft size={16} /> กลับไปทะเบียนลูกค้า
+        <ArrowLeft size={16} /> กลับไปข้อมูลลูกค้า
       </Link>
       <div className="premium-header flex justify-between items-center mb-6">
         <div className="header-content">
@@ -684,7 +684,7 @@ export default function CustomerDetails() {
                   d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z"
                 />
               </svg>
-              สรุปภาษีและข้อมูลสินค้า (Overview)
+              สรุปข้อมูลภาพรวม (Overview)
             </h3>
 
             <div className="space-y-4">
@@ -702,50 +702,66 @@ export default function CustomerDetails() {
                   {orders.length} รายการ
                 </span>
               </div>
-              <div className="border-t border-dashed border-[var(--border)] my-2 pt-2"></div>
 
-              <div className="flex justify-between items-start text-xs">
-                <span className="text-[var(--text-3)]">
-                  ภาษีที่ชำระแล้ว (Paid)
-                </span>
-                <div className="text-right">
-                  <span className="font-bold text-[var(--green)] text-sm font-mono">
-                    {formatMoney(totalPaidTax)}
-                  </span>
-                  <div className="text-[9px] text-[var(--text-3)]">
-                    จาก PO ที่ชำระแล้ว
-                  </div>
-                </div>
-              </div>
+              {/* Tax section — only show when there are taxable products or any tax accrued */}
+              {(totalTaxAccrued > 0 || products.some(p => p.isExciseTaxable !== false)) ? (
+                <>
+                  <div className="border-t border-dashed border-[var(--border)] my-2 pt-2"></div>
 
-              <div className="flex justify-between items-start text-xs">
-                <span className="text-[var(--text-3)]">
-                  ภาษีค้างชำระ (Pending)
-                </span>
-                <div className="text-right">
-                  <span className="font-bold text-[var(--amber)] text-sm font-mono">
-                    {formatMoney(totalPendingTax)}
-                  </span>
-                  <div className="text-[9px] text-[var(--text-3)]">
-                    รอชำระเงินของ Sales
+                  <div className="flex justify-between items-start text-xs">
+                    <span className="text-[var(--text-3)]">
+                      ภาษีที่ชำระแล้ว (Paid)
+                    </span>
+                    <div className="text-right">
+                      <span className="font-bold text-[var(--green)] text-sm font-mono">
+                        {formatMoney(totalPaidTax)}
+                      </span>
+                      <div className="text-[9px] text-[var(--text-3)]">
+                        จาก PO ที่ชำระแล้ว
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+
+                  <div className="flex justify-between items-start text-xs">
+                    <span className="text-[var(--text-3)]">
+                      ภาษีค้างชำระ (Pending)
+                    </span>
+                    <div className="text-right">
+                      <span className="font-bold text-[var(--amber)] text-sm font-mono">
+                        {formatMoney(totalPendingTax)}
+                      </span>
+                      <div className="text-[9px] text-[var(--text-3)]">
+                        รอชำระเงินของ Sales
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="border-t border-dashed border-[var(--border)] my-2 pt-2"></div>
+                  <div className="bg-[var(--green-soft)] p-3 rounded-xl border border-[var(--border)] text-center">
+                    <span className="text-[var(--green)] text-xs font-semibold block">ไม่มีภาระภาษีสรรพสามิต</span>
+                    <span className="text-[9px] text-[var(--text-3)] mt-1 block">สินค้าของลูกค้ารายนี้ไม่เข้าข่ายพิกัดสรรพสามิต</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="mt-6 pt-5 border-t border-[var(--border)] ">
-            <span className="text-[var(--text-3)] text-[10px] block mb-1">
-              ยอดภาษีรวมสะสม (Total Tax Accrued)
-            </span>
-            <div className="text-2xl font-bold font-mono text-[var(--accent)] ">
-              {formatMoney(totalTaxAccrued)}
+          {(totalTaxAccrued > 0 || products.some(p => p.isExciseTaxable !== false)) && (
+            <div className="mt-6 pt-5 border-t border-[var(--border)] ">
+              <span className="text-[var(--text-3)] text-[10px] block mb-1">
+                ยอดภาษีรวมสะสม (Total Tax Accrued)
+              </span>
+              <div className="text-2xl font-bold font-mono text-[var(--accent)] ">
+                {formatMoney(totalTaxAccrued)}
+              </div>
+              <span className="text-[9px] text-[var(--text-3)] mt-1 block">
+                ภาษีสรรพสามิต {formatMoney(totalExciseTax)} + ภาษีท้องถิ่น{" "}
+                {formatMoney(totalLocalTax)}
+              </span>
             </div>
-            <span className="text-[9px] text-[var(--text-3)] mt-1 block">
-              ภาษีสรรพสามิต {formatMoney(totalExciseTax)} + ภาษีท้องถิ่น{" "}
-              {formatMoney(totalLocalTax)}
-            </span>
-          </div>
+          )}
         </div>
       </div>
 

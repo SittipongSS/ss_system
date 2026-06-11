@@ -132,11 +132,15 @@ export default function CustomerDirectory() {
             <span className="premium-header-icon">
               <Building2 size={22} />
             </span>{" "}
-            ทะเบียนลูกค้า
+            ข้อมูลลูกค้า
           </h1>
           <p>จัดการฐานข้อมูลลูกค้าและแบรนด์ในระบบ (AR Code & Brands)</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="search-glass" style={{ width: "240px" }}>
+            <Search size={18} color="var(--text-3)" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า..." />
+          </div>
           <div className="pill ok">ทั้งหมด {customers.length} รายการ</div>
           {canEdit && (
             <button
@@ -179,10 +183,6 @@ export default function CustomerDirectory() {
             <h3 className="font-semibold text-sm text-[var(--text)] ">
               ฐานข้อมูลลูกค้า ({filteredCustomers.length} รายการ)
             </h3>
-            <div className="search-bar" style={{ maxWidth: 280 }}>
-              <Search size={15} className="icon-l" />
-              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา รหัส / ชื่อ / Tax ID / แบรนด์..." />
-            </div>
           </div>
           <div className="premium-table-wrapper border-none rounded-t-none">
             <table className="premium-table">

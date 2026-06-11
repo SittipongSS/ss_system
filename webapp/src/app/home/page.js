@@ -45,12 +45,12 @@ export default function HomeHubPage() {
   if (!role) return null;
 
   const enterTax = () => router.push(landingFor(role));
-  const enterPM = () => router.push("/projects");
+  const enterPM = () => router.push("/pm/projects");
   const enterDB = () => router.push("/products");
-  // Temporary lockdown: all three systems are open to admins only. Keep this in
-  // sync with ADMIN_LOCKDOWN in proxy.js (the server-side gate).
+  // Phased rollout: only the PM system is open to normal roles; tax + database
+  // stay admin-only. Keep in sync with ADMIN_LOCKDOWN/lockedOut in proxy.js.
   const isAdmin = can(role, "users:manage");
-  const canPM = isAdmin;
+  const canPM = isAdmin || can(role, "pm:view");
   const canTax = isAdmin;
   const canDB = isAdmin;
 

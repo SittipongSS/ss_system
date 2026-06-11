@@ -2,12 +2,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ReceiptText, Package } from "lucide-react";
+import { ArrowLeft, ReceiptText, Package, Pencil, Trash2 } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import ApproveProductModal from "@/components/ApproveProductModal";
 import RejectModal from "@/components/RejectModal";
+import EditRegistrationModal from "@/components/EditRegistrationModal";
 
 // Detail of one excise registration (product + customer + approval state).
 export default function RegistrationDetail() {
@@ -23,6 +24,7 @@ export default function RegistrationDetail() {
   const [error, setError] = useState(null);
   const [showApprove, setShowApprove] = useState(false);
   const [showReject, setShowReject] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   const fetchReg = async () => {
     try {
@@ -77,6 +79,17 @@ export default function RegistrationDetail() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!confirm("ยืนยันการลบรายการขึ้นทะเบียนนี้?")) return;
+    const res = await fetch(`/api/excise-registrations/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      router.push("/tax/register");
+    } else {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "ไม่สามารถลบได้");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center p-24">
@@ -104,13 +117,26 @@ export default function RegistrationDetail() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/tax/register"))}
-        style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--text-2)", fontSize: "13px", fontWeight: 500, marginBottom: "14px", background: "none", border: "none", padding: 0, cursor: "pointer" }}
-      >
-        <ArrowLeft size={16} /> กลับ
-      </button>
+      <div className="flex justify-between items-center mb-[14px]">
+        <button
+          type="button"
+          onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/tax/register"))}
+          style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--text-2)", fontSize: "13px", fontWeight: 500, background: "none", border: "none", padding: 0, cursor: "pointer" }}
+        >
+          <ArrowLeft size={16} /> กลับ
+        </button>
+
+        {canEdit && (
+          <div className="flex gap-2">
+            <button onClick={() => setShowEdit(true)} className="btn px-3 flex items-center gap-1.5 text-[var(--text-2)] hover:text-[var(--accent)] text-xs">
+              <Pencil size={14} /> แก้ไข
+            </button>
+            <button onClick={handleDelete} className="btn px-3 flex items-center gap-1.5 text-[var(--red)] hover:bg-[var(--red-soft)] text-xs">
+              <Trash2 size={14} /> ลบ
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="premium-header flex justify-between items-center mb-6">
         <div className="header-content">
@@ -243,6 +269,7 @@ export default function RegistrationDetail() {
 
       <ApproveProductModal open={showApprove} registration={reg} onClose={() => setShowApprove(false)} onApproved={fetchReg} />
       <RejectModal open={showReject} onClose={() => setShowReject(false)} onConfirm={handleReject} title="ตีกลับการขึ้นทะเบียน" entityLabel="ทะเบียนนี้" />
+      <EditRegistrationModal open={showEdit} onClose={() => setShowEdit(false)} onSaved={fetchReg} registration={reg} />
     </>
   );
 }

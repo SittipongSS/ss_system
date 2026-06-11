@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Package, Plus, Search } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
@@ -11,6 +11,7 @@ import Modal from "@/components/Modal";
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
+  const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/product-types") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has("/api/products"));
   const [showForm, setShowForm] = useState(false);
 
@@ -19,6 +20,7 @@ export default function ProductRegistry() {
     productDescription: "",
     brandName: "",
     volume: "",
+    volumeUnit: "ml",
     costPrice: "",
     retailPriceIncVat: "",
   };
@@ -38,10 +40,25 @@ export default function ProductRegistry() {
         apiCache.set("/api/products", data);
         setProducts(data);
       }
+      const typeRes = await fetch("/api/product-types");
+      if (typeRes.ok) {
+        const typeData = await typeRes.json();
+        apiCache.set("/api/product-types", typeData);
+        setProductTypes(typeData);
+      }
     } catch (e) {
       console.error(e);
     }
     setLoading(false);
+  };
+
+  const getCategoryInfo = (fgCode) => {
+    if (!fgCode) return null;
+    const m = fgCode.match(/(\d{2})-(\d{3})/);
+    if (!m) return { found: false, code: null };
+    const code = `${m[1]}-${m[2]}`;
+    const typeInfo = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
+    return { found: !!typeInfo, code, typeInfo };
   };
 
   useEffect(() => {
@@ -71,6 +88,7 @@ export default function ProductRegistry() {
       ...formData,
       assignee: userName,
       volume: parseFloat(formData.volume),
+      volumeUnit: formData.volumeUnit || "ml",
       costPrice: parseFloat(formData.costPrice),
       retailPriceIncVat: parseFloat(formData.retailPriceIncVat),
     };
@@ -116,6 +134,10 @@ export default function ProductRegistry() {
           <p>ฐานข้อมูลสินค้ากลาง (Master Data) — รหัส FG สเปค และต้นทุน/ภาษีต่อหน่วย</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="search-glass" style={{ width: "240px" }}>
+            <Search size={18} color="var(--text-3)" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า..." />
+          </div>
           <div className="pill ok">ทั้งหมด {products.length} รายการ</div>
           {canEdit && (
             <button onClick={openForm} className="btn btn-primary flex items-center gap-1.5">
@@ -138,10 +160,6 @@ export default function ProductRegistry() {
             <h3 className="font-semibold text-sm text-[var(--text)]">
               ฐานข้อมูลสินค้า ({filteredProducts.length} รายการ)
             </h3>
-            <div className="search-bar" style={{ maxWidth: 260 }}>
-              <Search size={15} className="icon-l" />
-              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อ / แบรนด์..." />
-            </div>
           </div>
           <div className="premium-table-wrapper border-none rounded-t-none">
             <table className="premium-table">
@@ -176,7 +194,7 @@ export default function ProductRegistry() {
                           <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
                         </td>
                         <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
-                        <td className="num font-mono text-[var(--text-2)]">{p.volume} ml</td>
+                        <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
                         <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
                         <td className="num mono text-[var(--text-2)]">
                           {isExempt ? <span className="status-pill success text-[10px]">ยกเว้น</span> : formatMoney(taxRate)}
@@ -206,12 +224,35 @@ export default function ProductRegistry() {
               <div className="form-group col-span-2">
                 <label>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
                 <input type="text" name="fgCode" value={formData.fgCode} onChange={handleChange} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
-                <span className="text-xs text-[var(--text-3)] mt-1">เฉพาะหมวด 01-002 (น้ำหอมฉีดผิวกาย) เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต</span>
-                {formData.fgCode && !formData.fgCode.includes("01-002") && (
-                  <div className="mt-2 p-3 bg-[var(--amber-soft)] text-[var(--amber)] text-xs rounded-lg border border-[var(--border)]">
-                    <strong>หมายเหตุ:</strong> รหัสนี้ไม่อยู่ในหมวด 01-002 จะถูกประเมินว่า <strong>“ไม่ต้องเสียภาษีสรรพสามิต”</strong>
-                  </div>
-                )}
+                
+                {(() => {
+                  const cat = getCategoryInfo(formData.fgCode);
+                  if (!formData.fgCode) {
+                    return <span className="text-xs text-[var(--text-3)] mt-1">เฉพาะหมวด 01-002 (น้ำหอมฉีดผิวกาย) เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต</span>;
+                  }
+                  if (!cat.code) {
+                    return <div className="mt-2 text-xs text-[var(--text-3)] italic">รูปแบบรหัส FG ไม่ถูกต้อง (ไม่พบโครงสร้างหมวดหมู่ XX-YYY)</div>;
+                  }
+                  if (!cat.found) {
+                    return <div className="mt-2 text-xs text-[var(--red)] bg-[var(--red-soft)] p-2 rounded border border-[var(--border)]">พบหมวดหมู่ <strong>{cat.code}</strong> แต่ไม่มีในฐานข้อมูล (อาจพิมพ์ผิด หรือเป็นหมวดใหม่)</div>;
+                  }
+                  
+                  const isExcise = cat.code === "01-002";
+                  return (
+                    <div className={`mt-2 p-3 text-xs rounded-lg border border-[var(--border)] flex flex-col gap-1 ${isExcise ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-2)] text-[var(--text-2)]"}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono bg-white/50 px-1.5 py-0.5 rounded text-[10px] font-bold">{cat.code}</span>
+                        <span className="font-semibold">{cat.typeInfo.nameTh || cat.typeInfo.nameEn}</span>
+                      </div>
+                      <div className="text-[11px] opacity-80 pl-1">
+                        กลุ่มหลัก: {cat.typeInfo.mainCategoryName}
+                      </div>
+                      <div className={`mt-1 pl-1 font-semibold ${isExcise ? "" : "text-[var(--green)]"}`}>
+                        {isExcise ? "⚠️ สินค้านี้เข้าข่ายต้องเสียภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)" : "✓ สินค้านี้ได้รับการยกเว้นภาษีสรรพสามิต"}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="form-group">
                 <label>รายละเอียดสินค้า <span className="text-[var(--red)]">*</span></label>
@@ -224,15 +265,25 @@ export default function ProductRegistry() {
             </div>
           </div>
 
-          {/* Section 2: excise metrics */}
+          {/* Section 2: packaging & pricing */}
           <div className="mb-[22px]">
             <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลสำหรับสรรพสามิต (Excise Metrics)</h3>
+              <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลบรรจุภัณฑ์และราคา (Packaging & Pricing)</h3>
             </div>
             <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
               <div className="form-group">
-                <label>ปริมาตรบรรจุ (ml) <span className="text-[var(--red)]">*</span></label>
-                <input type="number" name="volume" value={formData.volume} onChange={handleChange} required min="1" className="premium-input w-full font-mono" />
+                <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
+                <div className="flex gap-2">
+                  <input type="number" name="volume" value={formData.volume} onChange={handleChange} required min="0.01" step="0.01" className="premium-input flex-1 font-mono" />
+                  <select name="volumeUnit" value={formData.volumeUnit} onChange={handleChange} className="premium-select" style={{ width: "80px" }}>
+                    <option value="ml">ml</option>
+                    <option value="g">g</option>
+                    <option value="kg">kg</option>
+                    <option value="oz">oz</option>
+                    <option value="L">L</option>
+                    <option value="pcs">pcs</option>
+                  </select>
+                </div>
               </div>
               <div className="form-group">
                 <label>ราคาโรงงาน (บาท) <span className="text-[var(--red)]">*</span></label>

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, ROLE_LABELS } from '@/lib/permissions';
@@ -138,8 +138,8 @@ export default function AppLayout({ children }) {
 
   useEffect(() => {
     const sys =
-      pathname.startsWith('/projects') || pathname.startsWith('/tasks') ? 'pm'
-      : pathname.startsWith('/customers') || pathname.startsWith('/products') ? 'master'
+      pathname.startsWith('/pm') ? 'pm'
+      : pathname.startsWith('/customers') || pathname.startsWith('/products') || pathname.startsWith('/database') ? 'master'
       : pathname === '/users' ? null
       : 'tax';
       
@@ -189,6 +189,7 @@ export default function AppLayout({ children }) {
       items: [
         { href: '/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/products' || p.startsWith('/products/') },
         { href: '/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/customers' || p.startsWith('/customers/') },
+        { href: '/database/holidays', name: 'วันหยุด (ปฏิทินทำการ)', icon: CalendarDays, cap: 'master:manage', match: (p) => p.startsWith('/database/holidays') },
       ],
     },
     {
@@ -211,8 +212,8 @@ export default function AppLayout({ children }) {
       label: 'ระบบจัดการโครงการ',
       system: 'pm',
       items: [
-        { href: '/projects', name: 'โครงการ', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/projects' || p.startsWith('/projects/') },
-        { href: '/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/tasks' },
+        { href: '/pm/projects', name: 'โครงการ', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/pm/projects' || p.startsWith('/pm/projects/') },
+        { href: '/pm/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/pm/tasks' },
       ],
     },
     {

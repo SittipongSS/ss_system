@@ -62,6 +62,7 @@ export async function POST(request) {
     productDescription: body.productDescription ?? null,
     brandName: body.brandName ?? null,
     volume,
+    volumeUnit: body.volumeUnit || 'ml',
     costPrice,
     retailPriceIncVat,
     mapFileUrl: body.mapFileUrl ?? null,

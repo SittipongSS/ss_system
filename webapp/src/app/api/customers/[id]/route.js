@@ -156,6 +156,24 @@ export async function DELETE(request, { params }) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
+  // ข้อ 3: guard ก่อนลบ — กันไม่ให้เกิด record กำพร้า (live DB ไม่มี FK constraint จริง).
+  // ถ้าลูกค้ารายนี้ยังถูกอ้างใน โปรเจกต์/ออเดอร์/การขึ้นทะเบียน → ห้ามลบ.
+  const [projRef, orderRef, regRef] = await Promise.all([
+    supabase.from('projects').select('id', { count: 'exact', head: true }).eq('customerId', id),
+    supabase.from('orders').select('id', { count: 'exact', head: true }).eq('customerId', id),
+    supabase.from('excise_registrations').select('id', { count: 'exact', head: true }).eq('customerId', id),
+  ]);
+  const refs = [];
+  if (projRef.count) refs.push(`${projRef.count} โปรเจกต์`);
+  if (orderRef.count) refs.push(`${orderRef.count} ออเดอร์`);
+  if (regRef.count) refs.push(`${regRef.count} การขึ้นทะเบียน`);
+  if (refs.length) {
+    return Response.json(
+      { error: `ลบไม่ได้: ลูกค้ารายนี้ยังถูกใช้งานอยู่ใน ${refs.join(', ')} — กรุณาจัดการรายการเหล่านั้นก่อน` },
+      { status: 409 },
+    );
+  }
+
   const { data, error } = await supabase.from('customers').delete().eq('id', id).select('id');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) {

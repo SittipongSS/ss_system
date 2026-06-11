@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/authUser';
 import { viewScope } from '@/lib/permissions';
 import { resolveCustomer } from '@/lib/master/customers';
 import { buildProjectTasks } from '@/lib/pm/schedule';
+import { setHolidays } from '@/lib/pm/dateHelpers';
+import { holidaySet } from '@/lib/master/holidays';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,8 +43,34 @@ export async function POST(request) {
   const user = await getCurrentUser();
   const body = await request.json();
 
-  if (!body.code || !body.name) {
-    return Response.json({ error: 'ต้องระบุรหัสและชื่อโปรเจกต์' }, { status: 400 });
+  if (!body.name) {
+    return Response.json({ error: 'ต้องระบุชื่อโปรเจกต์' }, { status: 400 });
+  }
+
+  let projectCode = body.code;
+  if (!projectCode) {
+    const now = new Date();
+    const yy = now.getFullYear().toString().slice(-2);
+    const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+    const prefix = `PJ-${yy}${mm}`;
+
+    const { data: latest } = await supabase
+      .from('projects')
+      .select('code')
+      .ilike('code', `${prefix}%`)
+      .order('code', { ascending: false })
+      .limit(1);
+
+    let nextNum = 1;
+    if (latest && latest.length > 0 && latest[0].code) {
+      const lastCode = latest[0].code;
+      const lastNumStr = lastCode.slice(prefix.length);
+      const lastNum = parseInt(lastNumStr, 10);
+      if (!isNaN(lastNum)) {
+        nextNum = lastNum + 1;
+      }
+    }
+    projectCode = `${prefix}${nextNum.toString().padStart(3, '0')}`;
   }
 
   // Link to customer master (FK) + take the name snapshot from the master row.
@@ -53,11 +81,12 @@ export async function POST(request) {
   });
 
   const id = 'PRJ-' + Date.now().toString().slice(-6);
-  const startDate = body.startDate || new Date().toISOString().slice(0, 10);
+  // วันเริ่มปล่อยว่างได้ — ถ้าไม่มีวันเริ่ม/วันจบ timeline จะนับจากวันสร้าง (createdAt)
+  const startDate = body.startDate || null;
 
   const insertRow = {
     id,
-    code: body.code,
+    code: projectCode,
     name: body.name,
     // Empty-string from an unselected dropdown must become null, else it
     // violates the customers FK (no customer has id '').
@@ -95,11 +124,14 @@ export async function POST(request) {
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
+  // Load the editable holiday calendar so the timeline counts business days
+  // against the real calendar (falls back to hardcoded THAI_HOLIDAYS).
+  setHolidays([...(await holidaySet())]);
+
   // Generate template tasks (camelCase rows) + insert.
-  const taskRows = buildProjectTasks(
-    { type: insertRow.type, productMainCategory: insertRow.productMainCategory, startDate, aeOwner: insertRow.aeOwner },
-    project.id
-  );
+  // ส่ง project เต็ม (มี startDate/dueDate/createdAt) เพื่อให้ resolveSchedule เลือก
+  // โหมด forward/backward ได้ถูกต้องตามวันที่ที่มี.
+  const taskRows = buildProjectTasks(project, project.id);
   let tasks = [];
   if (taskRows.length) {
     const { data: inserted, error: taskErr } = await supabase

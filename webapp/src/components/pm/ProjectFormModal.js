@@ -13,11 +13,13 @@ export default function ProjectFormModal({
     mainCode: "", typeCode: "", docNumber: "",
     aeSupervisor: "", preparedBy: "", customerEmail: "",
     projectProducts: [],
+    quotationNumber: "",
   };
 
   const [form, setForm] = useState(blank);
   const [linkFg, setLinkFg] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [previewCode, setPreviewCode] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -25,6 +27,7 @@ export default function ProjectFormModal({
         setForm({
           ...blank,
           ...initialData,
+          quotationNumber: initialData.metadata?.quotationNumber || "",
           mainCode: (initialData.productMainCategory || "").split("-")[0] || "",
           typeCode: (initialData.productMainCategory || "").split("-")[1] || "",
           projectProducts: initialData.projectProducts ? initialData.projectProducts.map(pp => ({
@@ -35,32 +38,49 @@ export default function ProjectFormModal({
       } else {
         setForm(blank);
         setLinkFg(false);
+        setPreviewCode("");
+        fetch("/api/pm/projects/next-code")
+          .then(r => r.ok ? r.json() : {})
+          .then(d => { if (d.nextCode) setPreviewCode(d.nextCode); })
+          .catch(() => {});
       }
     }
   }, [open, editingId, initialData]);
+
+  // ข้อ 1: หมวดสินค้า "อิงตาม FG ที่ผูก" — ถ้ามี FG ที่เป็น 01-002 (สรรพสามิต)
+  // แม้แต่ตัวเดียว ทั้งโปรเจกต์ใช้หมวด 01-002 (เป็นใหญ่สุด → ได้ template เสียภาษี);
+  // ถ้าไม่มีตัวไหนเป็น 01-002 ใช้หมวดของ FG ตัวแรกเพื่อแสดงผล. ไม่มี FG → ปล่อยให้เลือกเอง
+  const fgCategoryLock = form.projectProducts.length > 0;
+  useEffect(() => {
+    if (!open) return;
+    const fgs = form.projectProducts.map((pp) => allProducts.find((p) => p.id === pp.productId)).filter(Boolean);
+    if (!fgs.length) return; // ไม่มี FG → คงค่าที่ผู้ใช้เลือกเองไว้
+    const code = fgs.some((f) => f.categoryCode === "01-002") ? "01-002" : (fgs[0].categoryCode || "");
+    const [mainCode = "", typeCode = ""] = code ? code.split("-") : [];
+    if (code === form.productMainCategory && mainCode === form.mainCode && typeCode === form.typeCode) return;
+    const sub = categories.find((c) => c.mainCategoryCode === mainCode && c.typeCode === typeCode)?.nameTh || "";
+    setForm((f) => ({ ...f, productMainCategory: code, mainCode, typeCode, productSubCategory: sub }));
+  }, [open, form.projectProducts, allProducts, categories]);
 
   const change = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   const toggleFg = (id) => {
     setForm(f => {
       const isSelected = f.projectProducts.some(p => p.productId === id);
-      const newProducts = isSelected 
-        ? f.projectProducts.filter(p => p.productId !== id) 
+      const newProducts = isSelected
+        ? f.projectProducts.filter(p => p.productId !== id)
         : [...f.projectProducts, { productId: id, orderQty: "", productionQty: "" }];
-      
-      const firstFgId = newProducts.length > 0 ? newProducts[0].productId : null;
-      const fg = firstFgId ? allProducts.find(p => p.id === firstFgId) : null;
-      
-      if (fg && newProducts.length > 0 && !isSelected) {
+
+      // Auto-fill customer/name from the first linked FG (only when still empty).
+      // หมวดสินค้าไม่เซ็ตที่นี่ — ปล่อยให้ effect ด้านล่าง derive จาก FG ทั้งหมด
+      // (01-002 เป็นใหญ่สุด) เพื่อให้ "FG เป็นตัวกำหนดหมวด" เสมอ
+      const firstFg = newProducts[0] ? allProducts.find(p => p.id === newProducts[0].productId) : null;
+      if (firstFg && !isSelected) {
         return {
           ...f,
           projectProducts: newProducts,
-          customerId: f.customerId || fg.customerId || "",
-          mainCode: f.mainCode || (fg.categoryCode ? fg.categoryCode.split("-")[0] : ""),
-          typeCode: f.typeCode || (fg.categoryCode ? fg.categoryCode.split("-")[1] : ""),
-          productMainCategory: f.productMainCategory || fg.categoryCode || "",
-          productSubCategory: f.productSubCategory || categories.find(c => c.mainCategoryCode === fg.categoryCode?.split("-")[0] && c.typeCode === fg.categoryCode?.split("-")[1])?.nameTh || "",
-          name: f.name || fg.brandName || fg.productDescription || ""
+          customerId: f.customerId || firstFg.customerId || "",
+          name: f.name || firstFg.brandName || firstFg.productDescription || "",
         };
       }
       return { ...f, projectProducts: newProducts };
@@ -76,9 +96,23 @@ export default function ProjectFormModal({
 
   const submit = async (e) => {
     e.preventDefault();
+    // ข้อ 2: แจ้งเตือนก่อนปรับขั้นตอน — เมื่อแก้โปรเจกต์เดิมแล้วสถานะสรรพสามิต
+    // (01-002) พลิก ระบบจะเพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต + คำนวณกำหนดการใหม่
+    if (editingId) {
+      const wasExcise = (initialData?.productMainCategory || "") === "01-002";
+      const nowExcise = (form.productMainCategory || "") === "01-002";
+      if (wasExcise !== nowExcise) {
+        const msg = nowExcise
+          ? "หมวดสินค้าเปลี่ยนเป็นสรรพสามิต (01-002)\nระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ (ขั้นตอนที่ทำไปแล้วจะถูกเก็บไว้)\n\nดำเนินการต่อหรือไม่?"
+          : "หมวดสินค้าเปลี่ยนออกจากสรรพสามิต\nระบบจะลบขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ (ขั้นตอนอื่นจะถูกเก็บไว้)\n\nดำเนินการต่อหรือไม่?";
+        if (!window.confirm(msg)) return;
+      }
+    }
     setSubmitting(true);
     const payload = { ...form };
     if (form.customerId) payload.customerName = customers.find((c) => c.id === form.customerId)?.name || "";
+    payload.metadata = { ...(initialData?.metadata || {}), quotationNumber: form.quotationNumber };
+    delete payload.quotationNumber;
     try {
       const res = await fetch(
         editingId ? `/api/pm/projects/${editingId}` : "/api/pm/projects",
@@ -100,12 +134,16 @@ export default function ProjectFormModal({
 
   const mainCatOptions = useMemo(() => {
     const seen = new Map();
-    categories.forEach((c) => { if (!seen.has(c.mainCategoryCode)) seen.set(c.mainCategoryCode, c.mainCategoryName); });
+    categories.forEach((c) => {
+      if (!c.mainCategoryCode) return; // ข้ามหมวดหลักที่ code ว่าง
+      if (!(c.mainCategoryName || "").trim()) return; // ข้ามหมวดที่มีแต่รหัส ไม่มีชื่อ
+      if (!seen.has(c.mainCategoryCode)) seen.set(c.mainCategoryCode, c.mainCategoryName);
+    });
     return [...seen.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([code, name]) => ({ code, name }));
   }, [categories]);
 
   const subCatOptions = useMemo(
-    () => categories.filter((c) => c.mainCategoryCode === form.mainCode),
+    () => categories.filter((c) => c.mainCategoryCode === form.mainCode && c.typeCode && (c.nameTh || c.nameEn || "").trim()), // ข้ามหมวดรองที่ code ว่าง/มีแต่รหัส
     [categories, form.mainCode],
   );
 
@@ -125,8 +163,8 @@ export default function ProjectFormModal({
           </div>
           
           <div className="form-group">
-            <label>รหัสโครงการ <span className="text-[var(--red)]">*</span></label>
-            <input name="code" value={form.code} onChange={change} required className="premium-input w-full font-mono" />
+            <label>รหัสโครงการ</label>
+            <input name="code" value={form.code} onChange={change} disabled placeholder={editingId ? "" : (previewCode || "สร้างอัตโนมัติ")} className="premium-input w-full font-mono bg-gray-50 text-[var(--text-3)]" />
           </div>
           <div className="form-group">
             <label>ประเภทงาน</label>
@@ -147,9 +185,13 @@ export default function ProjectFormModal({
             <label>Due Date <span className="text-[var(--text-3)] font-normal">(กำหนดส่งลูกค้า)</span></label>
             <input type="date" name="dueDate" value={form.dueDate} onChange={change} className="premium-input w-full" />
           </div>
-          <div className="form-group col-span-2">
+          <div className="form-group">
             <label>เลขที่เอกสาร <span className="text-[var(--text-3)] font-normal">(ISO)</span></label>
             <input name="docNumber" value={form.docNumber} onChange={change} className="premium-input w-full" />
+          </div>
+          <div className="form-group">
+            <label>เลขที่ใบเสนอราคา</label>
+            <input name="quotationNumber" value={form.quotationNumber} onChange={change} className="premium-input w-full" />
           </div>
 
           <div className="col-span-2 text-[15px] font-semibold text-[var(--text)] border-b border-[var(--border)] pb-2 mt-4 mb-2 flex items-center gap-2">
@@ -216,7 +258,7 @@ export default function ProjectFormModal({
                 <option value="">— เพิ่ม FG —</option>
                 {allProducts
                   .filter(pr => !form.projectProducts.some(pp => pp.productId === pr.id))
-                  .filter(pr => !form.productMainCategory || pr.categoryCode === form.productMainCategory) // 2-way filter
+                  // ผูกได้หลายหมวด (ไม่กรองตามหมวด) — หมวดของโปรเจกต์จะ derive จาก FG เอง
                   .map(pr => (
                   <option key={pr.id} value={pr.id}>{pr.fgCode} — {pr.productDescription || pr.brandName || ""} {pr.volume ? `(${pr.volume} ml)` : ""}</option>
                 ))}
@@ -232,7 +274,7 @@ export default function ProjectFormModal({
           <div className="grid grid-cols-2 gap-[14px]">
             <div className="form-group">
               <label>หมวดหลัก</label>
-              <select value={form.mainCode} onChange={(e) => changeMain(e.target.value)} className="premium-input w-full">
+              <select value={form.mainCode} onChange={(e) => changeMain(e.target.value)} disabled={fgCategoryLock} className="premium-input w-full">
                 <option value="">— ไม่ระบุ —</option>
                 {mainCatOptions.map((o) => (
                   <option key={o.code} value={o.code}>{o.code} {o.name}</option>
@@ -241,7 +283,7 @@ export default function ProjectFormModal({
             </div>
             <div className="form-group">
               <label>หมวดรอง</label>
-              <select value={form.typeCode} onChange={(e) => changeSub(e.target.value)} disabled={!form.mainCode} className="premium-input w-full">
+              <select value={form.typeCode} onChange={(e) => changeSub(e.target.value)} disabled={fgCategoryLock || !form.mainCode} className="premium-input w-full">
                 <option value="">{form.mainCode ? "— เลือกหมวดรอง —" : "เลือกหมวดหลักก่อน"}</option>
                 {subCatOptions.map((c) => (
                   <option key={c.id} value={c.typeCode}>{subLabel(c)}</option>
@@ -249,6 +291,12 @@ export default function ProjectFormModal({
               </select>
             </div>
           </div>
+          {fgCategoryLock && (
+            <div style={{ fontSize: "11px", color: "var(--blue)", marginTop: "8px", display: "flex", alignItems: "center", gap: "4px" }}>
+              🔒 หมวดอิงตามสินค้า (FG) ที่ผูกไว้โดยอัตโนมัติ
+              {form.productMainCategory === "01-002" && " — มีสินค้าเข้าข่ายสรรพสามิต จึงใช้หมวด 01-002"}
+            </div>
+          )}
           {form.productMainCategory && (
             <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "8px" }}>
               รหัสหมวด: <span className="font-mono">{form.productMainCategory}</span>

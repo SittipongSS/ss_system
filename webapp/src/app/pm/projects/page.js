@@ -111,7 +111,7 @@ export default function ProjectsPage() {
     setShowForm(false);
     apiCache.delete?.("/api/pm/projects");
     await fetchProjects();
-    if (!editingId) router.push(`/projects/${data.id}`);
+    if (!editingId) router.push(`/pm/projects/${data.code || data.id}`);
   };
 
   const handleDelete = async (p) => {
@@ -154,7 +154,7 @@ export default function ProjectsPage() {
           </div>
         </div>
 
-        <div style={{ cursor: "pointer" }} onClick={() => router.push(`/projects/${p.id}`)}>
+        <div style={{ cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
           <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", marginBottom: "4px", lineHeight: 1.4 }}>{p.name}</div>
           <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{p.customerName || "-"}</div>
         </div>
@@ -184,7 +184,7 @@ export default function ProjectsPage() {
   const renderArchiveCard = (p) => {
     const cStatus = getComputedStatus(p);
     return (
-      <div key={p.id} className="glass-panel hover-card" style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", opacity: 0.85, filter: "grayscale(30%)", cursor: "pointer" }} onClick={() => router.push(`/projects/${p.id}`)}>
+      <div key={p.id} className="glass-panel hover-card" style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", opacity: 0.85, filter: "grayscale(30%)", cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
         <div style={{ display: "flex", alignItems: "center", gap: "16px", flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "120px", flexShrink: 0 }}>
             <span style={{ fontSize: "10px", ...typeStyle(p.type), padding: "2px 6px", borderRadius: "4px", fontWeight: 600 }}>{p.type}</span>
@@ -258,7 +258,7 @@ export default function ProjectsPage() {
                 const overdue = getOverdueCount(p);
                 const cStatus = getComputedStatus(p);
                 return (
-                  <tr key={p.id} className="premium-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/projects/${p.id}`)}>
+                  <tr key={p.id} className="premium-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
                     <td>
                       <div style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</div>
                       <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>

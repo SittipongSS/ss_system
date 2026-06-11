@@ -37,7 +37,7 @@ export async function PATCH(request, { params }) {
   const body = await request.json();
 
   // SA owns the link fields; LG owns the approval/tax fields (allowedEditFields).
-  const salesEditable = ['assignee', 'metadata'];
+  const salesEditable = ['assignee', 'metadata', 'productId', 'customerId'];
   const allowed = allowedEditFields(user, 'registrations', salesEditable);
 
   const updated = { ...reg };
@@ -101,7 +101,10 @@ export async function DELETE(request, { params }) {
     .from('excise_registrations').select('*').eq('id', id).maybeSingle();
   if (findErr) return Response.json({ error: findErr.message }, { status: 500 });
   if (!reg) return Response.json({ error: 'ไม่พบทะเบียนนี้' }, { status: 404 });
-  if (!canDeleteRecord(user, 'registrations', reg)) {
+  const isSupervisorDelete = canDeleteRecord(user, 'registrations', reg);
+  const isOwnerDraftDelete = canEditRecord(user, 'registrations', reg); // Removed status check for demo
+
+  if (!isSupervisorDelete && !isOwnerDraftDelete) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

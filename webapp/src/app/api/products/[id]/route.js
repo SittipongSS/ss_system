@@ -57,7 +57,7 @@ export async function PATCH(request, { params }) {
   // approval are NOT here; they live on the registration (/api/excise-registrations).
   const catalogEditable = [
     'fgCode', 'productDescription', 'brandName',
-    'volume', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl',
+    'volume', 'volumeUnit', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl',
     'categoryCode', 'metadata',
   ];
   const updated = { ...product };
@@ -109,6 +109,24 @@ export async function DELETE(request, { params }) {
   if (!product) return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
   if (!canDeleteRecord(user, 'products', product)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  // ข้อ 3: guard ก่อนลบ — กันไม่ให้เกิด record กำพร้า (live DB ไม่มี FK constraint จริง).
+  // ถ้าสินค้านี้ยังถูกอ้างใน โปรเจกต์/รายการออเดอร์/การขึ้นทะเบียน → ห้ามลบ.
+  const [ppRef, itemRef, regRef] = await Promise.all([
+    supabase.from('project_products').select('id', { count: 'exact', head: true }).eq('productId', id),
+    supabase.from('order_items').select('id', { count: 'exact', head: true }).eq('productId', id),
+    supabase.from('excise_registrations').select('id', { count: 'exact', head: true }).eq('productId', id),
+  ]);
+  const refs = [];
+  if (ppRef.count) refs.push(`${ppRef.count} โปรเจกต์`);
+  if (itemRef.count) refs.push(`${itemRef.count} รายการออเดอร์`);
+  if (regRef.count) refs.push(`${regRef.count} การขึ้นทะเบียน`);
+  if (refs.length) {
+    return Response.json(
+      { error: `ลบไม่ได้: สินค้านี้ยังถูกใช้งานอยู่ใน ${refs.join(', ')} — กรุณาจัดการรายการเหล่านั้นก่อน` },
+      { status: 409 },
+    );
   }
 
   const { data, error } = await supabase.from('products').delete().eq('id', id).select('id');

@@ -2,6 +2,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScope, editScope, inScope } from '@/lib/permissions';
 import { recalculateForward, todayStr } from '@/lib/pm/schedule';
+import { setHolidays } from '@/lib/pm/dateHelpers';
+import { holidaySet } from '@/lib/master/holidays';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,27 +61,36 @@ export async function POST(request) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const { data: last } = await supabase
-    .from('project_tasks')
-    .select('stepOrder')
-    .eq('projectId', body.projectId)
-    .order('stepOrder', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
   const { data: allTasks } = await supabase
     .from('project_tasks')
     .select('*')
     .eq('projectId', body.projectId)
     .order('stepOrder', { ascending: true });
 
+  // บั๊ก C: แทรกตรงตำแหน่ง — ถ้าระบุ afterTaskId ให้ stepOrder = ของตัวนั้น+1 แล้ว
+  // ดัน stepOrder ของแถวที่อยู่หลังให้เลื่อนลง 1 (กันชน + คงลำดับเฟสติดกัน);
+  // ไม่ระบุ → ต่อท้ายสุดเหมือนเดิม.
+  const lastOrder = (allTasks || []).reduce((m, t) => Math.max(m, t.stepOrder ?? 0), -1);
+  let stepOrder = lastOrder + 1;
+  const after = body.afterTaskId ? (allTasks || []).find((t) => t.id === body.afterTaskId) : null;
+  if (after) {
+    stepOrder = (after.stepOrder ?? 0) + 1;
+    const toShift = (allTasks || []).filter((t) => (t.stepOrder ?? 0) >= stepOrder);
+    if (toShift.length) {
+      await Promise.all(toShift.map((t) =>
+        supabase.from('project_tasks').update({ stepOrder: (t.stepOrder ?? 0) + 1 }).eq('id', t.id)
+      ));
+    }
+  }
+
   const row = {
     id: 'PT-' + Date.now().toString().slice(-6),
     projectId: body.projectId,
-    stepOrder: (last?.stepOrder ?? -1) + 1,
+    stepOrder,
     name: body.name || '',
     role: body.role || 'SA',
     assignee: body.assignee || null,
+    // assigneeId ไม่ใส่ตอนสร้าง (assign ผ่าน PATCH) — กัน insert พังก่อนรัน migration 0019
     phase: body.phase || null,
     isMilestone: !!body.isMilestone,
     durationDays: body.durationDays ?? 1,
@@ -90,6 +101,7 @@ export async function POST(request) {
     cellsOverride: body.cellsOverride ?? null,
   };
 
+  setHolidays([...(await holidaySet())]);
   const tasksWithNew = [...(allTasks || []), row];
   const anchor = project.startDate || todayStr();
   const recalced = recalculateForward(tasksWithNew, anchor);

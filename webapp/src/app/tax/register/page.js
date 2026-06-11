@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ReceiptText, Plus, Search } from "lucide-react";
+import { ReceiptText, Plus, Search, Pencil, Trash2 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
 import Modal from "@/components/Modal";
 import ProductStatusPill from "@/components/ProductStatusPill";
+import EditRegistrationModal from "@/components/EditRegistrationModal";
 
 // SA excise-registration workspace. Pick a master FG product + a customer and
 // submit it for excise tax registration (LG approves on /legal). The product
@@ -25,6 +26,7 @@ export default function ExciseWorkspace() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
   const [productSearch, setProductSearch] = useState("");
+  const [editTarget, setEditTarget] = useState(null);
 
   const fetchRegs = async () => {
     try {
@@ -81,6 +83,18 @@ export default function ExciseWorkspace() {
     setSubmitting(false);
   };
 
+  const handleDelete = async (e, id) => {
+    e.stopPropagation();
+    if (!confirm("ยืนยันการลบรายการขึ้นทะเบียนนี้?")) return;
+    try {
+      const res = await fetch(`/api/excise-registrations/${id}`, { method: "DELETE" });
+      if (res.ok) await fetchRegs();
+      else alert((await res.json()).error || "ไม่สามารถลบได้");
+    } catch {
+      alert("Error deleting");
+    }
+  };
+
   const q = search.trim().toLowerCase();
   const filtered = regs.filter((r) => {
     if (statusFilter !== "all" && r.status !== statusFilter) return false;
@@ -133,8 +147,8 @@ export default function ExciseWorkspace() {
                 <option value="approved">อนุมัติแล้ว</option>
                 <option value="rejected">ตีกลับ</option>
               </select>
-              <div className="search-bar" style={{ maxWidth: 260 }}>
-                <Search size={15} className="icon-l" />
+              <div className="search-glass">
+                <Search size={18} color="var(--text-3)" />
                 <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อ / ลูกค้า..." />
               </div>
             </div>
@@ -148,6 +162,7 @@ export default function ExciseWorkspace() {
                   <th className="num">ภาษี/ชิ้น</th>
                   <th>เลขที่อนุมัติ</th>
                   <th>สถานะ</th>
+                  <th style={{ width: "80px", textAlign: "right" }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -166,6 +181,18 @@ export default function ExciseWorkspace() {
                       </td>
                       <td className="font-mono text-[var(--text-3)] text-xs">{r.approvalNumber || "-"}</td>
                       <td><ProductStatusPill status={r.status} /></td>
+                      <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                        {canEdit && (
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => setEditTarget(r)} className="btn px-2 py-1 text-[var(--text-2)] hover:text-[var(--accent)] bg-transparent border-none" title="แก้ไข">
+                              <Pencil size={15} />
+                            </button>
+                            <button onClick={(e) => handleDelete(e, r.id)} className="btn px-2 py-1 text-[var(--text-3)] hover:text-[var(--red)] bg-transparent border-none" title="ลบ">
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -181,8 +208,8 @@ export default function ExciseWorkspace() {
           <div className="p-4 space-y-5">
             <div>
               <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">1. เลือกสินค้าจากฐานข้อมูล (Master FG)</h3>
-              <div className="search-bar mb-2" style={{ maxWidth: "100%" }}>
-                <Search size={15} className="icon-l" />
+              <div className="search-glass mb-2" style={{ width: "100%" }}>
+                <Search size={18} color="var(--text-3)" />
                 <input type="text" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อสินค้า / แบรนด์..." />
               </div>
               <select
@@ -235,6 +262,8 @@ export default function ExciseWorkspace() {
           </div>
         </form>
       </Modal>
+
+      <EditRegistrationModal open={!!editTarget} onClose={() => setEditTarget(null)} onSaved={fetchRegs} registration={editTarget} />
     </>
   );
 }

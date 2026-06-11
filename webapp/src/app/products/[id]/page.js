@@ -145,8 +145,8 @@ export default function ProductDetails() {
                 <span className="font-semibold text-[var(--text)] text-sm">{product.brandName}</span>
               </div>
               <div>
-                <span className="text-[var(--text-3)] block mb-1">ปริมาตร (Volume)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.volume} ml</span>
+                <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.volume} {product.volumeUnit || "ml"}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
