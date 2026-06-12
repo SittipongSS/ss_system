@@ -21,7 +21,9 @@ const THAI_MONTHS_SHORT = [
 ];
 
 // ── date helpers (อิงเวลาท้องถิ่น) ──
-const midnight = (v) => { const d = new Date(v); if (isNaN(d.getTime())) return NaN; d.setHours(0, 0, 0, 0); return d.getTime(); };
+// ⚠️ ต้องกัน falsy เอง: new Date(null) = epoch 0 (ไม่ใช่ Invalid) → ถ้าไม่กัน
+// dueDate=null จะถูกนับเป็น 1970 ทำให้ rangeStart เพี้ยน บาร์ถูกดันออกนอกจอ
+const midnight = (v) => { if (!v) return NaN; const d = new Date(v); if (isNaN(d.getTime())) return NaN; d.setHours(0, 0, 0, 0); return d.getTime(); };
 const mondayOf = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day)); return d.getTime(); };
 const dayIndexOf = (v, rangeStartMs) => { const t = midnight(v); return isNaN(t) ? NaN : Math.round((t - rangeStartMs) / DAY_MS); };
 const isoFromIndex = (rangeStartMs, idx) => toLocalISODate(new Date(rangeStartMs + idx * DAY_MS));
