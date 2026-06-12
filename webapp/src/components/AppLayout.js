@@ -99,9 +99,9 @@ export default function AppLayout({ children }) {
     const sys =
       pathname.startsWith('/pm') ? 'pm'
       : pathname.startsWith('/database') ? 'master'
-      : pathname === '/users' ? null
+      : pathname === '/users' ? 'users'
       : 'tax';
-      
+
     if (sys) setActiveSystem(sys);
   }, [pathname]);
 
@@ -188,7 +188,8 @@ export default function AppLayout({ children }) {
   const systemSubtitle =
     activeSystem === 'master' ? 'ระบบฐานข้อมูล'
       : activeSystem === 'pm' ? 'ระบบจัดการโครงการ'
-        : 'ระบบภาษีสรรพสามิต';
+        : activeSystem === 'users' ? 'จัดการผู้ใช้'
+          : 'ระบบภาษีสรรพสามิต';
 
   // Show only the current system's groups (+ 'both'), then only menus the role
   // is allowed to see.
@@ -274,7 +275,7 @@ export default function AppLayout({ children }) {
               <div className="user-avatar">{userInitials || userName.substring(0, 2).toUpperCase()}</div>
               <div className="user-info" style={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '8px' }}>
                 <span className="user-name" style={{ fontSize: '13px', fontWeight: '600' }}>{userName}</span>
-                <span className={`topbar-user-role ${role === 'ae_supervisor' || role === 'legal' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}`} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
+                <span className={`topbar-user-role ${role === 'admin' || role === 'ae_supervisor' || role === 'legal' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}`} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
                   {team ? `${ROLE_LABELS[role] || role} · ${TEAM_LABELS[team] || team}` : (ROLE_LABELS[role] || role)}
                 </span>
               </div>

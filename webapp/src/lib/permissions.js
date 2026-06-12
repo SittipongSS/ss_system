@@ -5,10 +5,13 @@
 //
 // Identity comes from Supabase app_metadata (service-role-only, not
 // self-editable): app_metadata.role + app_metadata.team + app_metadata.department.
-// department (ฝ่าย: SALES | LEGAL) sits above team and is derived 1:1 from role
-// today (see ROLE_DEPARTMENT); team (ODM/KA/SV) only exists under SALES.
+// department (ฝ่าย) sits above team; it is stored explicitly and is NOT 1:1
+// with role (see DEPARTMENT_ROLES). team (ODM/KA/SV) only exists under SA.
 //
 // Roles (org structure):
+//   admin         — System administrator (ฝ่าย AD). Superuser: every capability,
+//                   all teams, plus account/master/audit management. Sits above
+//                   ae_supervisor and carries no sales org position.
 //   ae_supervisor — Sales dept head. Superuser: every capability, all teams.
 //   senior_ae     — team lead (team = ODM | KA | SV). Edits whole team.
 //   ac            — Account Coordinate (back-office). Edits whole team, no delete.
@@ -30,44 +33,79 @@
 
 // ── Department (ฝ่าย) ─────────────────────────────────────────────────
 // Top-level org division, one level above team. Stored explicitly in
-// app_metadata.department so new departments (e.g. accounting) can be added
-// later, but today every role maps 1:1 to a department (ROLE_DEPARTMENT),
-// which is the default/validation source of truth.
-export const DEPARTMENTS = ['SALES', 'LEGAL', 'VIEWER'];
-export const DEPARTMENT_LABELS = { SALES: 'ฝ่ายขาย', LEGAL: 'ฝ่ายกฎหมาย', VIEWER: 'ผู้ดูข้อมูล' };
+// app_metadata.department.
+//
+// Department is NO LONGER 1:1 with role. The tax-system roles still imply a
+// home department (SA/LG/Viewer), but the org also has departments that carry
+// NO tax permissions — PC/PD/WH/RD/QC. People in those departments exist so PM
+// tasks can pull a "ผู้รับผิดชอบ" by ฝ่าย; they share one baseline role (`staff`)
+// that only grants read access to Project Management. Codes are kept short
+// (matching the PM step-role codes SA/RD/PC/PD/QC/LG/WH) and shown as-is.
+//   AD = ผู้ดูแลระบบ · SA = ฝ่ายขาย · LG = ฝ่ายกฎหมาย · Viewer = ผู้ดูข้อมูล
+//   PC = ฝ่ายจัดซื้อ · PD = ฝ่ายผลิต · WH = ฝ่ายคลัง · RD = ฝ่ายวิจัยและพัฒนา · QC = ฝ่ายควบคุมคุณภาพ
+export const DEPARTMENTS = ['AD', 'SA', 'LG', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC'];
+// Display label is the code itself (พนักงานคุ้นกับโค้ดบน timeline อยู่แล้ว).
+export const DEPARTMENT_LABELS = {
+  AD: 'Admin', SA: 'SA', LG: 'LG', Viewer: 'Viewer',
+  PC: 'PC', PD: 'PD', WH: 'WH', RD: 'RD', QC: 'QC',
+};
+// Thai names — used only for tooltips/help text, not the primary display.
+export const DEPARTMENT_NAMES_TH = {
+  AD: 'ผู้ดูแลระบบ', SA: 'ฝ่ายขาย', LG: 'ฝ่ายกฎหมาย', Viewer: 'ผู้ดูข้อมูล',
+  PC: 'ฝ่ายจัดซื้อ', PD: 'ฝ่ายผลิต', WH: 'ฝ่ายคลัง',
+  RD: 'ฝ่ายวิจัยและพัฒนา', QC: 'ฝ่ายควบคุมคุณภาพ',
+};
 
-// Which department each role belongs to. Teams (ODM/KA/SV) live only under
-// SALES; LEGAL has no teams.
-const ROLE_DEPARTMENT = {
-  ae_supervisor: 'SALES',
-  senior_ae: 'SALES',
-  ac: 'SALES',
-  ae: 'SALES',
-  legal: 'LEGAL',
-  viewer: 'VIEWER',
+// Legacy app_metadata.department values written before the codes were shortened.
+const LEGACY_DEPARTMENT = { SALES: 'SA', LEGAL: 'LG', VIEWER: 'Viewer' };
+// Normalise a stored/incoming department to a current code (migrates on read).
+export function normalizeDepartment(department) {
+  if (!department) return null;
+  return LEGACY_DEPARTMENT[department] || department;
+}
+
+// Roles allowed in each department (drives the dependent role dropdown). Teams
+// (ODM/KA/SV) live only under SA; LG/Viewer/staff-departments have no teams.
+const DEPARTMENT_ROLES = {
+  AD: ['admin'],
+  SA: ['ae_supervisor', 'senior_ae', 'ac', 'ae'],
+  LG: ['legal'],
+  Viewer: ['viewer'],
+  PC: ['staff'], PD: ['staff'], WH: ['staff'], RD: ['staff'], QC: ['staff'],
+};
+
+// A role's home/default department — used to display legacy users whose
+// department wasn't stored. `staff` spans 5 departments so it has no default;
+// staff users always carry an explicit department.
+const ROLE_DEFAULT_DEPARTMENT = {
+  admin: 'AD',
+  ae_supervisor: 'SA', senior_ae: 'SA', ac: 'SA', ae: 'SA',
+  legal: 'LG', viewer: 'Viewer',
 };
 
 export function departmentFor(role) {
-  return ROLE_DEPARTMENT[role] || null;
+  return ROLE_DEFAULT_DEPARTMENT[role] || null;
 }
 
-// Roles belonging to a department, in ROLES order (for dependent dropdowns).
+// Roles belonging to a department (for dependent dropdowns).
 export function rolesForDepartment(department) {
-  return ROLES.filter((r) => ROLE_DEPARTMENT[r] === department);
+  return DEPARTMENT_ROLES[normalizeDepartment(department)] || [];
 }
 
 export const TEAMS = ['ODM', 'KA', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal', 'viewer'];
+export const ROLES = ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal', 'viewer', 'staff'];
 export const ROLE_LABELS = {
+  admin: 'ผู้ดูแลระบบ (Admin)',
   ae_supervisor: 'AE Supervisor',
   senior_ae: 'Senior AE',
   ac: 'Account Coordinate',
   ae: 'Account Executive',
   legal: 'ฝ่ายกฎหมาย',
   viewer: 'ผู้ดูข้อมูล (Viewer)',
+  staff: 'พนักงาน (Staff)',
 };
 
 // Roles that operate within a single team (team is required for them).
@@ -84,17 +122,22 @@ const SALES_OPS = [
   'history:view',
 ];
 
+// Every capability in the system. Shared by the two superuser roles.
+const SUPERUSER_CAPS = [
+  'customers:view', 'customers:edit', 'customers:delete',
+  'products:view', 'products:edit', 'products:delete',
+  'sales:view', 'sales:act', 'sales:delete',
+  'legal:view', 'legal:approve',
+  'history:view', 'audit:view',
+  'users:manage',
+  'master:manage',  // edit category taxonomy (product_types) + master config
+  'pm:view', 'pm:edit',
+];
+
 const ROLE_CAPS = {
-  ae_supervisor: [
-    'customers:view', 'customers:edit', 'customers:delete',
-    'products:view', 'products:edit', 'products:delete',
-    'sales:view', 'sales:act', 'sales:delete',
-    'legal:view', 'legal:approve',
-    'history:view', 'audit:view',
-    'users:manage',
-    'master:manage',  // edit category taxonomy (product_types) + master config
-    'pm:view', 'pm:edit',
-  ],
+  // admin: system administrator — full capabilities, all teams (see isSuperuser).
+  admin: SUPERUSER_CAPS,
+  ae_supervisor: SUPERUSER_CAPS,
   // team lead: ops + may delete orders (scoped to own team via deleteScope)
   senior_ae: [...SALES_OPS, 'sales:delete'],
   // back-office + front-office: same capabilities, differ only by edit SCOPE
@@ -104,6 +147,9 @@ const ROLE_CAPS = {
   legal: ['customers:view', 'products:view', 'legal:view', 'legal:approve', 'history:view'],
   // viewer: read-only observer of the Project Management system only (no writes)
   viewer: ['pm:view'],
+  // staff: a member of a non-sales department (PC/PD/WH/RD/QC). Logs in to see
+  // PM and the tasks assigned to them ("งานของฉัน"); no edit/tax access.
+  staff: ['pm:view'],
 };
 
 // Unknown role: read-only viewer (sees registries + history, no actions).
@@ -117,6 +163,14 @@ export function can(role, cap) {
   return capsFor(role).includes(cap);
 }
 
+// Superuser roles: full capabilities + 'all'-team scope on every resource.
+// `admin` (system administrator) and `ae_supervisor` (sales head) are equivalent
+// for access-control purposes; org-position-specific UI (e.g. signature blocks)
+// may still single out ae_supervisor by name.
+export function isSuperuser(role) {
+  return role === 'admin' || role === 'ae_supervisor';
+}
+
 // ── Data scope ────────────────────────────────────────────────────────
 // 'all'  = every team's records
 // 'team' = only records belonging to the user's own team
@@ -124,22 +178,22 @@ export function can(role, cap) {
 // 'none' = may not write at all
 
 export function viewScope(role) {
-  if (role === 'ae_supervisor' || role === 'legal' || role === 'viewer') return 'all';
+  if (isSuperuser(role) || role === 'legal' || role === 'viewer' || role === 'staff') return 'all';
   return 'team'; // senior_ae, ac, ae, and unknown viewer
 }
 
 export function editScope(role) {
-  if (role === 'ae_supervisor') return 'all';
+  if (isSuperuser(role)) return 'all';
   if (role === 'senior_ae' || role === 'ac') return 'team';
   if (role === 'ae') return 'own';
   return 'none'; // legal (acts via approval only) + viewer
 }
 
 // Delete is stricter than edit:
-//   customers / products — supervisor only (org rule)
-//   orders               — supervisor (all teams) + senior_ae (own team)
+//   customers / products — superuser only (org rule)
+//   orders               — superuser (all teams) + senior_ae (own team)
 export function deleteScope(role, resource) {
-  if (role === 'ae_supervisor') return 'all';
+  if (isSuperuser(role)) return 'all';
   if (resource === 'orders' && role === 'senior_ae') return 'team';
   return 'none';
 }
@@ -234,8 +288,13 @@ export function validateIdentity(role, team, department) {
   } else if (team) {
     return 'ตำแหน่งนี้ไม่ต้องระบุทีม';
   }
-  if (department && department !== departmentFor(role)) {
-    return 'ฝ่าย (department) ไม่ตรงกับตำแหน่ง';
+  const dep = normalizeDepartment(department);
+  if (dep) {
+    if (!DEPARTMENTS.includes(dep)) return 'ฝ่าย (department) ไม่ถูกต้อง';
+    if (!rolesForDepartment(dep).includes(role)) return 'ฝ่าย (department) ไม่ตรงกับตำแหน่ง';
+  } else if (!departmentFor(role)) {
+    // staff has no default department, so one must be supplied explicitly.
+    return 'ตำแหน่งนี้ต้องระบุฝ่าย';
   }
   return null;
 }

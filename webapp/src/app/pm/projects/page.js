@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
+import { isSuperuser } from "@/lib/permissions";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 
 const URGENCY_COLUMNS = [
@@ -67,8 +68,8 @@ export default function ProjectsPage() {
   const router = useRouter();
   const canEdit = useCan("pm:edit");
   const role = useRole();
-  // delete scope mirrors the API: supervisor (all) + team lead (own team).
-  const canDelete = role === "ae_supervisor" || role === "senior_ae";
+  // delete scope mirrors the API: superuser (all) + team lead (own team).
+  const canDelete = isSuperuser(role) || role === "senior_ae";
   const [projects, setProjects] = useState(() => apiCache.get("/api/pm/projects") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has("/api/pm/projects"));
   const [customers, setCustomers] = useState([]);

@@ -9,12 +9,13 @@ import {
   TEAM_ROLES,
   DEPARTMENTS,
   DEPARTMENT_LABELS,
+  DEPARTMENT_NAMES_TH,
   departmentFor,
   rolesForDepartment,
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 
-const emptyForm = { email: "", password: "", firstName: "", lastName: "", department: "SALES", role: "ae", team: "ODM" };
+const emptyForm = { email: "", password: "", firstName: "", lastName: "", department: "SA", role: "ae", team: "ODM" };
 
 export default function UserManagement() {
   const canManage = useCan("users:manage");
@@ -92,6 +93,7 @@ export default function UserManagement() {
       firstName: editForm.firstName,
       lastName: editForm.lastName,
       role: editForm.role,
+      department: editForm.department,
       team: normalizeTeam(editForm.role, editForm.team),
     };
     if (editForm.password) payload.password = editForm.password;
@@ -231,7 +233,12 @@ export default function UserManagement() {
                       <td className="text-[var(--text-2)]">
                         {(() => {
                           const dep = u.department || departmentFor(u.role);
-                          return dep ? DEPARTMENT_LABELS[dep] || dep : "-";
+                          if (!dep) return "-";
+                          return (
+                            <span title={DEPARTMENT_NAMES_TH[dep] || ""}>
+                              {DEPARTMENT_LABELS[dep] || dep}
+                            </span>
+                          );
                         })()}
                       </td>
                       <td className="text-[var(--text-2)]">
@@ -408,8 +415,8 @@ function UserFields({ form, setForm, requirePassword, edit }) {
           className="premium-input w-full"
         >
           {DEPARTMENTS.map((d) => (
-            <option key={d} value={d}>
-              {DEPARTMENT_LABELS[d]}
+            <option key={d} value={d} title={DEPARTMENT_NAMES_TH[d]}>
+              {DEPARTMENT_LABELS[d]} — {DEPARTMENT_NAMES_TH[d]}
             </option>
           ))}
         </select>

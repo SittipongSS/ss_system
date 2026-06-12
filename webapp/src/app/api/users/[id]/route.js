@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, validateIdentity, departmentFor } from '@/lib/permissions';
+import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,10 +33,11 @@ export async function PATCH(request, { params }) {
     const invalid = validateIdentity(body.role, team, body.department);
     if (invalid) return Response.json({ error: invalid }, { status: 400 });
     // Guard against self-demotion locking everyone out of user management.
-    if (id === me.id && body.role !== 'ae_supervisor') {
+    if (id === me.id && !isSuperuser(body.role)) {
       return Response.json({ error: 'ไม่สามารถลดสิทธิ์ของตัวเองได้' }, { status: 400 });
     }
-    updates.app_metadata = { role: body.role, department: departmentFor(body.role), must_change_password: mustChange, team };
+    const department = normalizeDepartment(body.department) || departmentFor(body.role);
+    updates.app_metadata = { role: body.role, department, must_change_password: mustChange, team };
   } else if (mustChange !== !!existingMeta.must_change_password) {
     // Password reset without a role change still needs to persist the flag.
     updates.app_metadata = { ...existingMeta, must_change_password: mustChange };

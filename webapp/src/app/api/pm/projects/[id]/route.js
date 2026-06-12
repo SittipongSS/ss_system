@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScope, editScope, inScope } from '@/lib/permissions';
+import { viewScope, editScope, inScope, isSuperuser } from '@/lib/permissions';
 import { mergeTemplateTasks, recalculateSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -162,8 +162,8 @@ export async function DELETE(request, { params }) {
   const project = await loadProject(supabase, idOrCode);
   if (!project) return Response.json({ error: 'ไม่พบโปรเจกต์' }, { status: 404 });
   const id = project.id;
-  // delete scope: supervisor=all; senior_ae=own team; others none
-  const scope = user?.role === 'ae_supervisor' ? 'all'
+  // delete scope: superuser=all; senior_ae=own team; others none
+  const scope = isSuperuser(user?.role) ? 'all'
     : user?.role === 'senior_ae' ? 'team' : 'none';
   if (!inScope(scope, user, project)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });

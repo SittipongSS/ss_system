@@ -1,14 +1,15 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
+import { isSuperuser, normalizeDepartment } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // Which scopes a role may request for PROJECT tasks:
 //   mine = งานที่ assign ให้ฉัน (ทุก role)
-//   team = งานของทีมตัวเอง (senior_ae, ac, ae_supervisor)
-//   all  = ทุกทีม (ae_supervisor)
+//   team = งานของทีมตัวเอง (senior_ae, ac, superuser)
+//   all  = ทุกทีม (superuser: admin / ae_supervisor)
 function allowedScopes(role) {
-  if (role === 'ae_supervisor') return ['mine', 'team', 'all'];
+  if (isSuperuser(role)) return ['mine', 'team', 'all'];
   if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
   return ['mine'];
 }
@@ -37,9 +38,15 @@ export async function GET(request) {
     const byName = user.name
       ? supabase.from('project_tasks').select('*').eq('assignee', user.name).order('stepOrder', { ascending: true })
       : Promise.resolve({ data: [] });
-    const [{ data: a }, { data: b }] = await Promise.all([byId, byName]);
+    // staff (ฝ่ายจัดซื้อ/ผลิต/คลัง/วิจัย/QC) ไม่ได้ถูก assign รายคนเสมอ — รวมงานที่
+    // "assign ให้ฝ่าย" คือขั้นตอนที่ role === ฝ่ายของเขา เข้ามาในงานของฉันด้วย.
+    const dept = normalizeDepartment(user.department);
+    const byDept = (user.role === 'staff' && dept)
+      ? supabase.from('project_tasks').select('*').eq('role', dept).order('stepOrder', { ascending: true })
+      : Promise.resolve({ data: [] });
+    const [{ data: a }, { data: b }, { data: c }] = await Promise.all([byId, byName, byDept]);
     const seen = new Set();
-    projectTasks = [...(a || []), ...(b || [])].filter((t) => (seen.has(t.id) ? false : seen.add(t.id)));
+    projectTasks = [...(a || []), ...(b || []), ...(c || [])].filter((t) => (seen.has(t.id) ? false : seen.add(t.id)));
   } else if (scope === 'team') {
     const { data: projs } = await supabase.from('projects').select('id').eq('team', user.team ?? null);
     const ids = (projs || []).map((p) => p.id);
@@ -72,7 +79,7 @@ export async function GET(request) {
   return Response.json({
     scope,
     allowedScopes: allowed,
-    me: { id: user.id, name: user.name, role: user.role },
+    me: { id: user.id, name: user.name, role: user.role, department: normalizeDepartment(user.department) },
     projectTasks,
     personalTasks: personalTasks || [],
     projects,

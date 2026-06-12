@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, validateIdentity, departmentFor } from '@/lib/permissions';
+import { can, validateIdentity, departmentFor, normalizeDepartment } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +31,7 @@ export async function GET() {
         lastName: u.user_metadata?.lastName || (u.user_metadata?.name ? u.user_metadata.name.substring(u.user_metadata.name.indexOf(' ') + 1) : ''),
         role: u.app_metadata?.role || null,
         team: u.app_metadata?.team || null,
-        department: u.app_metadata?.department || departmentFor(u.app_metadata?.role) || null,
+        department: normalizeDepartment(u.app_metadata?.department) || departmentFor(u.app_metadata?.role) || null,
         createdAt: u.created_at,
         lastSignInAt: u.last_sign_in_at,
         // Banned (disabled) accounts can't sign in and lose their session on the
@@ -61,6 +61,7 @@ export async function POST(request) {
   if (password.length < 6) return Response.json({ error: 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร' }, { status: 400 });
   const invalid = validateIdentity(role, team, body.department);
   if (invalid) return Response.json({ error: invalid }, { status: 400 });
+  const department = normalizeDepartment(body.department) || departmentFor(role);
 
   const { data, error } = await supabase.auth.admin.createUser({
     email,
@@ -70,7 +71,7 @@ export async function POST(request) {
     // must_change_password forces a self-service password change on first login
     // (the admin-assigned password is temporary). Stored in app_metadata so the
     // user can't clear it client-side — only our /api/account/password route does.
-    app_metadata: { role, department: departmentFor(role), must_change_password: true, ...(team ? { team } : {}) },
+    app_metadata: { role, department, must_change_password: true, ...(team ? { team } : {}) },
   });
   if (error) return Response.json({ error: error.message }, { status: 400 });
   return Response.json({ id: data.user.id }, { status: 201 });

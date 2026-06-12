@@ -7,9 +7,10 @@ import {
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar, User,
   TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight,
   Activity, XCircle, PauseCircle, CircleDashed, PlayCircle,
-  Check, Play, Loader, Pause, Printer,
+  Check, Play, Loader, Pause, Printer, Table2, Filter, ArrowUpDown,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
+import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
@@ -43,6 +44,72 @@ const statusDotColor = (s) => s === "Completed" ? "var(--green)" : s === "On Tra
 const statusPillClass = (s) => s === "Completed" ? "success" : s === "On Track" ? "success" : s === "Delayed" ? "danger" : s === "On Hold" ? "warning" : s === "Dropped" ? "danger" : "primary";
 
 const ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
+
+// ฝ่ายอื่นที่ไม่ใช่ SA — เข้ามาในนาม "ตัวแทนฝ่าย" (staff 1 คนต่อฝ่าย). ขั้นตอนของ
+// ฝ่ายเหล่านี้ถูกมอบหมายอัตโนมัติให้ตัวแทนฝ่ายนั้น (ไม่ต้องเลือกคน — เห็นใน My Work เอง).
+const STAFF_DEPTS = ["PC", "PD", "WH", "RD", "QC"];
+
+// ตัวแทนของฝ่าย (staff ที่ department ตรง) — โมเดลปัจจุบัน 1 คนต่อฝ่าย
+function deptRep(users, dept) {
+  return users.find((u) => u.role === "staff" && u.department === dept) || null;
+}
+
+// ชื่อผู้รับผิดชอบที่จะโชว์บน timeline/list:
+//   - มี assigneeId (ขั้นตอน SA ที่ assign รายคน) → ชื่อคนนั้น
+//   - ขั้นตอนฝ่ายอื่น → ตัวแทนฝ่ายนั้น (auto)
+function resolveAssigneeName(task, users) {
+  if (task.assigneeId) return users.find((u) => u.id === task.assigneeId)?.name || task.assignee || "—";
+  if (STAFF_DEPTS.includes(task.role)) {
+    const rep = deptRep(users, task.role);
+    return rep ? rep.name : `ตัวแทนฝ่าย ${task.role}`;
+  }
+  return task.assignee || "—";
+}
+
+// ช่อง "ผู้รับผิดชอบ" ในฟอร์มแก้ขั้นตอน — ปรับตามฝ่ายของขั้นตอน:
+//   SA          → เลือกคนใน SA จัดกลุ่มตามทีม ODM/KA/SV (assign รายคน)
+//   ฝ่ายอื่น     → มอบหมายอัตโนมัติให้ตัวแทนฝ่าย (อ่านอย่างเดียว ไม่ต้องเลือก)
+//   LG/ALL/อื่น → ไม่ระบุรายคน
+function AssigneeField({ form, setForm, users }) {
+  const role = form.role;
+  if (role === "SA") {
+    const byTeam = {};
+    users.filter((u) => u.department === "SA").forEach((u) => {
+      (byTeam[u.team || "—"] ||= []).push(u);
+    });
+    const teams = Object.keys(byTeam).sort();
+    return (
+      <select
+        className="premium-select"
+        value={form.assigneeId || ""}
+        onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
+        style={{ flex: 1 }}
+        title="มอบหมายให้คนใน SA (จะไปอยู่ใน 'งานของฉัน' ของคนนั้น)"
+      >
+        <option value="">— ไม่มอบหมาย —</option>
+        {teams.map((tm) => (
+          <optgroup key={tm} label={TEAM_LABELS[tm] || tm}>
+            {byTeam[tm].map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+          </optgroup>
+        ))}
+      </select>
+    );
+  }
+  if (STAFF_DEPTS.includes(role)) {
+    const rep = deptRep(users, role);
+    return (
+      <span style={{ flex: 1, fontSize: "12px", color: "var(--text-2)", background: "var(--panel-2)", padding: "6px 10px", borderRadius: "8px", border: "1px solid var(--border)" }}>
+        มอบหมายอัตโนมัติ → ตัวแทนฝ่าย {role}{rep ? `: ${rep.name}` : " (ยังไม่มีตัวแทน)"}
+      </span>
+    );
+  }
+  return (
+    <span style={{ flex: 1, fontSize: "12px", color: "var(--text-3)" }}>— ไม่ระบุรายคน ({role}) —</span>
+  );
+}
+
+// สีประจำสถานะของขั้นตอนงาน (ใช้ย้อม dropdown สถานะ)
+const TASK_STATUS_COLOR = { Pending: "var(--text-3)", "In Progress": "var(--accent)", Completed: "var(--green)" };
 
 const PHASE_COLORS = ["var(--accent)", "var(--purple)", "var(--blue)", "var(--amber)", "#f97316", "var(--green)", "var(--accent)"];
 
@@ -139,7 +206,7 @@ export default function ProjectDetailPage() {
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [addingProduct, setAddingProduct] = useState("");
-  const [view, setView] = useState("list"); // list | document
+  const [view, setView] = useState("list"); // list | table | document
   const [showAddTask, setShowAddTask] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
   const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false });
@@ -150,6 +217,10 @@ export default function ProjectDetailPage() {
   const [insertBeforeId, setInsertBeforeId] = useState(null); // แทรก "ก่อน" หัวแถวแรกของเฟส
   const [selectMode, setSelectMode] = useState(false); // โหมดเลือกหลายขั้นตอนเพื่อลบ
   const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
+  const [tableStatusFilter, setTableStatusFilter] = useState("all"); // Table view: all | pending | progress | completed
+  const [tableSort, setTableSort] = useState("step"); // Table view: step | name | status | due
+  const [editTask, setEditTask] = useState(null); // ขั้นตอนที่กำลังแก้ผ่าน modal (ใช้จาก Table view)
+  const [showEditTask, setShowEditTask] = useState(false);
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -363,6 +434,34 @@ export default function ProjectDetailPage() {
     setEditForm(null);
   };
 
+  // เปิดแก้ไขขั้นตอนแบบ modal (จาก Table view) — ไม่สลับไป List view
+  const openEditModal = (task) => {
+    setEditForm({
+      name: task.name, role: task.role || "SA", assignee: task.assignee || "",
+      assigneeId: task.assigneeId || "",
+      durationDays: task.durationDays ?? 1, startDate: task.startDate || "",
+      isMilestone: !!task.isMilestone, phase: task.phase || "",
+      predecessors: task.predecessors || [],
+      note: task.note || "", showNoteInPrint: !!task.showNoteInPrint,
+    });
+    setEditTask(task);
+    setShowEditTask(true);
+  };
+  const closeEditModal = () => { setShowEditTask(false); setEditTask(null); setEditForm(null); };
+  const saveEditModal = async () => {
+    if (!editTask) return;
+    await updateTask(editTask.id, {
+      name: editForm.name, role: editForm.role, assignee: editForm.assignee || null,
+      assigneeId: editForm.assigneeId || null,
+      durationDays: Number(editForm.durationDays) || 1,
+      startDate: editForm.startDate || null,
+      isMilestone: editForm.isMilestone, phase: editForm.phase || null,
+      predecessors: editForm.predecessors || [],
+      note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
+    });
+    closeEditModal();
+  };
+
   const handleToggleTask = (task) => {
     if (task.status === "Pending") return;
     updateTask(task.id, { status: task.status === "Completed" ? "In Progress" : "Completed" });
@@ -399,6 +498,45 @@ export default function ProjectDetailPage() {
       };
     });
   }, [tasks]);
+
+  // Table view: filter -> group by phase -> sort within group. Must stay above
+  // the early returns below to keep hook order stable.
+  const tableGroups = useMemo(() => {
+    const orderIndex = new Map(processedTasks.map((t, i) => [t.id, i]));
+    const STATUS_ORDER = { "In Progress": 0, Pending: 1, Completed: 2 };
+    const comparator =
+      tableSort === "name" ? (a, b) => (a.name || "").localeCompare(b.name || "", "th")
+      : tableSort === "status" ? (a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+      : tableSort === "due" ? (a, b) => {
+          const da = a.finishDate ? new Date(a.finishDate).getTime() : Infinity;
+          const db = b.finishDate ? new Date(b.finishDate).getTime() : Infinity;
+          return da - db;
+        }
+      : (a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0); // step (default)
+
+    const matchStatus = (t) =>
+      tableStatusFilter === "all" ? true
+      : tableStatusFilter === "pending" ? t.status === "Pending"
+      : tableStatusFilter === "progress" ? t.status === "In Progress"
+      : t.status === "Completed";
+
+    const groups = [];
+    const byKey = new Map();
+    processedTasks.filter(matchStatus).forEach((t) => {
+      const key = t.phase || "__nophase__";
+      if (!byKey.has(key)) {
+        const g = { key, phase: t.phase || null, num: t.phaseNum || null, tasks: [] };
+        byKey.set(key, g);
+        groups.push(g);
+      }
+      byKey.get(key).tasks.push(t);
+    });
+    groups.forEach((g) => {
+      g.tasks.sort(comparator);
+      g.done = g.tasks.filter((t) => t.status === "Completed").length;
+    });
+    return groups;
+  }, [processedTasks, tableStatusFilter, tableSort]);
 
   if (loading) return <div style={{ padding: "60px", textAlign: "center", color: "var(--text-3)" }}>กำลังโหลดข้อมูล...</div>;
   if (!data) return <div style={{ padding: "60px", textAlign: "center", color: "var(--text-3)" }}>ไม่พบโครงการ</div>;
@@ -528,6 +666,7 @@ export default function ProjectDetailPage() {
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
               <div style={{ display: "flex", background: "var(--panel)", borderRadius: "8px", padding: "4px", border: "1px solid var(--border)" }}>
                 {renderViewBtn("list", ListTodo, "List")}
+                {renderViewBtn("table", Table2, "Table")}
                 {renderViewBtn("document", FileText, "Gantt")}
               </div>
               <button
@@ -568,7 +707,7 @@ export default function ProjectDetailPage() {
               </div>
             )}
           </div>
-          {hasWriteAccess && (userRole === "senior_ae" || userRole === "ae_supervisor") && (
+          {hasWriteAccess && (userRole === "senior_ae" || isSuperuser(userRole)) && (
             <button
               type="button"
               onClick={() => updateProject({ status: "In Progress" })}
@@ -592,6 +731,123 @@ export default function ProjectDetailPage() {
             statusLabel={getComputedStatus(p)}
             statusColor={statusDotColor(getComputedStatus(p))}
           />
+        </div>
+      ) : view === "table" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+            <div style={{ fontSize: "14px", fontWeight: 600 }}>
+              ตารางขั้นตอนงาน
+              <span style={{ fontWeight: 400, color: "var(--text-3)", marginLeft: "6px" }}>
+                ({tableGroups.reduce((n, g) => n + g.tasks.length, 0)}{tableStatusFilter !== "all" ? ` / ${total}` : ""} ขั้นตอน)
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              {/* กรองสถานะ */}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                <Filter size={14} color="var(--text-3)" />
+                <select value={tableStatusFilter} onChange={(e) => setTableStatusFilter(e.target.value)} className="premium-select" style={{ height: "32px", fontSize: "12px", width: "auto" }} title="กรองตามสถานะ">
+                  <option value="all">ทุกสถานะ</option>
+                  <option value="pending">รอดำเนินการ</option>
+                  <option value="progress">กำลังทำ</option>
+                  <option value="completed">เสร็จแล้ว</option>
+                </select>
+              </div>
+              {/* เรียงลำดับ */}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                <ArrowUpDown size={14} color="var(--text-3)" />
+                <select value={tableSort} onChange={(e) => setTableSort(e.target.value)} className="premium-select" style={{ height: "32px", fontSize: "12px", width: "auto" }} title="เรียงลำดับ (ภายในแต่ละเฟส)">
+                  <option value="step">ลำดับขั้นตอน</option>
+                  <option value="due">วันเสร็จ</option>
+                  <option value="status">สถานะ</option>
+                  <option value="name">ชื่อขั้นตอน</option>
+                </select>
+              </div>
+              {canEdit && (
+                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+                  <Plus size={14} /> เพิ่มขั้นตอน
+                </button>
+              )}
+            </div>
+          </div>
+          {total === 0 ? (
+            <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีขั้นตอนงาน</div>
+          ) : tableGroups.length === 0 ? (
+            <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-3)" }}>ไม่มีขั้นตอนที่ตรงกับตัวกรอง</div>
+          ) : (
+            <div className="premium-glass-table table-responsive">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "44px", textAlign: "center" }}>#</th>
+                    <th>ขั้นตอน</th>
+                    <th>แผนก</th>
+                    <th>ผู้รับผิดชอบ</th>
+                    <th>สถานะ</th>
+                    <th style={{ whiteSpace: "nowrap" }}>เริ่ม</th>
+                    <th style={{ whiteSpace: "nowrap" }}>เสร็จ</th>
+                    <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>วัน</th>
+                    {canEdit && <th style={{ width: "70px", textAlign: "center" }}>จัดการ</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableGroups.map((g) => (
+                    <Fragment key={g.key}>
+                      {g.phase && (
+                        <tr>
+                          <td colSpan={canEdit ? 9 : 8} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13px" }}>
+                              <span style={{ width: "9px", height: "9px", borderRadius: "3px", background: phaseColorMap[g.phase] || "var(--accent)" }} />
+                              {g.num ? `${g.num}. ` : ""}{g.phase}
+                              <span style={{ fontWeight: 600, fontSize: "11px", color: "var(--text-3)", marginLeft: "auto" }}>{g.done}/{g.tasks.length}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {g.tasks.map((task) => {
+                        const rs = roleStyle(task.role);
+                        const assignee = resolveAssigneeName(task, users);
+                        return (
+                          <tr key={task.id} className="premium-row">
+                            <td style={{ textAlign: "center", fontWeight: 700, color: "var(--text-3)" }}>{task.displayNumber}</td>
+                            <td style={{ fontWeight: 500 }}>
+                              <span onClick={() => canEdit && openEditModal(task)} title={canEdit ? "คลิกเพื่อแก้ไขขั้นตอน" : undefined} style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: canEdit ? "pointer" : "default" }}>
+                                {task.isMilestone && <Flag size={13} color="var(--amber)" strokeWidth={2.5} />}
+                                {task.name}
+                              </span>
+                            </td>
+                            <td><span style={{ fontSize: "11px", fontWeight: 700, color: rs.color, background: rs.bg, padding: "3px 9px", borderRadius: "12px", border: `1px solid ${rs.border}` }}>{task.role}</span></td>
+                            <td style={{ fontSize: "13px" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : assignee}</td>
+                            <td>
+                              {canEdit ? (
+                                <select className="premium-select" value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })} style={{ fontSize: "11px", padding: "4px 24px 4px 10px", height: "auto", width: "auto", minWidth: "118px", color: TASK_STATUS_COLOR[task.status], fontWeight: 600, borderColor: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 45%, var(--border))`, background: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 8%, var(--panel))` }}>
+                                  <option value="Pending" style={{ color: TASK_STATUS_COLOR.Pending }}>○ รอดำเนินการ</option>
+                                  <option value="In Progress" style={{ color: TASK_STATUS_COLOR["In Progress"] }}>◷ กำลังทำ</option>
+                                  <option value="Completed" style={{ color: TASK_STATUS_COLOR.Completed }}>✓ เสร็จแล้ว</option>
+                                </select>
+                              ) : (
+                                <span className="status-pill"><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDotColor(task.status === "Completed" ? "Completed" : task.status === "In Progress" ? "In Progress" : "Pending") }} /> {task.status}</span>
+                              )}
+                            </td>
+                            <td style={{ fontSize: "12.5px", whiteSpace: "nowrap" }}>{formatDate(task.startDate)}</td>
+                            <td style={{ fontSize: "12.5px", whiteSpace: "nowrap" }}>{formatDate(task.finishDate)}</td>
+                            <td style={{ textAlign: "center", fontSize: "12.5px" }}>{task.durationDays}</td>
+                            {canEdit && (
+                              <td onClick={(e) => e.stopPropagation()}>
+                                <div style={{ display: "flex", gap: "4px", justifyContent: "center" }}>
+                                  <button onClick={() => openEditModal(task)} style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "4px" }} title="แก้ไขขั้นตอน"><Edit2 size={14} /></button>
+                                  <button onClick={() => deleteTask(task.id, task.name)} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "4px" }} title="ลบขั้นตอน"><Trash2 size={14} /></button>
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -762,16 +1018,13 @@ export default function ProjectDetailPage() {
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--panel)", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)" }}>
                             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                               <input className="premium-input" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่อขั้นตอน" style={{ flex: 1 }} />
-                              <select className="premium-select" value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })} style={{ width: "100px" }}>
+                              <select className="premium-select" value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
                                 {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                               </select>
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                               <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ผู้รับผิดชอบ:</label>
-                              <select className="premium-select" value={editForm.assigneeId || ""} onChange={(e) => setEditForm({ ...editForm, assigneeId: e.target.value })} style={{ flex: 1 }} title="มอบหมายให้ผู้ใช้ระบบ (จะไปอยู่ใน 'งานของฉัน' ของคนนั้น)">
-                                <option value="">— ไม่มอบหมาย —</option>
-                                {users.map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
-                              </select>
+                              <AssigneeField form={editForm} setForm={setEditForm} users={users} />
                             </div>
                             <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -841,10 +1094,10 @@ export default function ProjectDetailPage() {
                                   <span style={{ fontSize: "11px", fontWeight: 700, color: rs.color, background: rs.bg, padding: "3px 9px", borderRadius: "12px", border: `1px solid ${rs.border}` }}>{task.role}</span>
                                 ); })()}
                                 {canEdit && (
-                                  <select className="premium-select" value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })} style={{ fontSize: "11px", padding: "4px 26px 4px 10px", height: "auto", width: "auto", minWidth: "120px" }}>
-                                    <option value="Pending">○ รอดำเนินการ</option>
-                                    <option value="In Progress">◷ กำลังทำ</option>
-                                    <option value="Completed">✓ เสร็จแล้ว</option>
+                                  <select className="premium-select" value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })} style={{ fontSize: "11px", padding: "4px 26px 4px 10px", height: "auto", width: "auto", minWidth: "120px", color: TASK_STATUS_COLOR[task.status], fontWeight: 600, borderColor: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 45%, var(--border))`, background: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 8%, var(--panel))` }}>
+                                    <option value="Pending" style={{ color: TASK_STATUS_COLOR.Pending }}>○ รอดำเนินการ</option>
+                                    <option value="In Progress" style={{ color: TASK_STATUS_COLOR["In Progress"] }}>◷ กำลังทำ</option>
+                                    <option value="Completed" style={{ color: TASK_STATUS_COLOR.Completed }}>✓ เสร็จแล้ว</option>
                                   </select>
                                 )}
                                 {canEdit && (
@@ -907,7 +1160,7 @@ export default function ProjectDetailPage() {
       {hasWriteAccess && p.status !== "Completed" && p.status !== "Dropped" && (
         <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
           {p.status === "On Hold" ? (
-            (p.aeOwner === userName || userRole === "ae_supervisor") && (
+            (p.aeOwner === userName || isSuperuser(userRole)) && (
               <button
                 type="button"
                 onClick={() => updateProject({ status: "In Progress" })}
@@ -1026,6 +1279,74 @@ export default function ProjectDetailPage() {
             <button type="submit" className="btn btn-primary px-8">เพิ่ม</button>
           </div>
         </form>
+      </Modal>
+
+      {/* Edit task modal — ใช้จาก Table view (แก้ในที่ ไม่สลับไป List) */}
+      <Modal open={showEditTask} onClose={closeEditModal} title="แก้ไขขั้นตอน" size="md">
+        {editForm && editTask && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input className="premium-input" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่อขั้นตอน" style={{ flex: 1 }} />
+              <select className="premium-select" value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
+                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ผู้รับผิดชอบ:</label>
+              <AssigneeField form={editForm} setForm={setEditForm} users={users} />
+            </div>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันที่เริ่ม:</label>
+                <input type="date" className="premium-input" value={editForm.startDate || ""} onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })} style={{ width: "150px" }} title="วันเริ่มของขั้นตอนนี้" />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>จำนวนวัน:</label>
+                <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => setEditForm({ ...editForm, durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการของขั้นตอนนี้" />
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
+                <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm({ ...editForm, isMilestone: e.target.checked })} style={{ accentColor: "var(--amber)", cursor: "pointer" }} />
+                ตั้งเป็น Milestone
+              </label>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>หมายเหตุ</label>
+              <textarea className="premium-input" value={editForm.note || ""} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ width: "100%", resize: "vertical", padding: "6px 10px", fontSize: "13px" }} />
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
+                <input type="checkbox" checked={editForm.showNoteInPrint || false} onChange={(e) => setEditForm({ ...editForm, showNoteInPrint: e.target.checked })} style={{ accentColor: "var(--accent)", cursor: "pointer" }} />
+                แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
+              </label>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+              <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>งานที่ต้องรอให้เสร็จก่อน (Predecessors):</label>
+              <div style={{ maxHeight: "120px", overflowY: "auto", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                {processedTasks.filter(t => t.id !== editTask.id).length === 0 ? (
+                  <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center" }}>ไม่มีขั้นตอนงานอื่น</div>
+                ) : processedTasks.filter(t => t.id !== editTask.id).map((t) => (
+                  <label key={t.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={editForm.predecessors?.includes(t.id) || false}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setEditForm(f => ({ ...f, predecessors: checked ? [...(f.predecessors || []), t.id] : (f.predecessors || []).filter(id => id !== t.id) }));
+                      }}
+                      style={{ accentColor: "var(--accent)" }}
+                    />
+                    <span>{t.displayNumber}. {t.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "4px" }}>
+              <Calendar size={11} /> ระบบคำนวณวันเสร็จจากวันเริ่ม + จำนวนวันทำการ
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+              <button className="btn btn-secondary" onClick={closeEditModal} style={{ padding: "6px 14px", fontSize: "12px" }}>ยกเลิก</button>
+              <button className="btn btn-primary" onClick={saveEditModal} style={{ padding: "6px 14px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}><Save size={14} /> บันทึก</button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {showEditProject && (

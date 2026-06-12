@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { editScope, inScope } from '@/lib/permissions';
+import { editScope, inScope, can, normalizeDepartment } from '@/lib/permissions';
 import { recalculateForward, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -33,13 +33,27 @@ export async function PATCH(request, { params }) {
 
   const { task, project } = await loadTaskWithProject(supabase, id);
   if (!task) return Response.json({ error: 'ไม่พบขั้นตอน' }, { status: 404 });
-  if (!inScope(editScope(user?.role), user, project || {})) {
+
+  // สิทธิ์แก้ไขมี 2 ระดับ:
+  //   fullEdit     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโปรเจกต์)
+  //   workflowEdit — ผู้รับผิดชอบ (assigneeId) หรือพนักงานฝ่ายเดียวกับขั้นตอน (role===department)
+  //                  อัปเดตได้เฉพาะสถานะ/ความคืบหน้า/โน้ต ไม่แตะวันเริ่ม/ลำดับ/การมอบหมาย
+  const fullEdit = inScope(editScope(user?.role), user, project || {});
+  const ownsTask = !!user?.id && task.assigneeId === user.id;
+  // dept-broad path is for teamless departments only (staff = PC/PD/WH/RD/QC);
+  // sales depts (SA) stay team-scoped via fullEdit, so they don't leak across teams.
+  const sameDept = user?.role === 'staff' && !!user?.department && normalizeDepartment(user.department) === task.role;
+  const workflowEdit = !fullEdit && can(user?.role, 'pm:view') && (ownsTask || sameDept);
+  if (!fullEdit && !workflowEdit) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
   const body = await request.json();
+  // workflowEdit จำกัดเฉพาะ field งาน/สถานะ — กันไม่ให้พนักงานรื้อแผนหรือ reassign
+  const WORKFLOW_FIELDS = ['status', 'actualFinishDate', 'note', 'showNoteInPrint'];
+  const editable = workflowEdit ? EDITABLE.filter((k) => WORKFLOW_FIELDS.includes(k)) : EDITABLE;
   const updates = {};
-  for (const k of EDITABLE) {
+  for (const k of editable) {
     if (body[k] !== undefined) {
       if ((k === 'startDate' || k === 'finishDate' || k === 'actualFinishDate') && body[k] === "") updates[k] = null;
       else updates[k] = body[k];
@@ -59,7 +73,7 @@ export async function PATCH(request, { params }) {
   // (อันนั้นเขียนผ่าน .update() แยกด้านล่าง ไม่ผ่าน path นี้)
   const USER_EDIT_FIELDS = ['name', 'role', 'assignee', 'assigneeId', 'phase', 'isMilestone', 'durationDays', 'startDate', 'finishDate', 'predecessors', 'note', 'showNoteInPrint'];
   const isUserEdit = USER_EDIT_FIELDS.some((k) =>
-    body[k] !== undefined && JSON.stringify(body[k] ?? null) !== JSON.stringify(task[k] ?? null)
+    k in updates && JSON.stringify(updates[k] ?? null) !== JSON.stringify(task[k] ?? null)
   );
   if (isUserEdit && !task.userEdited) updates.userEdited = true;
 
@@ -69,7 +83,7 @@ export async function PATCH(request, { params }) {
   // ── #1 recalc: ถ้าแก้วันเริ่ม/จำนวนวัน/predecessors → คำนวณ timeline ใหม่
   // ตั้งแต่ task นี้เป็นต้นไป (anchor = วันเริ่มใหม่ของ task นี้) แล้ว persist
   // เฉพาะแถวที่ start/finish/cells เปลี่ยนจริง — mirror updateTaskDetails ของ ss-cj ──
-  const schedulingChanged = SCHEDULE_FIELDS.some((k) => body[k] !== undefined);
+  const schedulingChanged = SCHEDULE_FIELDS.some((k) => k in updates);
   if (schedulingChanged && project) {
     setHolidays([...(await holidaySet())]);
     const { data: all } = await supabase

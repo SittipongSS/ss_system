@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, departmentFor } from '@/lib/permissions';
+import { can, departmentFor, normalizeDepartment } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +27,7 @@ export async function GET() {
         name: u.user_metadata?.name || u.email,
         role,
         team: u.app_metadata?.team || null,
-        department: u.app_metadata?.department || departmentFor(role) || null,
+        department: normalizeDepartment(u.app_metadata?.department) || departmentFor(role) || null,
       });
     }
     page++;

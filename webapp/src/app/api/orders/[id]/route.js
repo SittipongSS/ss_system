@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
+import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSuperuser } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 // GET /api/orders/[id]
@@ -178,9 +178,9 @@ export async function DELETE(request, { params }) {
   if (!canDeleteRecord(user, 'orders', order)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
-  // Tax-locked orders: supervisor only.
+  // Tax-locked orders: superuser only.
   const locked = order.receiptNumber || order.clearedAt || order.status === 'complete';
-  if (locked && user?.role !== 'ae_supervisor') {
+  if (locked && !isSuperuser(user?.role)) {
     return Response.json(
       { error: 'รายการนี้เข้าสู่ขั้นตอนภาษีแล้ว ต้องเป็นผู้ดูแลระบบจึงจะลบได้' },
       { status: 403 }
