@@ -321,10 +321,6 @@ export default function ProjectsPage() {
           <p>ระบบจัดการโปรเจกต์และติดตามงาน (NPD &amp; Re-Order)</p>
         </div>
         <div className="header-content" style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-          <div className="search-glass" style={{ width: "220px" }}>
-            <Search size={18} color="var(--text-3)" />
-            <input type="text" placeholder="ค้นหาโปรเจกต์..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
           {canEdit && (
             <button className="btn btn-primary" onClick={openCreate} style={{ padding: "0 18px", fontWeight: 600 }}>
               <Plus size={16} /> สร้างโปรเจกต์ใหม่
@@ -337,8 +333,12 @@ export default function ProjectsPage() {
         <div style={{ padding: "60px", textAlign: "center", color: "var(--text-3)" }}>กำลังโหลดข้อมูล...</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          {/* แถบกรอง + เรียงลำดับ */}
+          {/* แถบเครื่องมือ: ค้นหา + กรอง + เรียงลำดับ */}
           <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+            <div className="search-glass" style={{ width: "240px" }}>
+              <Search size={18} color="var(--text-3)" />
+              <input type="text" placeholder="ค้นหาโปรเจกต์..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>
                 <Filter size={14} /> กรอง

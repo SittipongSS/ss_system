@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ReceiptText, Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { ReceiptText, Plus, Search, Pencil, Trash2, Filter } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
@@ -137,21 +137,28 @@ export default function ExciseWorkspace() {
           </svg>
         </div>
       ) : (
+        <>
+        {/* แถบเครื่องมือ: ค้นหา + กรอง */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
+          <div className="search-glass" style={{ width: "240px" }}>
+            <Search size={18} color="var(--text-3)" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อ / ลูกค้า..." />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>
+              <Filter size={14} /> กรอง
+            </span>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ height: 34, fontSize: "12px", width: "auto" }}>
+              <option value="all">ทุกสถานะ</option>
+              <option value="pending_legal">รออนุมัติ</option>
+              <option value="approved">อนุมัติแล้ว</option>
+              <option value="rejected">ตีกลับ</option>
+            </select>
+          </div>
+        </div>
         <div className="glass-panel">
           <div className="px-4 py-3.5 border-b border-[var(--border)] flex items-center justify-between gap-3 flex-wrap">
             <h3 className="font-semibold text-sm text-[var(--text)]">รายการขึ้นทะเบียน ({filtered.length})</h3>
-            <div className="flex items-center gap-2">
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ height: 34, fontSize: "12.5px" }}>
-                <option value="all">ทุกสถานะ</option>
-                <option value="pending_legal">รออนุมัติ</option>
-                <option value="approved">อนุมัติแล้ว</option>
-                <option value="rejected">ตีกลับ</option>
-              </select>
-              <div className="search-glass">
-                <Search size={18} color="var(--text-3)" />
-                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อ / ลูกค้า..." />
-              </div>
-            </div>
           </div>
           <div className="premium-table-wrapper border-none rounded-t-none">
             <table className="premium-table">
@@ -200,6 +207,7 @@ export default function ExciseWorkspace() {
             </table>
           </div>
         </div>
+        </>
       )}
 
       {/* Submit registration modal */}

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { can, ROLE_LABELS } from '@/lib/permissions';
+import { can, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { RoleContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
@@ -27,6 +27,7 @@ export default function AppLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [role, setRole] = useState(null);
+  const [team, setTeam] = useState(null);
   const [userName, setUserName] = useState('');
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
@@ -82,8 +83,9 @@ export default function AppLayout({ children }) {
         }
       }
 
-      // Role comes from app_metadata (service-role-only; users cannot self-edit it).
+      // Role + team come from app_metadata (service-role-only; users cannot self-edit it).
       setRole(user.app_metadata?.role || 'user');
+      setTeam(user.app_metadata?.team || null);
       // Force a password change on first login / after an admin reset.
       setMustChangePwd(!!user.app_metadata?.must_change_password);
       setUserName(dName);
@@ -273,7 +275,7 @@ export default function AppLayout({ children }) {
               <div className="user-info" style={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '8px' }}>
                 <span className="user-name" style={{ fontSize: '13px', fontWeight: '600' }}>{userName}</span>
                 <span className={`topbar-user-role ${role === 'ae_supervisor' || role === 'legal' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}`} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
-                  {ROLE_LABELS[role] || role}
+                  {team ? `${ROLE_LABELS[role] || role} · ${TEAM_LABELS[team] || team}` : (ROLE_LABELS[role] || role)}
                 </span>
               </div>
             </div>

@@ -146,16 +146,20 @@ export default function ProductRegistry() {
           <p>ฐานข้อมูลสินค้ากลาง (Master Data) — รหัส FG สเปค และต้นทุน/ภาษีต่อหน่วย</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="search-glass" style={{ width: "240px" }}>
-            <Search size={18} color="var(--text-3)" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า..." />
-          </div>
           <div className="pill ok">ทั้งหมด {products.length} รายการ</div>
           {canEdit && (
             <button onClick={openForm} className="btn btn-primary flex items-center gap-1.5">
               <Plus size={16} /> เพิ่มสินค้า
             </button>
           )}
+        </div>
+      </div>
+
+      {/* แถบเครื่องมือ: ค้นหา */}
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
+        <div className="search-glass" style={{ width: "240px" }}>
+          <Search size={18} color="var(--text-3)" />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า..." />
         </div>
       </div>
 

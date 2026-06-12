@@ -264,17 +264,19 @@ export default function MyWorkPage() {
           <Search size={18} color="var(--text-3)" />
           <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-3)" }}>
-          <ArrowUpDown size={15} />
-          <select value={sortKey} onChange={(e) => setSortKey(e.target.value)} className="premium-input" style={{ height: "38px", fontSize: "13px", paddingRight: "28px" }}>
-            {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>เรียงตาม: {o.label}</option>)}
-          </select>
-        </div>
         {statusFilter !== "all" && (
-          <button onClick={() => setStatusFilter("all")} className="btn" style={{ height: "38px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+          <button onClick={() => setStatusFilter("all")} className="btn" style={{ height: "34px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
             กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: 700 }}>×</span>
           </button>
         )}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>
+            <ArrowUpDown size={14} /> เรียง
+          </span>
+          <select value={sortKey} onChange={(e) => setSortKey(e.target.value)} className="premium-select" style={{ height: "34px", fontSize: "12px", width: "auto" }} title="เรียงลำดับตาม">
+            {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+        </div>
       </div>
 
       {loading ? (
