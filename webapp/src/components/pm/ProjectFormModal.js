@@ -73,7 +73,6 @@ export default function ProjectFormModal({
   const [form, setForm] = useState(blank);
   const [linkFg, setLinkFg] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [previewCode, setPreviewCode] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -102,11 +101,6 @@ export default function ProjectFormModal({
       } else {
         setForm(blank);
         setLinkFg(false);
-        setPreviewCode("");
-        fetch("/api/pm/projects/next-code")
-          .then(r => r.ok ? r.json() : {})
-          .then(d => { if (d.nextCode) setPreviewCode(d.nextCode); })
-          .catch(() => {});
       }
     }
   }, [open, editingId, initialData]);
@@ -190,6 +184,8 @@ export default function ProjectFormModal({
       );
       const data = await res.json();
       if (res.ok) {
+        // รหัสโครงการสร้างอัตโนมัติฝั่งเซิร์ฟเวอร์ — โชว์ให้ผู้ใช้เห็นหลังบันทึกสำเร็จ
+        if (!editingId && data.code) alert(`สร้างโปรเจกต์สำเร็จ\nรหัสโครงการ: ${data.code}`);
         onSuccess(data);
       } else {
         alert(data.error || (editingId ? "บันทึกไม่สำเร็จ" : "สร้างโปรเจกต์ไม่สำเร็จ"));
@@ -238,11 +234,13 @@ export default function ProjectFormModal({
             <span className="w-6 h-6 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[12px]">1</span> ข้อมูลทั่วไป (General Info)
           </div>
           
-          <div className="form-group">
-            <label>รหัสโครงการ</label>
-            <input name="code" value={form.code} onChange={change} disabled placeholder={editingId ? "" : (previewCode || "สร้างอัตโนมัติ")} className="premium-input w-full font-mono bg-gray-50 text-[var(--text-3)]" />
-          </div>
-          <div className="form-group">
+          {editingId && form.code && (
+            <div className="form-group">
+              <label>รหัสโครงการ</label>
+              <input name="code" value={form.code} disabled className="premium-input w-full font-mono bg-gray-50 text-[var(--text-3)]" />
+            </div>
+          )}
+          <div className={`form-group${editingId && form.code ? "" : " col-span-2"}`}>
             <label>ประเภทงาน</label>
             <select name="type" value={form.type} onChange={change} disabled={!!editingId} className="premium-input w-full">
               <option value="NPD">NPD (สินค้าใหม่)</option>
