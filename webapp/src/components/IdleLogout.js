@@ -15,7 +15,7 @@ const SUPABASE_CONFIGURED =
 //
 // No-op when Supabase isn't configured (local dev) — there's no real session to
 // end, and redirecting to "/" would just bounce back via the dev fallback.
-const IDLE_LIMIT_MS = 60 * 60 * 1000; // 1 hour
+const IDLE_LIMIT_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const WARN_BEFORE_MS = 60 * 1000; // show the warning for the final minute
 
 export default function IdleLogout() {
