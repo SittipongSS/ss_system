@@ -123,5 +123,47 @@ export async function DELETE(request, { params }) {
 
   const { error } = await supabase.from('project_tasks').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  // ── recalc forward: ลบขั้นตอนแล้วเลื่อน timeline ของขั้นที่เหลือ ──
+  // 1) ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น
+  // 2) คำนวณ start/finish ใหม่ตั้งแต่ตำแหน่งที่ลบเป็นต้นไป (คงขั้นก่อนหน้าไว้)
+  if (project) {
+    setHolidays([...(await holidaySet())]);
+    const { data: all } = await supabase
+      .from('project_tasks').select('*').eq('projectId', project.id)
+      .order('stepOrder', { ascending: true });
+
+    if (all && all.length) {
+      const cleaned = all.map((t) =>
+        Array.isArray(t.predecessors) && t.predecessors.includes(id)
+          ? { ...t, predecessors: t.predecessors.filter((p) => p !== id) }
+          : t
+      );
+      const fromHere = cleaned.filter((t) => (t.stepOrder ?? 0) >= (task.stepOrder ?? 0));
+      const anchor = task.startDate || project.startDate || todayStr();
+      const recalced = recalculateForward(fromHere, anchor, cleaned);
+      const recalcedMap = new Map(recalced.map((r) => [r.id, r]));
+
+      const sameJson = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+      const final = cleaned.map((t) => recalcedMap.get(t.id) || t);
+      const changed = final.filter((r) => {
+        const orig = all.find((o) => o.id === r.id);
+        return orig.startDate !== r.startDate || orig.finishDate !== r.finishDate
+          || !sameJson(orig.cellsOverride, r.cellsOverride) || !sameJson(orig.predecessors, r.predecessors);
+      });
+
+      if (changed.length) {
+        await Promise.all(changed.map((r) =>
+          supabase.from('project_tasks').update({
+            startDate: r.startDate, finishDate: r.finishDate,
+            cellsOverride: r.cellsOverride ?? null,
+            predecessors: r.predecessors ?? [],
+            updatedAt: new Date().toISOString(),
+          }).eq('id', r.id)
+        ));
+      }
+    }
+  }
+
   return Response.json({ success: true });
 }

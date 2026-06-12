@@ -101,6 +101,13 @@ export default function MyWorkPage() {
   const [form, setForm] = useState(PERSONAL_BLANK);
   const [saving, setSaving] = useState(false);
 
+  // เลือกหลายรายการเพื่อลบ — งานส่วนตัว
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  // เลือกหลายรายการเพื่อลบ — งานโปรเจกต์
+  const [selectedProjIds, setSelectedProjIds] = useState(() => new Set());
+  const [bulkDeletingProj, setBulkDeletingProj] = useState(false);
+
   const loadWork = async (sc) => {
     setLoading(true);
     try {
@@ -170,6 +177,57 @@ export default function MyWorkPage() {
 
   const totalShown = projGroups.reduce((n, g) => n + g.tasks.length, 0);
 
+  // ตัดรายการที่เลือกออกเมื่อมันหายไปจากรายการที่มองเห็น (เปลี่ยนตัวกรอง/ค้นหา)
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (!prev.size) return prev;
+      const visible = new Set(visiblePersonal.map((t) => t.id));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visiblePersonal]);
+
+  const allVisibleSelected = visiblePersonal.length > 0 && visiblePersonal.every((t) => selectedIds.has(t.id));
+  const toggleSelectAll = () => setSelectedIds(allVisibleSelected ? new Set() : new Set(visiblePersonal.map((t) => t.id)));
+
+  // งานโปรเจกต์ที่มองเห็น (แบนจากทุกกลุ่ม) — สำหรับเลือก/ลบหลายรายการ
+  const visibleProjTasks = useMemo(() => projGroups.flatMap((g) => g.tasks), [projGroups]);
+  useEffect(() => {
+    setSelectedProjIds((prev) => {
+      if (!prev.size) return prev;
+      const visible = new Set(visibleProjTasks.map((t) => t.id));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleProjTasks]);
+  const allProjSelected = visibleProjTasks.length > 0 && visibleProjTasks.every((t) => selectedProjIds.has(t.id));
+  const toggleProjSelect = (id) => setSelectedProjIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleProjSelectAll = () => setSelectedProjIds(allProjSelected ? new Set() : new Set(visibleProjTasks.map((t) => t.id)));
+  const clearProjSelection = () => setSelectedProjIds(new Set());
+  const bulkDeleteProj = async () => {
+    const ids = [...selectedProjIds];
+    if (!ids.length) return;
+    if (!confirm(`ลบขั้นตอนงานโปรเจกต์ที่เลือก ${ids.length} รายการ ?\n(การลบมีผลกับแผนงานของโปรเจกต์ — ระบบจะเลื่อน timeline ให้)`)) return;
+    setBulkDeletingProj(true);
+    // ลบทีละรายการตามลำดับ — แต่ละ DELETE คำนวณ timeline ใหม่ฝั่ง server, ยิงพร้อมกันจะชนกัน
+    const deleted = new Set();
+    for (const id of ids) {
+      try {
+        const res = await fetch(`/api/pm/project-tasks/${id}`, { method: "DELETE" });
+        if (res.ok) deleted.add(id);
+      } catch { /* ข้ามรายการที่ลบไม่สำเร็จ */ }
+    }
+    setSelectedProjIds(new Set([...selectedProjIds].filter((id) => !deleted.has(id))));
+    setBulkDeletingProj(false);
+    if (deleted.size < ids.length) alert(`ลบสำเร็จ ${deleted.size}/${ids.length} รายการ (บางรายการอาจไม่มีสิทธิ์ลบ)`);
+    // โหลดใหม่เพื่อรับ start/finish ที่ถูกคำนวณใหม่หลังลบ
+    if (deleted.size) loadWork(scope);
+  };
+
   // ── personal task CRUD ──
   const openAdd = () => { setEditingId(null); setForm(PERSONAL_BLANK); setShowModal(true); };
   const openEdit = (t) => { setEditingId(t.id); setForm({ title: t.title, note: t.note || "", dueDate: t.dueDate || "", projectId: t.projectId || "" }); setShowModal(true); };
@@ -198,6 +256,28 @@ export default function MyWorkPage() {
     if (!confirm(`ลบงานส่วนตัว "${t.title}" ?`)) return;
     const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
     if (res.ok) setPersonalTasks((prev) => prev.filter((x) => x.id !== t.id));
+  };
+
+  // ── เลือกหลายรายการ ──
+  const toggleSelect = (id) => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const clearSelection = () => setSelectedIds(new Set());
+  const bulkDeletePersonal = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    if (!confirm(`ลบงานส่วนตัวที่เลือก ${ids.length} รายการ ?`)) return;
+    setBulkDeleting(true);
+    const results = await Promise.allSettled(
+      ids.map((id) => fetch(`/api/pm/personal-tasks/${id}`, { method: "DELETE" })),
+    );
+    const deleted = new Set(ids.filter((id, i) => results[i].status === "fulfilled" && results[i].value.ok));
+    if (deleted.size) setPersonalTasks((prev) => prev.filter((x) => !deleted.has(x.id)));
+    setSelectedIds(new Set([...selectedIds].filter((id) => !deleted.has(id))));
+    setBulkDeleting(false);
+    if (deleted.size < ids.length) alert(`ลบสำเร็จ ${deleted.size}/${ids.length} รายการ`);
   };
 
   const STAT_CARDS = [
@@ -285,9 +365,19 @@ export default function MyWorkPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "28px" }}>
           {/* ── งานโปรเจกต์ ── */}
           <section>
-            <div style={{ fontSize: "15px", fontWeight: 700, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <ListTodo size={17} color="var(--accent)" /> งานโปรเจกต์ ({SCOPE_TH[scope]})
-              <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{totalShown} งาน</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
+              <div style={{ fontSize: "15px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+                <ListTodo size={17} color="var(--accent)" /> งานโปรเจกต์ ({SCOPE_TH[scope]})
+                <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{totalShown} งาน</span>
+              </div>
+              {selectedProjIds.size > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "auto" }}>
+                  <button onClick={bulkDeleteProj} disabled={bulkDeletingProj} className="btn" style={{ height: "32px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px", color: "var(--red)", borderColor: "var(--red)" }}>
+                    <Trash2 size={14} /> {bulkDeletingProj ? "กำลังลบ..." : `ลบที่เลือก (${selectedProjIds.size})`}
+                  </button>
+                  <button onClick={clearProjSelection} className="btn" style={{ height: "32px", fontSize: "12px" }}>ยกเลิก</button>
+                </div>
+              )}
             </div>
             {projGroups.length === 0 ? (
               <div className="glass-panel" style={{ padding: "32px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
@@ -299,13 +389,18 @@ export default function MyWorkPage() {
               <div className="premium-glass-table table-responsive">
                 <table className="premium-table">
                   <thead>
-                    <tr><th>สถานะ</th><th>ชื่องาน</th><th>แผนก</th>{scope !== "mine" && <th>ผู้รับผิดชอบ</th>}<th>กำหนดเสร็จ</th></tr>
+                    <tr>
+                      <th style={{ width: "36px", textAlign: "center" }}>
+                        <input type="checkbox" checked={allProjSelected} onChange={toggleProjSelectAll} title="เลือกทั้งหมด" style={{ width: "15px", height: "15px", cursor: "pointer", accentColor: "var(--accent)" }} />
+                      </th>
+                      <th>สถานะ</th><th>ชื่องาน</th><th>แผนก</th>{scope !== "mine" && <th>ผู้รับผิดชอบ</th>}<th>กำหนดเสร็จ</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {projGroups.map((g) => (
                       <Fragment key={g.projectId}>
                         <tr onClick={() => router.push(`/pm/projects/${g.code || g.projectId}`)} style={{ cursor: "pointer" }}>
-                          <td colSpan={scope !== "mine" ? 5 : 4} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
+                          <td colSpan={scope !== "mine" ? 6 : 5} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, fontSize: "13px" }}>
                               <span className="font-mono" style={{ fontSize: "11px", background: "var(--bg)", padding: "2px 8px", borderRadius: "4px", border: "1px solid var(--border)" }}>{g.code}</span>
                               <span>{g.name}</span>
@@ -322,8 +417,12 @@ export default function MyWorkPage() {
                         </tr>
                         {g.tasks.map((t) => {
                           const u = getUrgencyInfo(t);
+                          const selected = selectedProjIds.has(t.id);
                           return (
-                            <tr key={t.id} className="premium-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${g.code || t.projectId}`)}>
+                            <tr key={t.id} className="premium-row" style={{ cursor: "pointer", background: selected ? "color-mix(in srgb, var(--accent) 10%, transparent)" : undefined }} onClick={() => router.push(`/pm/projects/${g.code || t.projectId}`)}>
+                              <td style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+                                <input type="checkbox" checked={selected} onChange={() => toggleProjSelect(t.id)} title="เลือกเพื่อลบ" style={{ width: "15px", height: "15px", cursor: "pointer", accentColor: "var(--accent)" }} />
+                              </td>
                               <td><span className={`status-pill ${t.status === "Completed" ? "success" : ""}`}><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}</span></td>
                               <td style={{ fontWeight: 500 }}>{t.name}</td>
                               <td><span style={{ fontSize: "11px", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px", fontWeight: 600 }}>{t.role}</span></td>
@@ -345,11 +444,27 @@ export default function MyWorkPage() {
 
           {/* ── งานส่วนตัว ── */}
           <section>
-            <div style={{ display: "flex", alignItems: "center", marginBottom: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
               <div style={{ fontSize: "15px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
                 <User size={17} color="var(--purple)" /> งานส่วนตัว
                 <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{visiblePersonal.length} งาน · เห็นเฉพาะคุณ</span>
               </div>
+              {visiblePersonal.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "auto" }}>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", fontWeight: 600, cursor: "pointer" }}>
+                    <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll} style={{ width: "15px", height: "15px", cursor: "pointer", accentColor: "var(--accent)" }} />
+                    เลือกทั้งหมด
+                  </label>
+                  {selectedIds.size > 0 && (
+                    <>
+                      <button onClick={bulkDeletePersonal} disabled={bulkDeleting} className="btn" style={{ height: "32px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px", color: "var(--red)", borderColor: "var(--red)" }}>
+                        <Trash2 size={14} /> {bulkDeleting ? "กำลังลบ..." : `ลบที่เลือก (${selectedIds.size})`}
+                      </button>
+                      <button onClick={clearSelection} className="btn" style={{ height: "32px", fontSize: "12px" }}>ยกเลิก</button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             {visiblePersonal.length === 0 ? (
               <div className="glass-panel" style={{ padding: "32px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
@@ -361,9 +476,11 @@ export default function MyWorkPage() {
                   const u = getUrgencyInfo(t);
                   const proj = t.projectId ? (allProjects.find((p) => p.id === t.projectId) || projectsMap[t.projectId]) : null;
                   const done = t.status === "Completed";
+                  const selected = selectedIds.has(t.id);
                   return (
-                    <div key={t.id} className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}` }}>
+                    <div key={t.id} className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, outline: selected ? "2px solid var(--accent)" : "none", outlineOffset: "-1px" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                        <input type="checkbox" checked={selected} onChange={() => toggleSelect(t.id)} title="เลือกเพื่อลบ" style={{ width: "16px", height: "16px", marginTop: "3px", cursor: "pointer", flexShrink: 0, accentColor: "var(--accent)" }} />
                         <button onClick={() => cyclePersonalStatus(t)} title="เปลี่ยนสถานะ" style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", flexShrink: 0, color: statusDot(t.status) }}>
                           {done ? <CheckCircle2 size={18} /> : t.status === "In Progress" ? <Clock size={18} /> : <CircleDashed size={18} />}
                         </button>

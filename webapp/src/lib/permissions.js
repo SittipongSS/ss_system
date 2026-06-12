@@ -14,6 +14,8 @@
 //   ac            — Account Coordinate (back-office). Edits whole team, no delete.
 //   ae            — Account Executive (front-office). Edits only own records.
 //   legal         — Legal dept. Views all teams; approves / files tax. No edits.
+//   viewer        — Read-only observer. Sees the Project Management system only
+//                   (all teams' projects), no edits anywhere. Own department.
 //
 // Teams: ODM (New ODM) | KA (Key Account) | SV (Services).
 //
@@ -31,8 +33,8 @@
 // app_metadata.department so new departments (e.g. accounting) can be added
 // later, but today every role maps 1:1 to a department (ROLE_DEPARTMENT),
 // which is the default/validation source of truth.
-export const DEPARTMENTS = ['SALES', 'LEGAL'];
-export const DEPARTMENT_LABELS = { SALES: 'ฝ่ายขาย', LEGAL: 'ฝ่ายกฎหมาย' };
+export const DEPARTMENTS = ['SALES', 'LEGAL', 'VIEWER'];
+export const DEPARTMENT_LABELS = { SALES: 'ฝ่ายขาย', LEGAL: 'ฝ่ายกฎหมาย', VIEWER: 'ผู้ดูข้อมูล' };
 
 // Which department each role belongs to. Teams (ODM/KA/SV) live only under
 // SALES; LEGAL has no teams.
@@ -42,6 +44,7 @@ const ROLE_DEPARTMENT = {
   ac: 'SALES',
   ae: 'SALES',
   legal: 'LEGAL',
+  viewer: 'VIEWER',
 };
 
 export function departmentFor(role) {
@@ -57,13 +60,14 @@ export const TEAMS = ['ODM', 'KA', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal'];
+export const ROLES = ['ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal', 'viewer'];
 export const ROLE_LABELS = {
   ae_supervisor: 'AE Supervisor',
   senior_ae: 'Senior AE',
   ac: 'Account Coordinate',
   ae: 'Account Executive',
   legal: 'ฝ่ายกฎหมาย',
+  viewer: 'ผู้ดูข้อมูล (Viewer)',
 };
 
 // Roles that operate within a single team (team is required for them).
@@ -98,6 +102,8 @@ const ROLE_CAPS = {
   ae: SALES_OPS,
   // legal views registries + does tax approval; no edit/delete of sales data
   legal: ['customers:view', 'products:view', 'legal:view', 'legal:approve', 'history:view'],
+  // viewer: read-only observer of the Project Management system only (no writes)
+  viewer: ['pm:view'],
 };
 
 // Unknown role: read-only viewer (sees registries + history, no actions).
@@ -118,7 +124,7 @@ export function can(role, cap) {
 // 'none' = may not write at all
 
 export function viewScope(role) {
-  if (role === 'ae_supervisor' || role === 'legal') return 'all';
+  if (role === 'ae_supervisor' || role === 'legal' || role === 'viewer') return 'all';
   return 'team'; // senior_ae, ac, ae, and unknown viewer
 }
 
@@ -239,5 +245,5 @@ export function validateIdentity(role, team, department) {
 // page, sales roles land on the registration-submission page.
 export function landingFor(role) {
   if (role === 'legal') return '/tax/approve-register';
-  return '/tax/register'; // sales roles + viewer
+  return '/tax/register'; // sales roles (viewer has no tax access; its hub card is disabled)
 }
