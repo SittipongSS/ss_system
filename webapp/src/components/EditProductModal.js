@@ -9,7 +9,7 @@ const FIELDS = [
   "volume", "volumeUnit", "costPrice", "retailPriceIncVat",
 ];
 
-export default function EditProductModal({ open, onClose, onSaved, product }) {
+export default function EditProductModal({ open, onClose, onSaved, product, brandOptions = [] }) {
   const [form, setForm] = useState({});
   const [productTypes, setProductTypes] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -124,7 +124,10 @@ export default function EditProductModal({ open, onClose, onSaved, product }) {
                 })()}
               </div>
               {field("productDescription", "รายละเอียดสินค้า")}
-              {field("brandName", "ชื่อแบรนด์")}
+              {field("brandName", "ชื่อแบรนด์", "text", { list: "edit-brand-options", placeholder: "เลือกแบรนด์ของลูกค้า หรือพิมพ์ใหม่" })}
+              <datalist id="edit-brand-options">
+                {brandOptions.map((b) => <option key={b} value={b} />)}
+              </datalist>
             </div>
           </div>
 

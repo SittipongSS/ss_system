@@ -20,6 +20,7 @@ export default function ProductDetails() {
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [brandOptions, setBrandOptions] = useState([]);
 
   const fetchProduct = async () => {
     try {
@@ -45,6 +46,11 @@ export default function ProductDetails() {
 
   useEffect(() => {
     if (id) fetchProduct();
+    // แบรนด์เป็นของลูกค้า (customers.brands[]) — ใช้เป็นรายการแนะนำตอนแก้แบรนด์สินค้า
+    fetch("/api/customers")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setBrandOptions([...new Set((d || []).flatMap((c) => c.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -250,7 +256,7 @@ export default function ProductDetails() {
         </div>
       </div>
 
-      <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} />
+      <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} />
     </>
   );
 }

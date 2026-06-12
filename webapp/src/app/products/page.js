@@ -12,6 +12,7 @@ export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
   const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/product-types") ?? []);
+  const [customers, setCustomers] = useState(() => apiCache.get("/api/customers") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has("/api/products"));
   const [showForm, setShowForm] = useState(false);
 
@@ -64,7 +65,18 @@ export default function ProductRegistry() {
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
     fetchProducts();
+    // แบรนด์เป็นของลูกค้า (customers.brands[]) — ดึงมาเป็นรายการแนะนำของช่องแบรนด์
+    fetch("/api/customers")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { apiCache.set("/api/customers", d || []); setCustomers(d || []); })
+      .catch(() => {});
   }, []);
+
+  // รายการแบรนด์แนะนำ = แบรนด์ที่ไม่ซ้ำจากลูกค้าทุกราย (ยังพิมพ์แบรนด์ใหม่ได้)
+  const brandOptions = useMemo(
+    () => [...new Set(customers.flatMap((c) => c.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [customers],
+  );
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -260,7 +272,10 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required placeholder="Brand Name" className="premium-input w-full" />
+                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required list="brand-options" placeholder="เลือกแบรนด์ของลูกค้า หรือพิมพ์ใหม่" className="premium-input w-full" />
+                <datalist id="brand-options">
+                  {brandOptions.map((b) => <option key={b} value={b} />)}
+                </datalist>
               </div>
             </div>
           </div>
