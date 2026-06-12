@@ -114,14 +114,16 @@ export async function DELETE(request, { params }) {
   // ข้อ 3: guard ก่อนลบ — กันไม่ให้เกิด record กำพร้า (live DB ไม่มี FK constraint จริง).
   // ถ้าสินค้านี้ยังถูกอ้างใน โปรเจกต์/รายการออเดอร์/การขึ้นทะเบียน → ห้ามลบ.
   const [ppRef, itemRef, regRef] = await Promise.all([
-    supabase.from('project_products').select('id', { count: 'exact', head: true }).eq('productId', id),
-    supabase.from('order_items').select('id', { count: 'exact', head: true }).eq('productId', id),
-    supabase.from('excise_registrations').select('id', { count: 'exact', head: true }).eq('productId', id),
+    supabase.from('project_products').select('projectId').eq('productId', id),
+    supabase.from('order_items').select('orderId').eq('productId', id),
+    supabase.from('excise_registrations').select('id').eq('productId', id),
   ]);
   const refs = [];
-  if (ppRef.count) refs.push(`${ppRef.count} โปรเจกต์`);
-  if (itemRef.count) refs.push(`${itemRef.count} รายการออเดอร์`);
-  if (regRef.count) refs.push(`${regRef.count} การขึ้นทะเบียน`);
+  const projIds = [...new Set((ppRef.data || []).map((r) => r.projectId))];
+  const orderIds = [...new Set((itemRef.data || []).map((r) => r.orderId))];
+  if (projIds.length) refs.push(`${projIds.length} โปรเจกต์ (${projIds.join(', ')})`);
+  if (orderIds.length) refs.push(`${orderIds.length} ออเดอร์ (${orderIds.join(', ')})`);
+  if (regRef.data?.length) refs.push(`${regRef.data.length} การขึ้นทะเบียน`);
   if (refs.length) {
     return Response.json(
       { error: `ลบไม่ได้: สินค้านี้ยังถูกใช้งานอยู่ใน ${refs.join(', ')} — กรุณาจัดการรายการเหล่านั้นก่อน` },
