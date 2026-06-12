@@ -148,6 +148,8 @@ export default function ProjectDetailPage() {
   const [editForm, setEditForm] = useState(null);
   const [insertAfterId, setInsertAfterId] = useState(null); // บั๊ก C: แทรกขั้นตอนตรงตำแหน่ง
   const [insertBeforeId, setInsertBeforeId] = useState(null); // แทรก "ก่อน" หัวแถวแรกของเฟส
+  const [selectMode, setSelectMode] = useState(false); // โหมดเลือกหลายขั้นตอนเพื่อลบ
+  const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -307,6 +309,27 @@ export default function ProjectDetailPage() {
     if (!confirm(`ต้องการลบขั้นตอน "${name}" ใช่หรือไม่?`)) return;
     const res = await fetch(`/api/pm/project-tasks/${taskId}`, { method: "DELETE" });
     if (res.ok) setData((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== taskId) }));
+  };
+
+  const toggleSelectTask = (taskId) => setSelectedTaskIds((prev) => {
+    const next = new Set(prev);
+    next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+    return next;
+  });
+
+  const exitSelectMode = () => { setSelectMode(false); setSelectedTaskIds(new Set()); };
+
+  const deleteSelectedTasks = async () => {
+    const ids = [...selectedTaskIds];
+    if (ids.length === 0) return;
+    if (!confirm(`ต้องการลบ ${ids.length} ขั้นตอนที่เลือกใช่หรือไม่?`)) return;
+    const results = await Promise.all(
+      ids.map((id) => fetch(`/api/pm/project-tasks/${id}`, { method: "DELETE" }).then((r) => r.ok ? id : null).catch(() => null))
+    );
+    const deleted = new Set(results.filter(Boolean));
+    if (deleted.size > 0) setData((d) => ({ ...d, tasks: d.tasks.filter((t) => !deleted.has(t.id)) }));
+    if (deleted.size < ids.length) alert(`ลบสำเร็จ ${deleted.size} จาก ${ids.length} ขั้นตอน`);
+    exitSelectMode();
   };
 
   const togglePhase = (phase) => setCollapsedPhases((prev) => {
@@ -576,11 +599,45 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             {canEdit && (
-              <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
-                <Plus size={14} /> เพิ่มขั้นตอน
-              </button>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                {total > 0 && (
+                  selectMode ? (
+                    <button onClick={exitSelectMode} className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+                      <X size={14} /> ยกเลิกการเลือก
+                    </button>
+                  ) : (
+                    <button onClick={() => setSelectMode(true)} className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+                      <Trash2 size={14} /> เลือกเพื่อลบ
+                    </button>
+                  )
+                )}
+                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+                  <Plus size={14} /> เพิ่มขั้นตอน
+                </button>
+              </div>
             )}
           </div>
+
+          {/* bulk-delete action bar */}
+          {canEdit && selectMode && (
+            <div className="glass-panel" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "10px 16px", borderRadius: "10px", background: "var(--panel-2)", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "13px", color: "var(--text-2)", fontWeight: 600 }}>
+                เลือกแล้ว {selectedTaskIds.size} ขั้นตอน
+              </span>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={() => setSelectedTaskIds(selectedTaskIds.size === processedTasks.length ? new Set() : new Set(processedTasks.map((t) => t.id)))}
+                  className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+                  {selectedTaskIds.size === processedTasks.length ? "ไม่เลือกทั้งหมด" : "เลือกทั้งหมด"}
+                </button>
+                <button
+                  onClick={deleteSelectedTasks} disabled={selectedTaskIds.size === 0}
+                  className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px", background: "var(--red)", borderColor: "var(--red)", opacity: selectedTaskIds.size === 0 ? 0.5 : 1, cursor: selectedTaskIds.size === 0 ? "not-allowed" : "pointer" }}>
+                  <Trash2 size={14} /> ลบที่เลือก
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* progress summary & milestones */}
           <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: "14px" }}>
@@ -681,6 +738,12 @@ export default function ProjectDetailPage() {
                       </div>
                     )}
                     <div style={{ display: "flex", alignItems: "stretch", gap: "0" }}>
+                      {/* Checkbox for bulk-delete select mode */}
+                      {canEdit && selectMode && (
+                        <div style={{ width: "30px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <input type="checkbox" checked={selectedTaskIds.has(task.id)} onChange={() => toggleSelectTask(task.id)} style={{ width: "16px", height: "16px", accentColor: "var(--red)", cursor: "pointer" }} title="เลือกขั้นตอนนี้เพื่อลบ" />
+                        </div>
+                      )}
                       {/* Milestone icon outside card */}
                       <div style={{ width: "28px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         {task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}
