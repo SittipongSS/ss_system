@@ -208,14 +208,15 @@ export default function ProjectFormModal({
     return [...seen.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([code, name]) => ({ code, name }));
   }, [categories]);
 
-  // ตัวเลือกแบรนด์ = brandName ที่ไม่ซ้ำจากสินค้า — กรองตามลูกค้าที่เลือกถ้ามี
-  // (ถ้าลูกค้านั้นยังไม่มีแบรนด์ในระบบ ให้ fallback เป็นทุกแบรนด์)
+  // ตัวเลือกแบรนด์ = แบรนด์ที่ลูกค้า "เป็นเจ้าของ" (customers.brands[]) ซึ่งเป็น
+  // source of truth ของแบรนด์ในระบบ. เลือกลูกค้าแล้ว → โชว์เฉพาะแบรนด์ของรายนั้น;
+  // ยังไม่เลือกลูกค้า → รวมแบรนด์จากลูกค้าทุกราย (ยังพิมพ์เพิ่มเองได้)
   const brandOptions = useMemo(() => {
-    const rel = form.customerId ? allProducts.filter((p) => p.customerId === form.customerId) : allProducts;
-    const set = new Set(rel.map((p) => (p.brandName || "").trim()).filter(Boolean));
-    if (form.customerId && set.size === 0) allProducts.forEach((p) => { if (p.brandName) set.add(p.brandName.trim()); });
-    return [...set].sort((a, b) => a.localeCompare(b));
-  }, [allProducts, form.customerId]);
+    const dedup = (arr) => [...new Set(arr.map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const selected = customers.find((c) => c.id === form.customerId);
+    if (selected) return dedup(selected.brands || []);
+    return dedup(customers.flatMap((c) => c.brands || []));
+  }, [customers, form.customerId]);
 
   const subCatOptions = useMemo(
     () => categories.filter((c) => c.mainCategoryCode === form.mainCode && c.typeCode && (c.nameTh || c.nameEn || "").trim()), // ข้ามหมวดรองที่ code ว่าง/มีแต่รหัส
@@ -399,7 +400,7 @@ export default function ProjectFormModal({
             <label>ผู้ดูแล (Account Executive)</label>
             <select name="aeOwner" value={form.aeOwner} onChange={change} className="premium-input w-full">
               <option value="">— ไม่ระบุ —</option>
-              {users.filter(u => u.role === "ae" || u.role === "senior_ae").map((u) => {
+              {users.filter(u => u.role === "ae" || u.role === "senior_ae" || u.role === "ae_supervisor").map((u) => {
                 const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
                 return <option key={u.id} value={name}>{name}</option>;
               })}
