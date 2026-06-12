@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Scale, FolderKanban, Database, ArrowRight, LogOut } from "lucide-react";
+import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
 import { landingFor, can } from "@/lib/permissions";
@@ -253,8 +253,13 @@ export default function HomeHubPage() {
           )}
         </div>
 
-        {/* Footer logout */}
-        <div style={{ textAlign: "center", marginTop: "32px" }}>
+        {/* Footer — user management (admins) + logout */}
+        <div style={{ textAlign: "center", marginTop: "32px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", flexWrap: "wrap" }}>
+          {isAdmin && (
+            <button onClick={() => router.push("/users")} className="btn ghost" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }} title="จัดการผู้ใช้">
+              <Users size={15} strokeWidth={2} /> จัดการผู้ใช้
+            </button>
+          )}
           <button onClick={handleLogout} className="btn ghost" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
             <LogOut size={15} strokeWidth={2} /> ออกจากระบบ
           </button>
