@@ -5,9 +5,9 @@ import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
 
-// Master product catalog. FG products are CREATED here, independent of any
-// customer. Linking a product to a customer + excise approval happens in the
-// excise registration flow (/excise).
+// Master product catalog. Every FG is created here owned by a customer
+// (chosen in the form). Excise approval still happens later in the excise
+// registration flow (/excise).
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
   const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
@@ -17,6 +17,7 @@ export default function ProductRegistry() {
   const [showForm, setShowForm] = useState(false);
 
   const emptyForm = {
+    customerId: "",
     fgCode: "",
     productDescription: "",
     brandName: "",
@@ -72,13 +73,23 @@ export default function ProductRegistry() {
       .catch(() => {});
   }, []);
 
-  // รายการแบรนด์แนะนำ = แบรนด์ที่ไม่ซ้ำจากลูกค้าทุกราย (ยังพิมพ์แบรนด์ใหม่ได้)
-  const brandOptions = useMemo(
-    () => [...new Set(customers.flatMap((c) => c.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+  // FG ผูกกับลูกค้าเสมอ — เลือกลูกค้าก่อน แล้วแบรนด์ที่แนะนำมาจาก brands[] ของลูกค้านั้น
+  // (ยังพิมพ์แบรนด์ใหม่ได้ เผื่อแบรนด์ยังไม่ถูกบันทึกในข้อมูลลูกค้า)
+  const customerList = useMemo(
+    () => [...customers].sort((a, b) => (a.name || "").localeCompare(b.name || "")),
     [customers],
   );
+  const brandOptions = useMemo(() => {
+    const c = customers.find((x) => x.id === formData.customerId);
+    return [...new Set((c?.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }, [customers, formData.customerId]);
 
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    // เปลี่ยนลูกค้า → ล้างแบรนด์เดิม เพราะรายการแบรนด์ผูกกับลูกค้า
+    if (name === "customerId") setFormData((f) => ({ ...f, customerId: value, brandName: "" }));
+    else setFormData((f) => ({ ...f, [name]: value }));
+  };
 
   const openForm = () => {
     setFormData(emptyForm);
@@ -225,7 +236,7 @@ export default function ProductRegistry() {
         </div>
       )}
 
-      {/* Add product modal — catalog only (no customer). */}
+      {/* Add product modal — FG always belongs to a customer (selected below). */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="เพิ่มสินค้าใหม่ (New Product)" size="lg">
         <form onSubmit={handleSubmit}>
           {/* Section 1: product */}
@@ -237,6 +248,14 @@ export default function ProductRegistry() {
               </span>
             </div>
             <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+              <div className="form-group col-span-2">
+                <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
+                <select name="customerId" value={formData.customerId} onChange={handleChange} required className="premium-select w-full">
+                  <option value="" disabled>— เลือกลูกค้า —</option>
+                  {customerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <span className="text-xs text-[var(--text-3)] mt-1">FG ทุกตัวต้องผูกกับลูกค้า — รายการแบรนด์ด้านล่างจะมาจากลูกค้าที่เลือก</span>
+              </div>
               <div className="form-group col-span-2">
                 <label>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
                 <input type="text" name="fgCode" value={formData.fgCode} onChange={handleChange} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
@@ -276,7 +295,7 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required list="brand-options" placeholder="เลือกแบรนด์ของลูกค้า หรือพิมพ์ใหม่" className="premium-input w-full" />
+                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required disabled={!formData.customerId} list="brand-options" placeholder={formData.customerId ? "เลือกแบรนด์ของลูกค้า หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"} className="premium-input w-full disabled:opacity-50" />
                 <datalist id="brand-options">
                   {brandOptions.map((b) => <option key={b} value={b} />)}
                 </datalist>

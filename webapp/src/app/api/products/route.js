@@ -22,6 +22,12 @@ export async function POST(request) {
   const user = await getCurrentUser();
   const body = await request.json();
 
+  // FG always belongs to a customer (selected in the create form).
+  if (!body.customerId) return Response.json({ error: 'กรุณาเลือกลูกค้าเจ้าของสินค้า' }, { status: 400 });
+  const { data: customer } = await supabase
+    .from('customers').select('*').eq('id', body.customerId).maybeSingle();
+  if (!customer) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
+
   // Duplicate FG Code check
   const { data: dup } = await supabase
     .from('products')
@@ -49,16 +55,18 @@ export async function POST(request) {
   const materialCost = factoryPrice * 0.65;
   const factoryProfit = factoryPrice - materialCost - laborCost - shippingCost;
 
-  // Master catalog only — products are NOT tied to a customer here. Linking a
-  // product to a customer + excise approval happens in the registration flow
-  // (/api/excise-registrations). Category is derived from the FG code.
+  // Every FG belongs to a customer (chosen at creation). customerName is a
+  // snapshot taken server-side so the catalog row is stable even if the
+  // customer is later renamed. Category is derived from the FG code.
   const categoryCode = body.categoryCode || categoryOf(fgCode);
 
   // Whitelist the catalog fields we accept from the form (don't spread the
-  // whole body — keeps stray customer/status values out of the master row).
+  // whole body — keeps stray status values out of the master row).
   const newProduct = {
     id: 'PRD-' + Date.now().toString().slice(-6),
     fgCode,
+    customerId: customer.id,
+    customerName: customer.name,
     productDescription: body.productDescription ?? null,
     brandName: body.brandName ?? null,
     volume,
