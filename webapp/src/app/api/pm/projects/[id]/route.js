@@ -91,10 +91,10 @@ export async function PATCH(request, { params }) {
   // (เพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต, คงความคืบหน้าเดิม + ขั้นตอนที่เพิ่มเอง).
   const oldCat = project.productMainCategory || '';
   const newCat = updates.productMainCategory !== undefined ? (updates.productMainCategory || '') : oldCat;
-  // วันเริ่ม/วันจบเปลี่ยน → ต้องคำนวณ timeline ใหม่ (forward/backward ตาม resolveSchedule)
+  // วันเริ่มเปลี่ยน → คำนวณ timeline ใหม่ (forward จากวันเริ่ม). dueDate เป็นแค่เป้าหมาย
+  // (โชว์เป็นหมุดบน Gantt) ไม่ขับการคำนวณแล้ว — เปลี่ยน dueDate จึงไม่ต้องเลื่อนขั้นตอน.
   const dateChanged =
-    ('startDate' in updates && (updates.startDate || null) !== (project.startDate || null)) ||
-    ('dueDate' in updates && (updates.dueDate || null) !== (project.dueDate || null));
+    ('startDate' in updates && (updates.startDate || null) !== (project.startDate || null));
   if ((oldCat === '01-002') !== (newCat === '01-002')) {
     setHolidays([...(await holidaySet())]);
     const { data: existing } = await supabase

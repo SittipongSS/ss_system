@@ -28,12 +28,18 @@ export async function GET(request) {
   // ── project tasks ตาม scope ──
   let projectTasks = [];
   if (scope === 'mine') {
-    const { data } = await supabase
-      .from('project_tasks')
-      .select('*')
-      .eq('assigneeId', user.id)
+    // งานของฉัน = แมตช์ทั้ง assigneeId (มอบหมายผ่าน dropdown) และ assignee (ชื่อ —
+    // ที่ template gen ให้ AE owner โดยไม่ตั้ง assigneeId). ใช้ 2 query แล้ว merge
+    // กันชื่อที่มี comma/วงเล็บทำ .or() พัง + กันแมตช์ทั้งหมดเมื่อชื่อว่าง.
+    const byId = supabase
+      .from('project_tasks').select('*').eq('assigneeId', user.id)
       .order('stepOrder', { ascending: true });
-    projectTasks = data || [];
+    const byName = user.name
+      ? supabase.from('project_tasks').select('*').eq('assignee', user.name).order('stepOrder', { ascending: true })
+      : Promise.resolve({ data: [] });
+    const [{ data: a }, { data: b }] = await Promise.all([byId, byName]);
+    const seen = new Set();
+    projectTasks = [...(a || []), ...(b || [])].filter((t) => (seen.has(t.id) ? false : seen.add(t.id)));
   } else if (scope === 'team') {
     const { data: projs } = await supabase.from('projects').select('id').eq('team', user.team ?? null);
     const ids = (projs || []).map((p) => p.id);

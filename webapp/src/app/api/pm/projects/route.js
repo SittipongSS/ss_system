@@ -47,31 +47,23 @@ export async function POST(request) {
     return Response.json({ error: 'ต้องระบุชื่อโปรเจกต์' }, { status: 400 });
   }
 
-  let projectCode = body.code;
-  if (!projectCode) {
+  // รหัสโปรเจกต์ PJ-YYMMNNN (ลำดับรันต่อเดือน). การอ่าน max แล้ว +1 ไม่ atomic →
+  // ถ้าสร้างพร้อมกันอาจได้รหัสซ้ำ จึงพึ่ง unique(code) + retry ตอน insert (loop ด้านล่าง).
+  const computeNextCode = async () => {
     const now = new Date();
-    const yy = now.getFullYear().toString().slice(-2);
-    const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-    const prefix = `PJ-${yy}${mm}`;
-
+    const prefix = `PJ-${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, '0')}`;
     const { data: latest } = await supabase
-      .from('projects')
-      .select('code')
-      .ilike('code', `${prefix}%`)
-      .order('code', { ascending: false })
-      .limit(1);
-
+      .from('projects').select('code').ilike('code', `${prefix}%`)
+      .order('code', { ascending: false }).limit(1);
     let nextNum = 1;
-    if (latest && latest.length > 0 && latest[0].code) {
-      const lastCode = latest[0].code;
-      const lastNumStr = lastCode.slice(prefix.length);
-      const lastNum = parseInt(lastNumStr, 10);
-      if (!isNaN(lastNum)) {
-        nextNum = lastNum + 1;
-      }
+    if (latest?.[0]?.code) {
+      const lastNum = parseInt(latest[0].code.slice(prefix.length), 10);
+      if (!isNaN(lastNum)) nextNum = lastNum + 1;
     }
-    projectCode = `${prefix}${nextNum.toString().padStart(3, '0')}`;
-  }
+    return `${prefix}${nextNum.toString().padStart(3, '0')}`;
+  };
+  const autoCode = !body.code;
+  let projectCode = body.code || (await computeNextCode());
 
   // Link to customer master (FK) + take the name snapshot from the master row.
   const customer = await resolveCustomer({
@@ -80,13 +72,10 @@ export async function POST(request) {
     name: body.customerName,
   });
 
-  const id = 'PRJ-' + Date.now().toString().slice(-6);
   // วันเริ่มปล่อยว่างได้ — ถ้าไม่มีวันเริ่ม/วันจบ timeline จะนับจากวันสร้าง (createdAt)
   const startDate = body.startDate || null;
 
-  const insertRow = {
-    id,
-    code: projectCode,
+  const baseRow = {
     name: body.name,
     // Empty-string from an unselected dropdown must become null, else it
     // violates the customers FK (no customer has id '').
@@ -117,11 +106,24 @@ export async function POST(request) {
     ownerId: user?.id ?? null,
   };
 
-  const { data: project, error } = await supabase
-    .from('projects')
-    .insert(insertRow)
-    .select()
-    .single();
+  // Insert พร้อม retry ถ้าชน unique(code) — race จากการสร้างพร้อมกัน: คำนวณรหัสใหม่
+  // แล้วลองใหม่ (เฉพาะรหัสที่ระบบ gen เอง). ถ้าผู้ใช้ส่ง code มาเองแล้วซ้ำ → 409.
+  let project = null, error = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const id = 'PRJ-' + Date.now().toString().slice(-6) + (attempt || '');
+    ({ data: project, error } = await supabase
+      .from('projects')
+      .insert({ ...baseRow, id, code: projectCode })
+      .select()
+      .single());
+    if (!error) break;
+    if (error.code === '23505') {
+      if (!autoCode) return Response.json({ error: 'รหัสโปรเจกต์ซ้ำ: ' + projectCode }, { status: 409 });
+      projectCode = await computeNextCode(); // ชน → ขยับเลขแล้วลองใหม่
+      continue;
+    }
+    break; // error อื่น → ออกไปคืน 500 ด้านล่าง
+  }
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   // Load the editable holiday calendar so the timeline counts business days

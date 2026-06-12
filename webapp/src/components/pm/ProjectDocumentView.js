@@ -8,7 +8,7 @@
 import { useState, useMemo, useEffect, useRef, useReducer, useLayoutEffect } from "react";
 import { Printer, Flag, ChevronDown, ChevronRight, Minus, Plus, RotateCcw, Loader2 } from "lucide-react";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
-import { isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
+import { isBusinessDay, toLocalISODate, countBusinessDays } from "@/lib/pm/dateHelpers";
 
 const DAY_MS = 86400000;
 const ROW_H = 34;       // ความสูงแถวงาน (ให้บาร์ align กับช่องซ้าย)
@@ -213,18 +213,37 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
     const starts = tasks.map((t) => midnight(t.startDate)).filter((n) => !isNaN(n));
     const finishes = tasks.map((t) => midnight(t.finishDate)).filter((n) => !isNaN(n));
     const projStart = midnight(project.startDate);
-    const minMs = starts.length ? Math.min(...starts) : (isNaN(projStart) ? midnight(nowMs) : projStart);
-    const maxMs = finishes.length ? Math.max(...finishes) : minMs + 30 * DAY_MS;
+    let minMs = starts.length ? Math.min(...starts) : (isNaN(projStart) ? midnight(nowMs) : projStart);
+    let maxMs = finishes.length ? Math.max(...finishes) : minMs + 30 * DAY_MS;
+    // เผื่อให้หมุด due date อยู่ในแกนเสมอ แม้กำหนดส่งจะอยู่ก่อนงานแรก/หลังงานสุดท้าย
+    const due = midnight(project.dueDate);
+    if (!isNaN(due)) { minMs = Math.min(minMs, due); maxMs = Math.max(maxMs, due); }
     const start = mondayOf(minMs - 7 * DAY_MS);             // เผื่อ 1 สัปดาห์ก่อนเริ่ม
     const endMon = mondayOf(maxMs + 10 * DAY_MS);           // เผื่อท้าย + ปัดเป็นสัปดาห์
     const end = endMon + 6 * DAY_MS;
     const days = Math.round((end - start) / DAY_MS) + 1;
     return { rangeStartMs: start, totalDays: Math.max(days, 14) };
-  }, [tasks, project.startDate, nowMs]);
+  }, [tasks, project.startDate, project.dueDate, nowMs]);
 
   const timelineWidth = totalDays * pxPerDay;
   const todayIdx = dayIndexOf(nowMs, rangeStartMs);
   const gridBg = useMemo(() => buildGridBg(pxPerDay), [pxPerDay]);
+
+  // ── หมุด "กำหนดส่ง" (due date) + ประเมินว่างานจบทันมั้ย (forward schedule) ──
+  // dueDate ไม่ขับการคำนวณแล้ว เป็นแค่เป้าหมาย — เทียบวันจบล่าสุดของงานกับ dueDate
+  const dueIdx = dayIndexOf(project.dueDate, rangeStartMs);
+  const dueFeasibility = useMemo(() => {
+    const due = project.dueDate;
+    if (!due || isNaN(midnight(due))) return null;
+    const finishes = tasks.map((t) => t.finishDate).filter(Boolean).map((f) => midnight(f)).filter((n) => !isNaN(n));
+    if (!finishes.length) return { hasFinish: false, due };
+    const maxFinishMs = Math.max(...finishes);
+    const maxFinishISO = toLocalISODate(new Date(maxFinishMs));
+    // บวก = วันจบหลัง due (เกินกำหนด) ; ลบ/ศูนย์ = จบก่อน/ตรง due (ทันกำหนด)
+    const diff = countBusinessDays(due, maxFinishISO); // due → finish
+    return { hasFinish: true, due, maxFinishISO, overrun: diff > 0, days: Math.abs(diff) };
+  }, [project.dueDate, tasks]);
+  const dueColor = dueFeasibility?.overrun ? "var(--red)" : "var(--green)";
 
   // แกน: รายการวัน + การจัดกลุ่มเป็นเดือน
   const axis = useMemo(() => {
@@ -325,6 +344,18 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
           <span style={{ fontSize: "13px", color: statusColor || "var(--text-2)", display: "flex", alignItems: "center", gap: "6px" }}>
             สถานะ: <strong>{statusLabel || project.status}</strong>
           </span>
+          {dueFeasibility && (
+            <span
+              title="เปรียบเทียบวันจบล่าสุดของงานกับกำหนดส่ง (เส้นประบนแกนเวลา)"
+              style={{ fontSize: "12px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "5px", color: dueColor, background: `color-mix(in srgb, ${dueColor} 12%, transparent)`, border: `1px solid color-mix(in srgb, ${dueColor} 35%, transparent)`, padding: "3px 9px", borderRadius: "20px" }}
+            >
+              <Flag size={12} /> กำหนดส่ง {fmtDate(dueFeasibility.due)}
+              {!dueFeasibility.hasFinish ? " · ยังไม่มีวันจบงาน"
+                : dueFeasibility.overrun ? ` · เกินกำหนด ${dueFeasibility.days} วันทำการ`
+                : dueFeasibility.days > 0 ? ` · ทันกำหนด (เหลือ ${dueFeasibility.days} วันทำการ)`
+                : " · ทันกำหนดพอดี"}
+            </span>
+          )}
           <span style={{ fontSize: "12px", color: "var(--text-3)" }}>· ลากบาร์เพื่อย้าย · ลากขอบเพื่อยืด-หด · อัปเดตวันทันที</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -499,6 +530,8 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
                   timelineWidth={timelineWidth}
                   gridBg={gridBg}
                   todayIdx={todayIdx}
+                  dueIdx={dueIdx}
+                  dueColor={dueColor}
                   freezeLeft={freezeLeft}
                   collapsed={collapsedPhases.has(group.phase)}
                   onToggleCollapse={() => togglePhase(group.phase)}
@@ -546,12 +579,16 @@ const freezeTd = (left, extra = {}) => ({
 });
 
 // แถบเวลาในเซลล์ timeline ของแต่ละแถว (พื้นหลัง gridline + เส้นวันนี้ + บาร์)
-function TimelineCell({ children, pxPerDay, timelineWidth, gridBg, todayIdx, totalDays }) {
+function TimelineCell({ children, pxPerDay, timelineWidth, gridBg, todayIdx, dueIdx, dueColor, totalDays }) {
   // zIndex:0 ทำให้ td เป็น stacking context — บาร์/handle ภายในจะไม่ทับคอลัมน์แช่แข็ง (z1) หรือหัวตาราง (z2+) ตอน scroll
   // ใช้ backgroundImage อย่างเดียว (ไม่ผสม shorthand background) กัน React warning ตอน rerender
   return (
     <td style={{ border: "1px solid var(--border)", padding: 0, height: `${ROW_H}px`, position: "relative", zIndex: 0, backgroundImage: gridBg }}>
       <div style={{ position: "relative", width: timelineWidth, height: ROW_H }}>
+        {/* หมุดกำหนดส่ง (due date) — เส้นประ เขียว=ทันกำหนด / แดง=เกินกำหนด */}
+        {!isNaN(dueIdx) && dueIdx >= 0 && dueIdx < totalDays && (
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: dueIdx * pxPerDay + pxPerDay / 2 - 1, width: 0, borderLeft: `2px dashed ${dueColor || "var(--green)"}`, opacity: 0.8, zIndex: 1, pointerEvents: "none" }} />
+        )}
         {todayIdx >= 0 && todayIdx < totalDays && (
           <div style={{ position: "absolute", top: 0, bottom: 0, left: todayIdx * pxPerDay + pxPerDay / 2 - 1, width: "2px", background: "var(--red)", opacity: 0.55, zIndex: 1, pointerEvents: "none" }} />
         )}
@@ -561,7 +598,7 @@ function TimelineCell({ children, pxPerDay, timelineWidth, gridBg, todayIdx, tot
   );
 }
 
-function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, gridBg, todayIdx, freezeLeft, collapsed, onToggleCollapse, canEdit, onCommitTask }) {
+function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, gridBg, todayIdx, dueIdx, dueColor, freezeLeft, collapsed, onToggleCollapse, canEdit, onCommitTask }) {
   const phaseBg = "color-mix(in srgb, var(--accent) 8%, var(--panel))";
   return (
     <>
@@ -639,7 +676,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
               style={{ border: "none", background: "transparent", fontSize: "11px", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
             />
           </td>
-          <TimelineCell pxPerDay={pxPerDay} timelineWidth={timelineWidth} gridBg={gridBg} todayIdx={todayIdx} totalDays={totalDays}>
+          <TimelineCell pxPerDay={pxPerDay} timelineWidth={timelineWidth} gridBg={gridBg} todayIdx={todayIdx} dueIdx={dueIdx} dueColor={dueColor} totalDays={totalDays}>
             <TaskBar
               task={task}
               rangeStartMs={rangeStartMs}

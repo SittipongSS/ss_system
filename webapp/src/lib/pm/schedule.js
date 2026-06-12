@@ -24,36 +24,21 @@ const addBusinessDays = (startDate, days) => {
   return d;
 };
 
-// ลบวันทำการ (ถอยหลัง ข้ามเสาร์-อาทิตย์ + วันหยุด); เลื่อนวันจบมาเป็นวันทำการก่อน
-const subtractBusinessDays = (endDate, days) => {
-  const d = new Date(endDate);
-  while (!isBusinessDay(d)) d.setDate(d.getDate() - 1);
-  let subbed = 0;
-  while (subbed < days) {
-    d.setDate(d.getDate() - 1);
-    if (isBusinessDay(d)) subbed++;
-  }
-  return d;
-};
-
-// เลือกโหมดคำนวณ timeline ตามวันที่ที่โปรเจกต์มี:
-//   มี dueDate (มี/ไม่มีวันเริ่มก็ได้) → backward: นับวันจบถอยลงมา
-//   ไม่มี dueDate แต่มี startDate       → forward: นับจากวันเริ่ม
-//   ไม่มีทั้งคู่                          → forward: นับจากวันสร้าง (createdAt) มิฉะนั้นวันนี้
+// ไทม์ไลน์ "forward อย่างเดียว" — นับจากวันเริ่มไปข้างหน้าเสมอ:
+//   มี startDate           → นับจากวันเริ่ม
+//   ไม่มี startDate         → นับจากวันสร้าง (createdAt) มิฉะนั้นวันนี้
+// dueDate ไม่ใช้ขับการคำนวณอีกต่อไป — เป็นแค่ "เป้าหมาย" ที่โชว์เป็นหมุดบน Gantt
+// เพื่อดูว่างานจบทันกำหนดหรือไม่ (ดู feasibility ใน ProjectDocumentView).
 export function resolveSchedule(project = {}) {
-  const end = toDateStr(project.dueDate);
-  if (end) return { mode: 'backward', anchor: end };
   const start = toDateStr(project.startDate);
   if (start) return { mode: 'forward', anchor: start };
   return { mode: 'forward', anchor: toDateStr(project.createdAt) || todayStr() };
 }
 
-// ตัวเลือกอัตโนมัติ: forward หรือ backward ตาม resolveSchedule
+// คำนวณ timeline (forward เสมอ) จาก anchor ที่ resolveSchedule เลือก
 export function recalculateSchedule(tasks, project, allTasks = tasks) {
-  const { mode, anchor } = resolveSchedule(project);
-  return mode === 'backward'
-    ? recalculateBackward(tasks, anchor, allTasks)
-    : recalculateForward(tasks, anchor, allTasks);
+  const { anchor } = resolveSchedule(project);
+  return recalculateForward(tasks, anchor, allTasks);
 }
 
 // คำนวณ start/finish ของทุก task แบบ forward จากวันเริ่มโปรเจกต์
@@ -98,65 +83,6 @@ export function recalculateForward(tasks, projectStartDate, allTasks = tasks) {
     taskMap.set(t.id, updated);
     return updated;
   });
-}
-
-// คำนวณ start/finish แบบ backward จาก "วันจบโปรเจกต์" (dueDate) ถอยขึ้นมา
-// task สุดท้าย (ไม่มี successor) จบที่ projectEndDate; task อื่นจบก่อน successor
-// ที่เริ่มเร็วสุดจะเริ่ม (เคารพ predecessors เหมือน forward แต่กลับทิศ).
-// คงค่า manual override: ถ้า task มี startDate+finishDate เดิมแล้ววันเปลี่ยน → ล้าง cellsOverride.
-export function recalculateBackward(tasks, projectEndDate, allTasks = tasks) {
-  const taskMap = new Map();
-  allTasks.forEach((t) => taskMap.set(t.id, t));
-
-  // map: predecessor id → รายชื่อ task ที่ขึ้นกับมัน (successors)
-  const successors = new Map();
-  for (const t of allTasks) {
-    if (Array.isArray(t.predecessors)) {
-      for (const predId of t.predecessors) {
-        if (!successors.has(predId)) successors.set(predId, []);
-        successors.get(predId).push(t.id);
-      }
-    }
-  }
-
-  // ประมวลผลจากท้ายไปต้น เพื่อให้ successor ถูกคำนวณก่อน predecessor
-  const order = tasks.map((t, idx) => idx).reverse();
-  const result = new Array(tasks.length);
-
-  for (const idx of order) {
-    const t = tasks[idx];
-    let currentFinish = new Date(projectEndDate);
-    while (!isBusinessDay(currentFinish)) currentFinish.setDate(currentFinish.getDate() - 1);
-
-    const succIds = successors.get(t.id) || [];
-    let minFinish = Infinity;
-    for (const succId of succIds) {
-      const succ = taskMap.get(succId);
-      if (succ && succ.startDate) {
-        const before = new Date(succ.startDate);
-        if (t.durationDays > 0) before.setDate(before.getDate() - 1);
-        while (!isBusinessDay(before)) before.setDate(before.getDate() - 1);
-        if (before.getTime() < minFinish) minFinish = before.getTime();
-      }
-    }
-    if (minFinish !== Infinity && minFinish < currentFinish.getTime()) currentFinish = new Date(minFinish);
-
-    const finish = new Date(currentFinish);
-    const start = subtractBusinessDays(finish, Math.max(0, t.durationDays - 1));
-    const startStr = toDateStr(start);
-    const finishStr = toDateStr(finish);
-
-    let cellsOverride = t.cellsOverride;
-    if (t.startDate && t.finishDate && (t.startDate !== startStr || t.finishDate !== finishStr)) {
-      cellsOverride = null;
-    }
-
-    const updated = { ...t, startDate: startStr, finishDate: finishStr, cellsOverride };
-    taskMap.set(t.id, updated);
-    result[idx] = updated;
-  }
-
-  return result;
 }
 
 let _seq = 0;
@@ -216,7 +142,7 @@ export function buildProjectTasks(project, projectId) {
 // ── ข้อ 2: ปรับชุดขั้นตอนเมื่อหมวดสินค้าเปลี่ยน (เพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต) ──
 // คำนวณ "ชุด task เป้าหมาย" ตามหมวด/ประเภทใหม่ โดย **คงความคืบหน้าเดิม**: ขั้นตอน
 // ที่ชื่อตรงกับของเดิมจะ reuse id + status + actualFinishDate + override; ขั้นตอนที่
-// ผู้ใช้เพิ่มเอง (ไม่อยู่ใน template) จะถูกเก็บไว้ท้ายรายการ; ขั้นตอน template ที่
+// ผู้ใช้เพิ่มเอง (origin='custom') จะถูกเก็บไว้ท้ายรายการ; ขั้นตอน template ที่
 // ไม่เข้าหมวดแล้ว (เช่นขั้นสรรพสามิตตอนเปลี่ยนออกจาก 01-002) จะถูกลบ.
 // คืน { rows: แถวสุดท้ายทั้งหมด (insert/update), toDeleteIds: id ที่ต้องลบ }.
 export function mergeTemplateTasks(project, existingTasks) {
@@ -228,8 +154,9 @@ export function mergeTemplateTasks(project, existingTasks) {
     return true;
   });
 
-  const existingByName = new Map((existingTasks || []).map((t) => [t.name, t]));
-  const allTemplateNames = new Set(fullTemplate.map((t) => t.name));
+  // reuse เฉพาะแถวที่มาจาก template (origin !== 'custom') — กันแถวที่ผู้ใช้เพิ่มเอง
+  // ที่บังเอิญชื่อชนกับ template มาถูกดูดเป็น template row (จะซ้ำกับ customRows)
+  const existingByName = new Map((existingTasks || []).filter((t) => t.origin !== 'custom').map((t) => [t.name, t]));
 
   // 1) แถวจาก template (reuse id/progress ของเดิมถ้าชื่อตรงกัน)
   const raw = filtered.map((t, idx) => {
@@ -277,8 +204,10 @@ export function mergeTemplateTasks(project, existingTasks) {
     cellsOverride: t.cellsOverride ?? null,
   }));
 
-  // 2) ขั้นตอนที่ผู้ใช้เพิ่มเอง (ชื่อไม่อยู่ใน template เลย) → คงไว้ท้ายรายการ
-  const customTasks = (existingTasks || []).filter((t) => !allTemplateNames.has(t.name));
+  // 2) ขั้นตอนที่ผู้ใช้เพิ่มเอง → คงไว้ท้ายรายการ. ใช้ origin='custom' (migration 0022)
+  // แทนการเทียบชื่อ — เดิมถ้าผู้ใช้ "แก้ชื่อ" ขั้นตอน template ชื่อจะไม่ตรง template เลย
+  // ถูกนับเป็น custom + สร้าง template ชื่อเดิมใหม่ → ขั้นตอนซ้ำ. origin ไม่พลาดกรณีนี้.
+  const customTasks = (existingTasks || []).filter((t) => t.origin === 'custom');
   const customRows = customTasks.map((t, i) => ({ id: t.id, stepOrder: templateRows.length + i }));
 
   const keptIds = new Set([...templateRows.map((r) => r.id), ...customRows.map((r) => r.id)]);

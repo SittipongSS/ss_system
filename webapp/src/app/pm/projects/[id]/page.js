@@ -191,7 +191,9 @@ export default function ProjectDetailPage() {
     });
     if (res.ok) {
       // บั๊ก A: แก้ startDate/durationDays/predecessors ทำให้ server เลื่อน downstream → reload เต็ม
-      if (patch.startDate || patch.durationDays || patch.predecessors) { await load(); return; }
+      // เช็คว่ามี key (ไม่ใช่ truthy) — การ "ล้าง" วันเริ่ม (startDate: null) ต้อง reload ด้วย
+      // เพราะ server เลื่อน downstream แล้ว ถ้าเช็คแบบ truthy จะพลาดเคส null/ลบค่า
+      if (patch.startDate !== undefined || patch.durationDays !== undefined || patch.predecessors !== undefined) { await load(); return; }
       const updated = await res.json();
       setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === taskId ? updated : t)) }));
     }
