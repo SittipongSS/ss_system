@@ -6,8 +6,7 @@
 // ใช้ตารางสัปดาห์เดิม ไม่ได้รับผลจากแกน/ซูมของหน้าจอนี้.
 // ss-team ไม่มีตาราง employees → ช่องผู้รับผิดชอบ/ลายเซ็นเป็น text input/dropdown จาก users.
 import { useState, useMemo, useEffect, useRef, useReducer, useLayoutEffect } from "react";
-import { Printer, Flag, ChevronDown, ChevronRight, Minus, Plus, RotateCcw, Loader2 } from "lucide-react";
-import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
+import { Flag, ChevronDown, ChevronRight, Minus, Plus, RotateCcw, Loader2 } from "lucide-react";
 import { isBusinessDay, toLocalISODate, countBusinessDays } from "@/lib/pm/dateHelpers";
 
 const DAY_MS = 86400000;
@@ -168,7 +167,7 @@ function ZoomControl({ px, onChange }) {
   );
 }
 
-export default function ProjectDocumentView({ project, canEdit, onUpdateProject, onUpdateTask, fgUI, categoryFallback, statusLabel, statusColor }) {
+export default function ProjectDocumentView({ project, canEdit, onUpdateProject, onUpdateTask, fgUI, statusLabel, statusColor }) {
   const [headerExpanded, setHeaderExpanded] = useState(false); // default: ย่อ เพื่อให้เห็น chart เต็ม
   const [nowMs] = useState(() => Date.now());
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
@@ -194,7 +193,6 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
     setDraft((d) => ({ ...d, [field]: v }));
     if ((v ?? "") !== (project[field] || "")) onUpdateProject({ [field]: v });
   };
-  const printProject = { ...project, ...draft, categoryFallback };
 
   // ── ซูม: px ต่อวัน (จำค่าใน localStorage) ──
   const [pxPerDay, setPxPerDay] = useState(ZOOM_DEFAULT);
@@ -362,14 +360,6 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
           <ZoomControl px={pxPerDay} onChange={changePx} />
-          <button
-            onClick={() => openGanttPrintWindow(printProject)}
-            className="btn btn-primary"
-            style={{ padding: "6px 14px", fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "6px", borderRadius: "8px", whiteSpace: "nowrap" }}
-            title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
-          >
-            <Printer size={14} /> พิมพ์เอกสาร
-          </button>
         </div>
       </div>
 
@@ -634,7 +624,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
               />
             </div>
             {task.showNoteInPrint && task.note && (
-              <div style={{ fontSize: "11px", color: "var(--text-3)", fontStyle: "italic", padding: "0 8px", whiteSpace: "normal" }}>
+              <div style={{ fontSize: "11px", color: "var(--text-3)", fontStyle: "italic", padding: "0 8px", whiteSpace: "pre-wrap" }}>
                 หมายเหตุ: {task.note}
               </div>
             )}

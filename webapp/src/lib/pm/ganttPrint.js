@@ -144,7 +144,7 @@ export function buildGanttPrintHTML(project) {
   .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
   .doc-title .big { font-size: 17px; font-weight: 800; color: #c96e30; letter-spacing: 2px; text-align: right; white-space: nowrap; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
-  .c-desc .note { font-size: 8px; color: #837868; font-style: italic; line-height: 1.2; margin-top: 1px; }
+  .c-desc .note { font-size: 8px; color: #837868; font-style: italic; line-height: 1.2; margin-top: 1px; white-space: pre-wrap; }
 
   .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
                  border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; margin-bottom: 7px; }

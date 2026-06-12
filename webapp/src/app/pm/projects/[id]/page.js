@@ -7,13 +7,14 @@ import {
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar, User,
   TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight,
   Activity, XCircle, PauseCircle, CircleDashed, PlayCircle,
-  Check, Play, Loader, Pause,
+  Check, Play, Loader, Pause, Printer,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { setHolidays, countBusinessDays } from "@/lib/pm/dateHelpers";
+import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -409,6 +410,8 @@ export default function ProjectDetailPage() {
   );
 
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || mc;
+  // ยังไม่ผูก FG → ชื่อหมวด/หมวดรอง (resolve ชื่อหมวดหลักจากโค้ด) ใช้เป็น fallback บนหน้าพิมพ์
+  const categoryFallback = p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}` : "";
 
   const fgUI = (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -504,6 +507,14 @@ export default function ProjectDetailPage() {
                 {renderViewBtn("list", ListTodo, "List")}
                 {renderViewBtn("document", FileText, "Gantt")}
               </div>
+              <button
+                onClick={() => openGanttPrintWindow({ ...p, categoryFallback })}
+                className="btn btn-primary"
+                style={{ padding: "6px 14px", fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "6px", borderRadius: "8px", whiteSpace: "nowrap" }}
+                title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
+              >
+                <Printer size={14} /> พิมพ์เอกสาร
+              </button>
             </div>
           </div>
         </div>
@@ -555,7 +566,6 @@ export default function ProjectDetailPage() {
             onUpdateProject={updateProject}
             onUpdateTask={updateTask}
             fgUI={fgUI}
-            categoryFallback={p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}` : ""}
             statusLabel={getComputedStatus(p)}
             statusColor={statusDotColor(getComputedStatus(p))}
           />
@@ -797,7 +807,7 @@ export default function ProjectDetailPage() {
                             {task.note && (
                               <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "8px", display: "flex", alignItems: "flex-start", gap: "6px", background: "var(--panel-2)", padding: "6px 8px", borderRadius: "6px" }}>
                                 <span style={{ color: "var(--text-3)", fontWeight: 600, whiteSpace: "nowrap" }}>หมายเหตุ:</span>
-                                <span style={{ flex: 1 }}>{task.note}</span>
+                                <span style={{ flex: 1, whiteSpace: "pre-wrap" }}>{task.note}</span>
                                 {task.showNoteInPrint && <span title="จะแสดงตอนพิมพ์เอกสาร" style={{ fontSize: "10px", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)", borderRadius: "10px", padding: "1px 7px", display: "inline-flex", alignItems: "center", gap: "3px", whiteSpace: "nowrap" }}>🖨 พิมพ์</span>}
                               </div>
                             )}
