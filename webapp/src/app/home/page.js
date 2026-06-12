@@ -54,7 +54,7 @@ export default function HomeHubPage() {
 
   const enterTax = () => router.push(landingFor(role));
   const enterPM = () => router.push("/pm/projects");
-  const enterDB = () => router.push("/products");
+  const enterDB = () => router.push("/database");
   // Phased rollout: only the PM system is open to normal roles; tax + database
   // stay admin-only. Keep in sync with ADMIN_LOCKDOWN/lockedOut in proxy.js.
   const isAdmin = can(role, "users:manage");

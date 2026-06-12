@@ -193,7 +193,7 @@ export default function RegistrationDetail() {
               </div>
             </div>
             {product && (
-              <Link href={`/products/${product.id}`} className="inline-flex items-center gap-1.5 mt-4 text-xs font-semibold text-[var(--accent)] hover:underline">
+              <Link href={`/database/products/${product.id}`} className="inline-flex items-center gap-1.5 mt-4 text-xs font-semibold text-[var(--accent)] hover:underline">
                 เปิดดูสินค้าในฐานข้อมูล →
               </Link>
             )}

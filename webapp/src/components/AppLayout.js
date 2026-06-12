@@ -98,7 +98,7 @@ export default function AppLayout({ children }) {
   useEffect(() => {
     const sys =
       pathname.startsWith('/pm') ? 'pm'
-      : pathname.startsWith('/customers') || pathname.startsWith('/products') || pathname.startsWith('/database') ? 'master'
+      : pathname.startsWith('/database') ? 'master'
       : pathname === '/users' ? null
       : 'tax';
       
@@ -147,8 +147,8 @@ export default function AppLayout({ children }) {
       label: 'ข้อมูลหลัก',
       system: 'master',
       items: [
-        { href: '/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/products' || p.startsWith('/products/') },
-        { href: '/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/customers' || p.startsWith('/customers/') },
+        { href: '/database/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
+        { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
         { href: '/database/holidays', name: 'วันหยุด (ปฏิทินทำการ)', icon: CalendarDays, cap: 'master:manage', match: (p) => p.startsWith('/database/holidays') },
       ],
     },

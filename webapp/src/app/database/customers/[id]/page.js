@@ -169,7 +169,7 @@ export default function CustomerDetails() {
       const res = await fetch(`/api/customers/${id}`, { method: "DELETE" });
       if (res.ok) {
         alert("ลบข้อมูลลูกค้าเรียบร้อยแล้ว");
-        router.push("/customers");
+        router.push("/database/customers");
       } else {
         const errData = await res.json();
         alert(errData.error || "ไม่สามารถลบข้อมูลได้");
@@ -245,7 +245,7 @@ export default function CustomerDetails() {
           ลูกค้าที่คุณกำลังพยายามเข้าถึงอาจถูกลบหรือไม่มีอยู่ในระบบ
         </p>
         <Link
-          href="/customers"
+          href="/database/customers"
           className="btn btn-primary px-6 inline-flex items-center gap-2"
         >
           <svg
@@ -271,7 +271,7 @@ export default function CustomerDetails() {
     <>
       {/* Top Header Section */}
       <Link
-        href="/customers"
+        href="/database/customers"
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -819,7 +819,7 @@ export default function CustomerDetails() {
                       <tr
                         key={p.id}
                         onClick={() =>
-                          (window.location.href = `/products/${p.id}`)
+                          (window.location.href = `/database/products/${p.id}`)
                         }
                         className="clickable-row"
                       >

@@ -23,7 +23,11 @@ export async function PATCH(request, { params }) {
   // reset password is temporary. Otherwise keep whatever the flag already was.
   const mustChange = body.password ? true : !!existingMeta.must_change_password;
 
-  // role + team always travel together (app_metadata is replaced wholesale).
+  // role + team always travel together. NOTE: Supabase admin.updateUserById
+  // MERGES app_metadata top-level keys — it does NOT replace the object. So a
+  // key we omit keeps its old value. When a role drops its team (e.g. senior_ae
+  // → viewer/legal), we must send team: null explicitly to overwrite the stale
+  // team, otherwise the user keeps their old team scope after the role change.
   if (body.role !== undefined) {
     const team = body.team || null;
     const invalid = validateIdentity(body.role, team, body.department);
@@ -32,7 +36,7 @@ export async function PATCH(request, { params }) {
     if (id === me.id && body.role !== 'ae_supervisor') {
       return Response.json({ error: 'ไม่สามารถลดสิทธิ์ของตัวเองได้' }, { status: 400 });
     }
-    updates.app_metadata = { role: body.role, department: departmentFor(body.role), must_change_password: mustChange, ...(team ? { team } : {}) };
+    updates.app_metadata = { role: body.role, department: departmentFor(body.role), must_change_password: mustChange, team };
   } else if (mustChange !== !!existingMeta.must_change_password) {
     // Password reset without a role change still needs to persist the flag.
     updates.app_metadata = { ...existingMeta, must_change_password: mustChange };

@@ -66,7 +66,7 @@ export default function ProductDetails() {
       const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
       if (res.ok) {
         alert("ลบข้อมูลสินค้าเรียบร้อยแล้ว");
-        router.push("/products");
+        router.push("/database/products");
       } else {
         const errData = await res.json();
         alert(errData.error || "ไม่สามารถลบข้อมูลสินค้าได้");
@@ -92,7 +92,7 @@ export default function ProductDetails() {
     return (
       <div className="glass-panel p-12 text-center">
         <h2 className="text-xl font-semibold text-[var(--text)] mb-2">{error || "ไม่พบข้อมูลสินค้านี้"}</h2>
-        <Link href="/products" className="btn btn-primary px-6 inline-flex items-center gap-2 mt-4">
+        <Link href="/database/products" className="btn btn-primary px-6 inline-flex items-center gap-2 mt-4">
           <ArrowLeft size={16} /> กลับไปฐานข้อมูลสินค้า
         </Link>
       </div>
@@ -105,7 +105,7 @@ export default function ProductDetails() {
     <>
       <button
         type="button"
-        onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/products"))}
+        onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/database/products"))}
         style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--text-2)", fontSize: "13px", fontWeight: 500, marginBottom: "14px", background: "none", border: "none", padding: 0, cursor: "pointer" }}
       >
         <ArrowLeft size={16} /> กลับ

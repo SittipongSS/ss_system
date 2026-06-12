@@ -202,7 +202,7 @@ export default function ProductRegistry() {
                     return (
                       <tr
                         key={p.id}
-                        onClick={() => (window.location.href = `/products/${p.id}`)}
+                        onClick={() => (window.location.href = `/database/products/${p.id}`)}
                         className="clickable-row"
                       >
                         <td>

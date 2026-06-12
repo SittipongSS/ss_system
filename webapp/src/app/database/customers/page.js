@@ -212,7 +212,7 @@ export default function CustomerDirectory() {
                   filteredCustomers.map((c) => (
                     <tr
                       key={c.id}
-                      onClick={() => (window.location.href = `/customers/${c.id}`)}
+                      onClick={() => (window.location.href = `/database/customers/${c.id}`)}
                       className="clickable-row"
                     >
                       <td className="font-semibold font-mono text-[var(--accent)] ">
