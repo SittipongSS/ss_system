@@ -108,6 +108,8 @@ export function buildGanttPrintHTML(project) {
 
   const productName = project.productName || project.name || '';
   const customerName = project.customerName || project.customer || '';
+  // ยังไม่ผูก FG → โชว์ชื่อหมวด/หมวดรองแทนไปก่อน (categoryFallback resolve ชื่อหมวดหลักจากโค้ดมาแล้วฝั่ง page)
+  const categoryFallback = project.categoryFallback || project.productSubCategory || '';
 
   return `<!DOCTYPE html>
 <html lang="th">
@@ -243,7 +245,12 @@ export function buildGanttPrintHTML(project) {
               <div style="font-weight: 600; font-size: 10px;">${esc(prod.fgCode || '')} — ${esc(prod.productDescription || prod.brandName || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</div>
               <div style="font-size: 9px; color: #5a4f43;">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</div>
             </div>`;
-          }).join('') : `<span class="v">-</span>`}
+          }).join('') : (categoryFallback
+            ? `<div style="padding-left: 6px; border-left: 2px dashed #b8a07a; margin-left: 2px;">
+                 <div style="font-weight: 600; font-size: 10px;">${esc(categoryFallback)}</div>
+                 <div style="font-size: 9px; color: #837868; font-style: italic;">หมวดสินค้า (ยังไม่ผูก FG)</div>
+               </div>`
+            : `<span class="v">-</span>`)}
         </div>
       </div>
     </div>

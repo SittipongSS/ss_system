@@ -168,7 +168,7 @@ function ZoomControl({ px, onChange }) {
   );
 }
 
-export default function ProjectDocumentView({ project, canEdit, onUpdateProject, onUpdateTask, fgUI, statusLabel, statusColor }) {
+export default function ProjectDocumentView({ project, canEdit, onUpdateProject, onUpdateTask, fgUI, categoryFallback, statusLabel, statusColor }) {
   const [headerExpanded, setHeaderExpanded] = useState(false); // default: ย่อ เพื่อให้เห็น chart เต็ม
   const [nowMs] = useState(() => Date.now());
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
@@ -194,7 +194,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
     setDraft((d) => ({ ...d, [field]: v }));
     if ((v ?? "") !== (project[field] || "")) onUpdateProject({ [field]: v });
   };
-  const printProject = { ...project, ...draft };
+  const printProject = { ...project, ...draft, categoryFallback };
 
   // ── ซูม: px ต่อวัน (จำค่าใน localStorage) ──
   const [pxPerDay, setPxPerDay] = useState(ZOOM_DEFAULT);

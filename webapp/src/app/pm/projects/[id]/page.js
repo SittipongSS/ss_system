@@ -555,6 +555,7 @@ export default function ProjectDetailPage() {
             onUpdateProject={updateProject}
             onUpdateTask={updateTask}
             fgUI={fgUI}
+            categoryFallback={p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}` : ""}
             statusLabel={getComputedStatus(p)}
             statusColor={statusDotColor(getComputedStatus(p))}
           />
