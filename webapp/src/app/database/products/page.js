@@ -249,14 +249,6 @@ export default function ProductRegistry() {
             </div>
             <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
               <div className="form-group col-span-2">
-                <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
-                <select name="customerId" value={formData.customerId} onChange={handleChange} required className="premium-select w-full">
-                  <option value="" disabled>— เลือกลูกค้า —</option>
-                  {customerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <span className="text-xs text-[var(--text-3)] mt-1">FG ทุกตัวต้องผูกกับลูกค้า — รายการแบรนด์ด้านล่างจะมาจากลูกค้าที่เลือก</span>
-              </div>
-              <div className="form-group col-span-2">
                 <label>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
                 <input type="text" name="fgCode" value={formData.fgCode} onChange={handleChange} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
                 
@@ -289,13 +281,21 @@ export default function ProductRegistry() {
                   );
                 })()}
               </div>
-              <div className="form-group">
+              <div className="form-group col-span-2">
                 <label>รายละเอียดสินค้า <span className="text-[var(--red)]">*</span></label>
                 <input type="text" name="productDescription" value={formData.productDescription} onChange={handleChange} required placeholder="เช่น Midnight Bloom 50ml" className="premium-input w-full" />
               </div>
               <div className="form-group">
+                <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
+                <select name="customerId" value={formData.customerId} onChange={handleChange} required className="premium-select w-full">
+                  <option value="" disabled>— เลือกลูกค้า —</option>
+                  {customerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <span className="text-xs text-[var(--text-3)] mt-1">FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก</span>
+              </div>
+              <div className="form-group">
                 <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required disabled={!formData.customerId} list="brand-options" placeholder={formData.customerId ? "เลือกแบรนด์ของลูกค้า หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"} className="premium-input w-full disabled:opacity-50" />
+                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required disabled={!formData.customerId} list="brand-options" placeholder={formData.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"} className="premium-input w-full disabled:opacity-50" />
                 <datalist id="brand-options">
                   {brandOptions.map((b) => <option key={b} value={b} />)}
                 </datalist>

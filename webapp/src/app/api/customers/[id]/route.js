@@ -115,7 +115,7 @@ export async function PATCH(request, { params }) {
   // by canEditRecord — supervisor cross-team, team roles within their scope).
   for (const k of [
     'arCode', 'name', 'taxId', 'phone', 'address', 'brands', 'mapFileUrl',
-    'contactPerson', 'email', 'creditTerms', 'jubiliId', 'metadata',  // master-data fields (0005)
+    'contactPerson', 'contactPhone', 'email', 'creditTerms', 'jubiliId', 'metadata',  // master-data fields (0005, 0025)
     'team', 'ownerId',
   ]) {
     if (body[k] !== undefined) updates[k] = body[k];

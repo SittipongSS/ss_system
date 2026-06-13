@@ -2,21 +2,14 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
-  FolderKanban, Plus, Search, LayoutGrid, List, Calendar,
-  CheckCircle2, Clock, AlertTriangle, ChevronDown, ChevronRight,
-  Edit2, Trash2, X, Activity, XCircle, PauseCircle, CircleDashed, Check, Pause, Loader,
+  FolderKanban, Plus, Search, AlertTriangle, ChevronDown, ChevronRight,
+  Edit2, Trash2, X, Check, Pause,
   Filter, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-
-const URGENCY_COLUMNS = [
-  { key: "Do Now", label: "🔥 Do Now (งานด่วน)" },
-  { key: "Schedule", label: "📅 Schedule (งานตามแผน)" },
-  { key: "Delegate", label: "👥 Delegate (มอบหมาย)" },
-];
 
 const typeStyle = (type) => type === "NPD"
   ? { background: "var(--accent-soft)", color: "var(--accent)" }
@@ -223,50 +216,6 @@ export default function ProjectsPage() {
   // map code 'XX' → main category name (for list display)
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || "";
 
-  // ===== Kanban card =====
-  const renderCard = (p) => {
-    const { pct } = getProgress(p);
-    const overdue = getOverdueCount(p);
-    const cStatus = getComputedStatus(p);
-    const isLocked = p.status === "On Hold" || p.status === "Dropped";
-    return (
-      <div key={p.id} className="glass-panel hover-card" style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px", opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <span style={{ fontSize: "11px", ...typeStyle(p.type), padding: "4px 8px", borderRadius: "6px", fontWeight: 600 }}>{p.type}</span>
-          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <span style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</span>
-            {canEdit && <button onClick={() => openEdit(p)} title="แก้ไข" style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "2px", display: "flex" }}><Edit2 size={13} /></button>}
-            {canDelete && <button onClick={() => handleDelete(p)} title="ลบ" style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "2px", display: "flex" }}><Trash2 size={13} /></button>}
-          </div>
-        </div>
-
-        <div style={{ cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
-          <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", marginBottom: "4px", lineHeight: 1.4 }}>{p.name}</div>
-          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{p.customerName || "-"}</div>
-        </div>
-
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--text-3)", marginBottom: "4px" }}>
-            <span>ความคืบหน้า {pct}%</span>
-            {overdue > 0 && <span style={{ color: "var(--red)", display: "flex", alignItems: "center", gap: "2px" }}><AlertTriangle size={10} /> เลย {overdue}</span>}
-          </div>
-          <div style={{ height: "5px", background: "var(--bg)", borderRadius: "3px", overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${pct}%`, background: cStatus === "Completed" ? "var(--green)" : "var(--accent)", transition: "width 0.3s" }} />
-          </div>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
-          <span className={`status-pill ${statusPillClass(cStatus)}`} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: statusDotColor(cStatus) }} /> {cStatus}
-          </span>
-          <div style={{ fontSize: "11px", color: "var(--text-2)", display: "flex", alignItems: "center", gap: "4px" }}>
-            <Calendar size={12} /> {fmtDate(p.dueDate)}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const renderArchiveRow = (p) => {
     const { pct, done, total } = getProgress(p);
     const cStatus = getComputedStatus(p);
@@ -277,7 +226,7 @@ export default function ProjectsPage() {
           <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>
         </td>
         <td>{p.customerName || "-"}</td>
-        <td><span style={{ fontSize: "11px", ...typeStyle(p.type), padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>{p.type}</span></td>
+        <td><span className="ui-badge" style={typeStyle(p.type)}>{p.type}</span></td>
         <td style={{ fontSize: "12px", maxWidth: "180px" }}>
           {p.productSubCategory || p.productMainCategory ? (
             <div>
@@ -289,8 +238,8 @@ export default function ProjectsPage() {
         <td style={{ fontSize: "12px" }}>{p.aeOwner || "-"}</td>
         <td style={{ minWidth: "120px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div style={{ flex: 1, height: "5px", background: "var(--bg)", borderRadius: "3px", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${pct}%`, background: cStatus === "Completed" ? "var(--green)" : "var(--text-3)" }} />
+            <div className="progress" style={{ flex: 1 }}>
+              <span className={cStatus === "Completed" ? "done" : ""} style={{ width: `${pct}%` }} />
             </div>
             <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{done}/{total}</span>
           </div>
@@ -305,8 +254,8 @@ export default function ProjectsPage() {
         </td>
         {(canEdit || canDelete) && (
           <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
-            <div style={{ display: "inline-flex", gap: "6px" }}>
-              {canDelete && <button onClick={() => handleDelete(p)} title="ลบ" style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "2px", display: "flex" }}><Trash2 size={14} /></button>}
+            <div style={{ display: "inline-flex", gap: "4px" }}>
+              {canDelete && <button className="btn-icon danger" onClick={() => handleDelete(p)} aria-label="ลบโปรเจกต์" title="ลบ"><Trash2 size={14} /></button>}
             </div>
           </td>
         )}
@@ -335,38 +284,34 @@ export default function ProjectsPage() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           {/* แถบเครื่องมือ: ค้นหา + กรอง + เรียงลำดับ */}
-          <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+          <div className="toolbar">
             <div className="search-glass" style={{ width: "240px" }}>
               <Search size={18} color="var(--text-3)" />
               <input type="text" placeholder="ค้นหาโปรเจกต์..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>
-                <Filter size={14} /> กรอง
-              </span>
-              <select className="premium-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ fontSize: "12px", height: "34px", width: "auto" }} title="กรองตามประเภทโปรเจกต์">
+            <div className="toolbar" style={{ gap: "8px" }}>
+              <span className="toolbar-label"><Filter size={14} /> กรอง</span>
+              <select className="premium-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ fontSize: "12px", width: "auto" }} title="กรองตามประเภทโปรเจกต์">
                 <option value="all">ทุกประเภท</option>
                 <option value="NPD">NPD</option>
                 <option value="RE-ORDER">Re-Order</option>
               </select>
-              <select className="premium-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ fontSize: "12px", height: "34px", width: "auto" }} title="กรองตามสถานะ">
+              <select className="premium-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ fontSize: "12px", width: "auto" }} title="กรองตามสถานะ">
                 <option value="all">ทุกสถานะ</option>
                 <option value="New">New (ใหม่)</option>
                 <option value="On Track">On Track (ตามแผน)</option>
                 <option value="Delayed">Delayed (ล่าช้า)</option>
               </select>
               {activeFilterCount > 0 && (
-                <button onClick={() => { setTypeFilter("all"); setStatusFilter("all"); }} style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "var(--text-3)", background: "none", border: "none", cursor: "pointer" }} title="ล้างตัวกรอง">
+                <button className="btn ghost" onClick={() => { setTypeFilter("all"); setStatusFilter("all"); }} style={{ fontSize: "12px", color: "var(--text-3)" }} title="ล้างตัวกรอง">
                   <X size={13} /> ล้าง ({activeFilterCount})
                 </button>
               )}
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>
-                <ArrowUpDown size={14} /> เรียง
-              </span>
-              <select className="premium-select" value={sortKey} onChange={(e) => setSortKey(e.target.value)} style={{ fontSize: "12px", height: "34px", width: "auto" }} title="เรียงลำดับตาม">
+            <div className="spacer toolbar" style={{ gap: "8px" }}>
+              <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
+              <select className="premium-select" value={sortKey} onChange={(e) => setSortKey(e.target.value)} style={{ fontSize: "12px", width: "auto" }} title="เรียงลำดับตาม">
                 <option value="default">เริ่มต้น</option>
                 <option value="due">กำหนดส่ง</option>
                 <option value="progress">ความคืบหน้า</option>
@@ -374,10 +319,11 @@ export default function ProjectsPage() {
                 <option value="code">รหัส</option>
               </select>
               <button
+                className="btn-icon"
                 onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
                 disabled={sortKey === "default"}
+                aria-label={sortDir === "asc" ? "เรียงน้อยไปมาก กดเพื่อสลับ" : "เรียงมากไปน้อย กดเพื่อสลับ"}
                 title={sortDir === "asc" ? "น้อยไปมาก (A→Z)" : "มากไปน้อย (Z→A)"}
-                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "34px", height: "34px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--panel)", color: sortKey === "default" ? "var(--text-3)" : "var(--text-2)", cursor: sortKey === "default" ? "not-allowed" : "pointer", opacity: sortKey === "default" ? 0.5 : 1 }}
               >
                 {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
               </button>
@@ -414,7 +360,7 @@ export default function ProjectsPage() {
                       <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>
                     </td>
                     <td>{p.customerName || "-"}</td>
-                    <td><span style={{ fontSize: "11px", ...typeStyle(p.type), padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>{p.type}</span></td>
+                    <td><span className="ui-badge" style={typeStyle(p.type)}>{p.type}</span></td>
                     <td style={{ fontSize: "12px", maxWidth: "180px" }}>
                       {p.productSubCategory || p.productMainCategory ? (
                         <div>
@@ -426,8 +372,8 @@ export default function ProjectsPage() {
                     <td style={{ fontSize: "12px" }}>{p.aeOwner || "-"}</td>
                     <td style={{ minWidth: "120px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <div style={{ flex: 1, height: "5px", background: "var(--bg)", borderRadius: "3px", overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: `${pct}%`, background: cStatus === "Completed" ? "var(--green)" : "var(--accent)" }} />
+                        <div className="progress" style={{ flex: 1 }}>
+                          <span className={cStatus === "Completed" ? "done" : ""} style={{ width: `${pct}%` }} />
                         </div>
                         <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{done}/{total}</span>
                       </div>
@@ -444,9 +390,9 @@ export default function ProjectsPage() {
                     </td>
                     {(canEdit || canDelete) && (
                       <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
-                        <div style={{ display: "inline-flex", gap: "6px" }}>
-                          {canEdit && <button onClick={() => openEdit(p)} title="แก้ไข" style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "2px", display: "flex" }}><Edit2 size={14} /></button>}
-                          {canDelete && <button onClick={() => handleDelete(p)} title="ลบ" style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "2px", display: "flex" }}><Trash2 size={14} /></button>}
+                        <div style={{ display: "inline-flex", gap: "4px" }}>
+                          {canEdit && <button className="btn-icon" onClick={() => openEdit(p)} aria-label="แก้ไขโปรเจกต์" title="แก้ไข"><Edit2 size={14} /></button>}
+                          {canDelete && <button className="btn-icon danger" onClick={() => handleDelete(p)} aria-label="ลบโปรเจกต์" title="ลบ"><Trash2 size={14} /></button>}
                         </div>
                       </td>
                     )}
@@ -466,44 +412,42 @@ export default function ProjectsPage() {
             >
               {showArchive ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               <span>คลังเก็บ: โปรเจกต์ที่ปิดงาน/พักไว้</span>
-              <span style={{ background: "var(--green-soft, var(--panel-2))", color: "var(--green)", padding: "2px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}><Check size={12} strokeWidth={3} /> {completedProjects.length}</span>
-              <span style={{ background: "var(--red-soft, var(--panel-2))", color: "var(--red)", padding: "2px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}><X size={12} strokeWidth={3} /> {droppedProjects.length}</span>
-              <span style={{ background: "var(--amber-soft, var(--panel-2))", color: "var(--amber)", padding: "2px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}><Pause size={12} strokeWidth={3} /> {onHoldProjects.length}</span>
+              <span className="chip" style={{ background: "var(--green-soft)", color: "var(--green)", borderColor: "transparent" }}><Check size={12} strokeWidth={3} /> {completedProjects.length}</span>
+              <span className="chip" style={{ background: "var(--red-soft)", color: "var(--red)", borderColor: "transparent" }}><X size={12} strokeWidth={3} /> {droppedProjects.length}</span>
+              <span className="chip" style={{ background: "var(--amber-soft)", color: "var(--amber)", borderColor: "transparent" }}><Pause size={12} strokeWidth={3} /> {onHoldProjects.length}</span>
             </button>
 
             {showArchive && (
               <div style={{ padding: "14px 18px 20px", borderTop: "1px solid var(--border)" }}>
                 {/* toolbar คลัง: กรองสถานะ (segmented) + เรียงลำดับ */}
-                <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap", marginBottom: "14px" }}>
-                  <div style={{ display: "inline-flex", background: "var(--panel)", borderRadius: "8px", padding: "4px", border: "1px solid var(--border)", gap: "2px" }}>
+                <div className="toolbar" style={{ marginBottom: "14px" }}>
+                  <div className="segmented">
                     {[
-                      { key: "all", label: `ทั้งหมด ${completedProjects.length + droppedProjects.length + onHoldProjects.length}`, color: "var(--text)" },
+                      { key: "all", label: `ทั้งหมด ${completedProjects.length + droppedProjects.length + onHoldProjects.length}`, color: "var(--text-2)" },
                       { key: "Completed", label: `เสร็จสิ้น ${completedProjects.length}`, color: "var(--green)" },
                       { key: "Dropped", label: `ยกเลิก ${droppedProjects.length}`, color: "var(--red)" },
                       { key: "On Hold", label: `ระงับ ${onHoldProjects.length}`, color: "var(--amber)" },
                     ].map((opt) => (
                       <button key={opt.key} onClick={() => setArchiveStatusFilter(opt.key)}
-                        style={{ padding: "5px 12px", fontSize: "12px", fontWeight: 600, borderRadius: "6px", border: "none", cursor: "pointer",
-                          background: archiveStatusFilter === opt.key ? "var(--accent)" : "transparent",
-                          color: archiveStatusFilter === opt.key ? "#fff" : opt.color }}>
+                        className={archiveStatusFilter === opt.key ? "active" : ""}
+                        style={archiveStatusFilter === opt.key ? undefined : { color: opt.color }}>
                         {opt.label}
                       </button>
                     ))}
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>
-                      <ArrowUpDown size={14} /> เรียง
-                    </span>
-                    <select className="premium-select" value={archiveSortKey} onChange={(e) => setArchiveSortKey(e.target.value)} style={{ fontSize: "12px", height: "34px", width: "auto" }} title="เรียงลำดับคลังตาม">
+                  <div className="spacer toolbar" style={{ gap: "8px" }}>
+                    <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
+                    <select className="premium-select" value={archiveSortKey} onChange={(e) => setArchiveSortKey(e.target.value)} style={{ fontSize: "12px", width: "auto" }} title="เรียงลำดับคลังตาม">
                       <option value="code">รหัส</option>
                       <option value="name">ชื่อโปรเจกต์</option>
                       <option value="customer">ลูกค้า</option>
                       <option value="progress">ความคืบหน้า</option>
                       <option value="due">กำหนดส่ง</option>
                     </select>
-                    <button onClick={() => setArchiveSortDir((d) => (d === "asc" ? "desc" : "asc"))} title={archiveSortDir === "asc" ? "น้อยไปมาก (A→Z)" : "มากไปน้อย (Z→A)"}
-                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "34px", height: "34px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text-2)", cursor: "pointer" }}>
+                    <button className="btn-icon" onClick={() => setArchiveSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                      aria-label={archiveSortDir === "asc" ? "เรียงน้อยไปมาก กดเพื่อสลับ" : "เรียงมากไปน้อย กดเพื่อสลับ"}
+                      title={archiveSortDir === "asc" ? "น้อยไปมาก (A→Z)" : "มากไปน้อย (Z→A)"}>
                       {archiveSortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
                     </button>
                   </div>

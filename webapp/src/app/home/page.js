@@ -54,7 +54,13 @@ export default function HomeHubPage() {
 
   const enterTax = () => router.push(landingFor(role));
   const enterPM = () => router.push("/pm/projects");
-  const enterDB = () => router.push("/database");
+  // No /database hub page — land directly on the first registry the role can open.
+  const enterDB = () =>
+    router.push(
+      can(role, "products:view") ? "/database/products"
+        : can(role, "customers:view") ? "/database/customers"
+          : "/database/holidays"
+    );
   // Phased rollout: only the PM system is open to normal roles; tax + database
   // stay admin-only. Keep in sync with ADMIN_LOCKDOWN/lockedOut in proxy.js.
   const isAdmin = can(role, "users:manage");
@@ -82,9 +88,9 @@ export default function HomeHubPage() {
 
         {/* System cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
-          {/* Card 1 — Project Management. Active for roles with pm:view (SALES);
-              others (e.g. legal) see it disabled. */}
-          {canPM ? (
+          {/* Card 1 — Project Management. Shown only to roles with pm:view
+              (SALES) or admins; hidden entirely otherwise. */}
+          {canPM && (
             <button
               onClick={enterPM}
               className="glass-panel system-card"
@@ -112,35 +118,10 @@ export default function HomeHubPage() {
                 </span>
               </div>
             </button>
-          ) : (
-            <div
-              className="glass-panel system-card disabled"
-              style={{
-                padding: "28px", cursor: "not-allowed", opacity: 0.6,
-                display: "flex", flexDirection: "column", gap: "16px",
-              }}
-              aria-disabled="true"
-            >
-              <div
-                className="brand-logo"
-                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
-              >
-                <FolderKanban size={24} strokeWidth={1.5} />
-              </div>
-              <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบจัดการโครงการ</h2>
-                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
-                  ติดตามและบริหารงานโครงการ มอบหมายงาน และดูความคืบหน้า
-                </p>
-              </div>
-              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span className="status-pill" style={{ marginLeft: "auto", height: "auto", padding: "3px 10px", fontSize: "11px" }}>ไม่มีสิทธิ์เข้าถึง</span>
-              </div>
-            </div>
           )}
 
-          {/* Card 2 — Excise Tax */}
-          {canTax ? (
+          {/* Card 2 — Excise Tax (admin-only during phased rollout). */}
+          {canTax && (
             <button
               onClick={enterTax}
               className="glass-panel system-card"
@@ -168,36 +149,11 @@ export default function HomeHubPage() {
                 </span>
               </div>
             </button>
-          ) : (
-            <div
-              className="glass-panel system-card disabled"
-              style={{
-                padding: "28px", cursor: "not-allowed", opacity: 0.6,
-                display: "flex", flexDirection: "column", gap: "16px",
-              }}
-              aria-disabled="true"
-            >
-              <div
-                className="brand-logo"
-                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
-              >
-                <Scale size={24} strokeWidth={1.5} />
-              </div>
-              <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบภาษีสรรพสามิต</h2>
-                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
-                  จัดการทะเบียนสินค้า ลูกค้า ขออนุมัติภาษี และแจ้งยื่นภาษี
-                </p>
-              </div>
-              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span className="status-pill" style={{ marginLeft: "auto", height: "auto", padding: "3px 10px", fontSize: "11px" }}>ไม่มีสิทธิ์เข้าถึง</span>
-              </div>
-            </div>
           )}
 
-          {/* Card 3 — Master Database (customers / products registry). Any
-              signed-in user with customers:view may open it. */}
-          {canDB ? (
+          {/* Card 3 — Master Database (customers / products registry).
+              Admin-only during phased rollout; hidden otherwise. */}
+          {canDB && (
             <button
               onClick={enterDB}
               className="glass-panel system-card"
@@ -225,31 +181,6 @@ export default function HomeHubPage() {
                 </span>
               </div>
             </button>
-          ) : (
-            <div
-              className="glass-panel system-card disabled"
-              style={{
-                padding: "28px", cursor: "not-allowed", opacity: 0.6,
-                display: "flex", flexDirection: "column", gap: "16px",
-              }}
-              aria-disabled="true"
-            >
-              <div
-                className="brand-logo"
-                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
-              >
-                <Database size={24} strokeWidth={1.5} />
-              </div>
-              <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบฐานข้อมูล</h2>
-                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
-                  จัดการฐานข้อมูลลูกค้าและสินค้า ข้อมูลหลักที่ใช้ร่วมกันทุกระบบ
-                </p>
-              </div>
-              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span className="status-pill" style={{ marginLeft: "auto", height: "auto", padding: "3px 10px", fontSize: "11px" }}>ไม่มีสิทธิ์เข้าถึง</span>
-              </div>
-            </div>
           )}
         </div>
 

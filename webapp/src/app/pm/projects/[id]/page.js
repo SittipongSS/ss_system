@@ -4,10 +4,10 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, Plus, PlusCircle, X, Flag, FileText, GanttChart,
-  ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar, User,
+  ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
   TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight,
-  Activity, XCircle, PauseCircle, CircleDashed, PlayCircle,
-  Check, Play, Loader, Pause, Printer, Table2, Filter, ArrowUpDown,
+  Activity, CircleDashed,
+  Check, Printer, Table2, Filter, ArrowUpDown,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -216,8 +216,6 @@ export default function ProjectDetailPage() {
   const [editForm, setEditForm] = useState(null);
   const [insertAfterId, setInsertAfterId] = useState(null); // บั๊ก C: แทรกขั้นตอนตรงตำแหน่ง
   const [insertBeforeId, setInsertBeforeId] = useState(null); // แทรก "ก่อน" หัวแถวแรกของเฟส
-  const [selectMode, setSelectMode] = useState(false); // โหมดเลือกหลายขั้นตอนเพื่อลบ
-  const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
   const [tableStatusFilter, setTableStatusFilter] = useState("all"); // Table view: all | pending | progress | completed
   const [tableSort, setTableSort] = useState("step"); // Table view: step | name | status | due
   const [editTask, setEditTask] = useState(null); // ขั้นตอนที่กำลังแก้ผ่าน modal (ใช้จาก Table view)
@@ -382,33 +380,6 @@ export default function ProjectDetailPage() {
     if (!confirm(`ต้องการลบขั้นตอน "${name}" ใช่หรือไม่?`)) return;
     const res = await fetch(`/api/pm/project-tasks/${taskId}`, { method: "DELETE" });
     if (res.ok) setData((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== taskId) }));
-  };
-
-  const toggleSelectTask = (taskId) => setSelectedTaskIds((prev) => {
-    const next = new Set(prev);
-    next.has(taskId) ? next.delete(taskId) : next.add(taskId);
-    return next;
-  });
-
-  const exitSelectMode = () => { setSelectMode(false); setSelectedTaskIds(new Set()); };
-
-  const deleteSelectedTasks = async () => {
-    const ids = [...selectedTaskIds];
-    if (ids.length === 0) return;
-    if (!confirm(`ต้องการลบ ${ids.length} ขั้นตอนที่เลือกใช่หรือไม่?`)) return;
-    // ลบทีละตัว (ไม่ใช่ Promise.all) — DELETE handler ทำ read-clean-recalc-write บนชุด
-    // งานทั้งโปรเจกต์ ถ้ายิงพร้อมกันจะอ่าน snapshot เดียวกันแล้วเขียนทับกัน (last-writer-wins)
-    // ทำให้ predecessors ที่ชี้ไปงานที่ถูกลบพร้อมกันค้างเป็น dangling + วัน timeline เพี้ยน.
-    const deleted = new Set();
-    for (const id of ids) {
-      try {
-        const res = await fetch(`/api/pm/project-tasks/${id}`, { method: "DELETE" });
-        if (res.ok) deleted.add(id);
-      } catch { /* ข้ามรายการที่ลบไม่สำเร็จ */ }
-    }
-    if (deleted.size > 0) setData((d) => ({ ...d, tasks: d.tasks.filter((t) => !deleted.has(t.id)) }));
-    if (deleted.size < ids.length) alert(`ลบสำเร็จ ${deleted.size} จาก ${ids.length} ขั้นตอน`);
-    exitSelectMode();
   };
 
   const togglePhase = (phase) => setCollapsedPhases((prev) => {
@@ -577,13 +548,13 @@ export default function ProjectDetailPage() {
   const milestones = processedTasks.filter((t) => t.isMilestone);
 
   const renderChip = (Icon, label, color) => (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", fontWeight: 600, color, background: `color-mix(in srgb, ${color} 10%, transparent)`, border: `1px solid color-mix(in srgb, ${color} 25%, transparent)`, padding: "4px 10px", borderRadius: "20px" }}>
+    <span className="chip" style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)`, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}>
       <Icon size={13} /> {label}
     </span>
   );
 
   const renderViewBtn = (mode, Icon, label) => (
-    <button onClick={() => setView(mode)} style={{ background: view === mode ? "var(--accent)" : "transparent", color: view === mode ? "#fff" : "var(--text-2)", border: "none", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+    <button onClick={() => setView(mode)} className={view === mode ? "active" : ""}>
       <Icon size={14} /> {label}
     </button>
   );
@@ -608,7 +579,7 @@ export default function ProjectDetailPage() {
                       {mainCatName(actualProd.productMainCategory) || "ไม่มีหมวด"}
                     </span>
                   </div>
-                  {canEdit && <button onClick={() => removeProduct(pp.productId)} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "4px" }}><X size={16} /></button>}
+                  {canEdit && <button className="btn-icon danger" onClick={() => removeProduct(pp.productId)} aria-label="นำสินค้าออก"><X size={16} /></button>}
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                   <div style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: "150px" }}>
@@ -660,8 +631,8 @@ export default function ProjectDetailPage() {
         
         {canEdit && (
           <div style={{ display: "flex", gap: "8px" }}>
-            <button onClick={() => setShowEditProject(true)} title="แก้ไขโปรเจกต์" style={{ background: "var(--panel)", border: "1px solid var(--border)", color: "var(--text-2)", borderRadius: "8px", cursor: "pointer", padding: "8px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}><Edit2 size={16} /></button>
-            <button onClick={handleDeleteProject} title="ลบโปรเจกต์" style={{ background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 20%, transparent)", color: "var(--red)", borderRadius: "8px", cursor: "pointer", padding: "8px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}><Trash2 size={16} /></button>
+            <button className="btn-icon" onClick={() => setShowEditProject(true)} aria-label="แก้ไขโปรเจกต์" title="แก้ไขโปรเจกต์"><Edit2 size={16} /></button>
+            <button className="btn-icon danger" onClick={handleDeleteProject} aria-label="ลบโปรเจกต์" title="ลบโปรเจกต์"><Trash2 size={16} /></button>
           </div>
         )}
       </div>
@@ -682,7 +653,7 @@ export default function ProjectDetailPage() {
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-              <div style={{ display: "flex", background: "var(--panel)", borderRadius: "8px", padding: "4px", border: "1px solid var(--border)" }}>
+              <div className="segmented">
                 {renderViewBtn("list", ListTodo, "List")}
                 {renderViewBtn("table", Table2, "Table")}
                 {renderViewBtn("document", FileText, "Gantt")}
@@ -690,7 +661,7 @@ export default function ProjectDetailPage() {
               <button
                 onClick={() => openGanttPrintWindow({ ...p, categoryFallback })}
                 className="btn btn-primary"
-                style={{ padding: "6px 14px", fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "6px", borderRadius: "8px", whiteSpace: "nowrap" }}
+                style={{ whiteSpace: "nowrap" }}
                 title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
               >
                 <Printer size={14} /> พิมพ์เอกสาร
@@ -726,11 +697,7 @@ export default function ProjectDetailPage() {
             )}
           </div>
           {hasWriteAccess && (userRole === "senior_ae" || isSuperuser(userRole)) && (
-            <button
-              type="button"
-              onClick={() => updateProject({ status: "In Progress" })}
-              style={{ background: "var(--accent)", color: "#fff", border: "none", padding: "6px 14px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
-            >
+            <button type="button" className="btn btn-primary" onClick={() => updateProject({ status: "In Progress" })}>
               <Activity size={14} /> ดึงกลับมาดำเนินการ (Restore)
             </button>
           )}
@@ -759,11 +726,11 @@ export default function ProjectDetailPage() {
                 ({tableGroups.reduce((n, g) => n + g.tasks.length, 0)}{tableStatusFilter !== "all" ? ` / ${total}` : ""} ขั้นตอน)
               </span>
             </div>
-            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <div className="toolbar">
               {/* กรองสถานะ */}
               <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                 <Filter size={14} color="var(--text-3)" />
-                <select value={tableStatusFilter} onChange={(e) => setTableStatusFilter(e.target.value)} className="premium-select" style={{ height: "32px", fontSize: "12px", width: "auto" }} title="กรองตามสถานะ">
+                <select value={tableStatusFilter} onChange={(e) => setTableStatusFilter(e.target.value)} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="กรองตามสถานะ">
                   <option value="all">ทุกสถานะ</option>
                   <option value="pending">รอดำเนินการ</option>
                   <option value="progress">กำลังทำ</option>
@@ -773,7 +740,7 @@ export default function ProjectDetailPage() {
               {/* เรียงลำดับ */}
               <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                 <ArrowUpDown size={14} color="var(--text-3)" />
-                <select value={tableSort} onChange={(e) => setTableSort(e.target.value)} className="premium-select" style={{ height: "32px", fontSize: "12px", width: "auto" }} title="เรียงลำดับ (ภายในแต่ละเฟส)">
+                <select value={tableSort} onChange={(e) => setTableSort(e.target.value)} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="เรียงลำดับ (ภายในแต่ละเฟส)">
                   <option value="step">ลำดับขั้นตอน</option>
                   <option value="due">วันเสร็จ</option>
                   <option value="status">สถานะ</option>
@@ -781,7 +748,7 @@ export default function ProjectDetailPage() {
                 </select>
               </div>
               {canEdit && (
-                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ fontSize: "12px" }}>
                   <Plus size={14} /> เพิ่มขั้นตอน
                 </button>
               )}
@@ -834,7 +801,7 @@ export default function ProjectDetailPage() {
                                 {task.name}
                               </span>
                             </td>
-                            <td><span style={{ fontSize: "11px", fontWeight: 700, color: rs.color, background: rs.bg, padding: "3px 9px", borderRadius: "12px", border: `1px solid ${rs.border}` }}>{task.role}</span></td>
+                            <td><span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span></td>
                             <td style={{ fontSize: "13px" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : assignee}</td>
                             <td>
                               {canEdit ? (
@@ -874,8 +841,8 @@ export default function ProjectDetailPage() {
                             {canEdit && (
                               <td onClick={(e) => e.stopPropagation()}>
                                 <div style={{ display: "flex", gap: "4px", justifyContent: "center" }}>
-                                  <button onClick={() => openEditModal(task)} style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "4px" }} title="แก้ไขขั้นตอน"><Edit2 size={14} /></button>
-                                  <button onClick={() => deleteTask(task.id, task.name)} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "4px" }} title="ลบขั้นตอน"><Trash2 size={14} /></button>
+                                  <button className="btn-icon" onClick={() => openEditModal(task)} aria-label="แก้ไขขั้นตอน" title="แก้ไขขั้นตอน"><Edit2 size={14} /></button>
+                                  <button className="btn-icon danger" onClick={() => deleteTask(task.id, task.name)} aria-label="ลบขั้นตอน" title="ลบขั้นตอน"><Trash2 size={14} /></button>
                                 </div>
                               </td>
                             )}
@@ -895,45 +862,11 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             {canEdit && (
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                {total > 0 && (
-                  selectMode ? (
-                    <button onClick={exitSelectMode} className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
-                      <X size={14} /> ยกเลิกการเลือก
-                    </button>
-                  ) : (
-                    <button onClick={() => setSelectMode(true)} className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
-                      <Trash2 size={14} /> เลือกเพื่อลบ
-                    </button>
-                  )
-                )}
-                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
-                  <Plus size={14} /> เพิ่มขั้นตอน
-                </button>
-              </div>
+              <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ fontSize: "12px" }}>
+                <Plus size={14} /> เพิ่มขั้นตอน
+              </button>
             )}
           </div>
-
-          {/* bulk-delete action bar */}
-          {canEdit && selectMode && (
-            <div className="glass-panel" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "10px 16px", borderRadius: "10px", background: "var(--panel-2)", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "13px", color: "var(--text-2)", fontWeight: 600 }}>
-                เลือกแล้ว {selectedTaskIds.size} ขั้นตอน
-              </span>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={() => setSelectedTaskIds(selectedTaskIds.size === processedTasks.length ? new Set() : new Set(processedTasks.map((t) => t.id)))}
-                  className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
-                  {selectedTaskIds.size === processedTasks.length ? "ไม่เลือกทั้งหมด" : "เลือกทั้งหมด"}
-                </button>
-                <button
-                  onClick={deleteSelectedTasks} disabled={selectedTaskIds.size === 0}
-                  className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px", background: "var(--red)", borderColor: "var(--red)", opacity: selectedTaskIds.size === 0 ? 0.5 : 1, cursor: selectedTaskIds.size === 0 ? "not-allowed" : "pointer" }}>
-                  <Trash2 size={14} /> ลบที่เลือก
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* progress summary & milestones */}
           <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: "14px" }}>
@@ -953,8 +886,8 @@ export default function ProjectDetailPage() {
                 {overdue > 0 && renderChip(AlertTriangle, `เลยกำหนด ${overdue}`, "var(--red)")}
               </div>
             </div>
-            <div style={{ height: "8px", background: "var(--bg)", borderRadius: "6px", overflow: "hidden", marginBottom: milestones.length > 0 ? "16px" : "0" }}>
-              <div style={{ height: "100%", width: `${pct}%`, borderRadius: "6px", background: isDone ? "var(--green)" : "linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #fff))", transition: "width 0.4s cubic-bezier(0.16, 1, 0.3, 1)" }} />
+            <div className="progress" style={{ height: "8px", marginBottom: milestones.length > 0 ? "16px" : "0" }}>
+              <span className={isDone ? "done" : ""} style={{ width: `${pct}%` }} />
             </div>
 
             {/* milestone stepping stones */}
@@ -1034,12 +967,6 @@ export default function ProjectDetailPage() {
                       </div>
                     )}
                     <div style={{ display: "flex", alignItems: "stretch", gap: "0" }}>
-                      {/* Checkbox for bulk-delete select mode */}
-                      {canEdit && selectMode && (
-                        <div style={{ width: "30px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <input type="checkbox" checked={selectedTaskIds.has(task.id)} onChange={() => toggleSelectTask(task.id)} style={{ width: "16px", height: "16px", accentColor: "var(--red)", cursor: "pointer" }} title="เลือกขั้นตอนนี้เพื่อลบ" />
-                        </div>
-                      )}
                       {/* Milestone icon outside card */}
                       <div style={{ width: "28px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         {task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}
@@ -1120,7 +1047,7 @@ export default function ProjectDetailPage() {
                               </h4>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
                                 {(() => { const rs = roleStyle(task.role); return (
-                                  <span style={{ fontSize: "11px", fontWeight: 700, color: rs.color, background: rs.bg, padding: "3px 9px", borderRadius: "12px", border: `1px solid ${rs.border}` }}>{task.role}</span>
+                                  <span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span>
                                 ); })()}
                                 {canEdit && (
                                   <select className="premium-select" value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })} style={{ fontSize: "11px", padding: "4px 26px 4px 10px", height: "auto", width: "auto", minWidth: "120px", color: TASK_STATUS_COLOR[task.status], fontWeight: 600, borderColor: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 45%, var(--border))`, background: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 8%, var(--panel))` }}>
@@ -1131,8 +1058,8 @@ export default function ProjectDetailPage() {
                                 )}
                                 {canEdit && (
                                   <div style={{ display: "flex", gap: "4px" }}>
-                                    <button onClick={() => startEditing(task)} style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "4px" }} title="แก้ไข"><Edit2 size={14} /></button>
-                                    <button onClick={() => deleteTask(task.id, task.name)} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "4px" }} title="ลบขั้นตอน"><Trash2 size={14} /></button>
+                                    <button className="btn-icon" onClick={() => startEditing(task)} aria-label="แก้ไขขั้นตอน" title="แก้ไข"><Edit2 size={14} /></button>
+                                    <button className="btn-icon danger" onClick={() => deleteTask(task.id, task.name)} aria-label="ลบขั้นตอน" title="ลบขั้นตอน"><Trash2 size={14} /></button>
                                   </div>
                                 )}
                               </div>
@@ -1170,7 +1097,7 @@ export default function ProjectDetailPage() {
 
                       {isInProgress && !isEditing && canEdit && (
                         <div style={{ display: "flex", alignItems: "center" }}>
-                          <button className="btn btn-primary" onClick={() => updateTask(task.id, { status: "Completed" })} style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "8px", background: "var(--green)", borderColor: "var(--green)" }}>✔ ทำเสร็จแล้ว</button>
+                          <button className="btn btn-success" onClick={() => updateTask(task.id, { status: "Completed" })} style={{ fontSize: "12px" }}>✔ ทำเสร็จแล้ว</button>
                         </div>
                       )}
                     </div>
@@ -1198,39 +1125,23 @@ export default function ProjectDetailPage() {
         <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
           {p.status === "On Hold" ? (
             (p.aeOwner === userName || isSuperuser(userRole)) && (
-              <button
-                type="button"
-                onClick={() => updateProject({ status: "In Progress" })}
-                style={{ background: "var(--accent)", color: "#fff", border: "none", padding: "6px 14px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
+              <button type="button" className="btn btn-primary" onClick={() => updateProject({ status: "In Progress" })}>
                 <CheckCircle2 size={14} /> ดึงกลับมาดำเนินการ (Restore)
               </button>
             )
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => updateProject({ status: "On Hold" })}
-                style={{ background: "var(--amber)", color: "#fff", border: "none", padding: "6px 14px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
+              <button type="button" className="btn btn-warning" onClick={() => updateProject({ status: "On Hold" })}>
                 <Clock size={14} /> ระงับชั่วคราว (On Hold)
               </button>
-              <button
-                type="button"
-                onClick={dropProject}
-                style={{ background: "var(--red)", color: "#fff", border: "none", padding: "6px 14px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
+              <button type="button" className="btn btn-danger" onClick={dropProject}>
                 <X size={14} /> ยกเลิกโปรเจกต์ (Drop)
               </button>
             </>
           )}
 
           {p.status === "On Hold" && (
-            <button
-              type="button"
-              onClick={dropProject}
-              style={{ background: "var(--red)", color: "#fff", border: "none", padding: "6px 14px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
-            >
+            <button type="button" className="btn btn-danger" onClick={dropProject}>
               <X size={14} /> ยกเลิกโปรเจกต์ (Drop)
             </button>
           )}

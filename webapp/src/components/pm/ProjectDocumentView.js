@@ -121,47 +121,25 @@ const ZOOM_PRESETS = [
 
 function ZoomControl({ px, onChange }) {
   const clamp = (v) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(v)));
-  const seg = {
-    padding: "4px 12px", fontSize: "12px", fontWeight: 600, border: "none",
-    background: "transparent", color: "var(--text-2)", cursor: "pointer",
-    borderRadius: "7px", lineHeight: 1.4,
-  };
-  const iconBtn = (disabled) => ({
-    display: "inline-flex", alignItems: "center", justifyContent: "center",
-    width: "26px", height: "26px", border: "none", borderRadius: "7px",
-    background: "transparent", cursor: disabled ? "default" : "pointer",
-    color: disabled ? "var(--text-3)" : "var(--text-2)",
-  });
   return (
-    <div
-      title="ปรับความละเอียดของแกนเวลา (เฉพาะบนจอ — ไม่กระทบหน้าพิมพ์)"
-      style={{
-        display: "inline-flex", alignItems: "center", gap: "2px", padding: "3px",
-        background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: "10px",
-      }}
-    >
-      <button type="button" style={iconBtn(px <= ZOOM_MIN)} disabled={px <= ZOOM_MIN}
-        onClick={() => onChange(clamp(px / 1.35))} title="ซูมออก">
+    <div className="segmented" title="ปรับความละเอียดของแกนเวลา (เฉพาะบนจอ — ไม่กระทบหน้าพิมพ์)">
+      <button type="button" className="icon" disabled={px <= ZOOM_MIN}
+        onClick={() => onChange(clamp(px / 1.35))} aria-label="ซูมออก" title="ซูมออก">
         <Minus size={15} />
       </button>
-      <div style={{ display: "inline-flex", gap: "1px" }}>
-        {ZOOM_PRESETS.map((p) => {
-          const active = px === p.px;
-          return (
-            <button key={p.key} type="button"
-              onClick={() => onChange(p.px)}
-              style={{ ...seg, background: active ? "var(--accent)" : "transparent", color: active ? "#fff" : "var(--text-2)" }}>
-              {p.label}
-            </button>
-          );
-        })}
-      </div>
-      <button type="button" style={iconBtn(px >= ZOOM_MAX)} disabled={px >= ZOOM_MAX}
-        onClick={() => onChange(clamp(px * 1.35))} title="ซูมเข้า">
+      {ZOOM_PRESETS.map((p) => (
+        <button key={p.key} type="button" className={px === p.px ? "active" : ""}
+          onClick={() => onChange(p.px)}>
+          {p.label}
+        </button>
+      ))}
+      <button type="button" className="icon" disabled={px >= ZOOM_MAX}
+        onClick={() => onChange(clamp(px * 1.35))} aria-label="ซูมเข้า" title="ซูมเข้า">
         <Plus size={15} />
       </button>
-      <span style={{ width: "1px", height: "18px", background: "var(--border)", margin: "0 2px" }} />
-      <button type="button" style={iconBtn(px === ZOOM_DEFAULT)} onClick={() => onChange(ZOOM_DEFAULT)} title="รีเซ็ตการซูม">
+      <span className="divider" />
+      <button type="button" className="icon" disabled={px === ZOOM_DEFAULT}
+        onClick={() => onChange(ZOOM_DEFAULT)} aria-label="รีเซ็ตการซูม" title="รีเซ็ตการซูม">
         <RotateCcw size={14} />
       </button>
     </div>

@@ -38,8 +38,9 @@ export async function POST(request) {
     address: body.address,
     brands: body.brands || [],
     mapFileUrl: body.mapFileUrl || null,
-    // Master-data contact / commercial fields (migration 0005).
+    // Master-data contact / commercial fields (migration 0005, 0025).
     contactPerson: body.contactPerson || null,
+    contactPhone: body.contactPhone || null,
     email: body.email || null,
     creditTerms: body.creditTerms || null,
     jubiliId: body.jubiliId || null,

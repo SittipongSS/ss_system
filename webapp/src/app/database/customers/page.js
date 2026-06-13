@@ -21,6 +21,7 @@ export default function CustomerDirectory() {
     address: "",
     brandsStr: "",
     contactPerson: "",
+    contactPhone: "",
     email: "",
     creditTerms: "",
   });
@@ -83,6 +84,7 @@ export default function CustomerDirectory() {
         .map((b) => b.trim())
         .filter((b) => b),
       contactPerson: formData.contactPerson || null,
+      contactPhone: formData.contactPhone || null,
       email: formData.email || null,
       creditTerms: formData.creditTerms || null,
       mapFileUrl,
@@ -95,7 +97,7 @@ export default function CustomerDirectory() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setFormData({ arCode: "", name: "", taxId: "", phone: "", address: "", brandsStr: "", contactPerson: "", email: "", creditTerms: "" });
+        setFormData({ arCode: "", name: "", taxId: "", phone: "", address: "", brandsStr: "", contactPerson: "", contactPhone: "", email: "", creditTerms: "" });
         setMapFile(null);
         setShowForm(false);
         fetchCustomers();
@@ -295,141 +297,179 @@ export default function CustomerDirectory() {
         size="md"
       >
         <form onSubmit={handleSubmit}>
-          <div
-            className="grid gap-[18px]"
-            style={{ gridTemplateColumns: "repeat(2, 1fr)" }}
-          >
-            <div className="form-group">
-              <label>
-                รหัสลูกค้า (AR Code) <span className="text-[var(--red)]">*</span>
-              </label>
-              <input
-                type="text"
-                name="arCode"
-                value={formData.arCode}
-                onChange={handleChange}
-                required
-                placeholder="เช่น AR-001"
-                className="premium-input w-full font-mono"
-              />
+          {/* Section 1 — ข้อมูลบริษัท */}
+          <div className="mb-[22px]">
+            <div className="border-b border-[var(--border)] pb-3 mb-5">
+              <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลบริษัท (Company Details)</h3>
             </div>
-            <div className="form-group">
-              <label>
-                ชื่อบริษัท / ลูกค้า <span className="text-[var(--red)]">*</span>
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                required
-                placeholder="ชื่อบริษัท..."
-                className="premium-input w-full"
-              />
+            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+              <div className="form-group">
+                <label>
+                  รหัสลูกค้า (AR Code) <span className="text-[var(--red)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="arCode"
+                  value={formData.arCode}
+                  onChange={handleChange}
+                  required
+                  placeholder="เช่น AR-001"
+                  className="premium-input w-full font-mono"
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  ชื่อบริษัท / ลูกค้า <span className="text-[var(--red)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  required
+                  placeholder="ชื่อบริษัท..."
+                  className="premium-input w-full"
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  เลขประจำตัวผู้เสียภาษี <span className="text-[var(--red)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="taxId"
+                  value={formData.taxId}
+                  onChange={handleChange}
+                  required
+                  placeholder="เลข 13 หลัก"
+                  className="premium-input w-full font-mono"
+                />
+              </div>
+              <div className="form-group">
+                <label>เบอร์โทรบริษัท</label>
+                <input
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder="เช่น 02-123-4567"
+                  className="premium-input w-full font-mono"
+                />
+              </div>
+              <div className="form-group col-span-2">
+                <label>
+                  ที่อยู่ลูกค้า <span className="text-[var(--red)]">*</span>
+                </label>
+                <textarea
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  required
+                  rows={2}
+                  placeholder="ที่อยู่สำหรับออกเอกสาร..."
+                  className="premium-input w-full"
+                  style={{ height: "80px", padding: "10px 12px", resize: "none" }}
+                ></textarea>
+              </div>
+              <div className="form-group col-span-2">
+                <label>
+                  ชื่อแบรนด์สินค้า (Brands){" "}
+                  <span className="text-[var(--red)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="brandsStr"
+                  value={formData.brandsStr}
+                  onChange={handleChange}
+                  required
+                  placeholder="คั่นด้วยลูกน้ำ (,) เช่น Brand A, Brand B"
+                  className="premium-input w-full"
+                />
+                <span className="text-[11px] text-[var(--text-3)] mt-1">
+                  ใส่ได้หลายแบรนด์ คั่นด้วยลูกน้ำ (,)
+                </span>
+              </div>
             </div>
-            <div className="form-group">
-              <label>
-                เลขประจำตัวผู้เสียภาษี <span className="text-[var(--red)]">*</span>
-              </label>
-              <input
-                type="text"
-                name="taxId"
-                value={formData.taxId}
-                onChange={handleChange}
-                required
-                placeholder="เลข 13 หลัก"
-                className="premium-input w-full font-mono"
-              />
+          </div>
+
+          {/* Section 2 — ผู้ติดต่อ */}
+          <div className="mb-[22px]">
+            <div className="border-b border-[var(--border)] pb-3 mb-5">
+              <h3 className="font-semibold text-[var(--text)]">2. ผู้ติดต่อ (Contact Person)</h3>
             </div>
-            <div className="form-group">
-              <label>เบอร์โทร</label>
-              <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                placeholder="เช่น 02-123-4567"
-                className="premium-input w-full font-mono"
-              />
+            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+              <div className="form-group">
+                <label>
+                  ชื่อผู้ติดต่อ <span className="text-[var(--red)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="contactPerson"
+                  value={formData.contactPerson}
+                  onChange={handleChange}
+                  required
+                  placeholder="ชื่อผู้ติดต่อ"
+                  className="premium-input w-full"
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  เบอร์ผู้ติดต่อ <span className="text-[var(--red)]">*</span>
+                </label>
+                <input
+                  type="tel"
+                  name="contactPhone"
+                  value={formData.contactPhone}
+                  onChange={handleChange}
+                  required
+                  placeholder="เช่น 081-234-5678"
+                  className="premium-input w-full font-mono"
+                />
+              </div>
+              <div className="form-group col-span-2">
+                <label>อีเมล</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="example@email.com"
+                  className="premium-input w-full"
+                />
+              </div>
             </div>
-            <div className="form-group">
-              <label>ผู้ติดต่อ</label>
-              <input
-                type="text"
-                name="contactPerson"
-                value={formData.contactPerson}
-                onChange={handleChange}
-                placeholder="ชื่อผู้ติดต่อ"
-                className="premium-input w-full"
-              />
+          </div>
+
+          {/* Section 3 — ข้อมูลเพิ่มเติม */}
+          <div className="mb-[22px]">
+            <div className="border-b border-[var(--border)] pb-3 mb-5">
+              <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลเพิ่มเติม (Additional)</h3>
             </div>
-            <div className="form-group">
-              <label>อีเมล</label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="example@email.com"
-                className="premium-input w-full"
-              />
-            </div>
-            <div className="form-group col-span-2">
-              <label>เงื่อนไขเครดิต (Credit Terms)</label>
-              <input
-                type="text"
-                name="creditTerms"
-                value={formData.creditTerms}
-                onChange={handleChange}
-                placeholder="เช่น เครดิต 30 วัน"
-                className="premium-input w-full"
-              />
-            </div>
-            <div className="form-group col-span-2">
-              <label>
-                ที่อยู่ลูกค้า <span className="text-[var(--red)]">*</span>
-              </label>
-              <textarea
-                name="address"
-                value={formData.address}
-                onChange={handleChange}
-                required
-                rows={2}
-                placeholder="ที่อยู่สำหรับออกเอกสาร..."
-                className="premium-input w-full"
-                style={{ height: "80px", padding: "10px 12px", resize: "none" }}
-              ></textarea>
-            </div>
-            <div className="form-group col-span-2">
-              <label>
-                ชื่อแบรนด์สินค้า (Brands){" "}
-                <span className="text-[var(--red)]">*</span>
-              </label>
-              <input
-                type="text"
-                name="brandsStr"
-                value={formData.brandsStr}
-                onChange={handleChange}
-                required
-                placeholder="คั่นด้วยลูกน้ำ (,) เช่น Brand A, Brand B"
-                className="premium-input w-full"
-              />
-              <span className="text-[11px] text-[var(--text-3)] mt-1">
-                ใส่ได้หลายแบรนด์ คั่นด้วยลูกน้ำ (,)
-              </span>
-            </div>
-            <div className="form-group col-span-2">
-              <label>อัปโหลดแผนที่ลูกค้า (Map PDF/Image)</label>
-              <input
-                type="file"
-                accept=".pdf,image/png,image/jpeg"
-                onChange={(e) => setMapFile(e.target.files[0])}
-                className="premium-input w-full"
-                style={{ padding: "6px" }}
-              />
-              <span className="text-[11px] text-[var(--text-3)] mt-1">
-                รองรับไฟล์ .pdf, .png, .jpg
-              </span>
+            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+              <div className="form-group col-span-2">
+                <label>เงื่อนไขเครดิต (Credit Terms)</label>
+                <input
+                  type="text"
+                  name="creditTerms"
+                  value={formData.creditTerms}
+                  onChange={handleChange}
+                  placeholder="เช่น เครดิต 30 วัน"
+                  className="premium-input w-full"
+                />
+              </div>
+              <div className="form-group col-span-2">
+                <label>อัปโหลดแผนที่ลูกค้า (Map PDF/Image)</label>
+                <input
+                  type="file"
+                  accept=".pdf,image/png,image/jpeg"
+                  onChange={(e) => setMapFile(e.target.files[0])}
+                  className="premium-input w-full"
+                  style={{ padding: "6px" }}
+                />
+                <span className="text-[11px] text-[var(--text-3)] mt-1">
+                  รองรับไฟล์ .pdf, .png, .jpg
+                </span>
+              </div>
             </div>
           </div>
 

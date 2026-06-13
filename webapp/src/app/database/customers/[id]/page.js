@@ -33,6 +33,7 @@ export default function CustomerDetails() {
     address: "",
     brandsStr: "",
     contactPerson: "",
+    contactPhone: "",
     email: "",
     creditTerms: "",
   });
@@ -59,6 +60,7 @@ export default function CustomerDetails() {
           address: data.customer.address || "",
           brandsStr: (data.customer.brands || []).join(", "),
           contactPerson: data.customer.contactPerson || "",
+          contactPhone: data.customer.contactPhone || "",
           email: data.customer.email || "",
           creditTerms: data.customer.creditTerms || "",
         });
@@ -131,6 +133,7 @@ export default function CustomerDetails() {
         .map((b) => b.trim())
         .filter((b) => b),
       contactPerson: formData.contactPerson || null,
+      contactPhone: formData.contactPhone || null,
       email: formData.email || null,
       creditTerms: formData.creditTerms || null,
       mapFileUrl,
@@ -427,6 +430,17 @@ export default function CustomerDetails() {
                     />
                   </div>
                   <div className="form-group col-span-2 sm:col-span-1">
+                    <label>เบอร์ผู้ติดต่อ</label>
+                    <input
+                      type="tel"
+                      name="contactPhone"
+                      value={formData.contactPhone}
+                      onChange={handleInputChange}
+                      placeholder="เช่น 081-234-5678"
+                      className="premium-input w-full font-mono text-xs"
+                    />
+                  </div>
+                  <div className="form-group col-span-2 sm:col-span-1">
                     <label>อีเมล</label>
                     <input
                       type="email"
@@ -569,6 +583,14 @@ export default function CustomerDetails() {
                     </span>
                     <span className="font-semibold text-[var(--text)] text-sm">
                       {customer.contactPerson || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[var(--text-3)] block mb-1">
+                      เบอร์ผู้ติดต่อ (Contact Phone)
+                    </span>
+                    <span className="font-semibold font-mono text-[var(--text)] text-sm">
+                      {customer.contactPhone || "-"}
                     </span>
                   </div>
                   <div>

@@ -391,25 +391,19 @@ export default function MyWorkPage() {
         </div>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           {selectMode ? (
-            <button onClick={exitSelectMode} className="btn flex items-center gap-1.5" style={{ padding: "8px 14px", fontSize: "13px", height: "40px" }}>
-              เสร็จสิ้น
-            </button>
+            <button onClick={exitSelectMode} className="btn">เสร็จสิ้น</button>
           ) : (
-            <button onClick={() => setSelectMode(true)} className="btn flex items-center gap-1.5" style={{ padding: "8px 14px", fontSize: "13px", height: "40px" }}>
-              <Trash2 size={15} /> เลือกเพื่อลบ
-            </button>
+            <button onClick={() => setSelectMode(true)} className="btn"><Trash2 size={15} /> เลือกเพื่อลบ</button>
           )}
-          <button onClick={openAdd} className="btn btn-primary flex items-center gap-1.5" style={{ padding: "8px 16px", fontSize: "13px", height: "40px" }}>
-            <Plus size={16} /> เพิ่มงานส่วนตัว
-          </button>
+          <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงานส่วนตัว</button>
         </div>
       </div>
 
       {/* scope tabs */}
       {allowedScopes.length > 1 && (
-        <div style={{ display: "flex", gap: "4px", background: "var(--panel)", borderRadius: "10px", padding: "4px", border: "1px solid var(--border)", width: "fit-content", marginBottom: "16px" }}>
+        <div className="segmented" style={{ marginBottom: "16px" }}>
           {allowedScopes.map((s) => (
-            <button key={s} onClick={() => setScope(s)} style={{ background: scope === s ? "var(--accent)" : "transparent", color: scope === s ? "#fff" : "var(--text-2)", border: "none", padding: "6px 18px", borderRadius: "7px", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>
+            <button key={s} onClick={() => setScope(s)} className={scope === s ? "active" : ""}>
               {SCOPE_TH[s]}
             </button>
           ))}
@@ -445,36 +439,34 @@ export default function MyWorkPage() {
       </div>
 
       {/* ── แถบเครื่องมือ: ค้นหา + กรอง + เรียง ── */}
-      <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
+      <div className="toolbar" style={{ marginBottom: "20px" }}>
         <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
           <Search size={18} color="var(--text-3)" />
           <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         {statusFilter !== "all" && (
-          <button onClick={() => setStatusFilter("all")} className="btn" style={{ height: "34px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+          <button onClick={() => setStatusFilter("all")} className="btn" style={{ fontSize: "12px" }}>
             กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: 700 }}>×</span>
           </button>
         )}
         {deptOptions.length > 1 && (
-          <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="premium-select" style={{ height: "34px", fontSize: "12px", width: "auto" }} title="กรองตามแผนก">
+          <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="กรองตามแผนก">
             <option value="all">ทุกแผนก</option>
             {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         )}
         {scope !== "mine" && assigneeOptions.length > 1 && (
-          <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} className="premium-select" style={{ height: "34px", fontSize: "12px", width: "auto" }} title="กรองตามผู้รับผิดชอบ">
+          <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="กรองตามผู้รับผิดชอบ">
             <option value="all">ทุกคน</option>
             {assigneeOptions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         )}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>
-            <ArrowUpDown size={14} /> เรียง
-          </span>
-          <select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ height: "34px", fontSize: "12px", width: "auto" }} title="เรียงลำดับตาม">
+        <div className="spacer toolbar" style={{ gap: "8px" }}>
+          <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
+          <select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="เรียงลำดับตาม">
             {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
           </select>
-          <button onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} className="btn" style={{ height: "34px", width: "34px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }} title={sortDir === "asc" ? "น้อย → มาก (กดเพื่อสลับ)" : "มาก → น้อย (กดเพื่อสลับ)"}>
+          <button className="btn-icon" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} aria-label={sortDir === "asc" ? "เรียงน้อยไปมาก กดเพื่อสลับ" : "เรียงมากไปน้อย กดเพื่อสลับ"} title={sortDir === "asc" ? "น้อย → มาก (กดเพื่อสลับ)" : "มาก → น้อย (กดเพื่อสลับ)"}>
             {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
           </button>
         </div>
@@ -493,10 +485,10 @@ export default function MyWorkPage() {
               </div>
               {selectedProjIds.size > 0 && (
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "auto" }}>
-                  <button onClick={bulkDeleteProj} disabled={bulkDeletingProj} className="btn" style={{ height: "32px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px", color: "var(--red)", borderColor: "var(--red)" }}>
+                  <button onClick={bulkDeleteProj} disabled={bulkDeletingProj} className="btn btn-danger" style={{ fontSize: "12px" }}>
                     <Trash2 size={14} /> {bulkDeletingProj ? "กำลังลบ..." : `ลบที่เลือก (${selectedProjIds.size})`}
                   </button>
-                  <button onClick={clearProjSelection} className="btn" style={{ height: "32px", fontSize: "12px" }}>ยกเลิก</button>
+                  <button onClick={clearProjSelection} className="btn" style={{ fontSize: "12px" }}>ยกเลิก</button>
                 </div>
               )}
             </div>
@@ -590,7 +582,7 @@ export default function MyWorkPage() {
                 <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{visiblePersonal.length} งาน · เห็นเฉพาะคุณ</span>
               </div>
               {/* ปุ่มเพิ่มงานส่วนตัวซ้ำตรงหัวข้อ — กดง่ายขึ้นเวลาเลื่อนอยู่ส่วนนี้ */}
-              <button onClick={openAdd} className="btn flex items-center gap-1.5" style={{ height: "32px", fontSize: "12px", padding: "0 12px" }}>
+              <button onClick={openAdd} className="btn" style={{ fontSize: "12px" }}>
                 <Plus size={14} /> เพิ่มงานส่วนตัว
               </button>
               {selectMode && visiblePersonal.length > 0 && (
@@ -601,10 +593,10 @@ export default function MyWorkPage() {
                   </label>
                   {selectedIds.size > 0 && (
                     <>
-                      <button onClick={bulkDeletePersonal} disabled={bulkDeleting} className="btn" style={{ height: "32px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px", color: "var(--red)", borderColor: "var(--red)" }}>
+                      <button onClick={bulkDeletePersonal} disabled={bulkDeleting} className="btn btn-danger" style={{ fontSize: "12px" }}>
                         <Trash2 size={14} /> {bulkDeleting ? "กำลังลบ..." : `ลบที่เลือก (${selectedIds.size})`}
                       </button>
-                      <button onClick={clearSelection} className="btn" style={{ height: "32px", fontSize: "12px" }}>ยกเลิก</button>
+                      <button onClick={clearSelection} className="btn" style={{ fontSize: "12px" }}>ยกเลิก</button>
                     </>
                   )}
                 </div>
@@ -636,8 +628,8 @@ export default function MyWorkPage() {
                           {t.note && <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{t.note}</div>}
                         </div>
                         <div style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
-                          <button onClick={() => openEdit(t)} title="แก้ไข" style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "3px" }}><Edit2 size={14} /></button>
-                          <button onClick={() => deletePersonal(t)} title="ลบ" style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "3px" }}><Trash2 size={14} /></button>
+                          <button className="btn-icon" onClick={() => openEdit(t)} aria-label="แก้ไขงาน" title="แก้ไข"><Edit2 size={14} /></button>
+                          <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "11px", flexWrap: "wrap" }}>

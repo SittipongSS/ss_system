@@ -12,7 +12,11 @@
 //   admin         — System administrator (ฝ่าย AD). Superuser: every capability,
 //                   all teams, plus account/master/audit management. Sits above
 //                   ae_supervisor and carries no sales org position.
-//   ae_supervisor — Sales dept head. Superuser: every capability, all teams.
+//   ae_supervisor — Sales dept head. Controls ALL teams' sales/PM work (data
+//                   scope 'all', like admin) and can VIEW tax status, but is NOT
+//                   a system admin (no users:manage / master:manage / audit:view)
+//                   and cannot approve tax (legal:approve is the legal role's).
+//                   During the phased rollout sees only the PM hub card.
 //   senior_ae     — team lead (team = ODM | KA | SV). Edits whole team.
 //   ac            — Account Coordinate (back-office). Edits whole team, no delete.
 //   ae            — Account Executive (front-office). Edits only own records.
@@ -122,7 +126,7 @@ const SALES_OPS = [
   'history:view',
 ];
 
-// Every capability in the system. Shared by the two superuser roles.
+// Every capability in the system. Held in full only by `admin`.
 const SUPERUSER_CAPS = [
   'customers:view', 'customers:edit', 'customers:delete',
   'products:view', 'products:edit', 'products:delete',
@@ -134,10 +138,25 @@ const SUPERUSER_CAPS = [
   'pm:view', 'pm:edit',
 ];
 
+// Admin-only system capabilities — account management, master taxonomy, and the
+// audit log. These are what separate `admin` from `ae_supervisor`.
+const ADMIN_SYSTEM_CAPS = ['users:manage', 'master:manage', 'audit:view'];
+
+// Capabilities a sales head does NOT inherit from the full superuser set:
+//   - the admin-system caps (account/master/audit management)
+//   - legal:approve — tax approval is reserved for the `legal` role (admin keeps
+//     it as a break-glass). ae_supervisor still has legal:view (sees tax status).
+const SALES_HEAD_EXCLUDED = [...ADMIN_SYSTEM_CAPS, 'legal:approve'];
+
+// Sales head (ae_supervisor): every remaining sales/legal-view/PM capability
+// across ALL teams. Data scope stays 'all' via isSuperuser().
+const SALES_HEAD_CAPS = SUPERUSER_CAPS.filter((c) => !SALES_HEAD_EXCLUDED.includes(c));
+
 const ROLE_CAPS = {
   // admin: system administrator — full capabilities, all teams (see isSuperuser).
   admin: SUPERUSER_CAPS,
-  ae_supervisor: SUPERUSER_CAPS,
+  // ae_supervisor: sales head — all-team data scope, but not a system admin.
+  ae_supervisor: SALES_HEAD_CAPS,
   // team lead: ops + may delete orders (scoped to own team via deleteScope)
   senior_ae: [...SALES_OPS, 'sales:delete'],
   // back-office + front-office: same capabilities, differ only by edit SCOPE
@@ -163,10 +182,10 @@ export function can(role, cap) {
   return capsFor(role).includes(cap);
 }
 
-// Superuser roles: full capabilities + 'all'-team scope on every resource.
-// `admin` (system administrator) and `ae_supervisor` (sales head) are equivalent
-// for access-control purposes; org-position-specific UI (e.g. signature blocks)
-// may still single out ae_supervisor by name.
+// Superuser roles: 'all'-team data scope on every resource (view/edit/delete).
+// This is about SCOPE, not capabilities — `admin` and `ae_supervisor` both see
+// and edit every team's records, but only `admin` holds the admin-system caps
+// (users:manage / master:manage / audit:view). Use `can(role, …)` to gate those.
 export function isSuperuser(role) {
   return role === 'admin' || role === 'ae_supervisor';
 }

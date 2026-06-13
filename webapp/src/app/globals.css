@@ -58,6 +58,7 @@
   --shift-color: #6b6256;
   
   /* Grid settings */
+  --ctl-h: 34px;   /* standard height for toolbar controls: search / select / toolbar buttons */
   --row-h: 40px;
   --pad-x: 16px;
   --pad-y: 12px;
@@ -1541,6 +1542,139 @@ input[type="number"] {
   border-color: color-mix(in oklab, var(--accent) 90%, #000);
   box-shadow: var(--shadow-md);
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Shared UI layer — generic utilities reused across the whole app
+   (introduced for the PM cohesion pass; safe to adopt elsewhere).
+   All values derive from existing theme tokens → dark mode is automatic.
+   ───────────────────────────────────────────────────────────── */
+
+/* Status-colored button variants (extend .btn). Replace raw inline
+   `background: var(--red/amber/green); border:none` action buttons. */
+.btn-success { background: var(--green); border-color: var(--green); color: #fff; }
+.btn-success:hover { background: color-mix(in oklab, var(--green) 88%, #000); box-shadow: var(--shadow-md); }
+.btn-warning { background: var(--amber); border-color: var(--amber); color: #fff; }
+.btn-warning:hover { background: color-mix(in oklab, var(--amber) 88%, #000); box-shadow: var(--shadow-md); }
+.btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn-danger:hover { background: color-mix(in oklab, var(--red) 88%, #000); box-shadow: var(--shadow-md); }
+
+/* Icon-only ghost button — for edit / delete / insert affordances.
+   Always pair with an aria-label. */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background .1s, color .1s, border-color .1s;
+}
+.btn-icon:hover { background: var(--panel-2); color: var(--text); }
+.btn-icon.danger { color: var(--red); }
+.btn-icon.danger:hover { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+.btn-icon:disabled { opacity: .45; cursor: not-allowed; }
+.btn-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Toolbar row — filter / sort / search controls live here. */
+.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.toolbar > .spacer { margin-left: auto; }
+.toolbar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+/* Unify every control sitting in a toolbar to one height (--ctl-h).
+   Scoped to .toolbar so form-page selects/buttons keep their own sizing. */
+.toolbar .premium-select,
+.toolbar .search-glass,
+.toolbar .btn { height: var(--ctl-h); }
+.toolbar .btn-icon { width: var(--ctl-h); height: var(--ctl-h); }
+
+/* Segmented control — one canonical look for every view/tab/scope switcher. */
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.segmented > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 12px;
+  height: 26px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.segmented > button:hover { color: var(--text); }
+.segmented > button.active,
+.segmented > button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.segmented > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.segmented > button:disabled { opacity: .4; cursor: default; }
+.segmented > button.icon { width: 26px; padding: 0; }
+.segmented > .divider { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+
+/* Pill badge — type / role / category tags. Color via inline style or modifier. */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: var(--radius);
+}
+
+/* Chip — icon + label, used for summary counters and inline tags. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+}
+
+/* Progress bar — track + fill. Set fill width inline (style={{ width: pct+'%' }}). */
+.progress {
+  height: 6px;
+  background: var(--bg);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+.progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width .2s ease-out;
+}
+.progress > span.done { background: var(--green); }
 
 /* Tables and standard lists */
 .premium-table-wrapper {

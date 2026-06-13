@@ -331,7 +331,7 @@ export default function ProjectFormModal({
                           <input type="text" placeholder="สั่งซื้อ" value={pp.orderQty} onChange={(e) => updateFgQty(pp.productId, "orderQty", e.target.value)} className="premium-input w-full text-[12px] h-[32px]" />
                           <input type="text" placeholder="ผลิต" value={pp.productionQty} onChange={(e) => updateFgQty(pp.productId, "productionQty", e.target.value)} className="premium-input w-full text-[12px] h-[32px]" />
                         </div>
-                        <button type="button" onClick={() => toggleFg(pp.productId)} style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "4px" }}><X size={16} /></button>
+                        <button type="button" className="btn-icon danger" onClick={() => toggleFg(pp.productId)} aria-label="นำสินค้าออก"><X size={16} /></button>
                       </div>
                     );
                   })}
