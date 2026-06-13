@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
@@ -32,6 +32,7 @@ export default function AppLayout({ children }) {
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false); // slide-in drawer on narrow screens
   const [activeSystem, setActiveSystem] = useState('tax');
 
   // Self-service password change (any signed-in user, their own account only).
@@ -103,6 +104,7 @@ export default function AppLayout({ children }) {
       : 'tax';
 
     if (sys) setActiveSystem(sys);
+    setMobileOpen(false); // navigating closes the mobile drawer
   }, [pathname]);
 
   const toggleTheme = () => {
@@ -200,8 +202,14 @@ export default function AppLayout({ children }) {
 
   return (
     <div className="app-container" data-sidebar={isCollapsed ? "icon" : "expanded"}>
+      {/* Dim backdrop behind the mobile drawer (≤1000px); tap to dismiss */}
+      <div
+        className={`sidebar-backdrop ${mobileOpen ? 'active' : ''}`}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden="true"
+      />
       {/* Sidebar Navigation */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
         <div className="brand-section">
           <img src="/brand-logo.png" alt="Scent &amp; Sense" className="brand-logo-img" />
           <Link href="/home" className="brand-info-link">
@@ -264,6 +272,16 @@ export default function AppLayout({ children }) {
       {/* Main Content Area */}
       <main className="main-content">
         <header className="topbar">
+          {/* Hamburger — only visible ≤1000px (see .menu-btn), opens the drawer */}
+          <button
+            onClick={() => setMobileOpen((v) => !v)}
+            className="menu-btn mobile-hamburger"
+            title={mobileOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
+            aria-label={mobileOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
+            aria-expanded={mobileOpen}
+          >
+            {mobileOpen ? <X size={20} strokeWidth={2} /> : <Menu size={20} strokeWidth={2} />}
+          </button>
           <div className="search-bar">
             <Search size={16} className="icon-l" strokeWidth={2} />
             <input type="text" placeholder="ค้นหา สินค้า, รหัสลูกค้า..." />

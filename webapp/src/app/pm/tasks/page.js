@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo, Fragment } from "react";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Edit2, Trash2, CircleDashed, ChevronRight, Flame, ArrowUpDown } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Edit2, Trash2, CircleDashed, ChevronRight, ChevronDown, ExternalLink, Flame, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import Modal from "@/components/Modal";
 
 const TASK_STATUS_TH = { Pending: "รอ", "In Progress": "ทำอยู่", Completed: "เสร็จ" };
@@ -46,6 +46,7 @@ const getUrgencyInfo = (task) => {
 };
 
 const statusDot = (s) => s === "Completed" ? "var(--green)" : s === "In Progress" ? "var(--accent)" : "var(--text-3)";
+const statusIcon = (s, size = 18) => s === "Completed" ? <CheckCircle2 size={size} /> : s === "In Progress" ? <Clock size={size} /> : <CircleDashed size={size} />;
 
 // ตัวกรองสถานะ — ตรงกับการ์ดสรุปด้านบน
 const matchStatus = (t, filter) => {
@@ -56,20 +57,22 @@ const matchStatus = (t, filter) => {
   return true;
 };
 
-// ตัวเปรียบเทียบสำหรับจัดเรียง
+// ตัวเปรียบเทียบสำหรับจัดเรียง — dir: "asc" | "desc"
 const STATUS_ORDER = { "In Progress": 0, Pending: 1, Completed: 2 };
-const makeComparator = (sortKey) => {
+const makeComparator = (sortKey, dir = "asc") => {
+  const mul = dir === "desc" ? -1 : 1;
   if (sortKey === "due") return (a, b) => {
     const da = daysToDue(a), db = daysToDue(b);
     if (da === null && db === null) return 0;
-    if (da === null) return 1; // ไม่มีกำหนด → ท้ายสุด
+    if (da === null) return 1; // ไม่มีกำหนด → ท้ายสุดเสมอ (ไม่สลับตามทิศ)
     if (db === null) return -1;
-    return da - db;
+    return (da - db) * mul;
   };
-  if (sortKey === "name") return (a, b) => (a.name || a.title || "").localeCompare(b.name || b.title || "", "th");
-  if (sortKey === "status") return (a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
+  if (sortKey === "name") return (a, b) => (a.name || a.title || "").localeCompare(b.name || b.title || "", "th") * mul;
+  if (sortKey === "status") return (a, b) => ((STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)) * mul;
+  if (sortKey === "role") return (a, b) => (a.role || "").localeCompare(b.role || "", "th") * mul;
   // default = ลำดับขั้นตอน (stepOrder) สำหรับงานโปรเจกต์
-  return (a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0);
+  return (a, b) => ((a.stepOrder ?? 0) - (b.stepOrder ?? 0)) * mul;
 };
 
 const PERSONAL_BLANK = { title: "", note: "", dueDate: "", projectId: "" };
@@ -78,6 +81,7 @@ const SORT_OPTIONS = [
   { key: "default", label: "ลำดับขั้นตอน" },
   { key: "due", label: "ใกล้ครบกำหนด" },
   { key: "status", label: "สถานะ" },
+  { key: "role", label: "แผนก" },
   { key: "name", label: "ชื่องาน" },
 ];
 
@@ -94,7 +98,12 @@ export default function MyWorkPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // all | progress | urgent | done
+  const [deptFilter, setDeptFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [sortKey, setSortKey] = useState("default");
+  const [sortDir, setSortDir] = useState("asc"); // asc | desc
+  // กลุ่มโครงการที่ถูกพับไว้ (เก็บเป็น projectId)
+  const [collapsed, setCollapsed] = useState(() => new Set());
 
   // personal task modal
   const [showModal, setShowModal] = useState(false);
@@ -102,12 +111,10 @@ export default function MyWorkPage() {
   const [form, setForm] = useState(PERSONAL_BLANK);
   const [saving, setSaving] = useState(false);
 
-  // โหมดเลือกหลายรายการเพื่อลบ (ซ่อน checkbox ไว้จนกดเปิด — ให้ UX ตรงกับหน้า Timeline List)
+  // โหมดเลือกหลายรายการเพื่อลบ
   const [selectMode, setSelectMode] = useState(false);
-  // เลือกหลายรายการเพื่อลบ — งานส่วนตัว
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
-  // เลือกหลายรายการเพื่อลบ — งานโปรเจกต์
   const [selectedProjIds, setSelectedProjIds] = useState(() => new Set());
   const [bulkDeletingProj, setBulkDeletingProj] = useState(false);
 
@@ -136,25 +143,61 @@ export default function MyWorkPage() {
 
   const q = search.trim().toLowerCase();
 
-  // งานโปรเจกต์ที่ผ่านการค้นหา (ก่อนกรองสถานะ) — ใช้คำนวณการ์ดสรุป
+  // งานโปรเจกต์ที่ผ่านการค้นหา (ก่อนกรองสถานะ)
   const searchedProjectTasks = useMemo(
     () => projectTasks.filter((t) => !q || [t.name, projectsMap[t.projectId]?.code, projectsMap[t.projectId]?.name].some((v) => (v || "").toLowerCase().includes(q))),
     [projectTasks, projectsMap, q],
   );
 
-  // สรุปภาพรวม (อิงงานโปรเจกต์ใน scope ปัจจุบัน)
+  // ตัวเลือกตัวกรอง (อนุมานจากงานในขอบเขตปัจจุบัน)
+  const deptOptions = useMemo(
+    () => Array.from(new Set(projectTasks.map((t) => t.role).filter(Boolean))).sort((a, b) => a.localeCompare(b, "th")),
+    [projectTasks],
+  );
+  const assigneeOptions = useMemo(() => {
+    const ids = Array.from(new Set(projectTasks.map((t) => t.assigneeId).filter(Boolean)));
+    return ids.map((id) => ({ id, name: usersMap[id] || "—" })).sort((a, b) => a.name.localeCompare(b.name, "th"));
+  }, [projectTasks, usersMap]);
+
+  // กรองตามแผนก/ผู้รับผิดชอบ (ก่อนกรองสถานะ)
+  const scopedProjectTasks = useMemo(
+    () => searchedProjectTasks
+      .filter((t) => deptFilter === "all" || t.role === deptFilter)
+      .filter((t) => assigneeFilter === "all" || t.assigneeId === assigneeFilter),
+    [searchedProjectTasks, deptFilter, assigneeFilter],
+  );
+
+  // กรองแผนก/ผู้รับผิดชอบไม่ใช้กับงานส่วนตัว (ไม่มีฟิลด์เหล่านี้) → ซ่อนเมื่อมีตัวกรองนั้นอยู่
+  const filterByMeta = deptFilter !== "all" || assigneeFilter !== "all";
+
+  // สรุปภาพรวม (อิงงานโปรเจกต์ใน scope + ตัวกรองแผนก/ผู้รับผิดชอบปัจจุบัน)
   const stats = useMemo(() => ({
-    all: searchedProjectTasks.length,
-    progress: searchedProjectTasks.filter((t) => t.status === "In Progress").length,
-    urgent: searchedProjectTasks.filter(isUrgent).length,
-    done: searchedProjectTasks.filter((t) => t.status === "Completed").length,
-  }), [searchedProjectTasks]);
+    all: scopedProjectTasks.length,
+    progress: scopedProjectTasks.filter((t) => t.status === "In Progress").length,
+    urgent: scopedProjectTasks.filter(isUrgent).length,
+    done: scopedProjectTasks.filter((t) => t.status === "Completed").length,
+  }), [scopedProjectTasks]);
 
-  const comparator = useMemo(() => makeComparator(sortKey), [sortKey]);
+  const comparator = useMemo(() => makeComparator(sortKey, sortDir), [sortKey, sortDir]);
 
+  // คลิกหัวคอลัมน์: คอลัมน์เดิม → สลับทิศ, คอลัมน์ใหม่ → ตั้งค่า + เริ่มที่ asc
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+  const sortArrow = (key) => sortKey === key
+    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
+  const toggleCollapse = (pid) => setCollapsed((prev) => {
+    const next = new Set(prev);
+    if (next.has(pid)) next.delete(pid); else next.add(pid);
+    return next;
+  });
+
+  // ── งานโปรเจกต์จัดกลุ่มตามโครงการ ──
   const projGroups = useMemo(() => {
     const groups = new Map();
-    searchedProjectTasks
+    scopedProjectTasks
       .filter((t) => matchStatus(t, statusFilter))
       .forEach((t) => {
         if (!groups.has(t.projectId)) {
@@ -170,18 +213,18 @@ export default function MyWorkPage() {
       g.pct = g.tasks.length ? Math.round((g.done / g.tasks.length) * 100) : 0;
     });
     return arr;
-  }, [searchedProjectTasks, projectsMap, statusFilter, comparator]);
+  }, [scopedProjectTasks, projectsMap, statusFilter, comparator]);
 
   const visiblePersonal = useMemo(
-    () => personalTasks
+    () => (filterByMeta ? [] : personalTasks
       .filter((t) => (!q || (t.title || "").toLowerCase().includes(q)) && matchStatus(t, statusFilter))
-      .sort(comparator),
-    [personalTasks, q, statusFilter, comparator],
+      .sort(comparator)),
+    [filterByMeta, personalTasks, q, statusFilter, comparator],
   );
 
   const totalShown = projGroups.reduce((n, g) => n + g.tasks.length, 0);
 
-  // ตัดรายการที่เลือกออกเมื่อมันหายไปจากรายการที่มองเห็น (เปลี่ยนตัวกรอง/ค้นหา)
+  // ── เลือกหลายรายการเพื่อลบ ──
   useEffect(() => {
     setSelectedIds((prev) => {
       if (!prev.size) return prev;
@@ -194,7 +237,6 @@ export default function MyWorkPage() {
   const allVisibleSelected = visiblePersonal.length > 0 && visiblePersonal.every((t) => selectedIds.has(t.id));
   const toggleSelectAll = () => setSelectedIds(allVisibleSelected ? new Set() : new Set(visiblePersonal.map((t) => t.id)));
 
-  // งานโปรเจกต์ที่มองเห็น (แบนจากทุกกลุ่ม) — สำหรับเลือก/ลบหลายรายการ
   const visibleProjTasks = useMemo(() => projGroups.flatMap((g) => g.tasks), [projGroups]);
   useEffect(() => {
     setSelectedProjIds((prev) => {
@@ -217,7 +259,6 @@ export default function MyWorkPage() {
     if (!ids.length) return;
     if (!confirm(`ลบขั้นตอนงานโปรเจกต์ที่เลือก ${ids.length} รายการ ?\n(การลบมีผลกับแผนงานของโปรเจกต์ — ระบบจะเลื่อน timeline ให้)`)) return;
     setBulkDeletingProj(true);
-    // ลบทีละรายการตามลำดับ — แต่ละ DELETE คำนวณ timeline ใหม่ฝั่ง server, ยิงพร้อมกันจะชนกัน
     const deleted = new Set();
     for (const id of ids) {
       try {
@@ -228,7 +269,6 @@ export default function MyWorkPage() {
     setSelectedProjIds(new Set([...selectedProjIds].filter((id) => !deleted.has(id))));
     setBulkDeletingProj(false);
     if (deleted.size < ids.length) alert(`ลบสำเร็จ ${deleted.size}/${ids.length} รายการ (บางรายการอาจไม่มีสิทธิ์ลบ)`);
-    // โหลดใหม่เพื่อรับ start/finish ที่ถูกคำนวณใหม่หลังลบ
     if (deleted.size) loadWork(scope);
   };
 
@@ -251,36 +291,56 @@ export default function MyWorkPage() {
     } catch { alert("เกิดข้อผิดพลาด"); }
     finally { setSaving(false); }
   };
-  const cyclePersonalStatus = async (t) => {
-    const next = t.status === "Pending" ? "In Progress" : t.status === "In Progress" ? "Completed" : "Pending";
-    setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status: next } : x));
-    await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: next }) });
+  const setPersonalStatus = async (t, status) => {
+    if (status === t.status) return;
+    setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
+    await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
   };
-  // ผู้ใช้คนนี้อัปเดตสถานะขั้นตอนนี้ได้ไหม — ตรงกับ rule ฝั่ง server:
-  //   เป็นผู้รับผิดชอบ (assigneeId) หรือ staff ที่อยู่ฝ่ายเดียวกับขั้นตอน (role===department)
+  // ผู้ใช้คนนี้อัปเดตสถานะขั้นตอนนี้ได้ไหม — สะท้อน rule ฝั่ง server (PATCH project-tasks):
+  //   fullEdit:     superuser (admin/ae_supervisor) ทุกทีม · senior_ae/ac เฉพาะทีมตัวเอง
+  //   workflowEdit: เป็นผู้รับผิดชอบ (assigneeId) หรือ staff ฝ่ายเดียวกับขั้นตอน (role===department)
+  // กรณีขอบ (เช่น ae เจ้าของโปรเจกต์ที่ถูก assign ด้วยชื่อ) ปล่อยให้ server ตัดสิน — ลองแล้ว revert ถ้า 403
   const canUpdateTask = (t) => {
     if (!me) return false;
+    if (me.role === "admin" || me.role === "ae_supervisor") return true;
+    const proj = projectsMap[t.projectId];
+    if ((me.role === "senior_ae" || me.role === "ac") && me.team && proj && me.team === proj.team) return true;
     if (t.assigneeId === me.id) return true;
     return me.role === "staff" && !!me.department && t.role === me.department;
   };
 
-  // วนสถานะงานโปรเจกต์: รอ → ทำอยู่ → เสร็จ → ทำอยู่ (อัปเดตแบบ optimistic + กันชนกับ navigate)
-  const cycleProjectStatus = async (t) => {
-    const next = t.status === "Pending" ? "In Progress" : t.status === "In Progress" ? "Completed" : "In Progress";
-    setProjectTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, status: next } : x)));
+  // อัปเดตสถานะงานโปรเจกต์ (workflow-only) — แก้ได้เฉพาะสถานะ ไม่แตะแผน/วันที่/การมอบหมาย
+  // (การแก้แผนทำที่หน้า timeline ของโปรเจกต์เท่านั้น)
+  const setProjectStatus = async (t, status) => {
+    if (status === t.status) return;
+    setProjectTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, status } : x)));
     try {
       const res = await fetch(`/api/pm/project-tasks/${t.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: next }),
+        body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error();
-      loadWork(scope); // ดึงใหม่เพื่อรับ actualFinishDate/ความคืบหน้าที่ server คำนวณ
+      loadWork(scope);
     } catch {
       setProjectTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)));
       alert("อัปเดตสถานะไม่สำเร็จ");
     }
   };
+
+  // dropdown เลือกสถานะ — วิธีอัปเดตหลัก (แทนการคลิกวน pill เดิม)
+  const statusSelect = (t, onChange) => (
+    <select
+      value={t.status}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => { e.stopPropagation(); onChange(t, e.target.value); }}
+      className="premium-select"
+      title="เปลี่ยนสถานะ"
+      style={{ height: "30px", fontSize: "12px", width: "auto", padding: "0 26px 0 10px", fontWeight: 600, color: statusDot(t.status), borderColor: `color-mix(in srgb, ${statusDot(t.status)} 45%, var(--border))` }}
+    >
+      {Object.entries(TASK_STATUS_TH).map(([k, label]) => <option key={k} value={k} style={{ color: "var(--text)" }}>{label}</option>)}
+    </select>
+  );
 
   const deletePersonal = async (t) => {
     if (!confirm(`ลบงานส่วนตัว "${t.title}" ?`)) return;
@@ -288,14 +348,13 @@ export default function MyWorkPage() {
     if (res.ok) setPersonalTasks((prev) => prev.filter((x) => x.id !== t.id));
   };
 
-  // ── เลือกหลายรายการ ──
+  // ── เลือกหลายรายการ (งานส่วนตัว) ──
   const toggleSelect = (id) => setSelectedIds((prev) => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
   const clearSelection = () => setSelectedIds(new Set());
-  // ปิดโหมดเลือก แล้วล้างทุกการเลือก (ทั้งงานโปรเจกต์และงานส่วนตัว)
   const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()); setSelectedProjIds(new Set()); };
   const bulkDeletePersonal = async () => {
     const ids = [...selectedIds];
@@ -318,6 +377,10 @@ export default function MyWorkPage() {
     { key: "urgent", label: "ต้องรีบ", count: stats.urgent, color: "var(--red)", icon: <Flame size={18} /> },
     { key: "done", label: "เสร็จแล้ว", count: stats.done, color: "var(--green)", icon: <CheckCircle2 size={18} /> },
   ];
+
+  const emptyState = (text) => (
+    <div className="glass-panel" style={{ padding: "32px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>{text}</div>
+  );
 
   return (
     <div>
@@ -381,7 +444,7 @@ export default function MyWorkPage() {
         })}
       </div>
 
-      {/* ── แถบเครื่องมือ: ค้นหา + จัดเรียง + สถานะปัจจุบัน ── */}
+      {/* ── แถบเครื่องมือ: ค้นหา + กรอง + เรียง ── */}
       <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
         <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
           <Search size={18} color="var(--text-3)" />
@@ -392,13 +455,28 @@ export default function MyWorkPage() {
             กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: 700 }}>×</span>
           </button>
         )}
+        {deptOptions.length > 1 && (
+          <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="premium-select" style={{ height: "34px", fontSize: "12px", width: "auto" }} title="กรองตามแผนก">
+            <option value="all">ทุกแผนก</option>
+            {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
+        {scope !== "mine" && assigneeOptions.length > 1 && (
+          <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} className="premium-select" style={{ height: "34px", fontSize: "12px", width: "auto" }} title="กรองตามผู้รับผิดชอบ">
+            <option value="all">ทุกคน</option>
+            {assigneeOptions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>
             <ArrowUpDown size={14} /> เรียง
           </span>
-          <select value={sortKey} onChange={(e) => setSortKey(e.target.value)} className="premium-select" style={{ height: "34px", fontSize: "12px", width: "auto" }} title="เรียงลำดับตาม">
+          <select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ height: "34px", fontSize: "12px", width: "auto" }} title="เรียงลำดับตาม">
             {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
           </select>
+          <button onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} className="btn" style={{ height: "34px", width: "34px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }} title={sortDir === "asc" ? "น้อย → มาก (กดเพื่อสลับ)" : "มาก → น้อย (กดเพื่อสลับ)"}>
+            {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+          </button>
         </div>
       </div>
 
@@ -407,7 +485,7 @@ export default function MyWorkPage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "28px" }}>
           {/* ── งานโปรเจกต์ ── */}
-          <section>
+          <section style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
               <div style={{ fontSize: "15px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
                 <ListTodo size={17} color="var(--accent)" /> งานโปรเจกต์ ({SCOPE_TH[scope]})
@@ -423,11 +501,9 @@ export default function MyWorkPage() {
               )}
             </div>
             {projGroups.length === 0 ? (
-              <div className="glass-panel" style={{ padding: "32px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
-                {statusFilter !== "all"
-                  ? "ไม่มีงานตรงกับตัวกรองนี้"
-                  : scope === "mine" ? "ยังไม่มีงานโปรเจกต์ที่มอบหมายให้คุณ — ให้หัวหน้า/ผู้ดูแลมอบหมายงานในหน้าโปรเจกต์" : "ไม่มีงานในขอบเขตนี้"}
-              </div>
+              emptyState(statusFilter !== "all"
+                ? "ไม่มีงานตรงกับตัวกรองนี้"
+                : scope === "mine" ? "ยังไม่มีงานโปรเจกต์ที่มอบหมายให้คุณ — ให้หัวหน้า/ผู้ดูแลมอบหมายงานในหน้าโปรเจกต์" : "ไม่มีงานในขอบเขตนี้")
             ) : (
               <div className="premium-glass-table table-responsive">
                 <table className="premium-table">
@@ -438,29 +514,37 @@ export default function MyWorkPage() {
                           <input type="checkbox" checked={allProjSelected} onChange={toggleProjSelectAll} title="เลือกทั้งหมด" style={{ width: "15px", height: "15px", cursor: "pointer", accentColor: "var(--accent)" }} />
                         </th>
                       )}
-                      <th>สถานะ</th><th>ชื่องาน</th><th>แผนก</th>{scope !== "mine" && <th>ผู้รับผิดชอบ</th>}<th>กำหนดเสร็จ</th>
+                      <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>สถานะ {sortArrow("status")}</span></th>
+                      <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>ชื่องาน {sortArrow("name")}</span></th>
+                      <th onClick={() => handleSort("role")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>แผนก {sortArrow("role")}</span></th>
+                      {scope !== "mine" && <th>ผู้รับผิดชอบ</th>}
+                      <th onClick={() => handleSort("due")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>กำหนดเสร็จ {sortArrow("due")}</span></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {projGroups.map((g) => (
+                    {projGroups.map((g) => {
+                      const isCollapsed = collapsed.has(g.projectId);
+                      return (
                       <Fragment key={g.projectId}>
-                        <tr onClick={() => router.push(`/pm/projects/${g.code || g.projectId}`)} style={{ cursor: "pointer" }}>
+                        <tr onClick={() => toggleCollapse(g.projectId)} style={{ cursor: "pointer" }} title={isCollapsed ? "คลิกเพื่อกางกลุ่ม" : "คลิกเพื่อพับกลุ่ม"}>
                           <td colSpan={(scope !== "mine" ? 5 : 4) + (selectMode ? 1 : 0)} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, fontSize: "13px" }}>
+                              {isCollapsed ? <ChevronRight size={15} color="var(--text-3)" style={{ flexShrink: 0 }} /> : <ChevronDown size={15} color="var(--text-3)" style={{ flexShrink: 0 }} />}
                               <span className="font-mono" style={{ fontSize: "11px", background: "var(--bg)", padding: "2px 8px", borderRadius: "4px", border: "1px solid var(--border)" }}>{g.code}</span>
                               <span>{g.name}</span>
-                              {/* progress ต่อโปรเจกต์ */}
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
                                 <div style={{ width: "70px", height: "5px", borderRadius: "99px", background: "var(--border)", overflow: "hidden" }}>
                                   <div style={{ width: `${g.pct}%`, height: "100%", background: g.pct === 100 ? "var(--green)" : "var(--accent)" }} />
                                 </div>
                                 <span style={{ fontSize: "11px", color: "var(--text-3)", fontWeight: 600, minWidth: "58px" }}>{g.done}/{g.tasks.length} · {g.pct}%</span>
-                                <ChevronRight size={14} color="var(--text-3)" />
+                                <button onClick={(e) => { e.stopPropagation(); router.push(`/pm/projects/${g.code || g.projectId}`); }} title="เปิดหน้าโปรเจกต์" style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "3px", display: "flex", alignItems: "center" }}>
+                                  <ExternalLink size={14} />
+                                </button>
                               </div>
                             </div>
                           </td>
                         </tr>
-                        {g.tasks.map((t) => {
+                        {!isCollapsed && g.tasks.map((t) => {
                           const u = getUrgencyInfo(t);
                           const selected = selectedProjIds.has(t.id);
                           return (
@@ -470,14 +554,14 @@ export default function MyWorkPage() {
                                   <input type="checkbox" checked={selected} onChange={() => toggleProjSelect(t.id)} title="เลือกเพื่อลบ" style={{ width: "15px", height: "15px", cursor: "pointer", accentColor: "var(--accent)" }} />
                                 </td>
                               )}
-                              <td onClick={(e) => { if (canUpdateTask(t)) { e.stopPropagation(); cycleProjectStatus(t); } }}>
-                                <span
-                                  className={`status-pill ${t.status === "Completed" ? "success" : ""}`}
-                                  title={canUpdateTask(t) ? "คลิกเพื่อเปลี่ยนสถานะ (รอ → ทำอยู่ → เสร็จ)" : undefined}
-                                  style={canUpdateTask(t) ? { cursor: "pointer" } : undefined}
-                                >
-                                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}
-                                </span>
+                              <td onClick={(e) => e.stopPropagation()}>
+                                {canUpdateTask(t) ? (
+                                  statusSelect(t, setProjectStatus)
+                                ) : (
+                                  <span className={`status-pill ${t.status === "Completed" ? "success" : ""}`} title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์">
+                                    <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}
+                                  </span>
+                                )}
                               </td>
                               <td style={{ fontWeight: 500 }}>{t.name}</td>
                               <td><span style={{ fontSize: "11px", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px", fontWeight: 600 }}>{t.role}</span></td>
@@ -490,7 +574,8 @@ export default function MyWorkPage() {
                           );
                         })}
                       </Fragment>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -498,12 +583,16 @@ export default function MyWorkPage() {
           </section>
 
           {/* ── งานส่วนตัว ── */}
-          <section>
+          <section style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
               <div style={{ fontSize: "15px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
                 <User size={17} color="var(--purple)" /> งานส่วนตัว
                 <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{visiblePersonal.length} งาน · เห็นเฉพาะคุณ</span>
               </div>
+              {/* ปุ่มเพิ่มงานส่วนตัวซ้ำตรงหัวข้อ — กดง่ายขึ้นเวลาเลื่อนอยู่ส่วนนี้ */}
+              <button onClick={openAdd} className="btn flex items-center gap-1.5" style={{ height: "32px", fontSize: "12px", padding: "0 12px" }}>
+                <Plus size={14} /> เพิ่มงานส่วนตัว
+              </button>
               {selectMode && visiblePersonal.length > 0 && (
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "auto" }}>
                   <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", fontWeight: 600, cursor: "pointer" }}>
@@ -522,9 +611,10 @@ export default function MyWorkPage() {
               )}
             </div>
             {visiblePersonal.length === 0 ? (
-              <div className="glass-panel" style={{ padding: "32px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
-                {statusFilter !== "all" ? "ไม่มีงานส่วนตัวตรงกับตัวกรองนี้" : "ยังไม่มีงานส่วนตัว — กด “เพิ่มงานส่วนตัว” เพื่อสร้าง to-do ของคุณ"}
-              </div>
+              <button onClick={openAdd} className="glass-panel" style={{ width: "100%", padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px", cursor: "pointer", border: "1px dashed var(--border)", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                <Plus size={20} />
+                {statusFilter !== "all" ? "ไม่มีงานส่วนตัวตรงกับตัวกรองนี้" : "ยังไม่มีงานส่วนตัว — กดเพื่อสร้าง to-do ของคุณ (เช่น โทรตามลูกค้า, เตรียมเอกสาร)"}
+              </button>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "12px" }}>
                 {visiblePersonal.map((t) => {
@@ -538,9 +628,9 @@ export default function MyWorkPage() {
                         {selectMode && (
                           <input type="checkbox" checked={selected} onChange={() => toggleSelect(t.id)} title="เลือกเพื่อลบ" style={{ width: "16px", height: "16px", marginTop: "3px", cursor: "pointer", flexShrink: 0, accentColor: "var(--accent)" }} />
                         )}
-                        <button onClick={() => cyclePersonalStatus(t)} title="เปลี่ยนสถานะ" style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", flexShrink: 0, color: statusDot(t.status) }}>
-                          {done ? <CheckCircle2 size={18} /> : t.status === "In Progress" ? <Clock size={18} /> : <CircleDashed size={18} />}
-                        </button>
+                        <span title={TASK_STATUS_TH[t.status]} style={{ padding: "2px", flexShrink: 0, color: statusDot(t.status), display: "flex" }}>
+                          {statusIcon(t.status)}
+                        </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: "14px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)" }}>{t.title}</div>
                           {t.note && <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{t.note}</div>}
@@ -551,7 +641,7 @@ export default function MyWorkPage() {
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "11px", flexWrap: "wrap" }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--text-3)" }}>{TASK_STATUS_TH[t.status]}</span>
+                        {statusSelect(t, setPersonalStatus)}
                         {(t.dueDate) && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
                         {proj && <span onClick={() => router.push(`/pm/projects/${proj.code || t.projectId}`)} style={{ cursor: "pointer", fontSize: "10px", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }} className="font-mono">{proj.code}</span>}
                       </div>

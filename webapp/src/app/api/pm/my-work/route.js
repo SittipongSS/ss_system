@@ -79,7 +79,7 @@ export async function GET(request) {
   return Response.json({
     scope,
     allowedScopes: allowed,
-    me: { id: user.id, name: user.name, role: user.role, department: normalizeDepartment(user.department) },
+    me: { id: user.id, name: user.name, role: user.role, team: user.team ?? null, department: normalizeDepartment(user.department) },
     projectTasks,
     personalTasks: personalTasks || [],
     projects,

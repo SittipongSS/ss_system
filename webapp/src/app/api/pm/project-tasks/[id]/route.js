@@ -12,7 +12,7 @@ const SCHEDULE_FIELDS = ['startDate', 'durationDays', 'predecessors'];
 
 const EDITABLE = [
   'name', 'role', 'assignee', 'assigneeId', 'phase', 'isMilestone', 'durationDays',
-  'startDate', 'finishDate', 'actualFinishDate', 'status',
+  'startDate', 'finishDate', 'actualFinishDate', 'dueDate', 'status',
   'predecessors', 'cellsOverride', 'stepOrder',
   'note', 'showNoteInPrint',
 ];
@@ -55,7 +55,7 @@ export async function PATCH(request, { params }) {
   const updates = {};
   for (const k of editable) {
     if (body[k] !== undefined) {
-      if ((k === 'startDate' || k === 'finishDate' || k === 'actualFinishDate') && body[k] === "") updates[k] = null;
+      if ((k === 'startDate' || k === 'finishDate' || k === 'actualFinishDate' || k === 'dueDate') && body[k] === "") updates[k] = null;
       else updates[k] = body[k];
     }
   }
@@ -71,7 +71,7 @@ export async function PATCH(request, { params }) {
   // ── origin tracking (migration 0022): mark "แก้ไขโดยผู้ใช้" เมื่อแก้ field สำคัญของแผน
   // ไม่นับ status / actualFinishDate (workflow) และไม่นับการเลื่อน downstream อัตโนมัติ
   // (อันนั้นเขียนผ่าน .update() แยกด้านล่าง ไม่ผ่าน path นี้)
-  const USER_EDIT_FIELDS = ['name', 'role', 'assignee', 'assigneeId', 'phase', 'isMilestone', 'durationDays', 'startDate', 'finishDate', 'predecessors', 'note', 'showNoteInPrint'];
+  const USER_EDIT_FIELDS = ['name', 'role', 'assignee', 'assigneeId', 'phase', 'isMilestone', 'durationDays', 'startDate', 'finishDate', 'dueDate', 'predecessors', 'note', 'showNoteInPrint'];
   const isUserEdit = USER_EDIT_FIELDS.some((k) =>
     k in updates && JSON.stringify(updates[k] ?? null) !== JSON.stringify(task[k] ?? null)
   );

@@ -8,6 +8,7 @@
 import { useState, useMemo, useEffect, useRef, useReducer, useLayoutEffect } from "react";
 import { Flag, ChevronDown, ChevronRight, Minus, Plus, RotateCcw, Loader2 } from "lucide-react";
 import { isBusinessDay, toLocalISODate, countBusinessDays } from "@/lib/pm/dateHelpers";
+import { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 
 const DAY_MS = 86400000;
 const ROW_H = 34;       // ความสูงแถวงาน (ให้บาร์ align กับช่องซ้าย)
@@ -179,6 +180,14 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
 
   const [users, setUsers] = useState([]);
   const tasks = project.tasks || [];
+
+  // popover ตั้ง predecessors เมื่อคลิกบาร์ (ไม่ได้ลาก) — { task, x, y }
+  const [depPopover, setDepPopover] = useState(null);
+  // ติดเลขลำดับให้ทุกขั้น (เรียงตาม stepOrder) เพื่อให้ตัวเลือกใน popover อ่านง่าย
+  const numberedTasks = useMemo(() => {
+    const ordered = [...tasks].sort((a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0));
+    return ordered.map((t, i) => ({ ...t, displayNumber: i + 1 }));
+  }, [tasks]);
 
   useEffect(() => {
     fetch("/api/pm/assignable-users").then(r => r.ok ? r.json() : []).then(d => setUsers(d || [])).catch(() => {});
@@ -529,6 +538,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
                   onToggleCollapse={() => togglePhase(group.phase)}
                   canEdit={canEdit}
                   onCommitTask={(taskId, updates) => onUpdateTask(taskId, updates)}
+                  onPickDeps={(task, anchor) => setDepPopover({ task, ...anchor })}
                 />
               ))}
             </tbody>
@@ -541,6 +551,16 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
           </div>
         </div>
       </div>
+
+      {depPopover && (
+        <PredecessorPopover
+          task={depPopover.task}
+          tasks={numberedTasks}
+          anchor={{ x: depPopover.x, y: depPopover.y }}
+          onClose={() => setDepPopover(null)}
+          onSave={(predecessors) => { onUpdateTask(depPopover.task.id, { predecessors }); setDepPopover(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -590,7 +610,7 @@ function TimelineCell({ children, pxPerDay, timelineWidth, gridBg, todayIdx, due
   );
 }
 
-function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, gridBg, todayIdx, dueIdx, dueColor, freezeLeft, collapsed, onToggleCollapse, canEdit, onCommitTask }) {
+function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, gridBg, todayIdx, dueIdx, dueColor, freezeLeft, collapsed, onToggleCollapse, canEdit, onCommitTask, onPickDeps }) {
   const phaseBg = "color-mix(in srgb, var(--accent) 8%, var(--panel))";
   return (
     <>
@@ -676,6 +696,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
               pxPerDay={pxPerDay}
               canEdit={canEdit}
               onCommit={onCommitTask}
+              onPickDeps={onPickDeps}
             />
           </TimelineCell>
         </tr>
@@ -685,7 +706,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
 }
 
 // ── บาร์ลากได้แบบ Monday/ClickUp ──
-function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit }) {
+function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, onPickDeps }) {
   const dragRef = useRef(null);
   const [, force] = useReducer((x) => x + 1, 0);
   // pending = ตำแหน่ง optimistic หลังปล่อยเมาส์ (เก็บเป็น ISO) คงไว้จนข้อมูลจริงจาก server กลับมา
@@ -734,7 +755,7 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit })
       else if (cur.mode === "right") { cur.curF = Math.max(cur.origF + dd, cur.origS); }
       force();
     };
-    const onUp = () => {
+    const onUp = (ev) => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       const cur = dragRef.current;
@@ -747,6 +768,10 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit })
         setPending({ s: isoFromIndex(rangeStartMs, cur.curS), f: isoFromIndex(rangeStartMs, cur.curF) });
         commit(cur);
       } else {
+        // คลิกบนตัวบาร์ (ไม่ได้ลาก) → เปิด popover ตั้ง predecessors ที่ตำแหน่งเมาส์
+        if (cur && !cur.moved && cur.mode === "move" && canEdit && onPickDeps) {
+          onPickDeps(task, { x: ev.clientX, y: ev.clientY });
+        }
         force();
       }
     };
@@ -779,7 +804,7 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit })
         <div
           data-bar-id={task.id}
           onPointerDown={begin("move")}
-          title={`${task.name}\n${fmtDate(task.startDate)} (จุดสำคัญ)${kind === "custom" ? " · เพิ่มใหม่" : kind === "edited" ? " · แก้ไขแล้ว" : ""}`}
+          title={`${task.name}\n${fmtDate(task.startDate)} (จุดสำคัญ)${kind === "custom" ? " · เพิ่มใหม่" : kind === "edited" ? " · แก้ไขแล้ว" : ""}${canEdit ? "\nคลิกเพื่อตั้งงานที่ต้องรอก่อน · ลากเพื่อย้าย" : ""}`}
           style={{
             position: "absolute", top: (ROW_H - size) / 2, left: cx - size / 2, width: size, height: size,
             background: "var(--amber)", transform: "rotate(45deg)", borderRadius: "3px",
@@ -818,7 +843,7 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit })
     <div
       data-bar-id={task.id}
       onPointerDown={begin("move")}
-      title={`${task.name}\n${fmtDate(task.startDate)} – ${fmtDate(task.finishDate)} · ${task.durationDays} วันทำการ${originNote}`}
+      title={`${task.name}\n${fmtDate(task.startDate)} – ${fmtDate(task.finishDate)} · ${task.durationDays} วันทำการ${originNote}${canEdit ? "\nคลิกเพื่อตั้งงานที่ต้องรอก่อน · ลากเพื่อย้าย · ลากขอบเพื่อยืด-หด" : ""}`}
       style={{
         position: "absolute", top: (ROW_H - barH) / 2, left, width, height: barH,
         background: isPending ? "var(--panel-2)" : fill,

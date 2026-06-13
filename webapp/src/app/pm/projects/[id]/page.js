@@ -14,6 +14,7 @@ import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
+import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import { setHolidays, countBusinessDays } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 
@@ -206,10 +207,10 @@ export default function ProjectDetailPage() {
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [addingProduct, setAddingProduct] = useState("");
-  const [view, setView] = useState("list"); // list | table | document
+  const [view, setView] = useState("table"); // list | table | document
   const [showAddTask, setShowAddTask] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
-  const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false });
+  const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false });
   const [collapsedPhases, setCollapsedPhases] = useState(() => new Set());
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -221,6 +222,7 @@ export default function ProjectDetailPage() {
   const [tableSort, setTableSort] = useState("step"); // Table view: step | name | status | due
   const [editTask, setEditTask] = useState(null); // ขั้นตอนที่กำลังแก้ผ่าน modal (ใช้จาก Table view)
   const [showEditTask, setShowEditTask] = useState(false);
+  const [depPopover, setDepPopover] = useState(null); // popover แก้ predecessors ในตาราง — { task, x, y }
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -371,7 +373,7 @@ export default function ProjectDetailPage() {
       setShowAddTask(false);
       setInsertAfterId(null);
       setInsertBeforeId(null);
-      setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false });
+      setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false });
       load();
     } else alert((await res.json()).error || "เพิ่มขั้นตอนไม่สำเร็จ");
   };
@@ -394,10 +396,16 @@ export default function ProjectDetailPage() {
     const ids = [...selectedTaskIds];
     if (ids.length === 0) return;
     if (!confirm(`ต้องการลบ ${ids.length} ขั้นตอนที่เลือกใช่หรือไม่?`)) return;
-    const results = await Promise.all(
-      ids.map((id) => fetch(`/api/pm/project-tasks/${id}`, { method: "DELETE" }).then((r) => r.ok ? id : null).catch(() => null))
-    );
-    const deleted = new Set(results.filter(Boolean));
+    // ลบทีละตัว (ไม่ใช่ Promise.all) — DELETE handler ทำ read-clean-recalc-write บนชุด
+    // งานทั้งโปรเจกต์ ถ้ายิงพร้อมกันจะอ่าน snapshot เดียวกันแล้วเขียนทับกัน (last-writer-wins)
+    // ทำให้ predecessors ที่ชี้ไปงานที่ถูกลบพร้อมกันค้างเป็น dangling + วัน timeline เพี้ยน.
+    const deleted = new Set();
+    for (const id of ids) {
+      try {
+        const res = await fetch(`/api/pm/project-tasks/${id}`, { method: "DELETE" });
+        if (res.ok) deleted.add(id);
+      } catch { /* ข้ามรายการที่ลบไม่สำเร็จ */ }
+    }
     if (deleted.size > 0) setData((d) => ({ ...d, tasks: d.tasks.filter((t) => !deleted.has(t.id)) }));
     if (deleted.size < ids.length) alert(`ลบสำเร็จ ${deleted.size} จาก ${ids.length} ขั้นตอน`);
     exitSelectMode();
@@ -415,6 +423,7 @@ export default function ProjectDetailPage() {
       name: task.name, role: task.role || "SA", assignee: task.assignee || "",
       assigneeId: task.assigneeId || "",
       durationDays: task.durationDays ?? 1, startDate: task.startDate || "",
+      dueDate: task.dueDate || "",
       isMilestone: !!task.isMilestone, phase: task.phase || "",
       predecessors: task.predecessors || [],
       note: task.note || "", showNoteInPrint: !!task.showNoteInPrint,
@@ -426,6 +435,7 @@ export default function ProjectDetailPage() {
       assigneeId: editForm.assigneeId || null,
       durationDays: Number(editForm.durationDays) || 1,
       startDate: editForm.startDate || null,
+      dueDate: editForm.dueDate || null,
       isMilestone: editForm.isMilestone, phase: editForm.phase || null,
       predecessors: editForm.predecessors || [],
       note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
@@ -440,6 +450,7 @@ export default function ProjectDetailPage() {
       name: task.name, role: task.role || "SA", assignee: task.assignee || "",
       assigneeId: task.assigneeId || "",
       durationDays: task.durationDays ?? 1, startDate: task.startDate || "",
+      dueDate: task.dueDate || "",
       isMilestone: !!task.isMilestone, phase: task.phase || "",
       predecessors: task.predecessors || [],
       note: task.note || "", showNoteInPrint: !!task.showNoteInPrint,
@@ -455,6 +466,7 @@ export default function ProjectDetailPage() {
       assigneeId: editForm.assigneeId || null,
       durationDays: Number(editForm.durationDays) || 1,
       startDate: editForm.startDate || null,
+      dueDate: editForm.dueDate || null,
       isMilestone: editForm.isMilestone, phase: editForm.phase || null,
       predecessors: editForm.predecessors || [],
       note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
@@ -498,6 +510,12 @@ export default function ProjectDetailPage() {
       };
     });
   }, [tasks]);
+
+  // id → เลขลำดับ (สำหรับชิป predecessor ในตาราง)
+  const taskNumById = useMemo(
+    () => Object.fromEntries(processedTasks.map((t) => [t.id, t.displayNumber])),
+    [processedTasks],
+  );
 
   // Table view: filter -> group by phase -> sort within group. Must stay above
   // the early returns below to keep hook order stable.
@@ -763,7 +781,7 @@ export default function ProjectDetailPage() {
                 </select>
               </div>
               {canEdit && (
-                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
                   <Plus size={14} /> เพิ่มขั้นตอน
                 </button>
               )}
@@ -786,6 +804,7 @@ export default function ProjectDetailPage() {
                     <th style={{ whiteSpace: "nowrap" }}>เริ่ม</th>
                     <th style={{ whiteSpace: "nowrap" }}>เสร็จ</th>
                     <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>วัน</th>
+                    <th style={{ whiteSpace: "nowrap" }}>ขึ้นกับ</th>
                     {canEdit && <th style={{ width: "70px", textAlign: "center" }}>จัดการ</th>}
                   </tr>
                 </thead>
@@ -794,7 +813,7 @@ export default function ProjectDetailPage() {
                     <Fragment key={g.key}>
                       {g.phase && (
                         <tr>
-                          <td colSpan={canEdit ? 9 : 8} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
+                          <td colSpan={canEdit ? 10 : 9} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13px" }}>
                               <span style={{ width: "9px", height: "9px", borderRadius: "3px", background: phaseColorMap[g.phase] || "var(--accent)" }} />
                               {g.num ? `${g.num}. ` : ""}{g.phase}
@@ -831,6 +850,27 @@ export default function ProjectDetailPage() {
                             <td style={{ fontSize: "12.5px", whiteSpace: "nowrap" }}>{formatDate(task.startDate)}</td>
                             <td style={{ fontSize: "12.5px", whiteSpace: "nowrap" }}>{formatDate(task.finishDate)}</td>
                             <td style={{ textAlign: "center", fontSize: "12.5px" }}>{task.durationDays}</td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              {(() => {
+                                const preds = (Array.isArray(task.predecessors) ? task.predecessors : []).filter((p) => taskNumById[p]);
+                                const chips = (
+                                  <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "3px", alignItems: "center" }}>
+                                    {preds.map((p) => (
+                                      <span key={p} style={{ fontSize: "11px", fontWeight: 600, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)", borderRadius: "10px", padding: "1px 7px" }}>{taskNumById[p]}</span>
+                                    ))}
+                                  </span>
+                                );
+                                if (!canEdit) return preds.length ? chips : <span style={{ color: "var(--text-3)" }}>—</span>;
+                                return (
+                                  <button
+                                    onClick={(e) => setDepPopover({ task, x: e.clientX, y: e.clientY })}
+                                    title="ตั้งงานที่ต้องรอให้เสร็จก่อน"
+                                    style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "none", border: "none", cursor: "pointer", padding: "2px 4px", fontSize: "12px", color: preds.length ? "var(--text)" : "var(--text-3)" }}>
+                                    {preds.length ? chips : <span style={{ display: "inline-flex", alignItems: "center", gap: "3px" }}><Plus size={12} /> เพิ่ม</span>}
+                                  </button>
+                                );
+                              })()}
+                            </td>
                             {canEdit && (
                               <td onClick={(e) => e.stopPropagation()}>
                                 <div style={{ display: "flex", gap: "4px", justifyContent: "center" }}>
@@ -867,7 +907,7 @@ export default function ProjectDetailPage() {
                     </button>
                   )
                 )}
-                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
+                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "12px", borderRadius: "6px" }}>
                   <Plus size={14} /> เพิ่มขั้นตอน
                 </button>
               </div>
@@ -988,7 +1028,7 @@ export default function ProjectDetailPage() {
                   <div style={{ display: "flex", flexDirection: "column", paddingLeft: task.phase ? "12px" : "0" }}>
                     {isFirstOfPhase && canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "0 0 4px", zIndex: 2 }}>
-                        <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอนก่อนหัวแถวแรกของเฟสนี้">
+                        <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอนก่อนหัวแถวแรกของเฟสนี้">
                           <PlusCircle size={14} />
                         </button>
                       </div>
@@ -1035,6 +1075,10 @@ export default function ProjectDetailPage() {
                                 <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>จำนวนวัน:</label>
                                 <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => setEditForm({ ...editForm, durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการของขั้นตอนนี้" />
                               </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>กำหนดส่ง:</label>
+                                <input type="date" className="premium-input" value={editForm.dueDate || ""} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} style={{ width: "150px" }} title="วันครบกำหนด/เป้าหมายของขั้นตอนนี้ (ไม่กระทบการคำนวณ timeline)" />
+                              </div>
                               <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
                                 <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm({ ...editForm, isMilestone: e.target.checked })} style={{ accentColor: "var(--amber)", cursor: "pointer" }} />
                                 ตั้งเป็น Milestone
@@ -1052,27 +1096,12 @@ export default function ProjectDetailPage() {
 
                             <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
                               <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>งานที่ต้องรอให้เสร็จก่อน (Predecessors):</label>
-                              <div style={{ maxHeight: "120px", overflowY: "auto", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                                {processedTasks.filter(t => t.id !== task.id).length === 0 ? (
-                                  <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center" }}>ไม่มีขั้นตอนงานอื่น</div>
-                                ) : processedTasks.filter(t => t.id !== task.id).map((t) => (
-                                  <label key={t.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
-                                    <input 
-                                      type="checkbox" 
-                                      checked={editForm.predecessors?.includes(t.id) || false}
-                                      onChange={(e) => {
-                                        const checked = e.target.checked;
-                                        setEditForm(f => ({
-                                          ...f,
-                                          predecessors: checked ? [...(f.predecessors || []), t.id] : (f.predecessors || []).filter(id => id !== t.id)
-                                        }));
-                                      }}
-                                      style={{ accentColor: "var(--accent)" }}
-                                    />
-                                    <span>{t.displayNumber}. {t.name}</span>
-                                  </label>
-                                ))}
-                              </div>
+                              <PredecessorPicker
+                                tasks={processedTasks}
+                                selfId={task.id}
+                                value={editForm.predecessors}
+                                onChange={(predecessors) => setEditForm((f) => ({ ...f, predecessors }))}
+                              />
                             </div>
 
                             <div style={{ fontSize: "11px", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "4px" }}>
@@ -1111,6 +1140,14 @@ export default function ProjectDetailPage() {
                             <div style={{ display: "flex", gap: "16px", fontSize: "12px", color: "var(--text-3)", marginTop: "8px", flexWrap: "wrap" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Clock size={14} /> {task.durationDays} วันทำการ</div>
                               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Calendar size={14} /> {formatDate(task.startDate)} - {formatDate(task.finishDate)}</div>
+                              {task.dueDate && (() => {
+                                const late = task.finishDate && task.finishDate > task.dueDate;
+                                return (
+                                  <div title={late ? "วันเสร็จที่คำนวณได้เลยกำหนดส่ง" : "กำหนดส่ง (เป้าหมาย)"} style={{ display: "flex", alignItems: "center", gap: "4px", color: late ? "var(--red)" : "var(--text-3)", fontWeight: late ? 600 : 400 }}>
+                                    <Flag size={13} /> กำหนดส่ง {formatDate(task.dueDate)}
+                                  </div>
+                                );
+                              })()}
                             </div>
                             {(() => {
                               const v = getVariance(task);
@@ -1141,7 +1178,7 @@ export default function ProjectDetailPage() {
 
                     {canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "4px 0", zIndex: 2 }}>
-                        <button onClick={() => { setInsertBeforeId(null); setInsertAfterId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [task.id], assignee: "", startDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
+                        <button onClick={() => { setInsertBeforeId(null); setInsertAfterId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [task.id], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
                           <PlusCircle size={14} />
                         </button>
                       </div>
@@ -1230,6 +1267,11 @@ export default function ProjectDetailPage() {
             </div>
 
             <div className="form-group">
+              <label>กำหนดส่ง <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เป้าหมาย — ไม่กระทบการคำนวณ timeline)</span></label>
+              <input type="date" value={taskForm.dueDate} onChange={(e) => setTaskForm((f) => ({ ...f, dueDate: e.target.value }))} className="premium-input w-full" />
+            </div>
+
+            <div className="form-group">
               <label>เฟส (Phase)</label>
               <input list="phase-list" value={taskForm.phase} onChange={(e) => setTaskForm((f) => ({ ...f, phase: e.target.value }))} className="premium-input w-full" placeholder="เลือกหรือพิมพ์เฟสใหม่" />
               <datalist id="phase-list">{formPhases.map((ph) => <option key={ph} value={ph} />)}</datalist>
@@ -1251,27 +1293,12 @@ export default function ProjectDetailPage() {
 
             <div className="form-group border-t border-[var(--border)] pt-[14px]">
               <label>งานที่ต้องรอให้เสร็จก่อน (Predecessors) <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เลือกได้หลายงาน)</span></label>
-              <div style={{ maxHeight: "150px", overflowY: "auto", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                {tasks.length === 0 ? (
-                  <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center" }}>ยังไม่มีขั้นตอนงานในโปรเจกต์</div>
-                ) : tasks.map((t, i) => (
-                  <label key={t.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer" }}>
-                    <input 
-                      type="checkbox" 
-                      checked={taskForm.predecessors?.includes(t.id) || false}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setTaskForm(f => ({
-                          ...f,
-                          predecessors: checked ? [...(f.predecessors || []), t.id] : (f.predecessors || []).filter(id => id !== t.id)
-                        }));
-                      }}
-                      style={{ accentColor: "var(--accent)" }}
-                    />
-                    <span>{i + 1}. {t.name}</span>
-                  </label>
-                ))}
-              </div>
+              <PredecessorPicker
+                tasks={processedTasks}
+                value={taskForm.predecessors}
+                onChange={(predecessors) => setTaskForm((f) => ({ ...f, predecessors }))}
+                maxHeight={150}
+              />
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
@@ -1304,6 +1331,10 @@ export default function ProjectDetailPage() {
                 <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>จำนวนวัน:</label>
                 <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => setEditForm({ ...editForm, durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการของขั้นตอนนี้" />
               </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>กำหนดส่ง:</label>
+                <input type="date" className="premium-input" value={editForm.dueDate || ""} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} style={{ width: "150px" }} title="วันครบกำหนด/เป้าหมายของขั้นตอนนี้ (ไม่กระทบการคำนวณ timeline)" />
+              </div>
               <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
                 <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm({ ...editForm, isMilestone: e.target.checked })} style={{ accentColor: "var(--amber)", cursor: "pointer" }} />
                 ตั้งเป็น Milestone
@@ -1319,24 +1350,12 @@ export default function ProjectDetailPage() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
               <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>งานที่ต้องรอให้เสร็จก่อน (Predecessors):</label>
-              <div style={{ maxHeight: "120px", overflowY: "auto", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                {processedTasks.filter(t => t.id !== editTask.id).length === 0 ? (
-                  <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center" }}>ไม่มีขั้นตอนงานอื่น</div>
-                ) : processedTasks.filter(t => t.id !== editTask.id).map((t) => (
-                  <label key={t.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={editForm.predecessors?.includes(t.id) || false}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setEditForm(f => ({ ...f, predecessors: checked ? [...(f.predecessors || []), t.id] : (f.predecessors || []).filter(id => id !== t.id) }));
-                      }}
-                      style={{ accentColor: "var(--accent)" }}
-                    />
-                    <span>{t.displayNumber}. {t.name}</span>
-                  </label>
-                ))}
-              </div>
+              <PredecessorPicker
+                tasks={processedTasks}
+                selfId={editTask.id}
+                value={editForm.predecessors}
+                onChange={(predecessors) => setEditForm((f) => ({ ...f, predecessors }))}
+              />
             </div>
             <div style={{ fontSize: "11px", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "4px" }}>
               <Calendar size={11} /> ระบบคำนวณวันเสร็จจากวันเริ่ม + จำนวนวันทำการ
@@ -1365,6 +1384,16 @@ export default function ProjectDetailPage() {
           categories={categories}
           allProducts={allProducts}
           users={users}
+        />
+      )}
+
+      {depPopover && (
+        <PredecessorPopover
+          task={depPopover.task}
+          tasks={processedTasks}
+          anchor={{ x: depPopover.x, y: depPopover.y }}
+          onClose={() => setDepPopover(null)}
+          onSave={(predecessors) => { updateTask(depPopover.task.id, { predecessors }); setDepPopover(null); }}
         />
       )}
     </div>

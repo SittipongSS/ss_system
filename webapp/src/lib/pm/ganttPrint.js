@@ -31,8 +31,8 @@ const esc = (s) => String(s ?? '')
 
 const STATUS_FILL = {
   Completed: '#3d6fa3',
-  'In Progress': '#c96e30',
-  Pending: '#b8a07a',
+  'In Progress': '#c17a52',
+  Pending: '#8a9bb3',
 };
 const fillOf = (t) => STATUS_FILL[t.status] || STATUS_FILL.Pending;
 
@@ -119,14 +119,14 @@ export function buildGanttPrintHTML(project) {
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #ece6da; color: #221d16;
+  body { background: #ffffff; color: #21385e;
          font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif;
          -webkit-font-smoothing: antialiased; font-size: 12px; }
 
   .toolbar { max-width: 297mm; margin: 0 auto; padding: 16px 12px 0;
              display: flex; justify-content: space-between; align-items: center; }
   .toolbar h1 { font-size: 16px; font-weight: 600; }
-  .btn-print { background: #1a1410; color: #fff; border: none; font: inherit; font-weight: 600;
+  .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600;
                padding: 8px 18px; border-radius: 8px; cursor: pointer; }
   .btn-print:hover { background: #2e2620; }
 
@@ -134,15 +134,15 @@ export function buildGanttPrintHTML(project) {
            box-shadow: 0 8px 32px rgba(40,33,24,.12); padding: 8mm 9mm; }
 
   .doc-top { display: flex; justify-content: space-between; align-items: flex-start;
-             border-bottom: 2px solid #c96e30; padding-bottom: 7px; margin-bottom: 7px; }
+             border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px; }
   .brand { display: flex; align-items: center; gap: 10px; }
-  .logo-wrap { width: 38px; height: 38px; background: #1a1410; border-radius: 8px;
+  .logo-wrap { width: 38px; height: 38px; background: #21385e; border-radius: 8px;
                display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0; }
   .logo-img { width: 100%; height: 100%; object-fit: contain; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
   .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
-  .doc-title .big { font-size: 17px; font-weight: 800; color: #c96e30; letter-spacing: 2px; text-align: right; white-space: nowrap; }
+  .doc-title .big { font-size: 17px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
   .c-desc .note { font-size: 8px; color: #837868; font-style: italic; line-height: 1.2; margin-top: 1px; white-space: pre-wrap; }
 
@@ -161,32 +161,32 @@ export function buildGanttPrintHTML(project) {
   .c-desc { text-align: left;   font-size: 9.5px; line-height: 1.2; word-break: break-word; }
   .c-team { text-align: center; font-size: 8.5px; font-weight: 700; }
   .c-dur  { text-align: center; font-size: 9px; }
-  .c-date { text-align: center; font-size: 8px; color: #5a4f43; white-space: nowrap; }
+  .c-date { text-align: center; font-size: 8px; color: #3c577d; white-space: nowrap; }
   td.c-no, td.c-desc, td.c-team, td.c-dur, td.c-date { padding: 1px 3px; vertical-align: middle; }
   .wk  { height: 15px; padding: 0; text-align: center; }
   .wkd { font-size: 6px; font-weight: 700; color: #fff; line-height: 1; }
   th.wkn { font-size: 5.5px; color: #837868; font-weight: 600; letter-spacing: -0.3px; line-height: 1; padding: 1px 0; }
   thead th.wk[colspan] { font-size: 8px; }
-  .dia { color: #1a1410; font-size: 8px; }
-  .ms  { color: #c96e30; }
+  .dia { color: #21385e; font-size: 8px; }
+  .ms  { color: #c17a52; }
   tbody tr { page-break-inside: avoid; }
   tbody.pg { break-inside: avoid; page-break-inside: avoid; }
   .phase-row td { background: #f0ebe0; }
   .phase-label { text-align: left; font-weight: 700; font-size: 10px; padding: 2px 8px; }
   td.c-no { font-weight: 700; }
-  .phase-row .c-no { color: #221d16; }
+  .phase-row .c-no { color: #21385e; }
 
   .signs { display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
            margin-top: 22px; padding: 0 30px; page-break-inside: avoid; }
   .sign { text-align: center; }
   .sign .nm { min-height: 20px; font-weight: 400; font-size: 11px; padding-bottom: 2px; }
   .sign .nm-name { font-weight: 600; font-size: 11px; margin-top: 2px; min-height: 16px; }
-  .sign .lbl { font-size: 11px; color: #221d16; margin-top: 4px; }
+  .sign .lbl { font-size: 11px; color: #21385e; margin-top: 4px; }
   .sign .role { font-size: 10px; color: #837868; }
   .sign .date { font-size: 10px; color: #837868; margin-top: 6px; }
 
   .legend { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; page-break-inside: avoid; }
-  .leg { display: flex; align-items: center; gap: 4px; font-size: 9.5px; color: #5a4f43; }
+  .leg { display: flex; align-items: center; gap: 4px; font-size: 9.5px; color: #3c577d; }
   .sw { width: 11px; height: 11px; border-radius: 2px; }
 
   @page {
@@ -241,9 +241,9 @@ export function buildGanttPrintHTML(project) {
           <span class="k" style="min-width: unset">รายการสินค้า (FG) และปริมาณ:</span>
           ${(project.projectProducts || []).length > 0 ? (project.projectProducts || []).map(pp => {
             const prod = pp.product || {};
-            return `<div style="padding-left: 6px; border-left: 2px solid #c96e30; margin-left: 2px;">
+            return `<div style="padding-left: 6px; border-left: 2px solid #c17a52; margin-left: 2px;">
               <div style="font-weight: 600; font-size: 10px;">${esc(prod.fgCode || '')} — ${esc(prod.productDescription || prod.brandName || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</div>
-              <div style="font-size: 9px; color: #5a4f43;">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</div>
+              <div style="font-size: 9px; color: #3c577d;">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</div>
             </div>`;
           }).join('') : (categoryFallback
             ? `<div style="padding-left: 6px; border-left: 2px dashed #b8a07a; margin-left: 2px;">
@@ -274,7 +274,7 @@ export function buildGanttPrintHTML(project) {
 
     <div class="legend">
       <div class="leg"><span class="sw" style="background:#3d6fa3"></span>เสร็จสิ้น</div>
-      <div class="leg"><span class="sw" style="background:#c96e30"></span>กำลังดำเนินการ</div>
+      <div class="leg"><span class="sw" style="background:#c17a52"></span>กำลังดำเนินการ</div>
       <div class="leg"><span class="sw" style="background:#b8a07a"></span>รอดำเนินการ</div>
       <div class="leg"><span class="dia">◆</span> จุดสำคัญ (Milestone)</div>
     </div>

@@ -15,25 +15,25 @@
      1 = normal scale (no zoom applied on <body>). */
   --ui-scale: 1;
   
-  /* Light Theme Variables */
-  --bg: #ece6da;
-  --panel: rgba(255, 255, 255, 0.88);
-  --panel-2: rgba(247, 243, 236, 0.96);
+  /* Light Theme Variables — brand palette: warm cream surfaces, near-black ink, terracotta accent */
+  --bg: #efe9dd;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-2: rgba(245, 240, 231, 0.96);
   --panel-3: rgba(236, 230, 219, 0.96);
-  --border: rgba(40, 33, 24, 0.12);
-  --border-strong: rgba(40, 33, 24, 0.22);
+  --border: rgba(40, 33, 24, 0.13);
+  --border-strong: rgba(40, 33, 24, 0.24);
   --glass-shadow: 0 4px 16px 0 rgba(40, 33, 24, 0.07);
 
-  --text: #221d16;
-  --text-2: #5a4f43;
-  --text-3: #837868;
-  
-  --accent: #c96e30;
-  --accent-soft: #f9e8d8;
+  --text: #1a1e27;       /* เกือบดำ (อมน้ำเงินจาง ๆ) — อ่านง่ายสุด คอนทราสต์สูง */
+  --text-2: #3a414e;     /* เทาเข้ม — เนื้อความรอง */
+  --text-3: #5d6470;     /* เทากลาง — ข้อความรอง/คำอธิบาย (ผ่าน AA บนพื้นขาว) */
+
+  --accent: #c17a52;     /* terracotta/ทองแดง แบบปุ่มแบรนด์ */
+  --accent-soft: #f6e7dd;
   --accent-fg: #fff;
-  --origin-edited: #1f2a5c; /* น้ำเงินกรมท่าแบบโลโก้ — เครื่องหมาย task แก้ไขโดยผู้ใช้ */
-  
-  --navy: #1a1410;
+  --origin-edited: #2e4a73; /* navy กลาง — เครื่องหมาย task แก้ไขโดยผู้ใช้ */
+
+  --navy: #21385e;
   
   /* OKLCH color definitions */
   --green: oklch(45% .1 155);
@@ -55,7 +55,7 @@
   --violet-soft: oklch(92% .05 295);
   
   --shift-soft: #f4eee1;
-  --shift-color: #8c7f6e;
+  --shift-color: #6b6256;
   
   /* Grid settings */
   --row-h: 40px;
@@ -91,9 +91,9 @@
   --purple: var(--violet);
 
   /* Gantt grid lines (theme-aware) */
-  --gantt-line: rgba(40, 33, 24, 0.04);
-  --gantt-line-weekend: rgba(40, 33, 24, 0.07);
-  --gantt-line-week: rgba(40, 33, 24, 0.12);
+  --gantt-line: rgba(40, 33, 24, 0.05);
+  --gantt-line-weekend: rgba(40, 33, 24, 0.08);
+  --gantt-line-week: rgba(40, 33, 24, 0.14);
 }
 
 [data-sidebar="icon"] {
@@ -114,7 +114,7 @@
   --text-2: #aeb6cc;
   --text-3: #8b93a8;
   
-  --accent: #ec8a55;
+  --accent: #db8a5f; /* terracotta แบรนด์ สว่างขึ้นให้เห็นชัดบนพื้น navy เข้ม */
   --accent-soft: #3a2a1f;
   --accent-fg: #11162b;
   --origin-edited: #7089e6; /* น้ำเงินโลโก้ เวอร์ชันสว่างขึ้น — ให้เห็นชัดบนบาร์ navy ในธีมมืด */
@@ -161,10 +161,10 @@
 body {
   background: var(--bg);
   background-image:
-    radial-gradient(at 0% 0%, rgba(201, 110, 48, 0.10) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(184, 110, 40, 0.09) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(26, 20, 16, 0.06) 0px, transparent 50%),
-    radial-gradient(at 0% 100%, rgba(201, 110, 48, 0.07) 0px, transparent 50%);
+    radial-gradient(at 0% 0%, rgba(193, 122, 82, 0.07) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(184, 110, 40, 0.06) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(40, 33, 24, 0.05) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(193, 122, 82, 0.06) 0px, transparent 50%);
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-sans);
@@ -2507,7 +2507,8 @@ input[type="number"] {
     top: 0;
     left: 0;
     bottom: 0;
-    width: var(--sidebar-w);
+    width: 252px;
+    max-width: 82vw;
     height: calc(100vh / var(--ui-scale));
     transform: translateX(-100%);
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -2521,6 +2522,23 @@ input[type="number"] {
 
   /* Hide sidebar's own toggle on mobile — Topbar hamburger is the only trigger */
   .sidebar-toggle { display: none !important; }
+
+  /* The drawer always shows full labels, even if the sidebar was left collapsed
+     (icon-only) on desktop — a 56px icon strip makes no sense as a drawer. */
+  .app-container[data-sidebar="icon"] .brand-info,
+  .app-container[data-sidebar="icon"] .nav-label,
+  .app-container[data-sidebar="icon"] .sidebar-footer-label {
+    display: revert !important;
+  }
+  .app-container[data-sidebar="icon"] .brand-section {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 14px 16px;
+    height: var(--topbar-h);
+  }
+  .app-container[data-sidebar="icon"] .nav-links { padding: 8px; }
+  .app-container[data-sidebar="icon"] .nav-item { justify-content: flex-start; padding: 8px 12px; }
+  .app-container[data-sidebar="icon"] .sidebar-footer { flex-direction: row; }
 
   /* Optimize Product column width on tablet screens */
   .reconcile-grid th:first-child,
@@ -3883,18 +3901,18 @@ input[type="number"] {
   /* Force the light "paper" palette during capture so exported PNG/PDF
      stay legible (dark text on white) even when the app is in dark mode. */
   --panel: #ffffff;
-  --panel-2: #f7f3ec;
+  --panel-2: #f5f0e7;
   --panel-3: #ece6db;
-  --origin-edited: #1f2a5c;
-  --border: rgba(40, 33, 24, 0.12);
-  --border-strong: rgba(40, 33, 24, 0.22);
-  --text: #221d16;
-  --text-2: #5a4f43;
-  --text-3: #837868;
+  --origin-edited: #2e4a73;
+  --border: rgba(40, 33, 24, 0.13);
+  --border-strong: rgba(40, 33, 24, 0.24);
+  --text: #1a1e27;
+  --text-2: #3a414e;
+  --text-3: #5d6470;
   --bg: #ffffff;
-  --gantt-line: rgba(40, 33, 24, 0.04);
-  --gantt-line-weekend: rgba(40, 33, 24, 0.07);
-  --gantt-line-week: rgba(40, 33, 24, 0.12);
+  --gantt-line: rgba(40, 33, 24, 0.05);
+  --gantt-line-weekend: rgba(40, 33, 24, 0.08);
+  --gantt-line-week: rgba(40, 33, 24, 0.14);
   background: #ffffff !important;
 }
 

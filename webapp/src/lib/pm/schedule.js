@@ -208,9 +208,19 @@ export function mergeTemplateTasks(project, existingTasks) {
   // แทนการเทียบชื่อ — เดิมถ้าผู้ใช้ "แก้ชื่อ" ขั้นตอน template ชื่อจะไม่ตรง template เลย
   // ถูกนับเป็น custom + สร้าง template ชื่อเดิมใหม่ → ขั้นตอนซ้ำ. origin ไม่พลาดกรณีนี้.
   const customTasks = (existingTasks || []).filter((t) => t.origin === 'custom');
-  const customRows = customTasks.map((t, i) => ({ id: t.id, stepOrder: templateRows.length + i }));
 
-  const keptIds = new Set([...templateRows.map((r) => r.id), ...customRows.map((r) => r.id)]);
+  const keptIds = new Set([...templateRows.map((r) => r.id), ...customTasks.map((t) => t.id)]);
+  // custom row คง predecessors เดิม (templateRows rebuild ใหม่หมด แต่ custom ไม่ถูกแตะ) →
+  // ต้องตัด id ที่หลุดออกจาก keptIds (เช่นขั้น template ที่ถูกลบเพราะเปลี่ยนหมวด) ทิ้ง
+  // ไม่งั้นจะค้างเป็น dangling predecessor. persist เฉพาะเมื่อมีการตัดจริง (กัน update เปล่า).
+  const customRows = customTasks.map((t, i) => {
+    const row = { id: t.id, stepOrder: templateRows.length + i };
+    const preds = Array.isArray(t.predecessors) ? t.predecessors : [];
+    const cleaned = preds.filter((p) => keptIds.has(p));
+    if (cleaned.length !== preds.length) row.predecessors = cleaned;
+    return row;
+  });
+
   const toDeleteIds = (existingTasks || []).filter((t) => !keptIds.has(t.id)).map((t) => t.id);
 
   return { templateRows, customRows, toDeleteIds, existingIds: new Set((existingTasks || []).map((t) => t.id)) };

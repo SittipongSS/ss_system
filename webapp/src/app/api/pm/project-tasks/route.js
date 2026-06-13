@@ -107,6 +107,7 @@ export async function POST(request) {
     durationDays: body.durationDays ?? 1,
     startDate: body.startDate || null,
     finishDate: body.finishDate || null,
+    dueDate: body.dueDate || null,
     status: body.status || 'Pending',
     predecessors: body.predecessors || [],
     cellsOverride: body.cellsOverride ?? null,

@@ -112,8 +112,13 @@ export async function PATCH(request, { params }) {
         }
         return supabase.from('project_tasks').insert(r);
       }),
-      // custom rows: ปรับเฉพาะลำดับให้อยู่ท้าย
-      ...customRows.map((r) => supabase.from('project_tasks').update({ stepOrder: r.stepOrder }).eq('id', r.id)),
+      // custom rows: ปรับลำดับให้อยู่ท้าย + ตัด dangling predecessors (ถ้ามี — mergeTemplateTasks
+      // ใส่ field predecessors มาเฉพาะแถวที่ต้องล้าง reference ไปขั้นที่ถูกลบ)
+      ...customRows.map((r) => {
+        const upd = { stepOrder: r.stepOrder };
+        if (r.predecessors !== undefined) upd.predecessors = r.predecessors;
+        return supabase.from('project_tasks').update(upd).eq('id', r.id);
+      }),
     ]);
   } else if (dateChanged) {
     // หมวดไม่เปลี่ยน แต่วันเริ่ม/วันจบเปลี่ยน → คำนวณ start/finish ทุก task ใหม่
