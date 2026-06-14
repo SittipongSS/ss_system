@@ -2,19 +2,33 @@
 import { useState, useEffect, useMemo } from "react";
 import { Package, Plus, Search } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
+import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
+
+// Management view sees every status; the default GET (used by registration / PM
+// pickers) returns only approved products.
+const MANAGE_KEY = "/api/products?manage=1";
 
 // Master product catalog. Every FG is created here owned by a customer
 // (chosen in the form). Excise approval still happens later in the excise
 // registration flow (/excise).
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
-  const [products, setProducts] = useState(() => apiCache.get("/api/products") ?? []);
+  const role = useRole();
+  const myTeam = useTeam();
+  // Senior AE approves only own team; supervisor/admin any team. (Products GET is
+  // already team-scoped, but the explicit check keeps the rule consistent.)
+  const canApproveRow = (rec) =>
+    canApproveMasterData(role) && (isSuperuser(role) || rec?.team === myTeam);
+  const [products, setProducts] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
   const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/product-types") ?? []);
   const [customers, setCustomers] = useState(() => apiCache.get("/api/customers") ?? []);
-  const [loading, setLoading] = useState(() => !apiCache.has("/api/products"));
+  const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [showForm, setShowForm] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const emptyForm = {
     customerId: "",
@@ -36,10 +50,10 @@ export default function ProductRegistry() {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch("/api/products");
+      const res = await fetch(MANAGE_KEY);
       if (res.ok) {
         const data = await res.json();
-        apiCache.set("/api/products", data);
+        apiCache.set(MANAGE_KEY, data);
         setProducts(data);
       }
       const typeRes = await fetch("/api/product-types");
@@ -52,6 +66,26 @@ export default function ProductRegistry() {
       console.error(e);
     }
     setLoading(false);
+  };
+
+  // Approve / reject a pending product (Senior AE+ only — enforced server-side too).
+  const decide = async (id, status) => {
+    let rejectionReason = null;
+    if (status === "rejected") {
+      rejectionReason = window.prompt("เหตุผลที่ไม่อนุมัติ (ใส่หรือเว้นว่างก็ได้):", "");
+      if (rejectionReason === null) return; // ยกเลิก
+    }
+    try {
+      const res = await fetch(`/api/products/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalStatus: status, rejectionReason }),
+      });
+      if (res.ok) fetchProducts();
+      else alert((await res.json()).error || "ดำเนินการไม่สำเร็จ");
+    } catch {
+      alert("เกิดข้อผิดพลาดในการอนุมัติ");
+    }
   };
 
   const getCategoryInfo = (fgCode) => {
@@ -122,8 +156,12 @@ export default function ProductRegistry() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
+        const created = await res.json();
         setShowForm(false);
         await fetchProducts();
+        if (created?.approvalStatus === "pending") {
+          alert("บันทึกแล้ว — รอ Senior AE ขึ้นไปอนุมัติก่อนจึงจะนำสินค้านี้ไปใช้งานได้");
+        }
       } else {
         const err = await res.json();
         alert(err.error || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
@@ -136,9 +174,19 @@ export default function ProductRegistry() {
   };
 
   const q = search.trim().toLowerCase();
+  const pendingCount = products.filter((p) => approvalStatusOf(p) === "pending").length;
   const filteredProducts = products.filter((p) => {
+    if (statusFilter !== "all" && approvalStatusOf(p) !== statusFilter) return false;
     if (!q) return true;
     return [p.fgCode, p.productDescription, p.brandName].some((v) => (v || "").toLowerCase().includes(q));
+  });
+
+  const sort = useSortableTable(filteredProducts, {
+    product: (p) => p.productDescription || p.fgCode || "",
+    brand: (p) => p.brandName || "",
+    volume: (p) => p.volume ?? null,
+    retail: (p) => p.retailPriceIncVat ?? null,
+    tax: (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0)),
   });
 
   return (
@@ -172,6 +220,22 @@ export default function ProductRegistry() {
           <Search size={18} color="var(--text-3)" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า..." />
         </div>
+        <div className="flex items-center gap-1.5">
+          {[
+            { key: "all", label: "ทั้งหมด" },
+            { key: "pending", label: `รออนุมัติ${pendingCount ? ` (${pendingCount})` : ""}` },
+            { key: "approved", label: "อนุมัติแล้ว" },
+            { key: "rejected", label: "ไม่อนุมัติ" },
+          ].map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              className={`btn ${statusFilter === f.key ? "btn-primary" : ""}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -192,22 +256,23 @@ export default function ProductRegistry() {
             <table className="premium-table">
               <thead>
                 <tr>
-                  <th>รายละเอียดสินค้า (FG Code)</th>
-                  <th>แบรนด์</th>
-                  <th className="num">ปริมาตร</th>
-                  <th className="num">ราคาขายปลีก</th>
-                  <th className="num">ภาษี/ชิ้น</th>
+                  <SortTh label="รายละเอียดสินค้า (FG Code)" sortKey="product" sort={sort} />
+                  <SortTh label="แบรนด์" sortKey="brand" sort={sort} />
+                  <SortTh label="ปริมาตร" sortKey="volume" sort={sort} className="num" />
+                  <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
+                  <SortTh label="ภาษี/ชิ้น" sortKey="tax" sort={sort} className="num" />
+                  <th>สถานะ</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.length === 0 ? (
+                {sort.sorted.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="text-center py-10 text-[var(--text-3)]">
+                    <td colSpan="6" className="text-center py-10 text-[var(--text-3)]">
                       {search.trim() ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
                     </td>
                   </tr>
                 ) : (
-                  filteredProducts.map((p) => {
+                  sort.sorted.map((p) => {
                     const isExempt = p.isExciseTaxable === false;
                     const taxRate = isExempt ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
                     return (
@@ -225,6 +290,20 @@ export default function ProductRegistry() {
                         <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
                         <td className="num mono text-[var(--text-2)]">
                           {isExempt ? <span className="status-pill success text-[10px]">ยกเว้น</span> : formatMoney(taxRate)}
+                        </td>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          {approvalStatusOf(p) === "pending" && canApproveRow(p) ? (
+                            <ApprovalActions onDecide={(status) => decide(p.id, status)} />
+                          ) : (
+                            <div>
+                              <ApprovalBadge status={approvalStatusOf(p)} />
+                              {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
+                                <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">
+                                  เหตุผล: {p.rejectionReason}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );

@@ -1,7 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData } from '@/lib/permissions';
 import { listForCustomer } from '@/lib/excise/registrations';
+import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,9 +70,10 @@ export async function GET(request, { params }) {
   if (ids.length) {
     const { data: ord } = await supabase
       .from('orders')
-      .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
+      .select(ORDER_SELECT)
       .in('id', ids)
       .order('createdAt', { ascending: false });
+    await attachRegistrations(supabase, ord);
     orders = (ord || []).filter((o) => canViewRecord(user, 'orders', o));
   }
 
@@ -97,6 +99,33 @@ export async function PATCH(request, { params }) {
   }
 
   const body = await request.json();
+
+  // ── Approval action (approve / reject a pending customer) ────────────
+  // Setting approvalStatus is reserved for Senior AE+ — AE/AC hold customers:edit
+  // but must not approve. Row-level team scope is already enforced above by
+  // canEditRecord (senior_ae = own team, supervisor/admin = all teams).
+  if (body.approvalStatus !== undefined) {
+    if (!canApproveMasterData(user?.role)) {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+    if (!['approved', 'rejected', 'pending'].includes(body.approvalStatus)) {
+      return Response.json({ error: 'สถานะการอนุมัติไม่ถูกต้อง' }, { status: 400 });
+    }
+    const approved = body.approvalStatus === 'approved';
+    const approvalUpdates = {
+      approvalStatus: body.approvalStatus,
+      approvedBy: user?.id ?? null,
+      approvedByName: user?.name ?? null,
+      approvedAt: new Date().toISOString(),
+      rejectionReason: body.approvalStatus === 'rejected' ? (body.rejectionReason || null) : null,
+      updatedAt: new Date().toISOString(),
+    };
+    void approved;
+    const { data: decided, error: decErr } = await supabase
+      .from('customers').update(approvalUpdates).eq('id', id).select().single();
+    if (decErr) return Response.json({ error: decErr.message }, { status: 500 });
+    return Response.json(decided);
+  }
 
   if (body.arCode && body.arCode !== customer.arCode) {
     const { data: dup } = await supabase

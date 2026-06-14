@@ -2,15 +2,31 @@
 import { useEffect, useState } from "react";
 import { Building2, Plus, Search } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
+import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
+
+// Management view sees every status (pending/approved/rejected); the default
+// GET (used everywhere else) returns only approved rows.
+const MANAGE_KEY = "/api/customers?manage=1";
+
 export default function CustomerDirectory() {
   const canEdit = useCan("customers:edit");
-  const [customers, setCustomers] = useState(() => apiCache.get("/api/customers") ?? []);
-  const [loading, setLoading] = useState(() => !apiCache.has("/api/customers"));
+  const role = useRole();
+  const myTeam = useTeam();
+  // May this user approve THIS record? Senior AE only own team; supervisor/admin
+  // any team. Customers are a central registry (all teams shown in manage view),
+  // so the team check matters here — hide the buttons for other teams' records.
+  const canApproveRow = (rec) =>
+    canApproveMasterData(role) && (isSuperuser(role) || rec?.team === myTeam);
+  const [customers, setCustomers] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
+  const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const [mapFile, setMapFile] = useState(null);
   const [formData, setFormData] = useState({
@@ -28,10 +44,10 @@ export default function CustomerDirectory() {
 
   const fetchCustomers = async () => {
     try {
-      const res = await fetch("/api/customers");
+      const res = await fetch(MANAGE_KEY);
       if (res.ok) {
         const data = await res.json();
-        apiCache.set("/api/customers", data);
+        apiCache.set(MANAGE_KEY, data);
         setCustomers(data);
       }
     } catch (err) {
@@ -43,6 +59,26 @@ export default function CustomerDirectory() {
   useEffect(() => {
     fetchCustomers();
   }, []);
+
+  // Approve / reject a pending customer (Senior AE+ only — enforced server-side too).
+  const decide = async (id, status) => {
+    let rejectionReason = null;
+    if (status === "rejected") {
+      rejectionReason = window.prompt("เหตุผลที่ไม่อนุมัติ (ใส่หรือเว้นว่างก็ได้):", "");
+      if (rejectionReason === null) return; // ยกเลิก
+    }
+    try {
+      const res = await fetch(`/api/customers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalStatus: status, rejectionReason }),
+      });
+      if (res.ok) fetchCustomers();
+      else alert((await res.json()).error || "ดำเนินการไม่สำเร็จ");
+    } catch {
+      alert("เกิดข้อผิดพลาดในการอนุมัติ");
+    }
+  };
 
   const handleChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -97,10 +133,14 @@ export default function CustomerDirectory() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
+        const created = await res.json();
         setFormData({ arCode: "", name: "", taxId: "", phone: "", address: "", brandsStr: "", contactPerson: "", contactPhone: "", email: "", creditTerms: "" });
         setMapFile(null);
         setShowForm(false);
         fetchCustomers();
+        if (created?.approvalStatus === "pending") {
+          alert("บันทึกแล้ว — รอ Senior AE ขึ้นไปอนุมัติก่อนจึงจะนำลูกค้ารายนี้ไปใช้งานได้");
+        }
       } else {
         const errorData = await res.json();
         alert(errorData.error || "เกิดข้อผิดพลาด");
@@ -112,12 +152,20 @@ export default function CustomerDirectory() {
   };
 
   const q = search.trim().toLowerCase();
-  const filteredCustomers = q
-    ? customers.filter((c) =>
-        [c.arCode, c.name, c.taxId, c.phone, ...(c.brands || [])]
-          .some((v) => (v || "").toLowerCase().includes(q)),
-      )
-    : customers;
+  const pendingCount = customers.filter((c) => approvalStatusOf(c) === "pending").length;
+  const filteredCustomers = customers.filter((c) => {
+    if (statusFilter !== "all" && approvalStatusOf(c) !== statusFilter) return false;
+    if (!q) return true;
+    return [c.arCode, c.name, c.taxId, c.phone, ...(c.brands || [])]
+      .some((v) => (v || "").toLowerCase().includes(q));
+  });
+
+  const sort = useSortableTable(filteredCustomers, {
+    arCode: (c) => c.arCode || "",
+    name: (c) => c.name || "",
+    brands: (c) => c.brands?.length || 0,
+    address: (c) => c.address || "",
+  });
 
   return (
     <>
@@ -157,6 +205,22 @@ export default function CustomerDirectory() {
           <Search size={18} color="var(--text-3)" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า..." />
         </div>
+        <div className="flex items-center gap-1.5">
+          {[
+            { key: "all", label: "ทั้งหมด" },
+            { key: "pending", label: `รออนุมัติ${pendingCount ? ` (${pendingCount})` : ""}` },
+            { key: "approved", label: "อนุมัติแล้ว" },
+            { key: "rejected", label: "ไม่อนุมัติ" },
+          ].map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              className={`btn ${statusFilter === f.key ? "btn-primary" : ""}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Customer List */}
@@ -194,24 +258,25 @@ export default function CustomerDirectory() {
             <table className="premium-table">
               <thead>
                 <tr>
-                  <th>รหัสลูกค้า</th>
-                  <th>ชื่อลูกค้า / บริษัท</th>
-                  <th>แบรนด์ทั้งหมด</th>
-                  <th>ที่อยู่ / แผนที่</th>
+                  <SortTh label="รหัสลูกค้า" sortKey="arCode" sort={sort} />
+                  <SortTh label="ชื่อลูกค้า / บริษัท" sortKey="name" sort={sort} />
+                  <SortTh label="แบรนด์ทั้งหมด" sortKey="brands" sort={sort} />
+                  <SortTh label="ที่อยู่ / แผนที่" sortKey="address" sort={sort} />
+                  <th>สถานะ</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredCustomers.length === 0 ? (
+                {sort.sorted.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="4"
+                      colSpan="5"
                       className="text-center py-10 text-[var(--text-3)]"
                     >
                       {search.trim() ? "ไม่พบลูกค้าที่ค้นหา" : "ยังไม่มีข้อมูลลูกค้าในระบบ"}
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((c) => (
+                  sort.sorted.map((c) => (
                     <tr
                       key={c.id}
                       onClick={() => (window.location.href = `/database/customers/${c.id}`)}
@@ -278,6 +343,20 @@ export default function CustomerDirectory() {
                             </svg>
                             ดูแผนที่
                           </a>
+                        )}
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {approvalStatusOf(c) === "pending" && canApproveRow(c) ? (
+                          <ApprovalActions onDecide={(status) => decide(c.id, status)} />
+                        ) : (
+                          <div>
+                            <ApprovalBadge status={approvalStatusOf(c)} />
+                            {approvalStatusOf(c) === "rejected" && c.rejectionReason && (
+                              <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">
+                                เหตุผล: {c.rejectionReason}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>

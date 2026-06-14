@@ -1,20 +1,27 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScope } from '@/lib/permissions';
+import { viewScope, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
 import { categoryOf } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
-export async function GET() {
+// Approval gate: by default GET returns only APPROVED products, so downstream
+// consumers (excise registration, PM pickers, order lines) never see a pending
+// row. The management page passes ?manage=1 to see all statuses.
+export async function GET(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
+  const manage = new URL(request.url).searchParams.get('manage') === '1';
 
   let query = supabase.from('products').select('*').order('createdAt', { ascending: false });
   // Team-scoped roles only see their own team's products; 'all' sees everything.
   if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+  // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
+  if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json(data);
+  // Strip the confidential cost breakdown/profit for non-margin roles.
+  return Response.json((data || []).map((p) => redactProductMargin(user, p)));
 }
 
 export async function POST(request) {
@@ -60,6 +67,10 @@ export async function POST(request) {
   // customer is later renamed. Category is derived from the FG code.
   const categoryCode = body.categoryCode || categoryOf(fgCode);
 
+  // AE / AC creations land as 'pending'; Senior AE+ auto-approve their own.
+  const nowIso = new Date().toISOString();
+  const autoApprove = canApproveMasterData(user?.role);
+
   // Whitelist the catalog fields we accept from the form (don't spread the
   // whole body — keeps stray status values out of the master row).
   const newProduct = {
@@ -89,7 +100,14 @@ export async function POST(request) {
     team: user?.team ?? null,
     ownerId: user?.id ?? null,
     assignee: body.assignee || user?.name || 'Sales',
-    createdAt: new Date().toISOString(),
+    // Approval workflow (migration 0027).
+    approvalStatus: autoApprove ? 'approved' : 'pending',
+    submittedBy: user?.id ?? null,
+    submittedByName: user?.name ?? null,
+    approvedBy: autoApprove ? (user?.id ?? null) : null,
+    approvedByName: autoApprove ? (user?.name ?? null) : null,
+    approvedAt: autoApprove ? nowIso : null,
+    createdAt: nowIso,
   };
 
   const { data, error } = await supabase.from('products').insert(newProduct).select().single();

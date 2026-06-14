@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
 import { categoryOf } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,8 @@ export async function GET(request, { params }) {
   if (!canViewRecord(user, 'products', data)) {
     return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
   }
-  return Response.json(data);
+  // Strip the confidential cost breakdown/profit for non-margin roles.
+  return Response.json(redactProductMargin(user, data));
 }
 
 // PATCH /api/products/[id]
@@ -40,6 +41,31 @@ export async function PATCH(request, { params }) {
   }
 
   const body = await request.json();
+
+  // ── Approval action (approve / reject a pending product) ─────────────
+  // Setting approvalStatus is reserved for Senior AE+ — AE/AC hold products:edit
+  // but must not approve. Row-level team scope is already enforced above by
+  // canEditRecord (senior_ae = own team, supervisor/admin = all teams).
+  if (body.approvalStatus !== undefined) {
+    if (!canApproveMasterData(user?.role)) {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+    if (!['approved', 'rejected', 'pending'].includes(body.approvalStatus)) {
+      return Response.json({ error: 'สถานะการอนุมัติไม่ถูกต้อง' }, { status: 400 });
+    }
+    const approvalUpdates = {
+      approvalStatus: body.approvalStatus,
+      approvedBy: user?.id ?? null,
+      approvedByName: user?.name ?? null,
+      approvedAt: new Date().toISOString(),
+      rejectionReason: body.approvalStatus === 'rejected' ? (body.rejectionReason || null) : null,
+      updatedAt: new Date().toISOString(),
+    };
+    const { data: decided, error: decErr } = await supabase
+      .from('products').update(approvalUpdates).eq('id', id).select().single();
+    if (decErr) return Response.json({ error: decErr.message }, { status: 500 });
+    return Response.json(decided);
+  }
 
   // Duplicate FG Code check (if changing)
   if (body.fgCode && body.fgCode !== product.fgCode) {
@@ -91,7 +117,7 @@ export async function PATCH(request, { params }) {
     .select()
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json(data);
+  return Response.json(redactProductMargin(user, data));
 }
 
 // DELETE /api/products/[id] — supervisor only (enforced here + by proxy cap).
