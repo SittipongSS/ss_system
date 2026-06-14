@@ -2,10 +2,14 @@
 import Modal from "@/components/Modal";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import OrderStatusPill from "@/components/OrderStatusPill";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { useCan } from "@/lib/roleContext";
 
 // Read-only detail of one PO (orders row) and its line items.
 // `order` is expected to carry `items: [{ ..., product }]`.
 export default function OrderDetailModal({ order, open, onClose }) {
+  // Receipts/filing docs are managed by sales (filing) + legal (tax approval).
+  const canEditOrderDocs = useCan("sales:act") || useCan("legal:approve");
   if (!order) return null;
   const items = order.items || [];
 
@@ -159,6 +163,15 @@ export default function OrderDetailModal({ order, open, onClose }) {
             {fmtMoney(order.totalTax)}
           </span>
         </div>
+
+        {/* เอกสารการชำระสรรพสามิต (หลายไฟล์) — ใบเสร็จ / แบบ ภส. / อื่นๆ */}
+        <AttachmentsPanel
+          entityType="order"
+          entityId={order.id}
+          canEdit={canEditOrderDocs}
+          title="เอกสารการชำระสรรพสามิต"
+          note="ใบเสร็จชำระสรรพสามิต, แบบ ภส. และเอกสารยื่นที่เกี่ยวข้องกับออเดอร์นี้"
+        />
       </div>
     </Modal>
   );

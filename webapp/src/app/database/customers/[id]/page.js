@@ -7,6 +7,7 @@ import { useCan } from "@/lib/roleContext";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 
 export default function CustomerDetails() {
   const params = useParams();
@@ -785,6 +786,17 @@ export default function CustomerDetails() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* เอกสารแนบของลูกค้า — แผนที่/สัญญา/หนังสือรับรอง/ภพ.20 ฯลฯ */}
+      <div className="mb-[22px]">
+        <AttachmentsPanel
+          entityType="customer"
+          entityId={id}
+          canEdit={canEdit}
+          title="เอกสารของลูกค้า"
+          note="แผนที่ที่อยู่ (ใช้ต่อเรื่องขึ้นทะเบียนสรรพสามิต), สัญญาจ้างออกแบบกลิ่น, หนังสือรับรองบริษัท, ภพ.20 และเอกสารอื่นๆ"
+        />
       </div>
 
       {/* Tabs Header */}

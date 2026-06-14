@@ -6,6 +6,7 @@ import { ArrowLeft, Package, Pencil } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import EditProductModal from "@/components/EditProductModal";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 
 export default function ProductDetails() {
   const params = useParams();
@@ -13,6 +14,11 @@ export default function ProductDetails() {
   const id = params.id;
   const canEditProducts = useCan("products:edit");
   const canDeleteProducts = useCan("products:delete");
+  // Factory cost data is confidential to the tax system. Two tiers (mirrors the
+  // server-side redaction): costPrice is visible to SA + LG + admin; the cost
+  // breakdown + profit is LG + admin only. Other departments see neither.
+  const canSeeMargin = useCan("products:margin");
+  const canSeeCost = canSeeMargin || canEditProducts; // SA (edit) + LG/admin (margin)
 
   const [product, setProduct] = useState(null);
   const [regs, setRegs] = useState([]);
@@ -161,33 +167,42 @@ export default function ProductDetails() {
             </div>
           </div>
 
-          {/* Cost breakdown */}
+          {/* Cost breakdown — hidden entirely from other departments; SA sees
+              costPrice, LG + admin also see the breakdown + profit. */}
+          {canSeeCost && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
-              โครงสร้างต้นทุนโรงงานและกำไรต่อหน่วย (Cost &amp; Profit Breakdown)
+              {canSeeMargin ? "โครงสร้างต้นทุนโรงงานและกำไรต่อหน่วย (Cost & Profit Breakdown)" : "ราคาทุนโรงงานต่อหน่วย (Cost Price)"}
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+            <div className={canSeeMargin ? "grid grid-cols-1 md:grid-cols-2 gap-6 text-xs" : "text-xs"}>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-[var(--text-3)]">ราคาทุนโรงงาน (Cost Price)</span>
                   <span className="font-bold text-[var(--text)] font-mono">{formatMoney(product.costPrice)}</span>
                 </div>
-                <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
-                  <span>↳ ค่าวัตถุดิบ (65%)</span><span className="font-mono">{formatMoney(product.materialCost)}</span>
-                </div>
-                <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
-                  <span>↳ ค่าแรงบรรจุ (Labor Cost)</span><span className="font-mono">{formatMoney(product.laborCost)}</span>
-                </div>
-                <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
-                  <span>↳ ค่าจัดส่งสินค้า (Shipping)</span><span className="font-mono">{formatMoney(product.shippingCost)}</span>
-                </div>
+                {canSeeMargin && (
+                  <>
+                    <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
+                      <span>↳ ค่าวัตถุดิบ (65%)</span><span className="font-mono">{formatMoney(product.materialCost)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
+                      <span>↳ ค่าแรงบรรจุ (Labor Cost)</span><span className="font-mono">{formatMoney(product.laborCost)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
+                      <span>↳ ค่าจัดส่งสินค้า (Shipping)</span><span className="font-mono">{formatMoney(product.shippingCost)}</span>
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="flex flex-col justify-between bg-[var(--green-soft)] p-4 rounded-xl border border-[var(--border)]">
-                <span className="text-[var(--green)] font-semibold block text-[10px] uppercase tracking-wider">กำไรของโรงงานต่อชิ้น (Factory Profit)</span>
-                <div className="text-2xl font-bold font-mono text-[var(--green)] mt-2">{formatMoney(product.factoryProfit)}</div>
-              </div>
+              {canSeeMargin && (
+                <div className="flex flex-col justify-between bg-[var(--green-soft)] p-4 rounded-xl border border-[var(--border)]">
+                  <span className="text-[var(--green)] font-semibold block text-[10px] uppercase tracking-wider">กำไรของโรงงานต่อชิ้น (Factory Profit)</span>
+                  <div className="text-2xl font-bold font-mono text-[var(--green)] mt-2">{formatMoney(product.factoryProfit)}</div>
+                </div>
+              )}
             </div>
           </div>
+          )}
 
           {/* Excise registrations for this product (information). */}
           <div className="glass-panel p-[20px]">
@@ -214,6 +229,26 @@ export default function ProductDetails() {
               </div>
             )}
           </div>
+
+          {/* เอกสารของสินค้า — สัญญาจ้างผลิต / Artwork ฯลฯ */}
+          <AttachmentsPanel
+            entityType="product"
+            entityId={id}
+            canEdit={canEditProducts}
+            title="เอกสารของสินค้า"
+            note="สัญญาจ้างผลิต, Artwork สินค้า (ใช้ต่อเรื่องขึ้นทะเบียนสรรพสามิต) และเอกสารอื่นๆ"
+          />
+
+          {/* เอกสารลูกค้าเจ้าของ (อ่านอย่างเดียว) — เชื่อมโยงผ่าน product.customerId */}
+          {product.customerId && (
+            <AttachmentsPanel
+              entityType="customer"
+              entityId={product.customerId}
+              canEdit={false}
+              title={`เอกสารลูกค้าเจ้าของ${product.customerName ? ` — ${product.customerName}` : ""}`}
+              note="เอกสารของลูกค้าที่เป็นเจ้าของสินค้านี้ (จัดการได้ที่หน้าข้อมูลลูกค้า)"
+            />
+          )}
         </div>
 
         {/* Tax Information Column */}
