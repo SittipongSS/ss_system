@@ -1,22 +1,25 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScope } from '@/lib/permissions';
+import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 
 export const dynamic = 'force-dynamic';
 export async function GET() {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
 
-  // A PO embeds its line items, each with the master product + its registration.
+  // A PO embeds its line items, each with the master product. Registrations are
+  // joined in JS (no FK to embed) — see @/lib/tax/orders.
   let query = supabase
     .from('orders')
-    .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
+    .select(ORDER_SELECT)
     .order('createdAt', { ascending: false });
   // Team-scoped roles only see their own team's orders; 'all' sees everything.
   if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  await attachRegistrations(supabase, data);
   return Response.json(data);
 }
 
@@ -122,12 +125,14 @@ export async function POST(request) {
     return Response.json({ error: itemsErr.message }, { status: 500 });
   }
 
-  // Return the full PO with its items embedded.
+  // Return the full PO with its items embedded. Registrations have no FK, so
+  // attach them in JS (see @/lib/tax/orders) rather than a PostgREST embed.
   const { data, error } = await supabase
     .from('orders')
-    .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
+    .select(ORDER_SELECT)
     .eq('id', orderId)
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  await attachRegistrations(supabase, data);
   return Response.json(data, { status: 201 });
 }

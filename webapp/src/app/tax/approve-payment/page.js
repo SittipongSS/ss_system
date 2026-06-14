@@ -1,22 +1,36 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ReceiptText } from "lucide-react";
+import { ReceiptText, Search, LayoutGrid, Table2 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
-import { useCan } from "@/lib/roleContext";
+import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import FileTaxModal from "@/components/FileTaxModal";
 import RejectModal from "@/components/RejectModal";
+import ConfirmModal from "@/components/tax/ConfirmModal";
+import TaxWorkspace from "@/components/tax/TaxWorkspace";
+import TaxStageRail from "@/components/tax/TaxStageRail";
+import StagePill from "@/components/tax/StagePill";
+import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { useResponsiveView } from "@/lib/useResponsiveView";
+import { TRACK2, deptOf } from "@/lib/tax/status";
 
-// LG tax-filing workspace: received → filing → complete (+ rejected).
+// LG tax-filing workspace (Track 2): received → filing → complete (+ rejected).
+// Redesigned: stage rail (LG lane highlighted, clickable filter) + card/table
+// responsive list. Modals/API unchanged.
 export default function LegalTax() {
+  const role = useRole();
+  const dept = deptOf(role);
   const canApprove = useCan("legal:approve");
   const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has("/api/orders"));
-  const [activeTab, setActiveTab] = useState("received");
+  const [statusFilter, setStatusFilter] = useState("received");
+  const [search, setSearch] = useState("");
+  const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [fileTarget, setFileTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
+  const [startTarget, setStartTarget] = useState(null);
 
   const fetchData = async () => {
     try {
@@ -32,9 +46,7 @@ export default function LegalTax() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const patch = async (id, body, errMsg) => {
     const res = await fetch(`/api/orders/${id}`, {
@@ -42,81 +54,151 @@ export default function LegalTax() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (res.ok) {
-      fetchData();
-      return true;
-    }
+    if (res.ok) { fetchData(); return true; }
     const d = await res.json().catch(() => ({}));
     alert("เกิดข้อผิดพลาด: " + (d.error || errMsg || "ไม่สามารถทำรายการได้"));
     return false;
   };
 
-  const handleStartFiling = (id) => {
-    if (!confirm("เริ่มดำเนินการยื่นภาษีสำหรับรายการนี้?")) return;
-    patch(id, { status: "filing" });
+  const doStartFiling = async () => {
+    const ok = await patch(startTarget.id, { status: "filing" });
+    if (ok) setStartTarget(null);
   };
-
   const handleSetDue = (id, value) => patch(id, { taxDueDate: value });
-
   const handleReject = async (reason) => {
     const ok = await patch(rejectTarget.id, { status: "rejected", rejectionReason: reason });
     if (ok) setRejectTarget(null);
   };
 
-  const received = orders.filter((o) => o.status === "received");
-  const filing = orders.filter((o) => o.status === "filing");
-  const complete = orders.filter((o) => o.status === "complete");
-  const rejected = orders.filter((o) => o.status === "rejected");
+  const counts = {
+    pending: orders.filter((o) => o.status === "pending").length,
+    received: orders.filter((o) => o.status === "received").length,
+    filing: orders.filter((o) => o.status === "filing").length,
+    complete: orders.filter((o) => o.status === "complete").length,
+  };
+  const rejectedCount = orders.filter((o) => o.status === "rejected").length;
 
-  const TABS = [
-    { key: "received", label: "รอยื่น", list: received },
-    { key: "filing", label: "กำลังยื่น", list: filing },
-    { key: "complete", label: "ชำระแล้ว", list: complete },
-    { key: "rejected", label: "ตีกลับ", list: rejected },
+  const q = search.trim().toLowerCase();
+  const list = orders.filter((o) => {
+    if (o.status !== statusFilter) return false;
+    if (!q) return true;
+    return [o.quotationRef, o.poReference, o.customerName, o.exciseReceiptNumber].some((v) => (v || "").toLowerCase().includes(q));
+  });
+  const sort = useSortableTable(list, {
+    ref: (o) => o.quotationRef || "",
+    customer: (o) => o.customerName || "",
+    itemCount: (o) => o.items?.length || 0,
+    totalTax: (o) => o.totalTax || 0,
+    taxDueDate: (o) => (o.taxDueDate ? new Date(o.taxDueDate).getTime() : null),
+    receipt: (o) => o.exciseReceiptNumber || "",
+    rejectionReason: (o) => o.rejectionReason || "",
+  });
+
+  const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
+
+  const FILTERS = [
+    { key: "received", label: `รอยื่น (${counts.received})` },
+    { key: "filing", label: `กำลังยื่น (${counts.filing})` },
+    { key: "complete", label: `ชำระแล้ว (${counts.complete})` },
+    { key: "rejected", label: `ตีกลับ (${rejectedCount})` },
   ];
 
-  const taxCell = (o) =>
-    (o.totalTax || 0) === 0 ? (
-      <span className="status-pill success text-xs font-sans">ยกเว้นภาษี</span>
-    ) : (
-      <span className="num font-bold text-[var(--red)] font-mono">{fmtMoney(o.totalTax)}</span>
-    );
+  const rowActions = (o) => {
+    if (!canApprove) return o.status === "complete" ? <span className="status-pill success text-xs">ชำระแล้ว</span> : <span className="text-[var(--text-3)] text-xs">รอฝ่ายกฎหมาย</span>;
+    const isExempt = (o.totalTax || 0) === 0;
+    if (o.status === "received") {
+      return (
+        <>
+          {isExempt
+            ? <button onClick={() => setFileTarget(o)} className="btn btn-primary px-4">ยืนยันชำระ</button>
+            : <button onClick={() => setStartTarget(o)} className="btn btn-primary px-4">เริ่มยื่น</button>}
+          <button onClick={() => setRejectTarget(o)} className="btn px-3 text-[var(--red)]">ตีกลับ</button>
+        </>
+      );
+    }
+    if (o.status === "filing") {
+      return (
+        <>
+          <button onClick={() => setFileTarget(o)} className="btn btn-primary px-4">บันทึกชำระภาษี</button>
+          <button onClick={() => setRejectTarget(o)} className="btn px-3 text-[var(--red)]">ตีกลับ</button>
+        </>
+      );
+    }
+    if (o.status === "complete") return <span className="status-pill success text-xs">ชำระแล้ว</span>;
+    return null;
+  };
 
-  const rowHeader = (o) => (
-    <td>
-      <div className="font-semibold text-[var(--text)]">{o.quotationRef}</div>
-      {o.poReference && <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">PO: {o.poReference}</div>}
-    </td>
+  const headerRight = (
+    <span className="ui-badge warn">
+      รอดำเนินการ <strong className="font-mono ml-1">{counts.received + counts.filing}</strong>
+    </span>
+  );
+
+  const toolbar = (
+    <div className="toolbar">
+      <div className="segmented">
+        {FILTERS.map((f) => (
+          <button key={f.key} className={statusFilter === f.key ? "active" : ""} onClick={() => setStatusFilter(f.key)}>{f.label}</button>
+        ))}
+      </div>
+      <div className="spacer" />
+      <div className="search-glass" style={{ width: "220px" }}>
+        <Search size={18} color="var(--text-3)" />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา Ref / PO / ลูกค้า / ใบเสร็จ..." />
+      </div>
+      <div className="segmented">
+        <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
+        <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
+      </div>
+    </div>
   );
 
   return (
-    <>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <h1>
-            <span className="premium-header-icon"><ReceiptText size={22} /></span> อนุมัติชำระภาษี
-          </h1>
-          <p>ตรวจอนุมัติและยื่นชำระภาษีสรรพสามิต พร้อมบันทึกใบเสร็จกรมสรรพสามิต</p>
+    <TaxWorkspace
+      icon={<ReceiptText size={22} />}
+      title="อนุมัติชำระภาษี"
+      subtitle="ตรวจอนุมัติและยื่นชำระภาษีสรรพสามิต พร้อมบันทึกใบเสร็จกรมสรรพสามิต"
+      headerRight={headerRight}
+      loading={loading}
+      rail={<TaxStageRail track={TRACK2} dept={dept} counts={counts} onStage={(k) => setStatusFilter(k)} />}
+      toolbar={toolbar}
+    >
+      {sort.sorted.length === 0 ? (
+        <div className="glass-panel p-10 text-center text-[var(--text-3)]">
+          {search ? "ไม่พบรายการที่ค้นหา" : "ไม่มีรายการในสถานะนี้"}
         </div>
-        <div className="pill warn">
-          รอดำเนินการ <strong className="font-mono ml-1">{received.length + filing.length}</strong> รายการ
-        </div>
-      </div>
-
-      <div className="tabs-header">
-        {TABS.map((t) => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)} className={`tab-btn ${activeTab === t.key ? "active" : ""}`}>
-            {t.label} ({t.list.length})
-          </button>
-        ))}
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center p-12">
-          <svg className="animate-spin h-8 w-8 text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
+      ) : view === "cards" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {sort.sorted.map((o) => (
+            <div key={o.id} onClick={() => setSelectedOrder(o)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-semibold text-[var(--text)] text-sm">{o.quotationRef}</div>
+                  <div className="text-[11px] text-[var(--accent)] mt-0.5 truncate">{o.customerName || "-"}</div>
+                </div>
+                <StagePill status={o.status} />
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[var(--text-3)]">{o.items?.length || 0} รายการ</span>
+                <span className="font-mono font-bold text-[var(--red)]">{taxText(o)}</span>
+              </div>
+              {o.status === "received" && (
+                <div className="flex items-center gap-2 text-[11px]" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-[var(--text-3)]">กำหนดยื่น:</span>
+                  <input type="date" value={o.taxDueDate && /^\d{4}-\d{2}-\d{2}/.test(o.taxDueDate) ? o.taxDueDate.slice(0, 10) : ""} onChange={(e) => handleSetDue(o.id, e.target.value)} disabled={!canApprove} className="premium-input text-xs" style={{ maxWidth: 150 }} />
+                </div>
+              )}
+              {o.status === "complete" && (
+                <div className="text-[11px] font-mono text-[var(--text-2)]">ใบเสร็จ: {o.exciseReceiptNumber || "ยกเว้น"}{o.filedAt && ` · ${fmtDate(o.filedAt)}`}</div>
+              )}
+              {o.status === "rejected" && o.rejectionReason && (
+                <div className="text-[11px] text-[var(--red)] bg-[var(--red-soft)] rounded px-2 py-1">{o.rejectionReason}</div>
+              )}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
+                {rowActions(o)}
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="glass-panel">
@@ -124,83 +206,45 @@ export default function LegalTax() {
             <table className="premium-table">
               <thead>
                 <tr>
-                  <th>เลขที่ใบเสนอราคา</th>
-                  <th className="text-center">รายการ</th>
-                  <th className="num">ยอดภาษีรวม</th>
-                  {activeTab === "received" && <th>กำหนดยื่น</th>}
-                  {activeTab === "complete" && <th>ใบเสร็จสรรพสามิต</th>}
-                  {activeTab === "rejected" && <th>เหตุผล</th>}
-                  {activeTab !== "rejected" && <th className="text-center">Action</th>}
+                  <SortTh label="เลขที่ใบเสนอราคา" sortKey="ref" sort={sort} />
+                  <SortTh label="ลูกค้า" sortKey="customer" sort={sort} />
+                  <SortTh label="รายการ" sortKey="itemCount" sort={sort} className="text-center" />
+                  <SortTh label="ยอดภาษีรวม" sortKey="totalTax" sort={sort} className="num" />
+                  {statusFilter === "received" && <SortTh label="กำหนดยื่น" sortKey="taxDueDate" sort={sort} />}
+                  {statusFilter === "complete" && <SortTh label="ใบเสร็จสรรพสามิต" sortKey="receipt" sort={sort} />}
+                  {statusFilter === "rejected" && <SortTh label="เหตุผล" sortKey="rejectionReason" sort={sort} />}
+                  {statusFilter !== "rejected" && <th className="text-center">Action</th>}
                 </tr>
               </thead>
               <tbody>
-                {(() => {
-                  const list = TABS.find((t) => t.key === activeTab).list;
-                  const cols = activeTab === "received" || activeTab === "complete" ? 5 : 4;
-                  if (list.length === 0) {
-                    return <tr><td colSpan={cols} className="text-center py-10 text-[var(--text-3)]">ไม่มีรายการ</td></tr>;
-                  }
-                  return list.map((o) => {
-                    const isExempt = (o.totalTax || 0) === 0;
-                    return (
-                      <tr key={o.id} className="clickable-row" onClick={() => setSelectedOrder(o)}>
-                        {rowHeader(o)}
-                        <td className="text-center font-mono font-semibold">{o.items?.length || 0}</td>
-                        <td className="num">{taxCell(o)}</td>
-
-                        {activeTab === "received" && (
-                          <td onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="date"
-                              value={o.taxDueDate && /^\d{4}-\d{2}-\d{2}/.test(o.taxDueDate) ? o.taxDueDate.slice(0, 10) : ""}
-                              onChange={(e) => handleSetDue(o.id, e.target.value)}
-                              disabled={!canApprove}
-                              className="premium-input text-xs"
-                              style={{ maxWidth: 150 }}
-                            />
-                          </td>
-                        )}
-                        {activeTab === "complete" && (
-                          <td className="font-mono text-xs text-[var(--text-2)]">
-                            {o.exciseReceiptNumber || (isExempt ? "ยกเว้น" : "-")}
-                            {o.filedAt && <div className="text-[var(--text-3)]">{fmtDate(o.filedAt)}</div>}
-                          </td>
-                        )}
-                        {activeTab === "rejected" && (
-                          <td className="text-xs text-[var(--red)]">{o.rejectionReason || "-"}</td>
-                        )}
-
-                        {activeTab === "received" && (
-                          <td className="text-center" onClick={(e) => e.stopPropagation()}>
-                            {canApprove ? (
-                              <div className="flex items-center justify-center gap-2">
-                                {isExempt ? (
-                                  <button onClick={() => setFileTarget(o)} className="btn btn-primary px-4">ยืนยันชำระ</button>
-                                ) : (
-                                  <button onClick={() => handleStartFiling(o.id)} className="btn btn-primary px-4">เริ่มยื่น</button>
-                                )}
-                                <button onClick={() => setRejectTarget(o)} className="btn px-3 text-[var(--red)]">ตีกลับ</button>
-                              </div>
-                            ) : <span className="text-[var(--text-3)] text-xs">รอฝ่ายกฎหมาย</span>}
-                          </td>
-                        )}
-                        {activeTab === "filing" && (
-                          <td className="text-center" onClick={(e) => e.stopPropagation()}>
-                            {canApprove ? (
-                              <div className="flex items-center justify-center gap-2">
-                                <button onClick={() => setFileTarget(o)} className="btn btn-primary px-4">บันทึกชำระภาษี</button>
-                                <button onClick={() => setRejectTarget(o)} className="btn px-3 text-[var(--red)]">ตีกลับ</button>
-                              </div>
-                            ) : <span className="text-[var(--text-3)] text-xs">รอฝ่ายกฎหมาย</span>}
-                          </td>
-                        )}
-                        {activeTab === "complete" && (
-                          <td className="text-center"><span className="status-pill success text-xs">ชำระแล้ว</span></td>
-                        )}
-                      </tr>
-                    );
-                  });
-                })()}
+                {sort.sorted.map((o) => (
+                  <tr key={o.id} className="clickable-row" onClick={() => setSelectedOrder(o)}>
+                    <td>
+                      <div className="font-semibold text-[var(--text)]">{o.quotationRef}</div>
+                      {o.poReference && <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">PO: {o.poReference}</div>}
+                    </td>
+                    <td className="text-[var(--accent)] text-sm">{o.customerName || "-"}</td>
+                    <td className="text-center font-mono font-semibold">{o.items?.length || 0}</td>
+                    <td className="num font-mono font-bold text-[var(--red)]">{taxText(o)}</td>
+                    {statusFilter === "received" && (
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <input type="date" value={o.taxDueDate && /^\d{4}-\d{2}-\d{2}/.test(o.taxDueDate) ? o.taxDueDate.slice(0, 10) : ""} onChange={(e) => handleSetDue(o.id, e.target.value)} disabled={!canApprove} className="premium-input text-xs" style={{ maxWidth: 150 }} />
+                      </td>
+                    )}
+                    {statusFilter === "complete" && (
+                      <td className="font-mono text-xs text-[var(--text-2)]">
+                        {o.exciseReceiptNumber || "ยกเว้น"}
+                        {o.filedAt && <div className="text-[var(--text-3)]">{fmtDate(o.filedAt)}</div>}
+                      </td>
+                    )}
+                    {statusFilter === "rejected" && <td className="text-xs text-[var(--red)]">{o.rejectionReason || "-"}</td>}
+                    {statusFilter !== "rejected" && (
+                      <td className="text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-2">{rowActions(o)}</div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -209,13 +253,16 @@ export default function LegalTax() {
 
       <OrderDetailModal order={selectedOrder} open={!!selectedOrder} onClose={() => setSelectedOrder(null)} />
       <FileTaxModal open={!!fileTarget} order={fileTarget} onClose={() => setFileTarget(null)} onFiled={fetchData} />
-      <RejectModal
-        open={!!rejectTarget}
-        onClose={() => setRejectTarget(null)}
-        onConfirm={handleReject}
-        title="ตีกลับใบสั่งซื้อให้แก้ไข"
-        entityLabel="ใบสั่งซื้อนี้"
+      <RejectModal open={!!rejectTarget} onClose={() => setRejectTarget(null)} onConfirm={handleReject} title="ตีกลับใบสั่งซื้อให้แก้ไข" entityLabel="ใบสั่งซื้อนี้" />
+      <ConfirmModal
+        open={!!startTarget}
+        onClose={() => setStartTarget(null)}
+        onConfirm={doStartFiling}
+        title="เริ่มยื่นภาษี"
+        message={`เริ่มดำเนินการยื่นภาษีสำหรับ ${startTarget?.quotationRef || "รายการนี้"}?`}
+        confirmLabel="เริ่มยื่น"
+        danger={false}
       />
-    </>
+    </TaxWorkspace>
   );
 }

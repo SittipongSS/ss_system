@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSuperuser } from '@/lib/permissions';
+import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 
 export const dynamic = 'force-dynamic';
 // GET /api/orders/[id]
@@ -10,7 +11,7 @@ export async function GET(request, { params }) {
   const user = await getCurrentUser();
   const { data, error } = await supabase
     .from('orders')
-    .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
+    .select(ORDER_SELECT)
     .eq('id', id)
     .maybeSingle();
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -18,6 +19,7 @@ export async function GET(request, { params }) {
   if (!canViewRecord(user, 'orders', data)) {
     return Response.json({ error: 'ไม่พบใบสั่งซื้อนี้' }, { status: 404 });
   }
+  await attachRegistrations(supabase, data);
   return Response.json(data);
 }
 
@@ -151,10 +153,11 @@ export async function PATCH(request, { params }) {
 
   const { data, error } = await supabase
     .from('orders')
-    .select('*, items:order_items(*, product:products(*), registration:excise_registrations(*))')
+    .select(ORDER_SELECT)
     .eq('id', id)
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  await attachRegistrations(supabase, data);
   return Response.json(data);
 }
 

@@ -1,17 +1,26 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ReceiptText, Plus, Search, Pencil, Trash2, Filter } from "lucide-react";
+import { ClipboardCheck, Plus, Search, Pencil, Trash2, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
-import { useCan } from "@/lib/roleContext";
+import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
 import Modal from "@/components/Modal";
-import ProductStatusPill from "@/components/ProductStatusPill";
 import EditRegistrationModal from "@/components/EditRegistrationModal";
+import ConfirmModal from "@/components/tax/ConfirmModal";
+import TaxWorkspace from "@/components/tax/TaxWorkspace";
+import TaxStageRail from "@/components/tax/TaxStageRail";
+import StagePill from "@/components/tax/StagePill";
+import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { useResponsiveView } from "@/lib/useResponsiveView";
+import { TRACK1, deptOf } from "@/lib/tax/status";
 
-// SA excise-registration workspace. Pick a master FG product + a customer and
-// submit it for excise tax registration (LG approves on /legal). The product
-// catalog itself lives in the master database (/products).
+// SA excise-registration workspace (Track 1). Pick a master FG product + a
+// customer and submit for excise registration; LG approves on /tax/approve-
+// register. Redesigned: stage rail + card/table responsive list. Logic
+// (submit / edit / delete, API, permissions) is unchanged.
 export default function ExciseWorkspace() {
+  const role = useRole();
+  const dept = deptOf(role);
   const canEdit = useCan("products:edit");
   const [regs, setRegs] = useState(() => apiCache.get("/api/excise-registrations") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has("/api/excise-registrations"));
@@ -20,6 +29,7 @@ export default function ExciseWorkspace() {
   const [userName, setUserName] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ productId: "", customerId: "" });
@@ -27,6 +37,7 @@ export default function ExciseWorkspace() {
   const [formError, setFormError] = useState(null);
   const [productSearch, setProductSearch] = useState("");
   const [editTarget, setEditTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const fetchRegs = async () => {
     try {
@@ -83,16 +94,20 @@ export default function ExciseWorkspace() {
     setSubmitting(false);
   };
 
-  const handleDelete = async (e, id) => {
-    e.stopPropagation();
-    if (!confirm("ยืนยันการลบรายการขึ้นทะเบียนนี้?")) return;
+  const doDelete = async () => {
     try {
-      const res = await fetch(`/api/excise-registrations/${id}`, { method: "DELETE" });
-      if (res.ok) await fetchRegs();
-      else alert((await res.json()).error || "ไม่สามารถลบได้");
+      const res = await fetch(`/api/excise-registrations/${deleteTarget.id}`, { method: "DELETE" });
+      if (res.ok) { setDeleteTarget(null); await fetchRegs(); }
+      else alert((await res.json().catch(() => ({}))).error || "ไม่สามารถลบได้");
     } catch {
       alert("Error deleting");
     }
+  };
+
+  const counts = {
+    rejected: regs.filter((r) => r.status === "rejected").length,
+    pending_legal: regs.filter((r) => r.status === "pending_legal").length,
+    approved: regs.filter((r) => r.status === "approved").length,
   };
 
   const q = search.trim().toLowerCase();
@@ -102,6 +117,14 @@ export default function ExciseWorkspace() {
     return [r.fgCode, r.productName, r.brandName, r.customerName].some((v) => (v || "").toLowerCase().includes(q));
   });
 
+  const sort = useSortableTable(filtered, {
+    fgCode: (r) => r.fgCode || "",
+    customer: (r) => r.customerName || "",
+    tax: (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0)),
+    approval: (r) => r.approvalNumber || "",
+    status: (r) => r.status || "",
+  });
+
   const pq = productSearch.trim().toLowerCase();
   const productOptions = pq
     ? products.filter((p) => [p.fgCode, p.productDescription, p.brandName].some((v) => (v || "").toLowerCase().includes(pq)))
@@ -109,105 +132,120 @@ export default function ExciseWorkspace() {
   const selectedProduct = products.find((p) => p.id === form.productId);
 
   const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
+  const open = (r) => (window.location.href = `/tax/register/${r.id}`);
+
+  const headerRight = (
+    <>
+      <span className="ui-badge">{regs.length} รายการ</span>
+      {canEdit && (
+        <button onClick={openForm} className="btn btn-primary flex items-center gap-1.5">
+          <Plus size={16} /> ยื่นขึ้นทะเบียน
+        </button>
+      )}
+    </>
+  );
+
+  const toolbar = (
+    <div className="toolbar">
+      <div className="search-glass" style={{ width: "240px" }}>
+        <Search size={18} color="var(--text-3)" />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อ / ลูกค้า..." />
+      </div>
+      <div className="spacer" />
+      <span className="toolbar-label"><Filter size={14} /> กรอง</span>
+      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
+        <option value="all">ทุกสถานะ</option>
+        <option value="pending_legal">รออนุมัติ</option>
+        <option value="approved">อนุมัติแล้ว</option>
+        <option value="rejected">ตีกลับ</option>
+      </select>
+      <div className="segmented">
+        <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
+        <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
+      </div>
+    </div>
+  );
 
   return (
-    <>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon"><ReceiptText size={22} /></span> ยื่นขึ้นทะเบียนสินค้า
-          </h1>
-          <p>เลือกสินค้าจากฐานข้อมูลกลาง + ผูกลูกค้า แล้วยื่นขึ้นทะเบียนภาษีสรรพสามิต</p>
+    <TaxWorkspace
+      icon={<ClipboardCheck size={22} />}
+      title="ยื่นขึ้นทะเบียนสินค้า"
+      subtitle="เลือกสินค้าจากฐานข้อมูลกลาง + ผูกลูกค้า แล้วยื่นขึ้นทะเบียนภาษีสรรพสามิต"
+      headerRight={headerRight}
+      loading={loading}
+      rail={<TaxStageRail track={TRACK1} dept={dept} counts={counts} />}
+      toolbar={toolbar}
+    >
+      {sort.sorted.length === 0 ? (
+        <div className="glass-panel p-10 text-center text-[var(--text-3)]">
+          {search || statusFilter !== "all" ? "ไม่พบรายการ" : "ยังไม่มีการขึ้นทะเบียน"}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="pill ok">ทั้งหมด {regs.length} รายการ</div>
-          {canEdit && (
-            <button onClick={openForm} className="btn btn-primary flex items-center gap-1.5">
-              <Plus size={16} /> ยื่นขึ้นทะเบียน
-            </button>
-          )}
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center p-12">
-          <svg className="animate-spin h-8 w-8 text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
+      ) : view === "cards" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {sort.sorted.map((r) => (
+            <div key={r.id} onClick={() => open(r)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-semibold text-[var(--text)] font-mono text-sm">{r.fgCode}</div>
+                  <div className="text-[11px] text-[var(--text-3)] mt-0.5 truncate">{r.productName} ({r.brandName})</div>
+                </div>
+                <StagePill status={r.status} />
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[var(--text-2)] truncate">{r.customerName}</span>
+                <span className="font-mono text-[var(--text-2)]">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r))}</span>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+                <span className="text-[11px] font-mono text-[var(--text-3)]">{r.approvalNumber || "ยังไม่มีเลขอนุมัติ"}</span>
+                {canEdit ? (
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setEditTarget(r)} className="btn-icon" title="แก้ไข"><Pencil size={15} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }} className="btn-icon danger" title="ลบ"><Trash2 size={15} /></button>
+                  </div>
+                ) : <ChevronRight size={16} className="text-[var(--text-3)]" />}
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
-        <>
-        {/* แถบเครื่องมือ: ค้นหา + กรอง */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
-          <div className="search-glass" style={{ width: "240px" }}>
-            <Search size={18} color="var(--text-3)" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อ / ลูกค้า..." />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>
-              <Filter size={14} /> กรอง
-            </span>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ height: 34, fontSize: "12px", width: "auto" }}>
-              <option value="all">ทุกสถานะ</option>
-              <option value="pending_legal">รออนุมัติ</option>
-              <option value="approved">อนุมัติแล้ว</option>
-              <option value="rejected">ตีกลับ</option>
-            </select>
-          </div>
-        </div>
         <div className="glass-panel">
-          <div className="px-4 py-3.5 border-b border-[var(--border)] flex items-center justify-between gap-3 flex-wrap">
-            <h3 className="font-semibold text-sm text-[var(--text)]">รายการขึ้นทะเบียน ({filtered.length})</h3>
-          </div>
-          <div className="premium-table-wrapper border-none rounded-t-none">
+          <div className="premium-table-wrapper border-none">
             <table className="premium-table">
               <thead>
                 <tr>
-                  <th>รหัสสินค้า (FG Code)</th>
-                  <th>ลูกค้า</th>
-                  <th className="num">ภาษี/ชิ้น</th>
-                  <th>เลขที่อนุมัติ</th>
-                  <th>สถานะ</th>
+                  <SortTh label="รหัสสินค้า (FG Code)" sortKey="fgCode" sort={sort} />
+                  <SortTh label="ลูกค้า" sortKey="customer" sort={sort} />
+                  <SortTh label="ภาษี/ชิ้น" sortKey="tax" sort={sort} className="num" />
+                  <SortTh label="เลขที่อนุมัติ" sortKey="approval" sort={sort} />
+                  <SortTh label="สถานะ" sortKey="status" sort={sort} />
                   <th style={{ width: "80px", textAlign: "right" }}></th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan="5" className="text-center py-10 text-[var(--text-3)]">{search || statusFilter !== "all" ? "ไม่พบรายการ" : "ยังไม่มีการขึ้นทะเบียน"}</td></tr>
-                ) : (
-                  filtered.map((r) => (
-                    <tr key={r.id} onClick={() => (window.location.href = `/tax/register/${r.id}`)} className="clickable-row">
-                      <td>
-                        <div className="font-semibold text-[var(--text)] font-mono">{r.fgCode}</div>
-                        <div className="text-[11px] text-[var(--text-3)] mt-0.5">{r.productName} ({r.brandName})</div>
-                      </td>
-                      <td className="text-[var(--text-2)]">{r.customerName}</td>
-                      <td className="num font-mono text-[var(--text-2)]">
-                        {r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r))}
-                      </td>
-                      <td className="font-mono text-[var(--text-3)] text-xs">{r.approvalNumber || "-"}</td>
-                      <td><ProductStatusPill status={r.status} /></td>
-                      <td className="text-right" onClick={(e) => e.stopPropagation()}>
-                        {canEdit && (
-                          <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => setEditTarget(r)} className="btn px-2 py-1 text-[var(--text-2)] hover:text-[var(--accent)] bg-transparent border-none" title="แก้ไข">
-                              <Pencil size={15} />
-                            </button>
-                            <button onClick={(e) => handleDelete(e, r.id)} className="btn px-2 py-1 text-[var(--text-3)] hover:text-[var(--red)] bg-transparent border-none" title="ลบ">
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                {sort.sorted.map((r) => (
+                  <tr key={r.id} onClick={() => open(r)} className="clickable-row">
+                    <td>
+                      <div className="font-semibold text-[var(--text)] font-mono">{r.fgCode}</div>
+                      <div className="text-[11px] text-[var(--text-3)] mt-0.5">{r.productName} ({r.brandName})</div>
+                    </td>
+                    <td className="text-[var(--text-2)]">{r.customerName}</td>
+                    <td className="num font-mono text-[var(--text-2)]">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r))}</td>
+                    <td className="font-mono text-[var(--text-3)] text-xs">{r.approvalNumber || "-"}</td>
+                    <td><StagePill status={r.status} /></td>
+                    <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                      {canEdit && (
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => setEditTarget(r)} className="btn-icon" title="แก้ไข"><Pencil size={15} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }} className="btn-icon danger" title="ลบ"><Trash2 size={15} /></button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
-        </>
       )}
 
       {/* Submit registration modal */}
@@ -220,13 +258,7 @@ export default function ExciseWorkspace() {
                 <Search size={18} color="var(--text-3)" />
                 <input type="text" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="ค้นหา FG / ชื่อสินค้า / แบรนด์..." />
               </div>
-              <select
-                value={form.productId}
-                onChange={(e) => setForm((f) => ({ ...f, productId: e.target.value }))}
-                required
-                className="premium-select w-full"
-                size={6}
-              >
+              <select value={form.productId} onChange={(e) => setForm((f) => ({ ...f, productId: e.target.value }))} required className="premium-select w-full" size={6}>
                 {productOptions.length === 0 ? (
                   <option value="" disabled>ไม่พบสินค้า — สร้างที่ระบบฐานข้อมูลก่อน</option>
                 ) : (
@@ -246,12 +278,7 @@ export default function ExciseWorkspace() {
 
             <div>
               <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">2. เลือกลูกค้า (Customer)</h3>
-              <select
-                value={form.customerId}
-                onChange={(e) => setForm((f) => ({ ...f, customerId: e.target.value }))}
-                required
-                className="premium-select w-full"
-              >
+              <select value={form.customerId} onChange={(e) => setForm((f) => ({ ...f, customerId: e.target.value }))} required className="premium-select w-full">
                 <option value="">-- เลือกลูกค้า --</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>{c.arCode} : {c.name}</option>
@@ -272,6 +299,14 @@ export default function ExciseWorkspace() {
       </Modal>
 
       <EditRegistrationModal open={!!editTarget} onClose={() => setEditTarget(null)} onSaved={fetchRegs} registration={editTarget} />
-    </>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="ลบรายการขึ้นทะเบียน"
+        message={`ยืนยันการลบทะเบียนของ ${deleteTarget?.fgCode || "รายการนี้"}? การลบนี้ย้อนกลับไม่ได้`}
+        confirmLabel="ลบรายการ"
+      />
+    </TaxWorkspace>
   );
 }

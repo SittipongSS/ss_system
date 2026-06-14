@@ -1,353 +1,234 @@
 "use client";
 import { useEffect, useState } from "react";
-import { History } from "lucide-react";
+import { History, Search, LayoutGrid, Table2, Trash2 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
+import { fmtMoney, fmtDateTime } from "@/lib/format";
 import OrderDetailModal from "@/components/OrderDetailModal";
-import ProductStatusPill from "@/components/ProductStatusPill";
+import TaxWorkspace from "@/components/tax/TaxWorkspace";
+import StagePill from "@/components/tax/StagePill";
+import ConfirmModal from "@/components/tax/ConfirmModal";
+import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { useResponsiveView } from "@/lib/useResponsiveView";
 
+// Unified archive of both tracks: registration history + shipment/payment
+// history. Redesigned: TaxWorkspace + StagePill (replaces the inline status
+// ternaries) + card/table responsive + branded delete confirm.
 export default function TrackingHistory() {
-  const canAct = useCan("sales:act");
   const canDelete = useCan("sales:delete");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [regs, setRegs] = useState(() => apiCache.get("/api/excise-registrations") ?? []);
   const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
   const [loading, setLoading] = useState(
     () => !(apiCache.has("/api/excise-registrations") && apiCache.has("/api/orders")),
   );
-  const [activeTab, setActiveTab] = useState("products");
+  const [tab, setTab] = useState("products");
+  const [search, setSearch] = useState("");
+  const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const fetchData = async () => {
-    try {
-      const [resRegs, resOrders] = await Promise.all([
-        fetch("/api/excise-registrations"),
-        fetch("/api/orders"),
-      ]);
-      if (resRegs.ok && resOrders.ok) {
-        const [p, o] = await Promise.all([resRegs.json(), resOrders.json()]);
-        apiCache.set("/api/excise-registrations", p);
-        apiCache.set("/api/orders", o);
-        setRegs(p);
-        setOrders(o);
-      }
-    } catch (err) {
-      console.error("Error fetching data", err);
-    }
+    // Fetch the two tracks independently so a failure on one endpoint doesn't
+    // blank the other's archive.
+    const [resRegs, resOrders] = await Promise.all([
+      fetch("/api/excise-registrations").catch(() => null),
+      fetch("/api/orders").catch(() => null),
+    ]);
+    if (resRegs?.ok) { const p = await resRegs.json(); apiCache.set("/api/excise-registrations", p); setRegs(p); }
+    if (resOrders?.ok) { const o = await resOrders.json(); apiCache.set("/api/orders", o); setOrders(o); }
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const formatMoney = (amount) =>
-    amount.toLocaleString("th-TH", {
-      style: "currency",
-      currency: "THB",
-      minimumFractionDigits: 2,
-    });
-
-  const handleDeleteOrder = async (e, id) => {
-    e.stopPropagation();
-    if (!confirm("ยืนยันว่าต้องการลบประวัติการจัดส่งนี้ออกจากระบบ?")) return;
-    try {
-      const res = await fetch(`/api/orders/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        fetchData();
-      } else {
-        const err = await res.json();
-        alert(err.error || "ไม่สามารถลบข้อมูลได้");
-      }
-    } catch (err) {
-      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
-    }
+  const doDeleteOrder = async () => {
+    const res = await fetch(`/api/orders/${deleteTarget.id}`, { method: "DELETE" });
+    if (res.ok) { setDeleteTarget(null); fetchData(); }
+    else { const err = await res.json().catch(() => ({})); alert(err.error || "ไม่สามารถลบข้อมูลได้"); }
   };
 
+  const q = search.trim().toLowerCase();
+  const fRegs = q ? regs.filter((r) => [r.fgCode, r.productName, r.customerName, r.assignee].some((v) => (v || "").toLowerCase().includes(q))) : regs;
+  const fOrders = q ? orders.filter((o) => [o.quotationRef, o.poReference, o.customerName, o.assignee].some((v) => (v || "").toLowerCase().includes(q))) : orders;
+
+  const regsSort = useSortableTable(fRegs, {
+    createdAt: (r) => (r.createdAt ? new Date(r.createdAt).getTime() : null),
+    fgCode: (r) => r.fgCode || "",
+    customerName: (r) => r.customerName || "",
+    status: (r) => r.status || "",
+    assignee: (r) => r.assignee || "",
+  });
+  const ordersSort = useSortableTable(fOrders, {
+    createdAt: (o) => (o.createdAt ? new Date(o.createdAt).getTime() : null),
+    quotationRef: (o) => o.quotationRef || "",
+    itemCount: (o) => o.items?.length || 0,
+    totalTax: (o) => o.totalTax || 0,
+    status: (o) => o.status || "",
+    assignee: (o) => o.assignee || "",
+  });
+
+  const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
+
+  const toolbar = (
+    <div className="toolbar">
+      <div className="segmented">
+        <button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}>ขึ้นทะเบียนสินค้า ({regs.length})</button>
+        <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}>รอบจัดส่ง / ชำระภาษี ({orders.length})</button>
+      </div>
+      <div className="spacer" />
+      <div className="search-glass" style={{ width: "220px" }}>
+        <Search size={18} color="var(--text-3)" />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหา..." />
+      </div>
+      <div className="segmented">
+        <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
+        <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
+      </div>
+    </div>
+  );
+
+  const regsList = regsSort.sorted;
+  const ordersList = ordersSort.sorted;
+  const empty = <div className="glass-panel p-10 text-center text-[var(--text-3)]">{search ? "ไม่พบรายการที่ค้นหา" : "ไม่มีข้อมูล"}</div>;
+
   return (
-    <>
-      <div className="premium-header">
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon">
-              <History size={22} />
-            </span>{" "}
-            ประวัติทั้งหมด
-          </h1>
-          <p>ประวัติการขึ้นทะเบียนสินค้าและประวัติรอบจัดส่งทั้งหมด</p>
-        </div>
-      </div>
-
-      <div className="tabs-header">
-        <button
-          onClick={() => setActiveTab("products")}
-          className={`tab-btn ${activeTab === "products" ? "active" : ""}`}
-        >
-          ประวัติการขึ้นทะเบียนสินค้า (Products)
-        </button>
-        <button
-          onClick={() => setActiveTab("orders")}
-          className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}
-        >
-          ประวัติรอบจัดส่ง (Shipments)
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center p-12">
-          <svg
-            className="animate-spin h-8 w-8 text-[var(--text-3)]"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-        </div>
-      ) : (
-        <>
-          {activeTab === "products" && (
-            <div className="glass-panel">
-              <div className="px-4 py-3.5 border-b border-[var(--border)] ">
-                <h3 className="font-semibold text-sm text-[var(--text)] ">
-                  ประวัติการขึ้นทะเบียนภาษี ({regs.length} รายการ)
-                </h3>
+    <TaxWorkspace
+      icon={<History size={22} />}
+      title="ประวัติทั้งหมด"
+      subtitle="ประวัติการขึ้นทะเบียนสินค้าและประวัติรอบจัดส่ง/ชำระภาษีทั้งหมด"
+      loading={loading}
+      toolbar={toolbar}
+    >
+      {/* ── Registration history ── */}
+      {tab === "products" && (
+        regsList.length === 0 ? empty : view === "cards" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {regsList.map((r) => (
+              <div key={r.id} onClick={() => (window.location.href = `/tax/register/${r.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[var(--text)] font-mono text-sm">{r.fgCode}</div>
+                    <div className="text-[11px] text-[var(--text-3)] mt-0.5 truncate">{r.productName}</div>
+                  </div>
+                  <StagePill status={r.status} />
+                </div>
+                <div className="flex items-center justify-between text-xs text-[var(--text-2)]">
+                  <span className="truncate">{r.customerName || "-"}</span>
+                  <span className="text-[var(--text-3)]">{r.assignee || "-"}</span>
+                </div>
+                <div className="text-[11px] font-mono text-[var(--text-3)] pt-2 border-t border-[var(--border)]">{fmtDateTime(r.createdAt)}</div>
               </div>
-              <div className="premium-table-wrapper border-none rounded-t-none">
-                <table className="premium-table">
-                  <thead>
-                    <tr>
-                      <th>วันที่ส่งคำขอ</th>
-                      <th>สินค้า (FG Code)</th>
-                      <th>ลูกค้า</th>
-                      <th>สถานะล่าสุด</th>
-                      <th>ผู้สร้างคำขอ</th>
+            ))}
+          </div>
+        ) : (
+          <div className="glass-panel">
+            <div className="premium-table-wrapper border-none">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <SortTh label="วันที่ส่งคำขอ" sortKey="createdAt" sort={regsSort} />
+                    <SortTh label="สินค้า (FG Code)" sortKey="fgCode" sort={regsSort} />
+                    <SortTh label="ลูกค้า" sortKey="customerName" sort={regsSort} />
+                    <SortTh label="สถานะล่าสุด" sortKey="status" sort={regsSort} />
+                    <SortTh label="ผู้สร้างคำขอ" sortKey="assignee" sort={regsSort} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {regsList.map((r) => (
+                    <tr key={r.id} onClick={() => (window.location.href = `/tax/register/${r.id}`)} className="clickable-row">
+                      <td className="text-[var(--text-2)] text-xs font-mono">{fmtDateTime(r.createdAt)}</td>
+                      <td>
+                        <div className="font-semibold text-[var(--text)] font-mono">{r.fgCode}</div>
+                        <div className="text-[11px] text-[var(--text-3)] mt-1">{r.productName}</div>
+                      </td>
+                      <td className="text-[var(--text-2)] text-xs">{r.customerName || "-"}</td>
+                      <td><StagePill status={r.status} /></td>
+                      <td className="text-[var(--text-2)] text-xs">{r.assignee || "-"}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {regs.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan="5"
-                          className="text-center py-10 text-[var(--text-3)]"
-                        >
-                          ไม่มีข้อมูล
-                        </td>
-                      </tr>
-                    ) : (
-                      regs.map((r) => (
-                        <tr
-                          key={r.id}
-                          onClick={() =>
-                            (window.location.href = `/tax/register/${r.id}`)
-                          }
-                          className="clickable-row"
-                        >
-                          <td className="text-[var(--text-2)] text-xs font-mono">
-                            {new Date(r.createdAt).toLocaleString("th-TH")}
-                          </td>
-                          <td>
-                            <div className="font-semibold text-[var(--text)] font-mono">
-                              {r.fgCode}
-                            </div>
-                            <div className="text-[11px] text-[var(--text-3)] mt-1">
-                              {r.productName}
-                            </div>
-                          </td>
-                          <td className="text-[var(--text-2)] text-xs">
-                            {r.customerName || "-"}
-                          </td>
-                          <td>
-                            <ProductStatusPill status={r.status} />
-                          </td>
-                          <td className="text-[var(--text-2)] text-xs">
-                            {r.assignee || "-"}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
-
-          {activeTab === "orders" && (
-            <div className="glass-panel">
-              <div className="px-4 py-3.5 border-b border-[var(--border)] ">
-                <h3 className="font-semibold text-sm text-[var(--text)] ">
-                  ประวัติจัดส่งและชำระภาษีทั้งหมด ({orders.length} รายการ)
-                </h3>
-              </div>
-              <div className="premium-table-wrapper border-none rounded-t-none">
-                <table className="premium-table">
-                  <thead>
-                    <tr>
-                      <th>วันที่สร้าง Order</th>
-                      <th>เลขที่ใบเสนอราคา / วันเคลียร์ภาษี</th>
-                      <th className="text-center">จำนวนรายการ</th>
-                      <th className="num">ยอดภาษีรวม</th>
-                      <th className="text-center">สถานะชำระเงิน</th>
-                      <th>ผู้รับผิดชอบ</th>
-                      <th className="text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan="7"
-                          className="text-center py-10 text-[var(--text-3)]"
-                        >
-                          ไม่มีข้อมูล
-                        </td>
-                      </tr>
-                    ) : (
-                      orders.map((o) => {
-                        const isExempt = (o.totalTax || 0) === 0;
-                        const itemCount = o.items?.length || 0;
-                        return (
-                          <tr
-                            key={o.id}
-                            onClick={() => setSelectedOrder(o)}
-                            className="clickable-row"
-                          >
-                            <td className="text-[var(--text-2)] text-xs font-mono">
-                              {new Date(o.createdAt).toLocaleString("th-TH")}
-                            </td>
-                            <td>
-                              <div className="font-semibold text-[var(--text)] ">
-                                {o.quotationRef}
-                              </div>
-                              {o.poReference && (
-                                <div className="text-[10px] text-[var(--text-3)] mt-1 font-mono">
-                                  PO: {o.poReference}
-                                </div>
-                              )}
-                              {o.status === "complete" && o.clearedAt && (
-                                <div className="text-[10px] text-[var(--green)] mt-1 font-mono">
-                                  เคลียร์:{" "}
-                                  {new Date(o.clearedAt).toLocaleString(
-                                    "th-TH",
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            <td className="text-center font-mono font-bold text-[var(--text-2)] ">
-                              {itemCount}
-                            </td>
-                            <td className="num font-bold font-mono text-[var(--text-2)] ">
-                              {isExempt ? (
-                                <span className="status-pill success text-xs font-sans">
-                                  ยกเว้นภาษี
-                                </span>
-                              ) : (
-                                formatMoney(o.totalTax)
-                              )}
-                            </td>
-                            <td className="text-center">
-                              {o.status === "complete" ? (
-                                <span className="status-pill success flex items-center gap-1 mx-auto w-fit">
-                                  <svg
-                                    className="w-3 h-3"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2.5}
-                                      d="M5 13l4 4L19 7"
-                                    />
-                                  </svg>
-                                  ชำระแล้ว
-                                </span>
-                              ) : o.status === "received" ? (
-                                <span className="status-pill warn flex items-center gap-1 mx-auto w-fit">
-                                  <svg
-                                    className="w-3 h-3"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <circle cx="12" cy="12" r="10" strokeWidth="2.5"/>
-                                  </svg>
-                                  รอชำระภาษี
-                                </span>
-                              ) : o.status === "filing" ? (
-                                <span className="status-pill warn flex items-center gap-1 mx-auto w-fit">
-                                  กำลังยื่นภาษี
-                                </span>
-                              ) : o.status === "rejected" ? (
-                                <span className="status-pill danger flex items-center gap-1 mx-auto w-fit">
-                                  ตีกลับให้แก้ไข
-                                </span>
-                              ) : (
-                                <span className="status-pill danger flex items-center gap-1 mx-auto w-fit">
-                                  <svg
-                                    className="w-3 h-3"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2.5}
-                                      d="M6 18L18 6M6 6l12 12"
-                                    />
-                                  </svg>
-                                  รอรับเงิน
-                                </span>
-                              )}
-                            </td>
-                            <td className="text-[var(--text-2)] text-xs font-semibold">
-                              {o.assignee || "-"}
-                            </td>
-                            <td className="text-center">
-                              {canDelete ? (
-                                <button
-                                  onClick={(e) => handleDeleteOrder(e, o.id)}
-                                  className="text-[var(--red)] hover:text-red-700 transition-colors"
-                                  title="ลบรายการนี้"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mx-auto">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                                  </svg>
-                                </button>
-                              ) : (
-                                <span className="text-[var(--text-3)]">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </>
+          </div>
+        )
       )}
 
-      <OrderDetailModal
-        order={selectedOrder}
-        open={!!selectedOrder}
-        onClose={() => setSelectedOrder(null)}
+      {/* ── Shipment / payment history ── */}
+      {tab === "orders" && (
+        ordersList.length === 0 ? empty : view === "cards" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {ordersList.map((o) => (
+              <div key={o.id} onClick={() => setSelectedOrder(o)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[var(--text)] text-sm">{o.quotationRef}</div>
+                    <div className="text-[11px] text-[var(--accent)] mt-0.5 truncate">{o.customerName || "-"}</div>
+                  </div>
+                  <StagePill status={o.status} />
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[var(--text-3)]">{o.items?.length || 0} รายการ</span>
+                  <span className="font-mono font-bold text-[var(--text-2)]">{taxText(o)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+                  <span className="text-[11px] font-mono text-[var(--text-3)]">{fmtDateTime(o.createdAt)}</span>
+                  {canDelete && (
+                    <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(o); }} className="btn-icon danger" title="ลบ"><Trash2 size={15} /></button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="glass-panel">
+            <div className="premium-table-wrapper border-none">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <SortTh label="วันที่สร้าง Order" sortKey="createdAt" sort={ordersSort} />
+                    <SortTh label="เลขที่ใบเสนอราคา" sortKey="quotationRef" sort={ordersSort} />
+                    <SortTh label="จำนวนรายการ" sortKey="itemCount" sort={ordersSort} className="text-center" />
+                    <SortTh label="ยอดภาษีรวม" sortKey="totalTax" sort={ordersSort} className="num" />
+                    <SortTh label="สถานะ" sortKey="status" sort={ordersSort} className="text-center" />
+                    <SortTh label="ผู้รับผิดชอบ" sortKey="assignee" sort={ordersSort} />
+                    <th className="text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ordersList.map((o) => (
+                    <tr key={o.id} onClick={() => setSelectedOrder(o)} className="clickable-row">
+                      <td className="text-[var(--text-2)] text-xs font-mono">{fmtDateTime(o.createdAt)}</td>
+                      <td>
+                        <div className="font-semibold text-[var(--text)]">{o.quotationRef}</div>
+                        {o.poReference && <div className="text-[10px] text-[var(--text-3)] mt-1 font-mono">PO: {o.poReference}</div>}
+                      </td>
+                      <td className="text-center font-mono font-bold text-[var(--text-2)]">{o.items?.length || 0}</td>
+                      <td className="num font-bold font-mono text-[var(--text-2)]">{taxText(o)}</td>
+                      <td className="text-center"><StagePill status={o.status} /></td>
+                      <td className="text-[var(--text-2)] text-xs font-semibold">{o.assignee || "-"}</td>
+                      <td className="text-center" onClick={(e) => e.stopPropagation()}>
+                        {canDelete ? (
+                          <button onClick={() => setDeleteTarget(o)} className="btn-icon danger mx-auto" title="ลบรายการนี้"><Trash2 size={16} /></button>
+                        ) : <span className="text-[var(--text-3)]">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
+
+      <OrderDetailModal order={selectedOrder} open={!!selectedOrder} onClose={() => setSelectedOrder(null)} />
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDeleteOrder}
+        title="ลบประวัติรอบจัดส่ง"
+        message={`ยืนยันการลบ ${deleteTarget?.quotationRef || "รายการนี้"} ออกจากระบบ? การลบนี้ย้อนกลับไม่ได้`}
+        confirmLabel="ลบรายการ"
       />
-    </>
+    </TaxWorkspace>
   );
 }

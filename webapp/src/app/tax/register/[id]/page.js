@@ -4,13 +4,18 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ReceiptText, Package, Pencil, Trash2 } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
-import { fmtMoney } from "@/lib/format";
-import ProductStatusPill from "@/components/ProductStatusPill";
+import { fmtMoney, fmtDateTime } from "@/lib/format";
+import StagePill from "@/components/tax/StagePill";
+import StatusTimeline from "@/components/tax/StatusTimeline";
+import ConfirmModal from "@/components/tax/ConfirmModal";
+import { TaxSpinner } from "@/components/tax/TaxWorkspace";
 import ApproveProductModal from "@/components/ApproveProductModal";
 import RejectModal from "@/components/RejectModal";
 import EditRegistrationModal from "@/components/EditRegistrationModal";
 
 // Detail of one excise registration (product + customer + approval state).
+// Redesigned: StagePill + a StatusTimeline of the registration workflow, and a
+// branded ConfirmModal in place of window.confirm. Logic/API unchanged.
 export default function RegistrationDetail() {
   const params = useParams();
   const router = useRouter();
@@ -25,6 +30,7 @@ export default function RegistrationDetail() {
   const [showApprove, setShowApprove] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
 
   const fetchReg = async () => {
     try {
@@ -57,13 +63,8 @@ export default function RegistrationDetail() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "rejected", rejectionReason: reason }),
     });
-    if (res.ok) {
-      setShowReject(false);
-      await fetchReg();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      alert(d.error || "เกิดข้อผิดพลาดในการทำรายการ");
-    }
+    if (res.ok) { setShowReject(false); await fetchReg(); }
+    else { const d = await res.json().catch(() => ({})); alert(d.error || "เกิดข้อผิดพลาดในการทำรายการ"); }
   };
 
   const handleResubmit = async () => {
@@ -73,33 +74,16 @@ export default function RegistrationDetail() {
       body: JSON.stringify({ status: "pending_legal" }),
     });
     if (res.ok) await fetchReg();
-    else {
-      const d = await res.json().catch(() => ({}));
-      alert(d.error || "ไม่สามารถส่งกลับได้");
-    }
+    else { const d = await res.json().catch(() => ({})); alert(d.error || "ไม่สามารถส่งกลับได้"); }
   };
 
-  const handleDelete = async () => {
-    if (!confirm("ยืนยันการลบรายการขึ้นทะเบียนนี้?")) return;
+  const doDelete = async () => {
     const res = await fetch(`/api/excise-registrations/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      router.push("/tax/register");
-    } else {
-      const d = await res.json().catch(() => ({}));
-      alert(d.error || "ไม่สามารถลบได้");
-    }
+    if (res.ok) router.push("/tax/register");
+    else { const d = await res.json().catch(() => ({})); alert(d.error || "ไม่สามารถลบได้"); }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center p-24">
-        <svg className="animate-spin h-10 w-10 text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-      </div>
-    );
-  }
+  if (loading) return <TaxSpinner />;
 
   if (error || !reg) {
     return (
@@ -114,6 +98,24 @@ export default function RegistrationDetail() {
 
   const isExempt = reg.isExciseTaxable === false;
   const taxPerUnit = isExempt ? 0 : (reg.exciseTax || 0) + (reg.localTax || 0);
+
+  // Build the workflow timeline from the registration state.
+  const reviewState = reg.status === "pending_legal" ? "current" : reg.status === "rejected" ? "rejected" : "done";
+  const steps = [
+    { label: "ยื่นขึ้นทะเบียน (SA)", state: "done", meta: `${reg.assignee || "-"} · ${fmtDateTime(reg.createdAt)}` },
+    {
+      label: "ตรวจสอบโดยฝ่ายกฎหมาย (LG)",
+      state: reviewState,
+      meta: reg.status === "rejected"
+        ? `ตีกลับ: ${reg.rejectionReason || "-"}`
+        : reg.status === "approved"
+          ? `${reg.approvedByName || ""}${reg.approvedAt ? ` · ${fmtDateTime(reg.approvedAt)}` : ""}`
+          : "รอตรวจสอบ",
+    },
+    reg.status === "rejected"
+      ? { label: "รอ SA แก้ไขและส่งกลับ", state: "current", meta: "อยู่ในวงแก้ไข" }
+      : { label: "ขึ้นทะเบียนเสร็จสมบูรณ์", state: reg.status === "approved" ? "done" : "upcoming", meta: reg.status === "approved" ? `เลขที่อนุมัติ ${reg.approvalNumber || "-"}` : undefined },
+  ];
 
   return (
     <>
@@ -131,7 +133,7 @@ export default function RegistrationDetail() {
             <button onClick={() => setShowEdit(true)} className="btn px-3 flex items-center gap-1.5 text-[var(--text-2)] hover:text-[var(--accent)] text-xs">
               <Pencil size={14} /> แก้ไข
             </button>
-            <button onClick={handleDelete} className="btn px-3 flex items-center gap-1.5 text-[var(--red)] hover:bg-[var(--red-soft)] text-xs">
+            <button onClick={() => setShowDelete(true)} className="btn px-3 flex items-center gap-1.5 text-[var(--red)] hover:bg-[var(--red-soft)] text-xs">
               <Trash2 size={14} /> ลบ
             </button>
           </div>
@@ -151,18 +153,12 @@ export default function RegistrationDetail() {
         <div className="flex gap-2">
           {canApprove && reg.status === "pending_legal" && (
             <>
-              <button onClick={() => setShowApprove(true)} className="btn btn-primary px-6 py-2 text-xs font-semibold rounded-lg">
-                อนุมัติขึ้นทะเบียน
-              </button>
-              <button onClick={() => setShowReject(true)} className="btn border border-[var(--border)] text-[var(--red)] px-4 py-2 text-xs font-semibold rounded-lg">
-                ตีกลับ
-              </button>
+              <button onClick={() => setShowApprove(true)} className="btn btn-primary px-6 py-2 text-xs font-semibold rounded-lg">อนุมัติขึ้นทะเบียน</button>
+              <button onClick={() => setShowReject(true)} className="btn border border-[var(--border)] text-[var(--red)] px-4 py-2 text-xs font-semibold rounded-lg">ตีกลับ</button>
             </>
           )}
           {canEdit && reg.status === "rejected" && (
-            <button onClick={handleResubmit} className="btn btn-primary px-5 py-2 text-xs font-semibold rounded-lg">
-              ส่งกลับให้ตรวจอีกครั้ง
-            </button>
+            <button onClick={handleResubmit} className="btn btn-primary px-5 py-2 text-xs font-semibold rounded-lg">ส่งกลับให้ตรวจอีกครั้ง</button>
           )}
         </div>
       </div>
@@ -213,6 +209,12 @@ export default function RegistrationDetail() {
               </div>
             </div>
           </div>
+
+          {/* Workflow timeline */}
+          <div className="glass-panel p-[20px]">
+            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">สายงานการขึ้นทะเบียน</h3>
+            <StatusTimeline steps={steps} />
+          </div>
         </div>
 
         {/* Status + tax */}
@@ -220,14 +222,13 @@ export default function RegistrationDetail() {
           <div className="glass-panel p-[20px]">
             <span className="text-[var(--text-3)] text-[10px] block mb-1">สถานะขึ้นทะเบียน</span>
             <div className="mt-1">
-              <ProductStatusPill status={reg.status} />
+              <StagePill status={reg.status} />
               {reg.status === "approved" && reg.approvalNumber && (
                 <div className="mt-2 text-xs font-mono bg-[var(--panel-2)] p-2 rounded border border-[var(--border)]">
                   <span className="text-[var(--text-3)]">เลขที่อนุมัติ: </span>{reg.approvalNumber}
                   {reg.approvedByName && (
                     <div className="font-sans text-[var(--text-3)] mt-1">
-                      โดย {reg.approvedByName}
-                      {reg.approvedAt && ` · ${new Date(reg.approvedAt).toLocaleDateString("th-TH")}`}
+                      โดย {reg.approvedByName}{reg.approvedAt && ` · ${new Date(reg.approvedAt).toLocaleDateString("th-TH")}`}
                     </div>
                   )}
                 </div>
@@ -270,6 +271,14 @@ export default function RegistrationDetail() {
       <ApproveProductModal open={showApprove} registration={reg} onClose={() => setShowApprove(false)} onApproved={fetchReg} />
       <RejectModal open={showReject} onClose={() => setShowReject(false)} onConfirm={handleReject} title="ตีกลับการขึ้นทะเบียน" entityLabel="ทะเบียนนี้" />
       <EditRegistrationModal open={showEdit} onClose={() => setShowEdit(false)} onSaved={fetchReg} registration={reg} />
+      <ConfirmModal
+        open={showDelete}
+        onClose={() => setShowDelete(false)}
+        onConfirm={doDelete}
+        title="ลบรายการขึ้นทะเบียน"
+        message={`ยืนยันการลบทะเบียนของ ${reg.fgCode} (${reg.customerName || "-"})? การลบนี้ย้อนกลับไม่ได้`}
+        confirmLabel="ลบรายการ"
+      />
     </>
   );
 }
