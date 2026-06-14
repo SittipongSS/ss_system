@@ -61,12 +61,15 @@ export default function HomeHubPage() {
         : can(role, "customers:view") ? "/database/customers"
           : "/database/holidays"
     );
-  // Phased rollout: only the PM system is open to normal roles; tax + database
-  // stay admin-only. Keep in sync with ADMIN_LOCKDOWN/lockedOut in proxy.js.
+  // Phased rollout: PM + database are open to normal roles; only the tax system
+  // stays admin-only. Keep in sync with ADMIN_LOCKDOWN/lockedOut in proxy.js.
   const isAdmin = can(role, "users:manage");
   const canPM = isAdmin || can(role, "pm:view");
   const canTax = isAdmin;
-  const canDB = isAdmin;
+  // Database hub card: anyone who can open a registry (sales/legal/staff) — the
+  // approval workflow needs AE/AC to reach it, not just admins.
+  const canDB =
+    isAdmin || can(role, "products:view") || can(role, "customers:view");
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px" }}>
@@ -152,7 +155,7 @@ export default function HomeHubPage() {
           )}
 
           {/* Card 3 — Master Database (customers / products registry).
-              Admin-only during phased rollout; hidden otherwise. */}
+              Shown to roles that can open a registry; hidden otherwise. */}
           {canDB && (
             <button
               onClick={enterDB}
