@@ -71,10 +71,10 @@ export async function proxy(request) {
   }
 
   // ── Phased rollout lockdown ───────────────────────────────────────────
-  // Only the Project Management system (/pm) is open to normal roles right now;
-  // the tax + database systems stay admin-only. Admins (users:manage) reach
-  // everything. Non-admins also get the hub (/home), their own-account API, and
-  // READ-ONLY access to the master/holiday data the PM forms depend on.
+  // The Project Management (/pm) and database (/database) systems are open to
+  // normal roles now; only the tax system stays admin-only. Admins
+  // (users:manage) reach everything. Non-admins also get the hub (/home), their
+  // own-account API, and the master/holiday data the PM forms depend on.
   if (user && !isLogin && lockedOut(user.app_metadata?.role, path, request.method, isApi)) {
     if (isApi) return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
     return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
@@ -96,12 +96,15 @@ const ADMIN_LOCKDOWN = true;
 
 const startsWithAny = (path, prefixes) => prefixes.some((p) => path === p || path.startsWith(p + '/'));
 
-// Pages a non-admin may open during the phased rollout: hub + PM system.
-const OPEN_PAGES = ['/home', '/pm'];
-// APIs a non-admin may WRITE to: own account + the PM system itself.
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm'];
-// APIs a non-admin may READ (GET) — PM forms/timeline need this master data,
-// but managing those registries stays in the (still-locked) database system.
+// Pages a non-admin may open during the phased rollout: hub + PM + database.
+const OPEN_PAGES = ['/home', '/pm', '/database'];
+// APIs a non-admin may WRITE to: own account + PM + master-data registries.
+// Row-level scope + the per-role capability gate (apiWriteAllowed) still apply:
+// AE/AC need customers:edit/products:edit to create (lands as 'pending'),
+// Senior AE+ to approve. Holiday/product-type writes stay supervisor-only.
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload'];
+// APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
+// managing the registries now lives in the (open) database system above.
 const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users'];
 
 // During the phased lockdown, admins (users:manage) get everything; normal
@@ -152,6 +155,18 @@ function apiWriteAllowed(method, path, role) {
     // PATCH covers both edit (sa) and approve (legal)
     if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'legal:approve');
     return can(role, 'products:edit'); // create
+  }
+  // Attachments (polymorphic, migration 0028). Coarse gate: anyone who may edit
+  // ANY supported parent entity passes here (customer/product = master editors;
+  // order receipts = sales filing / legal tax approval). The route handler then
+  // enforces the precise per-entity row scope (canEditRecord on the parent).
+  if (path.startsWith('/api/attachments')) {
+    return (
+      can(role, 'customers:edit') ||
+      can(role, 'products:edit') ||
+      can(role, 'sales:act') ||
+      can(role, 'legal:approve')
+    );
   }
   return true; // e.g. /api/upload — any signed-in user
 }

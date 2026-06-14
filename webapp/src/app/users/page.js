@@ -14,6 +14,7 @@ import {
   rolesForDepartment,
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
+import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 
 const emptyForm = { email: "", password: "", firstName: "", lastName: "", department: "SA", role: "ae", team: "ODM" };
 
@@ -28,6 +29,17 @@ export default function UserManagement() {
 
   const [editUser, setEditUser] = useState(null); // the user being edited
   const [editForm, setEditForm] = useState(null);
+
+  const sort = useSortableTable(users, {
+    firstName: (u) => u.firstName || "",
+    lastName: (u) => u.lastName || "",
+    email: (u) => u.email || "",
+    role: (u) => ROLE_LABELS[u.role] || u.role || "",
+    department: (u) => DEPARTMENT_LABELS[u.department || departmentFor(u.role)] || "",
+    team: (u) => TEAM_LABELS[u.team] || u.team || "",
+    lastSignInAt: (u) => (u.lastSignInAt ? new Date(u.lastSignInAt).getTime() : null),
+  });
+  const sortedUsers = sort.sorted;
 
   const fetchUsers = async () => {
     try {
@@ -195,25 +207,25 @@ export default function UserManagement() {
             <table className="premium-table">
               <thead>
                 <tr>
-                  <th>ชื่อ</th>
-                  <th>นามสกุล</th>
-                  <th>อีเมล</th>
-                  <th>ตำแหน่ง Role</th>
-                  <th>ฝ่าย</th>
-                  <th>ทีม</th>
-                  <th>เข้าใช้ล่าสุด</th>
+                  <SortTh label="ชื่อ" sortKey="firstName" sort={sort} />
+                  <SortTh label="นามสกุล" sortKey="lastName" sort={sort} />
+                  <SortTh label="อีเมล" sortKey="email" sort={sort} />
+                  <SortTh label="ตำแหน่ง Role" sortKey="role" sort={sort} />
+                  <SortTh label="ฝ่าย" sortKey="department" sort={sort} />
+                  <SortTh label="ทีม" sortKey="team" sort={sort} />
+                  <SortTh label="เข้าใช้ล่าสุด" sortKey="lastSignInAt" sort={sort} />
                   <th className="text-center">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
-                {users.length === 0 ? (
+                {sortedUsers.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="text-center py-10 text-[var(--text-3)]">
                       ยังไม่มีผู้ใช้ในระบบ
                     </td>
                   </tr>
                 ) : (
-                  users.map((u) => (
+                  sortedUsers.map((u) => (
                     <tr key={u.id}>
                       <td className="font-medium text-[var(--text)]">{u.firstName || "-"}</td>
                       <td className="font-medium text-[var(--text)]">{u.lastName || "-"}</td>

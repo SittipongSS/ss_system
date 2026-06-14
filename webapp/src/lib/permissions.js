@@ -28,7 +28,10 @@
 //
 // Capability strings: "<resource>:<action>"
 //   customers:view | customers:edit | customers:delete
-//   products:view  | products:edit  | products:delete
+//   products:view  | products:edit  | products:delete | products:margin
+//     (products:margin = see the factory cost BREAKDOWN + profit. costPrice
+//      itself stays visible to anyone with products:view; only the derived
+//      material/labor/shipping split and factoryProfit are gated — LG + admin.)
 //   legal:view     | legal:approve
 //   sales:view     | sales:act      | sales:delete   (sales = the order/PO workflow)
 //   history:view   | audit:view
@@ -129,7 +132,7 @@ const SALES_OPS = [
 // Every capability in the system. Held in full only by `admin`.
 const SUPERUSER_CAPS = [
   'customers:view', 'customers:edit', 'customers:delete',
-  'products:view', 'products:edit', 'products:delete',
+  'products:view', 'products:edit', 'products:delete', 'products:margin',
   'sales:view', 'sales:act', 'sales:delete',
   'legal:view', 'legal:approve',
   'history:view', 'audit:view',
@@ -146,7 +149,9 @@ const ADMIN_SYSTEM_CAPS = ['users:manage', 'master:manage', 'audit:view'];
 //   - the admin-system caps (account/master/audit management)
 //   - legal:approve — tax approval is reserved for the `legal` role (admin keeps
 //     it as a break-glass). ae_supervisor still has legal:view (sees tax status).
-const SALES_HEAD_EXCLUDED = [...ADMIN_SYSTEM_CAPS, 'legal:approve'];
+//   - products:margin — the factory cost breakdown + profit is restricted to
+//     LG + admin; even the sales head sees only costPrice, not the margin split.
+const SALES_HEAD_EXCLUDED = [...ADMIN_SYSTEM_CAPS, 'legal:approve', 'products:margin'];
 
 // Sales head (ae_supervisor): every remaining sales/legal-view/PM capability
 // across ALL teams. Data scope stays 'all' via isSuperuser().
@@ -162,13 +167,15 @@ const ROLE_CAPS = {
   // back-office + front-office: same capabilities, differ only by edit SCOPE
   ac: SALES_OPS,
   ae: SALES_OPS,
-  // legal views registries + does tax approval; no edit/delete of sales data
-  legal: ['customers:view', 'products:view', 'legal:view', 'legal:approve', 'history:view'],
+  // legal views registries + does tax approval; no edit/delete of sales data.
+  // legal is the cost-margin authority (sees the factory cost breakdown + profit).
+  legal: ['customers:view', 'products:view', 'products:margin', 'legal:view', 'legal:approve', 'history:view'],
   // viewer: read-only observer of the Project Management system only (no writes)
   viewer: ['pm:view'],
   // staff: a member of a non-sales department (PC/PD/WH/RD/QC). Logs in to see
-  // PM and the tasks assigned to them ("งานของฉัน"); no edit/tax access.
-  staff: ['pm:view'],
+  // PM + the tasks assigned to them, and may READ the shared master data
+  // (products/customers) — but never the cost margin (no products:margin).
+  staff: ['pm:view', 'products:view', 'customers:view'],
 };
 
 // Unknown role: read-only viewer (sees registries + history, no actions).
@@ -188,6 +195,19 @@ export function can(role, cap) {
 // (users:manage / master:manage / audit:view). Use `can(role, …)` to gate those.
 export function isSuperuser(role) {
   return role === 'admin' || role === 'ae_supervisor';
+}
+
+// ── Master-data approval authority ────────────────────────────────────
+// Org rule: AE / AC may CREATE customers & products, but the new record stays
+// 'pending' until a Senior AE (own team) or a sales head / admin (any team)
+// approves it. The approvers are exactly the roles at/above Senior AE — they
+// also auto-approve their own creations (they ARE the approval authority).
+//   senior_ae      — approves own team's submissions
+//   ae_supervisor  — approves all teams (sales head)
+//   admin          — approves all teams (break-glass)
+// Team-scope of senior_ae's approval is still enforced row-level via inScope().
+export function canApproveMasterData(role) {
+  return isSuperuser(role) || role === 'senior_ae';
 }
 
 // ── Data scope ────────────────────────────────────────────────────────
@@ -296,6 +316,36 @@ export function allowedEditFields(user, resource, salesEditable) {
   return allowed;
 }
 
+// ── Cost redaction (two tiers) ────────────────────────────────────────
+// Factory cost data is confidential to the EXCISE TAX system. Two tiers:
+//   • costPrice  — the factory cost. Visible to SA + LG + admin (anyone who
+//     works the tax/sales flow). Hidden from other departments (staff) and
+//     plain viewers, even though they may browse the product catalog.
+//   • MARGIN_FIELDS — the cost breakdown + resulting profit. Stricter still:
+//     LG + admin only (products:margin). Even SA sees costPrice but not these.
+// Redaction happens server-side so the data never leaves the API; hiding the
+// UI card alone would still leak it via a direct fetch.
+export const MARGIN_FIELDS = ['materialCost', 'laborCost', 'shippingCost', 'factoryProfit'];
+
+// May this role see the factory costPrice? SA (products:edit) own it; LG/admin
+// (products:margin) see it too. Staff/viewers with read-only catalog access
+// (products:view but neither edit nor margin) do NOT.
+export function canSeeProductCost(role) {
+  return can(role, 'products:margin') || can(role, 'products:edit');
+}
+
+// Return a copy of `product` redacted for `user`: strip MARGIN_FIELDS unless
+// they hold products:margin, and strip costPrice too unless canSeeProductCost.
+// Pass-through (same ref) for margin-holders / falsy input. Use
+// `.map(p => redactProductMargin(user, p))` for list responses.
+export function redactProductMargin(user, product) {
+  if (!product || can(user?.role, 'products:margin')) return product;
+  const out = { ...product };
+  for (const f of MARGIN_FIELDS) delete out[f];
+  if (!canSeeProductCost(user?.role)) delete out.costPrice;
+  return out;
+}
+
 // ── Identity validation (role + team + department) ────────────────────
 // Used by the user-management API. Team-bound roles need a valid team;
 // others must not carry one. Department, if supplied, must match the role's
@@ -319,9 +369,8 @@ export function validateIdentity(role, team, department) {
 }
 
 // Landing route for the EXCISE TAX system (the "ระบบภาษีสรรพสามิต" home card).
-// All excise pages live under /tax/*: LG lands on the registration-approval
-// page, sales roles land on the registration-submission page.
+// Every role lands on the role-aware command center at /tax, which surfaces the
+// items that role must act on and links into the per-stage workspace pages.
 export function landingFor(role) {
-  if (role === 'legal') return '/tax/approve-register';
-  return '/tax/register'; // sales roles (viewer has no tax access; its hub card is disabled)
+  return '/tax';
 }

@@ -1486,6 +1486,23 @@ input[type="number"] {
   color: var(--text);
 }
 
+/* Select กลาง (component <Select>) — variant ที่เลิกเขียน inline style ซ้ำ ๆ */
+.premium-select.compact { height: var(--ctl-h, 32px); font-size: 12px; width: auto; }
+.premium-select.tone {
+  height: 30px; font-size: 12px; font-weight: 600;
+  min-width: 118px; padding: 0 26px 0 10px; width: auto;
+}
+
+/* ฟอร์ม: 2 คอลัมน์บนจอกว้าง → ยุบเหลือ 1 คอลัมน์บนจอตั้ง/แคบ (≤820px) กันช่องกรอกเบียดกัน */
+.pm-form-grid { display: grid; grid-template-columns: 1fr 1fr; }
+/* specificity เพิ่ม (.pm-form-grid.pm-form-grid) กันลำดับ cascade สลับตอน build/HMR */
+@media (max-width: 820px) {
+  .pm-form-grid.pm-form-grid { grid-template-columns: 1fr; }
+  /* บังคับทุกลูกให้กินคอลัมน์เดียวเต็มแถว — กัน col-span-2 ไปสร้างคอลัมน์ผีเบียดอีก
+     (ใช้ > * แทน .col-span-2 เพราะ Tailwind จะ purge selector ที่อ้างชื่อ utility) */
+  .pm-form-grid.pm-form-grid > * { grid-column: 1 / -1; }
+}
+
 /* Corporate Buttons */
 .btn {
   border: 1px solid var(--border);

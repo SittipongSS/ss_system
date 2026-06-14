@@ -2,11 +2,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
-import { RoleContext } from '@/lib/roleContext';
+import { RoleContext, TeamContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 const SUPABASE_CONFIGURED =
@@ -152,6 +152,13 @@ export default function AppLayout({ children }) {
         { href: '/database/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
         { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
         { href: '/database/holidays', name: 'วันหยุด (ปฏิทินทำการ)', icon: CalendarDays, cap: 'master:manage', match: (p) => p.startsWith('/database/holidays') },
+      ],
+    },
+    {
+      label: 'ภาพรวม',
+      system: 'tax',
+      items: [
+        { href: '/tax', name: 'ศูนย์บัญชาการ', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
       ],
     },
     {
@@ -322,7 +329,9 @@ export default function AppLayout({ children }) {
         </header>
 
         <div className="page">
-          <RoleContext.Provider value={role}>{children}</RoleContext.Provider>
+          <RoleContext.Provider value={role}>
+            <TeamContext.Provider value={team}>{children}</TeamContext.Provider>
+          </RoleContext.Provider>
         </div>
       </main>
 
