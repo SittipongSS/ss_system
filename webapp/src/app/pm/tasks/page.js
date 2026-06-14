@@ -1,8 +1,11 @@
 "use client";
 import { useState, useEffect, useMemo, Fragment } from "react";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Edit2, Trash2, CircleDashed, ChevronRight, ChevronDown, ExternalLink, Flame, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, ChevronRight, ChevronDown, ExternalLink, Flame, ArrowUpDown, ArrowUp, ArrowDown, Table2, PlusCircle, Check, Calendar, Flag } from "lucide-react";
 import Modal from "@/components/Modal";
+import Select from "@/components/ui/Select";
+import { isSuperuser } from "@/lib/permissions";
+import { useResponsiveView } from "@/lib/useResponsiveView";
 
 const TASK_STATUS_TH = { Pending: "รอ", "In Progress": "ทำอยู่", Completed: "เสร็จ" };
 const SCOPE_TH = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
@@ -75,7 +78,7 @@ const makeComparator = (sortKey, dir = "asc") => {
   return (a, b) => ((a.stepOrder ?? 0) - (b.stepOrder ?? 0)) * mul;
 };
 
-const PERSONAL_BLANK = { title: "", note: "", dueDate: "", projectId: "" };
+const PERSONAL_BLANK = { title: "", note: "", dueDate: "", projectId: "", assigneeId: "" };
 
 const SORT_OPTIONS = [
   { key: "default", label: "ลำดับขั้นตอน" },
@@ -94,8 +97,11 @@ export default function MyWorkPage() {
   const [projectsMap, setProjectsMap] = useState({});
   const [me, setMe] = useState(null);
   const [allProjects, setAllProjects] = useState([]);
+  const [users, setUsers] = useState([]);
   const [usersMap, setUsersMap] = useState({});
   const [loading, setLoading] = useState(true);
+  // มุมมองสลับอัตโนมัติตามจอ: จอตั้ง → Card List, จอนอน → Table (ผู้ใช้กดสลับเองได้)
+  const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" });
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // all | progress | urgent | done
   const [deptFilter, setDeptFilter] = useState("all");
@@ -110,13 +116,6 @@ export default function MyWorkPage() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(PERSONAL_BLANK);
   const [saving, setSaving] = useState(false);
-
-  // โหมดเลือกหลายรายการเพื่อลบ
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [selectedProjIds, setSelectedProjIds] = useState(() => new Set());
-  const [bulkDeletingProj, setBulkDeletingProj] = useState(false);
 
   const loadWork = async (sc) => {
     setLoading(true);
@@ -136,6 +135,7 @@ export default function MyWorkPage() {
   useEffect(() => { loadWork(scope); }, [scope]);
   useEffect(() => {
     fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((u) => {
+      setUsers(u || []);
       setUsersMap(Object.fromEntries((u || []).map((x) => [x.id, x.name])));
     }).catch(() => {});
     fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((p) => setAllProjects(p || [])).catch(() => {});
@@ -194,87 +194,80 @@ export default function MyWorkPage() {
     return next;
   });
 
-  // ── งานโปรเจกต์จัดกลุ่มตามโครงการ ──
+  // งานนอกเทมเพลตแยก 2 ชนิดด้วยการผูกโปรเจกต์:
+  //   linkedExtra = "งานเพิ่มเติม" (ผูกโปรเจกต์ — เข้ากลุ่มโครงการ, assign กันได้)
+  //   privateTasks = "งานส่วนตัว" (ไม่ผูก — เห็นเฉพาะเรา)
+  const linkedExtra = useMemo(() => personalTasks.filter((t) => t.projectId), [personalTasks]);
+  const privateTasks = useMemo(() => personalTasks.filter((t) => !t.projectId), [personalTasks]);
+
+  const resolveProj = (pid) => projectsMap[pid] || allProjects.find((p) => p.id === pid) || {};
+
+  // ── งานโปรเจกต์ + งานเพิ่มเติม จัดกลุ่มตามโครงการ ──
   const projGroups = useMemo(() => {
     const groups = new Map();
+    const ensure = (pid) => {
+      if (!groups.has(pid)) {
+        const p = resolveProj(pid);
+        groups.set(pid, { projectId: pid, code: p.code || "-", name: p.name || "-", team: p.team || null, tasks: [], extra: [] });
+      }
+      return groups.get(pid);
+    };
     scopedProjectTasks
       .filter((t) => matchStatus(t, statusFilter))
-      .forEach((t) => {
-        if (!groups.has(t.projectId)) {
-          const p = projectsMap[t.projectId] || {};
-          groups.set(t.projectId, { projectId: t.projectId, code: p.code || "-", name: p.name || "-", tasks: [] });
-        }
-        groups.get(t.projectId).tasks.push(t);
-      });
+      .forEach((t) => ensure(t.projectId).tasks.push(t));
+    // งานเพิ่มเติมไม่มีฟิลด์แผนก/ผู้รับผิดชอบแบบขั้นตอน → ซ่อนเมื่อกรองแผนก/ผู้รับผิดชอบ
+    if (!filterByMeta) {
+      linkedExtra
+        .filter((t) => {
+          const p = resolveProj(t.projectId);
+          return (!q || [t.title, p.code, p.name].some((v) => (v || "").toLowerCase().includes(q))) && matchStatus(t, statusFilter);
+        })
+        .forEach((t) => ensure(t.projectId).extra.push(t));
+    }
     const arr = Array.from(groups.values());
     arr.forEach((g) => {
       g.tasks.sort(comparator);
+      g.extra.sort(comparator);
       g.done = g.tasks.filter((t) => t.status === "Completed").length;
       g.pct = g.tasks.length ? Math.round((g.done / g.tasks.length) * 100) : 0;
     });
     return arr;
-  }, [scopedProjectTasks, projectsMap, statusFilter, comparator]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedProjectTasks, linkedExtra, projectsMap, allProjects, statusFilter, comparator, filterByMeta, q]);
 
   const visiblePersonal = useMemo(
-    () => (filterByMeta ? [] : personalTasks
+    () => (filterByMeta ? [] : privateTasks
       .filter((t) => (!q || (t.title || "").toLowerCase().includes(q)) && matchStatus(t, statusFilter))
       .sort(comparator)),
-    [filterByMeta, personalTasks, q, statusFilter, comparator],
+    [filterByMeta, privateTasks, q, statusFilter, comparator],
   );
 
-  const totalShown = projGroups.reduce((n, g) => n + g.tasks.length, 0);
+  const totalShown = projGroups.reduce((n, g) => n + g.tasks.length + g.extra.length, 0);
 
-  // ── เลือกหลายรายการเพื่อลบ ──
-  useEffect(() => {
-    setSelectedIds((prev) => {
-      if (!prev.size) return prev;
-      const visible = new Set(visiblePersonal.map((t) => t.id));
-      const next = new Set([...prev].filter((id) => visible.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [visiblePersonal]);
-
-  const allVisibleSelected = visiblePersonal.length > 0 && visiblePersonal.every((t) => selectedIds.has(t.id));
-  const toggleSelectAll = () => setSelectedIds(allVisibleSelected ? new Set() : new Set(visiblePersonal.map((t) => t.id)));
-
-  const visibleProjTasks = useMemo(() => projGroups.flatMap((g) => g.tasks), [projGroups]);
-  useEffect(() => {
-    setSelectedProjIds((prev) => {
-      if (!prev.size) return prev;
-      const visible = new Set(visibleProjTasks.map((t) => t.id));
-      const next = new Set([...prev].filter((id) => visible.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [visibleProjTasks]);
-  const allProjSelected = visibleProjTasks.length > 0 && visibleProjTasks.every((t) => selectedProjIds.has(t.id));
-  const toggleProjSelect = (id) => setSelectedProjIds((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
-  const toggleProjSelectAll = () => setSelectedProjIds(allProjSelected ? new Set() : new Set(visibleProjTasks.map((t) => t.id)));
-  const clearProjSelection = () => setSelectedProjIds(new Set());
-  const bulkDeleteProj = async () => {
-    const ids = [...selectedProjIds];
-    if (!ids.length) return;
-    if (!confirm(`ลบขั้นตอนงานโปรเจกต์ที่เลือก ${ids.length} รายการ ?\n(การลบมีผลกับแผนงานของโปรเจกต์ — ระบบจะเลื่อน timeline ให้)`)) return;
-    setBulkDeletingProj(true);
-    const deleted = new Set();
-    for (const id of ids) {
-      try {
-        const res = await fetch(`/api/pm/project-tasks/${id}`, { method: "DELETE" });
-        if (res.ok) deleted.add(id);
-      } catch { /* ข้ามรายการที่ลบไม่สำเร็จ */ }
-    }
-    setSelectedProjIds(new Set([...selectedProjIds].filter((id) => !deleted.has(id))));
-    setBulkDeletingProj(false);
-    if (deleted.size < ids.length) alert(`ลบสำเร็จ ${deleted.size}/${ids.length} รายการ (บางรายการอาจไม่มีสิทธิ์ลบ)`);
-    if (deleted.size) loadWork(scope);
+  // ใครจัดการงานเพิ่มเติมได้ (mirror server): เจ้าของ/ผู้รับมอบ/superuser/หัวหน้าทีมโปรเจกต์
+  const canManageExtra = (t) => {
+    if (!me) return false;
+    if (t.ownerId === me.id || t.assigneeId === me.id) return true;
+    if (isSuperuser(me.role)) return true;
+    const proj = resolveProj(t.projectId);
+    return me.role === "senior_ae" && me.team && proj.team === me.team;
   };
+  const extraAssigneeName = (t) => usersMap[t.assigneeId] || usersMap[t.ownerId] || "—";
+  const extraStatusCell = (t) => (canManageExtra(t)
+    ? statusSelect(t, setPersonalStatus)
+    : (
+      <span className={`status-pill ${t.status === "Completed" ? "success" : ""}`} title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม">
+        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}
+      </span>
+    ));
+  // ป้าย "เพิ่มเติม" ใช้ซ้ำทั้ง 2 มุม
+  const extraBadge = (
+    <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--purple)", background: "color-mix(in srgb, var(--purple) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--purple) 30%, transparent)", borderRadius: "10px", padding: "1px 7px", whiteSpace: "nowrap" }}>เพิ่มเติม</span>
+  );
 
   // ── personal task CRUD ──
   const openAdd = () => { setEditingId(null); setForm(PERSONAL_BLANK); setShowModal(true); };
-  const openEdit = (t) => { setEditingId(t.id); setForm({ title: t.title, note: t.note || "", dueDate: t.dueDate || "", projectId: t.projectId || "" }); setShowModal(true); };
+  const openEdit = (t) => { setEditingId(t.id); setForm({ title: t.title, note: t.note || "", dueDate: t.dueDate || "", projectId: t.projectId || "", assigneeId: t.assigneeId || "" }); setShowModal(true); };
   const savePersonal = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) { alert("ต้องระบุชื่องาน"); return; }
@@ -284,7 +277,15 @@ export default function MyWorkPage() {
       const res = await fetch(url, {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, projectId: form.projectId || null, dueDate: form.dueDate || null }),
+        body: JSON.stringify({
+          title: form.title,
+          note: form.note,
+          dueDate: form.dueDate || null,
+          projectId: form.projectId || null,
+          // ส่ง assigneeId เฉพาะตอนผูกโปรเจกต์ — เลี่ยงแตะคอลัมน์เมื่อเป็นงานส่วนตัว
+          // (กันพังถ้ายังไม่รัน migration 0026). ส่งค่าว่างเพื่อ "ถอนการมอบหมาย" ได้
+          ...(form.projectId ? { assigneeId: form.assigneeId || null } : {}),
+        }),
       });
       if (res.ok) { setShowModal(false); loadWork(scope); }
       else alert((await res.json()).error || "บันทึกไม่สำเร็จ");
@@ -330,16 +331,14 @@ export default function MyWorkPage() {
 
   // dropdown เลือกสถานะ — วิธีอัปเดตหลัก (แทนการคลิกวน pill เดิม)
   const statusSelect = (t, onChange) => (
-    <select
+    <Select
       value={t.status}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => { e.stopPropagation(); onChange(t, e.target.value); }}
-      className="premium-select"
+      tone={statusDot(t.status)}
       title="เปลี่ยนสถานะ"
-      style={{ height: "30px", fontSize: "12px", width: "auto", padding: "0 26px 0 10px", fontWeight: 600, color: statusDot(t.status), borderColor: `color-mix(in srgb, ${statusDot(t.status)} 45%, var(--border))` }}
-    >
-      {Object.entries(TASK_STATUS_TH).map(([k, label]) => <option key={k} value={k} style={{ color: "var(--text)" }}>{label}</option>)}
-    </select>
+      options={Object.entries(TASK_STATUS_TH).map(([k, label]) => ({ value: k, label }))}
+    />
   );
 
   const deletePersonal = async (t) => {
@@ -348,28 +347,72 @@ export default function MyWorkPage() {
     if (res.ok) setPersonalTasks((prev) => prev.filter((x) => x.id !== t.id));
   };
 
-  // ── เลือกหลายรายการ (งานส่วนตัว) ──
-  const toggleSelect = (id) => setSelectedIds((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
-  const clearSelection = () => setSelectedIds(new Set());
-  const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()); setSelectedProjIds(new Set()); };
-  const bulkDeletePersonal = async () => {
-    const ids = [...selectedIds];
-    if (!ids.length) return;
-    if (!confirm(`ลบงานส่วนตัวที่เลือก ${ids.length} รายการ ?`)) return;
-    setBulkDeleting(true);
-    const results = await Promise.allSettled(
-      ids.map((id) => fetch(`/api/pm/personal-tasks/${id}`, { method: "DELETE" })),
+  // การ์ดงานใน List view — สไตล์เดียวกับ List view หน้า detail โครงการ
+  // (การ์ดใหญ่ + วงกลมสถานะ + เส้นเชื่อมระหว่างขั้นตอน). num = ลำดับในกลุ่ม,
+  // hasNext = วาดเส้นเชื่อมลงการ์ดถัดไปไหม, isExtra = งานเพิ่มเติม (นอกเทมเพลต)
+  const renderWorkCard = (t, g, { num, hasNext, isExtra }) => {
+    const u = getUrgencyInfo(t);
+    const isCompleted = t.status === "Completed";
+    const isInProgress = t.status === "In Progress";
+    const name = isExtra ? t.title : t.name;
+    const circleBg = isCompleted ? "var(--green)" : isInProgress ? "var(--accent)" : "var(--bg)";
+    const circleBorder = isCompleted ? "var(--green)" : isInProgress ? "var(--accent)" : "var(--border)";
+    const cardBg = isCompleted ? "color-mix(in srgb, var(--green) 5%, transparent)" : isInProgress ? "var(--panel-2)" : isExtra ? "color-mix(in srgb, var(--purple) 4%, transparent)" : "var(--panel)";
+    const cardBorder = isCompleted ? "color-mix(in srgb, var(--green) 30%, transparent)" : isInProgress ? "var(--accent)" : isExtra ? "color-mix(in srgb, var(--purple) 25%, transparent)" : "var(--border)";
+    const dateStr = isExtra ? (t.dueDate ? fmtDate(t.dueDate) : null) : (t.finishDate ? fmtDate(t.finishDate) : null);
+    // งานโปรเจกต์ → คลิกไปแก้แผนที่หน้า timeline; งานเพิ่มเติม → คลิกเปิด modal แก้ (เฉพาะคนที่จัดการได้)
+    const handleCardClick = isExtra
+      ? (canManageExtra(t) ? () => openEdit(t) : undefined)
+      : () => router.push(`/pm/projects/${g.code || t.projectId}`);
+    return (
+      <div key={t.id} style={{ display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
+          {/* milestone / alignment column (เท่ากับ detail) */}
+          <div style={{ width: "28px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {t.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}
+          </div>
+          <div
+            onClick={handleCardClick}
+            title={isExtra ? (canManageExtra(t) ? "คลิกเพื่อแก้ไขงาน" : undefined) : "เปิดหน้าโปรเจกต์เพื่อแก้รายละเอียด"}
+            style={{ flex: 1, display: "flex", gap: "16px", padding: "16px 18px", background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: "14px", position: "relative", cursor: handleCardClick ? "pointer" : "default", transition: "all 0.2s", boxShadow: isInProgress ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none" }}
+          >
+            {hasNext && <div style={{ position: "absolute", left: "29px", top: "50px", bottom: "-20px", width: "2px", background: isCompleted ? "var(--green)" : "var(--border)", borderRadius: "2px", zIndex: 0 }} />}
+
+            <div style={{ zIndex: 1 }}>
+              <div style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: circleBg, border: `2px solid ${circleBorder}`, color: "#fff" }}>
+                {isCompleted ? <Check size={16} strokeWidth={3} /> : isInProgress ? <Clock size={15} strokeWidth={2.5} /> : <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-3)" }}>{num}</span>}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                <h4 style={{ margin: 0, fontSize: "15px", color: isCompleted ? "var(--green)" : "var(--text)", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", minWidth: 0 }}>
+                  {num}. {name} {isExtra && extraBadge}
+                </h4>
+                <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                  {!isExtra && <span className="ui-badge" style={{ background: "var(--panel-2)", color: "var(--text-2)" }}>{t.role}</span>}
+                  {scope !== "mine" && <span style={{ fontSize: "12px", color: "var(--text-2)" }}>{isExtra ? extraAssigneeName(t) : (usersMap[t.assigneeId] || t.assignee || "—")}</span>}
+                  {isExtra
+                    ? extraStatusCell(t)
+                    : (canUpdateTask(t) ? statusSelect(t, setProjectStatus) : (
+                      <span className="status-pill" title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์"><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}</span>
+                    ))}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "16px", fontSize: "12px", color: "var(--text-3)", marginTop: "8px", flexWrap: "wrap" }}>
+                {dateStr && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Calendar size={14} /> {dateStr}</span>}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color, fontWeight: 500 }}>{u.icon} {u.label}</span>
+              </div>
+              {isExtra && t.note && (
+                <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "8px", background: "var(--panel-2)", padding: "6px 8px", borderRadius: "6px", whiteSpace: "pre-wrap" }}>{t.note}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     );
-    const deleted = new Set(ids.filter((id, i) => results[i].status === "fulfilled" && results[i].value.ok));
-    if (deleted.size) setPersonalTasks((prev) => prev.filter((x) => !deleted.has(x.id)));
-    setSelectedIds(new Set([...selectedIds].filter((id) => !deleted.has(id))));
-    setBulkDeleting(false);
-    if (deleted.size < ids.length) alert(`ลบสำเร็จ ${deleted.size}/${ids.length} รายการ`);
   };
+
 
   const STAT_CARDS = [
     { key: "all", label: "งานทั้งหมด", count: stats.all, color: "var(--accent)", icon: <ListTodo size={18} /> },
@@ -387,15 +430,14 @@ export default function MyWorkPage() {
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
         <div className="header-content">
           <h1><span className="premium-header-icon"><ListTodo size={22} /></span> งานของฉัน (My Work)</h1>
-          <p>งานโปรเจกต์ที่มอบหมายให้คุณ + งานส่วนตัวนอกเทมเพลต รวมในที่เดียว</p>
+          <p>งานโปรเจกต์ที่มอบหมายให้คุณ + งานเพิ่มเติมในโปรเจกต์ + งานส่วนตัว รวมในที่เดียว</p>
         </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          {selectMode ? (
-            <button onClick={exitSelectMode} className="btn">เสร็จสิ้น</button>
-          ) : (
-            <button onClick={() => setSelectMode(true)} className="btn"><Trash2 size={15} /> เลือกเพื่อลบ</button>
-          )}
-          <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงานส่วนตัว</button>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          <div className="segmented">
+            <button onClick={() => setView("list")} className={view === "list" ? "active" : ""}><ListTodo size={14} /> List</button>
+            <button onClick={() => setView("table")} className={view === "table" ? "active" : ""}><Table2 size={14} /> Table</button>
+          </div>
+          <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
         </div>
       </div>
 
@@ -450,22 +492,22 @@ export default function MyWorkPage() {
           </button>
         )}
         {deptOptions.length > 1 && (
-          <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="กรองตามแผนก">
+          <Select compact value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} title="กรองตามแผนก">
             <option value="all">ทุกแผนก</option>
             {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
+          </Select>
         )}
         {scope !== "mine" && assigneeOptions.length > 1 && (
-          <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="กรองตามผู้รับผิดชอบ">
+          <Select compact value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} title="กรองตามผู้รับผิดชอบ">
             <option value="all">ทุกคน</option>
             {assigneeOptions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          </Select>
         )}
         <div className="spacer toolbar" style={{ gap: "8px" }}>
           <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
-          <select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="เรียงลำดับตาม">
+          <Select compact value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} title="เรียงลำดับตาม">
             {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-          </select>
+          </Select>
           <button className="btn-icon" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} aria-label={sortDir === "asc" ? "เรียงน้อยไปมาก กดเพื่อสลับ" : "เรียงมากไปน้อย กดเพื่อสลับ"} title={sortDir === "asc" ? "น้อย → มาก (กดเพื่อสลับ)" : "มาก → น้อย (กดเพื่อสลับ)"}>
             {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
           </button>
@@ -483,29 +525,16 @@ export default function MyWorkPage() {
                 <ListTodo size={17} color="var(--accent)" /> งานโปรเจกต์ ({SCOPE_TH[scope]})
                 <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{totalShown} งาน</span>
               </div>
-              {selectedProjIds.size > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "auto" }}>
-                  <button onClick={bulkDeleteProj} disabled={bulkDeletingProj} className="btn btn-danger" style={{ fontSize: "12px" }}>
-                    <Trash2 size={14} /> {bulkDeletingProj ? "กำลังลบ..." : `ลบที่เลือก (${selectedProjIds.size})`}
-                  </button>
-                  <button onClick={clearProjSelection} className="btn" style={{ fontSize: "12px" }}>ยกเลิก</button>
-                </div>
-              )}
             </div>
             {projGroups.length === 0 ? (
               emptyState(statusFilter !== "all"
                 ? "ไม่มีงานตรงกับตัวกรองนี้"
                 : scope === "mine" ? "ยังไม่มีงานโปรเจกต์ที่มอบหมายให้คุณ — ให้หัวหน้า/ผู้ดูแลมอบหมายงานในหน้าโปรเจกต์" : "ไม่มีงานในขอบเขตนี้")
-            ) : (
+            ) : view === "table" ? (
               <div className="premium-glass-table table-responsive">
                 <table className="premium-table">
                   <thead>
                     <tr>
-                      {selectMode && (
-                        <th style={{ width: "36px", textAlign: "center" }}>
-                          <input type="checkbox" checked={allProjSelected} onChange={toggleProjSelectAll} title="เลือกทั้งหมด" style={{ width: "15px", height: "15px", cursor: "pointer", accentColor: "var(--accent)" }} />
-                        </th>
-                      )}
                       <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>สถานะ {sortArrow("status")}</span></th>
                       <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>ชื่องาน {sortArrow("name")}</span></th>
                       <th onClick={() => handleSort("role")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>แผนก {sortArrow("role")}</span></th>
@@ -516,19 +545,24 @@ export default function MyWorkPage() {
                   <tbody>
                     {projGroups.map((g) => {
                       const isCollapsed = collapsed.has(g.projectId);
+                      const cols = scope !== "mine" ? 5 : 4;
                       return (
                       <Fragment key={g.projectId}>
                         <tr onClick={() => toggleCollapse(g.projectId)} style={{ cursor: "pointer" }} title={isCollapsed ? "คลิกเพื่อกางกลุ่ม" : "คลิกเพื่อพับกลุ่ม"}>
-                          <td colSpan={(scope !== "mine" ? 5 : 4) + (selectMode ? 1 : 0)} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
+                          <td colSpan={cols} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, fontSize: "13px" }}>
                               {isCollapsed ? <ChevronRight size={15} color="var(--text-3)" style={{ flexShrink: 0 }} /> : <ChevronDown size={15} color="var(--text-3)" style={{ flexShrink: 0 }} />}
                               <span className="font-mono" style={{ fontSize: "11px", background: "var(--bg)", padding: "2px 8px", borderRadius: "4px", border: "1px solid var(--border)" }}>{g.code}</span>
                               <span>{g.name}</span>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
-                                <div style={{ width: "70px", height: "5px", borderRadius: "99px", background: "var(--border)", overflow: "hidden" }}>
-                                  <div style={{ width: `${g.pct}%`, height: "100%", background: g.pct === 100 ? "var(--green)" : "var(--accent)" }} />
-                                </div>
-                                <span style={{ fontSize: "11px", color: "var(--text-3)", fontWeight: 600, minWidth: "58px" }}>{g.done}/{g.tasks.length} · {g.pct}%</span>
+                                {g.tasks.length > 0 && (
+                                  <>
+                                    <div style={{ width: "70px", height: "5px", borderRadius: "99px", background: "var(--border)", overflow: "hidden" }}>
+                                      <div style={{ width: `${g.pct}%`, height: "100%", background: g.pct === 100 ? "var(--green)" : "var(--accent)" }} />
+                                    </div>
+                                    <span style={{ fontSize: "11px", color: "var(--text-3)", fontWeight: 600, minWidth: "58px" }}>{g.done}/{g.tasks.length} · {g.pct}%</span>
+                                  </>
+                                )}
                                 <button onClick={(e) => { e.stopPropagation(); router.push(`/pm/projects/${g.code || g.projectId}`); }} title="เปิดหน้าโปรเจกต์" style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "3px", display: "flex", alignItems: "center" }}>
                                   <ExternalLink size={14} />
                                 </button>
@@ -538,14 +572,8 @@ export default function MyWorkPage() {
                         </tr>
                         {!isCollapsed && g.tasks.map((t) => {
                           const u = getUrgencyInfo(t);
-                          const selected = selectedProjIds.has(t.id);
                           return (
-                            <tr key={t.id} className="premium-row" style={{ cursor: "pointer", background: selected ? "color-mix(in srgb, var(--accent) 10%, transparent)" : undefined }} onClick={() => router.push(`/pm/projects/${g.code || t.projectId}`)}>
-                              {selectMode && (
-                                <td style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
-                                  <input type="checkbox" checked={selected} onChange={() => toggleProjSelect(t.id)} title="เลือกเพื่อลบ" style={{ width: "15px", height: "15px", cursor: "pointer", accentColor: "var(--accent)" }} />
-                                </td>
-                              )}
+                            <tr key={t.id} className="premium-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${g.code || t.projectId}`)}>
                               <td onClick={(e) => e.stopPropagation()}>
                                 {canUpdateTask(t) ? (
                                   statusSelect(t, setProjectStatus)
@@ -565,11 +593,71 @@ export default function MyWorkPage() {
                             </tr>
                           );
                         })}
+                        {!isCollapsed && g.extra.length > 0 && (
+                          <tr>
+                            <td colSpan={cols} style={{ padding: "4px 12px", background: "color-mix(in srgb, var(--purple) 5%, transparent)" }}>
+                              <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--purple)", display: "inline-flex", alignItems: "center", gap: "6px" }}><PlusCircle size={12} /> งานเพิ่มเติม ({g.extra.length})</span>
+                            </td>
+                          </tr>
+                        )}
+                        {!isCollapsed && g.extra.map((t) => {
+                          const u = getUrgencyInfo(t);
+                          const canEditExtra = canManageExtra(t);
+                          return (
+                            <tr key={t.id} className="premium-row" onClick={canEditExtra ? () => openEdit(t) : undefined} title={canEditExtra ? "คลิกเพื่อแก้ไขงาน" : undefined} style={{ cursor: canEditExtra ? "pointer" : "default" }}>
+                              <td onClick={(e) => e.stopPropagation()}>{extraStatusCell(t)}</td>
+                              <td style={{ fontWeight: 500 }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>{t.title} {extraBadge}</span>
+                                {t.note && <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{t.note}</div>}
+                              </td>
+                              <td><span style={{ color: "var(--text-3)" }}>—</span></td>
+                              {scope !== "mine" && <td style={{ fontSize: "13px" }}>{extraAssigneeName(t)}</td>}
+                              <td>
+                                {t.dueDate ? (
+                                  <div style={{ fontSize: "11px", color: u.color, display: "flex", alignItems: "center", gap: "4px" }}>{u.icon} {fmtDate(t.dueDate)}</div>
+                                ) : <span style={{ color: "var(--text-3)" }}>—</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </Fragment>
                       );
                     })}
                   </tbody>
                 </table>
+              </div>
+            ) : (
+              /* ── List view: การ์ดจัดกลุ่มตามโครงการ (สไตล์เดียวกับ List view หน้า detail) ── */
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                {projGroups.map((g) => {
+                  const isCollapsed = collapsed.has(g.projectId);
+                  return (
+                    <div key={g.projectId} className="glass-panel" style={{ padding: 0, overflow: "hidden" }}>
+                      {/* group header — โทน accent เหมือนหัวเฟสในหน้า detail */}
+                      <button type="button" onClick={() => toggleCollapse(g.projectId)} style={{ width: "100%", display: "flex", alignItems: "center", gap: "10px", padding: "11px 16px", background: "color-mix(in srgb, var(--accent) 7%, var(--panel-2))", border: "none", borderLeft: "3px solid var(--accent)", borderBottom: isCollapsed ? "none" : "1px solid var(--border)", cursor: "pointer", color: "var(--text)", textAlign: "left" }}>
+                        {isCollapsed ? <ChevronRight size={15} color="var(--accent)" /> : <ChevronDown size={15} color="var(--accent)" />}
+                        <span className="ui-badge font-mono" style={{ background: "var(--bg)", color: "var(--text-2)", border: "1px solid var(--border)" }}>{g.code}</span>
+                        <span style={{ fontWeight: 700, fontSize: "13px", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.name}</span>
+                        {g.tasks.length > 0 && (
+                          <>
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: g.pct === 100 ? "var(--green)" : "var(--accent)" }}>{g.done}/{g.tasks.length}</span>
+                            <div className="progress" style={{ width: "60px" }}><span className={g.pct === 100 ? "done" : ""} style={{ width: `${g.pct}%` }} /></div>
+                          </>
+                        )}
+                        <span onClick={(e) => { e.stopPropagation(); router.push(`/pm/projects/${g.code || g.projectId}`); }} title="เปิดหน้าโปรเจกต์" className="btn-icon" style={{ flexShrink: 0 }}><ExternalLink size={14} /></span>
+                      </button>
+                      {!isCollapsed && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "14px" }}>
+                          {g.tasks.map((t, i) => renderWorkCard(t, g, { num: i + 1, hasNext: i < g.tasks.length - 1, isExtra: false }))}
+                          {g.extra.length > 0 && (
+                            <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--purple)", display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}><PlusCircle size={12} /> งานเพิ่มเติม ({g.extra.length})</div>
+                          )}
+                          {g.extra.map((t, i) => renderWorkCard(t, g, { num: g.tasks.length + i + 1, hasNext: i < g.extra.length - 1, isExtra: true }))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -579,28 +667,12 @@ export default function MyWorkPage() {
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
               <div style={{ fontSize: "15px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
                 <User size={17} color="var(--purple)" /> งานส่วนตัว
-                <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{visiblePersonal.length} งาน · เห็นเฉพาะคุณ</span>
+                <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{visiblePersonal.length} งาน · เห็นเฉพาะคุณ · นอกโปรเจกต์</span>
               </div>
-              {/* ปุ่มเพิ่มงานส่วนตัวซ้ำตรงหัวข้อ — กดง่ายขึ้นเวลาเลื่อนอยู่ส่วนนี้ */}
+              {/* ปุ่มเพิ่มงานซ้ำตรงหัวข้อ — กดง่ายขึ้นเวลาเลื่อนอยู่ส่วนนี้ */}
               <button onClick={openAdd} className="btn" style={{ fontSize: "12px" }}>
-                <Plus size={14} /> เพิ่มงานส่วนตัว
+                <Plus size={14} /> เพิ่มงาน
               </button>
-              {selectMode && visiblePersonal.length > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "auto" }}>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", fontWeight: 600, cursor: "pointer" }}>
-                    <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll} style={{ width: "15px", height: "15px", cursor: "pointer", accentColor: "var(--accent)" }} />
-                    เลือกทั้งหมด
-                  </label>
-                  {selectedIds.size > 0 && (
-                    <>
-                      <button onClick={bulkDeletePersonal} disabled={bulkDeleting} className="btn btn-danger" style={{ fontSize: "12px" }}>
-                        <Trash2 size={14} /> {bulkDeleting ? "กำลังลบ..." : `ลบที่เลือก (${selectedIds.size})`}
-                      </button>
-                      <button onClick={clearSelection} className="btn" style={{ fontSize: "12px" }}>ยกเลิก</button>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
             {visiblePersonal.length === 0 ? (
               <button onClick={openAdd} className="glass-panel" style={{ width: "100%", padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px", cursor: "pointer", border: "1px dashed var(--border)", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
@@ -608,18 +680,14 @@ export default function MyWorkPage() {
                 {statusFilter !== "all" ? "ไม่มีงานส่วนตัวตรงกับตัวกรองนี้" : "ยังไม่มีงานส่วนตัว — กดเพื่อสร้าง to-do ของคุณ (เช่น โทรตามลูกค้า, เตรียมเอกสาร)"}
               </button>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))", gap: "12px" }}>
                 {visiblePersonal.map((t) => {
                   const u = getUrgencyInfo(t);
                   const proj = t.projectId ? (allProjects.find((p) => p.id === t.projectId) || projectsMap[t.projectId]) : null;
                   const done = t.status === "Completed";
-                  const selected = selectedIds.has(t.id);
                   return (
-                    <div key={t.id} className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, outline: selected ? "2px solid var(--accent)" : "none", outlineOffset: "-1px" }}>
+                    <div key={t.id} onClick={() => openEdit(t)} title="คลิกเพื่อแก้ไขงาน" className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-                        {selectMode && (
-                          <input type="checkbox" checked={selected} onChange={() => toggleSelect(t.id)} title="เลือกเพื่อลบ" style={{ width: "16px", height: "16px", marginTop: "3px", cursor: "pointer", flexShrink: 0, accentColor: "var(--accent)" }} />
-                        )}
                         <span title={TASK_STATUS_TH[t.status]} style={{ padding: "2px", flexShrink: 0, color: statusDot(t.status), display: "flex" }}>
                           {statusIcon(t.status)}
                         </span>
@@ -627,12 +695,11 @@ export default function MyWorkPage() {
                           <div style={{ fontSize: "14px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)" }}>{t.title}</div>
                           {t.note && <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{t.note}</div>}
                         </div>
-                        <div style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
-                          <button className="btn-icon" onClick={() => openEdit(t)} aria-label="แก้ไขงาน" title="แก้ไข"><Edit2 size={14} /></button>
+                        <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
                           <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>
                         </div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "11px", flexWrap: "wrap" }}>
+                      <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "11px", flexWrap: "wrap" }}>
                         {statusSelect(t, setPersonalStatus)}
                         {(t.dueDate) && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
                         {proj && <span onClick={() => router.push(`/pm/projects/${proj.code || t.projectId}`)} style={{ cursor: "pointer", fontSize: "10px", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }} className="font-mono">{proj.code}</span>}
@@ -646,8 +713,8 @@ export default function MyWorkPage() {
         </div>
       )}
 
-      {/* personal task modal */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editingId ? "แก้ไขงานส่วนตัว" : "เพิ่มงานส่วนตัว"} size="md">
+      {/* task modal — ผูกโปรเจกต์ = "งานเพิ่มเติม" (มอบหมายในทีมได้); ไม่ผูก = "งานส่วนตัว" */}
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editingId ? "แก้ไขงาน" : "เพิ่มงาน"} size="md">
         <form onSubmit={savePersonal}>
           <div className="grid gap-[14px]">
             <div className="form-group">
@@ -658,19 +725,35 @@ export default function MyWorkPage() {
               <label>รายละเอียด</label>
               <textarea value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" rows={3} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="pm-form-grid gap-3">
               <div className="form-group">
                 <label>กำหนดส่ง</label>
                 <input type="date" value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} className="premium-input w-full" />
               </div>
               <div className="form-group">
                 <label>ผูกโปรเจกต์ <span className="text-[11px] text-[var(--text-3)] font-normal">(ไม่บังคับ)</span></label>
-                <select value={form.projectId} onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value }))} className="premium-input w-full">
-                  <option value="">— ไม่ผูก —</option>
+                {/* เปลี่ยนโปรเจกต์ → ล้างผู้รับมอบ (อาจคนละทีม) */}
+                <Select fullWidth value={form.projectId} onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, assigneeId: "" }))}>
+                  <option value="">— ไม่ผูก (งานส่วนตัว) —</option>
                   {allProjects.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
-                </select>
+                </Select>
               </div>
             </div>
+            {form.projectId && (() => {
+              const proj = allProjects.find((p) => p.id === form.projectId);
+              const team = proj?.team ?? null;
+              const teammates = users.filter((u) => team && u.team === team);
+              return (
+                <div className="form-group">
+                  <label>มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(คนในทีมของโปรเจกต์ — งานจะไปอยู่ใน "งานของฉัน" ของคนนั้น)</span></label>
+                  <Select fullWidth value={form.assigneeId} onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}>
+                    <option value="">— ไม่มอบหมาย (ของฉัน) —</option>
+                    {teammates.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </Select>
+                  {team && teammates.length === 0 && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่มีสมาชิกในทีมนี้ให้มอบหมาย</div>}
+                </div>
+              );
+            })()}
           </div>
           <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
             <button type="button" onClick={() => setShowModal(false)} className="btn">ยกเลิก</button>

@@ -7,7 +7,7 @@ import {
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
   TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight,
   Activity, CircleDashed,
-  Check, Printer, Table2, Filter, ArrowUpDown,
+  Check, Printer, Table2, Filter, ArrowUpDown, User,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -15,8 +15,11 @@ import Modal from "@/components/Modal";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
+import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import { setHolidays, countBusinessDays } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
+import { useResponsiveView } from "@/lib/useResponsiveView";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -80,8 +83,7 @@ function AssigneeField({ form, setForm, users }) {
     });
     const teams = Object.keys(byTeam).sort();
     return (
-      <select
-        className="premium-select"
+      <Select
         value={form.assigneeId || ""}
         onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
         style={{ flex: 1 }}
@@ -93,7 +95,7 @@ function AssigneeField({ form, setForm, users }) {
             {byTeam[tm].map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
           </optgroup>
         ))}
-      </select>
+      </Select>
     );
   }
   if (STAFF_DEPTS.includes(role)) {
@@ -152,48 +154,6 @@ const getVariance = (task) => {
   return { color: "var(--green)", label: "ตรงตามแผน" };
 };
 
-function SearchableSelect({ options, value, onChange, placeholder }) {
-  const [search, setSearch] = useState("");
-  const [open, setOpen] = useState(false);
-  const selectedOpt = options.find(o => o.id === value);
-  const display = open ? search : (selectedOpt ? `${selectedOpt.fgCode} — ${selectedOpt.productDescription || selectedOpt.brandName || ""}` : "");
-
-  const filtered = useMemo(() => {
-    const s = search.toLowerCase();
-    return options.filter(o => o.fgCode?.toLowerCase().includes(s) || o.productDescription?.toLowerCase().includes(s)).slice(0, 50);
-  }, [options, search]);
-
-  return (
-    <div style={{ position: "relative", width: "100%" }}>
-      <input
-        className="premium-input"
-        value={display}
-        onChange={(e) => { setSearch(e.target.value); setOpen(true); onChange(""); }}
-        onFocus={() => { setSearch(""); setOpen(true); }}
-        onBlur={() => setTimeout(() => setOpen(false), 200)}
-        placeholder={placeholder || "ค้นหา..."}
-        style={{ width: "100%", padding: "4px 10px", fontSize: "12px", height: "30px" }}
-      />
-      {open && (
-        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "6px", maxHeight: "200px", overflowY: "auto", zIndex: 50, marginTop: "4px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
-          {filtered.length === 0 ? <div style={{ padding: "6px 10px", fontSize: "12px", color: "var(--text-3)" }}>ไม่พบรายการ</div> : filtered.map(opt => (
-            <div
-              key={opt.id}
-              onMouseDown={(e) => e.preventDefault()} // prevent blur before click
-              onClick={() => { onChange(opt.id); setOpen(false); }}
-              style={{ padding: "6px 10px", fontSize: "12px", cursor: "pointer", borderBottom: "1px solid var(--border)", color: "var(--text)" }}
-              onMouseEnter={(e) => e.currentTarget.style.background = "var(--panel-2)"}
-              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-            >
-              <strong>{opt.fgCode}</strong> — {opt.productDescription || opt.brandName || ""}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -207,7 +167,8 @@ export default function ProjectDetailPage() {
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [addingProduct, setAddingProduct] = useState("");
-  const [view, setView] = useState("table"); // list | table | document
+  // มุมมองสลับอัตโนมัติตามจอ: จอตั้ง → List, จอนอน → Table; Gantt (document) เลือกเองได้
+  const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" }); // list | table | document
   const [showAddTask, setShowAddTask] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
   const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false });
@@ -221,6 +182,11 @@ export default function ProjectDetailPage() {
   const [editTask, setEditTask] = useState(null); // ขั้นตอนที่กำลังแก้ผ่าน modal (ใช้จาก Table view)
   const [showEditTask, setShowEditTask] = useState(false);
   const [depPopover, setDepPopover] = useState(null); // popover แก้ predecessors ในตาราง — { task, x, y }
+  // "งานเพิ่มเติม" (personal_tasks ผูกโปรเจกต์) — งานนอกแผน assign ในทีมได้ ไม่เข้า Gantt
+  const [showExtra, setShowExtra] = useState(false);
+  const [editingExtraId, setEditingExtraId] = useState(null);
+  const [extraForm, setExtraForm] = useState({ title: "", note: "", dueDate: "", assigneeId: "" });
+  const [savingExtra, setSavingExtra] = useState(false);
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -267,7 +233,8 @@ export default function ProjectDetailPage() {
       // บั๊ก A: แก้ startDate/durationDays/predecessors ทำให้ server เลื่อน downstream → reload เต็ม
       // เช็คว่ามี key (ไม่ใช่ truthy) — การ "ล้าง" วันเริ่ม (startDate: null) ต้อง reload ด้วย
       // เพราะ server เลื่อน downstream แล้ว ถ้าเช็คแบบ truthy จะพลาดเคส null/ลบค่า
-      if (patch.startDate !== undefined || patch.durationDays !== undefined || patch.predecessors !== undefined) { await load(); return; }
+      // status เปลี่ยน → server เดินสถานะขั้นถัดไปอัตโนมัติ (auto-flow) ต้อง reload เห็นผลกับขั้นอื่น
+      if (patch.startDate !== undefined || patch.durationDays !== undefined || patch.predecessors !== undefined || patch.status !== undefined) { await load(); return; }
       const updated = await res.json();
       setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === taskId ? updated : t)) }));
     }
@@ -379,7 +346,45 @@ export default function ProjectDetailPage() {
   const deleteTask = async (taskId, name) => {
     if (!confirm(`ต้องการลบขั้นตอน "${name}" ใช่หรือไม่?`)) return;
     const res = await fetch(`/api/pm/project-tasks/${taskId}`, { method: "DELETE" });
-    if (res.ok) setData((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== taskId) }));
+    // server ตัด predecessor ที่อ้างขั้นนี้ + เดินสถานะกราฟใหม่ → reload เห็นผลครบ
+    if (res.ok) await load();
+  };
+
+  // ── งานเพิ่มเติม CRUD ──
+  const openAddExtra = () => { setEditingExtraId(null); setExtraForm({ title: "", note: "", dueDate: "", assigneeId: "" }); setShowExtra(true); };
+  const openEditExtra = (t) => { setEditingExtraId(t.id); setExtraForm({ title: t.title, note: t.note || "", dueDate: t.dueDate || "", assigneeId: t.assigneeId || "" }); setShowExtra(true); };
+  const saveExtra = async (e) => {
+    e.preventDefault();
+    if (!extraForm.title.trim()) { alert("ต้องระบุชื่องาน"); return; }
+    setSavingExtra(true);
+    try {
+      const url = editingExtraId ? `/api/pm/personal-tasks/${editingExtraId}` : "/api/pm/personal-tasks";
+      const res = await fetch(url, {
+        method: editingExtraId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: extraForm.title.trim(), note: extraForm.note || "",
+          dueDate: extraForm.dueDate || null,
+          projectId: data?.id ?? id,
+          assigneeId: extraForm.assigneeId || null,
+        }),
+      });
+      if (res.ok) { setShowExtra(false); await load(); }
+      else alert((await res.json()).error || "บันทึกไม่สำเร็จ");
+    } catch { alert("เกิดข้อผิดพลาด"); }
+    finally { setSavingExtra(false); }
+  };
+  const setExtraStatus = async (t, status) => {
+    if (status === t.status) return;
+    setData((d) => ({ ...d, personalTasks: (d.personalTasks || []).map((x) => x.id === t.id ? { ...x, status } : x) }));
+    const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    if (!res.ok) load();
+  };
+  const deleteExtra = async (t) => {
+    if (!confirm(`ลบงานเพิ่มเติม "${t.title}" ?`)) return;
+    const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
+    if (res.ok) setData((d) => ({ ...d, personalTasks: (d.personalTasks || []).filter((x) => x.id !== t.id) }));
+    else alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
   };
 
   const togglePhase = (phase) => setCollapsedPhases((prev) => {
@@ -547,6 +552,73 @@ export default function ProjectDetailPage() {
   const accent = isDone ? "var(--green)" : "var(--accent)";
   const milestones = processedTasks.filter((t) => t.isMilestone);
 
+  // ── งานเพิ่มเติม (นอกแผน, ผูกโปรเจกต์นี้) ──
+  const extraTasks = data.personalTasks || [];
+  const me = data.me;
+  const teamMates = users.filter((u) => p.team && u.team === p.team);
+  const canManageExtra = (t) => {
+    if (!me) return false;
+    if (t.ownerId === me.id || t.assigneeId === me.id) return true;
+    if (isSuperuser(userRole)) return true;
+    return userRole === "senior_ae" && me.team && p.team === me.team;
+  };
+  const extraAssigneeName = (t) =>
+    users.find((u) => u.id === t.assigneeId)?.name
+    || (t.ownerId ? `${users.find((u) => u.id === t.ownerId)?.name || "ผู้สร้าง"} (สร้าง)` : "—");
+
+  const extraStatusControl = (t) => canManageExtra(t) ? (
+    <Select tone={TASK_STATUS_COLOR[t.status]} value={t.status} onChange={(e) => setExtraStatus(t, e.target.value)}>
+      <option value="Pending">○ รอดำเนินการ</option>
+      <option value="In Progress">◷ กำลังทำ</option>
+      <option value="Completed">✓ เสร็จแล้ว</option>
+    </Select>
+  ) : (
+    <span className="status-pill" title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม"><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: TASK_STATUS_COLOR[t.status] }} /> {t.status}</span>
+  );
+
+  // section "งานเพิ่มเติม" ใช้ทั้งใน List และ Table view (ไม่เข้า Gantt/พิมพ์)
+  const renderExtraSection = () => (
+    <div className="glass-panel" style={{ padding: "16px 18px", marginTop: "16px", borderTop: "3px solid color-mix(in srgb, var(--purple) 40%, transparent)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: extraTasks.length ? "12px" : "0" }}>
+        <div style={{ fontSize: "14px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+          <User size={16} color="var(--purple)" /> งานเพิ่มเติม
+          <span style={{ fontSize: "11px", fontWeight: 400, color: "var(--text-3)" }}>{extraTasks.length} งาน · งานนอกแผน — ไม่เข้า Gantt</span>
+        </div>
+        <button onClick={openAddExtra} className="btn" style={{ fontSize: "12px" }}><Plus size={14} /> เพิ่มงานเพิ่มเติม</button>
+      </div>
+      {extraTasks.length === 0 ? (
+        <div style={{ fontSize: "12px", color: "var(--text-3)" }}>ยังไม่มีงานเพิ่มเติม — ใช้บันทึกงานตามต่อ/ขั้นตอนเสริมที่ไม่อยู่ในไทม์ไลน์ และมอบหมายให้คนในทีมได้</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))", gap: "12px" }}>
+          {extraTasks.map((t) => {
+            const isDoneT = t.status === "Completed";
+            return (
+              <div key={t.id} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${TASK_STATUS_COLOR[t.status]}`, background: "color-mix(in srgb, var(--purple) 4%, var(--panel))" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "14px", fontWeight: 600, textDecoration: isDoneT ? "line-through" : "none", color: isDoneT ? "var(--text-3)" : "var(--text)" }}>{t.title}</div>
+                    {t.note && <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{t.note}</div>}
+                  </div>
+                  {canManageExtra(t) && (
+                    <div style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
+                      <button className="btn-icon" onClick={() => openEditExtra(t)} aria-label="แก้ไข" title="แก้ไข"><Edit2 size={14} /></button>
+                      <button className="btn-icon danger" onClick={() => deleteExtra(t)} aria-label="ลบ" title="ลบ"><Trash2 size={14} /></button>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  {extraStatusControl(t)}
+                  <span style={{ fontSize: "11px", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: "4px" }}><User size={12} /> {extraAssigneeName(t)}</span>
+                  {t.dueDate && <span style={{ fontSize: "11px", color: "var(--text-3)", display: "inline-flex", alignItems: "center", gap: "4px" }}><Calendar size={12} /> {formatDate(t.dueDate)}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   const renderChip = (Icon, label, color) => (
     <span className="chip" style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)`, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}>
       <Icon size={13} /> {label}
@@ -585,7 +657,7 @@ export default function ProjectDetailPage() {
                   <div style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: "150px" }}>
                     {actualProd.productDescription || actualProd.brandName || "-"}
                   </div>
-                  <div style={{ display: "flex", gap: "8px", width: "220px", flexShrink: 0 }}>
+                  <div style={{ display: "flex", gap: "8px", width: "220px", maxWidth: "100%", flexShrink: 0 }}>
                     <input type="text" placeholder="สั่งซื้อ" defaultValue={pp.orderQty || ""} disabled={!canEdit} onBlur={(e) => { if (e.target.value !== (pp.orderQty || "")) updateProductQty(pp.productId, "orderQty", e.target.value); }} className="premium-input w-full text-[12px] h-[30px]" />
                     <input type="text" placeholder="ผลิต" defaultValue={pp.productionQty || ""} disabled={!canEdit} onBlur={(e) => { if (e.target.value !== (pp.productionQty || "")) updateProductQty(pp.productId, "productionQty", e.target.value); }} className="premium-input w-full text-[12px] h-[30px]" />
                   </div>
@@ -599,7 +671,13 @@ export default function ProjectDetailPage() {
       {canEdit && (
         <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
           <SearchableSelect
-            options={allProducts.filter(pr => !linkedIds.has(pr.id))}
+            size="sm"
+            options={allProducts.filter(pr => !linkedIds.has(pr.id)).map(pr => ({
+              value: pr.id,
+              label: `${pr.fgCode} — ${pr.productDescription || pr.brandName || ""}`,
+              search: `${pr.fgCode || ""} ${pr.productDescription || ""}`,
+              render: <span><strong>{pr.fgCode}</strong> — {pr.productDescription || pr.brandName || ""}</span>,
+            }))}
             value={addingProduct}
             onChange={setAddingProduct}
             placeholder="ค้นหา Product Code (FG)..."
@@ -652,7 +730,7 @@ export default function ProjectDetailPage() {
                 {p.name} | ลูกค้า: {p.customerName || "-"} | AE: {p.aeOwner || "-"}
               </p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginLeft: "auto" }}>
               <div className="segmented">
                 {renderViewBtn("list", ListTodo, "List")}
                 {renderViewBtn("table", Table2, "Table")}
@@ -661,7 +739,7 @@ export default function ProjectDetailPage() {
               <button
                 onClick={() => openGanttPrintWindow({ ...p, categoryFallback })}
                 className="btn btn-primary"
-                style={{ whiteSpace: "nowrap" }}
+                style={{ whiteSpace: "nowrap", marginLeft: "auto" }}
                 title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
               >
                 <Printer size={14} /> พิมพ์เอกสาร
@@ -674,6 +752,8 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", gap: "24px", fontSize: "12px", flexWrap: "wrap" }}>
             <div><span style={{ color: "var(--text-3)" }}>วันเริ่ม: </span>{p.startDate || "-"}</div>
             <div><span style={{ color: "var(--text-3)" }}>กำหนดส่ง: </span>{p.dueDate || "-"}</div>
+            <div><span style={{ color: "var(--text-3)" }}>เลขที่ใบเสนอราคา: </span>{p.metadata?.quotationNumber || "-"}</div>
+            <div><span style={{ color: "var(--text-3)" }}>เลขที่ PO: </span>{p.metadata?.poNumber || "-"}</div>
             <div><span style={{ color: "var(--text-3)" }}>หมวดสินค้า: </span>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -730,22 +810,22 @@ export default function ProjectDetailPage() {
               {/* กรองสถานะ */}
               <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                 <Filter size={14} color="var(--text-3)" />
-                <select value={tableStatusFilter} onChange={(e) => setTableStatusFilter(e.target.value)} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="กรองตามสถานะ">
+                <Select compact value={tableStatusFilter} onChange={(e) => setTableStatusFilter(e.target.value)} title="กรองตามสถานะ">
                   <option value="all">ทุกสถานะ</option>
                   <option value="pending">รอดำเนินการ</option>
                   <option value="progress">กำลังทำ</option>
                   <option value="completed">เสร็จแล้ว</option>
-                </select>
+                </Select>
               </div>
               {/* เรียงลำดับ */}
               <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                 <ArrowUpDown size={14} color="var(--text-3)" />
-                <select value={tableSort} onChange={(e) => setTableSort(e.target.value)} className="premium-select" style={{ fontSize: "12px", width: "auto" }} title="เรียงลำดับ (ภายในแต่ละเฟส)">
+                <Select compact value={tableSort} onChange={(e) => setTableSort(e.target.value)} title="เรียงลำดับ (ภายในแต่ละเฟส)">
                   <option value="step">ลำดับขั้นตอน</option>
                   <option value="due">วันเสร็จ</option>
                   <option value="status">สถานะ</option>
                   <option value="name">ชื่อขั้นตอน</option>
-                </select>
+                </Select>
               </div>
               {canEdit && (
                 <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ fontSize: "12px" }}>
@@ -805,11 +885,11 @@ export default function ProjectDetailPage() {
                             <td style={{ fontSize: "13px" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : assignee}</td>
                             <td>
                               {canEdit ? (
-                                <select className="premium-select" value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })} style={{ fontSize: "11px", padding: "4px 24px 4px 10px", height: "auto", width: "auto", minWidth: "118px", color: TASK_STATUS_COLOR[task.status], fontWeight: 600, borderColor: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 45%, var(--border))`, background: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 8%, var(--panel))` }}>
-                                  <option value="Pending" style={{ color: TASK_STATUS_COLOR.Pending }}>○ รอดำเนินการ</option>
-                                  <option value="In Progress" style={{ color: TASK_STATUS_COLOR["In Progress"] }}>◷ กำลังทำ</option>
-                                  <option value="Completed" style={{ color: TASK_STATUS_COLOR.Completed }}>✓ เสร็จแล้ว</option>
-                                </select>
+                                <Select tone={TASK_STATUS_COLOR[task.status]} value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })}>
+                                  <option value="Pending">○ รอดำเนินการ</option>
+                                  <option value="In Progress">◷ กำลังทำ</option>
+                                  <option value="Completed">✓ เสร็จแล้ว</option>
+                                </Select>
                               ) : (
                                 <span className="status-pill"><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDotColor(task.status === "Completed" ? "Completed" : task.status === "In Progress" ? "In Progress" : "Pending") }} /> {task.status}</span>
                               )}
@@ -855,6 +935,7 @@ export default function ProjectDetailPage() {
               </table>
             </div>
           )}
+          {renderExtraSection()}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -985,9 +1066,9 @@ export default function ProjectDetailPage() {
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--panel)", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)" }}>
                             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                               <input className="premium-input" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่อขั้นตอน" style={{ flex: 1 }} />
-                              <select className="premium-select" value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
+                              <Select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
                                 {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                              </select>
+                              </Select>
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                               <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ผู้รับผิดชอบ:</label>
@@ -1050,11 +1131,11 @@ export default function ProjectDetailPage() {
                                   <span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span>
                                 ); })()}
                                 {canEdit && (
-                                  <select className="premium-select" value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })} style={{ fontSize: "11px", padding: "4px 26px 4px 10px", height: "auto", width: "auto", minWidth: "120px", color: TASK_STATUS_COLOR[task.status], fontWeight: 600, borderColor: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 45%, var(--border))`, background: `color-mix(in srgb, ${TASK_STATUS_COLOR[task.status]} 8%, var(--panel))` }}>
-                                    <option value="Pending" style={{ color: TASK_STATUS_COLOR.Pending }}>○ รอดำเนินการ</option>
-                                    <option value="In Progress" style={{ color: TASK_STATUS_COLOR["In Progress"] }}>◷ กำลังทำ</option>
-                                    <option value="Completed" style={{ color: TASK_STATUS_COLOR.Completed }}>✓ เสร็จแล้ว</option>
-                                  </select>
+                                  <Select tone={TASK_STATUS_COLOR[task.status]} value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })}>
+                                    <option value="Pending">○ รอดำเนินการ</option>
+                                    <option value="In Progress">◷ กำลังทำ</option>
+                                    <option value="Completed">✓ เสร็จแล้ว</option>
+                                  </Select>
                                 )}
                                 {canEdit && (
                                   <div style={{ display: "flex", gap: "4px" }}>
@@ -1116,6 +1197,7 @@ export default function ProjectDetailPage() {
             );
           })}
 
+          {renderExtraSection()}
         </div>
       )}
       </div>
@@ -1157,16 +1239,16 @@ export default function ProjectDetailPage() {
               <input value={taskForm.name} onChange={(e) => setTaskForm((f) => ({ ...f, name: e.target.value }))} required className="premium-input w-full" placeholder="ระบุชื่อขั้นตอน" />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="pm-form-grid gap-3">
               <div className="form-group" style={{ gridColumn: "span 2" }}>
                 <label>แผนก (Role)</label>
-                <select value={taskForm.role} onChange={(e) => setTaskForm((f) => ({ ...f, role: e.target.value }))} className="premium-input w-full">
+                <Select fullWidth value={taskForm.role} onChange={(e) => setTaskForm((f) => ({ ...f, role: e.target.value }))}>
                   {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
+                </Select>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="pm-form-grid gap-3">
               <div className="form-group">
                 <label>วันที่เริ่ม <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เว้นว่างเพื่ออิงตามงานที่รอ)</span></label>
                 <input type="date" value={taskForm.startDate} onChange={(e) => setTaskForm((f) => ({ ...f, startDate: e.target.value }))} className="premium-input w-full" />
@@ -1225,9 +1307,9 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <input className="premium-input" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่อขั้นตอน" style={{ flex: 1 }} />
-              <select className="premium-select" value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
+              <Select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
                 {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
+              </Select>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ผู้รับผิดชอบ:</label>
@@ -1277,6 +1359,43 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* งานเพิ่มเติม modal — สร้าง/แก้งานนอกแผนที่ผูกโปรเจกต์นี้ (assign ในทีมได้) */}
+      <Modal open={showExtra} onClose={() => setShowExtra(false)} title={editingExtraId ? "แก้ไขงานเพิ่มเติม" : "เพิ่มงานเพิ่มเติม"} size="md">
+        <form onSubmit={saveExtra}>
+          <div className="grid gap-[14px]">
+            <div className="form-group">
+              <label>ชื่องาน <span className="text-[var(--red)]">*</span></label>
+              <input value={extraForm.title} onChange={(e) => setExtraForm((f) => ({ ...f, title: e.target.value }))} required className="premium-input w-full" placeholder="เช่น ตามเอกสารจากลูกค้า, นัดประชุมเพิ่ม" />
+            </div>
+            <div className="form-group">
+              <label>รายละเอียด</label>
+              <textarea value={extraForm.note} onChange={(e) => setExtraForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" rows={2} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
+            </div>
+            <div className="pm-form-grid gap-3">
+              <div className="form-group">
+                <label>กำหนดส่ง</label>
+                <input type="date" value={extraForm.dueDate} onChange={(e) => setExtraForm((f) => ({ ...f, dueDate: e.target.value }))} className="premium-input w-full" />
+              </div>
+              <div className="form-group">
+                <label>มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(คนในทีม)</span></label>
+                <Select fullWidth value={extraForm.assigneeId} onChange={(e) => setExtraForm((f) => ({ ...f, assigneeId: e.target.value }))}>
+                  <option value="">— ไม่มอบหมาย (ของฉัน) —</option>
+                  {teamMates.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </Select>
+                {p.team && teamMates.length === 0 && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่มีสมาชิกในทีมนี้ให้มอบหมาย</div>}
+              </div>
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "4px" }}>
+              <AlertTriangle size={11} /> งานเพิ่มเติมเป็นงานนอกแผน — ไม่เข้า Gantt และไม่กระทบการคำนวณกำหนดการ
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+            <button type="button" onClick={() => setShowExtra(false)} className="btn">ยกเลิก</button>
+            <button type="submit" disabled={savingExtra} className="btn btn-primary px-8">{editingExtraId ? "บันทึก" : "เพิ่ม"}</button>
+          </div>
+        </form>
       </Modal>
 
       {showEditProject && (

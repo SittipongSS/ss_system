@@ -10,6 +10,7 @@ import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
+import Select from "@/components/ui/Select";
 
 const typeStyle = (type) => type === "NPD"
   ? { background: "var(--accent-soft)", color: "var(--accent)" }
@@ -176,6 +177,18 @@ export default function ProjectsPage() {
             return (a.name || "").localeCompare(b.name || "", "th") * dir;
           case "code":
             return (a.code || "").localeCompare(b.code || "", "th") * dir;
+          case "customer":
+            return (a.customerName || "").localeCompare(b.customerName || "", "th") * dir;
+          case "type":
+            return (a.type || "").localeCompare(b.type || "", "th") * dir;
+          case "category":
+            return ((a.productSubCategory || a.productMainCategory || "")).localeCompare(b.productSubCategory || b.productMainCategory || "", "th") * dir;
+          case "owner":
+            return (a.aeOwner || "").localeCompare(b.aeOwner || "", "th") * dir;
+          case "step":
+            return (getCurrentStep(a) || "").localeCompare(getCurrentStep(b) || "", "th") * dir;
+          case "status":
+            return (getComputedStatus(a) || "").localeCompare(getComputedStatus(b) || "", "th") * dir;
           default:
             return 0;
         }
@@ -207,6 +220,10 @@ export default function ProjectsPage() {
         case "customer": return (a.customerName || "").localeCompare(b.customerName || "", "th") * dir;
         case "progress": return (getProgress(a).pct - getProgress(b).pct) * dir;
         case "due": return cmpNum(a.dueDate ? new Date(a.dueDate).getTime() : null, b.dueDate ? new Date(b.dueDate).getTime() : null);
+        case "type": return (a.type || "").localeCompare(b.type || "", "th") * dir;
+        case "category": return ((a.productSubCategory || a.productMainCategory || "")).localeCompare(b.productSubCategory || b.productMainCategory || "", "th") * dir;
+        case "owner": return (a.aeOwner || "").localeCompare(b.aeOwner || "", "th") * dir;
+        case "status": return (getComputedStatus(a) || "").localeCompare(getComputedStatus(b) || "", "th") * dir;
         case "code":
         default: return (a.code || "").localeCompare(b.code || "", "th") * dir;
       }
@@ -215,6 +232,34 @@ export default function ProjectsPage() {
 
   // map code 'XX' → main category name (for list display)
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || "";
+
+  // หัวตารางกดเรียง (ตารางหลัก)
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+  const sortArrow = (key) => sortKey === key
+    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
+  const sortableTh = (key, label) => (
+    <th onClick={() => toggleSort(key)} style={{ cursor: "pointer", userSelect: "none" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>{label} {sortArrow(key)}</span>
+    </th>
+  );
+
+  // หัวตารางกดเรียง (คลังเก็บ)
+  const toggleArchiveSort = (key) => {
+    if (archiveSortKey === key) setArchiveSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setArchiveSortKey(key); setArchiveSortDir("asc"); }
+  };
+  const archiveArrow = (key) => archiveSortKey === key
+    ? (archiveSortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
+  const archiveTh = (key, label) => (
+    <th onClick={() => toggleArchiveSort(key)} style={{ cursor: "pointer", userSelect: "none" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>{label} {archiveArrow(key)}</span>
+    </th>
+  );
 
   const renderArchiveRow = (p) => {
     const { pct, done, total } = getProgress(p);
@@ -291,17 +336,17 @@ export default function ProjectsPage() {
             </div>
             <div className="toolbar" style={{ gap: "8px" }}>
               <span className="toolbar-label"><Filter size={14} /> กรอง</span>
-              <select className="premium-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ fontSize: "12px", width: "auto" }} title="กรองตามประเภทโปรเจกต์">
+              <Select compact value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} title="กรองตามประเภทโปรเจกต์">
                 <option value="all">ทุกประเภท</option>
                 <option value="NPD">NPD</option>
                 <option value="RE-ORDER">Re-Order</option>
-              </select>
-              <select className="premium-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ fontSize: "12px", width: "auto" }} title="กรองตามสถานะ">
+              </Select>
+              <Select compact value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} title="กรองตามสถานะ">
                 <option value="all">ทุกสถานะ</option>
                 <option value="New">New (ใหม่)</option>
                 <option value="On Track">On Track (ตามแผน)</option>
                 <option value="Delayed">Delayed (ล่าช้า)</option>
-              </select>
+              </Select>
               {activeFilterCount > 0 && (
                 <button className="btn ghost" onClick={() => { setTypeFilter("all"); setStatusFilter("all"); }} style={{ fontSize: "12px", color: "var(--text-3)" }} title="ล้างตัวกรอง">
                   <X size={13} /> ล้าง ({activeFilterCount})
@@ -311,13 +356,13 @@ export default function ProjectsPage() {
 
             <div className="spacer toolbar" style={{ gap: "8px" }}>
               <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
-              <select className="premium-select" value={sortKey} onChange={(e) => setSortKey(e.target.value)} style={{ fontSize: "12px", width: "auto" }} title="เรียงลำดับตาม">
+              <Select compact value={sortKey} onChange={(e) => setSortKey(e.target.value)} title="เรียงลำดับตาม">
                 <option value="default">เริ่มต้น</option>
                 <option value="due">กำหนดส่ง</option>
                 <option value="progress">ความคืบหน้า</option>
                 <option value="name">ชื่อโปรเจกต์</option>
                 <option value="code">รหัส</option>
-              </select>
+              </Select>
               <button
                 className="btn-icon"
                 onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
@@ -334,15 +379,15 @@ export default function ProjectsPage() {
             <table className="premium-table">
               <thead>
                 <tr>
-                  <th>โปรเจกต์</th>
-                  <th>ลูกค้า</th>
-                  <th>ประเภท</th>
-                  <th>หมวดสินค้า</th>
-                  <th>ผู้ดูแล</th>
-                  <th>ความคืบหน้า</th>
-                  <th>ขั้นตอนปัจจุบัน</th>
-                  <th>กำหนดส่ง</th>
-                  <th>สถานะ</th>
+                  {sortableTh("code", "โปรเจกต์")}
+                  {sortableTh("customer", "ลูกค้า")}
+                  {sortableTh("type", "ประเภท")}
+                  {sortableTh("category", "หมวดสินค้า")}
+                  {sortableTh("owner", "ผู้ดูแล")}
+                  {sortableTh("progress", "ความคืบหน้า")}
+                  {sortableTh("step", "ขั้นตอนปัจจุบัน")}
+                  {sortableTh("due", "กำหนดส่ง")}
+                  {sortableTh("status", "สถานะ")}
                   {(canEdit || canDelete) && <th style={{ width: "70px", textAlign: "center" }}>จัดการ</th>}
                 </tr>
               </thead>
@@ -438,13 +483,13 @@ export default function ProjectsPage() {
 
                   <div className="spacer toolbar" style={{ gap: "8px" }}>
                     <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
-                    <select className="premium-select" value={archiveSortKey} onChange={(e) => setArchiveSortKey(e.target.value)} style={{ fontSize: "12px", width: "auto" }} title="เรียงลำดับคลังตาม">
+                    <Select compact value={archiveSortKey} onChange={(e) => setArchiveSortKey(e.target.value)} title="เรียงลำดับคลังตาม">
                       <option value="code">รหัส</option>
                       <option value="name">ชื่อโปรเจกต์</option>
                       <option value="customer">ลูกค้า</option>
                       <option value="progress">ความคืบหน้า</option>
                       <option value="due">กำหนดส่ง</option>
-                    </select>
+                    </Select>
                     <button className="btn-icon" onClick={() => setArchiveSortDir((d) => (d === "asc" ? "desc" : "asc"))}
                       aria-label={archiveSortDir === "asc" ? "เรียงน้อยไปมาก กดเพื่อสลับ" : "เรียงมากไปน้อย กดเพื่อสลับ"}
                       title={archiveSortDir === "asc" ? "น้อยไปมาก (A→Z)" : "มากไปน้อย (Z→A)"}>
@@ -457,14 +502,14 @@ export default function ProjectsPage() {
                   <table className="premium-table">
                     <thead>
                       <tr>
-                        <th>โปรเจกต์</th>
-                        <th>ลูกค้า</th>
-                        <th>ประเภท</th>
-                        <th>หมวดสินค้า</th>
-                        <th>ผู้ดูแล</th>
-                        <th>ความคืบหน้า</th>
-                        <th>กำหนดส่ง</th>
-                        <th>สถานะ</th>
+                        {archiveTh("code", "โปรเจกต์")}
+                        {archiveTh("customer", "ลูกค้า")}
+                        {archiveTh("type", "ประเภท")}
+                        {archiveTh("category", "หมวดสินค้า")}
+                        {archiveTh("owner", "ผู้ดูแล")}
+                        {archiveTh("progress", "ความคืบหน้า")}
+                        {archiveTh("due", "กำหนดส่ง")}
+                        {archiveTh("status", "สถานะ")}
                         {(canEdit || canDelete) && <th style={{ width: "70px", textAlign: "center" }}>จัดการ</th>}
                       </tr>
                     </thead>

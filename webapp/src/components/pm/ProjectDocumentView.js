@@ -9,6 +9,8 @@ import { useState, useMemo, useEffect, useRef, useReducer, useLayoutEffect } fro
 import { Flag, ChevronDown, ChevronRight, Minus, Plus, RotateCcw, Loader2 } from "lucide-react";
 import { isBusinessDay, toLocalISODate, countBusinessDays } from "@/lib/pm/dateHelpers";
 import { PredecessorPopover } from "@/components/pm/PredecessorPicker";
+import { useIsPortrait } from "@/lib/useResponsiveView";
+import Select from "@/components/ui/Select";
 
 const DAY_MS = 86400000;
 const ROW_H = 34;       // ความสูงแถวงาน (ให้บาร์ align กับช่องซ้าย)
@@ -94,12 +96,11 @@ function SelectUserField({ value, onCommit, users, disabled, style }) {
     return name === value;
   });
   return (
-    <select
-      className="premium-input"
+    <Select
       value={value ?? ""}
       disabled={disabled}
       onChange={(e) => onCommit(e.target.value)}
-      style={{ height: "30px", fontSize: "13px", padding: "4px 10px", borderRadius: "6px", ...style }}
+      style={{ height: "30px", ...style }}
     >
       <option value="">— ไม่ระบุ —</option>
       {value && !hasValueInList && <option value={value}>{value}</option>}
@@ -107,7 +108,7 @@ function SelectUserField({ value, onCommit, users, disabled, style }) {
         const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
         return <option key={u.id} value={name}>{name}</option>;
       })}
-    </select>
+    </Select>
   );
 }
 
@@ -147,6 +148,7 @@ function ZoomControl({ px, onChange }) {
 }
 
 export default function ProjectDocumentView({ project, canEdit, onUpdateProject, onUpdateTask, fgUI, statusLabel, statusColor }) {
+  const isPortrait = useIsPortrait(); // จอตั้ง/แคบ → ลดคอลัมน์ที่แช่แข็ง ไม่ให้บังเนื้อหา
   const [headerExpanded, setHeaderExpanded] = useState(false); // default: ย่อ เพื่อให้เห็น chart เต็ม
   const [nowMs] = useState(() => Date.now());
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
@@ -272,20 +274,28 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
         const iconW = t.isMilestone ? 18 : 0;
         return Math.max(max, nameW + iconW);
       }, 140);
-      return Math.min(420, Math.max(160, Math.ceil(maxPx) + 24));
-    } catch { return 220; }
-  }, [tasks]);
+      // จอตั้ง: จำกัดความกว้างคอลัมน์ชื่องานให้แคบลง กันคอลัมน์แช่แข็งกินจอจนมองแกนเวลาไม่เห็น
+      return isPortrait
+        ? Math.min(200, Math.max(120, Math.ceil(maxPx) + 24))
+        : Math.min(420, Math.max(160, Math.ceil(maxPx) + 24));
+    } catch { return isPortrait ? 150 : 220; }
+  }, [tasks, isPortrait]);
 
   // Freeze left offsets คำนวณจาก descW จริง
+  // จอตั้ง: แช่แข็งเฉพาะ "no. + ชื่องาน" (คอลัมน์อื่นเลื่อนไปกับแกนเวลาได้) เพื่อให้เหลือพื้นที่ดูเนื้อหา
   const NO_W = 40, TEAM_W = 46, DAY_W = 64, START_W = 96, FINISH_W = 96;
-  const freezeLeft = useMemo(() => [
+  const freezeLeft = useMemo(() => isPortrait ? [
+    0,
+    NO_W,
+    null, null, null, null,
+  ] : [
     0,
     NO_W,
     NO_W + descW,
     NO_W + descW + TEAM_W,
     NO_W + descW + TEAM_W + DAY_W,
     NO_W + descW + TEAM_W + DAY_W + START_W,
-  ], [descW]);
+  ], [descW, isPortrait]);
 
   const disabled = !canEdit;
 
@@ -367,9 +377,9 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
           <span style={{ fontSize: "12px", color: "var(--text-3)", marginLeft: "auto", fontWeight: 500 }}>(คลิกเพื่อ{headerExpanded ? "ย่อ" : "ขยาย"})</span>
         </button>
         {headerExpanded && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", padding: "16px 20px", borderTop: "1px solid var(--border)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isPortrait ? "1fr" : "1fr 1fr", gap: isPortrait ? "12px" : "20px", padding: "16px 20px", borderTop: "1px solid var(--border)" }}>
             {/* ซ้าย */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", borderRight: "1px solid var(--border)", paddingRight: "20px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", borderRight: isPortrait ? "none" : "1px solid var(--border)", paddingRight: isPortrait ? 0 : "20px", paddingBottom: isPortrait ? "12px" : 0, borderBottom: isPortrait ? "1px solid var(--border)" : "none" }}>
               <Row label="Customer Name"><span style={{ fontSize: "13px", fontWeight: 600 }}>{project.customerName || "-"}</span></Row>
               <Row label="ผู้ตรวจสอบ (AE Supervisor)"><SelectUserField value={pv("aeSupervisor")} users={users.filter(u => u.role === "ae_supervisor")} disabled={disabled} onCommit={commitField("aeSupervisor")} /></Row>
               <Row label="ผู้ดูแล (Account Executive)"><SelectUserField value={pv("aeOwner")} users={users.filter(u => u.role === "ae" || u.role === "senior_ae")} disabled={disabled} onCommit={commitField("aeOwner")} /></Row>
@@ -525,7 +535,8 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
           {/* ลายเซ็น */}
           <div style={{ position: "sticky", left: 0, display: "flex", flexWrap: "wrap", justifyContent: "space-around", gap: "32px", padding: "24px 20px", borderTop: "1px solid var(--border)", background: "var(--panel-2)", zIndex: 1, width: "100%", minWidth: "min-content" }}>
             <SignBlock label="ผู้จัดทำ" role="ตำแหน่ง ACCOUNT COORDINATOR" value={pv("preparedBy")} disabled={disabled} users={users.filter(u => u.role === "ac")} onCommit={commitField("preparedBy")} />
-            <SignBlock label="ผู้ตรวจสอบ" role="ตำแหน่ง AE SUPERVISOR" value={pv("reviewedBy")} disabled={disabled} users={users.filter(u => u.role === "ae_supervisor")} onCommit={commitField("reviewedBy")} />
+            {/* ผู้ตรวจสอบ = field เดียวกับฟอร์มและหัวเอกสาร (aeSupervisor) — เลิกใช้ reviewedBy เพื่อไม่ให้ข้อมูลแตกเป็นสองที่ */}
+            <SignBlock label="ผู้ตรวจสอบ" role="ตำแหน่ง AE SUPERVISOR" value={pv("aeSupervisor") || pv("reviewedBy")} disabled={disabled} users={users.filter(u => u.role === "ae_supervisor")} onCommit={commitField("aeSupervisor")} />
           </div>
         </div>
       </div>
@@ -565,7 +576,9 @@ function Th({ children, w, align = "center", top = 0, freeze }) {
 
 const freezeTd = (left, extra = {}) => ({
   border: "1px solid var(--border)", padding: "4px 8px", verticalAlign: "middle",
-  position: "sticky", left, zIndex: 1, background: "var(--panel)", ...extra,
+  // left == null (จอตั้ง) → ไม่แช่แข็ง ให้คอลัมน์เลื่อนไปกับแกนเวลา
+  ...(left != null ? { position: "sticky", left, zIndex: 1, background: "var(--panel)" } : {}),
+  ...extra,
 });
 
 // แถบเวลาในเซลล์ timeline ของแต่ละแถว (พื้นหลัง gridline + เส้นวันนี้ + บาร์)

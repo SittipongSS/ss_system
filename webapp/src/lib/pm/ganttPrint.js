@@ -108,6 +108,14 @@ export function buildGanttPrintHTML(project) {
 
   const productName = project.productName || project.name || '';
   const customerName = project.customerName || project.customer || '';
+  // ผู้ตรวจสอบ = aeSupervisor (field เดียวที่ฟอร์ม/หัวเอกสาร/ช่องลงชื่อใช้ร่วมกัน)
+  // fallback reviewedBy ไว้รองรับข้อมูลเก่าที่เคยบันทึกผ่านช่องลงชื่อหน้า Gantt.
+  // ผู้จัดทำ = preparedBy, ผู้ดูแล = aeOwner.
+  const reviewerName = project.aeSupervisor || project.reviewedBy || '';
+  const preparerName = project.preparedBy || '';
+  // ช่องลงชื่อผู้ตรวจสอบฝ่ายอื่น — เฉพาะฝ่ายที่มีขั้นตอนจริงในโครงการ (เรียงคงที่)
+  const DEPT_SIGNERS = ['PC', 'PD', 'QC', 'WH', 'RD'];
+  const signDepts = DEPT_SIGNERS.filter((d) => tasks.some((t) => t.role === d));
   // ยังไม่ผูก FG → โชว์ชื่อหมวด/หมวดรองแทนไปก่อน (categoryFallback resolve ชื่อหมวดหลักจากโค้ดมาแล้วฝั่ง page)
   const categoryFallback = project.categoryFallback || project.productSubCategory || '';
 
@@ -115,13 +123,15 @@ export function buildGanttPrintHTML(project) {
 <html lang="th">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Timeline Project - ${esc(project.docNumber || project.code || '')}</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #ffffff; color: #21385e;
          font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif;
-         -webkit-font-smoothing: antialiased; font-size: 12px; }
+         -webkit-font-smoothing: antialiased; font-size: 12px;
+         -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
   .toolbar { max-width: 297mm; margin: 0 auto; padding: 16px 12px 0;
              display: flex; justify-content: space-between; align-items: center; }
@@ -151,8 +161,14 @@ export function buildGanttPrintHTML(project) {
   .hcol { padding: 6px 12px; }
   .hcol.left { border-right: 1px solid #dcd8d0; background: #f7f3ec; }
   .hrow { display: flex; gap: 6px; font-size: 10px; line-height: 1.55; }
-  .hrow .k { color: #837868; min-width: 122px; flex-shrink: 0; }
+  .hrow .k { color: #837868; min-width: 84px; flex-shrink: 0; }
   .hrow .v { font-weight: 600; }
+  .fg-list { display: flex; flex-direction: column; gap: 3px; }
+  .fg-item { display: flex; flex-direction: column; padding-left: 6px; border-left: 2px solid #c17a52; }
+  .fg-item .fg-name { font-weight: 600; font-size: 9.5px; }
+  .fg-item .fg-qty { font-size: 8.5px; color: #3c577d; }
+  .fg-item.empty { border-left-style: dashed; border-color: #b8a07a; }
+  .fg-item.empty .fg-note { font-size: 8.5px; color: #837868; font-style: italic; }
 
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { border: 1px solid #cfc9bf; overflow: hidden; }
@@ -177,13 +193,25 @@ export function buildGanttPrintHTML(project) {
   .phase-row .c-no { color: #21385e; }
 
   .signs { display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
-           margin-top: 22px; padding: 0 30px; page-break-inside: avoid; }
+           margin-top: 34px; padding: 0 30px; page-break-inside: avoid; }
   .sign { text-align: center; }
-  .sign .nm { min-height: 20px; font-weight: 400; font-size: 11px; padding-bottom: 2px; }
+  .sign .sig-space { height: 40px; }   /* พื้นที่เซ็นจริง — เพิ่มให้เซ็นได้สบาย */
+  .sign .nm { font-weight: 400; font-size: 11px; padding-bottom: 2px; }
   .sign .nm-name { font-weight: 600; font-size: 11px; margin-top: 2px; min-height: 16px; }
-  .sign .lbl { font-size: 11px; color: #21385e; margin-top: 4px; }
+  .sign .lbl { font-size: 11px; font-weight: 700; color: #21385e; margin-top: 4px; }
   .sign .role { font-size: 10px; color: #837868; }
   .sign .date { font-size: 10px; color: #837868; margin-top: 6px; }
+
+  /* แถวลงชื่อผู้ตรวจสอบฝ่ายอื่น (เฉพาะหน้าพิมพ์) — โชว์เฉพาะฝ่ายที่มีงานในโครงการ */
+  .signs-dept { display: flex; flex-wrap: wrap; justify-content: space-around; gap: 16px;
+                margin-top: 48px; padding: 0 8px; page-break-inside: avoid; }
+  .sign-sm { text-align: center; width: 150px; }
+  .sign-sm .sig-space { height: 46px; }
+  .sign-sm .line { border-top: 1px dotted #6b7a90; margin: 0 4px 3px; }
+  .sign-sm .nm-name { font-size: 9px; color: #837868; }
+  .sign-sm .lbl { font-size: 9.5px; font-weight: 700; color: #21385e; margin-top: 2px; }
+  .sign-sm .role { font-size: 9px; color: #837868; }
+  .sign-sm .date { font-size: 8.5px; color: #837868; margin-top: 5px; }
 
   .legend { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; page-break-inside: avoid; }
   .leg { display: flex; align-items: center; gap: 4px; font-size: 9.5px; color: #3c577d; }
@@ -198,6 +226,17 @@ export function buildGanttPrintHTML(project) {
     .no-print { display: none !important; }
     .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
     thead { display: table-header-group; }
+  }
+
+  /* มือถือ/จอแคบ: ให้เอกสารพอดีความกว้างจอ (ไม่ล้น/ฟอนต์ไม่เพี้ยน) + header เรียงเดียว */
+  @media screen and (max-width: 820px) {
+    .toolbar { max-width: 100%; padding: 12px 10px 0; }
+    .toolbar h1 { font-size: 14px; }
+    .sheet { width: 100%; min-width: 0; margin: 10px auto; padding: 5mm; }
+    .header-grid { grid-template-columns: 1fr; }
+    .hcol.left { border-right: none; border-bottom: 1px solid #dcd8d0; }
+    .signs { gap: 24px; padding: 0 8px; }
+    .signs-dept { gap: 10px; }
   }
 </style>
 </head>
@@ -226,31 +265,34 @@ export function buildGanttPrintHTML(project) {
     <div class="header-grid">
       <div class="hcol left">
         <div class="hrow"><span class="k">Customer Name</span><span class="v">${esc(customerName)}</span></div>
-        <div class="hrow"><span class="k">AE Supervisor</span><span class="v">${esc(project.aeSupervisor || '')}</span></div>
-        <div class="hrow"><span class="k">Account Executive</span><span class="v">${esc(project.aeOwner || '')}</span></div>
+        <div class="hrow"><span class="k">ผู้ตรวจสอบ</span><span class="v">${esc(reviewerName)}</span></div>
+        <div class="hrow"><span class="k">ผู้ดูแล (AE)</span><span class="v">${esc(project.aeOwner || '')}</span></div>
         <div class="hrow"><span class="k">เบอร์ติดต่อ</span><span class="v">${COMPANY_TEL}</span></div>
         <div class="hrow"><span class="k">Line Official</span><span class="v">${COMPANY_LINE}</span></div>
         <div class="hrow"><span class="k">Email</span><span class="v">${esc(project.customerEmail || '')}</span></div>
       </div>
       <div class="hcol">
         <div class="hrow"><span class="k">แบรนด์</span><span class="v">${esc(project.metadata?.brand || '')}</span></div>
+        <div class="hrow"><span class="k">ใบเสนอราคา</span><span class="v">${esc(project.metadata?.quotationNumber || '')}</span></div>
         <div class="hrow"><span class="k">เลขที่ PO</span><span class="v">${esc(project.metadata?.poNumber || '')}</span></div>
         <div class="hrow"><span class="k">วันที่</span><span class="v">${esc(fmtThai(project.startDate))}</span></div>
         <div class="hrow"><span class="k">Product Name</span><span class="v">${esc(productName)}</span></div>
-        <div class="hrow" style="flex-direction: column; gap: 4px; margin-top: 4px;">
-          <span class="k" style="min-width: unset">รายการสินค้า (FG) และปริมาณ:</span>
-          ${(project.projectProducts || []).length > 0 ? (project.projectProducts || []).map(pp => {
+        <div class="hrow" style="align-items: flex-start;">
+          <span class="k">รายการสินค้า (FG)</span>
+          <span class="v" style="font-weight: 400; flex: 1;">
+          ${(project.projectProducts || []).length > 0 ? `<span class="fg-list">${(project.projectProducts || []).map(pp => {
             const prod = pp.product || {};
-            return `<div style="padding-left: 6px; border-left: 2px solid #c17a52; margin-left: 2px;">
-              <div style="font-weight: 600; font-size: 10px;">${esc(prod.fgCode || '')} — ${esc(prod.productDescription || prod.brandName || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</div>
-              <div style="font-size: 9px; color: #3c577d;">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</div>
-            </div>`;
-          }).join('') : (categoryFallback
-            ? `<div style="padding-left: 6px; border-left: 2px dashed #b8a07a; margin-left: 2px;">
-                 <div style="font-weight: 600; font-size: 10px;">${esc(categoryFallback)}</div>
-                 <div style="font-size: 9px; color: #837868; font-style: italic;">หมวดสินค้า (ยังไม่ผูก FG)</div>
-               </div>`
-            : `<span class="v">-</span>`)}
+            return `<span class="fg-item">
+              <span class="fg-name">${esc(prod.fgCode || '')} — ${esc(prod.productDescription || prod.brandName || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</span>
+              <span class="fg-qty">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</span>
+            </span>`;
+          }).join('')}</span>` : (categoryFallback
+            ? `<span class="fg-list"><span class="fg-item empty">
+                 <span class="fg-name">${esc(categoryFallback)}</span>
+                 <span class="fg-note">หมวดสินค้า (ยังไม่ผูก FG)</span>
+               </span></span>`
+            : `-`)}
+          </span>
         </div>
       </div>
     </div>
@@ -281,20 +323,34 @@ export function buildGanttPrintHTML(project) {
 
     <div class="signs">
       <div class="sign">
+        <div class="sig-space"></div>
         <div class="nm">ลงชื่อ _____________________________________</div>
-        <div class="nm-name">(${esc(project.preparedBy || '...................................................')})</div>
+        <div class="nm-name">(${esc(preparerName || '...................................................')})</div>
         <div class="lbl">ผู้จัดทำ</div>
         <div class="role">ตำแหน่ง ACCOUNT COORDINATOR</div>
         <div class="date">วันที่ ______________________</div>
       </div>
       <div class="sign">
+        <div class="sig-space"></div>
         <div class="nm">ลงชื่อ _____________________________________</div>
-        <div class="nm-name">(${esc(project.reviewedBy || '...................................................')})</div>
+        <div class="nm-name">(${esc(reviewerName || '...................................................')})</div>
         <div class="lbl">ผู้ตรวจสอบ</div>
         <div class="role">ตำแหน่ง AE SUPERVISOR</div>
         <div class="date">วันที่ ______________________</div>
       </div>
     </div>
+
+    ${signDepts.length ? `<div class="signs-dept">
+      ${signDepts.map((dep) => `
+      <div class="sign-sm">
+        <div class="sig-space"></div>
+        <div class="line"></div>
+        <div class="nm-name">(.............................)</div>
+        <div class="lbl">ผู้ตรวจสอบ</div>
+        <div class="role">ฝ่าย ${dep}</div>
+        <div class="date">วันที่ ____________</div>
+      </div>`).join('')}
+    </div>` : ''}
   </div>
 </body>
 </html>`;

@@ -4,6 +4,7 @@ import { viewScope, editScope, inScope } from '@/lib/permissions';
 import { recalculateForward, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
+import { propagateAndPersist } from '@/lib/pm/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,5 +125,10 @@ export async function POST(request) {
 
   const { data, error } = await supabase.from('project_tasks').insert(finalRow).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  // ขั้นใหม่อาจทำให้กราฟเปลี่ยน (เช่นแทรกขั้นที่ไม่มี predecessor = พร้อมทำทันที,
+  // หรือไปคั่นกลางทำให้ขั้นถัดไม่พร้อม) → คำนวณสถานะทั้งโปรเจกต์ใหม่. client เรียก load() ต่อ.
+  await propagateAndPersist(supabase, body.projectId);
+
   return Response.json(data, { status: 201 });
 }

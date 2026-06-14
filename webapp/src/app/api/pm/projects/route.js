@@ -5,6 +5,7 @@ import { resolveCustomer } from '@/lib/master/customers';
 import { buildProjectTasks } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
+import { applyAutoStatuses } from '@/lib/pm/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,7 +134,9 @@ export async function POST(request) {
   // Generate template tasks (camelCase rows) + insert.
   // ส่ง project เต็ม (มี startDate/dueDate/createdAt) เพื่อให้ resolveSchedule เลือก
   // โหมด forward/backward ได้ถูกต้องตามวันที่ที่มี.
-  const taskRows = buildProjectTasks(project, project.id);
+  // template สร้าง chain ให้ idx0 เป็น In Progress อยู่แล้ว — apply กฎกราฟอีกชั้น
+  // เพื่อรองรับ "งานแรกแบบขนาน" (หลายขั้นที่ไม่มี predecessor → In Progress ทุกตัว).
+  const taskRows = applyAutoStatuses(buildProjectTasks(project, project.id));
   let tasks = [];
   if (taskRows.length) {
     const { data: inserted, error: taskErr } = await supabase

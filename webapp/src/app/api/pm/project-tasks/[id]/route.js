@@ -4,6 +4,7 @@ import { editScope, inScope, can, normalizeDepartment } from '@/lib/permissions'
 import { recalculateForward, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
+import { propagateAndPersist } from '@/lib/pm/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,13 @@ export async function PATCH(request, { params }) {
 
   const { data, error } = await supabase.from('project_tasks').update(updates).eq('id', id).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  // ── auto status: แก้สถานะ/predecessors ของขั้นนี้ → คำนวณสถานะทั้งกราฟใหม่
+  // (กดเสร็จ → ขั้นถัดไปที่พร้อม เป็น In Progress ; ถอย/แก้ pred → ขั้นถัดที่ไม่พร้อม กลับ Pending).
+  // client reload เมื่อ status/predecessors เปลี่ยน จึงเห็นผลกับขั้นอื่นทันที.
+  if (project && ('status' in updates || 'predecessors' in updates)) {
+    await propagateAndPersist(supabase, project.id);
+  }
 
   // ── #1 recalc: ถ้าแก้วันเริ่ม/จำนวนวัน/predecessors → คำนวณ timeline ใหม่
   // ตั้งแต่ task นี้เป็นต้นไป (anchor = วันเริ่มใหม่ของ task นี้) แล้ว persist
@@ -177,6 +185,9 @@ export async function DELETE(request, { params }) {
         ));
       }
     }
+
+    // ลบขั้นแล้ว → ขั้นถัดที่อ้างขั้นนี้อาจพร้อมทำงาน → คำนวณสถานะทั้งกราฟใหม่
+    await propagateAndPersist(supabase, project.id);
   }
 
   return Response.json({ success: true });

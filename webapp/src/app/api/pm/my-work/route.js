@@ -62,19 +62,43 @@ export async function GET(request) {
     projectTasks = data || [];
   }
 
-  // ── projects map สำหรับแสดงรหัส/ชื่อ ──
-  const projIds = [...new Set(projectTasks.map((t) => t.projectId).filter(Boolean))];
+  // ── งาน personal_tasks ──
+  //   • งานส่วนตัว (ไม่ผูกโปรเจกต์) + งานเพิ่มเติมที่ฉันสร้าง/ถูกมอบ → เห็นเสมอ
+  //   • งานเพิ่มเติม (ผูกโปรเจกต์) ของคนอื่น → เห็นตาม scope (team = โปรเจกต์ทีมฉัน, all = ทุกอัน)
+  //   • งานส่วนตัวของคนอื่น (ไม่ผูก) → ไม่หลุดเข้า team/all
+  // 2 query แยก (ไม่ใช้ .or กับ assigneeId) — เผื่อยังไม่รัน migration 0026 คอลัมน์
+  // assigneeId ยังไม่มี: query นั้นจะ error เฉยๆ (data=null) ไม่ทำให้งานส่วนตัวหาย
+  const [{ data: byOwner }, { data: byAssignee }] = await Promise.all([
+    supabase.from('personal_tasks').select('*').eq('ownerId', user.id).order('createdAt', { ascending: false }),
+    supabase.from('personal_tasks').select('*').eq('assigneeId', user.id).order('createdAt', { ascending: false }),
+  ]);
+  const minePersonal = [...(byOwner || []), ...(byAssignee || [])];
+
+  let extraPersonal = [];
+  if (scope === 'team' || scope === 'all') {
+    let q = supabase.from('personal_tasks').select('*').not('projectId', 'is', null);
+    if (scope === 'team') {
+      const { data: teamProjs } = await supabase.from('projects').select('id').eq('team', user.team ?? null);
+      const teamProjIds = (teamProjs || []).map((p) => p.id);
+      q = teamProjIds.length ? q.in('projectId', teamProjIds) : null;
+    }
+    if (q) { const { data } = await q.order('createdAt', { ascending: false }); extraPersonal = data || []; }
+  }
+  const seenP = new Set();
+  const personalTasks = [...(minePersonal || []), ...extraPersonal]
+    .filter((t) => (seenP.has(t.id) ? false : seenP.add(t.id)));
+
+  // ── projects map สำหรับแสดงรหัส/ชื่อ (รวมโปรเจกต์ที่งานเพิ่มเติมผูกไว้ด้วย) ──
+  const projIds = [...new Set([
+    ...projectTasks.map((t) => t.projectId),
+    ...personalTasks.map((t) => t.projectId),
+  ].filter(Boolean))];
   let projects = {};
   if (projIds.length) {
     const { data: ps } = await supabase
       .from('projects').select('id, code, name, aeOwner, team, customerName').in('id', projIds);
     projects = Object.fromEntries((ps || []).map((p) => [p.id, p]));
   }
-
-  // ── งานส่วนตัว = ของฉันเสมอ ──
-  const { data: personalTasks } = await supabase
-    .from('personal_tasks').select('*').eq('ownerId', user.id)
-    .order('createdAt', { ascending: false });
 
   return Response.json({
     scope,

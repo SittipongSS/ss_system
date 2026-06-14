@@ -1,58 +1,9 @@
 "use client";
 import { useState, useMemo, useEffect, useRef } from "react";
 import Modal from "@/components/Modal";
-import { X, ChevronDown } from "lucide-react";
-
-// Searchable dropdown for a list of string values (brand). Lets the user type to
-// filter and pick from existing brands. ("dropdown + ค้นหาได้")
-function SearchableTextSelect({ value, onChange, options, placeholder, disabled }) {
-  const [search, setSearch] = useState("");
-  const [open, setOpen] = useState(false);
-  const boxRef = useRef(null);
-  useEffect(() => {
-    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
-  const filtered = useMemo(() => {
-    const s = search.toLowerCase();
-    return options.filter((o) => o.toLowerCase().includes(s)).slice(0, 50);
-  }, [options, search]);
-  return (
-    <div ref={boxRef} style={{ position: "relative", width: "100%" }}>
-      <div style={{ position: "relative" }}>
-        <input
-          className="premium-input w-full"
-          value={open ? search : (value || "")}
-          disabled={disabled}
-          placeholder={placeholder || "เลือกหรือค้นหาแบรนด์..."}
-          onChange={(e) => { setSearch(e.target.value); setOpen(true); onChange(e.target.value); }}
-          onFocus={() => { setSearch(value || ""); setOpen(true); }}
-          style={{ paddingRight: "28px" }}
-        />
-        <ChevronDown size={16} style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", pointerEvents: "none" }} />
-      </div>
-      {open && !disabled && (
-        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "6px", maxHeight: "200px", overflowY: "auto", zIndex: 50, marginTop: "4px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
-          {filtered.length === 0 ? (
-            <div style={{ padding: "6px 10px", fontSize: "12px", color: "var(--text-3)" }}>ไม่พบแบรนด์ (พิมพ์เพื่อเพิ่มใหม่)</div>
-          ) : filtered.map((opt) => (
-            <div
-              key={opt}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => { onChange(opt); setOpen(false); }}
-              style={{ padding: "6px 10px", fontSize: "13px", cursor: "pointer", borderBottom: "1px solid var(--border)", color: "var(--text)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--panel-2)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              {opt}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import { X } from "lucide-react";
 
 export default function ProjectFormModal({
   open, onClose, editingId, initialData, onSuccess,
@@ -229,7 +180,7 @@ export default function ProjectFormModal({
   return (
     <Modal open={open} onClose={onClose} title={editingId ? "แก้ไขโปรเจกต์" : "สร้างโปรเจกต์ใหม่"} size="lg">
       <form onSubmit={submit}>
-        <div className="grid grid-cols-2 gap-[18px]">
+        <div className="pm-form-grid gap-[18px]">
           <div className="col-span-2 text-[15px] font-semibold text-[var(--text)] border-b border-[var(--border)] pb-2 mb-2 flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[12px]">1</span> ข้อมูลทั่วไป (General Info)
           </div>
@@ -242,10 +193,10 @@ export default function ProjectFormModal({
           )}
           <div className={`form-group${editingId && form.code ? "" : " col-span-2"}`}>
             <label>ประเภทงาน</label>
-            <select name="type" value={form.type} onChange={change} disabled={!!editingId} className="premium-input w-full">
+            <Select fullWidth name="type" value={form.type} onChange={change} disabled={!!editingId}>
               <option value="NPD">NPD (สินค้าใหม่)</option>
               <option value="RE-ORDER">RE-ORDER (สั่งซ้ำ)</option>
-            </select>
+            </Select>
           </div>
           <div className="form-group col-span-2">
             <label>ชื่อโปรเจกต์ / สินค้า <span className="text-[var(--red)]">*</span></label>
@@ -274,10 +225,10 @@ export default function ProjectFormModal({
           
           <div className="form-group col-span-2">
             <label>บริษัทลูกค้า</label>
-            <select name="customerId" value={form.customerId} onChange={change} className="premium-input w-full">
+            <Select fullWidth name="customerId" value={form.customerId} onChange={change}>
               <option value="">— เลือกลูกค้า —</option>
               {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </div>
           <div className="form-group col-span-2">
             <label>อีเมลลูกค้า</label>
@@ -291,11 +242,13 @@ export default function ProjectFormModal({
 
         <div className="form-group" style={{ marginBottom: "18px" }}>
           <label>แบรนด์ (Brand)</label>
-          <SearchableTextSelect
+          <SearchableSelect
+            allowFreeText
             value={form.brand}
             onChange={(v) => setForm((f) => ({ ...f, brand: v }))}
-            options={brandOptions}
+            options={brandOptions.map((b) => ({ value: b, label: b }))}
             placeholder={form.customerId ? "เลือกหรือค้นหาแบรนด์ของลูกค้า..." : "เลือกหรือค้นหาแบรนด์..."}
+            emptyText="ไม่พบแบรนด์ (พิมพ์เพื่อเพิ่มใหม่)"
           />
         </div>
 
@@ -316,8 +269,8 @@ export default function ProjectFormModal({
                     if (!p) return null;
                     const cat = categories.find(c => c.mainCategoryCode === p.categoryCode?.split("-")[0] && c.typeCode === p.categoryCode?.split("-")[1]);
                     return (
-                      <div key={pp.productId} style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--panel-2)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: "6px" }}>
-                        <div style={{ flex: 1 }}>
+                      <div key={pp.productId} style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", background: "var(--panel-2)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: "6px" }}>
+                        <div style={{ flex: 1, minWidth: "160px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                             <span className="font-mono text-[13px] font-semibold">{p.fgCode}</span>
                             <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{p.volume ? `(${p.volume} ml)` : ""}</span>
@@ -327,7 +280,7 @@ export default function ProjectFormModal({
                           </div>
                           <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{p.productDescription || p.brandName || "-"}</div>
                         </div>
-                        <div style={{ display: "flex", gap: "8px", width: "240px" }}>
+                        <div style={{ display: "flex", gap: "8px", width: "240px", maxWidth: "100%" }}>
                           <input type="text" placeholder="สั่งซื้อ" value={pp.orderQty} onChange={(e) => updateFgQty(pp.productId, "orderQty", e.target.value)} className="premium-input w-full text-[12px] h-[32px]" />
                           <input type="text" placeholder="ผลิต" value={pp.productionQty} onChange={(e) => updateFgQty(pp.productId, "productionQty", e.target.value)} className="premium-input w-full text-[12px] h-[32px]" />
                         </div>
@@ -338,7 +291,7 @@ export default function ProjectFormModal({
                 </div>
               )}
               
-              <select value="" onChange={(e) => { if(e.target.value) toggleFg(e.target.value); }} className="premium-select w-full">
+              <Select fullWidth value="" onChange={(e) => { if(e.target.value) toggleFg(e.target.value); }}>
                 <option value="">— เพิ่ม FG —</option>
                 {allProducts
                   .filter(pr => !form.projectProducts.some(pp => pp.productId === pr.id))
@@ -346,7 +299,7 @@ export default function ProjectFormModal({
                   .map(pr => (
                   <option key={pr.id} value={pr.id}>{pr.fgCode} — {pr.productDescription || pr.brandName || ""} {pr.volume ? `(${pr.volume} ml)` : ""}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
         </div>
@@ -355,24 +308,24 @@ export default function ProjectFormModal({
           <div style={{ fontSize: "12px", color: "var(--text-2)", fontWeight: 600, marginBottom: "12px" }}>
             หมวดสินค้า <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(หมวดหลัก → หมวดรอง — มีผลต่อขั้นตอนสรรพสามิต)</span>
           </div>
-          <div className="grid grid-cols-2 gap-[14px]">
+          <div className="pm-form-grid gap-[14px]">
             <div className="form-group">
               <label>หมวดหลัก</label>
-              <select value={form.mainCode} onChange={(e) => changeMain(e.target.value)} disabled={fgCategoryLock} className="premium-input w-full">
+              <Select fullWidth value={form.mainCode} onChange={(e) => changeMain(e.target.value)} disabled={fgCategoryLock}>
                 <option value="">— ไม่ระบุ —</option>
                 {mainCatOptions.map((o) => (
                   <option key={o.code} value={o.code}>{o.code} {o.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="form-group">
               <label>หมวดรอง</label>
-              <select value={form.typeCode} onChange={(e) => changeSub(e.target.value)} disabled={fgCategoryLock || !form.mainCode} className="premium-input w-full">
+              <Select fullWidth value={form.typeCode} onChange={(e) => changeSub(e.target.value)} disabled={fgCategoryLock || !form.mainCode}>
                 <option value="">{form.mainCode ? "— เลือกหมวดรอง —" : "เลือกหมวดหลักก่อน"}</option>
                 {subCatOptions.map((c) => (
                   <option key={c.id} value={c.typeCode}>{subLabel(c)}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
           {fgCategoryLock && (
@@ -393,36 +346,36 @@ export default function ProjectFormModal({
           <span className="w-6 h-6 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[12px]">4</span> ทีมงานผู้รับผิดชอบ (Team)
         </div>
 
-        <div className="grid grid-cols-2 gap-[18px]">
+        <div className="pm-form-grid gap-[18px]">
           <div className="form-group col-span-2">
             <label>ผู้ดูแล (Account Executive)</label>
-            <select name="aeOwner" value={form.aeOwner} onChange={change} className="premium-input w-full">
+            <Select fullWidth name="aeOwner" value={form.aeOwner} onChange={change}>
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ae" || u.role === "senior_ae" || u.role === "ae_supervisor").map((u) => {
                 const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
                 return <option key={u.id} value={name}>{name}</option>;
               })}
-            </select>
+            </Select>
           </div>
           <div className="form-group">
             <label>ผู้จัดทำ (Account Coordinator)</label>
-            <select name="preparedBy" value={form.preparedBy} onChange={change} className="premium-input w-full">
+            <Select fullWidth name="preparedBy" value={form.preparedBy} onChange={change}>
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ac").map((u) => {
                 const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
                 return <option key={u.id} value={name}>{name}</option>;
               })}
-            </select>
+            </Select>
           </div>
           <div className="form-group">
             <label>ผู้ตรวจสอบ (AE Supervisor)</label>
-            <select name="aeSupervisor" value={form.aeSupervisor} onChange={change} className="premium-input w-full">
+            <Select fullWidth name="aeSupervisor" value={form.aeSupervisor} onChange={change}>
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ae_supervisor").map((u) => {
                 const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
                 return <option key={u.id} value={name}>{name}</option>;
               })}
-            </select>
+            </Select>
           </div>
         </div>
 

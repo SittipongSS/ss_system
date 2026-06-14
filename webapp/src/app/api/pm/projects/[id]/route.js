@@ -44,9 +44,11 @@ export async function GET(request, { params }) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const [{ data: tasks }, { data: links }] = await Promise.all([
+  const [{ data: tasks }, { data: links }, { data: personalTasks }] = await Promise.all([
     supabase.from('project_tasks').select('*').eq('projectId', project.id).order('stepOrder', { ascending: true }),
     supabase.from('project_products').select('*, product:products(*)').eq('projectId', project.id),
+    // "งานเพิ่มเติม" ที่ผูกโปรเจกต์นี้ — เห็นร่วมกันทั้งโปรเจกต์ (ไม่กรองเจ้าของ). ไม่เข้า Gantt.
+    supabase.from('personal_tasks').select('*').eq('projectId', project.id).order('createdAt', { ascending: false }),
   ]);
 
   const projectProducts = (links || []).map((l) => ({
@@ -57,7 +59,10 @@ export async function GET(request, { params }) {
   // Tell the client whether THIS user may edit THIS record (cap + row scope),
   // so the UI gates edit controls by ownership — not just the pm:edit cap.
   const canEdit = inScope(editScope(user?.role), user, project);
-  return Response.json({ ...project, tasks: tasks || [], projectProducts, canEdit });
+  // me: ใช้ฝั่ง client gate ปุ่มจัดการ "งานเพิ่มเติม" (owner/assignee/lead) + กรอง
+  // ผู้รับมอบใน dropdown ตามทีมโปรเจกต์.
+  const me = user ? { id: user.id, name: user.name, role: user.role, team: user.team ?? null } : null;
+  return Response.json({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me });
 }
 
 // PATCH /api/pm/projects/[id]
