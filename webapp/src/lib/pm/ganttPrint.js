@@ -153,41 +153,41 @@ export function buildGanttPrintHTML(project) {
   .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
   .doc-title .big { font-size: 17px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
-  .c-desc .note { font-size: 8px; color: #4a4a4a; font-style: italic; line-height: 1.2; margin-top: 1px; white-space: pre-wrap; }
+  .c-desc .note { font-size: 8px; color: #000; font-style: italic; line-height: 1.2; margin-top: 1px; white-space: pre-wrap; }
 
   .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
                  border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; margin-bottom: 7px; }
   .hcol { padding: 6px 12px; }
   .hcol.left { border-right: 1px solid #dcd8d0; background: #f7f3ec; }
   .hrow { display: flex; gap: 6px; font-size: 10px; line-height: 1.55; }
-  .hrow .k { color: #4a4a4a; min-width: 84px; flex-shrink: 0; }
-  .hrow .v { font-weight: 600; color: #1a1a1a; }
+  .hrow .k { color: #000; min-width: 84px; flex-shrink: 0; }
+  .hrow .v { font-weight: 600; color: #000; }
   .fg-list { display: flex; flex-direction: column; gap: 3px; }
   .fg-item { display: flex; flex-direction: column; padding-left: 6px; border-left: 2px solid #c17a52; }
-  .fg-item .fg-name { font-weight: 600; font-size: 9.5px; color: #1a1a1a; }
-  .fg-item .fg-qty { font-size: 8.5px; color: #1a1a1a; }
+  .fg-item .fg-name { font-weight: 600; font-size: 9.5px; color: #000; }
+  .fg-item .fg-qty { font-size: 8.5px; color: #000; }
   .fg-item.empty { border-left-style: dashed; border-color: #b8a07a; }
-  .fg-item.empty .fg-note { font-size: 8.5px; color: #4a4a4a; font-style: italic; }
+  .fg-item.empty .fg-note { font-size: 8.5px; color: #000; font-style: italic; }
 
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { border: 1px solid #cfc9bf; overflow: hidden; }
-  thead th { background: #e8e2d9; color: #1a1a1a; font-size: 9px; font-weight: 700; padding: 2px 2px; text-align: center; line-height: 1.15; }
-  .c-no   { text-align: center; font-size: 8.5px; color: #4a4a4a; }
-  .c-desc { text-align: left;   font-size: 9.5px; line-height: 1.2; word-break: break-word; color: #1a1a1a; }
-  .c-team { text-align: center; font-size: 8.5px; font-weight: 700; color: #1a1a1a; }
-  .c-dur  { text-align: center; font-size: 9px; color: #1a1a1a; }
-  .c-date { text-align: center; font-size: 8px; color: #1a1a1a; white-space: nowrap; }
+  thead th { background: #e8e2d9; color: #000; font-size: 9px; font-weight: 700; padding: 2px 2px; text-align: center; line-height: 1.15; }
+  .c-no   { text-align: center; font-size: 8.5px; color: #000; }
+  .c-desc { text-align: left;   font-size: 9.5px; line-height: 1.2; word-break: break-word; color: #000; }
+  .c-team { text-align: center; font-size: 8.5px; font-weight: 700; color: #000; }
+  .c-dur  { text-align: center; font-size: 9px; color: #000; }
+  .c-date { text-align: center; font-size: 8px; color: #000; white-space: nowrap; }
   td.c-no, td.c-desc, td.c-team, td.c-dur, td.c-date { padding: 1px 3px; vertical-align: middle; }
   .wk  { height: 15px; padding: 0; text-align: center; }
   .wkd { font-size: 6px; font-weight: 700; color: #fff; line-height: 1; }
-  th.wkn { font-size: 5.5px; color: #4a4a4a; font-weight: 600; letter-spacing: -0.3px; line-height: 1; padding: 1px 0; }
+  th.wkn { font-size: 5.5px; color: #000; font-weight: 600; letter-spacing: -0.3px; line-height: 1; padding: 1px 0; }
   thead th.wk[colspan] { font-size: 8px; }
   .dia { color: #21385e; font-size: 8px; }
   .ms  { color: #c17a52; }
   tbody tr { page-break-inside: avoid; }
   tbody.pg { break-inside: avoid; page-break-inside: avoid; }
   .phase-row td { background: #f0ebe0; }
-  .phase-label { text-align: left; font-weight: 700; font-size: 10px; padding: 2px 8px; color: #1a1a1a; }
+  .phase-label { text-align: left; font-weight: 700; font-size: 10px; padding: 2px 8px; color: #000; }
   td.c-no { font-weight: 700; }
   .phase-row .c-no { color: #21385e; }
 
