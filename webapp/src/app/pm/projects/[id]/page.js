@@ -16,6 +16,7 @@ import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import Select from "@/components/ui/Select";
+import StatusSelect, { taskStatusColor } from "@/components/pm/StatusSelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
@@ -110,9 +111,6 @@ function AssigneeField({ form, setForm, users }) {
     <span style={{ flex: 1, fontSize: "12px", color: "var(--text-3)" }}>— ไม่ระบุรายคน ({role}) —</span>
   );
 }
-
-// สีประจำสถานะของขั้นตอนงาน (ใช้ย้อม dropdown สถานะ)
-const TASK_STATUS_COLOR = { Pending: "var(--text-3)", "In Progress": "var(--accent)", Completed: "var(--green)" };
 
 const PHASE_COLORS = ["var(--accent)", "var(--purple)", "var(--blue)", "var(--amber)", "#f97316", "var(--green)", "var(--accent)"];
 
@@ -626,13 +624,9 @@ export default function ProjectDetailPage() {
     || (t.ownerId ? `${users.find((u) => u.id === t.ownerId)?.name || "ผู้สร้าง"} (สร้าง)` : "—");
 
   const extraStatusControl = (t) => canManageExtra(t) ? (
-    <Select tone={TASK_STATUS_COLOR[t.status]} value={t.status} onChange={(e) => setExtraStatus(t, e.target.value)}>
-      <option value="Pending">○ รอดำเนินการ</option>
-      <option value="In Progress">◷ กำลังทำ</option>
-      <option value="Completed">✓ เสร็จแล้ว</option>
-    </Select>
+    <StatusSelect value={t.status} onChange={(v) => setExtraStatus(t, v)} />
   ) : (
-    <span className="status-pill dot" style={{ "--dot": TASK_STATUS_COLOR[t.status] }} title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม">{t.status}</span>
+    <span className="status-pill dot" style={{ "--dot": taskStatusColor(t.status) }} title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม">{t.status}</span>
   );
 
   // section "งานเพิ่มเติม" ใช้ทั้งใน List และ Table view (ไม่เข้า Gantt/พิมพ์)
@@ -652,7 +646,7 @@ export default function ProjectDetailPage() {
           {extraTasks.map((t) => {
             const isDoneT = t.status === "Completed";
             return (
-              <div key={t.id} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${TASK_STATUS_COLOR[t.status]}`, background: "color-mix(in srgb, var(--purple) 4%, var(--panel))" }}>
+              <div key={t.id} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${taskStatusColor(t.status)}`, background: "color-mix(in srgb, var(--purple) 4%, var(--panel))" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "14px", fontWeight: 600, textDecoration: isDoneT ? "line-through" : "none", color: isDoneT ? "var(--text-3)" : "var(--text)" }}>{t.title}</div>
@@ -942,11 +936,7 @@ export default function ProjectDetailPage() {
                             <td style={{ fontSize: "13px" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : assignee}</td>
                             <td>
                               {canEdit ? (
-                                <Select tone={TASK_STATUS_COLOR[task.status]} value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })}>
-                                  <option value="Pending">○ รอดำเนินการ</option>
-                                  <option value="In Progress">◷ กำลังทำ</option>
-                                  <option value="Completed">✓ เสร็จแล้ว</option>
-                                </Select>
+                                <StatusSelect value={task.status} onChange={(v) => updateTask(task.id, { status: v })} />
                               ) : (
                                 <span className="status-pill dot" style={{ "--dot": statusDotColor(task.status === "Completed" ? "Completed" : task.status === "In Progress" ? "In Progress" : "Pending") }}>{task.status}</span>
                               )}
@@ -1188,11 +1178,7 @@ export default function ProjectDetailPage() {
                                   <span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span>
                                 ); })()}
                                 {canEdit && (
-                                  <Select tone={TASK_STATUS_COLOR[task.status]} value={task.status} onChange={(e) => updateTask(task.id, { status: e.target.value })}>
-                                    <option value="Pending">○ รอดำเนินการ</option>
-                                    <option value="In Progress">◷ กำลังทำ</option>
-                                    <option value="Completed">✓ เสร็จแล้ว</option>
-                                  </Select>
+                                  <StatusSelect value={task.status} onChange={(v) => updateTask(task.id, { status: v })} />
                                 )}
                                 {canEdit && (
                                   <div style={{ display: "flex", gap: "4px" }}>

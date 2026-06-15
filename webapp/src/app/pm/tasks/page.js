@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, ChevronRight, ChevronDown, ExternalLink, Flame, ArrowUpDown, ArrowUp, ArrowDown, Table2, PlusCircle, Check, Calendar, Flag } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
+import StatusSelect from "@/components/pm/StatusSelect";
 import { isSuperuser } from "@/lib/permissions";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 
@@ -331,13 +332,12 @@ export default function MyWorkPage() {
 
   // dropdown เลือกสถานะ — วิธีอัปเดตหลัก (แทนการคลิกวน pill เดิม)
   const statusSelect = (t, onChange) => (
-    <Select
+    <StatusSelect
       value={t.status}
+      variant="short"
       onClick={(e) => e.stopPropagation()}
-      onChange={(e) => { e.stopPropagation(); onChange(t, e.target.value); }}
-      tone={statusDot(t.status)}
+      onChange={(v) => onChange(t, v)}
       title="เปลี่ยนสถานะ"
-      options={Object.entries(TASK_STATUS_TH).map(([k, label]) => ({ value: k, label }))}
     />
   );
 
