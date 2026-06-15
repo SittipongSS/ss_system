@@ -739,18 +739,22 @@ export default function MyWorkPage() {
                 </Select>
               </div>
             </div>
-            {form.projectId && (() => {
-              const proj = allProjects.find((p) => p.id === form.projectId);
+            {/* ช่องมอบหมาย "ผู้รับผิดชอบ" แสดงตลอดเพื่อให้หาเจอ — กดใช้ได้เมื่อผูกโปรเจกต์แล้ว
+                (กติกาเดิม: มอบหมายได้เฉพาะงานที่ผูกโปรเจกต์ และเป็นคนในทีมของโปรเจกต์นั้น) */}
+            {(() => {
+              const proj = form.projectId ? allProjects.find((p) => p.id === form.projectId) : null;
               const team = proj?.team ?? null;
               const teammates = users.filter((u) => team && u.team === team);
+              const linked = !!form.projectId;
               return (
                 <div className="form-group">
-                  <label>มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(คนในทีมของโปรเจกต์ — งานจะไปอยู่ใน "งานของฉัน" ของคนนั้น)</span></label>
-                  <Select fullWidth value={form.assigneeId} onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}>
-                    <option value="">— ไม่มอบหมาย (ของฉัน) —</option>
+                  <label>มอบหมายให้ (ผู้รับผิดชอบ) <span className="text-[11px] text-[var(--text-3)] font-normal">(คนในทีมของโปรเจกต์ — งานจะไปอยู่ใน "งานของฉัน" ของคนนั้น)</span></label>
+                  <Select fullWidth value={form.assigneeId} disabled={!linked} onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}>
+                    <option value="">{linked ? "— ไม่มอบหมาย (ของฉัน) —" : "— เลือกโปรเจกต์ก่อนจึงจะมอบหมายได้ —"}</option>
                     {teammates.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </Select>
-                  {team && teammates.length === 0 && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่มีสมาชิกในทีมนี้ให้มอบหมาย</div>}
+                  {!linked && <div className="text-[11px] text-[var(--text-3)] mt-1">ผูกโปรเจกต์ด้านบนก่อน แล้วจะมอบหมายผู้รับผิดชอบ (คนในทีมของโปรเจกต์) ได้</div>}
+                  {linked && teammates.length === 0 && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่มีสมาชิกในทีมนี้ให้มอบหมาย</div>}
                 </div>
               );
             })()}
