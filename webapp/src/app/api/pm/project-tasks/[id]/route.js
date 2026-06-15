@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { editScope, inScope, can, normalizeDepartment } from '@/lib/permissions';
 import { recalculateForward, todayStr } from '@/lib/pm/schedule';
-import { setHolidays } from '@/lib/pm/dateHelpers';
+import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
 
@@ -61,6 +61,23 @@ export async function PATCH(request, { params }) {
     }
   }
   updates.updatedAt = new Date().toISOString();
+
+  // ── วันจบ↔duration: ให้ server เป็นเจ้าของการคำนวณวันทำการเพียงเจ้าเดียว ──
+  // client ส่ง "วันจบที่ผู้ใช้เลือก" มาตรง ๆ (ไม่คิด duration เอง) — กันกรณี client/server
+  // นับวันทำการไม่ตรงกัน (เช่น ปฏิทินวันหยุดฝั่ง client โหลดไม่ทัน) แล้วเกิดอาการ "ไม่ซิงค์".
+  // แปลงเป็น durationDays ที่นี่ แล้วลบ finishDate ออก → ปล่อยให้ recalcForward กางใหม่
+  // (ได้วันจบที่ snap เป็นวันทำการถูกต้อง + เลื่อน downstream ตามจริง).
+  if (updates.finishDate && project) {
+    setHolidays([...(await holidaySet())]);
+    const startForCalc = updates.startDate || task.startDate;
+    if (startForCalc) {
+      const dur = new Date(updates.finishDate) <= new Date(startForCalc)
+        ? 1
+        : countBusinessDays(startForCalc, updates.finishDate) + 1;
+      updates.durationDays = Math.max(1, dur);
+    }
+    delete updates.finishDate;
+  }
 
   // ── #2 variance: ตั้ง/ล้าง actualFinishDate ตามการเปลี่ยนสถานะ ──
   // (ทำเฉพาะเมื่อ client ไม่ได้ส่ง actualFinishDate มาเอง)

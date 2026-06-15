@@ -17,7 +17,7 @@ import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { setHolidays, countBusinessDays } from "@/lib/pm/dateHelpers";
+import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 
@@ -142,6 +142,27 @@ const formatDate = (v) => {
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
+// พรีวิว "วันเสร็จ" ในฟอร์มแก้ — ใช้เอนจินวันทำการเดียวกับ server (recalculateForward):
+// เลื่อนวันเริ่มมาเป็นวันทำการก่อน แล้วบวก (duration-1) วันทำการ. server คำนวณซ้ำตอนบันทึก
+// (ค่าที่โชว์ตรงกับที่ 3 วิวจะแสดงหลังบันทึก ตราบใดที่ปฏิทินวันหยุดฝั่ง client โหลดแล้ว).
+const computeFinish = (startStr, dur) => {
+  if (!startStr) return null;
+  const d = new Date(startStr);
+  if (isNaN(d.getTime())) return null;
+  while (!isBusinessDay(d)) d.setDate(d.getDate() + 1);
+  let need = Math.max(0, (Number(dur) || 1) - 1);
+  while (need > 0) { d.setDate(d.getDate() + 1); if (isBusinessDay(d)) need--; }
+  return d;
+};
+
+// ผกผันของ computeFinish: วันเริ่ม + วันสิ้นสุด → ระยะเวลา (วันทำการ, inclusive)
+const durationFromDates = (startStr, finishStr) => {
+  if (!startStr || !finishStr) return 1;
+  const s = new Date(startStr); const fe = new Date(finishStr);
+  if (isNaN(s.getTime()) || isNaN(fe.getTime()) || fe <= s) return 1;
+  return Math.max(1, countBusinessDays(startStr, finishStr) + 1);
+};
+
 // Actual vs planned finish variance (mirror ss-cj)
 const getVariance = (task) => {
   if (task.status !== "Completed" || !task.actualFinishDate || !task.finishDate) return null;
@@ -234,7 +255,7 @@ export default function ProjectDetailPage() {
       // เช็คว่ามี key (ไม่ใช่ truthy) — การ "ล้าง" วันเริ่ม (startDate: null) ต้อง reload ด้วย
       // เพราะ server เลื่อน downstream แล้ว ถ้าเช็คแบบ truthy จะพลาดเคส null/ลบค่า
       // status เปลี่ยน → server เดินสถานะขั้นถัดไปอัตโนมัติ (auto-flow) ต้อง reload เห็นผลกับขั้นอื่น
-      if (patch.startDate !== undefined || patch.durationDays !== undefined || patch.predecessors !== undefined || patch.status !== undefined) { await load(); return; }
+      if (patch.startDate !== undefined || patch.finishDate !== undefined || patch.durationDays !== undefined || patch.predecessors !== undefined || patch.status !== undefined) { await load(); return; }
       const updated = await res.json();
       setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === taskId ? updated : t)) }));
     }
@@ -393,12 +414,48 @@ export default function ProjectDetailPage() {
     return next;
   });
 
+  // แก้ วันเริ่ม/วันสิ้นสุด/ระยะเวลา ในฟอร์ม → ซิงค์สองทาง (เอนจินวันทำการเดียวกับ server)
+  //   แก้วันสิ้นสุด → คำนวณระยะเวลา แล้ว snap วันสิ้นสุดกลับเป็นวันทำการให้ตรงกับที่ server จะบันทึก
+  //   แก้วันเริ่ม/ระยะเวลา → คำนวณวันสิ้นสุดใหม่
+  const syncSchedule = (changes) =>
+    setEditForm((f) => {
+      const next = { ...f, ...changes };
+      if ("finishDate" in changes) {
+        const dur = durationFromDates(next.startDate, next.finishDate);
+        next.durationDays = dur;
+        const fin = computeFinish(next.startDate, dur);
+        next.finishDate = fin ? toLocalISODate(fin) : next.finishDate;
+      } else {
+        const fin = computeFinish(next.startDate, next.durationDays);
+        next.finishDate = fin ? toLocalISODate(fin) : "";
+      }
+      return next;
+    });
+
+  // เหมือน syncSchedule แต่สำหรับฟอร์ม "เพิ่มขั้นตอน" (taskForm) — วันเริ่มเว้นว่างได้
+  const syncTaskSchedule = (changes) =>
+    setTaskForm((f) => {
+      const next = { ...f, ...changes };
+      if ("finishDate" in changes) {
+        if (next.startDate && next.finishDate) {
+          const dur = durationFromDates(next.startDate, next.finishDate);
+          next.durationDays = dur;
+          const fin = computeFinish(next.startDate, dur);
+          next.finishDate = fin ? toLocalISODate(fin) : next.finishDate;
+        }
+      } else {
+        next.finishDate = next.startDate ? toLocalISODate(computeFinish(next.startDate, next.durationDays)) : "";
+      }
+      return next;
+    });
+
   const startEditing = (task) => {
     setEditingTaskId(task.id);
     setEditForm({
       name: task.name, role: task.role || "SA", assignee: task.assignee || "",
       assigneeId: task.assigneeId || "",
       durationDays: task.durationDays ?? 1, startDate: task.startDate || "",
+      finishDate: task.finishDate || "",
       dueDate: task.dueDate || "",
       isMilestone: !!task.isMilestone, phase: task.phase || "",
       predecessors: task.predecessors || [],
@@ -426,6 +483,7 @@ export default function ProjectDetailPage() {
       name: task.name, role: task.role || "SA", assignee: task.assignee || "",
       assigneeId: task.assigneeId || "",
       durationDays: task.durationDays ?? 1, startDate: task.startDate || "",
+      finishDate: task.finishDate || "",
       dueDate: task.dueDate || "",
       isMilestone: !!task.isMilestone, phase: task.phase || "",
       predecessors: task.predecessors || [],
@@ -751,7 +809,6 @@ export default function ProjectDetailPage() {
         <div style={{ padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
           <div style={{ display: "flex", gap: "24px", fontSize: "12px", flexWrap: "wrap" }}>
             <div><span style={{ color: "var(--text-3)" }}>วันเริ่ม: </span>{p.startDate || "-"}</div>
-            <div><span style={{ color: "var(--text-3)" }}>กำหนดส่ง: </span>{p.dueDate || "-"}</div>
             <div><span style={{ color: "var(--text-3)" }}>เลขที่ใบเสนอราคา: </span>{p.metadata?.quotationNumber || "-"}</div>
             <div><span style={{ color: "var(--text-3)" }}>เลขที่ PO: </span>{p.metadata?.poNumber || "-"}</div>
             <div><span style={{ color: "var(--text-3)" }}>หมวดสินค้า: </span>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</div>
@@ -1077,15 +1134,15 @@ export default function ProjectDetailPage() {
                             <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                                 <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันที่เริ่ม:</label>
-                                <input type="date" className="premium-input" value={editForm.startDate || ""} onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })} style={{ width: "150px" }} title="วันเริ่มของขั้นตอนนี้" />
+                                <input type="date" className="premium-input" value={editForm.startDate || ""} onChange={(e) => syncSchedule({ startDate: e.target.value })} style={{ width: "150px" }} title="วันเริ่มของขั้นตอนนี้" />
                               </div>
                               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>จำนวนวัน:</label>
-                                <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => setEditForm({ ...editForm, durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการของขั้นตอนนี้" />
+                                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันเสร็จ:</label>
+                                <input type="date" className="premium-input" value={editForm.finishDate || ""} min={editForm.startDate || undefined} onChange={(e) => syncSchedule({ finishDate: e.target.value })} style={{ width: "150px" }} title="วันสิ้นสุด (ปรับแล้วระยะเวลาจะคำนวณให้อัตโนมัติ)" />
                               </div>
                               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>กำหนดส่ง:</label>
-                                <input type="date" className="premium-input" value={editForm.dueDate || ""} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} style={{ width: "150px" }} title="วันครบกำหนด/เป้าหมายของขั้นตอนนี้ (ไม่กระทบการคำนวณ timeline)" />
+                                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ระยะเวลา (วัน):</label>
+                                <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => syncSchedule({ durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการ (ปรับแล้ววันเสร็จจะคำนวณให้อัตโนมัติ)" />
                               </div>
                               <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
                                 <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm({ ...editForm, isMilestone: e.target.checked })} style={{ accentColor: "var(--amber)", cursor: "pointer" }} />
@@ -1148,14 +1205,6 @@ export default function ProjectDetailPage() {
                             <div style={{ display: "flex", gap: "16px", fontSize: "12px", color: "var(--text-3)", marginTop: "8px", flexWrap: "wrap" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Clock size={14} /> {task.durationDays} วันทำการ</div>
                               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Calendar size={14} /> {formatDate(task.startDate)} - {formatDate(task.finishDate)}</div>
-                              {task.dueDate && (() => {
-                                const late = task.finishDate && task.finishDate > task.dueDate;
-                                return (
-                                  <div title={late ? "วันเสร็จที่คำนวณได้เลยกำหนดส่ง" : "กำหนดส่ง (เป้าหมาย)"} style={{ display: "flex", alignItems: "center", gap: "4px", color: late ? "var(--red)" : "var(--text-3)", fontWeight: late ? 600 : 400 }}>
-                                    <Flag size={13} /> กำหนดส่ง {formatDate(task.dueDate)}
-                                  </div>
-                                );
-                              })()}
                             </div>
                             {(() => {
                               const v = getVariance(task);
@@ -1251,17 +1300,16 @@ export default function ProjectDetailPage() {
             <div className="pm-form-grid gap-3">
               <div className="form-group">
                 <label>วันที่เริ่ม <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เว้นว่างเพื่ออิงตามงานที่รอ)</span></label>
-                <input type="date" value={taskForm.startDate} onChange={(e) => setTaskForm((f) => ({ ...f, startDate: e.target.value }))} className="premium-input w-full" />
+                <input type="date" value={taskForm.startDate} onChange={(e) => syncTaskSchedule({ startDate: e.target.value })} className="premium-input w-full" />
+              </div>
+              <div className="form-group">
+                <label>วันสิ้นสุด <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(กรอกแล้วจำนวนวันจะคำนวณให้)</span></label>
+                <input type="date" value={taskForm.finishDate || ""} min={taskForm.startDate || undefined} disabled={!taskForm.startDate} onChange={(e) => syncTaskSchedule({ finishDate: e.target.value })} className="premium-input w-full" title={taskForm.startDate ? "วันสิ้นสุดของขั้นตอน" : "กรอกวันที่เริ่มก่อน"} />
               </div>
               <div className="form-group">
                 <label>จำนวนวันทำการ</label>
-                <input type="number" min="1" value={taskForm.durationDays} onChange={(e) => setTaskForm((f) => ({ ...f, durationDays: e.target.value }))} className="premium-input w-full" />
+                <input type="number" min="1" value={taskForm.durationDays} onChange={(e) => syncTaskSchedule({ durationDays: e.target.value })} className="premium-input w-full" />
               </div>
-            </div>
-
-            <div className="form-group">
-              <label>กำหนดส่ง <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เป้าหมาย — ไม่กระทบการคำนวณ timeline)</span></label>
-              <input type="date" value={taskForm.dueDate} onChange={(e) => setTaskForm((f) => ({ ...f, dueDate: e.target.value }))} className="premium-input w-full" />
             </div>
 
             <div className="form-group">
@@ -1318,15 +1366,15 @@ export default function ProjectDetailPage() {
             <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันที่เริ่ม:</label>
-                <input type="date" className="premium-input" value={editForm.startDate || ""} onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })} style={{ width: "150px" }} title="วันเริ่มของขั้นตอนนี้" />
+                <input type="date" className="premium-input" value={editForm.startDate || ""} onChange={(e) => syncSchedule({ startDate: e.target.value })} style={{ width: "150px" }} title="วันเริ่มของขั้นตอนนี้" />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>จำนวนวัน:</label>
-                <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => setEditForm({ ...editForm, durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการของขั้นตอนนี้" />
+                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันเสร็จ:</label>
+                <input type="date" className="premium-input" value={editForm.finishDate || ""} min={editForm.startDate || undefined} onChange={(e) => syncSchedule({ finishDate: e.target.value })} style={{ width: "150px" }} title="วันสิ้นสุด (ปรับแล้วระยะเวลาจะคำนวณให้อัตโนมัติ)" />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>กำหนดส่ง:</label>
-                <input type="date" className="premium-input" value={editForm.dueDate || ""} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} style={{ width: "150px" }} title="วันครบกำหนด/เป้าหมายของขั้นตอนนี้ (ไม่กระทบการคำนวณ timeline)" />
+                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ระยะเวลา (วัน):</label>
+                <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => syncSchedule({ durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการ (ปรับแล้ววันเสร็จจะคำนวณให้อัตโนมัติ)" />
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
                 <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm({ ...editForm, isMilestone: e.target.checked })} style={{ accentColor: "var(--amber)", cursor: "pointer" }} />
