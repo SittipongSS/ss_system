@@ -487,7 +487,7 @@ export default function MyWorkPage() {
           <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         {statusFilter !== "all" && (
-          <button onClick={() => setStatusFilter("all")} className="btn" style={{ fontSize: "12px" }}>
+          <button onClick={() => setStatusFilter("all")} className="btn sm">
             กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: 700 }}>×</span>
           </button>
         )}
@@ -670,7 +670,7 @@ export default function MyWorkPage() {
                 <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{visiblePersonal.length} งาน · เห็นเฉพาะคุณ · นอกโปรเจกต์</span>
               </div>
               {/* ปุ่มเพิ่มงานซ้ำตรงหัวข้อ — กดง่ายขึ้นเวลาเลื่อนอยู่ส่วนนี้ */}
-              <button onClick={openAdd} className="btn" style={{ fontSize: "12px" }}>
+              <button onClick={openAdd} className="btn sm">
                 <Plus size={14} /> เพิ่มงาน
               </button>
             </div>

@@ -1571,6 +1571,15 @@ input[type="number"] {
   box-shadow: var(--shadow-md);
 }
 
+/* small button — compact inline/footer/toolbar actions
+   (replaces ad-hoc inline padding/font-size on small buttons across PM) */
+.btn.sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  gap: 4px;
+}
+
 /* ─────────────────────────────────────────────────────────────
    Shared UI layer — generic utilities reused across the whole app
    (introduced for the PM cohesion pass; safe to adopt elsewhere).

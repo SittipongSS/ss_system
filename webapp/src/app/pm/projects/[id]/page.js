@@ -637,7 +637,7 @@ export default function ProjectDetailPage() {
           <User size={16} color="var(--purple)" /> งานเพิ่มเติม
           <span style={{ fontSize: "11px", fontWeight: 400, color: "var(--text-3)" }}>{extraTasks.length} งาน · งานนอกแผน — ไม่เข้า Gantt</span>
         </div>
-        <button onClick={openAddExtra} className="btn" style={{ fontSize: "12px" }}><Plus size={14} /> เพิ่มงานเพิ่มเติม</button>
+        <button onClick={openAddExtra} className="btn sm"><Plus size={14} /> เพิ่มงานเพิ่มเติม</button>
       </div>
       {extraTasks.length === 0 ? (
         <div style={{ fontSize: "12px", color: "var(--text-3)" }}>ยังไม่มีงานเพิ่มเติม — ใช้บันทึกงานตามต่อ/ขั้นตอนเสริมที่ไม่อยู่ในไทม์ไลน์ และมอบหมายให้คนในทีมได้</div>
@@ -879,7 +879,7 @@ export default function ProjectDetailPage() {
                 </Select>
               </div>
               {canEdit && (
-                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ fontSize: "12px" }}>
+                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary sm">
                   <Plus size={14} /> เพิ่มขั้นตอน
                 </button>
               )}
@@ -990,7 +990,7 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             {canEdit && (
-              <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary" style={{ fontSize: "12px" }}>
+              <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary sm">
                 <Plus size={14} /> เพิ่มขั้นตอน
               </button>
             )}
@@ -1388,8 +1388,8 @@ export default function ProjectDetailPage() {
               <Calendar size={11} /> ระบบคำนวณวันเสร็จจากวันเริ่ม + จำนวนวันทำการ
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-              <button className="btn btn-secondary" onClick={closeEditModal} style={{ padding: "6px 14px", fontSize: "12px" }}>ยกเลิก</button>
-              <button className="btn btn-primary" onClick={saveEditModal} style={{ padding: "6px 14px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}><Save size={14} /> บันทึก</button>
+              <button className="btn btn-secondary sm" onClick={closeEditModal}>ยกเลิก</button>
+              <button className="btn btn-primary sm" onClick={saveEditModal}><Save size={14} /> บันทึก</button>
             </div>
           </div>
         )}

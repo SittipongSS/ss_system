@@ -323,7 +323,7 @@ export default function ProjectsPage() {
               <MultiSelectFilter label="ผู้จัดทำ" icon={PenLine} options={preparerOptions} selected={preparerFilters} onChange={setPreparerFilters} />
               <MultiSelectFilter label="ลูกค้า" icon={Building2} options={customerOptions} selected={customerFilters} onChange={setCustomerFilters} />
               {activeFilterCount > 0 && (
-                <button className="btn ghost" onClick={clearAllFilters} style={{ fontSize: "12px", color: "var(--text-3)" }} title="ล้างตัวกรองทั้งหมด">
+                <button className="btn ghost sm" onClick={clearAllFilters} style={{ color: "var(--text-3)" }} title="ล้างตัวกรองทั้งหมด">
                   <X size={13} /> ล้างทั้งหมด ({activeFilterCount})
                 </button>
               )}
