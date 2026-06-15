@@ -4,14 +4,13 @@ import { useRouter } from "next/navigation";
 import {
   FolderKanban, Plus, Search, AlertTriangle, ChevronDown, ChevronRight,
   Edit2, Trash2, X, Check, Pause,
-  Filter, ArrowUpDown, ArrowUp, ArrowDown,
-  Tag, CircleDot, Package, UserCog, PenLine, Building2,
+  Filter, Tag, CircleDot, Package, UserCog, PenLine, Building2,
 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
+import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-import Select from "@/components/ui/Select";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 
 const typeStyle = (type) => type === "NPD"
@@ -62,6 +61,19 @@ const fmtDate = (v) => {
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
+// ค่าที่ใช้เปรียบเทียบของแต่ละคอลัมน์ — ใช้ร่วมกันทั้งตารางหลักและคลังเก็บ (useSortableTable)
+const ROW_ACCESSORS = {
+  code: (p) => p.code,
+  customer: (p) => p.customerName,
+  type: (p) => p.type,
+  category: (p) => p.productSubCategory || p.productMainCategory || "",
+  owner: (p) => p.aeOwner,
+  progress: (p) => getProgress(p).pct,
+  step: (p) => getCurrentStep(p),
+  due: (p) => (p.dueDate ? new Date(p.dueDate) : null),
+  status: (p) => getComputedStatus(p),
+};
+
 export default function ProjectsPage() {
   const router = useRouter();
   const canEdit = useCan("pm:edit");
@@ -81,12 +93,8 @@ export default function ProjectsPage() {
   const [ownerFilters, setOwnerFilters] = useState([]);
   const [preparerFilters, setPreparerFilters] = useState([]);
   const [customerFilters, setCustomerFilters] = useState([]);
-  const [sortKey, setSortKey] = useState("default"); // default | due | progress | name | code
-  const [sortDir, setSortDir] = useState("asc"); // asc | desc
   const [showArchive, setShowArchive] = useState(false);
   const [archiveStatusFilter, setArchiveStatusFilter] = useState("all"); // all | Completed | Dropped
-  const [archiveSortKey, setArchiveSortKey] = useState("code"); // code | name | customer | progress | due
-  const [archiveSortDir, setArchiveSortDir] = useState("desc"); // asc | desc
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [initialData, setInitialData] = useState(null);
@@ -158,8 +166,8 @@ export default function ProjectsPage() {
   const droppedProjects = filtered.filter((p) => getComputedStatus(p) === "Dropped");
   const onHoldProjects = filtered.filter((p) => getComputedStatus(p) === "On Hold");
 
-  // โปรเจกต์ที่กำลังดำเนินการ (ไม่รวมที่ปิด/ยกเลิก/ระงับ) + กรอง + เรียงลำดับ
-  const activeProjects = useMemo(() => {
+  // โปรเจกต์ที่กำลังดำเนินการ (ไม่รวมที่ปิด/ยกเลิก/ระงับ) + กรอง — เรียงลำดับทำผ่าน useSortableTable
+  const activeFiltered = useMemo(() => {
     let list = filtered.filter((p) => {
       const cs = getComputedStatus(p);
       return cs !== "Completed" && cs !== "Dropped" && cs !== "On Hold";
@@ -170,45 +178,10 @@ export default function ProjectsPage() {
     if (ownerFilters.length) list = list.filter((p) => ownerFilters.includes(p.aeOwner || ""));
     if (preparerFilters.length) list = list.filter((p) => preparerFilters.includes(p.preparedBy || ""));
     if (customerFilters.length) list = list.filter((p) => customerFilters.includes(p.customerName || ""));
-
-    if (sortKey !== "default") {
-      const dir = sortDir === "asc" ? 1 : -1;
-      const cmpNum = (av, bv) => {
-        // ค่าว่างไปท้ายเสมอ ไม่ว่าทิศทางใด
-        if (av == null && bv == null) return 0;
-        if (av == null) return 1;
-        if (bv == null) return -1;
-        return (av - bv) * dir;
-      };
-      list = [...list].sort((a, b) => {
-        switch (sortKey) {
-          case "due":
-            return cmpNum(a.dueDate ? new Date(a.dueDate).getTime() : null, b.dueDate ? new Date(b.dueDate).getTime() : null);
-          case "progress":
-            return (getProgress(a).pct - getProgress(b).pct) * dir;
-          case "name":
-            return (a.name || "").localeCompare(b.name || "", "th") * dir;
-          case "code":
-            return (a.code || "").localeCompare(b.code || "", "th") * dir;
-          case "customer":
-            return (a.customerName || "").localeCompare(b.customerName || "", "th") * dir;
-          case "type":
-            return (a.type || "").localeCompare(b.type || "", "th") * dir;
-          case "category":
-            return ((a.productSubCategory || a.productMainCategory || "")).localeCompare(b.productSubCategory || b.productMainCategory || "", "th") * dir;
-          case "owner":
-            return (a.aeOwner || "").localeCompare(b.aeOwner || "", "th") * dir;
-          case "step":
-            return (getCurrentStep(a) || "").localeCompare(getCurrentStep(b) || "", "th") * dir;
-          case "status":
-            return (getComputedStatus(a) || "").localeCompare(getComputedStatus(b) || "", "th") * dir;
-          default:
-            return 0;
-        }
-      });
-    }
     return list;
-  }, [filtered, typeFilters, statusFilters, categoryFilters, ownerFilters, preparerFilters, customerFilters, sortKey, sortDir]);
+  }, [filtered, typeFilters, statusFilters, categoryFilters, ownerFilters, preparerFilters, customerFilters]);
+  const activeSort = useSortableTable(activeFiltered, ROW_ACCESSORS);
+  const activeProjects = activeSort.sorted;
 
   const allFilters = [typeFilters, statusFilters, categoryFilters, ownerFilters, preparerFilters, customerFilters];
   const activeFilterCount = allFilters.filter((f) => f.length > 0).length;
@@ -217,36 +190,17 @@ export default function ProjectsPage() {
     setOwnerFilters([]); setPreparerFilters([]); setCustomerFilters([]);
   };
 
-  // คลังเก็บ — โปรเจกต์ที่ปิดงาน/พักไว้ (Completed/Dropped/On Hold) + กรองสถานะ + เรียงลำดับ
-  const archiveProjects = useMemo(() => {
+  // คลังเก็บ — โปรเจกต์ที่ปิดงาน/พักไว้ (Completed/Dropped/On Hold) + กรองสถานะ — เรียงผ่าน useSortableTable
+  const archiveFiltered = useMemo(() => {
     let list = filtered.filter((p) => {
       const cs = getComputedStatus(p);
       return cs === "Completed" || cs === "Dropped" || cs === "On Hold";
     });
     if (archiveStatusFilter !== "all") list = list.filter((p) => getComputedStatus(p) === archiveStatusFilter);
-
-    const dir = archiveSortDir === "asc" ? 1 : -1;
-    const cmpNum = (av, bv) => {
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      return (av - bv) * dir;
-    };
-    return [...list].sort((a, b) => {
-      switch (archiveSortKey) {
-        case "name": return (a.name || "").localeCompare(b.name || "", "th") * dir;
-        case "customer": return (a.customerName || "").localeCompare(b.customerName || "", "th") * dir;
-        case "progress": return (getProgress(a).pct - getProgress(b).pct) * dir;
-        case "due": return cmpNum(a.dueDate ? new Date(a.dueDate).getTime() : null, b.dueDate ? new Date(b.dueDate).getTime() : null);
-        case "type": return (a.type || "").localeCompare(b.type || "", "th") * dir;
-        case "category": return ((a.productSubCategory || a.productMainCategory || "")).localeCompare(b.productSubCategory || b.productMainCategory || "", "th") * dir;
-        case "owner": return (a.aeOwner || "").localeCompare(b.aeOwner || "", "th") * dir;
-        case "status": return (getComputedStatus(a) || "").localeCompare(getComputedStatus(b) || "", "th") * dir;
-        case "code":
-        default: return (a.code || "").localeCompare(b.code || "", "th") * dir;
-      }
-    });
-  }, [filtered, archiveStatusFilter, archiveSortKey, archiveSortDir]);
+    return list;
+  }, [filtered, archiveStatusFilter]);
+  const archiveSort = useSortableTable(archiveFiltered, ROW_ACCESSORS, { key: "code", dir: "desc" });
+  const archiveProjects = archiveSort.sorted;
 
   // map code 'XX' → main category name (for list display)
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || "";
@@ -278,41 +232,15 @@ export default function ProjectsPage() {
   }, [projects, categories]);
 
   const mainColSpan = (canEdit || canDelete) ? 10 : 9;
+  const archiveColSpan = (canEdit || canDelete) ? 9 : 8;
 
-  // หัวตารางกดเรียง (ตารางหลัก)
-  const toggleSort = (key) => {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("asc"); }
-  };
-  const sortArrow = (key) => sortKey === key
-    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
-    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
-  const sortableTh = (key, label) => (
-    <th onClick={() => toggleSort(key)} style={{ cursor: "pointer", userSelect: "none" }}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>{label} {sortArrow(key)}</span>
-    </th>
-  );
-
-  // หัวตารางกดเรียง (คลังเก็บ)
-  const toggleArchiveSort = (key) => {
-    if (archiveSortKey === key) setArchiveSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setArchiveSortKey(key); setArchiveSortDir("asc"); }
-  };
-  const archiveArrow = (key) => archiveSortKey === key
-    ? (archiveSortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
-    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
-  const archiveTh = (key, label) => (
-    <th onClick={() => toggleArchiveSort(key)} style={{ cursor: "pointer", userSelect: "none" }}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>{label} {archiveArrow(key)}</span>
-    </th>
-  );
-
-  const renderActiveRow = (p) => {
+  // แถวเดียวใช้ได้ทั้งตารางหลักและคลังเก็บ — archive: จางลง, ไม่โชว์คอลัมน์ขั้นตอน/แถบเลยกำหนด, ไม่มีปุ่มแก้ไข
+  const renderRow = (p, { archive = false } = {}) => {
     const { pct, done, total } = getProgress(p);
     const overdue = getOverdueCount(p);
     const cStatus = getComputedStatus(p);
     return (
-      <tr key={p.id} className="premium-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
+      <tr key={p.id} className="premium-row" style={{ cursor: "pointer", ...(archive ? { opacity: 0.85 } : null) }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
         <td>
           <div style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</div>
           <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>
@@ -338,71 +266,21 @@ export default function ProjectsPage() {
             </div>
             <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{done}/{total}</span>
           </div>
-          {overdue > 0 && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "2px", display: "flex", alignItems: "center", gap: "2px" }}><AlertTriangle size={10} /> เลยกำหนด {overdue} งาน</div>}
+          {!archive && overdue > 0 && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "2px", display: "flex", alignItems: "center", gap: "2px" }}><AlertTriangle size={10} /> เลยกำหนด {overdue} งาน</div>}
         </td>
-        <td style={{ fontSize: "12px", maxWidth: "200px" }}>{getCurrentStep(p)}</td>
+        {!archive && <td style={{ fontSize: "12px", maxWidth: "200px" }}>{getCurrentStep(p)}</td>}
         <td style={{ fontSize: "12px" }}>{fmtDate(p.dueDate)}</td>
         <td>
           <span className={`status-pill ${statusPillClass(cStatus)}`} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
             <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: statusDotColor(cStatus) }} />
             {cStatus}
           </span>
-          {cStatus === "Dropped" && p.metadata?.lossReason && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "4px" }}>{p.metadata.lossReason}</div>}
+          {cStatus === "Dropped" && p.metadata?.lossReason && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "4px", ...(archive ? { maxWidth: "160px" } : null) }}>{p.metadata.lossReason}</div>}
         </td>
         {(canEdit || canDelete) && (
           <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
             <div style={{ display: "inline-flex", gap: "4px" }}>
-              {canEdit && <button className="btn-icon" onClick={() => openEdit(p)} aria-label="แก้ไขโปรเจกต์" title="แก้ไข"><Edit2 size={14} /></button>}
-              {canDelete && <button className="btn-icon danger" onClick={() => handleDelete(p)} aria-label="ลบโปรเจกต์" title="ลบ"><Trash2 size={14} /></button>}
-            </div>
-          </td>
-        )}
-      </tr>
-    );
-  };
-
-  const renderArchiveRow = (p) => {
-    const { pct, done, total } = getProgress(p);
-    const cStatus = getComputedStatus(p);
-    return (
-      <tr key={p.id} className="premium-row" style={{ cursor: "pointer", opacity: 0.85 }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
-        <td>
-          <div style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</div>
-          <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>
-        </td>
-        <td>{p.customerName || "-"}</td>
-        <td><span className="ui-badge" style={typeStyle(p.type)}>{p.type}</span></td>
-        <td style={{ fontSize: "12px", maxWidth: "180px" }}>
-          {p.productSubCategory || p.productMainCategory ? (
-            <div>
-              {p.productSubCategory && <div style={{ fontWeight: 500 }}>{p.productSubCategory}</div>}
-              {p.productMainCategory && <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{mainCatName(p.productMainCategory) || p.productMainCategory}</div>}
-            </div>
-          ) : <span style={{ color: "var(--text-3)" }}>-</span>}
-        </td>
-        <td style={{ fontSize: "12px" }}>
-          <div>{p.aeOwner || "-"}</div>
-          {p.preparedBy && <div style={{ fontSize: "10px", color: "var(--text-3)" }}>ผู้จัดทำ: {p.preparedBy}</div>}
-        </td>
-        <td style={{ minWidth: "120px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div className="progress" style={{ flex: 1 }}>
-              <span className={cStatus === "Completed" ? "done" : ""} style={{ width: `${pct}%` }} />
-            </div>
-            <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{done}/{total}</span>
-          </div>
-        </td>
-        <td style={{ fontSize: "12px" }}>{fmtDate(p.dueDate)}</td>
-        <td>
-          <span className={`status-pill ${statusPillClass(cStatus)}`} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: statusDotColor(cStatus) }} />
-            {cStatus}
-          </span>
-          {cStatus === "Dropped" && p.metadata?.lossReason && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "4px", maxWidth: "160px" }}>{p.metadata.lossReason}</div>}
-        </td>
-        {(canEdit || canDelete) && (
-          <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
-            <div style={{ display: "inline-flex", gap: "4px" }}>
+              {canEdit && !archive && <button className="btn-icon" onClick={() => openEdit(p)} aria-label="แก้ไขโปรเจกต์" title="แก้ไข"><Edit2 size={14} /></button>}
               {canDelete && <button className="btn-icon danger" onClick={() => handleDelete(p)} aria-label="ลบโปรเจกต์" title="ลบ"><Trash2 size={14} /></button>}
             </div>
           </td>
@@ -451,41 +329,21 @@ export default function ProjectsPage() {
                 </button>
               )}
             </div>
-
-            <div className="spacer toolbar" style={{ gap: "8px" }}>
-              <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
-              <Select compact value={sortKey} onChange={(e) => setSortKey(e.target.value)} title="เรียงลำดับตาม">
-                <option value="default">เริ่มต้น</option>
-                <option value="due">กำหนดส่ง</option>
-                <option value="progress">ความคืบหน้า</option>
-                <option value="name">ชื่อโปรเจกต์</option>
-                <option value="code">รหัส</option>
-              </Select>
-              <button
-                className="btn-icon"
-                onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-                disabled={sortKey === "default"}
-                aria-label={sortDir === "asc" ? "เรียงน้อยไปมาก กดเพื่อสลับ" : "เรียงมากไปน้อย กดเพื่อสลับ"}
-                title={sortDir === "asc" ? "น้อยไปมาก (A→Z)" : "มากไปน้อย (Z→A)"}
-              >
-                {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-              </button>
-            </div>
           </div>
 
           <div className="premium-glass-table table-responsive">
             <table className="premium-table">
               <thead>
                 <tr>
-                  {sortableTh("code", "โปรเจกต์")}
-                  {sortableTh("customer", "ลูกค้า")}
-                  {sortableTh("type", "ประเภท")}
-                  {sortableTh("category", "หมวดสินค้า")}
-                  {sortableTh("owner", "ผู้ดูแล")}
-                  {sortableTh("progress", "ความคืบหน้า")}
-                  {sortableTh("step", "ขั้นตอนปัจจุบัน")}
-                  {sortableTh("due", "กำหนดส่ง")}
-                  {sortableTh("status", "สถานะ")}
+                  <SortTh label="โปรเจกต์" sortKey="code" sort={activeSort} />
+                  <SortTh label="ลูกค้า" sortKey="customer" sort={activeSort} />
+                  <SortTh label="ประเภท" sortKey="type" sort={activeSort} />
+                  <SortTh label="หมวดสินค้า" sortKey="category" sort={activeSort} />
+                  <SortTh label="ผู้ดูแล" sortKey="owner" sort={activeSort} />
+                  <SortTh label="ความคืบหน้า" sortKey="progress" sort={activeSort} />
+                  <SortTh label="ขั้นตอนปัจจุบัน" sortKey="step" sort={activeSort} />
+                  <SortTh label="กำหนดส่ง" sortKey="due" sort={activeSort} />
+                  <SortTh label="สถานะ" sortKey="status" sort={activeSort} />
                   {(canEdit || canDelete) && <th style={{ width: "70px", textAlign: "center" }}>จัดการ</th>}
                 </tr>
               </thead>
@@ -493,7 +351,7 @@ export default function ProjectsPage() {
                 {activeProjects.length === 0 ? (
                   <tr><td colSpan={mainColSpan} style={{ textAlign: "center", padding: "32px", color: "var(--text-3)" }}>{activeFilterCount > 0 || q ? "ไม่พบโครงการตามเงื่อนไข" : "ยังไม่มีโครงการ"}</td></tr>
                 ) : (
-                  activeProjects.map(renderActiveRow)
+                  activeProjects.map((p) => renderRow(p))
                 )}
               </tbody>
             </table>
@@ -515,7 +373,7 @@ export default function ProjectsPage() {
 
             {showArchive && (
               <div style={{ padding: "14px 18px 20px", borderTop: "1px solid var(--border)" }}>
-                {/* toolbar คลัง: กรองสถานะ (segmented) + เรียงลำดับ */}
+                {/* toolbar คลัง: กรองสถานะ (segmented) — เรียงลำดับทำที่หัวคอลัมน์ */}
                 <div className="toolbar" style={{ marginBottom: "14px" }}>
                   <div className="segmented">
                     {[
@@ -531,45 +389,29 @@ export default function ProjectsPage() {
                       </button>
                     ))}
                   </div>
-
-                  <div className="spacer toolbar" style={{ gap: "8px" }}>
-                    <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
-                    <Select compact value={archiveSortKey} onChange={(e) => setArchiveSortKey(e.target.value)} title="เรียงลำดับคลังตาม">
-                      <option value="code">รหัส</option>
-                      <option value="name">ชื่อโปรเจกต์</option>
-                      <option value="customer">ลูกค้า</option>
-                      <option value="progress">ความคืบหน้า</option>
-                      <option value="due">กำหนดส่ง</option>
-                    </Select>
-                    <button className="btn-icon" onClick={() => setArchiveSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-                      aria-label={archiveSortDir === "asc" ? "เรียงน้อยไปมาก กดเพื่อสลับ" : "เรียงมากไปน้อย กดเพื่อสลับ"}
-                      title={archiveSortDir === "asc" ? "น้อยไปมาก (A→Z)" : "มากไปน้อย (Z→A)"}>
-                      {archiveSortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-                    </button>
-                  </div>
                 </div>
 
                 <div className="premium-glass-table table-responsive">
                   <table className="premium-table">
                     <thead>
                       <tr>
-                        {archiveTh("code", "โปรเจกต์")}
-                        {archiveTh("customer", "ลูกค้า")}
-                        {archiveTh("type", "ประเภท")}
-                        {archiveTh("category", "หมวดสินค้า")}
-                        {archiveTh("owner", "ผู้ดูแล")}
-                        {archiveTh("progress", "ความคืบหน้า")}
-                        {archiveTh("due", "กำหนดส่ง")}
-                        {archiveTh("status", "สถานะ")}
+                        <SortTh label="โปรเจกต์" sortKey="code" sort={archiveSort} />
+                        <SortTh label="ลูกค้า" sortKey="customer" sort={archiveSort} />
+                        <SortTh label="ประเภท" sortKey="type" sort={archiveSort} />
+                        <SortTh label="หมวดสินค้า" sortKey="category" sort={archiveSort} />
+                        <SortTh label="ผู้ดูแล" sortKey="owner" sort={archiveSort} />
+                        <SortTh label="ความคืบหน้า" sortKey="progress" sort={archiveSort} />
+                        <SortTh label="กำหนดส่ง" sortKey="due" sort={archiveSort} />
+                        <SortTh label="สถานะ" sortKey="status" sort={archiveSort} />
                         {(canEdit || canDelete) && <th style={{ width: "70px", textAlign: "center" }}>จัดการ</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {archiveProjects.length === 0 ? (
-                        <tr><td colSpan={canEdit || canDelete ? 9 : 8} style={{ textAlign: "center", padding: "32px", color: "var(--text-3)" }}>
+                        <tr><td colSpan={archiveColSpan} style={{ textAlign: "center", padding: "32px", color: "var(--text-3)" }}>
                           {q || archiveStatusFilter !== "all" ? "ไม่พบโปรเจกต์ในคลังตามเงื่อนไข" : "ยังไม่มีโปรเจกต์ที่ปิดงาน"}
                         </td></tr>
-                      ) : archiveProjects.map(renderArchiveRow)}
+                      ) : archiveProjects.map((p) => renderRow(p, { archive: true }))}
                     </tbody>
                   </table>
                 </div>
