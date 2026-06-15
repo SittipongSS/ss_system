@@ -1,10 +1,10 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import {
   FolderKanban, Plus, Search, AlertTriangle, ChevronDown, ChevronRight,
   Edit2, Trash2, X, Check, Pause,
-  Filter, ArrowUpDown, ArrowUp, ArrowDown,
+  Filter, ArrowUpDown, ArrowUp, ArrowDown, Layers,
 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -74,6 +74,7 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState("all"); // all | New | On Track | Delayed | On Hold
   const [sortKey, setSortKey] = useState("default"); // default | due | progress | name | code
   const [sortDir, setSortDir] = useState("asc"); // asc | desc
+  const [groupKey, setGroupKey] = useState("none"); // none | customer | type | category | owner | status
   const [showArchive, setShowArchive] = useState(false);
   const [archiveStatusFilter, setArchiveStatusFilter] = useState("all"); // all | Completed | Dropped
   const [archiveSortKey, setArchiveSortKey] = useState("code"); // code | name | customer | progress | due
@@ -233,6 +234,35 @@ export default function ProjectsPage() {
   // map code 'XX' → main category name (for list display)
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || "";
 
+  // ===== จัดกลุ่มตารางหลัก =====
+  // ค่ากลุ่มของแต่ละโปรเจกต์ตามคีย์ที่เลือก (คงลำดับการเรียงเดิมไว้ภายในกลุ่ม)
+  const groupLabelOf = (p) => {
+    switch (groupKey) {
+      case "customer": return p.customerName || "ไม่ระบุลูกค้า";
+      case "type": return p.type || "ไม่ระบุประเภท";
+      case "category": return p.productSubCategory || mainCatName(p.productMainCategory) || p.productMainCategory || "ไม่ระบุหมวด";
+      case "owner": return p.aeOwner || "ไม่ระบุผู้ดูแล";
+      case "preparer": return p.preparedBy || "ไม่ระบุผู้จัดทำ";
+      case "status": return getComputedStatus(p);
+      default: return "";
+    }
+  };
+  const groupedActive = useMemo(() => {
+    if (groupKey === "none") return null;
+    const map = new Map();
+    for (const p of activeProjects) {
+      const label = groupLabelOf(p);
+      if (!map.has(label)) map.set(label, []);
+      map.get(label).push(p);
+    }
+    return [...map.entries()]
+      .map(([label, items]) => ({ label, items }))
+      .sort((a, b) => a.label.localeCompare(b.label, "th"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProjects, groupKey, categories]);
+
+  const mainColSpan = (canEdit || canDelete) ? 10 : 9;
+
   // หัวตารางกดเรียง (ตารางหลัก)
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -261,6 +291,60 @@ export default function ProjectsPage() {
     </th>
   );
 
+  const renderActiveRow = (p) => {
+    const { pct, done, total } = getProgress(p);
+    const overdue = getOverdueCount(p);
+    const cStatus = getComputedStatus(p);
+    return (
+      <tr key={p.id} className="premium-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
+        <td>
+          <div style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</div>
+          <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>
+        </td>
+        <td>{p.customerName || "-"}</td>
+        <td><span className="ui-badge" style={typeStyle(p.type)}>{p.type}</span></td>
+        <td style={{ fontSize: "12px", maxWidth: "180px" }}>
+          {p.productSubCategory || p.productMainCategory ? (
+            <div>
+              {p.productSubCategory && <div style={{ fontWeight: 500 }}>{p.productSubCategory}</div>}
+              {p.productMainCategory && <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{mainCatName(p.productMainCategory) || p.productMainCategory}</div>}
+            </div>
+          ) : <span style={{ color: "var(--text-3)" }}>-</span>}
+        </td>
+        <td style={{ fontSize: "12px" }}>
+          <div>{p.aeOwner || "-"}</div>
+          {p.preparedBy && <div style={{ fontSize: "10px", color: "var(--text-3)" }}>ผู้จัดทำ: {p.preparedBy}</div>}
+        </td>
+        <td style={{ minWidth: "120px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div className="progress" style={{ flex: 1 }}>
+              <span className={cStatus === "Completed" ? "done" : ""} style={{ width: `${pct}%` }} />
+            </div>
+            <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{done}/{total}</span>
+          </div>
+          {overdue > 0 && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "2px", display: "flex", alignItems: "center", gap: "2px" }}><AlertTriangle size={10} /> เลยกำหนด {overdue} งาน</div>}
+        </td>
+        <td style={{ fontSize: "12px", maxWidth: "200px" }}>{getCurrentStep(p)}</td>
+        <td style={{ fontSize: "12px" }}>{fmtDate(p.dueDate)}</td>
+        <td>
+          <span className={`status-pill ${statusPillClass(cStatus)}`} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: statusDotColor(cStatus) }} />
+            {cStatus}
+          </span>
+          {cStatus === "Dropped" && p.metadata?.lossReason && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "4px" }}>{p.metadata.lossReason}</div>}
+        </td>
+        {(canEdit || canDelete) && (
+          <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
+            <div style={{ display: "inline-flex", gap: "4px" }}>
+              {canEdit && <button className="btn-icon" onClick={() => openEdit(p)} aria-label="แก้ไขโปรเจกต์" title="แก้ไข"><Edit2 size={14} /></button>}
+              {canDelete && <button className="btn-icon danger" onClick={() => handleDelete(p)} aria-label="ลบโปรเจกต์" title="ลบ"><Trash2 size={14} /></button>}
+            </div>
+          </td>
+        )}
+      </tr>
+    );
+  };
+
   const renderArchiveRow = (p) => {
     const { pct, done, total } = getProgress(p);
     const cStatus = getComputedStatus(p);
@@ -280,7 +364,10 @@ export default function ProjectsPage() {
             </div>
           ) : <span style={{ color: "var(--text-3)" }}>-</span>}
         </td>
-        <td style={{ fontSize: "12px" }}>{p.aeOwner || "-"}</td>
+        <td style={{ fontSize: "12px" }}>
+          <div>{p.aeOwner || "-"}</div>
+          {p.preparedBy && <div style={{ fontSize: "10px", color: "var(--text-3)" }}>ผู้จัดทำ: {p.preparedBy}</div>}
+        </td>
         <td style={{ minWidth: "120px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <div className="progress" style={{ flex: 1 }}>
@@ -354,6 +441,19 @@ export default function ProjectsPage() {
               )}
             </div>
 
+            <div className="toolbar" style={{ gap: "8px" }}>
+              <span className="toolbar-label"><Layers size={14} /> จัดกลุ่ม</span>
+              <Select compact value={groupKey} onChange={(e) => setGroupKey(e.target.value)} title="จัดกลุ่มโปรเจกต์ตาม">
+                <option value="none">ไม่จัดกลุ่ม</option>
+                <option value="customer">ลูกค้า</option>
+                <option value="type">ประเภท</option>
+                <option value="category">หมวดสินค้า</option>
+                <option value="owner">ผู้ดูแล</option>
+                <option value="preparer">ผู้จัดทำ</option>
+                <option value="status">สถานะ</option>
+              </Select>
+            </div>
+
             <div className="spacer toolbar" style={{ gap: "8px" }}>
               <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
               <Select compact value={sortKey} onChange={(e) => setSortKey(e.target.value)} title="เรียงลำดับตาม">
@@ -393,57 +493,24 @@ export default function ProjectsPage() {
               </thead>
               <tbody>
                 {activeProjects.length === 0 ? (
-                  <tr><td colSpan={canEdit || canDelete ? 10 : 9} style={{ textAlign: "center", padding: "32px", color: "var(--text-3)" }}>{activeFilterCount > 0 || q ? "ไม่พบโครงการตามเงื่อนไข" : "ยังไม่มีโครงการ"}</td></tr>
-                ) : activeProjects.map((p) => {
-                const { pct, done, total } = getProgress(p);
-                const overdue = getOverdueCount(p);
-                const cStatus = getComputedStatus(p);
-                return (
-                  <tr key={p.id} className="premium-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
-                    <td>
-                      <div style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</div>
-                      <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>
-                    </td>
-                    <td>{p.customerName || "-"}</td>
-                    <td><span className="ui-badge" style={typeStyle(p.type)}>{p.type}</span></td>
-                    <td style={{ fontSize: "12px", maxWidth: "180px" }}>
-                      {p.productSubCategory || p.productMainCategory ? (
-                        <div>
-                          {p.productSubCategory && <div style={{ fontWeight: 500 }}>{p.productSubCategory}</div>}
-                          {p.productMainCategory && <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{mainCatName(p.productMainCategory) || p.productMainCategory}</div>}
-                        </div>
-                      ) : <span style={{ color: "var(--text-3)" }}>-</span>}
-                    </td>
-                    <td style={{ fontSize: "12px" }}>{p.aeOwner || "-"}</td>
-                    <td style={{ minWidth: "120px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <div className="progress" style={{ flex: 1 }}>
-                          <span className={cStatus === "Completed" ? "done" : ""} style={{ width: `${pct}%` }} />
-                        </div>
-                        <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{done}/{total}</span>
-                      </div>
-                      {overdue > 0 && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "2px", display: "flex", alignItems: "center", gap: "2px" }}><AlertTriangle size={10} /> เลยกำหนด {overdue} งาน</div>}
-                    </td>
-                    <td style={{ fontSize: "12px", maxWidth: "200px" }}>{getCurrentStep(p)}</td>
-                    <td style={{ fontSize: "12px" }}>{fmtDate(p.dueDate)}</td>
-                    <td>
-                      <span className={`status-pill ${statusPillClass(cStatus)}`} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: statusDotColor(cStatus) }} />
-                        {cStatus}
-                      </span>
-                      {cStatus === "Dropped" && p.metadata?.lossReason && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "4px" }}>{p.metadata.lossReason}</div>}
-                    </td>
-                    {(canEdit || canDelete) && (
-                      <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
-                        <div style={{ display: "inline-flex", gap: "4px" }}>
-                          {canEdit && <button className="btn-icon" onClick={() => openEdit(p)} aria-label="แก้ไขโปรเจกต์" title="แก้ไข"><Edit2 size={14} /></button>}
-                          {canDelete && <button className="btn-icon danger" onClick={() => handleDelete(p)} aria-label="ลบโปรเจกต์" title="ลบ"><Trash2 size={14} /></button>}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
+                  <tr><td colSpan={mainColSpan} style={{ textAlign: "center", padding: "32px", color: "var(--text-3)" }}>{activeFilterCount > 0 || q ? "ไม่พบโครงการตามเงื่อนไข" : "ยังไม่มีโครงการ"}</td></tr>
+                ) : groupedActive ? (
+                  groupedActive.map((g) => (
+                    <Fragment key={g.label}>
+                      <tr className="group-header-row">
+                        <td colSpan={mainColSpan} style={{ background: "var(--panel-2)", fontWeight: 600, fontSize: "12px", color: "var(--text-2)", padding: "8px 12px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                            <Layers size={13} /> {g.label}
+                            <span className="chip" style={{ marginLeft: "4px" }}>{g.items.length}</span>
+                          </span>
+                        </td>
+                      </tr>
+                      {g.items.map(renderActiveRow)}
+                    </Fragment>
+                  ))
+                ) : (
+                  activeProjects.map(renderActiveRow)
+                )}
               </tbody>
             </table>
           </div>
