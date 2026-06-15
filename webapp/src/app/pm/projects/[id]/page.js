@@ -324,8 +324,9 @@ export default function ProjectDetailPage() {
   };
 
   const handleDeleteProject = async () => {
-    if (!confirm(`ต้องการลบโปรเจกต์ "${p.code} — ${p.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`)) return;
-    const res = await fetch(`/api/pm/projects/${p.id}`, { method: "DELETE" });
+    if (!data) return;
+    if (!confirm(`ต้องการลบโปรเจกต์ "${data.code} — ${data.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`)) return;
+    const res = await fetch(`/api/pm/projects/${data.id}`, { method: "DELETE" });
     if (res.ok) {
       router.push("/pm/projects");
     } else {
