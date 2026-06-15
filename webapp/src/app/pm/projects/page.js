@@ -1,10 +1,10 @@
 "use client";
-import { useState, useEffect, useMemo, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   FolderKanban, Plus, Search, AlertTriangle, ChevronDown, ChevronRight,
   Edit2, Trash2, X, Check, Pause,
-  Filter, ArrowUpDown, ArrowUp, ArrowDown, Layers,
+  Filter, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -70,11 +70,12 @@ export default function ProjectsPage() {
   const [categories, setCategories] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all"); // all | NPD | Re-Order
+  const [typeFilters, setTypeFilters] = useState([]); // [] = ทุกประเภท; เลือกได้หลายค่า: NPD, RE-ORDER
+  const [typeMenuOpen, setTypeMenuOpen] = useState(false);
+  const typeMenuRef = useRef(null);
   const [statusFilter, setStatusFilter] = useState("all"); // all | New | On Track | Delayed | On Hold
   const [sortKey, setSortKey] = useState("default"); // default | due | progress | name | code
   const [sortDir, setSortDir] = useState("asc"); // asc | desc
-  const [groupKey, setGroupKey] = useState("none"); // none | customer | type | category | owner | status
   const [showArchive, setShowArchive] = useState(false);
   const [archiveStatusFilter, setArchiveStatusFilter] = useState("all"); // all | Completed | Dropped
   const [archiveSortKey, setArchiveSortKey] = useState("code"); // code | name | customer | progress | due
@@ -112,6 +113,21 @@ export default function ProjectsPage() {
       window.removeEventListener("focus", onVisible);
     };
   }, []);
+
+  // ปิดเมนูกรองประเภทเมื่อคลิกนอกพื้นที่
+  useEffect(() => {
+    if (!typeMenuOpen) return;
+    const onDown = (e) => { if (typeMenuRef.current && !typeMenuRef.current.contains(e.target)) setTypeMenuOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [typeMenuOpen]);
+
+  const TYPE_OPTIONS = [
+    { value: "NPD", label: "NPD" },
+    { value: "RE-ORDER", label: "Re-Order" },
+  ];
+  const toggleTypeFilter = (value) =>
+    setTypeFilters((cur) => (cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value]));
 
   const openCreate = () => { setEditingId(null); setInitialData(null); setShowForm(true); };
   const openEdit = (p) => {
@@ -156,7 +172,7 @@ export default function ProjectsPage() {
       const cs = getComputedStatus(p);
       return cs !== "Completed" && cs !== "Dropped" && cs !== "On Hold";
     });
-    if (typeFilter !== "all") list = list.filter((p) => p.type === typeFilter);
+    if (typeFilters.length) list = list.filter((p) => typeFilters.includes(p.type));
     if (statusFilter !== "all") list = list.filter((p) => getComputedStatus(p) === statusFilter);
 
     if (sortKey !== "default") {
@@ -196,9 +212,9 @@ export default function ProjectsPage() {
       });
     }
     return list;
-  }, [filtered, typeFilter, statusFilter, sortKey, sortDir]);
+  }, [filtered, typeFilters, statusFilter, sortKey, sortDir]);
 
-  const activeFilterCount = (typeFilter !== "all" ? 1 : 0) + (statusFilter !== "all" ? 1 : 0);
+  const activeFilterCount = (typeFilters.length ? 1 : 0) + (statusFilter !== "all" ? 1 : 0);
 
   // คลังเก็บ — โปรเจกต์ที่ปิดงาน/พักไว้ (Completed/Dropped/On Hold) + กรองสถานะ + เรียงลำดับ
   const archiveProjects = useMemo(() => {
@@ -233,33 +249,6 @@ export default function ProjectsPage() {
 
   // map code 'XX' → main category name (for list display)
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || "";
-
-  // ===== จัดกลุ่มตารางหลัก =====
-  // ค่ากลุ่มของแต่ละโปรเจกต์ตามคีย์ที่เลือก (คงลำดับการเรียงเดิมไว้ภายในกลุ่ม)
-  const groupLabelOf = (p) => {
-    switch (groupKey) {
-      case "customer": return p.customerName || "ไม่ระบุลูกค้า";
-      case "type": return p.type || "ไม่ระบุประเภท";
-      case "category": return p.productSubCategory || mainCatName(p.productMainCategory) || p.productMainCategory || "ไม่ระบุหมวด";
-      case "owner": return p.aeOwner || "ไม่ระบุผู้ดูแล";
-      case "preparer": return p.preparedBy || "ไม่ระบุผู้จัดทำ";
-      case "status": return getComputedStatus(p);
-      default: return "";
-    }
-  };
-  const groupedActive = useMemo(() => {
-    if (groupKey === "none") return null;
-    const map = new Map();
-    for (const p of activeProjects) {
-      const label = groupLabelOf(p);
-      if (!map.has(label)) map.set(label, []);
-      map.get(label).push(p);
-    }
-    return [...map.entries()]
-      .map(([label, items]) => ({ label, items }))
-      .sort((a, b) => a.label.localeCompare(b.label, "th"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProjects, groupKey, categories]);
 
   const mainColSpan = (canEdit || canDelete) ? 10 : 9;
 
@@ -423,11 +412,34 @@ export default function ProjectsPage() {
             </div>
             <div className="toolbar" style={{ gap: "8px" }}>
               <span className="toolbar-label"><Filter size={14} /> กรอง</span>
-              <Select compact value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} title="กรองตามประเภทโปรเจกต์">
-                <option value="all">ทุกประเภท</option>
-                <option value="NPD">NPD</option>
-                <option value="RE-ORDER">Re-Order</option>
-              </Select>
+              <div ref={typeMenuRef} style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => setTypeMenuOpen((v) => !v)}
+                  title="กรองตามประเภทโปรเจกต์ (เลือกได้หลายค่า)"
+                  style={{ height: "var(--ctl-h)", display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}
+                >
+                  ประเภท
+                  {typeFilters.length > 0 && <span className="chip" style={{ background: "var(--accent-soft)", color: "var(--accent)", borderColor: "transparent" }}>{typeFilters.length}</span>}
+                  <ChevronDown size={14} style={{ opacity: 0.6 }} />
+                </button>
+                {typeMenuOpen && (
+                  <div className="glass-panel" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, padding: "6px", minWidth: "160px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                    {TYPE_OPTIONS.map((opt) => (
+                      <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>
+                        <input type="checkbox" checked={typeFilters.includes(opt.value)} onChange={() => toggleTypeFilter(opt.value)} />
+                        {opt.label}
+                      </label>
+                    ))}
+                    {typeFilters.length > 0 && (
+                      <button type="button" className="btn ghost" onClick={() => setTypeFilters([])} style={{ fontSize: "12px", color: "var(--text-3)", justifyContent: "flex-start", marginTop: "2px" }}>
+                        <X size={12} /> ล้างประเภท
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
               <Select compact value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} title="กรองตามสถานะ">
                 <option value="all">ทุกสถานะ</option>
                 <option value="New">New (ใหม่)</option>
@@ -435,23 +447,10 @@ export default function ProjectsPage() {
                 <option value="Delayed">Delayed (ล่าช้า)</option>
               </Select>
               {activeFilterCount > 0 && (
-                <button className="btn ghost" onClick={() => { setTypeFilter("all"); setStatusFilter("all"); }} style={{ fontSize: "12px", color: "var(--text-3)" }} title="ล้างตัวกรอง">
+                <button className="btn ghost" onClick={() => { setTypeFilters([]); setStatusFilter("all"); }} style={{ fontSize: "12px", color: "var(--text-3)" }} title="ล้างตัวกรอง">
                   <X size={13} /> ล้าง ({activeFilterCount})
                 </button>
               )}
-            </div>
-
-            <div className="toolbar" style={{ gap: "8px" }}>
-              <span className="toolbar-label"><Layers size={14} /> จัดกลุ่ม</span>
-              <Select compact value={groupKey} onChange={(e) => setGroupKey(e.target.value)} title="จัดกลุ่มโปรเจกต์ตาม">
-                <option value="none">ไม่จัดกลุ่ม</option>
-                <option value="customer">ลูกค้า</option>
-                <option value="type">ประเภท</option>
-                <option value="category">หมวดสินค้า</option>
-                <option value="owner">ผู้ดูแล</option>
-                <option value="preparer">ผู้จัดทำ</option>
-                <option value="status">สถานะ</option>
-              </Select>
             </div>
 
             <div className="spacer toolbar" style={{ gap: "8px" }}>
@@ -494,20 +493,6 @@ export default function ProjectsPage() {
               <tbody>
                 {activeProjects.length === 0 ? (
                   <tr><td colSpan={mainColSpan} style={{ textAlign: "center", padding: "32px", color: "var(--text-3)" }}>{activeFilterCount > 0 || q ? "ไม่พบโครงการตามเงื่อนไข" : "ยังไม่มีโครงการ"}</td></tr>
-                ) : groupedActive ? (
-                  groupedActive.map((g) => (
-                    <Fragment key={g.label}>
-                      <tr className="group-header-row">
-                        <td colSpan={mainColSpan} style={{ background: "var(--panel-2)", fontWeight: 600, fontSize: "12px", color: "var(--text-2)", padding: "8px 12px" }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                            <Layers size={13} /> {g.label}
-                            <span className="chip" style={{ marginLeft: "4px" }}>{g.items.length}</span>
-                          </span>
-                        </td>
-                      </tr>
-                      {g.items.map(renderActiveRow)}
-                    </Fragment>
-                  ))
                 ) : (
                   activeProjects.map(renderActiveRow)
                 )}
