@@ -1,16 +1,18 @@
 "use client";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   FolderKanban, Plus, Search, AlertTriangle, ChevronDown, ChevronRight,
   Edit2, Trash2, X, Check, Pause,
   Filter, ArrowUpDown, ArrowUp, ArrowDown,
+  Tag, CircleDot, Package, UserCog, PenLine, Building2,
 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import Select from "@/components/ui/Select";
+import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 
 const typeStyle = (type) => type === "NPD"
   ? { background: "var(--accent-soft)", color: "var(--accent)" }
@@ -51,6 +53,8 @@ const getOverdueCount = (p) => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   return (p.tasks || []).filter((t) => t.status !== "Completed" && t.finishDate && new Date(t.finishDate) < today).length;
 };
+// คีย์หมวดสินค้าใช้กรอง: ยึด subCategory ก่อน ไม่มีก็ใช้ mainCategory (ค่าว่าง = ไม่ระบุ)
+const catKeyOf = (p) => p.productSubCategory || p.productMainCategory || "";
 const fmtDate = (v) => {
   if (!v) return "-";
   const d = new Date(v);
@@ -70,10 +74,13 @@ export default function ProjectsPage() {
   const [categories, setCategories] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [search, setSearch] = useState("");
-  const [typeFilters, setTypeFilters] = useState([]); // [] = ทุกประเภท; เลือกได้หลายค่า: NPD, RE-ORDER
-  const [typeMenuOpen, setTypeMenuOpen] = useState(false);
-  const typeMenuRef = useRef(null);
-  const [statusFilter, setStatusFilter] = useState("all"); // all | New | On Track | Delayed | On Hold
+  // ตัวกรองทุกตัวเป็น multi-select (array). ว่าง = ไม่กรอง (แสดงทุกค่า)
+  const [typeFilters, setTypeFilters] = useState([]);
+  const [statusFilters, setStatusFilters] = useState([]);
+  const [categoryFilters, setCategoryFilters] = useState([]);
+  const [ownerFilters, setOwnerFilters] = useState([]);
+  const [preparerFilters, setPreparerFilters] = useState([]);
+  const [customerFilters, setCustomerFilters] = useState([]);
   const [sortKey, setSortKey] = useState("default"); // default | due | progress | name | code
   const [sortDir, setSortDir] = useState("asc"); // asc | desc
   const [showArchive, setShowArchive] = useState(false);
@@ -113,21 +120,6 @@ export default function ProjectsPage() {
       window.removeEventListener("focus", onVisible);
     };
   }, []);
-
-  // ปิดเมนูกรองประเภทเมื่อคลิกนอกพื้นที่
-  useEffect(() => {
-    if (!typeMenuOpen) return;
-    const onDown = (e) => { if (typeMenuRef.current && !typeMenuRef.current.contains(e.target)) setTypeMenuOpen(false); };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [typeMenuOpen]);
-
-  const TYPE_OPTIONS = [
-    { value: "NPD", label: "NPD" },
-    { value: "RE-ORDER", label: "Re-Order" },
-  ];
-  const toggleTypeFilter = (value) =>
-    setTypeFilters((cur) => (cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value]));
 
   const openCreate = () => { setEditingId(null); setInitialData(null); setShowForm(true); };
   const openEdit = (p) => {
@@ -173,7 +165,11 @@ export default function ProjectsPage() {
       return cs !== "Completed" && cs !== "Dropped" && cs !== "On Hold";
     });
     if (typeFilters.length) list = list.filter((p) => typeFilters.includes(p.type));
-    if (statusFilter !== "all") list = list.filter((p) => getComputedStatus(p) === statusFilter);
+    if (statusFilters.length) list = list.filter((p) => statusFilters.includes(getComputedStatus(p)));
+    if (categoryFilters.length) list = list.filter((p) => categoryFilters.includes(catKeyOf(p)));
+    if (ownerFilters.length) list = list.filter((p) => ownerFilters.includes(p.aeOwner || ""));
+    if (preparerFilters.length) list = list.filter((p) => preparerFilters.includes(p.preparedBy || ""));
+    if (customerFilters.length) list = list.filter((p) => customerFilters.includes(p.customerName || ""));
 
     if (sortKey !== "default") {
       const dir = sortDir === "asc" ? 1 : -1;
@@ -212,9 +208,14 @@ export default function ProjectsPage() {
       });
     }
     return list;
-  }, [filtered, typeFilters, statusFilter, sortKey, sortDir]);
+  }, [filtered, typeFilters, statusFilters, categoryFilters, ownerFilters, preparerFilters, customerFilters, sortKey, sortDir]);
 
-  const activeFilterCount = (typeFilters.length ? 1 : 0) + (statusFilter !== "all" ? 1 : 0);
+  const allFilters = [typeFilters, statusFilters, categoryFilters, ownerFilters, preparerFilters, customerFilters];
+  const activeFilterCount = allFilters.filter((f) => f.length > 0).length;
+  const clearAllFilters = () => {
+    setTypeFilters([]); setStatusFilters([]); setCategoryFilters([]);
+    setOwnerFilters([]); setPreparerFilters([]); setCustomerFilters([]);
+  };
 
   // คลังเก็บ — โปรเจกต์ที่ปิดงาน/พักไว้ (Completed/Dropped/On Hold) + กรองสถานะ + เรียงลำดับ
   const archiveProjects = useMemo(() => {
@@ -249,6 +250,32 @@ export default function ProjectsPage() {
 
   // map code 'XX' → main category name (for list display)
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || "";
+
+  // ตัวเลือกของแต่ละตัวกรอง — derive จากรายการโปรเจกต์จริง (เฉพาะค่าที่มีใช้งาน)
+  const typeOptions = [
+    { value: "NPD", label: "NPD" },
+    { value: "RE-ORDER", label: "Re-Order" },
+  ];
+  const statusOptions = [
+    { value: "New", label: "New (ใหม่)" },
+    { value: "On Track", label: "On Track (ตามแผน)" },
+    { value: "Delayed", label: "Delayed (ล่าช้า)" },
+  ];
+  const uniqOptions = (values) =>
+    [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, "th")).map((v) => ({ value: v, label: v }));
+  const ownerOptions = useMemo(() => uniqOptions(projects.map((p) => p.aeOwner)), [projects]);
+  const preparerOptions = useMemo(() => uniqOptions(projects.map((p) => p.preparedBy)), [projects]);
+  const customerOptions = useMemo(() => uniqOptions(projects.map((p) => p.customerName)), [projects]);
+  const categoryOptions = useMemo(() => {
+    const map = new Map();
+    for (const p of projects) {
+      const key = catKeyOf(p);
+      if (!key || map.has(key)) continue;
+      map.set(key, p.productSubCategory || mainCatName(p.productMainCategory) || p.productMainCategory || key);
+    }
+    return [...map.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, "th"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, categories]);
 
   const mainColSpan = (canEdit || canDelete) ? 10 : 9;
 
@@ -410,45 +437,17 @@ export default function ProjectsPage() {
               <Search size={18} color="var(--text-3)" />
               <input type="text" placeholder="ค้นหาโปรเจกต์..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <div className="toolbar" style={{ gap: "8px" }}>
+            <div className="toolbar" style={{ gap: "8px", flexWrap: "wrap" }}>
               <span className="toolbar-label"><Filter size={14} /> กรอง</span>
-              <div ref={typeMenuRef} style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => setTypeMenuOpen((v) => !v)}
-                  title="กรองตามประเภทโปรเจกต์ (เลือกได้หลายค่า)"
-                  style={{ height: "var(--ctl-h)", display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}
-                >
-                  ประเภท
-                  {typeFilters.length > 0 && <span className="chip" style={{ background: "var(--accent-soft)", color: "var(--accent)", borderColor: "transparent" }}>{typeFilters.length}</span>}
-                  <ChevronDown size={14} style={{ opacity: 0.6 }} />
-                </button>
-                {typeMenuOpen && (
-                  <div className="glass-panel" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, padding: "6px", minWidth: "160px", display: "flex", flexDirection: "column", gap: "2px" }}>
-                    {TYPE_OPTIONS.map((opt) => (
-                      <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", cursor: "pointer", fontSize: "13px" }}>
-                        <input type="checkbox" checked={typeFilters.includes(opt.value)} onChange={() => toggleTypeFilter(opt.value)} />
-                        {opt.label}
-                      </label>
-                    ))}
-                    {typeFilters.length > 0 && (
-                      <button type="button" className="btn ghost" onClick={() => setTypeFilters([])} style={{ fontSize: "12px", color: "var(--text-3)", justifyContent: "flex-start", marginTop: "2px" }}>
-                        <X size={12} /> ล้างประเภท
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              <Select compact value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} title="กรองตามสถานะ">
-                <option value="all">ทุกสถานะ</option>
-                <option value="New">New (ใหม่)</option>
-                <option value="On Track">On Track (ตามแผน)</option>
-                <option value="Delayed">Delayed (ล่าช้า)</option>
-              </Select>
+              <MultiSelectFilter label="ประเภท" icon={Tag} options={typeOptions} selected={typeFilters} onChange={setTypeFilters} single />
+              <MultiSelectFilter label="สถานะ" icon={CircleDot} options={statusOptions} selected={statusFilters} onChange={setStatusFilters} />
+              <MultiSelectFilter label="หมวดสินค้า" icon={Package} options={categoryOptions} selected={categoryFilters} onChange={setCategoryFilters} />
+              <MultiSelectFilter label="ผู้ดูแล" icon={UserCog} options={ownerOptions} selected={ownerFilters} onChange={setOwnerFilters} />
+              <MultiSelectFilter label="ผู้จัดทำ" icon={PenLine} options={preparerOptions} selected={preparerFilters} onChange={setPreparerFilters} />
+              <MultiSelectFilter label="ลูกค้า" icon={Building2} options={customerOptions} selected={customerFilters} onChange={setCustomerFilters} />
               {activeFilterCount > 0 && (
-                <button className="btn ghost" onClick={() => { setTypeFilters([]); setStatusFilter("all"); }} style={{ fontSize: "12px", color: "var(--text-3)" }} title="ล้างตัวกรอง">
-                  <X size={13} /> ล้าง ({activeFilterCount})
+                <button className="btn ghost" onClick={clearAllFilters} style={{ fontSize: "12px", color: "var(--text-3)" }} title="ล้างตัวกรองทั้งหมด">
+                  <X size={13} /> ล้างทั้งหมด ({activeFilterCount})
                 </button>
               )}
             </div>
