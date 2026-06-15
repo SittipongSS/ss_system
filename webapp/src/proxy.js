@@ -96,6 +96,12 @@ const ADMIN_LOCKDOWN = true;
 
 const startsWithAny = (path, prefixes) => prefixes.some((p) => path === p || path.startsWith(p + '/'));
 
+// The master-data registries are reachable under both the legacy /api/X paths
+// (kept for cross-domain callers) and the cohesive /api/master/X namespace.
+// Collapse the latter onto the former so a single set of gating rules covers
+// both. e.g. /api/master/customers/123 -> /api/customers/123.
+const normalizeMaster = (path) => path.replace(/^\/api\/master\//, '/api/');
+
 // Pages a non-admin may open during the phased rollout: hub + PM + database.
 const OPEN_PAGES = ['/home', '/pm', '/database'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries.
@@ -113,6 +119,7 @@ const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types',
 function lockedOut(role, path, method, isApi) {
   if (!ADMIN_LOCKDOWN) return false;
   if (can(role, 'users:manage')) return false; // admin — full access to all systems
+  path = normalizeMaster(path); // /api/master/X gated identically to /api/X
   if (isApi) {
     if (startsWithAny(path, OPEN_WRITE_APIS)) return false; // PM + own account: read+write
     if (method === 'GET' && startsWithAny(path, OPEN_READ_APIS)) return false; // supporting reads
@@ -127,6 +134,7 @@ function lockedOut(role, path, method, isApi) {
 // only sees method + path.
 function apiWriteAllowed(method, path, role) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true; // reads ok
+  path = normalizeMaster(path); // /api/master/X gated identically to /api/X
   if (path.startsWith('/api/users')) return can(role, 'users:manage');
   if (path.startsWith('/api/customers')) {
     if (method === 'DELETE') return can(role, 'customers:delete');

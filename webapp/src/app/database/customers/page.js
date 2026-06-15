@@ -1,16 +1,21 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Building2, Plus, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Building2, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
+import Workspace from "@/components/ui/Workspace";
+import StatCards from "@/components/database/StatCards";
+import ApprovalQueue from "@/components/database/ApprovalQueue";
+import ContactsEditor from "@/components/database/ContactsEditor";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { useResponsiveView } from "@/lib/useResponsiveView";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 
 // Management view sees every status (pending/approved/rejected); the default
 // GET (used everywhere else) returns only approved rows.
-const MANAGE_KEY = "/api/customers?manage=1";
+const MANAGE_KEY = "/api/master/customers?manage=1";
 
 export default function CustomerDirectory() {
   const canEdit = useCan("customers:edit");
@@ -27,18 +32,20 @@ export default function CustomerDirectory() {
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [teamFilter, setTeamFilter] = useState("all");
+  const [showInactive, setShowInactive] = useState(false);
+  const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
-  const [mapFile, setMapFile] = useState(null);
   const [formData, setFormData] = useState({
     arCode: "",
     name: "",
     taxId: "",
+    branchCode: "00000",
     phone: "",
     address: "",
+    shippingAddress: "",
     brandsStr: "",
-    contactPerson: "",
-    contactPhone: "",
-    email: "",
+    contacts: [],
     creditTerms: "",
   });
 
@@ -68,7 +75,7 @@ export default function CustomerDirectory() {
       if (rejectionReason === null) return; // ยกเลิก
     }
     try {
-      const res = await fetch(`/api/customers/${id}`, {
+      const res = await fetch(`/api/master/customers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ approvalStatus: status, rejectionReason }),
@@ -87,55 +94,32 @@ export default function CustomerDirectory() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    let mapFileUrl = null;
-    if (mapFile) {
-      try {
-        const uploadData = new FormData();
-        uploadData.append("file", mapFile);
-        uploadData.append("customerName", formData.name);
-
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: uploadData,
-        });
-        if (uploadRes.ok) {
-          const result = await uploadRes.json();
-          mapFileUrl = result.url;
-        } else {
-          alert("คำเตือน: อัปโหลดไฟล์แผนที่ไม่สำเร็จ");
-        }
-      } catch (err) {
-        console.error("Upload error", err);
-      }
-    }
-
+    // แผนที่/เอกสารแนบเพิ่มทีหลังที่หน้าลูกค้า (ส่วน "เอกสารของลูกค้า").
     const payload = {
       arCode: formData.arCode,
       name: formData.name,
       taxId: formData.taxId,
+      branchCode: formData.branchCode || "00000",
       phone: formData.phone,
       address: formData.address,
+      shippingAddress: formData.shippingAddress || null,
       brands: formData.brandsStr
         .split(",")
         .map((b) => b.trim())
         .filter((b) => b),
-      contactPerson: formData.contactPerson || null,
-      contactPhone: formData.contactPhone || null,
-      email: formData.email || null,
+      contacts: formData.contacts || [],
       creditTerms: formData.creditTerms || null,
-      mapFileUrl,
     };
 
     try {
-      const res = await fetch("/api/customers", {
+      const res = await fetch("/api/master/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (res.ok) {
         const created = await res.json();
-        setFormData({ arCode: "", name: "", taxId: "", phone: "", address: "", brandsStr: "", contactPerson: "", contactPhone: "", email: "", creditTerms: "" });
-        setMapFile(null);
+        setFormData({ arCode: "", name: "", taxId: "", branchCode: "00000", phone: "", address: "", shippingAddress: "", brandsStr: "", contacts: [], creditTerms: "" });
         setShowForm(false);
         fetchCustomers();
         if (created?.approvalStatus === "pending") {
@@ -152,13 +136,33 @@ export default function CustomerDirectory() {
   };
 
   const q = search.trim().toLowerCase();
-  const pendingCount = customers.filter((c) => approvalStatusOf(c) === "pending").length;
+  const counts = {
+    pending: customers.filter((c) => approvalStatusOf(c) === "pending").length,
+    approved: customers.filter((c) => approvalStatusOf(c) === "approved").length,
+    rejected: customers.filter((c) => approvalStatusOf(c) === "rejected").length,
+    inactive: customers.filter((c) => c.isActive === false).length,
+  };
+
+  // Distinct teams present — the team filter only appears when this user can see
+  // more than one (supervisor/admin); team-scoped roles see a single team.
+  const teams = useMemo(
+    () => [...new Set(customers.map((c) => c.team).filter(Boolean))].sort(),
+    [customers],
+  );
+
   const filteredCustomers = customers.filter((c) => {
+    if (!showInactive && c.isActive === false) return false;
     if (statusFilter !== "all" && approvalStatusOf(c) !== statusFilter) return false;
+    if (teamFilter !== "all" && c.team !== teamFilter) return false;
     if (!q) return true;
     return [c.arCode, c.name, c.taxId, c.phone, ...(c.brands || [])]
       .some((v) => (v || "").toLowerCase().includes(q));
   });
+
+  // Pending records this user may approve — surfaced at the top as a queue.
+  const approvalQueue = customers.filter(
+    (c) => approvalStatusOf(c) === "pending" && canApproveRow(c),
+  );
 
   const sort = useSortableTable(filteredCustomers, {
     arCode: (c) => c.arCode || "",
@@ -167,201 +171,179 @@ export default function CustomerDirectory() {
     address: (c) => c.address || "",
   });
 
-  return (
+  const open = (c) => (window.location.href = `/database/customers/${c.id}`);
+
+  const headerRight = (
     <>
-      <div
-        className="premium-header"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon">
-              <Building2 size={22} />
-            </span>{" "}
-            ข้อมูลลูกค้า
-          </h1>
-          <p>จัดการฐานข้อมูลลูกค้าและแบรนด์ในระบบ (AR Code & Brands)</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="pill ok">ทั้งหมด {customers.length} รายการ</div>
-          {canEdit && (
-            <button
-              onClick={() => setShowForm(true)}
-              className="btn btn-primary flex items-center gap-1.5"
-            >
-              <Plus size={16} /> เพิ่มลูกค้า
-            </button>
-          )}
-        </div>
-      </div>
+      <span className="ui-badge">{customers.length} รายการ</span>
+      {canEdit && (
+        <button onClick={() => setShowForm(true)} className="btn btn-primary flex items-center gap-1.5">
+          <Plus size={16} /> เพิ่มลูกค้า
+        </button>
+      )}
+    </>
+  );
 
-      {/* แถบเครื่องมือ: ค้นหา */}
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
-        <div className="search-glass" style={{ width: "240px" }}>
-          <Search size={18} color="var(--text-3)" />
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า..." />
-        </div>
-        <div className="flex items-center gap-1.5">
-          {[
-            { key: "all", label: "ทั้งหมด" },
-            { key: "pending", label: `รออนุมัติ${pendingCount ? ` (${pendingCount})` : ""}` },
-            { key: "approved", label: "อนุมัติแล้ว" },
-            { key: "rejected", label: "ไม่อนุมัติ" },
-          ].map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setStatusFilter(f.key)}
-              className={`btn ${statusFilter === f.key ? "btn-primary" : ""}`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+  const toolbar = (
+    <div className="toolbar">
+      <div className="search-glass" style={{ width: "240px" }}>
+        <Search size={18} color="var(--text-3)" />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า / AR / แบรนด์..." />
       </div>
+      <div className="spacer" />
+      <span className="toolbar-label"><Filter size={14} /> กรอง</span>
+      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
+        <option value="all">ทุกสถานะ</option>
+        <option value="pending">รออนุมัติ</option>
+        <option value="approved">อนุมัติแล้ว</option>
+        <option value="rejected">ไม่อนุมัติ</option>
+      </select>
+      {teams.length > 1 && (
+        <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
+          <option value="all">ทุกทีม</option>
+          {teams.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      )}
+      {counts.inactive > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowInactive((v) => !v)}
+          className={`btn ${showInactive ? "btn-primary" : ""}`}
+          title="แสดง/ซ่อนลูกค้าที่เลิกใช้"
+        >
+          {showInactive ? "ซ่อนที่เลิกใช้" : `แสดงที่เลิกใช้ (${counts.inactive})`}
+        </button>
+      )}
+      <div className="segmented">
+        <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
+        <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
+      </div>
+    </div>
+  );
 
-      {/* Customer List */}
-      {loading ? (
-        <div className="flex justify-center p-12">
-          <svg
-            className="animate-spin h-8 w-8 text-[var(--accent)]"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
+  return (
+    <Workspace
+      icon={<Building2 size={22} />}
+      title="ข้อมูลลูกค้า"
+      subtitle="ฐานข้อมูลลูกค้าและแบรนด์กลาง (AR Code & Brands)"
+      headerRight={headerRight}
+      loading={loading}
+      rail={
+        <>
+          <StatCards
+            items={[
+              { label: "ทั้งหมด", value: customers.length },
+              { label: "รออนุมัติ", value: counts.pending, tone: counts.pending ? "warn" : undefined },
+              { label: "อนุมัติแล้ว", value: counts.approved, tone: "success" },
+              { label: "ไม่อนุมัติ", value: counts.rejected, tone: counts.rejected ? "danger" : undefined },
+            ]}
+          />
+          <ApprovalQueue
+            items={approvalQueue}
+            onDecide={decide}
+            primary={(c) => c.arCode}
+            secondary={(c) => `${c.name}${c.team ? ` · ทีม ${c.team}` : ""}`}
+            onOpen={open}
+          />
+        </>
+      }
+      toolbar={toolbar}
+    >
+      {sort.sorted.length === 0 ? (
+        <div className="glass-panel p-10 text-center text-[var(--text-3)]">
+          {q || statusFilter !== "all" || teamFilter !== "all" ? "ไม่พบลูกค้าที่ค้นหา" : "ยังไม่มีข้อมูลลูกค้าในระบบ"}
+        </div>
+      ) : view === "cards" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {sort.sorted.map((c) => {
+            const status = approvalStatusOf(c);
+            const showActions = status === "pending" && canApproveRow(c);
+            const inactive = c.isActive === false;
+            return (
+              <div key={c.id} onClick={() => open(c)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[var(--accent)] font-mono text-sm">{c.arCode}</div>
+                    <div className="text-[13px] font-medium text-[var(--text)] mt-0.5 truncate">{c.name}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <ApprovalBadge status={status} />
+                    {inactive && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                  </div>
+                </div>
+                <div className="text-[11px] text-[var(--text-3)] font-mono">
+                  Tax {c.taxId || "-"}{c.team ? ` · ทีม ${c.team}` : ""}
+                </div>
+                {c.brands?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {c.brands.slice(0, 4).map((b, i) => (
+                      <span key={i} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{b}</span>
+                    ))}
+                    {c.brands.length > 4 && <span className="text-[11px] text-[var(--text-3)] px-1">+{c.brands.length - 4}</span>}
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+                  <span className="text-[11px] text-[var(--text-3)] truncate max-w-[70%]">{c.address || "—"}</span>
+                  {showActions ? (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <ApprovalActions onDecide={(s) => decide(c.id, s)} />
+                    </div>
+                  ) : <ChevronRight size={16} className="text-[var(--text-3)]" />}
+                </div>
+                {status === "rejected" && c.rejectionReason && (
+                  <div className="text-[11px] text-[var(--text-3)] whitespace-normal">เหตุผล: {c.rejectionReason}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="glass-panel">
-          <div className="px-4 py-3.5 border-b border-[var(--border)] flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-sm text-[var(--text)] ">
-              ฐานข้อมูลลูกค้า ({filteredCustomers.length} รายการ)
-            </h3>
-          </div>
-          <div className="premium-table-wrapper border-none rounded-t-none">
+          <div className="premium-table-wrapper border-none">
             <table className="premium-table">
               <thead>
                 <tr>
                   <SortTh label="รหัสลูกค้า" sortKey="arCode" sort={sort} />
                   <SortTh label="ชื่อลูกค้า / บริษัท" sortKey="name" sort={sort} />
                   <SortTh label="แบรนด์ทั้งหมด" sortKey="brands" sort={sort} />
-                  <SortTh label="ที่อยู่ / แผนที่" sortKey="address" sort={sort} />
+                  <SortTh label="ที่อยู่" sortKey="address" sort={sort} />
                   <th>สถานะ</th>
                 </tr>
               </thead>
               <tbody>
-                {sort.sorted.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan="5"
-                      className="text-center py-10 text-[var(--text-3)]"
-                    >
-                      {search.trim() ? "ไม่พบลูกค้าที่ค้นหา" : "ยังไม่มีข้อมูลลูกค้าในระบบ"}
+                {sort.sorted.map((c) => (
+                  <tr key={c.id} onClick={() => open(c)} className="clickable-row" style={c.isActive === false ? { opacity: 0.55 } : undefined}>
+                    <td className="font-semibold font-mono text-[var(--accent)]">{c.arCode}</td>
+                    <td>
+                      <div className="font-medium text-[var(--text)]">{c.name}</div>
+                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId}</div>
+                      {c.phone && <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {c.phone}</div>}
+                    </td>
+                    <td className="text-[var(--text-2)]">
+                      <div className="flex flex-wrap gap-1.5">
+                        {c.brands?.map((b, i) => (
+                          <span key={i} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{b}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="text-[var(--text-2)] max-w-[250px]">
+                      <div className="text-[11px] whitespace-normal leading-relaxed">{c.address}</div>
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {approvalStatusOf(c) === "pending" && canApproveRow(c) ? (
+                        <ApprovalActions onDecide={(status) => decide(c.id, status)} />
+                      ) : (
+                        <div className="flex flex-col gap-1 items-start">
+                          <ApprovalBadge status={approvalStatusOf(c)} />
+                          {c.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                          {approvalStatusOf(c) === "rejected" && c.rejectionReason && (
+                            <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {c.rejectionReason}</div>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
-                ) : (
-                  sort.sorted.map((c) => (
-                    <tr
-                      key={c.id}
-                      onClick={() => (window.location.href = `/database/customers/${c.id}`)}
-                      className="clickable-row"
-                    >
-                      <td className="font-semibold font-mono text-[var(--accent)] ">
-                        {c.arCode}
-                      </td>
-                      <td>
-                        <div className="font-medium text-[var(--text)] ">
-                          {c.name}
-                        </div>
-                        <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">
-                          Tax ID: {c.taxId}
-                        </div>
-                        {c.phone && (
-                          <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">
-                            โทร: {c.phone}
-                          </div>
-                        )}
-                      </td>
-                      <td className="text-[var(--text-2)] ">
-                        <div className="flex flex-wrap gap-1.5">
-                          {c.brands?.map((b, i) => (
-                            <span
-                              key={i}
-                              className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)] "
-                            >
-                              {b}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="text-[var(--text-2)] max-w-[250px]">
-                        <div className="text-[11px] mb-1 whitespace-normal leading-relaxed">
-                          {c.address}
-                        </div>
-                        {c.mapFileUrl && (
-                          <a
-                            href={c.mapFileUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--accent)] hover:underline"
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              strokeWidth={2}
-                              stroke="currentColor"
-                              className="w-3 h-3"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"
-                              />
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"
-                              />
-                            </svg>
-                            ดูแผนที่
-                          </a>
-                        )}
-                      </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        {approvalStatusOf(c) === "pending" && canApproveRow(c) ? (
-                          <ApprovalActions onDecide={(status) => decide(c.id, status)} />
-                        ) : (
-                          <div>
-                            <ApprovalBadge status={approvalStatusOf(c)} />
-                            {approvalStatusOf(c) === "rejected" && c.rejectionReason && (
-                              <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">
-                                เหตุผล: {c.rejectionReason}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -425,6 +407,18 @@ export default function CustomerDirectory() {
                 />
               </div>
               <div className="form-group">
+                <label>สาขา (Branch)</label>
+                <input
+                  type="text"
+                  name="branchCode"
+                  value={formData.branchCode}
+                  onChange={handleChange}
+                  placeholder="00000"
+                  className="premium-input w-full font-mono"
+                />
+                <span className="text-[11px] text-[var(--text-3)] mt-1">00000 = สำนักงานใหญ่</span>
+              </div>
+              <div className="form-group">
                 <label>เบอร์โทรบริษัท</label>
                 <input
                   type="tel"
@@ -451,6 +445,18 @@ export default function CustomerDirectory() {
                 ></textarea>
               </div>
               <div className="form-group col-span-2">
+                <label>ที่อยู่จัดส่ง (ถ้าต่างจากที่อยู่ออกเอกสาร)</label>
+                <textarea
+                  name="shippingAddress"
+                  value={formData.shippingAddress}
+                  onChange={handleChange}
+                  rows={2}
+                  placeholder="เว้นว่าง = ใช้ที่อยู่ออกเอกสารเป็นที่อยู่จัดส่ง"
+                  className="premium-input w-full"
+                  style={{ height: "80px", padding: "10px 12px", resize: "none" }}
+                ></textarea>
+              </div>
+              <div className="form-group col-span-2">
                 <label>
                   ชื่อแบรนด์สินค้า (Brands){" "}
                   <span className="text-[var(--red)]">*</span>
@@ -471,52 +477,13 @@ export default function CustomerDirectory() {
             </div>
           </div>
 
-          {/* Section 2 — ผู้ติดต่อ */}
+          {/* Section 2 — ผู้ติดต่อ (หลายคนได้) */}
           <div className="mb-[22px]">
             <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">2. ผู้ติดต่อ (Contact Person)</h3>
+              <h3 className="font-semibold text-[var(--text)]">2. ผู้ติดต่อ (Contacts)</h3>
+              <span className="text-[11px] text-[var(--text-3)]">เพิ่มได้หลายคน แยกตามแผนก (จัดซื้อ/การเงิน/เทคนิค) — คนแรกถือเป็นผู้ติดต่อหลัก</span>
             </div>
-            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-              <div className="form-group">
-                <label>
-                  ชื่อผู้ติดต่อ <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="contactPerson"
-                  value={formData.contactPerson}
-                  onChange={handleChange}
-                  required
-                  placeholder="ชื่อผู้ติดต่อ"
-                  className="premium-input w-full"
-                />
-              </div>
-              <div className="form-group">
-                <label>
-                  เบอร์ผู้ติดต่อ <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="tel"
-                  name="contactPhone"
-                  value={formData.contactPhone}
-                  onChange={handleChange}
-                  required
-                  placeholder="เช่น 081-234-5678"
-                  className="premium-input w-full font-mono"
-                />
-              </div>
-              <div className="form-group col-span-2">
-                <label>อีเมล</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="example@email.com"
-                  className="premium-input w-full"
-                />
-              </div>
-            </div>
+            <ContactsEditor value={formData.contacts} onChange={(contacts) => setFormData((f) => ({ ...f, contacts }))} />
           </div>
 
           {/* Section 3 — ข้อมูลเพิ่มเติม */}
@@ -537,16 +504,8 @@ export default function CustomerDirectory() {
                 />
               </div>
               <div className="form-group col-span-2">
-                <label>อัปโหลดแผนที่ลูกค้า (Map PDF/Image)</label>
-                <input
-                  type="file"
-                  accept=".pdf,image/png,image/jpeg"
-                  onChange={(e) => setMapFile(e.target.files[0])}
-                  className="premium-input w-full"
-                  style={{ padding: "6px" }}
-                />
-                <span className="text-[11px] text-[var(--text-3)] mt-1">
-                  รองรับไฟล์ .pdf, .png, .jpg
+                <span className="text-[11px] text-[var(--text-3)]">
+                  แผนที่และเอกสารแนบ (สัญญา/หนังสือรับรอง/ภพ.20 ฯลฯ) เพิ่มได้ที่หน้าข้อมูลลูกค้าหลังบันทึก
                 </span>
               </div>
             </div>
@@ -570,6 +529,6 @@ export default function CustomerDirectory() {
           </div>
         </form>
       </Modal>
-    </>
+    </Workspace>
   );
 }

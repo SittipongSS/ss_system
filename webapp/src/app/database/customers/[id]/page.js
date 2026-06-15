@@ -2,12 +2,16 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2 } from "lucide-react";
+import { ArrowLeft, Building2, Pencil, Trash2, Boxes, ShoppingCart, Archive, ArchiveRestore } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
+import { useIsPortrait } from "@/lib/useResponsiveView";
+import Modal from "@/components/Modal";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import StatCards from "@/components/database/StatCards";
+import ContactsEditor from "@/components/database/ContactsEditor";
 
 export default function CustomerDetails() {
   const params = useParams();
@@ -15,6 +19,7 @@ export default function CustomerDetails() {
   const id = params.id;
   const canEdit = useCan("customers:edit");
   const canDelete = useCan("customers:delete");
+  const isPortrait = useIsPortrait();
 
   const [customer, setCustomer] = useState(null);
   const [products, setProducts] = useState([]);
@@ -25,17 +30,16 @@ export default function CustomerDetails() {
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [mapFile, setMapFile] = useState(null);
   const [formData, setFormData] = useState({
     arCode: "",
     name: "",
     taxId: "",
+    branchCode: "00000",
     phone: "",
     address: "",
+    shippingAddress: "",
     brandsStr: "",
-    contactPerson: "",
-    contactPhone: "",
-    email: "",
+    contacts: [],
     creditTerms: "",
   });
 
@@ -45,7 +49,7 @@ export default function CustomerDetails() {
 
   const fetchCustomerData = async () => {
     try {
-      const res = await fetch(`/api/customers/${id}`);
+      const res = await fetch(`/api/master/customers/${id}`);
       if (res.ok) {
         const data = await res.json();
         setCustomer(data.customer);
@@ -57,12 +61,17 @@ export default function CustomerDetails() {
           arCode: data.customer.arCode || "",
           name: data.customer.name || "",
           taxId: data.customer.taxId || "",
+          branchCode: data.customer.branchCode || "00000",
           phone: data.customer.phone || "",
           address: data.customer.address || "",
+          shippingAddress: data.customer.shippingAddress || "",
           brandsStr: (data.customer.brands || []).join(", "),
-          contactPerson: data.customer.contactPerson || "",
-          contactPhone: data.customer.contactPhone || "",
-          email: data.customer.email || "",
+          // contacts[] (0033); fall back to legacy singles for rows not yet migrated.
+          contacts: Array.isArray(data.customer.contacts) && data.customer.contacts.length
+            ? data.customer.contacts
+            : (data.customer.contactPerson || data.customer.contactPhone || data.customer.email
+                ? [{ role: "", name: data.customer.contactPerson || "", phone: data.customer.contactPhone || "", email: data.customer.email || "" }]
+                : []),
           creditTerms: data.customer.creditTerms || "",
         });
       } else {
@@ -99,49 +108,25 @@ export default function CustomerDetails() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    let mapFileUrl = customer.mapFileUrl;
-
-    // Handle map file upload if present
-    if (mapFile) {
-      try {
-        const uploadData = new FormData();
-        uploadData.append("file", mapFile);
-        uploadData.append("customerName", formData.name);
-
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: uploadData,
-        });
-        if (uploadRes.ok) {
-          const result = await uploadRes.json();
-          mapFileUrl = result.url;
-        } else {
-          alert("คำเตือน: อัปโหลดไฟล์แผนที่ไม่สำเร็จ");
-        }
-      } catch (err) {
-        console.error("Upload error", err);
-      }
-    }
-
+    // แผนที่/เอกสารย้ายไปจัดการที่ส่วน "เอกสารของลูกค้า" (attachments) แล้ว.
     const payload = {
       arCode: formData.arCode,
       name: formData.name,
       taxId: formData.taxId,
+      branchCode: formData.branchCode || "00000",
       phone: formData.phone,
       address: formData.address,
+      shippingAddress: formData.shippingAddress || null,
       brands: formData.brandsStr
         .split(",")
         .map((b) => b.trim())
         .filter((b) => b),
-      contactPerson: formData.contactPerson || null,
-      contactPhone: formData.contactPhone || null,
-      email: formData.email || null,
+      contacts: formData.contacts || [],
       creditTerms: formData.creditTerms || null,
-      mapFileUrl,
     };
 
     try {
-      const res = await fetch(`/api/customers/${id}`, {
+      const res = await fetch(`/api/master/customers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -149,7 +134,6 @@ export default function CustomerDetails() {
 
       if (res.ok) {
         setIsEditing(false);
-        setMapFile(null);
         await fetchCustomerData();
       } else {
         const errData = await res.json();
@@ -161,6 +145,25 @@ export default function CustomerDetails() {
     setIsSubmitting(false);
   };
 
+  // Retire / reactivate a customer. Retired (isActive=false) customers drop out
+  // of every downstream picker but keep their history — used when a customer
+  // stops ordering but can't be deleted (still referenced by orders/projects).
+  const handleToggleActive = async () => {
+    const next = !(customer.isActive !== false);
+    if (!next && !confirm("พักใช้งานลูกค้ารายนี้? จะหายจากรายการเลือกของระบบอื่น (ประวัติยังอยู่ครบ)")) return;
+    try {
+      const res = await fetch(`/api/master/customers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: next }),
+      });
+      if (res.ok) await fetchCustomerData();
+      else alert((await res.json()).error || "ดำเนินการไม่สำเร็จ");
+    } catch {
+      alert("เกิดข้อผิดพลาด");
+    }
+  };
+
   const handleDelete = async () => {
     if (
       !confirm(
@@ -170,7 +173,7 @@ export default function CustomerDetails() {
       return;
 
     try {
-      const res = await fetch(`/api/customers/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/master/customers/${id}`, { method: "DELETE" });
       if (res.ok) {
         alert("ลบข้อมูลลูกค้าเรียบร้อยแล้ว");
         router.push("/database/customers");
@@ -199,6 +202,8 @@ export default function CustomerDetails() {
     .filter((o) => ["pending", "received", "filing"].includes(o.status))
     .reduce((sum, o) => sum + (o.totalTax || 0), 0);
 
+  const hasTaxObligation = totalTaxAccrued > 0 || products.some((p) => p.isExciseTaxable !== false);
+
   if (loading) {
     return (
       <div className="flex justify-center p-24">
@@ -208,19 +213,8 @@ export default function CustomerDetails() {
           fill="none"
           viewBox="0 0 24 24"
         >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          ></circle>
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          ></path>
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
       </div>
     );
@@ -229,47 +223,26 @@ export default function CustomerDetails() {
   if (error || !customer) {
     return (
       <div className="glass-panel p-12 text-center">
-        <svg
-          className="w-16 h-16 text-[var(--red)] mx-auto mb-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-          />
-        </svg>
         <h2 className="text-xl font-semibold text-[var(--text)] mb-2">
           {error || "ไม่พบข้อมูลลูกค้ารายนี้"}
         </h2>
         <p className="text-[var(--text-3)] mb-6">
           ลูกค้าที่คุณกำลังพยายามเข้าถึงอาจถูกลบหรือไม่มีอยู่ในระบบ
         </p>
-        <Link
-          href="/database/customers"
-          className="btn btn-primary px-6 inline-flex items-center gap-2"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10 19l-7-7m0 0l7-7m-7 7h18"
-            />
-          </svg>
-          กลับไปยังข้อมูลลูกค้า
+        <Link href="/database/customers" className="btn btn-primary px-6 inline-flex items-center gap-2">
+          <ArrowLeft size={16} /> กลับไปยังข้อมูลลูกค้า
         </Link>
       </div>
     );
   }
+
+  // Field cell for the profile grid.
+  const Field = ({ label, value, mono }) => (
+    <div>
+      <span className="text-[var(--text-3)] block mb-1 text-[11px]">{label}</span>
+      <span className={`font-semibold text-[var(--text)] text-sm ${mono ? "font-mono" : ""}`}>{value || "-"}</span>
+    </div>
+  );
 
   return (
     <>
@@ -309,482 +282,106 @@ export default function CustomerDetails() {
         </div>
 
         <div className="flex gap-2">
-          {canEdit && !isEditing && (
-            <>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="btn bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--accent-soft)] border border-[var(--border)] px-4 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg"
-              >
-                <svg
-                  className="w-3.5 h-3.5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                  />
-                </svg>
-                แก้ไขข้อมูล
-              </button>
-              {canDelete && (
-                <button
-                  onClick={handleDelete}
-                  className="btn bg-[var(--red-soft)] text-[var(--red)] hover:bg-[var(--red-soft)] border border-[var(--border)] px-4 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg"
-                >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                  ลบลูกค้า
-                </button>
-              )}
-            </>
+          {canEdit && (
+            <button onClick={() => setIsEditing(true)} className="btn flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border border-[var(--border)] text-[var(--accent)] bg-[var(--accent-soft)]">
+              <Pencil size={14} /> แก้ไขข้อมูล
+            </button>
+          )}
+          {canEdit && (
+            <button onClick={handleToggleActive} className="btn flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border border-[var(--border)] text-[var(--text-2)]">
+              {customer.isActive === false ? (<><ArchiveRestore size={14} /> เปิดใช้อีกครั้ง</>) : (<><Archive size={14} /> พักใช้</>)}
+            </button>
+          )}
+          {canEdit && canDelete && (
+            <button onClick={handleDelete} className="btn flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border border-[var(--border)] text-[var(--red)] bg-[var(--red-soft)]">
+              <Trash2 size={14} /> ลบลูกค้า
+            </button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-[22px] mb-[22px]">
-        {/* Profile Card / Edit Form */}
-        <div className="lg:col-span-2">
-          {isEditing ? (
-            <div className="glass-panel p-[20px]">
-              <h3 className="font-semibold text-[var(--text)] border-b border-[var(--border)] pb-3 mb-5">
-                แก้ไขข้อมูลลูกค้า (Edit Customer Profile)
-              </h3>
-              <form onSubmit={handleEditSubmit}>
-                <div className="grid gap-[16px] grid-cols-2">
-                  <div className="form-group col-span-2 sm:col-span-1">
-                    <label>
-                      รหัสลูกค้า (AR Code){" "}
-                      <span className="text-[var(--red)]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="arCode"
-                      value={formData.arCode}
-                      onChange={handleInputChange}
-                      required
-                      className="premium-input w-full font-mono text-xs"
-                    />
-                  </div>
-                  <div className="form-group col-span-2 sm:col-span-1">
-                    <label>
-                      ชื่อบริษัท / ลูกค้า{" "}
-                      <span className="text-[var(--red)]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      required
-                      className="premium-input w-full text-xs"
-                    />
-                  </div>
-                  <div className="form-group col-span-2 sm:col-span-1">
-                    <label>
-                      เลขประจำตัวผู้เสียภาษี{" "}
-                      <span className="text-[var(--red)]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="taxId"
-                      value={formData.taxId}
-                      onChange={handleInputChange}
-                      required
-                      className="premium-input w-full font-mono text-xs"
-                    />
-                  </div>
-                  <div className="form-group col-span-2 sm:col-span-1">
-                    <label>เบอร์โทร</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      placeholder="เช่น 02-123-4567"
-                      className="premium-input w-full font-mono text-xs"
-                    />
-                  </div>
-                  <div className="form-group col-span-2 sm:col-span-1">
-                    <label>ผู้ติดต่อ</label>
-                    <input
-                      type="text"
-                      name="contactPerson"
-                      value={formData.contactPerson}
-                      onChange={handleInputChange}
-                      placeholder="ชื่อผู้ติดต่อ"
-                      className="premium-input w-full text-xs"
-                    />
-                  </div>
-                  <div className="form-group col-span-2 sm:col-span-1">
-                    <label>เบอร์ผู้ติดต่อ</label>
-                    <input
-                      type="tel"
-                      name="contactPhone"
-                      value={formData.contactPhone}
-                      onChange={handleInputChange}
-                      placeholder="เช่น 081-234-5678"
-                      className="premium-input w-full font-mono text-xs"
-                    />
-                  </div>
-                  <div className="form-group col-span-2 sm:col-span-1">
-                    <label>อีเมล</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="example@email.com"
-                      className="premium-input w-full text-xs"
-                    />
-                  </div>
-                  <div className="form-group col-span-2">
-                    <label>เงื่อนไขเครดิต (Credit Terms)</label>
-                    <input
-                      type="text"
-                      name="creditTerms"
-                      value={formData.creditTerms}
-                      onChange={handleInputChange}
-                      placeholder="เช่น เครดิต 30 วัน"
-                      className="premium-input w-full text-xs"
-                    />
-                  </div>
-                  <div className="form-group col-span-2">
-                    <label>
-                      ที่อยู่ลูกค้า <span className="text-[var(--red)]">*</span>
-                    </label>
-                    <textarea
-                      name="address"
-                      value={formData.address}
-                      onChange={handleInputChange}
-                      required
-                      rows={3}
-                      className="premium-input w-full text-xs"
-                      style={{ padding: "8px 12px", resize: "none" }}
-                    ></textarea>
-                  </div>
-                  <div className="form-group col-span-2">
-                    <label>
-                      ชื่อแบรนด์สินค้า (Brands){" "}
-                      <span className="text-[var(--red)]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="brandsStr"
-                      value={formData.brandsStr}
-                      onChange={handleInputChange}
-                      required
-                      placeholder="คั่นด้วยเครื่องหมายคอมมา เช่น Brand A, Brand B"
-                      className="premium-input w-full text-xs"
-                    />
-                    <span className="text-[10px] text-[var(--text-3)] mt-1">
-                      คั่นด้วยลูกน้ำ (,)
-                    </span>
-                  </div>
-                  <div className="form-group col-span-2">
-                    <label>อัปโหลดแผนที่ลูกค้าใหม่ (Map PDF/Image)</label>
-                    <input
-                      type="file"
-                      accept=".pdf,image/png,image/jpeg"
-                      onChange={(e) => setMapFile(e.target.files[0])}
-                      className="premium-input w-full text-xs"
-                      style={{ padding: "5px" }}
-                    />
-                    {customer.mapFileUrl && (
-                      <span className="text-[10px] text-[var(--accent)] mt-1 block font-mono">
-                        ไฟล์เดิม: {customer.mapFileUrl.split("/").pop()}
-                      </span>
-                    )}
-                  </div>
-                </div>
+      {customer.isActive === false && (
+        <div className="mb-[22px] rounded-xl px-4 py-3 flex items-center gap-2 text-sm" style={{ background: "var(--panel-2)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+          <Archive size={16} className="text-[var(--text-3)]" />
+          ลูกค้ารายนี้ถูกพักใช้งาน — ไม่แสดงในรายการเลือกของระบบอื่น (กด “เปิดใช้อีกครั้ง” เพื่อนำกลับมา)
+        </div>
+      )}
 
-                <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)] ">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditing(false);
-                      setMapFile(null);
-                    }}
-                    className="btn bg-[var(--panel-2)] text-[var(--text-2)] px-5 text-xs font-semibold py-2 rounded-lg"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="btn btn-primary px-6 text-xs font-semibold py-2"
-                  >
-                    {isSubmitting ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
-                  </button>
+      {/* Metric strip — counts + (when relevant) tax obligation */}
+      <div className="mb-[22px]">
+        <StatCards
+          items={
+            hasTaxObligation
+              ? [
+                  { label: "สินค้าที่ลงทะเบียน", value: products.length },
+                  { label: "ใบสั่งซื้อทั้งหมด", value: orders.length },
+                  { label: "ภาษีชำระแล้ว", value: formatMoney(totalPaidTax), tone: "success" },
+                  { label: "ภาษีค้างชำระ", value: formatMoney(totalPendingTax), tone: totalPendingTax ? "warn" : undefined },
+                ]
+              : [
+                  { label: "สินค้าที่ลงทะเบียน", value: products.length },
+                  { label: "ใบสั่งซื้อทั้งหมด", value: orders.length },
+                ]
+          }
+        />
+        {hasTaxObligation && (
+          <p className="text-[11px] text-[var(--text-3)] mt-2">
+            ยอดภาษีรวมสะสม {formatMoney(totalTaxAccrued)} — สรรพสามิต {formatMoney(totalExciseTax)} + ท้องถิ่น {formatMoney(totalLocalTax)}
+          </p>
+        )}
+      </div>
+
+      {/* Profile Card (full width) */}
+      <div className="glass-panel p-[20px] mb-[22px]">
+        <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
+          <Building2 size={16} className="text-[var(--accent)]" /> ข้อมูลบริษัท / ลูกค้า (Company Details)
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 text-xs">
+          <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
+          <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId} mono />
+          <Field label="สาขา (Branch)" value={!customer.branchCode || customer.branchCode === "00000" ? "สำนักงานใหญ่" : `สาขา ${customer.branchCode}`} />
+          <Field label="เบอร์โทร (Phone)" value={customer.phone} mono />
+          <Field label="เงื่อนไขเครดิต (Credit Terms)" value={customer.creditTerms} />
+          <div className="md:col-span-3">
+            <span className="text-[var(--text-3)] block mb-1 text-[11px]">ที่อยู่ออกใบเอกสาร</span>
+            <p className="font-medium text-[var(--text)] leading-relaxed text-sm">{customer.address}</p>
+          </div>
+          <div className="md:col-span-3">
+            <span className="text-[var(--text-3)] block mb-1 text-[11px]">ที่อยู่จัดส่ง</span>
+            <p className="font-medium text-[var(--text)] leading-relaxed text-sm">
+              {customer.shippingAddress || <span className="text-[var(--text-3)] italic font-normal">ใช้ที่อยู่ออกเอกสาร</span>}
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 pt-4 border-t border-[var(--border)]">
+          <span className="text-[var(--text-3)] block text-[11px] mb-2">ผู้ติดต่อ ({(customer.contacts || []).length})</span>
+          {(customer.contacts || []).length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {customer.contacts.map((c, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs border border-[var(--border)] rounded-lg px-3 py-2">
+                  {c.role && <span className="ui-badge">{c.role}</span>}
+                  <span className="font-medium text-[var(--text)]">{c.name || "-"}</span>
+                  {c.phone && <span className="font-mono text-[var(--text-2)]">{c.phone}</span>}
+                  {c.email && <span className="text-[var(--text-2)]">{c.email}</span>}
+                  {i === 0 && <span className="text-[10px] text-[var(--text-3)]">(ผู้ติดต่อหลัก)</span>}
                 </div>
-              </form>
+              ))}
             </div>
           ) : (
-            <div className="glass-panel p-[20px] h-full flex flex-col justify-between">
-              <div>
-                <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4 text-[var(--accent)]"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                    />
-                  </svg>
-                  ข้อมูลบริษัท / ลูกค้า (Company Details)
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
-                  <div>
-                    <span className="text-[var(--text-3)] block mb-1">
-                      รหัสลูกค้า AR Code
-                    </span>
-                    <span className="font-semibold font-mono text-[var(--text)] text-sm bg-[var(--panel-2)] px-2 py-0.5 rounded">
-                      {customer.arCode}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[var(--text-3)] block mb-1">
-                      เลขผู้เสียภาษี (Tax ID)
-                    </span>
-                    <span className="font-semibold font-mono text-[var(--text)] text-sm">
-                      {customer.taxId}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[var(--text-3)] block mb-1">
-                      เบอร์โทร (Phone)
-                    </span>
-                    <span className="font-semibold font-mono text-[var(--text)] text-sm">
-                      {customer.phone || "-"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[var(--text-3)] block mb-1">
-                      ผู้ติดต่อ (Contact)
-                    </span>
-                    <span className="font-semibold text-[var(--text)] text-sm">
-                      {customer.contactPerson || "-"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[var(--text-3)] block mb-1">
-                      เบอร์ผู้ติดต่อ (Contact Phone)
-                    </span>
-                    <span className="font-semibold font-mono text-[var(--text)] text-sm">
-                      {customer.contactPhone || "-"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[var(--text-3)] block mb-1">
-                      อีเมล (Email)
-                    </span>
-                    <span className="font-semibold text-[var(--text)] text-sm">
-                      {customer.email || "-"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[var(--text-3)] block mb-1">
-                      เงื่อนไขเครดิต (Credit Terms)
-                    </span>
-                    <span className="font-semibold text-[var(--text)] text-sm">
-                      {customer.creditTerms || "-"}
-                    </span>
-                  </div>
-                  <div className="md:col-span-2">
-                    <span className="text-[var(--text-3)] block mb-1">
-                      ชื่อจดทะเบียนบริษัท
-                    </span>
-                    <span className="font-semibold text-[var(--text)] text-sm">
-                      {customer.name}
-                    </span>
-                  </div>
-                  <div className="md:col-span-2">
-                    <span className="text-[var(--text-3)] block mb-1">
-                      ที่อยู่ออกใบเอกสาร
-                    </span>
-                    <p className="font-medium text-[var(--text)] leading-relaxed">
-                      {customer.address}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-5 border-t border-[var(--border)] flex items-center justify-between">
-                <div>
-                  <span className="text-[var(--text-3)] block text-[10px] mb-1">
-                    เอกสารแนบ / แผนที่
-                  </span>
-                  {customer.mapFileUrl ? (
-                    <a
-                      href={customer.mapFileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--accent)] hover:underline"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={2}
-                        stroke="currentColor"
-                        className="w-4 h-4"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-                        />
-                      </svg>
-                      ดูแผนที่ที่อัปโหลดไว้
-                    </a>
-                  ) : (
-                    <span className="text-[var(--text-3)] text-xs italic">
-                      ไม่มีแผนที่ในระบบ
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <span className="text-[var(--text-3)] block text-[10px] mb-1 text-right">
-                    แบรนด์สินค้าทั้งหมด
-                  </span>
-                  <div className="flex flex-wrap gap-1 justify-end">
-                    {customer.brands && customer.brands.length > 0 ? (
-                      customer.brands.map((b, i) => (
-                        <span
-                          key={i}
-                          className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[10.5px] text-[var(--text-2)] font-semibold"
-                        >
-                          {b}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[var(--text-3)] text-xs italic">
-                        ไม่มีข้อมูลแบรนด์
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <span className="text-[var(--text-3)] text-xs italic">ไม่มีข้อมูลผู้ติดต่อ</span>
           )}
         </div>
-
-        {/* Stats Column */}
-        <div className="glass-panel p-[20px] flex flex-col justify-between">
-          <div>
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-              <svg
-                className="w-4 h-4 text-[var(--green)]"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z"
-                />
-              </svg>
-              สรุปข้อมูลภาพรวม (Overview)
-            </h3>
-
-            <div className="space-y-4">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-[var(--text-3)]">สินค้าที่ลงทะเบียน</span>
-                <span className="font-bold text-[var(--text)] text-sm font-mono">
-                  {products.length} รายการ
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-[var(--text-3)]">
-                  ใบสั่งซื้อทั้งหมด
-                </span>
-                <span className="font-bold text-[var(--text)] text-sm font-mono">
-                  {orders.length} รายการ
-                </span>
-              </div>
-
-              {/* Tax section — only show when there are taxable products or any tax accrued */}
-              {(totalTaxAccrued > 0 || products.some(p => p.isExciseTaxable !== false)) ? (
-                <>
-                  <div className="border-t border-dashed border-[var(--border)] my-2 pt-2"></div>
-
-                  <div className="flex justify-between items-start text-xs">
-                    <span className="text-[var(--text-3)]">
-                      ภาษีที่ชำระแล้ว (Paid)
-                    </span>
-                    <div className="text-right">
-                      <span className="font-bold text-[var(--green)] text-sm font-mono">
-                        {formatMoney(totalPaidTax)}
-                      </span>
-                      <div className="text-[9px] text-[var(--text-3)]">
-                        จาก PO ที่ชำระแล้ว
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-start text-xs">
-                    <span className="text-[var(--text-3)]">
-                      ภาษีค้างชำระ (Pending)
-                    </span>
-                    <div className="text-right">
-                      <span className="font-bold text-[var(--amber)] text-sm font-mono">
-                        {formatMoney(totalPendingTax)}
-                      </span>
-                      <div className="text-[9px] text-[var(--text-3)]">
-                        รอชำระเงินของ Sales
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="border-t border-dashed border-[var(--border)] my-2 pt-2"></div>
-                  <div className="bg-[var(--green-soft)] p-3 rounded-xl border border-[var(--border)] text-center">
-                    <span className="text-[var(--green)] text-xs font-semibold block">ไม่มีภาระภาษีสรรพสามิต</span>
-                    <span className="text-[9px] text-[var(--text-3)] mt-1 block">สินค้าของลูกค้ารายนี้ไม่เข้าข่ายพิกัดสรรพสามิต</span>
-                  </div>
-                </>
-              )}
-            </div>
+        <div className="mt-5 pt-4 border-t border-[var(--border)]">
+          <span className="text-[var(--text-3)] block text-[11px] mb-1.5">แบรนด์สินค้าทั้งหมด</span>
+          <div className="flex flex-wrap gap-1.5">
+            {customer.brands && customer.brands.length > 0 ? (
+              customer.brands.map((b, i) => (
+                <span key={i} className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[11px] text-[var(--text-2)] font-semibold">{b}</span>
+              ))
+            ) : (
+              <span className="text-[var(--text-3)] text-xs italic">ไม่มีข้อมูลแบรนด์</span>
+            )}
           </div>
-
-          {(totalTaxAccrued > 0 || products.some(p => p.isExciseTaxable !== false)) && (
-            <div className="mt-6 pt-5 border-t border-[var(--border)] ">
-              <span className="text-[var(--text-3)] text-[10px] block mb-1">
-                ยอดภาษีรวมสะสม (Total Tax Accrued)
-              </span>
-              <div className="text-2xl font-bold font-mono text-[var(--accent)] ">
-                {formatMoney(totalTaxAccrued)}
-              </div>
-              <span className="text-[9px] text-[var(--text-3)] mt-1 block">
-                ภาษีสรรพสามิต {formatMoney(totalExciseTax)} + ภาษีท้องถิ่น{" "}
-                {formatMoney(totalLocalTax)}
-              </span>
-            </div>
-          )}
         </div>
       </div>
 
@@ -801,178 +398,213 @@ export default function CustomerDetails() {
 
       {/* Tabs Header */}
       <div className="tabs-header">
-        <button
-          onClick={() => setActiveTab("products")}
-          className={`tab-btn ${activeTab === "products" ? "active" : ""}`}
-        >
+        <button onClick={() => setActiveTab("products")} className={`tab-btn ${activeTab === "products" ? "active" : ""}`}>
           รายการสินค้า ({products.length})
         </button>
-        <button
-          onClick={() => setActiveTab("orders")}
-          className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}
-        >
+        <button onClick={() => setActiveTab("orders")} className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}>
           รายการสั่งซื้อ ({orders.length})
         </button>
       </div>
 
       {/* Products Tab */}
       {activeTab === "products" && (
-        <div className="glass-panel">
-          <div className="px-4 py-3.5 border-b border-[var(--border)] ">
-            <h3 className="font-semibold text-sm text-[var(--text)] ">
-              สินค้าของลูกค้ารายนี้ ({products.length} รายการ)
-            </h3>
+        products.length === 0 ? (
+          <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีสินค้าขึ้นทะเบียนของลูกค้ารายนี้</div>
+        ) : isPortrait ? (
+          <div className="grid grid-cols-1 gap-3">
+            {products.map((p) => {
+              const isExempt = p.isExciseTaxable === false;
+              const taxRate = isExempt ? 0 : p.exciseTax + p.localTax;
+              return (
+                <div key={p.id} onClick={() => (window.location.href = `/database/products/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescription}</div>
+                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode} · {p.brandName}</div>
+                    </div>
+                    <ProductStatusPill status={p.status} />
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
+                    <span className="font-mono text-[var(--text-2)]">{p.volume} ml · {formatMoney(p.retailPriceIncVat)}</span>
+                    <span className="text-[var(--text-2)]">
+                      {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : <span className="font-mono">{formatMoney(taxRate)}</span>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="premium-table-wrapper border-none rounded-t-none">
-            <table className="premium-table">
-              <thead>
-                <tr>
-                  <th>รหัสสินค้า (FG Code)</th>
-                  <th>รายละเอียดสินค้า / แบรนด์</th>
-                  <th>ปริมาตร (ml)</th>
-                  <th className="num">ราคาขายปลีก</th>
-                  <th className="num">ภาษีคำนวณต่อชิ้น</th>
-                  <th className="text-center">สถานะการอนุมัติ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.length === 0 ? (
+        ) : (
+          <div className="glass-panel">
+            <div className="px-4 py-3.5 border-b border-[var(--border)]">
+              <h3 className="font-semibold text-sm text-[var(--text)] flex items-center gap-2"><Boxes size={16} className="text-[var(--accent)]" /> สินค้าของลูกค้ารายนี้ ({products.length} รายการ)</h3>
+            </div>
+            <div className="premium-table-wrapper border-none rounded-t-none">
+              <table className="premium-table">
+                <thead>
                   <tr>
-                    <td
-                      colSpan="6"
-                      className="text-center py-10 text-[var(--text-3)]"
-                    >
-                      ยังไม่มีสินค้าขึ้นทะเบียนของลูกค้ารายนี้
-                    </td>
+                    <th>รหัสสินค้า (FG Code)</th>
+                    <th>รายละเอียดสินค้า / แบรนด์</th>
+                    <th>ปริมาตร (ml)</th>
+                    <th className="num">ราคาขายปลีก</th>
+                    <th className="num">ภาษีคำนวณต่อชิ้น</th>
+                    <th className="text-center">สถานะการอนุมัติ</th>
                   </tr>
-                ) : (
-                  products.map((p) => {
+                </thead>
+                <tbody>
+                  {products.map((p) => {
                     const isExempt = p.isExciseTaxable === false;
                     const taxRate = isExempt ? 0 : p.exciseTax + p.localTax;
                     return (
-                      <tr
-                        key={p.id}
-                        onClick={() =>
-                          (window.location.href = `/database/products/${p.id}`)
-                        }
-                        className="clickable-row"
-                      >
-                        <td className="font-semibold font-mono text-[var(--text)] ">
-                          {p.fgCode}
-                        </td>
+                      <tr key={p.id} onClick={() => (window.location.href = `/database/products/${p.id}`)} className="clickable-row">
+                        <td className="font-semibold font-mono text-[var(--text)]">{p.fgCode}</td>
                         <td>
-                          <div className="font-semibold text-[var(--text)] ">
-                            {p.productDescription}
-                          </div>
-                          <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">
-                            Brand: {p.brandName}
-                          </div>
+                          <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
+                          <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {p.brandName}</div>
                         </td>
                         <td className="font-mono">{p.volume} ml</td>
-                        <td className="num font-mono text-[var(--text-2)] ">
-                          {formatMoney(p.retailPriceIncVat)}
+                        <td className="num font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
+                        <td className="num font-mono text-[var(--text-2)]">
+                          {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(taxRate)}
                         </td>
-                        <td className="num font-mono text-[var(--text-2)] ">
-                          {isExempt ? (
-                            <span className="status-pill success text-[10px]">
-                              ไม่ต้องเสียภาษี
-                            </span>
-                          ) : (
-                            formatMoney(taxRate)
-                          )}
-                        </td>
-                        <td className="text-center">
-                          <ProductStatusPill status={p.status} />
-                        </td>
+                        <td className="text-center"><ProductStatusPill status={p.status} /></td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )
       )}
 
       {/* Orders Tab */}
       {activeTab === "orders" && (
-        <div className="glass-panel">
-          <div className="px-4 py-3.5 border-b border-[var(--border)] ">
-            <h3 className="font-semibold text-sm text-[var(--text)] ">
-              รายการสั่งซื้อ ({orders.length} รายการ)
-            </h3>
+        orders.length === 0 ? (
+          <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีรายการสั่งซื้อในระบบ</div>
+        ) : isPortrait ? (
+          <div className="grid grid-cols-1 gap-3">
+            {orders.map((o) => {
+              const isExempt = (o.totalTax || 0) === 0;
+              const itemCount = o.items?.length || 0;
+              return (
+                <div key={o.id} onClick={() => setSelectedOrder(o)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[var(--text)] font-mono text-sm">{o.quotationRef}</div>
+                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">PO: {o.poReference || "-"} · {itemCount} รายการ</div>
+                    </div>
+                    <OrderStatusPill status={o.status} />
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
+                    <span className="text-[var(--text-3)]">กำหนดส่ง: {o.deliveryDate || "-"}</span>
+                    <span className="font-mono font-bold text-[var(--text)]">
+                      {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(o.totalTax)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="premium-table-wrapper border-none rounded-t-none">
-            <table className="premium-table">
-              <thead>
-                <tr>
-                  <th>เลขที่ใบเสนอราคา</th>
-                  <th>PO Reference</th>
-                  <th className="text-center">จำนวนรายการ</th>
-                  <th className="num">ยอดภาษีรวม</th>
-                  <th className="text-center">กำหนดส่ง</th>
-                  <th className="text-center">สถานะชำระเงิน</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.length === 0 ? (
+        ) : (
+          <div className="glass-panel">
+            <div className="px-4 py-3.5 border-b border-[var(--border)]">
+              <h3 className="font-semibold text-sm text-[var(--text)] flex items-center gap-2"><ShoppingCart size={16} className="text-[var(--accent)]" /> รายการสั่งซื้อ ({orders.length} รายการ)</h3>
+            </div>
+            <div className="premium-table-wrapper border-none rounded-t-none">
+              <table className="premium-table">
+                <thead>
                   <tr>
-                    <td
-                      colSpan="6"
-                      className="text-center py-10 text-[var(--text-3)]"
-                    >
-                      ยังไม่มีรายการสั่งซื้อในระบบ
-                    </td>
+                    <th>เลขที่ใบเสนอราคา</th>
+                    <th>PO Reference</th>
+                    <th className="text-center">จำนวนรายการ</th>
+                    <th className="num">ยอดภาษีรวม</th>
+                    <th className="text-center">กำหนดส่ง</th>
+                    <th className="text-center">สถานะชำระเงิน</th>
                   </tr>
-                ) : (
-                  orders.map((o) => {
+                </thead>
+                <tbody>
+                  {orders.map((o) => {
                     const isExempt = (o.totalTax || 0) === 0;
                     const itemCount = o.items?.length || 0;
                     return (
-                      <tr
-                        key={o.id}
-                        className="clickable-row"
-                        onClick={() => setSelectedOrder(o)}
-                      >
-                        <td className="font-semibold font-mono text-[var(--text)] ">
-                          {o.quotationRef}
+                      <tr key={o.id} className="clickable-row" onClick={() => setSelectedOrder(o)}>
+                        <td className="font-semibold font-mono text-[var(--text)]">{o.quotationRef}</td>
+                        <td className="font-mono text-xs text-[var(--text-2)]">{o.poReference || "-"}</td>
+                        <td className="text-center font-mono font-semibold">{itemCount}</td>
+                        <td className="num font-mono font-bold text-[var(--text)]">
+                          {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(o.totalTax)}
                         </td>
-                        <td className="font-mono text-xs text-[var(--text-2)]">
-                          {o.poReference || "-"}
-                        </td>
-                        <td className="text-center font-mono font-semibold">
-                          {itemCount}
-                        </td>
-                        <td className="num font-mono font-bold text-[var(--text)] ">
-                          {isExempt ? (
-                            <span className="status-pill success text-[10px]">
-                              ไม่ต้องเสียภาษี
-                            </span>
-                          ) : (
-                            formatMoney(o.totalTax)
-                          )}
-                        </td>
-                        <td className="text-center text-xs">
-                          {o.deliveryDate || "-"}
-                        </td>
-                        <td className="text-center">
-                          <OrderStatusPill status={o.status} />
-                        </td>
+                        <td className="text-center text-xs">{o.deliveryDate || "-"}</td>
+                        <td className="text-center"><OrderStatusPill status={o.status} /></td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )
       )}
 
-      <OrderDetailModal
-        order={selectedOrder}
-        open={!!selectedOrder}
-        onClose={() => setSelectedOrder(null)}
-      />
+      {/* Edit modal */}
+      <Modal open={isEditing} onClose={() => setIsEditing(false)} title="แก้ไขข้อมูลลูกค้า (Edit Customer)" size="md">
+        <form onSubmit={handleEditSubmit}>
+          <div className="grid gap-[16px] grid-cols-2">
+            <div className="form-group col-span-2 sm:col-span-1">
+              <label>รหัสลูกค้า (AR Code) <span className="text-[var(--red)]">*</span></label>
+              <input type="text" name="arCode" value={formData.arCode} onChange={handleInputChange} required className="premium-input w-full font-mono text-xs" />
+            </div>
+            <div className="form-group col-span-2 sm:col-span-1">
+              <label>ชื่อบริษัท / ลูกค้า <span className="text-[var(--red)]">*</span></label>
+              <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className="premium-input w-full text-xs" />
+            </div>
+            <div className="form-group col-span-2 sm:col-span-1">
+              <label>เลขประจำตัวผู้เสียภาษี <span className="text-[var(--red)]">*</span></label>
+              <input type="text" name="taxId" value={formData.taxId} onChange={handleInputChange} required className="premium-input w-full font-mono text-xs" />
+            </div>
+            <div className="form-group col-span-2 sm:col-span-1">
+              <label>สาขา (Branch)</label>
+              <input type="text" name="branchCode" value={formData.branchCode} onChange={handleInputChange} placeholder="00000" className="premium-input w-full font-mono text-xs" />
+              <span className="text-[10px] text-[var(--text-3)] mt-1">00000 = สำนักงานใหญ่</span>
+            </div>
+            <div className="form-group col-span-2 sm:col-span-1">
+              <label>เบอร์โทร</label>
+              <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} placeholder="เช่น 02-123-4567" className="premium-input w-full font-mono text-xs" />
+            </div>
+            <div className="form-group col-span-2">
+              <label>ผู้ติดต่อ (เพิ่มได้หลายคน — คนแรก = ผู้ติดต่อหลัก)</label>
+              <ContactsEditor value={formData.contacts} onChange={(contacts) => setFormData((f) => ({ ...f, contacts }))} />
+            </div>
+            <div className="form-group col-span-2">
+              <label>เงื่อนไขเครดิต (Credit Terms)</label>
+              <input type="text" name="creditTerms" value={formData.creditTerms} onChange={handleInputChange} placeholder="เช่น เครดิต 30 วัน" className="premium-input w-full text-xs" />
+            </div>
+            <div className="form-group col-span-2">
+              <label>ที่อยู่ลูกค้า (ออกเอกสาร) <span className="text-[var(--red)]">*</span></label>
+              <textarea name="address" value={formData.address} onChange={handleInputChange} required rows={3} className="premium-input w-full text-xs" style={{ padding: "8px 12px", resize: "none" }}></textarea>
+            </div>
+            <div className="form-group col-span-2">
+              <label>ที่อยู่จัดส่ง (ถ้าต่างจากที่อยู่ออกเอกสาร)</label>
+              <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} rows={3} placeholder="เว้นว่าง = ใช้ที่อยู่ออกเอกสาร" className="premium-input w-full text-xs" style={{ padding: "8px 12px", resize: "none" }}></textarea>
+            </div>
+            <div className="form-group col-span-2">
+              <label>ชื่อแบรนด์สินค้า (Brands) <span className="text-[var(--red)]">*</span></label>
+              <input type="text" name="brandsStr" value={formData.brandsStr} onChange={handleInputChange} required placeholder="คั่นด้วยเครื่องหมายคอมมา เช่น Brand A, Brand B" className="premium-input w-full text-xs" />
+              <span className="text-[10px] text-[var(--text-3)] mt-1">คั่นด้วยลูกน้ำ (,)</span>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+            <button type="button" onClick={() => setIsEditing(false)} className="btn">ยกเลิก</button>
+            <button type="submit" disabled={isSubmitting} className="btn btn-primary px-6 text-xs font-semibold py-2">
+              {isSubmitting ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <OrderDetailModal order={selectedOrder} open={!!selectedOrder} onClose={() => setSelectedOrder(null)} />
     </>
   );
 }

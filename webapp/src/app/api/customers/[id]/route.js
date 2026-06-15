@@ -143,11 +143,21 @@ export async function PATCH(request, { params }) {
   // 'team'/'ownerId' allow transferring a customer to another team (gated above
   // by canEditRecord — supervisor cross-team, team roles within their scope).
   for (const k of [
-    'arCode', 'name', 'taxId', 'phone', 'address', 'brands', 'mapFileUrl',
+    'arCode', 'name', 'taxId', 'branchCode', 'phone', 'address', 'shippingAddress', 'brands',  // mapFileUrl ย้ายไป attachments แล้ว
     'contactPerson', 'contactPhone', 'email', 'creditTerms', 'jubiliId', 'metadata',  // master-data fields (0005, 0025)
     'team', 'ownerId',
+    'isActive',  // lifecycle flag (0030) — พักใช้/เปิดใช้ลูกค้า; edit-level gate (canEditRecord above)
   ]) {
     if (body[k] !== undefined) updates[k] = body[k];
+  }
+  // Contacts (0033): the list is source of truth; mirror primary -> legacy singles.
+  if (body.contacts !== undefined) {
+    const contacts = Array.isArray(body.contacts) ? body.contacts : [];
+    const primary = contacts[0] || {};
+    updates.contacts = contacts;
+    updates.contactPerson = primary.name || null;
+    updates.contactPhone = primary.phone || null;
+    updates.email = primary.email || null;
   }
   updates.updatedAt = new Date().toISOString();
 
@@ -157,7 +167,13 @@ export async function PATCH(request, { params }) {
     .eq('id', id)
     .select()
     .single();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (error.code === '23505') {
+      const msg = /taxId/i.test(error.message) ? 'เลขประจำตัวผู้เสียภาษี + สาขานี้มีในระบบแล้ว' : 'รหัสลูกค้านี้มีในระบบแล้ว';
+      return Response.json({ error: msg }, { status: 409 });
+    }
+    return Response.json({ error: error.message }, { status: 500 });
+  }
 
   // Cascade name/taxId changes to this customer's excise registrations
   // (they snapshot the customer for display/history).
