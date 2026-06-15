@@ -632,7 +632,7 @@ export default function ProjectDetailPage() {
       <option value="Completed">✓ เสร็จแล้ว</option>
     </Select>
   ) : (
-    <span className="status-pill" title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม"><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: TASK_STATUS_COLOR[t.status] }} /> {t.status}</span>
+    <span className="status-pill dot" style={{ "--dot": TASK_STATUS_COLOR[t.status] }} title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม">{t.status}</span>
   );
 
   // section "งานเพิ่มเติม" ใช้ทั้งใน List และ Table view (ไม่เข้า Gantt/พิมพ์)
@@ -815,8 +815,7 @@ export default function ProjectDetailPage() {
             <div><span style={{ color: "var(--text-3)" }}>หมวดสินค้า: </span>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span className={`status-pill ${statusPillClass(getComputedStatus(p))}`} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "8px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: statusDotColor(getComputedStatus(p)) }} />
+            <span className={`status-pill dot ${statusPillClass(getComputedStatus(p))}`} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "8px", "--dot": statusDotColor(getComputedStatus(p)) }}>
               {getComputedStatus(p)}
             </span>
           </div>
@@ -949,7 +948,7 @@ export default function ProjectDetailPage() {
                                   <option value="Completed">✓ เสร็จแล้ว</option>
                                 </Select>
                               ) : (
-                                <span className="status-pill"><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDotColor(task.status === "Completed" ? "Completed" : task.status === "In Progress" ? "In Progress" : "Pending") }} /> {task.status}</span>
+                                <span className="status-pill dot" style={{ "--dot": statusDotColor(task.status === "Completed" ? "Completed" : task.status === "In Progress" ? "In Progress" : "Pending") }}>{task.status}</span>
                               )}
                             </td>
                             <td style={{ fontSize: "12.5px", whiteSpace: "nowrap" }}>{formatDate(task.startDate)}</td>

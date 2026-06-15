@@ -256,8 +256,8 @@ export default function MyWorkPage() {
   const extraStatusCell = (t) => (canManageExtra(t)
     ? statusSelect(t, setPersonalStatus)
     : (
-      <span className={`status-pill ${t.status === "Completed" ? "success" : ""}`} title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม">
-        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}
+      <span className={`status-pill dot ${t.status === "Completed" ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }} title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม">
+        {TASK_STATUS_TH[t.status] || t.status}
       </span>
     ));
   // ป้าย "เพิ่มเติม" ใช้ซ้ำทั้ง 2 มุม
@@ -395,7 +395,7 @@ export default function MyWorkPage() {
                   {isExtra
                     ? extraStatusCell(t)
                     : (canUpdateTask(t) ? statusSelect(t, setProjectStatus) : (
-                      <span className="status-pill" title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์"><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}</span>
+                      <span className="status-pill dot" style={{ "--dot": statusDot(t.status) }} title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์">{TASK_STATUS_TH[t.status] || t.status}</span>
                     ))}
                 </div>
               </div>
@@ -578,8 +578,8 @@ export default function MyWorkPage() {
                                 {canUpdateTask(t) ? (
                                   statusSelect(t, setProjectStatus)
                                 ) : (
-                                  <span className={`status-pill ${t.status === "Completed" ? "success" : ""}`} title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์">
-                                    <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}
+                                  <span className={`status-pill dot ${t.status === "Completed" ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }} title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์">
+                                    {TASK_STATUS_TH[t.status] || t.status}
                                   </span>
                                 )}
                               </td>

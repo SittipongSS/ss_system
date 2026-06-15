@@ -1011,6 +1011,17 @@ h1, h2, h3, h4, h5, h6 {
   border: none;
 }
 
+/* leading status dot (opt-in via .dot) — color via --dot, falls back to text color.
+   keeps icon-bearing pills untouched and removes the repeated inline dot span. */
+.status-pill.dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dot, currentColor);
+}
+
 .pulse-dot {
   width: 6px;
   height: 6px;

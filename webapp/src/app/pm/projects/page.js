@@ -271,8 +271,7 @@ export default function ProjectsPage() {
         {!archive && <td style={{ fontSize: "12px", maxWidth: "200px" }}>{getCurrentStep(p)}</td>}
         <td style={{ fontSize: "12px" }}>{fmtDate(p.dueDate)}</td>
         <td>
-          <span className={`status-pill ${statusPillClass(cStatus)}`} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: statusDotColor(cStatus) }} />
+          <span className={`status-pill dot ${statusPillClass(cStatus)}`} style={{ "--dot": statusDotColor(cStatus) }}>
             {cStatus}
           </span>
           {cStatus === "Dropped" && p.metadata?.lossReason && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "4px", ...(archive ? { maxWidth: "160px" } : null) }}>{p.metadata.lossReason}</div>}
