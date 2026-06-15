@@ -4,13 +4,14 @@ import { useRouter } from "next/navigation";
 import {
   FolderKanban, Plus, Search, AlertTriangle, ChevronDown, ChevronRight,
   Edit2, Trash2, X, Check, Pause,
-  Filter, Tag, CircleDot, Package, UserCog, PenLine, Building2,
+  Tag, CircleDot, Package, UserCog, PenLine, Building2,
 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import SkeletonRows from "@/components/ui/Skeleton";
+import FilterPopover from "@/components/ui/FilterPopover";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 
@@ -315,20 +316,14 @@ export default function ProjectsPage() {
               <Search size={18} color="var(--text-3)" />
               <input type="text" placeholder="ค้นหาโปรเจกต์..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <div className="toolbar" style={{ gap: "8px", flexWrap: "wrap" }}>
-              <span className="toolbar-label"><Filter size={14} /> กรอง</span>
+            <FilterPopover count={activeFilterCount} onClear={clearAllFilters}>
               <MultiSelectFilter label="ประเภท" icon={Tag} options={typeOptions} selected={typeFilters} onChange={setTypeFilters} single />
               <MultiSelectFilter label="สถานะ" icon={CircleDot} options={statusOptions} selected={statusFilters} onChange={setStatusFilters} />
               <MultiSelectFilter label="หมวดสินค้า" icon={Package} options={categoryOptions} selected={categoryFilters} onChange={setCategoryFilters} />
               <MultiSelectFilter label="ผู้ดูแล" icon={UserCog} options={ownerOptions} selected={ownerFilters} onChange={setOwnerFilters} />
               <MultiSelectFilter label="ผู้จัดทำ" icon={PenLine} options={preparerOptions} selected={preparerFilters} onChange={setPreparerFilters} />
               <MultiSelectFilter label="ลูกค้า" icon={Building2} options={customerOptions} selected={customerFilters} onChange={setCustomerFilters} />
-              {activeFilterCount > 0 && (
-                <button className="btn ghost sm" onClick={clearAllFilters} style={{ color: "var(--text-3)" }} title="ล้างตัวกรองทั้งหมด">
-                  <X size={13} /> ล้างทั้งหมด ({activeFilterCount})
-                </button>
-              )}
-            </div>
+            </FilterPopover>
           </div>
 
           <div className="premium-glass-table table-responsive">
