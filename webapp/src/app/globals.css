@@ -1595,6 +1595,42 @@ input[type="number"] {
 .btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
 .btn-danger:hover { background: color-mix(in oklab, var(--red) 88%, #000); box-shadow: var(--shadow-md); }
 
+/* Empty state — centered icon + message (+ optional CTA). `.dashed` makes the
+   whole block a clickable add affordance. Replaces ad-hoc empty <div>/rows. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 28px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.empty-state .es-icon { opacity: 0.45; }
+button.empty-state { width: 100%; font: inherit; }
+.empty-state.dashed { border: 1px dashed var(--border); cursor: pointer; background: transparent; }
+.empty-state.dashed:hover { background: var(--panel-2); border-color: var(--border-strong); }
+
+/* Skeleton loading — shimmering placeholder bars. Replaces "กำลังโหลด..." text. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--panel-2);
+  border-radius: 6px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 7%, transparent), transparent);
+  animation: skeleton-sweep 1.3s infinite;
+}
+@keyframes skeleton-sweep { 100% { transform: translateX(100%); } }
+
 /* Icon-only ghost button — for edit / delete / insert affordances.
    Always pair with an aria-label. */
 .btn-icon {

@@ -5,6 +5,8 @@ import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import StatusSelect from "@/components/pm/StatusSelect";
+import EmptyState from "@/components/ui/EmptyState";
+import SkeletonRows from "@/components/ui/Skeleton";
 import { isSuperuser } from "@/lib/permissions";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 
@@ -422,7 +424,7 @@ export default function MyWorkPage() {
   ];
 
   const emptyState = (text) => (
-    <div className="glass-panel" style={{ padding: "32px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>{text}</div>
+    <EmptyState icon={ListTodo}>{text}</EmptyState>
   );
 
   return (
@@ -515,7 +517,7 @@ export default function MyWorkPage() {
       </div>
 
       {loading ? (
-        <div style={{ padding: "60px", textAlign: "center", color: "var(--text-3)" }}>กำลังโหลดข้อมูล...</div>
+        <SkeletonRows />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "28px" }}>
           {/* ── งานโปรเจกต์ ── */}
@@ -675,10 +677,9 @@ export default function MyWorkPage() {
               </button>
             </div>
             {visiblePersonal.length === 0 ? (
-              <button onClick={openAdd} className="glass-panel" style={{ width: "100%", padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px", cursor: "pointer", border: "1px dashed var(--border)", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                <Plus size={20} />
+              <EmptyState icon={Plus} dashed onClick={openAdd}>
                 {statusFilter !== "all" ? "ไม่มีงานส่วนตัวตรงกับตัวกรองนี้" : "ยังไม่มีงานส่วนตัว — กดเพื่อสร้าง to-do ของคุณ (เช่น โทรตามลูกค้า, เตรียมเอกสาร)"}
-              </button>
+              </EmptyState>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))", gap: "12px" }}>
                 {visiblePersonal.map((t) => {

@@ -7,7 +7,7 @@ import {
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
   TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight,
   Activity, CircleDashed,
-  Check, Printer, Table2, Filter, ArrowUpDown, User,
+  Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -18,6 +18,8 @@ import PredecessorPicker, { PredecessorPopover } from "@/components/pm/Predecess
 import Select from "@/components/ui/Select";
 import StatusSelect, { taskStatusColor } from "@/components/pm/StatusSelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import EmptyState from "@/components/ui/EmptyState";
+import SkeletonRows from "@/components/ui/Skeleton";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -589,8 +591,8 @@ export default function ProjectDetailPage() {
     return groups;
   }, [processedTasks, tableStatusFilter, tableSort]);
 
-  if (loading) return <div style={{ padding: "60px", textAlign: "center", color: "var(--text-3)" }}>กำลังโหลดข้อมูล...</div>;
-  if (!data) return <div style={{ padding: "60px", textAlign: "center", color: "var(--text-3)" }}>ไม่พบโครงการ</div>;
+  if (loading) return <SkeletonRows />;
+  if (!data) return <EmptyState icon={FolderX}>ไม่พบโครงการ</EmptyState>;
 
   const p = data;
   const hasWriteAccess = hasEditCap && !!data.canEdit;
@@ -886,9 +888,9 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           {total === 0 ? (
-            <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีขั้นตอนงาน</div>
+            <EmptyState icon={ListTodo}>ยังไม่มีขั้นตอนงาน</EmptyState>
           ) : tableGroups.length === 0 ? (
-            <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-3)" }}>ไม่มีขั้นตอนที่ตรงกับตัวกรอง</div>
+            <EmptyState icon={Filter}>ไม่มีขั้นตอนที่ตรงกับตัวกรอง</EmptyState>
           ) : (
             <div className="premium-glass-table table-responsive">
               <table className="premium-table">
@@ -1043,7 +1045,7 @@ export default function ProjectDetailPage() {
           </div>
 
           {total === 0 && (
-            <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีขั้นตอนงาน</div>
+            <EmptyState icon={ListTodo}>ยังไม่มีขั้นตอนงาน</EmptyState>
           )}
 
           {/* task timeline */}

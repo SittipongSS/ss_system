@@ -10,6 +10,7 @@ import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import SkeletonRows from "@/components/ui/Skeleton";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 
@@ -305,7 +306,7 @@ export default function ProjectsPage() {
       </div>
 
       {loading ? (
-        <div style={{ padding: "60px", textAlign: "center", color: "var(--text-3)" }}>กำลังโหลดข้อมูล...</div>
+        <SkeletonRows />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           {/* แถบเครื่องมือ: ค้นหา + กรอง + เรียงลำดับ */}
