@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Plus, PlusCircle, X, Flag, FileText, GanttChart,
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
-  TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight,
+  TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed,
   Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
 } from "lucide-react";
@@ -484,6 +484,35 @@ export default function ProjectDetailPage() {
     </>
   );
 
+  // เลื่อนลำดับขั้น (ขึ้น/ลง) ภายในเฟสเดียวกัน — cosmetic (stepOrder) ไม่กระทบ timeline
+  // (timeline ขับด้วย predecessor graph) จึงสลับลำดับแสดงผลได้ปลอดภัย
+  const moveTask = async (task, dir) => {
+    const ordered = [...processedTasks];
+    const i = ordered.findIndex((t) => t.id === task.id);
+    const j = dir === 'up' ? i - 1 : i + 1;
+    if (j < 0 || j >= ordered.length || ordered[j].phase !== task.phase) return; // ไม่ข้ามเฟส
+    [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+    const res = await fetch('/api/pm/project-tasks/reorder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: data.id, orderedIds: ordered.map((t) => t.id) }),
+    });
+    if (res.ok) load();
+  };
+
+  // ปุ่ม ▲▼ เลื่อนลำดับ — วางหน้า task ใช้ร่วมทุกวิว (List/Table/เอกสาร). disable ที่ขอบเฟส
+  const moveButtons = (task) => {
+    if (!canEdit) return null;
+    const i = processedTasks.findIndex((t) => t.id === task.id);
+    const canUp = i > 0 && processedTasks[i - 1].phase === task.phase;
+    const canDown = i >= 0 && i < processedTasks.length - 1 && processedTasks[i + 1].phase === task.phase;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "2px", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+        <button className="btn-icon" style={{ width: "22px", height: "18px" }} disabled={!canUp} onClick={() => moveTask(task, "up")} aria-label="เลื่อนขึ้น" title="เลื่อนขึ้น (ในเฟสเดียวกัน)"><ChevronUp size={14} /></button>
+        <button className="btn-icon" style={{ width: "22px", height: "18px" }} disabled={!canDown} onClick={() => moveTask(task, "down")} aria-label="เลื่อนลง" title="เลื่อนลง (ในเฟสเดียวกัน)"><ChevronDown size={14} /></button>
+      </div>
+    );
+  };
+
   // เหมือน syncSchedule แต่สำหรับฟอร์ม "เพิ่มขั้นตอน" (taskForm) — วันเริ่มเว้นว่างได้
   const syncTaskSchedule = (changes) =>
     setTaskForm((f) => {
@@ -938,7 +967,7 @@ export default function ProjectDetailPage() {
               <table className="premium-table">
                 <thead>
                   <tr>
-                    <th style={{ width: "44px", textAlign: "center" }}>#</th>
+                    <th style={{ width: canEdit && tableSort === "step" ? "78px" : "44px", textAlign: "center" }}>#</th>
                     <th>ขั้นตอน</th>
                     <th>แผนก</th>
                     <th>ผู้รับผิดชอบ</th>
@@ -969,7 +998,12 @@ export default function ProjectDetailPage() {
                         const assignee = resolveAssigneeName(task, users);
                         return (
                           <tr key={task.id} className="premium-row">
-                            <td style={{ textAlign: "center", fontWeight: 700, color: "var(--text-3)" }}>{task.displayNumber}</td>
+                            <td style={{ color: "var(--text-3)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "4px", justifyContent: "center" }}>
+                                {canEdit && tableSort === "step" && moveButtons(task)}
+                                <span style={{ fontWeight: 700 }}>{task.displayNumber}</span>
+                              </div>
+                            </td>
                             <td style={{ fontWeight: 500 }}>
                               <span onClick={() => canEdit && openEditModal(task)} title={canEdit ? "คลิกเพื่อแก้ไขขั้นตอน" : undefined} style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: canEdit ? "pointer" : "default" }}>
                                 {task.isMilestone && <Flag size={13} color="var(--amber)" strokeWidth={2.5} />}
@@ -1145,6 +1179,8 @@ export default function ProjectDetailPage() {
                       </div>
                     <div className="pm-task-card" style={{ background: task.isMilestone ? "color-mix(in srgb, var(--amber) 8%, transparent)" : (isCompleted ? "color-mix(in srgb, var(--green) 5%, transparent)" : (isInProgress ? "var(--panel-2)" : "var(--panel)")), border: `1px solid ${isCompleted ? "color-mix(in srgb, var(--green) 30%, transparent)" : (isInProgress ? "var(--accent)" : (task.isMilestone ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)"))}`, boxShadow: isInProgress ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none" }}>
                       {showConnector && <div className="pm-task-connector" style={{ background: isCompleted ? "var(--green)" : "var(--border)" }} />}
+
+                      {!isEditing && <div style={{ zIndex: 1, display: "flex", alignItems: "center" }}>{moveButtons(task)}</div>}
 
                       <div style={{ zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
                         <button onClick={() => canEdit && handleToggleTask(task)} disabled={!canEdit || task.status === "Pending" || isEditing} style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--bg)"), border: `2px solid ${isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--border)")}`, color: "#fff", cursor: !canEdit || task.status === "Pending" || isEditing ? "not-allowed" : "pointer", padding: 0, boxShadow: isInProgress ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none", transition: "all 0.2s" }}>
