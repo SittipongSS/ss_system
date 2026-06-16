@@ -1,0 +1,35 @@
+"use client";
+import { ListTodo, Table2, FileText } from "lucide-react";
+
+// ไอคอน + ป้ายมาตรฐานของมุมมอง PM — แหล่งเดียว ใช้ร่วมทุกหน้า
+// (My Work: list/table · Project detail: list/table/document)
+export const VIEW_META = {
+  list:     { icon: ListTodo, label: "List" },
+  table:    { icon: Table2,   label: "Table" },
+  document: { icon: FileText, label: "Gantt" },
+};
+
+// segmented แบบ icon-only — รับรายการ mode ที่จะแสดง
+export default function ViewSwitcher({ value, onChange, modes }) {
+  return (
+    <div className="segmented">
+      {modes.map((m) => {
+        const meta = VIEW_META[m];
+        if (!meta) return null;
+        const Icon = meta.icon;
+        return (
+          <button
+            key={m}
+            type="button"
+            onClick={() => onChange(m)}
+            className={`icon ${value === m ? "active" : ""}`}
+            title={`มุมมอง ${meta.label}`}
+            aria-label={`มุมมอง ${meta.label}`}
+          >
+            <Icon size={16} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}

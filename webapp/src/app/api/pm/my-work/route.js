@@ -1,29 +1,17 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
-import { isSuperuser, normalizeDepartment } from '@/lib/permissions';
+import { normalizeDepartment, pmTaskScopes } from '@/lib/permissions';
+import { withUser, ok, unauthorized } from '@/lib/http';
+import { teamProjectIds } from '@/lib/pm/projectsRepo';
 
 export const dynamic = 'force-dynamic';
-
-// Which scopes a role may request for PROJECT tasks:
-//   mine = งานที่ assign ให้ฉัน (ทุก role)
-//   team = งานของทีมตัวเอง (senior_ae, ac, superuser)
-//   all  = ทุกทีม (superuser: admin / ae_supervisor)
-function allowedScopes(role) {
-  if (isSuperuser(role)) return ['mine', 'team', 'all'];
-  if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
-  return ['mine'];
-}
 
 // GET /api/pm/my-work?scope=mine|team|all
 // คืน { scope, projectTasks, personalTasks, projects } — scope ถูกบังคับตาม role
 // ฝั่ง server. งานส่วนตัว = ของฉันเสมอ (ไม่ปนของคนอื่นแม้ scope ทีม/ทั้งหมด).
-export async function GET(request) {
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
-  if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
+export const GET = withUser(async ({ user, supabase, req }) => {
+  if (!user) return unauthorized();
 
-  const allowed = allowedScopes(user.role);
-  let scope = new URL(request.url).searchParams.get('scope') || 'mine';
+  const allowed = pmTaskScopes(user.role);
+  let scope = new URL(req.url).searchParams.get('scope') || 'mine';
   if (!allowed.includes(scope)) scope = 'mine';
 
   // ── project tasks ตาม scope ──
@@ -48,8 +36,7 @@ export async function GET(request) {
     const seen = new Set();
     projectTasks = [...(a || []), ...(b || []), ...(c || [])].filter((t) => (seen.has(t.id) ? false : seen.add(t.id)));
   } else if (scope === 'team') {
-    const { data: projs } = await supabase.from('projects').select('id').eq('team', user.team ?? null);
-    const ids = (projs || []).map((p) => p.id);
+    const ids = await teamProjectIds(supabase, user.team);
     if (ids.length) {
       const { data } = await supabase
         .from('project_tasks').select('*').in('projectId', ids)
@@ -78,8 +65,7 @@ export async function GET(request) {
   if (scope === 'team' || scope === 'all') {
     let q = supabase.from('personal_tasks').select('*').not('projectId', 'is', null);
     if (scope === 'team') {
-      const { data: teamProjs } = await supabase.from('projects').select('id').eq('team', user.team ?? null);
-      const teamProjIds = (teamProjs || []).map((p) => p.id);
+      const teamProjIds = await teamProjectIds(supabase, user.team);
       q = teamProjIds.length ? q.in('projectId', teamProjIds) : null;
     }
     if (q) { const { data } = await q.order('createdAt', { ascending: false }); extraPersonal = data || []; }
@@ -100,7 +86,7 @@ export async function GET(request) {
     projects = Object.fromEntries((ps || []).map((p) => [p.id, p]));
   }
 
-  return Response.json({
+  return ok({
     scope,
     allowedScopes: allowed,
     me: { id: user.id, name: user.name, role: user.role, team: user.team ?? null, department: normalizeDepartment(user.department) },
@@ -108,4 +94,4 @@ export async function GET(request) {
     personalTasks: personalTasks || [],
     projects,
   });
-}
+});
