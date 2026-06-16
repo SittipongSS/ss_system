@@ -374,11 +374,12 @@ export default function MyWorkPage() {
             {t.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}
           </div>
           <div
+            className="pm-task-card"
             onClick={handleCardClick}
             title={isExtra ? (canManageExtra(t) ? "คลิกเพื่อแก้ไขงาน" : undefined) : "เปิดหน้าโปรเจกต์เพื่อแก้รายละเอียด"}
-            style={{ flex: 1, display: "flex", gap: "16px", padding: "16px 18px", background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: "14px", position: "relative", cursor: handleCardClick ? "pointer" : "default", transition: "all 0.2s", boxShadow: isInProgress ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none" }}
+            style={{ background: cardBg, border: `1px solid ${cardBorder}`, cursor: handleCardClick ? "pointer" : "default", boxShadow: isInProgress ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none" }}
           >
-            {hasNext && <div style={{ position: "absolute", left: "29px", top: "50px", bottom: "-20px", width: "2px", background: isCompleted ? "var(--green)" : "var(--border)", borderRadius: "2px", zIndex: 0 }} />}
+            {hasNext && <div className="pm-task-connector" style={{ background: isCompleted ? "var(--green)" : "var(--border)" }} />}
 
             <div style={{ zIndex: 1 }}>
               <div style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: circleBg, border: `2px solid ${circleBorder}`, color: "#fff" }}>

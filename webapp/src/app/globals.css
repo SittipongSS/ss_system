@@ -1614,6 +1614,31 @@ button.empty-state { width: 100%; font: inherit; }
 .empty-state.dashed { border: 1px dashed var(--border); cursor: pointer; background: transparent; }
 .empty-state.dashed:hover { background: var(--panel-2); border-color: var(--border-strong); }
 
+/* PM task card — shared shell for the timeline/work cards (project detail List
+   view + My Work). State-dependent bg/border/shadow stay inline because their
+   precedence differs per view; this class owns only the identical static box. */
+.pm-task-card {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 14px;
+  position: relative;
+  transition: all 0.2s;
+}
+.pm-task-connector {
+  position: absolute;
+  left: 29px;
+  top: 50px;
+  bottom: -20px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+
 /* Skeleton loading — shimmering placeholder bars. Replaces "กำลังโหลด..." text. */
 .skeleton {
   position: relative;
