@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Plus, PlusCircle, X, Flag, FileText, GanttChart,
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
-  TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight,
+  TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed,
   Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
 } from "lucide-react";
@@ -483,6 +483,21 @@ export default function ProjectDetailPage() {
       </div>
     </>
   );
+
+  // เลื่อนลำดับขั้น (ขึ้น/ลง) ภายในเฟสเดียวกัน — cosmetic (stepOrder) ไม่กระทบ timeline
+  // (timeline ขับด้วย predecessor graph) จึงสลับลำดับแสดงผลได้ปลอดภัย
+  const moveTask = async (task, dir) => {
+    const ordered = [...processedTasks];
+    const i = ordered.findIndex((t) => t.id === task.id);
+    const j = dir === 'up' ? i - 1 : i + 1;
+    if (j < 0 || j >= ordered.length || ordered[j].phase !== task.phase) return; // ไม่ข้ามเฟส
+    [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+    const res = await fetch('/api/pm/project-tasks/reorder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: data.id, orderedIds: ordered.map((t) => t.id) }),
+    });
+    if (res.ok) load();
+  };
 
   // เหมือน syncSchedule แต่สำหรับฟอร์ม "เพิ่มขั้นตอน" (taskForm) — วันเริ่มเว้นว่างได้
   const syncTaskSchedule = (changes) =>
@@ -1176,6 +1191,8 @@ export default function ProjectDetailPage() {
                                 )}
                                 {canEdit && (
                                   <div style={{ display: "flex", gap: "4px" }}>
+                                    <button className="btn-icon" disabled={!(idx > 0 && processedTasks[idx - 1].phase === task.phase)} onClick={() => moveTask(task, "up")} aria-label="เลื่อนขึ้น" title="เลื่อนขึ้น (ในเฟสเดียวกัน)"><ChevronUp size={14} /></button>
+                                    <button className="btn-icon" disabled={!(idx < processedTasks.length - 1 && processedTasks[idx + 1].phase === task.phase)} onClick={() => moveTask(task, "down")} aria-label="เลื่อนลง" title="เลื่อนลง (ในเฟสเดียวกัน)"><ChevronDown size={14} /></button>
                                     <button className="btn-icon" onClick={() => startEditing(task)} aria-label="แก้ไขขั้นตอน" title="แก้ไข"><Edit2 size={14} /></button>
                                     <button className="btn-icon danger" onClick={() => deleteTask(task.id, task.name)} aria-label="ลบขั้นตอน" title="ลบขั้นตอน"><Trash2 size={14} /></button>
                                   </div>
