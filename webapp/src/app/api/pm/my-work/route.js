@@ -1,18 +1,8 @@
-import { isSuperuser, normalizeDepartment } from '@/lib/permissions';
+import { normalizeDepartment, pmTaskScopes } from '@/lib/permissions';
 import { withUser, ok, unauthorized } from '@/lib/http';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
 
 export const dynamic = 'force-dynamic';
-
-// Which scopes a role may request for PROJECT tasks:
-//   mine = งานที่ assign ให้ฉัน (ทุก role)
-//   team = งานของทีมตัวเอง (senior_ae, ac, superuser)
-//   all  = ทุกทีม (superuser: admin / ae_supervisor)
-function allowedScopes(role) {
-  if (isSuperuser(role)) return ['mine', 'team', 'all'];
-  if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
-  return ['mine'];
-}
 
 // GET /api/pm/my-work?scope=mine|team|all
 // คืน { scope, projectTasks, personalTasks, projects } — scope ถูกบังคับตาม role
@@ -20,7 +10,7 @@ function allowedScopes(role) {
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
 
-  const allowed = allowedScopes(user.role);
+  const allowed = pmTaskScopes(user.role);
   let scope = new URL(req.url).searchParams.get('scope') || 'mine';
   if (!allowed.includes(scope)) scope = 'mine';
 

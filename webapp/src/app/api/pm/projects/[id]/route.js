@@ -1,4 +1,4 @@
-import { viewScope, editScope, inScope, isSuperuser } from '@/lib/permissions';
+import { viewScope, editScope, inScope, canDeleteRecord } from '@/lib/permissions';
 import { mergeTemplateTasks, recalculateSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -152,10 +152,8 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
   const project = await loadProject(supabase, idOrCode);
   if (!project) return notFound('ไม่พบโปรเจกต์');
   const id = project.id;
-  // delete scope: superuser=all; senior_ae=own team; others none
-  const scope = isSuperuser(user?.role) ? 'all'
-    : user?.role === 'senior_ae' ? 'team' : 'none';
-  if (!inScope(scope, user, project)) {
+  // delete scope: superuser=all; senior_ae=own team; others none (deleteScope 'projects')
+  if (!canDeleteRecord(user, 'projects', project)) {
     return forbidden();
   }
 

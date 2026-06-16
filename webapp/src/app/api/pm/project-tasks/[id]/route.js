@@ -1,4 +1,4 @@
-import { editScope, inScope, can, normalizeDepartment } from '@/lib/permissions';
+import { editScope, inScope, pmTaskEditTier } from '@/lib/permissions';
 import { recalculateForward, todayStr } from '@/lib/pm/schedule';
 import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -32,19 +32,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { task, project } = await loadTaskWithProject(supabase, id);
   if (!task) return notFound('ไม่พบขั้นตอน');
 
-  // สิทธิ์แก้ไขมี 2 ระดับ:
-  //   fullEdit     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโปรเจกต์)
-  //   workflowEdit — ผู้รับผิดชอบ (assigneeId) หรือพนักงานฝ่ายเดียวกับขั้นตอน (role===department)
-  //                  อัปเดตได้เฉพาะสถานะ/ความคืบหน้า/โน้ต ไม่แตะวันเริ่ม/ลำดับ/การมอบหมาย
-  const fullEdit = inScope(editScope(user?.role), user, project || {});
-  const ownsTask = !!user?.id && task.assigneeId === user.id;
-  // dept-broad path is for teamless departments only (staff = PC/PD/WH/RD/QC);
-  // sales depts (SA) stay team-scoped via fullEdit, so they don't leak across teams.
-  const sameDept = user?.role === 'staff' && !!user?.department && normalizeDepartment(user.department) === task.role;
-  const workflowEdit = !fullEdit && can(user?.role, 'pm:view') && (ownsTask || sameDept);
-  if (!fullEdit && !workflowEdit) {
-    return forbidden();
-  }
+  // สิทธิ์แก้ไขมี 2 ระดับ (รวม logic ไว้ที่ pmTaskEditTier ใน permissions.js):
+  //   full     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโปรเจกต์)
+  //   workflow — ผู้รับผิดชอบ (assigneeId) หรือ staff ฝ่ายเดียวกับขั้นตอน (role===department)
+  //              อัปเดตได้เฉพาะสถานะ/ความคืบหน้า/โน้ต ไม่แตะวันเริ่ม/ลำดับ/การมอบหมาย
+  const tier = pmTaskEditTier(user, task, project);
+  if (tier === 'none') return forbidden();
+  const workflowEdit = tier === 'workflow';
 
   const body = await req.json();
   // workflowEdit จำกัดเฉพาะ field งาน/สถานะ — กันไม่ให้พนักงานรื้อแผนหรือ reassign

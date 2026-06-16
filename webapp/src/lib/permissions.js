@@ -230,10 +230,10 @@ export function editScope(role) {
 
 // Delete is stricter than edit:
 //   customers / products — superuser only (org rule)
-//   orders               — superuser (all teams) + senior_ae (own team)
+//   orders / projects    — superuser (all teams) + senior_ae (own team)
 export function deleteScope(role, resource) {
   if (isSuperuser(role)) return 'all';
-  if (resource === 'orders' && role === 'senior_ae') return 'team';
+  if ((resource === 'orders' || resource === 'projects') && role === 'senior_ae') return 'team';
   return 'none';
 }
 
@@ -273,6 +273,29 @@ export function canEditRecord(user, resource, record) {
 
 export function canDeleteRecord(user, resource, record) {
   return inScope(deleteScope(user?.role, resource), user, record);
+}
+
+// ── PM (project management) predicates ────────────────────────────────
+// Which task scopes a role may request in My Work:
+//   mine = tasks assigned to me · team = my team's projects · all = every team
+export function pmTaskScopes(role) {
+  if (isSuperuser(role)) return ['mine', 'team', 'all'];
+  if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
+  return ['mine'];
+}
+
+// Authority to edit a single project task. Pure — caller passes the loaded
+// task + parent project. Returns:
+//   'full'     — may edit the whole plan (team-scoped sales/admin)
+//   'workflow' — assignee, or same-department staff: status/progress/notes only
+//   'none'     — may not edit
+export function pmTaskEditTier(user, task, project) {
+  if (inScope(editScope(user?.role), user, project || {})) return 'full';
+  const ownsTask = !!user?.id && task?.assigneeId === user.id;
+  const sameDept = user?.role === 'staff' && !!user?.department
+    && normalizeDepartment(user.department) === task?.role;
+  if (can(user?.role, 'pm:view') && (ownsTask || sameDept)) return 'workflow';
+  return 'none';
 }
 
 // ── Field-level edit gating ───────────────────────────────────────────
