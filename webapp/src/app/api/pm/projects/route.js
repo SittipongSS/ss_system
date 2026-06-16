@@ -1,24 +1,20 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
 import { viewScope } from '@/lib/permissions';
 import { resolveCustomer } from '@/lib/master/customers';
 import { buildProjectTasks } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
+import { withUser, ok, fail } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/pm/projects — team-scoped list (supervisor sees all).
-export async function GET() {
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
-
+export const GET = withUser(async ({ user, supabase }) => {
   let query = supabase.from('projects').select('*').order('createdAt', { ascending: false });
   if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
 
   const { data, error } = await query;
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return fail(error.message, 500);
 
   // Attach a lightweight task summary so the list UI can render progress bars,
   // overdue counts and the current step (ss-cj Board/Portfolio look) without a
@@ -35,17 +31,15 @@ export async function GET() {
     for (const p of data) p.tasks = byProject[p.id] || [];
   }
 
-  return Response.json(data);
-}
+  return ok(data);
+});
 
 // POST /api/pm/projects — create a project + auto-generate its template tasks.
-export async function POST(request) {
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
-  const body = await request.json();
+export const POST = withUser(async ({ user, supabase, req }) => {
+  const body = await req.json();
 
   if (!body.name) {
-    return Response.json({ error: 'ต้องระบุชื่อโปรเจกต์' }, { status: 400 });
+    return fail('ต้องระบุชื่อโปรเจกต์', 400);
   }
 
   // รหัสโปรเจกต์ PJ-YYMMNNN (ลำดับรันต่อเดือน). การอ่าน max แล้ว +1 ไม่ atomic →
@@ -119,13 +113,13 @@ export async function POST(request) {
       .single());
     if (!error) break;
     if (error.code === '23505') {
-      if (!autoCode) return Response.json({ error: 'รหัสโปรเจกต์ซ้ำ: ' + projectCode }, { status: 409 });
+      if (!autoCode) return fail('รหัสโปรเจกต์ซ้ำ: ' + projectCode, 409);
       projectCode = await computeNextCode(); // ชน → ขยับเลขแล้วลองใหม่
       continue;
     }
     break; // error อื่น → ออกไปคืน 500 ด้านล่าง
   }
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return fail(error.message, 500);
 
   // Load the editable holiday calendar so the timeline counts business days
   // against the real calendar (falls back to hardcoded THAI_HOLIDAYS).
@@ -143,7 +137,7 @@ export async function POST(request) {
       .from('project_tasks')
       .insert(taskRows)
       .select();
-    if (taskErr) return Response.json({ error: 'สร้างขั้นตอนไม่สำเร็จ: ' + taskErr.message }, { status: 500 });
+    if (taskErr) return fail('สร้างขั้นตอนไม่สำเร็จ: ' + taskErr.message, 500);
     tasks = inserted || [];
   }
 
@@ -160,5 +154,5 @@ export async function POST(request) {
     if (ppErr) console.error('Failed to link products:', ppErr.message);
   }
 
-  return Response.json({ ...project, tasks }, { status: 201 });
-}
+  return ok({ ...project, tasks }, 201);
+});

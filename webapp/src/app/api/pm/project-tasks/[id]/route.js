@@ -1,10 +1,9 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
 import { editScope, inScope, can, normalizeDepartment } from '@/lib/permissions';
 import { recalculateForward, todayStr } from '@/lib/pm/schedule';
 import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
+import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,13 +26,11 @@ async function loadTaskWithProject(supabase, id) {
 }
 
 // PATCH /api/pm/project-tasks/[id]
-export async function PATCH(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
+  const { id } = await ctx.params;
 
   const { task, project } = await loadTaskWithProject(supabase, id);
-  if (!task) return Response.json({ error: 'ไม่พบขั้นตอน' }, { status: 404 });
+  if (!task) return notFound('ไม่พบขั้นตอน');
 
   // สิทธิ์แก้ไขมี 2 ระดับ:
   //   fullEdit     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโปรเจกต์)
@@ -46,10 +43,10 @@ export async function PATCH(request, { params }) {
   const sameDept = user?.role === 'staff' && !!user?.department && normalizeDepartment(user.department) === task.role;
   const workflowEdit = !fullEdit && can(user?.role, 'pm:view') && (ownsTask || sameDept);
   if (!fullEdit && !workflowEdit) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return forbidden();
   }
 
-  const body = await request.json();
+  const body = await req.json();
   // workflowEdit จำกัดเฉพาะ field งาน/สถานะ — กันไม่ให้พนักงานรื้อแผนหรือ reassign
   const WORKFLOW_FIELDS = ['status', 'actualFinishDate', 'note', 'showNoteInPrint'];
   const editable = workflowEdit ? EDITABLE.filter((k) => WORKFLOW_FIELDS.includes(k)) : EDITABLE;
@@ -96,7 +93,7 @@ export async function PATCH(request, { params }) {
   if (isUserEdit && !task.userEdited) updates.userEdited = true;
 
   const { data, error } = await supabase.from('project_tasks').update(updates).eq('id', id).select().single();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return fail(error.message, 500);
 
   // ── auto status: แก้สถานะ/predecessors ของขั้นนี้ → คำนวณสถานะทั้งกราฟใหม่
   // (กดเสร็จ → ขั้นถัดไปที่พร้อม เป็น In Progress ; ถอย/แก้ pred → ขั้นถัดที่ไม่พร้อม กลับ Pending).
@@ -141,27 +138,25 @@ export async function PATCH(request, { params }) {
 
       // คืน task ที่แก้พร้อม start/finish ที่คำนวณใหม่ (เผื่อ client ไม่ได้ reload)
       const self = recalced.find((r) => r.id === id);
-      if (self) return Response.json({ ...data, startDate: self.startDate, finishDate: self.finishDate, cellsOverride: self.cellsOverride ?? null });
+      if (self) return ok({ ...data, startDate: self.startDate, finishDate: self.finishDate, cellsOverride: self.cellsOverride ?? null });
     }
   }
 
-  return Response.json(data);
-}
+  return ok(data);
+});
 
 // DELETE /api/pm/project-tasks/[id]
-export async function DELETE(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const DELETE = withUser(async ({ user, supabase, ctx }) => {
+  const { id } = await ctx.params;
 
   const { task, project } = await loadTaskWithProject(supabase, id);
-  if (!task) return Response.json({ error: 'ไม่พบขั้นตอน' }, { status: 404 });
+  if (!task) return notFound('ไม่พบขั้นตอน');
   if (!inScope(editScope(user?.role), user, project || {})) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return forbidden();
   }
 
   const { error } = await supabase.from('project_tasks').delete().eq('id', id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return fail(error.message, 500);
 
   // ── recalc forward: ลบขั้นตอนแล้วเลื่อน timeline ของขั้นที่เหลือ ──
   // 1) ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น
@@ -207,5 +202,5 @@ export async function DELETE(request, { params }) {
     await propagateAndPersist(supabase, project.id);
   }
 
-  return Response.json({ success: true });
-}
+  return ok({ success: true });
+});

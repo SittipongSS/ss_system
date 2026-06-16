@@ -1,35 +1,30 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
+import { withUser, ok, fail, unauthorized, badRequest } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/pm/personal-tasks — งานส่วนตัวของฉันเท่านั้น (เห็นเฉพาะของตัวเอง).
-export async function GET() {
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
-  if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
+export const GET = withUser(async ({ user, supabase }) => {
+  if (!user) return unauthorized();
 
   const { data, error } = await supabase
     .from('personal_tasks')
     .select('*')
     .eq('ownerId', user.id)
     .order('createdAt', { ascending: false });
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json(data || []);
-}
+  if (error) return fail(error.message, 500);
+  return ok(data || []);
+});
 
 // POST /api/pm/personal-tasks — สร้างงาน.
 //  - ผูกโปรเจกต์ (projectId) → "งานเพิ่มเติม": มอบหมาย (assigneeId) ให้คนในทีมของ
 //    โปรเจกต์ได้ เห็นร่วมกันทั้งโปรเจกต์.
 //  - ไม่ผูกโปรเจกต์ → "งานส่วนตัว": เห็นเฉพาะเจ้าของ, ห้ามตั้ง assignee.
-export async function POST(request) {
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
-  if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
+export const POST = withUser(async ({ user, supabase, req }) => {
+  if (!user) return unauthorized();
 
-  const body = await request.json();
+  const body = await req.json();
   if (!body.title || !body.title.trim()) {
-    return Response.json({ error: 'ต้องระบุชื่องาน' }, { status: 400 });
+    return badRequest('ต้องระบุชื่องาน');
   }
 
   const projectId = body.projectId || null;
@@ -41,7 +36,7 @@ export async function POST(request) {
     const { data: au } = await supabase.auth.admin.getUserById(body.assigneeId);
     const assigneeTeam = au?.user?.app_metadata?.team ?? null;
     if (!au?.user || (proj && assigneeTeam !== proj.team)) {
-      return Response.json({ error: 'ผู้รับมอบต้องอยู่ทีมเดียวกับโปรเจกต์' }, { status: 400 });
+      return badRequest('ผู้รับมอบต้องอยู่ทีมเดียวกับโปรเจกต์');
     }
     assigneeId = body.assigneeId;
   }
@@ -59,6 +54,6 @@ export async function POST(request) {
   // สำหรับงานทั่วไป/งานส่วนตัว; การมอบหมายจริงต้องรัน migration ก่อน
   if (assigneeId) row.assigneeId = assigneeId;
   const { data, error } = await supabase.from('personal_tasks').insert(row).select().single();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json(data, { status: 201 });
-}
+  if (error) return fail(error.message, 500);
+  return ok(data, 201);
+});

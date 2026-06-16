@@ -1,19 +1,16 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
 import { viewScope, editScope, inScope } from '@/lib/permissions';
 import { recalculateForward, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
+import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/pm/project-tasks?projectId=...  — team-scoped (via parent project).
 // Without projectId: all tasks the user may see (own team / all).
-export async function GET(request) {
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
-  const projectId = new URL(request.url).searchParams.get('projectId');
+export const GET = withUser(async ({ user, supabase, req }) => {
+  const projectId = new URL(req.url).searchParams.get('projectId');
 
   if (projectId) {
     const { data, error } = await supabase
@@ -21,45 +18,43 @@ export async function GET(request) {
       .select('*')
       .eq('projectId', projectId)
       .order('stepOrder', { ascending: true });
-    if (error) return Response.json({ error: error.message }, { status: 500 });
-    return Response.json(data);
+    if (error) return fail(error.message, 500);
+    return ok(data);
   }
 
   // Cross-project list — limit to the team's projects when team-scoped.
   if (viewScope(user?.role) === 'team') {
     const { data: projs } = await supabase.from('projects').select('id').eq('team', user?.team ?? null);
     const ids = (projs || []).map((p) => p.id);
-    if (!ids.length) return Response.json([]);
+    if (!ids.length) return ok([]);
     const { data, error } = await supabase
       .from('project_tasks')
       .select('*')
       .in('projectId', ids)
       .order('stepOrder', { ascending: true });
-    if (error) return Response.json({ error: error.message }, { status: 500 });
-    return Response.json(data);
+    if (error) return fail(error.message, 500);
+    return ok(data);
   }
 
   const { data, error } = await supabase
     .from('project_tasks')
     .select('*')
     .order('stepOrder', { ascending: true });
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json(data);
-}
+  if (error) return fail(error.message, 500);
+  return ok(data);
+});
 
 // POST — add a task to a project (manual). stepOrder = max+1.
-export async function POST(request) {
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
-  const body = await request.json();
-  if (!body.projectId) return Response.json({ error: 'ต้องระบุ projectId' }, { status: 400 });
+export const POST = withUser(async ({ user, supabase, req }) => {
+  const body = await req.json();
+  if (!body.projectId) return badRequest('ต้องระบุ projectId');
 
   // Row-level scope: a task may only be added to a project the user may edit
   // (own team / own record). Mirrors the checks on the other PM write routes.
   const { data: project } = await supabase.from('projects').select('*').eq('id', body.projectId).maybeSingle();
-  if (!project) return Response.json({ error: 'ไม่พบโปรเจกต์' }, { status: 404 });
+  if (!project) return notFound('ไม่พบโปรเจกต์');
   if (!inScope(editScope(user?.role), user, project)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return forbidden();
   }
 
   const { data: allTasks } = await supabase
@@ -124,11 +119,11 @@ export async function POST(request) {
   const finalRow = recalced.find(t => t.id === row.id);
 
   const { data, error } = await supabase.from('project_tasks').insert(finalRow).select().single();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return fail(error.message, 500);
 
   // ขั้นใหม่อาจทำให้กราฟเปลี่ยน (เช่นแทรกขั้นที่ไม่มี predecessor = พร้อมทำทันที,
   // หรือไปคั่นกลางทำให้ขั้นถัดไม่พร้อม) → คำนวณสถานะทั้งโปรเจกต์ใหม่. client เรียก load() ต่อ.
   await propagateAndPersist(supabase, body.projectId);
 
-  return Response.json(data, { status: 201 });
-}
+  return ok(data, 201);
+});
