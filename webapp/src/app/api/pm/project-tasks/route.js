@@ -1,5 +1,5 @@
 import { viewScope, editScope, inScope } from '@/lib/permissions';
-import { recalculateForward, todayStr } from '@/lib/pm/schedule';
+import { recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
@@ -111,12 +111,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     note: body.note || '',
     showNoteInPrint: !!body.showNoteInPrint,
     origin: 'custom', // ผู้ใช้เพิ่มเอง (template ใช้ DB default 'template') — migration 0022
+    // ไม่ใส่ startLocked ตอนสร้าง — ปล่อย DB default false (กัน insert พังถ้า migration 0032
+    // ยังไม่รัน); ปักหมุดทำผ่านการแก้วันเริ่มภายหลัง (PATCH)
   };
 
   setHolidays([...(await holidaySet())]);
   const tasksWithNew = [...(allTasks || []), row];
-  const anchor = project.startDate || todayStr();
-  const recalced = recalculateForward(tasksWithNew, anchor);
+  const recalced = recalculateGraph(tasksWithNew, resolveSchedule(project).anchor);
   const finalRow = recalced.find(t => t.id === row.id);
 
   const { data, error } = await supabase.from('project_tasks').insert(finalRow).select().single();

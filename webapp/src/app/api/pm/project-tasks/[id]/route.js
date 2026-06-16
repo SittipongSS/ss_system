@@ -1,5 +1,5 @@
 import { editScope, inScope, pmTaskEditTier } from '@/lib/permissions';
-import { recalculateForward, todayStr } from '@/lib/pm/schedule';
+import { recalculateGraph, resolveSchedule, todayStr } from '@/lib/pm/schedule';
 import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
@@ -65,6 +65,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     delete updates.finishDate;
   }
 
+  // ผู้ใช้ตั้งวันเริ่มเอง = ปักหมุด (startLocked); เคลียร์วันเริ่ม = ปลดหมุด → ไหลตาม dependency
+  if ('startDate' in updates) updates.startLocked = !!updates.startDate;
+
   // ── #2 variance: ตั้ง/ล้าง actualFinishDate ตามการเปลี่ยนสถานะ ──
   // (ทำเฉพาะเมื่อ client ไม่ได้ส่ง actualFinishDate มาเอง)
   if (body.status !== undefined && body.status !== task.status && body.actualFinishDate === undefined) {
@@ -91,10 +94,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     await propagateAndPersist(supabase, project.id);
   }
 
-  // ── #1 recalc: ถ้าแก้วันเริ่ม/จำนวนวัน/predecessors → คำนวณ timeline ใหม่
-  // ตั้งแต่ task นี้เป็นต้นไป (anchor = วันเริ่มใหม่ของ task นี้) แล้ว persist
-  // เฉพาะแถวที่ start/finish/cells เปลี่ยนจริง — mirror updateTaskDetails ของ ss-cj ──
-  const schedulingChanged = SCHEDULE_FIELDS.some((k) => k in updates);
+  // ── #1 recalc (dependency-driven): แก้วันเริ่ม/จำนวนวัน/predecessors/ปักหมุด →
+  // คำนวณ timeline ทั้งกราฟใหม่จากวันเริ่มโปรเจกต์ตามสาย predecessor จริง แล้ว persist
+  // เฉพาะแถวที่เปลี่ยน. ขั้นที่ไม่ผูกกับขั้นนี้จะไม่ขยับ (ต่างจาก slice แบบเดิมที่ลากทุกขั้นที่อยู่หลัง) ──
+  const schedulingChanged = SCHEDULE_FIELDS.some((k) => k in updates) || 'startLocked' in updates;
   if (schedulingChanged && project) {
     setHolidays([...(await holidaySet())]);
     const { data: all } = await supabase
@@ -105,10 +108,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     if (all && all.length) {
       const applied = all.map((t) => (t.id === id ? { ...t, ...updates } : t));
-      const idx = applied.findIndex((t) => t.id === id);
-      const fromHere = applied.slice(idx);
-      const anchor = applied[idx].startDate || project.startDate || todayStr();
-      const recalced = recalculateForward(fromHere, anchor, applied);
+      const recalced = recalculateGraph(applied, resolveSchedule(project).anchor);
 
       const sameCells = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
       const changed = recalced.filter((r) => {
@@ -125,7 +125,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         ));
       }
 
-      // คืน task ที่แก้พร้อม start/finish ที่คำนวณใหม่ (เผื่อ client ไม่ได้ reload)
+      // คืน task ที่แก้พร้อม start/finish ที่คำนวณใหม่ (clamp pin แล้ว — เผื่อ client ไม่ reload)
       const self = recalced.find((r) => r.id === id);
       if (self) return ok({ ...data, startDate: self.startDate, finishDate: self.finishDate, cellsOverride: self.cellsOverride ?? null });
     }
@@ -147,9 +147,9 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
   const { error } = await supabase.from('project_tasks').delete().eq('id', id);
   if (error) return fail(error.message, 500);
 
-  // ── recalc forward: ลบขั้นตอนแล้วเลื่อน timeline ของขั้นที่เหลือ ──
+  // ── recalc (dependency-driven): ลบขั้นตอนแล้วคำนวณ timeline ของขั้นที่เหลือใหม่ ──
   // 1) ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น
-  // 2) คำนวณ start/finish ใหม่ตั้งแต่ตำแหน่งที่ลบเป็นต้นไป (คงขั้นก่อนหน้าไว้)
+  // 2) recalculateGraph ทั้งกราฟ → ขั้นที่เคยรอขั้นที่ลบจะขยับมาเร็วขึ้นตามจริง (ไม่กระทบขั้นอิสระ)
   if (project) {
     setHolidays([...(await holidaySet())]);
     const { data: all } = await supabase
@@ -157,19 +157,16 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
       .order('stepOrder', { ascending: true });
 
     if (all && all.length) {
+      // ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น แล้วคำนวณทั้งกราฟใหม่
       const cleaned = all.map((t) =>
         Array.isArray(t.predecessors) && t.predecessors.includes(id)
           ? { ...t, predecessors: t.predecessors.filter((p) => p !== id) }
           : t
       );
-      const fromHere = cleaned.filter((t) => (t.stepOrder ?? 0) >= (task.stepOrder ?? 0));
-      const anchor = task.startDate || project.startDate || todayStr();
-      const recalced = recalculateForward(fromHere, anchor, cleaned);
-      const recalcedMap = new Map(recalced.map((r) => [r.id, r]));
+      const recalced = recalculateGraph(cleaned, resolveSchedule(project).anchor);
 
       const sameJson = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-      const final = cleaned.map((t) => recalcedMap.get(t.id) || t);
-      const changed = final.filter((r) => {
+      const changed = recalced.filter((r) => {
         const orig = all.find((o) => o.id === r.id);
         return orig.startDate !== r.startDate || orig.finishDate !== r.finishDate
           || !sameJson(orig.cellsOverride, r.cellsOverride) || !sameJson(orig.predecessors, r.predecessors);

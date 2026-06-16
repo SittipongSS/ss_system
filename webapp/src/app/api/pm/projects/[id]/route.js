@@ -1,5 +1,5 @@
 import { viewScope, editScope, inScope, canDeleteRecord } from '@/lib/permissions';
-import { mergeTemplateTasks, recalculateSchedule } from '@/lib/pm/schedule';
+import { mergeTemplateTasks, recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
@@ -108,7 +108,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const { data: existing } = await supabase
       .from('project_tasks').select('*').eq('projectId', id).order('stepOrder', { ascending: true });
     if (existing && existing.length) {
-      const recalced = recalculateSchedule(existing, data, existing);
+      const recalced = recalculateGraph(existing, resolveSchedule(data).anchor);
       await Promise.all(
         recalced
           .filter((r, i) => r.startDate !== existing[i].startDate || r.finishDate !== existing[i].finishDate)
