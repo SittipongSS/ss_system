@@ -1173,14 +1173,18 @@ export default function ProjectDetailPage() {
                       </div>
                     )}
                     <div style={{ display: "flex", alignItems: "stretch", gap: "0" }}>
+                      {/* ปุ่มเลื่อนลำดับ — คอลัมน์หน้าสุด (นอกการ์ด พ้นเส้นเชื่อม) */}
+                      {canEdit && !isEditing && (
+                        <div style={{ width: "26px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {moveButtons(task)}
+                        </div>
+                      )}
                       {/* Milestone icon outside card */}
                       <div style={{ width: "28px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         {task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}
                       </div>
                     <div className="pm-task-card" style={{ background: task.isMilestone ? "color-mix(in srgb, var(--amber) 8%, transparent)" : (isCompleted ? "color-mix(in srgb, var(--green) 5%, transparent)" : (isInProgress ? "var(--panel-2)" : "var(--panel)")), border: `1px solid ${isCompleted ? "color-mix(in srgb, var(--green) 30%, transparent)" : (isInProgress ? "var(--accent)" : (task.isMilestone ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)"))}`, boxShadow: isInProgress ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none" }}>
                       {showConnector && <div className="pm-task-connector" style={{ background: isCompleted ? "var(--green)" : "var(--border)" }} />}
-
-                      {!isEditing && <div style={{ zIndex: 1, display: "flex", alignItems: "center" }}>{moveButtons(task)}</div>}
 
                       <div style={{ zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
                         <button onClick={() => canEdit && handleToggleTask(task)} disabled={!canEdit || task.status === "Pending" || isEditing} style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--bg)"), border: `2px solid ${isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--border)")}`, color: "#fff", cursor: !canEdit || task.status === "Pending" || isEditing ? "not-allowed" : "pointer", padding: 0, boxShadow: isInProgress ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none", transition: "all 0.2s" }}>
