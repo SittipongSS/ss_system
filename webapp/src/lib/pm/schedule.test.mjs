@@ -100,6 +100,43 @@ test('graph: a missing (deleted) predecessor does not block', () => {
   assert.equal(get(withGhost, 'x').startDate, get(noPred, 'x').startDate);
 });
 
+test('graph: startLocked pin delays a task and shifts its dependents', () => {
+  const base = [
+    { id: 'A', durationDays: 2, predecessors: [] },
+    { id: 'B', durationDays: 2, predecessors: ['A'] },
+  ];
+  const unpinned = recalculateGraph(base, '2026-06-15');
+  // pin A to start two weeks later → A holds, B (depends on A) shifts after A
+  const pinned = recalculateGraph(
+    base.map((t) => (t.id === 'A' ? { ...t, startLocked: true, startDate: '2026-06-29' } : t)),
+    '2026-06-15',
+  );
+  assert.equal(get(pinned, 'A').startDate, '2026-06-29', 'pinned start holds');
+  assert.ok(get(pinned, 'B').startDate > get(unpinned, 'B').startDate, 'dependent B shifts later with the pin');
+});
+
+test('graph: a pin earlier than dependencies allow is clamped (cannot violate predecessors)', () => {
+  const r = recalculateGraph([
+    { id: 'A', durationDays: 5, predecessors: [] },
+    { id: 'B', durationDays: 1, predecessors: ['A'], startLocked: true, startDate: '2026-06-15' }, // same day as A — impossible
+  ], '2026-06-15');
+  assert.ok(get(r, 'B').startDate > get(r, 'A').finishDate, 'B clamped to after A despite the early pin');
+});
+
+test('graph: a startDate without startLocked is NOT treated as a pin (flows from deps)', () => {
+  const computed = recalculateGraph([
+    { id: 'A', durationDays: 2, predecessors: [] },
+    { id: 'B', durationDays: 2, predecessors: ['A'] },
+  ], '2026-06-15');
+  // same tasks but each carries a stale computed startDate and startLocked=false
+  const withStale = recalculateGraph([
+    { id: 'A', durationDays: 2, predecessors: [], startDate: '2030-01-01', startLocked: false },
+    { id: 'B', durationDays: 2, predecessors: ['A'], startDate: '2030-01-01', startLocked: false },
+  ], '2026-06-15');
+  assert.equal(get(withStale, 'A').startDate, get(computed, 'A').startDate, 'unlocked start ignored');
+  assert.equal(get(withStale, 'B').startDate, get(computed, 'B').startDate);
+});
+
 test('buildProjectTasks produces a valid, sequentially-ordered template schedule', () => {
   const tasks = buildProjectTasks({ type: 'NPD', productMainCategory: '01-002', startDate: '2026-06-15' }, 'PRJ-test');
   assert.ok(tasks.length > 0, 'template produced tasks');

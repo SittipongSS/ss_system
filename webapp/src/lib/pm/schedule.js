@@ -106,7 +106,8 @@ export function recalculateGraph(tasks, projectStartDate, allTasks = tasks) {
   const resolve = (t) => {
     if (memo.has(t.id)) return memo.get(t.id);
     visiting.add(t.id);
-    let start = new Date(anchor);
+    // earliest start allowed by anchor + predecessors
+    let depStart = new Date(anchor);
     for (const pid of (Array.isArray(t.predecessors) ? t.predecessors : [])) {
       const p = byId.get(pid);
       if (!p || visiting.has(p.id)) continue; // missing pred = not blocking; cycle edge = ignore
@@ -114,10 +115,22 @@ export function recalculateGraph(tasks, projectStartDate, allTasks = tasks) {
       const cand = new Date(pf);
       if ((p.durationDays ?? 1) > 0) cand.setDate(cand.getDate() + 1);
       while (!isBusinessDay(cand)) cand.setDate(cand.getDate() + 1);
-      if (cand.getTime() > start.getTime()) start = cand;
+      if (cand.getTime() > depStart.getTime()) depStart = cand;
     }
     visiting.delete(t.id);
-    while (!isBusinessDay(start)) start.setDate(start.getDate() + 1);
+    while (!isBusinessDay(depStart)) depStart.setDate(depStart.getDate() + 1);
+
+    // manual pin (startLocked): hold the chosen start, but never earlier than
+    // dependencies allow — a pin can only DELAY a task, not violate its predecessors.
+    let start = depStart;
+    if (t.startLocked && t.startDate) {
+      const pinned = new Date(t.startDate);
+      if (!isNaN(pinned.getTime())) {
+        while (!isBusinessDay(pinned)) pinned.setDate(pinned.getDate() + 1);
+        if (pinned.getTime() > depStart.getTime()) start = pinned;
+      }
+    }
+
     const finish = addBusinessDays(start, Math.max(0, (t.durationDays ?? 1) - 1));
     const res = { start, finish };
     memo.set(t.id, res);
