@@ -437,8 +437,8 @@ export default function MyWorkPage() {
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <div className="segmented">
-            <button onClick={() => setView("list")} className={view === "list" ? "active" : ""}><ListTodo size={14} /> List</button>
-            <button onClick={() => setView("table")} className={view === "table" ? "active" : ""}><Table2 size={14} /> Table</button>
+            <button onClick={() => setView("list")} className={`icon ${view === "list" ? "active" : ""}`} title="มุมมอง List" aria-label="มุมมอง List"><ListTodo size={16} /></button>
+            <button onClick={() => setView("table")} className={`icon ${view === "table" ? "active" : ""}`} title="มุมมอง Table" aria-label="มุมมอง Table"><Table2 size={16} /></button>
           </div>
           <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
         </div>

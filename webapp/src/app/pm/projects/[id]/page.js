@@ -731,8 +731,8 @@ export default function ProjectDetailPage() {
   );
 
   const renderViewBtn = (mode, Icon, label) => (
-    <button onClick={() => setView(mode)} className={view === mode ? "active" : ""}>
-      <Icon size={14} /> {label}
+    <button onClick={() => setView(mode)} className={`icon ${view === mode ? "active" : ""}`} title={label} aria-label={label}>
+      <Icon size={16} />
     </button>
   );
 

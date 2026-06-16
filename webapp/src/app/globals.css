@@ -1760,7 +1760,7 @@ button.empty-state { width: 100%; font: inherit; }
 .segmented > button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .segmented > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .segmented > button:disabled { opacity: .4; cursor: default; }
-.segmented > button.icon { width: 26px; padding: 0; }
+.segmented > button.icon { width: 28px; height: 28px; padding: 0; }
 .segmented > .divider { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
 
 /* Pill badge — type / role / category tags. Color via inline style or modifier. */
