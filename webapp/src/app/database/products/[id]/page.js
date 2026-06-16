@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Pencil } from "lucide-react";
+import { ArrowLeft, Package, Pencil, Archive, ArchiveRestore } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import EditProductModal from "@/components/EditProductModal";
@@ -65,6 +65,27 @@ export default function ProductDetails() {
   const formatMoney = (amount) => {
     if (amount === undefined || amount === null) return "฿0.00";
     return amount.toLocaleString("th-TH", { style: "currency", currency: "THB", minimumFractionDigits: 2 });
+  };
+
+  // Retire / reactivate a product (parity with customers). Retired products drop
+  // out of registration/order pickers but keep history; used when a product is
+  // discontinued but can't be deleted (still referenced).
+  const handleToggleActive = async () => {
+    const next = !(product.isActive !== false);
+    if (!next && !confirm("พักใช้งานสินค้านี้? จะหายจากรายการเลือกของระบบอื่น (ประวัติยังอยู่ครบ)")) return;
+    setIsUpdating(true);
+    try {
+      const res = await fetch(`/api/master/products/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: next }),
+      });
+      if (res.ok) await fetchProduct();
+      else alert((await res.json()).error || "ดำเนินการไม่สำเร็จ");
+    } catch {
+      alert("เกิดข้อผิดพลาด");
+    }
+    setIsUpdating(false);
   };
 
   const handleDelete = async () => {
@@ -134,6 +155,11 @@ export default function ProductDetails() {
               <Pencil size={14} /> แก้ไขข้อมูล
             </button>
           )}
+          {canEditProducts && (
+            <button onClick={handleToggleActive} disabled={isUpdating} className="btn px-4 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg border border-[var(--border)] text-[var(--text-2)]">
+              {product.isActive === false ? (<><ArchiveRestore size={14} /> เปิดใช้อีกครั้ง</>) : (<><Archive size={14} /> พักใช้</>)}
+            </button>
+          )}
           {canDeleteProducts && (
             <button onClick={handleDelete} disabled={isUpdating} className="btn bg-[var(--red-soft)] text-[var(--red)] border border-[var(--border)] px-4 py-2 text-xs font-semibold rounded-lg">
               ลบสินค้า
@@ -141,6 +167,13 @@ export default function ProductDetails() {
           )}
         </div>
       </div>
+
+      {product.isActive === false && (
+        <div className="mb-[22px] rounded-xl px-4 py-3 flex items-center gap-2 text-sm" style={{ background: "var(--panel-2)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+          <Archive size={16} className="text-[var(--text-3)]" />
+          สินค้านี้ถูกพักใช้งาน — ไม่แสดงในรายการเลือกของระบบอื่น (กด “เปิดใช้อีกครั้ง” เพื่อนำกลับมา)
+        </div>
+      )}
 
       {/* Metric strip — key facts at a glance (non-sensitive) */}
       <div className="mb-[22px]">

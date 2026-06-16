@@ -85,6 +85,7 @@ export async function PATCH(request, { params }) {
     'fgCode', 'productDescription', 'brandName',
     'volume', 'volumeUnit', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl',
     'categoryCode', 'metadata',
+    'isActive', // lifecycle flag (0036) — พัก/เลิกใช้สินค้า
   ];
   const updated = { ...product };
   for (const k of catalogEditable) if (body[k] !== undefined) updated[k] = body[k];
@@ -116,7 +117,12 @@ export async function PATCH(request, { params }) {
     .eq('id', id)
     .select()
     .single();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (error.code === '23505') {
+      return Response.json({ error: 'รหัสสินค้า (FG Code) นี้ถูกขึ้นทะเบียนในระบบแล้ว' }, { status: 409 });
+    }
+    return Response.json({ error: error.message }, { status: 500 });
+  }
   return Response.json(redactProductMargin(user, data));
 }
 

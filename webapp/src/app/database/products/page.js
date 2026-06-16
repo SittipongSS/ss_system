@@ -34,6 +34,7 @@ export default function ProductRegistry() {
   const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const emptyForm = {
@@ -184,8 +185,10 @@ export default function ProductRegistry() {
     pending: products.filter((p) => approvalStatusOf(p) === "pending").length,
     approved: products.filter((p) => approvalStatusOf(p) === "approved").length,
     taxable: products.filter((p) => p.isExciseTaxable !== false).length,
+    inactive: products.filter((p) => p.isActive === false).length,
   };
   const filteredProducts = products.filter((p) => {
+    if (!showInactive && p.isActive === false) return false;
     if (statusFilter !== "all" && approvalStatusOf(p) !== statusFilter) return false;
     if (!q) return true;
     return [p.fgCode, p.productDescription, p.brandName].some((v) => (v || "").toLowerCase().includes(q));
@@ -232,6 +235,11 @@ export default function ProductRegistry() {
         <option value="approved">อนุมัติแล้ว</option>
         <option value="rejected">ไม่อนุมัติ</option>
       </select>
+      {counts.inactive > 0 && (
+        <button type="button" onClick={() => setShowInactive((v) => !v)} className={`btn ${showInactive ? "btn-primary" : ""}`} title="แสดง/ซ่อนสินค้าที่เลิกใช้">
+          {showInactive ? "ซ่อนที่เลิกใช้" : `แสดงที่เลิกใช้ (${counts.inactive})`}
+        </button>
+      )}
       <div className="segmented">
         <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
         <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
@@ -277,14 +285,18 @@ export default function ProductRegistry() {
             const isExempt = p.isExciseTaxable === false;
             const status = approvalStatusOf(p);
             const showActions = status === "pending" && canApproveRow(p);
+            const inactive = p.isActive === false;
             return (
-              <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
+              <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescription}</div>
                     <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode}</div>
                   </div>
-                  <ApprovalBadge status={status} />
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <ApprovalBadge status={status} />
+                    {inactive && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[var(--text-2)] truncate">{p.brandName || "-"}</span>
@@ -330,7 +342,7 @@ export default function ProductRegistry() {
                   const isExempt = p.isExciseTaxable === false;
                   const taxRate = isExempt ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
                   return (
-                    <tr key={p.id} onClick={() => open(p)} className="clickable-row">
+                    <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: 0.55 } : undefined}>
                       <td>
                         <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
                         <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
@@ -345,8 +357,9 @@ export default function ProductRegistry() {
                         {approvalStatusOf(p) === "pending" && canApproveRow(p) ? (
                           <ApprovalActions onDecide={(status) => decide(p.id, status)} />
                         ) : (
-                          <div>
+                          <div className="flex flex-col gap-1 items-start">
                             <ApprovalBadge status={approvalStatusOf(p)} />
+                            {p.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
                             {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
                               <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
                             )}

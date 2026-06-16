@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScope, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
@@ -20,8 +21,12 @@ export async function GET(request) {
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  // Hide retired (isActive=false) products from downstream pickers; keep them in
+  // the management view. Filtered in JS so it stays resilient before migration
+  // 0036 runs (missing column reads as undefined → treated as active).
+  const rows = manage ? (data || []) : (data || []).filter((p) => p.isActive !== false);
   // Strip the confidential cost breakdown/profit for non-margin roles.
-  return Response.json((data || []).map((p) => redactProductMargin(user, p)));
+  return Response.json(rows.map((p) => redactProductMargin(user, p)));
 }
 
 export async function POST(request) {
@@ -74,7 +79,9 @@ export async function POST(request) {
   // Whitelist the catalog fields we accept from the form (don't spread the
   // whole body — keeps stray status values out of the master row).
   const newProduct = {
-    id: 'PRD-' + Date.now().toString().slice(-6),
+    // Collision-proof id (was 'PRD-'+last-6-ms, repeated every ~16.7 min with
+    // no DB unique). Mirrors customers (migration 0031/0035).
+    id: 'PRD-' + randomUUID(),
     fgCode,
     customerId: customer.id,
     customerName: customer.name,
@@ -95,6 +102,7 @@ export async function POST(request) {
     materialCost,
     factoryProfit,
     categoryCode: categoryCode ?? null,
+    isActive: true, // สินค้าใหม่ใช้งานอยู่เสมอ (migration 0036)
     metadata: body.metadata || {},
     // Ownership comes from the server-side identity, not the client body.
     team: user?.team ?? null,
@@ -111,6 +119,13 @@ export async function POST(request) {
   };
 
   const { data, error } = await supabase.from('products').insert(newProduct).select().single();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) {
+    // Unique violation (migration 0035) — a concurrent insert beat the app-level
+    // dup check, or fgCode already exists.
+    if (error.code === '23505') {
+      return Response.json({ error: 'รหัสสินค้า (FG Code) นี้ถูกขึ้นทะเบียนในระบบแล้ว' }, { status: 409 });
+    }
+    return Response.json({ error: error.message }, { status: 500 });
+  }
   return Response.json(data, { status: 201 });
 }
