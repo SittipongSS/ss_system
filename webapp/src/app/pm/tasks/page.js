@@ -5,6 +5,7 @@ import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import StatusSelect from "@/components/pm/StatusSelect";
+import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { isSuperuser } from "@/lib/permissions";
@@ -436,10 +437,7 @@ export default function MyWorkPage() {
           <p>งานโปรเจกต์ที่มอบหมายให้คุณ + งานเพิ่มเติมในโปรเจกต์ + งานส่วนตัว รวมในที่เดียว</p>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-          <div className="segmented">
-            <button onClick={() => setView("list")} className={`icon ${view === "list" ? "active" : ""}`} title="มุมมอง List" aria-label="มุมมอง List"><ListTodo size={16} /></button>
-            <button onClick={() => setView("table")} className={`icon ${view === "table" ? "active" : ""}`} title="มุมมอง Table" aria-label="มุมมอง Table"><Table2 size={16} /></button>
-          </div>
+          <ViewSwitcher value={view} onChange={setView} modes={["list", "table"]} />
           <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
         </div>
       </div>

@@ -17,6 +17,7 @@ import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import Select from "@/components/ui/Select";
 import StatusSelect, { taskStatusColor } from "@/components/pm/StatusSelect";
+import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -730,11 +731,6 @@ export default function ProjectDetailPage() {
     </span>
   );
 
-  const renderViewBtn = (mode, Icon, label) => (
-    <button onClick={() => setView(mode)} className={`icon ${view === mode ? "active" : ""}`} title={label} aria-label={label}>
-      <Icon size={16} />
-    </button>
-  );
 
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || mc;
   // ยังไม่ผูก FG → ชื่อหมวด/หมวดรอง (resolve ชื่อหมวดหลักจากโค้ด) ใช้เป็น fallback บนหน้าพิมพ์
@@ -836,11 +832,7 @@ export default function ProjectDetailPage() {
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginLeft: "auto" }}>
-              <div className="segmented">
-                {renderViewBtn("list", ListTodo, "List")}
-                {renderViewBtn("table", Table2, "Table")}
-                {renderViewBtn("document", FileText, "Gantt")}
-              </div>
+              <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
               <button
                 onClick={() => openGanttPrintWindow({ ...p, categoryFallback })}
                 className="btn btn-primary"
