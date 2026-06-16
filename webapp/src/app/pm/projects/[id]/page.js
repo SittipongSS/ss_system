@@ -433,6 +433,56 @@ export default function ProjectDetailPage() {
       return next;
     });
 
+  // ฟิลด์แก้ไขขั้นตอน — ใช้ร่วมกันทั้ง inline-edit (List view) และ modal (Table view)
+  // ทั้งสองทางใช้ editForm/setEditForm/syncSchedule ชุดเดียวกัน ต่างแค่ selfId + footer
+  const renderStepEditFields = (selfId) => (
+    <>
+      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <input className="premium-input" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่อขั้นตอน" style={{ flex: 1 }} />
+        <Select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
+          {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+        </Select>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ผู้รับผิดชอบ:</label>
+        <AssigneeField form={editForm} setForm={setEditForm} users={users} />
+      </div>
+      <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันที่เริ่ม:</label>
+          <input type="date" className="premium-input" value={editForm.startDate || ""} onChange={(e) => syncSchedule({ startDate: e.target.value })} style={{ width: "150px" }} title="วันเริ่มของขั้นตอนนี้" />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันเสร็จ:</label>
+          <input type="date" className="premium-input" value={editForm.finishDate || ""} min={editForm.startDate || undefined} onChange={(e) => syncSchedule({ finishDate: e.target.value })} style={{ width: "150px" }} title="วันสิ้นสุด (ปรับแล้วระยะเวลาจะคำนวณให้อัตโนมัติ)" />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ระยะเวลา (วัน):</label>
+          <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => syncSchedule({ durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการ (ปรับแล้ววันเสร็จจะคำนวณให้อัตโนมัติ)" />
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
+          <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm({ ...editForm, isMilestone: e.target.checked })} style={{ accentColor: "var(--amber)", cursor: "pointer" }} />
+          ตั้งเป็น Milestone
+        </label>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>หมายเหตุ</label>
+        <textarea className="premium-input" value={editForm.note || ""} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ width: "100%", resize: "vertical", padding: "6px 10px", fontSize: "13px" }} />
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
+          <input type="checkbox" checked={editForm.showNoteInPrint || false} onChange={(e) => setEditForm({ ...editForm, showNoteInPrint: e.target.checked })} style={{ accentColor: "var(--accent)", cursor: "pointer" }} />
+          แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
+        </label>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+        <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>งานที่ต้องรอให้เสร็จก่อน (Predecessors):</label>
+        <PredecessorPicker tasks={processedTasks} selfId={selfId} value={editForm.predecessors} onChange={(predecessors) => setEditForm((f) => ({ ...f, predecessors }))} />
+      </div>
+      <div style={{ fontSize: "11px", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "4px" }}>
+        <Calendar size={11} /> ระบบคำนวณวันเสร็จจากวันเริ่ม + จำนวนวันทำการ
+      </div>
+    </>
+  );
+
   // เหมือน syncSchedule แต่สำหรับฟอร์ม "เพิ่มขั้นตอน" (taskForm) — วันเริ่มเว้นว่างได้
   const syncTaskSchedule = (changes) =>
     setTaskForm((f) => {
@@ -1113,60 +1163,10 @@ export default function ProjectDetailPage() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {isEditing ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--panel)", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)" }}>
-                            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                              <input className="premium-input" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่อขั้นตอน" style={{ flex: 1 }} />
-                              <Select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
-                                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                              </Select>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                              <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ผู้รับผิดชอบ:</label>
-                              <AssigneeField form={editForm} setForm={setEditForm} users={users} />
-                            </div>
-                            <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันที่เริ่ม:</label>
-                                <input type="date" className="premium-input" value={editForm.startDate || ""} onChange={(e) => syncSchedule({ startDate: e.target.value })} style={{ width: "150px" }} title="วันเริ่มของขั้นตอนนี้" />
-                              </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันเสร็จ:</label>
-                                <input type="date" className="premium-input" value={editForm.finishDate || ""} min={editForm.startDate || undefined} onChange={(e) => syncSchedule({ finishDate: e.target.value })} style={{ width: "150px" }} title="วันสิ้นสุด (ปรับแล้วระยะเวลาจะคำนวณให้อัตโนมัติ)" />
-                              </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ระยะเวลา (วัน):</label>
-                                <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => syncSchedule({ durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการ (ปรับแล้ววันเสร็จจะคำนวณให้อัตโนมัติ)" />
-                              </div>
-                              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
-                                <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm({ ...editForm, isMilestone: e.target.checked })} style={{ accentColor: "var(--amber)", cursor: "pointer" }} />
-                                ตั้งเป็น Milestone
-                              </label>
-                            </div>
-
-                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                              <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>หมายเหตุ</label>
-                              <textarea className="premium-input" value={editForm.note || ""} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ width: "100%", resize: "vertical", padding: "6px 10px", fontSize: "13px" }} />
-                              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
-                                <input type="checkbox" checked={editForm.showNoteInPrint || false} onChange={(e) => setEditForm({ ...editForm, showNoteInPrint: e.target.checked })} style={{ accentColor: "var(--accent)", cursor: "pointer" }} />
-                                แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
-                              </label>
-                            </div>
-
-                            <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
-                              <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>งานที่ต้องรอให้เสร็จก่อน (Predecessors):</label>
-                              <PredecessorPicker
-                                tasks={processedTasks}
-                                selfId={task.id}
-                                value={editForm.predecessors}
-                                onChange={(predecessors) => setEditForm((f) => ({ ...f, predecessors }))}
-                              />
-                            </div>
-
-                            <div style={{ fontSize: "11px", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "4px" }}>
-                              <Calendar size={11} /> ระบบคำนวณวันเสร็จจากวันเริ่ม + จำนวนวันทำการ
-                            </div>
+                            {renderStepEditFields(task.id)}
                             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                              <button className="btn btn-secondary" onClick={() => { setEditingTaskId(null); setEditForm(null); }} style={{ padding: "4px 12px", fontSize: "12px" }}>ยกเลิก</button>
-                              <button className="btn btn-primary" onClick={() => saveEditing(task.id)} style={{ padding: "4px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}><Save size={14} /> บันทึก</button>
+                              <button className="btn btn-secondary sm" onClick={() => { setEditingTaskId(null); setEditForm(null); }}>ยกเลิก</button>
+                              <button className="btn btn-primary sm" onClick={() => saveEditing(task.id)}><Save size={14} /> บันทึก</button>
                             </div>
                           </div>
                         ) : (
@@ -1341,54 +1341,7 @@ export default function ProjectDetailPage() {
       <Modal open={showEditTask} onClose={closeEditModal} title="แก้ไขขั้นตอน" size="md">
         {editForm && editTask && (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <input className="premium-input" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่อขั้นตอน" style={{ flex: 1 }} />
-              <Select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
-                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-              </Select>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ผู้รับผิดชอบ:</label>
-              <AssigneeField form={editForm} setForm={setEditForm} users={users} />
-            </div>
-            <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันที่เริ่ม:</label>
-                <input type="date" className="premium-input" value={editForm.startDate || ""} onChange={(e) => syncSchedule({ startDate: e.target.value })} style={{ width: "150px" }} title="วันเริ่มของขั้นตอนนี้" />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันเสร็จ:</label>
-                <input type="date" className="premium-input" value={editForm.finishDate || ""} min={editForm.startDate || undefined} onChange={(e) => syncSchedule({ finishDate: e.target.value })} style={{ width: "150px" }} title="วันสิ้นสุด (ปรับแล้วระยะเวลาจะคำนวณให้อัตโนมัติ)" />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ระยะเวลา (วัน):</label>
-                <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => syncSchedule({ durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการ (ปรับแล้ววันเสร็จจะคำนวณให้อัตโนมัติ)" />
-              </div>
-              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
-                <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm({ ...editForm, isMilestone: e.target.checked })} style={{ accentColor: "var(--amber)", cursor: "pointer" }} />
-                ตั้งเป็น Milestone
-              </label>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>หมายเหตุ</label>
-              <textarea className="premium-input" value={editForm.note || ""} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ width: "100%", resize: "vertical", padding: "6px 10px", fontSize: "13px" }} />
-              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
-                <input type="checkbox" checked={editForm.showNoteInPrint || false} onChange={(e) => setEditForm({ ...editForm, showNoteInPrint: e.target.checked })} style={{ accentColor: "var(--accent)", cursor: "pointer" }} />
-                แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
-              </label>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
-              <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>งานที่ต้องรอให้เสร็จก่อน (Predecessors):</label>
-              <PredecessorPicker
-                tasks={processedTasks}
-                selfId={editTask.id}
-                value={editForm.predecessors}
-                onChange={(predecessors) => setEditForm((f) => ({ ...f, predecessors }))}
-              />
-            </div>
-            <div style={{ fontSize: "11px", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "4px" }}>
-              <Calendar size={11} /> ระบบคำนวณวันเสร็จจากวันเริ่ม + จำนวนวันทำการ
-            </div>
+            {renderStepEditFields(editTask.id)}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
               <button className="btn btn-secondary sm" onClick={closeEditModal}>ยกเลิก</button>
               <button className="btn btn-primary sm" onClick={saveEditModal}><Save size={14} /> บันทึก</button>
