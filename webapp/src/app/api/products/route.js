@@ -91,7 +91,6 @@ export async function POST(request) {
     volumeUnit: body.volumeUnit || 'ml',
     costPrice,
     retailPriceIncVat,
-    mapFileUrl: body.mapFileUrl ?? null,
     taxableOverride,
     isExciseTaxable,
     retailPriceExVat,

@@ -75,10 +75,10 @@ export async function POST(request) {
     contactPhone: primary.phone || null,
     email: primary.email || null,
     creditTerms: body.creditTerms || null,
-    jubiliId: body.jubiliId || null,
     metadata: body.metadata || {},
     // Managing team + owner come from the server-side identity.
-    team: user?.team ?? null,
+    team: user?.team ?? null,            // ทีมหลัก/ผู้สร้าง
+    teams: user?.team ? [user.team] : [], // ทีมดูแลทั้งหมด (migration 0037)
     ownerId: user?.id ?? null,
     // Approval workflow (migration 0027).
     approvalStatus: autoApprove ? 'approved' : 'pending',

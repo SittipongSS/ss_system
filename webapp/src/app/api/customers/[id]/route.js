@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, isSuperuser } from '@/lib/permissions';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 
@@ -144,11 +144,16 @@ export async function PATCH(request, { params }) {
   // by canEditRecord — supervisor cross-team, team roles within their scope).
   for (const k of [
     'arCode', 'name', 'taxId', 'customerType', 'branchCode', 'phone', 'address', 'shippingAddress', 'brands',  // mapFileUrl ย้ายไป attachments แล้ว
-    'contactPerson', 'contactPhone', 'email', 'creditTerms', 'jubiliId', 'metadata',  // master-data fields (0005, 0025)
+    'contactPerson', 'contactPhone', 'email', 'creditTerms', 'metadata',  // master-data fields (0005, 0025)
     'team', 'ownerId',
     'isActive',  // lifecycle flag (0030) — พักใช้/เปิดใช้ลูกค้า; edit-level gate (canEditRecord above)
   ]) {
     if (body[k] !== undefined) updates[k] = body[k];
+  }
+  // teams[] (0037): assigning caretaker teams is a cross-team management action —
+  // supervisor/admin only (others may edit the record but not re-scope it).
+  if (body.teams !== undefined && isSuperuser(user?.role)) {
+    updates.teams = Array.isArray(body.teams) ? body.teams.filter(Boolean) : [];
   }
   // Contacts (0033): the list is source of truth; mirror primary -> legacy singles.
   if (body.contacts !== undefined) {

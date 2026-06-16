@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Building2, Pencil, Trash2, Boxes, ShoppingCart, Archive, ArchiveRestore } from "lucide-react";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
+import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import OrderDetailModal from "@/components/OrderDetailModal";
@@ -20,6 +21,7 @@ export default function CustomerDetails() {
   const id = params.id;
   const canEdit = useCan("customers:edit");
   const canDelete = useCan("customers:delete");
+  const superuser = isSuperuser(useRole());
   const isPortrait = useIsPortrait();
 
   const [customer, setCustomer] = useState(null);
@@ -35,6 +37,7 @@ export default function CustomerDetails() {
     arCode: "",
     name: "",
     customerType: "company",
+    teams: [],
     taxId: "",
     branchCode: "00000",
     phone: "",
@@ -62,6 +65,7 @@ export default function CustomerDetails() {
         setFormData({
           arCode: data.customer.arCode || "",
           name: data.customer.name || "",
+          teams: data.customer.teams?.length ? data.customer.teams : (data.customer.team ? [data.customer.team] : []),
           customerType: data.customer.customerType || "company",
           taxId: data.customer.taxId || "",
           branchCode: data.customer.branchCode || "00000",
@@ -116,6 +120,7 @@ export default function CustomerDetails() {
       arCode: formData.arCode,
       name: formData.name,
       customerType: formData.customerType || "company",
+      teams: formData.teams,
       taxId: formData.taxId,
       branchCode: formData.branchCode || "00000",
       phone: formData.phone,
@@ -342,6 +347,7 @@ export default function CustomerDetails() {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 text-xs">
           <Field label="ประเภทลูกค้า" value={customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล (บริษัท)"} />
+          <Field label="ทีมดูแล" value={(customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", ") || "-"} />
           <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
           <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId} mono />
           <Field label="สาขา (Branch)" value={!customer.branchCode || customer.branchCode === "00000" ? "สำนักงานใหญ่" : `สาขา ${customer.branchCode}`} />
@@ -566,6 +572,27 @@ export default function CustomerDetails() {
                 <option value="individual">บุคคลธรรมดา</option>
               </select>
               <span className="text-[10px] text-[var(--text-3)] mt-1">เปลี่ยนประเภท = ชุดเอกสารแนบที่ต้องใช้เปลี่ยนตาม</span>
+            </div>
+            <div className="form-group col-span-2">
+              <label>ทีมดูแล {!superuser && <span className="text-[10px] font-normal text-[var(--text-3)]">(เฉพาะหัวหน้า/แอดมินแก้ได้)</span>}</label>
+              <div className="flex flex-wrap gap-2">
+                {TEAMS.map((t) => {
+                  const on = formData.teams.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      disabled={!superuser}
+                      onClick={() => setFormData((f) => ({ ...f, teams: on ? f.teams.filter((x) => x !== t) : [...f.teams, t] }))}
+                      className={`btn text-xs ${on ? "btn-primary" : ""}`}
+                      style={!superuser ? { opacity: on ? 1 : 0.5, cursor: "default" } : undefined}
+                    >
+                      {TEAM_LABELS[t] || t}
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="text-[10px] text-[var(--text-3)] mt-1">เลือกได้หลายทีม — ทีมที่เลือกจะแก้/อนุมัติลูกค้ารายนี้ได้</span>
             </div>
             <div className="form-group col-span-2 sm:col-span-1">
               <label>รหัสลูกค้า (AR Code) <span className="text-[var(--red)]">*</span></label>

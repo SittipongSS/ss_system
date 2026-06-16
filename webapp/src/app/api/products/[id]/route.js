@@ -83,7 +83,7 @@ export async function PATCH(request, { params }) {
   // approval are NOT here; they live on the registration (/api/excise-registrations).
   const catalogEditable = [
     'fgCode', 'productDescription', 'brandName',
-    'volume', 'volumeUnit', 'costPrice', 'retailPriceIncVat', 'assignee', 'mapFileUrl',
+    'volume', 'volumeUnit', 'costPrice', 'retailPriceIncVat', 'assignee',
     'categoryCode', 'metadata',
     'isActive', // lifecycle flag (0036) — พัก/เลิกใช้สินค้า
   ];

@@ -245,7 +245,12 @@ export function inScope(scope, user, record) {
     case 'all':
       return true;
     case 'team':
-      return !!user?.team && user.team === record?.team;
+      if (!user?.team) return false;
+      // Multi-team records (customers.teams[], migration 0037): in scope if the
+      // user's team is any of the caretaker teams. Falls back to the single
+      // `team` for records without teams[] (products / orders / projects).
+      if (Array.isArray(record?.teams) && record.teams.length) return record.teams.includes(user.team);
+      return user.team === record?.team;
     case 'own':
       return !!user?.id && user.id === record?.ownerId;
     case 'none':
