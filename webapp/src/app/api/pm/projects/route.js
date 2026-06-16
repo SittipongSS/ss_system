@@ -5,6 +5,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
+import { genId } from '@/lib/id';
 import { withUser, ok, fail } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -93,7 +94,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // แล้วลองใหม่ (เฉพาะรหัสที่ระบบ gen เอง). ถ้าผู้ใช้ส่ง code มาเองแล้วซ้ำ → 409.
   let project = null, error = null;
   for (let attempt = 0; attempt < 5; attempt++) {
-    const id = 'PRJ-' + Date.now().toString().slice(-6) + (attempt || '');
+    const id = genId('PRJ');
     ({ data: project, error } = await supabase
       .from('projects')
       .insert({ ...baseRow, id, code: projectCode })
@@ -131,8 +132,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   // Link selected products (FGs) with quantities if provided
   if (Array.isArray(body.projectProducts) && body.projectProducts.length > 0) {
-    const ppRows = body.projectProducts.map((p, idx) => ({
-      id: 'PP-' + Date.now().toString().slice(-6) + idx,
+    const ppRows = body.projectProducts.map((p) => ({
+      id: genId('PP'),
       projectId: project.id,
       productId: p.productId,
       orderQty: p.orderQty || null,

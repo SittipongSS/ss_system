@@ -4,6 +4,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { genId } from '@/lib/id';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,8 +130,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     await supabase.from('project_products').delete().eq('projectId', id);
     // Insert new
     if (body.projectProducts.length > 0) {
-      const ppRows = body.projectProducts.map((p, idx) => ({
-        id: 'PP-' + Date.now().toString().slice(-6) + idx,
+      const ppRows = body.projectProducts.map((p) => ({
+        id: genId('PP'),
         projectId: id,
         productId: p.productId,
         orderQty: p.orderQty || null,

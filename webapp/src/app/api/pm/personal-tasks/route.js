@@ -1,4 +1,5 @@
 import { withUser, ok, fail, unauthorized, badRequest } from '@/lib/http';
+import { genId } from '@/lib/id';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +43,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
 
   const row = {
-    id: 'PST-' + Date.now().toString(36),
+    id: genId('PST'),
     ownerId: user.id,
     title: body.title.trim(),
     note: body.note || '',

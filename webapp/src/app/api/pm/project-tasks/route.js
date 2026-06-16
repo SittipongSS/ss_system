@@ -4,6 +4,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
+import { genId } from '@/lib/id';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -91,7 +92,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
 
   const row = {
-    id: 'PT-' + Date.now().toString().slice(-6),
+    id: genId('PT'),
     projectId: body.projectId,
     stepOrder,
     name: body.name || '',

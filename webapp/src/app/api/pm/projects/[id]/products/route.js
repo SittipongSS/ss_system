@@ -1,6 +1,7 @@
 import { editScope, inScope } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, conflict, badRequest } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { genId } from '@/lib/id';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { data, error } = await supabase
     .from('project_products')
-    .insert({ id: 'PP-' + Date.now().toString().slice(-6), projectId: project.id, productId: body.productId })
+    .insert({ id: genId('PP'), projectId: project.id, productId: body.productId })
     .select('*, product:products(*)')
     .single();
   if (error) {
