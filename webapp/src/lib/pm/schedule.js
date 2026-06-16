@@ -85,6 +85,55 @@ export function recalculateForward(tasks, projectStartDate, allTasks = tasks) {
   });
 }
 
+// Dependency-driven forward schedule. Each task starts on the first business day
+// that is both >= the project anchor AND strictly after every predecessor finishes;
+// finish = start + (duration-1) business days. Resolved through the predecessor
+// GRAPH with memoization — NOT array position — so:
+//   • a task with no predecessors sits at the project anchor (never dragged by an
+//     unrelated edit elsewhere),
+//   • editing/extending/deleting a task only moves its transitive dependents,
+//   • reordering steps (stepOrder) never changes the math (order-independent),
+//   • a missing predecessor (deleted) does not block; cycles are broken defensively.
+// This replaces the position-based slice recalc that wrongly shifted independent
+// tasks. `allTasks` defaults to `tasks`; pass the full set when recomputing a graph.
+export function recalculateGraph(tasks, projectStartDate, allTasks = tasks) {
+  const byId = new Map((allTasks || []).map((t) => [t.id, t]));
+  const anchor = new Date(projectStartDate);
+  while (!isBusinessDay(anchor)) anchor.setDate(anchor.getDate() + 1);
+
+  const memo = new Map();
+  const visiting = new Set();
+  const resolve = (t) => {
+    if (memo.has(t.id)) return memo.get(t.id);
+    visiting.add(t.id);
+    let start = new Date(anchor);
+    for (const pid of (Array.isArray(t.predecessors) ? t.predecessors : [])) {
+      const p = byId.get(pid);
+      if (!p || visiting.has(p.id)) continue; // missing pred = not blocking; cycle edge = ignore
+      const pf = resolve(p).finish;
+      const cand = new Date(pf);
+      if ((p.durationDays ?? 1) > 0) cand.setDate(cand.getDate() + 1);
+      while (!isBusinessDay(cand)) cand.setDate(cand.getDate() + 1);
+      if (cand.getTime() > start.getTime()) start = cand;
+    }
+    visiting.delete(t.id);
+    while (!isBusinessDay(start)) start.setDate(start.getDate() + 1);
+    const finish = addBusinessDays(start, Math.max(0, (t.durationDays ?? 1) - 1));
+    const res = { start, finish };
+    memo.set(t.id, res);
+    return res;
+  };
+
+  return (tasks || []).map((t) => {
+    const { start, finish } = resolve(t);
+    const startStr = toDateStr(start);
+    const finishStr = toDateStr(finish);
+    let cellsOverride = t.cellsOverride;
+    if (t.startDate && t.finishDate && (t.startDate !== startStr || t.finishDate !== finishStr)) cellsOverride = null;
+    return { ...t, startDate: startStr, finishDate: finishStr, cellsOverride };
+  });
+}
+
 let _seq = 0;
 const genTaskId = () => `PT-${Date.now().toString(36)}-${(_seq++).toString(36)}`;
 
