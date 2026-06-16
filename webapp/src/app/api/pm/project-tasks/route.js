@@ -3,6 +3,7 @@ import { recalculateForward, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
+import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -24,8 +25,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // Cross-project list — limit to the team's projects when team-scoped.
   if (viewScope(user?.role) === 'team') {
-    const { data: projs } = await supabase.from('projects').select('id').eq('team', user?.team ?? null);
-    const ids = (projs || []).map((p) => p.id);
+    const ids = await teamProjectIds(supabase, user?.team);
     if (!ids.length) return ok([]);
     const { data, error } = await supabase
       .from('project_tasks')

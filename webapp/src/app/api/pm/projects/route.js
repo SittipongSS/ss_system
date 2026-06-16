@@ -4,6 +4,7 @@ import { buildProjectTasks } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
+import { generateProjectCode } from '@/lib/pm/projectsRepo';
 import { withUser, ok, fail } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -44,21 +45,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   // รหัสโปรเจกต์ PJ-YYMMNNN (ลำดับรันต่อเดือน). การอ่าน max แล้ว +1 ไม่ atomic →
   // ถ้าสร้างพร้อมกันอาจได้รหัสซ้ำ จึงพึ่ง unique(code) + retry ตอน insert (loop ด้านล่าง).
-  const computeNextCode = async () => {
-    const now = new Date();
-    const prefix = `PJ-${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-    const { data: latest } = await supabase
-      .from('projects').select('code').ilike('code', `${prefix}%`)
-      .order('code', { ascending: false }).limit(1);
-    let nextNum = 1;
-    if (latest?.[0]?.code) {
-      const lastNum = parseInt(latest[0].code.slice(prefix.length), 10);
-      if (!isNaN(lastNum)) nextNum = lastNum + 1;
-    }
-    return `${prefix}${nextNum.toString().padStart(3, '0')}`;
-  };
   const autoCode = !body.code;
-  let projectCode = body.code || (await computeNextCode());
+  let projectCode = body.code || (await generateProjectCode(supabase));
 
   // Link to customer master (FK) + take the name snapshot from the master row.
   const customer = await resolveCustomer({
@@ -114,7 +102,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (!error) break;
     if (error.code === '23505') {
       if (!autoCode) return fail('รหัสโปรเจกต์ซ้ำ: ' + projectCode, 409);
-      projectCode = await computeNextCode(); // ชน → ขยับเลขแล้วลองใหม่
+      projectCode = await generateProjectCode(supabase); // ชน → ขยับเลขแล้วลองใหม่
       continue;
     }
     break; // error อื่น → ออกไปคืน 500 ด้านล่าง

@@ -3,6 +3,7 @@ import { mergeTemplateTasks, recalculateSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { loadProject } from '@/lib/pm/projectsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,21 +16,6 @@ const EDITABLE = [
   'aeSupervisor', 'keyAccountExec', 'customerEmail', 'preparedBy', 'reviewedBy',
   'metadata',
 ];
-
-// Resolve the URL segment to a project. Internal ids ('PRJ-######') and human
-// project codes ('PJ-YYMMNNN') never collide, so we accept either: try id first,
-// then fall back to code. Callers must use the returned row's real `id` for any
-// project_tasks/project_products subqueries (those FK the internal id).
-async function loadProject(supabase, idOrCode) {
-  const { data, error } = await supabase
-    .from('projects').select('*').eq('id', idOrCode).maybeSingle();
-  if (error) throw error;
-  if (data) return data;
-  const { data: byCode, error: codeErr } = await supabase
-    .from('projects').select('*').eq('code', idOrCode).maybeSingle();
-  if (codeErr) throw codeErr;
-  return byCode;
-}
 
 // GET /api/pm/projects/[id] — project + its tasks + linked products (FG).
 export const GET = withUser(async ({ user, supabase, ctx }) => {

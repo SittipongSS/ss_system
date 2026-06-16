@@ -1,12 +1,8 @@
 import { editScope, inScope } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, conflict, badRequest } from '@/lib/http';
+import { loadProject } from '@/lib/pm/projectsRepo';
 
 export const dynamic = 'force-dynamic';
-
-async function loadProject(supabase, id) {
-  const { data } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
-  return data;
-}
 
 // GET — FG (products) ที่ผูกกับโปรเจกต์นี้
 export const GET = withUser(async ({ supabase, ctx }) => {
@@ -34,7 +30,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { data, error } = await supabase
     .from('project_products')
-    .insert({ id: 'PP-' + Date.now().toString().slice(-6), projectId: id, productId: body.productId })
+    .insert({ id: 'PP-' + Date.now().toString().slice(-6), projectId: project.id, productId: body.productId })
     .select('*, product:products(*)')
     .single();
   if (error) {
@@ -60,7 +56,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { error } = await supabase
     .from('project_products')
     .delete()
-    .eq('projectId', id)
+    .eq('projectId', project.id)
     .eq('productId', productId);
   if (error) return fail(error.message, 500);
   return ok({ success: true });

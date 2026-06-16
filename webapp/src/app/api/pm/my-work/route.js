@@ -1,5 +1,6 @@
 import { isSuperuser, normalizeDepartment } from '@/lib/permissions';
 import { withUser, ok, unauthorized } from '@/lib/http';
+import { teamProjectIds } from '@/lib/pm/projectsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,8 +46,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const seen = new Set();
     projectTasks = [...(a || []), ...(b || []), ...(c || [])].filter((t) => (seen.has(t.id) ? false : seen.add(t.id)));
   } else if (scope === 'team') {
-    const { data: projs } = await supabase.from('projects').select('id').eq('team', user.team ?? null);
-    const ids = (projs || []).map((p) => p.id);
+    const ids = await teamProjectIds(supabase, user.team);
     if (ids.length) {
       const { data } = await supabase
         .from('project_tasks').select('*').in('projectId', ids)
@@ -75,8 +75,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (scope === 'team' || scope === 'all') {
     let q = supabase.from('personal_tasks').select('*').not('projectId', 'is', null);
     if (scope === 'team') {
-      const { data: teamProjs } = await supabase.from('projects').select('id').eq('team', user.team ?? null);
-      const teamProjIds = (teamProjs || []).map((p) => p.id);
+      const teamProjIds = await teamProjectIds(supabase, user.team);
       q = teamProjIds.length ? q.in('projectId', teamProjIds) : null;
     }
     if (q) { const { data } = await q.order('createdAt', { ascending: false }); extraPersonal = data || []; }
