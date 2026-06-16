@@ -5,6 +5,7 @@ import { holidaySet } from '@/lib/master/holidays';
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
+import { pickFields } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,13 +63,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const id = project.id;
 
   const body = await req.json();
-  const updates = {};
-  for (const k of EDITABLE) {
-    if (body[k] !== undefined) {
-      if ((k === 'startDate' || k === 'dueDate') && body[k] === "") updates[k] = null;
-      else updates[k] = body[k];
-    }
-  }
+  const updates = pickFields(body, EDITABLE, { nullable: ['startDate', 'dueDate'] });
   updates.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase.from('projects').update(updates).eq('id', id).select().single();

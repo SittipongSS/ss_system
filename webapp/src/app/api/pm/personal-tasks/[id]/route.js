@@ -1,5 +1,6 @@
 import { isSuperuser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { pickFields } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,10 +36,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!(await canManage(supabase, task, user))) return forbidden();
 
   const body = await req.json();
-  const updates = {};
-  for (const k of EDITABLE) {
-    if (body[k] !== undefined) updates[k] = (k === 'dueDate' && body[k] === '') ? null : body[k];
-  }
+  const updates = pickFields(body, EDITABLE, { nullable: ['dueDate'] });
   updates.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase.from('personal_tasks').update(updates).eq('id', id).select().single();

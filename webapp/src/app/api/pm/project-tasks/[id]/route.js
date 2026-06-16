@@ -4,6 +4,7 @@ import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { pickFields } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,13 +45,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // workflowEdit จำกัดเฉพาะ field งาน/สถานะ — กันไม่ให้พนักงานรื้อแผนหรือ reassign
   const WORKFLOW_FIELDS = ['status', 'actualFinishDate', 'note', 'showNoteInPrint'];
   const editable = workflowEdit ? EDITABLE.filter((k) => WORKFLOW_FIELDS.includes(k)) : EDITABLE;
-  const updates = {};
-  for (const k of editable) {
-    if (body[k] !== undefined) {
-      if ((k === 'startDate' || k === 'finishDate' || k === 'actualFinishDate' || k === 'dueDate') && body[k] === "") updates[k] = null;
-      else updates[k] = body[k];
-    }
-  }
+  const updates = pickFields(body, editable, { nullable: ['startDate', 'finishDate', 'actualFinishDate', 'dueDate'] });
   updates.updatedAt = new Date().toISOString();
 
   // ── วันจบ↔duration: ให้ server เป็นเจ้าของการคำนวณวันทำการเพียงเจ้าเดียว ──
