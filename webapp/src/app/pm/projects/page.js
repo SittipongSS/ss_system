@@ -13,7 +13,6 @@ import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import SkeletonRows from "@/components/ui/Skeleton";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 
 const typeStyle = (type) => type === "NPD"
   ? { background: "var(--accent-soft)", color: "var(--accent)" }
@@ -316,14 +315,18 @@ export default function ProjectsPage() {
               <Search size={18} color="var(--text-3)" />
               <input type="text" placeholder="ค้นหาโปรเจกต์..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <FilterPopover count={activeFilterCount} onClear={clearAllFilters}>
-              <MultiSelectFilter label="ประเภท" icon={Tag} options={typeOptions} selected={typeFilters} onChange={setTypeFilters} single />
-              <MultiSelectFilter label="สถานะ" icon={CircleDot} options={statusOptions} selected={statusFilters} onChange={setStatusFilters} />
-              <MultiSelectFilter label="หมวดสินค้า" icon={Package} options={categoryOptions} selected={categoryFilters} onChange={setCategoryFilters} />
-              <MultiSelectFilter label="ผู้ดูแล" icon={UserCog} options={ownerOptions} selected={ownerFilters} onChange={setOwnerFilters} />
-              <MultiSelectFilter label="ผู้จัดทำ" icon={PenLine} options={preparerOptions} selected={preparerFilters} onChange={setPreparerFilters} />
-              <MultiSelectFilter label="ลูกค้า" icon={Building2} options={customerOptions} selected={customerFilters} onChange={setCustomerFilters} />
-            </FilterPopover>
+            <FilterPopover
+              count={activeFilterCount}
+              onClear={clearAllFilters}
+              groups={[
+                { key: "type", label: "ประเภท", icon: Tag, options: typeOptions, selected: typeFilters, onChange: setTypeFilters, single: true },
+                { key: "status", label: "สถานะ", icon: CircleDot, options: statusOptions, selected: statusFilters, onChange: setStatusFilters },
+                { key: "category", label: "หมวดสินค้า", icon: Package, options: categoryOptions, selected: categoryFilters, onChange: setCategoryFilters },
+                { key: "owner", label: "ผู้ดูแล", icon: UserCog, options: ownerOptions, selected: ownerFilters, onChange: setOwnerFilters },
+                { key: "preparer", label: "ผู้จัดทำ", icon: PenLine, options: preparerOptions, selected: preparerFilters, onChange: setPreparerFilters },
+                { key: "customer", label: "ลูกค้า", icon: Building2, options: customerOptions, selected: customerFilters, onChange: setCustomerFilters },
+              ]}
+            />
           </div>
 
           <div className="premium-glass-table table-responsive">
