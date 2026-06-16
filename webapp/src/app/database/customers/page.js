@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Building2, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
+import { Building2, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight, AlertTriangle } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
@@ -34,6 +34,7 @@ export default function CustomerDirectory() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [teamFilter, setTeamFilter] = useState("all");
   const [showInactive, setShowInactive] = useState(false);
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const [formData, setFormData] = useState({
@@ -151,11 +152,15 @@ export default function CustomerDirectory() {
     () => [...new Set(customers.map((c) => c.team).filter(Boolean))].sort(),
     [customers],
   );
+  // "ข้อมูลไม่ครบ" = ขาดผู้ติดต่อ หรือ แบรนด์.
+  const hasContact = (c) => (c.contacts?.some((x) => x && x.name)) || !!c.contactPerson;
+  const isIncomplete = (c) => !hasContact(c) || !(c.brands?.length);
 
   const filteredCustomers = customers.filter((c) => {
     if (!showInactive && c.isActive === false) return false;
     if (statusFilter !== "all" && approvalStatusOf(c) !== statusFilter) return false;
     if (teamFilter !== "all" && c.team !== teamFilter) return false;
+    if (incompleteOnly && !isIncomplete(c)) return false;
     if (!q) return true;
     return [c.arCode, c.name, c.taxId, c.phone, ...(c.brands || [])]
       .some((v) => (v || "").toLowerCase().includes(q));
@@ -206,13 +211,11 @@ export default function CustomerDirectory() {
           {teams.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       )}
+      <button type="button" onClick={() => setIncompleteOnly((v) => !v)} className={`btn ${incompleteOnly ? "btn-primary" : ""}`} title="เฉพาะลูกค้าที่ขาดผู้ติดต่อหรือแบรนด์">
+        <AlertTriangle size={14} /> ข้อมูลไม่ครบ
+      </button>
       {counts.inactive > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowInactive((v) => !v)}
-          className={`btn ${showInactive ? "btn-primary" : ""}`}
-          title="แสดง/ซ่อนลูกค้าที่เลิกใช้"
-        >
+        <button type="button" onClick={() => setShowInactive((v) => !v)} className={`btn ${showInactive ? "btn-primary" : ""}`} title="แสดง/ซ่อนลูกค้าที่เลิกใช้">
           {showInactive ? "ซ่อนที่เลิกใช้" : `แสดงที่เลิกใช้ (${counts.inactive})`}
         </button>
       )}
