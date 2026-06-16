@@ -1,10 +1,8 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { withUser, ok, fail } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const supabase = getSupabaseAdmin();
-
+export const GET = withUser(async ({ supabase }) => {
   const now = new Date();
   const yy = now.getFullYear().toString().slice(-2);
   const mm = (now.getMonth() + 1).toString().padStart(2, '0');
@@ -18,7 +16,7 @@ export async function GET() {
     .limit(1);
 
   if (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return fail(error.message, 500);
   }
 
   let nextNum = 1;
@@ -32,5 +30,5 @@ export async function GET() {
   }
   const nextCode = `${prefix}${nextNum.toString().padStart(3, '0')}`;
 
-  return Response.json({ nextCode });
-}
+  return ok({ nextCode });
+});

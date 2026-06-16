@@ -1,6 +1,5 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
 import { isSuperuser, normalizeDepartment } from '@/lib/permissions';
+import { withUser, ok, unauthorized } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +16,11 @@ function allowedScopes(role) {
 // GET /api/pm/my-work?scope=mine|team|all
 // คืน { scope, projectTasks, personalTasks, projects } — scope ถูกบังคับตาม role
 // ฝั่ง server. งานส่วนตัว = ของฉันเสมอ (ไม่ปนของคนอื่นแม้ scope ทีม/ทั้งหมด).
-export async function GET(request) {
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
-  if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
+export const GET = withUser(async ({ user, supabase, req }) => {
+  if (!user) return unauthorized();
 
   const allowed = allowedScopes(user.role);
-  let scope = new URL(request.url).searchParams.get('scope') || 'mine';
+  let scope = new URL(req.url).searchParams.get('scope') || 'mine';
   if (!allowed.includes(scope)) scope = 'mine';
 
   // ── project tasks ตาม scope ──
@@ -100,7 +97,7 @@ export async function GET(request) {
     projects = Object.fromEntries((ps || []).map((p) => [p.id, p]));
   }
 
-  return Response.json({
+  return ok({
     scope,
     allowedScopes: allowed,
     me: { id: user.id, name: user.name, role: user.role, team: user.team ?? null, department: normalizeDepartment(user.department) },
@@ -108,4 +105,4 @@ export async function GET(request) {
     personalTasks: personalTasks || [],
     projects,
   });
-}
+});

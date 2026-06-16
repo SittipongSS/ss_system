@@ -1,22 +1,19 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
 import { can, departmentFor, normalizeDepartment } from '@/lib/permissions';
+import { withUser, ok, fail, forbidden } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/pm/assignable-users — รายชื่อผู้ใช้ที่ "มอบหมายงานได้" (ย่อ: id/name/role/team).
 // ต่างจาก /api/users (admin-only, ข้อมูลเต็ม) — อันนี้ผู้ใช้ PM ทุกคนเรียกได้ เพื่อ
 // เติม dropdown ผู้รับผิดชอบ. คืนเฉพาะ user ที่มี role (กรอง account ที่ยังไม่ตั้ง role).
-export async function GET() {
-  const user = await getCurrentUser();
-  if (!can(user?.role, 'pm:view')) return Response.json({ error: 'forbidden' }, { status: 403 });
+export const GET = withUser(async ({ user, supabase }) => {
+  if (!can(user?.role, 'pm:view')) return forbidden();
 
-  const supabase = getSupabaseAdmin();
   const rows = [];
   let page = 1;
   for (;;) {
     const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
-    if (error) return Response.json({ error: error.message }, { status: 500 });
+    if (error) return fail(error.message, 500);
     const users = data?.users || [];
     if (!users.length) break;
     for (const u of users) {
@@ -33,5 +30,5 @@ export async function GET() {
     page++;
   }
   rows.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
-  return Response.json(rows);
-}
+  return ok(rows);
+});
