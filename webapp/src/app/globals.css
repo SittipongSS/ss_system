@@ -1639,6 +1639,36 @@ button.empty-state { width: 100%; font: inherit; }
   z-index: 0;
 }
 
+/* Stat / summary tile that doubles as a filter toggle. Per-tile color comes
+   from a --stat CSS var so one class serves every metric. Pair with glass-panel. */
+.stat-card {
+  text-align: left;
+  cursor: pointer;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  transition: border-color .15s, box-shadow .15s;
+}
+.stat-card.active {
+  border: 1.5px solid var(--stat);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--stat) 14%, transparent);
+}
+.stat-card .stat-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--stat) 14%, transparent);
+  color: var(--stat);
+  flex-shrink: 0;
+}
+.stat-card .stat-num { font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--stat); }
+.stat-card .stat-label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+
 /* Skeleton loading — shimmering placeholder bars. Replaces "กำลังโหลด..." text. */
 .skeleton {
   position: relative;

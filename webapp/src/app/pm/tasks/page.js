@@ -463,20 +463,13 @@ export default function MyWorkPage() {
             <button
               key={c.key}
               onClick={() => setStatusFilter(active && c.key !== "all" ? "all" : c.key)}
-              className="glass-panel"
-              style={{
-                textAlign: "left", cursor: "pointer", padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px",
-                border: active ? `1.5px solid ${c.color}` : "1px solid var(--border)",
-                boxShadow: active ? `0 0 0 3px color-mix(in srgb, ${c.color} 14%, transparent)` : "none",
-                transition: "border-color .15s, box-shadow .15s",
-              }}
+              className={`glass-panel stat-card${active ? " active" : ""}`}
+              style={{ "--stat": c.color }}
             >
-              <span style={{ width: "38px", height: "38px", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", background: `color-mix(in srgb, ${c.color} 14%, transparent)`, color: c.color, flexShrink: 0 }}>
-                {c.icon}
-              </span>
+              <span className="stat-icon">{c.icon}</span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: "22px", fontWeight: 700, lineHeight: 1.1, color: c.color }}>{c.count}</div>
-                <div style={{ fontSize: "12px", color: "var(--text-2)", fontWeight: 500 }}>{c.label}</div>
+                <div className="stat-num">{c.count}</div>
+                <div className="stat-label">{c.label}</div>
               </div>
             </button>
           );
