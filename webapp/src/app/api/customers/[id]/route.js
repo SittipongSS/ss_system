@@ -143,7 +143,7 @@ export async function PATCH(request, { params }) {
   // 'team'/'ownerId' allow transferring a customer to another team (gated above
   // by canEditRecord — supervisor cross-team, team roles within their scope).
   for (const k of [
-    'arCode', 'name', 'taxId', 'branchCode', 'phone', 'address', 'shippingAddress', 'brands',  // mapFileUrl ย้ายไป attachments แล้ว
+    'arCode', 'name', 'taxId', 'customerType', 'branchCode', 'phone', 'address', 'shippingAddress', 'brands',  // mapFileUrl ย้ายไป attachments แล้ว
     'contactPerson', 'contactPhone', 'email', 'creditTerms', 'jubiliId', 'metadata',  // master-data fields (0005, 0025)
     'team', 'ownerId',
     'isActive',  // lifecycle flag (0030) — พักใช้/เปิดใช้ลูกค้า; edit-level gate (canEditRecord above)

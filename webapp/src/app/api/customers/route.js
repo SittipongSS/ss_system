@@ -61,6 +61,7 @@ export async function POST(request) {
     arCode: body.arCode,
     name: body.name,
     taxId: body.taxId,
+    customerType: body.customerType === 'individual' ? 'individual' : 'company', // migration 0034
     branchCode: body.branchCode || '00000', // '00000' = สำนักงานใหญ่ (migration 0032)
     phone: body.phone || null,
     address: body.address,                    // ที่อยู่ออกเอกสาร/บิล

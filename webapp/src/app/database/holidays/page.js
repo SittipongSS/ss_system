@@ -118,9 +118,9 @@ export default function HolidaysPage() {
           <p>วันหยุดบริษัท/นักขัตฤกษ์ที่ระบบใช้นับ &quot;วันทำการ&quot; ของไทม์ไลน์โครงการ</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{ display: "flex", background: "var(--panel)", borderRadius: "8px", padding: "4px", border: "1px solid var(--border)" }}>
-            <button onClick={() => setTab("calendar")} style={{ display: "flex", alignItems: "center", gap: "6px", background: tab === "calendar" ? "var(--accent)" : "transparent", color: tab === "calendar" ? "#fff" : "var(--text-2)", border: "none", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 500, cursor: "pointer" }}><CalendarRange size={14} /> ปฏิทิน</button>
-            <button onClick={() => setTab("list")} style={{ display: "flex", alignItems: "center", gap: "6px", background: tab === "list" ? "var(--accent)" : "transparent", color: tab === "list" ? "#fff" : "var(--text-2)", border: "none", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 500, cursor: "pointer" }}><List size={14} /> รายการ</button>
+          <div className="segmented">
+            <button onClick={() => setTab("calendar")} className={tab === "calendar" ? "active" : ""}><CalendarRange size={14} /> ปฏิทิน</button>
+            <button onClick={() => setTab("list")} className={tab === "list" ? "active" : ""}><List size={14} /> รายการ</button>
           </div>
           <div className="pill ok">ทั้งหมด {holidays.length} วัน</div>
         </div>
@@ -228,7 +228,7 @@ export default function HolidaysPage() {
                           <div style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.name || "-"}</div>
                         </div>
                         {canManage && (
-                          <button onClick={() => { if (confirm(`ลบวันหยุด ${fmt(h.date)}${h.name ? ` (${h.name})` : ""} ?`)) removeHoliday(h.date); }} title="ลบ" style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "4px", flexShrink: 0 }}><Trash2 size={15} /></button>
+                          <button className="btn-icon danger" onClick={() => { if (confirm(`ลบวันหยุด ${fmt(h.date)}${h.name ? ` (${h.name})` : ""} ?`)) removeHoliday(h.date); }} aria-label="ลบวันหยุด" title="ลบ" style={{ flexShrink: 0 }}><Trash2 size={15} /></button>
                         )}
                       </div>
                     ))}

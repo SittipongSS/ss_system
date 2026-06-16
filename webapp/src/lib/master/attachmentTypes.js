@@ -3,18 +3,55 @@
 // import ได้ทั้ง client (UI dropdown/badge) และ server (validation).
 // docType ที่ไม่อยู่ในลิสต์จะตกเป็น 'other' โดยอัตโนมัติเมื่อแสดงผล.
 
+// `required: true` = เอกสารจำเป็น (โชว์เป็นการ์ดที่ต้องมี + ติ๊กถูกเมื่ออัปแล้ว).
+// `other` เป็นการ์ดเอกสารเพิ่มเติม (ไม่บังคับ, แนบได้หลายไฟล์).
+
+// เอกสารลูกค้าแยกตามประเภท (customers.customerType, migration 0034). คงคีย์เดิม
+// (company_certificate/vat_pp20/address_map) ไว้เพื่อไม่ให้ไฟล์ที่แนบไว้แล้วหลุด.
+export const CUSTOMER_DOC_TYPES = {
+  company: [
+    { key: "company_certificate", label: "หนังสือรับรองบริษัท (อายุไม่เกิน 6 เดือน)", required: true },
+    { key: "vat_pp20", label: "ภ.พ.20 (ทะเบียนภาษีมูลค่าเพิ่ม)", required: true },
+    { key: "director_id_card", label: "สำเนาบัตรประชาชนกรรมการผู้มีอำนาจลงนาม", required: true },
+    { key: "director_house_reg", label: "สำเนาทะเบียนบ้านกรรมการ (ถ้ามีการขอ)", required: false },
+    { key: "power_of_attorney", label: "หนังสือมอบอำนาจ (กรณีผู้ดำเนินการไม่ใช่กรรมการ)", required: false },
+    { key: "address_map", label: "แผนที่บริษัท", required: true },
+    { key: "other", label: "เอกสารอื่นๆ", required: false },
+  ],
+  individual: [
+    { key: "id_card", label: "สำเนาบัตรประชาชน", required: true },
+    { key: "house_reg", label: "สำเนาทะเบียนบ้าน (ถ้ามีการขอ)", required: false },
+    { key: "name_change", label: "เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)", required: false },
+    { key: "other", label: "เอกสารอื่นๆ", required: false },
+  ],
+};
+
+// ชุดเอกสาร (การ์ด) สำหรับลูกค้าตามประเภท — default = นิติบุคคล.
+export function customerDocTypes(customerType) {
+  return CUSTOMER_DOC_TYPES[customerType] || CUSTOMER_DOC_TYPES.company;
+}
+
 export const ATTACHMENT_TYPES = {
+  // customer = union ของทุกคีย์ (ทั้ง 2 ประเภท + legacy) — ใช้ validate ฝั่ง API
+  // (docType ที่ไม่อยู่ในนี้จะถูกตีเป็น 'other') และ lookup ป้ายชื่อ. การ์ดที่ UI
+  // แสดงเลือกตามประเภทผ่าน customerDocTypes().
   customer: [
-    { key: "address_map", label: "แผนที่ที่อยู่" },
-    { key: "design_contract", label: "สัญญาจ้างออกแบบกลิ่น" },
-    { key: "company_certificate", label: "หนังสือรับรองบริษัท" },
-    { key: "vat_pp20", label: "ภพ.20" },
-    { key: "other", label: "เอกสารอื่นๆ" },
+    { key: "company_certificate", label: "หนังสือรับรองบริษัท (อายุไม่เกิน 6 เดือน)", required: true },
+    { key: "vat_pp20", label: "ภ.พ.20 (ทะเบียนภาษีมูลค่าเพิ่ม)", required: true },
+    { key: "director_id_card", label: "สำเนาบัตรประชาชนกรรมการผู้มีอำนาจลงนาม", required: true },
+    { key: "director_house_reg", label: "สำเนาทะเบียนบ้านกรรมการ (ถ้ามีการขอ)", required: false },
+    { key: "power_of_attorney", label: "หนังสือมอบอำนาจ (กรณีผู้ดำเนินการไม่ใช่กรรมการ)", required: false },
+    { key: "address_map", label: "แผนที่บริษัท", required: true },
+    { key: "id_card", label: "สำเนาบัตรประชาชน", required: true },
+    { key: "house_reg", label: "สำเนาทะเบียนบ้าน (ถ้ามีการขอ)", required: false },
+    { key: "name_change", label: "เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)", required: false },
+    { key: "design_contract", label: "สัญญาจ้างออกแบบกลิ่น", required: false }, // legacy
+    { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
   product: [
-    { key: "manufacturing_contract", label: "สัญญาจ้างผลิต" },
-    { key: "artwork", label: "Artwork สินค้า" },
-    { key: "other", label: "เอกสารอื่นๆ" },
+    { key: "manufacturing_contract", label: "สัญญาจ้างผลิต", required: true },
+    { key: "artwork", label: "Artwork สินค้า", required: true },
+    { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
   // เฟส B — เอกสารการชำระสรรพสามิต ผูกกับออเดอร์ (รายรอบการชำระ).
   // 2 ชนิดหลักมาคนละสเตป: ใบเสร็จชำระภาษี ↔ หลักฐานการชำระสรรพสามิต.

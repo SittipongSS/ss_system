@@ -39,6 +39,7 @@ export default function CustomerDirectory() {
   const [formData, setFormData] = useState({
     arCode: "",
     name: "",
+    customerType: "company",
     taxId: "",
     branchCode: "00000",
     phone: "",
@@ -98,6 +99,7 @@ export default function CustomerDirectory() {
     const payload = {
       arCode: formData.arCode,
       name: formData.name,
+      customerType: formData.customerType || "company",
       taxId: formData.taxId,
       branchCode: formData.branchCode || "00000",
       phone: formData.phone,
@@ -119,7 +121,7 @@ export default function CustomerDirectory() {
       });
       if (res.ok) {
         const created = await res.json();
-        setFormData({ arCode: "", name: "", taxId: "", branchCode: "00000", phone: "", address: "", shippingAddress: "", brandsStr: "", contacts: [], creditTerms: "" });
+        setFormData({ arCode: "", name: "", customerType: "company", taxId: "", branchCode: "00000", phone: "", address: "", shippingAddress: "", brandsStr: "", contacts: [], creditTerms: "" });
         setShowForm(false);
         fetchCustomers();
         if (created?.approvalStatus === "pending") {
@@ -364,6 +366,19 @@ export default function CustomerDirectory() {
               <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลบริษัท (Company Details)</h3>
             </div>
             <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+              <div className="form-group col-span-2">
+                <label>ประเภทลูกค้า <span className="text-[var(--red)]">*</span></label>
+                <select
+                  name="customerType"
+                  value={formData.customerType}
+                  onChange={handleChange}
+                  className="premium-select w-full"
+                >
+                  <option value="company">นิติบุคคล (บริษัท)</option>
+                  <option value="individual">บุคคลธรรมดา</option>
+                </select>
+                <span className="text-[11px] text-[var(--text-3)] mt-1">กำหนดชุดเอกสารแนบที่ต้องใช้ (แนบได้ที่หน้าลูกค้าหลังบันทึก)</span>
+              </div>
               <div className="form-group">
                 <label>
                   รหัสลูกค้า (AR Code) <span className="text-[var(--red)]">*</span>

@@ -12,6 +12,7 @@ import OrderStatusPill from "@/components/OrderStatusPill";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import ContactsEditor from "@/components/database/ContactsEditor";
+import { customerDocTypes } from "@/lib/master/attachmentTypes";
 
 export default function CustomerDetails() {
   const params = useParams();
@@ -33,6 +34,7 @@ export default function CustomerDetails() {
   const [formData, setFormData] = useState({
     arCode: "",
     name: "",
+    customerType: "company",
     taxId: "",
     branchCode: "00000",
     phone: "",
@@ -60,6 +62,7 @@ export default function CustomerDetails() {
         setFormData({
           arCode: data.customer.arCode || "",
           name: data.customer.name || "",
+          customerType: data.customer.customerType || "company",
           taxId: data.customer.taxId || "",
           branchCode: data.customer.branchCode || "00000",
           phone: data.customer.phone || "",
@@ -112,6 +115,7 @@ export default function CustomerDetails() {
     const payload = {
       arCode: formData.arCode,
       name: formData.name,
+      customerType: formData.customerType || "company",
       taxId: formData.taxId,
       branchCode: formData.branchCode || "00000",
       phone: formData.phone,
@@ -337,6 +341,7 @@ export default function CustomerDetails() {
           <Building2 size={16} className="text-[var(--accent)]" /> ข้อมูลบริษัท / ลูกค้า (Company Details)
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 text-xs">
+          <Field label="ประเภทลูกค้า" value={customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล (บริษัท)"} />
           <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
           <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId} mono />
           <Field label="สาขา (Branch)" value={!customer.branchCode || customer.branchCode === "00000" ? "สำนักงานใหญ่" : `สาขา ${customer.branchCode}`} />
@@ -391,8 +396,11 @@ export default function CustomerDetails() {
           entityType="customer"
           entityId={id}
           canEdit={canEdit}
+          docTypes={customerDocTypes(customer.customerType)}
           title="เอกสารของลูกค้า"
-          note="แผนที่ที่อยู่ (ใช้ต่อเรื่องขึ้นทะเบียนสรรพสามิต), สัญญาจ้างออกแบบกลิ่น, หนังสือรับรองบริษัท, ภพ.20 และเอกสารอื่นๆ"
+          note={customer.customerType === "individual"
+            ? "เอกสารบุคคลธรรมดา: สำเนาบัตรประชาชน, ทะเบียนบ้าน, เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)"
+            : "เอกสารนิติบุคคล: หนังสือรับรองบริษัท, ภ.พ.20, บัตร/ทะเบียนบ้านกรรมการ, หนังสือมอบอำนาจ, แผนที่บริษัท"}
         />
       </div>
 
@@ -551,6 +559,14 @@ export default function CustomerDetails() {
       <Modal open={isEditing} onClose={() => setIsEditing(false)} title="แก้ไขข้อมูลลูกค้า (Edit Customer)" size="md">
         <form onSubmit={handleEditSubmit}>
           <div className="grid gap-[16px] grid-cols-2">
+            <div className="form-group col-span-2">
+              <label>ประเภทลูกค้า <span className="text-[var(--red)]">*</span></label>
+              <select name="customerType" value={formData.customerType} onChange={handleInputChange} className="premium-select w-full text-xs">
+                <option value="company">นิติบุคคล (บริษัท)</option>
+                <option value="individual">บุคคลธรรมดา</option>
+              </select>
+              <span className="text-[10px] text-[var(--text-3)] mt-1">เปลี่ยนประเภท = ชุดเอกสารแนบที่ต้องใช้เปลี่ยนตาม</span>
+            </div>
             <div className="form-group col-span-2 sm:col-span-1">
               <label>รหัสลูกค้า (AR Code) <span className="text-[var(--red)]">*</span></label>
               <input type="text" name="arCode" value={formData.arCode} onChange={handleInputChange} required className="premium-input w-full font-mono text-xs" />

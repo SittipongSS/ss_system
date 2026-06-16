@@ -1,4 +1,5 @@
 import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
 
@@ -27,8 +28,11 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="th" className={`${ibmPlexSansThai.variable} ${ibmPlexMono.variable}`} suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{
+      <body className="font-sans antialiased transition-colors duration-300">
+        {/* Anti-FOUC theme script. next/script with beforeInteractive is injected
+            into <head> and runs before hydration, so the theme is set before
+            paint — no flash. Inline scripts require an id (Next.js tracks them). */}
+        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{
           __html: `
             try {
               if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -41,8 +45,6 @@ export default function RootLayout({ children }) {
             } catch (_) {}
           `,
         }} />
-      </head>
-      <body className="font-sans antialiased transition-colors duration-300">
         <LayoutWrapper>
           {children}
         </LayoutWrapper>
