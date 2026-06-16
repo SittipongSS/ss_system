@@ -29,10 +29,12 @@ const fmtShort = (v) => {
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+// สีสถานะให้ตรงกับบนจอ/ทั้งแอป (statusFill ใน ProjectDocumentView): เสร็จ=เขียว,
+// กำลังทำ=accent, รอ=เทา. legend ด้านล่าง interpolate จากชุดนี้เพื่อไม่ให้เพี้ยนจากบาร์.
 const STATUS_FILL = {
-  Completed: '#3d6fa3',
-  'In Progress': '#c17a52',
-  Pending: '#8a9bb3',
+  Completed: '#2c7a55',   // ~ var(--green)
+  'In Progress': '#c17a52', // var(--accent)
+  Pending: '#8a93a3',     // เทากลาง
 };
 const fillOf = (t) => STATUS_FILL[t.status] || STATUS_FILL.Pending;
 
@@ -314,9 +316,9 @@ export function buildGanttPrintHTML(project) {
     </table>
 
     <div class="legend">
-      <div class="leg"><span class="sw" style="background:#3d6fa3"></span>เสร็จสิ้น</div>
-      <div class="leg"><span class="sw" style="background:#c17a52"></span>กำลังดำเนินการ</div>
-      <div class="leg"><span class="sw" style="background:#b8a07a"></span>รอดำเนินการ</div>
+      <div class="leg"><span class="sw" style="background:${STATUS_FILL.Completed}"></span>เสร็จสิ้น</div>
+      <div class="leg"><span class="sw" style="background:${STATUS_FILL['In Progress']}"></span>กำลังดำเนินการ</div>
+      <div class="leg"><span class="sw" style="background:${STATUS_FILL.Pending}"></span>รอดำเนินการ</div>
       <div class="leg"><span class="dia">◆</span> จุดสำคัญ (Milestone)</div>
     </div>
 
