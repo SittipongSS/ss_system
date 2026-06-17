@@ -7,10 +7,15 @@
 //   title       หัวข้อ panel (ค่าเริ่มต้น "เอกสารแนบ")
 //   note        คำอธิบายเล็กใต้หัวข้อ (optional)
 //
-// entity ที่มี ATTACHMENT_META_FIELDS (เช่น order) จะแสดงฟอร์มรายละเอียด
-// (เลขใบเสร็จ/วันที่ชำระ/ยอด/อ้างอิงออเดอร์ ฯลฯ) ตอนแนบ และโชว์ค่าในลิสต์.
+// 2 โหมดการแสดงผล:
+//  • การ์ด (customer/product) — 1 การ์ด/ประเภทเอกสาร, ติ๊กถูกเมื่ออัปแล้ว,
+//    อัป/ลบในการ์ดได้เลย. เห็นชัดว่าเอกสารจำเป็นไหนยังขาด.
+//  • ฟอร์มรายละเอียด (order — entity ที่มี ATTACHMENT_META_FIELDS) — เก็บ
+//    เลขใบเสร็จ/วันที่/ยอด/อ้างอิงออเดอร์ ฯลฯ ลง metadata.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, Plus, Trash2, Download, Paperclip, X } from "lucide-react";
+import {
+  FileText, Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
+} from "lucide-react";
 import {
   ATTACHMENT_TYPES,
   ATTACHMENT_META_FIELDS,
@@ -34,25 +39,32 @@ export default function AttachmentsPanel({
   canEdit = false,
   title = "เอกสารแนบ",
   note,
+  docTypes, // override การ์ดที่แสดง (เช่น เอกสารลูกค้าตามประเภท) — default = ตาม entityType
 }) {
-  const types = ATTACHMENT_TYPES[entityType] || [];
+  const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
-  const detailed = metaFields.length > 0; // entity ที่ต้องเก็บรายละเอียด (order)
+  const detailed = metaFields.length > 0; // order = ฟอร์มรายละเอียด; อื่นๆ = การ์ด
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [uploadingType, setUploadingType] = useState(null); // docType ที่กำลังอัป (card mode)
+
+  // ── detailed (order) form state ──
   const [docType, setDocType] = useState(types[0]?.key || "other");
   const [showAdd, setShowAdd] = useState(false);
   const [meta, setMeta] = useState(() => emptyMeta(metaFields));
   const [file, setFile] = useState(null);
-  const quickInputRef = useRef(null);
+  const [saving, setSaving] = useState(false);
+
+  // ไฟล์อินพุตร่วม (card mode) — จำว่ากำลังอัปประเภทไหน
+  const cardFileRef = useRef(null);
+  const pendingTypeRef = useRef(null);
 
   const fetchItems = useCallback(async () => {
     if (!entityType || !entityId) return;
     try {
       const res = await fetch(
-        `/api/attachments?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
+        `/api/master/attachments?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
       );
       if (res.ok) setItems(await res.json());
     } catch (err) {
@@ -76,7 +88,7 @@ export default function AttachmentsPanel({
       return false;
     }
     const { url } = await up.json();
-    const res = await fetch("/api/attachments", {
+    const res = await fetch("/api/master/attachments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -97,31 +109,36 @@ export default function AttachmentsPanel({
     return true;
   };
 
-  // โหมดเร็ว (customer/product) — เลือกไฟล์แล้วอัปทันที
-  const handleQuickFile = async (e) => {
+  // ── card mode: อัปไฟล์เข้าประเภทที่กดในการ์ด ──
+  const pickForType = (typeKey) => {
+    pendingTypeRef.current = typeKey;
+    cardFileRef.current?.click();
+  };
+  const handleCardFile = async (e) => {
     const f = e.target.files?.[0];
-    if (!f) return;
-    setUploading(true);
+    const typeKey = pendingTypeRef.current;
+    if (!f || !typeKey) return;
+    setUploadingType(typeKey);
     try {
-      if (await upload(f, docType, {})) await fetchItems();
+      if (await upload(f, typeKey, {})) await fetchItems();
     } catch (err) {
       console.error(err);
       alert("เกิดข้อผิดพลาดในการอัปโหลด");
     } finally {
-      setUploading(false);
-      if (quickInputRef.current) quickInputRef.current.value = "";
+      setUploadingType(null);
+      pendingTypeRef.current = null;
+      if (cardFileRef.current) cardFileRef.current.value = "";
     }
   };
 
-  // โหมดรายละเอียด (order) — กรอกฟอร์ม + เลือกไฟล์ แล้วกดบันทึก
+  // ── detailed mode: บันทึกพร้อมรายละเอียด ──
   const handleDetailedSave = async () => {
     if (!file) {
       alert("กรุณาเลือกไฟล์");
       return;
     }
-    setUploading(true);
+    setSaving(true);
     try {
-      // เก็บเฉพาะฟิลด์ที่กรอก (ตัดค่าว่างออก)
       const cleanMeta = Object.fromEntries(
         Object.entries(meta).filter(([, v]) => v !== "" && v != null),
       );
@@ -136,20 +153,66 @@ export default function AttachmentsPanel({
       console.error(err);
       alert("เกิดข้อผิดพลาดในการอัปโหลด");
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
     if (!confirm("ยืนยันการลบเอกสารนี้?")) return;
     try {
-      const res = await fetch(`/api/attachments/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/master/attachments/${id}`, { method: "DELETE" });
       if (res.ok) setItems((prev) => prev.filter((it) => it.id !== id));
       else alert((await res.json()).error || "ลบไม่สำเร็จ");
     } catch {
       alert("เกิดข้อผิดพลาดในการลบ");
     }
   };
+
+  // จัดกลุ่มไฟล์ตามประเภท (docType ที่ไม่รู้จัก → 'other')
+  const knownKeys = new Set(types.map((t) => t.key));
+  const byType = {};
+  for (const it of items) {
+    const k = knownKeys.has(it.docType) ? it.docType : "other";
+    (byType[k] ||= []).push(it);
+  }
+
+  // เรียงการ์ดตามความสำคัญ: จำเป็น+ยังขาด → จำเป็น+มีแล้ว → ไม่บังคับ+ยังขาด → ไม่บังคับ+มีแล้ว
+  // (เห็น "เอกสารจำเป็นที่ยังไม่ได้แนบ" บนสุดทันที). sort เสถียร → คงลำดับเดิมในกลุ่มเดียวกัน
+  const typeRank = (t) => {
+    const has = (byType[t.key]?.length || 0) > 0;
+    if (t.required && !has) return 0;
+    if (t.required) return 1;
+    if (!has) return 2;
+    return 3;
+  };
+  const sortedTypes = [...types].sort((a, b) => typeRank(a) - typeRank(b));
+
+  const FileRow = ({ it, compact }) => (
+    <div className="flex items-center justify-between gap-2 text-xs py-1">
+      <a
+        href={it.fileUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-1.5 min-w-0 text-[var(--text-2)] hover:text-[var(--accent)] hover:underline"
+      >
+        <FileText size={14} className="shrink-0" />
+        <span className="truncate">{it.fileName || "ไฟล์แนบ"}</span>
+        {!compact && it.sizeBytes != null && (
+          <span className="text-[10px] text-[var(--text-3)] shrink-0">({formatSize(it.sizeBytes)})</span>
+        )}
+      </a>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => handleDelete(it.id)}
+          className="text-[var(--red)] shrink-0 p-0.5 hover:opacity-70"
+          title="ลบ"
+        >
+          <Trash2 size={13} />
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div className="glass-panel p-[20px]">
@@ -159,38 +222,6 @@ export default function AttachmentsPanel({
           {title}
           <span className="text-[var(--text-3)] font-normal">({items.length})</span>
         </h3>
-        {canEdit && !detailed && (
-          <div className="flex items-center gap-2">
-            <select
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
-              className="premium-input text-xs"
-              style={{ width: "auto", minWidth: "160px" }}
-              disabled={uploading}
-            >
-              {types.map((t) => (
-                <option key={t.key} value={t.key}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => quickInputRef.current?.click()}
-              disabled={uploading}
-              className="btn btn-primary px-3 text-xs flex items-center gap-1.5"
-            >
-              <Plus size={14} /> {uploading ? "กำลังอัปโหลด..." : "แนบไฟล์"}
-            </button>
-            <input
-              ref={quickInputRef}
-              type="file"
-              accept=".pdf,image/png,image/jpeg,image/webp"
-              onChange={handleQuickFile}
-              className="hidden"
-            />
-          </div>
-        )}
         {canEdit && detailed && !showAdd && (
           <button
             type="button"
@@ -204,156 +235,199 @@ export default function AttachmentsPanel({
 
       {note && <p className="text-[11px] text-[var(--text-3)] mb-3 -mt-1">{note}</p>}
 
-      {/* ฟอร์มเพิ่มเอกสารแบบรายละเอียด (order) */}
-      {canEdit && detailed && showAdd && (
-        <div className="border border-[var(--border)] rounded-lg p-3 mb-4 bg-[var(--panel-2)]">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-[var(--text)]">เพิ่มเอกสารใหม่</span>
-            <button
-              type="button"
-              onClick={() => {
-                setShowAdd(false);
-                setFile(null);
-                setMeta(emptyMeta(metaFields));
-              }}
-              className="btn px-1.5 py-1 text-[var(--text-3)]"
-            >
-              <X size={14} />
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="form-group">
-              <label className="text-[11px]">ประเภทเอกสาร</label>
-              <select
-                value={docType}
-                onChange={(e) => setDocType(e.target.value)}
-                className="premium-input w-full text-xs"
-                disabled={uploading}
-              >
-                {types.map((t) => (
-                  <option key={t.key} value={t.key}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {metaFields.map((f) => (
-              <div key={f.key} className="form-group">
-                <label className="text-[11px]">{f.label}</label>
-                <input
-                  type={f.type || "text"}
-                  value={meta[f.key] ?? ""}
-                  onChange={(e) => setMeta((m) => ({ ...m, [f.key]: e.target.value }))}
-                  className="premium-input w-full text-xs"
-                  disabled={uploading}
-                />
-              </div>
-            ))}
-            <div className="form-group sm:col-span-2">
-              <label className="text-[11px]">ไฟล์เอกสาร</label>
-              <input
-                type="file"
-                accept=".pdf,image/png,image/jpeg,image/webp"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-                className="premium-input w-full text-xs"
-                style={{ padding: "5px" }}
-                disabled={uploading}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-3">
-            <button
-              type="button"
-              onClick={() => {
-                setShowAdd(false);
-                setFile(null);
-                setMeta(emptyMeta(metaFields));
-              }}
-              className="btn text-xs px-4"
-              disabled={uploading}
-            >
-              ยกเลิก
-            </button>
-            <button
-              type="button"
-              onClick={handleDetailedSave}
-              disabled={uploading || !file}
-              className="btn btn-primary text-xs px-5"
-            >
-              {uploading ? "กำลังบันทึก..." : "บันทึกเอกสาร"}
-            </button>
-          </div>
-        </div>
-      )}
-
       {loading ? (
         <p className="text-xs text-[var(--text-3)] py-4 text-center">กำลังโหลด...</p>
-      ) : items.length === 0 ? (
-        <p className="text-xs text-[var(--text-3)] italic py-4 text-center">
-          ยังไม่มีเอกสารแนบ
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {items.map((it) => {
-            const md = it.metadata || {};
-            const mdLines = metaFields
-              .filter((f) => md[f.key] !== undefined && md[f.key] !== "" && md[f.key] != null)
-              .map((f) => `${f.label}: ${md[f.key]}`);
-            return (
-              <div
-                key={it.id}
-                className="flex items-start justify-between gap-3 border border-[var(--border)] rounded-lg px-3 py-2"
-              >
-                <div className="flex items-start gap-3 min-w-0">
-                  <FileText size={18} className="text-[var(--text-3)] shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="status-pill text-[10px]">
-                        {attachmentTypeLabel(it.entityType, it.docType)}
-                      </span>
-                      <span className="text-xs font-medium text-[var(--text)] truncate">
-                        {it.fileName || "ไฟล์แนบ"}
-                      </span>
-                    </div>
-                    {mdLines.length > 0 && (
-                      <div className="text-[11px] text-[var(--text-2)] mt-1 space-y-0.5">
-                        {mdLines.map((l, i) => (
-                          <div key={i}>{l}</div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="text-[10px] text-[var(--text-3)] mt-0.5">
-                      {formatSize(it.sizeBytes)}
-                      {it.uploadedByName ? ` · โดย ${it.uploadedByName}` : ""}
-                      {it.createdAt
-                        ? ` · ${new Date(it.createdAt).toLocaleDateString("th-TH")}`
-                        : ""}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <a
-                    href={it.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn px-2.5 py-1 text-[11px] flex items-center gap-1 border border-[var(--border)]"
+      ) : detailed ? (
+        /* ───────── โหมดฟอร์มรายละเอียด (order) ───────── */
+        <>
+          {canEdit && showAdd && (
+            <div className="border border-[var(--border)] rounded-lg p-3 mb-4 bg-[var(--panel-2)]">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-[var(--text)]">เพิ่มเอกสารใหม่</span>
+                <button
+                  type="button"
+                  onClick={() => { setShowAdd(false); setFile(null); setMeta(emptyMeta(metaFields)); }}
+                  className="btn px-1.5 py-1 text-[var(--text-3)]"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="form-group">
+                  <label className="text-[11px]">ประเภทเอกสาร</label>
+                  <select
+                    value={docType}
+                    onChange={(e) => setDocType(e.target.value)}
+                    className="premium-input w-full text-xs"
+                    disabled={saving}
                   >
-                    <Download size={13} /> เปิด
-                  </a>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(it.id)}
-                      className="btn px-2.5 py-1 text-[11px] text-[var(--red)] flex items-center gap-1 border border-[var(--border)]"
-                    >
-                      <Trash2 size={13} /> ลบ
-                    </button>
-                  )}
+                    {types.map((t) => (
+                      <option key={t.key} value={t.key}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {metaFields.map((f) => (
+                  <div key={f.key} className="form-group">
+                    <label className="text-[11px]">{f.label}</label>
+                    <input
+                      type={f.type || "text"}
+                      value={meta[f.key] ?? ""}
+                      onChange={(e) => setMeta((m) => ({ ...m, [f.key]: e.target.value }))}
+                      className="premium-input w-full text-xs"
+                      disabled={saving}
+                    />
+                  </div>
+                ))}
+                <div className="form-group sm:col-span-2">
+                  <label className="text-[11px]">ไฟล์เอกสาร</label>
+                  <input
+                    type="file"
+                    accept=".pdf,image/png,image/jpeg,image/webp"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    className="premium-input w-full text-xs"
+                    style={{ padding: "5px" }}
+                    disabled={saving}
+                  />
                 </div>
               </div>
-            );
-          })}
-        </div>
+              <div className="flex justify-end gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowAdd(false); setFile(null); setMeta(emptyMeta(metaFields)); }}
+                  className="btn text-xs px-4"
+                  disabled={saving}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDetailedSave}
+                  disabled={saving || !file}
+                  className="btn btn-primary text-xs px-5"
+                >
+                  {saving ? "กำลังบันทึก..." : "บันทึกเอกสาร"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {items.length === 0 ? (
+            <p className="text-xs text-[var(--text-3)] italic py-4 text-center">ยังไม่มีเอกสารแนบ</p>
+          ) : (
+            <div className="space-y-2">
+              {items.map((it) => {
+                const md = it.metadata || {};
+                const mdLines = metaFields
+                  .filter((f) => md[f.key] !== undefined && md[f.key] !== "" && md[f.key] != null)
+                  .map((f) => `${f.label}: ${md[f.key]}`);
+                return (
+                  <div key={it.id} className="flex items-start justify-between gap-3 border border-[var(--border)] rounded-lg px-3 py-2">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <FileText size={18} className="text-[var(--text-3)] shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="status-pill text-[10px]">{attachmentTypeLabel(it.entityType, it.docType)}</span>
+                          <span className="text-xs font-medium text-[var(--text)] truncate">{it.fileName || "ไฟล์แนบ"}</span>
+                        </div>
+                        {mdLines.length > 0 && (
+                          <div className="text-[11px] text-[var(--text-2)] mt-1 space-y-0.5">
+                            {mdLines.map((l, i) => (<div key={i}>{l}</div>))}
+                          </div>
+                        )}
+                        <div className="text-[10px] text-[var(--text-3)] mt-0.5">
+                          {formatSize(it.sizeBytes)}
+                          {it.uploadedByName ? ` · โดย ${it.uploadedByName}` : ""}
+                          {it.createdAt ? ` · ${new Date(it.createdAt).toLocaleDateString("th-TH")}` : ""}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <a href={it.fileUrl} target="_blank" rel="noreferrer" className="btn px-2.5 py-1 text-[11px] flex items-center gap-1 border border-[var(--border)]">
+                        <Download size={13} /> เปิด
+                      </a>
+                      {canEdit && (
+                        <button type="button" onClick={() => handleDelete(it.id)} className="btn px-2.5 py-1 text-[11px] text-[var(--red)] flex items-center gap-1 border border-[var(--border)]">
+                          <Trash2 size={13} /> ลบ
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        /* ───────── โหมดการ์ดเอกสารจำเป็น (customer/product) ───────── */
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {sortedTypes.map((t) => {
+              const files = byType[t.key] || [];
+              const has = files.length > 0;
+              const busy = uploadingType === t.key;
+              return (
+                <div
+                  key={t.key}
+                  className="border rounded-lg p-3 flex flex-col"
+                  style={{ borderColor: has ? "var(--green)" : "var(--border)" }}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {has ? (
+                        <CheckCircle2 size={16} className="text-[var(--green)] shrink-0" />
+                      ) : (
+                        <Circle size={16} className="text-[var(--text-3)] shrink-0" />
+                      )}
+                      <span className="text-xs font-semibold text-[var(--text)] truncate">{t.label}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {has ? (
+                        <span className="status-pill success text-[10px]">มีแล้ว</span>
+                      ) : t.required ? (
+                        <span className="status-pill warning text-[10px]">ยังขาด</span>
+                      ) : (
+                        <span className="status-pill text-[10px]">ไม่บังคับ</span>
+                      )}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => pickForType(t.key)}
+                          disabled={busy}
+                          className="btn-icon"
+                          aria-label={has ? `เพิ่มไฟล์ ${t.label}` : `แนบไฟล์ ${t.label}`}
+                          title={busy ? "กำลังอัปโหลด..." : has ? "เพิ่มไฟล์" : "แนบไฟล์"}
+                          style={busy ? { opacity: 0.5 } : undefined}
+                        >
+                          <Plus size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {has && (
+                    <div className="divide-y divide-[var(--border)]">
+                      {files.map((it) => (<FileRow key={it.id} it={it} compact />))}
+                    </div>
+                  )}
+
+                  {!canEdit && !has && (
+                    <span className="text-[11px] text-[var(--text-3)] italic">ยังไม่มีเอกสาร</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {/* ไฟล์อินพุตร่วมสำหรับทุกการ์ด */}
+          {canEdit && (
+            <input
+              ref={cardFileRef}
+              type="file"
+              accept=".pdf,image/png,image/jpeg,image/webp"
+              onChange={handleCardFile}
+              className="hidden"
+            />
+          )}
+        </>
       )}
     </div>
   );

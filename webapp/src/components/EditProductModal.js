@@ -24,7 +24,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
       
       // Fetch product types if not already fetched
       if (productTypes.length === 0) {
-        fetch("/api/product-types")
+        fetch("/api/master/product-types")
           .then(res => res.json())
           .then(data => setProductTypes(data))
           .catch(err => console.error("Failed to fetch product types", err));
@@ -55,7 +55,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
       retailPriceIncVat: form.retailPriceIncVat === "" ? null : parseFloat(form.retailPriceIncVat),
     };
     try {
-      const res = await fetch(`/api/products/${product.id}`, {
+      const res = await fetch(`/api/master/products/${product.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -93,6 +93,19 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           <div>
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">ข้อมูลสินค้า</h3>
             <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+              <div className="col-span-2 form-group">
+                <label>ลูกค้าเจ้าของสินค้า</label>
+                <input
+                  type="text"
+                  value={product.customerName || "-"}
+                  readOnly
+                  disabled
+                  className="premium-input w-full bg-[var(--panel-2)] text-[var(--text-2)] cursor-not-allowed"
+                />
+                <span className="text-[11px] text-[var(--text-3)]">
+                  เปลี่ยนเจ้าของได้ที่ขั้นตอนการขึ้นทะเบียนสรรพสามิต
+                </span>
+              </div>
               <div className="col-span-2">
                 {field("fgCode", "รหัสสินค้า (FG Code)")}
                 

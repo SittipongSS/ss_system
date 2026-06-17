@@ -2,11 +2,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Pencil } from "lucide-react";
+import { ArrowLeft, Package, Pencil, Archive, ArchiveRestore } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import EditProductModal from "@/components/EditProductModal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import StatCards from "@/components/database/StatCards";
+import { customerDocTypes } from "@/lib/master/attachmentTypes";
 
 export default function ProductDetails() {
   const params = useParams();
@@ -30,7 +32,7 @@ export default function ProductDetails() {
 
   const fetchProduct = async () => {
     try {
-      const res = await fetch(`/api/products/${id}`);
+      const res = await fetch(`/api/master/products/${id}`);
       if (res.ok) {
         setProduct(await res.json());
       } else {
@@ -53,7 +55,7 @@ export default function ProductDetails() {
   useEffect(() => {
     if (id) fetchProduct();
     // แบรนด์เป็นของลูกค้า (customers.brands[]) — ใช้เป็นรายการแนะนำตอนแก้แบรนด์สินค้า
-    fetch("/api/customers")
+    fetch("/api/master/customers")
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setBrandOptions([...new Set((d || []).flatMap((c) => c.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))))
       .catch(() => {});
@@ -65,11 +67,32 @@ export default function ProductDetails() {
     return amount.toLocaleString("th-TH", { style: "currency", currency: "THB", minimumFractionDigits: 2 });
   };
 
+  // Retire / reactivate a product (parity with customers). Retired products drop
+  // out of registration/order pickers but keep history; used when a product is
+  // discontinued but can't be deleted (still referenced).
+  const handleToggleActive = async () => {
+    const next = !(product.isActive !== false);
+    if (!next && !confirm("พักใช้งานสินค้านี้? จะหายจากรายการเลือกของระบบอื่น (ประวัติยังอยู่ครบ)")) return;
+    setIsUpdating(true);
+    try {
+      const res = await fetch(`/api/master/products/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: next }),
+      });
+      if (res.ok) await fetchProduct();
+      else alert((await res.json()).error || "ดำเนินการไม่สำเร็จ");
+    } catch {
+      alert("เกิดข้อผิดพลาด");
+    }
+    setIsUpdating(false);
+  };
+
   const handleDelete = async () => {
     if (!confirm("ยืนยันว่าต้องการลบรหัสสินค้านี้ออกจากระบบหรือไม่?")) return;
     setIsUpdating(true);
     try {
-      const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/master/products/${id}`, { method: "DELETE" });
       if (res.ok) {
         alert("ลบข้อมูลสินค้าเรียบร้อยแล้ว");
         router.push("/database/products");
@@ -132,12 +155,36 @@ export default function ProductDetails() {
               <Pencil size={14} /> แก้ไขข้อมูล
             </button>
           )}
+          {canEditProducts && (
+            <button onClick={handleToggleActive} disabled={isUpdating} className="btn px-4 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg border border-[var(--border)] text-[var(--text-2)]">
+              {product.isActive === false ? (<><ArchiveRestore size={14} /> เปิดใช้อีกครั้ง</>) : (<><Archive size={14} /> พักใช้</>)}
+            </button>
+          )}
           {canDeleteProducts && (
             <button onClick={handleDelete} disabled={isUpdating} className="btn bg-[var(--red-soft)] text-[var(--red)] border border-[var(--border)] px-4 py-2 text-xs font-semibold rounded-lg">
               ลบสินค้า
             </button>
           )}
         </div>
+      </div>
+
+      {product.isActive === false && (
+        <div className="mb-[22px] rounded-xl px-4 py-3 flex items-center gap-2 text-sm" style={{ background: "var(--panel-2)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+          <Archive size={16} className="text-[var(--text-3)]" />
+          สินค้านี้ถูกพักใช้งาน — ไม่แสดงในรายการเลือกของระบบอื่น (กด “เปิดใช้อีกครั้ง” เพื่อนำกลับมา)
+        </div>
+      )}
+
+      {/* Metric strip — key facts at a glance (non-sensitive) */}
+      <div className="mb-[22px]">
+        <StatCards
+          items={[
+            { label: "ปริมาตร/หน่วย", value: `${product.volume} ${product.volumeUnit || "ml"}` },
+            { label: "ราคาขายปลีก", value: formatMoney(product.retailPriceIncVat) },
+            { label: "ภาษี/ชิ้น", value: isExempt ? "ยกเว้น" : formatMoney((product.exciseTax || 0) + (product.localTax || 0)), tone: isExempt ? "success" : "accent" },
+            { label: "ทะเบียนภาษี", value: `${regs.length} รายการ` },
+          ]}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-[22px]">
@@ -148,6 +195,16 @@ export default function ProductDetails() {
               <Package size={16} className="text-[var(--accent)]" /> ข้อมูลสเปคสินค้า (Product Specs)
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
+              <div className="md:col-span-2">
+                <span className="text-[var(--text-3)] block mb-1">ลูกค้าเจ้าของสินค้า</span>
+                {product.customerId ? (
+                  <Link href={`/database/customers/${product.customerId}`} className="font-semibold text-[var(--accent)] text-sm hover:underline">
+                    {product.customerName || product.customerId}
+                  </Link>
+                ) : (
+                  <span className="font-semibold text-[var(--text)] text-sm">{product.customerName || "-"}</span>
+                )}
+              </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">รหัสสำเร็จรูป FG Code</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm bg-[var(--panel-2)] px-2 py-0.5 rounded">{product.fgCode}</span>
@@ -245,6 +302,7 @@ export default function ProductDetails() {
               entityType="customer"
               entityId={product.customerId}
               canEdit={false}
+              docTypes={customerDocTypes(product.customerType)}
               title={`เอกสารลูกค้าเจ้าของ${product.customerName ? ` — ${product.customerName}` : ""}`}
               note="เอกสารของลูกค้าที่เป็นเจ้าของสินค้านี้ (จัดการได้ที่หน้าข้อมูลลูกค้า)"
             />

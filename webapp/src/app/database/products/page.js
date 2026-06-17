@@ -1,16 +1,21 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { Package, Plus, Search } from "lucide-react";
+import { Package, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
+import Select from "@/components/ui/Select";
+import Workspace from "@/components/ui/Workspace";
+import StatCards from "@/components/database/StatCards";
+import ApprovalQueue from "@/components/database/ApprovalQueue";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { useResponsiveView } from "@/lib/useResponsiveView";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
-const MANAGE_KEY = "/api/products?manage=1";
+const MANAGE_KEY = "/api/master/products?manage=1";
 
 // Master product catalog. Every FG is created here owned by a customer
 // (chosen in the form). Excise approval still happens later in the excise
@@ -24,11 +29,13 @@ export default function ProductRegistry() {
   const canApproveRow = (rec) =>
     canApproveMasterData(role) && (isSuperuser(role) || rec?.team === myTeam);
   const [products, setProducts] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
-  const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/product-types") ?? []);
-  const [customers, setCustomers] = useState(() => apiCache.get("/api/customers") ?? []);
+  const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
+  const [customers, setCustomers] = useState(() => apiCache.get("/api/master/customers") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [showInactive, setShowInactive] = useState(false);
+  const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const emptyForm = {
     customerId: "",
@@ -56,10 +63,10 @@ export default function ProductRegistry() {
         apiCache.set(MANAGE_KEY, data);
         setProducts(data);
       }
-      const typeRes = await fetch("/api/product-types");
+      const typeRes = await fetch("/api/master/product-types");
       if (typeRes.ok) {
         const typeData = await typeRes.json();
-        apiCache.set("/api/product-types", typeData);
+        apiCache.set("/api/master/product-types", typeData);
         setProductTypes(typeData);
       }
     } catch (e) {
@@ -76,7 +83,7 @@ export default function ProductRegistry() {
       if (rejectionReason === null) return; // ยกเลิก
     }
     try {
-      const res = await fetch(`/api/products/${id}`, {
+      const res = await fetch(`/api/master/products/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ approvalStatus: status, rejectionReason }),
@@ -101,9 +108,9 @@ export default function ProductRegistry() {
     setUserName(localStorage.getItem("userName") || "SA User");
     fetchProducts();
     // แบรนด์เป็นของลูกค้า (customers.brands[]) — ดึงมาเป็นรายการแนะนำของช่องแบรนด์
-    fetch("/api/customers")
+    fetch("/api/master/customers")
       .then((r) => (r.ok ? r.json() : []))
-      .then((d) => { apiCache.set("/api/customers", d || []); setCustomers(d || []); })
+      .then((d) => { apiCache.set("/api/master/customers", d || []); setCustomers(d || []); })
       .catch(() => {});
   }, []);
 
@@ -150,7 +157,7 @@ export default function ProductRegistry() {
       retailPriceIncVat: parseFloat(formData.retailPriceIncVat),
     };
     try {
-      const res = await fetch("/api/products", {
+      const res = await fetch("/api/master/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -174,12 +181,23 @@ export default function ProductRegistry() {
   };
 
   const q = search.trim().toLowerCase();
-  const pendingCount = products.filter((p) => approvalStatusOf(p) === "pending").length;
+  const counts = {
+    pending: products.filter((p) => approvalStatusOf(p) === "pending").length,
+    approved: products.filter((p) => approvalStatusOf(p) === "approved").length,
+    taxable: products.filter((p) => p.isExciseTaxable !== false).length,
+    inactive: products.filter((p) => p.isActive === false).length,
+  };
   const filteredProducts = products.filter((p) => {
+    if (!showInactive && p.isActive === false) return false;
     if (statusFilter !== "all" && approvalStatusOf(p) !== statusFilter) return false;
     if (!q) return true;
     return [p.fgCode, p.productDescription, p.brandName].some((v) => (v || "").toLowerCase().includes(q));
   });
+
+  // Pending records this user may approve — surfaced at the top as a queue.
+  const approvalQueue = products.filter(
+    (p) => approvalStatusOf(p) === "pending" && canApproveRow(p),
+  );
 
   const sort = useSortableTable(filteredProducts, {
     product: (p) => p.productDescription || p.fgCode || "",
@@ -189,70 +207,125 @@ export default function ProductRegistry() {
     tax: (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0)),
   });
 
-  return (
+  const open = (p) => (window.location.href = `/database/products/${p.id}`);
+  const taxPerUnit = (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0));
+
+  const headerRight = (
     <>
-      <div
-        className="premium-header"
-        style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-      >
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon">
-              <Package size={22} />
-            </span>{" "}
-            ข้อมูลสินค้า
-          </h1>
-          <p>ฐานข้อมูลสินค้ากลาง (Master Data) — รหัส FG สเปค และต้นทุน/ภาษีต่อหน่วย</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="pill ok">ทั้งหมด {products.length} รายการ</div>
-          {canEdit && (
-            <button onClick={openForm} className="btn btn-primary flex items-center gap-1.5">
-              <Plus size={16} /> เพิ่มสินค้า
-            </button>
-          )}
-        </div>
-      </div>
+      <span className="ui-badge">{products.length} รายการ</span>
+      {canEdit && (
+        <button onClick={openForm} className="btn btn-primary flex items-center gap-1.5">
+          <Plus size={16} /> เพิ่มสินค้า
+        </button>
+      )}
+    </>
+  );
 
-      {/* แถบเครื่องมือ: ค้นหา */}
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
-        <div className="search-glass" style={{ width: "240px" }}>
-          <Search size={18} color="var(--text-3)" />
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า..." />
-        </div>
-        <div className="flex items-center gap-1.5">
-          {[
-            { key: "all", label: "ทั้งหมด" },
-            { key: "pending", label: `รออนุมัติ${pendingCount ? ` (${pendingCount})` : ""}` },
-            { key: "approved", label: "อนุมัติแล้ว" },
-            { key: "rejected", label: "ไม่อนุมัติ" },
-          ].map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setStatusFilter(f.key)}
-              className={`btn ${statusFilter === f.key ? "btn-primary" : ""}`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+  const toolbar = (
+    <div className="toolbar">
+      <div className="search-glass" style={{ width: "240px" }}>
+        <Search size={18} color="var(--text-3)" />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า / FG / แบรนด์..." />
       </div>
+      <div className="spacer" />
+      <span className="toolbar-label"><Filter size={14} /> กรอง</span>
+      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
+        <option value="all">ทุกสถานะ</option>
+        <option value="pending">รออนุมัติ</option>
+        <option value="approved">อนุมัติแล้ว</option>
+        <option value="rejected">ไม่อนุมัติ</option>
+      </select>
+      {counts.inactive > 0 && (
+        <button type="button" onClick={() => setShowInactive((v) => !v)} className={`btn ${showInactive ? "btn-primary" : ""}`} title="แสดง/ซ่อนสินค้าที่เลิกใช้">
+          {showInactive ? "ซ่อนที่เลิกใช้" : `แสดงที่เลิกใช้ (${counts.inactive})`}
+        </button>
+      )}
+      <div className="segmented">
+        <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
+        <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
+      </div>
+    </div>
+  );
 
-      {loading ? (
-        <div className="flex justify-center p-12">
-          <svg className="animate-spin h-8 w-8 text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
+  return (
+    <Workspace
+      icon={<Package size={22} />}
+      title="ข้อมูลสินค้า"
+      subtitle="ฐานข้อมูลสินค้ากลาง (Master Data) — รหัส FG สเปค และต้นทุน/ภาษีต่อหน่วย"
+      headerRight={headerRight}
+      loading={loading}
+      rail={
+        <>
+          <StatCards
+            items={[
+              { label: "ทั้งหมด", value: products.length },
+              { label: "รออนุมัติ", value: counts.pending, tone: counts.pending ? "warn" : undefined },
+              { label: "อนุมัติแล้ว", value: counts.approved, tone: "success" },
+              { label: "ต้องเสียภาษี", value: counts.taxable, tone: "accent" },
+            ]}
+          />
+          <ApprovalQueue
+            items={approvalQueue}
+            onDecide={decide}
+            primary={(p) => p.fgCode}
+            secondary={(p) => `${p.productDescription}${p.brandName ? ` · ${p.brandName}` : ""}`}
+            onOpen={open}
+          />
+        </>
+      }
+      toolbar={toolbar}
+    >
+      {sort.sorted.length === 0 ? (
+        <div className="glass-panel p-10 text-center text-[var(--text-3)]">
+          {q || statusFilter !== "all" ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
+        </div>
+      ) : view === "cards" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {sort.sorted.map((p) => {
+            const isExempt = p.isExciseTaxable === false;
+            const status = approvalStatusOf(p);
+            const showActions = status === "pending" && canApproveRow(p);
+            const inactive = p.isActive === false;
+            return (
+              <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescription}</div>
+                    <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <ApprovalBadge status={status} />
+                    {inactive && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[var(--text-2)] truncate">{p.brandName || "-"}</span>
+                  <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[var(--text-3)]">ราคาขายปลีก</span>
+                  <span className="font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+                  <span className="text-[11px] text-[var(--text-3)]">
+                    ภาษี/ชิ้น: {isExempt ? <span className="status-pill success text-[10px]">ยกเว้น</span> : <span className="font-mono">{formatMoney(taxPerUnit(p))}</span>}
+                  </span>
+                  {showActions ? (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <ApprovalActions onDecide={(s) => decide(p.id, s)} />
+                    </div>
+                  ) : <ChevronRight size={16} className="text-[var(--text-3)]" />}
+                </div>
+                {status === "rejected" && p.rejectionReason && (
+                  <div className="text-[11px] text-[var(--text-3)] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="glass-panel">
-          <div className="px-4 py-3.5 border-b border-[var(--border)] flex items-center justify-between gap-3 flex-wrap">
-            <h3 className="font-semibold text-sm text-[var(--text)]">
-              ฐานข้อมูลสินค้า ({filteredProducts.length} รายการ)
-            </h3>
-          </div>
-          <div className="premium-table-wrapper border-none rounded-t-none">
+          <div className="premium-table-wrapper border-none">
             <table className="premium-table">
               <thead>
                 <tr>
@@ -265,50 +338,37 @@ export default function ProductRegistry() {
                 </tr>
               </thead>
               <tbody>
-                {sort.sorted.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="text-center py-10 text-[var(--text-3)]">
-                      {search.trim() ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
-                    </td>
-                  </tr>
-                ) : (
-                  sort.sorted.map((p) => {
-                    const isExempt = p.isExciseTaxable === false;
-                    const taxRate = isExempt ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
-                    return (
-                      <tr
-                        key={p.id}
-                        onClick={() => (window.location.href = `/database/products/${p.id}`)}
-                        className="clickable-row"
-                      >
-                        <td>
-                          <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
-                          <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
-                        </td>
-                        <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
-                        <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
-                        <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
-                        <td className="num mono text-[var(--text-2)]">
-                          {isExempt ? <span className="status-pill success text-[10px]">ยกเว้น</span> : formatMoney(taxRate)}
-                        </td>
-                        <td onClick={(e) => e.stopPropagation()}>
-                          {approvalStatusOf(p) === "pending" && canApproveRow(p) ? (
-                            <ApprovalActions onDecide={(status) => decide(p.id, status)} />
-                          ) : (
-                            <div>
-                              <ApprovalBadge status={approvalStatusOf(p)} />
-                              {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
-                                <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">
-                                  เหตุผล: {p.rejectionReason}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                {sort.sorted.map((p) => {
+                  const isExempt = p.isExciseTaxable === false;
+                  const taxRate = isExempt ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
+                  return (
+                    <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: 0.55 } : undefined}>
+                      <td>
+                        <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
+                        <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
+                      </td>
+                      <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
+                      <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
+                      <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
+                      <td className="num mono text-[var(--text-2)]">
+                        {isExempt ? <span className="status-pill success text-[10px]">ยกเว้น</span> : formatMoney(taxRate)}
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {approvalStatusOf(p) === "pending" && canApproveRow(p) ? (
+                          <ApprovalActions onDecide={(status) => decide(p.id, status)} />
+                        ) : (
+                          <div className="flex flex-col gap-1 items-start">
+                            <ApprovalBadge status={approvalStatusOf(p)} />
+                            {p.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                            {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
+                              <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -330,7 +390,7 @@ export default function ProductRegistry() {
               <div className="form-group col-span-2">
                 <label>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
                 <input type="text" name="fgCode" value={formData.fgCode} onChange={handleChange} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
-                
+
                 {(() => {
                   const cat = getCategoryInfo(formData.fgCode);
                   if (!formData.fgCode) {
@@ -342,7 +402,7 @@ export default function ProductRegistry() {
                   if (!cat.found) {
                     return <div className="mt-2 text-xs text-[var(--red)] bg-[var(--red-soft)] p-2 rounded border border-[var(--border)]">พบหมวดหมู่ <strong>{cat.code}</strong> แต่ไม่มีในฐานข้อมูล (อาจพิมพ์ผิด หรือเป็นหมวดใหม่)</div>;
                   }
-                  
+
                   const isExcise = cat.code === "01-002";
                   return (
                     <div className={`mt-2 p-3 text-xs rounded-lg border border-[var(--border)] flex flex-col gap-1 ${isExcise ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-2)] text-[var(--text-2)]"}`}>
@@ -366,10 +426,10 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
-                <select name="customerId" value={formData.customerId} onChange={handleChange} required className="premium-select w-full">
+                <Select name="customerId" value={formData.customerId} onChange={handleChange} required fullWidth>
                   <option value="" disabled>— เลือกลูกค้า —</option>
                   {customerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                </Select>
                 <span className="text-xs text-[var(--text-3)] mt-1">FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก</span>
               </div>
               <div className="form-group">
@@ -392,14 +452,14 @@ export default function ProductRegistry() {
                 <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
                 <div className="flex gap-2">
                   <input type="number" name="volume" value={formData.volume} onChange={handleChange} required min="0.01" step="0.01" className="premium-input flex-1 font-mono" />
-                  <select name="volumeUnit" value={formData.volumeUnit} onChange={handleChange} className="premium-select" style={{ width: "80px" }}>
+                  <Select name="volumeUnit" value={formData.volumeUnit} onChange={handleChange} style={{ width: "80px" }}>
                     <option value="ml">ml</option>
                     <option value="g">g</option>
                     <option value="kg">kg</option>
                     <option value="oz">oz</option>
                     <option value="L">L</option>
                     <option value="pcs">pcs</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
               <div className="form-group">
@@ -421,6 +481,6 @@ export default function ProductRegistry() {
           </div>
         </form>
       </Modal>
-    </>
+    </Workspace>
   );
 }
