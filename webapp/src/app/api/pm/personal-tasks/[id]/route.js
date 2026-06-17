@@ -1,6 +1,6 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
 import { isSuperuser } from '@/lib/permissions';
+import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { pickFields } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,36 +29,29 @@ async function loadTask(supabase, id) {
 }
 
 // PATCH /api/pm/personal-tasks/[id] — เจ้าของ/ผู้รับมอบ/หัวหน้าทีม/แอดมิน.
-export async function PATCH(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
+  const { id } = await ctx.params;
   const task = await loadTask(supabase, id);
-  if (!task) return Response.json({ error: 'ไม่พบงาน' }, { status: 404 });
-  if (!(await canManage(supabase, task, user))) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!task) return notFound('ไม่พบงาน');
+  if (!(await canManage(supabase, task, user))) return forbidden();
 
-  const body = await request.json();
-  const updates = {};
-  for (const k of EDITABLE) {
-    if (body[k] !== undefined) updates[k] = (k === 'dueDate' && body[k] === '') ? null : body[k];
-  }
+  const body = await req.json();
+  const updates = pickFields(body, EDITABLE, { nullable: ['dueDate'] });
   updates.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase.from('personal_tasks').update(updates).eq('id', id).select().single();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json(data);
-}
+  if (error) return fail(error.message, 500);
+  return ok(data);
+});
 
 // DELETE /api/pm/personal-tasks/[id] — เจ้าของ/ผู้รับมอบ/หัวหน้าทีม/แอดมิน.
-export async function DELETE(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const DELETE = withUser(async ({ user, supabase, ctx }) => {
+  const { id } = await ctx.params;
   const task = await loadTask(supabase, id);
-  if (!task) return Response.json({ error: 'ไม่พบงาน' }, { status: 404 });
-  if (!(await canManage(supabase, task, user))) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!task) return notFound('ไม่พบงาน');
+  if (!(await canManage(supabase, task, user))) return forbidden();
 
   const { error } = await supabase.from('personal_tasks').delete().eq('id', id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ success: true });
-}
+  if (error) return fail(error.message, 500);
+  return ok({ success: true });
+});

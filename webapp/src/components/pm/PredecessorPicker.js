@@ -74,8 +74,8 @@ export function PredecessorPopover({ task, tasks, anchor, onSave, onClose }) {
         </div>
         <PredecessorPicker tasks={tasks} selfId={task.id} value={draft} onChange={setDraft} maxHeight={200} />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-          <button className="btn btn-secondary" style={{ padding: "4px 12px", fontSize: "12px" }} onClick={onClose}>ยกเลิก</button>
-          <button className="btn btn-primary" style={{ padding: "4px 12px", fontSize: "12px" }} disabled={!changed} onClick={() => onSave(draft)}>บันทึก</button>
+          <button className="btn btn-secondary sm" onClick={onClose}>ยกเลิก</button>
+          <button className="btn btn-primary sm" disabled={!changed} onClick={() => onSave(draft)}>บันทึก</button>
         </div>
       </div>
     </>

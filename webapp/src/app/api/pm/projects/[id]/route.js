@@ -1,9 +1,11 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
-import { viewScope, editScope, inScope, isSuperuser } from '@/lib/permissions';
-import { mergeTemplateTasks, recalculateSchedule } from '@/lib/pm/schedule';
+import { viewScope, editScope, inScope, canDeleteRecord } from '@/lib/permissions';
+import { mergeTemplateTasks, recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
+import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { loadProject } from '@/lib/pm/projectsRepo';
+import { genId } from '@/lib/id';
+import { pickFields } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,31 +19,14 @@ const EDITABLE = [
   'metadata',
 ];
 
-// Resolve the URL segment to a project. Internal ids ('PRJ-######') and human
-// project codes ('PJ-YYMMNNN') never collide, so we accept either: try id first,
-// then fall back to code. Callers must use the returned row's real `id` for any
-// project_tasks/project_products subqueries (those FK the internal id).
-async function loadProject(supabase, idOrCode) {
-  const { data, error } = await supabase
-    .from('projects').select('*').eq('id', idOrCode).maybeSingle();
-  if (error) throw error;
-  if (data) return data;
-  const { data: byCode, error: codeErr } = await supabase
-    .from('projects').select('*').eq('code', idOrCode).maybeSingle();
-  if (codeErr) throw codeErr;
-  return byCode;
-}
-
 // GET /api/pm/projects/[id] — project + its tasks + linked products (FG).
-export async function GET(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const GET = withUser(async ({ user, supabase, ctx }) => {
+  const { id } = await ctx.params;
 
   const project = await loadProject(supabase, id).catch((e) => { throw e; });
-  if (!project) return Response.json({ error: 'ไม่พบโปรเจกต์' }, { status: 404 });
+  if (!project) return notFound('ไม่พบโปรเจกต์');
   if (viewScope(user?.role) === 'team' && !inScope('team', user, project)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return forbidden();
   }
 
   const [{ data: tasks }, { data: links }, { data: personalTasks }] = await Promise.all([
@@ -62,35 +47,27 @@ export async function GET(request, { params }) {
   // me: ใช้ฝั่ง client gate ปุ่มจัดการ "งานเพิ่มเติม" (owner/assignee/lead) + กรอง
   // ผู้รับมอบใน dropdown ตามทีมโปรเจกต์.
   const me = user ? { id: user.id, name: user.name, role: user.role, team: user.team ?? null } : null;
-  return Response.json({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me });
-}
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me });
+});
 
 // PATCH /api/pm/projects/[id]
-export async function PATCH(request, { params }) {
-  const { id: idOrCode } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
+  const { id: idOrCode } = await ctx.params;
 
   const project = await loadProject(supabase, idOrCode);
-  if (!project) return Response.json({ error: 'ไม่พบโปรเจกต์' }, { status: 404 });
+  if (!project) return notFound('ไม่พบโปรเจกต์');
   if (!inScope(editScope(user?.role), user, project)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return forbidden();
   }
   // From here on use the resolved internal id for all DB keys/FK subqueries.
   const id = project.id;
 
-  const body = await request.json();
-  const updates = {};
-  for (const k of EDITABLE) {
-    if (body[k] !== undefined) {
-      if ((k === 'startDate' || k === 'dueDate') && body[k] === "") updates[k] = null;
-      else updates[k] = body[k];
-    }
-  }
+  const body = await req.json();
+  const updates = pickFields(body, EDITABLE, { nullable: ['startDate', 'dueDate'] });
   updates.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase.from('projects').update(updates).eq('id', id).select().single();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return fail(error.message, 500);
 
   // ข้อ 2: หมวดสินค้าพลิกสถานะสรรพสามิต (01-002) → ปรับชุดขั้นตอนแบบ incremental
   // (เพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต, คงความคืบหน้าเดิม + ขั้นตอนที่เพิ่มเอง).
@@ -131,7 +108,7 @@ export async function PATCH(request, { params }) {
     const { data: existing } = await supabase
       .from('project_tasks').select('*').eq('projectId', id).order('stepOrder', { ascending: true });
     if (existing && existing.length) {
-      const recalced = recalculateSchedule(existing, data, existing);
+      const recalced = recalculateGraph(existing, resolveSchedule(data).anchor);
       await Promise.all(
         recalced
           .filter((r, i) => r.startDate !== existing[i].startDate || r.finishDate !== existing[i].finishDate)
@@ -148,8 +125,8 @@ export async function PATCH(request, { params }) {
     await supabase.from('project_products').delete().eq('projectId', id);
     // Insert new
     if (body.projectProducts.length > 0) {
-      const ppRows = body.projectProducts.map((p, idx) => ({
-        id: 'PP-' + Date.now().toString().slice(-6) + idx,
+      const ppRows = body.projectProducts.map((p) => ({
+        id: genId('PP'),
         projectId: id,
         productId: p.productId,
         orderQty: p.orderQty || null,
@@ -160,26 +137,22 @@ export async function PATCH(request, { params }) {
     }
   }
 
-  return Response.json(data);
-}
+  return ok(data);
+});
 
 // DELETE /api/pm/projects/[id] — supervisor (all) or team lead (own team).
-export async function DELETE(request, { params }) {
-  const { id: idOrCode } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const DELETE = withUser(async ({ user, supabase, ctx }) => {
+  const { id: idOrCode } = await ctx.params;
 
   const project = await loadProject(supabase, idOrCode);
-  if (!project) return Response.json({ error: 'ไม่พบโปรเจกต์' }, { status: 404 });
+  if (!project) return notFound('ไม่พบโปรเจกต์');
   const id = project.id;
-  // delete scope: superuser=all; senior_ae=own team; others none
-  const scope = isSuperuser(user?.role) ? 'all'
-    : user?.role === 'senior_ae' ? 'team' : 'none';
-  if (!inScope(scope, user, project)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+  // delete scope: superuser=all; senior_ae=own team; others none (deleteScope 'projects')
+  if (!canDeleteRecord(user, 'projects', project)) {
+    return forbidden();
   }
 
   const { error } = await supabase.from('projects').delete().eq('id', id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ success: true });
-}
+  if (error) return fail(error.message, 500);
+  return ok({ success: true });
+});

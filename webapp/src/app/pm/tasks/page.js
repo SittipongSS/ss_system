@@ -4,6 +4,10 @@ import { useRouter } from "next/navigation";
 import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, ChevronRight, ChevronDown, ExternalLink, Flame, ArrowUpDown, ArrowUp, ArrowDown, Table2, PlusCircle, Check, Calendar, Flag } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
+import StatusSelect from "@/components/pm/StatusSelect";
+import ViewSwitcher from "@/components/pm/ViewSwitcher";
+import EmptyState from "@/components/ui/EmptyState";
+import SkeletonRows from "@/components/ui/Skeleton";
 import { isSuperuser } from "@/lib/permissions";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 
@@ -256,8 +260,8 @@ export default function MyWorkPage() {
   const extraStatusCell = (t) => (canManageExtra(t)
     ? statusSelect(t, setPersonalStatus)
     : (
-      <span className={`status-pill ${t.status === "Completed" ? "success" : ""}`} title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม">
-        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}
+      <span className={`status-pill dot ${t.status === "Completed" ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }} title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม">
+        {TASK_STATUS_TH[t.status] || t.status}
       </span>
     ));
   // ป้าย "เพิ่มเติม" ใช้ซ้ำทั้ง 2 มุม
@@ -331,13 +335,12 @@ export default function MyWorkPage() {
 
   // dropdown เลือกสถานะ — วิธีอัปเดตหลัก (แทนการคลิกวน pill เดิม)
   const statusSelect = (t, onChange) => (
-    <Select
+    <StatusSelect
       value={t.status}
+      variant="short"
       onClick={(e) => e.stopPropagation()}
-      onChange={(e) => { e.stopPropagation(); onChange(t, e.target.value); }}
-      tone={statusDot(t.status)}
+      onChange={(v) => onChange(t, v)}
       title="เปลี่ยนสถานะ"
-      options={Object.entries(TASK_STATUS_TH).map(([k, label]) => ({ value: k, label }))}
     />
   );
 
@@ -372,11 +375,12 @@ export default function MyWorkPage() {
             {t.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}
           </div>
           <div
+            className="pm-task-card"
             onClick={handleCardClick}
             title={isExtra ? (canManageExtra(t) ? "คลิกเพื่อแก้ไขงาน" : undefined) : "เปิดหน้าโปรเจกต์เพื่อแก้รายละเอียด"}
-            style={{ flex: 1, display: "flex", gap: "16px", padding: "16px 18px", background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: "14px", position: "relative", cursor: handleCardClick ? "pointer" : "default", transition: "all 0.2s", boxShadow: isInProgress ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none" }}
+            style={{ background: cardBg, border: `1px solid ${cardBorder}`, cursor: handleCardClick ? "pointer" : "default", boxShadow: isInProgress ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none" }}
           >
-            {hasNext && <div style={{ position: "absolute", left: "29px", top: "50px", bottom: "-20px", width: "2px", background: isCompleted ? "var(--green)" : "var(--border)", borderRadius: "2px", zIndex: 0 }} />}
+            {hasNext && <div className="pm-task-connector" style={{ background: isCompleted ? "var(--green)" : "var(--border)" }} />}
 
             <div style={{ zIndex: 1 }}>
               <div style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: circleBg, border: `2px solid ${circleBorder}`, color: "#fff" }}>
@@ -395,7 +399,7 @@ export default function MyWorkPage() {
                   {isExtra
                     ? extraStatusCell(t)
                     : (canUpdateTask(t) ? statusSelect(t, setProjectStatus) : (
-                      <span className="status-pill" title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์"><span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}</span>
+                      <span className="status-pill dot" style={{ "--dot": statusDot(t.status) }} title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์">{TASK_STATUS_TH[t.status] || t.status}</span>
                     ))}
                 </div>
               </div>
@@ -422,7 +426,7 @@ export default function MyWorkPage() {
   ];
 
   const emptyState = (text) => (
-    <div className="glass-panel" style={{ padding: "32px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>{text}</div>
+    <EmptyState icon={ListTodo}>{text}</EmptyState>
   );
 
   return (
@@ -433,10 +437,7 @@ export default function MyWorkPage() {
           <p>งานโปรเจกต์ที่มอบหมายให้คุณ + งานเพิ่มเติมในโปรเจกต์ + งานส่วนตัว รวมในที่เดียว</p>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-          <div className="segmented">
-            <button onClick={() => setView("list")} className={view === "list" ? "active" : ""}><ListTodo size={14} /> List</button>
-            <button onClick={() => setView("table")} className={view === "table" ? "active" : ""}><Table2 size={14} /> Table</button>
-          </div>
+          <ViewSwitcher value={view} onChange={setView} modes={["list", "table"]} />
           <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
         </div>
       </div>
@@ -460,20 +461,13 @@ export default function MyWorkPage() {
             <button
               key={c.key}
               onClick={() => setStatusFilter(active && c.key !== "all" ? "all" : c.key)}
-              className="glass-panel"
-              style={{
-                textAlign: "left", cursor: "pointer", padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px",
-                border: active ? `1.5px solid ${c.color}` : "1px solid var(--border)",
-                boxShadow: active ? `0 0 0 3px color-mix(in srgb, ${c.color} 14%, transparent)` : "none",
-                transition: "border-color .15s, box-shadow .15s",
-              }}
+              className={`glass-panel stat-card${active ? " active" : ""}`}
+              style={{ "--stat": c.color }}
             >
-              <span style={{ width: "38px", height: "38px", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", background: `color-mix(in srgb, ${c.color} 14%, transparent)`, color: c.color, flexShrink: 0 }}>
-                {c.icon}
-              </span>
+              <span className="stat-icon">{c.icon}</span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: "22px", fontWeight: 700, lineHeight: 1.1, color: c.color }}>{c.count}</div>
-                <div style={{ fontSize: "12px", color: "var(--text-2)", fontWeight: 500 }}>{c.label}</div>
+                <div className="stat-num">{c.count}</div>
+                <div className="stat-label">{c.label}</div>
               </div>
             </button>
           );
@@ -487,7 +481,7 @@ export default function MyWorkPage() {
           <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         {statusFilter !== "all" && (
-          <button onClick={() => setStatusFilter("all")} className="btn" style={{ fontSize: "12px" }}>
+          <button onClick={() => setStatusFilter("all")} className="btn sm">
             กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: 700 }}>×</span>
           </button>
         )}
@@ -515,7 +509,7 @@ export default function MyWorkPage() {
       </div>
 
       {loading ? (
-        <div style={{ padding: "60px", textAlign: "center", color: "var(--text-3)" }}>กำลังโหลดข้อมูล...</div>
+        <SkeletonRows />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "28px" }}>
           {/* ── งานโปรเจกต์ ── */}
@@ -578,8 +572,8 @@ export default function MyWorkPage() {
                                 {canUpdateTask(t) ? (
                                   statusSelect(t, setProjectStatus)
                                 ) : (
-                                  <span className={`status-pill ${t.status === "Completed" ? "success" : ""}`} title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์">
-                                    <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDot(t.status) }} /> {TASK_STATUS_TH[t.status] || t.status}
+                                  <span className={`status-pill dot ${t.status === "Completed" ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }} title="แก้สถานะได้ที่หน้า timeline ของโปรเจกต์">
+                                    {TASK_STATUS_TH[t.status] || t.status}
                                   </span>
                                 )}
                               </td>
@@ -670,15 +664,14 @@ export default function MyWorkPage() {
                 <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{visiblePersonal.length} งาน · เห็นเฉพาะคุณ · นอกโปรเจกต์</span>
               </div>
               {/* ปุ่มเพิ่มงานซ้ำตรงหัวข้อ — กดง่ายขึ้นเวลาเลื่อนอยู่ส่วนนี้ */}
-              <button onClick={openAdd} className="btn" style={{ fontSize: "12px" }}>
+              <button onClick={openAdd} className="btn sm">
                 <Plus size={14} /> เพิ่มงาน
               </button>
             </div>
             {visiblePersonal.length === 0 ? (
-              <button onClick={openAdd} className="glass-panel" style={{ width: "100%", padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px", cursor: "pointer", border: "1px dashed var(--border)", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                <Plus size={20} />
+              <EmptyState icon={Plus} dashed onClick={openAdd}>
                 {statusFilter !== "all" ? "ไม่มีงานส่วนตัวตรงกับตัวกรองนี้" : "ยังไม่มีงานส่วนตัว — กดเพื่อสร้าง to-do ของคุณ (เช่น โทรตามลูกค้า, เตรียมเอกสาร)"}
-              </button>
+              </EmptyState>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))", gap: "12px" }}>
                 {visiblePersonal.map((t) => {

@@ -1,73 +1,64 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
 import { editScope, inScope } from '@/lib/permissions';
+import { withUser, ok, fail, forbidden, notFound, conflict, badRequest } from '@/lib/http';
+import { loadProject } from '@/lib/pm/projectsRepo';
+import { genId } from '@/lib/id';
 
 export const dynamic = 'force-dynamic';
 
-async function loadProject(supabase, id) {
-  const { data } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
-  return data;
-}
-
 // GET — FG (products) ที่ผูกกับโปรเจกต์นี้
-export async function GET(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
+export const GET = withUser(async ({ supabase, ctx }) => {
+  const { id } = await ctx.params;
   const { data, error } = await supabase
     .from('project_products')
     .select('*, product:products(*)')
     .eq('projectId', id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json((data || []).map((l) => l.product).filter(Boolean));
-}
+  if (error) return fail(error.message, 500);
+  return ok((data || []).map((l) => l.product).filter(Boolean));
+});
 
 // POST { productId } — ผูก FG เข้าโปรเจกต์ (1 โปรเจกต์มีได้หลาย FG)
-export async function POST(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const POST = withUser(async ({ user, supabase, req, ctx }) => {
+  const { id } = await ctx.params;
 
   const project = await loadProject(supabase, id);
-  if (!project) return Response.json({ error: 'ไม่พบโปรเจกต์' }, { status: 404 });
+  if (!project) return notFound('ไม่พบโปรเจกต์');
   if (!inScope(editScope(user?.role), user, project)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return forbidden();
   }
 
-  const body = await request.json();
-  if (!body.productId) return Response.json({ error: 'ต้องระบุ productId' }, { status: 400 });
+  const body = await req.json();
+  if (!body.productId) return badRequest('ต้องระบุ productId');
 
   const { data, error } = await supabase
     .from('project_products')
-    .insert({ id: 'PP-' + Date.now().toString().slice(-6), projectId: id, productId: body.productId })
+    .insert({ id: genId('PP'), projectId: project.id, productId: body.productId })
     .select('*, product:products(*)')
     .single();
   if (error) {
-    if (error.code === '23505') return Response.json({ error: 'สินค้านี้ผูกกับโปรเจกต์แล้ว' }, { status: 409 });
-    return Response.json({ error: error.message }, { status: 500 });
+    if (error.code === '23505') return conflict('สินค้านี้ผูกกับโปรเจกต์แล้ว');
+    return fail(error.message, 500);
   }
-  return Response.json(data.product, { status: 201 });
-}
+  return ok(data.product, 201);
+});
 
 // DELETE ?productId=... — ถอด FG ออกจากโปรเจกต์
-export async function DELETE(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
+  const { id } = await ctx.params;
 
   const project = await loadProject(supabase, id);
-  if (!project) return Response.json({ error: 'ไม่พบโปรเจกต์' }, { status: 404 });
+  if (!project) return notFound('ไม่พบโปรเจกต์');
   if (!inScope(editScope(user?.role), user, project)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return forbidden();
   }
 
-  const productId = new URL(request.url).searchParams.get('productId');
-  if (!productId) return Response.json({ error: 'ต้องระบุ productId' }, { status: 400 });
+  const productId = new URL(req.url).searchParams.get('productId');
+  if (!productId) return badRequest('ต้องระบุ productId');
 
   const { error } = await supabase
     .from('project_products')
     .delete()
-    .eq('projectId', id)
+    .eq('projectId', project.id)
     .eq('productId', productId);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ success: true });
-}
+  if (error) return fail(error.message, 500);
+  return ok({ success: true });
+});

@@ -1011,6 +1011,17 @@ h1, h2, h3, h4, h5, h6 {
   border: none;
 }
 
+/* leading status dot (opt-in via .dot) — color via --dot, falls back to text color.
+   keeps icon-bearing pills untouched and removes the repeated inline dot span. */
+.status-pill.dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dot, currentColor);
+}
+
 .pulse-dot {
   width: 6px;
   height: 6px;
@@ -1560,6 +1571,15 @@ input[type="number"] {
   box-shadow: var(--shadow-md);
 }
 
+/* small button — compact inline/footer/toolbar actions
+   (replaces ad-hoc inline padding/font-size on small buttons across PM) */
+.btn.sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  gap: 4px;
+}
+
 /* ─────────────────────────────────────────────────────────────
    Shared UI layer — generic utilities reused across the whole app
    (introduced for the PM cohesion pass; safe to adopt elsewhere).
@@ -1574,6 +1594,97 @@ input[type="number"] {
 .btn-warning:hover { background: color-mix(in oklab, var(--amber) 88%, #000); box-shadow: var(--shadow-md); }
 .btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
 .btn-danger:hover { background: color-mix(in oklab, var(--red) 88%, #000); box-shadow: var(--shadow-md); }
+
+/* Empty state — centered icon + message (+ optional CTA). `.dashed` makes the
+   whole block a clickable add affordance. Replaces ad-hoc empty <div>/rows. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 28px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.empty-state .es-icon { opacity: 0.45; }
+button.empty-state { width: 100%; font: inherit; }
+.empty-state.dashed { border: 1px dashed var(--border); cursor: pointer; background: transparent; }
+.empty-state.dashed:hover { background: var(--panel-2); border-color: var(--border-strong); }
+
+/* PM task card — shared shell for the timeline/work cards (project detail List
+   view + My Work). State-dependent bg/border/shadow stay inline because their
+   precedence differs per view; this class owns only the identical static box. */
+.pm-task-card {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 14px;
+  position: relative;
+  transition: all 0.2s;
+}
+.pm-task-connector {
+  position: absolute;
+  left: 29px;
+  top: 50px;
+  bottom: -20px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+
+/* Stat / summary tile that doubles as a filter toggle. Per-tile color comes
+   from a --stat CSS var so one class serves every metric. Pair with glass-panel. */
+.stat-card {
+  text-align: left;
+  cursor: pointer;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  transition: border-color .15s, box-shadow .15s;
+}
+.stat-card.active {
+  border: 1.5px solid var(--stat);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--stat) 14%, transparent);
+}
+.stat-card .stat-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--stat) 14%, transparent);
+  color: var(--stat);
+  flex-shrink: 0;
+}
+.stat-card .stat-num { font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--stat); }
+.stat-card .stat-label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+
+/* Skeleton loading — shimmering placeholder bars. Replaces "กำลังโหลด..." text. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--panel-2);
+  border-radius: 6px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 7%, transparent), transparent);
+  animation: skeleton-sweep 1.3s infinite;
+}
+@keyframes skeleton-sweep { 100% { transform: translateX(100%); } }
 
 /* Icon-only ghost button — for edit / delete / insert affordances.
    Always pair with an aria-label. */
@@ -1649,7 +1760,7 @@ input[type="number"] {
 .segmented > button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .segmented > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .segmented > button:disabled { opacity: .4; cursor: default; }
-.segmented > button.icon { width: 26px; padding: 0; }
+.segmented > button.icon { width: 28px; height: 28px; padding: 0; }
 .segmented > .divider { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
 
 /* Pill badge — type / role / category tags. Color via inline style or modifier. */

@@ -1,10 +1,10 @@
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
-import { editScope, inScope, can, normalizeDepartment } from '@/lib/permissions';
-import { recalculateForward, todayStr } from '@/lib/pm/schedule';
-import { setHolidays } from '@/lib/pm/dateHelpers';
+import { editScope, inScope, pmTaskEditTier } from '@/lib/permissions';
+import { recalculateGraph, resolveSchedule, todayStr } from '@/lib/pm/schedule';
+import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
+import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { pickFields } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,40 +27,46 @@ async function loadTaskWithProject(supabase, id) {
 }
 
 // PATCH /api/pm/project-tasks/[id]
-export async function PATCH(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
+  const { id } = await ctx.params;
 
   const { task, project } = await loadTaskWithProject(supabase, id);
-  if (!task) return Response.json({ error: 'ไม่พบขั้นตอน' }, { status: 404 });
+  if (!task) return notFound('ไม่พบขั้นตอน');
 
-  // สิทธิ์แก้ไขมี 2 ระดับ:
-  //   fullEdit     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโปรเจกต์)
-  //   workflowEdit — ผู้รับผิดชอบ (assigneeId) หรือพนักงานฝ่ายเดียวกับขั้นตอน (role===department)
-  //                  อัปเดตได้เฉพาะสถานะ/ความคืบหน้า/โน้ต ไม่แตะวันเริ่ม/ลำดับ/การมอบหมาย
-  const fullEdit = inScope(editScope(user?.role), user, project || {});
-  const ownsTask = !!user?.id && task.assigneeId === user.id;
-  // dept-broad path is for teamless departments only (staff = PC/PD/WH/RD/QC);
-  // sales depts (SA) stay team-scoped via fullEdit, so they don't leak across teams.
-  const sameDept = user?.role === 'staff' && !!user?.department && normalizeDepartment(user.department) === task.role;
-  const workflowEdit = !fullEdit && can(user?.role, 'pm:view') && (ownsTask || sameDept);
-  if (!fullEdit && !workflowEdit) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
-  }
+  // สิทธิ์แก้ไขมี 2 ระดับ (รวม logic ไว้ที่ pmTaskEditTier ใน permissions.js):
+  //   full     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโปรเจกต์)
+  //   workflow — ผู้รับผิดชอบ (assigneeId) หรือ staff ฝ่ายเดียวกับขั้นตอน (role===department)
+  //              อัปเดตได้เฉพาะสถานะ/ความคืบหน้า/โน้ต ไม่แตะวันเริ่ม/ลำดับ/การมอบหมาย
+  const tier = pmTaskEditTier(user, task, project);
+  if (tier === 'none') return forbidden();
+  const workflowEdit = tier === 'workflow';
 
-  const body = await request.json();
+  const body = await req.json();
   // workflowEdit จำกัดเฉพาะ field งาน/สถานะ — กันไม่ให้พนักงานรื้อแผนหรือ reassign
   const WORKFLOW_FIELDS = ['status', 'actualFinishDate', 'note', 'showNoteInPrint'];
   const editable = workflowEdit ? EDITABLE.filter((k) => WORKFLOW_FIELDS.includes(k)) : EDITABLE;
-  const updates = {};
-  for (const k of editable) {
-    if (body[k] !== undefined) {
-      if ((k === 'startDate' || k === 'finishDate' || k === 'actualFinishDate' || k === 'dueDate') && body[k] === "") updates[k] = null;
-      else updates[k] = body[k];
-    }
-  }
+  const updates = pickFields(body, editable, { nullable: ['startDate', 'finishDate', 'actualFinishDate', 'dueDate'] });
   updates.updatedAt = new Date().toISOString();
+
+  // ── วันจบ↔duration: ให้ server เป็นเจ้าของการคำนวณวันทำการเพียงเจ้าเดียว ──
+  // client ส่ง "วันจบที่ผู้ใช้เลือก" มาตรง ๆ (ไม่คิด duration เอง) — กันกรณี client/server
+  // นับวันทำการไม่ตรงกัน (เช่น ปฏิทินวันหยุดฝั่ง client โหลดไม่ทัน) แล้วเกิดอาการ "ไม่ซิงค์".
+  // แปลงเป็น durationDays ที่นี่ แล้วลบ finishDate ออก → ปล่อยให้ recalcForward กางใหม่
+  // (ได้วันจบที่ snap เป็นวันทำการถูกต้อง + เลื่อน downstream ตามจริง).
+  if (updates.finishDate && project) {
+    setHolidays([...(await holidaySet())]);
+    const startForCalc = updates.startDate || task.startDate;
+    if (startForCalc) {
+      const dur = new Date(updates.finishDate) <= new Date(startForCalc)
+        ? 1
+        : countBusinessDays(startForCalc, updates.finishDate) + 1;
+      updates.durationDays = Math.max(1, dur);
+    }
+    delete updates.finishDate;
+  }
+
+  // ผู้ใช้ตั้งวันเริ่มเอง = ปักหมุด (startLocked); เคลียร์วันเริ่ม = ปลดหมุด → ไหลตาม dependency
+  if ('startDate' in updates) updates.startLocked = !!updates.startDate;
 
   // ── #2 variance: ตั้ง/ล้าง actualFinishDate ตามการเปลี่ยนสถานะ ──
   // (ทำเฉพาะเมื่อ client ไม่ได้ส่ง actualFinishDate มาเอง)
@@ -79,7 +85,7 @@ export async function PATCH(request, { params }) {
   if (isUserEdit && !task.userEdited) updates.userEdited = true;
 
   const { data, error } = await supabase.from('project_tasks').update(updates).eq('id', id).select().single();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return fail(error.message, 500);
 
   // ── auto status: แก้สถานะ/predecessors ของขั้นนี้ → คำนวณสถานะทั้งกราฟใหม่
   // (กดเสร็จ → ขั้นถัดไปที่พร้อม เป็น In Progress ; ถอย/แก้ pred → ขั้นถัดที่ไม่พร้อม กลับ Pending).
@@ -88,10 +94,10 @@ export async function PATCH(request, { params }) {
     await propagateAndPersist(supabase, project.id);
   }
 
-  // ── #1 recalc: ถ้าแก้วันเริ่ม/จำนวนวัน/predecessors → คำนวณ timeline ใหม่
-  // ตั้งแต่ task นี้เป็นต้นไป (anchor = วันเริ่มใหม่ของ task นี้) แล้ว persist
-  // เฉพาะแถวที่ start/finish/cells เปลี่ยนจริง — mirror updateTaskDetails ของ ss-cj ──
-  const schedulingChanged = SCHEDULE_FIELDS.some((k) => k in updates);
+  // ── #1 recalc (dependency-driven): แก้วันเริ่ม/จำนวนวัน/predecessors/ปักหมุด →
+  // คำนวณ timeline ทั้งกราฟใหม่จากวันเริ่มโปรเจกต์ตามสาย predecessor จริง แล้ว persist
+  // เฉพาะแถวที่เปลี่ยน. ขั้นที่ไม่ผูกกับขั้นนี้จะไม่ขยับ (ต่างจาก slice แบบเดิมที่ลากทุกขั้นที่อยู่หลัง) ──
+  const schedulingChanged = SCHEDULE_FIELDS.some((k) => k in updates) || 'startLocked' in updates;
   if (schedulingChanged && project) {
     setHolidays([...(await holidaySet())]);
     const { data: all } = await supabase
@@ -102,10 +108,7 @@ export async function PATCH(request, { params }) {
 
     if (all && all.length) {
       const applied = all.map((t) => (t.id === id ? { ...t, ...updates } : t));
-      const idx = applied.findIndex((t) => t.id === id);
-      const fromHere = applied.slice(idx);
-      const anchor = applied[idx].startDate || project.startDate || todayStr();
-      const recalced = recalculateForward(fromHere, anchor, applied);
+      const recalced = recalculateGraph(applied, resolveSchedule(project).anchor);
 
       const sameCells = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
       const changed = recalced.filter((r) => {
@@ -122,33 +125,31 @@ export async function PATCH(request, { params }) {
         ));
       }
 
-      // คืน task ที่แก้พร้อม start/finish ที่คำนวณใหม่ (เผื่อ client ไม่ได้ reload)
+      // คืน task ที่แก้พร้อม start/finish ที่คำนวณใหม่ (clamp pin แล้ว — เผื่อ client ไม่ reload)
       const self = recalced.find((r) => r.id === id);
-      if (self) return Response.json({ ...data, startDate: self.startDate, finishDate: self.finishDate, cellsOverride: self.cellsOverride ?? null });
+      if (self) return ok({ ...data, startDate: self.startDate, finishDate: self.finishDate, cellsOverride: self.cellsOverride ?? null });
     }
   }
 
-  return Response.json(data);
-}
+  return ok(data);
+});
 
 // DELETE /api/pm/project-tasks/[id]
-export async function DELETE(request, { params }) {
-  const { id } = await params;
-  const supabase = getSupabaseAdmin();
-  const user = await getCurrentUser();
+export const DELETE = withUser(async ({ user, supabase, ctx }) => {
+  const { id } = await ctx.params;
 
   const { task, project } = await loadTaskWithProject(supabase, id);
-  if (!task) return Response.json({ error: 'ไม่พบขั้นตอน' }, { status: 404 });
+  if (!task) return notFound('ไม่พบขั้นตอน');
   if (!inScope(editScope(user?.role), user, project || {})) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return forbidden();
   }
 
   const { error } = await supabase.from('project_tasks').delete().eq('id', id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return fail(error.message, 500);
 
-  // ── recalc forward: ลบขั้นตอนแล้วเลื่อน timeline ของขั้นที่เหลือ ──
+  // ── recalc (dependency-driven): ลบขั้นตอนแล้วคำนวณ timeline ของขั้นที่เหลือใหม่ ──
   // 1) ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น
-  // 2) คำนวณ start/finish ใหม่ตั้งแต่ตำแหน่งที่ลบเป็นต้นไป (คงขั้นก่อนหน้าไว้)
+  // 2) recalculateGraph ทั้งกราฟ → ขั้นที่เคยรอขั้นที่ลบจะขยับมาเร็วขึ้นตามจริง (ไม่กระทบขั้นอิสระ)
   if (project) {
     setHolidays([...(await holidaySet())]);
     const { data: all } = await supabase
@@ -156,19 +157,16 @@ export async function DELETE(request, { params }) {
       .order('stepOrder', { ascending: true });
 
     if (all && all.length) {
+      // ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น แล้วคำนวณทั้งกราฟใหม่
       const cleaned = all.map((t) =>
         Array.isArray(t.predecessors) && t.predecessors.includes(id)
           ? { ...t, predecessors: t.predecessors.filter((p) => p !== id) }
           : t
       );
-      const fromHere = cleaned.filter((t) => (t.stepOrder ?? 0) >= (task.stepOrder ?? 0));
-      const anchor = task.startDate || project.startDate || todayStr();
-      const recalced = recalculateForward(fromHere, anchor, cleaned);
-      const recalcedMap = new Map(recalced.map((r) => [r.id, r]));
+      const recalced = recalculateGraph(cleaned, resolveSchedule(project).anchor);
 
       const sameJson = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-      const final = cleaned.map((t) => recalcedMap.get(t.id) || t);
-      const changed = final.filter((r) => {
+      const changed = recalced.filter((r) => {
         const orig = all.find((o) => o.id === r.id);
         return orig.startDate !== r.startDate || orig.finishDate !== r.finishDate
           || !sameJson(orig.cellsOverride, r.cellsOverride) || !sameJson(orig.predecessors, r.predecessors);
@@ -190,5 +188,5 @@ export async function DELETE(request, { params }) {
     await propagateAndPersist(supabase, project.id);
   }
 
-  return Response.json({ success: true });
-}
+  return ok({ success: true });
+});
