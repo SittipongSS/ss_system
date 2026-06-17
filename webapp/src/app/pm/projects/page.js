@@ -243,7 +243,10 @@ export default function ProjectsPage() {
     return (
       <tr key={p.id} className="premium-row" style={{ cursor: "pointer", ...(archive ? { opacity: 0.85 } : null) }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
         <td>
-          <div style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</span>
+            {p.metadata?.brand && <span className="ui-badge" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{p.metadata.brand}</span>}
+          </div>
           <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>
         </td>
         <td>{p.customerName || "-"}</td>
@@ -256,10 +259,7 @@ export default function ProjectsPage() {
             </div>
           ) : <span style={{ color: "var(--text-3)" }}>-</span>}
         </td>
-        <td style={{ fontSize: "12px" }}>
-          <div>{p.aeOwner || "-"}</div>
-          {p.preparedBy && <div style={{ fontSize: "10px", color: "var(--text-3)" }}>ผู้จัดทำ: {p.preparedBy}</div>}
-        </td>
+        <td style={{ fontSize: "12px", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.preparedBy ? `ผู้จัดทำ: ${p.preparedBy}` : undefined}>{p.aeOwner || "-"}</td>
         <td style={{ minWidth: "120px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <div className="progress" style={{ flex: 1 }}>

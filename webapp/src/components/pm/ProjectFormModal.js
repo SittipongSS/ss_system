@@ -155,14 +155,12 @@ export default function ProjectFormModal({
     return [...seen.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([code, name]) => ({ code, name }));
   }, [categories]);
 
-  // ตัวเลือกแบรนด์ = แบรนด์ที่ลูกค้า "เป็นเจ้าของ" (customers.brands[]) ซึ่งเป็น
-  // source of truth ของแบรนด์ในระบบ. เลือกลูกค้าแล้ว → โชว์เฉพาะแบรนด์ของรายนั้น;
-  // ยังไม่เลือกลูกค้า → รวมแบรนด์จากลูกค้าทุกราย (ยังพิมพ์เพิ่มเองได้)
+  // ตัวเลือกแบรนด์ = แบรนด์ที่ลูกค้า "เป็นเจ้าของ" (customers.brands[]) — master ของแบรนด์.
+  // กรองตามลูกค้า "เสมอ": ยังไม่เลือกลูกค้า → ไม่มีแบรนด์ให้เลือก (กันโชว์แบรนด์ข้ามลูกค้า)
   const brandOptions = useMemo(() => {
     const dedup = (arr) => [...new Set(arr.map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const selected = customers.find((c) => c.id === form.customerId);
-    if (selected) return dedup(selected.brands || []);
-    return dedup(customers.flatMap((c) => c.brands || []));
+    return selected ? dedup(selected.brands || []) : [];
   }, [customers, form.customerId]);
 
   const subCatOptions = useMemo(
@@ -244,11 +242,12 @@ export default function ProjectFormModal({
           <label>แบรนด์ (Brand)</label>
           <SearchableSelect
             allowFreeText
+            disabled={!form.customerId}
             value={form.brand}
             onChange={(v) => setForm((f) => ({ ...f, brand: v }))}
             options={brandOptions.map((b) => ({ value: b, label: b }))}
-            placeholder={form.customerId ? "เลือกหรือค้นหาแบรนด์ของลูกค้า..." : "เลือกหรือค้นหาแบรนด์..."}
-            emptyText="ไม่พบแบรนด์ (พิมพ์เพื่อเพิ่มใหม่)"
+            placeholder={form.customerId ? "เลือกหรือค้นหาแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
+            emptyText="ไม่พบแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
           />
         </div>
 
