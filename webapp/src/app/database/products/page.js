@@ -470,7 +470,7 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
-                <input type="number" name="retailPriceIncVat" value={formData.retailPriceIncVat} onChange={handleChange} min="0" step="0.01" placeholder="ถอด VAT 7% ให้เอง" className="premium-input w-full font-mono" />
+                <input type="number" name="retailPriceIncVat" value={formData.retailPriceIncVat} onChange={handleChange} min="0" step="0.01" className="premium-input w-full font-mono" />
               </div>
             </div>
           </div>
