@@ -199,13 +199,15 @@ export default function ProductRegistry() {
     (p) => approvalStatusOf(p) === "pending" && canApproveRow(p),
   );
 
+  // Default ordering: by product code (FG Code). The first column shows both the
+  // description and the FG code, so it sorts by code to match the "(FG Code)" header.
   const sort = useSortableTable(filteredProducts, {
-    product: (p) => p.productDescription || p.fgCode || "",
+    product: (p) => p.fgCode || p.productDescription || "",
     brand: (p) => p.brandName || "",
     volume: (p) => p.volume ?? null,
     retail: (p) => p.retailPriceIncVat ?? null,
     tax: (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0)),
-  });
+  }, { key: "product", dir: "asc" });
 
   const open = (p) => (window.location.href = `/database/products/${p.id}`);
   const taxPerUnit = (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0));
