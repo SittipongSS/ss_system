@@ -8,6 +8,7 @@ import {
   TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed,
   Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
+  GitCommit, History,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -211,6 +212,10 @@ export default function ProjectDetailPage() {
   const [extraForm, setExtraForm] = useState({ title: "", note: "", dueDate: "", assigneeId: "" });
   const [savingExtra, setSavingExtra] = useState(false);
   const [savingStep, setSavingStep] = useState(false);
+  // เฟส 2: document revision control — ออก Revise = freeze เอกสารทั้งชุดเป็นเวอร์ชัน + เลข Rev
+  const [showRevisions, setShowRevisions] = useState(false);
+  const [revisions, setRevisions] = useState([]);
+  const [issuingRev, setIssuingRev] = useState(false);
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -291,6 +296,45 @@ export default function ProjectDetailPage() {
     await load(); // resync (server คำนวณ timeline/สถานะใหม่)
   };
   const dirtyCount = Object.keys(dirty).length;
+
+  // ── เฟส 2: ออก Revise (freeze เอกสารทั้งชุดเป็นเวอร์ชัน) ──────────────────
+  // การแก้ task = บันทึกทับ live ไม่เก็บประวัติ; "ออก Revise" คือการกระทำระดับ
+  // เอกสารที่ตั้งใจ → snapshot ทุก task + เด้งเลข Rev (เริ่มที่ 0) ที่โชว์บนหน้าพิมพ์.
+  const issueRevision = async () => {
+    if (dirtyCount > 0) { alert("ยังมีการแก้ไขที่ยังไม่บันทึก — กรุณายืนยันหรือยกเลิกก่อนออกเวอร์ชัน"); return; }
+    const note = window.prompt("ออกเวอร์ชันเอกสารใหม่ (Revise)\nหมายเหตุการแก้ (ไม่บังคับ):", "");
+    if (note === null) return; // กดยกเลิก
+    setIssuingRev(true);
+    try {
+      const res = await fetch(`/api/pm/projects/${id}/revisions`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }),
+      });
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || "ออกเวอร์ชันไม่สำเร็จ"); return; }
+      const rev = await res.json();
+      setData((d) => ({ ...d, currentRev: rev.currentRev })); // เด้งเลข Rev ทันที
+      alert(`ออกเวอร์ชันแล้ว — Rev. ${rev.currentRev}`);
+    } finally { setIssuingRev(false); }
+  };
+  const openRevisions = async () => {
+    setShowRevisions(true);
+    const res = await fetch(`/api/pm/projects/${id}/revisions`);
+    if (res.ok) { const d = await res.json(); setRevisions(d.revisions || []); }
+  };
+  // พิมพ์เวอร์ชันเก่า: ดึง snapshot แล้วส่งเข้า print เหมือนเอกสารปัจจุบัน
+  const printRevision = async (revNo) => {
+    const res = await fetch(`/api/pm/projects/${id}/revisions/${revNo}`);
+    if (!res.ok) { alert("ดึงเวอร์ชันไม่สำเร็จ"); return; }
+    const { snapshot } = await res.json();
+    const proj = snapshot?.project || {};
+    const fallback = proj.productMainCategory ? `${mainCatName(proj.productMainCategory)}${proj.productSubCategory ? ` / ${proj.productSubCategory}` : ""}` : "";
+    openGanttPrintWindow({
+      ...proj,
+      tasks: snapshot?.tasks || [],
+      projectProducts: snapshot?.projectProducts || [],
+      categoryFallback: fallback,
+      rev: revNo,
+    });
+  };
 
   // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", 01-002 ชนะ) เหมือนในโมดัล
   // เพื่อให้ resync ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG 01-002 แล้วเงียบ
@@ -895,8 +939,19 @@ export default function ProjectDetailPage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginLeft: "auto" }}>
               <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
+              <span className="ui-badge" title={p.currentRev == null ? "ยังไม่ออกเวอร์ชัน (ฉบับร่าง)" : `เวอร์ชันเอกสารล่าสุด: Rev. ${p.currentRev}`} style={{ whiteSpace: "nowrap" }}>
+                {p.currentRev == null ? "ฉบับร่าง" : `Rev. ${p.currentRev}`}
+              </span>
+              {canEdit && (
+                <button onClick={issueRevision} disabled={issuingRev} className="btn" style={{ whiteSpace: "nowrap" }} title="freeze เอกสารทั้งชุดเป็นเวอร์ชันใหม่ (เลข Rev จะขึ้นบนหน้าพิมพ์)">
+                  <GitCommit size={14} /> {issuingRev ? "กำลังออก…" : "ออก Revise"}
+                </button>
+              )}
+              <button onClick={openRevisions} className="btn" style={{ whiteSpace: "nowrap" }} title="ดู/พิมพ์เวอร์ชันเอกสารที่เคยออก">
+                <History size={14} /> ประวัติเวอร์ชัน
+              </button>
               <button
-                onClick={() => openGanttPrintWindow({ ...p, categoryFallback })}
+                onClick={() => openGanttPrintWindow({ ...p, categoryFallback, rev: p.currentRev })}
                 className="btn btn-primary"
                 style={{ whiteSpace: "nowrap", marginLeft: "auto" }}
                 title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
@@ -1450,6 +1505,33 @@ export default function ProjectDetailPage() {
             <button type="submit" disabled={savingExtra} className="btn btn-primary px-8">{editingExtraId ? "บันทึก" : "เพิ่ม"}</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal open={showRevisions} onClose={() => setShowRevisions(false)} title="ประวัติเวอร์ชันเอกสาร (Revise)" size="md">
+        <div style={{ padding: "16px 20px" }}>
+          {revisions.length === 0 ? (
+            <div style={{ fontSize: "13px", color: "var(--text-3)", textAlign: "center", padding: "24px 0" }}>
+              ยังไม่เคยออกเวอร์ชัน — กด “ออก Revise” เพื่อ freeze เอกสารชุดปัจจุบันเป็น Rev. 0
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {revisions.map((r) => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--panel)" }}>
+                  <span className="ui-badge" style={{ flexShrink: 0 }}>Rev. {r.revNo}</span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+                      {r.createdAt ? new Date(r.createdAt).toLocaleString("th-TH") : "-"} · {r.createdByName || "-"}
+                    </div>
+                    {r.note && <div style={{ fontSize: "12px", color: "var(--text-3)", whiteSpace: "pre-wrap" }}>{r.note}</div>}
+                  </div>
+                  <button className="btn sm" style={{ flexShrink: 0 }} onClick={() => printRevision(r.revNo)} title="เปิดเอกสารเวอร์ชันนี้เพื่อพิมพ์/บันทึก PDF">
+                    <Printer size={13} /> พิมพ์
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </Modal>
 
       {showEditProject && (

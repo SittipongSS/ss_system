@@ -257,7 +257,7 @@ export function buildGanttPrintHTML(project) {
         </div>
       </div>
       <div class="doc-title">
-        <div class="formno">FM-PD-05</div>
+        <div class="formno">FM-PD-05${project.rev == null ? '' : ` · Rev. ${esc(project.rev)}`}</div>
         <div class="big">TIMELINE PROJECT</div>
         <div class="sub">${esc(project.code || '')}</div>
       </div>
