@@ -8,6 +8,7 @@ import {
   TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed,
   Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
+  GitCommit, History,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -210,6 +211,11 @@ export default function ProjectDetailPage() {
   const [editingExtraId, setEditingExtraId] = useState(null);
   const [extraForm, setExtraForm] = useState({ title: "", note: "", dueDate: "", assigneeId: "" });
   const [savingExtra, setSavingExtra] = useState(false);
+  const [savingStep, setSavingStep] = useState(false);
+  // เฟส 2: document revision control — ออก Revise = freeze เอกสารทั้งชุดเป็นเวอร์ชัน + เลข Rev
+  const [showRevisions, setShowRevisions] = useState(false);
+  const [revisions, setRevisions] = useState([]);
+  const [issuingRev, setIssuingRev] = useState(false);
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -252,15 +258,22 @@ export default function ProjectDetailPage() {
     const res = await fetch(`/api/pm/project-tasks/${taskId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
     });
-    if (res.ok) {
-      // บั๊ก A: แก้ startDate/durationDays/predecessors ทำให้ server เลื่อน downstream → reload เต็ม
-      // เช็คว่ามี key (ไม่ใช่ truthy) — การ "ล้าง" วันเริ่ม (startDate: null) ต้อง reload ด้วย
-      // เพราะ server เลื่อน downstream แล้ว ถ้าเช็คแบบ truthy จะพลาดเคส null/ลบค่า
-      // status เปลี่ยน → server เดินสถานะขั้นถัดไปอัตโนมัติ (auto-flow) ต้อง reload เห็นผลกับขั้นอื่น
-      if (patch.startDate !== undefined || patch.finishDate !== undefined || patch.durationDays !== undefined || patch.predecessors !== undefined || patch.status !== undefined) { await load(); return; }
-      const updated = await res.json();
-      setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === taskId ? updated : t)) }));
+    if (!res.ok) {
+      // เดิม error ถูกกลืนเงียบ → ผู้ใช้กดบันทึกแล้ว "ไม่มีอะไรเกิด" โดยไม่รู้ว่าพลาด
+      alert((await res.json().catch(() => ({}))).error || "อัปเดตขั้นตอนไม่สำเร็จ");
+      return false;
     }
+    const updated = await res.json();
+    // สะท้อนขั้นที่แก้ทันที — ผู้เรียก (saveEditing/saveEditModal) ปิดฟอร์มได้เลยโดยไม่ต้องรอ
+    // refetch ทั้งโปรเจกต์ (load() ~0.4–1.4s) ที่เคยทำให้ฟอร์มค้างเปิดดูเหมือนปุ่มไม่ทำงาน
+    setData((d) => ({ ...d, tasks: (d?.tasks || []).map((t) => (t.id === taskId ? updated : t)) }));
+    // refetch ทั้งโปรเจกต์เฉพาะเมื่อ field ที่ "กระทบขั้นอื่น" (วัน/ระยะเวลา/predecessor/สถานะ)
+    // เปลี่ยน "จริง" เทียบของเดิม เพื่อเห็นการเลื่อน downstream — เดิมเช็คแค่ว่ามี key ใน patch
+    // ซึ่ง handler ส่ง startDate/durationDays/predecessors มาเสมอ → แก้แค่ชื่อก็โดน reload ช้าทุกครั้ง
+    const cur = (data?.tasks || []).find((t) => t.id === taskId) || {};
+    const changed = (k) => k in patch && JSON.stringify(patch[k] ?? null) !== JSON.stringify(cur[k] ?? null);
+    if (["startDate", "finishDate", "durationDays", "predecessors", "status"].some(changed)) await load();
+    return true;
   };
 
   // ── เฟส 1: แก้ task แบบ "ค้างก่อน-ยืนยันรวด" (ลด error จากการกดพลาด) ───────
@@ -283,6 +296,45 @@ export default function ProjectDetailPage() {
     await load(); // resync (server คำนวณ timeline/สถานะใหม่)
   };
   const dirtyCount = Object.keys(dirty).length;
+
+  // ── เฟส 2: ออก Revise (freeze เอกสารทั้งชุดเป็นเวอร์ชัน) ──────────────────
+  // การแก้ task = บันทึกทับ live ไม่เก็บประวัติ; "ออก Revise" คือการกระทำระดับ
+  // เอกสารที่ตั้งใจ → snapshot ทุก task + เด้งเลข Rev (เริ่มที่ 0) ที่โชว์บนหน้าพิมพ์.
+  const issueRevision = async () => {
+    if (dirtyCount > 0) { alert("ยังมีการแก้ไขที่ยังไม่บันทึก — กรุณายืนยันหรือยกเลิกก่อนออกเวอร์ชัน"); return; }
+    const note = window.prompt("ออกเวอร์ชันเอกสารใหม่ (Revise)\nหมายเหตุการแก้ (ไม่บังคับ):", "");
+    if (note === null) return; // กดยกเลิก
+    setIssuingRev(true);
+    try {
+      const res = await fetch(`/api/pm/projects/${id}/revisions`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }),
+      });
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || "ออกเวอร์ชันไม่สำเร็จ"); return; }
+      const rev = await res.json();
+      setData((d) => ({ ...d, currentRev: rev.currentRev })); // เด้งเลข Rev ทันที
+      alert(`ออกเวอร์ชันแล้ว — Rev. ${rev.currentRev}`);
+    } finally { setIssuingRev(false); }
+  };
+  const openRevisions = async () => {
+    setShowRevisions(true);
+    const res = await fetch(`/api/pm/projects/${id}/revisions`);
+    if (res.ok) { const d = await res.json(); setRevisions(d.revisions || []); }
+  };
+  // พิมพ์เวอร์ชันเก่า: ดึง snapshot แล้วส่งเข้า print เหมือนเอกสารปัจจุบัน
+  const printRevision = async (revNo) => {
+    const res = await fetch(`/api/pm/projects/${id}/revisions/${revNo}`);
+    if (!res.ok) { alert("ดึงเวอร์ชันไม่สำเร็จ"); return; }
+    const { snapshot } = await res.json();
+    const proj = snapshot?.project || {};
+    const fallback = proj.productMainCategory ? `${mainCatName(proj.productMainCategory)}${proj.productSubCategory ? ` / ${proj.productSubCategory}` : ""}` : "";
+    openGanttPrintWindow({
+      ...proj,
+      tasks: snapshot?.tasks || [],
+      projectProducts: snapshot?.projectProducts || [],
+      categoryFallback: fallback,
+      rev: revNo,
+    });
+  };
 
   // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", 01-002 ชนะ) เหมือนในโมดัล
   // เพื่อให้ resync ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG 01-002 แล้วเงียบ
@@ -566,7 +618,8 @@ export default function ProjectDetailPage() {
     });
   };
   const saveEditing = async (taskId) => {
-    await updateTask(taskId, {
+    setSavingStep(true);
+    const okSave = await updateTask(taskId, {
       name: editForm.name, role: editForm.role, assignee: editForm.assignee || null,
       assigneeId: editForm.assigneeId || null,
       durationDays: Number(editForm.durationDays) || 1,
@@ -576,8 +629,8 @@ export default function ProjectDetailPage() {
       predecessors: editForm.predecessors || [],
       note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
     });
-    setEditingTaskId(null);
-    setEditForm(null);
+    setSavingStep(false);
+    if (okSave) { setEditingTaskId(null); setEditForm(null); } // ล้มเหลว → คงฟอร์มไว้ให้แก้ต่อ
   };
 
   // เปิดแก้ไขขั้นตอนแบบ modal (จาก Table view) — ไม่สลับไป List view
@@ -598,7 +651,8 @@ export default function ProjectDetailPage() {
   const closeEditModal = () => { setShowEditTask(false); setEditTask(null); setEditForm(null); };
   const saveEditModal = async () => {
     if (!editTask) return;
-    await updateTask(editTask.id, {
+    setSavingStep(true);
+    const okSave = await updateTask(editTask.id, {
       name: editForm.name, role: editForm.role, assignee: editForm.assignee || null,
       assigneeId: editForm.assigneeId || null,
       durationDays: Number(editForm.durationDays) || 1,
@@ -608,7 +662,8 @@ export default function ProjectDetailPage() {
       predecessors: editForm.predecessors || [],
       note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
     });
-    closeEditModal();
+    setSavingStep(false);
+    if (okSave) closeEditModal(); // ล้มเหลว → คง modal ไว้ให้แก้ต่อ
   };
 
   const handleToggleTask = (task) => {
@@ -884,8 +939,19 @@ export default function ProjectDetailPage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginLeft: "auto" }}>
               <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
+              <span className="ui-badge" title={p.currentRev == null ? "ยังไม่ออกเวอร์ชัน (ฉบับร่าง)" : `เวอร์ชันเอกสารล่าสุด: Rev. ${p.currentRev}`} style={{ whiteSpace: "nowrap" }}>
+                {p.currentRev == null ? "ฉบับร่าง" : `Rev. ${p.currentRev}`}
+              </span>
+              {canEdit && (
+                <button onClick={issueRevision} disabled={issuingRev} className="btn" style={{ whiteSpace: "nowrap" }} title="freeze เอกสารทั้งชุดเป็นเวอร์ชันใหม่ (เลข Rev จะขึ้นบนหน้าพิมพ์)">
+                  <GitCommit size={14} /> {issuingRev ? "กำลังออก…" : "ออก Revise"}
+                </button>
+              )}
+              <button onClick={openRevisions} className="btn" style={{ whiteSpace: "nowrap" }} title="ดู/พิมพ์เวอร์ชันเอกสารที่เคยออก">
+                <History size={14} /> ประวัติเวอร์ชัน
+              </button>
               <button
-                onClick={() => openGanttPrintWindow({ ...p, categoryFallback })}
+                onClick={() => openGanttPrintWindow({ ...p, categoryFallback, rev: p.currentRev })}
                 className="btn btn-primary"
                 style={{ whiteSpace: "nowrap", marginLeft: "auto" }}
                 title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
@@ -1219,8 +1285,8 @@ export default function ProjectDetailPage() {
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--panel)", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)" }}>
                             {renderStepEditFields(task.id)}
                             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                              <button className="btn btn-secondary sm" onClick={() => { setEditingTaskId(null); setEditForm(null); }}>ยกเลิก</button>
-                              <button className="btn btn-primary sm" onClick={() => saveEditing(task.id)}><Save size={14} /> บันทึก</button>
+                              <button className="btn btn-secondary sm" disabled={savingStep} onClick={() => { setEditingTaskId(null); setEditForm(null); }}>ยกเลิก</button>
+                              <button className="btn btn-primary sm" disabled={savingStep} onClick={() => saveEditing(task.id)}><Save size={14} /> {savingStep ? "กำลังบันทึก…" : "บันทึก"}</button>
                             </div>
                           </div>
                         ) : (
@@ -1397,8 +1463,8 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {renderStepEditFields(editTask.id)}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-              <button className="btn btn-secondary sm" onClick={closeEditModal}>ยกเลิก</button>
-              <button className="btn btn-primary sm" onClick={saveEditModal}><Save size={14} /> บันทึก</button>
+              <button className="btn btn-secondary sm" disabled={savingStep} onClick={closeEditModal}>ยกเลิก</button>
+              <button className="btn btn-primary sm" disabled={savingStep} onClick={saveEditModal}><Save size={14} /> {savingStep ? "กำลังบันทึก…" : "บันทึก"}</button>
             </div>
           </div>
         )}
@@ -1439,6 +1505,33 @@ export default function ProjectDetailPage() {
             <button type="submit" disabled={savingExtra} className="btn btn-primary px-8">{editingExtraId ? "บันทึก" : "เพิ่ม"}</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal open={showRevisions} onClose={() => setShowRevisions(false)} title="ประวัติเวอร์ชันเอกสาร (Revise)" size="md">
+        <div style={{ padding: "16px 20px" }}>
+          {revisions.length === 0 ? (
+            <div style={{ fontSize: "13px", color: "var(--text-3)", textAlign: "center", padding: "24px 0" }}>
+              ยังไม่เคยออกเวอร์ชัน — กด “ออก Revise” เพื่อ freeze เอกสารชุดปัจจุบันเป็น Rev. 0
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {revisions.map((r) => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--panel)" }}>
+                  <span className="ui-badge" style={{ flexShrink: 0 }}>Rev. {r.revNo}</span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+                      {r.createdAt ? new Date(r.createdAt).toLocaleString("th-TH") : "-"} · {r.createdByName || "-"}
+                    </div>
+                    {r.note && <div style={{ fontSize: "12px", color: "var(--text-3)", whiteSpace: "pre-wrap" }}>{r.note}</div>}
+                  </div>
+                  <button className="btn sm" style={{ flexShrink: 0 }} onClick={() => printRevision(r.revNo)} title="เปิดเอกสารเวอร์ชันนี้เพื่อพิมพ์/บันทึก PDF">
+                    <Printer size={13} /> พิมพ์
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </Modal>
 
       {showEditProject && (
