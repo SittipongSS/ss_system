@@ -1460,6 +1460,23 @@ textarea.premium-input {
   padding: 8px 10px;
 }
 
+/* Combobox input: free-text <input> + <datalist> ที่อยากให้หน้าตาเหมือน <select>
+   (ลูกศร dropdown + เว้นที่ขวา) — ใช้ลูกศรชุดเดียวกับ .premium-select */
+.premium-input.combo {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23837868' stroke-width='1.5'><path d='M4 6 L8 10 L12 6'/></svg>");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 14px;
+  padding-right: 28px;
+}
+[data-theme="dark"] .premium-input.combo {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23aeb6cc' stroke-width='1.5'><path d='M4 6 L8 10 L12 6'/></svg>");
+}
+/* ซ่อนปุ่มลูกศร datalist ของเบราว์เซอร์ (ซ้ำกับลูกศรที่เราวาดเอง) */
+.premium-input.combo::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
+
 /* Hide native number input spinners (up/down arrows) globally */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
