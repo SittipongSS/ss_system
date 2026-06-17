@@ -153,8 +153,8 @@ export default function ProductRegistry() {
       assignee: userName,
       volume: parseFloat(formData.volume),
       volumeUnit: formData.volumeUnit || "ml",
-      costPrice: parseFloat(formData.costPrice),
-      retailPriceIncVat: parseFloat(formData.retailPriceIncVat),
+      costPrice: formData.costPrice === "" ? null : parseFloat(formData.costPrice),
+      retailPriceIncVat: formData.retailPriceIncVat === "" ? null : parseFloat(formData.retailPriceIncVat),
     };
     try {
       const res = await fetch("/api/master/products", {
@@ -199,13 +199,15 @@ export default function ProductRegistry() {
     (p) => approvalStatusOf(p) === "pending" && canApproveRow(p),
   );
 
+  // Default ordering: by product code (FG Code). The first column shows both the
+  // description and the FG code, so it sorts by code to match the "(FG Code)" header.
   const sort = useSortableTable(filteredProducts, {
-    product: (p) => p.productDescription || p.fgCode || "",
+    product: (p) => p.fgCode || p.productDescription || "",
     brand: (p) => p.brandName || "",
     volume: (p) => p.volume ?? null,
     retail: (p) => p.retailPriceIncVat ?? null,
     tax: (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0)),
-  });
+  }, { key: "product", dir: "asc" });
 
   const open = (p) => (window.location.href = `/database/products/${p.id}`);
   const taxPerUnit = (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0));
@@ -434,7 +436,7 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required disabled={!formData.customerId} list="brand-options" placeholder={formData.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"} className="premium-input w-full disabled:opacity-50" />
+                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required disabled={!formData.customerId} list="brand-options" placeholder={formData.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"} className="premium-input combo w-full disabled:opacity-50" />
                 <datalist id="brand-options">
                   {brandOptions.map((b) => <option key={b} value={b} />)}
                 </datalist>
@@ -463,12 +465,12 @@ export default function ProductRegistry() {
                 </div>
               </div>
               <div className="form-group">
-                <label>ราคาโรงงาน (บาท) <span className="text-[var(--red)]">*</span></label>
-                <input type="number" name="costPrice" value={formData.costPrice} onChange={handleChange} required min="0" step="0.01" className="premium-input w-full font-mono" />
+                <label>ราคาโรงงาน (บาท)</label>
+                <input type="number" name="costPrice" value={formData.costPrice} onChange={handleChange} min="0" step="0.01" className="premium-input w-full font-mono" />
               </div>
               <div className="form-group">
-                <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span> <span className="text-[var(--red)]">*</span></label>
-                <input type="number" name="retailPriceIncVat" value={formData.retailPriceIncVat} onChange={handleChange} required min="0" step="0.01" placeholder="ถอด VAT 7% ให้เอง" className="premium-input w-full font-mono" />
+                <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
+                <input type="number" name="retailPriceIncVat" value={formData.retailPriceIncVat} onChange={handleChange} min="0" step="0.01" className="premium-input w-full font-mono" />
               </div>
             </div>
           </div>

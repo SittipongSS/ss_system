@@ -51,17 +51,22 @@ export async function POST(request) {
   }
 
   const { fgCode, volume, costPrice, retailPriceIncVat } = body;
+  // ราคาโรงงาน/ราคาขายปลีก เป็น optional — เก็บ null ไว้ตามจริง แต่ในการคำนวณ
+  // ภาษี/ต้นทุน ให้ถือว่า 0 เพื่อกัน NaN เมื่อยังไม่ได้กรอกราคา.
+  const costPriceNum = costPrice == null || costPrice === '' ? 0 : Number(costPrice);
+  const retailPriceIncVatNum =
+    retailPriceIncVat == null || retailPriceIncVat === '' ? 0 : Number(retailPriceIncVat);
   // Taxability is auto-derived from the FG code, but LG may override it.
   const autoTaxable = !!(fgCode && fgCode.includes('01-002'));
   const taxableOverride =
     typeof body.taxableOverride === 'boolean' ? body.taxableOverride : null;
   const isExciseTaxable = taxableOverride === null ? autoTaxable : taxableOverride;
 
-  const retailPriceExVat = isExciseTaxable ? retailPriceIncVat / 1.07 : 0;
+  const retailPriceExVat = isExciseTaxable ? retailPriceIncVatNum / 1.07 : 0;
   const exciseTax = isExciseTaxable ? retailPriceExVat * 0.08 : 0;
   const localTax = isExciseTaxable ? exciseTax * 0.1 : 0;
 
-  const factoryPrice = costPrice;
+  const factoryPrice = costPriceNum;
   const laborCost = volume >= 30 ? 5 : 2;
   const shippingCost = 1;
   const materialCost = factoryPrice * 0.65;
@@ -89,8 +94,9 @@ export async function POST(request) {
     brandName: body.brandName ?? null,
     volume,
     volumeUnit: body.volumeUnit || 'ml',
-    costPrice,
-    retailPriceIncVat,
+    costPrice: costPrice == null || costPrice === '' ? null : costPriceNum,
+    retailPriceIncVat:
+      retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum,
     taxableOverride,
     isExciseTaxable,
     retailPriceExVat,
