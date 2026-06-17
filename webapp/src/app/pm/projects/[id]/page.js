@@ -210,6 +210,7 @@ export default function ProjectDetailPage() {
   const [editingExtraId, setEditingExtraId] = useState(null);
   const [extraForm, setExtraForm] = useState({ title: "", note: "", dueDate: "", assigneeId: "" });
   const [savingExtra, setSavingExtra] = useState(false);
+  const [savingStep, setSavingStep] = useState(false);
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -252,15 +253,22 @@ export default function ProjectDetailPage() {
     const res = await fetch(`/api/pm/project-tasks/${taskId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
     });
-    if (res.ok) {
-      // บั๊ก A: แก้ startDate/durationDays/predecessors ทำให้ server เลื่อน downstream → reload เต็ม
-      // เช็คว่ามี key (ไม่ใช่ truthy) — การ "ล้าง" วันเริ่ม (startDate: null) ต้อง reload ด้วย
-      // เพราะ server เลื่อน downstream แล้ว ถ้าเช็คแบบ truthy จะพลาดเคส null/ลบค่า
-      // status เปลี่ยน → server เดินสถานะขั้นถัดไปอัตโนมัติ (auto-flow) ต้อง reload เห็นผลกับขั้นอื่น
-      if (patch.startDate !== undefined || patch.finishDate !== undefined || patch.durationDays !== undefined || patch.predecessors !== undefined || patch.status !== undefined) { await load(); return; }
-      const updated = await res.json();
-      setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === taskId ? updated : t)) }));
+    if (!res.ok) {
+      // เดิม error ถูกกลืนเงียบ → ผู้ใช้กดบันทึกแล้ว "ไม่มีอะไรเกิด" โดยไม่รู้ว่าพลาด
+      alert((await res.json().catch(() => ({}))).error || "อัปเดตขั้นตอนไม่สำเร็จ");
+      return false;
     }
+    const updated = await res.json();
+    // สะท้อนขั้นที่แก้ทันที — ผู้เรียก (saveEditing/saveEditModal) ปิดฟอร์มได้เลยโดยไม่ต้องรอ
+    // refetch ทั้งโปรเจกต์ (load() ~0.4–1.4s) ที่เคยทำให้ฟอร์มค้างเปิดดูเหมือนปุ่มไม่ทำงาน
+    setData((d) => ({ ...d, tasks: (d?.tasks || []).map((t) => (t.id === taskId ? updated : t)) }));
+    // refetch ทั้งโปรเจกต์เฉพาะเมื่อ field ที่ "กระทบขั้นอื่น" (วัน/ระยะเวลา/predecessor/สถานะ)
+    // เปลี่ยน "จริง" เทียบของเดิม เพื่อเห็นการเลื่อน downstream — เดิมเช็คแค่ว่ามี key ใน patch
+    // ซึ่ง handler ส่ง startDate/durationDays/predecessors มาเสมอ → แก้แค่ชื่อก็โดน reload ช้าทุกครั้ง
+    const cur = (data?.tasks || []).find((t) => t.id === taskId) || {};
+    const changed = (k) => k in patch && JSON.stringify(patch[k] ?? null) !== JSON.stringify(cur[k] ?? null);
+    if (["startDate", "finishDate", "durationDays", "predecessors", "status"].some(changed)) await load();
+    return true;
   };
 
   // ── เฟส 1: แก้ task แบบ "ค้างก่อน-ยืนยันรวด" (ลด error จากการกดพลาด) ───────
@@ -566,7 +574,8 @@ export default function ProjectDetailPage() {
     });
   };
   const saveEditing = async (taskId) => {
-    await updateTask(taskId, {
+    setSavingStep(true);
+    const okSave = await updateTask(taskId, {
       name: editForm.name, role: editForm.role, assignee: editForm.assignee || null,
       assigneeId: editForm.assigneeId || null,
       durationDays: Number(editForm.durationDays) || 1,
@@ -576,8 +585,8 @@ export default function ProjectDetailPage() {
       predecessors: editForm.predecessors || [],
       note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
     });
-    setEditingTaskId(null);
-    setEditForm(null);
+    setSavingStep(false);
+    if (okSave) { setEditingTaskId(null); setEditForm(null); } // ล้มเหลว → คงฟอร์มไว้ให้แก้ต่อ
   };
 
   // เปิดแก้ไขขั้นตอนแบบ modal (จาก Table view) — ไม่สลับไป List view
@@ -598,7 +607,8 @@ export default function ProjectDetailPage() {
   const closeEditModal = () => { setShowEditTask(false); setEditTask(null); setEditForm(null); };
   const saveEditModal = async () => {
     if (!editTask) return;
-    await updateTask(editTask.id, {
+    setSavingStep(true);
+    const okSave = await updateTask(editTask.id, {
       name: editForm.name, role: editForm.role, assignee: editForm.assignee || null,
       assigneeId: editForm.assigneeId || null,
       durationDays: Number(editForm.durationDays) || 1,
@@ -608,7 +618,8 @@ export default function ProjectDetailPage() {
       predecessors: editForm.predecessors || [],
       note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
     });
-    closeEditModal();
+    setSavingStep(false);
+    if (okSave) closeEditModal(); // ล้มเหลว → คง modal ไว้ให้แก้ต่อ
   };
 
   const handleToggleTask = (task) => {
@@ -1219,8 +1230,8 @@ export default function ProjectDetailPage() {
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--panel)", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)" }}>
                             {renderStepEditFields(task.id)}
                             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                              <button className="btn btn-secondary sm" onClick={() => { setEditingTaskId(null); setEditForm(null); }}>ยกเลิก</button>
-                              <button className="btn btn-primary sm" onClick={() => saveEditing(task.id)}><Save size={14} /> บันทึก</button>
+                              <button className="btn btn-secondary sm" disabled={savingStep} onClick={() => { setEditingTaskId(null); setEditForm(null); }}>ยกเลิก</button>
+                              <button className="btn btn-primary sm" disabled={savingStep} onClick={() => saveEditing(task.id)}><Save size={14} /> {savingStep ? "กำลังบันทึก…" : "บันทึก"}</button>
                             </div>
                           </div>
                         ) : (
@@ -1397,8 +1408,8 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {renderStepEditFields(editTask.id)}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-              <button className="btn btn-secondary sm" onClick={closeEditModal}>ยกเลิก</button>
-              <button className="btn btn-primary sm" onClick={saveEditModal}><Save size={14} /> บันทึก</button>
+              <button className="btn btn-secondary sm" disabled={savingStep} onClick={closeEditModal}>ยกเลิก</button>
+              <button className="btn btn-primary sm" disabled={savingStep} onClick={saveEditModal}><Save size={14} /> {savingStep ? "กำลังบันทึก…" : "บันทึก"}</button>
             </div>
           </div>
         )}
