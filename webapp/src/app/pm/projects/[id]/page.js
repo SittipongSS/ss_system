@@ -204,6 +204,7 @@ export default function ProjectDetailPage() {
   const [editTask, setEditTask] = useState(null); // ขั้นตอนที่กำลังแก้ผ่าน modal (ใช้จาก Table view)
   const [showEditTask, setShowEditTask] = useState(false);
   const [depPopover, setDepPopover] = useState(null); // popover แก้ predecessors ในตาราง — { task, x, y }
+  const [dirty, setDirty] = useState({}); // เฟส 1: การแก้ task ที่ค้างรอยืนยัน (taskId -> patch รวม)
   // "งานเพิ่มเติม" (personal_tasks ผูกโปรเจกต์) — งานนอกแผน assign ในทีมได้ ไม่เข้า Gantt
   const [showExtra, setShowExtra] = useState(false);
   const [editingExtraId, setEditingExtraId] = useState(null);
@@ -261,6 +262,27 @@ export default function ProjectDetailPage() {
       setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === taskId ? updated : t)) }));
     }
   };
+
+  // ── เฟส 1: แก้ task แบบ "ค้างก่อน-ยืนยันรวด" (ลด error จากการกดพลาด) ───────
+  // inline edit (สถานะ/ทำเสร็จ/predecessors) ไม่ยิงทันที แต่ค้างใน dirty + โชว์ค่าใหม่
+  // ทุกวิว (optimistic). ผู้ใช้กด "ยืนยันการเปลี่ยนแปลง" ครั้งเดียวจึงบันทึกจริง.
+  const stageTaskEdit = (taskId, patch) => {
+    setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)) }));
+    setDirty((dd) => ({ ...dd, [taskId]: { ...dd[taskId], ...patch } }));
+  };
+  const cancelEdits = async () => { setDirty({}); await load(); };
+  const confirmEdits = async () => {
+    const entries = Object.entries(dirty);
+    if (!entries.length) return;
+    for (const [taskId, patch] of entries) {
+      await fetch(`/api/pm/project-tasks/${taskId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+      });
+    }
+    setDirty({});
+    await load(); // resync (server คำนวณ timeline/สถานะใหม่)
+  };
+  const dirtyCount = Object.keys(dirty).length;
 
   // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", 01-002 ชนะ) เหมือนในโมดัล
   // เพื่อให้ resync ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG 01-002 แล้วเงียบ
@@ -591,7 +613,7 @@ export default function ProjectDetailPage() {
 
   const handleToggleTask = (task) => {
     if (task.status === "Pending") return;
-    updateTask(task.id, { status: task.status === "Completed" ? "In Progress" : "Completed" });
+    stageTaskEdit(task.id, { status: task.status === "Completed" ? "In Progress" : "Completed" });
   };
 
   const tasks = data?.tasks || [];
@@ -915,7 +937,7 @@ export default function ProjectDetailPage() {
             project={p}
             canEdit={canEdit}
             onUpdateProject={updateProject}
-            onUpdateTask={updateTask}
+            onUpdateTask={stageTaskEdit}
             fgUI={fgUI}
             statusLabel={getComputedStatus(p)}
             statusColor={statusDotColor(getComputedStatus(p))}
@@ -1014,7 +1036,7 @@ export default function ProjectDetailPage() {
                             <td style={{ fontSize: "13px" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : assignee}</td>
                             <td>
                               {canEdit ? (
-                                <StatusSelect value={task.status} onChange={(v) => updateTask(task.id, { status: v })} />
+                                <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "11px" }}>●</span>}</>
                               ) : (
                                 <span className="status-pill dot" style={{ "--dot": statusDotColor(task.status === "Completed" ? "Completed" : task.status === "In Progress" ? "In Progress" : "Pending") }}>{task.status}</span>
                               )}
@@ -1212,7 +1234,7 @@ export default function ProjectDetailPage() {
                                   <span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span>
                                 ); })()}
                                 {canEdit && (
-                                  <StatusSelect value={task.status} onChange={(v) => updateTask(task.id, { status: v })} />
+                                  <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "11px" }}>●</span>}</>
                                 )}
                                 {canEdit && (
                                   <div style={{ display: "flex", gap: "4px" }}>
@@ -1247,7 +1269,7 @@ export default function ProjectDetailPage() {
 
                       {isInProgress && !isEditing && canEdit && (
                         <div style={{ display: "flex", alignItems: "center" }}>
-                          <button className="btn btn-success" onClick={() => updateTask(task.id, { status: "Completed" })} style={{ fontSize: "12px" }}>✔ ทำเสร็จแล้ว</button>
+                          <button className="btn btn-success" onClick={() => stageTaskEdit(task.id, { status: "Completed" })} style={{ fontSize: "12px" }}>✔ ทำเสร็จแล้ว</button>
                         </div>
                       )}
                     </div>
@@ -1444,8 +1466,19 @@ export default function ProjectDetailPage() {
           tasks={processedTasks}
           anchor={{ x: depPopover.x, y: depPopover.y }}
           onClose={() => setDepPopover(null)}
-          onSave={(predecessors) => { updateTask(depPopover.task.id, { predecessors }); setDepPopover(null); }}
+          onSave={(predecessors) => { stageTaskEdit(depPopover.task.id, { predecessors }); setDepPopover(null); }}
         />
+      )}
+
+      {/* เฟส 1: แถบยืนยันการเปลี่ยนแปลงที่ค้างอยู่ — ลอยล่างจอ เห็นจากทุกวิว */}
+      {dirtyCount > 0 && (
+        <div style={{ position: "fixed", left: "50%", bottom: "20px", transform: "translateX(-50%)", zIndex: 60, display: "flex", alignItems: "center", gap: "12px", background: "var(--panel)", border: "1px solid var(--accent)", borderRadius: "12px", padding: "10px 16px", boxShadow: "0 8px 28px rgba(0,0,0,0.20)" }}>
+          <span style={{ fontSize: "13px", color: "var(--text)" }}>
+            มีการแก้ไข <b style={{ color: "var(--amber)" }}>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก
+          </span>
+          <button className="btn" onClick={cancelEdits} style={{ fontSize: "13px" }}>ยกเลิก</button>
+          <button className="btn btn-primary" onClick={confirmEdits} style={{ fontSize: "13px" }}>ยืนยันการเปลี่ยนแปลง</button>
+        </div>
       )}
     </div>
   );
