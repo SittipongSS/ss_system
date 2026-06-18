@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect, useRef } from "react";
 import Modal from "@/components/Modal";
+import ConfirmModal from "@/components/tax/ConfirmModal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { X } from "lucide-react";
@@ -24,6 +25,10 @@ export default function ProjectFormModal({
   const [form, setForm] = useState(blank);
   const [linkFg, setLinkFg] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState(""); // ข้อความ error แสดงในฟอร์ม (แทน alert)
+  const [confirmState, setConfirmState] = useState(null); // ยืนยันแบบ promise (แทน window.confirm)
+  const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
+  const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
 
   useEffect(() => {
     if (!open) return;
@@ -105,6 +110,7 @@ export default function ProjectFormModal({
 
   const submit = async (e) => {
     e.preventDefault();
+    setFormError("");
     // ข้อ 2: แจ้งเตือนก่อนปรับขั้นตอน — เมื่อแก้โปรเจกต์เดิมแล้วสถานะสรรพสามิต
     // (01-002) พลิก ระบบจะเพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต + คำนวณกำหนดการใหม่
     if (editingId) {
@@ -112,9 +118,9 @@ export default function ProjectFormModal({
       const nowExcise = (form.productMainCategory || "") === "01-002";
       if (wasExcise !== nowExcise) {
         const msg = nowExcise
-          ? "หมวดสินค้าเปลี่ยนเป็นสรรพสามิต (01-002)\nระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ (ขั้นตอนที่ทำไปแล้วจะถูกเก็บไว้)\n\nดำเนินการต่อหรือไม่?"
-          : "หมวดสินค้าเปลี่ยนออกจากสรรพสามิต\nระบบจะลบขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ (ขั้นตอนอื่นจะถูกเก็บไว้)\n\nดำเนินการต่อหรือไม่?";
-        if (!window.confirm(msg)) return;
+          ? "หมวดสินค้าเปลี่ยนเป็นสรรพสามิต (01-002) — ระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ (ขั้นตอนที่ทำไปแล้วจะถูกเก็บไว้) ดำเนินการต่อหรือไม่?"
+          : "หมวดสินค้าเปลี่ยนออกจากสรรพสามิต — ระบบจะลบขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ (ขั้นตอนอื่นจะถูกเก็บไว้) ดำเนินการต่อหรือไม่?";
+        if (!(await askConfirm({ title: "ยืนยันการปรับขั้นตอนสรรพสามิต", message: msg, confirmLabel: "ดำเนินการต่อ", danger: false }))) return;
       }
     }
     setSubmitting(true);
@@ -135,13 +141,12 @@ export default function ProjectFormModal({
       );
       const data = await res.json();
       if (res.ok) {
-        // รหัสโครงการสร้างอัตโนมัติฝั่งเซิร์ฟเวอร์ — โชว์ให้ผู้ใช้เห็นหลังบันทึกสำเร็จ
-        if (!editingId && data.code) alert(`สร้างโปรเจกต์สำเร็จ\nรหัสโครงการ: ${data.code}`);
+        // รหัสโครงการสร้างอัตโนมัติฝั่งเซิร์ฟเวอร์ — แจ้งสำเร็จ (toast) จัดการที่ผู้เรียก onSuccess
         onSuccess(data);
       } else {
-        alert(data.error || (editingId ? "บันทึกไม่สำเร็จ" : "สร้างโปรเจกต์ไม่สำเร็จ"));
+        setFormError(data.error || (editingId ? "บันทึกไม่สำเร็จ" : "สร้างโปรเจกต์ไม่สำเร็จ"));
       }
-    } catch { alert("เกิดข้อผิดพลาด"); }
+    } catch { setFormError("เกิดข้อผิดพลาด"); }
     finally { setSubmitting(false); }
   };
 
@@ -383,6 +388,9 @@ export default function ProjectFormModal({
             ระบบจะสร้างขั้นตอนงาน (timeline) อัตโนมัติจากเทมเพลต {form.type} และคำนวณวันทำการให้
           </p>
         )}
+        {formError && (
+          <p className="text-[13px] text-[var(--red)] mt-4">{formError}</p>
+        )}
         <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
           <button type="button" onClick={onClose} className="btn">ยกเลิก</button>
           <button type="submit" disabled={submitting} className="btn btn-primary px-8">
@@ -390,6 +398,16 @@ export default function ProjectFormModal({
           </button>
         </div>
       </form>
+
+      <ConfirmModal
+        open={!!confirmState}
+        onClose={() => resolveConfirm(false)}
+        onConfirm={() => resolveConfirm(true)}
+        title={confirmState?.title}
+        message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel || "ยืนยัน"}
+        danger={confirmState?.danger ?? true}
+      />
     </Modal>
   );
 }

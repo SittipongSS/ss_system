@@ -13,6 +13,8 @@ import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import SkeletonRows from "@/components/ui/Skeleton";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
+import Toast from "@/components/ui/Toast";
+import ConfirmModal from "@/components/tax/ConfirmModal";
 
 const typeStyle = (type) => type === "NPD"
   ? { background: "var(--accent-soft)", color: "var(--accent)" }
@@ -81,6 +83,10 @@ export default function ProjectsPage() {
   const role = useRole();
   // delete scope mirrors the API: superuser (all) + team lead (own team).
   const canDelete = isSuperuser(role) || role === "senior_ae";
+  const [toast, setToast] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
+  const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
+  const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
   const [projects, setProjects] = useState(() => apiCache.get("/api/pm/projects") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has("/api/pm/projects"));
   const [customers, setCustomers] = useState([]);
@@ -141,16 +147,20 @@ export default function ProjectsPage() {
     setShowForm(false);
     apiCache.delete?.("/api/pm/projects");
     await fetchProjects();
-    if (!editingId) router.push(`/pm/projects/${data.code || data.id}`);
+    if (!editingId) {
+      // รหัสโครงการสร้างอัตโนมัติฝั่งเซิร์ฟเวอร์ — แจ้งให้ผู้ใช้เห็นก่อนนำทางเข้าหน้าโปรเจกต์
+      if (data.code) setToast({ kind: "success", msg: `สร้างโปรเจกต์สำเร็จ — รหัส ${data.code}` });
+      router.push(`/pm/projects/${data.code || data.id}`);
+    }
   };
 
   const handleDelete = async (p) => {
-    if (!confirm(`ต้องการลบโปรเจกต์ "${p.code} — ${p.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`)) return;
+    if (!(await askConfirm({ title: "ลบโปรเจกต์", message: `ต้องการลบโปรเจกต์ "${p.code} — ${p.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`, confirmLabel: "ลบ" }))) return;
     setProjects((list) => list.filter((x) => x.id !== p.id));
     const res = await fetch(`/api/pm/projects/${p.id}`, { method: "DELETE" });
     apiCache.delete?.("/api/pm/projects");
     if (!res.ok) {
-      alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+      setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ" });
       fetchProjects();
     }
   };
@@ -428,6 +438,17 @@ export default function ProjectsPage() {
         customers={customers}
         categories={categories}
         allProducts={allProducts}
+      />
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
+      <ConfirmModal
+        open={!!confirmState}
+        onClose={() => resolveConfirm(false)}
+        onConfirm={() => resolveConfirm(true)}
+        title={confirmState?.title}
+        message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel || "ยืนยัน"}
+        danger={confirmState?.danger ?? true}
       />
     </div>
   );
