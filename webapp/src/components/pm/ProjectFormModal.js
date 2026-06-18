@@ -111,6 +111,8 @@ export default function ProjectFormModal({
   const submit = async (e) => {
     e.preventDefault();
     setFormError("");
+    // วันเริ่ม = anchor ของ timeline → บังคับใส่ (โปรเจกต์ย้อนหลังต้องตั้งวันจริงในอดีต)
+    if (!form.startDate) { setFormError("กรุณาระบุวันที่เริ่มโปรเจกต์"); return; }
     // ข้อ 2: แจ้งเตือนก่อนปรับขั้นตอน — เมื่อแก้โปรเจกต์เดิมแล้วสถานะสรรพสามิต
     // (01-002) พลิก ระบบจะเพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต + คำนวณกำหนดการใหม่
     if (editingId) {
@@ -206,8 +208,8 @@ export default function ProjectFormModal({
             <input name="name" value={form.name} onChange={change} required className="premium-input w-full" />
           </div>
           <div className="form-group">
-            <label>วันที่เริ่มโปรเจกต์</label>
-            <input type="date" name="startDate" value={form.startDate} onChange={change} className="premium-input w-full" />
+            <label>วันที่เริ่มโปรเจกต์ <span className="text-[var(--red)]">*</span></label>
+            <input type="date" name="startDate" value={form.startDate} onChange={change} required className="premium-input w-full" title="วันเริ่มเป็นจุดอ้างอิงของ timeline — โปรเจกต์ย้อนหลังให้ใส่วันจริงในอดีต" />
           </div>
           <div className="form-group">
             <label>Due Date <span className="text-[var(--text-3)] font-normal">(กำหนดส่งลูกค้า)</span></label>
