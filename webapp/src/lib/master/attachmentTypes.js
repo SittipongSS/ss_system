@@ -16,12 +16,16 @@ export const CUSTOMER_DOC_TYPES = {
     { key: "director_house_reg", label: "สำเนาทะเบียนบ้านกรรมการ (ถ้ามีการขอ)", required: false },
     { key: "power_of_attorney", label: "หนังสือมอบอำนาจ (กรณีผู้ดำเนินการไม่ใช่กรรมการ)", required: false },
     { key: "address_map", label: "แผนที่บริษัท", required: true },
+    // กลิ่นที่ออกแบบเป็นกรรมสิทธิ์ร่วมกับลูกค้า → เซ็นสัญญาทุกครั้งที่ออกแบบกลิ่น
+    // (มีได้หลายฉบับต่อลูกค้า — การ์ดเดียวแนบได้หลายไฟล์).
+    { key: "design_contract", label: "สัญญาออกแบบกลิ่น", required: true },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
   individual: [
     { key: "id_card", label: "สำเนาบัตรประชาชน", required: true },
     { key: "house_reg", label: "สำเนาทะเบียนบ้าน (ถ้ามีการขอ)", required: false },
     { key: "name_change", label: "เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)", required: false },
+    { key: "design_contract", label: "สัญญาออกแบบกลิ่น", required: true },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
 };
@@ -45,7 +49,7 @@ export const ATTACHMENT_TYPES = {
     { key: "id_card", label: "สำเนาบัตรประชาชน", required: true },
     { key: "house_reg", label: "สำเนาทะเบียนบ้าน (ถ้ามีการขอ)", required: false },
     { key: "name_change", label: "เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)", required: false },
-    { key: "design_contract", label: "สัญญาจ้างออกแบบกลิ่น", required: false }, // legacy
+    { key: "design_contract", label: "สัญญาออกแบบกลิ่น", required: true },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
   product: [
