@@ -8,6 +8,8 @@ import StatusSelect from "@/components/pm/StatusSelect";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
+import Toast from "@/components/ui/Toast";
+import ConfirmModal from "@/components/tax/ConfirmModal";
 import { isSuperuser } from "@/lib/permissions";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 
@@ -94,6 +96,10 @@ const SORT_OPTIONS = [
 
 export default function MyWorkPage() {
   const router = useRouter();
+  const [toast, setToast] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
+  const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
+  const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
   const [scope, setScope] = useState("mine");
   const [allowedScopes, setAllowedScopes] = useState(["mine"]);
   const [projectTasks, setProjectTasks] = useState([]);
@@ -274,7 +280,7 @@ export default function MyWorkPage() {
   const openEdit = (t) => { setEditingId(t.id); setForm({ title: t.title, note: t.note || "", dueDate: t.dueDate || "", projectId: t.projectId || "", assigneeId: t.assigneeId || "" }); setShowModal(true); };
   const savePersonal = async (e) => {
     e.preventDefault();
-    if (!form.title.trim()) { alert("ต้องระบุชื่องาน"); return; }
+    if (!form.title.trim()) { setToast({ kind: "error", msg: "ต้องระบุชื่องาน" }); return; }
     setSaving(true);
     try {
       const url = editingId ? `/api/pm/personal-tasks/${editingId}` : "/api/pm/personal-tasks";
@@ -292,8 +298,8 @@ export default function MyWorkPage() {
         }),
       });
       if (res.ok) { setShowModal(false); loadWork(scope); }
-      else alert((await res.json()).error || "บันทึกไม่สำเร็จ");
-    } catch { alert("เกิดข้อผิดพลาด"); }
+      else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ" });
+    } catch { setToast({ kind: "error", msg: "เกิดข้อผิดพลาด" }); }
     finally { setSaving(false); }
   };
   const setPersonalStatus = async (t, status) => {
@@ -329,7 +335,7 @@ export default function MyWorkPage() {
       loadWork(scope);
     } catch {
       setProjectTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, status: t.status } : x)));
-      alert("อัปเดตสถานะไม่สำเร็จ");
+      setToast({ kind: "error", msg: "อัปเดตสถานะไม่สำเร็จ" });
     }
   };
 
@@ -345,7 +351,7 @@ export default function MyWorkPage() {
   );
 
   const deletePersonal = async (t) => {
-    if (!confirm(`ลบงานส่วนตัว "${t.title}" ?`)) return;
+    if (!(await askConfirm({ title: "ลบงานส่วนตัว", message: `ลบงานส่วนตัว "${t.title}" ?`, confirmLabel: "ลบ" }))) return;
     const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
     if (res.ok) setPersonalTasks((prev) => prev.filter((x) => x.id !== t.id));
   };
@@ -758,6 +764,17 @@ export default function MyWorkPage() {
           </div>
         </form>
       </Modal>
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
+      <ConfirmModal
+        open={!!confirmState}
+        onClose={() => resolveConfirm(false)}
+        onConfirm={() => resolveConfirm(true)}
+        title={confirmState?.title}
+        message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel || "ยืนยัน"}
+        danger={confirmState?.danger ?? true}
+      />
     </div>
   );
 }

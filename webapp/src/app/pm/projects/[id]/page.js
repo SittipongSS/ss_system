@@ -22,6 +22,8 @@ import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
+import Toast from "@/components/ui/Toast";
+import ConfirmModal from "@/components/tax/ConfirmModal";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -216,6 +218,13 @@ export default function ProjectDetailPage() {
   const [showRevisions, setShowRevisions] = useState(false);
   const [revisions, setRevisions] = useState([]);
   const [issuingRev, setIssuingRev] = useState(false);
+  const [showIssueRev, setShowIssueRev] = useState(false); // modal ออกเวอร์ชันใหม่ (แทน window.prompt)
+  const [revNote, setRevNote] = useState("");
+  const [revError, setRevError] = useState("");
+  const [toast, setToast] = useState(null); // { kind: 'success'|'error'|'info', msg }
+  const [confirmState, setConfirmState] = useState(null); // ยืนยันแบบ promise (แทน window.confirm)
+  const [showDrop, setShowDrop] = useState(false); // modal ยกเลิกโปรเจกต์ (แทน window.prompt)
+  const [dropReason, setDropReason] = useState("");
   const isFirstLoad = useRef(true);
 
   const load = useCallback(async () => {
@@ -260,7 +269,7 @@ export default function ProjectDetailPage() {
     });
     if (!res.ok) {
       // เดิม error ถูกกลืนเงียบ → ผู้ใช้กดบันทึกแล้ว "ไม่มีอะไรเกิด" โดยไม่รู้ว่าพลาด
-      alert((await res.json().catch(() => ({}))).error || "อัปเดตขั้นตอนไม่สำเร็จ");
+      setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "อัปเดตขั้นตอนไม่สำเร็จ" });
       return false;
     }
     const updated = await res.json();
@@ -300,19 +309,22 @@ export default function ProjectDetailPage() {
   // ── เฟส 2: ออก Revise (freeze เอกสารทั้งชุดเป็นเวอร์ชัน) ──────────────────
   // การแก้ task = บันทึกทับ live ไม่เก็บประวัติ; "ออก Revise" คือการกระทำระดับ
   // เอกสารที่ตั้งใจ → snapshot ทุก task + เด้งเลข Rev (เริ่มที่ 0) ที่โชว์บนหน้าพิมพ์.
-  const issueRevision = async () => {
-    if (dirtyCount > 0) { alert("ยังมีการแก้ไขที่ยังไม่บันทึก — กรุณายืนยันหรือยกเลิกก่อนออกเวอร์ชัน"); return; }
-    const note = window.prompt("ออกเวอร์ชันเอกสารใหม่ (Revise)\nหมายเหตุการแก้ (ไม่บังคับ):", "");
-    if (note === null) return; // กดยกเลิก
-    setIssuingRev(true);
+  // เปิด modal ออกเวอร์ชัน — กันออกเมื่อยังมีการแก้ค้าง (แจ้งด้วย toast แทน alert เนทีฟ)
+  const openIssueRev = () => {
+    if (dirtyCount > 0) { setToast({ kind: "error", msg: "ยังมีการแก้ไขที่ยังไม่บันทึก — กรุณายืนยันหรือยกเลิกก่อนออกเวอร์ชัน" }); return; }
+    setRevNote(""); setRevError(""); setShowIssueRev(true);
+  };
+  const confirmIssueRev = async () => {
+    setIssuingRev(true); setRevError("");
     try {
       const res = await fetch(`/api/pm/projects/${id}/revisions`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note: revNote }),
       });
-      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || "ออกเวอร์ชันไม่สำเร็จ"); return; }
+      if (!res.ok) { setRevError((await res.json().catch(() => ({}))).error || "ออกเวอร์ชันไม่สำเร็จ"); return; }
       const rev = await res.json();
       setData((d) => ({ ...d, currentRev: rev.currentRev })); // เด้งเลข Rev ทันที
-      alert(`ออกเวอร์ชันแล้ว — Rev. ${rev.currentRev}`);
+      setShowIssueRev(false);
+      setToast({ kind: "success", msg: `ออกเวอร์ชันแล้ว — Rev. ${rev.currentRev}` });
     } finally { setIssuingRev(false); }
   };
   const openRevisions = async () => {
@@ -323,7 +335,7 @@ export default function ProjectDetailPage() {
   // พิมพ์เวอร์ชันเก่า: ดึง snapshot แล้วส่งเข้า print เหมือนเอกสารปัจจุบัน
   const printRevision = async (revNo) => {
     const res = await fetch(`/api/pm/projects/${id}/revisions/${revNo}`);
-    if (!res.ok) { alert("ดึงเวอร์ชันไม่สำเร็จ"); return; }
+    if (!res.ok) { setToast({ kind: "error", msg: "ดึงเวอร์ชันไม่สำเร็จ" }); return; }
     const { snapshot } = await res.json();
     const proj = snapshot?.project || {};
     const fallback = proj.productMainCategory ? `${mainCatName(proj.productMainCategory)}${proj.productSubCategory ? ` / ${proj.productSubCategory}` : ""}` : "";
@@ -335,6 +347,11 @@ export default function ProjectDetailPage() {
       rev: revNo,
     });
   };
+
+  // ยืนยันแบบ promise — แทน window.confirm() ด้วย ConfirmModal ที่เข้าธีม.
+  // ใช้: if (!(await askConfirm({ title, message }))) return;
+  const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
+  const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
 
   // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", 01-002 ชนะ) เหมือนในโมดัล
   // เพื่อให้ resync ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG 01-002 แล้วเงียบ
@@ -352,27 +369,32 @@ export default function ProjectDetailPage() {
     const was = (data.productMainCategory || "") === "01-002";
     const now = (cat.productMainCategory || "") === "01-002";
     if (was === now) return true;
-    return confirm(now
-      ? "สินค้าที่ผูกเข้าข่ายสรรพสามิต (01-002)\nระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่\n\nดำเนินการต่อหรือไม่?"
-      : "สินค้าที่ผูกไม่เข้าข่ายสรรพสามิตแล้ว\nระบบจะลบขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่\n\nดำเนินการต่อหรือไม่?");
+    return askConfirm({
+      title: "ยืนยันการปรับขั้นตอนสรรพสามิต",
+      message: now
+        ? "สินค้าที่ผูกเข้าข่ายสรรพสามิต (01-002) — ระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ ดำเนินการต่อหรือไม่?"
+        : "สินค้าที่ผูกไม่เข้าข่ายสรรพสามิตแล้ว — ระบบจะลบขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ ดำเนินการต่อหรือไม่?",
+      confirmLabel: "ดำเนินการต่อ",
+      danger: false,
+    });
   };
 
   const addProduct = async () => {
     if (!addingProduct) return;
     const newProducts = [...(data.projectProducts || []).map(p => ({ productId: p.productId, orderQty: p.orderQty, productionQty: p.productionQty })), { productId: addingProduct, orderQty: "", productionQty: "" }];
     const cat = deriveCategoryFromProducts(newProducts.map((p) => p.productId));
-    if (!confirmExciseFlip(cat)) return;
+    if (!(await confirmExciseFlip(cat))) return;
     const res = await fetch(`/api/pm/projects/${id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectProducts: newProducts, ...(cat || {}) }),
     });
     if (res.ok) { setAddingProduct(""); load(); }
-    else alert((await res.json()).error || "ผูกสินค้าไม่สำเร็จ");
+    else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ผูกสินค้าไม่สำเร็จ" });
   };
 
   const removeProduct = async (productId) => {
     const newProducts = (data.projectProducts || []).filter(p => p.productId !== productId).map(p => ({ productId: p.productId, orderQty: p.orderQty, productionQty: p.productionQty }));
     const cat = deriveCategoryFromProducts(newProducts.map((p) => p.productId));
-    if (!confirmExciseFlip(cat)) return;
+    if (!(await confirmExciseFlip(cat))) return;
     const res = await fetch(`/api/pm/projects/${id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectProducts: newProducts, ...(cat || {}) }),
     });
@@ -391,21 +413,22 @@ export default function ProjectDetailPage() {
     if (res.ok) load();
   };
 
-  const dropProject = async () => {
-    const reason = prompt("กรุณาระบุเหตุผลที่ลูกค้ายกเลิกหรือไม่ไปต่อ (เช่น ราคาแพงไป, ลูกค้าเปลี่ยนใจ, คู่แข่งได้งาน):");
-    if (!reason) return;
-    if (!confirm(`ต้องการยกเลิกโปรเจกต์นี้เนื่องจาก: "${reason}" ใช่หรือไม่?`)) return;
+  const openDrop = () => { setDropReason(""); setShowDrop(true); };
+  const confirmDrop = async () => {
+    const reason = dropReason.trim();
+    if (!reason) { setToast({ kind: "error", msg: "กรุณาระบุเหตุผลที่ยกเลิก" }); return; }
+    setShowDrop(false);
     await updateProject({ status: "Dropped", metadata: { ...(data.metadata || {}), lossReason: reason } });
   };
 
   const handleDeleteProject = async () => {
     if (!data) return;
-    if (!confirm(`ต้องการลบโปรเจกต์ "${data.code} — ${data.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`)) return;
+    if (!(await askConfirm({ title: "ลบโปรเจกต์", message: `ต้องการลบโปรเจกต์ "${data.code} — ${data.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`, confirmLabel: "ลบ" }))) return;
     const res = await fetch(`/api/pm/projects/${data.id}`, { method: "DELETE" });
     if (res.ok) {
       router.push("/pm/projects");
     } else {
-      alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+      setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ" });
     }
   };
 
@@ -437,11 +460,11 @@ export default function ProjectDetailPage() {
       setInsertBeforeId(null);
       setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false });
       load();
-    } else alert((await res.json()).error || "เพิ่มขั้นตอนไม่สำเร็จ");
+    } else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "เพิ่มขั้นตอนไม่สำเร็จ" });
   };
 
   const deleteTask = async (taskId, name) => {
-    if (!confirm(`ต้องการลบขั้นตอน "${name}" ใช่หรือไม่?`)) return;
+    if (!(await askConfirm({ title: "ลบขั้นตอน", message: `ต้องการลบขั้นตอน "${name}" ใช่หรือไม่?`, confirmLabel: "ลบ" }))) return;
     const res = await fetch(`/api/pm/project-tasks/${taskId}`, { method: "DELETE" });
     // server ตัด predecessor ที่อ้างขั้นนี้ + เดินสถานะกราฟใหม่ → reload เห็นผลครบ
     if (res.ok) await load();
@@ -452,7 +475,7 @@ export default function ProjectDetailPage() {
   const openEditExtra = (t) => { setEditingExtraId(t.id); setExtraForm({ title: t.title, note: t.note || "", dueDate: t.dueDate || "", assigneeId: t.assigneeId || "" }); setShowExtra(true); };
   const saveExtra = async (e) => {
     e.preventDefault();
-    if (!extraForm.title.trim()) { alert("ต้องระบุชื่องาน"); return; }
+    if (!extraForm.title.trim()) { setToast({ kind: "error", msg: "ต้องระบุชื่องาน" }); return; }
     setSavingExtra(true);
     try {
       const url = editingExtraId ? `/api/pm/personal-tasks/${editingExtraId}` : "/api/pm/personal-tasks";
@@ -467,8 +490,8 @@ export default function ProjectDetailPage() {
         }),
       });
       if (res.ok) { setShowExtra(false); await load(); }
-      else alert((await res.json()).error || "บันทึกไม่สำเร็จ");
-    } catch { alert("เกิดข้อผิดพลาด"); }
+      else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ" });
+    } catch { setToast({ kind: "error", msg: "เกิดข้อผิดพลาด" }); }
     finally { setSavingExtra(false); }
   };
   const setExtraStatus = async (t, status) => {
@@ -478,10 +501,10 @@ export default function ProjectDetailPage() {
     if (!res.ok) load();
   };
   const deleteExtra = async (t) => {
-    if (!confirm(`ลบงานเพิ่มเติม "${t.title}" ?`)) return;
+    if (!(await askConfirm({ title: "ลบงานเพิ่มเติม", message: `ลบงานเพิ่มเติม "${t.title}" ?`, confirmLabel: "ลบ" }))) return;
     const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
     if (res.ok) setData((d) => ({ ...d, personalTasks: (d.personalTasks || []).filter((x) => x.id !== t.id) }));
-    else alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+    else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ" });
   };
 
   const togglePhase = (phase) => setCollapsedPhases((prev) => {
@@ -841,6 +864,8 @@ export default function ProjectDetailPage() {
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || mc;
   // ยังไม่ผูก FG → ชื่อหมวด/หมวดรอง (resolve ชื่อหมวดหลักจากโค้ด) ใช้เป็น fallback บนหน้าพิมพ์
   const categoryFallback = p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}` : "";
+  // เลข Rev ถัดไป (รันอัตโนมัติ): ครั้งแรก = 0, จากนั้น +1 — ใช้โชว์บนปุ่ม "ออก Rev. N"
+  const nextRev = p.currentRev == null ? 0 : p.currentRev + 1;
 
   const fgUI = (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -943,8 +968,8 @@ export default function ProjectDetailPage() {
                 {p.currentRev == null ? "ฉบับร่าง" : `Rev. ${p.currentRev}`}
               </span>
               {canEdit && (
-                <button onClick={issueRevision} disabled={issuingRev} className="btn" style={{ whiteSpace: "nowrap" }} title="freeze เอกสารทั้งชุดเป็นเวอร์ชันใหม่ (เลข Rev จะขึ้นบนหน้าพิมพ์)">
-                  <GitCommit size={14} /> {issuingRev ? "กำลังออก…" : "ออก Revise"}
+                <button onClick={openIssueRev} disabled={issuingRev} className="btn" style={{ whiteSpace: "nowrap" }} title={`freeze เอกสารทั้งชุดเป็นเวอร์ชันใหม่ — เลขรันอัตโนมัติเป็น Rev. ${nextRev} (จะขึ้นบนหน้าพิมพ์)`}>
+                  <GitCommit size={14} /> {issuingRev ? "กำลังออก…" : `ออก Rev. ${nextRev}`}
                 </button>
               )}
               <button onClick={openRevisions} className="btn" style={{ whiteSpace: "nowrap" }} title="ดู/พิมพ์เวอร์ชันเอกสารที่เคยออก">
@@ -1373,14 +1398,14 @@ export default function ProjectDetailPage() {
               <button type="button" className="btn btn-warning" onClick={() => updateProject({ status: "On Hold" })}>
                 <Clock size={14} /> ระงับชั่วคราว (On Hold)
               </button>
-              <button type="button" className="btn btn-danger" onClick={dropProject}>
+              <button type="button" className="btn btn-danger" onClick={openDrop}>
                 <X size={14} /> ยกเลิกโปรเจกต์ (Drop)
               </button>
             </>
           )}
 
           {p.status === "On Hold" && (
-            <button type="button" className="btn btn-danger" onClick={dropProject}>
+            <button type="button" className="btn btn-danger" onClick={openDrop}>
               <X size={14} /> ยกเลิกโปรเจกต์ (Drop)
             </button>
           )}
@@ -1507,6 +1532,33 @@ export default function ProjectDetailPage() {
         </form>
       </Modal>
 
+      <Modal open={showIssueRev} onClose={() => !issuingRev && setShowIssueRev(false)} title="ออกเวอร์ชันเอกสารใหม่ (Revise)" size="sm">
+        <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "var(--text-2)" }}>
+            <GitCommit size={18} color="var(--accent)" style={{ flexShrink: 0 }} />
+            <span>จะ freeze เอกสารชุดปัจจุบันทั้งหมด และรันเลขอัตโนมัติเป็น <b className="ui-badge">Rev. {nextRev}</b></span>
+          </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", color: "var(--text-3)" }}>
+            หมายเหตุการแก้ (ไม่บังคับ)
+            <textarea
+              value={revNote}
+              onChange={(e) => setRevNote(e.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder="เช่น ปรับวันส่งมอบตาม PO ใหม่"
+              style={{ resize: "vertical", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "13px", fontFamily: "inherit" }}
+            />
+          </label>
+          {revError && <div style={{ fontSize: "12px", color: "var(--red)" }}>{revError}</div>}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", padding: "0 20px 16px" }}>
+          <button className="btn" disabled={issuingRev} onClick={() => setShowIssueRev(false)}>ยกเลิก</button>
+          <button className="btn btn-primary px-6" disabled={issuingRev} onClick={confirmIssueRev}>
+            <GitCommit size={14} /> {issuingRev ? "กำลังออก…" : `ออก Rev. ${nextRev}`}
+          </button>
+        </div>
+      </Modal>
+
       <Modal open={showRevisions} onClose={() => setShowRevisions(false)} title="ประวัติเวอร์ชันเอกสาร (Revise)" size="md">
         <div style={{ padding: "16px 20px" }}>
           {revisions.length === 0 ? (
@@ -1531,6 +1583,37 @@ export default function ProjectDetailPage() {
               ))}
             </div>
           )}
+        </div>
+      </Modal>
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
+
+      <ConfirmModal
+        open={!!confirmState}
+        onClose={() => resolveConfirm(false)}
+        onConfirm={() => resolveConfirm(true)}
+        title={confirmState?.title}
+        message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel || "ยืนยัน"}
+        danger={confirmState?.danger ?? true}
+      />
+
+      <Modal open={showDrop} onClose={() => setShowDrop(false)} title="ยกเลิกโปรเจกต์" size="sm">
+        <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", color: "var(--text-3)" }}>
+            เหตุผลที่ลูกค้ายกเลิก/ไม่ไปต่อ
+            <textarea
+              value={dropReason}
+              onChange={(e) => setDropReason(e.target.value)}
+              rows={3}
+              placeholder="เช่น ราคาแพงไป, ลูกค้าเปลี่ยนใจ, คู่แข่งได้งาน"
+              style={{ resize: "vertical", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "13px", fontFamily: "inherit" }}
+            />
+          </label>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", padding: "0 20px 16px" }}>
+          <button className="btn" onClick={() => setShowDrop(false)}>ยกเลิก</button>
+          <button className="btn btn-danger px-6" onClick={confirmDrop}>ยืนยันยกเลิกโปรเจกต์</button>
         </div>
       </Modal>
 
