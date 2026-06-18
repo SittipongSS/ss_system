@@ -43,6 +43,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!body.name) {
     return fail('ต้องระบุชื่อโปรเจกต์', 400);
   }
+  // วันเริ่มเป็น anchor ของ timeline (forward-only) — บังคับใส่ ไม่งั้น anchor ตกไปใช้ createdAt
+  // (วันนี้) → โปรเจกต์ย้อนหลังลากงานย้อนอดีตไม่ได้
+  if (!body.startDate) {
+    return fail('ต้องระบุวันเริ่มโปรเจกต์', 400);
+  }
 
   // รหัสโปรเจกต์ PJ-YYMMNNN (ลำดับรันต่อเดือน). การอ่าน max แล้ว +1 ไม่ atomic →
   // ถ้าสร้างพร้อมกันอาจได้รหัสซ้ำ จึงพึ่ง unique(code) + retry ตอน insert (loop ด้านล่าง).

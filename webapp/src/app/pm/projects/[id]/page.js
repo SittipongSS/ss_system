@@ -273,6 +273,10 @@ export default function ProjectDetailPage() {
       return false;
     }
     const updated = await res.json();
+    // เตือนเมื่อปักวันเริ่มไม่ติด (server เลื่อนไปวันอื่น — เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ไม่ได้)
+    if (patch.startDate && updated?.startDate && updated.startDate !== patch.startDate) {
+      setToast({ kind: "info", msg: "ปักวันเริ่มไม่ได้ตามที่เลือก — ต้องไม่เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ และเป็นวันทำการ (ระบบเลื่อนไปวันที่ใกล้สุดที่ทำได้)" });
+    }
     // สะท้อนขั้นที่แก้ทันที — ผู้เรียก (saveEditing/saveEditModal) ปิดฟอร์มได้เลยโดยไม่ต้องรอ
     // refetch ทั้งโปรเจกต์ (load() ~0.4–1.4s) ที่เคยทำให้ฟอร์มค้างเปิดดูเหมือนปุ่มไม่ทำงาน
     setData((d) => ({ ...d, tasks: (d?.tasks || []).map((t) => (t.id === taskId ? updated : t)) }));
@@ -296,13 +300,21 @@ export default function ProjectDetailPage() {
   const confirmEdits = async () => {
     const entries = Object.entries(dirty);
     if (!entries.length) return;
+    let clamped = 0; // จำนวนขั้นที่ "ปักวันเริ่มไม่ติด" (server เลื่อนไปวันอื่น)
     for (const [taskId, patch] of entries) {
-      await fetch(`/api/pm/project-tasks/${taskId}`, {
+      const res = await fetch(`/api/pm/project-tasks/${taskId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
       });
+      // เตือนเมื่อปักวันเริ่มไม่ได้ตามที่เลือก: ขอ startDate มา แต่ server บันทึกเป็นวันอื่น
+      // (เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ไม่ได้ หรือไม่ใช่วันทำการ → เลื่อนไปวันที่ทำได้)
+      if (res.ok && patch.startDate) {
+        const saved = await res.json().catch(() => null);
+        if (saved?.startDate && saved.startDate !== patch.startDate) clamped++;
+      }
     }
     setDirty({});
     await load(); // resync (server คำนวณ timeline/สถานะใหม่)
+    if (clamped) setToast({ kind: "info", msg: `ปักวันเริ่มไม่ได้ตามที่เลือก ${clamped} ขั้น — วันเริ่มต้องไม่เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ และต้องเป็นวันทำการ (ระบบเลื่อนไปวันที่ใกล้สุดที่ทำได้). โปรเจกต์ย้อนหลังให้ตั้ง “วันเริ่มโปรเจกต์” ก่อน` });
   };
   const dirtyCount = Object.keys(dirty).length;
 
