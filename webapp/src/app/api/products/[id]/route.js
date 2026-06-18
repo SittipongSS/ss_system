@@ -16,8 +16,17 @@ export async function GET(request, { params }) {
   if (!canViewRecord(user, 'products', data)) {
     return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
   }
+  // Enrich with the owner's customerType (not persisted on products) so the
+  // detail page shows the correct customer document set in the read-only
+  // "เอกสารลูกค้าเจ้าของ" panel. Looked up live to avoid stale denormalized data.
+  let customerType = null;
+  if (data.customerId) {
+    const { data: owner } = await supabase
+      .from('customers').select('customerType').eq('id', data.customerId).maybeSingle();
+    customerType = owner?.customerType ?? null;
+  }
   // Strip the confidential cost breakdown/profit for non-margin roles.
-  return Response.json(redactProductMargin(user, data));
+  return Response.json({ ...redactProductMargin(user, data), customerType });
 }
 
 // PATCH /api/products/[id]
