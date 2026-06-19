@@ -4,8 +4,6 @@ import { loadProject } from '@/lib/pm/projectsRepo';
 
 export const dynamic = 'force-dynamic';
 
-const SAVE_RETENTION_DAYS = 3;
-
 // คอลัมน์ของ project_tasks ที่ restore ได้ (ตรงกับ schema migration 0009/0019/0021/0022/0024/0032)
 const TASK_COLS = [
   'id', 'projectId', 'stepOrder', 'name', 'role', 'assignee', 'assigneeId',
@@ -25,7 +23,7 @@ const pickTask = (t, projectId) => {
 //   • งานที่ถูกลบไปหลัง snapshot → สร้างกลับ (id เดิม)
 //   • งานที่เพิ่มเข้ามาหลัง snapshot → ลบทิ้ง
 //   • งานที่ยังอยู่ → เขียนทับด้วยค่าใน snapshot (วัน/สถานะ/ลำดับ/predecessors/ฯลฯ)
-// แล้วถ่าย "เซฟใหญ่" จุดใหม่บันทึกสถานะหลังย้อน (ไม่ทำลายของเดิม — ย้อนของการย้อนได้อีก).
+// ไม่สร้างจุดบันทึกใหม่ตอนย้อน (กันประวัติรก) — จุดบันทึก/Rev เดิมยังอยู่ครบ ย้อนซ้ำได้.
 // หมายเหตุ: v1 ย้อนเฉพาะ "ขั้นตอนงาน" (timeline) — ไม่แตะหัวเอกสาร/ข้อมูลโปรเจกต์.
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
@@ -66,6 +64,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // 2) งานใน snapshot → upsert ทับค่าเดิม / สร้างคืนถ้าถูกลบไป (id เดิม)
   const now = new Date().toISOString();
   const rows = snapTasks.map((t) => ({ ...pickTask(t, project.id), updatedAt: now }));
+  const recreated = rows.filter((r) => !currentIds.has(r.id)).length; // เคยถูกลบ → สร้างคืน
+  const overwritten = rows.length - recreated;                        // มีอยู่ → เขียนทับ
   if (rows.length) {
     const { error } = await supabase
       .from('project_tasks')
@@ -73,24 +73,5 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (error) return fail(error.message, 500);
   }
 
-  // 3) ถ่าย "เซฟใหญ่" จุดใหม่ = สถานะหลังย้อน (ย้อนได้อีก) + ลบเซฟใหญ่เก่าเกิน 7 วัน
-  const label = snap.kind === 'rev'
-    ? `Rev. ${snap.revNo}`
-    : `เซฟเมื่อ ${new Date(snap.createdAt).toLocaleString('th-TH')}`;
-  const [{ data: tasks }, { data: links }] = await Promise.all([
-    supabase.from('project_tasks').select('*').eq('projectId', project.id).order('stepOrder', { ascending: true }),
-    supabase.from('project_products').select('*, product:products(*)').eq('projectId', project.id),
-  ]);
-  await supabase.from('project_doc_revisions').insert({
-    projectId: project.id, revNo: null, kind: 'save',
-    snapshot: { project, tasks: tasks || [], projectProducts: links || [] },
-    note: `ย้อนกลับไป ${label}`,
-    createdBy: user.id, createdByName: user.name,
-  });
-  const cutoff = new Date(Date.now() - SAVE_RETENTION_DAYS * 86400000).toISOString();
-  await supabase
-    .from('project_doc_revisions').delete()
-    .eq('projectId', project.id).eq('kind', 'save').lt('createdAt', cutoff);
-
-  return ok({ restored: true, deleted: toDelete.length, restoredTasks: rows.length });
+  return ok({ restored: true, deleted: toDelete.length, recreated, overwritten });
 });
