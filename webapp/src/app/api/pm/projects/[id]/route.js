@@ -47,7 +47,18 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // me: ใช้ฝั่ง client gate ปุ่มจัดการ "งานเพิ่มเติม" (owner/assignee/lead) + กรอง
   // ผู้รับมอบใน dropdown ตามทีมโปรเจกต์.
   const me = user ? { id: user.id, name: user.name, role: user.role, team: user.team ?? null } : null;
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me });
+  // วันที่ออกเวอร์ชันล่าสุด (createdAt ของ Rev = currentRev) — ใช้โชว์ในหัวเอกสารพิมพ์ (YYYY.MM.DD)
+  let revisedAt = null;
+  if (project.currentRev != null) {
+    const { data: rev } = await supabase
+      .from('project_doc_revisions')
+      .select('createdAt')
+      .eq('projectId', project.id)
+      .eq('revNo', project.currentRev)
+      .maybeSingle();
+    revisedAt = rev?.createdAt ?? null;
+  }
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt });
 });
 
 // PATCH /api/pm/projects/[id]
