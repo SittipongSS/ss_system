@@ -40,6 +40,7 @@ export default function AttachmentsPanel({
   title = "เอกสารแนบ",
   note,
   docTypes, // override การ์ดที่แสดง (เช่น เอกสารลูกค้าตามประเภท) — default = ตาม entityType
+  onItemsChange, // (items) => void — แจ้งรายการเอกสารปัจจุบัน (ใช้บังคับแนบก่อนยื่น)
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -76,6 +77,11 @@ export default function AttachmentsPanel({
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
+
+  // แจ้งรายการเอกสารปัจจุบันกลับไปให้ parent (เช่น เพื่อบังคับแนบก่อนยื่น).
+  useEffect(() => {
+    onItemsChange?.(items);
+  }, [items, onItemsChange]);
 
   // อัปไฟล์ขึ้น storage แล้วบันทึก metadata row. คืน true ถ้าสำเร็จ.
   const upload = async (theFile, theDocType, theMeta) => {

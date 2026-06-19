@@ -65,11 +65,15 @@ export const ATTACHMENT_TYPES = {
     { key: "tax_form", label: "แบบ ภส. / เอกสารยื่น" },
     { key: "other", label: "เอกสารอื่นๆ" },
   ],
-  // เอกสารการขึ้นทะเบียนสรรพสามิต ผูกกับ excise_registration.
+  // เอกสารการขึ้นทะเบียนสรรพสามิต ผูกกับ excise_registration. การ์ด required
+  // (แผนที่ + ฉลาก/Artwork) ต้องแนบครบก่อน SA ถึงจะ "ยื่นขึ้นทะเบียน" (draft →
+  // pending_legal) ได้ — ตรวจทั้งฝั่ง UI และ API. ใบอนุมัติได้มาหลังอนุมัติ
+  // (ฝั่ง LG แนบ) จึงไม่ required.
   registration: [
-    { key: "approval_letter", label: "ใบอนุมัติขึ้นทะเบียน" },
-    { key: "label_artwork", label: "ฉลาก / Artwork ที่ยื่น" },
-    { key: "other", label: "เอกสารอื่นๆ" },
+    { key: "map", label: "แผนที่สถานประกอบการ", required: true },
+    { key: "label_artwork", label: "ฉลาก / Artwork ที่ยื่น", required: true },
+    { key: "approval_letter", label: "ใบอนุมัติขึ้นทะเบียน", required: false },
+    { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
 };
 
@@ -88,6 +92,13 @@ export const ATTACHMENT_META_FIELDS = {
 
 // entityType ที่ระบบรองรับในตอนนี้ (ใช้ validate ฝั่ง API).
 export const ATTACHMENT_ENTITY_TYPES = Object.keys(ATTACHMENT_TYPES);
+
+// docType ที่ "จำเป็น" ของ entity หนึ่งๆ (รับ override การ์ดได้ เช่น เอกสาร
+// ลูกค้าตามประเภท). ใช้บังคับแนบเอกสารก่อนยื่น — ทั้งฝั่ง UI และ API.
+export function requiredDocKeys(entityType, docTypes) {
+  const list = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
+  return list.filter((t) => t.required).map((t) => t.key);
+}
 
 // ป้ายชื่อภาษาไทยของ docType หนึ่งๆ (fallback: คืนค่า key เดิมถ้าไม่รู้จัก).
 export function attachmentTypeLabel(entityType, docType) {

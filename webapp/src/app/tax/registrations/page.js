@@ -16,11 +16,19 @@ import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import ApproveDialog from "@/components/excise/ApproveDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { requiredDocKeys, attachmentTypeLabel } from "@/lib/master/attachmentTypes";
 
 const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
 
-// Build the 3-stage timeline for a registration.
+// Required registration documents (must be attached before submitting a draft).
+const REQUIRED_REG_DOCS = requiredDocKeys("registration");
+
+// Build the timeline for a registration. A draft hasn't been submitted yet.
 function regSteps(r) {
+  const created = { label: "สร้างทะเบียน (ร่าง)", at: r.createdAt, by: r.assignee, state: "done" };
+  if (r.status === "draft") {
+    return [created, { label: "ยื่นขึ้นทะเบียน", state: "current", note: "แนบเอกสารให้ครบก่อนยื่น" }];
+  }
   const submitted = { label: "ยื่นขึ้นทะเบียน", at: r.createdAt, by: r.assignee, state: "done" };
   if (r.status === "rejected") {
     return [submitted, { label: "ตีกลับให้แก้ไข", state: "rejected", note: r.rejectionReason }];
@@ -67,6 +75,14 @@ export default function RegistrationsPage() {
   const [approveTarget, setApproveTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // Attachments of the open record (reported by AttachmentsPanel) — used to
+  // enforce the required documents before a draft can be submitted.
+  const [attachItems, setAttachItems] = useState([]);
+  useEffect(() => { setAttachItems([]); }, [selected?.id]);
+  const missingDocs = useMemo(() => {
+    const present = new Set(attachItems.map((a) => a.docType));
+    return REQUIRED_REG_DOCS.filter((k) => !present.has(k));
+  }, [attachItems]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -79,6 +95,25 @@ export default function RegistrationsPage() {
   }, [regs, filter, search]);
 
   const refreshAll = async () => { await reload(); };
+
+  // After saving the form: a freshly created draft opens straight into the drawer
+  // so the user lands on the attachment cards and can submit once they're complete.
+  const handleSaved = async (saved, { created } = {}) => {
+    await reload();
+    if (created && saved?.id) setSelected(saved);
+  };
+
+  // Submit a draft (or resubmit a rejected one) for LG approval. The server
+  // hard-blocks if the required documents are missing; we also guard client-side.
+  const submitDraft = async (r) => {
+    const res = await fetch(`/api/excise-registrations/${r.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "pending_legal" }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ยื่นไม่สำเร็จ");
+    await refreshAll();
+    setSelected(null);
+  };
 
   const resubmit = async (r) => {
     const res = await fetch(`/api/excise-registrations/${r.id}`, {
@@ -146,7 +181,7 @@ export default function RegistrationsPage() {
       <span className="ui-badge">{regs.length} รายการ</span>
       {canEdit && (
         <button className="btn btn-primary flex items-center gap-1.5" onClick={() => { setEditTarget(null); setFormOpen(true); }}>
-          <Plus size={16} /> ยื่นขึ้นทะเบียน
+          <Plus size={16} /> สร้างทะเบียน
         </button>
       )}
     </>
@@ -160,6 +195,16 @@ export default function RegistrationsPage() {
           <button className="btn btn-danger" onClick={() => setRejectTarget(s)}>ตีกลับ</button>
           <button className="btn btn-primary" onClick={() => setApproveTarget(s)}>อนุมัติ</button>
         </>
+      )}
+      {canEdit && s.status === "draft" && (
+        <button
+          className="btn btn-primary flex items-center gap-1.5"
+          disabled={missingDocs.length > 0}
+          title={missingDocs.length ? `ต้องแนบ: ${missingDocs.map((k) => attachmentTypeLabel("registration", k)).join(", ")}` : ""}
+          onClick={() => submitDraft(s).catch((e) => alert(e.message))}
+        >
+          <Send size={15} /> ยื่นขึ้นทะเบียน
+        </button>
       )}
       {canEdit && s.status === "rejected" && (
         <button className="btn btn-primary flex items-center gap-1.5" onClick={() => resubmit(s).catch((e) => alert(e.message))}>
@@ -231,11 +276,23 @@ export default function RegistrationsPage() {
               <Timeline steps={regSteps(s)} />
             </div>
 
+            {s.status === "draft" && (
+              <div
+                className="rounded p-2.5"
+                style={{ fontSize: 12.5, border: "1px solid var(--border)", background: missingDocs.length ? "var(--amber-soft)" : "var(--green-soft)", color: missingDocs.length ? "var(--amber)" : "var(--green)" }}
+              >
+                {missingDocs.length
+                  ? `ยังขาดเอกสารที่จำเป็น: ${missingDocs.map((k) => attachmentTypeLabel("registration", k)).join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`
+                  : "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่ายกฎหมายตรวจ"}
+              </div>
+            )}
+
             <AttachmentsPanel
               entityType="registration"
               entityId={s.id}
               canEdit={canEdit || canApprove}
               title="เอกสารการขึ้นทะเบียน"
+              onItemsChange={setAttachItems}
             />
           </div>
         )}
@@ -244,7 +301,7 @@ export default function RegistrationsPage() {
       <RegistrationFormModal
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        onSaved={refreshAll}
+        onSaved={handleSaved}
         registration={editTarget}
         products={products}
         customers={customers}
