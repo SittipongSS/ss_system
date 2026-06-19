@@ -228,7 +228,7 @@ export default function ProjectDetailPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/pm/projects/${id}`);
+      const res = await fetch(`/api/pm/projects/${id}`, { cache: "no-store" });
       if (res.ok) {
         const d = await res.json();
         setData(d);
