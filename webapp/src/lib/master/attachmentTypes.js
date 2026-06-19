@@ -65,6 +65,12 @@ export const ATTACHMENT_TYPES = {
     { key: "tax_form", label: "แบบ ภส. / เอกสารยื่น" },
     { key: "other", label: "เอกสารอื่นๆ" },
   ],
+  // เอกสารการขึ้นทะเบียนสรรพสามิต ผูกกับ excise_registration.
+  registration: [
+    { key: "approval_letter", label: "ใบอนุมัติขึ้นทะเบียน" },
+    { key: "label_artwork", label: "ฉลาก / Artwork ที่ยื่น" },
+    { key: "other", label: "เอกสารอื่นๆ" },
+  ],
 };
 
 // ฟิลด์รายละเอียด (แท็ค) เพิ่มเติมต่อเอกสาร เก็บใน attachments.metadata (jsonb).

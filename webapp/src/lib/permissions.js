@@ -316,7 +316,7 @@ export const LEGAL_PRODUCT_FIELDS = ['status', 'approvalNumber', 'taxableOverrid
 // (which product + which customer it's submitted for).
 export const LEGAL_REGISTRATION_FIELDS = ['status', 'approvalNumber', 'taxableOverride', 'rejectionReason'];
 export const LEGAL_ORDER_FIELDS = [
-  'status', 'taxDueDate', 'exciseReceiptNumber', 'exciseTaxPaidAmount',
+  'status', 'taxDueDate', 'taxPaidDate', 'exciseReceiptNumber', 'exciseTaxPaidAmount',
   'exciseReceiptFileUrl', 'taxFormRef', 'rejectionReason',
 ];
 

@@ -13,6 +13,41 @@
 export const ORDER_SELECT =
   '*, items:order_items(*, product:products(*))';
 
+// ── Additive columns (migrations 0041/0042) — resilient writes ────────────
+// These columns are added by manual migrations that may not be applied yet on a
+// given environment (migrations run by hand on Supabase before deploy). To keep
+// order create/complete working both before AND after the migration — and to
+// survive the deploy window where code lands before the schema — we attempt the
+// write WITH the new columns and, only on a missing-column error, retry without
+// them. See memory [[deploy-workflow]] (schema-cache mismatch → 500s).
+const ADDITIVE_ITEM_COLS = ['salePrice', 'exciseRatePerUnit', 'localTaxRatePerUnit'];
+const ADDITIVE_ORDER_COLS = ['taxPaidDate'];
+
+const isMissingColumnError = (error, cols) =>
+  !!error && (error.code === 'PGRST204' || error.code === '42703' ||
+    cols.some((c) => (error.message || '').includes(c)));
+const stripCols = (obj, cols) => { const c = { ...obj }; for (const k of cols) delete c[k]; return c; };
+
+// Insert order_items, dropping the additive audit columns if the schema predates
+// migration 0041.
+export async function insertOrderItems(supabase, rows) {
+  let { error } = await supabase.from('order_items').insert(rows);
+  if (isMissingColumnError(error, ADDITIVE_ITEM_COLS)) {
+    ({ error } = await supabase.from('order_items').insert(rows.map((r) => stripCols(r, ADDITIVE_ITEM_COLS))));
+  }
+  return { error };
+}
+
+// Update an order, dropping additive columns (e.g. taxPaidDate) if the schema
+// predates migration 0042. Returns { error }.
+export async function updateOrderResilient(supabase, id, updates) {
+  let { error } = await supabase.from('orders').update(updates).eq('id', id);
+  if (isMissingColumnError(error, ADDITIVE_ORDER_COLS)) {
+    ({ error } = await supabase.from('orders').update(stripCols(updates, ADDITIVE_ORDER_COLS)).eq('id', id));
+  }
+  return { error };
+}
+
 // Given orders (each with `items[]`), fetch every referenced registration in one
 // query and attach it as `item.registration`. Mutates and returns the orders.
 export async function attachRegistrations(supabase, orders) {

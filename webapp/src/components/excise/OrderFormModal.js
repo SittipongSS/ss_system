@@ -1,0 +1,196 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, X } from "lucide-react";
+import Modal from "@/components/Modal";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import { fmtMoney } from "@/lib/format";
+
+const blankItem = () => ({ registrationId: "", quantity: "", salePrice: "" });
+const regTax = (r) => (r && r.isExciseTaxable !== false ? (r.exciseTax || 0) + (r.localTax || 0) : 0);
+
+// Create a new tax-filing order, or edit/resubmit an existing one. Lines bind an
+// approved registration of the chosen customer + quantity (+ optional sale price
+// for the tax base). Backend POST/PATCH contracts unchanged (salePrice additive).
+export default function OrderFormModal({ open, onClose, onSaved, order, registrations = [], customers = [], userName }) {
+  const editing = !!order;
+  const [customerId, setCustomerId] = useState("");
+  const [form, setForm] = useState({ quotationRef: "", poReference: "", deliveryDate: "", remarks: "" });
+  const [items, setItems] = useState([blankItem()]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setCustomerId(order.customerId || "");
+      setForm({
+        quotationRef: order.quotationRef === "-" ? "" : order.quotationRef || "",
+        poReference: order.poReference || "",
+        deliveryDate: order.deliveryDate && /^\d{4}-\d{2}-\d{2}/.test(order.deliveryDate) ? order.deliveryDate.slice(0, 10) : "",
+        remarks: order.remarks === "-" ? "" : order.remarks || "",
+      });
+      setItems((order.items || []).map((it) => ({
+        registrationId: it.registrationId || "", quantity: String(it.quantity || ""),
+        salePrice: it.salePrice != null ? String(it.salePrice) : "",
+      })) || [blankItem()]);
+    } else {
+      setCustomerId("");
+      setForm({ quotationRef: "", poReference: "", deliveryDate: "", remarks: "" });
+      setItems([blankItem()]);
+    }
+    setError(null);
+  }, [open, order?.id]);
+
+  const approvedRegs = useMemo(
+    () => registrations.filter((r) => r.status === "approved" && (!customerId || r.customerId === customerId)),
+    [registrations, customerId],
+  );
+
+  const setItem = (i, patch) => setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  const addItem = () => setItems((arr) => [...arr, blankItem()]);
+  const removeItem = (i) => setItems((arr) => (arr.length === 1 ? arr : arr.filter((_, idx) => idx !== i)));
+
+  const totalTax = items.reduce((s, it) => {
+    const r = approvedRegs.find((x) => x.id === it.registrationId);
+    return s + regTax(r) * (parseInt(it.quantity) || 0);
+  }, 0);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!customerId) { setError("กรุณาเลือกลูกค้า"); return; }
+    const clean = items
+      .filter((it) => it.registrationId && it.quantity)
+      .map((it) => ({ registrationId: it.registrationId, quantity: it.quantity, salePrice: it.salePrice }));
+    if (!clean.length) { setError("กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ"); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      let res;
+      if (editing) {
+        const body = { ...form, items: clean };
+        if (order.status === "rejected") body.status = "received"; // resubmit
+        res = await fetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      } else {
+        res = await fetch("/api/orders", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customerId, ...form, items: clean, assignee: userName }),
+        });
+      }
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "บันทึกไม่สำเร็จ");
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const title = editing
+    ? (order.status === "rejected" ? "แก้ไขและส่งกลับ" : "แก้ไขใบยื่นชำระ")
+    : "ยื่นชำระภาษีใหม่";
+
+  return (
+    <Modal open={open} onClose={() => !busy && onClose()} title={title} size="lg">
+      <form onSubmit={submit}>
+        <div className="drawer-section flex flex-col gap-4">
+          {editing && order.status === "rejected" && order.rejectionReason && (
+            <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">
+              เหตุผลที่ตีกลับ: {order.rejectionReason}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="form-group col-span-2">
+              <label>ลูกค้า <span style={{ color: "var(--red)" }}>*</span></label>
+              {editing ? (
+                <input className="premium-input w-full" value={order.customerName || "-"} disabled />
+              ) : (
+                <SearchableSelect
+                  value={customerId}
+                  onChange={(v) => { setCustomerId(v); setItems([blankItem()]); }}
+                  placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+                  options={customers.map((c) => ({ value: c.id, label: `${c.arCode} : ${c.name}`, search: `${c.arCode} ${c.name}` }))}
+                />
+              )}
+            </div>
+            <div className="form-group">
+              <label>เลขที่ใบเสนอราคา <span style={{ color: "var(--red)" }}>*</span></label>
+              <input className="premium-input w-full" value={form.quotationRef} required
+                onChange={(e) => setForm((f) => ({ ...f, quotationRef: e.target.value }))} placeholder="เช่น QT-2026-001" />
+            </div>
+            <div className="form-group">
+              <label>PO Reference</label>
+              <input className="premium-input w-full" value={form.poReference}
+                onChange={(e) => setForm((f) => ({ ...f, poReference: e.target.value }))} placeholder="เลขที่ใบสั่งซื้อลูกค้า" />
+            </div>
+            <div className="form-group">
+              <label>วันที่คาดว่าจะส่ง</label>
+              <input type="date" className="premium-input w-full" value={form.deliveryDate}
+                onChange={(e) => setForm((f) => ({ ...f, deliveryDate: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label>หมายเหตุ</label>
+              <input className="premium-input w-full" value={form.remarks}
+                onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} placeholder="ข้อมูลเพิ่มเติม" />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label style={{ margin: 0 }}>รายการสินค้า <span style={{ color: "var(--red)" }}>*</span></label>
+              <button type="button" onClick={addItem} className="btn btn-secondary flex items-center gap-1" style={{ height: 30 }}>
+                <Plus size={14} /> เพิ่มรายการ
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              {items.map((it, idx) => {
+                const reg = approvedRegs.find((r) => r.id === it.registrationId);
+                return (
+                  <div key={idx} className="flex flex-col gap-1">
+                    <div className="flex gap-2 items-start">
+                      <div style={{ flex: 1 }}>
+                        <SearchableSelect
+                          value={it.registrationId}
+                          onChange={(v) => setItem(idx, { registrationId: v })}
+                          placeholder={customerId ? "เลือกสินค้า (อนุมัติแล้ว)" : "เลือกลูกค้าก่อน"}
+                          options={approvedRegs.map((r) => ({ value: r.id, label: `${r.fgCode} | ${r.productName}`, search: `${r.fgCode} ${r.productName}` }))}
+                          emptyText="ไม่มีสินค้าที่อนุมัติแล้วของลูกค้านี้"
+                        />
+                      </div>
+                      <input type="number" min="1" placeholder="จำนวน" className="premium-input font-mono" style={{ width: 90 }}
+                        value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} required />
+                      <input type="number" step="0.01" min="0" placeholder="ราคาขาย/ชิ้น" className="premium-input font-mono" style={{ width: 120 }}
+                        value={it.salePrice} onChange={(e) => setItem(idx, { salePrice: e.target.value })} title="ราคาขาย/ฐานภาษี ต่อชิ้น (ไม่บังคับ)" />
+                      <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1}
+                        className="btn-icon danger" title="ลบรายการ"><X size={15} /></button>
+                    </div>
+                    {reg && (
+                      <div style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 2 }} className="font-mono">
+                        ภาษี/ชิ้น: {regTax(reg) > 0 ? fmtMoney(regTax(reg)) : "ยกเว้น"}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex justify-end" style={{ fontSize: 13 }}>
+            <span style={{ color: "var(--text-3)" }}>ยอดภาษีรวมโดยประมาณ:&nbsp;</span>
+            <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{totalTax > 0 ? fmtMoney(totalTax) : "ยกเว้นภาษี"}</span>
+          </div>
+
+          {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
+        </div>
+
+        <div className="drawer-section flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn btn-secondary" disabled={busy}>ยกเลิก</button>
+          <button type="submit" className="btn btn-primary px-6" disabled={busy}>
+            {busy ? "กำลังบันทึก..." : editing ? (order.status === "rejected" ? "บันทึกและส่งกลับ" : "บันทึกการแก้ไข") : "บันทึกรายการยื่นชำระ"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

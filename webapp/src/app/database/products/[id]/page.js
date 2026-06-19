@@ -273,7 +273,7 @@ export default function ProductDetails() {
                 {regs.map((r) => (
                   <div
                     key={r.id}
-                    onClick={() => (window.location.href = `/tax/register/${r.id}`)}
+                    onClick={() => (window.location.href = `/tax/registrations?open=${r.id}`)}
                     className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
                   >
                     <span className="font-medium text-[var(--text-2)]">{r.customerName || "-"}</span>

@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSuperuser } from '@/lib/permissions';
-import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
+import { ORDER_SELECT, attachRegistrations, insertOrderItems, updateOrderResilient } from '@/lib/tax/orders';
 
 export const dynamic = 'force-dynamic';
 // GET /api/orders/[id]
@@ -130,6 +130,9 @@ export async function PATCH(request, { params }) {
         registrationId: reg.id,
         productId: reg.productId,
         quantity: qty,
+        salePrice: it.salePrice != null && it.salePrice !== '' ? Number(it.salePrice) : null,
+        exciseRatePerUnit: reg.exciseTax || 0,
+        localTaxRatePerUnit: reg.localTax || 0,
         totalExciseTax: itemExcise,
         totalLocalTax: itemLocal,
         totalTax: itemExcise + itemLocal,
@@ -140,14 +143,14 @@ export async function PATCH(request, { params }) {
     updates.totalTax = totalExciseTax + totalLocalTax;
   }
 
-  const { error: updErr } = await supabase.from('orders').update(updates).eq('id', id);
+  const { error: updErr } = await updateOrderResilient(supabase, id, updates);
   if (updErr) return Response.json({ error: updErr.message }, { status: 500 });
 
   // Swap line items after the header update succeeds. ids reuse the order
   // suffix so we must delete the old set before inserting the new one.
   if (newItemRows) {
     await supabase.from('order_items').delete().eq('orderId', id);
-    const { error: itemsErr } = await supabase.from('order_items').insert(newItemRows);
+    const { error: itemsErr } = await insertOrderItems(supabase, newItemRows);
     if (itemsErr) return Response.json({ error: itemsErr.message }, { status: 500 });
   }
 
