@@ -4,9 +4,11 @@ import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { fmtMoney } from "@/lib/format";
 
-// Create or edit an excise registration (master FG product × customer). Create
-// → POST; edit (registration prop set) → PATCH the link fields. Backend tax
-// snapshot/permissions unchanged.
+// Create or edit an excise registration (master FG product × customer). The
+// customer is NOT picked freely: every FG already belongs to one customer via
+// products.customerId (master-data FK), so selecting the FG derives its owner
+// customer automatically. Only FG with no owner fall back to a manual picker.
+// Create → POST; edit (registration prop set) → PATCH the link fields.
 export default function RegistrationFormModal({ open, onClose, onSaved, registration, products = [], customers = [], userName }) {
   const editing = !!registration;
   const [productId, setProductId] = useState("");
@@ -14,19 +16,36 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
+  const selected = products.find((p) => p.id === productId);
+  const ownerId = selected?.customerId || "";
+  const owner = customers.find((c) => c.id === ownerId);
+  const ownerName = owner?.name || selected?.customerName || "";
+  const ownerArCode = owner?.arCode || "";
+  // FG with no master owner → fall back to a manual customer picker.
+  const needsManualCustomer = !!selected && !ownerId;
+
   useEffect(() => {
     if (open) {
-      setProductId(registration?.productId || "");
-      setCustomerId(registration?.customerId || "");
+      const pid = registration?.productId || "";
+      const p = products.find((x) => x.id === pid);
+      setProductId(pid);
+      // Prefer the FG's master owner; fall back to the registration's customer.
+      setCustomerId(p?.customerId || registration?.customerId || "");
       setError(null);
     }
   }, [open, registration?.id]);
 
-  const selected = products.find((p) => p.id === productId);
+  // Selecting an FG derives its owner customer (cleared when the FG has none).
+  const handleProduct = (id) => {
+    setProductId(id);
+    const p = products.find((x) => x.id === id);
+    setCustomerId(p?.customerId || "");
+  };
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!productId || !customerId) { setError("กรุณาเลือกสินค้าและลูกค้า"); return; }
+    if (!productId) { setError("กรุณาเลือกสินค้า (FG)"); return; }
+    if (!customerId) { setError(needsManualCustomer ? "FG นี้ยังไม่มีลูกค้าเจ้าของ กรุณาเลือกลูกค้า" : "กรุณาเลือกสินค้า (FG)"); return; }
     setBusy(true);
     setError(null);
     try {
@@ -56,7 +75,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
             <label>สินค้า (Master FG) <span style={{ color: "var(--red)" }}>*</span></label>
             <SearchableSelect
               value={productId}
-              onChange={setProductId}
+              onChange={handleProduct}
               placeholder="ค้นหา FG / ชื่อสินค้า / แบรนด์..."
               options={products.map((p) => ({
                 value: p.id,
@@ -75,17 +94,33 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
           </div>
 
           <div className="form-group">
-            <label>ลูกค้า <span style={{ color: "var(--red)" }}>*</span></label>
-            <SearchableSelect
-              value={customerId}
-              onChange={setCustomerId}
-              placeholder="ค้นหารหัส / ชื่อลูกค้า..."
-              options={customers.map((c) => ({
-                value: c.id,
-                label: `${c.arCode} : ${c.name}`,
-                search: `${c.arCode} ${c.name}`,
-              }))}
-            />
+            <label>ลูกค้า (เจ้าของ FG) <span style={{ color: "var(--red)" }}>*</span></label>
+            {!selected ? (
+              <div style={{ fontSize: 13 }} className="text-[var(--text-3)] bg-[var(--surface-2)] rounded p-2">
+                เลือก FG ก่อน — ลูกค้าจะถูกกำหนดตามเจ้าของสินค้าโดยอัตโนมัติ
+              </div>
+            ) : needsManualCustomer ? (
+              <>
+                <SearchableSelect
+                  value={customerId}
+                  onChange={setCustomerId}
+                  placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+                  options={customers.map((c) => ({
+                    value: c.id,
+                    label: `${c.arCode} : ${c.name}`,
+                    search: `${c.arCode} ${c.name}`,
+                  }))}
+                />
+                <div style={{ marginTop: 6, fontSize: 12, color: "var(--amber, #b45309)" }}>
+                  FG นี้ยังไม่มีลูกค้าเจ้าของในระบบฐานข้อมูล — ควรไปกำหนดที่สินค้าให้เรียบร้อย
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 14 }} className="font-medium text-[var(--text)] bg-[var(--surface-2)] rounded p-2 flex items-center gap-2">
+                {ownerArCode && <span className="font-mono text-[var(--text-3)]">{ownerArCode}</span>}
+                <span>{ownerName}</span>
+              </div>
+            )}
           </div>
 
           {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}

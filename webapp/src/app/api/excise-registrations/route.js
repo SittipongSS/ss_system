@@ -28,16 +28,23 @@ export async function POST(request) {
   const body = await request.json();
 
   if (!body.productId) return Response.json({ error: 'กรุณาเลือกสินค้า (FG)' }, { status: 400 });
-  if (!body.customerId) return Response.json({ error: 'กรุณาเลือกลูกค้า' }, { status: 400 });
 
-  // Pull the master product (source of truth for FG + tax) and the customer.
+  // Pull the master product (source of truth for FG + tax + owner customer).
   const { data: product, error: prodErr } = await supabase
     .from('products').select('*').eq('id', body.productId).maybeSingle();
   if (prodErr) return Response.json({ error: prodErr.message }, { status: 500 });
   if (!product) return Response.json({ error: 'ไม่พบสินค้าที่เลือก' }, { status: 404 });
 
+  // The customer is derived from the FG's master owner (products.customerId FK),
+  // not chosen freely — an FG belongs to exactly one customer. Only fall back to
+  // the client-supplied customerId when the FG has no owner set yet.
+  const customerId = product.customerId || body.customerId;
+  if (!customerId) {
+    return Response.json({ error: 'FG นี้ยังไม่มีลูกค้าเจ้าของ กรุณากำหนดลูกค้าให้สินค้าในระบบฐานข้อมูลก่อน' }, { status: 400 });
+  }
+
   const { data: customer, error: custErr } = await supabase
-    .from('customers').select('*').eq('id', body.customerId).maybeSingle();
+    .from('customers').select('*').eq('id', customerId).maybeSingle();
   if (custErr) return Response.json({ error: custErr.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
 
@@ -46,7 +53,7 @@ export async function POST(request) {
     .from('excise_registrations')
     .select('id')
     .eq('productId', body.productId)
-    .eq('customerId', body.customerId)
+    .eq('customerId', customerId)
     .maybeSingle();
   if (dup) {
     return Response.json({ error: 'สินค้านี้ถูกขึ้นทะเบียนให้ลูกค้ารายนี้แล้ว' }, { status: 409 });
