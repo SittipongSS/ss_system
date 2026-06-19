@@ -43,6 +43,32 @@ export async function PATCH(request, { params }) {
   const updated = { ...reg };
   for (const k of allowed) if (body[k] !== undefined) updated[k] = body[k];
 
+  // If SA re-points the registration to a different FG, the customer and the
+  // denormalized snapshot must follow the FG's master owner — never the
+  // client-supplied customerId (FG ↔ customer is fixed by products.customerId).
+  if (allowed.has('productId') && body.productId !== undefined && body.productId !== reg.productId) {
+    const { data: product, error: prodErr } = await supabase
+      .from('products').select('*').eq('id', body.productId).maybeSingle();
+    if (prodErr) return Response.json({ error: prodErr.message }, { status: 500 });
+    if (!product) return Response.json({ error: 'ไม่พบสินค้าที่เลือก' }, { status: 404 });
+
+    const customerId = product.customerId || (allowed.has('customerId') ? body.customerId : null) || reg.customerId;
+    const { data: customer } = await supabase
+      .from('customers').select('*').eq('id', customerId).maybeSingle();
+    if (!customer) return Response.json({ error: 'FG นี้ยังไม่มีลูกค้าเจ้าของ กรุณากำหนดลูกค้าให้สินค้าในระบบฐานข้อมูลก่อน' }, { status: 400 });
+
+    updated.productId = product.id;
+    updated.customerId = customer.id;
+    updated.fgCode = product.fgCode;
+    updated.productName = product.productDescription;
+    updated.brandName = product.brandName;
+    updated.customerName = customer.name;
+    updated.taxId = customer.taxId;
+  } else {
+    // FG unchanged → never let customerId drift away from the FG's owner.
+    updated.customerId = reg.customerId;
+  }
+
   // Approval / rejection audit trail (driven by the status transition).
   if (allowed.has('status') && body.status !== undefined && body.status !== reg.status) {
     if (body.status === 'approved') {
