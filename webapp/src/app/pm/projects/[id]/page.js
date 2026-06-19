@@ -370,15 +370,18 @@ export default function ProjectDetailPage() {
   // ย้อนงานทั้งชุดกลับไปเท่ากับจุดที่เลือก (เซฟใหญ่หรือ Rev). กันย้อนเมื่อยังมีของค้าง.
   const restoreSnapshot = async (row) => {
     if (dirtyCount > 0) { setToast({ kind: "error", msg: "ยังมีการแก้ไขที่ยังไม่บันทึก — กรุณายืนยันหรือยกเลิกก่อนย้อนเวอร์ชัน" }); return; }
-    const label = row.kind === "rev" ? `Rev. ${row.revNo}` : `เซฟเมื่อ ${new Date(row.createdAt).toLocaleString("th-TH")}`;
-    if (!(await askConfirm({ title: "ย้อนกลับไปจุดนี้?", message: `งานทั้งหมดจะกลับไปเท่ากับ "${label}" (สร้าง/ลบ/แก้ขั้นตอนให้ตรง). ระบบจะเซฟจุดปัจจุบันไว้ ย้อนกลับได้อีก.` }))) return;
+    const label = row.kind === "rev" ? `Rev. ${row.revNo}` : `บันทึกเมื่อ ${new Date(row.createdAt).toLocaleString("th-TH")}`;
+    if (!(await askConfirm({ title: "ย้อนกลับไปจุดนี้?", message: `งานทั้งหมดจะกลับไปเท่ากับ "${label}" (สร้าง/ลบ/แก้ขั้นตอนให้ตรง). จุดบันทึก/Rev อื่นยังอยู่ครบ ย้อนไปจุดอื่นได้อีก.` }))) return;
     const res = await fetch(`/api/pm/projects/${id}/restore`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshotId: row.id }),
     });
     if (!res.ok) { setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ย้อนเวอร์ชันไม่สำเร็จ" }); return; }
+    const r = await res.json().catch(() => ({}));
     await load();
-    await openRevisions(); // refresh ไทม์ไลน์ในที่ (มีจุดเซฟใหม่จากการย้อน)
-    setToast({ kind: "success", msg: `ย้อนกลับไป ${label} แล้ว` });
+    const changed = (r.recreated || 0) + (r.overwritten || 0) + (r.deleted || 0);
+    setToast(changed
+      ? { kind: "success", msg: `ย้อนกลับไป ${label} แล้ว — เขียนทับ ${r.overwritten || 0}, สร้างคืน ${r.recreated || 0}, ลบ ${r.deleted || 0} ขั้น` }
+      : { kind: "info", msg: `${label} เหมือนสถานะปัจจุบันอยู่แล้ว — ไม่มีอะไรเปลี่ยน` });
   };
 
   // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", 01-002 ชนะ) เหมือนในโมดัล
@@ -1581,11 +1584,11 @@ export default function ProjectDetailPage() {
       <Modal open={showRevisions} onClose={() => setShowRevisions(false)} title="ประวัติ — เซฟใหญ่ + เวอร์ชัน (Rev)" size="md">
         <div style={{ padding: "16px 20px" }}>
           <div style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "10px" }}>
-            <b style={{ color: "var(--accent)" }}>Rev.</b> = เวอร์ชันทางการสำหรับส่ง/อ้างอิง (เก็บถาวร) · <b>เซฟ</b> = จุดย้อนระหว่างทำ (เก็บ 3 วัน). ย้อนกลับไปจุดไหนก็ได้
+            <b style={{ color: "var(--accent)" }}>Rev.</b> = เวอร์ชันทางการสำหรับส่ง/อ้างอิง (เก็บถาวร) · <b>บันทึก</b> = จุดย้อนระหว่างทำ (เก็บ 3 วัน). ย้อนกลับไปจุดไหนก็ได้
           </div>
           {revisions.length === 0 ? (
             <div style={{ fontSize: "13px", color: "var(--text-3)", textAlign: "center", padding: "24px 0" }}>
-              ยังไม่มีประวัติ — กด “เซฟ” หรือ “ออก Rev” เพื่อสร้างจุดย้อนแรก
+              ยังไม่มีประวัติ — กด “บันทึก” หรือ “ออก Rev” เพื่อสร้างจุดย้อนแรก
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -1594,7 +1597,7 @@ export default function ProjectDetailPage() {
                 return (
                 <div key={r.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--panel)" }}>
                   <span className="ui-badge" style={{ flexShrink: 0, ...(isRev ? { borderColor: "var(--accent)", color: "var(--accent)" } : { color: "var(--text-3)" }) }}>
-                    {isRev ? `Rev. ${r.revNo}` : "เซฟ"}
+                    {isRev ? `Rev. ${r.revNo}` : "บันทึก"}
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
@@ -1687,7 +1690,7 @@ export default function ProjectDetailPage() {
             มีการแก้ไข <b style={{ color: "var(--amber)" }}>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก
           </span>
           <button className="btn" onClick={cancelEdits} style={{ fontSize: "13px" }}>ยกเลิก</button>
-          <button className="btn btn-primary" onClick={confirmEdits} style={{ fontSize: "13px" }} title="บันทึกการแก้ทั้งหมด + สร้างจุดย้อน (เก็บ 3 วัน)">เซฟ</button>
+          <button className="btn btn-primary" onClick={confirmEdits} style={{ fontSize: "13px" }} title="บันทึกการแก้ทั้งหมด + สร้างจุดย้อน (เก็บ 3 วัน)">บันทึก</button>
         </div>
       )}
     </div>
