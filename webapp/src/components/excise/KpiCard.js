@@ -9,6 +9,7 @@ const TONE = {
   danger: "var(--red)",
   info: "var(--blue)",
   accent: "var(--accent)",
+  neutral: "var(--text-3)",
 };
 
 export default function KpiCard({ label, value, hint, tone = "accent", icon: Icon, onClick }) {

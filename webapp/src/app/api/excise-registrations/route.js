@@ -75,7 +75,9 @@ export async function POST(request) {
     taxableOverride: null,
     exciseTax: isExciseTaxable ? (product.exciseTax || 0) : 0,
     localTax: isExciseTaxable ? (product.localTax || 0) : 0,
-    status: 'pending_legal',
+    // Created as a draft — SA attaches the required documents, then submits
+    // (draft → pending_legal) which is gated on those documents being present.
+    status: 'draft',
     team: user?.team ?? null,
     ownerId: user?.id ?? null,
     assignee: body.assignee || user?.name || 'Sales',

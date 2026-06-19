@@ -58,7 +58,8 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
         },
       );
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "บันทึกไม่สำเร็จ");
-      onSaved?.();
+      const saved = await res.json().catch(() => null);
+      onSaved?.(saved, { created: !editing });
       onClose();
     } catch (err) {
       setError(err.message);
@@ -68,7 +69,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
   };
 
   return (
-    <Modal open={open} onClose={() => !busy && onClose()} title={editing ? "แก้ไขการขึ้นทะเบียน" : "ยื่นขึ้นทะเบียนสินค้า"} size="md">
+    <Modal open={open} onClose={() => !busy && onClose()} title={editing ? "แก้ไขการขึ้นทะเบียน" : "สร้างทะเบียน (ร่าง)"} size="md">
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-4">
           <div className="form-group">
@@ -96,7 +97,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
           <div className="form-group">
             <label>ลูกค้า (เจ้าของ FG) <span style={{ color: "var(--red)" }}>*</span></label>
             {!selected ? (
-              <div style={{ fontSize: 13 }} className="text-[var(--text-3)] bg-[var(--surface-2)] rounded p-2">
+              <div style={{ fontSize: 13 }} className="text-[var(--text-3)] bg-[var(--panel-2)] rounded p-2">
                 เลือก FG ก่อน — ลูกค้าจะถูกกำหนดตามเจ้าของสินค้าโดยอัตโนมัติ
               </div>
             ) : needsManualCustomer ? (
@@ -116,12 +117,18 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: 14 }} className="font-medium text-[var(--text)] bg-[var(--surface-2)] rounded p-2 flex items-center gap-2">
+              <div style={{ fontSize: 14 }} className="font-medium text-[var(--text)] bg-[var(--panel-2)] rounded p-2 flex items-center gap-2">
                 {ownerArCode && <span className="font-mono text-[var(--text-3)]">{ownerArCode}</span>}
                 <span>{ownerName}</span>
               </div>
             )}
           </div>
+
+          {!editing && (
+            <div style={{ fontSize: 12.5 }} className="text-[var(--text-3)] bg-[var(--panel-2)] rounded p-2">
+              บันทึกเป็น “ฉบับร่าง” ก่อน จากนั้นแนบเอกสารที่จำเป็น (แผนที่ + ฉลาก/Artwork) แล้วจึงกด “ยื่นขึ้นทะเบียน”
+            </div>
+          )}
 
           {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
         </div>
@@ -129,7 +136,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
         <div className="drawer-section flex justify-end gap-2">
           <button type="button" onClick={onClose} className="btn btn-secondary" disabled={busy}>ยกเลิก</button>
           <button type="submit" className="btn btn-primary px-6" disabled={busy}>
-            {busy ? "กำลังบันทึก..." : editing ? "บันทึกการแก้ไข" : "ยื่นขึ้นทะเบียน"}
+            {busy ? "กำลังบันทึก..." : editing ? "บันทึกการแก้ไข" : "บันทึกร่าง → แนบเอกสาร"}
           </button>
         </div>
       </form>

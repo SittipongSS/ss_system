@@ -13,6 +13,7 @@
 
 export const STATUS = {
   // Track 1
+  draft: { label: "ฉบับร่าง (รอแนบเอกสาร)", tone: "neutral", icon: "FileEdit", track: "registration" },
   pending_legal: { label: "รออนุมัติ", tone: "warning", icon: "Clock", track: "registration" },
   approved: { label: "ขึ้นทะเบียนแล้ว", tone: "success", icon: "CheckCircle2", track: "registration" },
   // Track 2
@@ -37,6 +38,7 @@ export const TRACKS = {
     label: "การขึ้นทะเบียนสินค้า",
     href: "/tax/registrations",
     stages: [
+      { key: "draft", label: "ฉบับร่าง (รอแนบเอกสาร)", owner: "SA" },
       { key: "rejected", label: "รอแก้ไข (ตีกลับ)", owner: "SA" },
       { key: "pending_legal", label: "รออนุมัติ", owner: "LG" },
       { key: "approved", label: "ขึ้นทะเบียนแล้ว", owner: null, done: true },
@@ -70,6 +72,7 @@ export const seesLG = (dept) => dept === "LG" || dept === "AD";
 // Filter chip option lists for each track's list page (+ "all").
 export const REGISTRATION_FILTERS = [
   { key: "all", label: "ทั้งหมด" },
+  { key: "draft", label: "ฉบับร่าง" },
   { key: "pending_legal", label: "รออนุมัติ" },
   { key: "approved", label: "ขึ้นทะเบียนแล้ว" },
   { key: "rejected", label: "ตีกลับ" },

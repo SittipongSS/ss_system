@@ -20,6 +20,7 @@ export default function TaxDashboard() {
   const { data: orders, loading: l2 } = useApiList("/api/orders");
 
   const r = {
+    draft: regs.filter((x) => x.status === "draft").length,
     pending_legal: regs.filter((x) => x.status === "pending_legal").length,
     approved: regs.filter((x) => x.status === "approved").length,
     rejected: regs.filter((x) => x.status === "rejected").length,
@@ -43,6 +44,8 @@ export default function TaxDashboard() {
   // Build the role's action queue.
   const queue = [];
   if (seesSA(dept)) {
+    regs.filter((x) => x.status === "draft").forEach((x) =>
+      queue.push({ id: `rd-${x.id}`, status: "draft", title: `${x.fgCode} · ${x.productName}`, subtitle: `${x.customerName || "-"} — แนบเอกสารแล้วยื่นขึ้นทะเบียน`, cta: "แนบ/ยื่น", onClick: () => goReg("draft") }));
     regs.filter((x) => x.status === "rejected").forEach((x) =>
       queue.push({ id: `r-${x.id}`, status: "rejected", title: `${x.fgCode} · ${x.productName}`, subtitle: `${x.customerName || "-"} — ${x.rejectionReason || "ตีกลับให้แก้ไข"}`, cta: "แก้ไข", onClick: () => goReg("rejected") }));
     orders.filter((x) => x.status === "pending").forEach((x) =>
@@ -75,7 +78,8 @@ export default function TaxDashboard() {
             <Link href="/tax/registrations" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
           </div>
           <div className="kpi-grid">
-            <KpiCard label="รออนุมัติ" value={r.pending_legal} tone="warning" icon={ClipboardCheck} onClick={() => goReg("pending_legal")} />
+            <KpiCard label="ฉบับร่าง" value={r.draft} tone="neutral" icon={ClipboardCheck} onClick={() => goReg("draft")} />
+            <KpiCard label="รออนุมัติ" value={r.pending_legal} tone="warning" onClick={() => goReg("pending_legal")} />
             <KpiCard label="ขึ้นทะเบียนแล้ว" value={r.approved} tone="success" onClick={() => goReg("approved")} />
             <KpiCard label="ตีกลับให้แก้ไข" value={r.rejected} tone="danger" onClick={() => goReg("rejected")} />
           </div>

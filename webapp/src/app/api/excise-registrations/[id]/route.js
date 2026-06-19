@@ -1,6 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
+import { listAttachments } from '@/lib/master/attachments';
+import { requiredDocKeys, attachmentTypeLabel } from '@/lib/master/attachmentTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,9 +85,19 @@ export async function PATCH(request, { params }) {
     }
   }
 
-  // Resubmit: SA (products:edit, no legal:approve) sends a rejected
-  // registration back into the queue. The only status change SA may make.
-  if (body.status === 'pending_legal' && reg.status === 'rejected' && can(user?.role, 'products:edit')) {
+  // Submit for approval: SA (products:edit, no legal:approve) moves a draft (first
+  // submit) or a rejected (resubmit) registration into the LG queue. Gated on the
+  // required documents (แผนที่ + ฉลาก/Artwork) being attached first — hard block.
+  if (body.status === 'pending_legal' && (reg.status === 'draft' || reg.status === 'rejected') && can(user?.role, 'products:edit')) {
+    const required = requiredDocKeys('registration');
+    if (required.length) {
+      const present = new Set((await listAttachments('registration', id)).map((a) => a.docType));
+      const missing = required.filter((k) => !present.has(k));
+      if (missing.length) {
+        const labels = missing.map((k) => attachmentTypeLabel('registration', k));
+        return Response.json({ error: `กรุณาแนบเอกสารให้ครบก่อนยื่น: ${labels.join(', ')}` }, { status: 400 });
+      }
+    }
     updated.status = 'pending_legal';
     updated.rejectionReason = null;
   }
