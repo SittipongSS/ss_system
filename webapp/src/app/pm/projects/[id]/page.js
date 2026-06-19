@@ -5,10 +5,10 @@ import Link from "next/link";
 import {
   ArrowLeft, Plus, PlusCircle, X, Flag, FileText, GanttChart,
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
-  TrendingUp, Edit2, Trash2, Save, ChevronDown, ChevronRight, ChevronUp,
+  TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed,
   Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
-  GitCommit, History,
+  GitCommit, History, RotateCcw,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -213,7 +213,6 @@ export default function ProjectDetailPage() {
   const [editingExtraId, setEditingExtraId] = useState(null);
   const [extraForm, setExtraForm] = useState({ title: "", note: "", dueDate: "", assigneeId: "" });
   const [savingExtra, setSavingExtra] = useState(false);
-  const [savingStep, setSavingStep] = useState(false);
   // เฟส 2: document revision control — ออก Revise = freeze เอกสารทั้งชุดเป็นเวอร์ชัน + เลข Rev
   const [showRevisions, setShowRevisions] = useState(false);
   const [revisions, setRevisions] = useState([]);
@@ -263,38 +262,35 @@ export default function ProjectDetailPage() {
     return res.ok;
   };
 
-  const updateTask = async (taskId, patch) => {
-    const res = await fetch(`/api/pm/project-tasks/${taskId}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
-    });
-    if (!res.ok) {
-      // เดิม error ถูกกลืนเงียบ → ผู้ใช้กดบันทึกแล้ว "ไม่มีอะไรเกิด" โดยไม่รู้ว่าพลาด
-      setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "อัปเดตขั้นตอนไม่สำเร็จ" });
-      return false;
-    }
-    const updated = await res.json();
-    // เตือนเมื่อปักวันเริ่มไม่ติด (server เลื่อนไปวันอื่น — เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ไม่ได้)
-    if (patch.startDate && updated?.startDate && updated.startDate !== patch.startDate) {
-      setToast({ kind: "info", msg: "ปักวันเริ่มไม่ได้ตามที่เลือก — ต้องไม่เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ และเป็นวันทำการ (ระบบเลื่อนไปวันที่ใกล้สุดที่ทำได้)" });
-    }
-    // สะท้อนขั้นที่แก้ทันที — ผู้เรียก (saveEditing/saveEditModal) ปิดฟอร์มได้เลยโดยไม่ต้องรอ
-    // refetch ทั้งโปรเจกต์ (load() ~0.4–1.4s) ที่เคยทำให้ฟอร์มค้างเปิดดูเหมือนปุ่มไม่ทำงาน
-    setData((d) => ({ ...d, tasks: (d?.tasks || []).map((t) => (t.id === taskId ? updated : t)) }));
-    // refetch ทั้งโปรเจกต์เฉพาะเมื่อ field ที่ "กระทบขั้นอื่น" (วัน/ระยะเวลา/predecessor/สถานะ)
-    // เปลี่ยน "จริง" เทียบของเดิม เพื่อเห็นการเลื่อน downstream — เดิมเช็คแค่ว่ามี key ใน patch
-    // ซึ่ง handler ส่ง startDate/durationDays/predecessors มาเสมอ → แก้แค่ชื่อก็โดน reload ช้าทุกครั้ง
-    const cur = (data?.tasks || []).find((t) => t.id === taskId) || {};
-    const changed = (k) => k in patch && JSON.stringify(patch[k] ?? null) !== JSON.stringify(cur[k] ?? null);
-    if (["startDate", "finishDate", "durationDays", "predecessors", "status"].some(changed)) await load();
-    return true;
-  };
-
   // ── เฟส 1: แก้ task แบบ "ค้างก่อน-ยืนยันรวด" (ลด error จากการกดพลาด) ───────
   // inline edit (สถานะ/ทำเสร็จ/predecessors) ไม่ยิงทันที แต่ค้างใน dirty + โชว์ค่าใหม่
   // ทุกวิว (optimistic). ผู้ใช้กด "ยืนยันการเปลี่ยนแปลง" ครั้งเดียวจึงบันทึกจริง.
   const stageTaskEdit = (taskId, patch) => {
     setData((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)) }));
     setDirty((dd) => ({ ...dd, [taskId]: { ...dd[taskId], ...patch } }));
+  };
+  // วิว Document/Timeline ส่ง patch บางส่วน (เช่น {startDate} ตอนลากบาร์/แก้ช่องวัน). ถ้า stage
+  // ตรง ๆ finishDate จะค้างค่าเก่า → บาร์ "ยุบเหลือวันเดียว" เพราะ baseFinishIdx = max(finish, start)
+  // เมื่อวันเริ่มใหม่เลยวันจบเดิม. เติมฟิลด์คู่กันด้วยเอนจินวันทำการเดียวกับ syncSchedule/server ก่อน
+  // stage → บาร์ optimistic ตรงกับผลจริงหลังกดยืนยัน (กันอาการ "วันเด้งกลายเป็นวันเดียวกัน").
+  const stageScheduleEdit = (taskId, patch) => {
+    const cur = (data?.tasks || []).find((t) => t.id === taskId) || {};
+    const next = { ...patch };
+    if ("finishDate" in patch) {
+      // แก้/ลากวันจบ → คำนวณ duration จาก (วันเริ่ม → วันจบ) แล้ว snap วันจบเป็นวันทำการ
+      const start = "startDate" in patch ? patch.startDate : cur.startDate;
+      const dur = durationFromDates(start, patch.finishDate);
+      next.durationDays = dur;
+      const fin = computeFinish(start, dur);
+      if (fin) next.finishDate = toLocalISODate(fin);
+    } else if ("startDate" in patch || "durationDays" in patch) {
+      // แก้วันเริ่ม/ระยะเวลา → คงอีกค่า แล้วคำนวณวันจบใหม่
+      const start = "startDate" in patch ? patch.startDate : cur.startDate;
+      const dur = "durationDays" in patch ? (Number(patch.durationDays) || 1) : (cur.durationDays || 1);
+      const fin = start ? computeFinish(start, dur) : null;
+      if (fin) next.finishDate = toLocalISODate(fin);
+    }
+    stageTaskEdit(taskId, next);
   };
   const cancelEdits = async () => { setDirty({}); await load(); };
   const confirmEdits = async () => {
@@ -313,6 +309,10 @@ export default function ProjectDetailPage() {
       }
     }
     setDirty({});
+    // "เซฟใหญ่" = ถ่าย snapshot จุดย้อน (kind='save') หลัง persist ครบ → ย้อนกลับได้ภายหลัง
+    await fetch(`/api/pm/projects/${id}/revisions`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "save" }),
+    }).catch(() => {});
     await load(); // resync (server คำนวณ timeline/สถานะใหม่)
     if (clamped) setToast({ kind: "info", msg: `ปักวันเริ่มไม่ได้ตามที่เลือก ${clamped} ขั้น — วันเริ่มต้องไม่เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ และต้องเป็นวันทำการ (ระบบเลื่อนไปวันที่ใกล้สุดที่ทำได้). โปรเจกต์ย้อนหลังให้ตั้ง “วันเริ่มโปรเจกต์” ก่อน` });
   };
@@ -348,7 +348,8 @@ export default function ProjectDetailPage() {
   const printRevision = async (revNo) => {
     const res = await fetch(`/api/pm/projects/${id}/revisions/${revNo}`);
     if (!res.ok) { setToast({ kind: "error", msg: "ดึงเวอร์ชันไม่สำเร็จ" }); return; }
-    const { snapshot } = await res.json();
+    const revRow = await res.json();
+    const snapshot = revRow?.snapshot;
     const proj = snapshot?.project || {};
     const fallback = proj.productMainCategory ? `${mainCatName(proj.productMainCategory)}${proj.productSubCategory ? ` / ${proj.productSubCategory}` : ""}` : "";
     openGanttPrintWindow({
@@ -357,6 +358,7 @@ export default function ProjectDetailPage() {
       projectProducts: snapshot?.projectProducts || [],
       categoryFallback: fallback,
       rev: revNo,
+      revDate: revRow?.createdAt || null, // วันที่ออก Rev นี้ → โชว์ YYYY.MM.DD
     });
   };
 
@@ -364,6 +366,20 @@ export default function ProjectDetailPage() {
   // ใช้: if (!(await askConfirm({ title, message }))) return;
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
   const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
+
+  // ย้อนงานทั้งชุดกลับไปเท่ากับจุดที่เลือก (เซฟใหญ่หรือ Rev). กันย้อนเมื่อยังมีของค้าง.
+  const restoreSnapshot = async (row) => {
+    if (dirtyCount > 0) { setToast({ kind: "error", msg: "ยังมีการแก้ไขที่ยังไม่บันทึก — กรุณายืนยันหรือยกเลิกก่อนย้อนเวอร์ชัน" }); return; }
+    const label = row.kind === "rev" ? `Rev. ${row.revNo}` : `เซฟเมื่อ ${new Date(row.createdAt).toLocaleString("th-TH")}`;
+    if (!(await askConfirm({ title: "ย้อนกลับไปจุดนี้?", message: `งานทั้งหมดจะกลับไปเท่ากับ "${label}" (สร้าง/ลบ/แก้ขั้นตอนให้ตรง). ระบบจะเซฟจุดปัจจุบันไว้ ย้อนกลับได้อีก.` }))) return;
+    const res = await fetch(`/api/pm/projects/${id}/restore`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshotId: row.id }),
+    });
+    if (!res.ok) { setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ย้อนเวอร์ชันไม่สำเร็จ" }); return; }
+    await load();
+    await openRevisions(); // refresh ไทม์ไลน์ในที่ (มีจุดเซฟใหม่จากการย้อน)
+    setToast({ kind: "success", msg: `ย้อนกลับไป ${label} แล้ว` });
+  };
 
   // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", 01-002 ชนะ) เหมือนในโมดัล
   // เพื่อให้ resync ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG 01-002 แล้วเงียบ
@@ -652,20 +668,22 @@ export default function ProjectDetailPage() {
       note: task.note || "", showNoteInPrint: !!task.showNoteInPrint,
     });
   };
-  const saveEditing = async (taskId) => {
-    setSavingStep(true);
-    const okSave = await updateTask(taskId, {
-      name: editForm.name, role: editForm.role, assignee: editForm.assignee || null,
-      assigneeId: editForm.assigneeId || null,
-      durationDays: Number(editForm.durationDays) || 1,
-      startDate: editForm.startDate || null,
-      dueDate: editForm.dueDate || null,
-      isMilestone: editForm.isMilestone, phase: editForm.phase || null,
-      predecessors: editForm.predecessors || [],
-      note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
-    });
-    setSavingStep(false);
-    if (okSave) { setEditingTaskId(null); setEditForm(null); } // ล้มเหลว → คงฟอร์มไว้ให้แก้ต่อ
+  // patch จากฟอร์มแก้ขั้นตอน (ใช้ร่วม inline-edit ของ List + modal ของ Table)
+  const stepPatchFromForm = () => ({
+    name: editForm.name, role: editForm.role, assignee: editForm.assignee || null,
+    assigneeId: editForm.assigneeId || null,
+    durationDays: Number(editForm.durationDays) || 1,
+    startDate: editForm.startDate || null,
+    dueDate: editForm.dueDate || null,
+    isMilestone: editForm.isMilestone, phase: editForm.phase || null,
+    predecessors: editForm.predecessors || [],
+    note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
+  });
+  // เฟส 1: แก้ผ่านฟอร์ม = "ค้างไว้" เหมือนทุกวิว (ไม่เซฟทันที). ผ่าน stageScheduleEdit เพื่อให้
+  // วันจบ optimistic ตรงกับ server แล้วปิดฟอร์ม — บันทึกจริงเมื่อกด "ยืนยันการเปลี่ยนแปลง" ที่แถบล่าง
+  const saveEditing = (taskId) => {
+    stageScheduleEdit(taskId, stepPatchFromForm());
+    setEditingTaskId(null); setEditForm(null);
   };
 
   // เปิดแก้ไขขั้นตอนแบบ modal (จาก Table view) — ไม่สลับไป List view
@@ -684,21 +702,10 @@ export default function ProjectDetailPage() {
     setShowEditTask(true);
   };
   const closeEditModal = () => { setShowEditTask(false); setEditTask(null); setEditForm(null); };
-  const saveEditModal = async () => {
+  const saveEditModal = () => {
     if (!editTask) return;
-    setSavingStep(true);
-    const okSave = await updateTask(editTask.id, {
-      name: editForm.name, role: editForm.role, assignee: editForm.assignee || null,
-      assigneeId: editForm.assigneeId || null,
-      durationDays: Number(editForm.durationDays) || 1,
-      startDate: editForm.startDate || null,
-      dueDate: editForm.dueDate || null,
-      isMilestone: editForm.isMilestone, phase: editForm.phase || null,
-      predecessors: editForm.predecessors || [],
-      note: editForm.note || "", showNoteInPrint: !!editForm.showNoteInPrint,
-    });
-    setSavingStep(false);
-    if (okSave) closeEditModal(); // ล้มเหลว → คง modal ไว้ให้แก้ต่อ
+    stageScheduleEdit(editTask.id, stepPatchFromForm());
+    closeEditModal();
   };
 
   const handleToggleTask = (task) => {
@@ -988,7 +995,7 @@ export default function ProjectDetailPage() {
                 <History size={14} /> ประวัติเวอร์ชัน
               </button>
               <button
-                onClick={() => openGanttPrintWindow({ ...p, categoryFallback, rev: p.currentRev })}
+                onClick={() => openGanttPrintWindow({ ...p, categoryFallback, rev: p.currentRev, revDate: p.revisedAt })}
                 className="btn btn-primary"
                 style={{ whiteSpace: "nowrap", marginLeft: "auto" }}
                 title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
@@ -1040,7 +1047,7 @@ export default function ProjectDetailPage() {
             project={p}
             canEdit={canEdit}
             onUpdateProject={updateProject}
-            onUpdateTask={stageTaskEdit}
+            onUpdateTask={stageScheduleEdit}
             fgUI={fgUI}
             statusLabel={getComputedStatus(p)}
             statusColor={statusDotColor(getComputedStatus(p))}
@@ -1322,8 +1329,8 @@ export default function ProjectDetailPage() {
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--panel)", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)" }}>
                             {renderStepEditFields(task.id)}
                             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                              <button className="btn btn-secondary sm" disabled={savingStep} onClick={() => { setEditingTaskId(null); setEditForm(null); }}>ยกเลิก</button>
-                              <button className="btn btn-primary sm" disabled={savingStep} onClick={() => saveEditing(task.id)}><Save size={14} /> {savingStep ? "กำลังบันทึก…" : "บันทึก"}</button>
+                              <button className="btn btn-secondary sm" onClick={() => { setEditingTaskId(null); setEditForm(null); }}>ยกเลิก</button>
+                              <button className="btn btn-primary sm" onClick={() => saveEditing(task.id)}><Check size={14} /> ตกลง</button>
                             </div>
                           </div>
                         ) : (
@@ -1500,8 +1507,8 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {renderStepEditFields(editTask.id)}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-              <button className="btn btn-secondary sm" disabled={savingStep} onClick={closeEditModal}>ยกเลิก</button>
-              <button className="btn btn-primary sm" disabled={savingStep} onClick={saveEditModal}><Save size={14} /> {savingStep ? "กำลังบันทึก…" : "บันทึก"}</button>
+              <button className="btn btn-secondary sm" onClick={closeEditModal}>ยกเลิก</button>
+              <button className="btn btn-primary sm" onClick={saveEditModal}><Check size={14} /> ตกลง</button>
             </div>
           </div>
         )}
@@ -1571,28 +1578,43 @@ export default function ProjectDetailPage() {
         </div>
       </Modal>
 
-      <Modal open={showRevisions} onClose={() => setShowRevisions(false)} title="ประวัติเวอร์ชันเอกสาร (Revise)" size="md">
+      <Modal open={showRevisions} onClose={() => setShowRevisions(false)} title="ประวัติ — เซฟใหญ่ + เวอร์ชัน (Rev)" size="md">
         <div style={{ padding: "16px 20px" }}>
+          <div style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "10px" }}>
+            <b style={{ color: "var(--accent)" }}>Rev.</b> = เวอร์ชันทางการสำหรับส่ง/อ้างอิง (เก็บถาวร) · <b>เซฟ</b> = จุดย้อนระหว่างทำ (เก็บ 3 วัน). ย้อนกลับไปจุดไหนก็ได้
+          </div>
           {revisions.length === 0 ? (
             <div style={{ fontSize: "13px", color: "var(--text-3)", textAlign: "center", padding: "24px 0" }}>
-              ยังไม่เคยออกเวอร์ชัน — กด “ออก Revise” เพื่อ freeze เอกสารชุดปัจจุบันเป็น Rev. 0
+              ยังไม่มีประวัติ — กด “เซฟ” หรือ “ออก Rev” เพื่อสร้างจุดย้อนแรก
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {revisions.map((r) => (
+              {revisions.map((r) => {
+                const isRev = r.kind !== "save";
+                return (
                 <div key={r.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--panel)" }}>
-                  <span className="ui-badge" style={{ flexShrink: 0 }}>Rev. {r.revNo}</span>
+                  <span className="ui-badge" style={{ flexShrink: 0, ...(isRev ? { borderColor: "var(--accent)", color: "var(--accent)" } : { color: "var(--text-3)" }) }}>
+                    {isRev ? `Rev. ${r.revNo}` : "เซฟ"}
+                  </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
                       {r.createdAt ? new Date(r.createdAt).toLocaleString("th-TH") : "-"} · {r.createdByName || "-"}
                     </div>
                     {r.note && <div style={{ fontSize: "12px", color: "var(--text-3)", whiteSpace: "pre-wrap" }}>{r.note}</div>}
                   </div>
-                  <button className="btn sm" style={{ flexShrink: 0 }} onClick={() => printRevision(r.revNo)} title="เปิดเอกสารเวอร์ชันนี้เพื่อพิมพ์/บันทึก PDF">
-                    <Printer size={13} /> พิมพ์
-                  </button>
+                  {canEdit && (
+                    <button className="btn sm" style={{ flexShrink: 0 }} onClick={() => restoreSnapshot(r)} title="ย้อนงานทั้งชุดกลับไปเท่ากับจุดนี้">
+                      <RotateCcw size={13} /> ย้อนกลับ
+                    </button>
+                  )}
+                  {isRev && (
+                    <button className="btn sm" style={{ flexShrink: 0 }} onClick={() => printRevision(r.revNo)} title="เปิดเอกสารเวอร์ชันนี้เพื่อพิมพ์/บันทึก PDF">
+                      <Printer size={13} /> พิมพ์
+                    </button>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1665,7 +1687,7 @@ export default function ProjectDetailPage() {
             มีการแก้ไข <b style={{ color: "var(--amber)" }}>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก
           </span>
           <button className="btn" onClick={cancelEdits} style={{ fontSize: "13px" }}>ยกเลิก</button>
-          <button className="btn btn-primary" onClick={confirmEdits} style={{ fontSize: "13px" }}>ยืนยันการเปลี่ยนแปลง</button>
+          <button className="btn btn-primary" onClick={confirmEdits} style={{ fontSize: "13px" }} title="บันทึกการแก้ทั้งหมด + สร้างจุดย้อน (เก็บ 3 วัน)">เซฟ</button>
         </div>
       )}
     </div>
