@@ -61,17 +61,26 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (error) return fail(error.message, 500);
   }
 
-  // 2) งานใน snapshot → upsert ทับค่าเดิม / สร้างคืนถ้าถูกลบไป (id เดิม)
+  // 2) เขียนงานกลับให้ตรง snapshot — แยก insert (สร้างคืน) / update รายตัว (เขียนทับ).
+  // ไม่ใช้ upsert: บางคอนฟิก ignoreDuplicates=true จะ "ข้าม" แถวที่มีอยู่ → ไม่เขียนทับ → ดูเหมือนย้อนไม่ติด.
   const now = new Date().toISOString();
-  const rows = snapTasks.map((t) => ({ ...pickTask(t, project.id), updatedAt: now }));
-  const recreated = rows.filter((r) => !currentIds.has(r.id)).length; // เคยถูกลบ → สร้างคืน
-  const overwritten = rows.length - recreated;                        // มีอยู่ → เขียนทับ
-  if (rows.length) {
-    const { error } = await supabase
-      .from('project_tasks')
-      .upsert(rows, { onConflict: 'id' });
+  const toInsert = snapTasks.filter((t) => !currentIds.has(t.id)).map((t) => ({ ...pickTask(t, project.id), updatedAt: now }));
+  const toUpdate = snapTasks.filter((t) => currentIds.has(t.id));
+
+  if (toInsert.length) {
+    const { error } = await supabase.from('project_tasks').insert(toInsert);
     if (error) return fail(error.message, 500);
   }
 
-  return ok({ restored: true, deleted: toDelete.length, recreated, overwritten });
+  for (const t of toUpdate) {
+    const row = pickTask(t, project.id);
+    delete row.id; // ไม่ต้องเขียนทับ PK ตัวเอง
+    const { error } = await supabase
+      .from('project_tasks')
+      .update({ ...row, updatedAt: now })
+      .eq('id', t.id);
+    if (error) return fail(error.message, 500);
+  }
+
+  return ok({ restored: true, deleted: toDelete.length, recreated: toInsert.length, overwritten: toUpdate.length });
 });
