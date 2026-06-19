@@ -1,145 +1,108 @@
 "use client";
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { LayoutDashboard, Plus, FileText } from "lucide-react";
-import { apiCache } from "@/lib/apiCache";
-import { useRole, useCan } from "@/lib/roleContext";
+import { useRouter } from "next/navigation";
+import { LayoutDashboard, ClipboardCheck, ReceiptText, BarChart3, ChevronRight } from "lucide-react";
+import Workspace from "@/components/ui/Workspace";
+import { useRole } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
-import TaxWorkspace from "@/components/tax/TaxWorkspace";
-import TaxStageRail from "@/components/tax/TaxStageRail";
-import ActionQueue, { ActionRow } from "@/components/tax/ActionQueue";
-import { TRACK1, TRACK2, deptOf } from "@/lib/tax/status";
+import { useApiList } from "@/lib/excise/useApiList";
+import { deptOf, seesSA, seesLG } from "@/lib/excise/workflow";
+import KpiCard from "@/components/excise/KpiCard";
+import WorkQueue from "@/components/excise/WorkQueue";
 
-// ── Excise-tax command center ─────────────────────────────────────────
-// Role-aware landing for the whole tax system: both pipelines at a glance
-// (stage rail + live counts) and a single "ต้องทำตอนนี้" queue of the items
-// THIS role must act on. Queue rows deep-link into the workspace pages where
-// the real actions (approve / receive / file) live.
-export default function TaxCommandCenter() {
+// Excise command center — role-aware landing. KPI rails for both tracks +
+// a single "งานของฉันตอนนี้" queue that deep-links into the list drawers.
+export default function TaxDashboard() {
   const role = useRole();
-  const canEdit = useCan("products:edit"); // SA submit caps
   const dept = deptOf(role);
+  const router = useRouter();
+  const { data: regs, loading: l1 } = useApiList("/api/excise-registrations");
+  const { data: orders, loading: l2 } = useApiList("/api/orders");
 
-  const [regs, setRegs] = useState(() => apiCache.get("/api/excise-registrations") ?? []);
-  const [orders, setOrders] = useState(() => apiCache.get("/api/orders") ?? []);
-  const [loading, setLoading] = useState(
-    () => !(apiCache.has("/api/excise-registrations") && apiCache.has("/api/orders")),
-  );
-
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/excise-registrations").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/orders").then((r) => (r.ok ? r.json() : null)),
-    ])
-      .then(([r, o]) => {
-        if (r) { setRegs(r); apiCache.set("/api/excise-registrations", r); }
-        if (o) { setOrders(o); apiCache.set("/api/orders", o); }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const t1 = {
-    rejected: regs.filter((r) => r.status === "rejected").length,
-    pending_legal: regs.filter((r) => r.status === "pending_legal").length,
-    approved: regs.filter((r) => r.status === "approved").length,
+  const r = {
+    pending_legal: regs.filter((x) => x.status === "pending_legal").length,
+    approved: regs.filter((x) => x.status === "approved").length,
+    rejected: regs.filter((x) => x.status === "rejected").length,
   };
-  const t2 = {
-    pending: orders.filter((o) => o.status === "pending").length,
-    received: orders.filter((o) => o.status === "received").length,
-    filing: orders.filter((o) => o.status === "filing").length,
-    complete: orders.filter((o) => o.status === "complete").length,
+  const o = {
+    pending: orders.filter((x) => x.status === "pending").length,
+    received: orders.filter((x) => x.status === "received").length,
+    filing: orders.filter((x) => x.status === "filing").length,
+    complete: orders.filter((x) => x.status === "complete").length,
+    rejected: orders.filter((x) => x.status === "rejected").length,
   };
 
-  const itemsLine = (o) => {
-    const n = o.items?.length || 0;
-    const tax = (o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : `ภาษีรวม ${fmtMoney(o.totalTax)}`;
-    return `${n} รายการ · ${tax}${o.deliveryDate ? ` · ส่ง ${o.deliveryDate}` : ""}`;
+  const itemsLine = (ord) => {
+    const n = ord.items?.length || 0;
+    const tax = (ord.totalTax || 0) === 0 ? "ยกเว้นภาษี" : `ภาษี ${fmtMoney(ord.totalTax)}`;
+    return `${n} รายการ · ${tax}`;
   };
+  const goReg = (status) => router.push(`/tax/registrations?status=${status}`);
+  const goFil = (status) => router.push(`/tax/filings?status=${status}`);
 
-  // Build the queue for the current department. Admin (AD) sees both lanes.
-  const showSA = dept === "SA" || dept === "AD";
-  const showLG = dept === "LG" || dept === "AD";
+  // Build the role's action queue.
   const queue = [];
-
-  if (showSA) {
-    regs.filter((r) => r.status === "rejected").forEach((r) =>
-      queue.push({
-        id: `reg-${r.id}`, status: "rejected",
-        title: `${r.fgCode} · ${r.productName}`,
-        subtitle: `${r.customerName || "-"} — เหตุผล: ${r.rejectionReason || "ตีกลับให้แก้ไข"}`,
-        href: `/tax/register/${r.id}`, cta: "แก้ไขและส่งกลับ",
-      }));
-    orders.filter((o) => o.status === "pending").forEach((o) =>
-      queue.push({
-        id: `ord-${o.id}`, status: "pending",
-        title: `${o.quotationRef} · ${o.customerName || "-"}`,
-        subtitle: itemsLine(o), href: "/tax/payment", cta: "ไปรับเงิน",
-      }));
-    orders.filter((o) => o.status === "rejected").forEach((o) =>
-      queue.push({
-        id: `ordx-${o.id}`, status: "rejected",
-        title: `${o.quotationRef} · ${o.customerName || "-"}`,
-        subtitle: `${itemsLine(o)} — ${o.rejectionReason || "ตีกลับ"}`,
-        href: "/tax/payment", cta: "แก้ไขและส่งกลับ",
-      }));
+  if (seesSA(dept)) {
+    regs.filter((x) => x.status === "rejected").forEach((x) =>
+      queue.push({ id: `r-${x.id}`, status: "rejected", title: `${x.fgCode} · ${x.productName}`, subtitle: `${x.customerName || "-"} — ${x.rejectionReason || "ตีกลับให้แก้ไข"}`, cta: "แก้ไข", onClick: () => goReg("rejected") }));
+    orders.filter((x) => x.status === "pending").forEach((x) =>
+      queue.push({ id: `o-${x.id}`, status: "pending", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: itemsLine(x), cta: "รับเงิน", onClick: () => goFil("pending") }));
+    orders.filter((x) => x.status === "rejected").forEach((x) =>
+      queue.push({ id: `ox-${x.id}`, status: "rejected", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: `${itemsLine(x)} — ${x.rejectionReason || "ตีกลับ"}`, cta: "แก้ไข", onClick: () => goFil("rejected") }));
   }
-  if (showLG) {
-    regs.filter((r) => r.status === "pending_legal").forEach((r) =>
-      queue.push({
-        id: `regl-${r.id}`, status: "pending_legal",
-        title: `${r.fgCode} · ${r.productName}`,
-        subtitle: `${r.customerName || "-"} — รอตรวจขึ้นทะเบียน`,
-        href: `/tax/register/${r.id}`, cta: "ตรวจอนุมัติ",
-      }));
-    orders.filter((o) => o.status === "received").forEach((o) =>
-      queue.push({
-        id: `ordr-${o.id}`, status: "received",
-        title: `${o.quotationRef} · ${o.customerName || "-"}`,
-        subtitle: `${itemsLine(o)} — รอยื่นกรมสรรพสามิต`,
-        href: "/tax/approve-payment", cta: "ไปยื่น",
-      }));
-    orders.filter((o) => o.status === "filing").forEach((o) =>
-      queue.push({
-        id: `ordf-${o.id}`, status: "filing",
-        title: `${o.quotationRef} · ${o.customerName || "-"}`,
-        subtitle: `${itemsLine(o)} — กำลังยื่น`,
-        href: "/tax/approve-payment", cta: "บันทึกชำระ",
-      }));
+  if (seesLG(dept)) {
+    regs.filter((x) => x.status === "pending_legal").forEach((x) =>
+      queue.push({ id: `rl-${x.id}`, status: "pending_legal", title: `${x.fgCode} · ${x.productName}`, subtitle: `${x.customerName || "-"} — รอตรวจขึ้นทะเบียน`, cta: "ตรวจอนุมัติ", onClick: () => goReg("pending_legal") }));
+    orders.filter((x) => x.status === "received").forEach((x) =>
+      queue.push({ id: `or-${x.id}`, status: "received", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: `${itemsLine(x)} — รอยื่นกรมสรรพสามิต`, cta: "ไปยื่น", onClick: () => goFil("received") }));
+    orders.filter((x) => x.status === "filing").forEach((x) =>
+      queue.push({ id: `of-${x.id}`, status: "filing", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: `${itemsLine(x)} — กำลังยื่น`, cta: "บันทึกชำระ", onClick: () => goFil("filing") }));
   }
-
-  const headerRight = canEdit ? (
-    <>
-      <Link href="/tax/register" className="btn flex items-center gap-1.5"><Plus size={16} /> ยื่นขึ้นทะเบียน</Link>
-      <Link href="/tax/payment" className="btn btn-primary flex items-center gap-1.5"><FileText size={16} /> ยื่นชำระภาษี</Link>
-    </>
-  ) : null;
 
   return (
-    <TaxWorkspace
+    <Workspace
       icon={<LayoutDashboard size={22} />}
       title="ศูนย์บัญชาการภาษีสรรพสามิต"
-      subtitle="งานที่ต้องทำของคุณ + ภาพรวมสายงานทั้งสองแทร็ก"
-      headerRight={headerRight}
-      loading={loading}
-      rail={
-        <>
-          <TaxStageRail track={TRACK1} dept={dept} counts={t1} />
-          <TaxStageRail track={TRACK2} dept={dept} counts={t2} />
-        </>
-      }
+      subtitle="งานที่ต้องทำของคุณ + ภาพรวมทั้งสองสายงาน"
+      loading={l1 || l2}
+      headerRight={<Link href="/tax/reports" className="btn btn-secondary flex items-center gap-1.5"><BarChart3 size={16} /> รายงาน</Link>}
     >
-      <ActionQueue count={queue.length}>
-        {queue.map((q) => (
-          <ActionRow
-            key={q.id}
-            status={q.status}
-            title={q.title}
-            subtitle={q.subtitle}
-            actions={<Link href={q.href} className="btn btn-primary px-4">{q.cta}</Link>}
-          />
-        ))}
-      </ActionQueue>
-    </TaxWorkspace>
+      <div className="flex flex-col gap-6">
+        {/* Track 1 */}
+        <section>
+          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
+            <ClipboardCheck size={16} /> การขึ้นทะเบียน
+            <Link href="/tax/registrations" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
+          </div>
+          <div className="kpi-grid">
+            <KpiCard label="รออนุมัติ" value={r.pending_legal} tone="warning" icon={ClipboardCheck} onClick={() => goReg("pending_legal")} />
+            <KpiCard label="ขึ้นทะเบียนแล้ว" value={r.approved} tone="success" onClick={() => goReg("approved")} />
+            <KpiCard label="ตีกลับให้แก้ไข" value={r.rejected} tone="danger" onClick={() => goReg("rejected")} />
+          </div>
+        </section>
+
+        {/* Track 2 */}
+        <section>
+          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
+            <ReceiptText size={16} /> การยื่นชำระภาษี
+            <Link href="/tax/filings" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
+          </div>
+          <div className="kpi-grid">
+            <KpiCard label="รอรับเงิน" value={o.pending} tone="danger" icon={ReceiptText} onClick={() => goFil("pending")} />
+            <KpiCard label="รอยื่น" value={o.received} tone="warning" onClick={() => goFil("received")} />
+            <KpiCard label="กำลังยื่น" value={o.filing} tone="info" onClick={() => goFil("filing")} />
+            <KpiCard label="ชำระแล้ว" value={o.complete} tone="success" onClick={() => goFil("complete")} />
+          </div>
+        </section>
+
+        {/* Action queue */}
+        <section>
+          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
+            งานของฉันตอนนี้ {queue.length > 0 && <span className="ui-badge danger">{queue.length}</span>}
+          </div>
+          <WorkQueue items={queue} />
+        </section>
+      </div>
+    </Workspace>
   );
 }

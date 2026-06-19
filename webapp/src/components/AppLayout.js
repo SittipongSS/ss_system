@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3 } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
@@ -162,19 +162,12 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      label: 'งานขาย (SA)',
+      label: 'งานภาษีสรรพสามิต',
       system: 'tax',
       items: [
-        { href: '/tax/register', name: 'ยื่นขึ้นทะเบียนสินค้า', icon: ClipboardCheck, cap: 'products:edit', match: (p) => p === '/tax/register' || p.startsWith('/tax/register/') },
-        { href: '/tax/payment', name: 'ยื่นชำระภาษี', icon: FileText, cap: 'sales:view', match: (p) => p === '/tax/payment' },
-      ],
-    },
-    {
-      label: 'ฝ่ายกฎหมาย (LG)',
-      system: 'tax',
-      items: [
-        { href: '/tax/approve-register', name: 'อนุมัติขึ้นทะเบียน', icon: ClipboardCheck, cap: 'legal:view', match: (p) => p === '/tax/approve-register' },
-        { href: '/tax/approve-payment', name: 'อนุมัติชำระภาษี', icon: ReceiptText, cap: 'legal:view', match: (p) => p === '/tax/approve-payment' },
+        { href: '/tax/registrations', name: 'การขึ้นทะเบียน', icon: ClipboardCheck, cap: 'history:view', match: (p) => p === '/tax/registrations' },
+        { href: '/tax/filings', name: 'การยื่นชำระภาษี', icon: ReceiptText, cap: 'history:view', match: (p) => p === '/tax/filings' },
+        { href: '/tax/reports', name: 'รายงาน', icon: BarChart3, cap: 'history:view', match: (p) => p === '/tax/reports' },
       ],
     },
     {
@@ -183,13 +176,6 @@ export default function AppLayout({ children }) {
       items: [
         { href: '/pm/projects', name: 'โครงการ', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/pm/projects' || p.startsWith('/pm/projects/') },
         { href: '/pm/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/pm/tasks' },
-      ],
-    },
-    {
-      label: 'ประวัติ',
-      system: 'tax',
-      items: [
-        { href: '/tax/history', name: 'ประวัติทั้งหมด', icon: History, cap: 'history:view', match: (p) => p === '/tax/history' },
       ],
     },
   ];

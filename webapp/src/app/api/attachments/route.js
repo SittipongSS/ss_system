@@ -8,9 +8,9 @@ export const dynamic = 'force-dynamic';
 
 // Polymorphic attachments (migration 0028). Permission piggybacks on the parent
 // entity: viewing/editing an attachment = viewing/editing its customer/product.
-const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders' };
+const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders', registration: 'excise_registrations' };
 // resource key passed to the permission helpers (matches lib/permissions).
-const RESOURCE = { customer: 'customers', product: 'products', order: 'orders' };
+const RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 
 async function loadParent(supabase, entityType, entityId) {
   const table = PARENT_TABLE[entityType];

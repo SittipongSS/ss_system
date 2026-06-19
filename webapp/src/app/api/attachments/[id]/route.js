@@ -5,8 +5,8 @@ import { getAttachment } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
 
-const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders' };
-const RESOURCE = { customer: 'customers', product: 'products', order: 'orders' };
+const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders', registration: 'excise_registrations' };
+const RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'uploads';
 
 // แกะ object path ออกจาก public URL ของ Supabase Storage เพื่อลบไฟล์จริง.

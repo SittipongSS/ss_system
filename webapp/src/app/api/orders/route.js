@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScope } from '@/lib/permissions';
-import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
+import { ORDER_SELECT, attachRegistrations, insertOrderItems } from '@/lib/tax/orders';
 
 export const dynamic = 'force-dynamic';
 export async function GET() {
@@ -89,6 +89,10 @@ export async function POST(request) {
       registrationId: reg.id,
       productId: reg.productId,
       quantity: qty,
+      // ราคาขาย/ฐานภาษี (ผู้ใช้กรอก, optional) + snapshot อัตราต่อหน่วย เพื่อ audit
+      salePrice: it.salePrice != null && it.salePrice !== '' ? Number(it.salePrice) : null,
+      exciseRatePerUnit: reg.exciseTax || 0,
+      localTaxRatePerUnit: reg.localTax || 0,
       totalExciseTax: itemExcise,
       totalLocalTax: itemLocal,
       totalTax: itemExcise + itemLocal,
@@ -118,7 +122,7 @@ export async function POST(request) {
   const { error: orderErr } = await supabase.from('orders').insert(newOrder);
   if (orderErr) return Response.json({ error: orderErr.message }, { status: 500 });
 
-  const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
+  const { error: itemsErr } = await insertOrderItems(supabase, itemRows);
   if (itemsErr) {
     // Roll back the header so we don't leave an order with no items.
     await supabase.from('orders').delete().eq('id', orderId);
