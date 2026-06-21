@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, ArrowLeft, Pencil, Wallet, Send, FileCheck } from "lucide-react";
+import { ReceiptText, ArrowLeft, Pencil, Wallet, Send, FileCheck, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, fmtDate } from "@/lib/format";
@@ -44,6 +44,7 @@ export default function FilingDetailPage() {
   const role = useRole();
   const canAct = useCan("sales:act");        // SA: receive / edit
   const canApprove = useCan("legal:approve"); // LG: file / reject / due date
+  const canDelete = useCan("sales:delete");  // Senior AE+ / admin: delete
 
   const { data: orders, loading, reload } = useApiList("/api/orders");
   const { data: registrations } = useApiList("/api/excise-registrations");
@@ -58,6 +59,7 @@ export default function FilingDetailPage() {
   const [fileOpen, setFileOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const setDue = async (value) => {
     await fetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taxDueDate: value }) });
@@ -72,6 +74,11 @@ export default function FilingDetailPage() {
     const res = await fetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "filing" }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถทำรายการได้");
     await reload();
+  };
+  const doDelete = async () => {
+    const res = await fetch(`/api/orders/${o.id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถลบได้");
+    router.push("/tax/filings");
   };
 
   const back = (
@@ -181,6 +188,11 @@ export default function FilingDetailPage() {
                 <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFileOpen(true)}><FileCheck size={15} /> บันทึกชำระภาษี</button>
               </>
             )}
+            {canDelete && (
+              <button className="btn btn-danger flex items-center gap-1.5" onClick={() => setDeleteOpen(true)}>
+                <Trash2 size={15} /> ลบ
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -204,6 +216,15 @@ export default function FilingDetailPage() {
         title="เริ่มยื่นภาษี"
         message={`เริ่มดำเนินการยื่นภาษีสำหรับ ${o?.quotationRef || "รายการนี้"}?`}
         confirmLabel="เริ่มยื่น"
+      />
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={doDelete}
+        title="ลบใบยื่นชำระ"
+        message={`ยืนยันการลบใบยื่นชำระ ${o?.quotationRef || "รายการนี้"}? การลบนี้ย้อนกลับไม่ได้`}
+        confirmLabel="ลบรายการ"
+        danger
       />
     </Workspace>
   );
