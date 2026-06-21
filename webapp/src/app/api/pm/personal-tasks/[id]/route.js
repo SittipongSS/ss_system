@@ -1,5 +1,5 @@
 import { isSuperuser } from '@/lib/permissions';
-import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +36,31 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!(await canManage(supabase, task, user))) return forbidden();
 
   const body = await req.json();
-  const updates = pickFields(body, EDITABLE, { nullable: ['dueDate'] });
+  const updates = pickFields(body, EDITABLE, { nullable: ['dueDate', 'projectId', 'assigneeId'] });
+
+  // เปลี่ยน projectId/assigneeId ต้องผ่านกฎเดียวกับตอนสร้าง (POST) — ไม่งั้น PATCH
+  // จะข้ามการตรวจ: ย้ายงานไปโปรเจกต์ทีมอื่น หรือมอบหมายให้คนนอกทีมได้.
+  //   - งานส่วนตัว (ไม่ผูกโปรเจกต์) → ตั้งผู้รับมอบไม่ได้
+  //   - ผู้รับมอบต้องอยู่ทีมเดียวกับโปรเจกต์ ; โปรเจกต์ต้องมีจริง
+  if ('projectId' in updates || 'assigneeId' in updates) {
+    const projectId = ('projectId' in updates ? updates.projectId : task.projectId) || null;
+    const assigneeId = ('assigneeId' in updates ? updates.assigneeId : task.assigneeId) || null;
+    if (assigneeId) {
+      if (!projectId) return badRequest('งานส่วนตัว (ไม่ผูกโปรเจกต์) ตั้งผู้รับมอบไม่ได้');
+      const { data: proj } = await supabase.from('projects').select('team').eq('id', projectId).maybeSingle();
+      if (!proj) return badRequest('ไม่พบโปรเจกต์');
+      const { data: au } = await supabase.auth.admin.getUserById(assigneeId);
+      const assigneeTeam = au?.user?.app_metadata?.team ?? null;
+      if (!au?.user || assigneeTeam !== proj.team) {
+        return badRequest('ผู้รับมอบต้องอยู่ทีมเดียวกับโปรเจกต์');
+      }
+    } else if (projectId && 'projectId' in updates) {
+      // ย้าย/ผูกโปรเจกต์ใหม่ (ยังไม่มอบหมาย) — โปรเจกต์ต้องมีจริง
+      const { data: proj } = await supabase.from('projects').select('id').eq('id', projectId).maybeSingle();
+      if (!proj) return badRequest('ไม่พบโปรเจกต์');
+    }
+  }
+
   updates.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase.from('personal_tasks').update(updates).eq('id', id).select().single();

@@ -1,5 +1,5 @@
-import { viewScope, editScope, inScope } from '@/lib/permissions';
-import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { viewScope, editScope, inScope, can } from '@/lib/permissions';
+import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 
 export const dynamic = 'force-dynamic';
@@ -10,16 +10,22 @@ const SAVE_RETENTION_DAYS = 3; // เซฟใหญ่ (working save) เก็
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
 
+  if (!user) return unauthorized();
+  if (!can(user.role, 'pm:view')) return forbidden(); // legal/unknown ไม่มีสิทธิ์ดูประวัติ PM
+
   const project = await loadProject(supabase, id);
   if (!project) return notFound('ไม่พบโปรเจกต์');
   if (viewScope(user?.role) === 'team' && !inScope('team', user, project)) {
     return forbidden();
   }
 
+  // โมเดลใหม่: จุดย้อนมีแค่ Rev เท่านั้น — ไม่ส่ง working-save (kind='save') มาแสดง/ย้อน.
+  // (แถว save เก่าที่ค้างใน DB ยังอยู่ แต่ถูกซ่อนจาก UI; จะลบทิ้งภายหลังก็ได้)
   const { data, error } = await supabase
     .from('project_doc_revisions')
     .select('id, revNo, kind, note, createdBy, createdByName, createdAt')
     .eq('projectId', project.id)
+    .eq('kind', 'rev')
     .order('createdAt', { ascending: false });
   if (error) return fail(error.message, 500);
 
@@ -27,7 +33,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 });
 
 // POST /api/pm/projects/[id]/revisions — ถ่าย snapshot งานทั้งชุด ณ ตอนนี้.
-//   body.kind='save' = เซฟใหญ่ (จุดย้อนระหว่างทำ, ไม่เด้งเลข Rev, prune > 7 วัน)
+//   body.kind='save' = เซฟใหญ่ (จุดย้อนระหว่างทำ, ไม่เด้งเลข Rev, prune > SAVE_RETENTION_DAYS วัน)
 //   body.kind='rev'  = ออกเวอร์ชันทางการ (เด้งเลข Rev, เก็บถาวร) — ค่า default
 // snapshot อ่านจาก DB ให้ authoritative (ไม่เชื่อค่าจาก client).
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
@@ -49,8 +55,20 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     supabase.from('project_products').select('*, product:products(*)').eq('projectId', project.id),
   ]);
 
-  // Rev = เด้งเลข (เริ่มที่ 0); เซฟใหญ่ = ไม่มีเลข
-  const revNo = kind === 'rev' ? (project.currentRev == null ? 0 : project.currentRev + 1) : null;
+  // Rev = เด้งเลขจาก "สูงสุดที่เคยออก + 1" (เริ่มที่ 0) — ไม่อิง currentRev เพราะ currentRev
+  // เป็นตัวชี้ที่ย้อนถอยได้; ถ้าอิง currentRev+1 หลังย้อน Rev เก่าจะได้เลขที่ชนของเดิม.
+  let revNo = null;
+  if (kind === 'rev') {
+    const { data: maxRow } = await supabase
+      .from('project_doc_revisions')
+      .select('revNo')
+      .eq('projectId', project.id)
+      .eq('kind', 'rev')
+      .order('revNo', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    revNo = maxRow?.revNo == null ? 0 : maxRow.revNo + 1;
+  }
   const snapshot = { project, tasks: tasks || [], projectProducts: links || [] };
 
   const { data: rev, error } = await supabase
@@ -64,8 +82,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
 
   if (kind === 'rev') {
+    // snapshot = live ณ ตอนนี้ → live ตรงกับ Rev ใหม่อีกครั้ง → เคลียร์ revStale
     const { error: upErr } = await supabase
-      .from('projects').update({ currentRev: revNo }).eq('id', project.id);
+      .from('projects').update({ currentRev: revNo, revStale: false }).eq('id', project.id);
     if (upErr) return fail(upErr.message, 500);
     return ok({ ...rev, currentRev: revNo });
   }

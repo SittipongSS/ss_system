@@ -1,4 +1,4 @@
-import { viewScope } from '@/lib/permissions';
+import { viewScope, can } from '@/lib/permissions';
 import { resolveCustomer } from '@/lib/master/customers';
 import { buildProjectTasks } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
@@ -6,12 +6,18 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
-import { withUser, ok, fail } from '@/lib/http';
+import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/pm/projects — team-scoped list (supervisor sees all).
 export const GET = withUser(async ({ user, supabase }) => {
+  // PM is a sales-only tool: gate on the pm:view capability (not just scope).
+  // legal has viewScope 'all' but no pm:view — without this it would read every
+  // team's projects. viewer/staff hold pm:view and pass.
+  if (!user) return unauthorized();
+  if (!can(user.role, 'pm:view')) return forbidden();
+
   let query = supabase.from('projects').select('*').order('createdAt', { ascending: false });
   if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
 
@@ -38,6 +44,11 @@ export const GET = withUser(async ({ user, supabase }) => {
 
 // POST /api/pm/projects — create a project + auto-generate its template tasks.
 export const POST = withUser(async ({ user, supabase, req }) => {
+  // ต้องมีตัวตน + สิทธิ์แก้ PM — กัน null user สร้างโปรเจกต์ไร้เจ้าของ/ไร้ทีม
+  // และกัน viewer/staff/legal (ไม่มี pm:edit) สร้างโปรเจกต์.
+  if (!user) return unauthorized();
+  if (!can(user.role, 'pm:edit')) return forbidden();
+
   const body = await req.json();
 
   if (!body.name) {
@@ -136,6 +147,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
 
   // Link selected products (FGs) with quantities if provided
+  let productWarning = null;
   if (Array.isArray(body.projectProducts) && body.projectProducts.length > 0) {
     const ppRows = body.projectProducts.map((p) => ({
       id: genId('PP'),
@@ -145,8 +157,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       productionQty: p.productionQty || null,
     }));
     const { error: ppErr } = await supabase.from('project_products').insert(ppRows);
-    if (ppErr) console.error('Failed to link products:', ppErr.message);
+    // โปรเจกต์+ขั้นตอนถูกสร้างแล้ว — ไม่ rollback แต่ "อย่าตอบเหมือนผูกสำเร็จ":
+    // แจ้ง warning กลับไปให้ UI เตือนผู้ใช้ว่าต้องผูก FG ใหม่
+    if (ppErr) { console.error('Failed to link products:', ppErr.message); productWarning = 'เชื่อมสินค้า (FG) เข้าโปรเจกต์ไม่สำเร็จ — โปรดผูกใหม่ที่หน้าโปรเจกต์'; }
   }
 
-  return ok({ ...project, tasks }, 201);
+  return ok({ ...project, tasks, ...(productWarning ? { productWarning } : {}) }, 201);
 });

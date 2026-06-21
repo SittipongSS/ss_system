@@ -1,20 +1,32 @@
-import { viewScope, editScope, inScope } from '@/lib/permissions';
+import { viewScope, editScope, inScope, can } from '@/lib/permissions';
 import { recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
-import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
+import { withUser, ok, fail, forbidden, notFound, badRequest, unauthorized } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/pm/project-tasks?projectId=...  — team-scoped (via parent project).
 // Without projectId: all tasks the user may see (own team / all).
 export const GET = withUser(async ({ user, supabase, req }) => {
+  // PM is sales-only: gate on pm:view (legal/unknown have scope but no cap).
+  if (!user) return unauthorized();
+  if (!can(user.role, 'pm:view')) return forbidden();
+
   const projectId = new URL(req.url).searchParams.get('projectId');
 
   if (projectId) {
+    // Row-level scope: only return tasks for a project the user may VIEW
+    // (own team / all). Without this any user could read another team's tasks
+    // just by passing its projectId. Mirrors the no-projectId branch below
+    // and the inScope checks on the other PM routes.
+    const { data: project } = await supabase.from('projects').select('*').eq('id', projectId).maybeSingle();
+    if (!project) return notFound('ไม่พบโปรเจกต์');
+    if (!inScope(viewScope(user?.role), user, project)) return forbidden();
+
     const { data, error } = await supabase
       .from('project_tasks')
       .select('*')
