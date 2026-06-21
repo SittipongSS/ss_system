@@ -293,6 +293,7 @@ export default function RegistrationsPage() {
               canEdit={canEdit || canApprove}
               title="เอกสารการขึ้นทะเบียน"
               onItemsChange={setAttachItems}
+              cardColumns={1}
             />
           </div>
         )}
