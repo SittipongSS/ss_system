@@ -10,6 +10,7 @@ import Modal from "@/components/Modal";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
+import StatusBadge from "@/components/excise/StatusBadge";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import ContactsEditor from "@/components/database/ContactsEditor";
@@ -21,12 +22,16 @@ export default function CustomerDetails() {
   const id = params.id;
   const canEdit = useCan("customers:edit");
   const canDelete = useCan("customers:delete");
+  // Excise tax data (rollups, orders/filings, per-item tax) is confidential to
+  // the tax workflow — shown only to roles allowed to see the tax system.
+  const canViewTax = useCan("history:view");
   const superuser = isSuperuser(useRole());
   const isPortrait = useIsPortrait();
 
   const [customer, setCustomer] = useState(null);
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [regs, setRegs] = useState([]); // excise registrations for this customer (tax-gated)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -97,6 +102,16 @@ export default function CustomerDetails() {
       fetchCustomerData();
     }
   }, [id]);
+
+  // Excise registrations of this customer — tax data, loaded only for roles
+  // allowed to see the tax system.
+  useEffect(() => {
+    if (!id || !canViewTax) { setRegs([]); return; }
+    fetch(`/api/excise-registrations`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((all) => setRegs((all || []).filter((r) => r.customerId === id)))
+      .catch(() => {});
+  }, [id, canViewTax]);
 
   const formatMoney = (amount) => {
     if (amount === undefined || amount === null) return "฿0.00";
@@ -320,7 +335,7 @@ export default function CustomerDetails() {
       <div className="mb-[22px]">
         <StatCards
           items={
-            hasTaxObligation
+            canViewTax && hasTaxObligation
               ? [
                   { label: "สินค้าที่ลงทะเบียน", value: products.length },
                   { label: "ใบสั่งซื้อทั้งหมด", value: orders.length },
@@ -329,11 +344,11 @@ export default function CustomerDetails() {
                 ]
               : [
                   { label: "สินค้าที่ลงทะเบียน", value: products.length },
-                  { label: "ใบสั่งซื้อทั้งหมด", value: orders.length },
+                  ...(canViewTax ? [{ label: "ใบสั่งซื้อทั้งหมด", value: orders.length }] : []),
                 ]
           }
         />
-        {hasTaxObligation && (
+        {canViewTax && hasTaxObligation && (
           <p className="text-[11px] text-[var(--text-3)] mt-2">
             ยอดภาษีรวมสะสม {formatMoney(totalTaxAccrued)} — สรรพสามิต {formatMoney(totalExciseTax)} + ท้องถิ่น {formatMoney(totalLocalTax)}
           </p>
@@ -415,9 +430,16 @@ export default function CustomerDetails() {
         <button onClick={() => setActiveTab("products")} className={`tab-btn ${activeTab === "products" ? "active" : ""}`}>
           รายการสินค้า ({products.length})
         </button>
-        <button onClick={() => setActiveTab("orders")} className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}>
-          รายการสั่งซื้อ ({orders.length})
-        </button>
+        {canViewTax && (
+          <>
+            <button onClick={() => setActiveTab("registrations")} className={`tab-btn ${activeTab === "registrations" ? "active" : ""}`}>
+              การขึ้นทะเบียน ({regs.length})
+            </button>
+            <button onClick={() => setActiveTab("orders")} className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}>
+              การยื่นชำระภาษี ({orders.length})
+            </button>
+          </>
+        )}
       </div>
 
       {/* Products Tab */}
@@ -440,9 +462,11 @@ export default function CustomerDetails() {
                   </div>
                   <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
                     <span className="font-mono text-[var(--text-2)]">{p.volume} ml · {formatMoney(p.retailPriceIncVat)}</span>
-                    <span className="text-[var(--text-2)]">
-                      {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : <span className="font-mono">{formatMoney(taxRate)}</span>}
-                    </span>
+                    {canViewTax && (
+                      <span className="text-[var(--text-2)]">
+                        {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : <span className="font-mono">{formatMoney(taxRate)}</span>}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -461,7 +485,7 @@ export default function CustomerDetails() {
                     <th>รายละเอียดสินค้า / แบรนด์</th>
                     <th>ปริมาตร (ml)</th>
                     <th className="num">ราคาขายปลีก</th>
-                    <th className="num">ภาษีคำนวณต่อชิ้น</th>
+                    {canViewTax && <th className="num">ภาษีคำนวณต่อชิ้น</th>}
                     <th className="text-center">สถานะการอนุมัติ</th>
                   </tr>
                 </thead>
@@ -478,9 +502,11 @@ export default function CustomerDetails() {
                         </td>
                         <td className="font-mono">{p.volume} ml</td>
                         <td className="num font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
-                        <td className="num font-mono text-[var(--text-2)]">
-                          {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(taxRate)}
-                        </td>
+                        {canViewTax && (
+                          <td className="num font-mono text-[var(--text-2)]">
+                            {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(taxRate)}
+                          </td>
+                        )}
                         <td className="text-center"><ProductStatusPill status={p.status} /></td>
                       </tr>
                     );
@@ -492,8 +518,30 @@ export default function CustomerDetails() {
         )
       )}
 
-      {/* Orders Tab */}
-      {activeTab === "orders" && (
+      {/* Registrations Tab — tax-gated, read-only (manage in /tax) */}
+      {canViewTax && activeTab === "registrations" && (
+        regs.length === 0 ? (
+          <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีการขึ้นทะเบียนสรรพสามิตของลูกค้ารายนี้</div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3">
+            {regs.map((r) => (
+              <div key={r.id} onClick={() => router.push(`/tax/registrations/${r.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold font-mono text-sm text-[var(--text)]">{r.fgCode}</div>
+                  <div className="text-[11px] text-[var(--text-3)] truncate">{r.productName} · {r.brandName}</div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {r.approvalNumber && <span className="font-mono text-[11px] text-[var(--text-3)]">{r.approvalNumber}</span>}
+                  <StatusBadge status={r.status} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Orders Tab — tax-gated */}
+      {canViewTax && activeTab === "orders" && (
         orders.length === 0 ? (
           <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีรายการสั่งซื้อในระบบ</div>
         ) : isPortrait ? (
