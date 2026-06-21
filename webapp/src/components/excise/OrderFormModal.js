@@ -5,12 +5,14 @@ import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { fmtMoney } from "@/lib/format";
 
-const blankItem = () => ({ registrationId: "", quantity: "", salePrice: "" });
+const blankItem = () => ({ registrationId: "", quantity: "" });
 const regTax = (r) => (r && r.isExciseTaxable !== false ? (r.exciseTax || 0) + (r.localTax || 0) : 0);
 
 // Create a new tax-filing order, or edit/resubmit an existing one. Lines bind an
-// approved registration of the chosen customer + quantity (+ optional sale price
-// for the tax base). Backend POST/PATCH contracts unchanged (salePrice additive).
+// approved registration of the chosen customer + quantity. The excise tax is
+// ad valorem and snapshotted at registration time (from the product retail
+// price) — the per-unit tax comes from the registration, so the filing form does
+// not ask for a sale price. Backend POST/PATCH contracts unchanged.
 export default function OrderFormModal({ open, onClose, onSaved, order, registrations = [], customers = [], userName }) {
   const editing = !!order;
   const [customerId, setCustomerId] = useState("");
@@ -31,7 +33,6 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
       });
       setItems((order.items || []).map((it) => ({
         registrationId: it.registrationId || "", quantity: String(it.quantity || ""),
-        salePrice: it.salePrice != null ? String(it.salePrice) : "",
       })) || [blankItem()]);
     } else {
       setCustomerId("");
@@ -60,7 +61,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
     if (!customerId) { setError("กรุณาเลือกลูกค้า"); return; }
     const clean = items
       .filter((it) => it.registrationId && it.quantity)
-      .map((it) => ({ registrationId: it.registrationId, quantity: it.quantity, salePrice: it.salePrice }));
+      .map((it) => ({ registrationId: it.registrationId, quantity: it.quantity }));
     if (!clean.length) { setError("กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ"); return; }
     setBusy(true);
     setError(null);
@@ -158,10 +159,8 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
                           emptyText="ไม่มีสินค้าที่อนุมัติแล้วของลูกค้านี้"
                         />
                       </div>
-                      <input type="number" min="1" placeholder="จำนวน" className="premium-input font-mono" style={{ width: 90 }}
+                      <input type="number" min="1" placeholder="จำนวน" className="premium-input font-mono" style={{ width: 110 }}
                         value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} required />
-                      <input type="number" step="0.01" min="0" placeholder="ราคาขาย/ชิ้น" className="premium-input font-mono" style={{ width: 120 }}
-                        value={it.salePrice} onChange={(e) => setItem(idx, { salePrice: e.target.value })} title="ราคาขาย/ฐานภาษี ต่อชิ้น (ไม่บังคับ)" />
                       <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1}
                         className="btn-icon danger" title="ลบรายการ"><X size={15} /></button>
                     </div>
@@ -177,7 +176,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
           </div>
 
           <div className="flex justify-end" style={{ fontSize: 13 }}>
-            <span style={{ color: "var(--text-3)" }}>ยอดภาษีรวมโดยประมาณ:&nbsp;</span>
+            <span style={{ color: "var(--text-3)" }}>ยอดชำระภาษีสรรพสามิตรวม (ไม่รวมภาษีมูลค่าเพิ่ม):&nbsp;</span>
             <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{totalTax > 0 ? fmtMoney(totalTax) : "ยกเว้นภาษี"}</span>
           </div>
 
