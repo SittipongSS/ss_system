@@ -42,8 +42,10 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
     setError(null);
   }, [open, order?.id]);
 
+  // Only the chosen customer's approved registrations are selectable — no
+  // customer picked yet means an empty list (pick a customer first).
   const approvedRegs = useMemo(
-    () => registrations.filter((r) => r.status === "approved" && (!customerId || r.customerId === customerId)),
+    () => (customerId ? registrations.filter((r) => r.status === "approved" && r.customerId === customerId) : []),
     [registrations, customerId],
   );
 
