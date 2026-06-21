@@ -1,5 +1,5 @@
-import { normalizeDepartment, pmTaskScopes } from '@/lib/permissions';
-import { withUser, ok, unauthorized } from '@/lib/http';
+import { normalizeDepartment, pmTaskScopes, can } from '@/lib/permissions';
+import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
 
 export const dynamic = 'force-dynamic';
@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 // ฝั่ง server. งานส่วนตัว = ของฉันเสมอ (ไม่ปนของคนอื่นแม้ scope ทีม/ทั้งหมด).
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
+  if (!can(user.role, 'pm:view')) return forbidden(); // PM เป็นเครื่องมือฝ่ายขาย — legal ไม่มีสิทธิ์
 
   const allowed = pmTaskScopes(user.role);
   let scope = new URL(req.url).searchParams.get('scope') || 'mine';

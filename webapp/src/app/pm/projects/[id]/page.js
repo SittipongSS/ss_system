@@ -184,7 +184,6 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const hasEditCap = useCan("pm:edit");
   const userRole = useRole();
-  const userName = typeof window !== "undefined" ? localStorage.getItem("userName") : "";
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [allProducts, setAllProducts] = useState([]);
@@ -297,24 +296,36 @@ export default function ProjectDetailPage() {
     const entries = Object.entries(dirty);
     if (!entries.length) return;
     let clamped = 0; // จำนวนขั้นที่ "ปักวันเริ่มไม่ติด" (server เลื่อนไปวันอื่น)
+    const failed = {}; // taskId → patch ที่บันทึกไม่สำเร็จ (คงไว้ให้ผู้ใช้ลองใหม่)
     for (const [taskId, patch] of entries) {
-      const res = await fetch(`/api/pm/project-tasks/${taskId}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
-      });
+      let res;
+      try {
+        res = await fetch(`/api/pm/project-tasks/${taskId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+        });
+      } catch { failed[taskId] = patch; continue; } // network error → ถือว่าไม่สำเร็จ
+      if (!res.ok) { failed[taskId] = patch; continue; } // 403/409/500 → อย่ากลืนเงียบ
       // เตือนเมื่อปักวันเริ่มไม่ได้ตามที่เลือก: ขอ startDate มา แต่ server บันทึกเป็นวันอื่น
       // (เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ไม่ได้ หรือไม่ใช่วันทำการ → เลื่อนไปวันที่ทำได้)
-      if (res.ok && patch.startDate) {
+      if (patch.startDate) {
         const saved = await res.json().catch(() => null);
         if (saved?.startDate && saved.startDate !== patch.startDate) clamped++;
       }
     }
-    setDirty({});
-    // "เซฟใหญ่" = ถ่าย snapshot จุดย้อน (kind='save') หลัง persist ครบ → ย้อนกลับได้ภายหลัง
-    await fetch(`/api/pm/projects/${id}/revisions`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "save" }),
-    }).catch(() => {});
-    await load(); // resync (server คำนวณ timeline/สถานะใหม่)
-    if (clamped) setToast({ kind: "info", msg: `ปักวันเริ่มไม่ได้ตามที่เลือก ${clamped} ขั้น — วันเริ่มต้องไม่เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ และต้องเป็นวันทำการ (ระบบเลื่อนไปวันที่ใกล้สุดที่ทำได้). โปรเจกต์ย้อนหลังให้ตั้ง “วันเริ่มโปรเจกต์” ก่อน` });
+    const failedCount = Object.keys(failed).length;
+    // บันทึก = persist การแก้ลง live เท่านั้น — ไม่ถ่าย snapshot จุดย้อนอีกต่อไป.
+    // จุดย้อน (restore point) มีแค่ "ออก Rev" เท่านั้น (โมเดลใหม่: ย้อนได้เฉพาะ Rev)
+    // เพื่อตัดความสับสนจากจุด save ที่ถ่ายตอนหลังแก้.
+    setDirty(failed); // คงเฉพาะอันที่ยังไม่สำเร็จ — อันที่สำเร็จเคลียร์ออก
+    await load(); // resync (server คำนวณ timeline/สถานะใหม่; รวมที่บันทึกสำเร็จแล้ว)
+    if (failedCount) {
+      // load() เพิ่งทับ data.tasks ด้วยค่า server → ทาค่าที่ผู้ใช้แก้ค้าง (ที่ยัง fail) กลับ
+      // เพื่อให้จอตรงกับแถบ "ยืนยันการเปลี่ยนแปลง" ที่ยังค้างอยู่ (ไม่หายเงียบ)
+      setData((d) => ({ ...d, tasks: (d.tasks || []).map((t) => (failed[t.id] ? { ...t, ...failed[t.id] } : t)) }));
+      setToast({ kind: "error", msg: `บันทึกไม่สำเร็จ ${failedCount} ขั้น (สิทธิ์ไม่พอ/ข้อมูลชนกัน/เครือข่าย) — การแก้ที่ค้างยังอยู่ ลองกดยืนยันอีกครั้ง` });
+    } else if (clamped) {
+      setToast({ kind: "info", msg: `ปักวันเริ่มไม่ได้ตามที่เลือก ${clamped} ขั้น — วันเริ่มต้องไม่เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ และต้องเป็นวันทำการ (ระบบเลื่อนไปวันที่ใกล้สุดที่ทำได้). โปรเจกต์ย้อนหลังให้ตั้ง “วันเริ่มโปรเจกต์” ก่อน` });
+    }
   };
   const dirtyCount = Object.keys(dirty).length;
 
@@ -334,15 +345,22 @@ export default function ProjectDetailPage() {
       });
       if (!res.ok) { setRevError((await res.json().catch(() => ({}))).error || "ออกเวอร์ชันไม่สำเร็จ"); return; }
       const rev = await res.json();
-      setData((d) => ({ ...d, currentRev: rev.currentRev })); // เด้งเลข Rev ทันที
+      // เด้งเลข Rev + วันที่ออก (revisedAt) ทันที — หัวเอกสารพิมพ์ใช้ revDate=p.revisedAt
+      // ถ้าไม่อัปเดต วันที่จะว่างจนกว่าจะ reload ทั้งหน้า
+      setData((d) => ({ ...d, currentRev: rev.currentRev, maxRev: rev.currentRev, revisedAt: rev.createdAt ?? d?.revisedAt ?? null, revStale: false }));
       setShowIssueRev(false);
+      refreshRevisions(); // ให้ประวัติที่อาจเปิดค้างอยู่เห็น Rev ใหม่
       setToast({ kind: "success", msg: `ออกเวอร์ชันแล้ว — Rev. ${rev.currentRev}` });
     } finally { setIssuingRev(false); }
   };
-  const openRevisions = async () => {
-    setShowRevisions(true);
+  // ดึงประวัติเวอร์ชันใหม่ (ใช้ซ้ำหลัง ออก Rev / ย้อน / บันทึก เพื่อไม่ให้ลิสต์ค้างเก่า)
+  const refreshRevisions = async () => {
     const res = await fetch(`/api/pm/projects/${id}/revisions`);
     if (res.ok) { const d = await res.json(); setRevisions(d.revisions || []); }
+  };
+  const openRevisions = async () => {
+    setShowRevisions(true);
+    await refreshRevisions();
   };
   // พิมพ์เวอร์ชันเก่า: ดึง snapshot แล้วส่งเข้า print เหมือนเอกสารปัจจุบัน
   const printRevision = async (revNo) => {
@@ -377,7 +395,8 @@ export default function ProjectDetailPage() {
     });
     if (!res.ok) { setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ย้อนเวอร์ชันไม่สำเร็จ" }); return; }
     const r = await res.json().catch(() => ({}));
-    await load();
+    setShowRevisions(false); // ปิดโมดัลประวัติหลังย้อนสำเร็จ
+    await load();            // refresh หน้า (ดึง task + currentRev/revStale ใหม่)
     const changed = (r.recreated || 0) + (r.overwritten || 0) + (r.deleted || 0);
     setToast(changed
       ? { kind: "success", msg: `ย้อนกลับไป ${label} แล้ว — เขียนทับ ${r.overwritten || 0}, สร้างคืน ${r.recreated || 0}, ลบ ${r.deleted || 0} ขั้น` }
@@ -887,7 +906,9 @@ export default function ProjectDetailPage() {
   // ยังไม่ผูก FG → ชื่อหมวด/หมวดรอง (resolve ชื่อหมวดหลักจากโค้ด) ใช้เป็น fallback บนหน้าพิมพ์
   const categoryFallback = p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}` : "";
   // เลข Rev ถัดไป (รันอัตโนมัติ): ครั้งแรก = 0, จากนั้น +1 — ใช้โชว์บนปุ่ม "ออก Rev. N"
-  const nextRev = p.currentRev == null ? 0 : p.currentRev + 1;
+  // เลข Rev ถัดไป = สูงสุดที่เคยออก + 1 (ไม่อิง currentRev — เพราะ currentRev เป็น "ตัวชี้
+  // ว่าอยู่ที่ Rev ไหน" ซึ่งย้อนถอยได้; ออก Rev ใหม่ต้องไม่ชนเลขที่เคยใช้)
+  const nextRev = p.maxRev == null ? 0 : p.maxRev + 1;
 
   const fgUI = (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -986,8 +1007,16 @@ export default function ProjectDetailPage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginLeft: "auto" }}>
               <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
-              <span className="ui-badge" title={p.currentRev == null ? "ยังไม่ออกเวอร์ชัน (ฉบับร่าง)" : `เวอร์ชันเอกสารล่าสุด: Rev. ${p.currentRev}`} style={{ whiteSpace: "nowrap" }}>
-                {p.currentRev == null ? "ฉบับร่าง" : `Rev. ${p.currentRev}`}
+              <span
+                className="ui-badge"
+                title={p.currentRev == null
+                  ? "ยังไม่ออกเวอร์ชัน (ฉบับร่าง)"
+                  : (p.revStale
+                    ? `แก้ไขหลังออก Rev. ${p.currentRev} — เนื้อหาปัจจุบันต่างจากเวอร์ชันทางการ กรุณาออก Rev ใหม่เพื่อยืนยัน`
+                    : `เวอร์ชันเอกสารล่าสุด: Rev. ${p.currentRev}`)}
+                style={{ whiteSpace: "nowrap", ...(p.currentRev != null && p.revStale ? { borderColor: "var(--warning, #c79a3a)", color: "var(--warning, #c79a3a)" } : {}) }}
+              >
+                {p.currentRev == null ? "ฉบับร่าง" : (p.revStale ? `Rev. ${p.currentRev} • แก้แล้ว` : `Rev. ${p.currentRev}`)}
               </span>
               {canEdit && (
                 <button onClick={openIssueRev} disabled={issuingRev} className="btn" style={{ whiteSpace: "nowrap" }} title={`freeze เอกสารทั้งชุดเป็นเวอร์ชันใหม่ — เลขรันอัตโนมัติเป็น Rev. ${nextRev} (จะขึ้นบนหน้าพิมพ์)`}>
@@ -998,7 +1027,11 @@ export default function ProjectDetailPage() {
                 <History size={14} /> ประวัติเวอร์ชัน
               </button>
               <button
-                onClick={() => openGanttPrintWindow({ ...p, categoryFallback, rev: p.currentRev, revDate: p.revisedAt })}
+                onClick={() => openGanttPrintWindow({ ...p, categoryFallback,
+                  // ถ้า live ถูกแก้หลังออก Rev (revStale) อย่าปั๊มเลข Rev ทางการทับเนื้อหาที่ต่าง —
+                  // พิมพ์เป็น "ฉบับร่าง" (ไม่มีเลข/วันที่ Rev). พิมพ์เวอร์ชันทางการแท้ใช้ปุ่มในประวัติ.
+                  rev: p.revStale ? null : p.currentRev,
+                  revDate: p.revStale ? null : p.revisedAt })}
                 className="btn btn-primary"
                 style={{ whiteSpace: "nowrap", marginLeft: "auto" }}
                 title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
@@ -1410,7 +1443,7 @@ export default function ProjectDetailPage() {
       {hasWriteAccess && p.status !== "Completed" && p.status !== "Dropped" && (
         <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
           {p.status === "On Hold" ? (
-            (p.aeOwner === userName || isSuperuser(userRole)) && (
+            (p.aeOwner === me?.name || isSuperuser(userRole)) && (
               <button type="button" className="btn btn-primary" onClick={() => updateProject({ status: "In Progress" })}>
                 <CheckCircle2 size={14} /> ดึงกลับมาดำเนินการ (Restore)
               </button>
@@ -1581,14 +1614,14 @@ export default function ProjectDetailPage() {
         </div>
       </Modal>
 
-      <Modal open={showRevisions} onClose={() => setShowRevisions(false)} title="ประวัติ — เซฟใหญ่ + เวอร์ชัน (Rev)" size="md">
+      <Modal open={showRevisions} onClose={() => setShowRevisions(false)} title="ประวัติเวอร์ชัน (Rev)" size="md">
         <div style={{ padding: "16px 20px" }}>
           <div style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "10px" }}>
-            <b style={{ color: "var(--accent)" }}>Rev.</b> = เวอร์ชันทางการสำหรับส่ง/อ้างอิง (เก็บถาวร) · <b>บันทึก</b> = จุดย้อนระหว่างทำ (เก็บ 3 วัน). ย้อนกลับไปจุดไหนก็ได้
+            <b style={{ color: "var(--accent)" }}>Rev.</b> = เวอร์ชันทางการ (เก็บถาวร) — เป็นจุดเดียวที่ย้อนกลับได้. กด “ออก Rev” เพื่อ freeze เอกสารชุดปัจจุบันเป็นเวอร์ชันใหม่
           </div>
           {revisions.length === 0 ? (
             <div style={{ fontSize: "13px", color: "var(--text-3)", textAlign: "center", padding: "24px 0" }}>
-              ยังไม่มีประวัติ — กด “บันทึก” หรือ “ออก Rev” เพื่อสร้างจุดย้อนแรก
+              ยังไม่มีเวอร์ชัน — กด “ออก Rev” เพื่อสร้างจุดย้อนแรก
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -1660,10 +1693,12 @@ export default function ProjectDetailPage() {
           onClose={() => setShowEditProject(false)}
           editingId={p.id}
           initialData={p}
-          onSuccess={() => {
+          onSuccess={(data) => {
             // บั๊ก D: หลังแก้โปรเจกต์ (อาจ resync ขั้นตอนสรรพสามิตใน DB) ต้อง reload
             // ทั้งก้อน — PATCH คืนแค่แถว project ไม่มี tasks ที่เปลี่ยน
             setShowEditProject(false);
+            // เชื่อมสินค้า (FG) ไม่สำเร็จ → เตือน (PATCH ลบของเดิมไปแล้ว ต้องผูกใหม่)
+            if (data?.productWarning) setToast({ kind: "error", msg: data.productWarning });
             load();
           }}
           customers={customers}
@@ -1690,7 +1725,7 @@ export default function ProjectDetailPage() {
             มีการแก้ไข <b style={{ color: "var(--amber)" }}>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก
           </span>
           <button className="btn" onClick={cancelEdits} style={{ fontSize: "13px" }}>ยกเลิก</button>
-          <button className="btn btn-primary" onClick={confirmEdits} style={{ fontSize: "13px" }} title="บันทึกการแก้ทั้งหมด + สร้างจุดย้อน (เก็บ 3 วัน)">บันทึก</button>
+          <button className="btn btn-primary" onClick={confirmEdits} style={{ fontSize: "13px" }} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึก</button>
         </div>
       )}
     </div>

@@ -1,8 +1,8 @@
-import { viewScope, editScope, inScope, canDeleteRecord } from '@/lib/permissions';
+import { viewScope, editScope, inScope, canDeleteRecord, can } from '@/lib/permissions';
 import { mergeTemplateTasks, recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
-import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
 import { pickFields } from '@/lib/validate';
@@ -22,6 +22,12 @@ const EDITABLE = [
 // GET /api/pm/projects/[id] — project + its tasks + linked products (FG).
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
+
+  // PM is sales-only: gate on pm:view. legal/unknown roles have viewScope 'all'
+  // (or none) but no pm:view — without this they'd read any project's full
+  // snapshot (tasks + products + personal tasks) by id.
+  if (!user) return unauthorized();
+  if (!can(user.role, 'pm:view')) return forbidden();
 
   const project = await loadProject(supabase, id).catch((e) => { throw e; });
   if (!project) return notFound('ไม่พบโปรเจกต์');
@@ -47,18 +53,32 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // me: ใช้ฝั่ง client gate ปุ่มจัดการ "งานเพิ่มเติม" (owner/assignee/lead) + กรอง
   // ผู้รับมอบใน dropdown ตามทีมโปรเจกต์.
   const me = user ? { id: user.id, name: user.name, role: user.role, team: user.team ?? null } : null;
-  // วันที่ออกเวอร์ชันล่าสุด (createdAt ของ Rev = currentRev) — ใช้โชว์ในหัวเอกสารพิมพ์ (YYYY.MM.DD)
+  // วันที่ของ Rev ที่ "อยู่ตอนนี้" (currentRev เป็นตัวชี้ — อาจถูกย้อนถอยหลังได้) — โชว์ในหัวพิมพ์
+  // และ maxRev = เลข Rev สูงสุดที่เคยออก → ใช้คำนวณเลข Rev ถัดไป (ออก Rev ใหม่ = max+1 ไม่ชนเลข)
   let revisedAt = null;
+  let maxRev = null;
+  {
+    const { data: maxRow } = await supabase
+      .from('project_doc_revisions')
+      .select('revNo')
+      .eq('projectId', project.id)
+      .eq('kind', 'rev')
+      .order('revNo', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    maxRev = maxRow?.revNo ?? null;
+  }
   if (project.currentRev != null) {
     const { data: rev } = await supabase
       .from('project_doc_revisions')
       .select('createdAt')
       .eq('projectId', project.id)
+      .eq('kind', 'rev')
       .eq('revNo', project.currentRev)
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt, maxRev });
 });
 
 // PATCH /api/pm/projects/[id]
@@ -78,7 +98,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   updates.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase.from('projects').update(updates).eq('id', id).select().single();
-  if (error) return fail(error.message, 500);
+  if (error) {
+    // code ซ้ำ (unique constraint) → 409 ให้ตรงกับ POST แทน 500 ที่กำกวม
+    if (error.code === '23505') return fail('รหัสโปรเจกต์ซ้ำ: ' + (updates.code ?? ''), 409);
+    return fail(error.message, 500);
+  }
 
   // ข้อ 2: หมวดสินค้าพลิกสถานะสรรพสามิต (01-002) → ปรับชุดขั้นตอนแบบ incremental
   // (เพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต, คงความคืบหน้าเดิม + ขั้นตอนที่เพิ่มเอง).
@@ -131,6 +155,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // Update project_products if provided
+  let productWarning = null;
   if (body.projectProducts && Array.isArray(body.projectProducts)) {
     // Delete existing
     await supabase.from('project_products').delete().eq('projectId', id);
@@ -144,11 +169,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         productionQty: p.productionQty || null,
       }));
       const { error: ppErr } = await supabase.from('project_products').insert(ppRows);
-      if (ppErr) console.error('Failed to link products during PATCH:', ppErr.message);
+      // ลบของเดิมไปแล้ว แต่ insert ใหม่ fail → แจ้ง warning (อย่าตอบเหมือนสำเร็จ)
+      if (ppErr) { console.error('Failed to link products during PATCH:', ppErr.message); productWarning = 'อัปเดตรายการสินค้า (FG) ไม่สำเร็จ — โปรดตรวจ/ผูกใหม่ที่หน้าโปรเจกต์'; }
     }
   }
 
-  return ok(data);
+  return ok({ ...data, ...(productWarning ? { productWarning } : {}) });
 });
 
 // DELETE /api/pm/projects/[id] — supervisor (all) or team lead (own team).

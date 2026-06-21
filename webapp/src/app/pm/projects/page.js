@@ -147,6 +147,8 @@ export default function ProjectsPage() {
     setShowForm(false);
     apiCache.delete?.("/api/pm/projects");
     await fetchProjects();
+    // เชื่อมสินค้า (FG) ไม่สำเร็จ → เตือน (อย่าแสดง "สำเร็จ" ทับ) ผู้ใช้จะได้ไปผูกใหม่
+    if (data?.productWarning) { setToast({ kind: "error", msg: data.productWarning }); return; }
     if (!editingId) {
       // รหัสโครงการสร้างอัตโนมัติฝั่งเซิร์ฟเวอร์ — แจ้งให้ผู้ใช้เห็นก่อนนำทางเข้าหน้าโปรเจกต์
       if (data.code) setToast({ kind: "success", msg: `สร้างโปรเจกต์สำเร็จ — รหัส ${data.code}` });

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, ChevronRight, ChevronDown, ExternalLink, Flame, ArrowUpDown, ArrowUp, ArrowDown, Table2, PlusCircle, Check, Calendar, Flag } from "lucide-react";
 import Modal from "@/components/Modal";
@@ -127,11 +127,16 @@ export default function MyWorkPage() {
   const [form, setForm] = useState(PERSONAL_BLANK);
   const [saving, setSaving] = useState(false);
 
+  // กันผลลัพธ์ที่มาช้า/สลับลำดับ (สลับ mine/team/all เร็ว ๆ): นับลำดับคำขอ แล้วยอมรับ
+  // เฉพาะ response ของคำขอล่าสุด — response เก่าที่เพิ่งมาถึงจะถูกทิ้ง ไม่ทับค่าปัจจุบัน
+  const loadSeq = useRef(0);
   const loadWork = async (sc) => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
       const res = await fetch(`/api/pm/my-work?scope=${sc}`);
       const d = res.ok ? await res.json() : {};
+      if (seq !== loadSeq.current) return; // มีคำขอใหม่กว่าตามมาแล้ว → ทิ้งผลเก่า
       setProjectTasks(d.projectTasks || []);
       setPersonalTasks(d.personalTasks || []);
       setProjectsMap(d.projects || {});
@@ -139,7 +144,7 @@ export default function MyWorkPage() {
       if (d.allowedScopes) setAllowedScopes(d.allowedScopes);
       if (d.scope && d.scope !== sc) setScope(d.scope);
     } catch { /* ignore */ }
-    setLoading(false);
+    finally { if (seq === loadSeq.current) setLoading(false); }
   };
 
   useEffect(() => { loadWork(scope); }, [scope]);
@@ -305,7 +310,14 @@ export default function MyWorkPage() {
   const setPersonalStatus = async (t, status) => {
     if (status === t.status) return;
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
-    await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    try {
+      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+      if (!res.ok) throw new Error();
+    } catch {
+      // บันทึกไม่สำเร็จ → คืนสถานะเดิม ไม่ให้จอโชว์ค่าที่ยังไม่ได้บันทึก (เหมือน setProjectStatus)
+      setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status: t.status } : x));
+      setToast({ kind: "error", msg: "อัปเดตสถานะไม่สำเร็จ" });
+    }
   };
   // ผู้ใช้คนนี้อัปเดตสถานะขั้นตอนนี้ได้ไหม — สะท้อน rule ฝั่ง server (PATCH project-tasks):
   //   fullEdit:     superuser (admin/ae_supervisor) ทุกทีม · senior_ae/ac เฉพาะทีมตัวเอง
