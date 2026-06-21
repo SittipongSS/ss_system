@@ -13,7 +13,7 @@ const regTax = (r) => (r && r.isExciseTaxable !== false ? (r.exciseTax || 0) + (
 // ad valorem and snapshotted at registration time (from the product retail
 // price) — the per-unit tax comes from the registration, so the filing form does
 // not ask for a sale price. Backend POST/PATCH contracts unchanged.
-export default function OrderFormModal({ open, onClose, onSaved, order, registrations = [], customers = [], userName }) {
+export default function OrderFormModal({ open, onClose, onSaved, order, registrations = [], customers = [], products = [], userName }) {
   const editing = !!order;
   const [customerId, setCustomerId] = useState("");
   const [form, setForm] = useState({ quotationRef: "", poReference: "", deliveryDate: "", remarks: "" });
@@ -46,6 +46,10 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
     () => registrations.filter((r) => r.status === "approved" && (!customerId || r.customerId === customerId)),
     [registrations, customerId],
   );
+
+  // Sale price (retail incl VAT) is pulled from the master product via the
+  // registration's productId — shown read-only for reference, never entered.
+  const priceOf = (reg) => products.find((p) => p.id === reg?.productId)?.retailPriceIncVat || 0;
 
   const setItem = (i, patch) => setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   const addItem = () => setItems((arr) => [...arr, blankItem()]);
@@ -165,8 +169,9 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
                         className="btn-icon danger" title="ลบรายการ"><X size={15} /></button>
                     </div>
                     {reg && (
-                      <div style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 2 }} className="font-mono">
-                        ภาษี/ชิ้น: {regTax(reg) > 0 ? fmtMoney(regTax(reg)) : "ยกเว้น"}
+                      <div style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 2 }} className="font-mono flex gap-4 flex-wrap">
+                        <span>ราคาขาย/ชิ้น: {priceOf(reg) > 0 ? fmtMoney(priceOf(reg)) : "-"}</span>
+                        <span>ภาษี/ชิ้น: {regTax(reg) > 0 ? fmtMoney(regTax(reg)) : "ยกเว้น"}</span>
                       </div>
                     )}
                   </div>
