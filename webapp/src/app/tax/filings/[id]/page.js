@@ -1,0 +1,210 @@
+"use client";
+import { useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { ReceiptText, ArrowLeft, Pencil, Wallet, Send, FileCheck } from "lucide-react";
+import Workspace from "@/components/ui/Workspace";
+import { useRole, useCan } from "@/lib/roleContext";
+import { fmtMoney, fmtDate } from "@/lib/format";
+import { useApiList } from "@/lib/excise/useApiList";
+import StatusBadge from "@/components/excise/StatusBadge";
+import { Field } from "@/components/excise/RecordDrawer";
+import Timeline from "@/components/excise/Timeline";
+import ConfirmDialog from "@/components/excise/ConfirmDialog";
+import RejectDialog from "@/components/excise/RejectDialog";
+import OrderFormModal from "@/components/excise/OrderFormModal";
+import ReceiveDialog from "@/components/excise/ReceiveDialog";
+import FileTaxDialog from "@/components/excise/FileTaxDialog";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
+
+const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
+const ORDER = ["pending", "received", "filing", "complete"];
+
+function orderSteps(o) {
+  const idx = ORDER.indexOf(o.status);
+  const stateFor = (stage) => {
+    if (o.status === "rejected") return ORDER.indexOf(stage) <= 0 ? "done" : "todo";
+    const si = ORDER.indexOf(stage);
+    if (si < idx) return "done";
+    if (si === idx) return o.status === "complete" ? "done" : "current";
+    return "todo";
+  };
+  const steps = [
+    { label: "สร้างใบยื่นชำระ", at: o.createdAt, by: o.assignee, state: "done" },
+    { label: "รับเงินแล้ว", state: stateFor("received") },
+    { label: "ยื่นกรมสรรพสามิต", state: stateFor("filing") },
+    { label: "ชำระภาษีแล้ว", at: o.filedAt, by: o.filedByName, state: stateFor("complete") },
+  ];
+  if (o.status === "rejected") steps.splice(1, 0, { label: "ตีกลับให้แก้ไข", state: "rejected", note: o.rejectionReason });
+  return steps;
+}
+
+export default function FilingDetailPage() {
+  const { id } = useParams();
+  const router = useRouter();
+  const role = useRole();
+  const canAct = useCan("sales:act");        // SA: receive / edit
+  const canApprove = useCan("legal:approve"); // LG: file / reject / due date
+
+  const { data: orders, loading, reload } = useApiList("/api/orders");
+  const { data: registrations } = useApiList("/api/excise-registrations");
+  const { data: customers } = useApiList("/api/customers");
+  const { data: products } = useApiList("/api/products");
+
+  const o = useMemo(() => orders.find((x) => x.id === id) || null, [orders, id]);
+  const isExempt = (o?.totalTax || 0) === 0;
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [fileOpen, setFileOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
+
+  const setDue = async (value) => {
+    await fetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taxDueDate: value }) });
+    await reload();
+  };
+  const reject = async (reason) => {
+    const res = await fetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "rejected", rejectionReason: reason }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถทำรายการได้");
+    await reload();
+  };
+  const startFiling = async () => {
+    const res = await fetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "filing" }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถทำรายการได้");
+    await reload();
+  };
+
+  const back = (
+    <button className="btn btn-secondary flex items-center gap-1.5" onClick={() => router.push("/tax/filings")}>
+      <ArrowLeft size={16} /> กลับ
+    </button>
+  );
+
+  if (!loading && !o) {
+    return (
+      <Workspace icon={<ReceiptText size={22} />} title="ไม่พบรายการ" subtitle="ใบยื่นนี้อาจถูกลบไปแล้ว" headerRight={back}>
+        <div style={{ color: "var(--text-3)" }}>ไม่พบใบยื่นที่ต้องการ</div>
+      </Workspace>
+    );
+  }
+
+  const headerRight = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {o && <StatusBadge status={o.status} />}
+      {back}
+    </div>
+  );
+
+  return (
+    <Workspace
+      icon={<ReceiptText size={22} />}
+      title={o?.quotationRef || "..."}
+      subtitle={o?.customerName || ""}
+      headerRight={headerRight}
+      loading={loading && !o}
+    >
+      {o && (
+        <div className="flex flex-col gap-5" style={{ maxWidth: 880 }}>
+          <div className="glass-panel" style={{ padding: 16 }}>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="PO Reference">{o.poReference || "-"}</Field>
+              <Field label="วันที่คาดว่าจะส่ง">{o.deliveryDate && o.deliveryDate !== "-" ? o.deliveryDate : "-"}</Field>
+              <Field label="ยอดภาษีรวม">{taxText(o)}</Field>
+              <Field label="ใบเสร็จสรรพสามิต">{o.exciseReceiptNumber || "-"}</Field>
+              {o.taxPaidDate && <Field label="วันที่ชำระจริง">{fmtDate(o.taxPaidDate)}</Field>}
+              {o.taxFormRef && <Field label="แบบ ภส.">{o.taxFormRef}</Field>}
+            </div>
+
+            {canApprove && o.status === "received" && (
+              <div className="form-group" style={{ margin: "12px 0 0" }}>
+                <label>กำหนดยื่น (Due date)</label>
+                <input type="date" className="premium-input" style={{ maxWidth: 180 }}
+                  value={o.taxDueDate && /^\d{4}-\d{2}-\d{2}/.test(o.taxDueDate) ? o.taxDueDate.slice(0, 10) : ""}
+                  onChange={(e) => setDue(e.target.value)} />
+              </div>
+            )}
+          </div>
+
+          <div className="glass-panel" style={{ padding: 16 }}>
+            <div className="drawer-section-title" style={{ marginBottom: 8 }}>รายการสินค้า ({o.items?.length || 0})</div>
+            <div className="flex flex-col gap-1.5">
+              {(o.items || []).map((it) => {
+                const p = it.product || it.registration || {};
+                return (
+                  <div key={it.id} className="flex items-center justify-between" style={{ fontSize: 13, borderBottom: "1px solid var(--border)", paddingBottom: 6 }}>
+                    <span style={{ minWidth: 0 }} className="truncate">
+                      <span className="font-mono">{p.fgCode || "-"}</span> · {p.productDescription || p.productName || ""}
+                    </span>
+                    <span className="font-mono" style={{ flexShrink: 0, color: "var(--text-3)" }}>×{it.quantity} · {fmtMoney(it.totalTax || 0)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="glass-panel" style={{ padding: 16 }}>
+            <div className="drawer-section-title" style={{ marginBottom: 10 }}>สถานะการดำเนินการ</div>
+            <Timeline steps={orderSteps(o)} />
+          </div>
+
+          <div className="glass-panel" style={{ padding: 16 }}>
+            <AttachmentsPanel
+              entityType="order"
+              entityId={o.id}
+              canEdit={canApprove}
+              title="เอกสารการชำระสรรพสามิต"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-2 flex-wrap">
+            {canAct && o.status === "pending" && (
+              <>
+                <button className="btn btn-secondary flex items-center gap-1.5" onClick={() => setFormOpen(true)}><Pencil size={15} /> แก้ไข</button>
+                <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setReceiveOpen(true)}><Wallet size={15} /> {isExempt ? "ยืนยันรับเงิน" : "รับเงินแล้ว"}</button>
+              </>
+            )}
+            {canAct && o.status === "rejected" && (
+              <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFormOpen(true)}><Pencil size={15} /> แก้ไขและส่งกลับ</button>
+            )}
+            {canApprove && o.status === "received" && (
+              <>
+                <button className="btn btn-danger" onClick={() => setRejectOpen(true)}>ตีกลับ</button>
+                {isExempt
+                  ? <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFileOpen(true)}><FileCheck size={15} /> ยืนยันชำระ</button>
+                  : <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setStartOpen(true)}><Send size={15} /> เริ่มยื่น</button>}
+              </>
+            )}
+            {canApprove && o.status === "filing" && (
+              <>
+                <button className="btn btn-danger" onClick={() => setRejectOpen(true)}>ตีกลับ</button>
+                <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFileOpen(true)}><FileCheck size={15} /> บันทึกชำระภาษี</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      <OrderFormModal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        onSaved={reload}
+        order={o}
+        registrations={registrations}
+        customers={customers}
+        products={products}
+      />
+      <ReceiveDialog open={receiveOpen} onClose={() => setReceiveOpen(false)} onDone={reload} order={o} />
+      <FileTaxDialog open={fileOpen} onClose={() => setFileOpen(false)} onDone={reload} order={o} />
+      <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={reject} title="ตีกลับใบยื่นชำระ" entityLabel="ใบยื่นนี้" />
+      <ConfirmDialog
+        open={startOpen}
+        onClose={() => setStartOpen(false)}
+        onConfirm={startFiling}
+        title="เริ่มยื่นภาษี"
+        message={`เริ่มดำเนินการยื่นภาษีสำหรับ ${o?.quotationRef || "รายการนี้"}?`}
+        confirmLabel="เริ่มยื่น"
+      />
+    </Workspace>
+  );
+}
