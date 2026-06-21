@@ -61,11 +61,12 @@ export default function HomeHubPage() {
         : can(role, "customers:view") ? "/database/customers"
           : "/database/holidays"
     );
-  // Phased rollout: PM + database are open to normal roles; only the tax system
-  // stays admin-only. Keep in sync with ADMIN_LOCKDOWN/lockedOut in proxy.js.
+  // All three systems are open to their normal roles. Tax is visible to anyone
+  // who can see the tax workflow (SA/LG via history:view). Keep in sync with
+  // OPEN_PAGES/lockedOut in proxy.js + the tax nav gate in AppLayout.
   const isAdmin = can(role, "users:manage");
   const canPM = isAdmin || can(role, "pm:view");
-  const canTax = isAdmin;
+  const canTax = isAdmin || can(role, "history:view");
   // Database hub card: anyone who can open a registry (sales/legal/staff) — the
   // approval workflow needs AE/AC to reach it, not just admins.
   const canDB =
@@ -123,7 +124,7 @@ export default function HomeHubPage() {
             </button>
           )}
 
-          {/* Card 2 — Excise Tax (admin-only during phased rollout). */}
+          {/* Card 2 — Excise Tax (SA/LG/admin via history:view). */}
           {canTax && (
             <button
               onClick={enterTax}
