@@ -21,6 +21,10 @@ export default function ProductDetails() {
   // breakdown + profit is LG + admin only. Other departments see neither.
   const canSeeMargin = useCan("products:margin");
   const canSeeCost = canSeeMargin || canEditProducts; // SA (edit) + LG/admin (margin)
+  // Excise tax data (per-unit tax, registrations, breakdown) is confidential to
+  // the tax workflow — shown only to roles that can see the tax system
+  // (SA/LG/admin via history:view). Other depts (staff/viewer) never see it.
+  const canViewTax = useCan("history:view");
 
   const [product, setProduct] = useState(null);
   const [regs, setRegs] = useState([]);
@@ -39,18 +43,22 @@ export default function ProductDetails() {
         const errData = await res.json();
         setError(errData.error || "ไม่สามารถโหลดข้อมูลสินค้าได้");
       }
-      // Registrations this product appears in (which customers it's registered for).
-      const rr = await fetch(`/api/excise-registrations`);
-      if (rr.ok) {
-        const all = await rr.json();
-        setRegs((all || []).filter((r) => r.productId === id));
-      }
     } catch (err) {
       console.error(err);
       setError("เกิดข้อผิดพลาดในการโหลดข้อมูล");
     }
     setLoading(false);
   };
+
+  // Registrations this product appears in (which customers it's registered for)
+  // — tax data, loaded only for roles allowed to see the tax system.
+  useEffect(() => {
+    if (!id || !canViewTax) { setRegs([]); return; }
+    fetch(`/api/excise-registrations`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((all) => setRegs((all || []).filter((r) => r.productId === id)))
+      .catch(() => {});
+  }, [id, canViewTax]);
 
   useEffect(() => {
     if (id) fetchProduct();
@@ -181,8 +189,10 @@ export default function ProductDetails() {
           items={[
             { label: "ปริมาตร/หน่วย", value: `${product.volume} ${product.volumeUnit || "ml"}` },
             { label: "ราคาขายปลีก", value: formatMoney(product.retailPriceIncVat) },
-            { label: "ภาษี/ชิ้น", value: isExempt ? "ยกเว้น" : formatMoney((product.exciseTax || 0) + (product.localTax || 0)), tone: isExempt ? "success" : "accent" },
-            { label: "ทะเบียนภาษี", value: `${regs.length} รายการ` },
+            ...(canViewTax ? [
+              { label: "ภาษี/ชิ้น", value: isExempt ? "ยกเว้น" : formatMoney((product.exciseTax || 0) + (product.localTax || 0)), tone: isExempt ? "success" : "accent" },
+              { label: "ทะเบียนภาษี", value: `${regs.length} รายการ` },
+            ] : []),
           ]}
         />
       </div>
@@ -261,7 +271,8 @@ export default function ProductDetails() {
           </div>
           )}
 
-          {/* Excise registrations for this product (information). */}
+          {/* Excise registrations for this product (information) — tax-gated. */}
+          {canViewTax && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
               การขึ้นทะเบียนภาษีของสินค้านี้ ({regs.length})
@@ -286,6 +297,7 @@ export default function ProductDetails() {
               </div>
             )}
           </div>
+          )}
 
           {/* เอกสารของสินค้า — สัญญาจ้างผลิต / Artwork ฯลฯ */}
           <AttachmentsPanel
@@ -309,7 +321,8 @@ export default function ProductDetails() {
           )}
         </div>
 
-        {/* Tax Information Column */}
+        {/* Tax Information Column — tax-gated */}
+        {canViewTax && (
         <div className="space-y-6">
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
@@ -347,6 +360,7 @@ export default function ProductDetails() {
             <p className="text-[10px] text-[var(--text-3)] mt-3">สร้างเมื่อ: {new Date(product.createdAt).toLocaleString("th-TH")}</p>
           </div>
         </div>
+        )}
       </div>
 
       <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} />

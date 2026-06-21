@@ -21,6 +21,9 @@ export default function CustomerDetails() {
   const id = params.id;
   const canEdit = useCan("customers:edit");
   const canDelete = useCan("customers:delete");
+  // Excise tax data (rollups, orders/filings, per-item tax) is confidential to
+  // the tax workflow — shown only to roles allowed to see the tax system.
+  const canViewTax = useCan("history:view");
   const superuser = isSuperuser(useRole());
   const isPortrait = useIsPortrait();
 
@@ -320,7 +323,7 @@ export default function CustomerDetails() {
       <div className="mb-[22px]">
         <StatCards
           items={
-            hasTaxObligation
+            canViewTax && hasTaxObligation
               ? [
                   { label: "สินค้าที่ลงทะเบียน", value: products.length },
                   { label: "ใบสั่งซื้อทั้งหมด", value: orders.length },
@@ -329,11 +332,11 @@ export default function CustomerDetails() {
                 ]
               : [
                   { label: "สินค้าที่ลงทะเบียน", value: products.length },
-                  { label: "ใบสั่งซื้อทั้งหมด", value: orders.length },
+                  ...(canViewTax ? [{ label: "ใบสั่งซื้อทั้งหมด", value: orders.length }] : []),
                 ]
           }
         />
-        {hasTaxObligation && (
+        {canViewTax && hasTaxObligation && (
           <p className="text-[11px] text-[var(--text-3)] mt-2">
             ยอดภาษีรวมสะสม {formatMoney(totalTaxAccrued)} — สรรพสามิต {formatMoney(totalExciseTax)} + ท้องถิ่น {formatMoney(totalLocalTax)}
           </p>
@@ -415,9 +418,11 @@ export default function CustomerDetails() {
         <button onClick={() => setActiveTab("products")} className={`tab-btn ${activeTab === "products" ? "active" : ""}`}>
           รายการสินค้า ({products.length})
         </button>
-        <button onClick={() => setActiveTab("orders")} className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}>
-          รายการสั่งซื้อ ({orders.length})
-        </button>
+        {canViewTax && (
+          <button onClick={() => setActiveTab("orders")} className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}>
+            รายการสั่งซื้อ ({orders.length})
+          </button>
+        )}
       </div>
 
       {/* Products Tab */}
@@ -440,9 +445,11 @@ export default function CustomerDetails() {
                   </div>
                   <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
                     <span className="font-mono text-[var(--text-2)]">{p.volume} ml · {formatMoney(p.retailPriceIncVat)}</span>
-                    <span className="text-[var(--text-2)]">
-                      {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : <span className="font-mono">{formatMoney(taxRate)}</span>}
-                    </span>
+                    {canViewTax && (
+                      <span className="text-[var(--text-2)]">
+                        {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : <span className="font-mono">{formatMoney(taxRate)}</span>}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -461,7 +468,7 @@ export default function CustomerDetails() {
                     <th>รายละเอียดสินค้า / แบรนด์</th>
                     <th>ปริมาตร (ml)</th>
                     <th className="num">ราคาขายปลีก</th>
-                    <th className="num">ภาษีคำนวณต่อชิ้น</th>
+                    {canViewTax && <th className="num">ภาษีคำนวณต่อชิ้น</th>}
                     <th className="text-center">สถานะการอนุมัติ</th>
                   </tr>
                 </thead>
@@ -478,9 +485,11 @@ export default function CustomerDetails() {
                         </td>
                         <td className="font-mono">{p.volume} ml</td>
                         <td className="num font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
-                        <td className="num font-mono text-[var(--text-2)]">
-                          {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(taxRate)}
-                        </td>
+                        {canViewTax && (
+                          <td className="num font-mono text-[var(--text-2)]">
+                            {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(taxRate)}
+                          </td>
+                        )}
                         <td className="text-center"><ProductStatusPill status={p.status} /></td>
                       </tr>
                     );
@@ -492,8 +501,8 @@ export default function CustomerDetails() {
         )
       )}
 
-      {/* Orders Tab */}
-      {activeTab === "orders" && (
+      {/* Orders Tab — tax-gated */}
+      {canViewTax && activeTab === "orders" && (
         orders.length === 0 ? (
           <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีรายการสั่งซื้อในระบบ</div>
         ) : isPortrait ? (
