@@ -49,6 +49,7 @@ export default function FilingsPage() {
   const { data: orders, loading, reload } = useApiList("/api/orders");
   const { data: registrations } = useApiList("/api/excise-registrations");
   const { data: customers } = useApiList("/api/customers");
+  const { data: products } = useApiList("/api/products");
 
   const [userName, setUserName] = useState("");
   const [filter, setFilter] = useState(() => (deptOf(role) === "LG" ? "received" : deptOf(role) === "SA" ? "pending" : "all"));
@@ -263,6 +264,7 @@ export default function FilingsPage() {
         order={editTarget}
         registrations={registrations}
         customers={customers}
+        products={products}
         userName={userName}
       />
       <ReceiveDialog open={!!receiveTarget} onClose={() => setReceiveTarget(null)} onDone={refreshAll} order={receiveTarget} />
