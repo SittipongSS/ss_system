@@ -10,6 +10,7 @@ import Modal from "@/components/Modal";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
+import StatusBadge from "@/components/excise/StatusBadge";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import ContactsEditor from "@/components/database/ContactsEditor";
@@ -30,6 +31,7 @@ export default function CustomerDetails() {
   const [customer, setCustomer] = useState(null);
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [regs, setRegs] = useState([]); // excise registrations for this customer (tax-gated)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -100,6 +102,16 @@ export default function CustomerDetails() {
       fetchCustomerData();
     }
   }, [id]);
+
+  // Excise registrations of this customer — tax data, loaded only for roles
+  // allowed to see the tax system.
+  useEffect(() => {
+    if (!id || !canViewTax) { setRegs([]); return; }
+    fetch(`/api/excise-registrations`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((all) => setRegs((all || []).filter((r) => r.customerId === id)))
+      .catch(() => {});
+  }, [id, canViewTax]);
 
   const formatMoney = (amount) => {
     if (amount === undefined || amount === null) return "฿0.00";
@@ -419,9 +431,14 @@ export default function CustomerDetails() {
           รายการสินค้า ({products.length})
         </button>
         {canViewTax && (
-          <button onClick={() => setActiveTab("orders")} className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}>
-            รายการสั่งซื้อ ({orders.length})
-          </button>
+          <>
+            <button onClick={() => setActiveTab("registrations")} className={`tab-btn ${activeTab === "registrations" ? "active" : ""}`}>
+              การขึ้นทะเบียน ({regs.length})
+            </button>
+            <button onClick={() => setActiveTab("orders")} className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}>
+              การยื่นชำระภาษี ({orders.length})
+            </button>
+          </>
         )}
       </div>
 
@@ -497,6 +514,28 @@ export default function CustomerDetails() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )
+      )}
+
+      {/* Registrations Tab — tax-gated, read-only (manage in /tax) */}
+      {canViewTax && activeTab === "registrations" && (
+        regs.length === 0 ? (
+          <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีการขึ้นทะเบียนสรรพสามิตของลูกค้ารายนี้</div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3">
+            {regs.map((r) => (
+              <div key={r.id} onClick={() => router.push(`/tax/registrations/${r.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold font-mono text-sm text-[var(--text)]">{r.fgCode}</div>
+                  <div className="text-[11px] text-[var(--text-3)] truncate">{r.productName} · {r.brandName}</div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {r.approvalNumber && <span className="font-mono text-[11px] text-[var(--text-3)]">{r.approvalNumber}</span>}
+                  <StatusBadge status={r.status} />
+                </div>
+              </div>
+            ))}
           </div>
         )
       )}
