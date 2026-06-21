@@ -52,10 +52,10 @@ export function buildBillPrintHTML(order, customer = {}) {
     <td class="c-no">${l.i}</td>
     <td class="c-fg">${esc(l.fgCode)}</td>
     <td class="c-desc">${esc(l.name)}</td>
-    <td class="c-num">${fmtInt(l.qty)}</td>
     <td class="c-money">${fmtMoney(l.incVat)}</td>
     <td class="c-money">${fmtMoney(l.exVat)}</td>
     <td class="c-money">${fmtMoney(l.perUnit)}</td>
+    <td class="c-num">${fmtInt(l.qty)}</td>
     <td class="c-money">${fmtMoney(l.excise)}</td>
     <td class="c-money">${fmtMoney(l.local)}</td>
     <td class="c-money">${fmtMoney(l.tax)}</td>
@@ -69,10 +69,10 @@ export function buildBillPrintHTML(order, customer = {}) {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #eef0f3; color: #21385e; font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; font-size: 12px; }
-  .toolbar { max-width: 297mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
+  .toolbar { max-width: 210mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
   .toolbar h1 { font-size: 15px; font-weight: 600; }
   .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 7px; cursor: pointer; }
-  .sheet { width: 297mm; min-height: 210mm; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); }
+  .sheet { width: 210mm; min-height: 297mm; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); }
 
   .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 10px; }
   .brand { display: flex; align-items: center; gap: 10px; }
@@ -91,14 +91,14 @@ export function buildBillPrintHTML(order, customer = {}) {
   .hrow .k { color: #837868; min-width: 90px; flex-shrink: 0; }
   .hrow .v { font-weight: 600; color: #21385e; }
 
-  table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #cfc9bf; padding: 5px 8px; }
-  thead th { background: #e8e2d9; color: #21385e; font-size: 10px; font-weight: 700; text-align: center; }
-  .c-no { text-align: center; font-size: 10px; width: 28px; }
-  .c-fg { font-size: 10px; white-space: nowrap; }
-  .c-desc { text-align: left; font-size: 11px; }
-  .c-num { text-align: right; font-size: 10.5px; }
-  .c-money { text-align: right; font-size: 10.5px; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { border: 1px solid #cfc9bf; padding: 4px 5px; word-break: break-word; }
+  thead th { background: #e8e2d9; color: #21385e; font-size: 8.5px; font-weight: 700; text-align: center; line-height: 1.2; }
+  .c-no { text-align: center; font-size: 8.5px; width: 22px; }
+  .c-fg { font-size: 8.5px; width: 92px; }
+  .c-desc { text-align: left; font-size: 9px; }
+  .c-num { text-align: right; font-size: 9px; width: 42px; }
+  .c-money { text-align: right; font-size: 9px; white-space: nowrap; width: 64px; }
   tfoot td { background: #f0ebe0; font-weight: 700; }
 
   .totals { margin-top: 14px; margin-left: auto; width: 56%; font-size: 12px; }
@@ -115,7 +115,7 @@ export function buildBillPrintHTML(order, customer = {}) {
 
   .foot { margin-top: 16px; font-size: 9px; color: #837868; text-align: right; }
 
-  @page { size: A4 landscape; margin: 10mm; }
+  @page { size: A4 portrait; margin: 10mm; }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
@@ -171,10 +171,10 @@ export function buildBillPrintHTML(order, customer = {}) {
         <th>#</th>
         <th>รหัส FG</th>
         <th>รายการสินค้า</th>
-        <th>จำนวน</th>
         <th>ราคาขาย/หน่วย<br/>(รวม VAT)</th>
         <th>ราคาขาย/หน่วย<br/>(ถอด VAT)</th>
         <th>ภาษี/ชิ้น</th>
+        <th>จำนวน</th>
         <th>ภาษีสรรพสามิต</th>
         <th>ภาษีท้องถิ่น</th>
         <th>รวมภาษี</th>
@@ -196,14 +196,12 @@ export function buildBillPrintHTML(order, customer = {}) {
       <div class="row grand"><span>ยอดวางบิลสุทธิ (รวม VAT)</span><span>${fmtMoney(grand)}</span></div>
     </div>
 
-    <div class="note-line">หมายเหตุ: เอกสารนี้เรียกเก็บเฉพาะค่าภาษีสรรพสามิตและภาษีบำรุงท้องถิ่นที่บริษัทสำรองจ่ายแทน ไม่รวมราคาสินค้า</div>
+    <div class="note-line">หมายเหตุ: เอกสารนี้เรียกเก็บเฉพาะค่าภาษีสรรพสามิตและภาษีบำรุงท้องถิ่น ไม่รวมราคาสินค้า</div>
 
     <div class="signs">
       <div class="sign"><div class="sig-space"></div><div class="line"></div><div class="lbl">ผู้จัดทำ</div><div class="date">วันที่ ........./........./.........</div></div>
       <div class="sign"><div class="sig-space"></div><div class="line"></div><div class="lbl">ผู้รับเอกสาร / ลูกค้า</div><div class="date">วันที่ ........./........./.........</div></div>
     </div>
-
-    <div class="foot">พิมพ์เมื่อ ${new Date().toLocaleString("th-TH")} · ${esc(COMPANY)}</div>
   </div>
 </body></html>`;
 }
