@@ -18,31 +18,39 @@ const fmtDate = (v) => {
 };
 const fmtInt = (v) => (Number(v) || 0).toLocaleString("th-TH");
 
+const VAT_RATE = 0.07;
+
 export function buildBillPrintHTML(order, customer = {}) {
   const items = order.items || [];
-  // Per line: unit sale price (snapshot salePrice → master retail price), value,
-  // and the snapshotted excise/local tax already stored on the order item.
+  // Per line: unit sale price is the VAT-EXCLUDED retail price (ราคาขายถอด VAT) —
+  // that is the base for the goods value. The excise/local tax come from the
+  // snapshot stored on the order item. VAT is added on the grand total below.
   const lines = items.map((it, i) => {
     const p = it.product || {};
-    const unit = it.salePrice != null ? Number(it.salePrice) : (p.retailPriceIncVat || 0);
+    const exVat = p.retailPriceExVat != null
+      ? Number(p.retailPriceExVat)
+      : (p.retailPriceIncVat ? Number(p.retailPriceIncVat) / (1 + VAT_RATE) : 0);
     const qty = Number(it.quantity) || 0;
-    const value = unit * qty;
+    const value = exVat * qty;
     return {
       i: i + 1,
       fgCode: p.fgCode || it.registration?.fgCode || "-",
       name: p.productDescription || it.registration?.productName || "-",
-      qty, unit, value,
+      qty, unit: exVat, value,
       excise: Number(it.totalExciseTax) || 0,
       local: Number(it.totalLocalTax) || 0,
       tax: Number(it.totalTax) || 0,
     };
   });
   const sum = (k) => lines.reduce((s, l) => s + l[k], 0);
-  const totalValue = sum("value");
+  const totalValue = sum("value");   // goods value, VAT-excluded
   const totalExcise = sum("excise");
   const totalLocal = sum("local");
   const totalTax = sum("tax");
-  const grand = totalValue + totalTax;
+  // VAT base for excisable goods = goods value + excise + local taxes.
+  const vatBase = totalValue + totalExcise + totalLocal;
+  const vat = vatBase * VAT_RATE;
+  const grand = vatBase + vat;       // net total billed to the customer (incl VAT)
 
   const rows = lines.map((l) => `<tr>
     <td style="text-align:center">${l.i}</td>
@@ -122,8 +130,8 @@ export function buildBillPrintHTML(order, customer = {}) {
       <th>รหัส FG</th>
       <th>รายการสินค้า</th>
       <th style="text-align:right">จำนวน</th>
-      <th style="text-align:right">ราคาขาย/หน่วย</th>
-      <th style="text-align:right">มูลค่าสินค้า</th>
+      <th style="text-align:right">ราคาขาย/หน่วย<br/>(ก่อน VAT)</th>
+      <th style="text-align:right">มูลค่าสินค้า<br/>(ก่อน VAT)</th>
       <th style="text-align:right">ภาษีสรรพสามิต</th>
       <th style="text-align:right">ภาษีท้องถิ่น</th>
       <th style="text-align:right">รวมภาษี</th>
@@ -139,11 +147,12 @@ export function buildBillPrintHTML(order, customer = {}) {
   </table>
 
   <div class="totals">
-    <div class="row"><span>มูลค่าสินค้ารวม</span><span class="mono">${fmtMoney(totalValue)}</span></div>
+    <div class="row"><span>มูลค่าสินค้ารวม (ก่อน VAT)</span><span class="mono">${fmtMoney(totalValue)}</span></div>
     <div class="row"><span>ภาษีสรรพสามิตรวม</span><span class="mono">${fmtMoney(totalExcise)}</span></div>
     <div class="row"><span>ภาษีบำรุงท้องถิ่นรวม</span><span class="mono">${fmtMoney(totalLocal)}</span></div>
-    <div class="row"><span>รวมภาษีทั้งสิ้น</span><span class="mono">${fmtMoney(totalTax)}</span></div>
-    <div class="row grand"><span>ยอดรวมสุทธิ (มูลค่า + ภาษี)</span><span class="mono">${fmtMoney(grand)}</span></div>
+    <div class="row"><span>ฐานภาษีมูลค่าเพิ่ม</span><span class="mono">${fmtMoney(vatBase)}</span></div>
+    <div class="row"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span class="mono">${fmtMoney(vat)}</span></div>
+    <div class="row grand"><span>ยอดรวมสุทธิ (รวม VAT)</span><span class="mono">${fmtMoney(grand)}</span></div>
   </div>
 
   <div class="sign">
