@@ -182,7 +182,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
 
           <div className="flex justify-end" style={{ fontSize: 13 }}>
             <span style={{ color: "var(--text-3)" }}>ยอดชำระภาษีสรรพสามิตรวม (ไม่รวมภาษีมูลค่าเพิ่ม):&nbsp;</span>
-            <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{totalTax > 0 ? fmtMoney(totalTax) : "ยกเว้นภาษี"}</span>
+            <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{fmtMoney(totalTax)}</span>
           </div>
 
           {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
