@@ -5,8 +5,6 @@
 // Timeline document (lib/pm/ganttPrint.js): same fonts, colours, logo, layout.
 
 const COMPANY = "บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด";
-const COMPANY_TEL = "02-000-7722, 092-646-8682";
-const COMPANY_LINE = "@perfumefactory";
 const LOGO_URL =
   "https://static.wixstatic.com/media/279c93_8f08407580cc4842ad6fae8b398eec3e~mv2.png/v1/fill/w_166,h_166,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/marque.png";
 const VAT_RATE = 0.07;
@@ -28,14 +26,19 @@ export function buildBillPrintHTML(order, customer = {}) {
   // from the VAT-excluded retail price at registration). VAT 7% added on total.
   const lines = items.map((it, i) => {
     const p = it.product || {};
+    const qty = Number(it.quantity) || 0;
+    const excise = Number(it.totalExciseTax) || 0;
+    const local = Number(it.totalLocalTax) || 0;
+    const tax = Number(it.totalTax) || 0;
+    const incVat = p.retailPriceIncVat != null ? Number(p.retailPriceIncVat) : 0;
+    const exVat = p.retailPriceExVat != null ? Number(p.retailPriceExVat) : (incVat ? incVat / (1 + VAT_RATE) : 0);
     return {
       i: i + 1,
       fgCode: p.fgCode || it.registration?.fgCode || "-",
       name: p.productDescription || it.registration?.productName || "-",
-      qty: Number(it.quantity) || 0,
-      excise: Number(it.totalExciseTax) || 0,
-      local: Number(it.totalLocalTax) || 0,
-      tax: Number(it.totalTax) || 0,
+      qty, incVat, exVat,
+      perUnit: qty ? tax / qty : 0,   // ภาษี/ชิ้น (สรรพสามิต + ท้องถิ่น)
+      excise, local, tax,
     };
   });
   const sum = (k) => lines.reduce((s, l) => s + l[k], 0);
@@ -50,10 +53,13 @@ export function buildBillPrintHTML(order, customer = {}) {
     <td class="c-fg">${esc(l.fgCode)}</td>
     <td class="c-desc">${esc(l.name)}</td>
     <td class="c-num">${fmtInt(l.qty)}</td>
+    <td class="c-money">${fmtMoney(l.incVat)}</td>
+    <td class="c-money">${fmtMoney(l.exVat)}</td>
+    <td class="c-money">${fmtMoney(l.perUnit)}</td>
     <td class="c-money">${fmtMoney(l.excise)}</td>
     <td class="c-money">${fmtMoney(l.local)}</td>
     <td class="c-money">${fmtMoney(l.tax)}</td>
-  </tr>`).join("") || `<tr><td class="c-desc" colspan="7" style="text-align:center;color:#837868">ไม่มีรายการ</td></tr>`;
+  </tr>`).join("") || `<tr><td class="c-desc" colspan="10" style="text-align:center;color:#837868">ไม่มีรายการ</td></tr>`;
 
   const taxId = customer.taxId || order.customerTaxId || "-";
   const address = customer.address || "-";
@@ -63,10 +69,10 @@ export function buildBillPrintHTML(order, customer = {}) {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #eef0f3; color: #21385e; font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; font-size: 12px; }
-  .toolbar { max-width: 210mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
+  .toolbar { max-width: 297mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
   .toolbar h1 { font-size: 15px; font-weight: 600; }
   .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 7px; cursor: pointer; }
-  .sheet { width: 210mm; min-height: 297mm; margin: 16px auto; background: #fff; padding: 14mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); }
+  .sheet { width: 297mm; min-height: 210mm; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); }
 
   .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 10px; }
   .brand { display: flex; align-items: center; gap: 10px; }
@@ -109,7 +115,7 @@ export function buildBillPrintHTML(order, customer = {}) {
 
   .foot { margin-top: 16px; font-size: 9px; color: #837868; text-align: right; }
 
-  @page { size: A4 portrait; margin: 12mm; }
+  @page { size: A4 landscape; margin: 10mm; }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
@@ -151,8 +157,6 @@ export function buildBillPrintHTML(order, customer = {}) {
         <div class="hrow"><span class="k">ลูกค้า</span><span class="v">${esc(customer.name || order.customerName || "-")}</span></div>
         <div class="hrow"><span class="k">เลขผู้เสียภาษี</span><span class="v">${esc(taxId)}</span></div>
         <div class="hrow"><span class="k">ที่อยู่</span><span class="v">${esc(address)}</span></div>
-        <div class="hrow"><span class="k">เบอร์ติดต่อ</span><span class="v">${COMPANY_TEL}</span></div>
-        <div class="hrow"><span class="k">Line Official</span><span class="v">${COMPANY_LINE}</span></div>
       </div>
       <div class="hcol">
         <div class="hrow"><span class="k">ใบเสนอราคา</span><span class="v">${esc(order.quotationRef || "-")}</span></div>
@@ -168,13 +172,16 @@ export function buildBillPrintHTML(order, customer = {}) {
         <th>รหัส FG</th>
         <th>รายการสินค้า</th>
         <th>จำนวน</th>
+        <th>ราคาขาย/หน่วย<br/>(รวม VAT)</th>
+        <th>ราคาขาย/หน่วย<br/>(ถอด VAT)</th>
+        <th>ภาษี/ชิ้น</th>
         <th>ภาษีสรรพสามิต</th>
         <th>ภาษีท้องถิ่น</th>
         <th>รวมภาษี</th>
       </tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr>
-        <td class="c-desc" colspan="4" style="text-align:right">รวม</td>
+        <td class="c-desc" colspan="7" style="text-align:right">รวม</td>
         <td class="c-money">${fmtMoney(totalExcise)}</td>
         <td class="c-money">${fmtMoney(totalLocal)}</td>
         <td class="c-money">${fmtMoney(totalTax)}</td>
