@@ -41,6 +41,7 @@ export default function AttachmentsPanel({
   note,
   docTypes, // override การ์ดที่แสดง (เช่น เอกสารลูกค้าตามประเภท) — default = ตาม entityType
   onItemsChange, // (items) => void — แจ้งรายการเอกสารปัจจุบัน (ใช้บังคับแนบก่อนยื่น)
+  cardColumns = 2, // การ์ดเอกสารจำเป็น: จำนวนคอลัมน์สูงสุด (1 = แถวละใบ เห็นชื่อเต็ม)
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -366,7 +367,7 @@ export default function AttachmentsPanel({
       ) : (
         /* ───────── โหมดการ์ดเอกสารจำเป็น (customer/product) ───────── */
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className={`grid grid-cols-1 gap-3 ${cardColumns > 1 ? "sm:grid-cols-2" : ""}`}>
             {sortedTypes.map((t) => {
               const files = byType[t.key] || [];
               const has = files.length > 0;
@@ -384,7 +385,7 @@ export default function AttachmentsPanel({
                       ) : (
                         <Circle size={16} className="text-[var(--text-3)] shrink-0" />
                       )}
-                      <span className="text-xs font-semibold text-[var(--text)] truncate">{t.label}</span>
+                      <span className="text-xs font-semibold text-[var(--text)] break-words leading-snug">{t.label}</span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {has ? (
