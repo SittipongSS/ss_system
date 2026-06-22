@@ -168,6 +168,13 @@ export function buildBillPrintHTML(order, customer = {}) {
     </div>
 
     <table>
+      <colgroup>
+        <col style="width:26px"/>
+        <col/>
+        <col style="width:78px"/>
+        <col style="width:66px"/>
+        <col style="width:104px"/>
+      </colgroup>
       <thead><tr>
         <th>#</th>
         <th>รายการสินค้า</th>
