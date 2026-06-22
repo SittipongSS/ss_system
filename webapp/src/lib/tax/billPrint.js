@@ -44,8 +44,6 @@ export function buildBillPrintHTML(order, customer = {}) {
     };
   });
   const sum = (k) => lines.reduce((s, l) => s + l[k], 0);
-  const totalExcise = sum("excise");
-  const totalLocal = sum("local");
   const totalTax = sum("tax");        // excise + local being billed (ก่อน VAT)
   const vat = totalTax * VAT_RATE;
   const grand = totalTax + vat;       // net total billed to the customer (incl VAT)
@@ -59,10 +57,8 @@ export function buildBillPrintHTML(order, customer = {}) {
     </td>
     <td class="c-money">${fmtMoney(l.perUnit)}</td>
     <td class="c-num">${fmtInt(l.qty)}</td>
-    <td class="c-money">${fmtMoney(l.excise)}</td>
-    <td class="c-money">${fmtMoney(l.local)}</td>
     <td class="c-money">${fmtMoney(l.tax)}</td>
-  </tr>`).join("") || `<tr><td class="c-desc" colspan="7" style="text-align:center;color:#837868">ไม่มีรายการ</td></tr>`;
+  </tr>`).join("") || `<tr><td class="c-desc" colspan="5" style="text-align:center;color:#837868">ไม่มีรายการ</td></tr>`;
 
   const taxId = customer.taxId || order.customerTaxId || "-";
   const address = customer.address || "-";
@@ -97,7 +93,7 @@ export function buildBillPrintHTML(order, customer = {}) {
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { border: 1px solid #cfc9bf; padding: 5px 7px; word-break: break-word; }
   thead th { background: #e8e2d9; color: #21385e; font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.2; }
-  .c-no { text-align: center; font-size: 9.5px; width: 22px; }
+  .c-no { text-align: center; font-size: 9.5px; width: 18px; }
   .c-desc { text-align: left; font-size: 10.5px; }
   .c-desc .fg-code { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 10px; color: #c17a52; }
   .c-desc .p-name { font-weight: 600; color: #21385e; margin-top: 1px; }
@@ -177,22 +173,16 @@ export function buildBillPrintHTML(order, customer = {}) {
         <th>รายการสินค้า</th>
         <th>ภาษี/ชิ้น</th>
         <th>จำนวน</th>
-        <th>ภาษีสรรพสามิต</th>
-        <th>ภาษีท้องถิ่น</th>
         <th>รวมภาษี</th>
       </tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr>
         <td class="c-desc" colspan="4" style="text-align:right">รวม</td>
-        <td class="c-money">${fmtMoney(totalExcise)}</td>
-        <td class="c-money">${fmtMoney(totalLocal)}</td>
         <td class="c-money">${fmtMoney(totalTax)}</td>
       </tr></tfoot>
     </table>
 
     <div class="totals">
-      <div class="row"><span>ภาษีสรรพสามิตรวม</span><span>${fmtMoney(totalExcise)}</span></div>
-      <div class="row"><span>ภาษีบำรุงท้องถิ่นรวม</span><span>${fmtMoney(totalLocal)}</span></div>
       <div class="row"><span>รวมค่าภาษี (ก่อน VAT)</span><span>${fmtMoney(totalTax)}</span></div>
       <div class="row"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>${fmtMoney(vat)}</span></div>
       <div class="row grand"><span>ยอดวางบิลสุทธิ (รวม VAT)</span><span>${fmtMoney(grand)}</span></div>
