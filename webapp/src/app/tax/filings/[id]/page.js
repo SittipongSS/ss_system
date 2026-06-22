@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, ArrowLeft, Pencil, Wallet, Send, FileCheck, Trash2 } from "lucide-react";
+import { ReceiptText, ArrowLeft, Pencil, Wallet, Send, FileCheck, Trash2, Printer } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, fmtDate } from "@/lib/format";
@@ -15,6 +15,7 @@ import OrderFormModal from "@/components/excise/OrderFormModal";
 import ReceiveDialog from "@/components/excise/ReceiveDialog";
 import FileTaxDialog from "@/components/excise/FileTaxDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { openBillPrintWindow } from "@/lib/tax/billPrint";
 
 const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
 const ORDER = ["pending", "received", "filing", "complete"];
@@ -53,6 +54,7 @@ export default function FilingDetailPage() {
 
   const o = useMemo(() => orders.find((x) => x.id === id) || null, [orders, id]);
   const isExempt = (o?.totalTax || 0) === 0;
+  const customer = customers.find((c) => c.id === o?.customerId) || {};
 
   const [formOpen, setFormOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
@@ -165,6 +167,9 @@ export default function FilingDetailPage() {
 
           {/* Actions */}
           <div className="flex justify-end gap-2 flex-wrap">
+            <button className="btn btn-secondary flex items-center gap-1.5" style={{ marginRight: "auto" }} onClick={() => openBillPrintWindow(o, customer)}>
+              <Printer size={15} /> ออกใบวางบิลภาษี
+            </button>
             {canAct && o.status === "pending" && (
               <>
                 <button className="btn btn-secondary flex items-center gap-1.5" onClick={() => setFormOpen(true)}><Pencil size={15} /> แก้ไข</button>
