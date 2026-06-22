@@ -14,7 +14,7 @@ import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import ApproveDialog from "@/components/excise/ApproveDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { requiredDocKeys, attachmentTypeLabel } from "@/lib/master/attachmentTypes";
+import { requiredDocKeys, attachmentTypeLabel, customerDocTypes } from "@/lib/master/attachmentTypes";
 
 const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
 const REQUIRED_REG_DOCS = requiredDocKeys("registration");
@@ -48,6 +48,7 @@ export default function RegistrationDetailPage() {
   const { data: customers } = useApiList("/api/customers");
 
   const s = useMemo(() => regs.find((r) => r.id === id) || null, [regs, id]);
+  const customer = customers.find((c) => c.id === s?.customerId) || {};
 
   const [formOpen, setFormOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
@@ -158,6 +159,21 @@ export default function RegistrationDetailPage() {
               cardColumns={1}
             />
           </div>
+
+          {/* Customer documents (incl. แผนที่บริษัท) — read-only; managed on the
+              customer record, not re-attached here. */}
+          {s.customerId && (
+            <div className="glass-panel" style={{ padding: 16 }}>
+              <AttachmentsPanel
+                entityType="customer"
+                entityId={s.customerId}
+                canEdit={false}
+                docTypes={customerDocTypes(customer.customerType)}
+                title={`เอกสารลูกค้า${customer.name ? ` — ${customer.name}` : ""} (อ่านอย่างเดียว)`}
+                cardColumns={1}
+              />
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex justify-end gap-2 flex-wrap">

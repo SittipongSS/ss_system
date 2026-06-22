@@ -66,11 +66,11 @@ export const ATTACHMENT_TYPES = {
     { key: "other", label: "เอกสารอื่นๆ" },
   ],
   // เอกสารการขึ้นทะเบียนสรรพสามิต ผูกกับ excise_registration. การ์ด required
-  // (แผนที่ + ฉลาก/Artwork) ต้องแนบครบก่อน SA ถึงจะ "ยื่นขึ้นทะเบียน" (draft →
+  // (ฉลาก/Artwork) ต้องแนบครบก่อน SA ถึงจะ "ยื่นขึ้นทะเบียน" (draft →
   // pending_legal) ได้ — ตรวจทั้งฝั่ง UI และ API. ใบอนุมัติได้มาหลังอนุมัติ
-  // (ฝั่ง LG แนบ) จึงไม่ required.
+  // (ฝั่ง LG แนบ) จึงไม่ required. แผนที่บริษัท (address_map) เป็นเอกสารระดับ
+  // ลูกค้า แนบตอนเพิ่มลูกค้าแล้ว — โชว์อ่านอย่างเดียวในหน้าทะเบียน ไม่แนบซ้ำ.
   registration: [
-    { key: "map", label: "แผนที่สถานประกอบการ", required: true },
     { key: "label_artwork", label: "ฉลาก / Artwork ที่ยื่น", required: true },
     { key: "approval_letter", label: "ใบอนุมัติขึ้นทะเบียน", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
