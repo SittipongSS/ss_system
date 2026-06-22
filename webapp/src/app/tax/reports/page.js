@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, FileSpreadsheet, Printer } from "lucide-react";
+import { BarChart3, FileSpreadsheet, Printer, FolderArchive } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -71,6 +71,11 @@ export default function ReportsPage() {
     a.href = `/api/tax/reports?${query}&format=xlsx`;
     a.click();
   };
+  const downloadZip = () => {
+    const a = document.createElement("a");
+    a.href = `/api/tax/reports?${query}&format=zip`;
+    a.click();
+  };
   const print = () => report && openReportPrintWindow(report, { from, to, customerName });
 
   const summary = report?.summary;
@@ -82,6 +87,11 @@ export default function ReportsPage() {
       subtitle="สรุปข้อมูลภาษีตามมุมมองต่าง ๆ พร้อมส่งออก Excel และพิมพ์ PDF"
       headerRight={
         <>
+          {type === "registration" && (
+            <button className="btn btn-secondary flex items-center gap-1.5" onClick={downloadZip} disabled={!report?.rows?.length} title="ดาวน์โหลดไฟล์แนบทั้งหมด แบ่งโฟลเดอร์ตามรายการสินค้า">
+              <FolderArchive size={16} /> ไฟล์แนบ (ZIP)
+            </button>
+          )}
           <button className="btn btn-secondary flex items-center gap-1.5" onClick={print} disabled={!report?.rows?.length}>
             <Printer size={16} /> พิมพ์ / PDF
           </button>

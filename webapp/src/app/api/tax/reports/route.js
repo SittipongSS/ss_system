@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { viewScope, can } from '@/lib/permissions';
 import { buildReport, REPORTS } from '@/lib/tax/reports';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
+import { buildRegistrationFilesZip } from '@/lib/tax/registrationFiles';
 
 // exceljs needs the Node runtime (not edge). Always dynamic — depends on user.
 export const runtime = 'nodejs';
@@ -27,6 +28,25 @@ export async function GET(request) {
     // Factory cost/profit columns are confidential — LG + admin only.
     margin: can(user?.role, 'products:margin'),
   };
+
+  // ZIP of attachment files, foldered per registration (registration report only).
+  if (format === 'zip') {
+    if (type !== 'registration') {
+      return Response.json({ error: 'ดาวน์โหลดไฟล์แนบรองรับเฉพาะรายงานการขึ้นทะเบียน' }, { status: 400 });
+    }
+    try {
+      const { buffer } = await buildRegistrationFilesZip(filter);
+      const fname = `registration-files-${new Date().toISOString().slice(0, 10)}.zip`;
+      return new Response(buffer, {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="${fname}"`,
+        },
+      });
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
 
   let report;
   try {
