@@ -25,6 +25,7 @@ export async function GET(request) {
     to: searchParams.get('to') || null,
     team,
     customerId: searchParams.get('customerId') || null,
+    status: searchParams.get('status') || null,
     // Factory cost/profit columns are confidential — LG + admin only.
     margin: can(user?.role, 'products:margin'),
   };

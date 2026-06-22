@@ -7,6 +7,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import DataList from "@/components/excise/DataList";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { openReportPrintWindow } from "@/lib/tax/reportPrint";
+import { REGISTRATION_FILTERS, FILING_FILTERS } from "@/lib/excise/workflow";
 
 const REPORT_TABS = [
   { key: "registration", label: "การขึ้นทะเบียน" },
@@ -19,16 +20,20 @@ export default function ReportsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [customerId, setCustomerId] = useState("");
+  const [status, setStatus] = useState("all");
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const statusFilters = type === "registration" ? REGISTRATION_FILTERS : FILING_FILTERS;
 
   const query = useMemo(() => {
     const p = new URLSearchParams({ type });
     if (from) p.set("from", from);
     if (to) p.set("to", to);
     if (customerId) p.set("customerId", customerId);
+    if (status && status !== "all") p.set("status", status);
     return p.toString();
-  }, [type, from, to, customerId]);
+  }, [type, from, to, customerId, status]);
 
   useEffect(() => {
     let alive = true;
@@ -104,7 +109,7 @@ export default function ReportsPage() {
         <div className="toolbar">
           <div className="segmented">
             {REPORT_TABS.map((t) => (
-              <button key={t.key} className={type === t.key ? "active" : ""} onClick={() => setType(t.key)}>{t.label}</button>
+              <button key={t.key} className={type === t.key ? "active" : ""} onClick={() => { setType(t.key); setStatus("all"); }}>{t.label}</button>
             ))}
           </div>
           <div className="spacer" />
@@ -114,6 +119,15 @@ export default function ReportsPage() {
           <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
             ถึง <input type="date" className="premium-input" style={{ height: "var(--ctl-h)" }} value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
+          <div style={{ width: 160 }}>
+            <SearchableSelect
+              value={status}
+              onChange={setStatus}
+              size="sm"
+              placeholder="ทุกสถานะ"
+              options={statusFilters.map((f) => ({ value: f.key, label: f.label }))}
+            />
+          </div>
           <div style={{ width: 200 }}>
             <SearchableSelect
               value={customerId}
