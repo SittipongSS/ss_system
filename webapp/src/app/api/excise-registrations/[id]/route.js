@@ -86,17 +86,20 @@ export async function PATCH(request, { params }) {
   }
 
   // Submit for approval: SA (products:edit, no legal:approve) moves a draft (first
-  // submit) or a rejected (resubmit) registration into the LG queue. Gated on the
-  // required documents (แผนที่ + ฉลาก/Artwork) being attached first — hard block.
+  // submit) or a rejected (resubmit) registration into the LG queue. Hard-blocked
+  // until the required docs are present: ฉลาก/Artwork on the registration, AND the
+  // company map (address_map) on the CUSTOMER record (shared master data — the map
+  // is attached once to the customer, never duplicated per registration).
   if (body.status === 'pending_legal' && (reg.status === 'draft' || reg.status === 'rejected') && can(user?.role, 'products:edit')) {
-    const required = requiredDocKeys('registration');
-    if (required.length) {
-      const present = new Set((await listAttachments('registration', id)).map((a) => a.docType));
-      const missing = required.filter((k) => !present.has(k));
-      if (missing.length) {
-        const labels = missing.map((k) => attachmentTypeLabel('registration', k));
-        return Response.json({ error: `กรุณาแนบเอกสารให้ครบก่อนยื่น: ${labels.join(', ')}` }, { status: 400 });
-      }
+    const missing = [];
+    const regPresent = new Set((await listAttachments('registration', id)).map((a) => a.docType));
+    for (const k of requiredDocKeys('registration')) {
+      if (!regPresent.has(k)) missing.push(attachmentTypeLabel('registration', k));
+    }
+    const custPresent = new Set((await listAttachments('customer', reg.customerId)).map((a) => a.docType));
+    if (!custPresent.has('address_map')) missing.push(attachmentTypeLabel('customer', 'address_map'));
+    if (missing.length) {
+      return Response.json({ error: `กรุณาแนบเอกสารให้ครบก่อนยื่น: ${missing.join(', ')}` }, { status: 400 });
     }
     updated.status = 'pending_legal';
     updated.rejectionReason = null;
