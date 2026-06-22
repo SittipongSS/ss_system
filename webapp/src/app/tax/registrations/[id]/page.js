@@ -14,7 +14,7 @@ import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import ApproveDialog from "@/components/excise/ApproveDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { requiredDocKeys, attachmentTypeLabel } from "@/lib/master/attachmentTypes";
+import { requiredDocKeys, attachmentTypeLabel, customerDocTypes } from "@/lib/master/attachmentTypes";
 
 const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
 const REQUIRED_REG_DOCS = requiredDocKeys("registration");
@@ -48,18 +48,26 @@ export default function RegistrationDetailPage() {
   const { data: customers } = useApiList("/api/customers");
 
   const s = useMemo(() => regs.find((r) => r.id === id) || null, [regs, id]);
+  const customer = customers.find((c) => c.id === s?.customerId) || {};
 
   const [formOpen, setFormOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const [attachItems, setAttachItems] = useState([]);
-  useEffect(() => { setAttachItems([]); }, [id]);
+  const [attachItems, setAttachItems] = useState([]);   // registration docs
+  const [custItems, setCustItems] = useState([]);        // customer docs (shared)
+  useEffect(() => { setAttachItems([]); setCustItems([]); }, [id]);
+  // Required-doc labels still missing before the draft can be submitted:
+  // registration docs (ฉลาก/Artwork) + the company map pulled from the customer.
   const missingDocs = useMemo(() => {
-    const present = new Set(attachItems.map((a) => a.docType));
-    return REQUIRED_REG_DOCS.filter((k) => !present.has(k));
-  }, [attachItems]);
+    const out = [];
+    const regPresent = new Set(attachItems.map((a) => a.docType));
+    for (const k of REQUIRED_REG_DOCS) if (!regPresent.has(k)) out.push(attachmentTypeLabel("registration", k));
+    const custPresent = new Set(custItems.map((a) => a.docType));
+    if (!custPresent.has("address_map")) out.push(attachmentTypeLabel("customer", "address_map"));
+    return out;
+  }, [attachItems, custItems]);
 
   const submitDraft = async () => {
     const res = await fetch(`/api/excise-registrations/${s.id}`, {
@@ -143,7 +151,7 @@ export default function RegistrationDetailPage() {
               style={{ fontSize: 12.5, border: "1px solid var(--border)", background: missingDocs.length ? "var(--amber-soft)" : "var(--green-soft)", color: missingDocs.length ? "var(--amber)" : "var(--green)" }}
             >
               {missingDocs.length
-                ? `ยังขาดเอกสารที่จำเป็น: ${missingDocs.map((k) => attachmentTypeLabel("registration", k)).join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`
+                ? `ยังขาดเอกสารที่จำเป็น: ${missingDocs.join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`
                 : "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่ายกฎหมายตรวจ"}
             </div>
           )}
@@ -159,6 +167,23 @@ export default function RegistrationDetailPage() {
             />
           </div>
 
+          {/* Customer documents (incl. แผนที่บริษัท) — same shared customer record.
+              The map is pulled from here; if missing, SA can attach it and it is
+              saved to the customer (not duplicated on the registration). */}
+          {s.customerId && (
+            <div className="glass-panel" style={{ padding: 16 }}>
+              <AttachmentsPanel
+                entityType="customer"
+                entityId={s.customerId}
+                canEdit={canEdit}
+                docTypes={customerDocTypes(customer.customerType)}
+                title={`เอกสารลูกค้า${customer.name ? ` — ${customer.name}` : ""} (ฐานข้อมูลเดียวกับหน้าลูกค้า)`}
+                onItemsChange={setCustItems}
+                cardColumns={1}
+              />
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex justify-end gap-2 flex-wrap">
             {canApprove && s.status === "pending_legal" && (
@@ -171,7 +196,7 @@ export default function RegistrationDetailPage() {
               <button
                 className="btn btn-primary flex items-center gap-1.5"
                 disabled={missingDocs.length > 0}
-                title={missingDocs.length ? `ต้องแนบ: ${missingDocs.map((k) => attachmentTypeLabel("registration", k)).join(", ")}` : ""}
+                title={missingDocs.length ? `ต้องแนบ: ${missingDocs.join(", ")}` : ""}
                 onClick={() => submitDraft().catch((e) => alert(e.message))}
               >
                 <Send size={15} /> ยื่นขึ้นทะเบียน
