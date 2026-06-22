@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtMoney } from "@/lib/format";
+import { UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 // LG records the excise payment and marks the order 'complete': receipt number,
 // actual paid amount, actual payment date (taxPaidDate, additive), ภส. form ref,
@@ -35,25 +36,53 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
     setBusy(true);
     setError(null);
     try {
-      let exciseReceiptFileUrl;
-      if (file) {
+      // 1) อัปไฟล์ใบเสร็จก่อน (ถ้ามี) — server บังคับ login/ขนาด/ชนิดไฟล์.
+      //    ทำก่อน PATCH เพื่อให้ไฟล์ใหญ่/ผิดชนิดล้มก่อนปิดงาน (UX ดีกว่า).
+      let receiptUrl = null;
+      if (file && !isExempt) {
         const fd = new FormData();
         fd.append("file", file);
-        fd.append("customerName", "excise_receipts");
+        fd.append("customerName", `order-${order.id}`);
         const up = await fetch("/api/upload", { method: "POST", body: fd });
         if (!up.ok) throw new Error((await up.json().catch(() => ({})))?.error || "อัปโหลดไฟล์ไม่สำเร็จ");
-        exciseReceiptFileUrl = (await up.json()).url;
+        receiptUrl = (await up.json()).url;
       }
+      // 2) บันทึกข้อมูลชำระภาษี + ปิดงาน (ไฟล์ไม่เก็บเป็นคอลัมน์อีกต่อไป).
       const body = { status: "complete" };
       if (!isExempt) {
         body.exciseReceiptNumber = receiptNumber.trim();
         body.exciseTaxPaidAmount = paidAmount ? Number(paidAmount) : order.totalTax;
         if (paidDate) body.taxPaidDate = paidDate;
         if (formRef.trim()) body.taxFormRef = formRef.trim();
-        if (exciseReceiptFileUrl) body.exciseReceiptFileUrl = exciseReceiptFileUrl;
       }
       const res = await fetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถบันทึกได้");
+      // 3) แนบไฟล์ใบเสร็จเข้าตาราง attachments (order/tax_receipt) — โผล่รวมใน
+      //    AttachmentsPanel. best-effort: ปิดงานสำเร็จแล้ว ถ้าแนบพลาดแนบเองได้.
+      if (receiptUrl) {
+        try {
+          await fetch("/api/master/attachments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              entityType: "order",
+              entityId: order.id,
+              docType: "tax_receipt",
+              fileUrl: receiptUrl,
+              fileName: file.name,
+              mimeType: file.type || null,
+              sizeBytes: file.size,
+              metadata: {
+                referenceNo: receiptNumber.trim() || undefined,
+                paidDate: paidDate || undefined,
+                amount: paidAmount ? Number(paidAmount) : (order.totalTax || undefined),
+              },
+            }),
+          });
+        } catch (attErr) {
+          console.error("attach receipt failed:", attErr);
+        }
+      }
       onDone?.();
       onClose();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
@@ -91,7 +120,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
                 </div>
                 <div className="form-group">
                   <label>แนบไฟล์ใบเสร็จ/แบบ ภส.</label>
-                  <input type="file" className="premium-input w-full" style={{ fontSize: 12 }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                  <input type="file" accept={UPLOAD_ACCEPT_ATTR} className="premium-input w-full" style={{ fontSize: 12 }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
                 </div>
               </div>
             </>
