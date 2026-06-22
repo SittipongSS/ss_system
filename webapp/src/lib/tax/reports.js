@@ -55,7 +55,7 @@ async function fetchProductMap() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('products')
-    .select('id, costPrice, factoryProfit, retailPriceIncVat, retailPriceExVat');
+    .select('id, costPrice, materialCost, laborCost, shippingCost, factoryProfit, retailPriceIncVat, retailPriceExVat');
   if (error) throw error;
   const m = new Map();
   for (const p of data || []) m.set(p.id, p);
@@ -64,9 +64,9 @@ async function fetchProductMap() {
 
 // 1) รายงานการขึ้นทะเบียน — one row per registration.
 export async function registrationReport(filter = {}) {
-  const { from, to, margin } = filter;
+  const { from, to, margin, status } = filter;
   const regs = (await fetchRegistrations(filter)).filter(
-    (r) => (!from && !to ? true : inRange(r.createdAt, from, to)),
+    (r) => (!from && !to ? true : inRange(r.createdAt, from, to)) && (!status || status === 'all' || r.status === status),
   );
   const products = await fetchProductMap();
 
@@ -82,7 +82,17 @@ export async function registrationReport(filter = {}) {
       owner: two(r.assignee || '-', teamLabel(r.team)),
       status: statusLabel(r.status),
     };
-    if (margin) row.factory = two(money(p.costPrice), `กำไร ${money(p.factoryProfit)}`);
+    if (margin) {
+      // Factory cost broken down into its components + profit (cost = วัตถุดิบ +
+      // ค่าแรง + ค่าจัดส่ง). Rendered as a main line (ราคาโรงงาน) + sub lines.
+      row.factory = [
+        `ราคาโรงงาน ${money(p.costPrice)}`,
+        `· วัตถุดิบ ${money(p.materialCost)}`,
+        `· ค่าแรง ${money(p.laborCost)}`,
+        `· ค่าจัดส่ง ${money(p.shippingCost)}`,
+        `กำไร ${money(p.factoryProfit)}`,
+      ].join('\n');
+    }
     return row;
   });
 
@@ -91,7 +101,7 @@ export async function registrationReport(filter = {}) {
     { key: 'productName', label: 'สินค้า' },
     { key: 'brandName', label: 'แบรนด์' },
     { key: 'customer', label: 'ลูกค้า / เลขผู้เสียภาษี', multiline: true },
-    ...(margin ? [{ key: 'factory', label: 'ราคาโรงงาน / กำไร', multiline: true }] : []),
+    ...(margin ? [{ key: 'factory', label: 'ราคาโรงงาน (แจกแจง) / กำไร', multiline: true }] : []),
     { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
     { key: 'owner', label: 'ผู้รับผิดชอบ / ทีม', multiline: true },
     { key: 'status', label: 'สถานะ' },
@@ -111,9 +121,9 @@ export async function registrationReport(filter = {}) {
 
 // 2) รายงานการยื่นภาษี — one row per order line item (within createdAt range).
 export async function filingReport(filter = {}) {
-  const { from, to } = filter;
+  const { from, to, status } = filter;
   const orders = (await fetchOrders(filter)).filter(
-    (o) => (!from && !to ? true : inRange(o.createdAt, from, to)),
+    (o) => (!from && !to ? true : inRange(o.createdAt, from, to)) && (!status || status === 'all' || o.status === status),
   );
   const rows = [];
   for (const o of orders) {
