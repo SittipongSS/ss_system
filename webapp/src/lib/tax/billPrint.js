@@ -24,29 +24,30 @@ const fmtDate = (v) => {
 
 export function buildBillPrintHTML(order, customer = {}) {
   const items = order.items || [];
+  const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;   // round to 2 decimals
   // Tax-only: per line we bill the snapshot excise + local tax (already computed
-  // from the VAT-excluded retail price at registration). VAT 7% added on total.
+  // from the VAT-excluded retail price at registration). The per-unit tax is
+  // ROUNDED first, then multiplied by qty, so the printed document reconciles by
+  // hand (ภาษี/ชิ้น × จำนวน = รวมภาษี exactly). VAT 7% added on the total.
   const lines = items.map((it, i) => {
     const p = it.product || {};
     const qty = Number(it.quantity) || 0;
-    const excise = Number(it.totalExciseTax) || 0;
-    const local = Number(it.totalLocalTax) || 0;
-    const tax = Number(it.totalTax) || 0;
     const incVat = p.retailPriceIncVat != null ? Number(p.retailPriceIncVat) : 0;
     const exVat = p.retailPriceExVat != null ? Number(p.retailPriceExVat) : (incVat ? incVat / (1 + VAT_RATE) : 0);
+    const rawPerUnit = qty ? (Number(it.totalTax) || 0) / qty : 0;   // ภาษี/ชิ้น (สรรพสามิต + ท้องถิ่น)
+    const perUnit = r2(rawPerUnit);
     return {
       i: i + 1,
       fgCode: p.fgCode || it.registration?.fgCode || "-",
       name: p.productDescription || it.registration?.productName || "-",
-      qty, incVat, exVat,
-      perUnit: qty ? tax / qty : 0,   // ภาษี/ชิ้น (สรรพสามิต + ท้องถิ่น)
-      excise, local, tax,
+      qty, incVat, exVat, perUnit,
+      tax: r2(perUnit * qty),         // line total from the rounded per-unit
     };
   });
   const sum = (k) => lines.reduce((s, l) => s + l[k], 0);
   const totalTax = sum("tax");        // excise + local being billed (ก่อน VAT)
-  const vat = totalTax * VAT_RATE;
-  const grand = totalTax + vat;       // net total billed to the customer (incl VAT)
+  const vat = r2(totalTax * VAT_RATE);
+  const grand = r2(totalTax + vat);   // net total billed to the customer (incl VAT)
 
   const rows = lines.map((l) => `<tr>
     <td class="c-no">${l.i}</td>
