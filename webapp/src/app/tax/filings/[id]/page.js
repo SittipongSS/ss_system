@@ -160,8 +160,9 @@ export default function FilingDetailPage() {
             <AttachmentsPanel
               entityType="order"
               entityId={o.id}
-              canEdit={canApprove}
+              canEdit={canAct || canApprove}
               title="เอกสารการชำระสรรพสามิต"
+              cardColumns={1}
             />
           </div>
 
