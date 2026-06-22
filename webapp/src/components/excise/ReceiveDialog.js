@@ -8,10 +8,11 @@ import { fmtMoney } from "@/lib/format";
 export default function ReceiveDialog({ open, onClose, onDone, order }) {
   const isExempt = (order?.totalTax || 0) === 0;
   const [receiptNumber, setReceiptNumber] = useState("");
+  const [file, setFile] = useState(null);   // หลักฐานการชำระจากลูกค้า
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => { if (open) { setReceiptNumber(""); setError(null); } }, [open, order?.id]);
+  useEffect(() => { if (open) { setReceiptNumber(""); setFile(null); setError(null); } }, [open, order?.id]);
   if (!order) return null;
 
   const submit = async (e) => {
@@ -24,6 +25,22 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
     try {
       const res = await fetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถทำรายการได้");
+      // หลักฐานการชำระจากลูกค้า → เก็บเข้า attachments ของออเดอร์ (best-effort)
+      if (file) {
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          fd.append("customerName", `order-${order.id}`);
+          const up = await fetch("/api/upload", { method: "POST", body: fd });
+          if (up.ok) {
+            const { url } = await up.json();
+            await fetch("/api/master/attachments", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ entityType: "order", entityId: order.id, docType: "excise_proof", fileUrl: url, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size }),
+            });
+          }
+        } catch { /* ออเดอร์ย้ายสถานะแล้ว แนบไฟล์เพิ่มทีหลังได้ */ }
+      }
       onDone?.();
       onClose();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
@@ -45,6 +62,11 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
               <input className="premium-input w-full font-mono" value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} required placeholder="เลขที่ใบกำกับภาษี/ใบเสร็จของ S&S" />
             </div>
           )}
+          <div className="form-group">
+            <label>แนบหลักฐานการชำระจากลูกค้า</label>
+            <input type="file" accept=".pdf,image/png,image/jpeg,image/webp" className="premium-input w-full" style={{ fontSize: 12 }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>เช่น สลิปโอนเงิน/หลักฐานที่ลูกค้าส่งมา (แนบทีหลังที่หน้ารายละเอียดก็ได้)</p>
+          </div>
           {error && <div style={{ fontSize: 13, color: "var(--red)" }}>{error}</div>}
         </div>
         <div className="drawer-section flex justify-end gap-2">

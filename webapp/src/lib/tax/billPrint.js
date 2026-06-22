@@ -24,29 +24,30 @@ const fmtDate = (v) => {
 
 export function buildBillPrintHTML(order, customer = {}) {
   const items = order.items || [];
+  const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;   // round to 2 decimals
   // Tax-only: per line we bill the snapshot excise + local tax (already computed
-  // from the VAT-excluded retail price at registration). VAT 7% added on total.
+  // from the VAT-excluded retail price at registration). The per-unit tax is
+  // ROUNDED first, then multiplied by qty, so the printed document reconciles by
+  // hand (ภาษี/ชิ้น × จำนวน = รวมภาษี exactly). VAT 7% added on the total.
   const lines = items.map((it, i) => {
     const p = it.product || {};
     const qty = Number(it.quantity) || 0;
-    const excise = Number(it.totalExciseTax) || 0;
-    const local = Number(it.totalLocalTax) || 0;
-    const tax = Number(it.totalTax) || 0;
     const incVat = p.retailPriceIncVat != null ? Number(p.retailPriceIncVat) : 0;
     const exVat = p.retailPriceExVat != null ? Number(p.retailPriceExVat) : (incVat ? incVat / (1 + VAT_RATE) : 0);
+    const rawPerUnit = qty ? (Number(it.totalTax) || 0) / qty : 0;   // ภาษี/ชิ้น (สรรพสามิต + ท้องถิ่น)
+    const perUnit = r2(rawPerUnit);
     return {
       i: i + 1,
       fgCode: p.fgCode || it.registration?.fgCode || "-",
       name: p.productDescription || it.registration?.productName || "-",
-      qty, incVat, exVat,
-      perUnit: qty ? tax / qty : 0,   // ภาษี/ชิ้น (สรรพสามิต + ท้องถิ่น)
-      excise, local, tax,
+      qty, incVat, exVat, perUnit,
+      tax: r2(perUnit * qty),         // line total from the rounded per-unit
     };
   });
   const sum = (k) => lines.reduce((s, l) => s + l[k], 0);
   const totalTax = sum("tax");        // excise + local being billed (ก่อน VAT)
-  const vat = totalTax * VAT_RATE;
-  const grand = totalTax + vat;       // net total billed to the customer (incl VAT)
+  const vat = r2(totalTax * VAT_RATE);
+  const grand = r2(totalTax + vat);   // net total billed to the customer (incl VAT)
 
   const rows = lines.map((l) => `<tr>
     <td class="c-no">${l.i}</td>
@@ -65,6 +66,9 @@ export function buildBillPrintHTML(order, customer = {}) {
 
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"/>
 <title>ใบวางบิลค่าภาษีสรรพสามิต ${esc(order.quotationRef || order.id || "")}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #eef0f3; color: #21385e; font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; font-size: 12px; }
@@ -95,7 +99,7 @@ export function buildBillPrintHTML(order, customer = {}) {
   thead th { background: #e8e2d9; color: #21385e; font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.2; }
   .c-no { text-align: center; font-size: 9.5px; width: 18px; }
   .c-desc { text-align: left; font-size: 10.5px; }
-  .c-desc .fg-code { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 10px; color: #c17a52; }
+  .c-desc .fg-code { font-weight: 700; font-size: 10px; color: #c17a52; letter-spacing: .3px; }
   .c-desc .p-name { font-weight: 600; color: #21385e; margin-top: 1px; }
   .c-desc .c-sub { font-size: 8.5px; color: #837868; margin-top: 2px; font-weight: 400; }
   .c-num { text-align: right; font-size: 10px; width: 48px; }
@@ -147,7 +151,6 @@ export function buildBillPrintHTML(order, customer = {}) {
         </div>
       </div>
       <div class="doc-title">
-        <div class="formno">เลขที่อ้างอิง</div>
         <div class="big">EXCISE TAX</div>
         <div class="sub">${esc(order.quotationRef || order.id || "-")}</div>
       </div>
@@ -155,15 +158,15 @@ export function buildBillPrintHTML(order, customer = {}) {
 
     <div class="header-grid">
       <div class="hcol left">
-        <div class="hrow"><span class="k">ลูกค้า</span><span class="v">${esc(customer.name || order.customerName || "-")}</span></div>
-        <div class="hrow"><span class="k">เลขผู้เสียภาษี</span><span class="v">${esc(taxId)}</span></div>
+        <div class="hrow"><span class="k">ชื่อลูกค้า</span><span class="v">${esc(customer.name || order.customerName || "-")}</span></div>
+        <div class="hrow"><span class="k">เลขประจำตัวผู้เสียภาษี</span><span class="v">${esc(taxId)}</span></div>
         <div class="hrow"><span class="k">ที่อยู่</span><span class="v">${esc(address)}</span></div>
       </div>
       <div class="hcol">
-        <div class="hrow"><span class="k">ใบเสนอราคา</span><span class="v">${esc(order.quotationRef || "-")}</span></div>
-        <div class="hrow"><span class="k">เลขที่ PO</span><span class="v">${esc(order.poReference || "-")}</span></div>
-        <div class="hrow"><span class="k">วันที่</span><span class="v">${fmtDate(order.createdAt)}</span></div>
-        <div class="hrow"><span class="k">กำหนดส่ง</span><span class="v">${order.deliveryDate && order.deliveryDate !== "-" ? fmtDate(order.deliveryDate) : "-"}</span></div>
+        <div class="hrow"><span class="k">เลขที่ใบเสนอราคา</span><span class="v">${esc(order.quotationRef || "-")}</span></div>
+        <div class="hrow"><span class="k">เลขที่ใบสั่งซื้อ (PO)</span><span class="v">${esc(order.poReference || "-")}</span></div>
+        <div class="hrow"><span class="k">วันที่เอกสาร</span><span class="v">${fmtDate(order.createdAt)}</span></div>
+        <div class="hrow"><span class="k">กำหนดส่งมอบ</span><span class="v">${order.deliveryDate && order.deliveryDate !== "-" ? fmtDate(order.deliveryDate) : "-"}</span></div>
       </div>
     </div>
 
@@ -176,9 +179,9 @@ export function buildBillPrintHTML(order, customer = {}) {
         <col style="width:104px"/>
       </colgroup>
       <thead><tr>
-        <th>#</th>
+        <th>no.</th>
         <th>รายการสินค้า</th>
-        <th>ภาษี/ชิ้น</th>
+        <th>ภาษี/หน่วย</th>
         <th>จำนวน</th>
         <th>รวมภาษี</th>
       </tr></thead>

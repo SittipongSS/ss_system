@@ -135,20 +135,37 @@ export default function FilingDetailPage() {
           </div>
 
           <div className="glass-panel" style={{ padding: 16 }}>
-            <div className="drawer-section-title" style={{ marginBottom: 8 }}>รายการสินค้า ({o.items?.length || 0})</div>
-            <div className="flex flex-col gap-1.5">
-              {(o.items || []).map((it) => {
-                const p = it.product || it.registration || {};
-                return (
-                  <div key={it.id} className="flex items-center justify-between" style={{ fontSize: 13, borderBottom: "1px solid var(--border)", paddingBottom: 6 }}>
-                    <span style={{ minWidth: 0 }} className="truncate">
-                      <span className="font-mono">{p.fgCode || "-"}</span> · {p.productDescription || p.productName || ""}
-                    </span>
-                    <span className="font-mono" style={{ flexShrink: 0, color: "var(--text-3)" }}>×{it.quantity} · {fmtMoney(it.totalTax || 0)}</span>
-                  </div>
-                );
-              })}
-            </div>
+            <div className="drawer-section-title" style={{ marginBottom: 10 }}>รายการสินค้า ({o.items?.length || 0})</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: "var(--text-3)", fontSize: 12, borderBottom: "1px solid var(--border)" }}>
+                  <th style={{ padding: "0 0 6px", fontWeight: 600, textAlign: "left" }}>รายการสินค้า</th>
+                  <th style={{ padding: "0 8px 6px", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>จำนวน</th>
+                  <th style={{ padding: "0 0 6px", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>รวมภาษี</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(o.items || []).map((it) => {
+                  const p = it.product || it.registration || {};
+                  return (
+                    <tr key={it.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "8px 0", verticalAlign: "top" }}>
+                        <div className="font-mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.fgCode || "-"}</div>
+                        <div>{p.productDescription || p.productName || ""}</div>
+                      </td>
+                      <td className="font-mono" style={{ padding: "8px", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{(it.quantity || 0).toLocaleString("th-TH")}</td>
+                      <td className="font-mono" style={{ padding: "8px 0", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmtMoney(it.totalTax || 0)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: 700 }}>
+                  <td colSpan={2} style={{ padding: "8px 8px 0 0", textAlign: "right" }}>รวมภาษี</td>
+                  <td className="font-mono" style={{ padding: "8px 0 0", textAlign: "right", color: "var(--red)" }}>{taxText(o)}</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
 
           <div className="glass-panel" style={{ padding: 16 }}>
@@ -160,8 +177,9 @@ export default function FilingDetailPage() {
             <AttachmentsPanel
               entityType="order"
               entityId={o.id}
-              canEdit={canApprove}
+              canEdit={canAct || canApprove}
               title="เอกสารการชำระสรรพสามิต"
+              cardColumns={1}
             />
           </div>
 
