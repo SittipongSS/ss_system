@@ -103,14 +103,6 @@ export default function OrderDetailModal({ order, open, onClose }) {
                 <div className="text-[var(--text-2)]">{order.filedByName} · {fmtDate(order.filedAt)}</div>
               </div>
             )}
-            {order.exciseReceiptFileUrl && (
-              <div className="col-span-2">
-                <a href={order.exciseReceiptFileUrl} target="_blank" rel="noreferrer"
-                   className="text-xs font-semibold text-[var(--accent)] hover:underline">
-                  เปิดไฟล์ใบเสร็จ/แบบ ภส.
-                </a>
-              </div>
-            )}
           </div>
         )}
 

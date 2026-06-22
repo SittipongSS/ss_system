@@ -79,7 +79,7 @@ create table if not exists public.orders (
   "poReference"          text,
   "receiptNumber"        text,          -- S&S invoice/receipt no. (Sales step)
   "taxDueDate"           text,          -- legal deadline to file/pay excise
-  "exciseReceiptFileUrl" text,          -- scanned Excise receipt / ภส. document
+  -- ไฟล์ใบเสร็จย้ายไปตาราง attachments (order/tax_receipt) ตั้งแต่ migration 0046
   "exciseReceiptNumber"  text,          -- Excise Dept receipt no.
   "exciseTaxPaidAmount"  numeric,       -- amount actually paid to Excise Dept
   "taxFormRef"           text,          -- ภส. form ref (e.g. ภส.03-07)
