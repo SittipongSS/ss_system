@@ -35,23 +35,22 @@ export function customerDocTypes(customerType) {
   return CUSTOMER_DOC_TYPES[customerType] || CUSTOMER_DOC_TYPES.company;
 }
 
+// union ของทุกประเภทเอกสารลูกค้า (company ∪ individual) — derive อัตโนมัติจาก
+// CUSTOMER_DOC_TYPES เพื่อไม่ต้อง sync มือ (เพิ่มคีย์ที่เดียวพอ). dedupe ด้วย key
+// (design_contract/other มีทั้งสองประเภท) คงลำดับที่เจอครั้งแรก.
+const customerDocTypesUnion = (() => {
+  const seen = new Map();
+  for (const list of Object.values(CUSTOMER_DOC_TYPES)) {
+    for (const t of list) if (!seen.has(t.key)) seen.set(t.key, t);
+  }
+  return [...seen.values()];
+})();
+
 export const ATTACHMENT_TYPES = {
-  // customer = union ของทุกคีย์ (ทั้ง 2 ประเภท + legacy) — ใช้ validate ฝั่ง API
+  // customer = union ของทุกคีย์ (ทั้ง 2 ประเภท) — ใช้ validate ฝั่ง API
   // (docType ที่ไม่อยู่ในนี้จะถูกตีเป็น 'other') และ lookup ป้ายชื่อ. การ์ดที่ UI
-  // แสดงเลือกตามประเภทผ่าน customerDocTypes().
-  customer: [
-    { key: "company_certificate", label: "หนังสือรับรองบริษัท (อายุไม่เกิน 6 เดือน)", required: true },
-    { key: "vat_pp20", label: "ภ.พ.20 (ทะเบียนภาษีมูลค่าเพิ่ม)", required: true },
-    { key: "director_id_card", label: "สำเนาบัตรประชาชนกรรมการผู้มีอำนาจลงนาม", required: true },
-    { key: "director_house_reg", label: "สำเนาทะเบียนบ้านกรรมการ (ถ้ามีการขอ)", required: false },
-    { key: "power_of_attorney", label: "หนังสือมอบอำนาจ (กรณีผู้ดำเนินการไม่ใช่กรรมการ)", required: false },
-    { key: "address_map", label: "แผนที่บริษัท", required: true },
-    { key: "id_card", label: "สำเนาบัตรประชาชน", required: true },
-    { key: "house_reg", label: "สำเนาทะเบียนบ้าน (ถ้ามีการขอ)", required: false },
-    { key: "name_change", label: "เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)", required: false },
-    { key: "design_contract", label: "สัญญาออกแบบกลิ่น", required: true },
-    { key: "other", label: "เอกสารอื่นๆ", required: false },
-  ],
+  // แสดงเลือกตามประเภทผ่าน customerDocTypes(). มาจาก CUSTOMER_DOC_TYPES ชุดเดียว.
+  customer: customerDocTypesUnion,
   product: [
     { key: "manufacturing_contract", label: "สัญญาจ้างผลิต", required: true },
     { key: "artwork", label: "Artwork สินค้า", required: true },
@@ -92,6 +91,20 @@ export const ATTACHMENT_META_FIELDS = {
 
 // entityType ที่ระบบรองรับในตอนนี้ (ใช้ validate ฝั่ง API).
 export const ATTACHMENT_ENTITY_TYPES = Object.keys(ATTACHMENT_TYPES);
+
+// ── ขนาดไฟล์สูงสุดต่อการอัปโหลด (คุมการใช้ storage/ค่าใช้จ่าย) ──────────
+// ค่ากลางชุดเดียว ใช้ทั้ง client (เช็คก่อนอัป) และ server (บังคับจริง).
+// ฝั่ง server override ได้ด้วย env SUPABASE_MAX_UPLOAD_MB.
+export const MAX_UPLOAD_MB = 10;
+export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
+// ── ชนิดไฟล์ที่อนุญาต (เอกสาร = PDF/รูป) ─────────────────────────────
+// ค่ากลางชุดเดียว: server ใช้บังคับจริง, client ใช้เป็น accept ของ <input>.
+export const ACCEPTED_UPLOAD_MIME = [
+  "application/pdf", "image/png", "image/jpeg", "image/webp",
+];
+export const ACCEPTED_UPLOAD_EXT = ["pdf", "png", "jpg", "jpeg", "webp"];
+export const UPLOAD_ACCEPT_ATTR = ".pdf,image/png,image/jpeg,image/webp";
 
 // docType ที่ "จำเป็น" ของ entity หนึ่งๆ (รับ override การ์ดได้ เช่น เอกสาร
 // ลูกค้าตามประเภท). ใช้บังคับแนบเอกสารก่อนยื่น — ทั้งฝั่ง UI และ API.

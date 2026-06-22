@@ -317,7 +317,7 @@ export const LEGAL_PRODUCT_FIELDS = ['status', 'approvalNumber', 'taxableOverrid
 export const LEGAL_REGISTRATION_FIELDS = ['status', 'approvalNumber', 'taxableOverride', 'rejectionReason'];
 export const LEGAL_ORDER_FIELDS = [
   'status', 'taxDueDate', 'taxPaidDate', 'exciseReceiptNumber', 'exciseTaxPaidAmount',
-  'exciseReceiptFileUrl', 'taxFormRef', 'rejectionReason',
+  'taxFormRef', 'rejectionReason',
 ];
 
 // The capability a sales user needs to write a resource's commercial fields,
