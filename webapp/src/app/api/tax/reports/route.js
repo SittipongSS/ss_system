@@ -1,5 +1,5 @@
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScope } from '@/lib/permissions';
+import { viewScope, can } from '@/lib/permissions';
 import { buildReport, REPORTS } from '@/lib/tax/reports';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 
@@ -24,6 +24,8 @@ export async function GET(request) {
     to: searchParams.get('to') || null,
     team,
     customerId: searchParams.get('customerId') || null,
+    // Factory cost/profit columns are confidential — LG + admin only.
+    margin: can(user?.role, 'products:margin'),
   };
 
   let report;

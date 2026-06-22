@@ -44,6 +44,7 @@ export async function reportToXlsxBuffer(report) {
       const cell = row.getCell(i + 1);
       if (c.money || c.num) cell.numFmt = c.money ? MONEY_FMT : '#,##0';
       if (c.date) cell.numFmt = 'dd/mm/yyyy';
+      if (c.multiline) cell.alignment = { wrapText: true, vertical: 'top' }; // "main\nsub"
     });
   });
 
@@ -65,7 +66,7 @@ export async function reportToXlsxBuffer(report) {
   // Auto-ish widths
   cols.forEach((c, i) => {
     const headerLen = (c.label || '').length;
-    ws.getColumn(i + 1).width = Math.min(40, Math.max(12, headerLen + 4, c.money ? 16 : 0));
+    ws.getColumn(i + 1).width = Math.min(40, Math.max(12, headerLen + 4, c.money ? 16 : 0, c.multiline ? 26 : 0));
   });
 
   const buf = await wb.xlsx.writeBuffer();

@@ -10,15 +10,12 @@ import { openReportPrintWindow } from "@/lib/tax/reportPrint";
 
 const REPORT_TABS = [
   { key: "registration", label: "การขึ้นทะเบียน" },
-  { key: "period", label: "ตามรอบยื่น" },
-  { key: "customer", label: "ตามลูกค้า" },
-  { key: "product", label: "ตามสินค้า/แบรนด์" },
-  { key: "aging", label: "ค้างยื่น/เกินกำหนด" },
+  { key: "filing", label: "การยื่นภาษี" },
 ];
 
 export default function ReportsPage() {
   const { data: customers } = useApiList("/api/customers");
-  const [type, setType] = useState("period");
+  const [type, setType] = useState("registration");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -53,6 +50,17 @@ export default function ReportsPage() {
       if (c.money) return <span className="font-mono">{v == null ? "-" : fmtMoney(v)}</span>;
       if (c.date) return fmtDate(v);
       if (c.num) return <span className="font-mono">{v == null ? "-" : Number(v).toLocaleString("th-TH")}</span>;
+      if (c.multiline) {
+        const [main, ...rest] = String(v ?? "-").split("\n");
+        return (
+          <div>
+            <div>{main}</div>
+            {rest.map((line, i) => (
+              <div key={i} style={{ fontSize: 11.5, color: "var(--text-3)" }}>{line}</div>
+            ))}
+          </div>
+        );
+      }
       return v ?? "-";
     },
   }));
@@ -111,14 +119,13 @@ export default function ReportsPage() {
       {summary && report?.rows?.length > 0 && (
         <div className="glass-panel flex items-center gap-6 flex-wrap mb-4" style={{ padding: "12px 16px" }}>
           <span style={{ fontWeight: 600 }}>{summary._label}</span>
-          {summary.totalTax != null && (
-            <span style={{ fontSize: 13 }}>รวมภาษี: <strong className="font-mono" style={{ color: "var(--red)" }}>{fmtMoney(summary.totalTax)}</strong></span>
+          {summary.qty != null && (
+            <span style={{ fontSize: 13 }}>จำนวนรวม: <strong className="font-mono">{Number(summary.qty).toLocaleString("th-TH")}</strong></span>
           )}
-          {summary.totalExciseTax != null && (
-            <span style={{ fontSize: 13, color: "var(--text-3)" }}>สรรพสามิต {fmtMoney(summary.totalExciseTax)} · ท้องถิ่น {fmtMoney(summary.totalLocalTax)}</span>
+          {summary.tax != null && (
+            <span style={{ fontSize: 13 }}>ยอดภาษีรวม: <strong className="font-mono" style={{ color: "var(--red)" }}>{fmtMoney(summary.tax)}</strong></span>
           )}
           {typeof summary.status === "string" && <span style={{ fontSize: 13, color: "var(--text-3)" }}>{summary.status}</span>}
-          {typeof summary.daysOverdue === "string" && <span style={{ fontSize: 13, color: "var(--text-3)" }}>{summary.daysOverdue}</span>}
         </div>
       )}
 
