@@ -66,6 +66,9 @@ export function buildBillPrintHTML(order, customer = {}) {
 
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"/>
 <title>ใบวางบิลค่าภาษีสรรพสามิต ${esc(order.quotationRef || order.id || "")}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #eef0f3; color: #21385e; font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; font-size: 12px; }
@@ -176,7 +179,7 @@ export function buildBillPrintHTML(order, customer = {}) {
         <col style="width:104px"/>
       </colgroup>
       <thead><tr>
-        <th>ที่</th>
+        <th>no.</th>
         <th>รายการสินค้า</th>
         <th>ภาษี/หน่วย</th>
         <th>จำนวน</th>
