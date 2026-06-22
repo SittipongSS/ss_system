@@ -5,9 +5,10 @@
 // Timeline document (lib/pm/ganttPrint.js): same fonts, colours, logo, layout.
 
 const COMPANY = "บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด";
-// Local brand asset (public/brand-logo.png). Resolved to an absolute URL so it
-// loads inside the about:blank print window.
-const LOGO_PATH = "/brand-logo.png";
+// Same remote logo as the Project Timeline document — proven to render inside the
+// about:blank print window (a same-origin /public path does not load there).
+const LOGO_URL =
+  "https://static.wixstatic.com/media/279c93_8f08407580cc4842ad6fae8b398eec3e~mv2.png/v1/fill/w_166,h_166,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/marque.png";
 const VAT_RATE = 0.07;
 
 const esc = (s) => String(s ?? "")
@@ -22,7 +23,6 @@ const fmtDate = (v) => {
 };
 
 export function buildBillPrintHTML(order, customer = {}) {
-  const logo = (typeof window !== "undefined" ? window.location.origin : "") + LOGO_PATH;
   const items = order.items || [];
   // Tax-only: per line we bill the snapshot excise + local tax (already computed
   // from the VAT-excluded retail price at registration). VAT 7% added on total.
@@ -52,14 +52,13 @@ export function buildBillPrintHTML(order, customer = {}) {
 
   const rows = lines.map((l) => `<tr>
     <td class="c-no">${l.i}</td>
-    <td class="c-fg">${esc(l.fgCode)}</td>
-    <td class="c-desc">${esc(l.name)}<div class="c-sub">ราคาขาย/หน่วย: ${fmtMoney(l.incVat)} (รวม VAT) · ${fmtMoney(l.exVat)} (ถอด VAT)</div></td>
+    <td class="c-desc"><span class="fg-code">${esc(l.fgCode)}</span> ${esc(l.name)}<div class="c-sub">ราคาขาย/หน่วย: ${fmtMoney(l.incVat)} (รวม VAT) · ${fmtMoney(l.exVat)} (ถอด VAT)</div></td>
     <td class="c-money">${fmtMoney(l.perUnit)}</td>
     <td class="c-num">${fmtInt(l.qty)}</td>
     <td class="c-money">${fmtMoney(l.excise)}</td>
     <td class="c-money">${fmtMoney(l.local)}</td>
     <td class="c-money">${fmtMoney(l.tax)}</td>
-  </tr>`).join("") || `<tr><td class="c-desc" colspan="8" style="text-align:center;color:#837868">ไม่มีรายการ</td></tr>`;
+  </tr>`).join("") || `<tr><td class="c-desc" colspan="7" style="text-align:center;color:#837868">ไม่มีรายการ</td></tr>`;
 
   const taxId = customer.taxId || order.customerTaxId || "-";
   const address = customer.address || "-";
@@ -94,9 +93,9 @@ export function buildBillPrintHTML(order, customer = {}) {
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { border: 1px solid #cfc9bf; padding: 5px 7px; word-break: break-word; }
   thead th { background: #e8e2d9; color: #21385e; font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.2; }
-  .c-no { text-align: center; font-size: 9.5px; width: 26px; }
-  .c-fg { font-size: 9.5px; width: 116px; }
+  .c-no { text-align: center; font-size: 9.5px; width: 22px; }
   .c-desc { text-align: left; font-size: 10.5px; }
+  .c-desc .fg-code { font-family: 'IBM Plex Mono', monospace; font-weight: 700; color: #21385e; }
   .c-desc .c-sub { font-size: 8.5px; color: #837868; margin-top: 2px; font-weight: 400; }
   .c-num { text-align: right; font-size: 10px; width: 48px; }
   .c-money { text-align: right; font-size: 10px; white-space: nowrap; width: 78px; }
@@ -140,7 +139,7 @@ export function buildBillPrintHTML(order, customer = {}) {
   <div class="sheet">
     <div class="doc-top">
       <div class="brand">
-        <div class="logo-wrap"><img class="logo-img" src="${logo}" alt="S&amp;S"/></div>
+        <div class="logo-wrap"><img class="logo-img" src="${LOGO_URL}" alt="S&amp;S"/></div>
         <div>
           <h2>${esc(COMPANY)}</h2>
           <div class="doc-name">ใบวางบิลค่าภาษีสรรพสามิต · Excise Tax Billing</div>
@@ -170,7 +169,6 @@ export function buildBillPrintHTML(order, customer = {}) {
     <table>
       <thead><tr>
         <th>#</th>
-        <th>รหัส FG</th>
         <th>รายการสินค้า</th>
         <th>ภาษี/ชิ้น</th>
         <th>จำนวน</th>
@@ -180,7 +178,7 @@ export function buildBillPrintHTML(order, customer = {}) {
       </tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr>
-        <td class="c-desc" colspan="5" style="text-align:right">รวม</td>
+        <td class="c-desc" colspan="4" style="text-align:right">รวม</td>
         <td class="c-money">${fmtMoney(totalExcise)}</td>
         <td class="c-money">${fmtMoney(totalLocal)}</td>
         <td class="c-money">${fmtMoney(totalTax)}</td>
@@ -195,12 +193,12 @@ export function buildBillPrintHTML(order, customer = {}) {
       <div class="row grand"><span>ยอดวางบิลสุทธิ (รวม VAT)</span><span>${fmtMoney(grand)}</span></div>
     </div>
 
-    <div class="note-line">หมายเหตุ: เอกสารนี้เรียกเก็บเฉพาะค่าภาษีสรรพสามิตและภาษีบำรุงท้องถิ่น ไม่รวมราคาสินค้า</div>
-
     <div class="signs">
       <div class="sign"><div class="sig-space"></div><div class="line"></div><div class="lbl">ผู้จัดทำ</div><div class="date">วันที่ ........./........./.........</div></div>
       <div class="sign"><div class="sig-space"></div><div class="line"></div><div class="lbl">ผู้รับเอกสาร / ลูกค้า</div><div class="date">วันที่ ........./........./.........</div></div>
     </div>
+
+    <div class="note-line">หมายเหตุ: เอกสารนี้เรียกเก็บเฉพาะค่าภาษีสรรพสามิตและภาษีบำรุงท้องถิ่น ไม่รวมราคาสินค้า</div>
   </div>
 </body></html>`;
 }
