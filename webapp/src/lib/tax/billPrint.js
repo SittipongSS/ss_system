@@ -96,7 +96,7 @@ export function buildBillPrintHTML(order, customer = {}) {
   thead th { background: #e8e2d9; color: #21385e; font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.2; }
   .c-no { text-align: center; font-size: 9.5px; width: 18px; }
   .c-desc { text-align: left; font-size: 10.5px; }
-  .c-desc .fg-code { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 10px; color: #c17a52; }
+  .c-desc .fg-code { font-weight: 700; font-size: 10px; color: #c17a52; letter-spacing: .3px; }
   .c-desc .p-name { font-weight: 600; color: #21385e; margin-top: 1px; }
   .c-desc .c-sub { font-size: 8.5px; color: #837868; margin-top: 2px; font-weight: 400; }
   .c-num { text-align: right; font-size: 10px; width: 48px; }
@@ -148,7 +148,6 @@ export function buildBillPrintHTML(order, customer = {}) {
         </div>
       </div>
       <div class="doc-title">
-        <div class="formno">เลขที่อ้างอิง</div>
         <div class="big">EXCISE TAX</div>
         <div class="sub">${esc(order.quotationRef || order.id || "-")}</div>
       </div>
@@ -156,15 +155,15 @@ export function buildBillPrintHTML(order, customer = {}) {
 
     <div class="header-grid">
       <div class="hcol left">
-        <div class="hrow"><span class="k">ลูกค้า</span><span class="v">${esc(customer.name || order.customerName || "-")}</span></div>
-        <div class="hrow"><span class="k">เลขผู้เสียภาษี</span><span class="v">${esc(taxId)}</span></div>
+        <div class="hrow"><span class="k">ชื่อลูกค้า</span><span class="v">${esc(customer.name || order.customerName || "-")}</span></div>
+        <div class="hrow"><span class="k">เลขประจำตัวผู้เสียภาษี</span><span class="v">${esc(taxId)}</span></div>
         <div class="hrow"><span class="k">ที่อยู่</span><span class="v">${esc(address)}</span></div>
       </div>
       <div class="hcol">
-        <div class="hrow"><span class="k">ใบเสนอราคา</span><span class="v">${esc(order.quotationRef || "-")}</span></div>
-        <div class="hrow"><span class="k">เลขที่ PO</span><span class="v">${esc(order.poReference || "-")}</span></div>
-        <div class="hrow"><span class="k">วันที่</span><span class="v">${fmtDate(order.createdAt)}</span></div>
-        <div class="hrow"><span class="k">กำหนดส่ง</span><span class="v">${order.deliveryDate && order.deliveryDate !== "-" ? fmtDate(order.deliveryDate) : "-"}</span></div>
+        <div class="hrow"><span class="k">เลขที่ใบเสนอราคา</span><span class="v">${esc(order.quotationRef || "-")}</span></div>
+        <div class="hrow"><span class="k">เลขที่ใบสั่งซื้อ (PO)</span><span class="v">${esc(order.poReference || "-")}</span></div>
+        <div class="hrow"><span class="k">วันที่เอกสาร</span><span class="v">${fmtDate(order.createdAt)}</span></div>
+        <div class="hrow"><span class="k">กำหนดส่งมอบ</span><span class="v">${order.deliveryDate && order.deliveryDate !== "-" ? fmtDate(order.deliveryDate) : "-"}</span></div>
       </div>
     </div>
 
@@ -177,9 +176,9 @@ export function buildBillPrintHTML(order, customer = {}) {
         <col style="width:104px"/>
       </colgroup>
       <thead><tr>
-        <th>#</th>
+        <th>ลำดับ</th>
         <th>รายการสินค้า</th>
-        <th>ภาษี/ชิ้น</th>
+        <th>ภาษี/หน่วย</th>
         <th>จำนวน</th>
         <th>รวมภาษี</th>
       </tr></thead>
