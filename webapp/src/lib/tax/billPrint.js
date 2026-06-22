@@ -176,7 +176,7 @@ export function buildBillPrintHTML(order, customer = {}) {
         <col style="width:104px"/>
       </colgroup>
       <thead><tr>
-        <th>ลำดับ</th>
+        <th>ที่</th>
         <th>รายการสินค้า</th>
         <th>ภาษี/หน่วย</th>
         <th>จำนวน</th>
