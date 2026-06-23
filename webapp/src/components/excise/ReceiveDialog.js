@@ -32,12 +32,14 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
           const fd = new FormData();
           fd.append("file", file);
           fd.append("customerName", `order-${order.id}`);
+          fd.append("entityType", "order");
+          fd.append("entityId", order.id);
           const up = await fetch("/api/upload", { method: "POST", body: fd });
           if (up.ok) {
-            const { url } = await up.json();
+            const { url, driveFileId } = await up.json();
             await fetch("/api/master/attachments", {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ entityType: "order", entityId: order.id, docType: "excise_proof", fileUrl: url, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size }),
+              body: JSON.stringify({ entityType: "order", entityId: order.id, docType: "excise_proof", fileUrl: url, driveFileId, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size }),
             });
           }
         } catch { /* ออเดอร์ย้ายสถานะแล้ว แนบไฟล์เพิ่มทีหลังได้ */ }

@@ -56,9 +56,19 @@ export async function buildRegistrationFilesZip({ team, customerId, from, to, id
     const used = new Set();
     for (const { a, prefix } of items) {
       try {
-        const res = await fetch(a.fileUrl);
-        if (!res.ok) continue;
-        const buf = Buffer.from(await res.arrayBuffer());
+        let buf;
+        if (a.driveFileId) {
+          // Drive backend: ไฟล์ private — ดึงผ่าน getFileStream ไม่ใช่ fetch ตรง.
+          const { getFileStream } = await import('@/lib/drive');
+          const stream = await getFileStream(a.driveFileId);
+          const chunks = [];
+          for await (const c of stream) chunks.push(c);
+          buf = Buffer.concat(chunks);
+        } else {
+          const res = await fetch(a.fileUrl);
+          if (!res.ok) continue;
+          buf = Buffer.from(await res.arrayBuffer());
+        }
         const name = uniqueName(used, sanitize(prefix + (a.fileName || a.docType || 'file')));
         folder.file(name, buf);
         fileCount++;

@@ -49,7 +49,7 @@ export async function POST(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
   const body = await request.json();
-  const { entityType, entityId, docType, fileUrl, fileName, mimeType, sizeBytes, metadata } = body;
+  const { entityType, entityId, docType, fileUrl, driveFileId, fileName, mimeType, sizeBytes, metadata } = body;
 
   if (!ATTACHMENT_ENTITY_TYPES.includes(entityType) || !entityId) {
     return Response.json({ error: 'entityType/entityId ไม่ถูกต้อง' }, { status: 400 });
@@ -78,6 +78,8 @@ export async function POST(request) {
     entityId,
     docType: safeDocType,
     fileUrl,
+    // Drive backend: id ไฟล์บน Drive (null = ไฟล์เก่าบน Supabase — hybrid).
+    driveFileId: driveFileId || null,
     fileName: fileName || null,
     mimeType: mimeType || null,
     sizeBytes: typeof sizeBytes === 'number' ? sizeBytes : null,

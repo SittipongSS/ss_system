@@ -100,13 +100,15 @@ export default function AttachmentsPanel({
   const upload = async (theFile, theDocType, theMeta) => {
     const fd = new FormData();
     fd.append("file", theFile);
-    fd.append("customerName", `${entityType}-${entityId}`); // ใช้เป็นชื่อโฟลเดอร์
+    fd.append("customerName", `${entityType}-${entityId}`); // ใช้เป็นชื่อโฟลเดอร์ (Supabase)
+    fd.append("entityType", entityType); // Drive: resolve โฟลเดอร์ลูกค้า/สินค้า
+    fd.append("entityId", entityId);
     const up = await fetch("/api/upload", { method: "POST", body: fd });
     if (!up.ok) {
       alert("อัปโหลดไฟล์ไม่สำเร็จ");
       return false;
     }
-    const { url } = await up.json();
+    const { url, driveFileId } = await up.json();
     const res = await fetch("/api/master/attachments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -115,6 +117,7 @@ export default function AttachmentsPanel({
         entityId,
         docType: theDocType,
         fileUrl: url,
+        driveFileId,
         fileName: theFile.name,
         mimeType: theFile.type || null,
         sizeBytes: theFile.size,
@@ -211,10 +214,14 @@ export default function AttachmentsPanel({
   };
   const sortedTypes = [...types].sort((a, b) => typeRank(a) - typeRank(b));
 
+  // ไฟล์ Drive (private) เปิดผ่าน proxy ที่เช็กสิทธิ์ + stream; ไฟล์เก่าบน Supabase
+  // (driveFileId ว่าง) ใช้ public URL ตรงเหมือนเดิม.
+  const fileHref = (it) => (it.driveFileId ? `/api/master/attachments/${it.id}/file` : it.fileUrl);
+
   const FileRow = ({ it, compact }) => (
     <div className="flex items-center justify-between gap-2 text-xs py-1">
       <a
-        href={it.fileUrl}
+        href={fileHref(it)}
         target="_blank"
         rel="noreferrer"
         className="flex items-center gap-1.5 min-w-0 text-[var(--text-2)] hover:text-[var(--accent)] hover:underline"
@@ -370,7 +377,7 @@ export default function AttachmentsPanel({
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <a href={it.fileUrl} target="_blank" rel="noreferrer" className="btn px-2.5 py-1 text-[11px] flex items-center gap-1 border border-[var(--border)]">
+                      <a href={fileHref(it)} target="_blank" rel="noreferrer" className="btn px-2.5 py-1 text-[11px] flex items-center gap-1 border border-[var(--border)]">
                         <Download size={13} /> เปิด
                       </a>
                       {canEdit && (

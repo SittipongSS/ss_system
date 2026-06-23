@@ -57,12 +57,23 @@ export async function DELETE(request, { params }) {
   }
 
   // ลบไฟล์ใน storage ด้วย (best-effort — ไม่ให้ block การลบ row ถ้าพลาด).
-  const path = objectPathFromUrl(att.fileUrl);
-  if (path) {
+  if (att.driveFileId) {
+    // Drive backend: ลบไฟล์บน Google Drive (dynamic import — ไม่โหลด googleapis
+    // ในโหมด supabase).
     try {
-      await supabase.storage.from(BUCKET).remove([path]);
+      const { deleteFile } = await import('@/lib/drive');
+      await deleteFile(att.driveFileId);
     } catch {
-      /* ไฟล์อาจถูกลบไปแล้ว หรือ path แกะไม่ได้ — ข้ามได้ */
+      /* best-effort */
+    }
+  } else {
+    const path = objectPathFromUrl(att.fileUrl);
+    if (path) {
+      try {
+        await supabase.storage.from(BUCKET).remove([path]);
+      } catch {
+        /* ไฟล์อาจถูกลบไปแล้ว หรือ path แกะไม่ได้ — ข้ามได้ */
+      }
     }
   }
 
