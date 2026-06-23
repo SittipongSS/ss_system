@@ -13,6 +13,7 @@ import ConfirmDialog from "@/components/excise/ConfirmDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
 import OrderFormModal from "@/components/excise/OrderFormModal";
 import ReceiveDialog from "@/components/excise/ReceiveDialog";
+import StartFilingDialog from "@/components/excise/StartFilingDialog";
 import FileTaxDialog from "@/components/excise/FileTaxDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { openBillPrintWindow } from "@/lib/tax/billPrint";
@@ -72,11 +73,6 @@ export default function FilingDetailPage() {
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถทำรายการได้");
     await reload();
   };
-  const startFiling = async () => {
-    const res = await fetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "filing" }) });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถทำรายการได้");
-    await reload();
-  };
   const doDelete = async () => {
     const res = await fetch(`/api/orders/${o.id}`, { method: "DELETE" });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถลบได้");
@@ -119,6 +115,7 @@ export default function FilingDetailPage() {
               <Field label="PO Reference">{o.poReference || "-"}</Field>
               <Field label="วันที่คาดว่าจะส่ง">{o.deliveryDate && o.deliveryDate !== "-" ? o.deliveryDate : "-"}</Field>
               <Field label="ยอดภาษีรวม">{taxText(o)}</Field>
+              <Field label="เลขที่ใบกำกับภาษี">{o.taxInvoiceNumber || "-"}</Field>
               <Field label="ใบเสร็จสรรพสามิต">{o.exciseReceiptNumber || "-"}</Field>
               {o.taxPaidDate && <Field label="วันที่ชำระจริง">{fmtDate(o.taxPaidDate)}</Field>}
               {o.taxFormRef && <Field label="แบบ ภส.">{o.taxFormRef}</Field>}
@@ -230,16 +227,9 @@ export default function FilingDetailPage() {
         products={products}
       />
       <ReceiveDialog open={receiveOpen} onClose={() => setReceiveOpen(false)} onDone={reload} order={o} />
+      <StartFilingDialog open={startOpen} onClose={() => setStartOpen(false)} onDone={reload} order={o} />
       <FileTaxDialog open={fileOpen} onClose={() => setFileOpen(false)} onDone={reload} order={o} />
       <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={reject} title="ตีกลับใบยื่นชำระ" entityLabel="ใบยื่นนี้" />
-      <ConfirmDialog
-        open={startOpen}
-        onClose={() => setStartOpen(false)}
-        onConfirm={startFiling}
-        title="เริ่มยื่นภาษี"
-        message={`เริ่มดำเนินการยื่นภาษีสำหรับ ${o?.quotationRef || "รายการนี้"}?`}
-        confirmLabel="เริ่มยื่น"
-      />
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}

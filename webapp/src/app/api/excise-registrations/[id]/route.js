@@ -38,6 +38,31 @@ export async function PATCH(request, { params }) {
 
   const body = await request.json();
 
+  // Re-approval rule (ทุกระบบ, stricter): an APPROVED registration is LOCKED.
+  // The only permitted change is the explicit "ขอแก้ไข" (revise): SA reverts it
+  // to 'draft', clearing the approval, which re-enters draft → submit → approve.
+  if (reg.status === 'approved') {
+    if (body.status === 'draft' && can(user?.role, 'products:edit')) {
+      const { data, error } = await supabase
+        .from('excise_registrations')
+        .update({
+          status: 'draft',
+          approvalNumber: null,
+          approvedBy: null,
+          approvedByName: null,
+          approvedAt: null,
+          rejectionReason: null,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) return Response.json({ error: error.message }, { status: 500 });
+      return Response.json(data);
+    }
+    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณากดขอแก้ไขก่อน' }, { status: 403 });
+  }
+
   // SA owns the link fields; LG owns the approval/tax fields (allowedEditFields).
   const salesEditable = ['assignee', 'metadata', 'productId', 'customerId'];
   const allowed = allowedEditFields(user, 'registrations', salesEditable);

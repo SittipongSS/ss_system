@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ClipboardCheck, ArrowLeft, Pencil, Trash2, Send } from "lucide-react";
+import { ClipboardCheck, ArrowLeft, Pencil, Trash2, Send, Unlock } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
@@ -53,6 +53,7 @@ export default function RegistrationDetailPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [reviseOpen, setReviseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const [attachItems, setAttachItems] = useState([]);   // registration docs
@@ -83,6 +84,14 @@ export default function RegistrationDetailPage() {
       body: JSON.stringify({ status: "pending_legal" }),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ส่งกลับไม่สำเร็จ");
+    await reload();
+  };
+  const requestRevise = async () => {
+    const res = await fetch(`/api/excise-registrations/${s.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "draft" }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถขอแก้ไขได้");
     await reload();
   };
   const doDelete = async () => {
@@ -160,7 +169,7 @@ export default function RegistrationDetailPage() {
             <AttachmentsPanel
               entityType="registration"
               entityId={s.id}
-              canEdit={canEdit || canApprove}
+              canEdit={(canEdit && s.status !== "approved") || canApprove}
               title="เอกสารการขึ้นทะเบียน"
               onItemsChange={setAttachItems}
               cardColumns={1}
@@ -212,6 +221,11 @@ export default function RegistrationDetailPage() {
                 <Pencil size={15} /> แก้ไข
               </button>
             )}
+            {canEdit && s.status === "approved" && (
+              <button className="btn btn-secondary flex items-center gap-1.5" onClick={() => setReviseOpen(true)}>
+                <Unlock size={15} /> ขอแก้ไข
+              </button>
+            )}
             {canEdit && (
               <button className="btn btn-danger flex items-center gap-1.5" onClick={() => setDeleteOpen(true)}>
                 <Trash2 size={15} /> ลบ
@@ -231,6 +245,14 @@ export default function RegistrationDetailPage() {
       />
       <ApproveDialog open={approveOpen} onClose={() => setApproveOpen(false)} onDone={reload} registration={s} />
       <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={rejectReg} title="ตีกลับการขึ้นทะเบียน" entityLabel="ทะเบียนนี้" />
+      <ConfirmDialog
+        open={reviseOpen}
+        onClose={() => setReviseOpen(false)}
+        onConfirm={requestRevise}
+        title="ขอแก้ไขทะเบียนที่อนุมัติแล้ว"
+        message={`ทะเบียน ${s?.fgCode || "นี้"} อนุมัติแล้ว การขอแก้ไขจะปลดล็อกกลับเป็น “ฉบับร่าง” และต้องยื่นขออนุมัติใหม่อีกครั้ง ต้องการดำเนินการต่อหรือไม่?`}
+        confirmLabel="ขอแก้ไข (กลับเป็นร่าง)"
+      />
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}

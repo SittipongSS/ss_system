@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canEditRecord, canViewRecord } from '@/lib/permissions';
+import { can, canEditRecord, canViewRecord } from '@/lib/permissions';
+import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { listAttachments } from '@/lib/master/attachments';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
 
@@ -61,6 +62,13 @@ export async function POST(request) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
+  // Registration lock (ทุกระบบ, stricter): an APPROVED registration is locked —
+  // only LG may still attach (e.g. the post-approval หนังสืออนุมัติ). Everyone
+  // else must press "ขอแก้ไข" first (reverts it to draft for re-approval).
+  if (entityType === 'registration' && parent.status === 'approved' && !can(user?.role, 'legal:approve')) {
+    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณากดขอแก้ไขก่อน' }, { status: 403 });
+  }
+
   // docType ต้องเป็นชนิดที่รองรับของ entity นั้น — ที่ไม่รู้จักตกเป็น 'other'.
   const allowed = (ATTACHMENT_TYPES[entityType] || []).map((t) => t.key);
   const safeDocType = allowed.includes(docType) ? docType : 'other';
@@ -83,5 +91,13 @@ export async function POST(request) {
 
   const { data, error } = await supabase.from('attachments').insert(row).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  // Re-approval rule (ทุกระบบ): adding a document to an APPROVED customer/product
+  // drops it back to 'pending' for re-approval. (registration is locked above.)
+  const reapproval = resetApprovalOnEdit(parent, user);
+  if (reapproval && (entityType === 'customer' || entityType === 'product')) {
+    await supabase.from(PARENT_TABLE[entityType]).update({ ...reapproval, updatedAt: new Date().toISOString() }).eq('id', entityId);
+  }
+
   return Response.json(data, { status: 201 });
 }
