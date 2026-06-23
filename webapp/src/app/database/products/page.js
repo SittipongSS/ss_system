@@ -388,7 +388,7 @@ export default function ProductRegistry() {
                 ผู้สร้าง: {userName}
               </span>
             </div>
-            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+            <div className="form-grid cols-2">
               <div className="form-group col-span-2">
                 <label>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
                 <input type="text" name="fgCode" value={formData.fgCode} onChange={handleChange} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
@@ -449,7 +449,7 @@ export default function ProductRegistry() {
             <div className="border-b border-[var(--border)] pb-3 mb-5">
               <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลบรรจุภัณฑ์และราคา (Packaging & Pricing)</h3>
             </div>
-            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+            <div className="form-grid cols-3">
               <div className="form-group">
                 <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
                 <div className="flex gap-2">

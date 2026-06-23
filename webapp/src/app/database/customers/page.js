@@ -363,7 +363,7 @@ export default function CustomerDirectory() {
             <div className="border-b border-[var(--border)] pb-3 mb-5">
               <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลบริษัท (Company Details)</h3>
             </div>
-            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+            <div className="form-grid cols-2">
               <div className="form-group col-span-2">
                 <label>ประเภทลูกค้า <span className="text-[var(--red)]">*</span></label>
                 <select
@@ -504,7 +504,7 @@ export default function CustomerDirectory() {
             <div className="border-b border-[var(--border)] pb-3 mb-5">
               <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลเพิ่มเติม (Additional)</h3>
             </div>
-            <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+            <div className="form-grid cols-2">
               <div className="form-group col-span-2">
                 <label>เงื่อนไขเครดิต (Credit Terms)</label>
                 <input
