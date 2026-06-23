@@ -356,7 +356,7 @@ function UserFields({ form, setForm, requirePassword, edit }) {
     setForm((f) => ({ ...f, department: dep, role: rolesForDepartment(dep)[0] }));
 
   return (
-    <div className="grid gap-x-[18px] gap-y-[16px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+    <div className="form-grid cols-2" style={{ columnGap: "18px", rowGap: "16px" }}>
       {/* —— ข้อมูลส่วนตัว —— */}
       <SectionHeading>ข้อมูลส่วนตัว</SectionHeading>
       <div className="form-group">
