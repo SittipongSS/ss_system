@@ -11,6 +11,8 @@ import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
+import { usePagination } from "@/lib/usePagination";
+import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 
 // Management view sees every status; the default GET (used by registration / PM
@@ -209,6 +211,11 @@ export default function ProductRegistry() {
     tax: (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0)),
   }, { key: "product", dir: "asc" });
 
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(sort.sorted, {
+      resetKey: `${q}|${statusFilter}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
+    });
+
   const open = (p) => (window.location.href = `/database/products/${p.id}`);
   const taxPerUnit = (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0));
 
@@ -283,7 +290,7 @@ export default function ProductRegistry() {
         </div>
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {sort.sorted.map((p) => {
+          {pageRows.map((p) => {
             const isExempt = p.isExciseTaxable === false;
             const status = approvalStatusOf(p);
             const showActions = status === "pending" && canApproveRow(p);
@@ -340,7 +347,7 @@ export default function ProductRegistry() {
                 </tr>
               </thead>
               <tbody>
-                {sort.sorted.map((p) => {
+                {pageRows.map((p) => {
                   const isExempt = p.isExciseTaxable === false;
                   const taxRate = isExempt ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
                   return (
@@ -375,6 +382,17 @@ export default function ProductRegistry() {
             </table>
           </div>
         </div>
+      )}
+
+      {sort.sorted.length > 0 && (
+        <Pager
+          page={page}
+          pageCount={pageCount}
+          total={total}
+          onPage={setPage}
+          pageSize={pageSize}
+          onPageSize={setPageSize}
+        />
       )}
 
       {/* Add product modal — FG always belongs to a customer (selected below). */}

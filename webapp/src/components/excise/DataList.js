@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { usePagination, DEFAULT_PAGE_SIZE } from "@/lib/usePagination";
 import EmptyState from "@/components/ui/EmptyState";
 import Pager from "./Pager";
 
@@ -19,7 +20,7 @@ export default function DataList({
   rowKey,
   onRowClick,
   card,
-  pageSize = 50,
+  pageSize = DEFAULT_PAGE_SIZE,
   initialSort = null,
   empty = "ไม่มีข้อมูล",
   emptyIcon,
@@ -37,13 +38,11 @@ export default function DataList({
 
   const sort = useSortableTable(rows, accessors, initialSort);
 
-  const [page, setPage] = useState(1);
-  const total = sort.sorted.length;
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  // Clamp page when the result set shrinks (e.g. filter/search changes).
-  useEffect(() => { setPage(1); }, [rows, sort.sortKey, sort.sortDir]);
-  const start = (page - 1) * pageSize;
-  const pageRows = sort.sorted.slice(start, start + pageSize);
+  const { page, setPage, pageSize: size, setPageSize, pageCount, total, pageRows } =
+    usePagination(sort.sorted, {
+      defaultSize: pageSize,
+      resetKey: `${rows.length}|${sort.sortKey}|${sort.sortDir}`,
+    });
 
   if (!rows.length) {
     return <EmptyState icon={emptyIcon}>{empty}</EmptyState>;
@@ -108,7 +107,14 @@ export default function DataList({
         </div>
       )}
 
-      <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} />
+      <Pager
+        page={page}
+        pageCount={pageCount}
+        total={total}
+        onPage={setPage}
+        pageSize={size}
+        onPageSize={setPageSize}
+      />
     </div>
   );
 }
