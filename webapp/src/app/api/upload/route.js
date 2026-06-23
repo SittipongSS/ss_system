@@ -71,7 +71,8 @@ export async function POST(request) {
           mimeType: file.type || 'application/octet-stream',
         });
         // คืน driveFileId เพิ่ม — caller ส่งต่อให้ /api/master/attachments เก็บไว้.
-        return Response.json({ url: webViewLink, driveFileId: id });
+        // backend: debug — บอกว่า runtime วิ่งเข้า branch ไหนจริง.
+        return Response.json({ url: webViewLink, driveFileId: id, backend: 'drive' });
       } catch (err) {
         console.error('[upload] Google Drive upload failed:', err);
         return Response.json({ error: 'อัปโหลดขึ้น Google Drive ไม่สำเร็จ' }, { status: 500 });
@@ -107,7 +108,7 @@ export async function POST(request) {
     }
 
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
-    return Response.json({ url: data.publicUrl });
+    return Response.json({ url: data.publicUrl, backend: 'supabase' });
   } catch (error) {
     console.error('Upload error:', error);
     return Response.json({ error: 'File upload failed' }, { status: 500 });
