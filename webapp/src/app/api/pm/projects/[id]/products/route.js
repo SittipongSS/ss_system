@@ -1,17 +1,26 @@
-import { editScope, inScope } from '@/lib/permissions';
-import { withUser, ok, fail, forbidden, notFound, conflict, badRequest } from '@/lib/http';
+import { viewScope, editScope, inScope, can } from '@/lib/permissions';
+import { withUser, ok, fail, forbidden, notFound, conflict, badRequest, unauthorized } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
 
 export const dynamic = 'force-dynamic';
 
 // GET — FG (products) ที่ผูกกับโปรเจกต์นี้
-export const GET = withUser(async ({ supabase, ctx }) => {
+export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
+  // เดิมไม่เช็คสิทธิ์เลย → ใครก็อ่าน FG ของโปรเจกต์ใดก็ได้ด้วย id. เช็ค pm:view + row-scope
+  // เหมือน POST/DELETE ในไฟล์นี้.
+  if (!user) return unauthorized();
+  if (!can(user.role, 'pm:view')) return forbidden();
+
+  const project = await loadProject(supabase, id);
+  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (viewScope(user.role) === 'team' && !inScope('team', user, project)) return forbidden();
+
   const { data, error } = await supabase
     .from('project_products')
     .select('*, product:products(*)')
-    .eq('projectId', id);
+    .eq('projectId', project.id);
   if (error) return fail(error.message, 500);
   return ok((data || []).map((l) => l.product).filter(Boolean));
 });

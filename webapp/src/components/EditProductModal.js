@@ -92,7 +92,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
         <div className="p-4 space-y-5">
           <div>
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">ข้อมูลสินค้า</h3>
-            <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+            <div className="form-grid cols-2" style={{ gap: "14px" }}>
               <div className="col-span-2 form-group">
                 <label>ลูกค้าเจ้าของสินค้า</label>
                 <input
@@ -146,7 +146,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
 
           <div>
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">ข้อมูลบรรจุภัณฑ์และราคา</h3>
-            <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+            <div className="form-grid cols-3" style={{ gap: "14px" }}>
               <div className="form-group">
                 <label>ปริมาตร/น้ำหนักบรรจุ</label>
                 <div className="flex gap-2">

@@ -115,6 +115,13 @@ export function buildGanttPrintHTML(project) {
   // ผู้จัดทำ = preparedBy, ผู้ดูแล = aeOwner.
   const reviewerName = project.aeSupervisor || project.reviewedBy || '';
   const preparerName = project.preparedBy || '';
+  // วันที่ออกเวอร์ชัน (Rev) — โชว์เป็น YYYY.MM.DD ข้างเลข Rev ในหัวเอกสาร
+  const revDateStr = (() => {
+    if (!project.revDate) return '';
+    const d = new Date(project.revDate);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  })();
   // ช่องลงชื่อผู้รับผิดชอบฝ่าย — ขึ้นครบทุกฝ่ายเสมอ (ไม่ว่ามีขั้นตอนฝ่ายนั้นในโครงการหรือไม่)
   const signDepts = ['PC', 'PD', 'RD'];
   // ยังไม่ผูก FG → โชว์ชื่อหมวด/หมวดรองแทนไปก่อน (categoryFallback resolve ชื่อหมวดหลักจากโค้ดมาแล้วฝั่ง page)
@@ -257,7 +264,7 @@ export function buildGanttPrintHTML(project) {
         </div>
       </div>
       <div class="doc-title">
-        <div class="formno">FM-PD-05${project.rev == null ? '' : ` · Rev. ${esc(project.rev)}`}</div>
+        <div class="formno">FM-PD-05${project.rev == null ? '' : ` · Rev. ${esc(project.rev)}${revDateStr ? ` · ${revDateStr}` : ''}`}</div>
         <div class="big">TIMELINE PROJECT</div>
         <div class="sub">${esc(project.code || '')}</div>
       </div>

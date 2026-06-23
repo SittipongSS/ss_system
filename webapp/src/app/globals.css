@@ -1531,6 +1531,24 @@ input[type="number"] {
   .pm-form-grid.pm-form-grid > * { grid-column: 1 / -1; }
 }
 
+/* Modal form grids — fixed columns on wide screens, collapse to 1 column on
+   phones so inputs don't cram. Replaces inline `gridTemplateColumns:
+   repeat(N,1fr)` on modal forms (products/customers/users/edit). Children using
+   Tailwind `col-span-2` are reset to full-width when collapsed. */
+.form-grid { display: grid; gap: 18px; }
+.form-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.form-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 560px) {
+  .form-grid.cols-2, .form-grid.cols-3 { grid-template-columns: 1fr; }
+  .form-grid.cols-2 > *, .form-grid.cols-3 > * { grid-column: 1 / -1 !important; }
+}
+
+/* Give modals breathing room on tiny screens (default overlay padding is 24px). */
+@media (max-width: 480px) {
+  .overlay { padding: 12px; }
+  .drawer { padding: 18px; }
+}
+
 /* Corporate Buttons */
 .btn {
   border: 1px solid var(--border);

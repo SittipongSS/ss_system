@@ -20,7 +20,19 @@ import {
   ATTACHMENT_TYPES,
   ATTACHMENT_META_FIELDS,
   attachmentTypeLabel,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_MB,
+  UPLOAD_ACCEPT_ATTR,
 } from "@/lib/master/attachmentTypes";
+
+// เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
+function tooLarge(file) {
+  if (file && file.size > MAX_UPLOAD_BYTES) {
+    alert(`ไฟล์ใหญ่เกินกำหนด (สูงสุด ${MAX_UPLOAD_MB} MB)`);
+    return true;
+  }
+  return false;
+}
 
 function formatSize(bytes) {
   if (!bytes && bytes !== 0) return "";
@@ -125,6 +137,11 @@ export default function AttachmentsPanel({
     const f = e.target.files?.[0];
     const typeKey = pendingTypeRef.current;
     if (!f || !typeKey) return;
+    if (tooLarge(f)) {
+      pendingTypeRef.current = null;
+      if (cardFileRef.current) cardFileRef.current.value = "";
+      return;
+    }
     setUploadingType(typeKey);
     try {
       if (await upload(f, typeKey, {})) await fetchItems();
@@ -289,8 +306,12 @@ export default function AttachmentsPanel({
                   <label className="text-[11px]">ไฟล์เอกสาร</label>
                   <input
                     type="file"
-                    accept=".pdf,image/png,image/jpeg,image/webp"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    accept={UPLOAD_ACCEPT_ATTR}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      if (f && tooLarge(f)) { e.target.value = ""; setFile(null); return; }
+                      setFile(f);
+                    }}
                     className="premium-input w-full text-xs"
                     style={{ padding: "5px" }}
                     disabled={saving}
@@ -429,7 +450,7 @@ export default function AttachmentsPanel({
             <input
               ref={cardFileRef}
               type="file"
-              accept=".pdf,image/png,image/jpeg,image/webp"
+              accept={UPLOAD_ACCEPT_ATTR}
               onChange={handleCardFile}
               className="hidden"
             />

@@ -71,10 +71,11 @@ export async function proxy(request) {
   }
 
   // ── Phased rollout lockdown ───────────────────────────────────────────
-  // The Project Management (/pm) and database (/database) systems are open to
-  // normal roles now; only the tax system stays admin-only. Admins
+  // All three systems — Project Management (/pm), database (/database) and the
+  // excise tax system (/tax) — are now open to their normal roles. Admins
   // (users:manage) reach everything. Non-admins also get the hub (/home), their
-  // own-account API, and the master/holiday data the PM forms depend on.
+  // own-account API, and the master/holiday data the PM forms depend on. The
+  // per-role capability gate (apiWriteAllowed) + row-level scope still apply.
   if (user && !isLogin && lockedOut(user.app_metadata?.role, path, request.method, isApi)) {
     if (isApi) return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
     return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
@@ -102,16 +103,19 @@ const startsWithAny = (path, prefixes) => prefixes.some((p) => path === p || pat
 // both. e.g. /api/master/customers/123 -> /api/customers/123.
 const normalizeMaster = (path) => path.replace(/^\/api\/master\//, '/api/');
 
-// Pages a non-admin may open during the phased rollout: hub + PM + database.
-const OPEN_PAGES = ['/home', '/pm', '/database'];
-// APIs a non-admin may WRITE to: own account + PM + master-data registries.
-// Row-level scope + the per-role capability gate (apiWriteAllowed) still apply:
-// AE/AC need customers:edit/products:edit to create (lands as 'pending'),
-// Senior AE+ to approve. Holiday/product-type writes stay supervisor-only.
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload'];
+// Pages a non-admin may open: hub + PM + database + excise tax.
+const OPEN_PAGES = ['/home', '/pm', '/database', '/tax'];
+// APIs a non-admin may WRITE to: own account + PM + master-data registries +
+// the excise tax tracks (registrations + orders). Row-level scope + the per-role
+// capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
+// products:edit to create (lands as 'pending'), Senior AE+ to approve; excise
+// registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
+// Holiday/product-type writes stay supervisor-only.
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
-// managing the registries now lives in the (open) database system above.
-const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users'];
+// managing the registries now lives in the (open) database system above; the tax
+// tracks + reports power the (open) excise system.
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax'];
 
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).

@@ -10,6 +10,8 @@ import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { usePagination } from "@/lib/usePagination";
+import Pager from "@/components/excise/Pager";
 import SkeletonRows from "@/components/ui/Skeleton";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
@@ -147,6 +149,8 @@ export default function ProjectsPage() {
     setShowForm(false);
     apiCache.delete?.("/api/pm/projects");
     await fetchProjects();
+    // เชื่อมสินค้า (FG) ไม่สำเร็จ → เตือน (อย่าแสดง "สำเร็จ" ทับ) ผู้ใช้จะได้ไปผูกใหม่
+    if (data?.productWarning) { setToast({ kind: "error", msg: data.productWarning }); return; }
     if (!editingId) {
       // รหัสโครงการสร้างอัตโนมัติฝั่งเซิร์ฟเวอร์ — แจ้งให้ผู้ใช้เห็นก่อนนำทางเข้าหน้าโปรเจกต์
       if (data.code) setToast({ kind: "success", msg: `สร้างโปรเจกต์สำเร็จ — รหัส ${data.code}` });
@@ -193,6 +197,9 @@ export default function ProjectsPage() {
   }, [filtered, typeFilters, statusFilters, categoryFilters, ownerFilters, preparerFilters, customerFilters]);
   const activeSort = useSortableTable(activeFiltered, ROW_ACCESSORS);
   const activeProjects = activeSort.sorted;
+  const activePage = usePagination(activeProjects, {
+    resetKey: `${q}|${activeProjects.length}|${activeSort.sortKey}|${activeSort.sortDir}`,
+  });
 
   const allFilters = [typeFilters, statusFilters, categoryFilters, ownerFilters, preparerFilters, customerFilters];
   const activeFilterCount = allFilters.filter((f) => f.length > 0).length;
@@ -212,6 +219,9 @@ export default function ProjectsPage() {
   }, [filtered, archiveStatusFilter]);
   const archiveSort = useSortableTable(archiveFiltered, ROW_ACCESSORS, { key: "code", dir: "desc" });
   const archiveProjects = archiveSort.sorted;
+  const archivePage = usePagination(archiveProjects, {
+    resetKey: `${q}|${archiveStatusFilter}|${archiveProjects.length}|${archiveSort.sortKey}|${archiveSort.sortDir}`,
+  });
 
   // map code 'XX' → main category name (for list display)
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || "";
@@ -359,11 +369,21 @@ export default function ProjectsPage() {
                 {activeProjects.length === 0 ? (
                   <tr><td colSpan={mainColSpan} style={{ textAlign: "center", padding: "32px", color: "var(--text-3)" }}>{activeFilterCount > 0 || q ? "ไม่พบโครงการตามเงื่อนไข" : "ยังไม่มีโครงการ"}</td></tr>
                 ) : (
-                  activeProjects.map((p) => renderRow(p))
+                  activePage.pageRows.map((p) => renderRow(p))
                 )}
               </tbody>
             </table>
           </div>
+          {activeProjects.length > 0 && (
+            <Pager
+              page={activePage.page}
+              pageCount={activePage.pageCount}
+              total={activePage.total}
+              onPage={activePage.setPage}
+              pageSize={activePage.pageSize}
+              onPageSize={activePage.setPageSize}
+            />
+          )}
 
           {/* คลังเก็บ — โปรเจกต์ที่ปิดงานแล้ว */}
           <div className="glass-panel" style={{ padding: 0, overflow: "hidden" }}>
@@ -419,10 +439,20 @@ export default function ProjectsPage() {
                         <tr><td colSpan={archiveColSpan} style={{ textAlign: "center", padding: "32px", color: "var(--text-3)" }}>
                           {q || archiveStatusFilter !== "all" ? "ไม่พบโปรเจกต์ในคลังตามเงื่อนไข" : "ยังไม่มีโปรเจกต์ที่ปิดงาน"}
                         </td></tr>
-                      ) : archiveProjects.map((p) => renderRow(p, { archive: true }))}
+                      ) : archivePage.pageRows.map((p) => renderRow(p, { archive: true }))}
                     </tbody>
                   </table>
                 </div>
+                {archiveProjects.length > 0 && (
+                  <Pager
+                    page={archivePage.page}
+                    pageCount={archivePage.pageCount}
+                    total={archivePage.total}
+                    onPage={archivePage.setPage}
+                    pageSize={archivePage.pageSize}
+                    onPageSize={archivePage.setPageSize}
+                  />
+                )}
               </div>
             )}
           </div>

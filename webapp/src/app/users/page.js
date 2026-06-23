@@ -15,6 +15,8 @@ import {
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { usePagination } from "@/lib/usePagination";
+import Pager from "@/components/excise/Pager";
 
 const emptyForm = { email: "", password: "", firstName: "", lastName: "", department: "SA", role: "ae", team: "ODM" };
 
@@ -40,6 +42,10 @@ export default function UserManagement() {
     lastSignInAt: (u) => (u.lastSignInAt ? new Date(u.lastSignInAt).getTime() : null),
   });
   const sortedUsers = sort.sorted;
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(sortedUsers, {
+      resetKey: `${users.length}|${sort.sortKey}|${sort.sortDir}`,
+    });
 
   const fetchUsers = async () => {
     try {
@@ -225,7 +231,7 @@ export default function UserManagement() {
                     </td>
                   </tr>
                 ) : (
-                  sortedUsers.map((u) => (
+                  pageRows.map((u) => (
                     <tr key={u.id}>
                       <td className="font-medium text-[var(--text)]">{u.firstName || "-"}</td>
                       <td className="font-medium text-[var(--text)]">{u.lastName || "-"}</td>
@@ -292,6 +298,16 @@ export default function UserManagement() {
               </tbody>
             </table>
           </div>
+          {sortedUsers.length > 0 && (
+            <Pager
+              page={page}
+              pageCount={pageCount}
+              total={total}
+              onPage={setPage}
+              pageSize={pageSize}
+              onPageSize={setPageSize}
+            />
+          )}
         </div>
       )}
 
@@ -356,7 +372,7 @@ function UserFields({ form, setForm, requirePassword, edit }) {
     setForm((f) => ({ ...f, department: dep, role: rolesForDepartment(dep)[0] }));
 
   return (
-    <div className="grid gap-x-[18px] gap-y-[16px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+    <div className="form-grid cols-2" style={{ columnGap: "18px", rowGap: "16px" }}>
       {/* —— ข้อมูลส่วนตัว —— */}
       <SectionHeading>ข้อมูลส่วนตัว</SectionHeading>
       <div className="form-group">
