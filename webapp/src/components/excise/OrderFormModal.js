@@ -6,7 +6,11 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { fmtMoney } from "@/lib/format";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
-const regTax = (r) => (r && r.isExciseTaxable !== false ? (r.exciseTax || 0) + (r.localTax || 0) : 0);
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+// Per-unit tax rounded to 2 decimals (excise + local each rounded) so the
+// displayed ภาษี/ชิ้น × จำนวน reconciles exactly with the line/total — same rule
+// the order API uses when it stores the totals.
+const regTax = (r) => (r && r.isExciseTaxable !== false ? r2(r.exciseTax) + r2(r.localTax) : 0);
 
 // Create a new tax-filing order, or edit/resubmit an existing one. Lines bind an
 // approved registration of the chosen customer + quantity. The excise tax is

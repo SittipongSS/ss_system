@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/authUser';
 import { viewScope } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrderItems } from '@/lib/tax/orders';
 
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
 export const dynamic = 'force-dynamic';
 export async function GET() {
   const supabase = getSupabaseAdmin();
@@ -79,8 +81,12 @@ export async function POST(request) {
     if (!reg) return Response.json({ error: `ไม่พบทะเบียน ${it.registrationId}` }, { status: 404 });
     const qty = parseInt(it.quantity);
     if (!qty || qty < 1) return Response.json({ error: 'จำนวนต้องมากกว่า 0' }, { status: 400 });
-    const itemExcise = (reg.exciseTax || 0) * qty;
-    const itemLocal = (reg.localTax || 0) * qty;
+    // Per-unit tax rounded to 2 decimals, THEN × qty — so ภาษี/ชิ้น × จำนวน
+    // reconciles with the line total everywhere (form, bill, reports).
+    const excisePer = r2(reg.exciseTax);
+    const localPer = r2(reg.localTax);
+    const itemExcise = r2(excisePer * qty);
+    const itemLocal = r2(localPer * qty);
     totalExciseTax += itemExcise;
     totalLocalTax += itemLocal;
     itemRows.push({
@@ -89,10 +95,9 @@ export async function POST(request) {
       registrationId: reg.id,
       productId: reg.productId,
       quantity: qty,
-      // ราคาขาย/ฐานภาษี (ผู้ใช้กรอก, optional) + snapshot อัตราต่อหน่วย เพื่อ audit
       salePrice: it.salePrice != null && it.salePrice !== '' ? Number(it.salePrice) : null,
-      exciseRatePerUnit: reg.exciseTax || 0,
-      localTaxRatePerUnit: reg.localTax || 0,
+      exciseRatePerUnit: excisePer,
+      localTaxRatePerUnit: localPer,
       totalExciseTax: itemExcise,
       totalLocalTax: itemLocal,
       totalTax: itemExcise + itemLocal,

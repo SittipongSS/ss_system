@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSuperuser } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrderItems, updateOrderResilient } from '@/lib/tax/orders';
 
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
 export const dynamic = 'force-dynamic';
 // GET /api/orders/[id]
 export async function GET(request, { params }) {
@@ -120,8 +122,11 @@ export async function PATCH(request, { params }) {
       if (!reg) return Response.json({ error: `ไม่พบทะเบียน ${it.registrationId}` }, { status: 404 });
       const qty = parseInt(it.quantity);
       if (!qty || qty < 1) return Response.json({ error: 'จำนวนต้องมากกว่า 0' }, { status: 400 });
-      const itemExcise = (reg.exciseTax || 0) * qty;
-      const itemLocal = (reg.localTax || 0) * qty;
+      // Per-unit tax rounded to 2 decimals, THEN × qty (matches POST + the form).
+      const excisePer = r2(reg.exciseTax);
+      const localPer = r2(reg.localTax);
+      const itemExcise = r2(excisePer * qty);
+      const itemLocal = r2(localPer * qty);
       totalExciseTax += itemExcise;
       totalLocalTax += itemLocal;
       newItemRows.push({
@@ -131,8 +136,8 @@ export async function PATCH(request, { params }) {
         productId: reg.productId,
         quantity: qty,
         salePrice: it.salePrice != null && it.salePrice !== '' ? Number(it.salePrice) : null,
-        exciseRatePerUnit: reg.exciseTax || 0,
-        localTaxRatePerUnit: reg.localTax || 0,
+        exciseRatePerUnit: excisePer,
+        localTaxRatePerUnit: localPer,
         totalExciseTax: itemExcise,
         totalLocalTax: itemLocal,
         totalTax: itemExcise + itemLocal,
