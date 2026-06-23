@@ -31,3 +31,17 @@ export async function getAttachment(id) {
   if (error) throw error;
   return data || null;
 }
+
+// entity แม่ของไฟล์แนบ ↔ ตาราง + resource key (สำหรับ permission helpers).
+// ใช้ร่วมกันทุก route ที่ต้องเช็กสิทธิ์ผ่าน entity แม่ — กัน map กระจาย/ไม่ตรงกัน.
+const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders', registration: 'excise_registrations' };
+export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
+
+// โหลด record แม่ของไฟล์แนบ (หรือ null) — ใช้คู่กับ canViewRecord/canEditRecord.
+export async function loadAttachmentParent(attachment) {
+  const table = PARENT_TABLE[attachment?.entityType];
+  if (!table) return null;
+  const { data } = await getSupabaseAdmin()
+    .from(table).select('*').eq('id', attachment.entityId).maybeSingle();
+  return data || null;
+}

@@ -5,6 +5,9 @@ import {
   ACCEPTED_UPLOAD_MIME, ACCEPTED_UPLOAD_EXT,
 } from '@/lib/master/attachmentTypes';
 
+// googleapis (Drive backend) ต้อง Node runtime — กันถูก bundle เป็น edge.
+export const runtime = 'nodejs';
+
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'uploads';
 
 // ขนาดสูงสุดต่อไฟล์ — ค่ากลางจาก attachmentTypes (env override ได้).
@@ -23,6 +26,9 @@ export async function POST(request) {
     const formData = await request.formData();
     const file = formData.get('file');
     const customerName = formData.get('customerName');
+    // entity context (Drive backend ใช้ resolve โฟลเดอร์ลูกค้า/สินค้า).
+    const entityType = formData.get('entityType');
+    const entityId = formData.get('entityId');
 
     if (!file) {
       return Response.json({ error: 'No file received.' }, { status: 400 });
@@ -48,8 +54,32 @@ export async function POST(request) {
       );
     }
 
-    const supabase = getSupabaseAdmin();
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // ── Google Drive backend (STORAGE_BACKEND=drive) ──────────────────
+    // dynamic import: โหลด googleapis เฉพาะตอนใช้ Drive — โหมด supabase (default)
+    // ไม่แตะ จึงไม่ต้องลง deps ก็รัน flow เดิมได้ และ flag กั้น prod ไว้.
+    if ((process.env.STORAGE_BACKEND || 'supabase') === 'drive') {
+      try {
+        const { resolveFolderForEntity, uploadFile } = await import('@/lib/drive');
+        const folderId = (entityType && entityId)
+          ? await resolveFolderForEntity(entityType, entityId)
+          : (process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || process.env.GOOGLE_SHARED_DRIVE_ID);
+        const { id, webViewLink } = await uploadFile(folderId, {
+          buffer,
+          name: file.name || 'file',
+          mimeType: file.type || 'application/octet-stream',
+        });
+        // คืน driveFileId เพิ่ม — caller ส่งต่อให้ /api/master/attachments เก็บไว้.
+        return Response.json({ url: webViewLink, driveFileId: id });
+      } catch (err) {
+        console.error('[upload] Google Drive upload failed:', err);
+        return Response.json({ error: 'อัปโหลดขึ้น Google Drive ไม่สำเร็จ' }, { status: 500 });
+      }
+    }
+
+    // ── Supabase Storage backend (default) ────────────────────────────
+    const supabase = getSupabaseAdmin();
 
     // Supabase Storage keys must be ASCII-safe. Thai/Unicode chars cause an
     // "Invalid key" error, so we strip to [A-Za-z0-9] for the folder and to a

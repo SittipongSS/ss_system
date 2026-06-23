@@ -39,13 +39,18 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
       // 1) อัปไฟล์ใบเสร็จก่อน (ถ้ามี) — server บังคับ login/ขนาด/ชนิดไฟล์.
       //    ทำก่อน PATCH เพื่อให้ไฟล์ใหญ่/ผิดชนิดล้มก่อนปิดงาน (UX ดีกว่า).
       let receiptUrl = null;
+      let receiptDriveFileId = null;
       if (file && !isExempt) {
         const fd = new FormData();
         fd.append("file", file);
         fd.append("customerName", `order-${order.id}`);
+        fd.append("entityType", "order");
+        fd.append("entityId", order.id);
         const up = await fetch("/api/upload", { method: "POST", body: fd });
         if (!up.ok) throw new Error((await up.json().catch(() => ({})))?.error || "อัปโหลดไฟล์ไม่สำเร็จ");
-        receiptUrl = (await up.json()).url;
+        const uploaded = await up.json();
+        receiptUrl = uploaded.url;
+        receiptDriveFileId = uploaded.driveFileId || null;
       }
       // 2) บันทึกข้อมูลชำระภาษี + ปิดงาน (ไฟล์ไม่เก็บเป็นคอลัมน์อีกต่อไป).
       const body = { status: "complete" };
@@ -69,6 +74,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
               entityId: order.id,
               docType: "tax_receipt",
               fileUrl: receiptUrl,
+              driveFileId: receiptDriveFileId,
               fileName: file.name,
               mimeType: file.type || null,
               sizeBytes: file.size,
@@ -98,7 +104,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
           </div>
 
           {isExempt ? (
-            <p style={{ fontSize: 12.5, color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันเพื่อปิดงานเป็น "ชำระแล้ว"</p>
+            <p style={{ fontSize: 12.5, color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันเพื่อปิดงานเป็น “ชำระแล้ว”</p>
           ) : (
             <>
               <div className="form-group">
