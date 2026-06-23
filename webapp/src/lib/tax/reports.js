@@ -137,6 +137,7 @@ export async function filingReport(filter = {}) {
       rows.push({
         id: it.id,
         quotationRef: o.quotationRef,
+        taxInvoiceNumber: o.taxInvoiceNumber || '-',
         product: [p.fgCode || it.registration?.fgCode || '-', p.productDescription || it.registration?.productName || '', p.brandName || ''].filter(Boolean).join('\n'),
         retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
         deliveryDate: o.deliveryDate && /^\d{4}-\d{2}-\d{2}/.test(o.deliveryDate) ? o.deliveryDate : null,
@@ -151,6 +152,7 @@ export async function filingReport(filter = {}) {
     title: 'รายงานการยื่นชำระภาษีสรรพสามิต',
     columns: [
       { key: 'quotationRef', label: 'เลขที่ใบเสนอราคา' },
+      { key: 'taxInvoiceNumber', label: 'เลขที่ใบกำกับภาษี' },
       { key: 'product', label: 'รหัส FG / สินค้า / แบรนด์', multiline: true },
       { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
       { key: 'deliveryDate', label: 'วันที่จัดส่ง', date: true },

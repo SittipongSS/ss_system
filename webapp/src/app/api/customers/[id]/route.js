@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, isSuperuser } from '@/lib/permissions';
+import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 
@@ -165,6 +166,12 @@ export async function PATCH(request, { params }) {
     updates.email = primary.email || null;
   }
   updates.updatedAt = new Date().toISOString();
+
+  // Re-approval rule (ทุกระบบ): editing an APPROVED customer drops it back to
+  // 'pending' so a Senior AE+ must re-approve. Hidden from downstream pickers
+  // (GET returns approved-only) until then. No-op if it wasn't approved.
+  const reapproval = resetApprovalOnEdit(customer, user);
+  if (reapproval) Object.assign(updates, reapproval);
 
   const { data: updated, error } = await supabase
     .from('customers')

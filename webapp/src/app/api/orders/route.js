@@ -50,6 +50,17 @@ export async function POST(request) {
   if (custErr) return Response.json({ error: custErr.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
 
+  // Duplicate quotation = hard block (เลขที่ใบเสนอราคา ห้ามซ้ำ). One quotation =
+  // one filing. The '-' placeholder (legacy / blank) is exempt from the check.
+  const quotationRef = (body.quotationRef || '').trim();
+  if (quotationRef && quotationRef !== '-') {
+    const { data: dupQuote } = await supabase
+      .from('orders').select('id').eq('quotationRef', quotationRef).maybeSingle();
+    if (dupQuote) {
+      return Response.json({ error: `เลขที่ใบเสนอราคานี้ถูกใช้แล้วในใบยื่น ${dupQuote.id} — ห้ามซ้ำ` }, { status: 409 });
+    }
+  }
+
   // Fetch all referenced registrations in one query.
   const regIds = [...new Set(items.map((it) => it.registrationId).filter(Boolean))];
   const { data: regs, error: regErr } = await supabase
@@ -111,7 +122,7 @@ export async function POST(request) {
     customerId: customer.id,
     customerName: customer.name,
     customerTaxId: customer.taxId,
-    quotationRef: body.quotationRef || '-',
+    quotationRef: quotationRef || '-',
     poReference: body.poReference || null,
     deliveryDate: body.deliveryDate || '-',
     remarks: body.remarks || '-',

@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
+import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { categoryOf } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
@@ -119,6 +120,11 @@ export async function PATCH(request, { params }) {
   updated.factoryProfit = factoryPrice - updated.materialCost - updated.laborCost - updated.shippingCost;
 
   updated.updatedAt = new Date().toISOString();
+
+  // Re-approval rule (ทุกระบบ): editing an APPROVED product drops it back to
+  // 'pending' so a Senior AE+ must re-approve. No-op if it wasn't approved.
+  const reapproval = resetApprovalOnEdit(product, user);
+  if (reapproval) Object.assign(updated, reapproval);
 
   const { data, error } = await supabase
     .from('products')

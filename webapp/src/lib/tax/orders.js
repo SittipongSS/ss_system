@@ -21,7 +21,7 @@ export const ORDER_SELECT =
 // write WITH the new columns and, only on a missing-column error, retry without
 // them. See memory [[deploy-workflow]] (schema-cache mismatch → 500s).
 const ADDITIVE_ITEM_COLS = ['salePrice', 'exciseRatePerUnit', 'localTaxRatePerUnit'];
-const ADDITIVE_ORDER_COLS = ['taxPaidDate'];
+const ADDITIVE_ORDER_COLS = ['taxPaidDate', 'taxInvoiceNumber'];
 
 const isMissingColumnError = (error, cols) =>
   !!error && (error.code === 'PGRST204' || error.code === '42703' ||

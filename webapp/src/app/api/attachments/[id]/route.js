@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canEditRecord } from '@/lib/permissions';
+import { can, canEditRecord } from '@/lib/permissions';
+import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { getAttachment } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
@@ -30,15 +31,30 @@ export async function DELETE(request, { params }) {
 
   // สิทธิ์ลบ = สิทธิ์แก้ entity แม่ (team scope จาก canEditRecord).
   const table = PARENT_TABLE[att.entityType];
+  let parent = null;
   if (table) {
-    const { data: parent } = await supabase.from(table).select('*').eq('id', att.entityId).maybeSingle();
+    ({ data: parent } = await supabase.from(table).select('*').eq('id', att.entityId).maybeSingle());
     if (parent && !canEditRecord(user, RESOURCE[att.entityType], parent)) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+    // Registration lock (stricter): can't remove docs from an APPROVED reg unless
+    // LG — others must press "ขอแก้ไข" first.
+    if (att.entityType === 'registration' && parent?.status === 'approved' && !can(user?.role, 'legal:approve')) {
+      return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณากดขอแก้ไขก่อน' }, { status: 403 });
     }
   }
 
   const { error } = await supabase.from('attachments').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  // Re-approval rule (ทุกระบบ): removing a document from an APPROVED
+  // customer/product drops it back to 'pending' for re-approval.
+  if (parent && (att.entityType === 'customer' || att.entityType === 'product')) {
+    const reapproval = resetApprovalOnEdit(parent, user);
+    if (reapproval) {
+      await supabase.from(table).update({ ...reapproval, updatedAt: new Date().toISOString() }).eq('id', att.entityId);
+    }
+  }
 
   // ลบไฟล์ใน storage ด้วย (best-effort — ไม่ให้ block การลบ row ถ้าพลาด).
   const path = objectPathFromUrl(att.fileUrl);

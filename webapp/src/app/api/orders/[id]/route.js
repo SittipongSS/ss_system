@@ -58,6 +58,19 @@ export async function PATCH(request, { params }) {
   const updates = {};
   for (const k of allowed) if (k !== 'status' && body[k] !== undefined) updates[k] = body[k];
 
+  // Duplicate quotation = hard block on rename too (เลขที่ใบเสนอราคา ห้ามซ้ำ),
+  // excluding this order. The '-' placeholder is exempt.
+  if (updates.quotationRef !== undefined) {
+    const q = String(updates.quotationRef || '').trim();
+    if (q && q !== '-') {
+      const { data: dupQuote } = await supabase
+        .from('orders').select('id').eq('quotationRef', q).neq('id', id).maybeSingle();
+      if (dupQuote) {
+        return Response.json({ error: `เลขที่ใบเสนอราคานี้ถูกใช้แล้วในใบยื่น ${dupQuote.id} — ห้ามซ้ำ` }, { status: 409 });
+      }
+    }
+  }
+
   // ── Status transition gate ──
   // sales:act  : pending → received, and rejected → received (resubmit)
   // legal:approve : received → filing → complete, + rejected, + revert to received
@@ -70,6 +83,18 @@ export async function PATCH(request, { params }) {
       return Response.json({ error: 'ไม่อนุญาตให้เปลี่ยนสถานะนี้' }, { status: 403 });
     }
     updates.status = target;
+    // เริ่มยื่น (received → filing): LG must record the เลขที่ใบกำกับภาษี first.
+    // Accept it from this request or an already-stored value. Exempt orders skip
+    // 'filing' entirely (received → complete) so they're never gated here.
+    if (target === 'filing' && order.status === 'received') {
+      const invoiceNo = String(
+        updates.taxInvoiceNumber !== undefined ? updates.taxInvoiceNumber : order.taxInvoiceNumber || '',
+      ).trim();
+      if (!invoiceNo) {
+        return Response.json({ error: 'กรุณาระบุเลขที่ใบกำกับภาษีก่อนเริ่มยื่น' }, { status: 400 });
+      }
+      updates.taxInvoiceNumber = invoiceNo;
+    }
     if (target === 'complete') {
       // Filing done: stamp who/when + the clearance timestamp.
       updates.clearedAt = new Date().toISOString();
