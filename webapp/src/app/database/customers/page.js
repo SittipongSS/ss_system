@@ -11,6 +11,8 @@ import ApprovalQueue from "@/components/database/ApprovalQueue";
 import ContactsEditor from "@/components/database/ContactsEditor";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
+import { usePagination } from "@/lib/usePagination";
+import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 
 // Management view sees every status (pending/approved/rejected); the default
@@ -176,6 +178,11 @@ export default function CustomerDirectory() {
     address: (c) => c.address || "",
   });
 
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(sort.sorted, {
+      resetKey: `${q}|${statusFilter}|${teamFilter}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
+    });
+
   const open = (c) => (window.location.href = `/database/customers/${c.id}`);
 
   const headerRight = (
@@ -255,7 +262,7 @@ export default function CustomerDirectory() {
         </div>
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {sort.sorted.map((c) => {
+          {pageRows.map((c) => {
             const status = approvalStatusOf(c);
             const showActions = status === "pending" && canApproveRow(c);
             const inactive = c.isActive === false;
@@ -311,7 +318,7 @@ export default function CustomerDirectory() {
                 </tr>
               </thead>
               <tbody>
-                {sort.sorted.map((c) => (
+                {pageRows.map((c) => (
                   <tr key={c.id} onClick={() => open(c)} className="clickable-row" style={c.isActive === false ? { opacity: 0.55 } : undefined}>
                     <td className="font-semibold font-mono text-[var(--accent)]">{c.arCode}</td>
                     <td>
@@ -348,6 +355,17 @@ export default function CustomerDirectory() {
             </table>
           </div>
         </div>
+      )}
+
+      {sort.sorted.length > 0 && (
+        <Pager
+          page={page}
+          pageCount={pageCount}
+          total={total}
+          onPage={setPage}
+          pageSize={pageSize}
+          onPageSize={setPageSize}
+        />
       )}
 
       {/* Add customer modal */}
