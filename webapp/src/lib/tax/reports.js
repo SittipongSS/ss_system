@@ -74,9 +74,7 @@ export async function registrationReport(filter = {}) {
     const p = products.get(r.productId) || {};
     const exVat = p.retailPriceExVat != null ? p.retailPriceExVat : (p.retailPriceIncVat ? p.retailPriceIncVat / 1.07 : 0);
     const row = {
-      fgCode: r.fgCode,
-      productName: r.productName,
-      brandName: r.brandName,
+      product: [r.fgCode || '-', r.productName || '', r.brandName || ''].filter(Boolean).join('\n'),
       customer: two(r.customerName || '-', r.taxId || '-'),
       retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
       owner: two(r.assignee || '-', teamLabel(r.team)),
@@ -97,9 +95,7 @@ export async function registrationReport(filter = {}) {
   });
 
   const columns = [
-    { key: 'fgCode', label: 'รหัสสินค้า' },
-    { key: 'productName', label: 'สินค้า' },
-    { key: 'brandName', label: 'แบรนด์' },
+    { key: 'product', label: 'รหัสสินค้า / สินค้า / แบรนด์', multiline: true },
     { key: 'customer', label: 'ลูกค้า / เลขผู้เสียภาษี', multiline: true },
     ...(margin ? [{ key: 'factory', label: 'ราคาโรงงาน (แจกแจง) / กำไร', multiline: true }] : []),
     { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
@@ -132,8 +128,7 @@ export async function filingReport(filter = {}) {
       const exVat = p.retailPriceExVat != null ? p.retailPriceExVat : (p.retailPriceIncVat ? p.retailPriceIncVat / 1.07 : 0);
       rows.push({
         quotationRef: o.quotationRef,
-        fgCode: p.fgCode || it.registration?.fgCode || '-',
-        product: two(p.productDescription || it.registration?.productName || '-', p.brandName || '-'),
+        product: [p.fgCode || it.registration?.fgCode || '-', p.productDescription || it.registration?.productName || '', p.brandName || ''].filter(Boolean).join('\n'),
         retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
         qty: Number(it.quantity) || 0,
         tax: Number(it.totalTax) || 0,
@@ -146,8 +141,7 @@ export async function filingReport(filter = {}) {
     title: 'รายงานการยื่นชำระภาษีสรรพสามิต',
     columns: [
       { key: 'quotationRef', label: 'เลขที่ใบเสนอราคา' },
-      { key: 'fgCode', label: 'รหัส FG' },
-      { key: 'product', label: 'สินค้า (แบรนด์)', multiline: true },
+      { key: 'product', label: 'รหัส FG / สินค้า / แบรนด์', multiline: true },
       { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
       { key: 'qty', label: 'จำนวน', num: true },
       { key: 'tax', label: 'ยอดภาษี', money: true },
