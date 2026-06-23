@@ -99,13 +99,11 @@ export const ATTACHMENT_ENTITY_TYPES = Object.keys(ATTACHMENT_TYPES);
 export const MAX_UPLOAD_MB = 10;
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
-// ── ชนิดไฟล์ที่อนุญาต (เอกสาร = PDF/รูป) ─────────────────────────────
+// ── ชนิดไฟล์ที่อนุญาต (เอกสารแนบ = PDF เท่านั้น) ─────────────────────
 // ค่ากลางชุดเดียว: server ใช้บังคับจริง, client ใช้เป็น accept ของ <input>.
-export const ACCEPTED_UPLOAD_MIME = [
-  "application/pdf", "image/png", "image/jpeg", "image/webp",
-];
-export const ACCEPTED_UPLOAD_EXT = ["pdf", "png", "jpg", "jpeg", "webp"];
-export const UPLOAD_ACCEPT_ATTR = ".pdf,image/png,image/jpeg,image/webp";
+export const ACCEPTED_UPLOAD_MIME = ["application/pdf"];
+export const ACCEPTED_UPLOAD_EXT = ["pdf"];
+export const UPLOAD_ACCEPT_ATTR = "application/pdf,.pdf";
 
 // docType ที่ "จำเป็น" ของ entity หนึ่งๆ (รับ override การ์ดได้ เช่น เอกสาร
 // ลูกค้าตามประเภท). ใช้บังคับแนบเอกสารก่อนยื่น — ทั้งฝั่ง UI และ API.

@@ -55,7 +55,7 @@ async function fetchProductMap() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('products')
-    .select('id, costPrice, materialCost, laborCost, shippingCost, factoryProfit, retailPriceIncVat, retailPriceExVat');
+    .select('id, volume, volumeUnit, costPrice, materialCost, laborCost, shippingCost, factoryProfit, retailPriceIncVat, retailPriceExVat');
   if (error) throw error;
   const m = new Map();
   for (const p of data || []) m.set(p.id, p);
@@ -75,6 +75,7 @@ export async function registrationReport(filter = {}) {
     const exVat = p.retailPriceExVat != null ? p.retailPriceExVat : (p.retailPriceIncVat ? p.retailPriceIncVat / 1.07 : 0);
     const row = {
       product: [r.fgCode || '-', r.productName || '', r.brandName || ''].filter(Boolean).join('\n'),
+      size: p.volume != null ? `${p.volume} ${p.volumeUnit || 'ml'}` : '-',
       customer: two(r.customerName || '-', r.taxId || '-'),
       retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
       owner: two(r.assignee || '-', teamLabel(r.team)),
@@ -96,6 +97,7 @@ export async function registrationReport(filter = {}) {
 
   const columns = [
     { key: 'product', label: 'รหัสสินค้า / สินค้า / แบรนด์', multiline: true },
+    { key: 'size', label: 'ขนาด' },
     { key: 'customer', label: 'ลูกค้า / เลขผู้เสียภาษี', multiline: true },
     ...(margin ? [{ key: 'factory', label: 'ราคาโรงงาน (แจกแจง) / กำไร', multiline: true }] : []),
     { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
@@ -130,6 +132,7 @@ export async function filingReport(filter = {}) {
         quotationRef: o.quotationRef,
         product: [p.fgCode || it.registration?.fgCode || '-', p.productDescription || it.registration?.productName || '', p.brandName || ''].filter(Boolean).join('\n'),
         retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
+        deliveryDate: o.deliveryDate && /^\d{4}-\d{2}-\d{2}/.test(o.deliveryDate) ? o.deliveryDate : null,
         qty: Number(it.quantity) || 0,
         tax: Number(it.totalTax) || 0,
         status: statusLabel(o.status),
@@ -143,6 +146,7 @@ export async function filingReport(filter = {}) {
       { key: 'quotationRef', label: 'เลขที่ใบเสนอราคา' },
       { key: 'product', label: 'รหัส FG / สินค้า / แบรนด์', multiline: true },
       { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
+      { key: 'deliveryDate', label: 'วันที่จัดส่ง', date: true },
       { key: 'qty', label: 'จำนวน', num: true },
       { key: 'tax', label: 'ยอดภาษี', money: true },
       { key: 'status', label: 'สถานะ' },

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtMoney } from "@/lib/format";
+import { UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 // SA "เงินเข้าแล้ว" — records the S&S invoice/receipt number and moves the order
 // to 'received'. Exempt orders confirm without a receipt. PATCH unchanged.
@@ -64,7 +65,7 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
           )}
           <div className="form-group">
             <label>แนบหลักฐานการชำระจากลูกค้า</label>
-            <input type="file" accept=".pdf,image/png,image/jpeg,image/webp" className="premium-input w-full" style={{ fontSize: 12 }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <input type="file" accept={UPLOAD_ACCEPT_ATTR} className="premium-input w-full" style={{ fontSize: 12 }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
             <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>เช่น สลิปโอนเงิน/หลักฐานที่ลูกค้าส่งมา (แนบทีหลังที่หน้ารายละเอียดก็ได้)</p>
           </div>
           {error && <div style={{ fontSize: 13, color: "var(--red)" }}>{error}</div>}
