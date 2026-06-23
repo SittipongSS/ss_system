@@ -81,12 +81,13 @@ export async function POST(request) {
     if (!reg) return Response.json({ error: `ไม่พบทะเบียน ${it.registrationId}` }, { status: 404 });
     const qty = parseInt(it.quantity);
     if (!qty || qty < 1) return Response.json({ error: 'จำนวนต้องมากกว่า 0' }, { status: 400 });
-    // Per-unit tax rounded to 2 decimals, THEN × qty — so ภาษี/ชิ้น × จำนวน
-    // reconciles with the line total everywhere (form, bill, reports).
-    const excisePer = r2(reg.exciseTax);
-    const localPer = r2(reg.localTax);
-    const itemExcise = r2(excisePer * qty);
-    const itemLocal = r2(localPer * qty);
+    // Per-unit tax = ราคาถอด VAT × 8.8% (excise + local combined), rounded ONCE,
+    // THEN × qty — so ภาษี/ชิ้น × จำนวน = ยอดรวม exactly. Split the line back into
+    // excise:local = 10:1 so the stored breakdown still sums to the total.
+    const perUnit = r2((reg.exciseTax || 0) + (reg.localTax || 0));
+    const itemTax = r2(perUnit * qty);
+    const itemExcise = r2(itemTax * 10 / 11);
+    const itemLocal = r2(itemTax - itemExcise);
     totalExciseTax += itemExcise;
     totalLocalTax += itemLocal;
     itemRows.push({
@@ -96,11 +97,11 @@ export async function POST(request) {
       productId: reg.productId,
       quantity: qty,
       salePrice: it.salePrice != null && it.salePrice !== '' ? Number(it.salePrice) : null,
-      exciseRatePerUnit: excisePer,
-      localTaxRatePerUnit: localPer,
+      exciseRatePerUnit: r2(reg.exciseTax),
+      localTaxRatePerUnit: r2(reg.localTax),
       totalExciseTax: itemExcise,
       totalLocalTax: itemLocal,
-      totalTax: itemExcise + itemLocal,
+      totalTax: itemTax,
     });
   }
   const totalTax = totalExciseTax + totalLocalTax;
