@@ -31,14 +31,15 @@ const uniqueName = (used, base) => {
   return name;
 };
 
-export async function buildRegistrationFilesZip({ team, customerId, from, to } = {}) {
+export async function buildRegistrationFilesZip({ team, customerId, from, to, ids } = {}) {
   const supabase = getSupabaseAdmin();
   let q = supabase.from('excise_registrations').select('*');
   if (team) q = q.eq('team', team);
   if (customerId) q = q.eq('customerId', customerId);
   const { data, error } = await q;
   if (error) throw error;
-  const regs = (data || []).filter((r) => inRange(r.createdAt, from, to));
+  const idSet = ids && ids.length ? new Set(ids) : null;
+  const regs = (data || []).filter((r) => inRange(r.createdAt, from, to) && (!idSet || idSet.has(r.id)));
 
   const zip = new JSZip();
   let fileCount = 0;

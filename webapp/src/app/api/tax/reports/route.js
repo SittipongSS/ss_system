@@ -26,6 +26,8 @@ export async function GET(request) {
     team,
     customerId: searchParams.get('customerId') || null,
     status: searchParams.get('status') || null,
+    // Optional explicit row selection (download only the chosen rows/files).
+    ids: (searchParams.get('ids') || '').split(',').map((s) => s.trim()).filter(Boolean),
     // Factory cost/profit columns are confidential — LG + admin only.
     margin: can(user?.role, 'products:margin'),
   };
