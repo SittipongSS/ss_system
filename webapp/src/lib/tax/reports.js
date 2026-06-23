@@ -64,9 +64,12 @@ async function fetchProductMap() {
 
 // 1) รายงานการขึ้นทะเบียน — one row per registration.
 export async function registrationReport(filter = {}) {
-  const { from, to, margin, status } = filter;
+  const { from, to, margin, status, ids } = filter;
+  const idSet = ids && ids.length ? new Set(ids) : null;
   const regs = (await fetchRegistrations(filter)).filter(
-    (r) => (!from && !to ? true : inRange(r.createdAt, from, to)) && (!status || status === 'all' || r.status === status),
+    (r) => (!from && !to ? true : inRange(r.createdAt, from, to))
+      && (!status || status === 'all' || r.status === status)
+      && (!idSet || idSet.has(r.id)),
   );
   const products = await fetchProductMap();
 
@@ -74,6 +77,7 @@ export async function registrationReport(filter = {}) {
     const p = products.get(r.productId) || {};
     const exVat = p.retailPriceExVat != null ? p.retailPriceExVat : (p.retailPriceIncVat ? p.retailPriceIncVat / 1.07 : 0);
     const row = {
+      id: r.id,
       product: [r.fgCode || '-', r.productName || '', r.brandName || ''].filter(Boolean).join('\n'),
       size: p.volume != null ? `${p.volume} ${p.volumeUnit || 'ml'}` : '-',
       customer: two(r.customerName || '-', r.taxId || '-'),
@@ -119,16 +123,19 @@ export async function registrationReport(filter = {}) {
 
 // 2) รายงานการยื่นภาษี — one row per order line item (within createdAt range).
 export async function filingReport(filter = {}) {
-  const { from, to, status } = filter;
+  const { from, to, status, ids } = filter;
+  const idSet = ids && ids.length ? new Set(ids) : null;
   const orders = (await fetchOrders(filter)).filter(
     (o) => (!from && !to ? true : inRange(o.createdAt, from, to)) && (!status || status === 'all' || o.status === status),
   );
   const rows = [];
   for (const o of orders) {
     for (const it of o.items || []) {
+      if (idSet && !idSet.has(it.id)) continue;
       const p = it.product || {};
       const exVat = p.retailPriceExVat != null ? p.retailPriceExVat : (p.retailPriceIncVat ? p.retailPriceIncVat / 1.07 : 0);
       rows.push({
+        id: it.id,
         quotationRef: o.quotationRef,
         product: [p.fgCode || it.registration?.fgCode || '-', p.productDescription || it.registration?.productName || '', p.brandName || ''].filter(Boolean).join('\n'),
         retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),

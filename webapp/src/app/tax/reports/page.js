@@ -23,6 +23,7 @@ export default function ReportsPage() {
   const [status, setStatus] = useState("all");
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(() => new Set()); // row ids to download
 
   const statusFilters = type === "registration" ? REGISTRATION_FILTERS : FILING_FILTERS;
 
@@ -45,7 +46,31 @@ export default function ReportsPage() {
     return () => { alive = false; };
   }, [query]);
 
-  const columns = (report?.columns || []).map((c) => ({
+  // Reset selection whenever the report data changes (filters/type/period).
+  useEffect(() => { setSelected(new Set()); }, [query]);
+
+  const allIds = useMemo(() => (report?.rows || []).map((r) => r.id), [report]);
+  const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
+  const toggleOne = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const toggleAll = () => setSelected(allChecked ? new Set() : new Set(allIds));
+  const idsParam = selected.size ? `&ids=${encodeURIComponent([...selected].join(","))}` : "";
+
+  const selectCol = {
+    key: "_sel",
+    label: <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="เลือกทั้งหมด" />,
+    sortValue: null,
+    align: "center",
+    thStyle: { width: 34 },
+    render: (row) => (
+      <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleOne(row.id)} aria-label="เลือกแถวนี้" />
+    ),
+  };
+
+  const columns = [selectCol, ...(report?.columns || []).map((c) => ({
     key: c.key,
     label: c.label,
     align: c.money || c.num ? "right" : "left",
@@ -68,20 +93,24 @@ export default function ReportsPage() {
       }
       return v ?? "-";
     },
-  }));
+  }))];
 
   const customerName = customers.find((c) => c.id === customerId)?.name;
   const downloadXlsx = () => {
     const a = document.createElement("a");
-    a.href = `/api/tax/reports?${query}&format=xlsx`;
+    a.href = `/api/tax/reports?${query}&format=xlsx${idsParam}`;
     a.click();
   };
   const downloadZip = () => {
     const a = document.createElement("a");
-    a.href = `/api/tax/reports?${query}&format=zip`;
+    a.href = `/api/tax/reports?${query}&format=zip${idsParam}`;
     a.click();
   };
-  const print = () => report && openReportPrintWindow(report, { from, to, customerName });
+  const print = () => {
+    if (!report) return;
+    const rows = selected.size ? report.rows.filter((r) => selected.has(r.id)) : report.rows;
+    openReportPrintWindow({ ...report, rows }, { from, to, customerName });
+  };
 
   const summary = report?.summary;
 
@@ -150,13 +179,14 @@ export default function ReportsPage() {
             <span style={{ fontSize: 13 }}>ยอดภาษีรวม: <strong className="font-mono" style={{ color: "var(--red)" }}>{fmtMoney(summary.tax)}</strong></span>
           )}
           {typeof summary.status === "string" && <span style={{ fontSize: 13, color: "var(--text-3)" }}>{summary.status}</span>}
+          {selected.size > 0 && <span style={{ fontSize: 13, color: "var(--accent)", marginLeft: "auto" }}>เลือกไว้ {selected.size} รายการ (โหลด/พิมพ์เฉพาะที่เลือก)</span>}
         </div>
       )}
 
       <DataList
         columns={columns}
         rows={report?.rows || []}
-        rowKey={(_, i) => i}
+        rowKey={(r) => r.id}
         empty={loading ? "กำลังโหลด..." : "ไม่มีข้อมูลในช่วงที่เลือก"}
         emptyIcon={BarChart3}
       />
