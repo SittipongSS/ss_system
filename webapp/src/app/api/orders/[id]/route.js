@@ -195,7 +195,10 @@ export async function PATCH(request, { params }) {
   await attachRegistrations(supabase, data);
   const summary = body.status && body.status !== order.status
     ? `เปลี่ยนสถานะใบยื่น ${id}: ${order.status} → ${body.status}` : null;
-  await recordAudit({ user, action: 'update', entityType: 'order', entityId: id, before: order, after: data, summary, request });
+  // Audit เก็บ header แบบ plain — ตัด items/registrations ที่ฝังมา (ORDER_SELECT +
+  // attachRegistrations) ออก กันบวมและให้ changedKeys เทียบกับ before (plain) ได้ตรง.
+  const { items: _items, registrations: _regs, ...plainAfter } = data;
+  await recordAudit({ user, action: 'update', entityType: 'order', entityId: id, before: order, after: plainAfter, summary, request });
   return Response.json(data);
 }
 

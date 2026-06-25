@@ -139,6 +139,13 @@ PATCH order (แก้ line items) ใช้แนวเดียวกัน: h
 เพิ่ม audit ให้ route ใหม่: `import { recordAudit }` แล้วเรียก **หลัง write สำเร็จ** ด้วย `await`
 (serverless — ต้อง await ให้ insert จบก่อน return).
 
+**การจัดการพื้นที่ (Supabase ใกล้เต็ม):** log โตเรื่อยๆ ไม่มี auto-purge (ตั้งใจ). กฎประหยัด:
+- `before` เฉพาะ update/delete (create ไม่ต้องมี). `before`/`after` เก็บ record เต็มเพื่อกู้คืน manual ได้.
+- **ห้ามเก็บ embedded relations ซ้ำ** — order audit เก็บ header แบบ plain (ตัด `items`/`registrations`
+  ที่ ORDER_SELECT ดึงมา; ของจริงอยู่ในตาราง `order_items` แล้ว).
+- archive log เก่าด้วย script รันมือ [`scripts/archive-audit-logs.mjs`](scripts/archive-audit-logs.mjs)
+  (`--months=N` → export เป็นไฟล์ JSON ก่อน แล้วค่อยลบ; `--dry-run` ดูก่อนได้).
+
 ---
 
 ## 5.4 Unique Customer = `taxId` + `branchCode`
