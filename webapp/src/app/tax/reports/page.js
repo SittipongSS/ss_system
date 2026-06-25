@@ -106,10 +106,18 @@ export default function ReportsPage() {
     a.href = `/api/tax/reports?${query}&format=zip${idsParam}`;
     a.click();
   };
-  const print = () => {
+  const print = async () => {
     if (!report) return;
-    const rows = selected.size ? report.rows.filter((r) => selected.has(r.id)) : report.rows;
-    openReportPrintWindow({ ...report, rows }, { from, to, customerName });
+    // No selection → print the loaded report as-is. With a selection, re-fetch so
+    // the totals row reflects only the printed rows (server recomputes summary by ids).
+    if (!selected.size) {
+      openReportPrintWindow(report, { from, to, customerName });
+      return;
+    }
+    const res = await fetch(`/api/tax/reports?${query}${idsParam}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    openReportPrintWindow(data, { from, to, customerName });
   };
 
   const summary = report?.summary;

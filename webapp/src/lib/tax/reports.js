@@ -116,7 +116,6 @@ export async function registrationReport(filter = {}) {
     rows,
     summary: {
       _label: `รวม ${rows.length} รายการ`,
-      status: `ขึ้นทะเบียนแล้ว ${regs.filter((r) => r.status === 'approved').length} · รออนุมัติ ${regs.filter((r) => r.status === 'pending_legal').length} · ฉบับร่าง ${regs.filter((r) => r.status === 'draft').length} · ตีกลับ ${regs.filter((r) => r.status === 'rejected').length}`,
     },
   };
 }

@@ -425,13 +425,11 @@ export default function AttachmentsPanel({
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {busy ? (
-                        <span className="status-pill text-[10px] flex items-center gap-1" style={{ color: "var(--accent)" }}>
-                          <span
-                            aria-hidden
-                            style={{ width: 11, height: 11, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }}
-                          />
-                          กำลังอัปโหลด…
-                        </span>
+                        <span
+                          aria-hidden
+                          title="กำลังอัปโหลด…"
+                          style={{ width: 11, height: 11, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }}
+                        />
                       ) : has ? (
                         <span className="status-pill success text-[10px]">มีแล้ว</span>
                       ) : t.required ? (
