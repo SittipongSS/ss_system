@@ -12,6 +12,7 @@ export function useApiList(url) {
   const [error, setError] = useState(null);
 
   const reload = useCallback(async () => {
+    if (!url) { setLoading(false); return null; } // disabled list (no endpoint)
     try {
       const r = await fetch(url);
       if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || `โหลดข้อมูลไม่สำเร็จ (${r.status})`);

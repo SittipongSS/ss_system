@@ -152,6 +152,7 @@ export default function AppLayout({ children }) {
         { href: '/database/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
         { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
         { href: '/database/holidays', name: 'วันหยุด (ปฏิทินทำการ)', icon: CalendarDays, cap: 'master:manage', match: (p) => p.startsWith('/database/holidays') },
+        { href: '/database/reports', name: 'รายงานคุณภาพข้อมูล', icon: BarChart3, cap: 'products:view', match: (p) => p === '/database/reports' },
       ],
     },
     {
@@ -176,6 +177,7 @@ export default function AppLayout({ children }) {
       items: [
         { href: '/pm/projects', name: 'โครงการ', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/pm/projects' || p.startsWith('/pm/projects/') },
         { href: '/pm/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/pm/tasks' },
+        { href: '/pm/reports', name: 'รายงาน', icon: BarChart3, cap: 'pm:view', match: (p) => p === '/pm/reports' },
       ],
     },
   ];
