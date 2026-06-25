@@ -61,10 +61,11 @@ export async function POST(request) {
     // ไม่แตะ จึงไม่ต้องลง deps ก็รัน flow เดิมได้ และ flag กั้น prod ไว้.
     if ((process.env.STORAGE_BACKEND || 'supabase') === 'drive') {
       try {
-        const { resolveFolderForEntity, uploadFile } = await import('@/lib/drive');
+        const { resolveFolderForEntity, uploadFile, ensureUnsortedFolder } = await import('@/lib/drive');
+        // มี entity context → โฟลเดอร์ลูกค้า/สินค้า; ไม่มี → _unsorted (ไม่ทิ้งไว้ที่ root).
         const folderId = (entityType && entityId)
           ? await resolveFolderForEntity(entityType, entityId)
-          : (process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || process.env.GOOGLE_SHARED_DRIVE_ID);
+          : await ensureUnsortedFolder();
         const { id, webViewLink } = await uploadFile(folderId, {
           buffer,
           name: file.name || 'file',
