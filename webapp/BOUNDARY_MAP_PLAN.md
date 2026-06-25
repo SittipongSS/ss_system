@@ -40,11 +40,11 @@
 | `/api/master/*` namespace | ✅ Done | thin re-export alias ของ `/api/customers`, `/api/products` |
 | `/api/tax/*` namespace | ✅ Done (รอบนี้) | alias `tax/registrations`, `tax/orders` → `excise-registrations`, `orders` |
 | Snapshot pattern (ชื่อ/ราคา/ภาษี ณ เวลานั้น) | ✅ Done | reg เก็บ `productName/customerName/taxId` (`excise-registrations/route.js:70`); order เก็บ `customerName/customerTaxId/exciseRatePerUnit` (`orders/route.js:110`) |
-| Requirement / completeness check | 🟡 Partial | logic มีแล้วแบบ inline ที่ submit-gate (`excise-registrations/[id]/route.js:118-131`) ใช้ `requiredDocKeys`/`listAttachments` — แต่ยังไม่มี endpoint `/requirements` แยก |
-| Deletion policy | 🟡 Partial | customer มี `isActive` (mig 0030); PM มี `/projects/[id]/restore` — แต่ registration เป็น **hard delete** (`excise-registrations/[id]/route.js:177`) + มี hack `"Removed status check for demo"` (บรรทัด 171) |
+| Requirement / completeness check | ✅ Done (Phase 1) | service กลาง `lib/tax/requirements.js` (`registrationRequirements` → `{ready,missing,warnings}`); submit-gate (PATCH) + `GET /api/(tax/)registrations/[id]/requirements` ใช้ตัวเดียวกัน; หน้า reg โชว์ checklist+warnings จาก endpoint |
+| Deletion policy | ✅ Done (Phase 2) | กฎกลาง `lib/deletion.js` (`referencedBlock`/`registrationDeleteBlock`); customer/product บล็อกถ้าถูกอ้าง (+`isActive`); registration ลบได้เฉพาะ draft ที่ไม่มี order line — hack `"Removed status check for demo"` เก็บออกแล้ว |
 | Audit log | 🟡 Partial | ออกแบบ `audit_logs` + หน้า `/audit` ไว้แล้ว (ยังไม่กระจายให้ทุกโมดูลบันทึก) |
 | Re-approval on edit | ✅ Done | reg approved = locked + ขอแก้ไข (`excise-registrations/[id]/route.js:44-64`) |
-| `/relations` endpoints (360 view) | ❌ Planned | ไม่มี API แยก — detail page query เองในหน้า |
+| `/relations` endpoints (360 view) | ✅ Done (Phase 3) | `lib/master/relations.js` + `GET /api/(master/)customers/[id]/relations` ({products,registrations,orders,projects}) + `.../products/[id]/relations` ({registrations,orders,projects}); หน้า database detail เลิก fetch-all-regs → ใช้ endpoint scoped + เพิ่ม projects (+ orders ที่สินค้า) |
 | `/database/reports`, `/pm/reports` | ❌ Planned | มีแค่ `/tax/reports` + `/api/tax/reports` |
 | Authorization / Transaction boundary | ❌ Planned (เอกสาร) | กฎกระจายในโค้ด ยังไม่ได้ codify เป็น blueprint |
 | Unique customer `taxId + branchCode` | ❌ Planned | ยังไม่มี unique constraint |
@@ -105,9 +105,14 @@
 ```
 
 ### Acceptance
-- [ ] submit ที่เอกสารไม่ครบยังถูกบล็อกเหมือนเดิม (regression) แต่ตอนนี้ใช้ service เดียวกับ GET
-- [ ] เรียก GET endpoint ได้ค่า `missing` ตรงกับที่ submit จะ reject
-- [ ] frontend หน้า `tax/registrations/[id]` โชว์ checklist จาก endpoint นี้
+- [x] submit ที่เอกสารไม่ครบยังถูกบล็อกเหมือนเดิม (regression) แต่ตอนนี้ใช้ service เดียวกับ GET (PATCH เรียก `registrationRequirements`)
+- [x] เรียก GET endpoint ได้ค่า `missing` ตรงกับที่ submit จะ reject (service เดียวกัน)
+- [x] frontend หน้า `tax/registrations/[id]` โชว์ checklist จาก endpoint นี้ (refetch เมื่อแนบ/ลบเอกสาร — live)
+
+**สถานะ:** ✅ Done. ไฟล์: `lib/tax/requirements.js`, `api/excise-registrations/[id]/requirements/route.js` (+ tax alias),
+refactor PATCH submit-gate, หน้า `tax/registrations/[id]/page.js` (checklist+warnings จาก endpoint, ปุ่มยื่น gate ด้วย `ready`).
+**Follow-up (ยังไม่ทำ):** `GET /api/master/customers/[id]/completeness` แยก (task 4) — ตอนนี้ warnings คุณภาพข้อมูลลูกค้า
+fold อยู่ใน registration requirements แล้ว (email/เบอร์โทร); แยกเป็น endpoint ของ customer เมื่อทำ Phase 3 relations.
 
 **ขนาด:** S–M (เป็น refactor + 1 endpoint บาง)
 
@@ -128,11 +133,25 @@
 4. ตรวจ `DELETE` ทุก route ให้ผ่านกฎเดียวกัน (registration `:161`, order `:202`, customers, products)
 
 ### Acceptance
-- [ ] ลบ registration ที่ไม่ใช่ draft ถูกบล็อก (หรือ void แทน)
-- [ ] ลบ customer ที่มี order/registration → ทำได้แค่ deactivate
-- [ ] ไม่มีคำว่า "demo" ใน guard ของ DELETE handler
+- [x] ลบ registration ที่ไม่ใช่ draft ถูกบล็อก (409 + ข้อความให้ "ขอแก้ไข" ก่อน) — `registrationDeleteBlock`
+- [x] ลบ customer/product ที่มี order/registration → ถูกบล็อก (deactivate ผ่าน `isActive` แทน) — `referencedBlock`
+- [x] ไม่มีคำว่า "demo" ใน guard ของ DELETE handler
 
-**ขนาด:** M — ต้องแตะหลาย route + อาจมี migration เพิ่ม `isActive`/`deletedAt`
+**สถานะ:** ✅ Done — ไม่ต้อง migration เพิ่ม (customer/product มี `isActive` อยู่แล้ว; registration ใช้ status guard).
+ครอบคลุม 4 route: registration (draft+order-line guard), customers/products (reference guard ผ่าน helper กลาง),
+orders (มี tax-lock guard เดิม: committed → superuser break-glass — สอดคล้องกับตระกูลกฎเดียวกัน).
+
+**Hardening (รอบทบทวน):**
+- **สิทธิ์ลบ registration ย้ายเข้า `deleteScope` ทั้งหมด** = superuser(all)/senior_ae(team)/ae(own) —
+  เลิก fallback `canEditRecord` ที่เผลอเปิดให้ `legal` (legal:approve bypass) และ `ac` ("no delete") ลบได้
+  ตอนนี้ตรงกับ orders แล้ว (กฎสิทธิ์ลบอยู่ที่ `permissions.js` ที่เดียว)
+- **Cascade attachments:** ลบ customer/product/registration → เก็บกวาด `attachments` (row + ไฟล์ storage/Drive)
+  ผ่าน `purgeAttachments()` ใน `lib/master/attachments.js` (reuse `deleteAttachmentFile` ร่วมกับ `/api/attachments/[id]`)
+  กันไฟล์/แถวกำพร้า — สำคัญกับ Drive track (พื้นที่)
+- **Robustness:** count/reference query เช็ค error แล้วทุก route (query พลาด → 500 ไม่ใช่ปล่อยให้ลบหลุด)
+- product_types ไม่มี DELETE route → ไม่ต้องทำ
+
+**ขนาด:** M — แตะ 4 route + helper กลาง `lib/deletion.js` (ไม่ต้องมี migration)
 
 ---
 
@@ -147,8 +166,15 @@
 4. **ย้ำ guard:** หน้าเหล่านี้ห้ามมีปุ่ม approve tax / file / แก้ timeline (ตาม map section 4)
 
 ### Acceptance
-- [ ] customer detail โชว์ทุก relation ในที่เดียว อ่านอย่างเดียว
-- [ ] ทุกปุ่ม action เด้งไปหน้าเจ้าของงาน ไม่มี write ในหน้า Database
+- [x] customer detail โชว์ทุก relation ในที่เดียว อ่านอย่างเดียว (products/registrations/orders + **projects** ใหม่)
+- [x] product detail โชว์ registrations + **orders** + **projects** (ใหม่) อ่านอย่างเดียว
+- [x] ทุกปุ่ม action เด้งไปหน้าเจ้าของงาน (reg→/tax/registrations, order→/tax/filings, project→/pm/projects); ปุ่มเขียนในหน้า Database มีแค่ master-data ของตัวเอง (แก้/พัก/ลบ customer·product) ไม่มี tax/pm write
+
+**สถานะ:** ✅ Done. ไฟล์: `lib/master/relations.js`, `api/(master/)customers/[id]/relations`, `api/(master/)products/[id]/relations`,
+หน้า `database/customers/[id]`, `database/products/[id]`.
+**Security:** ข้อมูลภาษี (registrations/orders) gate ด้วย `history:view` ที่ service (กัน staff/viewer ที่ viewScope='all' ดึงผ่าน API ตรง);
+projects gate ด้วย `pm:view`; ที่เหลือ scope ด้วย `canViewRecord` เหมือน route อื่น.
+**Note:** order_items→orders ใช้ embed (FK จริง); project_products→projects query 2 สเตป (FK ไม่แน่นอน).
 
 **ขนาด:** M — เป็น read aggregation (ใช้ JOIN ได้เพราะ DB เดียว ตามที่ Gemini แนะนำ: read ข้ามได้, write ห้าม)
 

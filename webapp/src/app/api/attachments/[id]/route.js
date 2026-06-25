@@ -2,23 +2,12 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canEditRecord } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
-import { getAttachment } from '@/lib/master/attachments';
+import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
 
 const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders', registration: 'excise_registrations' };
 const RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
-const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'uploads';
-
-// แกะ object path ออกจาก public URL ของ Supabase Storage เพื่อลบไฟล์จริง.
-// รูปแบบ: .../storage/v1/object/public/<bucket>/<objectPath>
-function objectPathFromUrl(url) {
-  if (!url) return null;
-  const marker = `/object/public/${BUCKET}/`;
-  const i = url.indexOf(marker);
-  if (i === -1) return null;
-  return decodeURIComponent(url.slice(i + marker.length));
-}
 
 // DELETE /api/attachments/[id] — ลบ row + best-effort ลบไฟล์ใน storage.
 export async function DELETE(request, { params }) {
@@ -56,26 +45,8 @@ export async function DELETE(request, { params }) {
     }
   }
 
-  // ลบไฟล์ใน storage ด้วย (best-effort — ไม่ให้ block การลบ row ถ้าพลาด).
-  if (att.driveFileId) {
-    // Drive backend: ลบไฟล์บน Google Drive (dynamic import — ไม่โหลด googleapis
-    // ในโหมด supabase).
-    try {
-      const { deleteFile } = await import('@/lib/drive');
-      await deleteFile(att.driveFileId);
-    } catch {
-      /* best-effort */
-    }
-  } else {
-    const path = objectPathFromUrl(att.fileUrl);
-    if (path) {
-      try {
-        await supabase.storage.from(BUCKET).remove([path]);
-      } catch {
-        /* ไฟล์อาจถูกลบไปแล้ว หรือ path แกะไม่ได้ — ข้ามได้ */
-      }
-    }
-  }
+  // ลบไฟล์จริงใน storage/Drive ด้วย (best-effort — ไม่ให้ block การลบ row ถ้าพลาด).
+  await deleteAttachmentFile(att);
 
   return Response.json({ success: true });
 }

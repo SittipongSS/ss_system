@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, Pencil, Trash2, Boxes, ShoppingCart, Archive, ArchiveRestore } from "lucide-react";
+import { ArrowLeft, Building2, Pencil, Trash2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
@@ -32,6 +32,7 @@ export default function CustomerDetails() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [regs, setRegs] = useState([]); // excise registrations for this customer (tax-gated)
+  const [projects, setProjects] = useState([]); // PM projects for this customer (pm-gated)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -103,15 +104,17 @@ export default function CustomerDetails() {
     }
   }, [id]);
 
-  // Excise registrations of this customer — tax data, loaded only for roles
-  // allowed to see the tax system.
+  // Cross-module relations (360-view): registrations + projects from one scoped
+  // endpoint instead of fetching every registration and filtering client-side.
+  // The endpoint returns [] for relations the user may not see (tax → history:view,
+  // projects → pm:view), so no extra client-side capability gate is needed here.
   useEffect(() => {
-    if (!id || !canViewTax) { setRegs([]); return; }
-    fetch(`/api/excise-registrations`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((all) => setRegs((all || []).filter((r) => r.customerId === id)))
+    if (!id) { setRegs([]); setProjects([]); return; }
+    fetch(`/api/master/customers/${id}/relations`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) { setRegs(d.registrations || []); setProjects(d.projects || []); } })
       .catch(() => {});
-  }, [id, canViewTax]);
+  }, [id]);
 
   const formatMoney = (amount) => {
     if (amount === undefined || amount === null) return "฿0.00";
@@ -440,6 +443,11 @@ export default function CustomerDetails() {
             </button>
           </>
         )}
+        {projects.length > 0 && (
+          <button onClick={() => setActiveTab("projects")} className={`tab-btn ${activeTab === "projects" ? "active" : ""}`}>
+            โปรเจกต์ ({projects.length})
+          </button>
+        )}
       </div>
 
       {/* Products Tab */}
@@ -604,6 +612,30 @@ export default function CustomerDetails() {
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Projects Tab — PM 360-view, read-only (manage in /pm) */}
+      {activeTab === "projects" && (
+        projects.length === 0 ? (
+          <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีโปรเจกต์ของลูกค้ารายนี้</div>
+        ) : (
+          <div className="glass-panel">
+            <div className="px-4 py-3.5 border-b border-[var(--border)]">
+              <h3 className="font-semibold text-sm text-[var(--text)] flex items-center gap-2"><FolderKanban size={16} className="text-[var(--accent)]" /> โปรเจกต์ที่เกี่ยวข้อง ({projects.length} รายการ)</h3>
+            </div>
+            <div className="p-3 grid grid-cols-1 gap-2">
+              {projects.map((p) => (
+                <div key={p.id} onClick={() => router.push(`/pm/projects/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm text-[var(--text)] truncate">{p.name || p.code}</div>
+                    <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.code}</div>
+                  </div>
+                  {p.status && <span className="ui-badge shrink-0">{p.status}</span>}
+                </div>
+              ))}
             </div>
           </div>
         )
