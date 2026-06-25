@@ -5,6 +5,7 @@ import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { categoryOf } from '@/lib/master/productTypes';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -76,6 +77,12 @@ export async function PATCH(request, { params }) {
     const { data: decided, error: decErr } = await supabase
       .from('products').update(approvalUpdates).eq('id', id).select().single();
     if (decErr) return Response.json({ error: decErr.message }, { status: 500 });
+    await recordAudit({
+      user, action: 'update', entityType: 'product', entityId: id,
+      before: product, after: decided,
+      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${decided.productDescription || id}`,
+      request,
+    });
     return Response.json(decided);
   }
 
@@ -140,6 +147,8 @@ export async function PATCH(request, { params }) {
     }
     return Response.json({ error: error.message }, { status: 500 });
   }
+  // Audit เก็บ record เต็ม (ก่อน redact margin) — หน้า /audit เป็น supervisor only.
+  await recordAudit({ user, action: 'update', entityType: 'product', entityId: id, before: product, after: data, request });
   return Response.json(redactProductMargin(user, data));
 }
 
@@ -184,5 +193,6 @@ export async function DELETE(request, { params }) {
   // Cascade: purge attachments (rows + storage/Drive files) so deleting a
   // product never orphans its documents.
   await purgeAttachments('product', id);
+  await recordAudit({ user, action: 'delete', entityType: 'product', entityId: id, before: product, request });
   return Response.json({ success: true, message: 'ลบสินค้าเรียบร้อยแล้ว' });
 }

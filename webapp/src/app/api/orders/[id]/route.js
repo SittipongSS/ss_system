@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSuperuser } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrderItems, updateOrderResilient } from '@/lib/tax/orders';
+import { recordAudit } from '@/lib/audit';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -192,6 +193,9 @@ export async function PATCH(request, { params }) {
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
   await attachRegistrations(supabase, data);
+  const summary = body.status && body.status !== order.status
+    ? `เปลี่ยนสถานะใบยื่น ${id}: ${order.status} → ${body.status}` : null;
+  await recordAudit({ user, action: 'update', entityType: 'order', entityId: id, before: order, after: data, summary, request });
   return Response.json(data);
 }
 
@@ -227,5 +231,6 @@ export async function DELETE(request, { params }) {
   const { data, error } = await supabase.from('orders').delete().eq('id', id).select('id');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) return Response.json({ error: 'ไม่พบใบสั่งซื้อนี้' }, { status: 404 });
+  await recordAudit({ user, action: 'delete', entityType: 'order', entityId: id, before: order, request });
   return Response.json({ success: true, message: 'ลบใบสั่งซื้อเรียบร้อยแล้ว' });
 }
