@@ -125,6 +125,14 @@ export default function AttachmentsPanel({
       }),
     });
     if (!res.ok) {
+      // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive ที่เพิ่งอัป กัน orphan.
+      if (driveFileId) {
+        fetch("/api/upload", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ driveFileId }),
+        }).catch(() => {});
+      }
       alert((await res.json()).error || "บันทึกเอกสารไม่สำเร็จ");
       return false;
     }

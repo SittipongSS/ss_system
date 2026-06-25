@@ -37,10 +37,14 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
           const up = await fetch("/api/upload", { method: "POST", body: fd });
           if (up.ok) {
             const { url, driveFileId } = await up.json();
-            await fetch("/api/master/attachments", {
+            const sv = await fetch("/api/master/attachments", {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ entityType: "order", entityId: order.id, docType: "excise_proof", fileUrl: url, driveFileId, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size }),
             });
+            // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive กัน orphan.
+            if (!sv.ok && driveFileId) {
+              fetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId }) }).catch(() => {});
+            }
           }
         } catch { /* ออเดอร์ย้ายสถานะแล้ว แนบไฟล์เพิ่มทีหลังได้ */ }
       }

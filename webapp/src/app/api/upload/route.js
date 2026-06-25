@@ -113,3 +113,22 @@ export async function POST(request) {
     return Response.json({ error: 'File upload failed' }, { status: 500 });
   }
 }
+
+// DELETE /api/upload — rollback ไฟล์ Drive ที่เพิ่งอัป เมื่อ caller บันทึก metadata
+// (/api/master/attachments) ไม่สำเร็จ → กัน orphan (ไฟล์ค้างใน Drive ไม่มี row).
+// best-effort: ใครก็ตามที่ล็อกอินเรียกได้ (เป็นการลบไฟล์ที่ตัวเองเพิ่งอัป).
+export async function DELETE(request) {
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
+  if ((process.env.STORAGE_BACKEND || 'supabase') !== 'drive') return Response.json({ ok: true });
+
+  let driveFileId = null;
+  try { ({ driveFileId } = await request.json()); } catch { /* no body */ }
+  if (!driveFileId) return Response.json({ ok: true });
+
+  try {
+    const { deleteFile } = await import('@/lib/drive');
+    await deleteFile(driveFileId); // best-effort (กลืน error เองภายใน)
+  } catch { /* ignore */ }
+  return Response.json({ ok: true });
+}
