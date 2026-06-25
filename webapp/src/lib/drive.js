@@ -115,12 +115,22 @@ export async function resolveFolderForEntity(entityType, entityId) {
     return ensureCustomerFolder(data);
   }
   if (entityType === 'product' || entityType === 'registration') {
-    const productId = entityType === 'product'
-      ? entityId
-      : (await supabase.from('excise_registrations').select('productId').eq('id', entityId).maybeSingle()).data?.productId;
+    // registration: ดึง productId + customerId (snapshot ของทะเบียน) มาด้วย เพื่อ fallback.
+    let productId = entityId;
+    let regCustomerId = null;
+    if (entityType === 'registration') {
+      const { data: reg } = await supabase
+        .from('excise_registrations').select('productId, customerId').eq('id', entityId).maybeSingle();
+      productId = reg?.productId;
+      regCustomerId = reg?.customerId || null;
+    }
     const { data: product } = await supabase.from('products').select('*').eq('id', productId).maybeSingle();
     if (!product) throw new Error('ไม่พบสินค้า');
-    const { data: customer } = await supabase.from('customers').select('*').eq('id', product.customerId).maybeSingle();
+    // ลูกค้า = เจ้าของสินค้า; ถ้าสินค้าไม่มีเจ้าของ → fallback เป็น customerId ของทะเบียน.
+    const customerId = product.customerId || regCustomerId;
+    const { data: customer } = customerId
+      ? await supabase.from('customers').select('*').eq('id', customerId).maybeSingle()
+      : { data: null };
     if (!customer) throw new Error('สินค้านี้ยังไม่มีลูกค้าเจ้าของ');
     return ensureProductFolder(product, customer);
   }
