@@ -125,6 +125,14 @@ export default function AttachmentsPanel({
       }),
     });
     if (!res.ok) {
+      // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive ที่เพิ่งอัป กัน orphan.
+      if (driveFileId) {
+        fetch("/api/upload", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ driveFileId }),
+        }).catch(() => {});
+      }
       alert((await res.json()).error || "บันทึกเอกสารไม่สำเร็จ");
       return false;
     }
@@ -416,7 +424,15 @@ export default function AttachmentsPanel({
                       <span className="text-xs font-semibold text-[var(--text)] break-words leading-snug">{t.label}</span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {has ? (
+                      {busy ? (
+                        <span className="status-pill text-[10px] flex items-center gap-1" style={{ color: "var(--accent)" }}>
+                          <span
+                            aria-hidden
+                            style={{ width: 11, height: 11, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }}
+                          />
+                          กำลังอัปโหลด…
+                        </span>
+                      ) : has ? (
                         <span className="status-pill success text-[10px]">มีแล้ว</span>
                       ) : t.required ? (
                         <span className="status-pill warning text-[10px]">ยังขาด</span>
@@ -433,7 +449,14 @@ export default function AttachmentsPanel({
                           title={busy ? "กำลังอัปโหลด..." : has ? "เพิ่มไฟล์" : "แนบไฟล์"}
                           style={busy ? { opacity: 0.5 } : undefined}
                         >
-                          <Plus size={15} />
+                          {busy ? (
+                            <span
+                              aria-hidden
+                              style={{ width: 13, height: 13, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }}
+                            />
+                          ) : (
+                            <Plus size={15} />
+                          )}
                         </button>
                       )}
                     </div>

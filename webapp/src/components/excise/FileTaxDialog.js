@@ -66,7 +66,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
       //    AttachmentsPanel. best-effort: ปิดงานสำเร็จแล้ว ถ้าแนบพลาดแนบเองได้.
       if (receiptUrl) {
         try {
-          await fetch("/api/master/attachments", {
+          const sv = await fetch("/api/master/attachments", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -85,6 +85,10 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
               },
             }),
           });
+          // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive กัน orphan.
+          if (!sv.ok && receiptDriveFileId) {
+            fetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId: receiptDriveFileId }) }).catch(() => {});
+          }
         } catch (attErr) {
           console.error("attach receipt failed:", attErr);
         }

@@ -61,10 +61,11 @@ export async function POST(request) {
     // ไม่แตะ จึงไม่ต้องลง deps ก็รัน flow เดิมได้ และ flag กั้น prod ไว้.
     if ((process.env.STORAGE_BACKEND || 'supabase') === 'drive') {
       try {
-        const { resolveFolderForEntity, uploadFile } = await import('@/lib/drive');
+        const { resolveFolderForEntity, uploadFile, ensureUnsortedFolder } = await import('@/lib/drive');
+        // มี entity context → โฟลเดอร์ลูกค้า/สินค้า; ไม่มี → _unsorted (ไม่ทิ้งไว้ที่ root).
         const folderId = (entityType && entityId)
           ? await resolveFolderForEntity(entityType, entityId)
-          : (process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || process.env.GOOGLE_SHARED_DRIVE_ID);
+          : await ensureUnsortedFolder();
         const { id, webViewLink } = await uploadFile(folderId, {
           buffer,
           name: file.name || 'file',
@@ -112,4 +113,23 @@ export async function POST(request) {
     console.error('Upload error:', error);
     return Response.json({ error: 'File upload failed' }, { status: 500 });
   }
+}
+
+// DELETE /api/upload — rollback ไฟล์ Drive ที่เพิ่งอัป เมื่อ caller บันทึก metadata
+// (/api/master/attachments) ไม่สำเร็จ → กัน orphan (ไฟล์ค้างใน Drive ไม่มี row).
+// best-effort: ใครก็ตามที่ล็อกอินเรียกได้ (เป็นการลบไฟล์ที่ตัวเองเพิ่งอัป).
+export async function DELETE(request) {
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
+  if ((process.env.STORAGE_BACKEND || 'supabase') !== 'drive') return Response.json({ ok: true });
+
+  let driveFileId = null;
+  try { ({ driveFileId } = await request.json()); } catch { /* no body */ }
+  if (!driveFileId) return Response.json({ ok: true });
+
+  try {
+    const { deleteFile } = await import('@/lib/drive');
+    await deleteFile(driveFileId); // best-effort (กลืน error เองภายใน)
+  } catch { /* ignore */ }
+  return Response.json({ ok: true });
 }

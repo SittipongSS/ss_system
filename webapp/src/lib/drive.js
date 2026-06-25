@@ -79,6 +79,11 @@ function storageRootId() {
   return process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || process.env.GOOGLE_SHARED_DRIVE_ID;
 }
 
+// โฟลเดอร์สำรองเมื่ออัปโดยไม่มี entity context (กันไฟล์หลุดไปกอง root ของ Shared Drive).
+export async function ensureUnsortedFolder() {
+  return ensureFolder('_unsorted', storageRootId());
+}
+
 // โฟลเดอร์ลูกค้า (cache id ลง customers.driveFolderId). ชื่อ "<ชื่อ> (<id>)".
 export async function ensureCustomerFolder(customer) {
   if (customer.driveFolderId) return customer.driveFolderId;
