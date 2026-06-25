@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { categoryOf } from '@/lib/master/productTypes';
+import { referencedBlock } from '@/lib/deletion';
+import { purgeAttachments } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -165,21 +167,22 @@ export async function DELETE(request, { params }) {
     supabase.from('order_items').select('orderId').eq('productId', id),
     supabase.from('excise_registrations').select('id').eq('productId', id),
   ]);
+  const refErr = ppRef.error || itemRef.error || regRef.error;
+  if (refErr) return Response.json({ error: refErr.message }, { status: 500 });
   const refs = [];
   const projIds = [...new Set((ppRef.data || []).map((r) => r.projectId))];
   const orderIds = [...new Set((itemRef.data || []).map((r) => r.orderId))];
   if (projIds.length) refs.push(`${projIds.length} โปรเจกต์ (${projIds.join(', ')})`);
   if (orderIds.length) refs.push(`${orderIds.length} ออเดอร์ (${orderIds.join(', ')})`);
   if (regRef.data?.length) refs.push(`${regRef.data.length} การขึ้นทะเบียน`);
-  if (refs.length) {
-    return Response.json(
-      { error: `ลบไม่ได้: สินค้านี้ยังถูกใช้งานอยู่ใน ${refs.join(', ')} — กรุณาจัดการรายการเหล่านั้นก่อน` },
-      { status: 409 },
-    );
-  }
+  const block = referencedBlock('สินค้า', refs);
+  if (block) return Response.json({ error: block }, { status: 409 });
 
   const { data, error } = await supabase.from('products').delete().eq('id', id).select('id');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
+  // Cascade: purge attachments (rows + storage/Drive files) so deleting a
+  // product never orphans its documents.
+  await purgeAttachments('product', id);
   return Response.json({ success: true, message: 'ลบสินค้าเรียบร้อยแล้ว' });
 }

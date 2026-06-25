@@ -1,8 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
-import { listAttachments } from '@/lib/master/attachments';
-import { requiredDocKeys, attachmentTypeLabel } from '@/lib/master/attachmentTypes';
+import { purgeAttachments } from '@/lib/master/attachments';
+import { registrationDeleteBlock } from '@/lib/deletion';
+import { registrationRequirements } from '@/lib/tax/requirements';
 
 export const dynamic = 'force-dynamic';
 
@@ -116,15 +117,12 @@ export async function PATCH(request, { params }) {
   // company map (address_map) on the CUSTOMER record (shared master data — the map
   // is attached once to the customer, never duplicated per registration).
   if (body.status === 'pending_legal' && (reg.status === 'draft' || reg.status === 'rejected') && can(user?.role, 'products:edit')) {
-    const missing = [];
-    const regPresent = new Set((await listAttachments('registration', id)).map((a) => a.docType));
-    for (const k of requiredDocKeys('registration')) {
-      if (!regPresent.has(k)) missing.push(attachmentTypeLabel('registration', k));
-    }
-    const custPresent = new Set((await listAttachments('customer', reg.customerId)).map((a) => a.docType));
-    if (!custPresent.has('address_map')) missing.push(attachmentTypeLabel('customer', 'address_map'));
-    if (missing.length) {
-      return Response.json({ error: `กรุณาแนบเอกสารให้ครบก่อนยื่น: ${missing.join(', ')}` }, { status: 400 });
+    const { ready, missing } = await registrationRequirements(supabase, id);
+    if (!ready) {
+      return Response.json(
+        { error: `กรุณาแนบเอกสารให้ครบก่อนยื่น: ${missing.map((m) => m.label).join(', ')}` },
+        { status: 400 },
+      );
     }
     updated.status = 'pending_legal';
     updated.rejectionReason = null;
@@ -157,7 +155,10 @@ export async function PATCH(request, { params }) {
   return Response.json(data);
 }
 
-// DELETE /api/excise-registrations/[id] — supervisor only (deleteScope).
+// DELETE /api/excise-registrations/[id] — superuser / senior_ae (team) / ae (own),
+// and only while the registration is a draft with no order-line references (Phase 2
+// deletion policy). Submitted/approved registrations must be revised to draft first.
+// Cascades attachment cleanup so a deleted draft never orphans documents/files.
 export async function DELETE(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -167,16 +168,29 @@ export async function DELETE(request, { params }) {
     .from('excise_registrations').select('*').eq('id', id).maybeSingle();
   if (findErr) return Response.json({ error: findErr.message }, { status: 500 });
   if (!reg) return Response.json({ error: 'ไม่พบทะเบียนนี้' }, { status: 404 });
-  const isSupervisorDelete = canDeleteRecord(user, 'registrations', reg);
-  const isOwnerDraftDelete = canEditRecord(user, 'registrations', reg); // Removed status check for demo
 
-  if (!isSupervisorDelete && !isOwnerDraftDelete) {
+  // Authority lives entirely in deleteScope: superuser (all) / senior_ae (team) /
+  // ae (own). Deliberately NOT canEditRecord — that would let legal + ac delete.
+  if (!canDeleteRecord(user, 'registrations', reg)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
+
+  // Deletion policy (Phase 2): a registration is a workflow record — hard delete
+  // only while it's still a draft AND not referenced by any order line. Anything
+  // submitted/approved must be reverted to draft ("ขอแก้ไข") first.
+  const { count: orderItemCount, error: cntErr } = await supabase
+    .from('order_items').select('orderId', { count: 'exact', head: true }).eq('registrationId', id);
+  if (cntErr) return Response.json({ error: cntErr.message }, { status: 500 });
+  const block = registrationDeleteBlock(reg, { orderItemCount: orderItemCount || 0 });
+  if (block) return Response.json({ error: block }, { status: 409 });
 
   const { data, error } = await supabase
     .from('excise_registrations').delete().eq('id', id).select('id');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) return Response.json({ error: 'ไม่พบทะเบียนนี้' }, { status: 404 });
+
+  // Cascade: purge this registration's attachments (rows + storage/Drive files)
+  // so deleting a draft never orphans documents or storage.
+  await purgeAttachments('registration', id);
   return Response.json({ success: true, message: 'ลบทะเบียนเรียบร้อยแล้ว' });
 }

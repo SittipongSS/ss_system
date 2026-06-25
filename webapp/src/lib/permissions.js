@@ -231,9 +231,17 @@ export function editScope(role) {
 // Delete is stricter than edit:
 //   customers / products — superuser only (org rule)
 //   orders / projects    — superuser (all teams) + senior_ae (own team)
+//   registrations        — superuser (all) + senior_ae (own team) + ae (own draft).
+//     NOTE: registration delete must NOT fall back to canEditRecord — that would
+//     leak the legal (legal:approve bypass) and ac ("no delete") roles into the
+//     delete path. Keep the authority here so it stays consistent with orders.
 export function deleteScope(role, resource) {
   if (isSuperuser(role)) return 'all';
   if ((resource === 'orders' || resource === 'projects') && role === 'senior_ae') return 'team';
+  if (resource === 'registrations') {
+    if (role === 'senior_ae') return 'team';
+    if (role === 'ae') return 'own';
+  }
   return 'none';
 }
 

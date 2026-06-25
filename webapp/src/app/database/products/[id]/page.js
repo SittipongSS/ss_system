@@ -2,9 +2,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Pencil, Archive, ArchiveRestore } from "lucide-react";
+import { ArrowLeft, Package, Pencil, Archive, ArchiveRestore, ShoppingCart, FolderKanban } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
 import ProductStatusPill from "@/components/ProductStatusPill";
+import OrderStatusPill from "@/components/OrderStatusPill";
 import EditProductModal from "@/components/EditProductModal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
@@ -28,6 +29,8 @@ export default function ProductDetails() {
 
   const [product, setProduct] = useState(null);
   const [regs, setRegs] = useState([]);
+  const [orders, setOrders] = useState([]);     // orders this product appears in (tax-gated)
+  const [projects, setProjects] = useState([]); // PM projects this product is in (pm-gated)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -50,15 +53,16 @@ export default function ProductDetails() {
     setLoading(false);
   };
 
-  // Registrations this product appears in (which customers it's registered for)
-  // — tax data, loaded only for roles allowed to see the tax system.
+  // Cross-module relations (360-view): registrations + orders + projects from one
+  // scoped endpoint. Returns [] for relations the user may not see (tax →
+  // history:view, projects → pm:view), so no extra client-side gate is needed.
   useEffect(() => {
-    if (!id || !canViewTax) { setRegs([]); return; }
-    fetch(`/api/excise-registrations`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((all) => setRegs((all || []).filter((r) => r.productId === id)))
+    if (!id) { setRegs([]); setOrders([]); setProjects([]); return; }
+    fetch(`/api/master/products/${id}/relations`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); setProjects(d.projects || []); } })
       .catch(() => {});
-  }, [id, canViewTax]);
+  }, [id]);
 
   useEffect(() => {
     if (id) fetchProduct();
@@ -296,6 +300,61 @@ export default function ProductDetails() {
                 ))}
               </div>
             )}
+          </div>
+          )}
+
+          {/* Orders this product appears in (information) — tax-gated, read-only. */}
+          {canViewTax && (
+          <div className="glass-panel p-[20px]">
+            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
+              <ShoppingCart size={16} className="text-[var(--accent)]" /> ใบสั่งซื้อที่มีสินค้านี้ ({orders.length})
+            </h3>
+            {orders.length === 0 ? (
+              <p className="text-xs text-[var(--text-3)] italic">ยังไม่มีใบสั่งซื้อที่อ้างถึงสินค้านี้</p>
+            ) : (
+              <div className="space-y-2">
+                {orders.map((o) => (
+                  <div
+                    key={o.id}
+                    onClick={() => router.push(`/tax/filings/${o.id}`)}
+                    className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-semibold font-mono text-[var(--text)]">{o.quotationRef || o.id}</span>
+                      <span className="text-[var(--text-3)] ml-2">{o.customerName || "-"}</span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-mono text-[var(--text-3)]">x{o.productQuantity}</span>
+                      <OrderStatusPill status={o.status} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          )}
+
+          {/* PM projects this product is part of — read-only, deep-link to /pm. */}
+          {projects.length > 0 && (
+          <div className="glass-panel p-[20px]">
+            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
+              <FolderKanban size={16} className="text-[var(--accent)]" /> โปรเจกต์ที่เกี่ยวข้อง ({projects.length})
+            </h3>
+            <div className="space-y-2">
+              {projects.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => router.push(`/pm/projects/${p.id}`)}
+                  className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
+                >
+                  <div className="min-w-0">
+                    <span className="font-semibold text-[var(--text)]">{p.name || p.code}</span>
+                    <span className="text-[var(--text-3)] font-mono ml-2">{p.code}</span>
+                  </div>
+                  {p.status && <span className="ui-badge shrink-0">{p.status}</span>}
+                </div>
+              ))}
+            </div>
           </div>
           )}
 

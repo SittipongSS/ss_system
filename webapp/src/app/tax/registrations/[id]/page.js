@@ -14,10 +14,9 @@ import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import ApproveDialog from "@/components/excise/ApproveDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { requiredDocKeys, attachmentTypeLabel, customerDocTypes } from "@/lib/master/attachmentTypes";
+import { customerDocTypes } from "@/lib/master/attachmentTypes";
 
 const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
-const REQUIRED_REG_DOCS = requiredDocKeys("registration");
 
 function regSteps(r) {
   const created = { label: "สร้างทะเบียน (ร่าง)", at: r.createdAt, by: r.assignee, state: "done" };
@@ -59,16 +58,22 @@ export default function RegistrationDetailPage() {
   const [attachItems, setAttachItems] = useState([]);   // registration docs
   const [custItems, setCustItems] = useState([]);        // customer docs (shared)
   useEffect(() => { setAttachItems([]); setCustItems([]); }, [id]);
-  // Required-doc labels still missing before the draft can be submitted:
-  // registration docs (ฉลาก/Artwork) + the company map pulled from the customer.
-  const missingDocs = useMemo(() => {
-    const out = [];
-    const regPresent = new Set(attachItems.map((a) => a.docType));
-    for (const k of REQUIRED_REG_DOCS) if (!regPresent.has(k)) out.push(attachmentTypeLabel("registration", k));
-    const custPresent = new Set(custItems.map((a) => a.docType));
-    if (!custPresent.has("address_map")) out.push(attachmentTypeLabel("customer", "address_map"));
-    return out;
-  }, [attachItems, custItems]);
+
+  // Completeness checklist comes from the server (single source of truth with the
+  // submit-gate). Refetch whenever attachments change so it stays live as the user
+  // uploads/removes docs. attachItems/custItems update via AttachmentsPanel.
+  const [req, setReq] = useState(null);
+  useEffect(() => {
+    if (!s?.id) { setReq(null); return; }
+    let alive = true;
+    fetch(`/api/excise-registrations/${s.id}/requirements`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d) setReq(d); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [s?.id, attachItems, custItems]);
+  const missingDocs = (req?.missing || []).map((m) => m.label);
+  const warnings = req?.warnings || [];
 
   const submitDraft = async () => {
     const res = await fetch(`/api/excise-registrations/${s.id}`, {
@@ -154,14 +159,24 @@ export default function RegistrationDetailPage() {
             <Timeline steps={regSteps(s)} />
           </div>
 
-          {s.status === "draft" && (
-            <div
-              className="rounded p-2.5"
-              style={{ fontSize: 12.5, border: "1px solid var(--border)", background: missingDocs.length ? "var(--amber-soft)" : "var(--green-soft)", color: missingDocs.length ? "var(--amber)" : "var(--green)" }}
-            >
-              {missingDocs.length
-                ? `ยังขาดเอกสารที่จำเป็น: ${missingDocs.join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`
-                : "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่ายกฎหมายตรวจ"}
+          {s.status === "draft" && req && (
+            <div className="flex flex-col gap-2">
+              <div
+                className="rounded p-2.5"
+                style={{ fontSize: 12.5, border: "1px solid var(--border)", background: missingDocs.length ? "var(--amber-soft)" : "var(--green-soft)", color: missingDocs.length ? "var(--amber)" : "var(--green)" }}
+              >
+                {missingDocs.length
+                  ? `ยังขาดเอกสารที่จำเป็น: ${missingDocs.join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`
+                  : "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่ายกฎหมายตรวจ"}
+              </div>
+              {warnings.length > 0 && (
+                <div
+                  className="rounded p-2.5"
+                  style={{ fontSize: 12.5, border: "1px solid var(--border)", background: "var(--amber-soft)", color: "var(--amber)" }}
+                >
+                  ข้อมูลที่ควรเติม (ไม่บังคับ): {warnings.map((w) => w.message).join(", ")}
+                </div>
+              )}
             </div>
           )}
 
@@ -204,8 +219,8 @@ export default function RegistrationDetailPage() {
             {canEdit && s.status === "draft" && (
               <button
                 className="btn btn-primary flex items-center gap-1.5"
-                disabled={missingDocs.length > 0}
-                title={missingDocs.length ? `ต้องแนบ: ${missingDocs.join(", ")}` : ""}
+                disabled={!req?.ready}
+                title={!req?.ready ? `ต้องแนบ: ${missingDocs.join(", ")}` : ""}
                 onClick={() => submitDraft().catch((e) => alert(e.message))}
               >
                 <Send size={15} /> ยื่นขึ้นทะเบียน
@@ -226,7 +241,7 @@ export default function RegistrationDetailPage() {
                 <Unlock size={15} /> ขอแก้ไข
               </button>
             )}
-            {canEdit && (
+            {canEdit && s.status === "draft" && (
               <button className="btn btn-danger flex items-center gap-1.5" onClick={() => setDeleteOpen(true)}>
                 <Trash2 size={15} /> ลบ
               </button>

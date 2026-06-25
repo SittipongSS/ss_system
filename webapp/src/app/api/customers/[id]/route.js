@@ -4,6 +4,8 @@ import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, is
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
+import { referencedBlock } from '@/lib/deletion';
+import { purgeAttachments } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
 
@@ -220,23 +222,24 @@ export async function DELETE(request, { params }) {
     supabase.from('orders').select('id').eq('customerId', id),
     supabase.from('excise_registrations').select('id', { count: 'exact', head: true }).eq('customerId', id),
   ]);
+  const refErr = projRef.error || orderRef.error || regRef.error;
+  if (refErr) return Response.json({ error: refErr.message }, { status: 500 });
   const refs = [];
   const projIds = (projRef.data || []).map((r) => r.id);
   const orderIds = (orderRef.data || []).map((r) => r.id);
   if (projIds.length) refs.push(`${projIds.length} โปรเจกต์ (${projIds.join(', ')})`);
   if (orderIds.length) refs.push(`${orderIds.length} ออเดอร์ (${orderIds.join(', ')})`);
   if (regRef.count) refs.push(`${regRef.count} การขึ้นทะเบียน`);
-  if (refs.length) {
-    return Response.json(
-      { error: `ลบไม่ได้: ลูกค้ารายนี้ยังถูกใช้งานอยู่ใน ${refs.join(', ')} — กรุณาจัดการรายการเหล่านั้นก่อน` },
-      { status: 409 },
-    );
-  }
+  const block = referencedBlock('ลูกค้าราย', refs);
+  if (block) return Response.json({ error: block }, { status: 409 });
 
   const { data, error } = await supabase.from('customers').delete().eq('id', id).select('id');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) {
     return Response.json({ error: 'ไม่พบข้อมูลลูกค้ารายนี้' }, { status: 404 });
   }
+  // Cascade: purge attachments (rows + storage/Drive files) so deleting a
+  // customer never orphans its documents.
+  await purgeAttachments('customer', id);
   return Response.json({ success: true, message: 'ลบข้อมูลลูกค้าเรียบร้อยแล้ว' });
 }
