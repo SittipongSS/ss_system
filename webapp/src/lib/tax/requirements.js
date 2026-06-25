@@ -43,10 +43,22 @@ export async function registrationRequirements(supabase, regId) {
     missing.push({ entity: 'customer', docType: 'address_map', label: attachmentTypeLabel('customer', 'address_map') });
   }
 
-  // Soft warnings (ไม่บล็อก): ข้อมูลติดต่อช่วยให้ฝ่ายกฎหมายตามลูกค้าได้.
   const { data: cust } = await supabase
-    .from('customers').select('email, phone, contactPhone').eq('id', reg.customerId).maybeSingle();
+    .from('customers').select('email, phone, contactPhone, taxId, branchCode').eq('id', reg.customerId).maybeSingle();
   if (cust) {
+    // ── 5.4 identity gate (BOUNDARY_MAP) ──
+    // เลขประจำตัวผู้เสียภาษี + สาขา ระบุตัวผู้เสียภาษีในเอกสารสรรพสามิต — บังคับ
+    // "เฉพาะตอนยื่นทะเบียน" (ไม่ใช่ตอนสร้างลูกค้า เผื่อบุคคลธรรมดา/ต่างชาติที่ยังไม่มี).
+    // unique จริงคุมที่ DB ระดับ (taxId, branchCode) แล้ว (migration 0039);
+    // ตรงนี้คือ completeness ก่อนยื่น (ขาด = บล็อก).
+    if (!cust.taxId || !String(cust.taxId).trim()) {
+      missing.push({ entity: 'customer', docType: 'taxId', label: 'เลขประจำตัวผู้เสียภาษีของลูกค้า' });
+    }
+    if (!cust.branchCode || !String(cust.branchCode).trim()) {
+      missing.push({ entity: 'customer', docType: 'branchCode', label: 'รหัสสาขาของลูกค้า (เช่น 00000 = สำนักงานใหญ่)' });
+    }
+
+    // Soft warnings (ไม่บล็อก): ข้อมูลติดต่อช่วยให้ฝ่ายกฎหมายตามลูกค้าได้.
     if (!cust.email) warnings.push({ field: 'customerEmail', message: 'ยังไม่มีอีเมลลูกค้า' });
     if (!cust.phone && !cust.contactPhone) warnings.push({ field: 'customerPhone', message: 'ยังไม่มีเบอร์โทรลูกค้า' });
   }

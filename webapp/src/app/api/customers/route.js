@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData } from '@/lib/permissions';
+import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 // Customers are a central registry — every signed-in user can view all of them
@@ -100,5 +101,6 @@ export async function POST(request) {
     }
     return Response.json({ error: error.message }, { status: 500 });
   }
+  await recordAudit({ user, action: 'create', entityType: 'customer', entityId: data.id, after: data, request });
   return Response.json(data, { status: 201 });
 }

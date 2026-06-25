@@ -6,6 +6,7 @@ import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -127,6 +128,12 @@ export async function PATCH(request, { params }) {
     const { data: decided, error: decErr } = await supabase
       .from('customers').update(approvalUpdates).eq('id', id).select().single();
     if (decErr) return Response.json({ error: decErr.message }, { status: 500 });
+    await recordAudit({
+      user, action: 'update', entityType: 'customer', entityId: id,
+      before: customer, after: decided,
+      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}ลูกค้า ${decided.name || id}`,
+      request,
+    });
     return Response.json(decided);
   }
 
@@ -195,6 +202,7 @@ export async function PATCH(request, { params }) {
   await supabase.from('excise_registrations').update(cascade).eq('customerId', id);
   void oldName; void oldTaxId;
 
+  await recordAudit({ user, action: 'update', entityType: 'customer', entityId: id, before: customer, after: updated, request });
   return Response.json(updated);
 }
 
@@ -241,5 +249,6 @@ export async function DELETE(request, { params }) {
   // Cascade: purge attachments (rows + storage/Drive files) so deleting a
   // customer never orphans its documents.
   await purgeAttachments('customer', id);
+  await recordAudit({ user, action: 'delete', entityType: 'customer', entityId: id, before: customer, request });
   return Response.json({ success: true, message: 'ลบข้อมูลลูกค้าเรียบร้อยแล้ว' });
 }

@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScope } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrderItems } from '@/lib/tax/orders';
+import { recordAudit } from '@/lib/audit';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -155,5 +156,6 @@ export async function POST(request) {
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
   await attachRegistrations(supabase, data);
+  await recordAudit({ user, action: 'create', entityType: 'order', entityId: orderId, after: data, request });
   return Response.json(data, { status: 201 });
 }
