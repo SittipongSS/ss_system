@@ -156,6 +156,8 @@ export async function POST(request) {
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
   await attachRegistrations(supabase, data);
-  await recordAudit({ user, action: 'create', entityType: 'order', entityId: orderId, after: data, request });
+  // Audit เก็บ header แบบ plain (newOrder ที่เพิ่ง insert) — ไม่ฝัง items/registrations
+  // ที่ ORDER_SELECT ดึงมา (ของจริงอยู่ในตาราง order_items แล้ว ไม่เก็บซ้ำใน log).
+  await recordAudit({ user, action: 'create', entityType: 'order', entityId: orderId, after: newOrder, request });
   return Response.json(data, { status: 201 });
 }
