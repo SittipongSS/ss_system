@@ -10,6 +10,7 @@ import { Flag, ChevronDown, ChevronRight, Minus, Plus, RotateCcw, Loader2 } from
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import { useIsPortrait } from "@/lib/useResponsiveView";
+import { fmtPhone } from "@/lib/format";
 import Select from "@/components/ui/Select";
 
 const DAY_MS = 86400000;
@@ -44,10 +45,6 @@ const buildGridBg = (px) => {
   layers.push(`repeating-linear-gradient(90deg, transparent 0, transparent ${px * 5}px, ${weekendShade} ${px * 5}px, ${weekendShade} ${wk}px)`);
   return layers.join(", ");
 };
-
-// ค่าคงที่ของบริษัท (header ฝั่งซ้าย)
-const COMPANY_TEL = "02-000-7722, 092-646-8682";
-const COMPANY_LINE = "@perfumefactory";
 
 const fmtDate = (v) => {
   if (!v) return "-";
@@ -173,6 +170,17 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
     setDraft((d) => ({ ...d, [field]: v }));
     if ((v ?? "") !== (project[field] || "")) onUpdateProject({ [field]: v });
   };
+
+  // เบอร์มือถือ + อีเมลของ AE ผู้ดูแล — ดึงจากข้อมูลผู้ใช้ (assignable-users) โดย
+  // จับคู่ชื่อที่เลือกใน aeOwner. ไม่มีช่องกรอกในฟอร์ม (CR §3.2).
+  const userDisplayName = (u) => (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
+  const aeUser = users.find((u) => userDisplayName(u) === pv("aeOwner"));
+  const aeMobile = aeUser?.phone ? fmtPhone(aeUser.phone) : "";
+  const aeEmail = aeUser?.email || "";
+  // ใบเสนอราคา (+ PO ในวงเล็บถ้ามี) — CR §3.3
+  const quotationNo = project.metadata?.quotationNumber || "";
+  const poNo = project.metadata?.poNumber || "";
+  const quotationLine = quotationNo ? `${quotationNo}${poNo ? ` (${poNo})` : ""}` : (poNo ? `(${poNo})` : "-");
 
   // ── ซูม: px ต่อวัน (จำค่าใน localStorage) ──
   const [pxPerDay, setPxPerDay] = useState(ZOOM_DEFAULT);
@@ -341,18 +349,18 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
             {/* ซ้าย */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", borderRight: isPortrait ? "none" : "1px solid var(--border)", paddingRight: isPortrait ? 0 : "20px", paddingBottom: isPortrait ? "12px" : 0, borderBottom: isPortrait ? "1px solid var(--border)" : "none" }}>
               <Row label="Customer Name"><span style={{ fontSize: "13px", fontWeight: 600 }}>{project.customerName || "-"}</span></Row>
+              <Row label="Brand"><span style={{ fontSize: "13px", fontWeight: 600 }}>{project.metadata?.brand || "-"}</span></Row>
+              <div style={{ height: "6px" }} />
               <Row label="ผู้ตรวจสอบ (AE Supervisor)"><SelectUserField value={pv("aeSupervisor")} users={users.filter(u => u.role === "ae_supervisor")} disabled={disabled} onCommit={commitField("aeSupervisor")} /></Row>
               <Row label="ผู้ดูแล (Account Executive)"><SelectUserField value={pv("aeOwner")} users={users.filter(u => u.role === "ae" || u.role === "senior_ae")} disabled={disabled} onCommit={commitField("aeOwner")} /></Row>
-              <Row label="เบอร์ติดต่อ"><span style={{ fontSize: "13px", color: "var(--text-2)" }}>{COMPANY_TEL}</span></Row>
-              <Row label="Line Official"><span style={{ fontSize: "13px", color: "var(--text-2)" }}>{COMPANY_LINE}</span></Row>
-              <Row label="Email"><EditField value={pv("customerEmail")} disabled={disabled} onInput={onField("customerEmail")} onCommit={commitField("customerEmail")} /></Row>
+              <Row label="เบอร์มือถือ"><span style={{ fontSize: "13px", color: "var(--text-2)" }}>{aeMobile || "—"}</span></Row>
+              <Row label="Email"><span style={{ fontSize: "13px", color: "var(--text-2)" }}>{aeEmail || "—"}</span></Row>
             </div>
             {/* ขวา */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <Row label="แบรนด์"><span style={{ fontSize: "13px", fontWeight: 600 }}>{project.metadata?.brand || "-"}</span></Row>
-              <Row label="เลขที่ PO"><span style={{ fontSize: "13px", fontWeight: 600 }}>{project.metadata?.poNumber || "-"}</span></Row>
+              <Row label="Project Name"><EditField value={pv("productName")} placeholder={project.name} disabled={disabled} onInput={onField("productName")} onCommit={commitField("productName")} /></Row>
+              <Row label="ใบเสนอราคา"><span style={{ fontSize: "13px", fontWeight: 600 }}>{quotationLine}</span></Row>
               <Row label="วันที่"><span style={{ fontSize: "13px", fontWeight: 600 }}>{fmtDate(project.startDate)}</span></Row>
-              <Row label="Product Name"><EditField value={pv("productName")} placeholder={project.name} disabled={disabled} onInput={onField("productName")} onCommit={commitField("productName")} /></Row>
               {fgUI && <Row label="สินค้า (FG)">{fgUI}</Row>}
             </div>
           </div>

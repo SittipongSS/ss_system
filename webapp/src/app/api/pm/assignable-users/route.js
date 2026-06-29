@@ -22,6 +22,9 @@ export const GET = withUser(async ({ user, supabase }) => {
       rows.push({
         id: u.id,
         name: u.user_metadata?.name || u.email,
+        // ใช้เติมเอกสาร ISO: เบอร์มือถือ + อีเมลของ AE ผู้ดูแล (ดึงจากข้อมูลผู้ใช้).
+        email: u.email || '',
+        phone: u.user_metadata?.phone || '',
         role,
         team: u.app_metadata?.team || null,
         department: normalizeDepartment(u.app_metadata?.department) || departmentFor(role) || null,

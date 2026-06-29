@@ -65,7 +65,7 @@ export default function TaxDashboard() {
   return (
     <Workspace
       icon={<LayoutDashboard size={22} />}
-      title="ศูนย์บัญชาการภาษีสรรพสามิต"
+      title="Overview"
       subtitle="งานที่ต้องทำของคุณ + ภาพรวมทั้งสองสายงาน"
       loading={l1 || l2}
       headerRight={<Link href="/tax/reports" className="btn btn-secondary flex items-center gap-1.5"><BarChart3 size={16} /> รายงาน</Link>}

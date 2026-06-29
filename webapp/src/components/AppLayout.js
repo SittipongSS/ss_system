@@ -6,6 +6,7 @@ import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, Histor
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
@@ -63,25 +64,20 @@ export default function AppLayout({ children }) {
         router.replace('/');
         return;
       }
-      let full = user.user_metadata?.name || user.email || 'user';
-      let dName = full;
-      let inits = full.substring(0, 2).toUpperCase();
-
-      if (user.user_metadata) {
-        const { firstName, lastName, name } = user.user_metadata;
-        if (firstName) {
-          dName = `${firstName}${lastName ? ' ' + lastName.charAt(0).toUpperCase() + '.' : ''}`;
-          inits = `${firstName.charAt(0)}${lastName ? lastName.charAt(0) : ''}`.toUpperCase();
-        } else if (name) {
-          const parts = name.split(' ');
-          if (parts.length > 1) {
-            dName = `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
-            inits = `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
-          } else {
-            dName = name;
-            inits = name.substring(0, 2).toUpperCase();
-          }
-        }
+      // ชื่อแสดงผล = มาตรฐาน "ชื่อ + นามสกุลย่อ" (§2.1) จาก helper กลาง.
+      const meta = user.user_metadata || {};
+      const dName = fmtName({ ...meta, email: user.email });
+      const fn = (meta.firstName || '').trim();
+      const ln = (meta.lastName || '').trim();
+      let inits;
+      if (fn) {
+        inits = `${fn.charAt(0)}${ln ? ln.charAt(0) : ''}`.toUpperCase();
+      } else {
+        const nm = (meta.name || user.email || 'user').trim();
+        const parts = nm.split(/\s+/);
+        inits = parts.length > 1
+          ? `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase()
+          : nm.substring(0, 2).toUpperCase();
       }
 
       // Role + team come from app_metadata (service-role-only; users cannot self-edit it).
@@ -158,7 +154,7 @@ export default function AppLayout({ children }) {
       label: 'ภาพรวม',
       system: 'tax',
       items: [
-        { href: '/tax', name: 'ศูนย์บัญชาการ', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
+        { href: '/tax', name: 'Overview', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
       ],
     },
     {

@@ -14,11 +14,12 @@ import {
   rolesForDepartment,
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
+import { fmtPhone } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 
-const emptyForm = { email: "", password: "", firstName: "", lastName: "", department: "SA", role: "ae", team: "ODM" };
+const emptyForm = { email: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM" };
 
 export default function UserManagement() {
   const canManage = useCan("users:manage");
@@ -35,6 +36,7 @@ export default function UserManagement() {
   const sort = useSortableTable(users, {
     firstName: (u) => u.firstName || "",
     lastName: (u) => u.lastName || "",
+    phone: (u) => u.phone || "",
     email: (u) => u.email || "",
     role: (u) => ROLE_LABELS[u.role] || u.role || "",
     department: (u) => DEPARTMENT_LABELS[u.department || departmentFor(u.role)] || "",
@@ -97,6 +99,7 @@ export default function UserManagement() {
     setEditForm({
       firstName: u.firstName || "",
       lastName: u.lastName || "",
+      phone: u.phone || "",
       department: u.department || departmentFor(u.role) || DEPARTMENTS[0],
       role: u.role || "ae",
       team: u.team || TEAMS[0],
@@ -110,6 +113,7 @@ export default function UserManagement() {
     const payload = {
       firstName: editForm.firstName,
       lastName: editForm.lastName,
+      phone: editForm.phone,
       role: editForm.role,
       department: editForm.department,
       team: normalizeTeam(editForm.role, editForm.team),
@@ -215,6 +219,7 @@ export default function UserManagement() {
                 <tr>
                   <SortTh label="ชื่อ" sortKey="firstName" sort={sort} />
                   <SortTh label="นามสกุล" sortKey="lastName" sort={sort} />
+                  <SortTh label="เบอร์โทร" sortKey="phone" sort={sort} />
                   <SortTh label="อีเมล" sortKey="email" sort={sort} />
                   <SortTh label="ตำแหน่ง Role" sortKey="role" sort={sort} />
                   <SortTh label="ฝ่าย" sortKey="department" sort={sort} />
@@ -226,7 +231,7 @@ export default function UserManagement() {
               <tbody>
                 {sortedUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="text-center py-10 text-[var(--text-3)]">
+                    <td colSpan="9" className="text-center py-10 text-[var(--text-3)]">
                       ยังไม่มีผู้ใช้ในระบบ
                     </td>
                   </tr>
@@ -235,6 +240,7 @@ export default function UserManagement() {
                     <tr key={u.id}>
                       <td className="font-medium text-[var(--text)]">{u.firstName || "-"}</td>
                       <td className="font-medium text-[var(--text)]">{u.lastName || "-"}</td>
+                      <td className="text-[var(--text-2)] text-xs whitespace-nowrap">{u.phone ? fmtPhone(u.phone) : "-"}</td>
                       <td className="text-[var(--text-2)] font-mono text-xs">
                         {u.email}
                         {u.disabled && (
@@ -396,6 +402,18 @@ function UserFields({ form, setForm, requirePassword, edit }) {
           required
           className="premium-input w-full"
         />
+      </div>
+      <div className="form-group col-span-2">
+        <label>เบอร์โทรศัพท์</label>
+        <input
+          type="tel"
+          value={form.phone}
+          onChange={(e) => set("phone", e.target.value)}
+          onBlur={(e) => set("phone", fmtPhone(e.target.value))}
+          placeholder="เช่น 0812345678 (ระบบจะจัดรูปแบบให้อัตโนมัติ)"
+          className="premium-input w-full"
+        />
+        <p className="text-[11px] text-[var(--text-3)] mt-1">ใช้แสดงในเอกสารของระบบ เช่น เบอร์มือถือของ AE ผู้ดูแลในเอกสาร ISO</p>
       </div>
 
       {/* —— บัญชีเข้าระบบ —— */}
