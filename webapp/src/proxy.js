@@ -103,19 +103,22 @@ const startsWithAny = (path, prefixes) => prefixes.some((p) => path === p || pat
 // both. e.g. /api/master/customers/123 -> /api/customers/123.
 const normalizeMaster = (path) => path.replace(/^\/api\/master\//, '/api/');
 
-// Pages a non-admin may open: hub + PM + database + excise tax.
-const OPEN_PAGES = ['/home', '/pm', '/database', '/tax'];
+// Pages a non-admin may open: hub + PM + database + excise tax + SAHAMIT.
+// NOTE: the proxy is coarse (role-only). /sahamit is opened here for any sales
+// role, but the page guard + API handlers narrow it to team===KA + customer
+// AR-109 (the proxy can't see team/customer). See canAccessSahamit().
+const OPEN_PAGES = ['/home', '/pm', '/database', '/tax', '/sahamit'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
 // products:edit to create (lands as 'pending'), Senior AE+ to approve; excise
 // registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
 // Holiday/product-type writes stay supervisor-only.
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders'];
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sahamit'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
-const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax'];
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sahamit'];
 
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).
@@ -152,6 +155,9 @@ function apiWriteAllowed(method, path, role) {
   }
   // Project management (SALES only). Row-level team scope enforced in handlers.
   if (path.startsWith('/api/pm')) return can(role, 'pm:edit');
+  // SAHAMIT module. Coarse cap gate here; team===KA + customer AR-109 scope is
+  // enforced inside the handlers (canAccessSahamit), which the proxy can't see.
+  if (path.startsWith('/api/sahamit')) return can(role, 'sahamit:edit');
   // Master taxonomy (product categories) — supervisor-only writes.
   if (path.startsWith('/api/product-types')) return can(role, 'master:manage');
   // Holiday calendar (working-day source for PM timeline) — supervisor-only writes.

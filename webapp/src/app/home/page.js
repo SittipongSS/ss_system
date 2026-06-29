@@ -1,10 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users } from "lucide-react";
+import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
-import { landingFor, can } from "@/lib/permissions";
+import { landingFor, can, canAccessSahamit } from "@/lib/permissions";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 const SUPABASE_CONFIGURED =
@@ -13,6 +13,7 @@ const SUPABASE_CONFIGURED =
 export default function HomeHubPage() {
   const router = useRouter();
   const [role, setRole] = useState(null);
+  const [team, setTeam] = useState(null);
   const [userName, setUserName] = useState("");
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
 
@@ -20,6 +21,7 @@ export default function HomeHubPage() {
     // Local dev fallback — no Supabase configured yet.
     if (!SUPABASE_CONFIGURED) {
       setRole("ae_supervisor");
+      setTeam(null);
       setUserName("Local Dev");
       return;
     }
@@ -31,6 +33,7 @@ export default function HomeHubPage() {
           return;
         }
         setRole(user.app_metadata?.role || "user");
+        setTeam(user.app_metadata?.team || null);
         setUserName(user.user_metadata?.name || user.email || "user");
         // The hub isn't wrapped by AppLayout, so enforce the forced first-login
         // password change here too — otherwise a must-change user could sit on
@@ -54,6 +57,7 @@ export default function HomeHubPage() {
 
   const enterTax = () => router.push(landingFor(role));
   const enterPM = () => router.push("/pm/projects");
+  const enterSAHAMIT = () => router.push("/sahamit");
   // No /database hub page — land directly on the first registry the role can open.
   const enterDB = () =>
     router.push(
@@ -71,6 +75,9 @@ export default function HomeHubPage() {
   // approval workflow needs AE/AC to reach it, not just admins.
   const canDB =
     isAdmin || can(role, "products:view") || can(role, "customers:view");
+  // SAHAMIT (Planning & Sales) — SA · Key Account team only (+ admin/sales-head
+  // oversight). The capability is team-gated inside canAccessSahamit().
+  const canSAHAMIT = canAccessSahamit(role, team);
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px" }}>
@@ -177,6 +184,38 @@ export default function HomeHubPage() {
                 <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบฐานข้อมูล</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
                   จัดการฐานข้อมูลลูกค้าและสินค้า ข้อมูลหลักที่ใช้ร่วมกันทุกระบบ
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
+                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
+                </span>
+              </div>
+            </button>
+          )}
+
+          {/* Card 4 — SAHAMIT (Planning & Sales). KA team only (+ admin/
+              sales-head oversight); hidden entirely otherwise. */}
+          {canSAHAMIT && (
+            <button
+              onClick={enterSAHAMIT}
+              className="glass-panel system-card"
+              style={{
+                textAlign: "left", padding: "28px", cursor: "pointer",
+                display: "flex", flexDirection: "column", gap: "16px",
+                background: "var(--panel)", color: "inherit",
+              }}
+            >
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <LineChart size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>SAHAMIT · วางแผนและการขาย</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  ติดตาม Forecast · PO · กระทบยอด และวัสดุ สำหรับลูกค้าสหมิตรโปรดักส์
                 </p>
               </div>
               <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
