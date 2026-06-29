@@ -91,9 +91,13 @@
 - ✅ tests 39/39 ผ่าน; verify หน้า render + graceful 500 (local ไม่มี Supabase)
 - ⏳ verify data path จริงบน prod หลัง deploy (local ไม่มี Supabase env)
 
-### เฟส 2 — Purchase Orders
-- หน้าบันทึก/แก้ PO หลายบรรทัด: docDate, receivedDate, dueDate, expectedDate(+history C4), actualDeliveredDate
-- Split PO (ส่งบางส่วน) — พอร์ตจากของเดิม
+### เฟส 2 — Purchase Orders ✅ เสร็จ (2026-06-30)
+- ✅ API `/api/sahamit/po` (GET list+lines, POST create), `/po/[id]` (PATCH header, DELETE), `/po/lines/[lineId]` (PATCH reschedule/actual/qty/status/split, DELETE) — ผ่าน guard scope AR-109
+- ✅ บันทึก PO หลายบรรทัด: docDate, receivedDate, dueDate, expectedDate, actualDeliveredDate
+- ✅ เลื่อนวันคาดการณ์ส่ง → เก็บ `expectedHistory` (เลื่อนได้ >1 + เหตุผล — C4) + ดูประวัติ
+- ✅ Split PO (ส่งบางส่วน → สร้างบรรทัดยอดแยก splitFromPoLineId, แม่เป็น partial)
+- ✅ UI: list PO + PoFormModal (สร้าง) + PoDetailModal (แก้หัว + จัดการบรรทัด)
+- ✅ verify: หน้า + create modal render/ทำงาน, graceful banner, ไม่มี console error; data path → prod
 
 ### เฟส 3 — Reconciliation grid
 - กริด SKU × เดือน, สถานะต่อช่อง (match/over/short/pending/นอกแผน), มุมมอง FC / PO / FC vs PO

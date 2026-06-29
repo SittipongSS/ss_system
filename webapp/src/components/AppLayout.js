@@ -179,7 +179,7 @@ export default function AppLayout({ children }) {
       label: 'งานสหมิตร',
       system: 'sahamit',
       items: [
-        { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
+        { href: '/sahamit', name: 'Overview', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
         { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
         { href: '/sahamit/po', name: 'Purchase Orders', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
         { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },

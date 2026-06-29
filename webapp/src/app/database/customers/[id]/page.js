@@ -338,13 +338,13 @@ export default function CustomerDetails() {
           items={
             canViewTax && hasTaxObligation
               ? [
-                  { label: "สินค้าที่ลงทะเบียน", value: products.length },
+                  { label: "สินค้าทั้งหมด", value: products.length },
                   { label: "ใบสั่งซื้อทั้งหมด", value: orders.length },
                   { label: "ภาษีชำระแล้ว", value: formatMoney(totalPaidTax), tone: "success" },
                   { label: "ภาษีค้างชำระ", value: formatMoney(totalPendingTax), tone: totalPendingTax ? "warn" : undefined },
                 ]
               : [
-                  { label: "สินค้าที่ลงทะเบียน", value: products.length },
+                  { label: "สินค้าทั้งหมด", value: products.length },
                   ...(canViewTax ? [{ label: "ใบสั่งซื้อทั้งหมด", value: orders.length }] : []),
                 ]
           }
@@ -451,7 +451,7 @@ export default function CustomerDetails() {
       {/* Products Tab */}
       {activeTab === "products" && (
         products.length === 0 ? (
-          <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีสินค้าขึ้นทะเบียนของลูกค้ารายนี้</div>
+          <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีสินค้าของลูกค้ารายนี้</div>
         ) : isPortrait ? (
           <div className="grid grid-cols-1 gap-3">
             {products.map((p) => {

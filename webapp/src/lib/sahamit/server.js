@@ -58,15 +58,19 @@ export function sahamitError(ctx) {
 // or add to master later — products may grow over time.
 
 // Returns the AR-109 products as a lean list [{ id, fgCode, name }].
+// Mirrors the master products list (/api/products): only APPROVED + active rows
+// — pending-approval products aren't offered for forecasting. Legacy NULL
+// approvalStatus is treated as approved (pre-0027 rows), same as master.
 export async function loadSahamitProducts(supabase, customerId) {
   const { data, error } = await supabase
     .from('products')
     .select('*')
-    .eq('customerId', customerId);
+    .eq('customerId', customerId)
+    .or('approvalStatus.eq.approved,approvalStatus.is.null');
   if (error) throw new Error(error.message);
   return (data || [])
     .filter((p) => p.isActive !== false)
-    .map((p) => ({ id: p.id, fgCode: p.fgCode, name: p.name ?? p.productDescription ?? p.fgCode }));
+    .map((p) => ({ id: p.id, fgCode: p.fgCode, name: p.productDescription ?? p.fgCode }));
 }
 
 // Build a fgCode → product index (case-insensitive, trimmed).
