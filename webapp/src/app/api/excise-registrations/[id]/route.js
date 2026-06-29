@@ -83,7 +83,7 @@ export async function PATCH(request, { params }) {
     const customerId = product.customerId || (allowed.has('customerId') ? body.customerId : null) || reg.customerId;
     const { data: customer } = await supabase
       .from('customers').select('*').eq('id', customerId).maybeSingle();
-    if (!customer) return Response.json({ error: 'FG นี้ยังไม่มีลูกค้าเจ้าของ กรุณากำหนดลูกค้าให้สินค้าในระบบฐานข้อมูลก่อน' }, { status: 400 });
+    if (!customer) return Response.json({ error: 'FG นี้ยังไม่มีลูกค้าเจ้าของ กรุณากำหนดลูกค้าให้สินค้าในฐานข้อมูลก่อน' }, { status: 400 });
 
     updated.productId = product.id;
     updated.customerId = customer.id;

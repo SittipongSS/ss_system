@@ -118,7 +118,7 @@ export default function HomeHubPage() {
                 <FolderKanban size={24} strokeWidth={1.5} />
               </div>
               <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบจัดการโครงการ</h2>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>จัดการโครงการ</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
                   ติดตามและบริหารงานโครงการ มอบหมายงาน และดูความคืบหน้า
                 </p>
@@ -149,7 +149,7 @@ export default function HomeHubPage() {
                 <Scale size={24} strokeWidth={1.5} />
               </div>
               <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบภาษีสรรพสามิต</h2>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ภาษีสรรพสามิต</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
                   จัดการทะเบียนสินค้า ลูกค้า ขออนุมัติภาษี และแจ้งยื่นภาษี
                 </p>
@@ -181,7 +181,7 @@ export default function HomeHubPage() {
                 <Database size={24} strokeWidth={1.5} />
               </div>
               <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบฐานข้อมูล</h2>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ฐานข้อมูล</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
                   จัดการฐานข้อมูลลูกค้าและสินค้า ข้อมูลหลักที่ใช้ร่วมกันทุกระบบ
                 </p>
@@ -213,7 +213,7 @@ export default function HomeHubPage() {
                 <LineChart size={24} strokeWidth={1.5} />
               </div>
               <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>SAHAMIT · วางแผนและการขาย</h2>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>งานสหมิตร</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
                   ติดตาม Forecast · PO · กระทบยอด และวัสดุ สำหรับลูกค้าสหมิตรโปรดักส์
                 </p>

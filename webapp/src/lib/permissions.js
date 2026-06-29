@@ -423,7 +423,7 @@ export function validateIdentity(role, team, department) {
   return null;
 }
 
-// Landing route for the EXCISE TAX system (the "ระบบภาษีสรรพสามิต" home card).
+// Landing route for the EXCISE TAX system (the "ภาษีสรรพสามิต" home card).
 // Every role lands on the role-aware command center at /tax, which surfaces the
 // items that role must act on and links into the per-stage workspace pages.
 export function landingFor(role) {

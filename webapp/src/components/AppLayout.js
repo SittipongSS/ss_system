@@ -168,7 +168,7 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      label: 'ระบบจัดการโครงการ',
+      label: 'จัดการโครงการ',
       system: 'pm',
       items: [
         { href: '/pm/projects', name: 'โครงการ', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/pm/projects' || p.startsWith('/pm/projects/') },
@@ -176,7 +176,7 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      label: 'SAHAMIT · วางแผนและการขาย',
+      label: 'งานสหมิตร',
       system: 'sahamit',
       items: [
         { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
@@ -189,11 +189,11 @@ export default function AppLayout({ children }) {
   ];
 
   const systemSubtitle =
-    activeSystem === 'master' ? 'ระบบฐานข้อมูล'
-      : activeSystem === 'pm' ? 'ระบบจัดการโครงการ'
-        : activeSystem === 'sahamit' ? 'SAHAMIT · วางแผนและการขาย'
+    activeSystem === 'master' ? 'ฐานข้อมูล'
+      : activeSystem === 'pm' ? 'จัดการโครงการ'
+        : activeSystem === 'sahamit' ? 'งานสหมิตร'
           : activeSystem === 'users' ? 'จัดการผู้ใช้'
-            : 'ระบบภาษีสรรพสามิต';
+            : 'ภาษีสรรพสามิต';
 
   // Show only the current system's groups (+ 'both'), then only menus the role
   // is allowed to see.

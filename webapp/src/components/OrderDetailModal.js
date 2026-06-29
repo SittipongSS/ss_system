@@ -1,6 +1,6 @@
 "use client";
 import Modal from "@/components/Modal";
-import { fmtMoney, fmtDate } from "@/lib/format";
+import { fmtMoney, fmtDate, fmtDateNumeric } from "@/lib/format";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { useCan } from "@/lib/roleContext";
@@ -43,7 +43,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
           </div>
           <div>
             <div className="text-[var(--text-3)] text-xs">กำหนดส่ง</div>
-            <div className="text-[var(--text-2)]">{order.deliveryDate || "-"}</div>
+            <div className="text-[var(--text-2)]">{fmtDateNumeric(order.deliveryDate)}</div>
           </div>
           <div>
             <div className="text-[var(--text-3)] text-xs">ผู้รับผิดชอบ</div>

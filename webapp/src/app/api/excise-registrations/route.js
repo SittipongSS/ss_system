@@ -40,7 +40,7 @@ export async function POST(request) {
   // the client-supplied customerId when the FG has no owner set yet.
   const customerId = product.customerId || body.customerId;
   if (!customerId) {
-    return Response.json({ error: 'FG นี้ยังไม่มีลูกค้าเจ้าของ กรุณากำหนดลูกค้าให้สินค้าในระบบฐานข้อมูลก่อน' }, { status: 400 });
+    return Response.json({ error: 'FG นี้ยังไม่มีลูกค้าเจ้าของ กรุณากำหนดลูกค้าให้สินค้าในฐานข้อมูลก่อน' }, { status: 400 });
   }
 
   const { data: customer, error: custErr } = await supabase

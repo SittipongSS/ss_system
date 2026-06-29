@@ -39,7 +39,7 @@ export default function SahamitHomePage() {
   return (
     <Workspace
       icon={<LayoutDashboard size={22} />}
-      title="SAHAMIT · วางแผนและการขาย"
+      title="งานสหมิตร"
       subtitle="ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109) — เฉพาะทีม Key Account"
     >
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>

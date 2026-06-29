@@ -17,6 +17,7 @@ import FilterPopover from "@/components/ui/FilterPopover";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
+import { fmtDateNumeric } from "@/lib/format";
 
 const typeStyle = (type) => type === "NPD"
   ? { background: "var(--accent-soft)", color: "var(--accent)" }
@@ -59,17 +60,11 @@ const getOverdueCount = (p) => {
 };
 // คีย์หมวดสินค้าใช้กรอง: ยึด subCategory ก่อน ไม่มีก็ใช้ mainCategory (ค่าว่าง = ไม่ระบุ)
 const catKeyOf = (p) => p.productSubCategory || p.productMainCategory || "";
-const fmtDate = (v) => {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return "-";
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-};
 
 // ค่าที่ใช้เปรียบเทียบของแต่ละคอลัมน์ — ใช้ร่วมกันทั้งตารางหลักและคลังเก็บ (useSortableTable)
 const ROW_ACCESSORS = {
   code: (p) => p.code,
-  customer: (p) => p.customerName,
+  customer: (p) => p.metadata?.brand || p.customerName,
   type: (p) => p.type,
   category: (p) => p.productSubCategory || p.productMainCategory || "",
   owner: (p) => p.aeOwner,
@@ -263,13 +258,19 @@ export default function ProjectsPage() {
     return (
       <tr key={p.id} className="premium-row" style={{ cursor: "pointer", ...(archive ? { opacity: 0.85 } : null) }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
         <td>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-            <span style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</span>
-            {p.metadata?.brand && <span className="ui-badge" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{p.metadata.brand}</span>}
-          </div>
+          <div style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</div>
           <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>
         </td>
-        <td>{p.customerName || "-"}</td>
+        <td>
+          {p.metadata?.brand ? (
+            <div>
+              <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.metadata.brand}</div>
+              <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{p.customerName || "-"}</div>
+            </div>
+          ) : (
+            <div style={{ fontSize: "13px" }}>{p.customerName || "-"}</div>
+          )}
+        </td>
         <td><span className="ui-badge" style={typeStyle(p.type)}>{p.type}</span></td>
         <td style={{ fontSize: "12px", maxWidth: "180px" }}>
           {p.productSubCategory || p.productMainCategory ? (
@@ -290,7 +291,7 @@ export default function ProjectsPage() {
           {!archive && overdue > 0 && <div style={{ fontSize: "10px", color: "var(--red)", marginTop: "2px", display: "flex", alignItems: "center", gap: "2px" }}><AlertTriangle size={10} /> เลยกำหนด {overdue} งาน</div>}
         </td>
         {!archive && <td style={{ fontSize: "12px", maxWidth: "200px" }}>{getCurrentStep(p)}</td>}
-        <td style={{ fontSize: "12px" }}>{fmtDate(p.dueDate)}</td>
+        <td style={{ fontSize: "12px" }}>{fmtDateNumeric(p.dueDate)}</td>
         <td>
           <span className={`status-pill dot ${statusPillClass(cStatus)}`} style={{ "--dot": statusDotColor(cStatus) }}>
             {cStatus}
@@ -354,7 +355,7 @@ export default function ProjectsPage() {
               <thead>
                 <tr>
                   <SortTh label="โปรเจกต์" sortKey="code" sort={activeSort} />
-                  <SortTh label="ลูกค้า" sortKey="customer" sort={activeSort} />
+                  <SortTh label="แบรนด์" sortKey="customer" sort={activeSort} />
                   <SortTh label="ประเภท" sortKey="type" sort={activeSort} />
                   <SortTh label="หมวดสินค้า" sortKey="category" sort={activeSort} />
                   <SortTh label="ผู้ดูแล" sortKey="owner" sort={activeSort} />
@@ -424,7 +425,7 @@ export default function ProjectsPage() {
                     <thead>
                       <tr>
                         <SortTh label="โปรเจกต์" sortKey="code" sort={archiveSort} />
-                        <SortTh label="ลูกค้า" sortKey="customer" sort={archiveSort} />
+                        <SortTh label="แบรนด์" sortKey="customer" sort={archiveSort} />
                         <SortTh label="ประเภท" sortKey="type" sort={archiveSort} />
                         <SortTh label="หมวดสินค้า" sortKey="category" sort={archiveSort} />
                         <SortTh label="ผู้ดูแล" sortKey="owner" sort={archiveSort} />

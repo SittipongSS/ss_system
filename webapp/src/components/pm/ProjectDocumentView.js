@@ -10,7 +10,7 @@ import { Flag, ChevronDown, ChevronRight, Minus, Plus, RotateCcw, Loader2 } from
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import { useIsPortrait } from "@/lib/useResponsiveView";
-import { fmtPhone } from "@/lib/format";
+import { fmtPhone, fmtDateNumeric as fmtDate } from "@/lib/format";
 import Select from "@/components/ui/Select";
 
 const DAY_MS = 86400000;
@@ -44,13 +44,6 @@ const buildGridBg = (px) => {
   // แรเงาวันหยุดสุดสัปดาห์ (ล่างสุด)
   layers.push(`repeating-linear-gradient(90deg, transparent 0, transparent ${px * 5}px, ${weekendShade} ${px * 5}px, ${weekendShade} ${wk}px)`);
   return layers.join(", ");
-};
-
-const fmtDate = (v) => {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return "-";
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
 const roleColor = (role) => ({
