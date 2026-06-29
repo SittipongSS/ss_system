@@ -2,10 +2,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3 } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { can, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { can, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
@@ -96,6 +96,7 @@ export default function AppLayout({ children }) {
     const sys =
       pathname.startsWith('/pm') ? 'pm'
       : pathname.startsWith('/database') ? 'master'
+      : pathname.startsWith('/sahamit') ? 'sahamit'
       : pathname === '/users' ? 'users'
       : 'tax';
 
@@ -174,18 +175,32 @@ export default function AppLayout({ children }) {
         { href: '/pm/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/pm/tasks' },
       ],
     },
+    {
+      label: 'SAHAMIT · วางแผนและการขาย',
+      system: 'sahamit',
+      items: [
+        { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
+        { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
+        { href: '/sahamit/po', name: 'Purchase Orders', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
+        { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },
+        { href: '/sahamit/material', name: 'วัสดุ / Lead time', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
+      ],
+    },
   ];
 
   const systemSubtitle =
     activeSystem === 'master' ? 'ระบบฐานข้อมูล'
       : activeSystem === 'pm' ? 'ระบบจัดการโครงการ'
-        : activeSystem === 'users' ? 'จัดการผู้ใช้'
-          : 'ระบบภาษีสรรพสามิต';
+        : activeSystem === 'sahamit' ? 'SAHAMIT · วางแผนและการขาย'
+          : activeSystem === 'users' ? 'จัดการผู้ใช้'
+            : 'ระบบภาษีสรรพสามิต';
 
   // Show only the current system's groups (+ 'both'), then only menus the role
   // is allowed to see.
   const navGroups = allGroups
     .filter((g) => g.system === 'both' || g.system === activeSystem)
+    // SAHAMIT is team-gated (KA only) beyond the per-item capability check.
+    .filter((g) => g.system !== 'sahamit' || canAccessSahamit(role, team))
     .map((g) => ({ ...g, items: g.items.filter((it) => can(role, it.cap)) }))
     .filter((g) => g.items.length > 0);
 

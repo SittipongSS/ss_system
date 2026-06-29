@@ -37,6 +37,10 @@
 //   history:view   | audit:view
 //   master:manage  (edit shared master taxonomy, e.g. product_types categories)
 //   pm:view        | pm:edit        (project management — SALES only)
+//   sahamit:view   | sahamit:edit   (SAHAMIT Planning & Sales — FC/PO/Reconcile.
+//     Capability is held by every sales role, but ACCESS is further narrowed to
+//     team === 'KA' (+ admin / sales head oversight) via canAccessSahamit(). The
+//     module also scopes to a single customer (สหมิตร AR-109) inside its handlers.)
 
 // ── Department (ฝ่าย) ─────────────────────────────────────────────────
 // Top-level org division, one level above team. Stored explicitly in
@@ -126,6 +130,8 @@ const SALES_OPS = [
   'products:view', 'products:edit',
   'sales:view', 'sales:act',
   'pm:view', 'pm:edit',
+  // SAHAMIT module — granted to every sales role; team===KA narrows actual access.
+  'sahamit:view', 'sahamit:edit',
   'history:view',
 ];
 
@@ -139,6 +145,7 @@ const SUPERUSER_CAPS = [
   'users:manage',
   'master:manage',  // edit category taxonomy (product_types) + master config
   'pm:view', 'pm:edit',
+  'sahamit:view', 'sahamit:edit',
 ];
 
 // Admin-only system capabilities — account management, master taxonomy, and the
@@ -208,6 +215,18 @@ export function isSuperuser(role) {
 // Team-scope of senior_ae's approval is still enforced row-level via inScope().
 export function canApproveMasterData(role) {
   return isSuperuser(role) || role === 'senior_ae';
+}
+
+// ── SAHAMIT module access ─────────────────────────────────────────────
+// The SAHAMIT (Planning & Sales) module is restricted to the SA · Key Account
+// (KA) team, plus admin / sales-head oversight. Capability alone isn't enough —
+// every sales role holds sahamit:view, so the team gate is what actually scopes
+// it. Used by the /home card, the /sahamit page guard, and the API handlers
+// (which additionally scope to customer สหมิตร AR-109).
+//   user = { role, team }
+export function canAccessSahamit(role, team) {
+  if (isSuperuser(role)) return true;           // admin + sales head: cross-team oversight
+  return can(role, 'sahamit:view') && team === 'KA';
 }
 
 // ── Data scope ────────────────────────────────────────────────────────
