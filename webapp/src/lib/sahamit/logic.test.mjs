@@ -8,6 +8,7 @@ import { snapshotForSku, snapshotSeriesForSku, snapshotTotal } from './snapshots
 import { diffSnapshots } from './diff.js';
 import { computeSkuFcWarning } from './peak.js';
 import { reconcileCell } from './reconcile.js';
+import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -96,3 +97,40 @@ test('reconcileCell core statuses match ss-cj labels', () => {
 });
 
 function pick(r) { return { status: r.status, label: r.label }; }
+
+// ── forecastClient (the API-payload → comparison bridge) ──────────────
+const ROUNDS = [
+  { id: 'r1', roundNo: 1, lines: [
+    { fgCode: 'A', month: '2026-01', qty: 100 },
+    { fgCode: 'A', month: '2026-02', qty: 100 },
+    { fgCode: 'B', month: '2026-01', qty: 500 },
+  ] },
+  { id: 'r2', roundNo: 2, lines: [
+    { fgCode: 'A', month: '2026-02', qty: 120 }, // A grew
+    { fgCode: 'B', month: '2026-01', qty: 300 }, // B dropped (peak warning)
+  ] },
+];
+
+test('roundTotal / roundSkuCount aggregate a round', () => {
+  assert.equal(roundTotal(ROUNDS[0]), 700);
+  assert.equal(roundSkuCount(ROUNDS[0]), 2);
+});
+
+test('compareRounds: first round has no previous', () => {
+  const c = compareRounds(ROUNDS, 0);
+  assert.equal(c.hasPrev, false);
+  assert.equal(c.targetRoundNo, 1);
+});
+
+test('compareRounds: round 2 vs 1 — B flagged as peak drop, sorted first', () => {
+  const c = compareRounds(ROUNDS, 1);
+  assert.equal(c.hasPrev, true);
+  assert.deepEqual([c.prevRoundNo, c.targetRoundNo], [1, 2]);
+  const b = c.perSku.find((s) => s.fgCode === 'B');
+  assert.equal(b.peak.hasWarning, true);          // 500 → 300 on the same month
+  assert.equal(b.net, -200);
+  // peak-drop SKUs sort ahead of non-warning ones
+  assert.equal(c.perSku[0].fgCode, 'B');
+  const a = c.perSku.find((s) => s.fgCode === 'A');
+  assert.equal(a.peak?.hasWarning ?? false, false); // A's active-month total grew
+});
