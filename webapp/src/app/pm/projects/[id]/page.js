@@ -373,10 +373,11 @@ export default function ProjectDetailPage() {
     openGanttPrintWindow({
       ...proj,
       tasks: snapshot?.tasks || [],
-      projectProducts: snapshot?.projectProducts || [],
+      projectProducts: enrichProducts(snapshot?.projectProducts || []),
       categoryFallback: fallback,
+      ...resolveAe(proj.aeOwner),
       rev: revNo,
-      revDate: revRow?.createdAt || null, // วันที่ออก Rev นี้ → โชว์ YYYY.MM.DD
+      revDate: revRow?.createdAt || null, // วันที่ออก Rev นี้ → โชว์ DD/MM/YY ในหัวเอกสาร
     });
   };
 
@@ -905,6 +906,25 @@ export default function ProjectDetailPage() {
   const mainCatName = (mc) => categories.find((o) => o.mainCategoryCode === (mc || "").split("-")[0])?.mainCategoryName || mc;
   // ยังไม่ผูก FG → ชื่อหมวด/หมวดรอง (resolve ชื่อหมวดหลักจากโค้ด) ใช้เป็น fallback บนหน้าพิมพ์
   const categoryFallback = p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}` : "";
+
+  // ── เติมข้อมูลให้เอกสาร ISO (CR §3) ──────────────────────────────────
+  // เบอร์มือถือ + อีเมลของ AE ผู้ดูแล: aeOwner เก็บเป็น "ชื่อเต็ม" → จับคู่กับรายชื่อ
+  // ผู้ใช้ (assignable-users) เพื่อดึง phone/email จากข้อมูลผู้ใช้ (ไม่ใช่ของลูกค้า).
+  const resolveAe = (aeName) => {
+    const u = users.find((x) => x.name === aeName);
+    return { aeMobile: u?.phone || "", aeEmail: u?.email || "" };
+  };
+  // หมวดหลัก / หมวดรอง ของ FG หนึ่งๆ → "ODM / Shower Gel" (lookup จาก categoryCode).
+  const catLabelFor = (productId) => {
+    const pr = allProducts.find((x) => x.id === productId);
+    const code = pr?.categoryCode || "";
+    if (!code) return "";
+    const [mc = "", tc = ""] = code.split("-");
+    const main = categories.find((c) => c.mainCategoryCode === mc)?.mainCategoryName || mc;
+    const sub = categories.find((c) => c.mainCategoryCode === mc && c.typeCode === tc)?.nameTh || "";
+    return sub ? `${main} / ${sub}` : main;
+  };
+  const enrichProducts = (list) => (list || []).map((pp) => ({ ...pp, categoryLabel: catLabelFor(pp.productId) }));
   // เลข Rev ถัดไป (รันอัตโนมัติ): ครั้งแรก = 0, จากนั้น +1 — ใช้โชว์บนปุ่ม "ออก Rev. N"
   // เลข Rev ถัดไป = สูงสุดที่เคยออก + 1 (ไม่อิง currentRev — เพราะ currentRev เป็น "ตัวชี้
   // ว่าอยู่ที่ Rev ไหน" ซึ่งย้อนถอยได้; ออก Rev ใหม่ต้องไม่ชนเลขที่เคยใช้)
@@ -1028,6 +1048,8 @@ export default function ProjectDetailPage() {
               </button>
               <button
                 onClick={() => openGanttPrintWindow({ ...p, categoryFallback,
+                  ...resolveAe(p.aeOwner),
+                  projectProducts: enrichProducts(p.projectProducts),
                   // ถ้า live ถูกแก้หลังออก Rev (revStale) อย่าปั๊มเลข Rev ทางการทับเนื้อหาที่ต่าง —
                   // พิมพ์เป็น "ฉบับร่าง" (ไม่มีเลข/วันที่ Rev). พิมพ์เวอร์ชันทางการแท้ใช้ปุ่มในประวัติ.
                   rev: p.revStale ? null : p.currentRev,

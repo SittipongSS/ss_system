@@ -43,15 +43,17 @@ export async function PATCH(request, { params }) {
     updates.app_metadata = { ...existingMeta, must_change_password: mustChange };
   }
 
-  if (body.firstName !== undefined || body.lastName !== undefined) {
-    const fn = (body.firstName !== undefined ? body.firstName : (existing.user.user_metadata?.firstName || '')).trim();
-    const ln = (body.lastName !== undefined ? body.lastName : (existing.user.user_metadata?.lastName || '')).trim();
-    updates.user_metadata = {
-      ...(existing.user.user_metadata || {}),
-      firstName: fn,
-      lastName: ln,
-      name: `${fn} ${ln}`.trim(),
-    };
+  if (body.firstName !== undefined || body.lastName !== undefined || body.phone !== undefined) {
+    const meta = { ...(existing.user.user_metadata || {}) };
+    if (body.firstName !== undefined || body.lastName !== undefined) {
+      const fn = (body.firstName !== undefined ? body.firstName : (meta.firstName || '')).trim();
+      const ln = (body.lastName !== undefined ? body.lastName : (meta.lastName || '')).trim();
+      meta.firstName = fn;
+      meta.lastName = ln;
+      meta.name = `${fn} ${ln}`.trim();
+    }
+    if (body.phone !== undefined) meta.phone = (body.phone || '').trim();
+    updates.user_metadata = meta;
   } else if (body.name !== undefined) {
     updates.user_metadata = {
       ...(existing.user.user_metadata || {}),

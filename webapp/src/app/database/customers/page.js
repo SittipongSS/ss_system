@@ -9,6 +9,7 @@ import Workspace from "@/components/ui/Workspace";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
 import ContactsEditor from "@/components/database/ContactsEditor";
+import { fmtPhone, fmtNationalId } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
@@ -279,7 +280,7 @@ export default function CustomerDirectory() {
                   </div>
                 </div>
                 <div className="text-[11px] text-[var(--text-3)] font-mono">
-                  Tax {c.taxId || "-"}{teamsOf(c).length ? ` · ทีม ${teamsOf(c).join(", ")}` : ""}
+                  Tax {c.taxId ? fmtNationalId(c.taxId) : "-"}{teamsOf(c).length ? ` · ทีม ${teamsOf(c).join(", ")}` : ""}
                 </div>
                 {c.brands?.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
@@ -323,8 +324,8 @@ export default function CustomerDirectory() {
                     <td className="font-semibold font-mono text-[var(--accent)]">{c.arCode}</td>
                     <td>
                       <div className="font-medium text-[var(--text)]">{c.name}</div>
-                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId}</div>
-                      {c.phone && <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {c.phone}</div>}
+                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : "-"}</div>
+                      {c.phone && <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</div>}
                     </td>
                     <td className="text-[var(--text-2)]">
                       <div className="flex flex-wrap gap-1.5">

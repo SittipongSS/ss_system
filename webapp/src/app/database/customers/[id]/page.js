@@ -14,6 +14,7 @@ import StatusBadge from "@/components/excise/StatusBadge";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import ContactsEditor from "@/components/database/ContactsEditor";
+import { fmtPhone, fmtNationalId } from "@/lib/format";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 
 export default function CustomerDetails() {
@@ -367,9 +368,9 @@ export default function CustomerDetails() {
           <Field label="ประเภทลูกค้า" value={customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล (บริษัท)"} />
           <Field label="ทีมดูแล" value={(customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", ") || "-"} />
           <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
-          <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId} mono />
+          <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtNationalId(customer.taxId) : ""} mono />
           <Field label="สาขา (Branch)" value={!customer.branchCode || customer.branchCode === "00000" ? "สำนักงานใหญ่" : `สาขา ${customer.branchCode}`} />
-          <Field label="เบอร์โทร (Phone)" value={customer.phone} mono />
+          <Field label="เบอร์โทร (Phone)" value={customer.phone ? fmtPhone(customer.phone) : ""} mono />
           <Field label="เงื่อนไขเครดิต (Credit Terms)" value={customer.creditTerms} />
           <div className="md:col-span-3">
             <span className="text-[var(--text-3)] block mb-1 text-[11px]">ที่อยู่ออกใบเอกสาร</span>
@@ -390,7 +391,7 @@ export default function CustomerDetails() {
                 <div key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs border border-[var(--border)] rounded-lg px-3 py-2">
                   {c.role && <span className="ui-badge">{c.role}</span>}
                   <span className="font-medium text-[var(--text)]">{c.name || "-"}</span>
-                  {c.phone && <span className="font-mono text-[var(--text-2)]">{c.phone}</span>}
+                  {c.phone && <span className="font-mono text-[var(--text-2)]">{fmtPhone(c.phone)}</span>}
                   {c.email && <span className="text-[var(--text-2)]">{c.email}</span>}
                   {i === 0 && <span className="text-[10px] text-[var(--text-3)]">(ผู้ติดต่อหลัก)</span>}
                 </div>

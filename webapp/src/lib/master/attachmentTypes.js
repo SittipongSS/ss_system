@@ -19,6 +19,9 @@ export const CUSTOMER_DOC_TYPES = {
     // กลิ่นที่ออกแบบเป็นกรรมสิทธิ์ร่วมกับลูกค้า → เซ็นสัญญาทุกครั้งที่ออกแบบกลิ่น
     // (มีได้หลายฉบับต่อลูกค้า — การ์ดเดียวแนบได้หลายไฟล์).
     { key: "design_contract", label: "สัญญาออกแบบกลิ่น", required: true },
+    // สัญญาจ้างผลิตผูกกับลูกค้า (ไม่ใช่สินค้า): ลูกค้า 1 ราย มีสัญญา 1 ฉบับที่ครอบ
+    // หลายสินค้าได้ และแต่ละรอบอาจมีรายการสินค้าต่างกัน → การ์ดเดียวแนบได้หลายไฟล์.
+    { key: "manufacturing_contract", label: "สัญญาจ้างผลิต", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
   individual: [
@@ -26,6 +29,7 @@ export const CUSTOMER_DOC_TYPES = {
     { key: "house_reg", label: "สำเนาทะเบียนบ้าน (ถ้ามีการขอ)", required: false },
     { key: "name_change", label: "เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)", required: false },
     { key: "design_contract", label: "สัญญาออกแบบกลิ่น", required: true },
+    { key: "manufacturing_contract", label: "สัญญาจ้างผลิต", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
 };
@@ -51,8 +55,8 @@ export const ATTACHMENT_TYPES = {
   // (docType ที่ไม่อยู่ในนี้จะถูกตีเป็น 'other') และ lookup ป้ายชื่อ. การ์ดที่ UI
   // แสดงเลือกตามประเภทผ่าน customerDocTypes(). มาจาก CUSTOMER_DOC_TYPES ชุดเดียว.
   customer: customerDocTypesUnion,
+  // สัญญาจ้างผลิต ย้ายไปผูกกับลูกค้า (ดู customer ด้านบน) — สินค้าเหลือ Artwork.
   product: [
-    { key: "manufacturing_contract", label: "สัญญาจ้างผลิต", required: true },
     { key: "artwork", label: "Artwork สินค้า", required: true },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],

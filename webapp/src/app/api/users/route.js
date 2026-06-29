@@ -29,6 +29,8 @@ export async function GET() {
         name: u.user_metadata?.name || '',
         firstName: u.user_metadata?.firstName || (u.user_metadata?.name ? u.user_metadata.name.split(' ')[0] : ''),
         lastName: u.user_metadata?.lastName || (u.user_metadata?.name ? u.user_metadata.name.substring(u.user_metadata.name.indexOf(' ') + 1) : ''),
+        // เบอร์โทรผู้ใช้ — ใช้แสดงในเอกสาร ISO (เบอร์มือถือของ AE ผู้ดูแล) ฯลฯ.
+        phone: u.user_metadata?.phone || '',
         role: u.app_metadata?.role || null,
         team: u.app_metadata?.team || null,
         department: normalizeDepartment(u.app_metadata?.department) || departmentFor(u.app_metadata?.role) || null,
@@ -54,6 +56,7 @@ export async function POST(request) {
   const firstName = (body.firstName || '').trim();
   const lastName = (body.lastName || '').trim();
   const name = `${firstName} ${lastName}`.trim();
+  const phone = (body.phone || '').trim();
   const role = body.role;
   const team = body.team || null;
 
@@ -67,7 +70,7 @@ export async function POST(request) {
     email,
     password,
     email_confirm: true, // no email verification step for internal accounts
-    user_metadata: { name, firstName, lastName },
+    user_metadata: { name, firstName, lastName, phone },
     // must_change_password forces a self-service password change on first login
     // (the admin-assigned password is temporary). Stored in app_metadata so the
     // user can't clear it client-side — only our /api/account/password route does.
