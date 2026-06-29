@@ -150,12 +150,6 @@ export default function ReportsPage() {
             ))}
           </div>
           <div className="spacer" />
-          <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
-            จาก <input type="date" className="premium-input" style={{ height: "var(--ctl-h)" }} value={from} onChange={(e) => setFrom(e.target.value)} />
-          </label>
-          <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
-            ถึง <input type="date" className="premium-input" style={{ height: "var(--ctl-h)" }} value={to} onChange={(e) => setTo(e.target.value)} />
-          </label>
           <FilterPopover
             count={(status && status !== "all" ? 1 : 0) + (customerId ? 1 : 0)}
             onClear={() => { setStatus("all"); setCustomerId(""); }}
@@ -174,6 +168,12 @@ export default function ReportsPage() {
               },
             ]}
           />
+          <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+            จาก <input type="date" className="premium-input" style={{ height: "var(--ctl-h)" }} value={from} onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+            ถึง <input type="date" className="premium-input" style={{ height: "var(--ctl-h)" }} value={to} onChange={(e) => setTo(e.target.value)} />
+          </label>
         </div>
       }
     >
