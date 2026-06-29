@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, FileSpreadsheet, Printer, FolderArchive } from "lucide-react";
+import { BarChart3, FileSpreadsheet, Printer, FolderArchive, CircleDot, Building2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import DataList from "@/components/excise/DataList";
-import SearchableSelect from "@/components/ui/SearchableSelect";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { openReportPrintWindow } from "@/lib/tax/reportPrint";
 import { REGISTRATION_FILTERS, FILING_FILTERS } from "@/lib/excise/workflow";
 
@@ -156,24 +156,24 @@ export default function ReportsPage() {
           <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
             ถึง <input type="date" className="premium-input" style={{ height: "var(--ctl-h)" }} value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
-          <div style={{ width: 160 }}>
-            <SearchableSelect
-              value={status}
-              onChange={setStatus}
-              size="sm"
-              placeholder="ทุกสถานะ"
-              options={statusFilters.map((f) => ({ value: f.key, label: f.label }))}
-            />
-          </div>
-          <div style={{ width: 200 }}>
-            <SearchableSelect
-              value={customerId}
-              onChange={setCustomerId}
-              size="sm"
-              placeholder="ทุกลูกค้า"
-              options={[{ value: "", label: "ทุกลูกค้า" }, ...customers.map((c) => ({ value: c.id, label: c.name, search: `${c.arCode} ${c.name}` }))]}
-            />
-          </div>
+          <FilterPopover
+            count={(status && status !== "all" ? 1 : 0) + (customerId ? 1 : 0)}
+            onClear={() => { setStatus("all"); setCustomerId(""); }}
+            groups={[
+              {
+                key: "status", label: "สถานะ", icon: CircleDot, single: true,
+                options: statusFilters.filter((f) => f.key !== "all").map((f) => ({ value: f.key, label: f.label })),
+                selected: status && status !== "all" ? [status] : [],
+                onChange: (arr) => setStatus(arr[0] || "all"),
+              },
+              {
+                key: "customer", label: "ลูกค้า", icon: Building2, single: true,
+                options: customers.map((c) => ({ value: c.id, label: c.name })),
+                selected: customerId ? [customerId] : [],
+                onChange: (arr) => setCustomerId(arr[0] || ""),
+              },
+            ]}
+          />
         </div>
       }
     >

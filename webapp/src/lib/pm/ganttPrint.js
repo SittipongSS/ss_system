@@ -207,6 +207,7 @@ export function buildGanttPrintHTML(project) {
   .sign .lbl { font-size: 11px; font-weight: 700; color: #21385e; margin-top: 4px; }
   .sign .role { font-size: 10px; color: #837868; }
   .sign .date { font-size: 10px; color: #837868; margin-top: 6px; }
+  .date .dline { display: inline-block; border-bottom: 1px dotted #6b7a90; min-width: 180px; height: 0.9em; vertical-align: middle; }
 
   /* แถวลงชื่อฝ่าย PC / PD / RD (เฉพาะหน้าพิมพ์) — ขึ้นครบทุกฝ่ายเสมอ.
      ช่องลายเซ็นและช่องชื่อกว้างเท่ากันทุกตำแหน่ง + กว้างขึ้นให้เซ็น/เขียนชื่อได้ชัด (CR §3.5) */
@@ -220,6 +221,7 @@ export function buildGanttPrintHTML(project) {
   .sign-sm .lbl { font-size: 9.5px; font-weight: 700; color: #21385e; margin-top: 4px; }
   .sign-sm .role { font-size: 9px; color: #837868; }
   .sign-sm .date { font-size: 8.5px; color: #837868; margin-top: 6px; }
+  .sign-sm .date .dline { min-width: 130px; }
 
   .legend { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; page-break-inside: avoid; }
   .leg { display: flex; align-items: center; gap: 4px; font-size: 9.5px; color: #3c577d; }
@@ -270,7 +272,7 @@ export function buildGanttPrintHTML(project) {
       <div class="doc-title">
         <div class="formno">FM-PD-05</div>
         <div class="big">TIMELINE PROJECT</div>
-        <div class="sub">PJ Number: ${esc(project.code || '-')}</div>
+        <div class="sub">${esc(project.code || '-')}</div>
         ${project.rev == null ? '' : `<div class="sub">Revision No. ${esc(project.rev)}</div>`}
         ${revDateStr ? `<div class="sub">Document Date ${revDateStr}</div>` : ''}
       </div>
@@ -343,7 +345,7 @@ export function buildGanttPrintHTML(project) {
         <div class="nm-name">(${esc(preparerName || '...................................................')})</div>
         <div class="lbl">ผู้จัดทำ</div>
         <div class="role">ตำแหน่ง ACCOUNT COORDINATOR</div>
-        <div class="date">วันที่ ______________________</div>
+        <div class="date">วันที่ <span class="dline"></span></div>
       </div>
       <div class="sign">
         <div class="sig-space"></div>
@@ -351,7 +353,7 @@ export function buildGanttPrintHTML(project) {
         <div class="nm-name">(${esc(reviewerName || '...................................................')})</div>
         <div class="lbl">ผู้ตรวจสอบ</div>
         <div class="role">ตำแหน่ง AE SUPERVISOR</div>
-        <div class="date">วันที่ ______________________</div>
+        <div class="date">วันที่ <span class="dline"></span></div>
       </div>
     </div>
 
@@ -365,7 +367,7 @@ export function buildGanttPrintHTML(project) {
         <div class="hint">(ชื่อ-นามสกุล)</div>
         <div class="lbl">ผู้รับผิดชอบ</div>
         <div class="role">ฝ่าย ${dep}</div>
-        <div class="date">วันที่ ____________</div>
+        <div class="date">วันที่ <span class="dline"></span></div>
       </div>`).join('')}
     </div>` : ''}
   </div>
