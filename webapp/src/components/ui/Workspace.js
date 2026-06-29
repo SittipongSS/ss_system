@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+
 // Generic page shell shared across modules (tax, master data, …). Collapses the
 // header + loading-spinner + section spacing that pages would otherwise
 // copy-paste, so each page only describes its content. Originally lived as
@@ -11,13 +14,23 @@
 //   title       — page title
 //   subtitle    — one-line description under the title
 //   headerRight — ReactNode shown on the right of the header (counts, buttons)
+//   back        — { href, label } → understated back link above the header
+//                 (same pattern as the PM project detail page)
 //   rail        — ReactNode pinned under the header (stage rail / stat cards)
 //   toolbar     — ReactNode (search / filters) shown above the body
 //   loading     — when true, render a centred spinner instead of children
 //   children    — page body
-export default function Workspace({ icon, title, subtitle, headerRight, rail, toolbar, loading, children }) {
+export default function Workspace({ icon, title, subtitle, headerRight, back, rail, toolbar, loading, children }) {
   return (
     <>
+      {back && (
+        <Link
+          href={back.href}
+          style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--text-2)", fontSize: "13px", fontWeight: 500, textDecoration: "none", marginBottom: "14px" }}
+        >
+          <ArrowLeft size={16} /> {back.label}
+        </Link>
+      )}
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="header-content">
           <h1>

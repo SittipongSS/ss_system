@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ClipboardCheck, ArrowLeft, Pencil, Trash2, Send, Unlock } from "lucide-react";
+import { ClipboardCheck, Pencil, Trash2, Send, Unlock } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
@@ -113,15 +113,11 @@ export default function RegistrationDetailPage() {
     await reload();
   };
 
-  const back = (
-    <button className="btn btn-secondary flex items-center gap-1.5" onClick={() => router.push("/tax/registrations")}>
-      <ArrowLeft size={16} /> กลับ
-    </button>
-  );
+  const back = { href: "/tax/registrations", label: "กลับไปหน้าทะเบียน" };
 
   if (!loading && !s) {
     return (
-      <Workspace icon={<ClipboardCheck size={22} />} title="ไม่พบรายการ" subtitle="ทะเบียนนี้อาจถูกลบไปแล้ว" headerRight={back}>
+      <Workspace icon={<ClipboardCheck size={22} />} title="ไม่พบรายการ" subtitle="ทะเบียนนี้อาจถูกลบไปแล้ว" back={back}>
         <div style={{ color: "var(--text-3)" }}>ไม่พบทะเบียนที่ต้องการ</div>
       </Workspace>
     );
@@ -130,7 +126,6 @@ export default function RegistrationDetailPage() {
   const headerRight = (
     <div className="flex items-center gap-2 flex-wrap">
       {s && <StatusBadge status={s.status} />}
-      {back}
     </div>
   );
 
@@ -140,6 +135,7 @@ export default function RegistrationDetailPage() {
       title={s?.fgCode || "..."}
       subtitle={s ? `${s.productName} (${s.brandName})` : ""}
       headerRight={headerRight}
+      back={back}
       loading={loading && !s}
     >
       {s && (

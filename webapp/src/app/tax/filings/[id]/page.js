@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, ArrowLeft, Pencil, Wallet, Send, FileCheck, Trash2, Printer } from "lucide-react";
+import { ReceiptText, Pencil, Wallet, Send, FileCheck, Trash2, Printer } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, fmtDate } from "@/lib/format";
@@ -79,15 +79,11 @@ export default function FilingDetailPage() {
     router.push("/tax/filings");
   };
 
-  const back = (
-    <button className="btn btn-secondary flex items-center gap-1.5" onClick={() => router.push("/tax/filings")}>
-      <ArrowLeft size={16} /> กลับ
-    </button>
-  );
+  const back = { href: "/tax/filings", label: "กลับไปหน้าการยื่นชำระ" };
 
   if (!loading && !o) {
     return (
-      <Workspace icon={<ReceiptText size={22} />} title="ไม่พบรายการ" subtitle="ใบยื่นนี้อาจถูกลบไปแล้ว" headerRight={back}>
+      <Workspace icon={<ReceiptText size={22} />} title="ไม่พบรายการ" subtitle="ใบยื่นนี้อาจถูกลบไปแล้ว" back={back}>
         <div style={{ color: "var(--text-3)" }}>ไม่พบใบยื่นที่ต้องการ</div>
       </Workspace>
     );
@@ -96,7 +92,6 @@ export default function FilingDetailPage() {
   const headerRight = (
     <div className="flex items-center gap-2 flex-wrap">
       {o && <StatusBadge status={o.status} />}
-      {back}
     </div>
   );
 
@@ -106,6 +101,7 @@ export default function FilingDetailPage() {
       title={o?.quotationRef || "..."}
       subtitle={o?.customerName || ""}
       headerRight={headerRight}
+      back={back}
       loading={loading && !o}
     >
       {o && (
