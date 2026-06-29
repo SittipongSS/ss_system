@@ -24,13 +24,21 @@ export async function getSahamitContext() {
     return { ok: false, status: 403, error: 'forbidden' };
   }
 
-  const supabase = getSupabaseAdmin();
+  // Wrap so a thrown error (e.g. getSupabaseAdmin when env is missing) becomes a
+  // legible message in the UI banner instead of an opaque "(500)".
+  let supabase;
+  try {
+    supabase = getSupabaseAdmin();
+  } catch (e) {
+    return { ok: false, status: 500, error: `เชื่อมต่อฐานข้อมูลไม่ได้: ${e.message}` };
+  }
+
   const { data: customer, error } = await supabase
     .from('customers')
     .select('*')
     .eq('arCode', SAHAMIT_AR_CODE)
     .maybeSingle();
-  if (error) return { ok: false, status: 500, error: error.message };
+  if (error) return { ok: false, status: 500, error: `อ่านข้อมูลลูกค้าไม่สำเร็จ: ${error.message}` };
   if (!customer) {
     return { ok: false, status: 404, error: `ไม่พบลูกค้า ${SAHAMIT_AR_CODE} ในฐานข้อมูลหลัก` };
   }

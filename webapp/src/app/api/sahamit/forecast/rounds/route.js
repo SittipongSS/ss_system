@@ -60,7 +60,12 @@ export async function POST(request) {
   if (!cleaned.length) return Response.json({ error: 'ไม่มีรายการ FC ที่ถูกต้อง (ต้องมีรหัสสินค้า เดือน YYYY-MM และจำนวน > 0)' }, { status: 400 });
 
   // Resolve fgCodes against the catalog.
-  const products = await loadSahamitProducts(supabase, customerId);
+  let products;
+  try {
+    products = await loadSahamitProducts(supabase, customerId);
+  } catch (e) {
+    return Response.json({ error: `อ่านแคตตาล็อกสินค้าไม่สำเร็จ: ${e.message}` }, { status: 500 });
+  }
   const index = indexByFgCode(products);
   const unknown = new Set();
 
