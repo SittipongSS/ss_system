@@ -6,7 +6,7 @@ import {
   ArrowLeft, Plus, PlusCircle, X, Flag, FileText, GanttChart,
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
   TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
-  Activity, CircleDashed,
+  Activity, CircleDashed, Pause,
   Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
   GitCommit, History, RotateCcw,
 } from "lucide-react";
@@ -1473,7 +1473,7 @@ export default function ProjectDetailPage() {
           ) : (
             <>
               <button type="button" className="btn btn-warning" onClick={() => updateProject({ status: "On Hold" })}>
-                <Clock size={14} /> ระงับชั่วคราว (On Hold)
+                <Pause size={14} /> ระงับชั่วคราว (On Hold)
               </button>
               <button type="button" className="btn btn-danger" onClick={openDrop}>
                 <X size={14} /> ยกเลิกโปรเจกต์ (Drop)

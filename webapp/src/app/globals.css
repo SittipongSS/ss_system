@@ -1630,6 +1630,10 @@ input[type="number"] {
 .btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
 .btn-danger:hover { background: color-mix(in oklab, var(--red) 88%, #000); box-shadow: var(--shadow-md); }
 
+/* Canonical layout for a row of action buttons (อนุมัติ/ตีกลับ/แก้ไข/พัก/ลบ/ยื่น).
+   Same alignment + spacing in every module — pairs with <ActionBar>/<ActionButton>. */
+.action-bar { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
 /* Empty state — centered icon + message (+ optional CTA). `.dashed` makes the
    whole block a clickable add affordance. Replaces ad-hoc empty <div>/rows. */
 .empty-state {

@@ -23,7 +23,7 @@ export default function PoPage() {
       icon={<FileText size={22} />}
       title="Purchase Orders"
       subtitle="ติดตาม PO ที่ลูกค้าส่งมา (ลูกค้า AR-109)"
-      back={{ href: "/sahamit", label: "ระบบงาน สหมิตร" }}
+      back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
         <button className="btn btn-primary" onClick={() => setShowForm(true)}>
           <Plus size={16} /> บันทึก PO

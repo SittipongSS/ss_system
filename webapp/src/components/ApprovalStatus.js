@@ -1,7 +1,7 @@
 "use client";
 // Approval-status badge for master data (customers & products) — migration 0027.
 // Legacy/NULL status is treated as 'approved' (rows created before the workflow).
-import { Check, X } from "lucide-react";
+import { ActionButton } from "@/components/ui/ActionButtons";
 
 export const APPROVAL_META = {
   pending: { label: "รออนุมัติ", cls: "status-pill warning" },
@@ -22,21 +22,9 @@ export function ApprovalBadge({ status }) {
 // onDecide(status) is called with 'approved' | 'rejected'.
 export function ApprovalActions({ onDecide }) {
   return (
-    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        onClick={() => onDecide("approved")}
-        className="btn btn-success px-3 flex items-center gap-1"
-      >
-        <Check size={14} /> อนุมัติ
-      </button>
-      <button
-        type="button"
-        onClick={() => onDecide("rejected")}
-        className="btn px-3 text-[var(--red)] flex items-center gap-1"
-      >
-        <X size={14} /> ไม่อนุมัติ
-      </button>
+    <div className="action-bar" onClick={(e) => e.stopPropagation()}>
+      <ActionButton kind="approve" type="button" onClick={() => onDecide("approved")} />
+      <ActionButton kind="reject" type="button" label="ไม่อนุมัติ" onClick={() => onDecide("rejected")} />
     </div>
   );
 }

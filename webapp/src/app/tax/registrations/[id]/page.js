@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ClipboardCheck, Pencil, Trash2, Send, Unlock } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
+import { ActionBar, ActionButton } from "@/components/ui/ActionButtons";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
@@ -205,44 +206,35 @@ export default function RegistrationDetailPage() {
           )}
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 flex-wrap">
+          <ActionBar>
             {canApprove && s.status === "pending_legal" && (
               <>
-                <button className="btn btn-danger" onClick={() => setRejectOpen(true)}>ตีกลับ</button>
-                <button className="btn btn-primary" onClick={() => setApproveOpen(true)}>อนุมัติ</button>
+                <ActionButton kind="reject" onClick={() => setRejectOpen(true)} />
+                <ActionButton kind="approve" onClick={() => setApproveOpen(true)} />
               </>
             )}
             {canEdit && s.status === "draft" && (
-              <button
-                className="btn btn-primary flex items-center gap-1.5"
+              <ActionButton
+                kind="submit"
+                label="ยื่นขึ้นทะเบียน"
                 disabled={!req?.ready}
                 title={!req?.ready ? `ต้องแนบ: ${missingDocs.join(", ")}` : ""}
                 onClick={() => submitDraft().catch((e) => alert(e.message))}
-              >
-                <Send size={15} /> ยื่นขึ้นทะเบียน
-              </button>
+              />
             )}
             {canEdit && s.status === "rejected" && (
-              <button className="btn btn-primary flex items-center gap-1.5" onClick={() => resubmit().catch((e) => alert(e.message))}>
-                <Send size={15} /> ส่งกลับให้ตรวจ
-              </button>
+              <ActionButton kind="submit" label="ส่งกลับให้ตรวจ" onClick={() => resubmit().catch((e) => alert(e.message))} />
             )}
             {canEdit && s.status !== "approved" && (
-              <button className="btn btn-secondary flex items-center gap-1.5" onClick={() => setFormOpen(true)}>
-                <Pencil size={15} /> แก้ไข
-              </button>
+              <ActionButton kind="edit" onClick={() => setFormOpen(true)} />
             )}
             {canEdit && s.status === "approved" && (
-              <button className="btn btn-secondary flex items-center gap-1.5" onClick={() => setReviseOpen(true)}>
-                <Unlock size={15} /> ขอแก้ไข
-              </button>
+              <ActionButton kind="reedit" onClick={() => setReviseOpen(true)} />
             )}
             {canEdit && s.status === "draft" && (
-              <button className="btn btn-danger flex items-center gap-1.5" onClick={() => setDeleteOpen(true)}>
-                <Trash2 size={15} /> ลบ
-              </button>
+              <ActionButton kind="delete" onClick={() => setDeleteOpen(true)} />
             )}
-          </div>
+          </ActionBar>
         </div>
       )}
 

@@ -83,7 +83,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
                 label: `${p.fgCode} | ${p.productDescription} (${p.brandName})`,
                 search: `${p.fgCode} ${p.productDescription} ${p.brandName}`,
               }))}
-              emptyText="ไม่พบสินค้า — สร้างที่ระบบฐานข้อมูลก่อน"
+              emptyText="ไม่พบสินค้า — สร้างที่ฐานข้อมูลก่อน"
             />
             {selected && (
               <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }} className="font-mono flex gap-4 flex-wrap">
@@ -113,7 +113,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
                   }))}
                 />
                 <div style={{ marginTop: 6, fontSize: 12, color: "var(--amber, #b45309)" }}>
-                  FG นี้ยังไม่มีลูกค้าเจ้าของในระบบฐานข้อมูล — ควรไปกำหนดที่สินค้าให้เรียบร้อย
+                  FG นี้ยังไม่มีลูกค้าเจ้าของในฐานข้อมูล — ควรไปกำหนดที่สินค้าให้เรียบร้อย
                 </div>
               </>
             ) : (

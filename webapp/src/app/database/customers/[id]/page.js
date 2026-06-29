@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, Pencil, Trash2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban } from "lucide-react";
+import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban } from "lucide-react";
+import { ActionButton } from "@/components/ui/ActionButtons";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
@@ -309,21 +310,17 @@ export default function CustomerDetails() {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="action-bar">
           {canEdit && (
-            <button onClick={() => setIsEditing(true)} className="btn flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border border-[var(--border)] text-[var(--accent)] bg-[var(--accent-soft)]">
-              <Pencil size={14} /> แก้ไขข้อมูล
-            </button>
+            <ActionButton kind="edit" label="แก้ไขข้อมูล" onClick={() => setIsEditing(true)} />
           )}
           {canEdit && (
-            <button onClick={handleToggleActive} className="btn flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border border-[var(--border)] text-[var(--text-2)]">
-              {customer.isActive === false ? (<><ArchiveRestore size={14} /> เปิดใช้อีกครั้ง</>) : (<><Archive size={14} /> พักใช้</>)}
-            </button>
+            customer.isActive === false
+              ? <ActionButton kind="resume" icon={ArchiveRestore} label="เปิดใช้อีกครั้ง" onClick={handleToggleActive} />
+              : <ActionButton kind="pause" icon={Archive} label="พักใช้" onClick={handleToggleActive} />
           )}
           {canEdit && canDelete && (
-            <button onClick={handleDelete} className="btn flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border border-[var(--border)] text-[var(--red)] bg-[var(--red-soft)]">
-              <Trash2 size={14} /> ลบลูกค้า
-            </button>
+            <ActionButton kind="delete" label="ลบลูกค้า" onClick={handleDelete} />
           )}
         </div>
       </div>

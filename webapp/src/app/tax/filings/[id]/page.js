@@ -1,7 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, Pencil, Wallet, Send, FileCheck, Trash2, Printer } from "lucide-react";
+import { ReceiptText, Pencil, Wallet, FileCheck, Printer } from "lucide-react";
+import { ActionBar, ActionButton } from "@/components/ui/ActionButtons";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, fmtDate } from "@/lib/format";
@@ -177,39 +178,37 @@ export default function FilingDetailPage() {
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 flex-wrap">
+          <ActionBar>
             <button className="btn btn-secondary flex items-center gap-1.5" style={{ marginRight: "auto" }} onClick={() => openBillPrintWindow(o, customer)}>
               <Printer size={15} /> ออกใบวางบิลภาษี
             </button>
             {canAct && o.status === "pending" && (
               <>
-                <button className="btn btn-secondary flex items-center gap-1.5" onClick={() => setFormOpen(true)}><Pencil size={15} /> แก้ไข</button>
-                <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setReceiveOpen(true)}><Wallet size={15} /> {isExempt ? "ยืนยันรับเงิน" : "รับเงินแล้ว"}</button>
+                <ActionButton kind="edit" onClick={() => setFormOpen(true)} />
+                <ActionButton kind="submit" icon={Wallet} label={isExempt ? "ยืนยันรับเงิน" : "รับเงินแล้ว"} onClick={() => setReceiveOpen(true)} />
               </>
             )}
             {canAct && o.status === "rejected" && (
-              <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFormOpen(true)}><Pencil size={15} /> แก้ไขและส่งกลับ</button>
+              <ActionButton kind="submit" icon={Pencil} label="แก้ไขและส่งกลับ" onClick={() => setFormOpen(true)} />
             )}
             {canApprove && o.status === "received" && (
               <>
-                <button className="btn btn-danger" onClick={() => setRejectOpen(true)}>ตีกลับ</button>
+                <ActionButton kind="reject" onClick={() => setRejectOpen(true)} />
                 {isExempt
-                  ? <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFileOpen(true)}><FileCheck size={15} /> ยืนยันชำระ</button>
-                  : <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setStartOpen(true)}><Send size={15} /> เริ่มยื่น</button>}
+                  ? <ActionButton kind="submit" icon={FileCheck} label="ยืนยันชำระ" onClick={() => setFileOpen(true)} />
+                  : <ActionButton kind="submit" label="เริ่มยื่น" onClick={() => setStartOpen(true)} />}
               </>
             )}
             {canApprove && o.status === "filing" && (
               <>
-                <button className="btn btn-danger" onClick={() => setRejectOpen(true)}>ตีกลับ</button>
-                <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFileOpen(true)}><FileCheck size={15} /> บันทึกชำระภาษี</button>
+                <ActionButton kind="reject" onClick={() => setRejectOpen(true)} />
+                <ActionButton kind="submit" icon={FileCheck} label="บันทึกชำระภาษี" onClick={() => setFileOpen(true)} />
               </>
             )}
             {canDelete && (
-              <button className="btn btn-danger flex items-center gap-1.5" onClick={() => setDeleteOpen(true)}>
-                <Trash2 size={15} /> ลบ
-              </button>
+              <ActionButton kind="delete" onClick={() => setDeleteOpen(true)} />
             )}
-          </div>
+          </ActionBar>
         </div>
       )}
 

@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Pencil, Archive, ArchiveRestore, ShoppingCart, FolderKanban } from "lucide-react";
+import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban } from "lucide-react";
+import { ActionButton } from "@/components/ui/ActionButtons";
 import { useCan } from "@/lib/roleContext";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
@@ -161,21 +162,17 @@ export default function ProductDetails() {
           <p>แบรนด์: {product.brandName}</p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="action-bar">
           {canEditProducts && (
-            <button onClick={() => setShowEdit(true)} disabled={isUpdating} className="btn px-5 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg border border-[var(--border)] text-[var(--text-2)]">
-              <Pencil size={14} /> แก้ไขข้อมูล
-            </button>
+            <ActionButton kind="edit" label="แก้ไขข้อมูล" disabled={isUpdating} onClick={() => setShowEdit(true)} />
           )}
           {canEditProducts && (
-            <button onClick={handleToggleActive} disabled={isUpdating} className="btn px-4 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg border border-[var(--border)] text-[var(--text-2)]">
-              {product.isActive === false ? (<><ArchiveRestore size={14} /> เปิดใช้อีกครั้ง</>) : (<><Archive size={14} /> พักใช้</>)}
-            </button>
+            product.isActive === false
+              ? <ActionButton kind="resume" icon={ArchiveRestore} label="เปิดใช้อีกครั้ง" disabled={isUpdating} onClick={handleToggleActive} />
+              : <ActionButton kind="pause" icon={Archive} label="พักใช้" disabled={isUpdating} onClick={handleToggleActive} />
           )}
           {canDeleteProducts && (
-            <button onClick={handleDelete} disabled={isUpdating} className="btn bg-[var(--red-soft)] text-[var(--red)] border border-[var(--border)] px-4 py-2 text-xs font-semibold rounded-lg">
-              ลบสินค้า
-            </button>
+            <ActionButton kind="delete" label="ลบสินค้า" disabled={isUpdating} onClick={handleDelete} />
           )}
         </div>
       </div>
