@@ -24,30 +24,43 @@ export async function GET(request, { params }) {
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!customer) return Response.json({ error: 'ไม่พบข้อมูลลูกค้ารายนี้' }, { status: 404 });
 
-  // The customer's registered products = its excise registrations (team-scoped).
-  // Merge each with its master product so the detail UI can show spec/price.
+  // The customer's product catalog — source of truth is products.customerId (the
+  // real FK). Was previously derived from excise_registrations, so a customer
+  // with products but no excise filing (e.g. planning/sales-only customers like
+  // SAHAMIT) showed an empty list. Team-scoped per the products module.
+  const { data: ownProducts } = await supabase
+    .from('products').select('*').eq('customerId', id).order('createdAt', { ascending: false });
+  const catalog = (ownProducts || []).filter((p) => canViewRecord(user, 'products', p));
+
+  // Excise registrations: still needed for the tax overlay (status/tax per
+  // product) and to collect this customer's orders below.
   const regs = (await listForCustomer(id)).filter((r) => canViewRecord(user, 'registrations', r));
-  const regProductIds = [...new Set(regs.map((r) => r.productId).filter(Boolean))];
-  let productMap = new Map();
-  if (regProductIds.length) {
-    const { data: prods } = await supabase.from('products').select('*').in('id', regProductIds);
-    productMap = new Map((prods || []).map((p) => [p.id, p]));
+  const regByProduct = new Map();
+  for (const r of regs) if (r.productId && !regByProduct.has(r.productId)) regByProduct.set(r.productId, r);
+
+  // Defensive: pull in any registered product missing from the catalog (legacy
+  // rows whose customerId was never backfilled) so the list stays a superset.
+  const missingIds = [...new Set(regs.map((r) => r.productId)
+    .filter((pid) => pid && !catalog.some((p) => p.id === pid)))];
+  if (missingIds.length) {
+    const { data: extra } = await supabase.from('products').select('*').in('id', missingIds);
+    for (const p of extra || []) catalog.push(p);
   }
-  // Shape kept backward-compatible with the customer-detail page: product spec
-  // fields from master + the registration's status/tax snapshot.
-  const products = regs.map((r) => {
-    const p = productMap.get(r.productId) || {};
+
+  // Merge: master spec + (when present) the registration's status/tax snapshot.
+  // No registration → fall back to the product's own master approval status.
+  const products = catalog.map((p) => {
+    const r = regByProduct.get(p.id);
     return {
       ...p,
-      id: r.productId || p.id,
-      registrationId: r.id,
-      fgCode: r.fgCode ?? p.fgCode,
-      productDescription: r.productName ?? p.productDescription,
-      brandName: r.brandName ?? p.brandName,
-      status: r.status,
-      isExciseTaxable: r.isExciseTaxable,
-      exciseTax: r.exciseTax,
-      localTax: r.localTax,
+      registrationId: r?.id ?? null,
+      fgCode: r?.fgCode ?? p.fgCode,
+      productDescription: r?.productName ?? p.productDescription,
+      brandName: r?.brandName ?? p.brandName,
+      status: r?.status ?? p.approvalStatus,
+      isExciseTaxable: r ? r.isExciseTaxable : p.isExciseTaxable,
+      exciseTax: r ? r.exciseTax : p.exciseTax,
+      localTax: r ? r.localTax : p.localTax,
     };
   });
 
