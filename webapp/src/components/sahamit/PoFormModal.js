@@ -99,7 +99,7 @@ export default function PoFormModal({ open, onClose, onCreated, products = [] })
           <div style={{ display: "flex", gap: "6px" }}>
             <input
               list="sahamit-po-products"
-              className="premium-input"
+              className="premium-input combo"
               style={{ flex: 1 }}
               placeholder="ค้นหารหัส / ชื่อสินค้า แล้วกดเพิ่ม"
               value={pick}
