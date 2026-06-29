@@ -115,8 +115,13 @@ export function buildGanttPrintHTML(project) {
   const quotationLine = quotationNo
     ? `${esc(quotationNo)}${poNo ? ` (${esc(poNo)})` : ''}`
     : (poNo ? `(${esc(poNo)})` : '');
-  // วันที่ออกเวอร์ชัน (Rev) = Document Date — โชว์เป็น DD/MM/YYYY (มาตรฐาน §2.4).
-  const revDateStr = project.revDate ? fmtDateNumeric(project.revDate) : '';
+  // วันที่ออกเวอร์ชัน (Rev) = Document Date — โชว์เป็น DD.MM.YYYY ใต้เลขที่ Project.
+  const revDateStr = (() => {
+    if (!project.revDate) return '';
+    const d = new Date(project.revDate);
+    if (isNaN(d.getTime())) return '';
+    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  })();
   // ช่องลงชื่อผู้รับผิดชอบฝ่าย — ขึ้นครบทุกฝ่ายเสมอ (ไม่ว่ามีขั้นตอนฝ่ายนั้นในโครงการหรือไม่)
   const signDepts = ['PC', 'PD', 'RD'];
   // ยังไม่ผูก FG → โชว์ชื่อหมวด/หมวดรองแทนไปก่อน (categoryFallback resolve ชื่อหมวดหลักจากโค้ดมาแล้วฝั่ง page)
@@ -149,8 +154,8 @@ export function buildGanttPrintHTML(project) {
   .doc-top { display: flex; justify-content: space-between; align-items: flex-start;
              border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px; }
   .brand { display: flex; align-items: center; gap: 10px; }
-  .logo-wrap { width: 38px; height: 38px; background: #21385e; border-radius: 8px;
-               display: flex; align-items: center; justify-content: center; padding: 5px; flex-shrink: 0; }
+  .logo-wrap { width: 58px; height: 58px; background: #21385e; border-radius: 10px;
+               display: flex; align-items: center; justify-content: center; padding: 6px; flex-shrink: 0; }
   .logo-img { width: 100%; height: 100%; object-fit: contain; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
@@ -272,9 +277,8 @@ export function buildGanttPrintHTML(project) {
       <div class="doc-title">
         <div class="formno">FM-PD-05</div>
         <div class="big">TIMELINE PROJECT</div>
-        <div class="sub">${esc(project.code || '-')}</div>
-        ${project.rev == null ? '' : `<div class="sub">Revision No. ${esc(project.rev)}</div>`}
-        ${revDateStr ? `<div class="sub">Document Date ${revDateStr}</div>` : ''}
+        <div class="sub">${esc(project.code || '-')}${project.rev == null ? '' : ` Rev.${esc(project.rev)}`}</div>
+        ${revDateStr ? `<div class="sub">${revDateStr}</div>` : ''}
       </div>
     </div>
 
