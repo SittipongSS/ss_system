@@ -176,10 +176,10 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      label: 'SAHAMIT · วางแผนและการขาย',
+      label: 'ระบบงาน สหมิตร',
       system: 'sahamit',
       items: [
-        { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
+        { href: '/sahamit', name: 'Overview', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
         { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
         { href: '/sahamit/po', name: 'Purchase Orders', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
         { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },
@@ -191,7 +191,7 @@ export default function AppLayout({ children }) {
   const systemSubtitle =
     activeSystem === 'master' ? 'ระบบฐานข้อมูล'
       : activeSystem === 'pm' ? 'ระบบจัดการโครงการ'
-        : activeSystem === 'sahamit' ? 'SAHAMIT · วางแผนและการขาย'
+        : activeSystem === 'sahamit' ? 'ระบบงาน สหมิตร'
           : activeSystem === 'users' ? 'จัดการผู้ใช้'
             : 'ระบบภาษีสรรพสามิต';
 

@@ -213,7 +213,7 @@ export default function HomeHubPage() {
                 <LineChart size={24} strokeWidth={1.5} />
               </div>
               <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>SAHAMIT · วางแผนและการขาย</h2>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ระบบงาน สหมิตร</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
                   ติดตาม Forecast · PO · กระทบยอด และวัสดุ สำหรับลูกค้าสหมิตรโปรดักส์
                 </p>
