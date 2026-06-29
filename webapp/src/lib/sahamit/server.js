@@ -70,7 +70,7 @@ export async function loadSahamitProducts(supabase, customerId) {
   if (error) throw new Error(error.message);
   return (data || [])
     .filter((p) => p.isActive !== false)
-    .map((p) => ({ id: p.id, fgCode: p.fgCode, name: p.name ?? p.productDescription ?? p.fgCode }));
+    .map((p) => ({ id: p.id, fgCode: p.fgCode, name: p.productDescription ?? p.fgCode }));
 }
 
 // Build a fgCode → product index (case-insensitive, trimmed).
