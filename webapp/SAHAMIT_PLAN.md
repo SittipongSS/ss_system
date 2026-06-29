@@ -82,10 +82,14 @@
 - ✅ pure logic → `lib/sahamit/` (`snapshots.js`, `diff.js`, `peak.js`, `reconcile.js`) + test `logic.test.mjs` ผ่าน 9/9
 - ✅ verify: home 4 การ์ด, landing, nav, sub-pages render, ไม่มี console error
 
-### เฟส 1 — Forecast (แกนหลัก)
-- หน้า import รอบ FC (Excel grid: SKU × เดือน) → server parse → สร้าง `forecast_round` + `forecast_lines`
-- หน้าเทียบรอบ: รอบนี้ vs รอบก่อน → เพิ่ม/ลด/เลื่อน/หาย + เตือน peak ลด **ลงรายตัว** (N3)
-- จัดการ SKU ไม่รู้จัก (C2)
+### เฟส 1 — Forecast (แกนหลัก) ✅ เสร็จ (2026-06-29)
+- ✅ server guard `getSahamitContext` (team KA + scope AR-109 ฝั่ง server — C1) + `loadSahamitProducts`/`resolveFgCode`
+- ✅ API `/api/sahamit/*`: products, forecast/rounds (GET+POST), rounds/[id] (DELETE), forecast/import (.xlsx→preview), forecast/template
+- ✅ UI `/sahamit/forecast`: list รอบ + นำเข้า (อัปโหลด Excel / กรอกกริด SKU×เดือน) → preview unknown SKU → บันทึก
+- ✅ เทียบรอบ `RoundComparison`: เพิ่ม/ลด/เลื่อน/หาย + เตือน peak ลด **ลงรายตัว** (N3) ผ่าน `forecastClient.compareRounds`
+- ✅ จัดการ SKU ไม่รู้จัก (C2: เก็บ + flag ไม่หาย)
+- ✅ tests 39/39 ผ่าน; verify หน้า render + graceful 500 (local ไม่มี Supabase)
+- ⏳ verify data path จริงบน prod หลัง deploy (local ไม่มี Supabase env)
 
 ### เฟส 2 — Purchase Orders
 - หน้าบันทึก/แก้ PO หลายบรรทัด: docDate, receivedDate, dueDate, expectedDate(+history C4), actualDeliveredDate
