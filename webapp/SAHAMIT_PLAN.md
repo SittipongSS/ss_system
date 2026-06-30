@@ -119,7 +119,10 @@
 **ตรรกะ "ช้าหรือไม่" 2 ระดับ:** วันแนะนำ(4) เลยวันกำหนด(3) → ส่งไม่ทันเพราะ PO มาช้า/lead (ไม่ใช่ความผิดเรา, มีหลักฐานวันที่รับ — กันลูกค้าอ้าง) · วันส่งจริง(6) เลยวันแนะนำ(4) → เราช้าเอง
 - in-FC/out-FC ดึงจากผล reconcile (เฟส 3) · เก็บใน `sahamit_material_tracking` (0053): inForecast, leadDays, readyDate, pmInStock, rmOrderedAt/rmArrivedAt/pmArrivedAt
 
-### เฟส 5 (ภายหลัง) — Coverage/shifting/locked cells (R4) + export Excel/PDF
+### เฟส 5 — Export + Coverage/shifting (R4)
+- ✅ **5a Export Excel (2026-06-30)**: `/api/sahamit/export?view=reconcile|po|material|forecast` reuse `reportToXlsxBuffer` + ปุ่ม "Excel" ทุกหน้า (forecast/po/reconcile/material)
+- ⏳ 5b Coverage/shifting/locked cells (ซับซ้อน — ต้องออกแบบแยก: po_coverage, ยืนยันการเลื่อน, ล็อกช่อง FC===PO)
+- ⏳ Export PDF (ถ้าต้องการ)
 
 ---
 

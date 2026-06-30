@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ClipboardCheck, AlertCircle } from "lucide-react";
+import { ClipboardCheck, AlertCircle, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -78,10 +78,15 @@ export default function ReconcilePage() {
       subtitle="สถานะ FC / PO รายสินค้า × เดือน (ลูกค้า AR-109)"
       back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
-        <div className="segmented">
-          {VIEWS.map((v) => (
-            <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
-          ))}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="segmented">
+            {VIEWS.map((v) => (
+              <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
+            ))}
+          </div>
+          <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=reconcile", "_blank")}>
+            <Download size={16} /> Excel
+          </button>
         </div>
       }
     >

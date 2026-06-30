@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState, useEffect } from "react";
-import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save } from "lucide-react";
+import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { fmtDate } from "@/lib/format";
@@ -119,6 +119,11 @@ export default function MaterialPage() {
       title="วัสดุ / Lead time"
       subtitle="PM สต็อกตาม FC · RM สั่งตาม PO · วันส่งแนะนำ = วันรับ + 60/90 วันทำการ"
       back={{ href: "/sahamit", label: "งานสหมิตร" }}
+      headerRight={
+        <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=material", "_blank")}>
+          <Download size={16} /> Excel
+        </button>
+      }
     >
       {error && (
         <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>

@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { FileText, Plus, AlertCircle } from "lucide-react";
+import { FileText, Plus, AlertCircle, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { fmtDate } from "@/lib/format";
@@ -25,9 +25,14 @@ export default function PoPage() {
       subtitle="ติดตาม PO ที่ลูกค้าส่งมา (ลูกค้า AR-109)"
       back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
-        <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-          <Plus size={16} /> บันทึก PO
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=po", "_blank")}>
+            <Download size={16} /> Excel
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+            <Plus size={16} /> บันทึก PO
+          </button>
+        </div>
       }
     >
       {error && (
