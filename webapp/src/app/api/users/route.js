@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, validateIdentity, departmentFor, normalizeDepartment } from '@/lib/permissions';
+import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,8 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  if (!(await requireAdmin())) return Response.json({ error: 'forbidden' }, { status: 403 });
+  const me = await requireAdmin();
+  if (!me) return Response.json({ error: 'forbidden' }, { status: 403 });
   const supabase = getSupabaseAdmin();
   const body = await request.json();
 
@@ -77,5 +79,9 @@ export async function POST(request) {
     app_metadata: { role, department, must_change_password: true, ...(team ? { team } : {}) },
   });
   if (error) return Response.json({ error: error.message }, { status: 400 });
+  await recordAudit({
+    user: me, action: 'create', entityType: 'user', entityId: data.user.id,
+    after: userAuditSnapshot(data.user), summary: `สร้างผู้ใช้ ${email} (${role})`, request,
+  });
   return Response.json({ id: data.user.id }, { status: 201 });
 }

@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser } from '@/lib/permissions';
+import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,6 +86,18 @@ export async function PATCH(request, { params }) {
 
   const { error } = await supabase.auth.admin.updateUserById(id, updates);
   if (error) return Response.json({ error: error.message }, { status: 400 });
+
+  // Snapshot หลังอัปเดต (re-fetch ให้ค่า role/team/disabled ตรงจริง). password
+  // ไม่ถูกบันทึก — แค่หมายเหตุว่ามีการรีเซ็ตใน summary.
+  const { data: after } = await supabase.auth.admin.getUserById(id);
+  const notes = [];
+  if (updates.password) notes.push('รีเซ็ตรหัสผ่าน');
+  if (body.disabled !== undefined) notes.push(body.disabled ? 'ปิดบัญชี' : 'เปิดบัญชี');
+  await recordAudit({
+    user: me, action: 'update', entityType: 'user', entityId: id,
+    before: userAuditSnapshot(existing.user), after: userAuditSnapshot(after?.user),
+    summary: `แก้ไขผู้ใช้ ${existing.user.email}${notes.length ? ` (${notes.join(', ')})` : ''}`, request,
+  });
   return Response.json({ success: true });
 }
 
@@ -98,7 +111,14 @@ export async function DELETE(request, { params }) {
   }
 
   const supabase = getSupabaseAdmin();
+  // Snapshot ก่อนลบ เพื่อเก็บหลักฐานว่าบัญชีที่ถูกลบเป็นใคร/สิทธิ์อะไร.
+  const { data: existing } = await supabase.auth.admin.getUserById(id);
   const { error } = await supabase.auth.admin.deleteUser(id);
   if (error) return Response.json({ error: error.message }, { status: 400 });
+  await recordAudit({
+    user: me, action: 'delete', entityType: 'user', entityId: id,
+    before: userAuditSnapshot(existing?.user),
+    summary: `ลบผู้ใช้ ${existing?.user?.email || id}`, request,
+  });
   return Response.json({ success: true, message: 'ลบผู้ใช้เรียบร้อยแล้ว' });
 }

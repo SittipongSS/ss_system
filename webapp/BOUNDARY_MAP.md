@@ -132,9 +132,11 @@ PATCH order (แก้ line items) ใช้แนวเดียวกัน: h
   เขียนผ่าน service-role; actor* = snapshot ตัวตน; `before/after` = jsonb เต็ม record; ไม่มี FK ไป entity.
 - helper เดียว [`src/lib/audit.js`](src/lib/audit.js) → `recordAudit({ user, action, entityType, entityId, before, after, summary, request })`.
   **ไม่ throw** — ถ้า insert พลาดจะ `log.error` แล้วผ่าน (audit ห้ามทำให้ action ผู้ใช้พัง).
-- wired แล้ว (foundation): **customers / products / orders** ทั้ง create/update/delete (+ approval).
-- **ยังไม่ทำ (เฟสถัดไป):** หน้า `/audit` (supervisor only, cap `audit:view`) + `/api/audit` อ่าน log,
-  และ wire เพิ่มให้ registration/project/user-management. การกระทำ login/approve เป็น action แยกเพิ่มภายหลัง.
+- wired แล้ว: **customers / products / orders / registration / project / user** ทั้ง create/update/delete
+  (+ approval/สถานะ workflow). user เก็บ snapshot ปลอดภัย (`userAuditSnapshot` — **ไม่มี password/token**).
+- หน้า `/audit` (admin only, cap `audit:view`) + `GET /api/audit` (filter เวลา/ประเภท/การกระทำ/คนทำ/ค้นหา) ใช้งานได้แล้ว.
+- **ยังไม่ทำ (เฟสถัดไป):** action `login` (ในชั้น auth) + แยก `approve` เป็น action ของตัวเอง
+  (ตอนนี้ approve บันทึกเป็น `update` พร้อม summary); wire project-tasks (ความถี่สูง — ชั่งกับพื้นที่ก่อน).
 
 เพิ่ม audit ให้ route ใหม่: `import { recordAudit }` แล้วเรียก **หลัง write สำเร็จ** ด้วย `await`
 (serverless — ต้อง await ให้ insert จบก่อน return).

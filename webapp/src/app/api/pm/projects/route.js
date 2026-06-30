@@ -7,6 +7,7 @@ import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
+import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -162,5 +163,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (ppErr) { console.error('Failed to link products:', ppErr.message); productWarning = 'เชื่อมสินค้า (FG) เข้าโปรเจกต์ไม่สำเร็จ — โปรดผูกใหม่ที่หน้าโปรเจกต์'; }
   }
 
+  await recordAudit({
+    user, action: 'create', entityType: 'project', entityId: project.id, after: project,
+    summary: `สร้างโปรเจกต์ ${project.code || ''} ${project.name || ''}`.trim(), request: req,
+  });
   return ok({ ...project, tasks, ...(productWarning ? { productWarning } : {}) }, 201);
 });
