@@ -1524,8 +1524,14 @@ export default function ProjectDetailPage() {
 
             <div className="form-group">
               <label>เฟส (Phase)</label>
-              <input list="phase-list" value={taskForm.phase} onChange={(e) => setTaskForm((f) => ({ ...f, phase: e.target.value }))} className="premium-input w-full" placeholder="เลือกหรือพิมพ์เฟสใหม่" />
-              <datalist id="phase-list">{formPhases.map((ph) => <option key={ph} value={ph} />)}</datalist>
+              <SearchableSelect
+                allowFreeText
+                options={formPhases.map((ph) => ({ value: ph, label: ph }))}
+                value={taskForm.phase}
+                onChange={(v) => setTaskForm((f) => ({ ...f, phase: v }))}
+                placeholder="เลือกหรือพิมพ์เฟสใหม่"
+                emptyText="ยังไม่มีเฟส (พิมพ์เพื่อเพิ่มใหม่)"
+              />
             </div>
 
             <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text)", fontWeight: 500 }}>
