@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { LineChart, Plus, Trash2, AlertCircle } from "lucide-react";
+import { LineChart, Plus, Trash2, AlertCircle, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { fmtDate } from "@/lib/format";
@@ -42,9 +42,14 @@ export default function ForecastPage() {
       subtitle="รับ FC รายเดือนเป็นรอบ และเทียบรอบต่อรอบ (ลูกค้า AR-109)"
       back={{ href: "/sahamit", label: "SAHAMIT" }}
       headerRight={
-        <button className="btn btn-primary" onClick={() => setShowImport(true)}>
-          <Plus size={16} /> นำเข้ารอบ FC
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=forecast", "_blank")}>
+            <Download size={16} /> Excel
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowImport(true)}>
+            <Plus size={16} /> นำเข้ารอบ FC
+          </button>
+        </div>
       }
     >
       {error && (

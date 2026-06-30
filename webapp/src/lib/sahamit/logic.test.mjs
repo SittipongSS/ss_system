@@ -10,6 +10,8 @@ import { computeSkuFcWarning } from './peak.js';
 import { reconcileCell } from './reconcile.js';
 import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
 import { buildReconMatrix, cellDetail } from './reconcileClient.js';
+import { leadDaysFor, recommendedReadyDate, materialView, LEAD_IN_FC, LEAD_OUT_FC } from './material.js';
+import { detectFlags } from './flags.js';
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -99,6 +101,73 @@ test('reconcileCell core statuses match ss-cj labels', () => {
 
 function pick(r) { return { status: r.status, label: r.label }; }
 
+// ── flag detection (shift/cut audit) ──────────────────────────────────
+test('detectFlags: a decrease vs previous round → drop flag', () => {
+  const rounds = [
+    { roundNo: 1, lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 100 }] },
+    { roundNo: 2, lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 60 }] },
+  ];
+  const flags = detectFlags(rounds, []);
+  const jul = flags.find((f) => f.month === '2026-07');
+  assert.equal(jul.kind, 'drop');
+  assert.equal(jul.drop, 40);
+  assert.equal(jul.roundNo, 2);
+});
+
+test('detectFlags: month vanished + reappeared elsewhere → shift_suspect', () => {
+  const rounds = [
+    { roundNo: 1, lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }] },
+    { roundNo: 2, lines: [{ fgCode: 'A', month: '2026-07', qty: 100 }] },
+  ];
+  const flags = detectFlags(rounds, []);
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].kind, 'shift_suspect');
+  assert.deepEqual([flags[0].month, flags[0].shiftToMonth], ['2026-06', '2026-07']);
+});
+
+test('detectFlags: locked cell whose effective FC differs → lockedBreak', () => {
+  const rounds = [{ roundNo: 1, coverMonths: ['2026-06'], lines: [{ fgCode: 'A', month: '2026-06', qty: 80 }] }];
+  const flags = detectFlags(rounds, [{ fgCode: 'A', month: '2026-06', lockedQty: 100 }]);
+  const lb = flags.find((f) => f.kind === 'lockedBreak');
+  assert.equal(lb.prevQty, 100);
+  assert.equal(lb.newQty, 80);
+});
+
+// ── material / lead-time ──────────────────────────────────────────────
+const NO_HOLIDAYS = new Set(); // weekends still skipped by addBusinessDays
+
+test('leadDaysFor: in-FC = 60, out-of-FC = 90 working days', () => {
+  assert.equal(leadDaysFor(true), LEAD_IN_FC);
+  assert.equal(leadDaysFor(false), LEAD_OUT_FC);
+  assert.equal(LEAD_IN_FC, 60);
+  assert.equal(LEAD_OUT_FC, 90);
+});
+
+test('recommendedReadyDate: null-safe, valid date, and 90d is later than 60d', () => {
+  assert.equal(recommendedReadyDate(null, 60, NO_HOLIDAYS), null);
+  const d60 = recommendedReadyDate('2026-01-01', 60, NO_HOLIDAYS);
+  const d90 = recommendedReadyDate('2026-01-01', 90, NO_HOLIDAYS);
+  assert.match(d60, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(d90 > d60); // more lead → later ready date
+});
+
+test('materialView: in-FC→60d, out-FC→90d; lateVsDue & ourSlip flags', () => {
+  const inFc = materialView({ dueDate: '2026-12-31' }, 100, '2026-01-01', NO_HOLIDAYS);
+  assert.equal(inFc.inForecast, true);
+  assert.equal(inFc.leadDays, 60);
+  assert.equal(inFc.lateVsDue, false); // ready (~Mar) before Dft Dec due
+
+  const outFc = materialView({ dueDate: '2026-01-15' }, 0, '2026-01-01', NO_HOLIDAYS);
+  assert.equal(outFc.inForecast, false);
+  assert.equal(outFc.leadDays, 90);
+  assert.equal(outFc.lateVsDue, true); // ready (~May) after Jan-15 due → late because PO/lead
+
+  const slipped = materialView({ dueDate: '2026-12-31', actualDeliveredDate: '2026-12-31' }, 100, '2026-01-01', NO_HOLIDAYS);
+  assert.equal(slipped.ourSlip, true); // delivered Dec-31, well after the ~Mar ready date
+  const onTime = materialView({ dueDate: '2026-12-31', actualDeliveredDate: '2026-02-02' }, 100, '2026-01-01', NO_HOLIDAYS);
+  assert.equal(onTime.ourSlip, false);
+});
+
 // ── forecastClient (the API-payload → comparison bridge) ──────────────
 const ROUNDS = [
   { id: 'r1', roundNo: 1, lines: [
@@ -186,6 +255,28 @@ test('buildReconMatrix coverMonths: a shift is NOT double-counted (total preserv
   ];
   const a = buildReconMatrix(rounds, []).rows.find((r) => r.fgCode === 'A');
   assert.equal(a.fcTotal, 100); // Apr 0 + May 100 — NOT 200
+});
+
+test('buildReconMatrix coverage: PO excess in one month covers shortfall in another', () => {
+  const rounds = [{ roundNo: 1, coverMonths: ['2026-06', '2026-07'], lines: [
+    { fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 100 },
+  ] }];
+  const pos = [{ poNumber: 'P1', lines: [{ fgCode: 'A', deliveryMonth: '2026-07', qty: 200, status: 'open' }] }];
+
+  // Without coverage: Jun pending (FC100/PO0), Jul over (FC100/PO200)
+  const before = buildReconMatrix(rounds, pos).rows.find((r) => r.fgCode === 'A');
+  assert.equal(before.cells['2026-06'].status, 'pending');
+  assert.equal(before.cells['2026-07'].status, 'over');
+
+  // Allocate 100 of Jul's PO to cover Jun
+  const cov = [{ fgCode: 'A', sourceMonth: '2026-07', targetMonth: '2026-06', qty: 100 }];
+  const after = buildReconMatrix(rounds, pos, cov).rows.find((r) => r.fgCode === 'A');
+  assert.equal(after.cells['2026-06'].status, 'match');     // covered → matches FC
+  assert.equal(after.cells['2026-06'].coverageIn, 100);
+  assert.equal(after.cells['2026-06'].poQty, 0);            // displayed PO unchanged (actual)
+  assert.equal(after.cells['2026-07'].status, 'match');     // excess allocated away
+  assert.equal(after.cells['2026-07'].coverageOut, 100);
+  assert.equal(after.cells['2026-07'].poQty, 200);          // displayed PO unchanged (actual)
 });
 
 test('cellDetail lists contributing FC rounds and active PO lines', () => {

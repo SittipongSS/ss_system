@@ -106,9 +106,12 @@
 - ✅ หน้า `/sahamit/reconcile`: กริด SKU × เดือน, toggle FC / PO / FC vs PO, สีตามสถานะ + legend, คลิกช่อง drill-down
 - ✅ tests 43/43 (+coverMonths cancellation + no-double-count-on-shift); verify หน้า render + graceful banner
 
-### เฟส 4 — Material / Lead-time tracker (N1, N2)
-- จำแนก in-FC / out-FC ต่อ PO line → คำนวณ readyDate (60/90 วันทำการ ใช้ `holidays`)
-- สถานะวัสดุ PM/RM, แดชบอร์ดติดตาม
+### เฟส 4 — Material / Lead-time tracker (N1, N2) ✅ เสร็จ (2026-06-30)
+- ✅ `lib/sahamit/material.js`: leadDaysFor (60 in-FC / 90 out-FC), recommendedReadyDate (receivedDate + lead วันทำการ ใช้ `addBusinessDays` + holidays), materialView → {inForecast, leadDays, readyDate, lateVsDue, ourSlip}
+- ✅ API `/api/sahamit/material` (GET: ต่อ po line active + inForecast จาก reconcile + holidays จากตาราง + tracking), `/material/[poLineId]` (PATCH upsert PM/RM)
+- ✅ in-FC = (fgCode, deliveryMonth) มี FC > 0 (PM ถูกสต็อกไว้) → 60 วัน; ไม่มี → 90 วัน
+- ✅ หน้า `/sahamit/material`: stat chips + ตารางบรรทัด PO (ตรง/นอก FC, lead, วันรับ, วันส่งแนะนำ + ธง "เกินกำหนด PO/lead" / "เราส่งช้า") + inline edit PM/RM
+- ✅ tests 46/46 (+3 material); verify หน้า render + graceful banner
 
 **โมเดล 6 วันของ PO (ตกลง 2026-06-30) — หัวใจของเฟสนี้:**
 1. วันที่เอกสาร (docDate) · 2. **วันที่รับ PO (receivedDate) = จุดเริ่มนับ** · 3. วันกำหนดส่ง (dueDate, ลูกค้าอยากได้) · 4. **วันส่งที่แนะนำ (คำนวณ) = receivedDate + lead (60 in-FC / 90 out-FC วันทำการ ใช้ holidays) = guideline เรา** · 5. วันคาดการณ์ส่ง (expectedDate, default=ข้อ4, เลื่อนได้+ประวัติ) · 6. วันส่งจริง (actualDeliveredDate)
@@ -116,7 +119,14 @@
 **ตรรกะ "ช้าหรือไม่" 2 ระดับ:** วันแนะนำ(4) เลยวันกำหนด(3) → ส่งไม่ทันเพราะ PO มาช้า/lead (ไม่ใช่ความผิดเรา, มีหลักฐานวันที่รับ — กันลูกค้าอ้าง) · วันส่งจริง(6) เลยวันแนะนำ(4) → เราช้าเอง
 - in-FC/out-FC ดึงจากผล reconcile (เฟส 3) · เก็บใน `sahamit_material_tracking` (0053): inForecast, leadDays, readyDate, pmInStock, rmOrderedAt/rmArrivedAt/pmArrivedAt
 
-### เฟส 5 (ภายหลัง) — Coverage/shifting/locked cells (R4) + export Excel/PDF
+### เฟส 5 — Export + Coverage/shifting (R4)
+- ✅ **5a Export Excel (2026-06-30)**: `/api/sahamit/export?view=reconcile|po|material|forecast` reuse `reportToXlsxBuffer` + ปุ่ม "Excel" ทุกหน้า (forecast/po/reconcile/material)
+- ✅ **5b-1 Shift/Cut Audit (2026-06-30)**: migration 0054 `sahamit_fc_flags`; `lib/sahamit/flags.detectFlags` (drop/shift_suspect จาก compareRounds + lockedBreak); ตั้งธงอัตโนมัติตอน import รอบ; API `/api/sahamit/flags` (GET) + `/flags/[id]` (PATCH resolve); หน้า `/sahamit/review` (คิว + เคลียร์ เลื่อน/ตัด/รอ/ignore + เก็บคำตอบลูกค้า = audit)
+- ✅ **5b-2 Locked cells (2026-06-30)**: migration 0055 `sahamit_fc_locks`; API `/locks` (GET/POST) + `/locks/[id]` (DELETE); ล็อก/ปลดล็อกจาก drill-down ในหน้า reconcile + โชว์ 🔒; รอบใหม่แก้ช่องที่ล็อก → ธง lockedBreak
+- ✅ design เต็ม: `webapp/SAHAMIT_PHASE5B_DESIGN.md` · tests 49/49 (+detectFlags 3)
+- ✅ **5b-3 Coverage cross-month PO (2026-06-30)**: migration 0056 `sahamit_po_coverage`; `buildReconMatrix(rounds,pos,coverages)` ปรับ effPo = basePo − coverageOut + coverageIn (คง poQty=basePo สำหรับแสดง); API `/api/sahamit/coverage` (GET/POST) + `/coverage/[id]` (DELETE); reconcile: ⇄ badge + drill-down CoveragePanel (รับเข้า/ส่งออก เพิ่ม/ลบ); export reconcile สะท้อน coverage
+- ⏳ Export PDF (ถ้าต้องการ)
+- ⚠ ต้องรัน migration **0054 + 0055 + 0056** บน Supabase prod ก่อน feature 5b ทำงาน
 
 ---
 
