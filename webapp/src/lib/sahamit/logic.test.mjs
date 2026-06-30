@@ -166,6 +166,28 @@ test('buildReconMatrix: effective FC = latest round per month; PO matched by del
   assert.equal(a.cells['2026-08'].status, 'unforecasted'); // PO 50, no FC
 });
 
+test('buildReconMatrix coverMonths: round2 covers a month but drops the SKU → 0 (cancelled)', () => {
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
+    // round 2's window includes Apr but does NOT list A for Apr → A/Apr is cut to 0
+    { roundNo: 2, coverMonths: ['2026-04', '2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 100 }] },
+  ];
+  const m = buildReconMatrix(rounds, []);
+  const a = m.rows.find((r) => r.fgCode === 'A');
+  assert.equal(a.cells['2026-04'].fcQty, 0);
+  assert.equal(a.cells['2026-04'].status, 'cancelled'); // had FC in round 1, dropped, no PO
+  assert.equal(a.cells['2026-05'].fcQty, 100);
+});
+
+test('buildReconMatrix coverMonths: a shift is NOT double-counted (total preserved)', () => {
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
+    { roundNo: 2, coverMonths: ['2026-04', '2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 100 }] },
+  ];
+  const a = buildReconMatrix(rounds, []).rows.find((r) => r.fgCode === 'A');
+  assert.equal(a.fcTotal, 100); // Apr 0 + May 100 — NOT 200
+});
+
 test('cellDetail lists contributing FC rounds and active PO lines', () => {
   const d = cellDetail(RC_ROUNDS, RC_POS, 'A', '2026-07');
   assert.deepEqual(d.fcs.map((f) => f.roundNo), [1, 2]); // both rounds had Jul
