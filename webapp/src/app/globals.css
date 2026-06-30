@@ -796,6 +796,26 @@ h1, h2, h3, h4, h5, h6 {
   border-color: var(--navy);
 }
 
+/* Launchpad grid. Column count is set per visible-card count via the inline
+   --cols var (balanced so no card is left orphaned), then collapses to 2 and
+   finally 1 column as the viewport narrows — covering both landscape (wide) and
+   portrait (tall/narrow) screens. */
+.system-card-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  .system-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .system-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Stat & Metrics Display - Grid layout for responsiveness */
 .metrics-row,
 .kpi-grid {
