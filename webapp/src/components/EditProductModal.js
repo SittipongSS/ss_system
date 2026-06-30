@@ -1,15 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import Select from "@/components/ui/Select";
 
-// Edit a master product's catalog/spec fields. Customer linkage + excise
-// approval are NOT here — they live on the registration (/excise).
+// Edit a master product's catalog/spec fields, including its owning customer.
+// (Excise APPROVAL still lives on the registration.)
 const FIELDS = [
+  "customerId",
   "fgCode", "productDescription", "brandName",
   "volume", "volumeUnit", "costPrice", "retailPriceIncVat",
 ];
 
-export default function EditProductModal({ open, onClose, onSaved, product, brandOptions = [] }) {
+export default function EditProductModal({ open, onClose, onSaved, product, brandOptions = [], customers = [] }) {
   const [form, setForm] = useState({});
   const [productTypes, setProductTypes] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +45,13 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
 
   if (!product) return null;
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Brand suggestions follow the selected customer's brands[] (fall back to the
+  // parent-supplied list while customers aren't loaded).
+  const selCustomer = customers.find((c) => c.id === form.customerId);
+  const brandList = selCustomer
+    ? [...new Set((selCustomer.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+    : brandOptions;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -94,16 +103,15 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-2 mb-3">ข้อมูลสินค้า</h3>
             <div className="form-grid cols-2" style={{ gap: "14px" }}>
               <div className="col-span-2 form-group">
-                <label>ลูกค้าเจ้าของสินค้า</label>
-                <input
-                  type="text"
-                  value={product.customerName || "-"}
-                  readOnly
-                  disabled
-                  className="premium-input w-full bg-[var(--panel-2)] text-[var(--text-2)] cursor-not-allowed"
-                />
+                <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
+                <Select value={form.customerId ?? ""} onChange={(e) => set("customerId", e.target.value)} required fullWidth>
+                  <option value="" disabled>— เลือกลูกค้า —</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.arCode ? `${c.arCode} — ${c.name}` : c.name}</option>
+                  ))}
+                </Select>
                 <span className="text-[11px] text-[var(--text-3)]">
-                  เปลี่ยนเจ้าของได้ที่ขั้นตอนการขึ้นทะเบียนสรรพสามิต
+                  เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ
                 </span>
               </div>
               <div className="col-span-2">
@@ -139,7 +147,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               {field("productDescription", "รายละเอียดสินค้า")}
               {field("brandName", "ชื่อแบรนด์", "text", { list: "edit-brand-options", placeholder: "เลือกแบรนด์ของลูกค้า หรือพิมพ์ใหม่" })}
               <datalist id="edit-brand-options">
-                {brandOptions.map((b) => <option key={b} value={b} />)}
+                {brandList.map((b) => <option key={b} value={b} />)}
               </datalist>
             </div>
           </div>

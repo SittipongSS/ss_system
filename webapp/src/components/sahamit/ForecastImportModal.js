@@ -65,23 +65,10 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     setMonthsOverride(null); setRows([]); setUnknown([]); setPick(""); setError(""); setBusy(false);
   }, [open]);
 
-  // จำนวนเดือน = derived from the range; 2-way synced with start/end:
-  //   • change start  → shift the window, keep the same count
-  //   • change end    → count recomputes
-  //   • change count  → end moves (start fixed)
-  const count = months.length;
-  const onStart = (v) => {
-    setMonthsOverride(null);
-    const c = months.length || 1;
-    setStartMonth(v);
-    setEndMonth(addMonths(v, c - 1));
-  };
+  // Month columns run from start to end (independent from/to pickers). Changing
+  // either clears any upload-pinned months; the grid columns update live.
+  const onStart = (v) => { setMonthsOverride(null); setStartMonth(v); };
   const onEnd = (v) => { setMonthsOverride(null); setEndMonth(v); };
-  const onCount = (n) => {
-    setMonthsOverride(null);
-    const c = Math.max(1, Math.min(36, Math.floor(Number(n) || 1)));
-    setEndMonth(addMonths(startMonth, c - 1));
-  };
 
   const addRow = (fgCodeRaw) => {
     const code = String(fgCodeRaw || "").trim();
@@ -168,8 +155,8 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   return (
     <Modal open={open} onClose={onClose} title="นำเข้ารอบ FC ใหม่" size="lg">
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        {/* Round meta + month range (start ↔ count ↔ last month, 2-way synced) */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--gap, 16px)" }}>
+        {/* Round meta + month range (start → last month; grid updates live) */}
+        <div className="form-grid cols-3">
           <div className="form-group">
             <label>วันที่รับ FC <span style={{ color: "var(--red)" }}>*</span></label>
             <input type="date" className="premium-input" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
@@ -181,10 +168,6 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
           <div className="form-group">
             <label>เดือนสุดท้ายของรอบ</label>
             <input type="month" className="premium-input" value={endMonth} min={startMonth} onChange={(e) => onEnd(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label>จำนวนเดือน</label>
-            <input type="number" min={1} max={36} className="premium-input" value={count} onChange={(e) => onCount(e.target.value)} />
           </div>
         </div>
         <div className="form-group">

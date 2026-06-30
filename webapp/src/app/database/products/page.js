@@ -448,7 +448,7 @@ export default function ProductRegistry() {
                 <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
                 <Select name="customerId" value={formData.customerId} onChange={handleChange} required fullWidth>
                   <option value="" disabled>— เลือกลูกค้า —</option>
-                  {customerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {customerList.map((c) => <option key={c.id} value={c.id}>{c.arCode ? `${c.arCode} — ${c.name}` : c.name}</option>)}
                 </Select>
                 <span className="text-xs text-[var(--text-3)] mt-1">FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก</span>
               </div>

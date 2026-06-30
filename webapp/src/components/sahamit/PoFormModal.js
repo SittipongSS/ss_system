@@ -70,7 +70,7 @@ export default function PoFormModal({ open, onClose, onCreated, products = [] })
   return (
     <Modal open={open} onClose={onClose} title="บันทึก PO ใหม่" size="lg">
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--gap, 16px)" }}>
+        <div className="form-grid cols-2">
           <div className="form-group">
             <label>เลขที่ PO <span style={{ color: "var(--red)" }}>*</span></label>
             <input className="premium-input font-mono" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="เช่น PO-2607-001" />
