@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Upload, Download, AlertTriangle, Plus, X } from "lucide-react";
 import Modal from "@/components/Modal";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 // Create one FC round. The month columns run from a start month to an end month
 // (the round's last month) and the grid updates live when either changes. Rows
@@ -180,20 +181,23 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
           <div className="form-group" style={{ flex: "1 1 280px", minWidth: 220 }}>
             <label>เพิ่มสินค้าเข้ากริด</label>
             <div style={{ display: "flex", gap: "6px" }}>
-              <input
-                list="sahamit-products"
-                className="premium-input combo"
-                style={{ flex: 1 }}
-                placeholder="ค้นหารหัส / ชื่อสินค้า แล้วกดเพิ่ม"
-                value={pick}
-                onChange={(e) => setPick(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addRow(pick); } }}
-              />
-              <button type="button" className="btn" onClick={() => addRow(pick)}><Plus size={15} /> เพิ่ม</button>
+              <div style={{ flex: 1 }}>
+                <SearchableSelect
+                  size="sm"
+                  allowFreeText
+                  options={products.map((p) => ({
+                    value: p.fgCode,
+                    label: `${p.fgCode} — ${p.name || ""}`,
+                    search: `${p.fgCode || ""} ${p.name || ""}`,
+                    render: <span><strong>{p.fgCode}</strong> — {p.name || ""}</span>,
+                  }))}
+                  value={pick}
+                  onChange={setPick}
+                  placeholder="ค้นหารหัส / ชื่อสินค้า แล้วกดเพิ่ม"
+                />
+              </div>
+              <button type="button" className="btn" onClick={() => addRow(pick)} style={{ height: "30px", flexShrink: 0 }}><Plus size={15} /> เพิ่ม</button>
             </div>
-            <datalist id="sahamit-products">
-              {products.map((p) => <option key={p.id || p.fgCode} value={p.fgCode}>{p.name}</option>)}
-            </datalist>
           </div>
           <button type="button" className="btn ghost" onClick={addAllProducts} disabled={!products.length}>
             เพิ่มทุกสินค้า ({products.length})

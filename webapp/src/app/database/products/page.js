@@ -6,6 +6,7 @@ import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import Workspace from "@/components/ui/Workspace";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
@@ -141,6 +142,8 @@ export default function ProductRegistry() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
+    if (!formData.brandName?.trim()) { alert("กรุณาระบุชื่อแบรนด์"); return; }
     if (!formData.fgCode.includes("01-002")) {
       if (
         !confirm(
@@ -454,10 +457,15 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} required disabled={!formData.customerId} list="brand-options" placeholder={formData.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"} className="premium-input combo w-full disabled:opacity-50" />
-                <datalist id="brand-options">
-                  {brandOptions.map((b) => <option key={b} value={b} />)}
-                </datalist>
+                <SearchableSelect
+                  allowFreeText
+                  disabled={!formData.customerId}
+                  options={brandOptions.map((b) => ({ value: b, label: b }))}
+                  value={formData.brandName}
+                  onChange={(v) => handleChange({ target: { name: "brandName", value: v } })}
+                  placeholder={formData.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"}
+                  emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
+                />
               </div>
             </div>
           </div>
