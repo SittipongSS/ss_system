@@ -99,13 +99,22 @@
 - ✅ UI: list PO + PoFormModal (สร้าง) + PoDetailModal (แก้หัว + จัดการบรรทัด)
 - ✅ verify: หน้า + create modal render/ทำงาน, graceful banner, ไม่มี console error; data path → prod
 
-### เฟส 3 — Reconciliation grid
-- กริด SKU × เดือน, สถานะต่อช่อง (match/over/short/pending/นอกแผน), มุมมอง FC / PO / FC vs PO
-- drill-down ต่อช่อง
+### เฟส 3 — Reconciliation grid ✅ เสร็จ (2026-06-30)
+- ✅ `lib/sahamit/reconcileClient.js` `buildReconMatrix(rounds,pos)` + `cellDetail` (reuse `/forecast/rounds`+`/po` ไม่มี API/migration ใหม่)
+- ✅ **effective FC = กฎ coverMonths**: เจ้าของเดือน = รอบล่าสุดที่ coverMonths ครอบคลุม; ไม่มีบรรทัด = 0 (ตัด/ยกเลิก). กันนับเบิ้ลเวลา "เลื่อน" → peak เชื่อถือได้ (ตรงกฎลูกค้า: ห้ามตัด เลื่อนได้). fallback เป็น line ถ้าไม่มี coverMonths
+- ✅ PO = sum active po_lines ต่อ deliveryMonth (expected||due); ใช้ `reconcileCell`
+- ✅ หน้า `/sahamit/reconcile`: กริด SKU × เดือน, toggle FC / PO / FC vs PO, สีตามสถานะ + legend, คลิกช่อง drill-down
+- ✅ tests 43/43 (+coverMonths cancellation + no-double-count-on-shift); verify หน้า render + graceful banner
 
 ### เฟส 4 — Material / Lead-time tracker (N1, N2)
 - จำแนก in-FC / out-FC ต่อ PO line → คำนวณ readyDate (60/90 วันทำการ ใช้ `holidays`)
 - สถานะวัสดุ PM/RM, แดชบอร์ดติดตาม
+
+**โมเดล 6 วันของ PO (ตกลง 2026-06-30) — หัวใจของเฟสนี้:**
+1. วันที่เอกสาร (docDate) · 2. **วันที่รับ PO (receivedDate) = จุดเริ่มนับ** · 3. วันกำหนดส่ง (dueDate, ลูกค้าอยากได้) · 4. **วันส่งที่แนะนำ (คำนวณ) = receivedDate + lead (60 in-FC / 90 out-FC วันทำการ ใช้ holidays) = guideline เรา** · 5. วันคาดการณ์ส่ง (expectedDate, default=ข้อ4, เลื่อนได้+ประวัติ) · 6. วันส่งจริง (actualDeliveredDate)
+
+**ตรรกะ "ช้าหรือไม่" 2 ระดับ:** วันแนะนำ(4) เลยวันกำหนด(3) → ส่งไม่ทันเพราะ PO มาช้า/lead (ไม่ใช่ความผิดเรา, มีหลักฐานวันที่รับ — กันลูกค้าอ้าง) · วันส่งจริง(6) เลยวันแนะนำ(4) → เราช้าเอง
+- in-FC/out-FC ดึงจากผล reconcile (เฟส 3) · เก็บใน `sahamit_material_tracking` (0053): inForecast, leadDays, readyDate, pmInStock, rmOrderedAt/rmArrivedAt/pmArrivedAt
 
 ### เฟส 5 (ภายหลัง) — Coverage/shifting/locked cells (R4) + export Excel/PDF
 
