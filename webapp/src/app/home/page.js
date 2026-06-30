@@ -79,6 +79,13 @@ export default function HomeHubPage() {
   // oversight). The capability is team-gated inside canAccessSahamit().
   const canSAHAMIT = canAccessSahamit(role, team);
 
+  // Balanced column count for wide screens so the cards never leave a lonely
+  // orphan on its own row (the old auto-fit gave 3 cols → 3+1 with 4 cards).
+  // 1→1, 2→2, 3→3 (single row), 4→2×2, 5–6→3 rows; anything larger caps at 4.
+  // Narrower / portrait screens collapse to 2 then 1 via .system-card-grid CSS.
+  const visibleCount = [canPM, canTax, canSAHAMIT, canDB].filter(Boolean).length;
+  const wideCols = { 1: 1, 2: 2, 3: 3, 4: 2, 5: 3, 6: 3 }[visibleCount] || 4;
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px" }}>
       <div style={{ width: "100%", maxWidth: "1000px" }}>
@@ -98,7 +105,13 @@ export default function HomeHubPage() {
         </div>
 
         {/* System cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
+        <div
+          className="system-card-grid"
+          style={{
+            "--cols": wideCols,
+            ...(visibleCount === 1 ? { maxWidth: "420px", margin: "0 auto" } : null),
+          }}
+        >
           {/* Card 1 — Project Management. Shown only to roles with pm:view
               (SALES) or admins; hidden entirely otherwise. */}
           {canPM && (
@@ -162,39 +175,7 @@ export default function HomeHubPage() {
             </button>
           )}
 
-          {/* Card 3 — Master Database (customers / products registry).
-              Shown to roles that can open a registry; hidden otherwise. */}
-          {canDB && (
-            <button
-              onClick={enterDB}
-              className="glass-panel system-card"
-              style={{
-                textAlign: "left", padding: "28px", cursor: "pointer",
-                display: "flex", flexDirection: "column", gap: "16px",
-                background: "var(--panel)", color: "inherit",
-              }}
-            >
-              <div
-                className="brand-logo"
-                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
-              >
-                <Database size={24} strokeWidth={1.5} />
-              </div>
-              <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ฐานข้อมูล</h2>
-                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
-                  จัดการฐานข้อมูลลูกค้าและสินค้า ข้อมูลหลักที่ใช้ร่วมกันทุกระบบ
-                </p>
-              </div>
-              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
-                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                  เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
-                </span>
-              </div>
-            </button>
-          )}
-
-          {/* Card 4 — SAHAMIT (Planning & Sales). KA team only (+ admin/
+          {/* Card 3 — SAHAMIT (Planning & Sales). KA team only (+ admin/
               sales-head oversight); hidden entirely otherwise. */}
           {canSAHAMIT && (
             <button
@@ -216,6 +197,38 @@ export default function HomeHubPage() {
                 <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>งานสหมิตร</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
                   ติดตาม Forecast · PO · กระทบยอด และวัสดุ สำหรับลูกค้าสหมิตรโปรดักส์
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
+                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
+                </span>
+              </div>
+            </button>
+          )}
+
+          {/* Card 4 — Master Database (customers / products registry).
+              Kept last so the shared data hub always sits at the end. */}
+          {canDB && (
+            <button
+              onClick={enterDB}
+              className="glass-panel system-card"
+              style={{
+                textAlign: "left", padding: "28px", cursor: "pointer",
+                display: "flex", flexDirection: "column", gap: "16px",
+                background: "var(--panel)", color: "inherit",
+              }}
+            >
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <Database size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>ฐานข้อมูล</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  จัดการฐานข้อมูลลูกค้าและสินค้า ข้อมูลหลักที่ใช้ร่วมกันทุกระบบ
                 </p>
               </div>
               <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
