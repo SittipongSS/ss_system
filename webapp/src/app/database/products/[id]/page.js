@@ -37,6 +37,7 @@ export default function ProductDetails() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [brandOptions, setBrandOptions] = useState([]);
+  const [customers, setCustomers] = useState([]);
 
   const fetchProduct = async () => {
     try {
@@ -70,7 +71,10 @@ export default function ProductDetails() {
     // แบรนด์เป็นของลูกค้า (customers.brands[]) — ใช้เป็นรายการแนะนำตอนแก้แบรนด์สินค้า
     fetch("/api/master/customers")
       .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setBrandOptions([...new Set((d || []).flatMap((c) => c.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))))
+      .then((d) => {
+        setCustomers(d || []);
+        setBrandOptions([...new Set((d || []).flatMap((c) => c.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)));
+      })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -419,7 +423,7 @@ export default function ProductDetails() {
         )}
       </div>
 
-      <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} />
+      <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} customers={customers} />
     </>
   );
 }

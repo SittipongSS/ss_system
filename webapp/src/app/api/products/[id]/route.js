@@ -98,8 +98,9 @@ export async function PATCH(request, { params }) {
     }
   }
 
-  // Master catalog edit — catalog/spec fields only. Customer linkage + excise
-  // approval are NOT here; they live on the registration (/api/excise-registrations).
+  // Master catalog edit — catalog/spec fields. Customer ownership is now editable
+  // here too (was previously only changeable via the excise registration step);
+  // excise APPROVAL still lives on the registration.
   const catalogEditable = [
     'fgCode', 'productDescription', 'brandName',
     'volume', 'volumeUnit', 'costPrice', 'retailPriceIncVat', 'assignee',
@@ -108,6 +109,18 @@ export async function PATCH(request, { params }) {
   ];
   const updated = { ...product };
   for (const k of catalogEditable) if (body[k] !== undefined) updated[k] = body[k];
+
+  // Re-point the FG owner (customerId) from master. Keep the denormalized
+  // customerName snapshot in sync and reject an unknown customer. NOTE: existing
+  // excise registrations carry their own point-in-time customer snapshot and are
+  // not retro-updated here.
+  if (body.customerId !== undefined && body.customerId !== product.customerId) {
+    const { data: cust } = await supabase
+      .from('customers').select('*').eq('id', body.customerId).maybeSingle();
+    if (!cust) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
+    updated.customerId = cust.id;
+    updated.customerName = cust.name;
+  }
 
   // Re-derive categoryCode from fgCode when fgCode changed and it wasn't given.
   if (body.fgCode !== undefined && body.categoryCode === undefined) {
