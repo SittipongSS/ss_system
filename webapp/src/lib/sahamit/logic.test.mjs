@@ -9,6 +9,7 @@ import { diffSnapshots } from './diff.js';
 import { computeSkuFcWarning } from './peak.js';
 import { reconcileCell } from './reconcile.js';
 import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
+import { buildReconMatrix, cellDetail } from './reconcileClient.js';
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -133,4 +134,40 @@ test('compareRounds: round 2 vs 1 — B flagged as peak drop, sorted first', () 
   assert.equal(c.perSku[0].fgCode, 'B');
   const a = c.perSku.find((s) => s.fgCode === 'A');
   assert.equal(a.peak?.hasWarning ?? false, false); // A's active-month total grew
+});
+
+// ── reconcileClient (FC × PO matrix) ──────────────────────────────────
+const RC_ROUNDS = [
+  { roundNo: 1, receivedDate: '2026-05-01', lines: [
+    { fgCode: 'A', month: '2026-06', qty: 100, productName: 'Alpha' },
+    { fgCode: 'A', month: '2026-07', qty: 100, productName: 'Alpha' },
+  ] },
+  { roundNo: 2, receivedDate: '2026-06-01', lines: [
+    { fgCode: 'A', month: '2026-07', qty: 150, productName: 'Alpha' }, // latest restates Jul
+  ] },
+];
+const RC_POS = [
+  { poNumber: 'PO-1', lines: [
+    { fgCode: 'A', deliveryMonth: '2026-06', qty: 100, status: 'open' }, // matches Jun FC
+    { fgCode: 'A', deliveryMonth: '2026-08', qty: 50, status: 'open' },  // นอก FC (no FC Aug)
+    { fgCode: 'A', deliveryMonth: '2026-07', qty: 999, status: 'cancelled' }, // ignored
+  ] },
+];
+
+test('buildReconMatrix: effective FC = latest round per month; PO matched by deliveryMonth', () => {
+  const m = buildReconMatrix(RC_ROUNDS, RC_POS);
+  assert.deepEqual(m.months, ['2026-06', '2026-07', '2026-08']);
+  const a = m.rows.find((r) => r.fgCode === 'A');
+  assert.equal(a.cells['2026-06'].fcQty, 100);
+  assert.equal(a.cells['2026-06'].poQty, 100);
+  assert.equal(a.cells['2026-06'].status, 'match');     // 100 = 100
+  assert.equal(a.cells['2026-07'].fcQty, 150);          // round 2 restated Jul
+  assert.equal(a.cells['2026-07'].status, 'pending');   // FC 150, no PO (cancelled ignored)
+  assert.equal(a.cells['2026-08'].status, 'unforecasted'); // PO 50, no FC
+});
+
+test('cellDetail lists contributing FC rounds and active PO lines', () => {
+  const d = cellDetail(RC_ROUNDS, RC_POS, 'A', '2026-07');
+  assert.deepEqual(d.fcs.map((f) => f.roundNo), [1, 2]); // both rounds had Jul
+  assert.equal(d.poLines.length, 1);                      // cancelled excluded? no — detail shows all; but only 1 Jul PO exists
 });

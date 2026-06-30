@@ -99,9 +99,10 @@
 - ✅ UI: list PO + PoFormModal (สร้าง) + PoDetailModal (แก้หัว + จัดการบรรทัด)
 - ✅ verify: หน้า + create modal render/ทำงาน, graceful banner, ไม่มี console error; data path → prod
 
-### เฟส 3 — Reconciliation grid
-- กริด SKU × เดือน, สถานะต่อช่อง (match/over/short/pending/นอกแผน), มุมมอง FC / PO / FC vs PO
-- drill-down ต่อช่อง
+### เฟส 3 — Reconciliation grid ✅ เสร็จ (2026-06-30)
+- ✅ `lib/sahamit/reconcileClient.js` `buildReconMatrix(rounds,pos)`: effective FC = รอบล่าสุดต่อเดือน, PO = sum active po_lines ต่อ deliveryMonth, ใช้ `reconcileCell` + `cellDetail` (reuse `/forecast/rounds`+`/po` ไม่มี API/migration ใหม่)
+- ✅ หน้า `/sahamit/reconcile`: กริด SKU × เดือน, toggle มุมมอง FC / PO / FC vs PO, สีตามสถานะ + legend, คลิกช่อง drill-down (รอบ FC + PO lines)
+- ✅ tests 41/41 (+2 reconcile); verify หน้า render + graceful banner
 
 ### เฟส 4 — Material / Lead-time tracker (N1, N2)
 - จำแนก in-FC / out-FC ต่อ PO line → คำนวณ readyDate (60/90 วันทำการ ใช้ `holidays`)
