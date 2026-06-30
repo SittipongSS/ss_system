@@ -106,9 +106,12 @@
 - ✅ หน้า `/sahamit/reconcile`: กริด SKU × เดือน, toggle FC / PO / FC vs PO, สีตามสถานะ + legend, คลิกช่อง drill-down
 - ✅ tests 43/43 (+coverMonths cancellation + no-double-count-on-shift); verify หน้า render + graceful banner
 
-### เฟส 4 — Material / Lead-time tracker (N1, N2)
-- จำแนก in-FC / out-FC ต่อ PO line → คำนวณ readyDate (60/90 วันทำการ ใช้ `holidays`)
-- สถานะวัสดุ PM/RM, แดชบอร์ดติดตาม
+### เฟส 4 — Material / Lead-time tracker (N1, N2) ✅ เสร็จ (2026-06-30)
+- ✅ `lib/sahamit/material.js`: leadDaysFor (60 in-FC / 90 out-FC), recommendedReadyDate (receivedDate + lead วันทำการ ใช้ `addBusinessDays` + holidays), materialView → {inForecast, leadDays, readyDate, lateVsDue, ourSlip}
+- ✅ API `/api/sahamit/material` (GET: ต่อ po line active + inForecast จาก reconcile + holidays จากตาราง + tracking), `/material/[poLineId]` (PATCH upsert PM/RM)
+- ✅ in-FC = (fgCode, deliveryMonth) มี FC > 0 (PM ถูกสต็อกไว้) → 60 วัน; ไม่มี → 90 วัน
+- ✅ หน้า `/sahamit/material`: stat chips + ตารางบรรทัด PO (ตรง/นอก FC, lead, วันรับ, วันส่งแนะนำ + ธง "เกินกำหนด PO/lead" / "เราส่งช้า") + inline edit PM/RM
+- ✅ tests 46/46 (+3 material); verify หน้า render + graceful banner
 
 **โมเดล 6 วันของ PO (ตกลง 2026-06-30) — หัวใจของเฟสนี้:**
 1. วันที่เอกสาร (docDate) · 2. **วันที่รับ PO (receivedDate) = จุดเริ่มนับ** · 3. วันกำหนดส่ง (dueDate, ลูกค้าอยากได้) · 4. **วันส่งที่แนะนำ (คำนวณ) = receivedDate + lead (60 in-FC / 90 out-FC วันทำการ ใช้ holidays) = guideline เรา** · 5. วันคาดการณ์ส่ง (expectedDate, default=ข้อ4, เลื่อนได้+ประวัติ) · 6. วันส่งจริง (actualDeliveredDate)

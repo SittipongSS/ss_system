@@ -10,6 +10,7 @@ import { computeSkuFcWarning } from './peak.js';
 import { reconcileCell } from './reconcile.js';
 import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
 import { buildReconMatrix, cellDetail } from './reconcileClient.js';
+import { leadDaysFor, recommendedReadyDate, materialView, LEAD_IN_FC, LEAD_OUT_FC } from './material.js';
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -98,6 +99,41 @@ test('reconcileCell core statuses match ss-cj labels', () => {
 });
 
 function pick(r) { return { status: r.status, label: r.label }; }
+
+// ── material / lead-time ──────────────────────────────────────────────
+const NO_HOLIDAYS = new Set(); // weekends still skipped by addBusinessDays
+
+test('leadDaysFor: in-FC = 60, out-of-FC = 90 working days', () => {
+  assert.equal(leadDaysFor(true), LEAD_IN_FC);
+  assert.equal(leadDaysFor(false), LEAD_OUT_FC);
+  assert.equal(LEAD_IN_FC, 60);
+  assert.equal(LEAD_OUT_FC, 90);
+});
+
+test('recommendedReadyDate: null-safe, valid date, and 90d is later than 60d', () => {
+  assert.equal(recommendedReadyDate(null, 60, NO_HOLIDAYS), null);
+  const d60 = recommendedReadyDate('2026-01-01', 60, NO_HOLIDAYS);
+  const d90 = recommendedReadyDate('2026-01-01', 90, NO_HOLIDAYS);
+  assert.match(d60, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(d90 > d60); // more lead → later ready date
+});
+
+test('materialView: in-FC→60d, out-FC→90d; lateVsDue & ourSlip flags', () => {
+  const inFc = materialView({ dueDate: '2026-12-31' }, 100, '2026-01-01', NO_HOLIDAYS);
+  assert.equal(inFc.inForecast, true);
+  assert.equal(inFc.leadDays, 60);
+  assert.equal(inFc.lateVsDue, false); // ready (~Mar) before Dft Dec due
+
+  const outFc = materialView({ dueDate: '2026-01-15' }, 0, '2026-01-01', NO_HOLIDAYS);
+  assert.equal(outFc.inForecast, false);
+  assert.equal(outFc.leadDays, 90);
+  assert.equal(outFc.lateVsDue, true); // ready (~May) after Jan-15 due → late because PO/lead
+
+  const slipped = materialView({ dueDate: '2026-12-31', actualDeliveredDate: '2026-12-31' }, 100, '2026-01-01', NO_HOLIDAYS);
+  assert.equal(slipped.ourSlip, true); // delivered Dec-31, well after the ~Mar ready date
+  const onTime = materialView({ dueDate: '2026-12-31', actualDeliveredDate: '2026-02-02' }, 100, '2026-01-01', NO_HOLIDAYS);
+  assert.equal(onTime.ourSlip, false);
+});
 
 // ── forecastClient (the API-payload → comparison bridge) ──────────────
 const ROUNDS = [
