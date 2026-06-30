@@ -25,8 +25,9 @@ async function loadAll(supabase, customerId) {
   const holidays = new Set((hol || []).map((h) => h.date));
 
   const { data: trk } = await supabase.from('sahamit_material_tracking').select('*').eq('customerId', customerId);
+  const { data: coverages } = await supabase.from('sahamit_po_coverage').select('*').eq('customerId', customerId);
 
-  return { rounds: rounds || [], roundsWithLines, pos: pos || [], poLines: poLines || [], posWithLines, holidays, trk: trk || [] };
+  return { rounds: rounds || [], roundsWithLines, pos: pos || [], poLines: poLines || [], posWithLines, holidays, trk: trk || [], coverages: coverages || [] };
 }
 
 function buildReport(view, data) {
@@ -102,8 +103,8 @@ function buildReport(view, data) {
     };
   }
 
-  // default: reconcile (flat)
-  const matrix = buildReconMatrix(data.roundsWithLines, data.posWithLines);
+  // default: reconcile (flat) — reflect cross-month coverage
+  const matrix = buildReconMatrix(data.roundsWithLines, data.posWithLines, data.coverages);
   const rows = [];
   for (const row of matrix.rows) {
     for (const m of matrix.months) {

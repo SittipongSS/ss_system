@@ -124,9 +124,9 @@
 - ✅ **5b-1 Shift/Cut Audit (2026-06-30)**: migration 0054 `sahamit_fc_flags`; `lib/sahamit/flags.detectFlags` (drop/shift_suspect จาก compareRounds + lockedBreak); ตั้งธงอัตโนมัติตอน import รอบ; API `/api/sahamit/flags` (GET) + `/flags/[id]` (PATCH resolve); หน้า `/sahamit/review` (คิว + เคลียร์ เลื่อน/ตัด/รอ/ignore + เก็บคำตอบลูกค้า = audit)
 - ✅ **5b-2 Locked cells (2026-06-30)**: migration 0055 `sahamit_fc_locks`; API `/locks` (GET/POST) + `/locks/[id]` (DELETE); ล็อก/ปลดล็อกจาก drill-down ในหน้า reconcile + โชว์ 🔒; รอบใหม่แก้ช่องที่ล็อก → ธง lockedBreak
 - ✅ design เต็ม: `webapp/SAHAMIT_PHASE5B_DESIGN.md` · tests 49/49 (+detectFlags 3)
-- ⏳ 5b-3 Coverage (cross-month PO) — เลื่อนไว้ (ซับซ้อน, deliveryMonth จับคู่อยู่แล้ว)
+- ✅ **5b-3 Coverage cross-month PO (2026-06-30)**: migration 0056 `sahamit_po_coverage`; `buildReconMatrix(rounds,pos,coverages)` ปรับ effPo = basePo − coverageOut + coverageIn (คง poQty=basePo สำหรับแสดง); API `/api/sahamit/coverage` (GET/POST) + `/coverage/[id]` (DELETE); reconcile: ⇄ badge + drill-down CoveragePanel (รับเข้า/ส่งออก เพิ่ม/ลบ); export reconcile สะท้อน coverage
 - ⏳ Export PDF (ถ้าต้องการ)
-- ⚠ ต้องรัน migration **0054 + 0055** บน Supabase prod ก่อน feature 5b ทำงาน
+- ⚠ ต้องรัน migration **0054 + 0055 + 0056** บน Supabase prod ก่อน feature 5b ทำงาน
 
 ---
 

@@ -76,14 +76,28 @@ function poByMonth(pos, names) {
 
 // Returns { months:[...], rows:[{ fgCode, productName, fcTotal, poTotal,
 //   cells:{ month: { status, label, fcQty, poQty, excess } } }] }.
-export function buildReconMatrix(rounds, pos) {
+export function buildReconMatrix(rounds, pos, coverages = []) {
   const { fcQtyOf, ever, names, ownerRoundNo } = effectiveFc(rounds);
   const poAgg = poByMonth(pos, names);
 
-  // months = every owned (forecast) month + every PO delivery month.
-  const months = new Set(ownerRoundNo.keys());
+  // Cross-month coverage (เฟส 5b-3): PO allocated FROM sourceMonth TO targetMonth.
+  // For matching, the source loses the allocated qty and the target gains it; the
+  // DISPLAYED PO stays the actual delivered qty (cell.poQty), status uses effPo.
+  const covIn = new Map();  // key fg||month (target) -> qty in
+  const covOut = new Map(); // key fg||month (source) -> qty out
+  const extraMonths = new Set();
+  for (const c of coverages || []) {
+    const q = Number(c.qty || 0);
+    covIn.set(`${c.fgCode}||${c.targetMonth}`, (covIn.get(`${c.fgCode}||${c.targetMonth}`) || 0) + q);
+    covOut.set(`${c.fgCode}||${c.sourceMonth}`, (covOut.get(`${c.fgCode}||${c.sourceMonth}`) || 0) + q);
+    extraMonths.add(c.sourceMonth); extraMonths.add(c.targetMonth);
+  }
+
+  // months = every owned (forecast) month + every PO delivery month + coverage months.
+  const months = new Set([...ownerRoundNo.keys(), ...extraMonths]);
   const skus = new Set();
   for (const r of rounds || []) for (const l of r.lines || []) skus.add(l.fgCode);
+  for (const c of coverages || []) skus.add(c.fgCode);
   for (const key of poAgg.keys()) {
     const i = key.indexOf('||');
     skus.add(key.slice(0, i));
@@ -99,10 +113,19 @@ export function buildReconMatrix(rounds, pos) {
     for (const m of monthList) {
       const key = `${fg}||${m}`;
       const fcQty = fcQtyOf(fg, m);
-      const poQty = poAgg.get(key) || 0;
-      cells[m] = reconcileCell({ fcQty, poQty, originalFcQty: fcQty, hasHistory: ever.has(key) });
+      const basePo = poAgg.get(key) || 0;
+      const cin = covIn.get(key) || 0;
+      const cout = covOut.get(key) || 0;
+      const effPo = basePo - cout + cin; // PO used for matching after coverage
+      const cell = reconcileCell({ fcQty, poQty: effPo, originalFcQty: fcQty, hasHistory: ever.has(key) });
+      // Display the ACTUAL delivered PO; keep coverage info for the badge/drill-down.
+      cell.poQty = basePo;
+      cell.effPo = effPo;
+      cell.coverageIn = cin;
+      cell.coverageOut = cout;
+      cells[m] = cell;
       fcTotal += fcQty;
-      poTotal += poQty;
+      poTotal += basePo;
     }
     return { fgCode: fg, productName: names.get(fg) || null, cells, fcTotal, poTotal };
   });

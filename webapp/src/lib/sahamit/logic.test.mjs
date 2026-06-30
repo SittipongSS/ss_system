@@ -257,6 +257,28 @@ test('buildReconMatrix coverMonths: a shift is NOT double-counted (total preserv
   assert.equal(a.fcTotal, 100); // Apr 0 + May 100 — NOT 200
 });
 
+test('buildReconMatrix coverage: PO excess in one month covers shortfall in another', () => {
+  const rounds = [{ roundNo: 1, coverMonths: ['2026-06', '2026-07'], lines: [
+    { fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 100 },
+  ] }];
+  const pos = [{ poNumber: 'P1', lines: [{ fgCode: 'A', deliveryMonth: '2026-07', qty: 200, status: 'open' }] }];
+
+  // Without coverage: Jun pending (FC100/PO0), Jul over (FC100/PO200)
+  const before = buildReconMatrix(rounds, pos).rows.find((r) => r.fgCode === 'A');
+  assert.equal(before.cells['2026-06'].status, 'pending');
+  assert.equal(before.cells['2026-07'].status, 'over');
+
+  // Allocate 100 of Jul's PO to cover Jun
+  const cov = [{ fgCode: 'A', sourceMonth: '2026-07', targetMonth: '2026-06', qty: 100 }];
+  const after = buildReconMatrix(rounds, pos, cov).rows.find((r) => r.fgCode === 'A');
+  assert.equal(after.cells['2026-06'].status, 'match');     // covered → matches FC
+  assert.equal(after.cells['2026-06'].coverageIn, 100);
+  assert.equal(after.cells['2026-06'].poQty, 0);            // displayed PO unchanged (actual)
+  assert.equal(after.cells['2026-07'].status, 'match');     // excess allocated away
+  assert.equal(after.cells['2026-07'].coverageOut, 100);
+  assert.equal(after.cells['2026-07'].poQty, 200);          // displayed PO unchanged (actual)
+});
+
 test('cellDetail lists contributing FC rounds and active PO lines', () => {
   const d = cellDetail(RC_ROUNDS, RC_POS, 'A', '2026-07');
   assert.deepEqual(d.fcs.map((f) => f.roundNo), [1, 2]); // both rounds had Jul
