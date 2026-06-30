@@ -35,12 +35,37 @@ const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 export default function ReconcilePage() {
   const { data: rounds, loading: l1, error: e1 } = useApiList("/api/sahamit/forecast/rounds");
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
+  const { data: locks, reload: reloadLocks } = useApiList("/api/sahamit/locks");
   const [view, setView] = useState("recon");
   const [drill, setDrill] = useState(null); // { fgCode, month }
 
   const loading = l1 || l2;
   const error = e1 || e2;
   const matrix = useMemo(() => buildReconMatrix(rounds, pos), [rounds, pos]);
+  const lockByKey = useMemo(() => {
+    const m = new Map();
+    for (const lk of locks) m.set(`${lk.fgCode}||${lk.month}`, lk);
+    return m;
+  }, [locks]);
+
+  // Lock the selected cell at its current FC (agreed), or unlock if already locked.
+  const toggleLock = async (fg, month) => {
+    const existing = lockByKey.get(`${fg}||${month}`);
+    try {
+      if (existing) {
+        await fetch(`/api/sahamit/locks/${existing.id}`, { method: "DELETE" });
+      } else {
+        const row = matrix.rows.find((r) => r.fgCode === fg);
+        const lockedQty = row?.cells[month]?.fcQty || 0;
+        const res = await fetch("/api/sahamit/locks", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fgCode: fg, month, lockedQty }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ล็อกไม่สำเร็จ");
+      }
+      reloadLocks();
+    } catch (e) { alert(e.message); }
+  };
   const detail = useMemo(
     () => (drill ? cellDetail(rounds, pos, drill.fgCode, drill.month) : null),
     [drill, rounds, pos],
@@ -50,13 +75,15 @@ export default function ReconcilePage() {
     if (!cell || cell.status === "none") return <td key={m} style={{ textAlign: "center", color: "var(--text-3)" }}>·</td>;
     const color = C[STATUS_COLOR[cell.status]] || C["text-3"];
     const tint = `color-mix(in srgb, ${color} 12%, var(--panel))`;
+    const locked = lockByKey.has(`${fg}||${m}`);
     return (
       <td
         key={m}
         onClick={() => setDrill({ fgCode: fg, month: m })}
-        title={cell.label}
-        style={{ cursor: "pointer", background: view === "recon" ? tint : undefined, textAlign: "center", padding: "4px 6px" }}
+        title={locked ? `${cell.label} · ล็อกแล้ว` : cell.label}
+        style={{ cursor: "pointer", background: view === "recon" ? tint : undefined, textAlign: "center", padding: "4px 6px", position: "relative" }}
       >
+        {locked && <span style={{ position: "absolute", top: 1, right: 2, fontSize: 9 }} title="ล็อก (ตกลงแล้ว)">🔒</span>}
         {view === "fc" ? (
           <span>{cell.fcQty ? nf(cell.fcQty) : "·"}</span>
         ) : view === "po" ? (
@@ -147,8 +174,15 @@ export default function ReconcilePage() {
 
       {/* Cell drill-down */}
       <Modal open={!!drill} onClose={() => setDrill(null)} title={drill ? `${drill.fgCode} · ${drill.month}` : ""} size="md">
-        {detail && (
+        {detail && drill && (
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              {lockByKey.has(`${drill.fgCode}||${drill.month}`) ? (
+                <button className="btn ghost sm" onClick={() => toggleLock(drill.fgCode, drill.month)}>🔒 ปลดล็อก (ล็อกที่ {nf(lockByKey.get(`${drill.fgCode}||${drill.month}`).lockedQty)})</button>
+              ) : (
+                <button className="btn sm" onClick={() => toggleLock(drill.fgCode, drill.month)}>🔒 ล็อก (ตกลงแล้ว)</button>
+              )}
+            </div>
             <div>
               <h3 style={{ fontWeight: 600, marginBottom: 8 }}>Forecast (ตามรอบ)</h3>
               {detail.fcs.length === 0 ? <div style={{ color: "var(--text-3)", fontSize: 13 }}>— ไม่มี FC เดือนนี้ —</div> : (

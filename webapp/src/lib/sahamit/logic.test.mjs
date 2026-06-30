@@ -11,6 +11,7 @@ import { reconcileCell } from './reconcile.js';
 import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
 import { buildReconMatrix, cellDetail } from './reconcileClient.js';
 import { leadDaysFor, recommendedReadyDate, materialView, LEAD_IN_FC, LEAD_OUT_FC } from './material.js';
+import { detectFlags } from './flags.js';
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -99,6 +100,38 @@ test('reconcileCell core statuses match ss-cj labels', () => {
 });
 
 function pick(r) { return { status: r.status, label: r.label }; }
+
+// ── flag detection (shift/cut audit) ──────────────────────────────────
+test('detectFlags: a decrease vs previous round → drop flag', () => {
+  const rounds = [
+    { roundNo: 1, lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 100 }] },
+    { roundNo: 2, lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 60 }] },
+  ];
+  const flags = detectFlags(rounds, []);
+  const jul = flags.find((f) => f.month === '2026-07');
+  assert.equal(jul.kind, 'drop');
+  assert.equal(jul.drop, 40);
+  assert.equal(jul.roundNo, 2);
+});
+
+test('detectFlags: month vanished + reappeared elsewhere → shift_suspect', () => {
+  const rounds = [
+    { roundNo: 1, lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }] },
+    { roundNo: 2, lines: [{ fgCode: 'A', month: '2026-07', qty: 100 }] },
+  ];
+  const flags = detectFlags(rounds, []);
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].kind, 'shift_suspect');
+  assert.deepEqual([flags[0].month, flags[0].shiftToMonth], ['2026-06', '2026-07']);
+});
+
+test('detectFlags: locked cell whose effective FC differs → lockedBreak', () => {
+  const rounds = [{ roundNo: 1, coverMonths: ['2026-06'], lines: [{ fgCode: 'A', month: '2026-06', qty: 80 }] }];
+  const flags = detectFlags(rounds, [{ fgCode: 'A', month: '2026-06', lockedQty: 100 }]);
+  const lb = flags.find((f) => f.kind === 'lockedBreak');
+  assert.equal(lb.prevQty, 100);
+  assert.equal(lb.newQty, 80);
+});
 
 // ── material / lead-time ──────────────────────────────────────────────
 const NO_HOLIDAYS = new Set(); // weekends still skipped by addBusinessDays

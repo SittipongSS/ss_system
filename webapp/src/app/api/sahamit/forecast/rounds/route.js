@@ -4,6 +4,7 @@ import {
   loadSahamitProducts, indexByFgCode, resolveFgCode,
 } from '@/lib/sahamit/server';
 import { recordAudit } from '@/lib/audit';
+import { detectFlags } from '@/lib/sahamit/flags';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,6 +129,29 @@ export async function POST(request) {
     user, action: 'create', entityType: 'sahamit_forecast_round', entityId: roundId,
     after: round, summary: `สร้าง FC รอบที่ ${roundNo} (${lineRows.length} รายการ)`, request,
   });
+
+  // Shift/cut audit (เฟส 5b): raise flags for drops/shifts vs the previous round
+  // + lockedBreaks. Never let this break round creation.
+  try {
+    const { data: allRounds } = await supabase
+      .from('sahamit_forecast_rounds').select('*').eq('customerId', customerId);
+    const ids = (allRounds || []).map((r) => r.id);
+    let allLines = [];
+    if (ids.length) ({ data: allLines } = await supabase.from('sahamit_forecast_lines').select('*').in('roundId', ids));
+    const roundsWithLines = (allRounds || []).map((r) => ({ ...r, lines: (allLines || []).filter((l) => l.roundId === r.id) }));
+    const { data: locks } = await supabase.from('sahamit_fc_locks').select('*').eq('customerId', customerId);
+    const flags = detectFlags(roundsWithLines, locks || []);
+    if (flags.length) {
+      const flagRows = flags.map((f) => ({
+        id: 'FCF-' + randomUUID(), customerId, fgCode: f.fgCode, month: f.month, roundNo: f.roundNo,
+        prevQty: f.prevQty, newQty: f.newQty, drop: f.drop, kind: f.kind, status: 'open',
+        shiftToMonth: f.shiftToMonth || null, createdAt: nowIso,
+      }));
+      await supabase.from('sahamit_fc_flags').upsert(flagRows, { onConflict: 'customerId,fgCode,month,roundNo,kind', ignoreDuplicates: true });
+    }
+  } catch (e) {
+    console.error('[sahamit] flag detection failed', e?.message || e);
+  }
 
   return Response.json(
     { ...round, lines: lineRows, unknownFgCodes: [...unknown] },

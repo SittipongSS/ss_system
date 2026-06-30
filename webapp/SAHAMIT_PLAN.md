@@ -121,8 +121,12 @@
 
 ### เฟส 5 — Export + Coverage/shifting (R4)
 - ✅ **5a Export Excel (2026-06-30)**: `/api/sahamit/export?view=reconcile|po|material|forecast` reuse `reportToXlsxBuffer` + ปุ่ม "Excel" ทุกหน้า (forecast/po/reconcile/material)
-- ⏳ 5b Coverage/shifting/locked cells (ซับซ้อน — ต้องออกแบบแยก: po_coverage, ยืนยันการเลื่อน, ล็อกช่อง FC===PO)
+- ✅ **5b-1 Shift/Cut Audit (2026-06-30)**: migration 0054 `sahamit_fc_flags`; `lib/sahamit/flags.detectFlags` (drop/shift_suspect จาก compareRounds + lockedBreak); ตั้งธงอัตโนมัติตอน import รอบ; API `/api/sahamit/flags` (GET) + `/flags/[id]` (PATCH resolve); หน้า `/sahamit/review` (คิว + เคลียร์ เลื่อน/ตัด/รอ/ignore + เก็บคำตอบลูกค้า = audit)
+- ✅ **5b-2 Locked cells (2026-06-30)**: migration 0055 `sahamit_fc_locks`; API `/locks` (GET/POST) + `/locks/[id]` (DELETE); ล็อก/ปลดล็อกจาก drill-down ในหน้า reconcile + โชว์ 🔒; รอบใหม่แก้ช่องที่ล็อก → ธง lockedBreak
+- ✅ design เต็ม: `webapp/SAHAMIT_PHASE5B_DESIGN.md` · tests 49/49 (+detectFlags 3)
+- ⏳ 5b-3 Coverage (cross-month PO) — เลื่อนไว้ (ซับซ้อน, deliveryMonth จับคู่อยู่แล้ว)
 - ⏳ Export PDF (ถ้าต้องการ)
+- ⚠ ต้องรัน migration **0054 + 0055** บน Supabase prod ก่อน feature 5b ทำงาน
 
 ---
 

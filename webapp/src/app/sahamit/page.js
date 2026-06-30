@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { LineChart, FileText, ClipboardCheck, Boxes, ArrowRight, LayoutDashboard } from "lucide-react";
+import { LineChart, FileText, ClipboardCheck, Boxes, ArrowRight, LayoutDashboard, Flag } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 
 // SAHAMIT (Planning & Sales) landing. The four cards mirror the module's flow:
@@ -26,6 +26,12 @@ const MODULES = [
     icon: ClipboardCheck,
     title: "กระทบยอด (Reconciliation)",
     desc: "กริดสถานะ FC / PO / FC vs PO รายสินค้า × เดือน ดูช่องที่ขาด/เกิน/รอ",
+  },
+  {
+    href: "/sahamit/review",
+    icon: Flag,
+    title: "ตรวจการเปลี่ยน FC",
+    desc: "คิวตรวจ FC ที่ลด/หาย — เลื่อนจริงหรือแอบตัด เคลียร์ + เก็บหลักฐาน",
   },
   {
     href: "/sahamit/material",
