@@ -4,7 +4,8 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
+import { isSuperuser } from "@/lib/permissions";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import EditProductModal from "@/components/EditProductModal";
@@ -18,6 +19,10 @@ export default function ProductDetails() {
   const id = params.id;
   const canEditProducts = useCan("products:edit");
   const canDeleteProducts = useCan("products:delete");
+  // พักใช้/เปิดใช้อีกครั้งสงวนสิทธิ์ให้ admin + ae_supervisor เท่านั้น — SA
+  // (senior_ae/ac/ae) แก้สเปค/ราคาได้ปกติแต่ห้ามพักใช้สินค้าเอง (บังคับที่ server ด้วย).
+  const role = useRole();
+  const canToggleActive = isSuperuser(role);
   // Factory cost data is confidential to the tax system. Two tiers (mirrors the
   // server-side redaction): costPrice is visible to SA + LG + admin; the cost
   // breakdown + profit is LG + admin only. Other departments see neither.
@@ -170,7 +175,7 @@ export default function ProductDetails() {
           {canEditProducts && (
             <ActionButton kind="edit" label="แก้ไขข้อมูล" disabled={isUpdating} onClick={() => setShowEdit(true)} />
           )}
-          {canEditProducts && (
+          {canToggleActive && (
             product.isActive === false
               ? <ActionButton kind="resume" icon={ArchiveRestore} label="เปิดใช้อีกครั้ง" disabled={isUpdating} onClick={handleToggleActive} />
               : <ActionButton kind="pause" icon={Archive} label="พักใช้" disabled={isUpdating} onClick={handleToggleActive} />
