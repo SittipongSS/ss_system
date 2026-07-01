@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, X, AlertTriangle } from "lucide-react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { DestinationToggle } from "@/components/sahamit/destinations";
 
 // Create one PO with its lines. Header carries the document/received dates; each
 // line carries due + expected delivery dates (the expected date can later be
@@ -43,7 +44,7 @@ export default function PoFormModal({ open, onClose, onCreated, products = [] })
     const hit = productIndex.get(code.toLowerCase());
     setRows((prev) => [...prev, {
       fgCode: hit?.fgCode || code, productName: hit?.name || null, productMeta: hit ? productMeta(hit) : "", known: !!hit,
-      qty: "", dueDate: "", expectedDate: "",
+      qty: "", dueDate: "", expectedDate: "", destination: null,
     }]);
     setPick("");
   };
@@ -52,7 +53,7 @@ export default function PoFormModal({ open, onClose, onCreated, products = [] })
 
   const submit = async () => {
     const lines = rows
-      .map((r) => ({ fgCode: r.fgCode, qty: Number(r.qty), dueDate: r.dueDate || null, expectedDate: r.expectedDate || null }))
+      .map((r) => ({ fgCode: r.fgCode, qty: Number(r.qty), dueDate: r.dueDate || null, expectedDate: r.expectedDate || null, destination: r.destination || null }))
       .filter((l) => l.fgCode && Number.isFinite(l.qty) && l.qty > 0);
     if (!poNumber.trim()) { setError("ระบุเลขที่ PO"); return; }
     if (!lines.length) { setError("เพิ่มรายการสินค้าอย่างน้อย 1 (มีจำนวน > 0)"); return; }
@@ -144,7 +145,7 @@ export default function PoFormModal({ open, onClose, onCreated, products = [] })
                 <tr>
                   <th>รหัสสินค้า</th><th>ชื่อสินค้า</th>
                   <th style={{ textAlign: "right" }}>จำนวน</th>
-                  <th>กำหนดส่ง</th><th>คาดการณ์ส่ง</th><th></th>
+                  <th>กำหนดส่ง</th><th>คาดการณ์ส่ง</th><th>สถานที่ส่ง</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -166,6 +167,9 @@ export default function PoFormModal({ open, onClose, onCreated, products = [] })
                     </td>
                     <td style={{ padding: 2 }}>
                       <input type="date" className="premium-input" style={{ height: 30 }} value={r.expectedDate} onChange={(e) => setField(ri, "expectedDate", e.target.value)} />
+                    </td>
+                    <td style={{ padding: 2 }}>
+                      <DestinationToggle value={r.destination} onChange={(v) => setField(ri, "destination", v)} />
                     </td>
                     <td style={{ textAlign: "center" }}>
                       <button type="button" className="btn-icon" title="ลบแถว" onClick={() => removeRow(ri)}><X size={14} /></button>

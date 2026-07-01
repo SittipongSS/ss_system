@@ -44,3 +44,10 @@ export const PO_STATUS_COLOR = {
   delivered: 'green',
   cancelled: 'text-3',
 };
+
+// PO line delivery destination (migration 0057). Normalize any input to a known
+// key, else null.
+export const DESTINATION_KEYS = ['bangpakong', 'photharam', 'khonkaen'];
+export function cleanDestination(v) {
+  return DESTINATION_KEYS.includes(v) ? v : null;
+}

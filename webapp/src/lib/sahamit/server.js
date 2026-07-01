@@ -77,6 +77,7 @@ export async function loadSahamitProducts(supabase, customerId) {
       brandName: p.brandName ?? null,
       volume: p.volume ?? null,
       volumeUnit: p.volumeUnit ?? null,
+      price: p.price ?? null,
     }));
 }
 
