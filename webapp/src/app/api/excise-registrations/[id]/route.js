@@ -4,6 +4,7 @@ import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields }
 import { purgeAttachments } from '@/lib/master/attachments';
 import { registrationDeleteBlock } from '@/lib/deletion';
 import { registrationRequirements } from '@/lib/tax/requirements';
+import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,10 @@ export async function PATCH(request, { params }) {
         .select()
         .single();
       if (error) return Response.json({ error: error.message }, { status: 500 });
+      await recordAudit({
+        user, action: 'update', entityType: 'registration', entityId: id, before: reg, after: data,
+        summary: `ขอแก้ไขทะเบียน ${reg.fgCode || id} (อนุมัติแล้ว → ร่าง)`, request,
+      });
       return Response.json(data);
     }
     return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณากดขอแก้ไขก่อน' }, { status: 403 });
@@ -152,6 +157,9 @@ export async function PATCH(request, { params }) {
   const { data, error } = await supabase
     .from('excise_registrations').update(updated).eq('id', id).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  const summary = data.status !== reg.status
+    ? `เปลี่ยนสถานะทะเบียน ${reg.fgCode || id}: ${reg.status} → ${data.status}` : null;
+  await recordAudit({ user, action: 'update', entityType: 'registration', entityId: id, before: reg, after: data, summary, request });
   return Response.json(data);
 }
 
@@ -192,5 +200,9 @@ export async function DELETE(request, { params }) {
   // Cascade: purge this registration's attachments (rows + storage/Drive files)
   // so deleting a draft never orphans documents or storage.
   await purgeAttachments('registration', id);
+  await recordAudit({
+    user, action: 'delete', entityType: 'registration', entityId: id, before: reg,
+    summary: `ลบทะเบียน ${reg.fgCode || id} (${reg.customerName || ''})`.trim(), request,
+  });
   return Response.json({ success: true, message: 'ลบทะเบียนเรียบร้อยแล้ว' });
 }

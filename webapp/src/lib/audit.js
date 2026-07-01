@@ -80,6 +80,25 @@ export async function recordAudit({
   }
 }
 
+// Snapshot ที่ปลอดภัยของ Supabase auth user สำหรับ audit (entityType 'user').
+// **ห้ามมี password/token เด็ดขาด** — เก็บเฉพาะ field ที่จำเป็นต่อการตรวจสอบ
+// (ใคร/role/team/ฝ่าย/สถานะบัญชี). รับ admin user object (จาก auth.admin.*).
+export function userAuditSnapshot(u) {
+  if (!u) return null;
+  const m = u.user_metadata || {};
+  const a = u.app_metadata || {};
+  return {
+    id: u.id,
+    email: u.email,
+    name: m.name || `${m.firstName || ''} ${m.lastName || ''}`.trim() || null,
+    phone: m.phone || null,
+    role: a.role || null,
+    team: a.team || null,
+    department: a.department || null,
+    disabled: !!u.banned_until && new Date(u.banned_until) > new Date(),
+  };
+}
+
 // คำอธิบายเริ่มต้น (ใช้ชื่อ entity ที่อ่านง่ายถ้ามี).
 function defaultSummary({ action, entityType, after, before }) {
   const rec = after || before || {};

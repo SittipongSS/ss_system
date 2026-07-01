@@ -8,6 +8,19 @@
 - โมดูลอ้างอิง master ด้วย id จริง (`customerId`, `productId`) + เก็บ **snapshot** เมื่อต้องการหลักฐาน
 - **อ่านข้ามโมดูลได้ (JOIN/read) แต่ห้าม write ข้ามโมดูล** — action สำคัญทำที่หน้าเจ้าของงานเท่านั้น
 
+> **หมายเหตุ:** ไฟล์นี้เป็น blueprint ในเครื่อง (in-repo) แทนต้นฉบับภายนอก `MODULE_BOUNDARY_MAP.md` ของ codex —
+> เนื้อหาทั้งหมด derive จากโค้ดจริง (permissions.js, route handlers) ไม่ใช่ทฤษฎี.
+
+### เอกสารสถาปัตยกรรมชุดนี้ (doc set)
+
+| ไฟล์ | บทบาท |
+|---|---|
+| **BOUNDARY_MAP.md** (ไฟล์นี้) | contract กลางที่บังคับใช้จริง: สิทธิ์ · transaction · audit · action placement |
+| [`BOUNDARY_MAP_PLAN.md`](BOUNDARY_MAP_PLAN.md) | roadmap + สถานะแต่ละ Phase (0–6) |
+| [`ATTACHMENT_REQUIREMENT_SPEC.md`](ATTACHMENT_REQUIREMENT_SPEC.md) | spec ไฟล์แนบ (storage) + requirement engine (per-module) |
+| [`DRIVE_STORAGE_PLAN.md`](DRIVE_STORAGE_PLAN.md) | backend ไฟล์แนบบน Google Drive (ใช้งานจริงแล้ว) |
+| [`MASTER_DATA_PLAN.md`](MASTER_DATA_PLAN.md) · [`PM_PLAN.md`](PM_PLAN.md) | แผนราย-โมดูล (Database / Project Management) |
+
 ---
 
 ## นิยามศัพท์ (พูดให้ตรงกัน)
@@ -86,6 +99,29 @@
 
 ---
 
+## Action Placement (action ไหนทำที่หน้าไหน)
+
+ทำให้กฎ "write ห้ามข้ามโมดูล" เป็นรูปธรรม — action สำคัญแต่ละอย่าง **มีหน้าเจ้าของหน้าเดียว**.
+หน้าอื่นที่แสดงข้อมูลเดียวกัน (เช่น Database 360-view) เป็น **read-only + deep-link** ไปหน้าเจ้าของเท่านั้น.
+
+| action | หน้าเจ้าของ | ใครทำ (cap/scope) |
+|---|---|---|
+| สร้าง/แก้ไข/พักใช้ (isActive) ลูกค้า·สินค้า | `/database/customers`, `/database/products` | `*:edit` (AE/AC สร้าง = `pending`); ลบ = superuser |
+| อนุมัติ/ปฏิเสธ ลูกค้า·สินค้า | หน้า Database (`?manage=1`) | Senior AE+ (`canApproveMasterData`) |
+| ขึ้นทะเบียน / แก้ลิงก์ / ยื่น (submit) / ขอแก้ไข | `/tax/registrations` | SA (`products:edit`) |
+| อนุมัติ/ตีกลับ ทะเบียน | `/tax/registrations` | LG (`legal:approve`) |
+| สร้าง/แก้ใบยื่น (order) + S&S receipt | `/tax/filings` | SA (`sales:act`) |
+| เปลี่ยนสถานะภาษี (received→filing→complete/reject) + เลขใบกำกับ | `/tax/filings` | LG (`legal:approve`) |
+| ลบ order / registration | หน้าเจ้าของ (tax) | superuser / senior_ae (team) / ae (own draft) |
+| สร้าง/แก้/ลบ โปรเจกต์ | `/pm/projects` | sales (`pm:edit`, team scope) |
+| อัปเดตสถานะงาน (task) | `/pm/tasks` · project detail | assignee หรือ staff (ฝ่ายตรง) — workflow-only |
+| แนบ/ลบไฟล์ | หน้า entity เจ้าของ (ลูกค้า/สินค้า/ทะเบียน/order) | ผู้ที่แก้ entity นั้นได้ (`canEditRecord` ของ parent) |
+| จัดการผู้ใช้ (create/edit/ban/delete) | `/users` | admin (`users:manage`) |
+| ดูบันทึกการใช้งาน | `/audit` | admin (`audit:view`) |
+| **Database 360-view** (`/database/*/[id]`) | — | **READ-ONLY ข้ามโมดูล** — ไม่มีปุ่ม approve tax / แก้ timeline; action เด้งไปหน้าเจ้าของ |
+
+---
+
 ## 5.2 Transaction Boundary
 
 DB เดียว (Postgres) แต่ **ไม่มี cross-table transaction wrapper** ในชั้น API (PostgREST/service-role
@@ -132,9 +168,11 @@ PATCH order (แก้ line items) ใช้แนวเดียวกัน: h
   เขียนผ่าน service-role; actor* = snapshot ตัวตน; `before/after` = jsonb เต็ม record; ไม่มี FK ไป entity.
 - helper เดียว [`src/lib/audit.js`](src/lib/audit.js) → `recordAudit({ user, action, entityType, entityId, before, after, summary, request })`.
   **ไม่ throw** — ถ้า insert พลาดจะ `log.error` แล้วผ่าน (audit ห้ามทำให้ action ผู้ใช้พัง).
-- wired แล้ว (foundation): **customers / products / orders** ทั้ง create/update/delete (+ approval).
-- **ยังไม่ทำ (เฟสถัดไป):** หน้า `/audit` (supervisor only, cap `audit:view`) + `/api/audit` อ่าน log,
-  และ wire เพิ่มให้ registration/project/user-management. การกระทำ login/approve เป็น action แยกเพิ่มภายหลัง.
+- wired แล้ว: **customers / products / orders / registration / project / user** ทั้ง create/update/delete
+  (+ approval/สถานะ workflow). user เก็บ snapshot ปลอดภัย (`userAuditSnapshot` — **ไม่มี password/token**).
+- หน้า `/audit` (admin only, cap `audit:view`) + `GET /api/audit` (filter เวลา/ประเภท/การกระทำ/คนทำ/ค้นหา) ใช้งานได้แล้ว.
+- **ยังไม่ทำ (เฟสถัดไป):** action `login` (ในชั้น auth) + แยก `approve` เป็น action ของตัวเอง
+  (ตอนนี้ approve บันทึกเป็น `update` พร้อม summary); wire project-tasks (ความถี่สูง — ชั่งกับพื้นที่ก่อน).
 
 เพิ่ม audit ให้ route ใหม่: `import { recordAudit }` แล้วเรียก **หลัง write สำเร็จ** ด้วย `await`
 (serverless — ต้อง await ให้ insert จบก่อน return).

@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScope } from '@/lib/permissions';
+import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,5 +90,9 @@ export async function POST(request) {
   const { data, error } = await supabase
     .from('excise_registrations').insert(newReg).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  await recordAudit({
+    user, action: 'create', entityType: 'registration', entityId: data.id, after: data,
+    summary: `ขึ้นทะเบียน ${data.fgCode || ''} (${data.customerName || ''})`.trim(), request,
+  });
   return Response.json(data, { status: 201 });
 }

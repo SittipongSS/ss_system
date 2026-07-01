@@ -98,6 +98,7 @@ export default function AppLayout({ children }) {
       : pathname.startsWith('/database') ? 'master'
       : pathname.startsWith('/sahamit') ? 'sahamit'
       : pathname === '/users' ? 'users'
+      : pathname === '/audit' ? 'audit'
       : 'tax';
 
     if (sys) setActiveSystem(sys);
@@ -194,7 +195,8 @@ export default function AppLayout({ children }) {
       : activeSystem === 'pm' ? 'จัดการโครงการ'
         : activeSystem === 'sahamit' ? 'งานสหมิตร'
           : activeSystem === 'users' ? 'จัดการผู้ใช้'
-            : 'ภาษีสรรพสามิต';
+            : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
+              : 'ภาษีสรรพสามิต';
 
   // Show only the current system's groups (+ 'both'), then only menus the role
   // is allowed to see.
@@ -303,6 +305,13 @@ export default function AppLayout({ children }) {
                 </span>
               </div>
             </div>
+
+            {/* Audit log (Admins only) */}
+            {can(role, 'audit:view') && (
+              <Link href="/audit" className="btn ghost icon-only" title="บันทึกการใช้งาน">
+                <History size={16} strokeWidth={2} />
+              </Link>
+            )}
 
             {/* Manage Users (Admins only) */}
             {can(role, 'users:manage') && (

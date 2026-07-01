@@ -6,6 +6,7 @@ import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/htt
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
 import { pickFields } from '@/lib/validate';
+import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,11 +175,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
+  const summary = data.status !== project.status
+    ? `เปลี่ยนสถานะโปรเจกต์ ${data.code || id}: ${project.status} → ${data.status}` : null;
+  await recordAudit({ user, action: 'update', entityType: 'project', entityId: id, before: project, after: data, summary, request: req });
   return ok({ ...data, ...(productWarning ? { productWarning } : {}) });
 });
 
 // DELETE /api/pm/projects/[id] — supervisor (all) or team lead (own team).
-export const DELETE = withUser(async ({ user, supabase, ctx }) => {
+export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id: idOrCode } = await ctx.params;
 
   const project = await loadProject(supabase, idOrCode);
@@ -191,5 +195,9 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
 
   const { error } = await supabase.from('projects').delete().eq('id', id);
   if (error) return fail(error.message, 500);
+  await recordAudit({
+    user, action: 'delete', entityType: 'project', entityId: id, before: project,
+    summary: `ลบโปรเจกต์ ${project.code || id} ${project.name || ''}`.trim(), request: req,
+  });
   return ok({ success: true });
 });
