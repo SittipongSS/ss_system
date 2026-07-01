@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSuperuser } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
-import { categoryOf } from '@/lib/master/productTypes';
+import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { recordAudit } from '@/lib/audit';
@@ -129,13 +129,16 @@ export async function PATCH(request, { params }) {
   }
 
   // Re-derive categoryCode from fgCode when fgCode changed and it wasn't given.
-  if (body.fgCode !== undefined && body.categoryCode === undefined) {
-    updated.categoryCode = categoryOf(updated.fgCode) || null;
+  // Also backfills legacy rows saved before categoryCode existed (migration 0006).
+  if (body.categoryCode === undefined && (body.fgCode !== undefined || !updated.categoryCode)) {
+    updated.categoryCode = categoryOf(updated.fgCode) || updated.categoryCode || null;
   }
 
-  // Taxability is intrinsic to the FG code (auto rule). LG override now lives
-  // on the registration, not the master product.
-  const isExciseTaxable = !!(updated.fgCode && updated.fgCode.includes('01-002'));
+  // Taxability is intrinsic to the category (auto rule), not re-parsed from
+  // fgCode — that caused the category and taxability flag to disagree when
+  // they drifted out of sync. LG override now lives on the registration, not
+  // the master product.
+  const isExciseTaxable = isExciseCategory(updated.categoryCode);
   updated.isExciseTaxable = isExciseTaxable;
   updated.retailPriceExVat = isExciseTaxable ? updated.retailPriceIncVat / 1.07 : 0;
   updated.exciseTax = isExciseTaxable ? updated.retailPriceExVat * 0.08 : 0;

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtMoney } from "@/lib/format";
+import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 
 // LG approval for an excise registration: approval number + taxability override.
 // PATCH contract unchanged from the old ApproveProductModal.
@@ -16,7 +17,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration }) {
   }, [open, registration?.id]);
 
   if (!registration) return null;
-  const autoTaxable = !!(registration.fgCode && registration.fgCode.includes("01-002"));
+  const autoTaxable = isExciseCategory(categoryOf(registration.fgCode));
   const taxPerUnit = (registration.exciseTax || 0) + (registration.localTax || 0);
 
   const submit = async (e) => {

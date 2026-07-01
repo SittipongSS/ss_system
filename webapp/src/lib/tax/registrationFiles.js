@@ -31,7 +31,9 @@ const uniqueName = (used, base) => {
   return name;
 };
 
-export async function buildRegistrationFilesZip({ team, customerId, from, to, ids } = {}) {
+// docTypes: จำกัดว่าจะรวมเอกสารประเภทไหนบ้าง (undefined/null = รวมทุกประเภท ตามเดิม).
+// 'address_map' เป็นคีย์พิเศษหมายถึงแผนที่บริษัทของลูกค้าเจ้าของทะเบียน.
+export async function buildRegistrationFilesZip({ team, customerId, from, to, ids, docTypes } = {}) {
   const supabase = getSupabaseAdmin();
   let q = supabase.from('excise_registrations').select('*');
   if (team) q = q.eq('team', team);
@@ -40,15 +42,18 @@ export async function buildRegistrationFilesZip({ team, customerId, from, to, id
   if (error) throw error;
   const idSet = ids && ids.length ? new Set(ids) : null;
   const regs = (data || []).filter((r) => inRange(r.createdAt, from, to) && (!idSet || idSet.has(r.id)));
+  const typeSet = docTypes && docTypes.length ? new Set(docTypes) : null;
 
   const zip = new JSZip();
   let fileCount = 0;
   for (const r of regs) {
     const folder = zip.folder(sanitize(`${r.fgCode || '-'} ${r.productName || ''} - ${r.customerName || ''}`));
-    const regDocs = await listAttachments('registration', r.id);
-    const mapDocs = r.customerId
+    let regDocs = await listAttachments('registration', r.id);
+    if (typeSet) regDocs = regDocs.filter((a) => typeSet.has(a.docType));
+    let mapDocs = r.customerId
       ? (await listAttachments('customer', r.customerId)).filter((a) => a.docType === 'address_map')
       : [];
+    if (typeSet && !typeSet.has('address_map')) mapDocs = [];
     const items = [
       ...regDocs.map((a) => ({ a, prefix: '' })),
       ...mapDocs.map((a) => ({ a, prefix: 'แผนที่บริษัท - ' })),

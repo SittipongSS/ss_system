@@ -15,6 +15,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
+import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -103,9 +104,8 @@ export default function ProductRegistry() {
 
   const getCategoryInfo = (fgCode) => {
     if (!fgCode) return null;
-    const m = fgCode.match(/(\d{2})-(\d{3})/);
-    if (!m) return { found: false, code: null };
-    const code = `${m[1]}-${m[2]}`;
+    const code = categoryOf(fgCode);
+    if (!code) return { found: false, code: null };
     const typeInfo = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
     return { found: !!typeInfo, code, typeInfo };
   };
@@ -158,7 +158,7 @@ export default function ProductRegistry() {
     e.preventDefault();
     // brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
     if (!formData.brandName?.trim()) { alert("กรุณาระบุชื่อแบรนด์"); return; }
-    if (!formData.fgCode.includes("01-002")) {
+    if (!isExciseCategory(categoryOf(formData.fgCode))) {
       if (
         !confirm(
           "⚠️ แจ้งเตือน:\nรหัสสินค้า (FG) ไม่ได้อยู่ในหมวด 01-002 (น้ำหอมฉีดผิวกาย)\n\nระบบจะตีความว่าสินค้านี้ 'ไม่ต้องเสียภาษีสรรพสามิต'\nต้องการบันทึกต่อหรือไม่?",
