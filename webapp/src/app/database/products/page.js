@@ -107,6 +107,17 @@ export default function ProductRegistry() {
     return { found: !!typeInfo, code, typeInfo };
   };
 
+  // Main category (เช่น ODM) + sub-category name for the list — prefers the
+  // stored categoryCode (set on save), falls back to deriving it from fgCode
+  // for legacy rows saved before that column existed.
+  const categoryLabelOf = (p) => {
+    const code = p.categoryCode || getCategoryInfo(p.fgCode)?.code;
+    if (!code) return null;
+    const info = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
+    if (!info) return null;
+    return { main: info.mainCategoryName, sub: info.nameTh || info.nameEn || code };
+  };
+
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
     fetchProducts();
@@ -208,6 +219,7 @@ export default function ProductRegistry() {
   // description and the FG code, so it sorts by code to match the "(FG Code)" header.
   const sort = useSortableTable(filteredProducts, {
     product: (p) => p.fgCode || p.productDescription || "",
+    category: (p) => { const c = categoryLabelOf(p); return c ? `${c.main} ${c.sub}` : ""; },
     brand: (p) => p.brandName || "",
     volume: (p) => p.volume ?? null,
     retail: (p) => p.retailPriceIncVat ?? null,
@@ -298,12 +310,14 @@ export default function ProductRegistry() {
             const status = approvalStatusOf(p);
             const showActions = status === "pending" && canApproveRow(p);
             const inactive = p.isActive === false;
+            const cat = categoryLabelOf(p);
             return (
               <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescription}</div>
                     <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode}</div>
+                    {cat && <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{cat.main} · {cat.sub}</div>}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <ApprovalBadge status={status} />
@@ -342,6 +356,7 @@ export default function ProductRegistry() {
               <thead>
                 <tr>
                   <SortTh label="รายละเอียดสินค้า (FG Code)" sortKey="product" sort={sort} />
+                  <SortTh label="หมวดหมู่" sortKey="category" sort={sort} />
                   <SortTh label="แบรนด์" sortKey="brand" sort={sort} />
                   <SortTh label="ปริมาตร" sortKey="volume" sort={sort} className="num" />
                   <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
@@ -353,11 +368,20 @@ export default function ProductRegistry() {
                 {pageRows.map((p) => {
                   const isExempt = p.isExciseTaxable === false;
                   const taxRate = isExempt ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
+                  const cat = categoryLabelOf(p);
                   return (
                     <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: 0.55 } : undefined}>
                       <td>
                         <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
                         <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
+                      </td>
+                      <td>
+                        {cat ? (
+                          <div className="text-xs leading-tight">
+                            <div className="text-[var(--text-3)]">{cat.main}</div>
+                            <div className="text-[var(--text-2)]">{cat.sub}</div>
+                          </div>
+                        ) : <span className="text-[var(--text-3)]">-</span>}
                       </td>
                       <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
