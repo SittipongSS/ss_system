@@ -156,7 +156,8 @@ export default function ProductRegistry() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
+    // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
+    if (!formData.customerId) { alert("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
     if (!formData.brandName?.trim()) { alert("กรุณาระบุชื่อแบรนด์"); return; }
     if (!isExciseCategory(categoryOf(formData.fgCode))) {
       if (
@@ -488,10 +489,17 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
-                <Select name="customerId" value={formData.customerId} onChange={handleChange} required fullWidth>
-                  <option value="" disabled>— เลือกลูกค้า —</option>
-                  {customerList.map((c) => <option key={c.id} value={c.id}>{c.arCode ? `${c.arCode} — ${c.name}` : c.name}</option>)}
-                </Select>
+                <SearchableSelect
+                  value={formData.customerId}
+                  onChange={(v) => handleChange({ target: { name: "customerId", value: v } })}
+                  placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+                  emptyText="ไม่พบลูกค้า"
+                  options={customerList.map((c) => ({
+                    value: c.id,
+                    label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
+                    search: `${c.arCode || ""} ${c.name}`,
+                  }))}
+                />
                 <span className="text-xs text-[var(--text-3)] mt-1">FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก</span>
               </div>
               <div className="form-group">
