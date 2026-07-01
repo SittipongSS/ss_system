@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSuperuser } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { categoryOf } from '@/lib/master/productTypes';
 import { referencedBlock } from '@/lib/deletion';
@@ -84,6 +84,12 @@ export async function PATCH(request, { params }) {
       request,
     });
     return Response.json(decided);
+  }
+
+  // เปลี่ยนสถานะพัก/เปิดใช้ (isActive) สงวนสิทธิ์เฉพาะ admin / ae_supervisor —
+  // SA (senior_ae/ac/ae) แก้สเปค/ราคาได้ปกติแต่ห้ามพักใช้สินค้าเอง (ต้องขอผู้บริหาร).
+  if (body.isActive !== undefined && !isSuperuser(user?.role)) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
   // Duplicate FG Code check (if changing)

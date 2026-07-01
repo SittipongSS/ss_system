@@ -332,14 +332,22 @@ export default function ProductRegistry() {
                   <span className="text-[var(--text-2)] truncate">{p.brandName || "-"}</span>
                   <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</span>
                 </div>
+                {canSeeCost && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--text-3)]">ราคาโรงงาน</span>
+                    <span className="font-mono text-[var(--text-2)]">{formatMoney(p.costPrice)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[var(--text-3)]">ราคาขายปลีก</span>
-                  <span className="font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</span>
+                  <div className="text-right">
+                    <div className="font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</div>
+                    {!isExempt && taxPerUnit(p) > 0 && (
+                      <div className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {formatMoney(taxPerUnit(p))}</div>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
-                  <span className="text-[11px] text-[var(--text-3)]">
-                    ภาษี/ชิ้น: {isExempt ? <span className="status-pill success text-[10px]">ยกเว้น</span> : <span className="font-mono">{formatMoney(taxPerUnit(p))}</span>}
-                  </span>
+                <div className="flex items-center justify-end pt-2 border-t border-[var(--border)]">
                   {showActions ? (
                     <div onClick={(e) => e.stopPropagation()}>
                       <ApprovalActions onDecide={(s) => decide(p.id, s)} />
