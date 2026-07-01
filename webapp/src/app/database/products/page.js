@@ -107,6 +107,13 @@ export default function ProductRegistry() {
     return { found: !!typeInfo, code, typeInfo };
   };
 
+  // หมวดสินค้า — ตรวจจากรหัส FG เหมือนกล่องแนะนำในฟอร์ม แต่ใช้แสดงในตาราง/การ์ด
+  const categoryLabel = (p) => {
+    const cat = getCategoryInfo(p.fgCode);
+    if (!cat?.code) return null;
+    return cat.found ? (cat.typeInfo.nameTh || cat.typeInfo.nameEn) : cat.code;
+  };
+
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
     fetchProducts();
@@ -209,6 +216,7 @@ export default function ProductRegistry() {
   const sort = useSortableTable(filteredProducts, {
     product: (p) => p.fgCode || p.productDescription || "",
     brand: (p) => p.brandName || "",
+    category: (p) => categoryLabel(p) || "",
     volume: (p) => p.volume ?? null,
     retail: (p) => p.retailPriceIncVat ?? null,
     tax: (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0)),
@@ -343,6 +351,7 @@ export default function ProductRegistry() {
                 <tr>
                   <SortTh label="รายละเอียดสินค้า (FG Code)" sortKey="product" sort={sort} />
                   <SortTh label="แบรนด์" sortKey="brand" sort={sort} />
+                  <SortTh label="หมวดสินค้า" sortKey="category" sort={sort} />
                   <SortTh label="ปริมาตร" sortKey="volume" sort={sort} className="num" />
                   <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
                   <SortTh label="ภาษี/ชิ้น" sortKey="tax" sort={sort} className="num" />
@@ -360,6 +369,7 @@ export default function ProductRegistry() {
                         <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
                       </td>
                       <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
+                      <td className="text-[var(--text-2)]">{categoryLabel(p) || "-"}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
                       <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
                       <td className="num mono text-[var(--text-2)]">
