@@ -58,6 +58,11 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     return m;
   }, [products]);
 
+  // Brand + size shown alongside the name so lookalike SKUs (same product,
+  // different pack size / brand line) are easy to tell apart while picking.
+  const productMeta = (p) =>
+    [p?.brandName, p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : null].filter(Boolean).join(" · ");
+
   // Reset everything when the modal is (re)opened.
   useEffect(() => {
     if (!open) return;
@@ -76,7 +81,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     if (!code) return;
     if (rows.some((r) => r.fgCode.toLowerCase() === code.toLowerCase())) { setPick(""); return; }
     const hit = productIndex.get(code.toLowerCase());
-    setRows((prev) => [...prev, { fgCode: hit?.fgCode || code, productName: hit?.name || null, known: !!hit, qty: {} }]);
+    setRows((prev) => [...prev, { fgCode: hit?.fgCode || code, productName: hit?.name || null, productMeta: hit ? productMeta(hit) : "", known: !!hit, qty: {} }]);
     setPick("");
   };
 
@@ -84,7 +89,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     const existing = new Set(rows.map((r) => r.fgCode.toLowerCase()));
     const add = products
       .filter((p) => !existing.has(String(p.fgCode).toLowerCase()))
-      .map((p) => ({ fgCode: p.fgCode, productName: p.name, known: true, qty: {} }));
+      .map((p) => ({ fgCode: p.fgCode, productName: p.name, productMeta: productMeta(p), known: true, qty: {} }));
     setRows((prev) => [...prev, ...add]);
   };
 
@@ -105,7 +110,10 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
       const fileMonths = json.months || [];
       setMonthsOverride(fileMonths);
       if (fileMonths.length) { setStartMonth(fileMonths[0]); setEndMonth(fileMonths[fileMonths.length - 1]); }
-      setRows((json.rows || []).map((r) => ({ fgCode: r.fgCode, productName: r.productName, known: r.known, qty: { ...r.qtyByMonth } })));
+      setRows((json.rows || []).map((r) => {
+        const hit = productIndex.get(String(r.fgCode || "").trim().toLowerCase());
+        return { fgCode: r.fgCode, productName: r.productName, productMeta: hit ? productMeta(hit) : "", known: r.known, qty: { ...r.qtyByMonth } };
+      }));
       setUnknown(json.unknownFgCodes || []);
     } catch (e) {
       setError(e.message);
@@ -185,12 +193,20 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
                 <SearchableSelect
                   size="sm"
                   allowFreeText
-                  options={products.map((p) => ({
-                    value: p.fgCode,
-                    label: `${p.fgCode} — ${p.name || ""}`,
-                    search: `${p.fgCode || ""} ${p.name || ""}`,
-                    render: <span><strong>{p.fgCode}</strong> — {p.name || ""}</span>,
-                  }))}
+                  options={products.map((p) => {
+                    const meta = productMeta(p);
+                    return {
+                      value: p.fgCode,
+                      label: `${p.fgCode} — ${p.name || ""}${meta ? ` (${meta})` : ""}`,
+                      search: `${p.fgCode || ""} ${p.name || ""} ${p.brandName || ""}`,
+                      render: (
+                        <span>
+                          <strong>{p.fgCode}</strong> — {p.name || ""}
+                          {meta && <span style={{ color: "var(--text-3)" }}> ({meta})</span>}
+                        </span>
+                      ),
+                    };
+                  })}
                   value={pick}
                   onChange={setPick}
                   placeholder="ค้นหารหัส / ชื่อสินค้า แล้วกดเพิ่ม"
@@ -237,7 +253,10 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
                     <td className="font-mono" style={{ fontWeight: 600 }}>
                       {r.fgCode}{!r.known && <span title="ไม่รู้จัก" style={{ color: "var(--amber)", marginLeft: 4 }}>⚠</span>}
                     </td>
-                    <td style={{ color: r.known ? "inherit" : "var(--amber)" }}>{r.productName || "— ไม่รู้จัก —"}</td>
+                    <td style={{ color: r.known ? "inherit" : "var(--amber)" }}>
+                      {r.productName || "— ไม่รู้จัก —"}
+                      {r.productMeta && <span style={{ color: "var(--text-3)", fontSize: 12 }}> ({r.productMeta})</span>}
+                    </td>
                     {months.map((m) => (
                       <td key={m} style={{ padding: "2px" }}>
                         <input
