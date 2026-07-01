@@ -1,4 +1,4 @@
-import { editScope, inScope } from '@/lib/permissions';
+import { pmEditScope, inScope } from '@/lib/permissions';
 import { reindexByOrder } from '@/lib/pm/reorder';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 
@@ -16,7 +16,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const { data: project } = await supabase.from('projects').select('*').eq('id', body.projectId).maybeSingle();
   if (!project) return notFound('ไม่พบโปรเจกต์');
   // จัดลำดับ = แก้โครงแผน → ต้องมีสิทธิ์ full edit (team-scoped) เหมือนการเพิ่ม/ลบขั้น
-  if (!inScope(editScope(user?.role), user, project)) return forbidden();
+  if (!inScope(pmEditScope(user?.role), user, project)) return forbidden();
 
   const { data: tasks } = await supabase
     .from('project_tasks').select('id, stepOrder').eq('projectId', body.projectId);

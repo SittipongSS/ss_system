@@ -1,4 +1,4 @@
-import { viewScope, editScope, inScope, can } from '@/lib/permissions';
+import { viewScope, pmEditScope, inScope, can } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 
@@ -42,7 +42,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const project = await loadProject(supabase, id);
   if (!project) return notFound('ไม่พบโปรเจกต์');
   // ถ่าย snapshot = การกระทำระดับเอกสาร → ใช้สิทธิ์แก้โปรเจกต์ (team-scope) เหมือน PATCH
-  if (!inScope(editScope(user?.role), user, project)) {
+  if (!inScope(pmEditScope(user?.role), user, project)) {
     return forbidden();
   }
 

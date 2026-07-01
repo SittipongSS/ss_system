@@ -1,4 +1,4 @@
-import { viewScope, editScope, inScope, canDeleteRecord, can } from '@/lib/permissions';
+import { viewScope, pmEditScope, inScope, canDeleteRecord, can } from '@/lib/permissions';
 import { mergeTemplateTasks, recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -49,7 +49,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   
   // Tell the client whether THIS user may edit THIS record (cap + row scope),
   // so the UI gates edit controls by ownership — not just the pm:edit cap.
-  const canEdit = inScope(editScope(user?.role), user, project);
+  const canEdit = inScope(pmEditScope(user?.role), user, project);
   // me: ใช้ฝั่ง client gate ปุ่มจัดการ "งานเพิ่มเติม" (owner/assignee/lead) + กรอง
   // ผู้รับมอบใน dropdown ตามทีมโปรเจกต์.
   const me = user ? { id: user.id, name: user.name, role: user.role, team: user.team ?? null } : null;
@@ -87,7 +87,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const project = await loadProject(supabase, idOrCode);
   if (!project) return notFound('ไม่พบโปรเจกต์');
-  if (!inScope(editScope(user?.role), user, project)) {
+  if (!inScope(pmEditScope(user?.role), user, project)) {
     return forbidden();
   }
   // From here on use the resolved internal id for all DB keys/FK subqueries.
