@@ -1,79 +1,68 @@
 "use client";
 import Link from "next/link";
-import { LineChart, FileText, ClipboardCheck, Boxes, ArrowRight, LayoutDashboard, Flag } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { LayoutDashboard, LineChart, FileText, Flag, ChevronRight } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import KpiCard from "@/components/excise/KpiCard";
+import ActionQueue from "@/components/ui/ActionQueue";
+import { useApiList } from "@/lib/excise/useApiList";
+import { poRollupStatus } from "@/lib/sahamit/po";
+import { FLAG_KIND_LABEL } from "@/lib/sahamit/flags";
 
-// SAHAMIT (Planning & Sales) landing. The four cards mirror the module's flow:
-// Forecast → PO → Reconcile → Material. Each sub-page is built out in its own
-// phase; for now they link to placeholders. Whole module scopes to one customer
-// (สหมิตรโปรดักส์ AR-109) and is restricted to the Key Account team (guarded in
-// layout.js + every /api/sahamit handler).
-const MODULES = [
-  {
-    href: "/sahamit/forecast",
-    icon: LineChart,
-    title: "Forecast",
-    desc: "รับ FC รายเดือนเป็นรอบ ตรวจการเพิ่ม/ลด/เลื่อน/หาย และเฝ้าระวังยอด Peak",
-  },
-  {
-    href: "/sahamit/po",
-    icon: FileText,
-    title: "Purchase Orders",
-    desc: "ติดตาม PO ลูกค้า วันเอกสาร/รับ/กำหนดส่ง/คาดการณ์/ส่งจริง และการเลื่อนวัน",
-  },
-  {
-    href: "/sahamit/reconcile",
-    icon: ClipboardCheck,
-    title: "กระทบยอด (Reconciliation)",
-    desc: "กริดสถานะ FC / PO / FC vs PO รายสินค้า × เดือน ดูช่องที่ขาด/เกิน/รอ",
-  },
-  {
-    href: "/sahamit/review",
-    icon: Flag,
-    title: "ตรวจการเปลี่ยน FC",
-    desc: "คิวตรวจ FC ที่ลด/หาย — เลื่อนจริงหรือแอบตัด เคลียร์ + เก็บหลักฐาน",
-  },
-  {
-    href: "/sahamit/material",
-    icon: Boxes,
-    title: "วัสดุ / Lead time",
-    desc: "ติดตาม PM (สต็อกตาม FC) และ RM (สั่งตาม PO) พร้อมวันพร้อมผลิต 60/90 วันทำการ",
-  },
-];
+const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 
-export default function SahamitHomePage() {
+// SAHAMIT command center — ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109), เฉพาะทีม Key Account.
+// สรุป FC / PO และเน้นคิว "ตรวจการเปลี่ยน FC" (flag ที่ยัง open) ให้เคลียร์.
+export default function SahamitOverview() {
+  const router = useRouter();
+  const { data: rounds, loading: l1 } = useApiList("/api/sahamit/forecast/rounds");
+  const { data: pos, loading: l2 } = useApiList("/api/sahamit/po");
+  const { data: flags, loading: l3 } = useApiList("/api/sahamit/flags");
+
+  const latestRound = rounds.reduce((m, r) => Math.max(m, r.roundNo || 0), 0);
+  const activePos = pos.filter((p) => poRollupStatus(p) !== "cancelled");
+  const followUp = pos.filter((p) => ["open", "partial"].includes(poRollupStatus(p)));
+  const openFlags = flags.filter((f) => f.status === "open");
+
+  const goReview = () => router.push("/sahamit/review");
+
+  const queue = openFlags.map((f) => ({
+    id: `f-${f.id}`, tone: "danger", badge: FLAG_KIND_LABEL[f.kind] || f.kind,
+    title: `${f.fgCode || "-"} · ${f.month || ""}`.trim(),
+    subtitle: `${nf(f.prevQty)} → ${nf(f.newQty)} (ลด ${nf(f.drop)}) · FC รอบ #${f.roundNo}`,
+    cta: "ตรวจ", onClick: goReview,
+  }));
+
   return (
     <Workspace
       icon={<LayoutDashboard size={22} />}
-      title="Overview"
+      title="ภาพรวม"
       subtitle="งานสหมิตร · ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109) — เฉพาะทีม Key Account"
+      loading={l1 || l2 || l3}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
-        {MODULES.map((m) => {
-          const Icon = m.icon;
-          return (
-            <Link
-              key={m.href}
-              href={m.href}
-              className="glass-panel hover-card"
-              style={{
-                textAlign: "left", padding: "22px", textDecoration: "none", color: "inherit",
-                display: "flex", flexDirection: "column", gap: "14px", background: "var(--panel)",
-              }}
-            >
-              <div className="brand-logo" style={{ width: "44px", height: "44px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}>
-                <Icon size={22} strokeWidth={1.5} />
-              </div>
-              <div>
-                <h2 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "6px" }}>{m.title}</h2>
-                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>{m.desc}</p>
-              </div>
-              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))", marginLeft: "auto" }}>
-                เปิด <ArrowRight size={15} strokeWidth={2} />
-              </div>
-            </Link>
-          );
-        })}
+      <div className="flex flex-col gap-6">
+        {/* KPI */}
+        <section>
+          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
+            <LineChart size={16} /> สถานะรวม
+            <Link href="/sahamit/reconcile" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>กระทบยอด <ChevronRight size={14} /></Link>
+          </div>
+          <div className="kpi-grid">
+            <KpiCard label="FC รอบล่าสุด" value={latestRound ? `#${latestRound}` : "-"} tone="info" icon={LineChart} onClick={() => router.push("/sahamit/forecast")} />
+            <KpiCard label="PO ทั้งหมด" value={activePos.length} tone="accent" icon={FileText} onClick={() => router.push("/sahamit/po")} />
+            <KpiCard label="PO ที่ต้องติดตาม" value={followUp.length} tone="warning" onClick={() => router.push("/sahamit/po")} />
+            <KpiCard label="รอตรวจการเปลี่ยน FC" value={openFlags.length} tone="danger" icon={Flag} onClick={goReview} />
+          </div>
+        </section>
+
+        {/* คิวงาน — flag ที่ยังต้องตรวจ */}
+        <section>
+          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
+            ต้องตรวจตอนนี้ {queue.length > 0 && <span className="ui-badge danger">{queue.length}</span>}
+            <Link href="/sahamit/review" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
+          </div>
+          <ActionQueue items={queue} empty="ไม่มี FC ที่ต้องตรวจตอนนี้ 🎉" />
+        </section>
       </div>
     </Workspace>
   );

@@ -18,46 +18,12 @@ import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { fmtDateNumeric } from "@/lib/format";
+import { getComputedStatus, statusDotColor, statusPillClass, getProgress, getCurrentStep, getOverdueCount } from "@/lib/pm/derived";
 
 const typeStyle = (type) => type === "NPD"
   ? { background: "var(--accent-soft)", color: "var(--accent)" }
   : { background: "var(--blue-soft)", color: "var(--blue)" };
 
-const getComputedStatus = (p) => {
-  if (p.status === "Dropped") return "Dropped";
-  if (p.status === "On Hold") return "On Hold";
-  
-  const total = p.tasks?.length || 0;
-  const done = p.tasks?.filter((t) => t.status === "Completed").length || 0;
-  if (total > 0 && done === total) return "Completed";
-  
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const overdueCount = (p.tasks || []).filter((t) => t.status !== "Completed" && t.finishDate && new Date(t.finishDate) < today).length;
-  if (overdueCount > 0) return "Delayed";
-  
-  if (total === 0 || p.tasks.every(t => t.status === "Pending")) return "New";
-  
-  return "On Track";
-};
-
-const statusDotColor = (s) => s === "Completed" ? "var(--green)" : s === "On Track" ? "var(--green)" : s === "Delayed" ? "var(--red)" : s === "On Hold" ? "var(--amber)" : s === "Dropped" ? "var(--red)" : "var(--accent)";
-const statusPillClass = (s) => s === "Completed" ? "success" : s === "On Track" ? "success" : s === "Delayed" ? "danger" : s === "On Hold" ? "warning" : s === "Dropped" ? "danger" : "primary";
-
-// ===== progress helpers (mirror ss-cj) =====
-const getProgress = (p) => {
-  const total = p.tasks?.length || 0;
-  const done = p.tasks?.filter((t) => t.status === "Completed").length || 0;
-  return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
-};
-const getCurrentStep = (p) => {
-  if (getComputedStatus(p) === "Completed") return "เสร็จสิ้นทุกขั้นตอน";
-  const active = p.tasks?.find((t) => t.status === "In Progress");
-  return active ? active.name : (p.tasks?.find((t) => t.status === "Pending")?.name || "-");
-};
-const getOverdueCount = (p) => {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  return (p.tasks || []).filter((t) => t.status !== "Completed" && t.finishDate && new Date(t.finishDate) < today).length;
-};
 // คีย์หมวดสินค้าใช้กรอง: ยึด subCategory ก่อน ไม่มีก็ใช้ mainCategory (ค่าว่าง = ไม่ระบุ)
 const catKeyOf = (p) => p.productSubCategory || p.productMainCategory || "";
 

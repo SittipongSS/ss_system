@@ -26,6 +26,7 @@ import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
+import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/derived";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 
 const STATUS_TH = {
@@ -33,26 +34,6 @@ const STATUS_TH = {
   "On Hold": "ระงับ (On Hold)", Dropped: "ยกเลิก (Dropped)",
 };
 
-const getComputedStatus = (p) => {
-  if (!p) return "";
-  if (p.status === "Dropped") return "Dropped";
-  if (p.status === "On Hold") return "On Hold";
-  
-  const total = p.tasks?.length || 0;
-  const done = p.tasks?.filter((t) => t.status === "Completed").length || 0;
-  if (total > 0 && done === total) return "Completed";
-  
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const overdueCount = (p.tasks || []).filter((t) => t.status !== "Completed" && t.finishDate && new Date(t.finishDate) < today).length;
-  if (overdueCount > 0) return "Delayed";
-  
-  if (total === 0 || p.tasks.every(t => t.status === "Pending")) return "New";
-  
-  return "On Track";
-};
-
-const statusDotColor = (s) => s === "Completed" ? "var(--green)" : s === "On Track" ? "var(--green)" : s === "Delayed" ? "var(--red)" : s === "On Hold" ? "var(--amber)" : s === "Dropped" ? "var(--red)" : "var(--accent)";
-const statusPillClass = (s) => s === "Completed" ? "success" : s === "On Track" ? "success" : s === "Delayed" ? "danger" : s === "On Hold" ? "warning" : s === "Dropped" ? "danger" : "primary";
 
 const ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
 

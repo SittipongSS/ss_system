@@ -56,15 +56,10 @@ export default function HomeHubPage() {
   if (!role) return null;
 
   const enterTax = () => router.push(landingFor(role));
-  const enterPM = () => router.push("/pm/projects");
+  const enterPM = () => router.push("/pm");
   const enterSAHAMIT = () => router.push("/sahamit");
-  // No /database hub page — land directly on the first registry the role can open.
-  const enterDB = () =>
-    router.push(
-      can(role, "products:view") ? "/database/products"
-        : can(role, "customers:view") ? "/database/customers"
-          : "/database/holidays"
-    );
+  // Land on each system's command-center "ภาพรวม" (consistent with tax/pm/sahamit).
+  const enterDB = () => router.push("/database");
   // All three systems are open to their normal roles. Tax is visible to anyone
   // who can see the tax workflow (SA/LG via history:view). Keep in sync with
   // OPEN_PAGES/lockedOut in proxy.js + the tax nav gate in AppLayout.

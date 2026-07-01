@@ -87,7 +87,7 @@ export default function AppLayout({ children }) {
       setMustChangePwd(!!user.app_metadata?.must_change_password);
       setUserName(dName);
       setUserInitials(inits);
-      try { localStorage.setItem('userName', full); } catch {}
+      try { localStorage.setItem('userName', dName); } catch {}
       prefetchData();
     });
   }, [router]);
@@ -144,25 +144,20 @@ export default function AppLayout({ children }) {
   // returns to the hub to switch.
   const allGroups = [
     {
-      label: 'ข้อมูลหลัก',
+      label: 'ฐานข้อมูล',
       system: 'master',
       items: [
+        { href: '/database', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'customers:view', match: (p) => p === '/database' },
         { href: '/database/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
         { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
         { href: '/database/holidays', name: 'วันหยุด (ปฏิทินทำการ)', icon: CalendarDays, cap: 'master:manage', match: (p) => p.startsWith('/database/holidays') },
       ],
     },
     {
-      label: 'ภาพรวม',
-      system: 'tax',
-      items: [
-        { href: '/tax', name: 'Overview', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
-      ],
-    },
-    {
       label: 'งานภาษีสรรพสามิต',
       system: 'tax',
       items: [
+        { href: '/tax', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
         { href: '/tax/registrations', name: 'การขึ้นทะเบียน', icon: ClipboardCheck, cap: 'history:view', match: (p) => p.startsWith('/tax/registrations') },
         { href: '/tax/filings', name: 'การยื่นชำระภาษี', icon: ReceiptText, cap: 'history:view', match: (p) => p.startsWith('/tax/filings') },
         { href: '/tax/reports', name: 'รายงาน', icon: BarChart3, cap: 'history:view', match: (p) => p === '/tax/reports' },
@@ -172,6 +167,7 @@ export default function AppLayout({ children }) {
       label: 'จัดการโครงการ',
       system: 'pm',
       items: [
+        { href: '/pm', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'pm:view', match: (p) => p === '/pm' },
         { href: '/pm/projects', name: 'โครงการ', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/pm/projects' || p.startsWith('/pm/projects/') },
         { href: '/pm/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/pm/tasks' },
       ],
@@ -180,7 +176,7 @@ export default function AppLayout({ children }) {
       label: 'งานสหมิตร',
       system: 'sahamit',
       items: [
-        { href: '/sahamit', name: 'Overview', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
+        { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
         { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
         { href: '/sahamit/po', name: 'Purchase Orders', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
         { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },
