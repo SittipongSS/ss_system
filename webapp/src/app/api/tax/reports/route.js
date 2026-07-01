@@ -28,6 +28,8 @@ export async function GET(request) {
     status: searchParams.get('status') || null,
     // Optional explicit row selection (download only the chosen rows/files).
     ids: (searchParams.get('ids') || '').split(',').map((s) => s.trim()).filter(Boolean),
+    // Optional doc-type filter for the ZIP export (which attachment types to include).
+    docTypes: (searchParams.get('docTypes') || '').split(',').map((s) => s.trim()).filter(Boolean),
     // Factory cost/profit columns are confidential — LG + admin only.
     margin: can(user?.role, 'products:margin'),
   };

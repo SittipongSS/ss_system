@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { BarChart3, FileSpreadsheet, Printer, FolderArchive, CircleDot, Building2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { BarChart3, FileSpreadsheet, Printer, FolderArchive, CircleDot, Building2, ChevronDown, Check } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -8,6 +8,92 @@ import DataList from "@/components/excise/DataList";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { openReportPrintWindow } from "@/lib/tax/reportPrint";
 import { REGISTRATION_FILTERS, FILING_FILTERS } from "@/lib/excise/workflow";
+import { ATTACHMENT_TYPES } from "@/lib/master/attachmentTypes";
+
+// ประเภทเอกสารที่เลือกรวมใน ZIP ได้ — เอกสารทะเบียน + แผนที่บริษัท (เอกสารลูกค้า
+// ที่ผูกกับทะเบียน ไม่ใช่การ์ดของทะเบียนเอง จึงเติมเป็นตัวเลือกพิเศษท้ายลิสต์).
+const ZIP_DOC_TYPES = [
+  ...ATTACHMENT_TYPES.registration,
+  { key: "address_map", label: "แผนที่บริษัท (เอกสารลูกค้า)" },
+];
+const ZIP_ALL_KEYS = ZIP_DOC_TYPES.map((t) => t.key);
+
+// ปุ่มดาวน์โหลด ZIP + popover เลือกประเภทเอกสารที่จะรวมมาด้วย
+function ZipDownloadButton({ disabled, selectedTypes, onChange, onDownload }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const toggle = (key) => {
+    onChange((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        className="btn btn-secondary flex items-center gap-1.5"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        title="เลือกประเภทเอกสารที่จะดาวน์โหลด แบ่งโฟลเดอร์ตามรายการสินค้า"
+      >
+        <FolderArchive size={16} /> ไฟล์แนบ (ZIP)
+        <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+
+      {open && (
+        <div className="glass-panel" style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 40, width: "min(90vw, 300px)", padding: "10px" }}>
+          <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-2)", marginBottom: "6px" }}>เลือกประเภทเอกสารที่จะรวมใน ZIP</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "260px", overflowY: "auto" }}>
+            {ZIP_DOC_TYPES.map((t) => {
+              const checked = selectedTypes.has(t.key);
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => toggle(t.key)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "8px", width: "100%",
+                    padding: "7px 8px", borderRadius: "8px", cursor: "pointer", textAlign: "left",
+                    fontSize: "13px", border: "none",
+                    background: checked ? "var(--accent-soft)" : "transparent",
+                    color: checked ? "var(--accent)" : "var(--text)",
+                  }}
+                >
+                  <span style={{ width: "16px", height: "16px", borderRadius: "4px", border: checked ? "none" : "1.5px solid var(--border)", background: checked ? "var(--accent)" : "transparent", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {checked && <Check size={12} color="#fff" strokeWidth={3} />}
+                  </span>
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex justify-end gap-2 mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+            <button type="button" className="btn ghost sm" onClick={() => onChange(new Set(ZIP_ALL_KEYS))}>เลือกทั้งหมด</button>
+            <button
+              type="button"
+              className="btn btn-primary sm"
+              disabled={selectedTypes.size === 0}
+              onClick={() => { onDownload(); setOpen(false); }}
+            >
+              ดาวน์โหลด
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const REPORT_TABS = [
   { key: "registration", label: "การขึ้นทะเบียน" },
@@ -24,6 +110,7 @@ export default function ReportsPage() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(() => new Set()); // row ids to download
+  const [zipDocTypes, setZipDocTypes] = useState(() => new Set(ZIP_ALL_KEYS)); // doc types to include in ZIP
 
   const statusFilters = type === "registration" ? REGISTRATION_FILTERS : FILING_FILTERS;
 
@@ -102,8 +189,11 @@ export default function ReportsPage() {
     a.click();
   };
   const downloadZip = () => {
+    const docTypesParam = zipDocTypes.size < ZIP_ALL_KEYS.length
+      ? `&docTypes=${encodeURIComponent([...zipDocTypes].join(","))}`
+      : "";
     const a = document.createElement("a");
-    a.href = `/api/tax/reports?${query}&format=zip${idsParam}`;
+    a.href = `/api/tax/reports?${query}&format=zip${idsParam}${docTypesParam}`;
     a.click();
   };
   const print = async () => {
@@ -130,9 +220,12 @@ export default function ReportsPage() {
       headerRight={
         <>
           {type === "registration" && (
-            <button className="btn btn-secondary flex items-center gap-1.5" onClick={downloadZip} disabled={!report?.rows?.length} title="ดาวน์โหลดไฟล์แนบทั้งหมด แบ่งโฟลเดอร์ตามรายการสินค้า">
-              <FolderArchive size={16} /> ไฟล์แนบ (ZIP)
-            </button>
+            <ZipDownloadButton
+              disabled={!report?.rows?.length}
+              selectedTypes={zipDocTypes}
+              onChange={setZipDocTypes}
+              onDownload={downloadZip}
+            />
           )}
           <button className="btn btn-secondary flex items-center gap-1.5" onClick={print} disabled={!report?.rows?.length}>
             <Printer size={16} /> พิมพ์ / PDF
