@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Package, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
+import { canApproveMasterData, isSuperuser, canSeeProductCost } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -27,6 +27,9 @@ export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
   const role = useRole();
   const myTeam = useTeam();
+  // ราคาโรงงานเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin (products:margin),
+  // ตรงกับที่ฝั่ง server ทำ redactProductMargin (ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์).
+  const canSeeCost = canSeeProductCost(role);
   // Senior AE approves only own team; supervisor/admin any team. (Products GET is
   // already team-scoped, but the explicit check keeps the rule consistent.)
   const canApproveRow = (rec) =>
@@ -222,6 +225,7 @@ export default function ProductRegistry() {
     category: (p) => { const c = categoryLabelOf(p); return c ? `${c.main} ${c.sub}` : ""; },
     brand: (p) => p.brandName || "",
     volume: (p) => p.volume ?? null,
+    cost: (p) => p.costPrice ?? null,
     retail: (p) => p.retailPriceIncVat ?? null,
     tax: (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0)),
   }, { key: "product", dir: "asc" });
@@ -359,8 +363,8 @@ export default function ProductRegistry() {
                   <SortTh label="หมวดหมู่" sortKey="category" sort={sort} />
                   <SortTh label="แบรนด์" sortKey="brand" sort={sort} />
                   <SortTh label="ปริมาตร" sortKey="volume" sort={sort} className="num" />
+                  {canSeeCost && <SortTh label="ราคาโรงงาน" sortKey="cost" sort={sort} className="num" />}
                   <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
-                  <SortTh label="ภาษี/ชิ้น" sortKey="tax" sort={sort} className="num" />
                   <th>สถานะ</th>
                 </tr>
               </thead>
@@ -385,9 +389,12 @@ export default function ProductRegistry() {
                       </td>
                       <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
-                      <td className="num mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
+                      {canSeeCost && <td className="num mono text-[var(--text-2)]">{formatMoney(p.costPrice)}</td>}
                       <td className="num mono text-[var(--text-2)]">
-                        {isExempt ? <span className="status-pill success text-[10px]">ยกเว้น</span> : formatMoney(taxRate)}
+                        {formatMoney(p.retailPriceIncVat)}
+                        {!isExempt && taxRate > 0 && (
+                          <div className="text-[11px] text-[var(--text-3)] font-normal mt-0.5">ภาษี/ชิ้น: {formatMoney(taxRate)}</div>
+                        )}
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
                         {approvalStatusOf(p) === "pending" && canApproveRow(p) ? (
