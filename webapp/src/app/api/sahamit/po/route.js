@@ -3,7 +3,8 @@ import {
   getSahamitContext, sahamitError,
   loadSahamitProducts, indexByFgCode, resolveFgCode,
 } from '@/lib/sahamit/server';
-import { deliveryMonthOf } from '@/lib/sahamit/po';
+import { deliveryMonthOf, cleanDestination } from '@/lib/sahamit/po';
+import { insertPoLinesTolerant } from '@/lib/sahamit/poServer';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -55,6 +56,7 @@ export async function POST(request) {
       qty: Number(l.qty),
       dueDate: l.dueDate || null,
       expectedDate: l.expectedDate || null,
+      destination: cleanDestination(l.destination),
     }))
     .filter((l) => l.fgCode && Number.isFinite(l.qty) && l.qty > 0);
   if (!cleaned.length) return Response.json({ error: 'ต้องมีรายการสินค้าอย่างน้อย 1 รายการ (รหัส + จำนวน > 0)' }, { status: 400 });
@@ -102,6 +104,7 @@ export async function POST(request) {
       qty: l.qty,
       dueDate: l.dueDate,
       expectedDate: l.expectedDate,
+      destination: l.destination,
       expectedHistory: [],
       actualDeliveredDate: null,
       deliveryMonth: deliveryMonthOf(l),
@@ -111,7 +114,7 @@ export async function POST(request) {
     };
   });
 
-  const { error: lErr } = await supabase.from('sahamit_po_lines').insert(lineRows);
+  const lErr = await insertPoLinesTolerant(supabase, lineRows);
   if (lErr) {
     await supabase.from('sahamit_pos').delete().eq('id', poId);
     return Response.json({ error: lErr.message }, { status: 500 });

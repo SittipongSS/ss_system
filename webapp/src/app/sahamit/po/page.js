@@ -1,22 +1,18 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { FileText, Plus, AlertCircle, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { fmtDate } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import PoFormModal from "@/components/sahamit/PoFormModal";
-import PoDetailModal from "@/components/sahamit/PoDetailModal";
 
 export default function PoPage() {
+  const router = useRouter();
   const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
   const { data: products } = useApiList("/api/sahamit/products");
   const [showForm, setShowForm] = useState(false);
-  const [selectedId, setSelectedId] = useState(null);
-
-  // Derive the selected PO from the live list so the detail modal stays fresh
-  // after each line mutation reloads the list.
-  const selected = useMemo(() => pos.find((p) => p.id === selectedId) || null, [pos, selectedId]);
 
   return (
     <Workspace
@@ -67,7 +63,7 @@ export default function PoPage() {
             </thead>
             <tbody>
               {pos.map((po) => (
-                <tr key={po.id} className="clickable-row" style={{ cursor: "pointer" }} onClick={() => setSelectedId(po.id)}>
+                <tr key={po.id} className="clickable-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/sahamit/po/${po.id}`)}>
                   <td className="font-mono" style={{ fontWeight: 600 }}>{po.poNumber}</td>
                   <td>{po.docDate ? fmtDate(po.docDate) : "—"}</td>
                   <td>{po.receivedDate ? fmtDate(po.receivedDate) : "—"}</td>
@@ -86,12 +82,6 @@ export default function PoPage() {
         onClose={() => setShowForm(false)}
         onCreated={() => reload()}
         products={products}
-      />
-      <PoDetailModal
-        open={!!selected}
-        po={selected}
-        onClose={() => setSelectedId(null)}
-        onChanged={() => reload()}
       />
     </Workspace>
   );
