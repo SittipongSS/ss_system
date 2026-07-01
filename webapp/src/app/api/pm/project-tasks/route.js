@@ -1,4 +1,4 @@
-import { viewScope, pmEditScope, inScope } from '@/lib/permissions';
+import { viewScope, editScope, inScope } from '@/lib/permissions';
 import { recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -54,7 +54,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // (own team / own record). Mirrors the checks on the other PM write routes.
   const { data: project } = await supabase.from('projects').select('*').eq('id', body.projectId).maybeSingle();
   if (!project) return notFound('ไม่พบโปรเจกต์');
-  if (!inScope(pmEditScope(user?.role), user, project)) {
+  if (!inScope(editScope(user?.role), user, project)) {
     return forbidden();
   }
 

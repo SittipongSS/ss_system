@@ -228,19 +228,6 @@ export function editScope(role) {
   return 'none'; // legal (acts via approval only) + viewer
 }
 
-// PM (project management) edit scope. PM is a collaborative TEAM tool, so it is
-// MORE permissive than the generic editScope: every sales role — AE included —
-// edits its whole team's projects/plans/timeline. This is deliberately separate
-// from editScope so an AE stays 'own'-scoped on the commercial resources
-// (customers / products / orders) while gaining 'team' authority over PM only.
-// Row-level team scope is still enforced via inScope().
-export function pmEditScope(role) {
-  if (isSuperuser(role)) return 'all';
-  if (role === 'senior_ae' || role === 'ac' || role === 'ae') return 'team';
-  return 'none'; // legal / viewer; staff edits assigned tasks via the
-                 // 'workflow' tier in pmTaskEditTier, not the project plan.
-}
-
 // Delete is stricter than edit:
 //   customers / products — superuser only (org rule)
 //   orders / projects    — superuser (all teams) + senior_ae (own team)
@@ -298,9 +285,7 @@ export function canDeleteRecord(user, resource, record) {
 //   mine = tasks assigned to me · team = my team's projects · all = every team
 export function pmTaskScopes(role) {
   if (isSuperuser(role)) return ['mine', 'team', 'all'];
-  // AE manages the whole team's projects in PM (see pmEditScope) → may also
-  // browse the team's tasks in My Work, alongside Senior AE / AC.
-  if (role === 'senior_ae' || role === 'ac' || role === 'ae') return ['mine', 'team'];
+  if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
   return ['mine'];
 }
 
@@ -310,7 +295,7 @@ export function pmTaskScopes(role) {
 //   'workflow' — assignee, or same-department staff: status/progress/notes only
 //   'none'     — may not edit
 export function pmTaskEditTier(user, task, project) {
-  if (inScope(pmEditScope(user?.role), user, project || {})) return 'full';
+  if (inScope(editScope(user?.role), user, project || {})) return 'full';
   const ownsTask = !!user?.id && task?.assigneeId === user.id;
   const sameDept = user?.role === 'staff' && !!user?.department
     && normalizeDepartment(user.department) === task?.role;

@@ -1,4 +1,4 @@
-import { pmEditScope, inScope } from '@/lib/permissions';
+import { editScope, inScope } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, conflict, badRequest } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
@@ -22,7 +22,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const project = await loadProject(supabase, id);
   if (!project) return notFound('ไม่พบโปรเจกต์');
-  if (!inScope(pmEditScope(user?.role), user, project)) {
+  if (!inScope(editScope(user?.role), user, project)) {
     return forbidden();
   }
 
@@ -47,7 +47,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   const project = await loadProject(supabase, id);
   if (!project) return notFound('ไม่พบโปรเจกต์');
-  if (!inScope(pmEditScope(user?.role), user, project)) {
+  if (!inScope(editScope(user?.role), user, project)) {
     return forbidden();
   }
 
