@@ -5,6 +5,7 @@
 //
 // Server-only: uses the service-role admin client.
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+export { categoryOf, isExciseCategory } from '@/lib/master/categoryOf';
 
 export async function listProductTypes() {
   const supabase = getSupabaseAdmin();
@@ -17,11 +18,3 @@ export async function listProductTypes() {
   return data || [];
 }
 
-// Extract the 'mainCategoryCode-typeCode' pair from an FG code.
-// FG codes look like 'FG-123-01-002-5555' → category '01-002'.
-// Returns null if the pattern isn't present.
-export function categoryOf(fgCode) {
-  if (!fgCode || typeof fgCode !== 'string') return null;
-  const m = fgCode.match(/(\d{2})-(\d{3})/);
-  return m ? `${m[1]}-${m[2]}` : null;
-}

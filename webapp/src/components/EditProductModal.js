@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
+import { categoryOf } from "@/lib/master/categoryOf";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
 // (Excise APPROVAL still lives on the registration.)
@@ -36,9 +37,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
 
   const getCategoryInfo = (fgCode) => {
     if (!fgCode) return null;
-    const m = fgCode.match(/(\d{2})-(\d{3})/);
-    if (!m) return { found: false, code: null };
-    const code = `${m[1]}-${m[2]}`;
+    const code = categoryOf(fgCode);
+    if (!code) return { found: false, code: null };
     const typeInfo = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
     return { found: !!typeInfo, code, typeInfo };
   };

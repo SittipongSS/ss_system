@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScope, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
-import { categoryOf } from '@/lib/master/productTypes';
+import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -57,8 +57,15 @@ export async function POST(request) {
   const costPriceNum = costPrice == null || costPrice === '' ? 0 : Number(costPrice);
   const retailPriceIncVatNum =
     retailPriceIncVat == null || retailPriceIncVat === '' ? 0 : Number(retailPriceIncVat);
-  // Taxability is auto-derived from the FG code, but LG may override it.
-  const autoTaxable = !!(fgCode && fgCode.includes('01-002'));
+  // Every FG belongs to a customer (chosen at creation). customerName is a
+  // snapshot taken server-side so the catalog row is stable even if the
+  // customer is later renamed. Category is derived from the FG code.
+  const categoryCode = body.categoryCode || categoryOf(fgCode);
+
+  // Taxability is auto-derived from the category (not re-parsed from fgCode —
+  // that caused the category and taxability flag to disagree when they drifted
+  // out of sync), but LG may override it.
+  const autoTaxable = isExciseCategory(categoryCode);
   const taxableOverride =
     typeof body.taxableOverride === 'boolean' ? body.taxableOverride : null;
   const isExciseTaxable = taxableOverride === null ? autoTaxable : taxableOverride;
@@ -72,11 +79,6 @@ export async function POST(request) {
   const shippingCost = 1;
   const materialCost = factoryPrice * 0.65;
   const factoryProfit = factoryPrice - materialCost - laborCost - shippingCost;
-
-  // Every FG belongs to a customer (chosen at creation). customerName is a
-  // snapshot taken server-side so the catalog row is stable even if the
-  // customer is later renamed. Category is derived from the FG code.
-  const categoryCode = body.categoryCode || categoryOf(fgCode);
 
   // AE / AC creations land as 'pending'; Senior AE+ auto-approve their own.
   const nowIso = new Date().toISOString();
