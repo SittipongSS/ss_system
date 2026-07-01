@@ -230,10 +230,17 @@ export default function ProjectFormModal({
           
           <div className="form-group col-span-2">
             <label>บริษัทลูกค้า</label>
-            <Select fullWidth name="customerId" value={form.customerId} onChange={change}>
-              <option value="">— เลือกลูกค้า —</option>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
+            <SearchableSelect
+              value={form.customerId}
+              onChange={(v) => setForm((f) => ({ ...f, customerId: v }))}
+              placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+              emptyText="ไม่พบลูกค้า"
+              options={customers.map((c) => ({
+                value: c.id,
+                label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
+                search: `${c.arCode || ""} ${c.name}`,
+              }))}
+            />
           </div>
           <div className="form-group col-span-2">
             <label>อีเมลลูกค้า</label>

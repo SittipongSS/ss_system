@@ -60,6 +60,9 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
 
   const submit = async (e) => {
     e.preventDefault();
+    // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
+    if (!form.customerId) { setError("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
+    if (!form.brandName?.trim()) { setError("กรุณาระบุชื่อแบรนด์"); return; }
     setSubmitting(true);
     setError(null);
     const body = {
@@ -150,12 +153,17 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
             </div>
             <div className="form-group">
               <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
-              <Select value={form.customerId ?? ""} onChange={(e) => handleCustomerChange(e.target.value)} required fullWidth>
-                <option value="" disabled>— เลือกลูกค้า —</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.arCode ? `${c.arCode} — ${c.name}` : c.name}</option>
-                ))}
-              </Select>
+              <SearchableSelect
+                value={form.customerId ?? ""}
+                onChange={handleCustomerChange}
+                placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+                emptyText="ไม่พบลูกค้า"
+                options={customers.map((c) => ({
+                  value: c.id,
+                  label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
+                  search: `${c.arCode || ""} ${c.name}`,
+                }))}
+              />
               <span className="text-xs text-[var(--text-3)] mt-1">เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ</span>
             </div>
             <div className="form-group">
