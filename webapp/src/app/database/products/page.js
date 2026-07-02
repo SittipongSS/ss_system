@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Package, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import { canApproveMasterData, isSuperuser, canSeeProductCost } from "@/lib/permissions";
+import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -26,11 +26,13 @@ const MANAGE_KEY = "/api/master/products?manage=1";
 // registration flow (/excise).
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
+  const canMargin = useCan("products:margin");
   const role = useRole();
   const myTeam = useTeam();
-  // ราคาโรงงานเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin (products:margin),
-  // ตรงกับที่ฝั่ง server ทำ redactProductMargin (ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์).
-  const canSeeCost = canSeeProductCost(role);
+  // ราคาโรงงานเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin หรือผู้ที่ได้รับสิทธิ์
+  // products:margin (เช่น SA ที่ทำรายงานผู้บริหาร). ใช้ useCan เพื่อให้ตรงกับ redactProductMargin
+  // ฝั่ง server (รวม per-user grant) — ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์.
+  const canSeeCost = canEdit || canMargin;
   // Senior AE approves only own team; supervisor/admin any team. (Products GET is
   // already team-scoped, but the explicit check keeps the rule consistent.)
   const canApproveRow = (rec) =>

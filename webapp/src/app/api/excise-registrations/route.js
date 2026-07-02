@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScope } from '@/lib/permissions';
+import { viewScopeUser } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export async function GET() {
     .from('excise_registrations')
     .select('*')
     .order('createdAt', { ascending: false });
-  if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+  if (viewScopeUser(user) === 'team') query = query.eq('team', user?.team ?? null);
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
