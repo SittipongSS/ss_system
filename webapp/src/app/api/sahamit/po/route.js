@@ -3,7 +3,7 @@ import {
   getSahamitContext, sahamitError,
   loadSahamitProducts, indexByFgCode, resolveFgCode,
 } from '@/lib/sahamit/server';
-import { deliveryMonthOf, cleanDestination } from '@/lib/sahamit/po';
+import { monthOf, cleanDestination } from '@/lib/sahamit/po';
 import { insertPoLinesTolerant } from '@/lib/sahamit/poServer';
 import { recordAudit } from '@/lib/audit';
 
@@ -37,8 +37,11 @@ export async function GET() {
 }
 
 // POST /api/sahamit/po — create a PO with its lines.
-// Body: { poNumber, docDate?, receivedDate?, quoteRef?, note?,
-//         lines:[{fgCode, qty, dueDate?, expectedDate?}] }
+// กำหนดรับ (dueDate) + สถานที่ส่ง (destination) เป็นระดับหัว PO (ทั้ง PO ใช้ค่าเดียว)
+// — เขียนลงหัว และ denormalize ลงทุกบรรทัดด้วย เพื่อให้กระทบยอด/วัสดุที่อ่านราย
+// บรรทัดทำงานเหมือนเดิม. บรรทัดรับแค่ { fgCode, qty }.
+// Body: { poNumber, docDate?, receivedDate?, dueDate?, destination?, quoteRef?, note?,
+//         lines:[{fgCode, qty}] }
 export async function POST(request) {
   const ctx = await getSahamitContext();
   if (!ctx.ok) return sahamitError(ctx);
@@ -50,14 +53,12 @@ export async function POST(request) {
   const poNumber = String(body?.poNumber || '').trim();
   if (!poNumber) return Response.json({ error: 'ต้องระบุเลขที่ PO' }, { status: 400 });
 
+  const dueDate = body?.dueDate || null;             // หัว PO
+  const destination = cleanDestination(body?.destination); // หัว PO
+  const deliveryMonth = monthOf(dueDate);
+
   const cleaned = (Array.isArray(body?.lines) ? body.lines : [])
-    .map((l) => ({
-      fgCode: String(l.fgCode || '').trim(),
-      qty: Number(l.qty),
-      dueDate: l.dueDate || null,
-      expectedDate: l.expectedDate || null,
-      destination: cleanDestination(l.destination),
-    }))
+    .map((l) => ({ fgCode: String(l.fgCode || '').trim(), qty: Number(l.qty) }))
     .filter((l) => l.fgCode && Number.isFinite(l.qty) && l.qty > 0);
   if (!cleaned.length) return Response.json({ error: 'ต้องมีรายการสินค้าอย่างน้อย 1 รายการ (รหัส + จำนวน > 0)' }, { status: 400 });
 
@@ -80,6 +81,8 @@ export async function POST(request) {
     customerId,
     docDate: body?.docDate || null,
     receivedDate: body?.receivedDate || null,
+    dueDate,
+    destination,
     quoteRef: body?.quoteRef || null,
     note: body?.note || null,
     createdById: user?.id ?? null,
@@ -102,12 +105,12 @@ export async function POST(request) {
       fgCode: l.fgCode,
       productName: r.productName,
       qty: l.qty,
-      dueDate: l.dueDate,
-      expectedDate: l.expectedDate,
-      destination: l.destination,
+      dueDate,              // denormalize จากหัว PO
+      expectedDate: null,
+      destination,          // denormalize จากหัว PO
       expectedHistory: [],
       actualDeliveredDate: null,
-      deliveryMonth: deliveryMonthOf(l),
+      deliveryMonth,        // = เดือนของ dueDate หัว PO
       splitFromPoLineId: null,
       status: 'open',
       createdAt: nowIso,

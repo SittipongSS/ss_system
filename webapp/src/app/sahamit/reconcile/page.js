@@ -178,15 +178,6 @@ export default function ReconcilePage() {
       back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <FilterPopover
-            count={filterCount}
-            onClear={() => { setBrands([]); setVolumes([]); setCategories([]); }}
-            groups={[
-              { key: "brand", label: "แบรนด์", options: filterOptions.brands, selected: brands, onChange: setBrands },
-              { key: "volume", label: "ปริมาตร", options: filterOptions.volumes, selected: volumes, onChange: setVolumes },
-              { key: "category", label: "หมวดสินค้า", options: filterOptions.categories, selected: categories, onChange: setCategories },
-            ]}
-          />
           <div className="segmented">
             {VIEWS.map((v) => (
               <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
@@ -198,6 +189,21 @@ export default function ReconcilePage() {
         </div>
       }
     >
+      {/* ตัวกรองอยู่ในเนื้อหา (ไม่ใช่ในหัว) เพราะหัว premium-header เป็น overflow:hidden จะตัด dropdown */}
+      {!loading && !error && matrix.rows.length > 0 && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <FilterPopover
+            count={filterCount}
+            onClear={() => { setBrands([]); setVolumes([]); setCategories([]); }}
+            groups={[
+              { key: "brand", label: "แบรนด์", options: filterOptions.brands, selected: brands, onChange: setBrands },
+              { key: "volume", label: "ปริมาตร", options: filterOptions.volumes, selected: volumes, onChange: setVolumes },
+              { key: "category", label: "หมวดสินค้า", options: filterOptions.categories, selected: categories, onChange: setCategories },
+            ]}
+          />
+          {filterCount > 0 && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
+        </div>
+      )}
       {error && (
         <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
           <AlertCircle size={18} /> {error}
