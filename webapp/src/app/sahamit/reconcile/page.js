@@ -52,11 +52,6 @@ export default function ReconcilePage() {
   // hint colored by urgency (days to month-end). Pure — logic lives in predict.js.
   const today = useMemo(() => toLocalISODate(new Date()), []);
   const predictions = useMemo(() => predictShifts(rounds, pos, { today, locks }), [rounds, pos, today, locks]);
-  const lockByKey = useMemo(() => {
-    const m = new Map();
-    for (const lk of locks) m.set(`${lk.fgCode}||${lk.month}`, lk);
-    return m;
-  }, [locks]);
 
   // มูลค่ารายเดือน (ราคา×จำนวน) สำหรับแถวสรุปท้ายกริด. ราคา = ราคาโรงงาน (costPrice)
   // จาก products (map เป็น price) เหมือนหน้ารายงาน — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
@@ -88,8 +83,6 @@ export default function ReconcilePage() {
     if (!cell || cell.status === "none") {
       return <td key={m} style={{ textAlign: "center", color: "var(--text-3)", padding: "6px 5px" }}>·</td>;
     }
-    const locked = lockByKey.has(`${fg}||${m}`);
-    const autoLocked = cell.status === "match"; // FC=PO → ตกลงแล้วโดยปริยาย (ล็อกอัตโนมัติ)
     const hasCov = cell.coverageIn > 0 || cell.coverageOut > 0;
     const pred = predictions.get(`${fg}||${m}`);
     const predBadge = pred ? (
@@ -100,15 +93,9 @@ export default function ReconcilePage() {
         <span style={{ fontSize: 10 }}>✨</span> →{shortMonth(pred.toMonth)}
       </div>
     ) : null;
-    const badges = (
-      <>
-        {(locked || autoLocked) && (
-          <span style={{ position: "absolute", top: 3, right: 4, fontSize: 9, lineHeight: 1, opacity: autoLocked && !locked ? 0.65 : 1 }}
-            title={locked ? `ล็อก (ตกลงแล้ว) ที่ ${nf(cell.fcQty)}` : `FC=PO ตกลงแล้ว (ล็อกอัตโนมัติ)`}>🔒</span>
-        )}
-        {hasCov && <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชยข้ามเดือน (รับ ${nf(cell.coverageIn)} / ส่ง ${nf(cell.coverageOut)})`}>⇄</span>}
-      </>
-    );
+    const badges = hasCov ? (
+      <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชยข้ามเดือน (รับ ${nf(cell.coverageIn)} / ส่ง ${nf(cell.coverageOut)})`}>⇄</span>
+    ) : null;
     // Single-value views (FC / PO): neutral box, one number.
     if (view === "fc" || view === "po") {
       const val = view === "fc" ? cell.fcQty : cell.poQty;
@@ -128,7 +115,7 @@ export default function ReconcilePage() {
         <div
           className={`grid-cell-box ${cell.status}`}
           onClick={() => openCell(fg, m)}
-          title={locked ? `${cell.label} · ล็อกแล้ว` : cell.label}
+          title={cell.label}
           style={{ position: "relative" }}
         >
           {badges}
