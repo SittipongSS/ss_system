@@ -12,7 +12,7 @@ import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
 import { buildReconMatrix, cellDetail } from './reconcileClient.js';
 import { leadDaysFor, recommendedReadyDate, materialView, LEAD_IN_FC, LEAD_OUT_FC } from './material.js';
 import { detectFlags } from './flags.js';
-import { avgShiftForSku, predictShifts, suggestCoverage, addMonths, urgencyOf } from './predict.js';
+import { avgShiftForSku, predictShifts, suggestCoverage, suggestCoverageTargets, addMonths, urgencyOf } from './predict.js';
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -364,4 +364,22 @@ test('suggestCoverage finds surplus-PO months nearest-first', () => {
   const s = suggestCoverage(matrix, 'A', '2026-09');
   assert.deepEqual(s.map((x) => x.sourceMonth), ['2026-08', '2026-12']); // Aug (1mo) before Dec (3mo)
   assert.equal(s[0].canCover, 200);
+});
+
+test('suggestCoverageTargets pushes a surplus month to the short months (nearest first, capped)', () => {
+  // Aug carries +200 surplus PO; Sep short 200, Dec short 100 → push 200 to Sep first.
+  const rounds = [{
+    roundNo: 1, coverMonths: ['2026-08', '2026-09', '2026-12'],
+    lines: [
+      { fgCode: 'A', month: '2026-08', qty: 100 },
+      { fgCode: 'A', month: '2026-09', qty: 200 },
+      { fgCode: 'A', month: '2026-12', qty: 100 },
+    ],
+  }];
+  const pos = [{ poNumber: 'PO1', lines: [{ fgCode: 'A', deliveryMonth: '2026-08', qty: 300 }] }]; // Aug +200
+  const matrix = buildReconMatrix(rounds, pos);
+  const t = suggestCoverageTargets(matrix, 'A', '2026-08');
+  assert.deepEqual(t, [{ targetMonth: '2026-09', use: 200 }]); // all 200 goes to nearest short month
+  // A month with no surplus yields nothing.
+  assert.deepEqual(suggestCoverageTargets(matrix, 'A', '2026-09'), []);
 });
