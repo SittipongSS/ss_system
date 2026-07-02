@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { BarChart3, AlertCircle, TriangleAlert } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
@@ -21,40 +21,6 @@ const STATUS_META = {
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 const baht = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// Inline editable price for one SKU (scoped SAHAMIT price, not a master edit).
-function PriceCell({ product, onSaved }) {
-  const [val, setVal] = useState(product?.price ?? "");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { setVal(product?.price ?? ""); }, [product?.price]);
-
-  if (!product?.id) return <span style={{ color: "var(--amber)" }}>—</span>;
-
-  const save = async () => {
-    const num = val === "" ? null : Number(val);
-    if (num === (product.price ?? null)) return;
-    if (val !== "" && (!Number.isFinite(num) || num < 0)) { setVal(product.price ?? ""); return; }
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/sahamit/products/${product.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ price: num }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกราคาไม่สำเร็จ");
-      onSaved?.();
-    } catch (e) { alert(e.message); setVal(product.price ?? ""); }
-    setBusy(false);
-  };
-
-  return (
-    <input
-      type="number" min={0} className="premium-input" disabled={busy}
-      style={{ width: 100, height: 28, textAlign: "right" }}
-      value={val} onChange={(e) => setVal(e.target.value)} onBlur={save}
-      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-      placeholder="—"
-    />
-  );
-}
-
 function Kpi({ label, value, sub, color }) {
   return (
     <div className="glass-panel" style={{ padding: 16, flex: "1 1 180px", minWidth: 160 }}>
@@ -69,22 +35,17 @@ export default function ReportPage() {
   const { data: rounds, loading: l1, error: e1 } = useApiList("/api/sahamit/forecast/rounds");
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
   const { data: coverages } = useApiList("/api/sahamit/coverage");
-  const { data: products, reload: reloadProducts } = useApiList("/api/sahamit/products");
+  const { data: products } = useApiList("/api/sahamit/products");
 
   const loading = l1 || l2;
   const error = e1 || e2;
   const rep = useMemo(() => buildReport(rounds, pos, coverages, products), [rounds, pos, coverages, products]);
-  const productByFg = useMemo(() => {
-    const m = new Map();
-    for (const p of products || []) if (p.fgCode) m.set(String(p.fgCode).trim().toLowerCase(), p);
-    return m;
-  }, [products]);
 
   return (
     <Workspace
       icon={<BarChart3 size={22} />}
       title="รายงานมูลค่า FC / PO"
-      subtitle="มูลค่าตามแผนเทียบยอดสั่งจริง สถานะ และ PO ที่ยังแบ่งส่งได้ (ลูกค้า AR-109)"
+      subtitle="มูลค่าตามแผนเทียบยอดสั่งจริง สถานะ และ PO ที่ยังแบ่งส่งได้ · ราคา = ราคาขายปลีกรวม VAT จากข้อมูลสินค้า (AR-109)"
       back={{ href: "/sahamit", label: "งานสหมิตร" }}
     >
       {error && (
@@ -108,7 +69,7 @@ export default function ReportPage() {
           {rep.unpricedCount > 0 && (
             <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--amber)", display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
               <TriangleAlert size={16} style={{ color: "var(--amber)" }} />
-              มี {rep.unpricedCount} สินค้าที่ยังไม่มีราคา — มูลค่าจะต่ำกว่าจริง (ตั้งราคาได้ที่ข้อมูลสินค้า)
+              มี {rep.unpricedCount} สินค้าที่ยังไม่ได้ตั้งราคาขายปลีก — มูลค่าจะต่ำกว่าจริง (ตั้งราคาได้ที่ ข้อมูลสินค้า → ราคาขายปลีก)
             </div>
           )}
 
@@ -150,9 +111,7 @@ export default function ReportPage() {
                       <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>{s.productName || "— ไม่รู้จัก —"}</td>
                       <td style={{ textAlign: "right" }}>{nf(s.fcQty)}</td>
                       <td style={{ textAlign: "right" }}>{nf(s.poQty)}</td>
-                      <td style={{ textAlign: "right", padding: 4 }}>
-                        <PriceCell product={productByFg.get(String(s.fgCode).trim().toLowerCase())} onSaved={reloadProducts} />
-                      </td>
+                      <td style={{ textAlign: "right", color: s.price == null ? "var(--amber)" : "inherit" }}>{s.price == null ? "—" : baht(s.price)}</td>
                       <td style={{ textAlign: "right" }}>{baht(s.fcValue)}</td>
                       <td style={{ textAlign: "right", fontWeight: 600, color: C.teal }}>{baht(s.poValue)}</td>
                     </tr>

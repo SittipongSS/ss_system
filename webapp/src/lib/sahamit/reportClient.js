@@ -1,4 +1,6 @@
-// SAHAMIT — report derivations (pure). Value = qty × products.price (like ss-cj).
+// SAHAMIT — report derivations (pure). Value = qty × unit price, where the
+// price is supplied by the caller on each product (ss-team = ราคาขายปลีกรวม VAT
+// จาก products master, mapped to `price` in loadSahamitProducts — no re-entry).
 // Reuses the tested reconcile matrix for status/qty and po helpers for split.
 import { buildReconMatrix } from './reconcileClient';
 import { deliveryMonthOf } from './po';
