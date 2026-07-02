@@ -77,7 +77,8 @@ export async function loadSahamitProducts(supabase, customerId) {
       brandName: p.brandName ?? null,
       volume: p.volume ?? null,
       volumeUnit: p.volumeUnit ?? null,
-      price: p.price ?? null,
+      // Report value = qty × ราคาขายปลีกรวม VAT (มาจาก master; ไม่กรอกซ้ำ).
+      price: p.retailPriceIncVat ?? null,
     }));
 }
 
