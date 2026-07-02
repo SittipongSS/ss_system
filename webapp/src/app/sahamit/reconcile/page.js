@@ -96,14 +96,16 @@ export default function ReconcilePage() {
     const badges = hasCov ? (
       <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชยข้ามเดือน (รับ ${nf(cell.coverageIn)} / ส่ง ${nf(cell.coverageOut)})`}>⇄</span>
     ) : null;
-    // Single-value views (FC / PO): neutral box, one number.
+    // Single-value views (FC / PO): one number, but colored by reconcile status
+    // (เขียว=ครบ / แดง=รอ PO / เหลือง=ไม่ครบ ฯลฯ) เหมือนมุมมอง FC vs PO.
     if (view === "fc" || view === "po") {
       const val = view === "fc" ? cell.fcQty : cell.poQty;
       return (
         <td key={m} style={{ padding: "5px 5px" }}>
-          <div className="grid-cell-box" onClick={() => openCell(fg, m)} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
+          <div className={`grid-cell-box ${cell.status}`} onClick={() => openCell(fg, m)} title={cell.label} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
             {badges}
-            <span className="cell-val fc" style={{ fontSize: 13 }}>{val ? nf(val) : "·"}</span>
+            <span className="cell-val fc" style={{ fontSize: 14, fontWeight: 600 }}>{val ? nf(val) : "·"}</span>
+            <span className="cell-status-tag">{cell.label}</span>
             {view === "fc" && predBadge}
           </div>
         </td>
