@@ -9,6 +9,8 @@ import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL } from "@/lib/
 import { destinationLabel } from "@/components/sahamit/destinations";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const baht = (n) => "฿" + Math.round(Number(n) || 0).toLocaleString("th-TH");
+const VAT = 1.07;
 
 // บรรทัดสินค้าใน PO (มุมมองวัสดุ): จำนวน/เดือนส่ง/วันรับ PO/วันส่งแนะนำ/วันกำหนด/PM/RM/ส่งจริง
 // + แก้ PM/RM inline (เหมือนหน้าวัสดุ). `row` = แถวจาก /api/sahamit/material.
@@ -96,7 +98,15 @@ function PoLineRow({ row, onSaved }) {
 export default function PoPage() {
   const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
   const { data: material, reload: reloadMaterial } = useApiList("/api/sahamit/material");
+  const { data: products } = useApiList("/api/sahamit/products");
   const [openPo, setOpenPo] = useState({});
+
+  // ราคาโรงงาน (costPrice, ก่อน VAT) ต่อ fgCode — สำหรับยอดรวมมูลค่า PO
+  const priceByFg = useMemo(() => {
+    const m = new Map();
+    for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p.price == null ? null : Number(p.price));
+    return m;
+  }, [products]);
 
   // material lines grouped by PO number (คัดเฉพาะบรรทัด active แล้วจาก API)
   const matByPo = useMemo(() => {
@@ -157,6 +167,7 @@ export default function PoPage() {
                 <th>สถานที่ส่ง</th>
                 <th style={{ textAlign: "right" }}>รายการ</th>
                 <th style={{ textAlign: "right" }}>จำนวนรวม</th>
+                <th style={{ textAlign: "right" }}>มูลค่า PO</th>
                 <th>สถานะ</th>
                 <th></th>
               </tr>
@@ -166,7 +177,7 @@ export default function PoPage() {
                 const lines = matByPo.get(po.poNumber) || [];
                 const isOpen = !!openPo[po.id];
                 return (
-                  <PoGroup key={po.id} po={po} lines={lines} isOpen={isOpen} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} />
+                  <PoGroup key={po.id} po={po} lines={lines} priceByFg={priceByFg} isOpen={isOpen} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} />
                 );
               })}
             </tbody>
@@ -177,7 +188,15 @@ export default function PoPage() {
   );
 }
 
-function PoGroup({ po, lines, isOpen, onToggle, onSaved }) {
+function PoGroup({ po, lines, priceByFg, isOpen, onToggle, onSaved }) {
+  let unpriced = 0;
+  const exVat = (po.lines || []).reduce((s, l) => {
+    if (l.status === "cancelled") return s;
+    const price = priceByFg.get(String(l.fgCode).trim().toLowerCase()) ?? null;
+    if (price == null) { if (Number(l.qty) > 0) unpriced += 1; return s; }
+    return s + Number(l.qty || 0) * price;
+  }, 0);
+  const incVat = exVat * VAT;
   return (
     <>
       <tr className="clickable-row" style={{ cursor: "pointer" }} onClick={onToggle}>
@@ -189,6 +208,11 @@ function PoGroup({ po, lines, isOpen, onToggle, onSaved }) {
         <td>{destinationLabel(po.destination) || "—"}</td>
         <td style={{ textAlign: "right" }}>{poLineCount(po)}</td>
         <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(poTotalQty(po))}</td>
+        <td style={{ textAlign: "right" }}>
+          <div style={{ fontWeight: 600 }}>{baht(exVat)}</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)" }}>รวม VAT {baht(incVat)}</div>
+          {unpriced > 0 && <div style={{ fontSize: 10.5, color: "var(--amber)" }}>{unpriced} รายการไม่มีราคา</div>}
+        </td>
         <td><span className="status-pill">{PO_STATUS_LABEL[poRollupStatus(po)]}</span></td>
         <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
           <Link href={`/sahamit/po/${po.id}`} className="btn-icon" title="แก้ไข PO"><Pencil size={15} /></Link>
@@ -196,7 +220,7 @@ function PoGroup({ po, lines, isOpen, onToggle, onSaved }) {
       </tr>
       {isOpen && (
         <tr>
-          <td colSpan={10} style={{ background: "var(--panel-2)", padding: "8px 12px" }}>
+          <td colSpan={11} style={{ background: "var(--panel-2)", padding: "8px 12px" }}>
             {lines.length === 0 ? (
               <div style={{ color: "var(--text-3)", fontSize: 13, padding: 8 }}>ไม่มีรายการที่ต้องติดตาม (อาจถูกยกเลิกทั้งหมด)</div>
             ) : (
