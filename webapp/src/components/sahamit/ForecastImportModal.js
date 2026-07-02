@@ -275,7 +275,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
         {/* Grid */}
         {hasGrid ? (
           <div className="premium-table-wrapper" style={{ maxHeight: "44vh", overflow: "auto" }}>
-            <table className="premium-table">
+            <table className="premium-table sticky-col1">
               <thead>
                 <tr>
                   <th style={{ minWidth: 120 }}>รหัสสินค้า</th>

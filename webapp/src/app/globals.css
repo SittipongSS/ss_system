@@ -1055,7 +1055,11 @@ h1, h2, h3, h4, h5, h6 {
 /* Reconciliation Grid Matrix */
 .reconciliation-container {
   overflow: auto;
-  height: calc(100vh - 52px - 180px);
+  /* max-height (not fixed height) so the box shrinks to content on short grids
+     yet caps + scrolls internally on tall ones (keeps the sticky header useful).
+     dvh handles mobile browser chrome; headroom bumped for the ✨ prediction
+     legend line so the grid never overflows the viewport. */
+  max-height: calc(100dvh - 230px);
   min-height: 300px;
   scrollbar-width: thin;
   border-radius: var(--radius);
@@ -1916,6 +1920,25 @@ button.empty-state { width: 100%; font: inherit; }
 
 .premium-table th:last-child {
   border-top-right-radius: var(--radius-lg);
+}
+
+/* Opt-in: freeze the first column on wide grids (SAHAMIT forecast matrix /
+   material / import). Scoped via .sticky-col1 so ordinary tables are untouched.
+   Needs an opaque background to occlude cells scrolling underneath. */
+.premium-table.sticky-col1 th:first-child,
+.premium-table.sticky-col1 td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 4;                 /* above body cells, below the sticky header (z5) */
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+.premium-table.sticky-col1 th:first-child {
+  z-index: 6;                 /* header/first-col corner on top of everything */
+  background: var(--panel-2);
+}
+.premium-table.sticky-col1 tr:hover td:first-child {
+  background: var(--panel-2);
 }
 
 /* Tabs */

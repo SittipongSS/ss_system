@@ -12,6 +12,7 @@ import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
 import { buildReconMatrix, cellDetail } from './reconcileClient.js';
 import { leadDaysFor, recommendedReadyDate, materialView, LEAD_IN_FC, LEAD_OUT_FC } from './material.js';
 import { detectFlags } from './flags.js';
+import { avgShiftForSku, predictShifts, suggestCoverage, addMonths, urgencyOf } from './predict.js';
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -283,4 +284,76 @@ test('cellDetail lists contributing FC rounds and active PO lines', () => {
   const d = cellDetail(RC_ROUNDS, RC_POS, 'A', '2026-07');
   assert.deepEqual(d.fcs.map((f) => f.roundNo), [1, 2]); // both rounds had Jul
   assert.equal(d.poLines.length, 1);                      // cancelled excluded? no — detail shows all; but only 1 Jul PO exists
+});
+
+// ── predict.js (shift prediction & coverage suggestion) ─────────────────────
+
+test('addMonths / urgencyOf helpers', () => {
+  assert.equal(addMonths('2026-11', 2), '2027-01'); // wraps the year
+  assert.equal(addMonths('2026-03', 1), '2026-04');
+  assert.equal(urgencyOf(10), 'high');
+  assert.equal(urgencyOf(45), 'medium');
+  assert.equal(urgencyOf(90), 'low');
+});
+
+test('avgShiftForSku learns the shift distance from round history, defaults +1', () => {
+  // No history (one round) → default +1.
+  const one = [{ roundNo: 1, lines: [{ fgCode: 'A', month: '2026-01', qty: 100 }] }];
+  assert.equal(avgShiftForSku(one, 'A'), 1);
+
+  // Two rounds: Jan(100) → Mar(100) is a +2 shift (qty within 50%).
+  const two = [
+    { roundNo: 1, coverMonths: ['2026-01', '2026-02', '2026-03'], lines: [{ fgCode: 'A', month: '2026-01', qty: 100 }] },
+    { roundNo: 2, coverMonths: ['2026-01', '2026-02', '2026-03'], lines: [{ fgCode: 'A', month: '2026-03', qty: 100 }] },
+  ];
+  assert.equal(avgShiftForSku(two, 'A'), 2);
+});
+
+test('predictShifts flags pending (FC, no PO) cells with a target month + urgency', () => {
+  const rounds = [{
+    roundNo: 1, coverMonths: ['2026-08', '2026-09'],
+    lines: [
+      { fgCode: 'A', month: '2026-08', qty: 500, productName: 'Alpha' }, // no PO → pending
+      { fgCode: 'A', month: '2026-09', qty: 300 },                        // has PO → excluded
+    ],
+  }];
+  const pos = [{ poNumber: 'PO1', lines: [{ fgCode: 'A', deliveryMonth: '2026-09', qty: 300 }] }];
+
+  const preds = predictShifts(rounds, pos, { today: '2026-08-10' });
+  assert.ok(preds.has('A||2026-08'));
+  assert.ok(!preds.has('A||2026-09')); // PO covers it → not pending → no prediction
+
+  const p = preds.get('A||2026-08');
+  assert.equal(p.fromMonth, '2026-08');
+  assert.equal(p.toMonth, '2026-09');   // default +1 shift
+  assert.equal(p.fcQty, 500);
+  assert.equal(p.productName, 'Alpha');
+  assert.equal(p.urgency, 'high');      // ~21 days to month end
+});
+
+test('predictShifts skips locked cells and returns empty without a clock', () => {
+  const rounds = [{ roundNo: 1, coverMonths: ['2026-08'], lines: [{ fgCode: 'A', month: '2026-08', qty: 500 }] }];
+  const locked = predictShifts(rounds, [], { today: '2026-08-10', locks: [{ fgCode: 'A', month: '2026-08' }] });
+  assert.equal(locked.size, 0);
+  assert.equal(predictShifts(rounds, [], {}).size, 0); // no today → pure no-op
+});
+
+test('suggestCoverage finds surplus-PO months nearest-first', () => {
+  // A: Sep short on PO (pending), Aug & Dec carry surplus PO.
+  const rounds = [{
+    roundNo: 1, coverMonths: ['2026-08', '2026-09', '2026-12'],
+    lines: [
+      { fgCode: 'A', month: '2026-08', qty: 100 },
+      { fgCode: 'A', month: '2026-09', qty: 200 },
+      { fgCode: 'A', month: '2026-12', qty: 100 },
+    ],
+  }];
+  const pos = [{ poNumber: 'PO1', lines: [
+    { fgCode: 'A', deliveryMonth: '2026-08', qty: 300 }, // +200 surplus
+    { fgCode: 'A', deliveryMonth: '2026-12', qty: 250 }, // +150 surplus
+  ] }];
+  const matrix = buildReconMatrix(rounds, pos);
+  const s = suggestCoverage(matrix, 'A', '2026-09');
+  assert.deepEqual(s.map((x) => x.sourceMonth), ['2026-08', '2026-12']); // Aug (1mo) before Dec (3mo)
+  assert.equal(s[0].canCover, 200);
 });
