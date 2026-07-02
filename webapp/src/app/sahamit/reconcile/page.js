@@ -58,7 +58,7 @@ export default function ReconcilePage() {
     return m;
   }, [locks]);
 
-  // มูลค่ารายเดือน (ราคา×จำนวน) สำหรับแถวสรุปท้ายกริด. ราคา = retailPriceIncVat
+  // มูลค่ารายเดือน (ราคา×จำนวน) สำหรับแถวสรุปท้ายกริด. ราคา = ราคาโรงงาน (costPrice)
   // จาก products (map เป็น price) เหมือนหน้ารายงาน — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
   const valueSummary = useMemo(() => {
     const priceByFg = new Map();

@@ -77,8 +77,9 @@ export async function loadSahamitProducts(supabase, customerId) {
       brandName: p.brandName ?? null,
       volume: p.volume ?? null,
       volumeUnit: p.volumeUnit ?? null,
-      // Report value = qty × ราคาขายปลีกรวม VAT (มาจาก master; ไม่กรอกซ้ำ).
-      price: p.retailPriceIncVat ?? null,
+      // มูลค่า = qty × ราคาโรงงาน (factory price = costPrice ใน master; ดู products
+      // route: `const factoryPrice = costPrice`). ใช้ร่วมทั้งกระทบยอด + รายงานมูลค่า.
+      price: p.costPrice ?? null,
     }));
 }
 
