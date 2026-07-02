@@ -11,7 +11,8 @@
 - ✅ **S2** — CoveragePanel เสนอการ์ด "ดึงจากเดือนที่ PO เกิน → ยืนยัน" (ใช้ `suggestCoverage`, cap ที่ยอดขาด, คงกรอกมือ); ส่ง `matrix` จาก drill-down
 - ✅ **S3 (อ่านอย่างเดียว)** — drill-down overview โชว์กล่องคาดการณ์ ✨ + ธงที่เกี่ยวข้อง (kind/status/customerResponse) + ลิงก์ไป /review
 - ✅ **SL** — legend compact (S1) + คลาส scoped `.sticky-col1` ตรึงคอลัมน์แรกให้ Forecast Matrix / material / import-modal grid + `.reconciliation-container` เปลี่ยนเป็น `max-height: calc(100dvh - 230px)` (ทน legend สูงขึ้น)
-- ⏳ **S3 (เขียน) + S4** — ปุ่ม "บันทึกเป็นเลื่อน" จากช่องเดียว **ต้องเพิ่ม POST /api/sahamit/flags** (ยังไม่มี — ปัจจุบัน flag สร้างเฉพาะตอน import ผ่าน upsert unique key รวม roundNo) + ตัดสินใจ roundNo ของ flag ที่สร้างมือ; S4 acknowledge/snooze (migration 0058)
+- ✅ **S3 (เขียน)** — เพิ่ม `POST /api/sahamit/flags` (create-or-update บน key cell/round/kind, audit) + ปุ่มในกล่องคาดการณ์ "ตั้งธงให้ตรวจ (น่าจะเลื่อน → เดือนคาด)" → ตั้ง flag **status=open** (ไม่ auto-confirm; roundNo=รอบล่าสุด; ปุ่มปิดเมื่อมีธง shift แล้ว) — ยืนยันเลื่อน/ตัด + customerResponse ยังทำที่ /review
+- ⏳ **S4** — acknowledge/snooze ป้ายคาดการณ์ (ต้อง **migration 0058** สร้างตาราง ack — เปลี่ยน property "v1 ไม่ต้อง migration" → ต้องคุยก่อนทำ)
 
 ---
 

@@ -36,8 +36,9 @@ export default function ReconcileCellPage() {
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
   const { data: locks, reload: reloadLocks } = useApiList("/api/sahamit/locks");
   const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
-  const { data: flags } = useApiList("/api/sahamit/flags");
+  const { data: flags, reload: reloadFlags } = useApiList("/api/sahamit/flags");
   const [tab, setTab] = useState("overview");
+  const [flagBusy, setFlagBusy] = useState(false);
 
   const loading = l1 || l2;
   const error = e1 || e2;
@@ -58,6 +59,28 @@ export default function ReconcileCellPage() {
     () => (flags || []).filter((f) => f.fgCode === fgCode && f.month === month),
     [flags, fgCode, month],
   );
+  const latestRoundNo = useMemo(() => (rounds || []).reduce((m, r) => Math.max(m, r.roundNo || 0), 0), [rounds]);
+  const hasOpenShiftFlag = relatedFlags.some((f) => f.kind === "shift_suspect");
+
+  // ตั้งธง "น่าจะเลื่อน" เข้าคิวตรวจ (status=open) — ไม่ยืนยันเอง, ให้ไปเคลียร์
+  // พร้อมคำตอบลูกค้าที่ /review (หลักการ: ระบบเสนอ ไม่ตัดสินแทน).
+  const flagAsShift = async () => {
+    if (!prediction) return;
+    setFlagBusy(true);
+    try {
+      const res = await fetch("/api/sahamit/flags", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fgCode, month, roundNo: latestRoundNo, kind: "shift_suspect", status: "open",
+          prevQty: fcQty, newQty: 0, drop: fcQty, shiftToMonth: prediction.toMonth,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "ตั้งธงไม่สำเร็จ");
+      reloadFlags();
+    } catch (e) { alert(e.message); }
+    setFlagBusy(false);
+  };
 
   const color = cell ? (C[RECON_STATUS_COLOR[cell.status]] || C["text-3"]) : C["text-3"];
   const fcQty = cell?.fcQty || 0;
@@ -162,6 +185,12 @@ export default function ReconcileCellPage() {
                     ยังไม่มี PO ({prediction.pattern} · เหลือ {prediction.daysLeft} วันถึงสิ้นเดือน) — สอบถามลูกค้าว่าเลื่อนหรือตัด แล้วบันทึกในหน้า
                     <Link href="/sahamit/review" style={{ color: "var(--accent)", marginLeft: 4 }}>ตรวจการเปลี่ยน FC</Link>
                     หรือชดเชยข้ามเดือนในแท็บด้านบน
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <button className="btn sm" disabled={flagBusy || hasOpenShiftFlag} onClick={flagAsShift}>
+                      {hasOpenShiftFlag ? "ตั้งธงแล้ว ✓" : `ตั้งธงให้ตรวจ (น่าจะเลื่อน → ${prediction.toMonth})`}
+                    </button>
+                    <span style={{ fontSize: 12, color: "var(--text-3)" }}>ส่งเข้าคิว “ตรวจการเปลี่ยน FC” เพื่อยืนยันกับลูกค้าภายหลัง</span>
                   </div>
                 </div>
               )}
