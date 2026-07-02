@@ -8,8 +8,10 @@
 ## สถานะล่าสุด (2026-07-02)
 - ✅ **S0** — `lib/sahamit/predict.js` (avgShiftForSku / predictShifts / suggestCoverage / addMonths / urgencyOf) + เทสต์ 5 ตัว **ผ่าน 28/28**
 - ✅ **S1** — ป้าย ✨ คาดการณ์ + สี urgency ในกริด reconcile (recon + FC view) + legend compact — โค้ดเสร็จ, unit-logic verified; **ยังไม่ build-verify** (worktree นี้ไม่มี node_modules) → verify ใน preview/prod ทีหลัง
+- ✅ **S2** — CoveragePanel เสนอการ์ด "ดึงจากเดือนที่ PO เกิน → ยืนยัน" (ใช้ `suggestCoverage`, cap ที่ยอดขาด, คงกรอกมือ); ส่ง `matrix` จาก drill-down
+- ✅ **S3 (อ่านอย่างเดียว)** — drill-down overview โชว์กล่องคาดการณ์ ✨ + ธงที่เกี่ยวข้อง (kind/status/customerResponse) + ลิงก์ไป /review
 - ⏳ **SL** — legend compact ทำแล้ว (S1); เหลือ sticky-first-col ให้กริดอื่น + refactor ความสูง container
-- ⏳ **S2, S3, S4** — ยังไม่เริ่ม
+- ⏳ **S3 (เขียน) + S4** — ปุ่ม "บันทึกเป็นเลื่อน" จากช่องเดียว **ต้องเพิ่ม POST /api/sahamit/flags** (ยังไม่มี — ปัจจุบัน flag สร้างเฉพาะตอน import ผ่าน upsert unique key รวม roundNo) + ตัดสินใจ roundNo ของ flag ที่สร้างมือ; S4 acknowledge/snooze (migration 0058)
 
 ---
 
