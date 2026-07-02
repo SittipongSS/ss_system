@@ -6,8 +6,6 @@ import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { predictShifts } from "@/lib/sahamit/predict";
-import { recommendedReadyDate, LEAD_IN_FC, LEAD_OUT_FC } from "@/lib/sahamit/material";
-import { monthOf } from "@/lib/sahamit/po";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 
 // token → CSS var
@@ -44,7 +42,6 @@ export default function ReconcilePage() {
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
   const { data: locks } = useApiList("/api/sahamit/locks");
   const { data: coverages } = useApiList("/api/sahamit/coverage");
-  const { data: holidays } = useApiList("/api/holidays");
   const { data: products } = useApiList("/api/sahamit/products");
   const [view, setView] = useState("recon");
 
@@ -84,35 +81,12 @@ export default function ReconcilePage() {
     return { byMonth, gFc, gPo, unpriced };
   }, [matrix, products]);
 
-  // ── LD 60/90 lead-time markers (เฟส E) ──────────────────────────────
-  // Reuse material.js (ห้ามคำนวณ lead ซ้ำ): from the latest received date, a NEW
-  // in-FC order is ready in 60 working days, out-of-FC in 90 (holidays-aware).
-  // The month each lands in is the earliest deliverable month → we draw a dashed
-  // divider before it so months to its left are past the lead window.
-  const anchorDate = useMemo(() => {
-    const dates = (rounds || []).map((r) => r.receivedDate).filter(Boolean);
-    return dates.length ? dates.slice().sort().at(-1) : toLocalISODate(new Date());
-  }, [rounds]);
-  const { ld60Month, ld90Month } = useMemo(() => {
-    const set = new Set((holidays || []).map((h) => h.date));
-    return {
-      ld60Month: monthOf(recommendedReadyDate(anchorDate, LEAD_IN_FC, set)),
-      ld90Month: monthOf(recommendedReadyDate(anchorDate, LEAD_OUT_FC, set)),
-    };
-  }, [anchorDate, holidays]);
-  // Left-border style for a month column when it's an LD cutoff (amber=60, violet=90).
-  const ldBorder = (m) => {
-    if (m && m === ld60Month) return { borderLeft: "2px dashed var(--amber)" };
-    if (m && m === ld90Month) return { borderLeft: "2px dashed var(--violet)" };
-    return null;
-  };
-
   // Click a cell → open the full drill-down page (phase B).
   const openCell = (fg, m) => router.push(`/sahamit/reconcile/${encodeURIComponent(fg)}/${encodeURIComponent(m)}`);
 
   const renderCell = (cell, fg, m) => {
     if (!cell || cell.status === "none") {
-      return <td key={m} style={{ textAlign: "center", color: "var(--text-3)", padding: "6px 5px", ...ldBorder(m) }}>·</td>;
+      return <td key={m} style={{ textAlign: "center", color: "var(--text-3)", padding: "6px 5px" }}>·</td>;
     }
     const locked = lockByKey.has(`${fg}||${m}`);
     const autoLocked = cell.status === "match"; // FC=PO → ตกลงแล้วโดยปริยาย (ล็อกอัตโนมัติ)
@@ -139,7 +113,7 @@ export default function ReconcilePage() {
     if (view === "fc" || view === "po") {
       const val = view === "fc" ? cell.fcQty : cell.poQty;
       return (
-        <td key={m} style={{ padding: "5px 5px", ...ldBorder(m) }}>
+        <td key={m} style={{ padding: "5px 5px" }}>
           <div className="grid-cell-box" onClick={() => openCell(fg, m)} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
             {badges}
             <span className="cell-val fc" style={{ fontSize: 13 }}>{val ? nf(val) : "·"}</span>
@@ -150,7 +124,7 @@ export default function ReconcilePage() {
     }
     // FC vs PO view: status-colored box with FC/PO lines + status tag.
     return (
-      <td key={m} style={{ padding: "5px 5px", ...ldBorder(m) }}>
+      <td key={m} style={{ padding: "5px 5px" }}>
         <div
           className={`grid-cell-box ${cell.status}`}
           onClick={() => openCell(fg, m)}
@@ -214,11 +188,6 @@ export default function ReconcilePage() {
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--violet)" }}>
               ✨ คาดว่าจะเลื่อน (สี = ความเร่งด่วน: <b style={{ color: "var(--red)" }}>≤30</b>/<b style={{ color: "var(--amber)" }}>≤60</b>/<b style={{ color: "var(--violet)" }}>วัน</b>)
             </span>
-            {(ld60Month || ld90Month) && (
-              <span style={{ color: "var(--text-3)", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                · เส้นประ <b style={{ color: "var(--amber)" }}>LD 60</b>/<b style={{ color: "var(--violet)" }}>LD 90</b> = เดือนแรกที่ผลิตทันถ้าสั่งวันนี้ (in-FC 60 / นอก FC 90 วันทำการ จาก {anchorDate})
-              </span>
-            )}
           </div>
 
           <div className="reconciliation-container">
@@ -226,15 +195,9 @@ export default function ReconcilePage() {
               <thead>
                 <tr>
                   <th>สินค้า / SKU</th>
-                  {matrix.months.map((m) => {
-                    const ld = m === ld60Month ? { t: "LD 60", c: "var(--amber)" } : m === ld90Month ? { t: "LD 90", c: "var(--violet)" } : null;
-                    return (
-                      <th key={m} style={ldBorder(m) || undefined}>
-                        <div>{m}</div>
-                        {ld && <div style={{ fontSize: 9, fontWeight: 700, color: ld.c }}>◀ {ld.t} วัน</div>}
-                      </th>
-                    );
-                  })}
+                  {matrix.months.map((m) => (
+                    <th key={m}><div>{m}</div></th>
+                  ))}
                   <th style={{ textAlign: "right" }}>รวม</th>
                 </tr>
               </thead>
@@ -268,7 +231,7 @@ export default function ReconcilePage() {
                   {matrix.months.map((m) => {
                     const v = valueSummary.byMonth[m] || { fc: 0, po: 0 };
                     return (
-                      <td key={m} style={{ textAlign: "right", ...ldBorder(m) }}>
+                      <td key={m} style={{ textAlign: "right" }}>
                         {view !== "po" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{nfBaht(v.fc)}</div>}
                         {view !== "fc" && <div style={{ fontWeight: 700 }}>{nfBaht(v.po)}</div>}
                       </td>

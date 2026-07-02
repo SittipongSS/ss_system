@@ -1,8 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
-import { ClipboardCheck, AlertCircle, Lock, Unlock, ChevronRight } from "lucide-react";
+import { ClipboardCheck, AlertCircle, Lock, Unlock } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import CoveragePanel from "@/components/sahamit/CoveragePanel";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -10,7 +9,6 @@ import { fmtDate } from "@/lib/format";
 import { buildReconMatrix, cellDetail, RECON_STATUS_COLOR } from "@/lib/sahamit/reconcileClient";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { predictShifts } from "@/lib/sahamit/predict";
-import { FLAG_KIND_LABEL, FLAG_STATUS_LABEL } from "@/lib/sahamit/flags";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 
 const URGENCY_LABEL = { high: "เร่งด่วน", medium: "ปานกลาง", low: "ยังมีเวลา" };
@@ -36,9 +34,7 @@ export default function ReconcileCellPage() {
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
   const { data: locks, reload: reloadLocks } = useApiList("/api/sahamit/locks");
   const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
-  const { data: flags, reload: reloadFlags } = useApiList("/api/sahamit/flags");
   const [tab, setTab] = useState("overview");
-  const [flagBusy, setFlagBusy] = useState(false);
 
   const loading = l1 || l2;
   const error = e1 || e2;
@@ -49,38 +45,12 @@ export default function ReconcileCellPage() {
   const detail = useMemo(() => cellDetail(rounds, pos, fgCode, month), [rounds, pos, fgCode, month]);
   const lock = useMemo(() => locks.find((lk) => lk.fgCode === fgCode && lk.month === month), [locks, fgCode, month]);
 
-  // เฟส S3: เชื่อมชั้นคาดการณ์ (predict) กับชั้นหลักฐาน (flags) ในหน้าเดียว
+  // คาดการณ์การเลื่อน (predict) สำหรับช่องนี้
   const today = useMemo(() => toLocalISODate(new Date()), []);
   const prediction = useMemo(
     () => predictShifts(rounds, pos, { today, locks }).get(`${fgCode}||${month}`) || null,
     [rounds, pos, today, locks, fgCode, month],
   );
-  const relatedFlags = useMemo(
-    () => (flags || []).filter((f) => f.fgCode === fgCode && f.month === month),
-    [flags, fgCode, month],
-  );
-  const latestRoundNo = useMemo(() => (rounds || []).reduce((m, r) => Math.max(m, r.roundNo || 0), 0), [rounds]);
-  const hasOpenShiftFlag = relatedFlags.some((f) => f.kind === "shift_suspect");
-
-  // ตั้งธง "น่าจะเลื่อน" เข้าคิวตรวจ (status=open) — ไม่ยืนยันเอง, ให้ไปเคลียร์
-  // พร้อมคำตอบลูกค้าที่ /review (หลักการ: ระบบเสนอ ไม่ตัดสินแทน).
-  const flagAsShift = async () => {
-    if (!prediction) return;
-    setFlagBusy(true);
-    try {
-      const res = await fetch("/api/sahamit/flags", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fgCode, month, roundNo: latestRoundNo, kind: "shift_suspect", status: "open",
-          prevQty: fcQty, newQty: 0, drop: fcQty, shiftToMonth: prediction.toMonth,
-        }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || "ตั้งธงไม่สำเร็จ");
-      reloadFlags();
-    } catch (e) { alert(e.message); }
-    setFlagBusy(false);
-  };
 
   const color = cell ? (C[RECON_STATUS_COLOR[cell.status]] || C["text-3"]) : C["text-3"];
   const fcQty = cell?.fcQty || 0;
@@ -176,7 +146,7 @@ export default function ReconcileCellPage() {
                 )}
               </div>
 
-              {/* คาดการณ์ (S3): ช่องนี้มี FC แต่ยังไม่มี PO → ระบบเดาว่าน่าจะเลื่อน */}
+              {/* คาดการณ์: ช่องนี้มี FC แต่ยังไม่มี PO และ SKU เคยเลื่อนมาก่อน */}
               {prediction && (
                 <div className="glass-panel" style={{ padding: 16, borderLeft: `3px solid ${URGENCY_COLOR[prediction.urgency]}`, display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
@@ -186,42 +156,8 @@ export default function ReconcileCellPage() {
                     </span>
                   </div>
                   <div style={{ fontSize: 13, color: "var(--text-2)" }}>
-                    ยังไม่มี PO ({prediction.pattern} · เหลือ {prediction.daysLeft} วันถึงสิ้นเดือน) — สอบถามลูกค้าว่าเลื่อนหรือตัด แล้วบันทึกในหน้า
-                    <Link href="/sahamit/review" style={{ color: "var(--accent)", marginLeft: 4 }}>ตรวจการเปลี่ยน FC</Link>
-                    หรือชดเชยข้ามเดือนในแท็บด้านบน
+                    ยังไม่มี PO ({prediction.pattern} · เหลือ {prediction.daysLeft} วันถึงสิ้นเดือน) — จัดการชดเชยข้ามเดือนได้ในแท็บ “ชดเชยยอดข้ามเดือน”
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <button className="btn sm" disabled={flagBusy || hasOpenShiftFlag} onClick={flagAsShift}>
-                      {hasOpenShiftFlag ? "ตั้งธงแล้ว ✓" : `ตั้งธงให้ตรวจ (น่าจะเลื่อน → ${prediction.toMonth})`}
-                    </button>
-                    <span style={{ fontSize: 12, color: "var(--text-3)" }}>ส่งเข้าคิว “ตรวจการเปลี่ยน FC” เพื่อยืนยันกับลูกค้าภายหลัง</span>
-                  </div>
-                </div>
-              )}
-
-              {/* หลักฐานที่เกี่ยวข้อง (S3): ธงของช่องนี้จากการนำเข้ารอบ FC */}
-              {relatedFlags.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontWeight: 600, display: "flex", alignItems: "center" }}>
-                    ธงที่เกี่ยวข้อง ({relatedFlags.length})
-                    <Link href="/sahamit/review" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>
-                      เปิดหน้าตรวจ <ChevronRight size={14} />
-                    </Link>
-                  </div>
-                  {relatedFlags.map((f) => (
-                    <div key={f.id} className="glass-panel" style={{ padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                      <span className="ui-badge">{FLAG_KIND_LABEL[f.kind] || f.kind}</span>
-                      <span style={{ color: "var(--text-2)" }}>#{f.roundNo} · {nf(f.prevQty)} → {nf(f.newQty)}</span>
-                      <span style={{ marginLeft: "auto", fontWeight: 600 }}>
-                        {FLAG_STATUS_LABEL[f.status] || f.status}{f.status === "confirmed_shift" && f.shiftToMonth ? ` → ${f.shiftToMonth}` : ""}
-                      </span>
-                    </div>
-                  ))}
-                  {relatedFlags.some((f) => f.customerResponse) && (
-                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                      คำตอบลูกค้า: {relatedFlags.filter((f) => f.customerResponse).map((f) => f.customerResponse).join(" · ")}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
