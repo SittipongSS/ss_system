@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { ClipboardCheck, AlertCircle, Lock, Unlock } from "lucide-react";
+import { ClipboardCheck, AlertCircle, Lock } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import CoveragePanel from "@/components/sahamit/CoveragePanel";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -32,7 +32,7 @@ export default function ReconcileCellPage() {
 
   const { data: rounds, loading: l1, error: e1 } = useApiList("/api/sahamit/forecast/rounds");
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
-  const { data: locks, reload: reloadLocks } = useApiList("/api/sahamit/locks");
+  const { data: locks } = useApiList("/api/sahamit/locks"); // สำหรับ predictShifts (ข้ามช่องที่ล็อก)
   const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
   const [tab, setTab] = useState("overview");
 
@@ -43,7 +43,6 @@ export default function ReconcileCellPage() {
   const row = useMemo(() => matrix.rows.find((r) => r.fgCode === fgCode), [matrix, fgCode]);
   const cell = row?.cells[month] || null;
   const detail = useMemo(() => cellDetail(rounds, pos, fgCode, month), [rounds, pos, fgCode, month]);
-  const lock = useMemo(() => locks.find((lk) => lk.fgCode === fgCode && lk.month === month), [locks, fgCode, month]);
 
   // คาดการณ์การเลื่อน (predict) สำหรับช่องนี้
   const today = useMemo(() => toLocalISODate(new Date()), []);
@@ -65,21 +64,6 @@ export default function ReconcileCellPage() {
     cell.status === "over" ? `PO เกินแผน +${nf(diff)} ชิ้น` :
     cell.status === "unforecasted" ? `สั่ง PO นอกแผน ${nf(poQty)} ชิ้น (ไม่มี FC)` :
     cell.label;
-
-  const toggleLock = async () => {
-    try {
-      if (lock) {
-        await fetch(`/api/sahamit/locks/${lock.id}`, { method: "DELETE" });
-      } else {
-        const res = await fetch("/api/sahamit/locks", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fgCode, month, lockedQty: fcQty }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ล็อกไม่สำเร็จ");
-      }
-      reloadLocks();
-    } catch (e) { alert(e.message); }
-  };
 
   return (
     <Workspace
@@ -114,14 +98,10 @@ export default function ReconcileCellPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 620 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <span className="ui-badge" style={{ color, borderColor: color, fontSize: 13 }}>{cell.label}</span>
-                {lock ? (
-                  <button className="btn ghost sm" onClick={toggleLock}><Unlock size={14} /> ปลดล็อก (ล็อกที่ {nf(lock.lockedQty)})</button>
-                ) : cell.status === "match" ? (
+                {cell.status === "match" && (
                   <span className="ui-badge" style={{ color: "var(--green)", borderColor: "var(--green)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <Lock size={13} /> FC=PO ตกลงแล้ว (อัตโนมัติ)
+                    <Lock size={13} /> FC=PO ตกลงแล้ว (ล็อกอัตโนมัติ)
                   </span>
-                ) : (
-                  <button className="btn sm" onClick={toggleLock}><Lock size={14} /> ล็อก (ตกลงแล้ว)</button>
                 )}
               </div>
 
