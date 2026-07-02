@@ -31,6 +31,7 @@ const VIEWS = [
 ];
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const nfBaht = (n) => "฿" + Math.round(Number(n) || 0).toLocaleString("th-TH");
 const URGENCY_COLOR = { high: "var(--red)", medium: "var(--amber)", low: "var(--violet)" };
 const shortMonth = (ym) => {
   try { return new Date(`${ym}-02`).toLocaleDateString("th-TH", { month: "short" }); }
@@ -44,6 +45,7 @@ export default function ReconcilePage() {
   const { data: locks } = useApiList("/api/sahamit/locks");
   const { data: coverages } = useApiList("/api/sahamit/coverage");
   const { data: holidays } = useApiList("/api/holidays");
+  const { data: products } = useApiList("/api/sahamit/products");
   const [view, setView] = useState("recon");
 
   const loading = l1 || l2;
@@ -58,6 +60,29 @@ export default function ReconcilePage() {
     for (const lk of locks) m.set(`${lk.fgCode}||${lk.month}`, lk);
     return m;
   }, [locks]);
+
+  // มูลค่ารายเดือน (ราคา×จำนวน) สำหรับแถวสรุปท้ายกริด. ราคา = retailPriceIncVat
+  // จาก products (map เป็น price) เหมือนหน้ารายงาน — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
+  const valueSummary = useMemo(() => {
+    const priceByFg = new Map();
+    for (const p of products) priceByFg.set(String(p.fgCode).trim().toLowerCase(), p.price == null ? null : Number(p.price));
+    const byMonth = {};
+    for (const m of matrix.months) byMonth[m] = { fc: 0, po: 0 };
+    let gFc = 0, gPo = 0, unpriced = 0;
+    for (const row of matrix.rows) {
+      const price = priceByFg.get(String(row.fgCode).trim().toLowerCase()) ?? null;
+      if (price == null) { if (row.fcTotal > 0 || row.poTotal > 0) unpriced += 1; continue; }
+      for (const m of matrix.months) {
+        const c = row.cells[m];
+        if (!c) continue;
+        byMonth[m].fc += (c.fcQty || 0) * price;
+        byMonth[m].po += (c.poQty || 0) * price;
+      }
+      gFc += (row.fcTotal || 0) * price;
+      gPo += (row.poTotal || 0) * price;
+    }
+    return { byMonth, gFc, gPo, unpriced };
+  }, [matrix, products]);
 
   // ── LD 60/90 lead-time markers (เฟส E) ──────────────────────────────
   // Reuse material.js (ห้ามคำนวณ lead ซ้ำ): from the latest received date, a NEW
@@ -230,6 +255,31 @@ export default function ReconcilePage() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="recon-value-row">
+                  <td>
+                    รวมมูลค่า{view === "fc" ? " (FC)" : view === "po" ? " (PO)" : ""}
+                    {valueSummary.unpriced > 0 && (
+                      <span style={{ color: "var(--amber)", fontSize: 11, fontWeight: 400 }} title="สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม">
+                        {" "}· {valueSummary.unpriced} SKU ไม่มีราคา
+                      </span>
+                    )}
+                  </td>
+                  {matrix.months.map((m) => {
+                    const v = valueSummary.byMonth[m] || { fc: 0, po: 0 };
+                    return (
+                      <td key={m} style={{ textAlign: "right", ...ldBorder(m) }}>
+                        {view !== "po" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{nfBaht(v.fc)}</div>}
+                        {view !== "fc" && <div style={{ fontWeight: 700 }}>{nfBaht(v.po)}</div>}
+                      </td>
+                    );
+                  })}
+                  <td style={{ textAlign: "right" }}>
+                    {view !== "po" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{nfBaht(valueSummary.gFc)}</div>}
+                    {view !== "fc" && <div style={{ fontWeight: 700 }}>{nfBaht(valueSummary.gPo)}</div>}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </>
