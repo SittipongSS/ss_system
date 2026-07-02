@@ -18,6 +18,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
   const [other, setOther] = useState("");
   const [qty, setQty] = useState("");
   const [busy, setBusy] = useState(false);
+  const [manual, setManual] = useState(false); // ฟอร์มกรอกเองซ่อนไว้ก่อน (auto-first)
   const related = (coverages || []).filter(
     (c) => c.fgCode === fgCode && (c.sourceMonth === month || c.targetMonth === month),
   );
@@ -109,6 +110,13 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
         </div>
       )}
 
+      {/* ไม่มีของให้ดึงอัตโนมัติ แต่เดือนนี้ยังขาด → บอกให้รู้ว่าทำไมไม่มีการ์ด */}
+      {matrix && shortage > 0 && suggestions.length === 0 && (
+        <div style={{ color: "var(--text-3)", fontSize: 13, marginBottom: 14 }}>
+          เดือนนี้ขาด {nf(shortage)} ชิ้น — แต่ยังไม่มีเดือนอื่นที่ PO เกินให้ดึงมาชดเชยอัตโนมัติ (ต้องมี PO เกินในเดือนใกล้เคียงก่อน)
+        </div>
+      )}
+
       <h3 style={{ fontWeight: 600, marginBottom: 8 }}>ชดเชยข้ามเดือน</h3>
       {related.length > 0 ? (
         <ul style={{ margin: "0 0 12px", padding: 0, listStyle: "none", fontSize: 13 }}>
@@ -128,15 +136,21 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
       ) : (
         <div style={{ color: "var(--text-3)", fontSize: 13, marginBottom: 12 }}>— ยังไม่มีการชดเชยข้ามเดือนสำหรับเดือนนี้ —</div>
       )}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
-        <select className="premium-select" style={{ height: 30, width: 170 }} value={dir} onChange={(e) => setDir(e.target.value)}>
-          <option value="in">เดือนนี้รับชดเชยจาก…</option>
-          <option value="out">เดือนนี้ส่งไปชดเชย…</option>
-        </select>
-        <input type="month" className="premium-input" style={{ height: 30 }} value={other} onChange={(e) => setOther(e.target.value)} />
-        <input type="number" min={1} className="premium-input" style={{ height: 30, width: 100 }} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="จำนวน" />
-        <button className="btn sm" onClick={add} disabled={busy}>เพิ่มชดเชย</button>
-      </div>
+      {/* กรอกเอง — ซ่อนไว้ใต้ปุ่ม เพื่อให้คำแนะนำอัตโนมัติเป็นตัวเอก */}
+      {manual ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+          <select className="premium-select" style={{ height: 30, width: 170 }} value={dir} onChange={(e) => setDir(e.target.value)}>
+            <option value="in">เดือนนี้รับชดเชยจาก…</option>
+            <option value="out">เดือนนี้ส่งไปชดเชย…</option>
+          </select>
+          <input type="month" className="premium-input" style={{ height: 30 }} value={other} onChange={(e) => setOther(e.target.value)} />
+          <input type="number" min={1} className="premium-input" style={{ height: 30, width: 100 }} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="จำนวน" />
+          <button className="btn sm" onClick={add} disabled={busy}>เพิ่มชดเชย</button>
+          <button className="btn ghost sm" onClick={() => setManual(false)}>ยกเลิก</button>
+        </div>
+      ) : (
+        <button className="btn ghost sm" onClick={() => setManual(true)}>+ กรอกชดเชยเอง</button>
+      )}
     </div>
   );
 }

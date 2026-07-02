@@ -309,32 +309,40 @@ test('avgShiftForSku learns the shift distance from round history, defaults +1',
   assert.equal(avgShiftForSku(two, 'A'), 2);
 });
 
-test('predictShifts flags pending (FC, no PO) cells with a target month + urgency', () => {
-  const rounds = [{
-    roundNo: 1, coverMonths: ['2026-08', '2026-09'],
-    lines: [
-      { fgCode: 'A', month: '2026-08', qty: 500, productName: 'Alpha' }, // no PO → pending
-      { fgCode: 'A', month: '2026-09', qty: 300 },                        // has PO → excluded
-    ],
-  }];
-  const pos = [{ poNumber: 'PO1', lines: [{ fgCode: 'A', deliveryMonth: '2026-09', qty: 300 }] }];
-
-  const preds = predictShifts(rounds, pos, { today: '2026-08-10' });
+test('predictShifts predicts ONLY for SKUs with real shift history (first round stays quiet)', () => {
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-06', '2026-07', '2026-08'], lines: [
+      { fgCode: 'A', month: '2026-06', qty: 100, productName: 'Alpha' },
+      { fgCode: 'A', month: '2026-07', qty: 100 },
+      { fgCode: 'B', month: '2026-08', qty: 50, productName: 'Bravo' }, // B never moves
+    ] },
+    { roundNo: 2, coverMonths: ['2026-06', '2026-07', '2026-08'], lines: [
+      { fgCode: 'A', month: '2026-07', qty: 100 },
+      { fgCode: 'A', month: '2026-08', qty: 100 }, // A: Jun→Aug shift (+2)
+      { fgCode: 'B', month: '2026-08', qty: 50 },
+    ] },
+  ];
+  const preds = predictShifts(rounds, [], { today: '2026-07-01' });
+  // A has shifted before → its still-pending month is predicted, target = +2.
   assert.ok(preds.has('A||2026-08'));
-  assert.ok(!preds.has('A||2026-09')); // PO covers it → not pending → no prediction
+  assert.equal(preds.get('A||2026-08').toMonth, '2026-10');
+  assert.equal(preds.get('A||2026-08').avgShift, 2);
+  assert.equal(preds.get('A||2026-08').productName, 'Alpha');
+  // B never shifted → NO prediction even though it's pending (this is the fix).
+  assert.ok(!preds.has('B||2026-08'));
 
-  const p = preds.get('A||2026-08');
-  assert.equal(p.fromMonth, '2026-08');
-  assert.equal(p.toMonth, '2026-09');   // default +1 shift
-  assert.equal(p.fcQty, 500);
-  assert.equal(p.productName, 'Alpha');
-  assert.equal(p.urgency, 'high');      // ~21 days to month end
+  // A single first round (no history at all) predicts nothing.
+  assert.equal(predictShifts([rounds[0]], [], { today: '2026-07-01' }).size, 0);
 });
 
 test('predictShifts skips locked cells and returns empty without a clock', () => {
-  const rounds = [{ roundNo: 1, coverMonths: ['2026-08'], lines: [{ fgCode: 'A', month: '2026-08', qty: 500 }] }];
-  const locked = predictShifts(rounds, [], { today: '2026-08-10', locks: [{ fgCode: 'A', month: '2026-08' }] });
-  assert.equal(locked.size, 0);
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-06', '2026-07'], lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }] },
+    { roundNo: 2, coverMonths: ['2026-06', '2026-07'], lines: [{ fgCode: 'A', month: '2026-07', qty: 100 }] }, // Jun→Jul (+1)
+  ];
+  assert.ok(predictShifts(rounds, [], { today: '2026-06-15' }).has('A||2026-07')); // pending + history
+  const locked = predictShifts(rounds, [], { today: '2026-06-15', locks: [{ fgCode: 'A', month: '2026-07' }] });
+  assert.ok(!locked.has('A||2026-07')); // locked → skipped
   assert.equal(predictShifts(rounds, [], {}).size, 0); // no today → pure no-op
 });
 

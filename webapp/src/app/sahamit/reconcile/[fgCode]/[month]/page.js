@@ -146,6 +146,10 @@ export default function ReconcileCellPage() {
                 <span className="ui-badge" style={{ color, borderColor: color, fontSize: 13 }}>{cell.label}</span>
                 {lock ? (
                   <button className="btn ghost sm" onClick={toggleLock}><Unlock size={14} /> ปลดล็อก (ล็อกที่ {nf(lock.lockedQty)})</button>
+                ) : cell.status === "match" ? (
+                  <span className="ui-badge" style={{ color: "var(--green)", borderColor: "var(--green)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <Lock size={13} /> FC=PO ตกลงแล้ว (อัตโนมัติ)
+                  </span>
                 ) : (
                   <button className="btn sm" onClick={toggleLock}><Lock size={14} /> ล็อก (ตกลงแล้ว)</button>
                 )}

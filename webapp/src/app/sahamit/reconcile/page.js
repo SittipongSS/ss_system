@@ -90,6 +90,7 @@ export default function ReconcilePage() {
       return <td key={m} style={{ textAlign: "center", color: "var(--text-3)", padding: "6px 5px", ...ldBorder(m) }}>·</td>;
     }
     const locked = lockByKey.has(`${fg}||${m}`);
+    const autoLocked = cell.status === "match"; // FC=PO → ตกลงแล้วโดยปริยาย (ล็อกอัตโนมัติ)
     const hasCov = cell.coverageIn > 0 || cell.coverageOut > 0;
     const pred = predictions.get(`${fg}||${m}`);
     const predBadge = pred ? (
@@ -102,7 +103,10 @@ export default function ReconcilePage() {
     ) : null;
     const badges = (
       <>
-        {locked && <span style={{ position: "absolute", top: 3, right: 4, fontSize: 9, lineHeight: 1 }} title={`ล็อก (ตกลงแล้ว) ที่ ${nf(cell.fcQty)}`}>🔒</span>}
+        {(locked || autoLocked) && (
+          <span style={{ position: "absolute", top: 3, right: 4, fontSize: 9, lineHeight: 1, opacity: autoLocked && !locked ? 0.65 : 1 }}
+            title={locked ? `ล็อก (ตกลงแล้ว) ที่ ${nf(cell.fcQty)}` : `FC=PO ตกลงแล้ว (ล็อกอัตโนมัติ)`}>🔒</span>
+        )}
         {hasCov && <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชยข้ามเดือน (รับ ${nf(cell.coverageIn)} / ส่ง ${nf(cell.coverageOut)})`}>⇄</span>}
       </>
     );
