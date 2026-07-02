@@ -147,7 +147,7 @@ export default function MaterialPage() {
           </div>
 
           <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
-            <table className="premium-table">
+            <table className="premium-table sticky-col1">
               <thead>
                 <tr>
                   <th>สินค้า</th><th>PO</th><th style={{ textAlign: "right" }}>จำนวน</th><th>เดือนส่ง</th>

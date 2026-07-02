@@ -151,7 +151,7 @@ export default function ForecastPage() {
                 <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>รอบนี้ยังไม่มีรายการ</div>
               ) : (
                 <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
-                  <table className="premium-table">
+                  <table className="premium-table sticky-col1">
                     <thead>
                       <tr>
                         <th style={{ minWidth: 120 }}>รหัสสินค้า</th>
