@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser } from '@/lib/permissions';
+import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps } from '@/lib/permissions';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +29,13 @@ export async function PATCH(request, { params }) {
   // key we omit keeps its old value. When a role drops its team (e.g. senior_ae
   // → viewer/legal), we must send team: null explicitly to overwrite the stale
   // team, otherwise the user keeps their old team scope after the role change.
+  // Per-user capability grants: use the sanitized body value if the client sent
+  // one, otherwise preserve what's already stored (so an unrelated edit doesn't
+  // wipe a grant). Whitelisted to GRANTABLE_CAPS — never mints admin-system caps.
+  const extraCaps = body.extraCaps !== undefined
+    ? sanitizeExtraCaps(body.extraCaps)
+    : sanitizeExtraCaps(existingMeta.extraCaps);
+
   if (body.role !== undefined) {
     const team = body.team || null;
     const invalid = validateIdentity(body.role, team, body.department);
@@ -38,10 +45,11 @@ export async function PATCH(request, { params }) {
       return Response.json({ error: 'ไม่สามารถลดสิทธิ์ของตัวเองได้' }, { status: 400 });
     }
     const department = normalizeDepartment(body.department) || departmentFor(body.role);
-    updates.app_metadata = { role: body.role, department, must_change_password: mustChange, team };
-  } else if (mustChange !== !!existingMeta.must_change_password) {
-    // Password reset without a role change still needs to persist the flag.
-    updates.app_metadata = { ...existingMeta, must_change_password: mustChange };
+    updates.app_metadata = { role: body.role, department, must_change_password: mustChange, team, extraCaps };
+  } else if (body.extraCaps !== undefined || mustChange !== !!existingMeta.must_change_password) {
+    // extraCaps-only change, or a password reset without a role change — persist
+    // the flag + grants while keeping the rest of app_metadata intact.
+    updates.app_metadata = { ...existingMeta, must_change_password: mustChange, extraCaps };
   }
 
   if (body.firstName !== undefined || body.lastName !== undefined || body.phone !== undefined) {

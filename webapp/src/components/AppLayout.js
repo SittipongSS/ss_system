@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
-import { RoleContext, TeamContext } from '@/lib/roleContext';
+import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 const SUPABASE_CONFIGURED =
@@ -29,6 +29,7 @@ export default function AppLayout({ children }) {
   const pathname = usePathname();
   const [role, setRole] = useState(null);
   const [team, setTeam] = useState(null);
+  const [extraCaps, setExtraCaps] = useState(null); // per-user LG/margin grants
   const [userName, setUserName] = useState('');
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
@@ -83,6 +84,7 @@ export default function AppLayout({ children }) {
       // Role + team come from app_metadata (service-role-only; users cannot self-edit it).
       setRole(user.app_metadata?.role || 'user');
       setTeam(user.app_metadata?.team || null);
+      setExtraCaps(Array.isArray(user.app_metadata?.extraCaps) ? user.app_metadata.extraCaps : []);
       // Force a password change on first login / after an admin reset.
       setMustChangePwd(!!user.app_metadata?.must_change_password);
       setUserName(dName);
@@ -334,7 +336,9 @@ export default function AppLayout({ children }) {
 
         <div className="page">
           <RoleContext.Provider value={role}>
-            <TeamContext.Provider value={team}>{children}</TeamContext.Provider>
+            <ExtraCapsContext.Provider value={extraCaps}>
+              <TeamContext.Provider value={team}>{children}</TeamContext.Provider>
+            </ExtraCapsContext.Provider>
           </RoleContext.Provider>
         </div>
       </main>

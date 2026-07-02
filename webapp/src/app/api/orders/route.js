@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScope } from '@/lib/permissions';
+import { viewScopeUser } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrderItems } from '@/lib/tax/orders';
 import { recordAudit } from '@/lib/audit';
 
@@ -18,7 +18,7 @@ export async function GET() {
     .select(ORDER_SELECT)
     .order('createdAt', { ascending: false });
   // Team-scoped roles only see their own team's orders; 'all' sees everything.
-  if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+  if (viewScopeUser(user) === 'team') query = query.eq('team', user?.team ?? null);
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
