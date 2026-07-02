@@ -182,7 +182,6 @@ export default function AppLayout({ children }) {
         { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
         { href: '/sahamit/po', name: 'Purchase Orders', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
         { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },
-        { href: '/sahamit/review', name: 'ตรวจการเปลี่ยน FC', icon: Flag, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/review') },
         { href: '/sahamit/material', name: 'วัสดุ / Lead time', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
         { href: '/sahamit/report', name: 'รายงานมูลค่า', icon: BarChart3, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/report') },
       ],

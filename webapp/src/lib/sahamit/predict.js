@@ -38,23 +38,31 @@ function daysToMonthEnd(month, today) {
   return Math.ceil((end - now) / 86400000);
 }
 
-// Average shift distance (in months) this SKU has historically exhibited, learned
-// from every consecutive round pair's diff.shifts. No history → default +1 (the
-// customer's typical "push it a month" behaviour). Guards a non-positive average
-// up to +1 so the predicted target is always a real future month.
-export function avgShiftForSku(rounds, fgCode) {
+// Every shift distance (in months) this SKU has actually exhibited across
+// consecutive round pairs (diff.shifts). Empty = the SKU has NEVER shifted → we
+// have no basis to predict one (this is what keeps a brand-new first round quiet:
+// no history, no prediction).
+export function shiftSamplesForSku(rounds, fgCode) {
   const ordered = [...(rounds || [])].sort((a, b) => (a.roundNo || 0) - (b.roundNo || 0));
-  const diffs = [];
+  const samples = [];
   for (let i = 1; i < ordered.length; i++) {
     const prev = snapshotForSku(ordered[i - 1].lines, fgCode);
     const cur = snapshotForSku(ordered[i].lines, fgCode);
     for (const s of diffSnapshots(prev, cur).shifts) {
       const md = monthDiff(s.fromMonth, s.toMonth);
-      if (md !== 0) diffs.push(md);
+      if (md !== 0) samples.push(md);
     }
   }
-  if (!diffs.length) return 1;
-  const avg = Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length);
+  return samples;
+}
+
+// Average shift distance (rounded, ≥1). No history → default +1. Kept for callers
+// that want a target month regardless; predictShifts uses shiftSamplesForSku so it
+// can REQUIRE real history before predicting.
+export function avgShiftForSku(rounds, fgCode) {
+  const s = shiftSamplesForSku(rounds, fgCode);
+  if (!s.length) return 1;
+  const avg = Math.round(s.reduce((a, b) => a + b, 0) / s.length);
   return avg > 0 ? avg : 1;
 }
 
@@ -78,13 +86,18 @@ export function predictShifts(rounds, pos, opts = {}) {
   const matrix = buildReconMatrix(rounds, pos);
 
   for (const row of matrix.rows) {
-    let avg = null; // compute lazily, only for SKUs that actually have a pending cell
+    // Predict a SHIFT only for SKUs that have actually shifted before — otherwise
+    // a first round (or a SKU that's never moved) would light up every pending
+    // month with a baseless "✨ →next", which is pure noise. No samples → skip SKU.
+    const samples = shiftSamplesForSku(rounds, row.fgCode);
+    if (!samples.length) continue;
+    const avg = Math.max(1, Math.round(samples.reduce((a, b) => a + b, 0) / samples.length));
+
     for (const m of matrix.months) {
       const cell = row.cells[m];
       if (!cell || cell.status !== 'pending') continue; // fcQty>0 && no effective PO
       if (lockSet.has(`${row.fgCode}||${m}`)) continue;
 
-      if (avg === null) avg = avgShiftForSku(rounds, row.fgCode);
       const daysLeft = daysToMonthEnd(m, today);
       out.set(`${row.fgCode}||${m}`, {
         fgCode: row.fgCode,

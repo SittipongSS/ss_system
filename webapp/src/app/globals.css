@@ -1145,6 +1145,19 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--panel-2);
 }
 
+/* Value summary row (มูลค่ารายเดือน). Opaque bg so the sticky first/last cells
+   occlude content scrolling underneath; heavier top border to set it apart. */
+.reconcile-grid tfoot td {
+  background: var(--panel-2);
+  border-top: 2px solid var(--border);
+  padding: 10px;
+  vertical-align: middle;
+}
+.reconcile-grid tfoot td:first-child {
+  font-weight: 600;
+  color: var(--text-2);
+}
+
 .product-row-info {
   display: flex;
   flex-direction: column;
