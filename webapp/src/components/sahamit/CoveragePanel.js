@@ -110,10 +110,22 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
         </div>
       )}
 
-      {/* ไม่มีของให้ดึงอัตโนมัติ แต่เดือนนี้ยังขาด → บอกให้รู้ว่าทำไมไม่มีการ์ด */}
-      {matrix && shortage > 0 && suggestions.length === 0 && (
-        <div style={{ color: "var(--text-3)", fontSize: 13, marginBottom: 14 }}>
-          เดือนนี้ขาด {nf(shortage)} ชิ้น — แต่ยังไม่มีเดือนอื่นที่ PO เกินให้ดึงมาชดเชยอัตโนมัติ (ต้องมี PO เกินในเดือนใกล้เคียงก่อน)
+      {/* ไม่มีการ์ดแนะนำ → บอกสถานะให้ชัดเสมอว่าทำไม (กันงงว่า "ไม่ขึ้นแนะนำ") */}
+      {matrix && suggestions.length === 0 && (
+        <div
+          className="glass-panel"
+          style={{ padding: 12, marginBottom: 14, fontSize: 13, color: "var(--text-2)", borderLeft: `3px solid ${shortage > 0 ? "var(--amber)" : "var(--green)"}` }}
+        >
+          {shortage > 0 ? (
+            <>
+              เดือนนี้ขาด <b>{nf(shortage)}</b> ชิ้น — <b>ยังไม่มีเดือนอื่นที่ PO เกิน FC</b> ให้ดึงมาชดเชย
+              <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 4 }}>
+                ระบบจะเสนอ “💡 ดึงจากเดือน…” ให้กดยืนยันอัตโนมัติ ทันทีที่มีเดือนใดสั่ง PO เกิน FC (การชดเชย = ย้าย PO ส่วนเกิน ไม่ใช่การเลื่อนแผน FC)
+              </div>
+            </>
+          ) : (
+            <>เดือนนี้ครบตามแผนแล้ว — ไม่ต้องชดเชย</>
+          )}
         </div>
       )}
 
