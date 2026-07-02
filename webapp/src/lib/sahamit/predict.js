@@ -133,3 +133,30 @@ export function suggestCoverage(matrix, fgCode, month) {
   suggestions.sort((a, b) => Math.abs(monthDiff(month, a.sourceMonth)) - Math.abs(monthDiff(month, b.sourceMonth)));
   return suggestions;
 }
+
+// The other direction: `month` HAS surplus PO (cell.excess > 0) — find short
+// months of the SAME sku to push it TO. Allocates the surplus greedily to the
+// nearest short months first (doesn't exceed the available surplus). Returns
+// [{ targetMonth, use }]. This is what makes opening a "PO เกิน" cell useful.
+export function suggestCoverageTargets(matrix, fgCode, month) {
+  const row = (matrix?.rows || []).find((r) => r.fgCode === fgCode);
+  if (!row) return [];
+  let remaining = Number(row.cells[month]?.excess || 0);
+  if (remaining <= 0) return [];
+
+  const others = matrix.months
+    .filter((m) => m !== month)
+    .sort((a, b) => Math.abs(monthDiff(month, a)) - Math.abs(monthDiff(month, b)));
+
+  const targets = [];
+  for (const m of others) {
+    if (remaining <= 0) break;
+    const c = row.cells[m];
+    const shortage = Math.max(0, Number(c?.fcQty || 0) - Number(c?.effPo ?? c?.poQty ?? 0));
+    if (shortage <= 0) continue;
+    const use = Math.min(shortage, remaining);
+    targets.push({ targetMonth: m, use });
+    remaining -= use;
+  }
+  return targets;
+}

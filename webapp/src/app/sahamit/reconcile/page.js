@@ -53,16 +53,23 @@ export default function ReconcilePage() {
   const today = useMemo(() => toLocalISODate(new Date()), []);
   const predictions = useMemo(() => predictShifts(rounds, pos, { today, locks }), [rounds, pos, today, locks]);
 
+  // fgCode → product (แบรนด์/ปริมาตร/ราคาโรงงาน) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
+  const productByFg = useMemo(() => {
+    const m = new Map();
+    for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
+    return m;
+  }, [products]);
+  const productOf = (fg) => productByFg.get(String(fg).trim().toLowerCase()) || null;
+
   // มูลค่ารายเดือน (ราคา×จำนวน) สำหรับแถวสรุปท้ายกริด. ราคา = ราคาโรงงาน (costPrice)
   // จาก products (map เป็น price) เหมือนหน้ารายงาน — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
   const valueSummary = useMemo(() => {
-    const priceByFg = new Map();
-    for (const p of products) priceByFg.set(String(p.fgCode).trim().toLowerCase(), p.price == null ? null : Number(p.price));
     const byMonth = {};
     for (const m of matrix.months) byMonth[m] = { fc: 0, po: 0 };
     let gFc = 0, gPo = 0, unpriced = 0;
     for (const row of matrix.rows) {
-      const price = priceByFg.get(String(row.fgCode).trim().toLowerCase()) ?? null;
+      const p = productByFg.get(String(row.fgCode).trim().toLowerCase());
+      const price = p?.price == null ? null : Number(p.price);
       if (price == null) { if (row.fcTotal > 0 || row.poTotal > 0) unpriced += 1; continue; }
       for (const m of matrix.months) {
         const c = row.cells[m];
@@ -74,7 +81,7 @@ export default function ReconcilePage() {
       gPo += (row.poTotal || 0) * price;
     }
     return { byMonth, gFc, gPo, unpriced };
-  }, [matrix, products]);
+  }, [matrix, productByFg]);
 
   // Click a cell → open the full drill-down page (phase B).
   const openCell = (fg, m) => router.push(`/sahamit/reconcile/${encodeURIComponent(fg)}/${encodeURIComponent(m)}`);
@@ -191,12 +198,19 @@ export default function ReconcilePage() {
                 </tr>
               </thead>
               <tbody>
-                {matrix.rows.map((r) => (
+                {matrix.rows.map((r) => {
+                  const p = productOf(r.fgCode);
+                  const meta = [p?.brandName, p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : null].filter(Boolean).join(" · ");
+                  return (
                   <tr key={r.fgCode}>
                     <td>
                       <div className="product-row-info">
                         <span className="product-row-name" style={r.productName ? undefined : { color: "var(--amber)" }} title={r.productName || r.fgCode}>{r.productName || "— ไม่รู้จัก —"}</span>
                         <span className="product-row-sku">{r.fgCode}</span>
+                        {meta && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{meta}</span>}
+                        <span style={{ fontSize: 11, color: p?.price == null ? "var(--amber)" : "var(--text-2)" }}>
+                          ราคาโรงงาน: {p?.price == null ? "—" : nfBaht(p.price)}
+                        </span>
                       </div>
                     </td>
                     {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
@@ -205,7 +219,8 @@ export default function ReconcilePage() {
                       <div style={{ fontWeight: 700 }}>PO {nf(r.poTotal)}</div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="recon-value-row">
