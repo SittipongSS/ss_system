@@ -1,8 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ClipboardCheck, AlertCircle, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import CellDetailModal from "@/components/sahamit/CellDetailModal";
 import { useApiList } from "@/lib/excise/useApiList";
 import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { predictShifts } from "@/lib/sahamit/predict";
@@ -37,13 +37,13 @@ const shortMonth = (ym) => {
 };
 
 export default function ReconcilePage() {
-  const router = useRouter();
   const { data: rounds, loading: l1, error: e1 } = useApiList("/api/sahamit/forecast/rounds");
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
   const { data: locks } = useApiList("/api/sahamit/locks");
-  const { data: coverages } = useApiList("/api/sahamit/coverage");
+  const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
   const { data: products } = useApiList("/api/sahamit/products");
   const [view, setView] = useState("recon");
+  const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
 
   const loading = l1 || l2;
   const error = e1 || e2;
@@ -83,8 +83,8 @@ export default function ReconcilePage() {
     return { byMonth, gFc, gPo, unpriced };
   }, [matrix, productByFg]);
 
-  // Click a cell → open the full drill-down page (phase B).
-  const openCell = (fg, m) => router.push(`/sahamit/reconcile/${encodeURIComponent(fg)}/${encodeURIComponent(m)}`);
+  // Click a cell → open the detail modal (แทนการเด้งไปหน้าเต็ม).
+  const openCell = (fg, m) => setCellSel({ fg, m });
 
   const renderCell = (cell, fg, m) => {
     if (!cell || cell.status === "none") {
@@ -251,6 +251,19 @@ export default function ReconcilePage() {
           </div>
         </>
       )}
+
+      <CellDetailModal
+        open={!!cellSel}
+        onClose={() => setCellSel(null)}
+        fgCode={cellSel?.fg}
+        month={cellSel?.m}
+        matrix={matrix}
+        rounds={rounds}
+        pos={pos}
+        coverages={coverages}
+        prediction={cellSel ? predictions.get(`${cellSel.fg}||${cellSel.m}`) || null : null}
+        onCoverageChanged={reloadCoverages}
+      />
     </Workspace>
   );
 }
