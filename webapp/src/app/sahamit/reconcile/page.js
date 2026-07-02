@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { ClipboardCheck, AlertCircle, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import CellDetailModal from "@/components/sahamit/CellDetailModal";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { predictShifts } from "@/lib/sahamit/predict";
@@ -35,6 +36,7 @@ const shortMonth = (ym) => {
   try { return new Date(`${ym}-02`).toLocaleDateString("th-TH", { month: "short" }); }
   catch { return ym; }
 };
+const volLabel = (p) => (p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "");
 
 export default function ReconcilePage() {
   const { data: rounds, loading: l1, error: e1 } = useApiList("/api/sahamit/forecast/rounds");
@@ -44,6 +46,9 @@ export default function ReconcilePage() {
   const { data: products } = useApiList("/api/sahamit/products");
   const [view, setView] = useState("recon");
   const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
+  const [brands, setBrands] = useState([]);
+  const [volumes, setVolumes] = useState([]);
+  const [categories, setCategories] = useState([]);
 
   const loading = l1 || l2;
   const error = e1 || e2;
@@ -61,13 +66,41 @@ export default function ReconcilePage() {
   }, [products]);
   const productOf = (fg) => productByFg.get(String(fg).trim().toLowerCase()) || null;
 
-  // มูลค่ารายเดือน (ราคา×จำนวน) สำหรับแถวสรุปท้ายกริด. ราคา = ราคาโรงงาน (costPrice)
-  // จาก products (map เป็น price) เหมือนหน้ารายงาน — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
+  // ตัวเลือกตัวกรอง (แบรนด์/ปริมาตร/หมวด) จากสินค้าที่อยู่ในกริด
+  const filterOptions = useMemo(() => {
+    const b = new Set(), v = new Set(), c = new Set();
+    for (const r of matrix.rows) {
+      const p = productByFg.get(String(r.fgCode).trim().toLowerCase());
+      if (p?.brandName) b.add(p.brandName);
+      const vl = p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "";
+      if (vl) v.add(vl);
+      if (p?.category) c.add(p.category);
+    }
+    const toOpts = (s) => [...s].sort((x, y) => String(x).localeCompare(String(y))).map((x) => ({ value: x, label: x }));
+    return { brands: toOpts(b), volumes: toOpts(v), categories: toOpts(c) };
+  }, [matrix, productByFg]);
+
+  // แถวที่ผ่านตัวกรอง (ว่าง = ไม่กรอง). สินค้าที่ไม่รู้จัก master จะไม่ผ่านเมื่อมีตัวกรอง.
+  const filteredRows = useMemo(() => {
+    if (!brands.length && !volumes.length && !categories.length) return matrix.rows;
+    return matrix.rows.filter((r) => {
+      const p = productByFg.get(String(r.fgCode).trim().toLowerCase());
+      if (brands.length && !brands.includes(p?.brandName)) return false;
+      if (volumes.length && !volumes.includes(volLabel(p))) return false;
+      if (categories.length && !categories.includes(p?.category)) return false;
+      return true;
+    });
+  }, [matrix, productByFg, brands, volumes, categories]);
+
+  const filterCount = brands.length + volumes.length + categories.length;
+
+  // มูลค่ารายเดือน (ราคา×จำนวน) — คิดตามแถวที่แสดง (หลังกรอง). ราคา = ราคาโรงงาน
+  // (costPrice) จาก products — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
   const valueSummary = useMemo(() => {
     const byMonth = {};
     for (const m of matrix.months) byMonth[m] = { fc: 0, po: 0 };
     let gFc = 0, gPo = 0, unpriced = 0;
-    for (const row of matrix.rows) {
+    for (const row of filteredRows) {
       const p = productByFg.get(String(row.fgCode).trim().toLowerCase());
       const price = p?.price == null ? null : Number(p.price);
       if (price == null) { if (row.fcTotal > 0 || row.poTotal > 0) unpriced += 1; continue; }
@@ -81,7 +114,7 @@ export default function ReconcilePage() {
       gPo += (row.poTotal || 0) * price;
     }
     return { byMonth, gFc, gPo, unpriced };
-  }, [matrix, productByFg]);
+  }, [matrix, productByFg, filteredRows]);
 
   // Click a cell → open the detail modal (แทนการเด้งไปหน้าเต็ม).
   const openCell = (fg, m) => setCellSel({ fg, m });
@@ -145,6 +178,15 @@ export default function ReconcilePage() {
       back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <FilterPopover
+            count={filterCount}
+            onClear={() => { setBrands([]); setVolumes([]); setCategories([]); }}
+            groups={[
+              { key: "brand", label: "แบรนด์", options: filterOptions.brands, selected: brands, onChange: setBrands },
+              { key: "volume", label: "ปริมาตร", options: filterOptions.volumes, selected: volumes, onChange: setVolumes },
+              { key: "category", label: "หมวดสินค้า", options: filterOptions.categories, selected: categories, onChange: setCategories },
+            ]}
+          />
           <div className="segmented">
             {VIEWS.map((v) => (
               <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
@@ -198,9 +240,9 @@ export default function ReconcilePage() {
                 </tr>
               </thead>
               <tbody>
-                {matrix.rows.map((r) => {
+                {filteredRows.map((r) => {
                   const p = productOf(r.fgCode);
-                  const meta = [p?.brandName, p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : null].filter(Boolean).join(" · ");
+                  const meta = [p?.brandName, volLabel(p)].filter(Boolean).join(" · ");
                   return (
                   <tr key={r.fgCode}>
                     <td>
@@ -208,9 +250,7 @@ export default function ReconcilePage() {
                         <span className="product-row-name" style={r.productName ? undefined : { color: "var(--amber)" }} title={r.productName || r.fgCode}>{r.productName || "— ไม่รู้จัก —"}</span>
                         <span className="product-row-sku">{r.fgCode}</span>
                         {meta && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{meta}</span>}
-                        <span style={{ fontSize: 11, color: p?.price == null ? "var(--amber)" : "var(--text-2)" }}>
-                          ราคาโรงงาน: {p?.price == null ? "—" : nfBaht(p.price)}
-                        </span>
+                        {p?.category && <span style={{ fontSize: 11, color: "var(--text-2)" }}>{p.category}</span>}
                       </div>
                     </td>
                     {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
@@ -221,6 +261,13 @@ export default function ReconcilePage() {
                   </tr>
                   );
                 })}
+                {filteredRows.length === 0 && (
+                  <tr>
+                    <td colSpan={matrix.months.length + 2} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>
+                      ไม่มีสินค้าตรงตัวกรอง — ปรับตัวกรอง หรือกด “ล้างทั้งหมด”
+                    </td>
+                  </tr>
+                )}
               </tbody>
               <tfoot>
                 <tr className="recon-value-row">
