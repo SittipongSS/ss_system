@@ -5,6 +5,7 @@ import { ClipboardCheck, AlertCircle, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
+import { predictShifts } from "@/lib/sahamit/predict";
 import { recommendedReadyDate, LEAD_IN_FC, LEAD_OUT_FC } from "@/lib/sahamit/material";
 import { monthOf } from "@/lib/sahamit/po";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
@@ -30,6 +31,11 @@ const VIEWS = [
 ];
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const URGENCY_COLOR = { high: "var(--red)", medium: "var(--amber)", low: "var(--violet)" };
+const shortMonth = (ym) => {
+  try { return new Date(`${ym}-02`).toLocaleDateString("th-TH", { month: "short" }); }
+  catch { return ym; }
+};
 
 export default function ReconcilePage() {
   const router = useRouter();
@@ -43,6 +49,10 @@ export default function ReconcilePage() {
   const loading = l1 || l2;
   const error = e1 || e2;
   const matrix = useMemo(() => buildReconMatrix(rounds, pos, coverages), [rounds, pos, coverages]);
+  // Proactive shift prediction (เฟส S1): pending cells (FC, no PO) get a "✨ →month"
+  // hint colored by urgency (days to month-end). Pure — logic lives in predict.js.
+  const today = useMemo(() => toLocalISODate(new Date()), []);
+  const predictions = useMemo(() => predictShifts(rounds, pos, { today, locks }), [rounds, pos, today, locks]);
   const lockByKey = useMemo(() => {
     const m = new Map();
     for (const lk of locks) m.set(`${lk.fgCode}||${lk.month}`, lk);
@@ -81,6 +91,15 @@ export default function ReconcilePage() {
     }
     const locked = lockByKey.has(`${fg}||${m}`);
     const hasCov = cell.coverageIn > 0 || cell.coverageOut > 0;
+    const pred = predictions.get(`${fg}||${m}`);
+    const predBadge = pred ? (
+      <div
+        style={{ fontSize: 9.5, fontWeight: 600, color: URGENCY_COLOR[pred.urgency], display: "flex", alignItems: "center", justifyContent: "center", gap: 2, marginTop: 2, whiteSpace: "nowrap" }}
+        title={`ระบบคาดว่าจะเลื่อนไป ${pred.toMonth} (${pred.pattern}) · เหลือ ${pred.daysLeft} วันถึงสิ้นเดือน · ยังไม่มี PO`}
+      >
+        <span style={{ fontSize: 10 }}>✨</span> →{shortMonth(pred.toMonth)}
+      </div>
+    ) : null;
     const badges = (
       <>
         {locked && <span style={{ position: "absolute", top: 3, right: 4, fontSize: 9, lineHeight: 1 }} title={`ล็อก (ตกลงแล้ว) ที่ ${nf(cell.fcQty)}`}>🔒</span>}
@@ -95,6 +114,7 @@ export default function ReconcilePage() {
           <div className="grid-cell-box" onClick={() => openCell(fg, m)} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
             {badges}
             <span className="cell-val fc" style={{ fontSize: 13 }}>{val ? nf(val) : "·"}</span>
+            {view === "fc" && predBadge}
           </div>
         </td>
       );
@@ -112,6 +132,7 @@ export default function ReconcilePage() {
           <div className="cell-value-line"><span className="cell-lbl">FC</span><span className="cell-val fc">{nf(cell.fcQty)}</span></div>
           <div className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{nf(cell.poQty)}</span></div>
           <span className="cell-status-tag">{cell.label}</span>
+          {predBadge}
         </div>
       </td>
     );
@@ -161,6 +182,9 @@ export default function ReconcilePage() {
               </span>
             ))}
             {view === "recon" && <span style={{ color: "var(--text-3)" }}>· แต่ละช่อง: บน=FC ล่าง=PO · คลิกเพื่อดูรายละเอียด</span>}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--violet)" }}>
+              ✨ คาดว่าจะเลื่อน (สี = ความเร่งด่วน: <b style={{ color: "var(--red)" }}>≤30</b>/<b style={{ color: "var(--amber)" }}>≤60</b>/<b style={{ color: "var(--violet)" }}>วัน</b>)
+            </span>
             {(ld60Month || ld90Month) && (
               <span style={{ color: "var(--text-3)", display: "inline-flex", alignItems: "center", gap: 6 }}>
                 · เส้นประ <b style={{ color: "var(--amber)" }}>LD 60</b>/<b style={{ color: "var(--violet)" }}>LD 90</b> = เดือนแรกที่ผลิตทันถ้าสั่งวันนี้ (in-FC 60 / นอก FC 90 วันทำการ จาก {anchorDate})
