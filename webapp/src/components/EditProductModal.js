@@ -4,13 +4,14 @@ import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { categoryOf } from "@/lib/master/categoryOf";
+import { brandThList, brandEnFor } from "@/lib/master/brands";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
 // (Excise APPROVAL still lives on the registration.) Layout/styling mirrors the
 // "add product" form on /database/products so both forms feel like one system.
 const FIELDS = [
   "customerId",
-  "fgCode", "productDescription", "brandName",
+  "fgCode", "productDescription", "productDescriptionEn", "brandName", "brandNameEn",
   "volume", "volumeUnit", "costPrice", "retailPriceIncVat",
 ];
 
@@ -52,11 +53,12 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   // parent-supplied list while customers aren't loaded). Changing the customer
   // clears the brand — the brand list is scoped per customer, same as the add form.
   const selCustomer = customers.find((c) => c.id === form.customerId);
-  const brandOptionList = selCustomer
-    ? [...new Set((selCustomer.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))
-    : brandOptions;
+  const brandOptionList = selCustomer ? brandThList(selCustomer.brands || []) : brandOptions;
 
-  const handleCustomerChange = (v) => setForm((f) => ({ ...f, customerId: v, brandName: "" }));
+  const handleCustomerChange = (v) => setForm((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }));
+  // เลือกแบรนด์ → เติมชื่ออังกฤษที่คู่กันจากข้อมูลลูกค้า (แก้เองได้)
+  const handleBrandChange = (v) =>
+    setForm((f) => ({ ...f, brandName: v, brandNameEn: brandEnFor(selCustomer?.brands, v) || f.brandNameEn }));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -148,8 +150,12 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               {catBox}
             </div>
             <div className="form-group col-span-2">
-              <label>รายละเอียดสินค้า <span className="text-[var(--red)]">*</span></label>
-              <input type="text" value={form.productDescription ?? ""} onChange={(e) => set("productDescription", e.target.value)} required placeholder="เช่น Midnight Bloom 50ml" className="premium-input w-full" />
+              <label>ชื่อสินค้า / รายละเอียด (ไทย) <span className="text-[var(--red)]">*</span></label>
+              <input type="text" value={form.productDescription ?? ""} onChange={(e) => set("productDescription", e.target.value)} required placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
+            </div>
+            <div className="form-group col-span-2">
+              <label>ชื่อสินค้า / รายละเอียด (อังกฤษ)</label>
+              <input type="text" value={form.productDescriptionEn ?? ""} onChange={(e) => set("productDescriptionEn", e.target.value)} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
             </div>
             <div className="form-group">
               <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
@@ -167,16 +173,20 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               <span className="text-xs text-[var(--text-3)] mt-1">เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ</span>
             </div>
             <div className="form-group">
-              <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
+              <label>ชื่อแบรนด์ (ไทย) <span className="text-[var(--red)]">*</span></label>
               <SearchableSelect
                 allowFreeText
                 disabled={!form.customerId}
                 options={brandOptionList.map((b) => ({ value: b, label: b }))}
                 value={form.brandName ?? ""}
-                onChange={(v) => set("brandName", v)}
+                onChange={handleBrandChange}
                 placeholder={form.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"}
                 emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
               />
+            </div>
+            <div className="form-group col-span-2">
+              <label>ชื่อแบรนด์ (อังกฤษ)</label>
+              <input type="text" value={form.brandNameEn ?? ""} onChange={(e) => set("brandNameEn", e.target.value)} placeholder="เติมอัตโนมัติเมื่อเลือกแบรนด์ที่มีชื่ออังกฤษ — แก้ไขได้" className="premium-input w-full" />
             </div>
           </div>
         </div>

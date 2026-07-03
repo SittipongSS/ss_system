@@ -9,6 +9,8 @@ import Workspace from "@/components/ui/Workspace";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
 import ContactsEditor from "@/components/database/ContactsEditor";
+import BrandsEditor from "@/components/database/BrandsEditor";
+import { brandTh, brandEn } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -52,7 +54,7 @@ export default function CustomerDirectory() {
     phone: "",
     address: "",
     shippingAddress: "",
-    brandsStr: "",
+    brands: [],
     contacts: [],
     creditTerms: "",
   });
@@ -112,10 +114,7 @@ export default function CustomerDirectory() {
       phone: formData.phone,
       address: formData.address,
       shippingAddress: formData.shippingAddress || null,
-      brands: formData.brandsStr
-        .split(",")
-        .map((b) => b.trim())
-        .filter((b) => b),
+      brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)
       contacts: formData.contacts || [],
       creditTerms: formData.creditTerms || null,
     };
@@ -128,7 +127,7 @@ export default function CustomerDirectory() {
       });
       if (res.ok) {
         const created = await res.json();
-        setFormData({ arCode: "", name: "", customerType: "company", taxId: "", branchCode: "00000", phone: "", address: "", shippingAddress: "", brandsStr: "", contacts: [], creditTerms: "" });
+        setFormData({ arCode: "", name: "", customerType: "company", taxId: "", branchCode: "00000", phone: "", address: "", shippingAddress: "", brands: [], contacts: [], creditTerms: "" });
         setShowForm(false);
         fetchCustomers();
         if (created?.approvalStatus === "pending") {
@@ -163,7 +162,7 @@ export default function CustomerDirectory() {
     if (statusFilter !== "all" && approvalStatusOf(c) !== statusFilter) return false;
     if (teamFilter !== "all" && !teamsOf(c).includes(teamFilter)) return false;
     if (!q) return true;
-    return [c.arCode, c.name, c.taxId, c.phone, ...(c.brands || [])]
+    return [c.arCode, c.name, c.taxId, c.phone, ...(c.brands || []).flatMap((b) => [brandTh(b), brandEn(b)])]
       .some((v) => (v || "").toLowerCase().includes(q));
   });
 
@@ -285,7 +284,7 @@ export default function CustomerDirectory() {
                 {c.brands?.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {c.brands.slice(0, 4).map((b, i) => (
-                      <span key={i} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{b}</span>
+                      <span key={i} title={brandEn(b) || undefined} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{brandTh(b)}</span>
                     ))}
                     {c.brands.length > 4 && <span className="text-[11px] text-[var(--text-3)] px-1">+{c.brands.length - 4}</span>}
                   </div>
@@ -330,7 +329,7 @@ export default function CustomerDirectory() {
                     <td className="text-[var(--text-2)]">
                       <div className="flex flex-wrap gap-1.5">
                         {c.brands?.map((b, i) => (
-                          <span key={i} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{b}</span>
+                          <span key={i} title={brandEn(b) || undefined} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{brandTh(b)}{brandEn(b) ? ` · ${brandEn(b)}` : ""}</span>
                         ))}
                       </div>
                     </td>
@@ -489,21 +488,13 @@ export default function CustomerDirectory() {
                 ></textarea>
               </div>
               <div className="form-group col-span-2">
-                <label>
-                  ชื่อแบรนด์สินค้า (Brands){" "}
-                  <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="brandsStr"
-                  value={formData.brandsStr}
-                  onChange={handleChange}
-                  required
-                  placeholder="คั่นด้วยลูกน้ำ (,) เช่น Brand A, Brand B"
-                  className="premium-input w-full"
+                <label>ชื่อแบรนด์สินค้า (Brands)</label>
+                <BrandsEditor
+                  value={formData.brands}
+                  onChange={(v) => setFormData((f) => ({ ...f, brands: v }))}
                 />
                 <span className="text-[11px] text-[var(--text-3)] mt-1">
-                  ใส่ได้หลายแบรนด์ คั่นด้วยลูกน้ำ (,)
+                  ใส่ได้หลายแบรนด์ — ชื่อไทยจำเป็น, ชื่ออังกฤษไม่บังคับ
                 </span>
               </div>
             </div>

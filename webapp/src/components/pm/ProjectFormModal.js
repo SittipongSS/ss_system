@@ -4,6 +4,7 @@ import Modal from "@/components/Modal";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { brandThList } from "@/lib/master/brands";
 import { X } from "lucide-react";
 
 export default function ProjectFormModal({
@@ -165,9 +166,8 @@ export default function ProjectFormModal({
   // ตัวเลือกแบรนด์ = แบรนด์ที่ลูกค้า "เป็นเจ้าของ" (customers.brands[]) — master ของแบรนด์.
   // กรองตามลูกค้า "เสมอ": ยังไม่เลือกลูกค้า → ไม่มีแบรนด์ให้เลือก (กันโชว์แบรนด์ข้ามลูกค้า)
   const brandOptions = useMemo(() => {
-    const dedup = (arr) => [...new Set(arr.map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const selected = customers.find((c) => c.id === form.customerId);
-    return selected ? dedup(selected.brands || []) : [];
+    return selected ? brandThList(selected.brands || []) : [];
   }, [customers, form.customerId]);
 
   const subCatOptions = useMemo(
