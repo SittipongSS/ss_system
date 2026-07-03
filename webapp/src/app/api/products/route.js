@@ -94,7 +94,9 @@ export async function POST(request) {
     customerId: customer.id,
     customerName: customer.name,
     productDescription: body.productDescription ?? null,
+    productDescriptionEn: body.productDescriptionEn ?? null, // ชื่อสินค้า EN (0059)
     brandName: body.brandName ?? null,
+    brandNameEn: body.brandNameEn ?? null, // snapshot EN ของแบรนด์ (0059)
     volume,
     volumeUnit: body.volumeUnit || 'ml',
     costPrice: costPrice == null || costPrice === '' ? null : costPriceNum,

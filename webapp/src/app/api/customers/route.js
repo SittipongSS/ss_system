@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData } from '@/lib/permissions';
+import { normalizeBrands } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -67,7 +68,7 @@ export async function POST(request) {
     phone: body.phone || null,
     address: body.address,                    // ที่อยู่ออกเอกสาร/บิล
     shippingAddress: body.shippingAddress || null, // null = ใช้ที่อยู่ออกเอกสาร
-    brands: body.brands || [],
+    brands: normalizeBrands(body.brands), // [{th,en}] (migration 0059)
     isActive: true, // ลูกค้าใหม่ใช้งานอยู่เสมอ (migration 0030)
     // แผนที่/เอกสารย้ายไปตาราง attachments (docType address_map) — ไม่เขียน mapFileUrl อีก.
     // Master-data contact / commercial fields (migration 0005, 0025, 0033).

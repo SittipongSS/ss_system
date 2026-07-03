@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, isSuperuser } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
+import { normalizeBrands } from '@/lib/master/brands';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 import { referencedBlock } from '@/lib/deletion';
@@ -173,6 +174,8 @@ export async function PATCH(request, { params }) {
   ]) {
     if (body[k] !== undefined) updates[k] = body[k];
   }
+  // brands (0059): normalize to [{th,en}] — accepts legacy string[] too.
+  if (body.brands !== undefined) updates.brands = normalizeBrands(body.brands);
   // teams[] (0037): assigning caretaker teams is a cross-team management action —
   // supervisor/admin only (others may edit the record but not re-scope it).
   if (body.teams !== undefined && isSuperuser(user?.role)) {

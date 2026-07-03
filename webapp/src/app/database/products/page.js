@@ -16,6 +16,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
+import { brandThList, brandEnFor } from "@/lib/master/brands";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -50,7 +51,9 @@ export default function ProductRegistry() {
     customerId: "",
     fgCode: "",
     productDescription: "",
+    productDescriptionEn: "",
     brandName: "",
+    brandNameEn: "",
     volume: "",
     volumeUnit: "ml",
     costPrice: "",
@@ -139,15 +142,18 @@ export default function ProductRegistry() {
     () => [...customers].sort((a, b) => (a.name || "").localeCompare(b.name || "")),
     [customers],
   );
-  const brandOptions = useMemo(() => {
-    const c = customers.find((x) => x.id === formData.customerId);
-    return [...new Set((c?.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  }, [customers, formData.customerId]);
+  const selectedCustomer = useMemo(
+    () => customers.find((x) => x.id === formData.customerId),
+    [customers, formData.customerId],
+  );
+  const brandOptions = useMemo(() => brandThList(selectedCustomer?.brands || []), [selectedCustomer]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // เปลี่ยนลูกค้า → ล้างแบรนด์เดิม เพราะรายการแบรนด์ผูกกับลูกค้า
-    if (name === "customerId") setFormData((f) => ({ ...f, customerId: value, brandName: "" }));
+    // เปลี่ยนลูกค้า → ล้างแบรนด์เดิม (TH+EN) เพราะรายการแบรนด์ผูกกับลูกค้า
+    if (name === "customerId") setFormData((f) => ({ ...f, customerId: value, brandName: "", brandNameEn: "" }));
+    // เลือก/พิมพ์แบรนด์ → เติมชื่ออังกฤษที่คู่กันจากข้อมูลลูกค้าให้อัตโนมัติ (แก้เองได้)
+    else if (name === "brandName") setFormData((f) => ({ ...f, brandName: value, brandNameEn: brandEnFor(selectedCustomer?.brands, value) || f.brandNameEn }));
     else setFormData((f) => ({ ...f, [name]: value }));
   };
 
@@ -213,7 +219,7 @@ export default function ProductRegistry() {
     if (!showInactive && p.isActive === false) return false;
     if (statusFilter !== "all" && approvalStatusOf(p) !== statusFilter) return false;
     if (!q) return true;
-    return [p.fgCode, p.productDescription, p.brandName].some((v) => (v || "").toLowerCase().includes(q));
+    return [p.fgCode, p.productDescription, p.productDescriptionEn, p.brandName, p.brandNameEn].some((v) => (v || "").toLowerCase().includes(q));
   });
 
   // Pending records this user may approve — surfaced at the top as a queue.
@@ -486,8 +492,12 @@ export default function ProductRegistry() {
                 })()}
               </div>
               <div className="form-group col-span-2">
-                <label>รายละเอียดสินค้า <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="productDescription" value={formData.productDescription} onChange={handleChange} required placeholder="เช่น Midnight Bloom 50ml" className="premium-input w-full" />
+                <label>ชื่อสินค้า / รายละเอียด (ไทย) <span className="text-[var(--red)]">*</span></label>
+                <input type="text" name="productDescription" value={formData.productDescription} onChange={handleChange} required placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
+              </div>
+              <div className="form-group col-span-2">
+                <label>ชื่อสินค้า / รายละเอียด (อังกฤษ)</label>
+                <input type="text" name="productDescriptionEn" value={formData.productDescriptionEn} onChange={handleChange} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
               </div>
               <div className="form-group">
                 <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
@@ -505,7 +515,7 @@ export default function ProductRegistry() {
                 <span className="text-xs text-[var(--text-3)] mt-1">FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก</span>
               </div>
               <div className="form-group">
-                <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
+                <label>ชื่อแบรนด์ (ไทย) <span className="text-[var(--red)]">*</span></label>
                 <SearchableSelect
                   allowFreeText
                   disabled={!formData.customerId}
@@ -515,6 +525,10 @@ export default function ProductRegistry() {
                   placeholder={formData.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"}
                   emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
                 />
+              </div>
+              <div className="form-group col-span-2">
+                <label>ชื่อแบรนด์ (อังกฤษ)</label>
+                <input type="text" name="brandNameEn" value={formData.brandNameEn} onChange={handleChange} placeholder="เติมอัตโนมัติเมื่อเลือกแบรนด์ที่มีชื่ออังกฤษ — แก้ไขได้" className="premium-input w-full" />
               </div>
             </div>
           </div>
