@@ -85,8 +85,8 @@ function buildReport(view, data) {
         fgCode: l.fgCode, name: l.productName || '', poNumber: po.poNumber || '', qty: Number(l.qty || 0),
         deliveryMonth: l.deliveryMonth || '', inFc: v.inForecast ? 'ตรง FC' : 'นอก FC', lead: v.leadDays,
         received: po.receivedDate, ready: v.readyDate, due: l.dueDate,
-        pm: t.pmInStock ? 'พร้อม' : (t.pmArrivedAt ? `มาถึง ${t.pmArrivedAt}` : ''),
-        rm: t.rmArrivedAt ? `รับ ${t.rmArrivedAt}` : (t.rmOrderedAt ? `สั่ง ${t.rmOrderedAt}` : ''),
+        pm: t.pmArrivedAt ? `มาแล้ว ${t.pmArrivedAt}` : (t.pmDueDate ? `กำหนด ${t.pmDueDate}` : ''),
+        rm: t.rmArrivedAt ? `มาแล้ว ${t.rmArrivedAt}` : (t.rmDueDate ? `กำหนด ${t.rmDueDate}` : ''),
         actual: l.actualDeliveredDate, late: v.ourSlip ? 'เราส่งช้า' : (v.lateVsDue ? 'เกินกำหนด(PO/lead)' : ''),
       });
     }

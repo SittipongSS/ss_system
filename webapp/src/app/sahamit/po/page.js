@@ -1,102 +1,79 @@
 "use client";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Save, Pencil, Download } from "lucide-react";
+import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { fmtDate } from "@/lib/format";
-import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL } from "@/lib/sahamit/po";
+import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR } from "@/lib/sahamit/po";
 import { destinationLabel } from "@/components/sahamit/destinations";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 const baht = (n) => "฿" + Math.round(Number(n) || 0).toLocaleString("th-TH");
 const VAT = 1.07;
+const C = { amber: "var(--amber)", blue: "var(--blue)", violet: "var(--violet)", green: "var(--green)", "text-3": "var(--text-3)" };
+const today = () => new Date().toISOString().slice(0, 10);
 
-// บรรทัดสินค้าใน PO (มุมมองวัสดุ): จำนวน/เดือนส่ง/วันรับ PO/วันส่งแนะนำ/วันกำหนด/PM/RM/ส่งจริง
-// + แก้ PM/RM inline (เหมือนหน้าวัสดุ). `row` = แถวจาก /api/sahamit/material.
+// สถานะวัสดุ 1 ช่อง (อ่านอย่างเดียว): มาแล้ว / กำหนดถึง / —  (แก้ที่เมนูวัสดุเท่านั้น)
+function matCell(dueDate, arrivedAt) {
+  if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: 600 }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
+  if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
+  return <span style={{ color: "var(--text-3)" }}>—</span>;
+}
+
+// บรรทัดสินค้าใน PO: โชว์วัสดุ (read-only) + สถานะ auto + ปุ่มเดินสถานะ (ผลิต/ส่ง/ปิด).
+// `row` = แถวจาก /api/sahamit/material (มี status + tracking).
 function PoLineRow({ row, onSaved }) {
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [d, setD] = useState({});
-  useEffect(() => {
-    const t = row.tracking || {};
-    setD({
-      pmInStock: !!t.pmInStock, pmArrivedAt: t.pmArrivedAt || "",
-      rmOrderedAt: t.rmOrderedAt || "", rmArrivedAt: t.rmArrivedAt || "", note: t.note || "",
-    });
-  }, [row]);
+  const t = row.tracking || {};
+  const stage = lineStage(row.status, !!t.pmArrivedAt, !!t.rmArrivedAt);
+  const color = C[STAGE_COLOR[stage]] || C["text-3"];
 
-  const save = async () => {
+  const advance = async (patch) => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sahamit/material/${row.poLineId}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d),
+      const res = await fetch(`/api/sahamit/po/lines/${row.poLineId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || "บันทึกไม่สำเร็จ");
+      if (!res.ok) throw new Error(j.error || "ไม่สำเร็จ");
       onSaved?.();
     } catch (e) { alert(e.message); }
     setBusy(false);
   };
 
-  const t = row.tracking || {};
+  let action = null;
+  if (stage === "waiting_materials") action = <span style={{ fontSize: 11, color: "var(--text-3)" }}>รอ PM/RM</span>;
+  else if (stage === "ready_produce") action = <button className="btn sm" disabled={busy} onClick={() => advance({ status: "produced" })}>ผลิตเสร็จ →</button>;
+  else if (stage === "produced") action = <button className="btn btn-primary sm" disabled={busy} onClick={() => advance({ status: "delivered", actualDeliveredDate: today() })}>ส่งแล้ว →</button>;
+  else if (stage === "delivered") action = <button className="btn sm" disabled={busy} onClick={() => advance({ status: "closed" })}>ปิดงาน →</button>;
+
   return (
-    <>
-      <tr>
-        <td className="font-mono" style={{ fontWeight: 600 }}>
-          {row.fgCode}
-          <div style={{ fontSize: 11, color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
-        </td>
-        <td style={{ textAlign: "right" }}>{nf(row.qty)}</td>
-        <td>{row.deliveryMonth || "—"}</td>
-        <td>{row.receivedDate ? fmtDate(row.receivedDate) : "—"}</td>
-        <td>
-          {row.readyDate ? fmtDate(row.readyDate) : "—"}
-          {row.lateVsDue && <div style={{ fontSize: 10.5, color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
-        </td>
-        <td>{row.dueDate ? fmtDate(row.dueDate) : "—"}</td>
-        <td style={{ color: t.pmInStock ? "var(--green)" : "var(--text-3)" }}>{t.pmInStock ? "พร้อม" : "—"}{t.pmArrivedAt ? ` (${fmtDate(t.pmArrivedAt)})` : ""}</td>
-        <td style={{ color: t.rmArrivedAt ? "var(--green)" : t.rmOrderedAt ? "var(--blue)" : "var(--text-3)" }}>{t.rmArrivedAt ? `รับ ${fmtDate(t.rmArrivedAt)}` : t.rmOrderedAt ? `สั่ง ${fmtDate(t.rmOrderedAt)}` : "—"}</td>
-        <td>
-          {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : "—"}
-          {row.ourSlip && <div style={{ fontSize: 10.5, color: "var(--red)" }}>เราส่งช้า</div>}
-        </td>
-        <td><button className="btn-icon" onClick={() => setOpen((v) => !v)} title="แก้สถานะวัสดุ">{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
-      </tr>
-      {open && (
-        <tr>
-          <td colSpan={10} style={{ background: "var(--panel-2)" }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end", padding: "6px 2px" }}>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-                <input type="checkbox" checked={d.pmInStock} onChange={(e) => setD({ ...d, pmInStock: e.target.checked })} /> PM มีสต็อก
-              </label>
-              <div className="form-group" style={{ width: 150 }}>
-                <label>PM มาถึง</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.pmArrivedAt} onChange={(e) => setD({ ...d, pmArrivedAt: e.target.value })} />
-              </div>
-              <div className="form-group" style={{ width: 150 }}>
-                <label>RM สั่งเมื่อ</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.rmOrderedAt} onChange={(e) => setD({ ...d, rmOrderedAt: e.target.value })} />
-              </div>
-              <div className="form-group" style={{ width: 150 }}>
-                <label>RM มาถึง</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.rmArrivedAt} onChange={(e) => setD({ ...d, rmArrivedAt: e.target.value })} />
-              </div>
-              <div className="form-group" style={{ flex: "1 1 160px", minWidth: 140 }}>
-                <label>หมายเหตุ</label>
-                <input className="premium-input" style={{ height: 30 }} value={d.note} onChange={(e) => setD({ ...d, note: e.target.value })} />
-              </div>
-              <button className="btn btn-primary sm" onClick={save} disabled={busy}><Save size={14} /> บันทึก</button>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
+    <tr>
+      <td className="font-mono" style={{ fontWeight: 600 }}>
+        {row.fgCode}
+        <div style={{ fontSize: 11, color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
+      </td>
+      <td style={{ textAlign: "right" }}>{nf(row.qty)}</td>
+      <td>{row.deliveryMonth || "—"}</td>
+      <td>{matCell(t.pmDueDate, t.pmArrivedAt)}</td>
+      <td>{matCell(t.rmDueDate, t.rmArrivedAt)}</td>
+      <td>
+        {row.readyDate ? fmtDate(row.readyDate) : "—"}
+        {row.lateVsDue && <div style={{ fontSize: 10.5, color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
+      </td>
+      <td><span className="ui-badge" style={{ color, borderColor: color }}>{STAGE_LABEL[stage]}</span></td>
+      <td>
+        {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : "—"}
+        {row.ourSlip && <div style={{ fontSize: 10.5, color: "var(--red)" }}>เราส่งช้า</div>}
+      </td>
+      <td style={{ textAlign: "right" }}>{action}</td>
+    </tr>
   );
 }
 
 export default function PoPage() {
-  const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
+  const { data: pos, loading, error } = useApiList("/api/sahamit/po");
   const { data: material, reload: reloadMaterial } = useApiList("/api/sahamit/material");
   const { data: products } = useApiList("/api/sahamit/products");
   const [openPo, setOpenPo] = useState({});
@@ -124,7 +101,7 @@ export default function PoPage() {
     <Workspace
       icon={<FileText size={22} />}
       title="Purchase Orders"
-      subtitle="ติดตาม PO รายใบ · ขยายเพื่อดูรายการ + สถานะวัสดุ (ลูกค้า AR-109)"
+      subtitle="ติดตาม PO รายใบ · ขยายดูรายการ + สถานะผลิต/ส่ง (แก้วัสดุที่เมนู วัสดุ/Lead time)"
       back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
         <div style={{ display: "flex", gap: 8 }}>
@@ -163,7 +140,7 @@ export default function PoPage() {
                 <th>เลขที่ PO</th>
                 <th>วันที่เอกสาร</th>
                 <th>วันรับ PO</th>
-                <th>กำหนดรับ</th>
+                <th>กำหนดส่ง</th>
                 <th>สถานที่ส่ง</th>
                 <th style={{ textAlign: "right" }}>รายการ</th>
                 <th style={{ textAlign: "right" }}>จำนวนรวม</th>
@@ -173,13 +150,9 @@ export default function PoPage() {
               </tr>
             </thead>
             <tbody>
-              {pos.map((po) => {
-                const lines = matByPo.get(po.poNumber) || [];
-                const isOpen = !!openPo[po.id];
-                return (
-                  <PoGroup key={po.id} po={po} lines={lines} priceByFg={priceByFg} isOpen={isOpen} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} />
-                );
-              })}
+              {pos.map((po) => (
+                <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} />
+              ))}
             </tbody>
           </table>
         </div>
@@ -197,6 +170,13 @@ function PoGroup({ po, lines, priceByFg, isOpen, onToggle, onSaved }) {
     return s + Number(l.qty || 0) * price;
   }, 0);
   const incVat = exVat * VAT;
+
+  // สถานะหัว PO: รวมจากบรรทัด (ผ่านวัสดุ); ถ้าไม่มีบรรทัด active → สถานะเดิม
+  const hasLines = lines.length > 0;
+  const poStage = hasLines ? poStageRollup(lines.map((r) => lineStage(r.status, !!r.tracking?.pmArrivedAt, !!r.tracking?.rmArrivedAt))) : null;
+  const stageLabel = hasLines ? STAGE_LABEL[poStage] : PO_STATUS_LABEL[poRollupStatus(po)];
+  const stageColor = hasLines ? (C[STAGE_COLOR[poStage]] || C["text-3"]) : "var(--text-3)";
+
   return (
     <>
       <tr className="clickable-row" style={{ cursor: "pointer" }} onClick={onToggle}>
@@ -213,7 +193,7 @@ function PoGroup({ po, lines, priceByFg, isOpen, onToggle, onSaved }) {
           <div style={{ fontSize: 11, color: "var(--text-3)" }}>รวม VAT {baht(incVat)}</div>
           {unpriced > 0 && <div style={{ fontSize: 10.5, color: "var(--amber)" }}>{unpriced} รายการไม่มีราคา</div>}
         </td>
-        <td><span className="status-pill">{PO_STATUS_LABEL[poRollupStatus(po)]}</span></td>
+        <td><span className="ui-badge" style={{ color: stageColor, borderColor: stageColor }}>{stageLabel}</span></td>
         <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
           <Link href={`/sahamit/po/${po.id}`} className="btn-icon" title="แก้ไข PO"><Pencil size={15} /></Link>
         </td>
@@ -231,11 +211,10 @@ function PoGroup({ po, lines, priceByFg, isOpen, onToggle, onSaved }) {
                       <th>สินค้า</th>
                       <th style={{ textAlign: "right" }}>จำนวน</th>
                       <th>เดือนส่ง</th>
-                      <th>วันรับ PO</th>
-                      <th>วันส่งแนะนำ</th>
-                      <th>วันกำหนด</th>
                       <th>PM</th>
                       <th>RM</th>
+                      <th>วันส่งแนะนำ</th>
+                      <th>สถานะ</th>
                       <th>ส่งจริง</th>
                       <th></th>
                     </tr>

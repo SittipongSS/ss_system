@@ -7,7 +7,15 @@ import { fmtDate } from "@/lib/format";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 
-// One PO line: lead-time view (read-only) + expandable PM/RM editor.
+// สถานะวัสดุ 1 ช่อง: มาแล้ว (เขียว+วันที่) / กำหนดถึง (วันที่) / —
+function matCell(dueDate, arrivedAt) {
+  if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: 600 }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
+  if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
+  return <span style={{ color: "var(--text-3)" }}>—</span>;
+}
+
+// One PO line: lead-time view (read-only) + PM/RM editor (กำหนดถึง + ปุ่มมาแล้ว).
+// นี่คือ "ที่เดียว" ที่แก้วันวัสดุได้ (หน้า POs โชว์อย่างเดียว).
 function MaterialRow({ row, onSaved }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -15,16 +23,25 @@ function MaterialRow({ row, onSaved }) {
   useEffect(() => {
     const t = row.tracking || {};
     setD({
-      pmInStock: !!t.pmInStock, pmArrivedAt: t.pmArrivedAt || "",
-      rmOrderedAt: t.rmOrderedAt || "", rmArrivedAt: t.rmArrivedAt || "", note: t.note || "",
+      pmDueDate: t.pmDueDate || "", pmArrived: !!t.pmArrivedAt,
+      rmDueDate: t.rmDueDate || "", rmArrived: !!t.rmArrivedAt, note: t.note || "",
     });
   }, [row]);
 
   const save = async () => {
     setBusy(true);
     try {
+      const t = row.tracking || {};
+      const today = new Date().toISOString().slice(0, 10);
+      const body = {
+        pmDueDate: d.pmDueDate || null,
+        rmDueDate: d.rmDueDate || null,
+        pmArrivedAt: d.pmArrived ? (t.pmArrivedAt || today) : null,
+        rmArrivedAt: d.rmArrived ? (t.rmArrivedAt || today) : null,
+        note: d.note,
+      };
       const res = await fetch(`/api/sahamit/material/${row.poLineId}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d),
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || "บันทึกไม่สำเร็จ");
@@ -56,8 +73,8 @@ function MaterialRow({ row, onSaved }) {
           {row.lateVsDue && <div style={{ fontSize: 10.5, color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
         </td>
         <td>{row.dueDate ? fmtDate(row.dueDate) : "—"}</td>
-        <td style={{ color: t.pmInStock ? "var(--green)" : "var(--text-3)" }}>{t.pmInStock ? "พร้อม" : "—"}{t.pmArrivedAt ? ` (${fmtDate(t.pmArrivedAt)})` : ""}</td>
-        <td style={{ color: t.rmArrivedAt ? "var(--green)" : t.rmOrderedAt ? "var(--blue)" : "var(--text-3)" }}>{t.rmArrivedAt ? `รับ ${fmtDate(t.rmArrivedAt)}` : t.rmOrderedAt ? `สั่ง ${fmtDate(t.rmOrderedAt)}` : "—"}</td>
+        <td>{matCell(t.pmDueDate, t.pmArrivedAt)}</td>
+        <td>{matCell(t.rmDueDate, t.rmArrivedAt)}</td>
         <td>
           {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : "—"}
           {row.ourSlip && <div style={{ fontSize: 10.5, color: "var(--red)" }}>เราส่งช้า</div>}
@@ -67,22 +84,21 @@ function MaterialRow({ row, onSaved }) {
       {open && (
         <tr>
           <td colSpan={12} style={{ background: "var(--panel-2)" }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end", padding: "6px 2px" }}>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-                <input type="checkbox" checked={d.pmInStock} onChange={(e) => setD({ ...d, pmInStock: e.target.checked })} /> PM มีสต็อก
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end", padding: "6px 2px" }}>
+              <div className="form-group" style={{ width: 160 }}>
+                <label>PM กำหนดถึง</label>
+                <input type="date" className="premium-input" style={{ height: 30 }} value={d.pmDueDate} onChange={(e) => setD({ ...d, pmDueDate: e.target.value })} />
+              </div>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
+                <input type="checkbox" checked={d.pmArrived} onChange={(e) => setD({ ...d, pmArrived: e.target.checked })} /> PM มาแล้ว
               </label>
-              <div className="form-group" style={{ width: 150 }}>
-                <label>PM มาถึง</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.pmArrivedAt} onChange={(e) => setD({ ...d, pmArrivedAt: e.target.value })} />
+              <div className="form-group" style={{ width: 160 }}>
+                <label>RM กำหนดถึง</label>
+                <input type="date" className="premium-input" style={{ height: 30 }} value={d.rmDueDate} onChange={(e) => setD({ ...d, rmDueDate: e.target.value })} />
               </div>
-              <div className="form-group" style={{ width: 150 }}>
-                <label>RM สั่งเมื่อ</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.rmOrderedAt} onChange={(e) => setD({ ...d, rmOrderedAt: e.target.value })} />
-              </div>
-              <div className="form-group" style={{ width: 150 }}>
-                <label>RM มาถึง</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.rmArrivedAt} onChange={(e) => setD({ ...d, rmArrivedAt: e.target.value })} />
-              </div>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
+                <input type="checkbox" checked={d.rmArrived} onChange={(e) => setD({ ...d, rmArrived: e.target.checked })} /> RM มาแล้ว
+              </label>
               <div className="form-group" style={{ flex: "1 1 160px", minWidth: 140 }}>
                 <label>หมายเหตุ</label>
                 <input className="premium-input" style={{ height: 30 }} value={d.note} onChange={(e) => setD({ ...d, note: e.target.value })} />
