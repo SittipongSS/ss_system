@@ -12,7 +12,7 @@ import EditProductModal from "@/components/EditProductModal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
-import { brandThList, brandLabel } from "@/lib/master/brands";
+import { brandThList, brandBoth } from "@/lib/master/brands";
 
 export default function ProductDetails() {
   const params = useParams();
@@ -170,7 +170,7 @@ export default function ProductDetails() {
             <span className="pill font-mono text-xs">{product.fgCode}</span>
           </h1>
           {product.productDescriptionEn && product.productDescription && <p className="text-[var(--text-3)] text-sm">{product.productDescription}</p>}
-          <p>แบรนด์: {brandLabel(product.brandName, product.brandNameEn)}</p>
+          <p>แบรนด์: {brandBoth(product.brandName, product.brandNameEn)}</p>
         </div>
 
         <div className="action-bar">
@@ -233,7 +233,7 @@ export default function ProductDetails() {
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
-                <span className="font-semibold text-[var(--text)] text-sm">{brandLabel(product.brandName, product.brandNameEn)}</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{brandBoth(product.brandName, product.brandNameEn)}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
