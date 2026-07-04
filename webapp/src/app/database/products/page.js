@@ -505,7 +505,7 @@ export default function ProductRegistry() {
                 <input type="text" name="productDescriptionEn" value={formData.productDescriptionEn} onChange={handleChange} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
                 <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
               </div>
-              <div className="form-group">
+              <div className="form-group col-span-2">
                 <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
                 <SearchableSelect
                   value={formData.customerId}
@@ -532,10 +532,10 @@ export default function ProductRegistry() {
                   emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
                 />
               </div>
-              <div className="form-group col-span-2">
+              <div className="form-group">
                 <label>ชื่อแบรนด์ (อังกฤษ)</label>
-                <input type="text" value={formData.brandNameEn} readOnly disabled placeholder="— ดึงจากแบรนด์ของลูกค้าอัตโนมัติ —" className="premium-input w-full" style={{ opacity: 0.7, cursor: "not-allowed" }} />
-                <span className="text-xs text-[var(--text-3)] mt-1">ดึงจากข้อมูลลูกค้าอัตโนมัติ — แก้ชื่อแบรนด์ (อังกฤษ) ได้ที่หน้าลูกค้า</span>
+                <input type="text" value={formData.brandNameEn} readOnly disabled placeholder="— ดึงจากแบรนด์ของลูกค้า —" className="premium-input w-full" style={{ opacity: 0.7, cursor: "not-allowed" }} />
+                <span className="text-xs text-[var(--text-3)] mt-1">ดึงอัตโนมัติ — แก้ที่หน้าลูกค้า</span>
               </div>
             </div>
           </div>
