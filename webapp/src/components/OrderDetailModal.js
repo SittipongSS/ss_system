@@ -131,7 +131,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
                       {it.product?.fgCode || "-"}
                     </td>
                     <td className="text-xs text-[var(--text-2)]">
-                      {it.product?.productDescription || "-"}
+                      {it.product?.productDescriptionEn || it.product?.productDescription || "-"}
                     </td>
                     <td className="text-center font-mono font-semibold">{it.quantity}</td>
                     <td className="num font-mono font-bold text-[var(--text)]">

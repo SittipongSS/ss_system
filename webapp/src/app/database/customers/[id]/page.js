@@ -16,8 +16,8 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import ContactsEditor from "@/components/database/ContactsEditor";
 import BrandsEditor from "@/components/database/BrandsEditor";
-import { brandTh, brandEn, normalizeBrands } from "@/lib/master/brands";
-import { fmtPhone, fmtNationalId } from "@/lib/format";
+import { brandBothOf, brandBoth, normalizeBrands } from "@/lib/master/brands";
+import { fmtPhone, fmtNationalId, productNameBoth } from "@/lib/format";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 
 export default function CustomerDetails() {
@@ -403,7 +403,7 @@ export default function CustomerDetails() {
             {customer.brands && customer.brands.length > 0 ? (
               customer.brands.map((b, i) => (
                 <span key={i} className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[11px] text-[var(--text-2)] font-semibold">
-                  {brandTh(b)}{brandEn(b) ? <span className="text-[var(--text-3)] font-normal"> · {brandEn(b)}</span> : null}
+                  {brandBothOf(b)}
                 </span>
               ))
             ) : (
@@ -462,8 +462,8 @@ export default function CustomerDetails() {
                 <div key={p.id} onClick={() => (window.location.href = `/database/products/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescription}</div>
-                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode} · {p.brandName}</div>
+                      <div className="font-semibold text-[var(--text)] text-sm truncate">{productNameBoth(p)}</div>
+                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode} · {brandBoth(p.brandName, p.brandNameEn)}</div>
                     </div>
                     <ProductStatusPill status={p.status} />
                   </div>
@@ -504,8 +504,8 @@ export default function CustomerDetails() {
                       <tr key={p.id} onClick={() => (window.location.href = `/database/products/${p.id}`)} className="clickable-row">
                         <td className="font-semibold font-mono text-[var(--text)]">{p.fgCode}</td>
                         <td>
-                          <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
-                          <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {p.brandName}</div>
+                          <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
+                          <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {brandBoth(p.brandName, p.brandNameEn)}</div>
                         </td>
                         <td className="font-mono">{p.volume} ml</td>
                         <td className="num font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>

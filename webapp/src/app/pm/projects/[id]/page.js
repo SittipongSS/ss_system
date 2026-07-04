@@ -931,7 +931,7 @@ export default function ProjectDetailPage() {
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                   <div style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: "150px" }}>
-                    {actualProd.productDescription || actualProd.brandName || "-"}
+                    {actualProd.productDescriptionEn || actualProd.productDescription || actualProd.brandNameEn || actualProd.brandName || "-"}
                   </div>
                   <div style={{ display: "flex", gap: "8px", width: "220px", maxWidth: "100%", flexShrink: 0 }}>
                     <input type="text" placeholder="สั่งซื้อ" defaultValue={pp.orderQty || ""} disabled={!canEdit} onBlur={(e) => { if (e.target.value !== (pp.orderQty || "")) updateProductQty(pp.productId, "orderQty", e.target.value); }} className="premium-input w-full text-[12px] h-[30px]" />
@@ -950,9 +950,9 @@ export default function ProjectDetailPage() {
             size="sm"
             options={allProducts.filter(pr => !linkedIds.has(pr.id)).map(pr => ({
               value: pr.id,
-              label: `${pr.fgCode} — ${pr.productDescription || pr.brandName || ""}`,
-              search: `${pr.fgCode || ""} ${pr.productDescription || ""}`,
-              render: <span><strong>{pr.fgCode}</strong> — {pr.productDescription || pr.brandName || ""}</span>,
+              label: `${pr.fgCode} — ${pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""}`,
+              search: `${pr.fgCode || ""} ${pr.productDescription || ""} ${pr.productDescriptionEn || ""}`,
+              render: <span><strong>{pr.fgCode}</strong> — {pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""}</span>,
             }))}
             value={addingProduct}
             onChange={setAddingProduct}

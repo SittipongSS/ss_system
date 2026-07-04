@@ -74,8 +74,8 @@ export async function GET() {
       status: line.status,
       ...view, // inForecast, leadDays, readyDate, lateVsDue, ourSlip
       tracking: t ? {
-        pmInStock: t.pmInStock, pmArrivedAt: t.pmArrivedAt,
-        rmOrderedAt: t.rmOrderedAt, rmArrivedAt: t.rmArrivedAt, note: t.note,
+        pmDueDate: t.pmDueDate, pmArrivedAt: t.pmArrivedAt,
+        rmDueDate: t.rmDueDate, rmArrivedAt: t.rmArrivedAt, note: t.note,
       } : null,
     });
   }

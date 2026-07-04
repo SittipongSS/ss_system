@@ -51,3 +51,44 @@ export const DESTINATION_KEYS = ['bangpakong', 'photharam', 'khonkaen'];
 export function cleanDestination(v) {
   return DESTINATION_KEYS.includes(v) ? v : null;
 }
+
+// ── วงจรสถานะบรรทัด PO ────────────────────────────────────────────────
+// 2 ขั้นแรกคิดอัตโนมัติจากวัสดุ (PM+RM "มาแล้วจริง"); 3 ขั้นหลังกดเดินเอง (เก็บใน
+// sahamit_po_lines.status). แบ่งส่ง (partial) ไว้เฟสถัดไป.
+export const STAGE_ORDER = ['waiting_materials', 'ready_produce', 'produced', 'delivered', 'closed'];
+export const STAGE_LABEL = {
+  waiting_materials: 'รอวัสดุ',
+  ready_produce: 'พร้อมผลิต',
+  produced: 'ผลิตเสร็จ',
+  delivered: 'ส่งแล้ว',
+  closed: 'ปิดงาน',
+  cancelled: 'ยกเลิก',
+};
+export const STAGE_COLOR = {
+  waiting_materials: 'amber',
+  ready_produce: 'blue',
+  produced: 'violet',
+  delivered: 'green',
+  closed: 'text-3',
+  cancelled: 'text-3',
+};
+
+// สถานะแสดงผลของบรรทัด: ถ้ากดเดินสถานะแล้ว (produced/delivered/closed/cancelled)
+// ใช้ค่านั้น; ถ้ายัง (open/partial) → derive จากวัสดุ — PM+RM ต้อง "มาแล้วจริง"
+// (arrived) เท่านั้นถึงเป็น พร้อมผลิต (ไม่ใช่แค่ถึงวันกำหนด).
+export function lineStage(status, pmArrived, rmArrived) {
+  if (status === 'cancelled') return 'cancelled';
+  if (status === 'closed') return 'closed';
+  if (status === 'delivered') return 'delivered';
+  if (status === 'produced') return 'produced';
+  return pmArrived && rmArrived ? 'ready_produce' : 'waiting_materials';
+}
+
+// สถานะหัว PO = ขั้นต่ำสุดในบรรทัด active (ค้างที่ขั้นช้าสุด). ทุกบรรทัดยกเลิก → ยกเลิก.
+export function poStageRollup(stages) {
+  const active = (stages || []).filter((s) => s !== 'cancelled');
+  if (!active.length) return (stages || []).length ? 'cancelled' : 'waiting_materials';
+  let min = STAGE_ORDER.length - 1;
+  for (const s of active) { const i = STAGE_ORDER.indexOf(s); if (i >= 0 && i < min) min = i; }
+  return STAGE_ORDER[min];
+}

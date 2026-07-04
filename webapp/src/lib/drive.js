@@ -97,7 +97,7 @@ export async function ensureProductFolder(product, customer) {
   if (product.driveFolderId) return product.driveFolderId;
   const parentId = await ensureCustomerFolder(customer);
   const label = product.fgCode || product.id;
-  const folderId = await ensureFolder(`${product.productDescription || product.id} (${label})`, parentId);
+  const folderId = await ensureFolder(`${product.productDescriptionEn || product.productDescription || product.id} (${label})`, parentId);
   await getSupabaseAdmin().from('products').update({ driveFolderId: folderId }).eq('id', product.id);
   return folderId;
 }

@@ -10,7 +10,7 @@ import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
 import ContactsEditor from "@/components/database/ContactsEditor";
 import BrandsEditor from "@/components/database/BrandsEditor";
-import { brandTh, brandEn } from "@/lib/master/brands";
+import { brandTh, brandEn, brandBothOf } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -284,7 +284,7 @@ export default function CustomerDirectory() {
                 {c.brands?.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {c.brands.slice(0, 4).map((b, i) => (
-                      <span key={i} title={brandEn(b) || undefined} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{brandTh(b)}</span>
+                      <span key={i} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{brandBothOf(b)}</span>
                     ))}
                     {c.brands.length > 4 && <span className="text-[11px] text-[var(--text-3)] px-1">+{c.brands.length - 4}</span>}
                   </div>
@@ -329,7 +329,7 @@ export default function CustomerDirectory() {
                     <td className="text-[var(--text-2)]">
                       <div className="flex flex-wrap gap-1.5">
                         {c.brands?.map((b, i) => (
-                          <span key={i} title={brandEn(b) || undefined} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{brandTh(b)}{brandEn(b) ? ` · ${brandEn(b)}` : ""}</span>
+                          <span key={i} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{brandBothOf(b)}</span>
                         ))}
                       </div>
                     </td>

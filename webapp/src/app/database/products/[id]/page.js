@@ -12,7 +12,7 @@ import EditProductModal from "@/components/EditProductModal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
-import { brandThList } from "@/lib/master/brands";
+import { brandThList, brandBoth } from "@/lib/master/brands";
 
 export default function ProductDetails() {
   const params = useParams();
@@ -166,11 +166,11 @@ export default function ProductDetails() {
         <div className="header-content">
           <h1 className="flex items-center gap-2 flex-wrap">
             <span className="premium-header-icon"><Package size={20} /></span>
-            {product.productDescription}
+            {product.productDescriptionEn || product.productDescription}
             <span className="pill font-mono text-xs">{product.fgCode}</span>
           </h1>
-          {product.productDescriptionEn && <p className="text-[var(--text-3)] text-sm">{product.productDescriptionEn}</p>}
-          <p>แบรนด์: {product.brandName}{product.brandNameEn ? ` · ${product.brandNameEn}` : ""}</p>
+          {product.productDescriptionEn && product.productDescription && <p className="text-[var(--text-3)] text-sm">{product.productDescription}</p>}
+          <p>แบรนด์: {brandBoth(product.brandName, product.brandNameEn)}</p>
         </div>
 
         <div className="action-bar">
@@ -233,7 +233,7 @@ export default function ProductDetails() {
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
-                <span className="font-semibold text-[var(--text)] text-sm">{product.brandName}{product.brandNameEn ? ` · ${product.brandNameEn}` : ""}</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{brandBoth(product.brandName, product.brandNameEn)}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>

@@ -11,9 +11,17 @@ import { DestinationToggle, destinationLabel } from "@/components/sahamit/destin
 const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 
+// สถานะวัสดุ 1 ช่อง (อ่านอย่างเดียว): มาแล้ว / กำหนดถึง / — (แก้ที่เมนูวัสดุเท่านั้น)
+function matCell(dueDate, arrivedAt) {
+  if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: 600 }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
+  if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
+  return <span style={{ color: "var(--text-3)" }}>—</span>;
+}
+
 // One PO line with an inline editor: reschedule (expected date + reason →
 // history), mark delivered, change qty/due/status/destination, split, delete.
-function PoLineRow({ line, onChanged }) {
+// PM/RM แสดงอย่างเดียว (แก้ที่เมนูวัสดุ).
+function PoLineRow({ line, tracking, onChanged }) {
   const [open, setOpen] = useState(false);
   const [showHist, setShowHist] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -93,6 +101,8 @@ function PoLineRow({ line, onChanged }) {
             </button>
           )}
         </td>
+        <td>{matCell(tracking?.pmDueDate, tracking?.pmArrivedAt)}</td>
+        <td>{matCell(tracking?.rmDueDate, tracking?.rmArrivedAt)}</td>
         <td>{line.actualDeliveredDate ? fmtDate(line.actualDeliveredDate) : "—"}</td>
         <td>{destinationLabel(line.destination) || <span style={{ color: "var(--text-3)" }}>—</span>}</td>
         <td><span className="status-pill">{PO_STATUS_LABEL[line.status] || line.status}</span></td>
@@ -105,7 +115,7 @@ function PoLineRow({ line, onChanged }) {
 
       {showHist && hist.length > 0 && (
         <tr>
-          <td colSpan={9} style={{ background: "var(--panel-2)", fontSize: 12 }}>
+          <td colSpan={11} style={{ background: "var(--panel-2)", fontSize: 12 }}>
             <b>ประวัติการเลื่อนวันคาดการณ์ส่ง:</b>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
               {hist.map((h, i) => (
@@ -118,7 +128,7 @@ function PoLineRow({ line, onChanged }) {
 
       {open && (
         <tr>
-          <td colSpan={9} style={{ background: "var(--panel-2)" }}>
+          <td colSpan={11} style={{ background: "var(--panel-2)" }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "flex-end", padding: "6px 2px" }}>
               <div className="form-group" style={{ width: 90 }}>
                 <label>จำนวน</label>
@@ -163,11 +173,18 @@ export default function PoDetailPage() {
   const params = useParams();
   const id = params.id;
   const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
+  const { data: material } = useApiList("/api/sahamit/material");
   const po = useMemo(() => pos.find((p) => p.id === id) || null, [pos, id]);
+  const trackByLine = useMemo(() => {
+    const m = new Map();
+    for (const r of material) m.set(r.poLineId, r.tracking || null);
+    return m;
+  }, [material]);
 
   const [h, setH] = useState({});
   const [busy, setBusy] = useState(false);
   const [hErr, setHErr] = useState("");
+  const [headerExpanded, setHeaderExpanded] = useState(false); // ย่อไว้ก่อนแบบหัว ISO
 
   useEffect(() => {
     if (!po) return;
@@ -219,8 +236,24 @@ export default function PoDetailPage() {
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>ยอดรวม (ชิ้น)</div><div style={{ fontSize: 20, fontWeight: 700 }}>{nf(poTotalQty(po))}</div></div>
           </div>
 
-          {/* Header editor */}
-          <div className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Header editor — ย่อ/ขยายได้ แบบหัว ISO */}
+          <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--panel)" }}>
+            <button
+              onClick={() => setHeaderExpanded((v) => !v)}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", background: "var(--panel-2)", border: "none", cursor: "pointer", textAlign: "left", overflow: "hidden", borderRadius: headerExpanded ? "10px 10px 0 0" : "10px" }}
+              title={headerExpanded ? "ย่อหัว PO" : "ขยายหัว PO"}
+            >
+              {headerExpanded ? <ChevronDown size={18} color="var(--accent)" /> : <ChevronRight size={18} color="var(--accent)" />}
+              <span style={{ fontSize: 14, fontWeight: 600, flexShrink: 0 }}>ข้อมูลหัว PO</span>
+              {!headerExpanded && (
+                <span style={{ fontSize: 13, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8, marginLeft: 8 }}>
+                  {[po.poNumber, po.docDate && `เอกสาร ${fmtDate(po.docDate)}`, po.receivedDate && `รับ ${fmtDate(po.receivedDate)}`, po.dueDate && `กำหนดส่ง ${fmtDate(po.dueDate)}`, destinationLabel(po.destination), po.quoteRef].filter(Boolean).join("   ·   ")}
+                </span>
+              )}
+              <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto", fontWeight: 500 }}>(คลิกเพื่อ{headerExpanded ? "ย่อ" : "ขยาย"})</span>
+            </button>
+            {headerExpanded && (
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border)" }}>
             <div className="form-grid cols-2">
               <div className="form-group">
                 <label>เลขที่ PO</label>
@@ -247,6 +280,8 @@ export default function PoDetailPage() {
               <button className="btn" onClick={saveHeader} disabled={busy}><Save size={14} /> บันทึกหัว PO</button>
             </div>
             {hErr && <div style={{ color: "var(--red)", fontSize: 13 }}>{hErr}</div>}
+            </div>
+            )}
           </div>
 
           {/* Lines */}
@@ -256,11 +291,11 @@ export default function PoDetailPage() {
                 <tr>
                   <th>รหัสสินค้า</th><th>ชื่อสินค้า</th>
                   <th style={{ textAlign: "right" }}>จำนวน</th>
-                  <th>กำหนดส่ง</th><th>คาดการณ์ส่ง</th><th>ส่งจริง</th><th>สถานที่ส่ง</th><th>สถานะ</th><th></th>
+                  <th>กำหนดส่ง</th><th>คาดการณ์ส่ง</th><th>PM</th><th>RM</th><th>ส่งจริง</th><th>สถานที่ส่ง</th><th>สถานะ</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} onChanged={reload} />)}
+                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} onChanged={reload} />)}
               </tbody>
             </table>
           </div>
