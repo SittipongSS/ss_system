@@ -115,33 +115,33 @@ export function predictShifts(rounds, pos, opts = {}) {
   return out;
 }
 
-// For a cell that needs coverage (target month short on PO), find other months of
-// the SAME sku carrying surplus PO (cell.excess > 0) that could be reallocated to
-// cover it. Returns [{ sourceMonth, canCover }] nearest-month-first. Pure over the
-// already-built matrix (the drill-down page has it in hand).
+// ชดเชย = ย้าย FC (PO อยู่กับที่). ต่อ 1 ช่อง:
+//   spare = FC เกิน PO (มี FC แต่ยังไม่มี PO ครบ) → เดือนนี้ "ส่ง FC ออก" ได้
+//   need  = PO เกิน FC (มี PO แต่ FC ขาด)        → เดือนนี้ "ต้องรับ FC เข้า"
+const spareOf = (c) => Math.max(0, Number(c?.fcQty || 0) - Number(c?.poQty || 0));
+const needOf = (c) => Math.max(0, Number(c?.poQty || 0) - Number(c?.fcQty || 0));
+
+// เดือนนี้ต้องการ FC (PO เกิน FC) → หาเดือนอื่นที่ FC เกิน PO (spare) มาดึง FC เข้า.
+// คืน [{ sourceMonth, canCover }] เดือนใกล้สุดก่อน. pure บน matrix ที่หน้ามีอยู่แล้ว.
 export function suggestCoverage(matrix, fgCode, month) {
   const row = (matrix?.rows || []).find((r) => r.fgCode === fgCode);
   if (!row) return [];
   const suggestions = [];
   for (const m of matrix.months) {
     if (m === month) continue;
-    const cell = row.cells[m];
-    const canCover = Number(cell?.excess || 0);
+    const canCover = spareOf(row.cells[m]);
     if (canCover > 0) suggestions.push({ sourceMonth: m, canCover });
   }
-  // nearest month to the target first (a shift is usually to an adjacent month)
   suggestions.sort((a, b) => Math.abs(monthDiff(month, a.sourceMonth)) - Math.abs(monthDiff(month, b.sourceMonth)));
   return suggestions;
 }
 
-// The other direction: `month` HAS surplus PO (cell.excess > 0) — find short
-// months of the SAME sku to push it TO. Allocates the surplus greedily to the
-// nearest short months first (doesn't exceed the available surplus). Returns
-// [{ targetMonth, use }]. This is what makes opening a "PO เกิน" cell useful.
+// อีกทิศ: เดือนนี้มี FC เกิน PO (spare) → หาเดือนที่ PO เกิน FC (need) เพื่อ "ส่ง FC ไป".
+// จัดสรร spare ให้เดือน need ที่ใกล้สุดก่อน (ไม่เกิน spare ที่มี). คืน [{ targetMonth, use }].
 export function suggestCoverageTargets(matrix, fgCode, month) {
   const row = (matrix?.rows || []).find((r) => r.fgCode === fgCode);
   if (!row) return [];
-  let remaining = Number(row.cells[month]?.excess || 0);
+  let remaining = spareOf(row.cells[month]);
   if (remaining <= 0) return [];
 
   const others = matrix.months
@@ -151,10 +151,9 @@ export function suggestCoverageTargets(matrix, fgCode, month) {
   const targets = [];
   for (const m of others) {
     if (remaining <= 0) break;
-    const c = row.cells[m];
-    const shortage = Math.max(0, Number(c?.fcQty || 0) - Number(c?.effPo ?? c?.poQty ?? 0));
-    if (shortage <= 0) continue;
-    const use = Math.min(shortage, remaining);
+    const need = needOf(row.cells[m]);
+    if (need <= 0) continue;
+    const use = Math.min(need, remaining);
     targets.push({ targetMonth: m, use });
     remaining -= use;
   }

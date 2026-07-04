@@ -80,11 +80,12 @@ export function buildReconMatrix(rounds, pos, coverages = []) {
   const { fcQtyOf, ever, names, ownerRoundNo } = effectiveFc(rounds);
   const poAgg = poByMonth(pos, names);
 
-  // Cross-month coverage (เฟส 5b-3): PO allocated FROM sourceMonth TO targetMonth.
-  // For matching, the source loses the allocated qty and the target gains it; the
-  // DISPLAYED PO stays the actual delivered qty (cell.poQty), status uses effPo.
-  const covIn = new Map();  // key fg||month (target) -> qty in
-  const covOut = new Map(); // key fg||month (source) -> qty out
+  // Cross-month coverage — ย้าย "FC" (ไม่ใช่ PO). PO = ของจริงที่สั่งแล้ว (สิ้นสุด)
+  // จึงอยู่กับที่เสมอ; การชดเชยคือดึง FC จากเดือนต้นทาง (มี FC ไม่มี PO) ไปเดือน
+  // ปลายทาง (มี PO แต่ FC ขาด) ให้ FC ตรงกับ PO. ยอด FC เดิมเก็บไว้ (cell.originalFc)
+  // เพื่อตรวจย้อนได้. sourceMonth = FC ถูกดึงออก, targetMonth = FC ถูกเติมเข้า.
+  const covIn = new Map();  // key fg||month (target) -> FC in
+  const covOut = new Map(); // key fg||month (source) -> FC out
   const extraMonths = new Set();
   for (const c of coverages || []) {
     const q = Number(c.qty || 0);
@@ -112,19 +113,24 @@ export function buildReconMatrix(rounds, pos, coverages = []) {
     let poTotal = 0;
     for (const m of monthList) {
       const key = `${fg}||${m}`;
-      const fcQty = fcQtyOf(fg, m);
+      const baseFc = fcQtyOf(fg, m);
       const basePo = poAgg.get(key) || 0;
-      const cin = covIn.get(key) || 0;
-      const cout = covOut.get(key) || 0;
-      const effPo = basePo - cout + cin; // PO used for matching after coverage
-      const cell = reconcileCell({ fcQty, poQty: effPo, originalFcQty: fcQty, hasHistory: ever.has(key) });
-      // Display the ACTUAL delivered PO; keep coverage info for the badge/drill-down.
-      cell.poQty = basePo;
-      cell.effPo = effPo;
-      cell.coverageIn = cin;
-      cell.coverageOut = cout;
+      const cin = covIn.get(key) || 0;   // FC received from other months
+      const cout = covOut.get(key) || 0; // FC sent to other months
+      const effFc = Math.max(0, baseFc - cout + cin); // effective FC after moving
+      const shiftedAway = cout > 0 && effFc === 0;     // this month's FC fully moved out
+      const cell = reconcileCell({
+        fcQty: effFc, poQty: basePo, originalFcQty: baseFc,
+        hasHistory: ever.has(key), shiftedAway, totalCovered: cout,
+      });
+      cell.fcQty = effFc;        // effective FC (after coverage) for display/match
+      cell.originalFc = baseFc;  // ยอด FC เดิม (ก่อนชดเชย) — ไว้ตรวจย้อน
+      cell.poQty = basePo;       // PO fixed (สิ้นสุด, ไม่ขยับ)
+      cell.effPo = basePo;
+      cell.coverageIn = cin;     // FC เติมเข้า
+      cell.coverageOut = cout;   // FC ดึงออก
       cells[m] = cell;
-      fcTotal += fcQty;
+      fcTotal += effFc;
       poTotal += basePo;
     }
     return { fgCode: fg, productName: names.get(fg) || null, cells, fcTotal, poTotal };

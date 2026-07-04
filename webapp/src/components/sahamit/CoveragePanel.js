@@ -15,20 +15,23 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
     (c) => c.fgCode === fgCode && (c.sourceMonth === month || c.targetMonth === month),
   );
 
+  // ชดเชย = ย้าย FC (PO อยู่กับที่). need = PO เกิน FC (ต้องรับ FC), spare = FC เกิน PO (ส่ง FC ออกได้)
   const target = (matrix?.rows || []).find((r) => r.fgCode === fgCode)?.cells?.[month];
-  const shortage = target ? Math.max(0, Number(target.fcQty || 0) - Number(target.effPo ?? target.poQty ?? 0)) : 0;
-  const excess = target ? Number(target.excess || 0) : 0;
+  const need = target ? Math.max(0, Number(target.poQty || 0) - Number(target.fcQty || 0)) : 0;
+  const spare = target ? Math.max(0, Number(target.fcQty || 0) - Number(target.poQty || 0)) : 0;
 
+  // เดือนนี้ต้องรับ FC → ดึง FC จากเดือนที่มี FC เกิน (source มี FC → target = เดือนนี้)
   const alreadyIn = new Set(related.filter((c) => c.targetMonth === month).map((c) => c.sourceMonth));
-  const pullIn = shortage > 0 && matrix
+  const pullIn = need > 0 && matrix
     ? suggestCoverage(matrix, fgCode, month)
         .filter((s) => !alreadyIn.has(s.sourceMonth))
-        .map((s) => ({ sourceMonth: s.sourceMonth, targetMonth: month, use: Math.min(s.canCover, shortage) }))
+        .map((s) => ({ sourceMonth: s.sourceMonth, targetMonth: month, use: Math.min(s.canCover, need) }))
         .filter((s) => s.use > 0)
     : [];
 
+  // เดือนนี้มี FC เกิน → ส่ง FC ไปเดือนที่มี PO ขาด FC (source = เดือนนี้ → target มี PO)
   const alreadyOut = new Set(related.filter((c) => c.sourceMonth === month).map((c) => c.targetMonth));
-  const pushOut = excess > 0 && matrix
+  const pushOut = spare > 0 && matrix
     ? suggestCoverageTargets(matrix, fgCode, month)
         .filter((t) => !alreadyOut.has(t.targetMonth))
         .map((t) => ({ sourceMonth: month, targetMonth: t.targetMonth, use: t.use }))
@@ -66,7 +69,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
           <div style={{ fontWeight: 600, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
             ✨ คำแนะนำจากระบบ
             <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 400 }}>
-              ({shortage > 0 ? `เดือนนี้ขาด ${nf(shortage)} ชิ้น` : `เดือนนี้ PO เกิน ${nf(excess)} ชิ้น`})
+              ({need > 0 ? `เดือนนี้ PO เกิน FC ${nf(need)} — ต้องดึง FC เข้า` : `เดือนนี้ FC เกิน PO ${nf(spare)} — ส่ง FC ออกได้`})
             </span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -80,7 +83,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
                 >
                   <div style={{ fontSize: 13, flex: 1 }}>
                     <span style={{ fontWeight: 600, color: "var(--blue)" }}>
-                      💡 {isPull ? `ดึงจาก ${s.sourceMonth}` : `ส่งไปชดเชย ${s.targetMonth}`}
+                      💡 {isPull ? `ดึง FC จาก ${s.sourceMonth}` : `ส่ง FC ไป ${s.targetMonth}`}
                     </span>
                     <span style={{ color: "var(--text-2)" }}> ({nf(s.use)} ชิ้น)</span>
                   </div>
@@ -96,21 +99,21 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
       {matrix && suggestions.length === 0 && (
         <div
           className="glass-panel"
-          style={{ padding: 12, marginBottom: 14, fontSize: 13, color: "var(--text-2)", borderLeft: `3px solid ${shortage > 0 || excess > 0 ? "var(--amber)" : "var(--green)"}` }}
+          style={{ padding: 12, marginBottom: 14, fontSize: 13, color: "var(--text-2)", borderLeft: `3px solid ${need > 0 || spare > 0 ? "var(--amber)" : "var(--green)"}` }}
         >
-          {shortage > 0 ? (
+          {need > 0 ? (
             <>
-              เดือนนี้ขาด <b>{nf(shortage)}</b> ชิ้น — <b>ยังไม่มีเดือนอื่นที่ PO เกิน FC</b> ให้ดึงมาชดเชย
+              เดือนนี้ <b>PO เกิน FC {nf(need)}</b> — <b>ยังไม่มีเดือนอื่นที่ FC เกิน PO</b> ให้ดึง FC มา
               <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 4 }}>
-                ระบบจะเสนอ “💡 ดึงจากเดือน…” ทันทีที่มีเดือนใดสั่ง PO เกิน FC
+                ระบบจะเสนอ “💡 ดึง FC จากเดือน…” เมื่อมีเดือนที่มี FC แต่ยังไม่มี PO (PO คงที่ ย้ายเฉพาะ FC)
               </div>
             </>
-          ) : excess > 0 ? (
+          ) : spare > 0 ? (
             <>
-              เดือนนี้ PO เกิน <b>{nf(excess)}</b> ชิ้น — <b>ไม่มีเดือนอื่นที่ขาด</b> ให้ส่งไปชดเชย (ทุกเดือนมี PO ครบ/เกินแล้ว)
+              เดือนนี้ <b>FC เกิน PO {nf(spare)}</b> (มี FC รอ PO) — <b>ไม่มีเดือนอื่นที่ PO เกิน FC</b> ให้ส่ง FC ไป
             </>
           ) : (
-            <>เดือนนี้ครบตามแผนแล้ว — ไม่ต้องชดเชย</>
+            <>เดือนนี้ FC ตรงกับ PO แล้ว — ไม่ต้องชดเชย</>
           )}
         </div>
       )}
