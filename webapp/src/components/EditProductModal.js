@@ -4,7 +4,7 @@ import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { categoryOf } from "@/lib/master/categoryOf";
-import { brandThList, brandEnFor } from "@/lib/master/brands";
+import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
 // (Excise APPROVAL still lives on the registration.) Layout/styling mirrors the
@@ -53,18 +53,24 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   // parent-supplied list while customers aren't loaded). Changing the customer
   // clears the brand — the brand list is scoped per customer, same as the add form.
   const selCustomer = customers.find((c) => c.id === form.customerId);
-  const brandOptionList = selCustomer ? brandThList(selCustomer.brands || []) : brandOptions;
+  // แบรนด์ = ช่องเดียว โชว์ EN · TH; ไม่มี selCustomer ใช้ prop เดิม (string[]) แปลงเป็น {th,en}.
+  const brandOptionList = selCustomer
+    ? normalizeBrands(selCustomer.brands || [])
+    : (brandOptions || []).map((b) => ({ th: b, en: "" }));
 
   const handleCustomerChange = (v) => setForm((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }));
-  // เลือกแบรนด์ → เติมชื่ออังกฤษที่คู่กันจากข้อมูลลูกค้า (แก้เองได้)
-  const handleBrandChange = (v) =>
-    setForm((f) => ({ ...f, brandName: v, brandNameEn: brandEnFor(selCustomer?.brands, v) }));
+  // เลือก/พิมพ์แบรนด์ → เก็บทั้ง TH+EN จากแบรนด์ของลูกค้า (match ด้วย th หรือ en);
+  // พิมพ์ใหม่ → ถือเป็นชื่อไทย, EN ว่าง.
+  const handleBrandChange = (v) => {
+    const hit = (selCustomer?.brands || []).find((b) => brandTh(b) === v || brandEn(b) === v);
+    setForm((f) => ({ ...f, brandName: hit ? brandTh(hit) : v, brandNameEn: hit ? brandEn(hit) : "" }));
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
     if (!form.customerId) { setError("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
-    if (!form.brandName?.trim()) { setError("กรุณาระบุชื่อแบรนด์"); return; }
+    if (!form.brandName?.trim() && !form.brandNameEn?.trim()) { setError("กรุณาระบุชื่อแบรนด์"); return; }
     // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
     if (!form.productDescription?.trim() && !form.productDescriptionEn?.trim()) {
       setError("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
@@ -162,7 +168,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               <input type="text" value={form.productDescriptionEn ?? ""} onChange={(e) => set("productDescriptionEn", e.target.value)} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
               <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
             </div>
-            <div className="form-group col-span-2">
+            <div className="form-group">
               <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
               <SearchableSelect
                 value={form.customerId ?? ""}
@@ -178,21 +184,17 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               <span className="text-xs text-[var(--text-3)] mt-1">เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ</span>
             </div>
             <div className="form-group">
-              <label>ชื่อแบรนด์ (ไทย) <span className="text-[var(--red)]">*</span></label>
+              <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
               <SearchableSelect
                 allowFreeText
                 disabled={!form.customerId}
-                options={brandOptionList.map((b) => ({ value: b, label: b }))}
-                value={form.brandName ?? ""}
+                options={brandOptionList.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
+                value={form.brandName || form.brandNameEn || ""}
                 onChange={handleBrandChange}
                 placeholder={form.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"}
                 emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
               />
-            </div>
-            <div className="form-group">
-              <label>ชื่อแบรนด์ (อังกฤษ)</label>
-              <input type="text" value={form.brandNameEn ?? ""} readOnly disabled placeholder="— ดึงจากแบรนด์ของลูกค้า —" className="premium-input w-full" style={{ opacity: 0.7, cursor: "not-allowed" }} />
-              <span className="text-xs text-[var(--text-3)] mt-1">ดึงอัตโนมัติ — แก้ที่หน้าลูกค้า</span>
+              <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — แก้ชื่อแบรนด์ได้ที่หน้าลูกค้า</span>
             </div>
           </div>
         </div>
