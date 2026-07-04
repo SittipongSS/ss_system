@@ -16,7 +16,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import ContactsEditor from "@/components/database/ContactsEditor";
 import BrandsEditor from "@/components/database/BrandsEditor";
-import { brandTh, brandEn, normalizeBrands } from "@/lib/master/brands";
+import { brandLabelOf, normalizeBrands } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId } from "@/lib/format";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 
@@ -403,7 +403,7 @@ export default function CustomerDetails() {
             {customer.brands && customer.brands.length > 0 ? (
               customer.brands.map((b, i) => (
                 <span key={i} className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[11px] text-[var(--text-2)] font-semibold">
-                  {brandTh(b)}{brandEn(b) ? <span className="text-[var(--text-3)] font-normal"> · {brandEn(b)}</span> : null}
+                  {brandLabelOf(b)}
                 </span>
               ))
             ) : (
