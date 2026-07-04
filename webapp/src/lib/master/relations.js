@@ -26,7 +26,7 @@ const PROJECT_COLS = 'id, code, name, status, customerId, team, ownerId';
 export async function customerRelations(supabase, customerId, user) {
   const [prodRes, regRes, orderRes, projRes] = await Promise.all([
     supabase.from('products')
-      .select('id, fgCode, productDescription, brandName, approvalStatus, isActive, customerId, team, teams, ownerId')
+      .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, approvalStatus, isActive, customerId, team, teams, ownerId')
       .eq('customerId', customerId).order('createdAt', { ascending: false }),
     supabase.from('excise_registrations')
       .select('id, fgCode, productName, brandName, status, approvalNumber, customerId, team, ownerId')

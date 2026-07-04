@@ -137,7 +137,7 @@ export async function filingReport(filter = {}) {
         id: it.id,
         quotationRef: o.quotationRef,
         taxInvoiceNumber: o.taxInvoiceNumber || '-',
-        product: [p.fgCode || it.registration?.fgCode || '-', p.productDescription || it.registration?.productName || '', p.brandName || ''].filter(Boolean).join('\n'),
+        product: [p.fgCode || it.registration?.fgCode || '-', p.productDescription || p.productDescriptionEn || it.registration?.productName || '', p.brandName || ''].filter(Boolean).join('\n'),
         retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
         deliveryDate: o.deliveryDate && /^\d{4}-\d{2}-\d{2}/.test(o.deliveryDate) ? o.deliveryDate : null,
         qty: Number(it.quantity) || 0,

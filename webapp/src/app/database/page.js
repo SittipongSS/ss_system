@@ -45,7 +45,7 @@ export default function DatabaseOverview() {
     if (canApprove && !mine) return; // approver: ข้ามแถวทีมอื่น
     queue.push({
       id: `p-${x.id}`, tone: "warning", badge: "สินค้า",
-      title: `${x.fgCode || "-"} · ${x.productDescription || x.brandName || ""}`.trim(),
+      title: `${x.fgCode || "-"} · ${x.productDescription || x.productDescriptionEn || x.brandName || ""}`.trim(),
       subtitle: x.customerName || x.brandName || "รออนุมัติสินค้า",
       cta: mine ? "อนุมัติ" : "ดู", onClick: goProducts,
     });

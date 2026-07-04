@@ -39,7 +39,7 @@ export function buildBillPrintHTML(order, customer = {}) {
     return {
       i: i + 1,
       fgCode: p.fgCode || it.registration?.fgCode || "-",
-      name: p.productDescription || it.registration?.productName || "-",
+      name: p.productDescription || p.productDescriptionEn || it.registration?.productName || "-",
       qty, incVat, exVat, perUnit,
       tax: r2(perUnit * qty),         // line total from the rounded per-unit
     };

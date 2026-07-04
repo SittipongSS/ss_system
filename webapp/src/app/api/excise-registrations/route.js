@@ -68,7 +68,7 @@ export async function POST(request) {
     productId: product.id,
     customerId: customer.id,
     fgCode: product.fgCode,
-    productName: product.productDescription,
+    productName: product.productDescription || product.productDescriptionEn,
     brandName: product.brandName,
     customerName: customer.name,
     taxId: customer.taxId,
