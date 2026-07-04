@@ -16,7 +16,8 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
-import { brandThList, brandEnFor, brandLabel } from "@/lib/master/brands";
+import { brandThList, brandEnFor, brandBoth } from "@/lib/master/brands";
+import { productNameBoth } from "@/lib/format";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -309,7 +310,7 @@ export default function ProductRegistry() {
             items={approvalQueue}
             onDecide={decide}
             primary={(p) => p.fgCode}
-            secondary={(p) => { const b = brandLabel(p.brandName, p.brandNameEn); return `${p.productDescriptionEn || p.productDescription || ""}${b ? ` · ${b}` : ""}`; }}
+            secondary={(p) => { const b = brandBoth(p.brandName, p.brandNameEn); return `${productNameBoth(p)}${b ? ` · ${b}` : ""}`; }}
             onOpen={open}
           />
         </>
@@ -332,7 +333,7 @@ export default function ProductRegistry() {
               <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescriptionEn || p.productDescription}</div>
+                    <div className="font-semibold text-[var(--text)] text-sm truncate">{productNameBoth(p)}</div>
                     <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode}</div>
                     {cat && <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{cat.main} · {cat.sub}</div>}
                   </div>
@@ -342,7 +343,7 @@ export default function ProductRegistry() {
                   </div>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[var(--text-2)] truncate">{brandLabel(p.brandName, p.brandNameEn) || "-"}</span>
+                  <span className="text-[var(--text-2)] truncate">{brandBoth(p.brandName, p.brandNameEn) || "-"}</span>
                   <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</span>
                 </div>
                 {canSeeCost && (
@@ -397,7 +398,7 @@ export default function ProductRegistry() {
                   return (
                     <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: 0.55 } : undefined}>
                       <td>
-                        <div className="font-semibold text-[var(--text)]">{p.productDescriptionEn || p.productDescription}</div>
+                        <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
                         <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
                       </td>
                       <td>
@@ -408,7 +409,7 @@ export default function ProductRegistry() {
                           </div>
                         ) : <span className="text-[var(--text-3)]">-</span>}
                       </td>
-                      <td className="text-[var(--text-2)]">{brandLabel(p.brandName, p.brandNameEn) || "-"}</td>
+                      <td className="text-[var(--text-2)]">{brandBoth(p.brandName, p.brandNameEn) || "-"}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
                       {canSeeCost && <td className="num mono text-[var(--text-2)]">{formatMoney(p.costPrice)}</td>}
                       <td className="num mono text-[var(--text-2)]">

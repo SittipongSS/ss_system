@@ -21,7 +21,8 @@ export function normalizeBrand(b) {
   return { th: brandTh(b), en: brandEn(b) };
 }
 
-// แปลงทั้ง array → [{th,en}] : ตัด th ว่างทิ้ง + dedupe ตาม th (case-insensitive).
+// แปลงทั้ง array → [{th,en}] : เก็บถ้ามี th "หรือ" en (แบรนด์ EN-only ได้),
+// ตัดเฉพาะแถวที่ว่างทั้งคู่ + dedupe ตามคีย์ th||en (case-insensitive).
 // ใช้ที่ฝั่ง API ก่อนบันทึก และที่ฟอร์มก่อนส่ง.
 export function normalizeBrands(arr) {
   if (!Array.isArray(arr)) return [];
@@ -29,11 +30,12 @@ export function normalizeBrands(arr) {
   const out = [];
   for (const raw of arr) {
     const th = brandTh(raw);
-    if (!th) continue;
-    const key = th.toLowerCase();
+    const en = brandEn(raw);
+    if (!th && !en) continue;
+    const key = (th || en).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ th, en: brandEn(raw) });
+    out.push({ th, en });
   }
   return out;
 }
@@ -46,7 +48,8 @@ export function brandThList(brandsArrays) {
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
 }
 
-// ป้ายชื่อแบรนด์สำหรับ "แสดงผล" (ทั้งเว็บ): โชว์อังกฤษก่อน ถ้าไม่มีค่อยไทย (en || th).
+// ป้ายชื่อแบรนด์สำหรับ "แสดงผล" ระบบทั่วไป (tax/pm/sahamit/เอกสาร):
+// โชว์อังกฤษก่อน ถ้าไม่มีค่อยไทย (en || th) — ค่าเดียว.
 export function brandLabel(th, en) {
   return (en || "").trim() || (th || "").trim();
 }
@@ -54,6 +57,18 @@ export function brandLabel(th, en) {
 // เวอร์ชันรับสมาชิก brand ตัวเดียว (string หรือ {th,en}).
 export function brandLabelOf(b) {
   return brandLabel(brandTh(b), brandEn(b));
+}
+
+// ป้ายชื่อแบรนด์สำหรับ "หน้า /database" โดยเฉพาะ: โชว์ทั้งสองภาษา EN · TH
+// (มีทั้งคู่ → "EN · TH", มีอย่างเดียว → อันนั้น).
+export function brandBoth(th, en) {
+  const t = (th || "").trim();
+  const e = (en || "").trim();
+  if (t && e) return `${e} · ${t}`;
+  return e || t;
+}
+export function brandBothOf(b) {
+  return brandBoth(brandTh(b), brandEn(b));
 }
 
 // หา EN ที่คู่กับชื่อ TH หนึ่งๆ ใน brands ของลูกค้า (ใช้ auto-fill ตอนเลือกแบรนด์
