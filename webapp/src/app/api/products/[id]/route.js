@@ -169,6 +169,28 @@ export async function PATCH(request, { params }) {
     }
     return Response.json({ error: error.message }, { status: 500 });
   }
+
+  // Cascade ชื่อสินค้า/แบรนด์ → ทะเบียนสรรพสามิตของสินค้านี้ที่ "ยังไม่ยื่น"
+  // (draft/rejected) เท่านั้น. ทะเบียนที่ยื่น/อนุมัติแล้ว (pending_legal/approved)
+  // ถูกล็อก คงชื่อ ณ วันที่ยื่นไว้ตามเดิม. (คู่ขนานกับ cascade ชื่อลูกค้า→ทะเบียน)
+  // snapshot เก็บแบบ EN-first เดียว (en || th) เหมือนตอน create.
+  const nameChanged =
+    data.productDescription !== product.productDescription ||
+    data.productDescriptionEn !== product.productDescriptionEn ||
+    data.brandName !== product.brandName ||
+    data.brandNameEn !== product.brandNameEn;
+  if (nameChanged) {
+    await supabase
+      .from('excise_registrations')
+      .update({
+        productName: data.productDescriptionEn || data.productDescription,
+        brandName: data.brandNameEn || data.brandName,
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('productId', id)
+      .in('status', ['draft', 'rejected']);
+  }
+
   // Audit เก็บ record เต็ม (ก่อน redact margin) — หน้า /audit เป็น supervisor only.
   await recordAudit({ user, action: 'update', entityType: 'product', entityId: id, before: product, after: data, request });
   return Response.json(redactProductMargin(user, data));
