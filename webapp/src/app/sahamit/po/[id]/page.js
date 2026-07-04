@@ -184,6 +184,7 @@ export default function PoDetailPage() {
   const [h, setH] = useState({});
   const [busy, setBusy] = useState(false);
   const [hErr, setHErr] = useState("");
+  const [headerExpanded, setHeaderExpanded] = useState(false); // ย่อไว้ก่อนแบบหัว ISO
 
   useEffect(() => {
     if (!po) return;
@@ -235,8 +236,24 @@ export default function PoDetailPage() {
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>ยอดรวม (ชิ้น)</div><div style={{ fontSize: 20, fontWeight: 700 }}>{nf(poTotalQty(po))}</div></div>
           </div>
 
-          {/* Header editor */}
-          <div className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Header editor — ย่อ/ขยายได้ แบบหัว ISO */}
+          <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--panel)" }}>
+            <button
+              onClick={() => setHeaderExpanded((v) => !v)}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", background: "var(--panel-2)", border: "none", cursor: "pointer", textAlign: "left", overflow: "hidden", borderRadius: headerExpanded ? "10px 10px 0 0" : "10px" }}
+              title={headerExpanded ? "ย่อหัว PO" : "ขยายหัว PO"}
+            >
+              {headerExpanded ? <ChevronDown size={18} color="var(--accent)" /> : <ChevronRight size={18} color="var(--accent)" />}
+              <span style={{ fontSize: 14, fontWeight: 600, flexShrink: 0 }}>ข้อมูลหัว PO</span>
+              {!headerExpanded && (
+                <span style={{ fontSize: 13, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8, marginLeft: 8 }}>
+                  {[po.poNumber, po.docDate && `เอกสาร ${fmtDate(po.docDate)}`, po.receivedDate && `รับ ${fmtDate(po.receivedDate)}`, po.dueDate && `กำหนดส่ง ${fmtDate(po.dueDate)}`, destinationLabel(po.destination), po.quoteRef].filter(Boolean).join("   ·   ")}
+                </span>
+              )}
+              <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto", fontWeight: 500 }}>(คลิกเพื่อ{headerExpanded ? "ย่อ" : "ขยาย"})</span>
+            </button>
+            {headerExpanded && (
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border)" }}>
             <div className="form-grid cols-2">
               <div className="form-group">
                 <label>เลขที่ PO</label>
@@ -263,6 +280,8 @@ export default function PoDetailPage() {
               <button className="btn" onClick={saveHeader} disabled={busy}><Save size={14} /> บันทึกหัว PO</button>
             </div>
             {hErr && <div style={{ color: "var(--red)", fontSize: 13 }}>{hErr}</div>}
+            </div>
+            )}
           </div>
 
           {/* Lines */}
