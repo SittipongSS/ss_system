@@ -80,8 +80,8 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
               placeholder="ค้นหา FG / ชื่อสินค้า / แบรนด์..."
               options={products.map((p) => ({
                 value: p.id,
-                label: `${p.fgCode} | ${p.productDescription || p.productDescriptionEn || ""} (${p.brandName})`,
-                search: `${p.fgCode} ${p.productDescription || ""} ${p.productDescriptionEn || ""} ${p.brandName}`,
+                label: `${p.fgCode} | ${p.productDescription || p.productDescriptionEn || ""} (${p.brandName || p.brandNameEn || ""})`,
+                search: `${p.fgCode} ${p.productDescription || ""} ${p.productDescriptionEn || ""} ${p.brandName || ""} ${p.brandNameEn || ""}`,
               }))}
               emptyText="ไม่พบสินค้า — สร้างที่ฐานข้อมูลก่อน"
             />

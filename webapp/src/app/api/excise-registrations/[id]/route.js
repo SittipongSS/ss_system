@@ -94,7 +94,7 @@ export async function PATCH(request, { params }) {
     updated.customerId = customer.id;
     updated.fgCode = product.fgCode;
     updated.productName = product.productDescription || product.productDescriptionEn;
-    updated.brandName = product.brandName;
+    updated.brandName = product.brandName || product.brandNameEn;
     updated.customerName = customer.name;
     updated.taxId = customer.taxId;
   } else {

@@ -46,7 +46,7 @@ export default function DatabaseOverview() {
     queue.push({
       id: `p-${x.id}`, tone: "warning", badge: "สินค้า",
       title: `${x.fgCode || "-"} · ${x.productDescription || x.productDescriptionEn || x.brandName || ""}`.trim(),
-      subtitle: x.customerName || x.brandName || "รออนุมัติสินค้า",
+      subtitle: x.customerName || x.brandName || x.brandNameEn || "รออนุมัติสินค้า",
       cta: mine ? "อนุมัติ" : "ดู", onClick: goProducts,
     });
   });

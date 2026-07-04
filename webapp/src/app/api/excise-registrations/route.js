@@ -69,7 +69,7 @@ export async function POST(request) {
     customerId: customer.id,
     fgCode: product.fgCode,
     productName: product.productDescription || product.productDescriptionEn,
-    brandName: product.brandName,
+    brandName: product.brandName || product.brandNameEn,
     customerName: customer.name,
     taxId: customer.taxId,
     isExciseTaxable,
