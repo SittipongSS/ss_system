@@ -46,6 +46,16 @@ export function brandThList(brandsArrays) {
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
 }
 
+// ป้ายชื่อแบรนด์สำหรับ "แสดงผล" (ทั้งเว็บ): โชว์อังกฤษก่อน ถ้าไม่มีค่อยไทย (en || th).
+export function brandLabel(th, en) {
+  return (en || "").trim() || (th || "").trim();
+}
+
+// เวอร์ชันรับสมาชิก brand ตัวเดียว (string หรือ {th,en}).
+export function brandLabelOf(b) {
+  return brandLabel(brandTh(b), brandEn(b));
+}
+
 // หา EN ที่คู่กับชื่อ TH หนึ่งๆ ใน brands ของลูกค้า (ใช้ auto-fill ตอนเลือกแบรนด์
 // ในฟอร์มสินค้า). ไม่พบ/ไม่มี EN → "".
 export function brandEnFor(brands, th) {

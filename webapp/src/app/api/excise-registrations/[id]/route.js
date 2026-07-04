@@ -93,8 +93,8 @@ export async function PATCH(request, { params }) {
     updated.productId = product.id;
     updated.customerId = customer.id;
     updated.fgCode = product.fgCode;
-    updated.productName = product.productDescription;
-    updated.brandName = product.brandName;
+    updated.productName = product.productDescriptionEn || product.productDescription;
+    updated.brandName = product.brandNameEn || product.brandName;
     updated.customerName = customer.name;
     updated.taxId = customer.taxId;
   } else {

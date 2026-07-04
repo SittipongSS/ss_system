@@ -80,7 +80,7 @@ export async function PATCH(request, { params }) {
     await recordAudit({
       user, action: 'update', entityType: 'product', entityId: id,
       before: product, after: decided,
-      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${decided.productDescription || id}`,
+      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${decided.productDescriptionEn || decided.productDescription || id}`,
       request,
     });
     return Response.json(decided);

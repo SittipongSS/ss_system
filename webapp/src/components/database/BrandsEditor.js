@@ -1,12 +1,15 @@
 "use client";
 import { Plus, Trash2 } from "lucide-react";
-import { normalizeBrand } from "@/lib/master/brands";
 
 // Editor for a customer's brands (migration 0059). Each brand is { th, en }
 // where th = ชื่อไทย (ใช้เป็นชื่อหลัก/คีย์), en = ชื่ออังกฤษ (ไม่บังคับ).
 // Controlled: value = array, onChange(nextArray). Mirrors ContactsEditor.
+// หมายเหตุ: ปรับแค่ "รูปทรง" ให้เป็น {th,en} — ไม่ trim ระหว่างพิมพ์ ไม่งั้นเคาะ
+// เว้นวรรคท้ายคำไม่ได้ (โดน trim ทิ้งทุก re-render). trim จริงทำตอนบันทึกที่ API.
+const asRow = (b) => (typeof b === "string" ? { th: b, en: "" } : { th: b?.th ?? "", en: b?.en ?? "" });
+
 export default function BrandsEditor({ value = [], onChange }) {
-  const rows = (Array.isArray(value) ? value : []).map(normalizeBrand);
+  const rows = (Array.isArray(value) ? value : []).map(asRow);
   const update = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const add = () => onChange([...rows, { th: "", en: "" }]);
   const remove = (i) => onChange(rows.filter((_, idx) => idx !== i));
