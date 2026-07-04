@@ -44,7 +44,9 @@ export default function RegistrationsPage() {
     return regs.filter((r) => {
       if (filter !== "all" && r.status !== filter) return false;
       if (!q) return true;
-      return [r.fgCode, r.productName, r.brandName, r.customerName, r.approvalNumber]
+      return [r.fgCode, r.productName, r.brandName, r.customerName, r.approvalNumber,
+        r.metadata?.productNameTh, r.metadata?.productNameEn,
+        r.metadata?.brandNameTh, r.metadata?.brandNameEn]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
   }, [regs, filter, search]);

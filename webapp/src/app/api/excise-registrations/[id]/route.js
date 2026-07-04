@@ -97,6 +97,15 @@ export async function PATCH(request, { params }) {
     updated.brandName = product.brandNameEn || product.brandName;
     updated.customerName = customer.name;
     updated.taxId = customer.taxId;
+    // Keep the both-language snapshot in metadata in sync with the newly selected
+    // FG so the registrations list search stays bilingual after a product swap.
+    updated.metadata = {
+      ...(updated.metadata || {}),
+      productNameTh: product.productDescription || null,
+      productNameEn: product.productDescriptionEn || null,
+      brandNameTh: product.brandName || null,
+      brandNameEn: product.brandNameEn || null,
+    };
   } else {
     // FG unchanged → never let customerId drift away from the FG's owner.
     updated.customerId = reg.customerId;
