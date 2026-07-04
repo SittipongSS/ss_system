@@ -134,7 +134,7 @@ export default function ReconcilePage() {
       </div>
     ) : null;
     const badges = hasCov ? (
-      <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชยข้ามเดือน (รับ ${nf(cell.coverageIn)} / ส่ง ${nf(cell.coverageOut)})`}>⇄</span>
+      <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชย FC ข้ามเดือน (รับ FC ${nf(cell.coverageIn)} / ส่ง FC ${nf(cell.coverageOut)}) · PO อยู่กับที่`}>⇄</span>
     ) : null;
     // Single-value views (FC / PO): one number, but colored by reconcile status
     // (เขียว=ครบ / แดง=รอ PO / เหลือง=ไม่ครบ ฯลฯ) เหมือนมุมมอง FC vs PO.
@@ -161,7 +161,15 @@ export default function ReconcilePage() {
           style={{ position: "relative" }}
         >
           {badges}
-          <div className="cell-value-line"><span className="cell-lbl">FC</span><span className="cell-val fc">{nf(cell.fcQty)}</span></div>
+          <div className="cell-value-line">
+            <span className="cell-lbl">FC</span>
+            <span className="cell-val fc">
+              {nf(cell.fcQty)}
+              {cell.originalFc != null && cell.originalFc !== cell.fcQty && (
+                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 10, marginLeft: 3 }}>{nf(cell.originalFc)}</span>
+              )}
+            </span>
+          </div>
           <div className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{nf(cell.poQty)}</span></div>
           <span className="cell-status-tag">{cell.label}</span>
           {predBadge}

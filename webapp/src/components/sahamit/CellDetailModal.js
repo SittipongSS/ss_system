@@ -72,7 +72,12 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                 <div style={{ display: "flex", gap: 32 }}>
                   <div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>Forecast (FC)</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{nf(fcQty)}</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                      {nf(fcQty)}
+                      {cell.originalFc != null && cell.originalFc !== fcQty && (
+                        <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 13, marginLeft: 6 }}>เดิม {nf(cell.originalFc)}</span>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>Purchase Order (PO)</div>
@@ -84,7 +89,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                 <div style={{ fontSize: 11, color: "var(--text-3)", textAlign: "right" }}>ครอบคลุม {pct}%</div>
                 {(cell.coverageIn > 0 || cell.coverageOut > 0) && (
                   <div style={{ fontSize: 12, color: "var(--blue)" }}>
-                    ⇄ มีการชดเชยข้ามเดือน (รับเข้า {nf(cell.coverageIn)} / ส่งออก {nf(cell.coverageOut)}) — ดูแท็บ “ชดเชยยอดข้ามเดือน”
+                    ⇄ ชดเชย FC ข้ามเดือน (รับ FC เข้า {nf(cell.coverageIn)} / ส่ง FC ออก {nf(cell.coverageOut)}) — PO อยู่กับที่ · ดูแท็บ “ชดเชยยอดข้ามเดือน”
                   </div>
                 )}
               </div>

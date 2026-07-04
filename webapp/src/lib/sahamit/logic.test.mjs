@@ -258,7 +258,7 @@ test('buildReconMatrix coverMonths: a shift is NOT double-counted (total preserv
   assert.equal(a.fcTotal, 100); // Apr 0 + May 100 — NOT 200
 });
 
-test('buildReconMatrix coverage: PO excess in one month covers shortfall in another', () => {
+test('buildReconMatrix coverage: move FC (PO fixed) — source becomes covered, target matches', () => {
   const rounds = [{ roundNo: 1, coverMonths: ['2026-06', '2026-07'], lines: [
     { fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 100 },
   ] }];
@@ -269,15 +269,18 @@ test('buildReconMatrix coverage: PO excess in one month covers shortfall in anot
   assert.equal(before.cells['2026-06'].status, 'pending');
   assert.equal(before.cells['2026-07'].status, 'over');
 
-  // Allocate 100 of Jul's PO to cover Jun
-  const cov = [{ fgCode: 'A', sourceMonth: '2026-07', targetMonth: '2026-06', qty: 100 }];
+  // ชดเชย = ย้าย FC 100 จาก Jun → Jul (PO อยู่กับที่ที่ Jul). Jul FC 200 = PO 200; Jun FC ถูกดึงออก
+  const cov = [{ fgCode: 'A', sourceMonth: '2026-06', targetMonth: '2026-07', qty: 100 }];
   const after = buildReconMatrix(rounds, pos, cov).rows.find((r) => r.fgCode === 'A');
-  assert.equal(after.cells['2026-06'].status, 'match');     // covered → matches FC
-  assert.equal(after.cells['2026-06'].coverageIn, 100);
-  assert.equal(after.cells['2026-06'].poQty, 0);            // displayed PO unchanged (actual)
-  assert.equal(after.cells['2026-07'].status, 'match');     // excess allocated away
-  assert.equal(after.cells['2026-07'].coverageOut, 100);
-  assert.equal(after.cells['2026-07'].poQty, 200);          // displayed PO unchanged (actual)
+  assert.equal(after.cells['2026-06'].status, 'covered');   // FC moved out → ชดเชย
+  assert.equal(after.cells['2026-06'].fcQty, 0);
+  assert.equal(after.cells['2026-06'].originalFc, 100);     // ยอด FC เดิมเก็บไว้ตรวจ
+  assert.equal(after.cells['2026-06'].coverageOut, 100);
+  assert.equal(after.cells['2026-06'].poQty, 0);            // PO ไม่ขยับ
+  assert.equal(after.cells['2026-07'].status, 'match');     // FC เท่ากับ PO แล้ว
+  assert.equal(after.cells['2026-07'].fcQty, 200);
+  assert.equal(after.cells['2026-07'].coverageIn, 100);
+  assert.equal(after.cells['2026-07'].poQty, 200);          // PO ไม่ขยับ
 });
 
 test('cellDetail lists contributing FC rounds and active PO lines', () => {
@@ -346,40 +349,35 @@ test('predictShifts skips locked cells and returns empty without a clock', () =>
   assert.equal(predictShifts(rounds, [], {}).size, 0); // no today → pure no-op
 });
 
-test('suggestCoverage finds surplus-PO months nearest-first', () => {
-  // A: Sep short on PO (pending), Aug & Dec carry surplus PO.
+test('suggestCoverage: target needs FC (PO>FC) → pull FC from months with FC>PO, nearest first', () => {
+  // Sep has PO 200 but no FC (need 200). Aug & Dec have FC without PO (spare) → sources.
   const rounds = [{
     roundNo: 1, coverMonths: ['2026-08', '2026-09', '2026-12'],
     lines: [
-      { fgCode: 'A', month: '2026-08', qty: 100 },
-      { fgCode: 'A', month: '2026-09', qty: 200 },
-      { fgCode: 'A', month: '2026-12', qty: 100 },
+      { fgCode: 'A', month: '2026-08', qty: 100 }, // FC 100, no PO → spare 100
+      { fgCode: 'A', month: '2026-12', qty: 100 }, // FC 100, no PO → spare 100
     ],
   }];
-  const pos = [{ poNumber: 'PO1', lines: [
-    { fgCode: 'A', deliveryMonth: '2026-08', qty: 300 }, // +200 surplus
-    { fgCode: 'A', deliveryMonth: '2026-12', qty: 250 }, // +150 surplus
-  ] }];
+  const pos = [{ poNumber: 'PO1', lines: [{ fgCode: 'A', deliveryMonth: '2026-09', qty: 200 }] }]; // Sep need 200
   const matrix = buildReconMatrix(rounds, pos);
   const s = suggestCoverage(matrix, 'A', '2026-09');
   assert.deepEqual(s.map((x) => x.sourceMonth), ['2026-08', '2026-12']); // Aug (1mo) before Dec (3mo)
-  assert.equal(s[0].canCover, 200);
+  assert.equal(s[0].canCover, 100);
 });
 
-test('suggestCoverageTargets pushes a surplus month to the short months (nearest first, capped)', () => {
-  // Aug carries +200 surplus PO; Sep short 200, Dec short 100 → push 200 to Sep first.
+test('suggestCoverageTargets: month has FC>PO (spare) → send FC to months with PO>FC, nearest+capped', () => {
+  // Aug FC 300 / PO 100 → spare 200. Sep PO 200 no FC (need 200) → send 200 to Sep.
   const rounds = [{
-    roundNo: 1, coverMonths: ['2026-08', '2026-09', '2026-12'],
-    lines: [
-      { fgCode: 'A', month: '2026-08', qty: 100 },
-      { fgCode: 'A', month: '2026-09', qty: 200 },
-      { fgCode: 'A', month: '2026-12', qty: 100 },
-    ],
+    roundNo: 1, coverMonths: ['2026-08', '2026-09'],
+    lines: [{ fgCode: 'A', month: '2026-08', qty: 300 }],
   }];
-  const pos = [{ poNumber: 'PO1', lines: [{ fgCode: 'A', deliveryMonth: '2026-08', qty: 300 }] }]; // Aug +200
+  const pos = [{ poNumber: 'PO1', lines: [
+    { fgCode: 'A', deliveryMonth: '2026-08', qty: 100 }, // Aug FC300/PO100 → spare 200
+    { fgCode: 'A', deliveryMonth: '2026-09', qty: 200 }, // Sep FC0/PO200 → need 200
+  ] }];
   const matrix = buildReconMatrix(rounds, pos);
   const t = suggestCoverageTargets(matrix, 'A', '2026-08');
-  assert.deepEqual(t, [{ targetMonth: '2026-09', use: 200 }]); // all 200 goes to nearest short month
-  // A month with no surplus yields nothing.
+  assert.deepEqual(t, [{ targetMonth: '2026-09', use: 200 }]);
+  // Sep has no spare FC → nothing to send.
   assert.deepEqual(suggestCoverageTargets(matrix, 'A', '2026-09'), []);
 });
