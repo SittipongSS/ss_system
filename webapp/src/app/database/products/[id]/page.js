@@ -166,10 +166,10 @@ export default function ProductDetails() {
         <div className="header-content">
           <h1 className="flex items-center gap-2 flex-wrap">
             <span className="premium-header-icon"><Package size={20} /></span>
-            {product.productDescription || product.productDescriptionEn}
+            {product.productDescriptionEn || product.productDescription}
             <span className="pill font-mono text-xs">{product.fgCode}</span>
           </h1>
-          {product.productDescription && product.productDescriptionEn && <p className="text-[var(--text-3)] text-sm">{product.productDescriptionEn}</p>}
+          {product.productDescriptionEn && product.productDescription && <p className="text-[var(--text-3)] text-sm">{product.productDescription}</p>}
           <p>แบรนด์: {brandLabel(product.brandName, product.brandNameEn)}</p>
         </div>
 

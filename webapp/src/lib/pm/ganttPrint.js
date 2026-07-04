@@ -303,7 +303,7 @@ export function buildGanttPrintHTML(project) {
             const prod = pp.product || {};
             const cat = pp.categoryLabel || '';
             return `<span class="fg-item">
-              <span class="fg-name">${esc(prod.fgCode || '')} — ${esc(prod.productDescription || prod.productDescriptionEn || prod.brandName || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</span>
+              <span class="fg-name">${esc(prod.fgCode || '')} — ${esc(prod.productDescriptionEn || prod.productDescription || prod.brandNameEn || prod.brandName || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</span>
               ${cat ? `<span class="fg-cat">${esc(cat)}</span>` : ''}
               <span class="fg-qty">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</span>
             </span>`;

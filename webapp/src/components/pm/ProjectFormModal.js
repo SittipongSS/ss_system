@@ -95,7 +95,7 @@ export default function ProjectFormModal({
           ...f,
           projectProducts: newProducts,
           customerId: f.customerId || firstFg.customerId || "",
-          name: f.name || firstFg.brandName || firstFg.productDescription || firstFg.productDescriptionEn || "",
+          name: f.name || firstFg.brandNameEn || firstFg.brandName || firstFg.productDescriptionEn || firstFg.productDescription || "",
         };
       }
       return { ...f, projectProducts: newProducts };
@@ -291,7 +291,7 @@ export default function ProjectFormModal({
                               {cat ? cat.nameTh : p.categoryCode || "ไม่มีหมวด"}
                             </span>
                           </div>
-                          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{p.productDescription || p.productDescriptionEn || p.brandName || "-"}</div>
+                          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{p.productDescriptionEn || p.productDescription || p.brandNameEn || p.brandName || "-"}</div>
                         </div>
                         <div style={{ display: "flex", gap: "8px", width: "240px", maxWidth: "100%" }}>
                           <input type="text" placeholder="สั่งซื้อ" value={pp.orderQty} onChange={(e) => updateFgQty(pp.productId, "orderQty", e.target.value)} className="premium-input w-full text-[12px] h-[32px]" />
@@ -310,7 +310,7 @@ export default function ProjectFormModal({
                   .filter(pr => !form.projectProducts.some(pp => pp.productId === pr.id))
                   // ผูกได้หลายหมวด (ไม่กรองตามหมวด) — หมวดของโปรเจกต์จะ derive จาก FG เอง
                   .map(pr => (
-                  <option key={pr.id} value={pr.id}>{pr.fgCode} — {pr.productDescription || pr.productDescriptionEn || pr.brandName || ""} {pr.volume ? `(${pr.volume} ml)` : ""}</option>
+                  <option key={pr.id} value={pr.id}>{pr.fgCode} — {pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""} {pr.volume ? `(${pr.volume} ml)` : ""}</option>
                 ))}
               </Select>
             </div>

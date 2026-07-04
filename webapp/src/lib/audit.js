@@ -102,7 +102,7 @@ export function userAuditSnapshot(u) {
 // คำอธิบายเริ่มต้น (ใช้ชื่อ entity ที่อ่านง่ายถ้ามี).
 function defaultSummary({ action, entityType, after, before }) {
   const rec = after || before || {};
-  const label = rec.name || rec.productDescription || rec.productDescriptionEn || rec.quotationRef || rec.id || '';
+  const label = rec.name || rec.productDescriptionEn || rec.productDescription || rec.quotationRef || rec.id || '';
   const verb = action === 'create' ? 'สร้าง' : action === 'delete' ? 'ลบ' : 'แก้ไข';
   return `${verb}${entityType}${label ? ` ${label}` : ''}`.trim();
 }
