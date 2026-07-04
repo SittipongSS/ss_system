@@ -4,7 +4,8 @@ import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
-const FIELDS = ['pmInStock', 'pmArrivedAt', 'rmOrderedAt', 'rmArrivedAt', 'note'];
+// pmDueDate/rmDueDate = กำหนดถึง; pmArrivedAt/rmArrivedAt = "มาแล้ว" (non-null = มาแล้ว)
+const FIELDS = ['pmDueDate', 'rmDueDate', 'pmArrivedAt', 'rmArrivedAt', 'note'];
 
 // PATCH /api/sahamit/material/[poLineId] — upsert the manual PM/RM tracking for a
 // PO line. Derived fields (inForecast/leadDays/readyDate) are computed live in
@@ -25,7 +26,7 @@ export async function PATCH(request, { params }) {
 
   const patch = {};
   for (const f of FIELDS) {
-    if (f in body) patch[f] = f === 'pmInStock' ? !!body[f] : (body[f] || null);
+    if (f in body) patch[f] = body[f] || null;
   }
   patch.updatedAt = new Date().toISOString();
   patch.updatedById = user?.id ?? null;
