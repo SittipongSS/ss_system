@@ -167,6 +167,10 @@ export default function ProductRegistry() {
     // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
     if (!formData.customerId) { alert("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
     if (!formData.brandName?.trim()) { alert("กรุณาระบุชื่อแบรนด์"); return; }
+    // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
+    if (!formData.productDescription?.trim() && !formData.productDescriptionEn?.trim()) {
+      alert("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
+    }
     if (!isExciseCategory(categoryOf(formData.fgCode))) {
       if (
         !confirm(
@@ -305,7 +309,7 @@ export default function ProductRegistry() {
             items={approvalQueue}
             onDecide={decide}
             primary={(p) => p.fgCode}
-            secondary={(p) => { const b = brandLabel(p.brandName, p.brandNameEn); return `${p.productDescription}${b ? ` · ${b}` : ""}`; }}
+            secondary={(p) => { const b = brandLabel(p.brandName, p.brandNameEn); return `${p.productDescription || p.productDescriptionEn || ""}${b ? ` · ${b}` : ""}`; }}
             onOpen={open}
           />
         </>
@@ -328,7 +332,7 @@ export default function ProductRegistry() {
               <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescription}</div>
+                    <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescription || p.productDescriptionEn}</div>
                     <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode}</div>
                     {cat && <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{cat.main} · {cat.sub}</div>}
                   </div>
@@ -393,7 +397,7 @@ export default function ProductRegistry() {
                   return (
                     <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: 0.55 } : undefined}>
                       <td>
-                        <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
+                        <div className="font-semibold text-[var(--text)]">{p.productDescription || p.productDescriptionEn}</div>
                         <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
                       </td>
                       <td>
@@ -492,12 +496,13 @@ export default function ProductRegistry() {
                 })()}
               </div>
               <div className="form-group col-span-2">
-                <label>ชื่อสินค้า / รายละเอียด (ไทย) <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="productDescription" value={formData.productDescription} onChange={handleChange} required placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
+                <label>ชื่อสินค้า / รายละเอียด (ไทย)</label>
+                <input type="text" name="productDescription" value={formData.productDescription} onChange={handleChange} placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
               </div>
               <div className="form-group col-span-2">
                 <label>ชื่อสินค้า / รายละเอียด (อังกฤษ)</label>
                 <input type="text" name="productDescriptionEn" value={formData.productDescriptionEn} onChange={handleChange} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
+                <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
               </div>
               <div className="form-group">
                 <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>

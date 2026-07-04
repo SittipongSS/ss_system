@@ -65,6 +65,10 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
     if (!form.customerId) { setError("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
     if (!form.brandName?.trim()) { setError("กรุณาระบุชื่อแบรนด์"); return; }
+    // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
+    if (!form.productDescription?.trim() && !form.productDescriptionEn?.trim()) {
+      setError("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
+    }
     setSubmitting(true);
     setError(null);
     const body = {
@@ -150,12 +154,13 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               {catBox}
             </div>
             <div className="form-group col-span-2">
-              <label>ชื่อสินค้า / รายละเอียด (ไทย) <span className="text-[var(--red)]">*</span></label>
-              <input type="text" value={form.productDescription ?? ""} onChange={(e) => set("productDescription", e.target.value)} required placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
+              <label>ชื่อสินค้า / รายละเอียด (ไทย)</label>
+              <input type="text" value={form.productDescription ?? ""} onChange={(e) => set("productDescription", e.target.value)} placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
             </div>
             <div className="form-group col-span-2">
               <label>ชื่อสินค้า / รายละเอียด (อังกฤษ)</label>
               <input type="text" value={form.productDescriptionEn ?? ""} onChange={(e) => set("productDescriptionEn", e.target.value)} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
+              <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
             </div>
             <div className="form-group">
               <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
