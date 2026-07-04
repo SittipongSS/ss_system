@@ -16,7 +16,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
-import { brandThList, brandEnFor, brandBoth } from "@/lib/master/brands";
+import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth } from "@/lib/format";
 
 // Management view sees every status; the default GET (used by registration / PM
@@ -147,15 +147,21 @@ export default function ProductRegistry() {
     () => customers.find((x) => x.id === formData.customerId),
     [customers, formData.customerId],
   );
-  const brandOptions = useMemo(() => brandThList(selectedCustomer?.brands || []), [selectedCustomer]);
+  // แบรนด์ = ช่องเดียว โชว์สองภาษา (EN · TH). value ที่เก็บภายใน = TH (คีย์) ถ้ามี ไม่งั้น EN.
+  const brandOptions = useMemo(() => normalizeBrands(selectedCustomer?.brands || []), [selectedCustomer]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     // เปลี่ยนลูกค้า → ล้างแบรนด์เดิม (TH+EN) เพราะรายการแบรนด์ผูกกับลูกค้า
     if (name === "customerId") setFormData((f) => ({ ...f, customerId: value, brandName: "", brandNameEn: "" }));
-    // เลือก/พิมพ์แบรนด์ → เติมชื่ออังกฤษที่คู่กันจากข้อมูลลูกค้าให้อัตโนมัติ (แก้เองได้)
-    else if (name === "brandName") setFormData((f) => ({ ...f, brandName: value, brandNameEn: brandEnFor(selectedCustomer?.brands, value) || f.brandNameEn }));
     else setFormData((f) => ({ ...f, [name]: value }));
+  };
+
+  // เลือก/พิมพ์แบรนด์ในช่องเดียว → เก็บทั้ง TH+EN จากแบรนด์ของลูกค้า (match ด้วย th หรือ en);
+  // พิมพ์ใหม่ที่ไม่มีในลิสต์ → ถือเป็นชื่อไทย, EN ว่าง.
+  const pickBrand = (v) => {
+    const hit = (selectedCustomer?.brands || []).find((b) => brandTh(b) === v || brandEn(b) === v);
+    setFormData((f) => ({ ...f, brandName: hit ? brandTh(hit) : v, brandNameEn: hit ? brandEn(hit) : "" }));
   };
 
   const openForm = () => {
@@ -167,7 +173,7 @@ export default function ProductRegistry() {
     e.preventDefault();
     // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
     if (!formData.customerId) { alert("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
-    if (!formData.brandName?.trim()) { alert("กรุณาระบุชื่อแบรนด์"); return; }
+    if (!formData.brandName?.trim() && !formData.brandNameEn?.trim()) { alert("กรุณาระบุชื่อแบรนด์"); return; }
     // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
     if (!formData.productDescription?.trim() && !formData.productDescriptionEn?.trim()) {
       alert("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
@@ -521,20 +527,17 @@ export default function ProductRegistry() {
                 <span className="text-xs text-[var(--text-3)] mt-1">FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก</span>
               </div>
               <div className="form-group">
-                <label>ชื่อแบรนด์ (ไทย) <span className="text-[var(--red)]">*</span></label>
+                <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
                 <SearchableSelect
                   allowFreeText
                   disabled={!formData.customerId}
-                  options={brandOptions.map((b) => ({ value: b, label: b }))}
-                  value={formData.brandName}
-                  onChange={(v) => handleChange({ target: { name: "brandName", value: v } })}
+                  options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
+                  value={formData.brandName || formData.brandNameEn}
+                  onChange={pickBrand}
                   placeholder={formData.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"}
                   emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
                 />
-              </div>
-              <div className="form-group col-span-2">
-                <label>ชื่อแบรนด์ (อังกฤษ)</label>
-                <input type="text" name="brandNameEn" value={formData.brandNameEn} onChange={handleChange} placeholder="เติมอัตโนมัติเมื่อเลือกแบรนด์ที่มีชื่ออังกฤษ — แก้ไขได้" className="premium-input w-full" />
+                <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — แก้ชื่อแบรนด์ได้ที่หน้าลูกค้า</span>
               </div>
             </div>
           </div>
