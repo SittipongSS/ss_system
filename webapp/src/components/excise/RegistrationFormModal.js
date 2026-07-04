@@ -81,7 +81,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
               options={products.map((p) => ({
                 value: p.id,
                 label: `${p.fgCode} | ${p.productDescription} (${p.brandName})`,
-                search: `${p.fgCode} ${p.productDescription} ${p.brandName}`,
+                search: `${p.fgCode} ${p.productDescription} ${p.productDescriptionEn || ""} ${p.brandName} ${p.brandNameEn || ""}`,
               }))}
               emptyText="ไม่พบสินค้า — สร้างที่ฐานข้อมูลก่อน"
             />

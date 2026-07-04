@@ -82,7 +82,12 @@ export async function POST(request) {
     team: user?.team ?? null,
     ownerId: user?.id ?? null,
     assignee: body.assignee || user?.name || 'Sales',
-    metadata: {},
+    // EN snapshot in metadata (no dedicated column) so tax/registrations search
+    // can match English product/brand names, not just Thai.
+    metadata: {
+      productNameEn: product.productDescriptionEn || null,
+      brandNameEn: product.brandNameEn || null,
+    },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
