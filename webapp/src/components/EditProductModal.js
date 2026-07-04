@@ -58,7 +58,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   const handleCustomerChange = (v) => setForm((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }));
   // เลือกแบรนด์ → เติมชื่ออังกฤษที่คู่กันจากข้อมูลลูกค้า (แก้เองได้)
   const handleBrandChange = (v) =>
-    setForm((f) => ({ ...f, brandName: v, brandNameEn: brandEnFor(selCustomer?.brands, v) || f.brandNameEn }));
+    setForm((f) => ({ ...f, brandName: v, brandNameEn: brandEnFor(selCustomer?.brands, v) }));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -191,7 +191,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
             </div>
             <div className="form-group col-span-2">
               <label>ชื่อแบรนด์ (อังกฤษ)</label>
-              <input type="text" value={form.brandNameEn ?? ""} onChange={(e) => set("brandNameEn", e.target.value)} placeholder="เติมอัตโนมัติเมื่อเลือกแบรนด์ที่มีชื่ออังกฤษ — แก้ไขได้" className="premium-input w-full" />
+              <input type="text" value={form.brandNameEn ?? ""} readOnly disabled placeholder="— ดึงจากแบรนด์ของลูกค้าอัตโนมัติ —" className="premium-input w-full" style={{ opacity: 0.7, cursor: "not-allowed" }} />
+              <span className="text-xs text-[var(--text-3)] mt-1">ดึงจากข้อมูลลูกค้าอัตโนมัติ — แก้ชื่อแบรนด์ (อังกฤษ) ได้ที่หน้าลูกค้า</span>
             </div>
           </div>
         </div>

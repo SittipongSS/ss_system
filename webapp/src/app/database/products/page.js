@@ -154,7 +154,7 @@ export default function ProductRegistry() {
     // เปลี่ยนลูกค้า → ล้างแบรนด์เดิม (TH+EN) เพราะรายการแบรนด์ผูกกับลูกค้า
     if (name === "customerId") setFormData((f) => ({ ...f, customerId: value, brandName: "", brandNameEn: "" }));
     // เลือก/พิมพ์แบรนด์ → เติมชื่ออังกฤษที่คู่กันจากข้อมูลลูกค้าให้อัตโนมัติ (แก้เองได้)
-    else if (name === "brandName") setFormData((f) => ({ ...f, brandName: value, brandNameEn: brandEnFor(selectedCustomer?.brands, value) || f.brandNameEn }));
+    else if (name === "brandName") setFormData((f) => ({ ...f, brandName: value, brandNameEn: brandEnFor(selectedCustomer?.brands, value) }));
     else setFormData((f) => ({ ...f, [name]: value }));
   };
 
@@ -534,7 +534,8 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group col-span-2">
                 <label>ชื่อแบรนด์ (อังกฤษ)</label>
-                <input type="text" name="brandNameEn" value={formData.brandNameEn} onChange={handleChange} placeholder="เติมอัตโนมัติเมื่อเลือกแบรนด์ที่มีชื่ออังกฤษ — แก้ไขได้" className="premium-input w-full" />
+                <input type="text" value={formData.brandNameEn} readOnly disabled placeholder="— ดึงจากแบรนด์ของลูกค้าอัตโนมัติ —" className="premium-input w-full" style={{ opacity: 0.7, cursor: "not-allowed" }} />
+                <span className="text-xs text-[var(--text-3)] mt-1">ดึงจากข้อมูลลูกค้าอัตโนมัติ — แก้ชื่อแบรนด์ (อังกฤษ) ได้ที่หน้าลูกค้า</span>
               </div>
             </div>
           </div>
