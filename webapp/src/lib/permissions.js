@@ -37,6 +37,8 @@
 //   history:view   | audit:view
 //   master:manage  (edit shared master taxonomy, e.g. product_types categories)
 //   pm:view        | pm:edit        (project management — SALES only)
+//   salesplan:view | salesplan:edit | salesplan:review | salesplan:target
+//     (Sales Planning commercial spine: pipeline / forecast / target / review)
 //   sahamit:view   | sahamit:edit   (SAHAMIT Planning & Sales — FC/PO/Reconcile.
 //     Capability is held by every sales role, but ACCESS is further narrowed to
 //     team === 'KA' (+ admin / sales head oversight) via canAccessSahamit(). The
@@ -130,6 +132,7 @@ const SALES_OPS = [
   'products:view', 'products:edit',
   'sales:view', 'sales:act',
   'pm:view', 'pm:edit',
+  'salesplan:view', 'salesplan:edit',
   // SAHAMIT module — granted to every sales role; team===KA narrows actual access.
   'sahamit:view', 'sahamit:edit',
   'history:view',
@@ -145,6 +148,7 @@ const SUPERUSER_CAPS = [
   'users:manage',
   'master:manage',  // edit category taxonomy (product_types) + master config
   'pm:view', 'pm:edit',
+  'salesplan:view', 'salesplan:edit', 'salesplan:review', 'salesplan:target',
   'sahamit:view', 'sahamit:edit',
 ];
 

@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { viewScope, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
 import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
 import { recordAudit } from '@/lib/audit';
+import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 
 export const dynamic = 'force-dynamic';
 // Approval gate: by default GET returns only APPROVED products, so downstream
@@ -137,6 +138,13 @@ export async function POST(request) {
     }
     return Response.json({ error: error.message }, { status: 500 });
   }
+  await recordProductPriceHistory({
+    user,
+    productId: data.id,
+    after: data,
+    changeType: 'create',
+    metadata: { fgCode: data.fgCode, customerId: data.customerId },
+  });
   await recordAudit({ user, action: 'create', entityType: 'product', entityId: data.id, after: data, request });
   return Response.json(data, { status: 201 });
 }
