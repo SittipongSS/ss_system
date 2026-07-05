@@ -20,18 +20,19 @@ Sahamit · Tax เข้าด้วยกัน เข้าชุดกับ 
   - เพิ่ม `product_price_history` migration **0062** พร้อม RLS
   - hook product create/update ให้ log price history ผ่าน API layer
 - Supabase prod: ผู้ใช้แจ้งว่า run SQL `0062_product_price_history.sql` เรียบร้อยแล้ว
-
-**กำลังรอ merge**
-- PR #96 (`codex/factory-price-update-ui`): แยก flow “อัปเดตราคาโรงงาน” ออกจาก form แก้ไขสินค้าเดิม
+- PR #96 (`codex/factory-price-update-ui`) merge เข้า `main` แล้ว: แยก flow “อัปเดตราคาโรงงาน” ออกจาก form แก้ไขสินค้าเดิม
   - การแก้ข้อมูลสินค้าปกติไม่ส่ง `costPrice` แล้ว
   - การเปลี่ยนราคาโรงงานต้องกด action แยก + tick ยืนยันก่อนบันทึก
   - PATCH เฉพาะ `{ costPrice }` เพื่อให้ `product_price_history` เป็นการเปลี่ยนราคาโดยตั้งใจ
 
+**กำลังรอ merge**
+- Follow-up PR ใหม่: โชว์ราคาโรงงานเป็น read-only สีเทาใน form เดิม เพื่อให้เห็น context แต่แก้ได้เฉพาะผ่าน action “อัปเดตราคาโรงงาน”
+
 **Next recommended session**
-1. Merge PR #96 ถ้า review ผ่าน
+1. Merge follow-up PR ใหม่เรื่อง read-only ราคาโรงงาน ถ้า review ผ่าน
 2. Verify prod:
    - เปิด `/sales-planning`
-   - เปิดสินค้า → แก้ไข → เห็นแผง “ราคาโรงงาน” แยกจากข้อมูลสินค้า
+   - เปิดสินค้า → แก้ไข → เห็นช่อง “ราคาโรงงาน” แบบ read-only สีเทา + แผง “อัปเดตราคาโรงงาน” แยกด้านล่าง
    - อัปเดตราคาโรงงาน 1 รายการ → `product_price_history` มี row ใหม่
 3. เริ่ม Phase 1: สร้าง `SALES_PLANNING_PLAN.md` แบบละเอียด แล้วลง migration/API/UI สำหรับ `sales_targets` + `sales_deals` core
 
@@ -151,7 +152,8 @@ sahamit_pos.projectId [+field] ── เด้งสร้าง RE-ORDER proje
 - [x] ล็อกโมเดล A (ไฟล์นี้) · เพิ่ม capability `salesplan:view/edit/review/target` ใน [`permissions.js`](src/lib/permissions.js)
 - [x] **`product_price_history`** (migration 0062) — ราคาแก้ได้ + log ทุกครั้ง; hook ที่ API layer ของ products; RLS enabled
 - [x] scaffold: hub card ([`home/page.js`](src/app/home/page.js)) + sidebar group ([`AppLayout.js`](src/components/AppLayout.js)) + [`src/proxy.js`](src/proxy.js) allowlist สำหรับ `/sales-planning`
-- [x] UI hardening follow-up: PR #96 แยก “อัปเดตราคาโรงงาน” เป็น action เฉพาะ ไม่แก้ทับในช่อง form ปกติ (รอ merge)
+- [x] UI hardening: PR #96 แยก “อัปเดตราคาโรงงาน” เป็น action เฉพาะ ไม่แก้ทับในช่อง form ปกติ
+- [ ] UI follow-up: PR ใหม่โชว์ราคาโรงงานใน form เดิมแบบ read-only สีเทา เพื่อชี้ให้ไปอัปเดตผ่าน action เฉพาะ
 
 ### เฟส 1 · Sales Planning core  ★ value สูงสุด · greenfield · แทน Google Sheet
 - migration: `sales_targets`, `sales_deals`, `sales_deal_activities`, `sales_deal_stage_history`, `sales_deal_forecasts`
