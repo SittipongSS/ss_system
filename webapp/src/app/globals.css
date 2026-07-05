@@ -4057,7 +4057,10 @@ button.empty-state { width: 100%; font: inherit; }
   flex-wrap: wrap;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
   position: relative;
-  overflow: hidden;
+  /* overflow ต้องเป็น visible: ปุ่มใน headerRight (เช่น dropdown "ไฟล์แนบ (ZIP)"
+     หน้ารายงาน) เด้ง popover ลงมาใต้ขอบเฮดเดอร์ — overflow:hidden จะ clip ทิ้ง.
+     gradient background ถูก border-radius ตัดขอบมนให้อยู่แล้ว ไม่ต้องพึ่ง hidden. */
+  overflow: visible;
 }
 
 
