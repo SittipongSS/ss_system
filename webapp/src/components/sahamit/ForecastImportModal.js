@@ -4,6 +4,7 @@ import { Upload, Download, AlertTriangle, Plus, X, Pencil } from "lucide-react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { roundMatrix } from "@/lib/sahamit/forecastClient";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
 
 // Create one FC round. The month columns run from a start month to an end month
 // (the round's last month) and the grid updates live when either changes. Rows
@@ -121,9 +122,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/sahamit/forecast/import", { method: "POST", body: fd });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "นำเข้าไม่สำเร็จ");
+      const json = await sahamitFetch("/api/sahamit/forecast/import", { method: "POST", body: fd });
       const fileMonths = json.months || [];
       setMonthsOverride(fileMonths);
       if (fileMonths.length) { setStartMonth(fileMonths[0]); setEndMonth(fileMonths[fileMonths.length - 1]); }
@@ -161,7 +160,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     if (!lines.length) { setError("กรอกจำนวน FC อย่างน้อย 1 รายการ"); return; }
     setBusy(true); setError("");
     try {
-      const res = await fetch(
+      const json = await sahamitFetch(
         editRound ? `/api/sahamit/forecast/rounds/${editRound.id}` : "/api/sahamit/forecast/rounds",
         {
           method: editRound ? "PATCH" : "POST",
@@ -169,8 +168,6 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
           body: JSON.stringify({ receivedDate, note, coverMonths: months, lines }),
         },
       );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "บันทึกไม่สำเร็จ");
       onCreated?.(json);
       onClose?.();
     } catch (e) {

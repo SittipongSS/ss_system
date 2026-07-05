@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR } from "@/lib/sahamit/po";
 import { destinationLabel } from "@/components/sahamit/destinations";
@@ -32,11 +33,9 @@ function PoLineRow({ row, onSaved }) {
   const advance = async (patch) => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sahamit/po/lines/${row.poLineId}`, {
+      await sahamitFetch(`/api/sahamit/po/lines/${row.poLineId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
       });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || "ไม่สำเร็จ");
       onSaved?.();
     } catch (e) { alert(e.message); }
     setBusy(false);

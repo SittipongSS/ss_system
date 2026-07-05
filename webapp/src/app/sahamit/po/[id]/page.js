@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { FileText, Save, Trash2, Split, History, Truck, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate } from "@/lib/format";
 import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
@@ -42,9 +43,7 @@ function PoLineRow({ line, tracking, onChanged }) {
   const call = async (url, opts) => {
     setBusy(true);
     try {
-      const res = await fetch(url, opts);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "ไม่สำเร็จ");
+      await sahamitFetch(url, opts);
       onChanged?.();
     } catch (e) { alert(e.message); }
     setBusy(false);
@@ -198,11 +197,9 @@ export default function PoDetailPage() {
   const saveHeader = async () => {
     setBusy(true); setHErr("");
     try {
-      const res = await fetch(`/api/sahamit/po/${id}`, {
+      await sahamitFetch(`/api/sahamit/po/${id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(h),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "บันทึกไม่สำเร็จ");
       reload();
     } catch (e) { setHErr(e.message); }
     setBusy(false);

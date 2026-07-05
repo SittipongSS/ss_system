@@ -3,6 +3,7 @@ import { useMemo, useState, useEffect } from "react";
 import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate } from "@/lib/format";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -40,11 +41,9 @@ function MaterialRow({ row, onSaved }) {
         rmArrivedAt: d.rmArrived ? (t.rmArrivedAt || today) : null,
         note: d.note,
       };
-      const res = await fetch(`/api/sahamit/material/${row.poLineId}`, {
+      await sahamitFetch(`/api/sahamit/material/${row.poLineId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || "บันทึกไม่สำเร็จ");
       onSaved?.();
     } catch (e) { alert(e.message); }
     setBusy(false);

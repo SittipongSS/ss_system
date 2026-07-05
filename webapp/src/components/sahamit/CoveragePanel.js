@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { suggestCoverage, suggestCoverageTargets } from "@/lib/sahamit/predict";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 
@@ -43,13 +44,11 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
   const confirm = async (sourceMonth, targetMonth, useQty) => {
     setBusy(true);
     try {
-      const res = await fetch("/api/sahamit/coverage", {
+      await sahamitFetch("/api/sahamit/coverage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fgCode, sourceMonth, targetMonth, qty: useQty }),
       });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || "ไม่สำเร็จ");
       onChanged?.();
     } catch (e) {
       alert(e.message);
@@ -57,8 +56,10 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
     setBusy(false);
   };
   const remove = async (id) => {
-    await fetch(`/api/sahamit/coverage/${id}`, { method: "DELETE" });
-    onChanged?.();
+    try {
+      await sahamitFetch(`/api/sahamit/coverage/${id}`, { method: "DELETE" });
+      onChanged?.();
+    } catch (e) { alert(e.message); }
   };
 
   return (
