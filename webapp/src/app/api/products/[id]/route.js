@@ -6,6 +6,7 @@ import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { recordAudit } from '@/lib/audit';
+import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -170,6 +171,14 @@ export async function PATCH(request, { params }) {
     return Response.json({ error: error.message }, { status: 500 });
   }
   // Audit เก็บ record เต็ม (ก่อน redact margin) — หน้า /audit เป็น supervisor only.
+  await recordProductPriceHistory({
+    user,
+    productId: id,
+    before: product,
+    after: data,
+    changeType: 'update',
+    metadata: { fgCode: data.fgCode, customerId: data.customerId },
+  });
   await recordAudit({ user, action: 'update', entityType: 'product', entityId: id, before: product, after: data, request });
   return Response.json(redactProductMargin(user, data));
 }

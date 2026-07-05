@@ -98,6 +98,7 @@ export default function AppLayout({ children }) {
     const sys =
       pathname.startsWith('/pm') ? 'pm'
       : pathname.startsWith('/database') ? 'master'
+      : pathname.startsWith('/sales-planning') ? 'salesplan'
       : pathname.startsWith('/sahamit') ? 'sahamit'
       : pathname === '/users' ? 'users'
       : pathname === '/audit' ? 'audit'
@@ -175,6 +176,13 @@ export default function AppLayout({ children }) {
       ],
     },
     {
+      label: 'Sales Planning',
+      system: 'salesplan',
+      items: [
+        { href: '/sales-planning', name: 'ภาพรวม', icon: LineChart, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
+      ],
+    },
+    {
       label: 'งานสหมิตร',
       system: 'sahamit',
       items: [
@@ -191,10 +199,11 @@ export default function AppLayout({ children }) {
   const systemSubtitle =
     activeSystem === 'master' ? 'ฐานข้อมูล'
       : activeSystem === 'pm' ? 'จัดการโครงการ'
-        : activeSystem === 'sahamit' ? 'งานสหมิตร'
-          : activeSystem === 'users' ? 'จัดการผู้ใช้'
-            : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
-              : 'ภาษีสรรพสามิต';
+        : activeSystem === 'salesplan' ? 'Sales Planning'
+          : activeSystem === 'sahamit' ? 'งานสหมิตร'
+            : activeSystem === 'users' ? 'จัดการผู้ใช้'
+              : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
+                : 'ภาษีสรรพสามิต';
 
   // Show only the current system's groups (+ 'both'), then only menus the role
   // is allowed to see.
