@@ -274,6 +274,20 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
               <input type="number" value={form.retailPriceIncVat ?? ""} onChange={(e) => set("retailPriceIncVat", e.target.value)} min="0" step="0.01" className="premium-input w-full font-mono" />
             </div>
+            <div className="form-group">
+              <label>ราคาโรงงาน (บาท)</label>
+              <input
+                type="text"
+                value={money(product.costPrice)}
+                readOnly
+                className="premium-input w-full font-mono tabular-nums"
+                style={{ color: "var(--text-3)", background: "var(--panel-2)", cursor: "not-allowed" }}
+                aria-describedby="factory-price-readonly-help"
+              />
+              <span id="factory-price-readonly-help" className="text-xs text-[var(--text-3)] mt-1">
+                ช่องนี้ดูอย่างเดียว ต้องกด “อัปเดตราคาโรงงาน” ด้านล่างเพื่อแก้ราคา
+              </span>
+            </div>
           </div>
 
           <div className="glass-panel mt-5" style={{ padding: "16px 18px", borderLeft: "3px solid var(--amber)" }}>
