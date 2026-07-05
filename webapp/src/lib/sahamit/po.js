@@ -16,6 +16,12 @@ export function poTotalQty(po) {
   return (po?.lines || []).reduce((s, l) => s + Number(l.qty || 0), 0);
 }
 
+// ยอดที่ใช้ "กระทบยอด" ของบรรทัด PO: ถ้าแบ่งส่ง (มี shippedQty) ให้ใช้ยอดส่งจริง
+// (ส่วนที่เหลือถูกเปิดเป็น PO ใบใหม่แล้ว) — กัน PO เดิม+PO เหลือ นับซ้ำ. qty แสดงยังเต็ม.
+export function effectivePoQty(line) {
+  return Number(line?.shippedQty ?? line?.qty ?? 0);
+}
+
 export function poLineCount(po) {
   return (po?.lines || []).length;
 }

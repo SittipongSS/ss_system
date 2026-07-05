@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { FileText, Save, Trash2, Split, History, Truck, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { FileText, Save, Trash2, History, Truck, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -65,16 +66,6 @@ function PoLineRow({ line, tracking, onChanged }) {
     });
   };
 
-  const split = () => {
-    const q = prompt(`แยกจำนวนเท่าไรจาก ${line.qty}? (จะสร้างบรรทัดยอดแยกใหม่)`);
-    const splitQty = Number(q);
-    if (!Number.isFinite(splitQty) || splitQty <= 0) return;
-    call(`/api/sahamit/po/lines/${line.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "split", splitQty }),
-    });
-  };
-
   const del = () => {
     if (!confirm(`ลบรายการ ${line.fgCode}?`)) return;
     call(`/api/sahamit/po/lines/${line.id}`, { method: "DELETE" });
@@ -90,7 +81,16 @@ function PoLineRow({ line, tracking, onChanged }) {
           {line.splitFromPoLineId && <span className="ui-badge" style={{ marginLeft: 6, color: "var(--blue)", borderColor: "var(--blue)" }}>ยอดแยก</span>}
         </td>
         <td style={{ color: line.productName ? "inherit" : "var(--amber)" }}>{line.productName || "— ไม่รู้จัก —"}</td>
-        <td style={{ textAlign: "right" }}>{nf(line.qty)}</td>
+        <td style={{ textAlign: "right" }}>
+          <div>เต็ม {nf(line.qty)}</div>
+          {line.shippedQty != null && (
+            <div style={{ fontSize: 11 }}>
+              <span style={{ color: "var(--green)" }}>ส่งแล้ว {nf(line.shippedQty)}</span>
+              {" · "}
+              <span style={{ color: "var(--blue)" }}>เหลือ {nf(Number(line.qty) - Number(line.shippedQty))}</span>
+            </div>
+          )}
+        </td>
         <td>{line.dueDate ? fmtDate(line.dueDate) : "—"}</td>
         <td>
           {line.expectedDate ? fmtDate(line.expectedDate) : "—"}
@@ -107,7 +107,6 @@ function PoLineRow({ line, tracking, onChanged }) {
         <td><span className="status-pill">{PO_STATUS_LABEL[line.status] || line.status}</span></td>
         <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
           <button className="btn-icon" title="แก้ไข/เลื่อน/ส่งจริง" onClick={() => setOpen((v) => !v)}>{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>
-          <button className="btn-icon" title="แยกบางส่วน (แบ่งส่ง)" onClick={split} disabled={busy}><Split size={15} /></button>
           <button className="btn-icon" title="ลบ" onClick={del} disabled={busy}><Trash2 size={15} /></button>
         </td>
       </tr>
@@ -170,6 +169,7 @@ function PoLineRow({ line, tracking, onChanged }) {
 
 export default function PoDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id;
   const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
   const { data: material } = useApiList("/api/sahamit/material");
@@ -179,11 +179,45 @@ export default function PoDetailPage() {
     for (const r of material) m.set(r.poLineId, r.tracking || null);
     return m;
   }, [material]);
+  // PO ยอดเหลือที่แตกออกจาก PO นี้ (โยงด้วย splitFromPoId)
+  const balancePos = useMemo(() => pos.filter((p) => p.splitFromPoId === id), [pos, id]);
 
   const [h, setH] = useState({});
   const [busy, setBusy] = useState(false);
   const [hErr, setHErr] = useState("");
   const [headerExpanded, setHeaderExpanded] = useState(false); // ย่อไว้ก่อนแบบหัว ISO
+
+  // แบ่งส่ง (split): ระบุยอดส่งจริงต่อบรรทัด → เปิด PO ยอดเหลือ
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [balanceNo, setBalanceNo] = useState("");
+  const [shipped, setShipped] = useState({});
+  const [splitBusy, setSplitBusy] = useState(false);
+  const openSplit = () => {
+    const init = {};
+    for (const l of po?.lines || []) init[l.id] = l.qty ?? "";
+    setShipped(init); setBalanceNo(""); setSplitOpen(true);
+  };
+  const doSplit = async () => {
+    if (!balanceNo.trim()) { alert("ระบุเลขที่ PO ยอดเหลือ"); return; }
+    const lines = (po?.lines || []).map((l) => ({ lineId: l.id, shippedQty: Number(shipped[l.id]) }));
+    if (!lines.some((l) => Number.isFinite(l.shippedQty) && l.shippedQty >= 0)) { alert("กรอกยอดส่งจริง"); return; }
+    setSplitBusy(true);
+    try {
+      await sahamitFetch(`/api/sahamit/po/${id}/split`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balancePoNumber: balanceNo.trim(), lines }),
+      });
+      setSplitOpen(false); reload();
+    } catch (e) { alert(e.message); }
+    setSplitBusy(false);
+  };
+  const doMerge = async () => {
+    if (!confirm("รวมกลับ (ยกเลิกแบ่งส่ง)? PO ยอดเหลือใบนี้จะถูกลบ และ PO แม่กลับเป็นยอดเต็ม")) return;
+    try {
+      const j = await sahamitFetch(`/api/sahamit/po/${id}/merge`, { method: "POST" });
+      router.push(j?.restoredPoId ? `/sahamit/po/${j.restoredPoId}` : "/sahamit/po");
+    } catch (e) { alert(e.message); }
+  };
 
   useEffect(() => {
     if (!po) return;
@@ -280,6 +314,62 @@ export default function PoDetailPage() {
             </div>
             )}
           </div>
+
+          {/* แบ่งส่ง / รวมกลับ */}
+          {po.splitFromPoId ? (
+            <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--blue)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, color: "var(--text-2)" }}>🔗 PO นี้คือ <b>ยอดเหลือจากการแบ่งส่ง</b> (โยงกับ PO แม่)</span>
+              <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={doMerge}>↩ รวมกลับ (ยกเลิกแบ่งส่ง)</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {balancePos.length > 0 && (
+                <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", fontSize: 13 }}>
+                  🔗 PO นี้ถูกแบ่งส่ง — ยอดเหลือไปที่:{" "}
+                  {balancePos.map((bp) => (
+                    <Link key={bp.id} href={`/sahamit/po/${bp.id}`} style={{ color: "var(--accent)", marginRight: 10, fontWeight: 600 }}>{bp.poNumber}</Link>
+                  ))}
+                </div>
+              )}
+              {!splitOpen ? (
+                <button className="btn" style={{ alignSelf: "flex-start" }} onClick={openSplit}>✂ แบ่งส่ง (เปิด PO ยอดเหลือ)</button>
+              ) : (
+                <div className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ fontWeight: 600 }}>แบ่งส่ง — กรอกยอดส่งจริงต่อบรรทัด (ส่วนที่เหลือจะเปิดเป็น PO ใหม่)</div>
+                  <div className="form-group" style={{ maxWidth: 260 }}>
+                    <label>เลขที่ PO ยอดเหลือ <span style={{ color: "var(--red)" }}>*</span></label>
+                    <input className="premium-input font-mono" value={balanceNo} onChange={(e) => setBalanceNo(e.target.value)} placeholder="เช่น PO-2607-001-R (แก้ทีหลังได้)" />
+                  </div>
+                  <div className="premium-table-wrapper">
+                    <table className="premium-table">
+                      <thead><tr><th>สินค้า</th><th style={{ textAlign: "right" }}>เต็ม</th><th style={{ textAlign: "right" }}>ส่งจริง</th><th style={{ textAlign: "right" }}>เหลือ</th></tr></thead>
+                      <tbody>
+                        {(po.lines || []).map((l) => {
+                          const s = Number(shipped[l.id]);
+                          const rem = Number.isFinite(s) ? Number(l.qty) - s : 0;
+                          return (
+                            <tr key={l.id}>
+                              <td className="font-mono">{l.fgCode}</td>
+                              <td style={{ textAlign: "right" }}>{nf(l.qty)}</td>
+                              <td style={{ padding: 2, textAlign: "right" }}>
+                                <input type="number" min={0} max={l.qty} className="premium-input" style={{ width: 100, textAlign: "right", height: 30 }}
+                                  value={shipped[l.id] ?? ""} onChange={(e) => setShipped({ ...shipped, [l.id]: e.target.value })} />
+                              </td>
+                              <td style={{ textAlign: "right", color: rem > 0 ? "var(--blue)" : "var(--text-3)" }}>{rem > 0 ? nf(rem) : "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button className="btn" onClick={() => setSplitOpen(false)} disabled={splitBusy}>ยกเลิก</button>
+                    <button className="btn btn-primary" onClick={doSplit} disabled={splitBusy}>{splitBusy ? "กำลังแบ่ง..." : "แบ่งส่ง + เปิด PO ยอดเหลือ"}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Lines */}
           <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
