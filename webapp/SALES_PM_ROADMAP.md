@@ -9,11 +9,38 @@ Sahamit · Tax เข้าด้วยกัน เข้าชุดกับ 
 > รายละเอียด migration/API/UI ของแต่ละเฟส จะเขียนเพิ่มใน `SALES_PLANNING_PLAN.md` (ใหม่)
 > และต่อยอด [`PM_PLAN.md`](PM_PLAN.md) เมื่อเริ่มเฟสนั้นจริง
 
+## 0. Current status / handoff (อัปเดต 2026-07-05)
+
+**Merged แล้ว**
+- PR #95 (`codex/sales-pm-roadmap`) merge เข้า `main` แล้ว: เพิ่ม roadmap + Phase 0 foundation
+- Phase 0 เสร็จแล้วในโค้ด:
+  - เพิ่ม capability `salesplan:view/edit/review/target`
+  - เปิด `/sales-planning` ใน hub/sidebar/proxy
+  - เพิ่มหน้า scaffold `/sales-planning`
+  - เพิ่ม `product_price_history` migration **0062** พร้อม RLS
+  - hook product create/update ให้ log price history ผ่าน API layer
+- Supabase prod: ผู้ใช้แจ้งว่า run SQL `0062_product_price_history.sql` เรียบร้อยแล้ว
+- PR #96 (`codex/factory-price-update-ui`) merge เข้า `main` แล้ว: แยก flow “อัปเดตราคาโรงงาน” ออกจาก form แก้ไขสินค้าเดิม
+  - การแก้ข้อมูลสินค้าปกติไม่ส่ง `costPrice` แล้ว
+  - การเปลี่ยนราคาโรงงานต้องกด action แยก + tick ยืนยันก่อนบันทึก
+  - PATCH เฉพาะ `{ costPrice }` เพื่อให้ `product_price_history` เป็นการเปลี่ยนราคาโดยตั้งใจ
+
+**กำลังรอ merge**
+- Follow-up PR ใหม่: โชว์ราคาโรงงานเป็น read-only สีเทาใน form เดิม เพื่อให้เห็น context แต่แก้ได้เฉพาะผ่าน action “อัปเดตราคาโรงงาน”
+
+**Next recommended session**
+1. Merge follow-up PR ใหม่เรื่อง read-only ราคาโรงงาน ถ้า review ผ่าน
+2. Verify prod:
+   - เปิด `/sales-planning`
+   - เปิดสินค้า → แก้ไข → เห็นช่อง “ราคาโรงงาน” แบบ read-only สีเทา + แผง “อัปเดตราคาโรงงาน” แยกด้านล่าง
+   - อัปเดตราคาโรงงาน 1 รายการ → `product_price_history` มี row ใหม่
+3. เริ่ม Phase 1: สร้าง `SALES_PLANNING_PLAN.md` แบบละเอียด แล้วลง migration/API/UI สำหรับ `sales_targets` + `sales_deals` core
+
 ground truth (ตรวจกับโค้ด 2026-07-05):
-- migration สูงสุด = **0056** → จองเลข **0057+** (ระวังชนตอน merge — memory: deploy-workflow)
+- migration สูงสุด = **0062** (`product_price_history`) → Phase 1 ใช้เลข **0063+** ตอน merge จริง (ระวังชนตอน merge — memory: deploy-workflow)
 - `withUser` + response helper (`ok/fail/badRequest…`) มีจริงใน [`src/lib/http.js`](src/lib/http.js) และ PM ใช้ทุก route → ใช้ pattern เดิม
 - **audit infra มีแล้ว**: `audit_logs` (0049) + `recordAudit()` ใน [`src/lib/audit.js`](src/lib/audit.js) → reuse ไม่สร้างใหม่
-- `sales_deals`/`salesplan` **ยังไม่มี** (greenfield สะอาด)
+- `sales_deals`/`sales_targets` **ยังไม่มี** (Phase 1 greenfield)
 - `project_products` เก็บ FG + `orderQty`/`productionQty` อยู่แล้ว → เป็นวัตถุดิบของใบเสนอราคา
 - PM computed status ปัจจุบันอยู่ใน `src/lib/pm/status.js`; `commandCenter.js` ยังเป็น extraction prereq ตาม PM_COMMAND_CENTER แผน
 
@@ -121,10 +148,12 @@ sahamit_pos.projectId [+field] ── เด้งสร้าง RE-ORDER proje
 
 หลักการเรียง: **value ออกก่อน + งาน greenfield (Sales) เสี่ยงต่ำนำหน้า + แตะระบบเดิม (PM/Sahamit/Tax) ทีหลัง**
 
-### เฟส 0 · ฐานร่วม (เล็ก, ทำก่อน)
-- ล็อกโมเดล A (ไฟล์นี้) · เพิ่ม capability `salesplan:view/edit/review/target` ใน [`permissions.js`](src/lib/permissions.js)
-- **`product_price_history`** (migration 0057+) — ราคาแก้ได้ + log ทุกครั้ง; hook ที่ API layer ของ products
-- scaffold: hub card ([`home/page.js`](src/app/home/page.js)) + sidebar group ([`AppLayout.js`](src/components/AppLayout.js)) + [`src/proxy.js`](src/proxy.js) allowlist สำหรับ `/sales-planning`
+### เฟส 0 · ฐานร่วม (เล็ก, ทำก่อน) — DONE (PR #95)
+- [x] ล็อกโมเดล A (ไฟล์นี้) · เพิ่ม capability `salesplan:view/edit/review/target` ใน [`permissions.js`](src/lib/permissions.js)
+- [x] **`product_price_history`** (migration 0062) — ราคาแก้ได้ + log ทุกครั้ง; hook ที่ API layer ของ products; RLS enabled
+- [x] scaffold: hub card ([`home/page.js`](src/app/home/page.js)) + sidebar group ([`AppLayout.js`](src/components/AppLayout.js)) + [`src/proxy.js`](src/proxy.js) allowlist สำหรับ `/sales-planning`
+- [x] UI hardening: PR #96 แยก “อัปเดตราคาโรงงาน” เป็น action เฉพาะ ไม่แก้ทับในช่อง form ปกติ
+- [ ] UI follow-up: PR ใหม่โชว์ราคาโรงงานใน form เดิมแบบ read-only สีเทา เพื่อชี้ให้ไปอัปเดตผ่าน action เฉพาะ
 
 ### เฟส 1 · Sales Planning core  ★ value สูงสุด · greenfield · แทน Google Sheet
 - migration: `sales_targets`, `sales_deals`, `sales_deal_activities`, `sales_deal_stage_history`, `sales_deal_forecasts`
@@ -178,10 +207,10 @@ sahamit_pos.projectId [+field] ── เด้งสร้าง RE-ORDER proje
 
 ## 7. Migration ที่จอง (จริงตอน merge)
 
-| เฟส | migration (คร่าว, จองเลข 0057+) |
+| เฟส | migration (คร่าว, จองเลขจริงตอน merge) |
 |---|---|
-| 0 | `product_price_history` |
-| 1 | `sales_targets`, `sales_deals`, `sales_deal_activities`, `sales_deal_stage_history`, `sales_deal_forecasts` |
+| 0 | DONE: `0062_product_price_history.sql` (`product_price_history`, RLS enabled) |
+| 1 | NEXT: `0063+` สำหรับ `sales_targets`, `sales_deals`, `sales_deal_activities`, `sales_deal_stage_history`, `sales_deal_forecasts` |
 | 2 | `sales_deals.projectId`, `projects.metadata` (มี jsonb แล้ว — อาจไม่ต้อง) |
 | 3 | `quotations`, `quotation_lines` |
 | 4 | `shipment_prep`(+lines), `excise_registrations.projectId`, `sahamit_pos.projectId` |
