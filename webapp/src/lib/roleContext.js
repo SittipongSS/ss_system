@@ -27,7 +27,6 @@ export function useTeam() {
 
 export function useCan(cap) {
   const role = useContext(RoleContext);
-  if (_can(role, cap)) return true;
   const extra = sanitizeExtraCaps(useContext(ExtraCapsContext));
-  return extra.includes(cap);
+  return _can(role, cap) || extra.includes(cap);
 }

@@ -9,7 +9,7 @@ test('pmTaskScopes by role', () => {
   assert.deepEqual(pmTaskScopes('ae_supervisor'), ['mine', 'team', 'all']);
   assert.deepEqual(pmTaskScopes('senior_ae'), ['mine', 'team']);
   assert.deepEqual(pmTaskScopes('ac'), ['mine', 'team']);
-  assert.deepEqual(pmTaskScopes('ae'), ['mine']);
+  assert.deepEqual(pmTaskScopes('ae'), ['mine', 'team']);
   assert.deepEqual(pmTaskScopes('staff'), ['mine']);
   assert.deepEqual(pmTaskScopes('viewer'), ['mine']);
 });
@@ -25,7 +25,7 @@ test('deleteScope for projects (superuser=all, senior_ae=own team, else none)', 
 test('pmTaskEditTier: full edit for admin / scoped sales', () => {
   assert.equal(pmTaskEditTier({ role: 'admin', id: 'a' }, { assigneeId: null }, { team: 'KA', ownerId: 'x' }), 'full');
   assert.equal(pmTaskEditTier({ role: 'senior_ae', team: 'ODM', id: 's' }, { assigneeId: null }, { team: 'ODM' }), 'full');
-  assert.equal(pmTaskEditTier({ role: 'ae', id: 'u1' }, { assigneeId: null }, { ownerId: 'u1' }), 'full');
+  assert.equal(pmTaskEditTier({ role: 'ae', team: 'KA', id: 'u1' }, { assigneeId: null }, { team: 'KA', ownerId: 'u2' }), 'full');
 });
 
 test('pmTaskEditTier: workflow edit for assignee / same-dept staff', () => {
