@@ -15,6 +15,7 @@ const TABS = [
   { key: "history", label: "ประวัติ / เทียบรอบ" },
 ];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const nfBaht = (n) => "฿" + Math.round(Number(n) || 0).toLocaleString("th-TH");
 
 export default function ForecastPage() {
   const { data: rounds, loading, error, reload } = useApiList("/api/sahamit/forecast/rounds");
@@ -39,6 +40,40 @@ export default function ForecastPage() {
     [rounds, selectedIndex],
   );
   const matrix = useMemo(() => (selectedRound ? roundMatrix(selectedRound) : { months: [], rows: [] }), [selectedRound]);
+
+  // fgCode → product (หมวด + ราคาโรงงาน) จาก master — สำหรับ group หมวด + แถวรวมมูลค่า
+  const productByFg = useMemo(() => {
+    const m = new Map();
+    for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
+    return m;
+  }, [products]);
+  const catOf = (fg) => productByFg.get(String(fg).trim().toLowerCase())?.category || "— ไม่ระบุหมวด —";
+
+  // จัดกลุ่มแถว matrix ตามหมวดสินค้า
+  const matrixGroups = useMemo(() => {
+    const g = new Map();
+    for (const r of matrix.rows) {
+      const cat = catOf(r.fgCode);
+      if (!g.has(cat)) g.set(cat, []);
+      g.get(cat).push(r);
+    }
+    return [...g.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrix, productByFg]);
+
+  // แถวรวมมูลค่า (ราคาโรงงาน × จำนวน) ต่อเดือน + รวม — เหมือนหน้ากระทบยอด
+  const matrixValue = useMemo(() => {
+    const byMonth = {};
+    for (const m of matrix.months) byMonth[m] = 0;
+    let grand = 0, unpriced = 0;
+    for (const r of matrix.rows) {
+      const p = productByFg.get(String(r.fgCode).trim().toLowerCase());
+      const price = p?.price == null ? null : Number(p.price);
+      if (price == null) { if (r.total > 0) unpriced += 1; continue; }
+      for (const m of matrix.months) { const q = Number(r.qty[m]) || 0; byMonth[m] += q * price; grand += q * price; }
+    }
+    return { byMonth, grand, unpriced };
+  }, [matrix, productByFg]);
 
   // Overview: latest known qty per SKU (the most recent round that lists it).
   const overview = useMemo(() => {
@@ -163,17 +198,36 @@ export default function ForecastPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {matrix.rows.map((r) => (
-                        <tr key={r.fgCode}>
-                          <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
-                          <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>{r.productName || "— ไม่รู้จัก —"}</td>
-                          {matrix.months.map((m) => (
-                            <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{r.qty[m] ? nf(r.qty[m]) : "·"}</td>
-                          ))}
-                          <td style={{ textAlign: "right", fontWeight: 700 }}>{nf(r.total)}</td>
-                        </tr>
-                      ))}
+                      {matrixGroups.flatMap(([cat, rows]) => [
+                        <tr key={`cat-${cat}`}>
+                          <td colSpan={matrix.months.length + 3} style={{ position: "static", background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
+                            {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
+                          </td>
+                        </tr>,
+                        ...rows.map((r) => (
+                          <tr key={r.fgCode}>
+                            <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
+                            <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>{r.productName || "— ไม่รู้จัก —"}</td>
+                            {matrix.months.map((m) => (
+                              <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{r.qty[m] ? nf(r.qty[m]) : "·"}</td>
+                            ))}
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>{nf(r.total)}</td>
+                          </tr>
+                        )),
+                      ])}
                     </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={2} style={{ background: "var(--panel-2)", fontWeight: 600, color: "var(--text-2)", borderTop: "2px solid var(--border)" }}>
+                          รวมมูลค่า (฿)
+                          {matrixValue.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11, fontWeight: 400 }}> · {matrixValue.unpriced} SKU ไม่มีราคา</span>}
+                        </td>
+                        {matrix.months.map((m) => (
+                          <td key={m} style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(matrixValue.byMonth[m])}</td>
+                        ))}
+                        <td style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(matrixValue.grand)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
