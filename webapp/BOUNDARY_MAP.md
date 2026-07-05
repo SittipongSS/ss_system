@@ -20,6 +20,7 @@
 | [`ATTACHMENT_REQUIREMENT_SPEC.md`](ATTACHMENT_REQUIREMENT_SPEC.md) | spec ไฟล์แนบ (storage) + requirement engine (per-module) |
 | [`DRIVE_STORAGE_PLAN.md`](DRIVE_STORAGE_PLAN.md) | backend ไฟล์แนบบน Google Drive (ใช้งานจริงแล้ว) |
 | [`MASTER_DATA_PLAN.md`](MASTER_DATA_PLAN.md) · [`PM_PLAN.md`](PM_PLAN.md) | แผนราย-โมดูล (Database / Project Management) |
+| [`SALES_PM_ROADMAP.md`](SALES_PM_ROADMAP.md) | สถาปัตยกรรม + roadmap สายชีวิต Sales→PM→Sahamit→Tax (โมเดล 2 ชั้น) |
 
 ---
 
