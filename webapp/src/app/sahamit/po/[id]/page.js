@@ -223,6 +223,7 @@ export default function PoDetailPage() {
     if (!po) return;
     setH({
       poNumber: po.poNumber || "", docDate: po.docDate || "", receivedDate: po.receivedDate || "",
+      dueDate: po.dueDate || "", destination: po.destination || null,
       quoteRef: po.quoteRef || "", note: po.note || "",
     });
     setHErr("");
@@ -297,6 +298,14 @@ export default function PoDetailPage() {
               <div className="form-group">
                 <label>วันที่รับ PO</label>
                 <input type="date" className="premium-input" value={h.receivedDate || ""} onChange={(e) => setH({ ...h, receivedDate: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>กำหนดส่ง (ทั้ง PO)</label>
+                <input type="date" className="premium-input" value={h.dueDate || ""} onChange={(e) => setH({ ...h, dueDate: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>สถานที่ส่ง (ทั้ง PO)</label>
+                <DestinationToggle value={h.destination || null} onChange={(v) => setH({ ...h, destination: v })} />
               </div>
               <div className="form-group">
                 <label>อ้างอิงใบเสนอราคา</label>

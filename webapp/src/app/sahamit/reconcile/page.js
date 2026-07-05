@@ -94,6 +94,17 @@ export default function ReconcilePage() {
 
   const filterCount = brands.length + volumes.length + categories.length;
 
+  // จัดกลุ่มแถวตามหมวดสินค้า (แสดงหัวหมวดคั่น)
+  const catGroups = useMemo(() => {
+    const m = new Map();
+    for (const r of filteredRows) {
+      const cat = productByFg.get(String(r.fgCode).trim().toLowerCase())?.category || "— ไม่ระบุหมวด —";
+      if (!m.has(cat)) m.set(cat, []);
+      m.get(cat).push(r);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filteredRows, productByFg]);
+
   // มูลค่ารายเดือน (ราคา×จำนวน) — คิดตามแถวที่แสดง (หลังกรอง). ราคา = ราคาโรงงาน
   // (costPrice) จาก products — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
   const valueSummary = useMemo(() => {
@@ -191,8 +202,14 @@ export default function ReconcilePage() {
               <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
             ))}
           </div>
-          <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=reconcile", "_blank")}>
-            <Download size={16} /> Excel
+          <button className="btn ghost" onClick={() => {
+            const p = new URLSearchParams({ view: "reconcile" });
+            if (brands.length) p.set("brands", brands.join(","));
+            if (volumes.length) p.set("volumes", volumes.join(","));
+            if (categories.length) p.set("categories", categories.join(","));
+            window.open(`/api/sahamit/export?${p.toString()}`, "_blank");
+          }}>
+            <Download size={16} /> Excel{filterCount > 0 ? " (กรองแล้ว)" : ""}
           </button>
         </div>
       }
@@ -254,27 +271,33 @@ export default function ReconcilePage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((r) => {
-                  const p = productOf(r.fgCode);
-                  const meta = [p?.brandName, volLabel(p)].filter(Boolean).join(" · ");
-                  return (
-                  <tr key={r.fgCode}>
-                    <td>
-                      <div className="product-row-info">
-                        <span className="product-row-name" style={r.productName ? undefined : { color: "var(--amber)" }} title={r.productName || r.fgCode}>{r.productName || "— ไม่รู้จัก —"}</span>
-                        <span className="product-row-sku">{r.fgCode}</span>
-                        {meta && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{meta}</span>}
-                        {p?.category && <span style={{ fontSize: 11, color: "var(--text-2)" }}>{p.category}</span>}
-                      </div>
+                {catGroups.flatMap(([cat, rows]) => [
+                  <tr key={`cat-${cat}`}>
+                    <td colSpan={matrix.months.length + 2} style={{ position: "static", background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
+                      {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
                     </td>
-                    {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
-                    <td style={{ textAlign: "right", verticalAlign: "middle" }}>
-                      <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {nf(r.fcTotal)}</div>
-                      <div style={{ fontWeight: 700 }}>PO {nf(r.poTotal)}</div>
-                    </td>
-                  </tr>
-                  );
-                })}
+                  </tr>,
+                  ...rows.map((r) => {
+                    const p = productOf(r.fgCode);
+                    const meta = [p?.brandName, volLabel(p)].filter(Boolean).join(" · ");
+                    return (
+                      <tr key={r.fgCode}>
+                        <td>
+                          <div className="product-row-info">
+                            <span className="product-row-name" style={r.productName ? undefined : { color: "var(--amber)" }} title={r.productName || r.fgCode}>{r.productName || "— ไม่รู้จัก —"}</span>
+                            <span className="product-row-sku">{r.fgCode}</span>
+                            {meta && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{meta}</span>}
+                          </div>
+                        </td>
+                        {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
+                        <td style={{ textAlign: "right", verticalAlign: "middle" }}>
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {nf(r.fcTotal)}</div>
+                          <div style={{ fontWeight: 700 }}>PO {nf(r.poTotal)}</div>
+                        </td>
+                      </tr>
+                    );
+                  }),
+                ])}
                 {filteredRows.length === 0 && (
                   <tr>
                     <td colSpan={matrix.months.length + 2} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>
