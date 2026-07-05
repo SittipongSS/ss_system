@@ -283,6 +283,17 @@ test('buildReconMatrix coverage: move FC (PO fixed) — source becomes covered, 
   assert.equal(after.cells['2026-07'].poQty, 200);          // PO ไม่ขยับ
 });
 
+test('buildReconMatrix: แบ่งส่ง — PO เดิมนับ shippedQty, PO ยอดเหลือนับเต็ม (ไม่นับซ้ำ)', () => {
+  const rounds = [{ roundNo: 1, coverMonths: ['2026-07'], lines: [{ fgCode: 'A', month: '2026-07', qty: 1000 }] }];
+  const pos = [
+    { poNumber: 'A', lines: [{ fgCode: 'A', deliveryMonth: '2026-07', qty: 1000, shippedQty: 600 }] }, // เดิม ส่งจริง 600
+    { poNumber: 'B', splitFromPoId: 'A', lines: [{ fgCode: 'A', deliveryMonth: '2026-07', qty: 400 }] },  // ยอดเหลือ 400
+  ];
+  const row = buildReconMatrix(rounds, pos).rows.find((r) => r.fgCode === 'A');
+  assert.equal(row.cells['2026-07'].poQty, 1000); // 600 + 400 (ไม่ใช่ 1400)
+  assert.equal(row.cells['2026-07'].status, 'match');
+});
+
 test('cellDetail lists contributing FC rounds and active PO lines', () => {
   const d = cellDetail(RC_ROUNDS, RC_POS, 'A', '2026-07');
   assert.deepEqual(d.fcs.map((f) => f.roundNo), [1, 2]); // both rounds had Jul

@@ -1,7 +1,7 @@
 // SAHAMIT — reconciliation matrix (pure). Builds the FC × PO grid the recon page
 // renders, reusing the tested reconcileCell logic. No fetch, no React.
 import { reconcileCell, RECON_STATUS_COLOR } from './reconcile';
-import { deliveryMonthOf } from './po';
+import { deliveryMonthOf, effectivePoQty } from './po';
 
 export { RECON_STATUS_COLOR };
 
@@ -66,7 +66,7 @@ function poByMonth(pos, names) {
       const m = l.deliveryMonth || deliveryMonthOf(l);
       if (!m) continue;
       const key = `${l.fgCode}||${m}`;
-      agg.set(key, (agg.get(key) || 0) + Number(l.qty || 0));
+      agg.set(key, (agg.get(key) || 0) + effectivePoQty(l)); // แบ่งส่ง: นับยอดส่งจริง
       if (l.productName && !names.get(l.fgCode)) names.set(l.fgCode, l.productName);
       else if (!names.has(l.fgCode)) names.set(l.fgCode, null);
     }

@@ -5,36 +5,35 @@
 
 ---
 
-## 1. 🔴 แบ่งส่ง (Partial delivery) — เฟสใหญ่ที่พักไว้
+## 1. ✅ แบ่งส่ง (Partial delivery) — เสร็จ 2026-07-03 (migration 0061 ต้องรันมือ)
+build ผ่าน (next build exit 0), เทสต์ 30/30. เหลือ verify prod: กด "✂ แบ่งส่ง" ที่หน้าแก้ PO →
+กรอกเลข PO เหลือ + ส่งจริงต่อบรรทัด → PO เดิมโชว์ "ส่งจริง X", PO เหลือถูกสร้าง (โยง),
+กระทบยอดไม่นับซ้ำ; ปุ่ม "↩ รวมกลับ" บน PO เหลือ.
 
-### ปัญหา
-PO 1 บรรทัดอาจส่งเป็นงวด (ส่งบางส่วนก่อน เหลือค้างส่งทีหลัง). ตอนนี้ workflow สถานะ
-เป็น **ต่อบรรทัดแบบเดียว** (รอวัสดุ→พร้อมผลิต→ผลิตเสร็จ→ส่งแล้ว→ปิดงาน) ยังไม่รองรับ
-"ส่งไปแล้วบางส่วน".
+### โมเดลจริงของสหมิตร (ล็อกแล้ว 2026-07-03)
 
-### ทางเลือก data model
-- **A. Split-based (มี split อยู่แล้ว):** ส่งบางส่วน = แยกบรรทัดเป็น (ส่วนที่ส่ง + ส่วนคงเหลือ)
-  แล้วเดินสถานะแยกกัน.
-  - ✅ ไม่ต้อง migration
-  - ❌ **ปัญหา**: material tracking ผูกกับ poLineId — พอ split เกิด poLineId ใหม่ที่ไม่มี tracking
-    → บรรทัดคงเหลือ "รีเซ็ตเป็นรอวัสดุ" ทั้งที่วัสดุมาแล้ว (ต้องก็อป tracking ไปบรรทัดลูก = ยุ่ง)
-- **B. deliveredQty บนบรรทัดเดิม (แนะนำ):** เพิ่มคอลัมน์ `deliveredQty` ใน `sahamit_po_lines`
-  - ส่งบางส่วน = บวก deliveredQty (ไม่แตกบรรทัด → material tracking ไม่รีเซ็ต)
-  - เพิ่มสถานะ **"ส่งบางส่วน"** คั่นระหว่าง ผลิตเสร็จ ↔ ส่งแล้ว
-  - ✅ workflow/วัสดุไม่พัง, เห็นยอดส่งแล้ว/คงเหลือชัด
-  - ❌ ต้อง **migration** (deliveredQty) + แก้ lineStage + ปุ่ม
+### โมเดลจริง (ผู้ใช้ยืนยัน)
+สหมิตรแบ่งส่ง = **เปิด PO ใบใหม่สำหรับยอดที่เหลือ** โดย **PO ใบเดิมไม่ถูกแก้ (qty ยังเต็ม)**.
+- **Split**: บน PO เดิม ระบุ "ส่งจริง" ต่อบรรทัด → (1) บันทึก `shippedQty` บนบรรทัดเดิม
+  (qty แสดงยังเต็ม) (2) เปิด **PO ใหม่ = ยอดเหลือ** (qty−shipped) โยงกลับ PO เดิม
+- **กระทบยอดนับตามยอดส่งจริง**: recon poByMonth นับ `shippedQty ?? qty` → PO เดิม(ส่งจริง) +
+  PO ใหม่(เหลือ) = ยอดเต็มพอดี **ไม่นับซ้ำ**
+- **เลข PO ยอดเหลือ**: ผู้ใช้กรอกตอน split (สหมิตรส่งเลขจริงตามมาทีหลัง → แก้ได้ที่หน้าแก้ PO)
+- **สถานะ PO เดิมหลัง split**: **ค้างไว้ (ไม่ปิดอัตโนมัติ)** — เดินสถานะปกติของส่วนที่ส่ง
+- **Merge (รวมกลับ)**: ถ้าสหมิตรเลิกแบ่งส่ง → ลบ PO ยอดเหลือ + ล้าง shippedQty คืน PO เดิมเป็นเต็ม
 
-### แผน (ถ้าเลือก B — แนะนำ)
-1. **migration 0061**: `ALTER sahamit_po_lines ADD deliveredQty numeric DEFAULT 0`
-2. **po.js lineStage**: เพิ่มขั้น `partial_delivered` (produced < partial_delivered < delivered);
-   derive: 0<deliveredQty<qty → ส่งบางส่วน; deliveredQty>=qty → ส่งแล้ว
-3. **API po/lines PATCH**: action `ship` { shipQty } → deliveredQty += shipQty (cap ที่ qty);
-   ครบ → status delivered + actualDeliveredDate
-4. **หน้า POs**: ปุ่ม "ส่งบางส่วน" (กรอกจำนวน) + โชว์ ส่งแล้ว X / คงเหลือ Y; rollup หัว PO เดิมใช้ได้
-5. **เทสต์**: lineStage partial, rollup, cap deliveredQty
-6. เก็บ split เดิมไว้ (เผื่อแยกจริง) หรือถอดถ้าซ้ำซ้อน — ตัดสินใจตอนลงมือ
+### migration 0061
+- `ALTER sahamit_po_lines ADD "shippedQty" numeric` (null = ส่งเต็ม; recon ใช้ค่านี้ถ้าไม่ null)
+- `ALTER sahamit_pos ADD "splitFromPoId" text` (PO ยอดเหลือชี้กลับ PO แม่ + เมนูรวมใช้จับคู่)
 
-> 🔒 ต้องยืนยัน A vs B ก่อนเริ่ม (แนะนำ B)
+### แผน 3 เฟส
+**P1 (แกน):** migration 0061 + recon poByMonth นับ shippedQty??qty + po.js helper
+  (effectiveQty, isBalance, hasBalance) + เทสต์
+**P2 (API):** POST /api/sahamit/po/[id]/split { balancePoNumber, lines:[{lineId, shippedQty}] }
+  → เซ็ต shippedQty บรรทัดเดิม + สร้าง PO ยอดเหลือ (splitFromPoId, copy dueDate/destination) ;
+  POST .../merge (หรือ DELETE PO ยอดเหลือ) → ลบ PO เหลือ + ล้าง shippedQty
+**P3 (UI):** ปุ่ม "แบ่งส่ง" ที่หน้าแก้ PO (po/[id]) — ฟอร์มกรอกเลข PO เหลือ + ส่งจริงต่อบรรทัด ;
+  ปุ่ม "รวมกลับ" บน PO ยอดเหลือ ; โชว์ "ส่งจริง X / เต็ม Y" + ป้ายโยง PO แม่-ลูก
 
 ---
 
