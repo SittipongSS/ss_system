@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import RoundComparison from "@/components/sahamit/RoundComparison";
@@ -56,9 +57,10 @@ export default function ForecastPage() {
 
   const deleteRound = async (r) => {
     if (!confirm(`ลบ FC รอบที่ ${r.roundNo}? (ลบบรรทัดทั้งหมดในรอบนี้ด้วย)`)) return;
-    const res = await fetch(`/api/sahamit/forecast/rounds/${r.id}`, { method: "DELETE" });
-    if (res.ok) { setSelectedNo(null); reload(); }
-    else alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+    try {
+      await sahamitFetch(`/api/sahamit/forecast/rounds/${r.id}`, { method: "DELETE" });
+      setSelectedNo(null); reload();
+    } catch (e) { alert(e.message); }
   };
 
   return (

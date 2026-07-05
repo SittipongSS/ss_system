@@ -6,6 +6,7 @@ import Workspace from "@/components/ui/Workspace";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { DestinationToggle } from "@/components/sahamit/destinations";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
 
 // สร้าง PO — หน้าเต็ม. กำหนดรับของ + สถานที่ส่ง เป็นระดับหัว PO (ทั้ง PO ใช้ค่าเดียว);
 // รายการสินค้าใส่แค่ จำนวน. เรียงฟอร์ม: หัวเอกสาร → เพิ่มรายการ → ตารางรายการ.
@@ -57,13 +58,11 @@ export default function PoCreatePage() {
     if (!lines.length) { setError("เพิ่มรายการสินค้าอย่างน้อย 1 (มีจำนวน > 0)"); return; }
     setBusy(true); setError("");
     try {
-      const res = await fetch("/api/sahamit/po", {
+      await sahamitFetch("/api/sahamit/po", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ poNumber: poNumber.trim(), docDate, receivedDate, dueDate: dueDate || null, destination, quoteRef, note, lines }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "บันทึกไม่สำเร็จ");
       router.push("/sahamit/po");
     } catch (e) { setError(e.message); setBusy(false); }
   };
