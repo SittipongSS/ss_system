@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { FileText, Save, Trash2, History, Truck, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -81,8 +82,14 @@ function PoLineRow({ line, tracking, onChanged }) {
         </td>
         <td style={{ color: line.productName ? "inherit" : "var(--amber)" }}>{line.productName || "— ไม่รู้จัก —"}</td>
         <td style={{ textAlign: "right" }}>
-          {nf(line.qty)}
-          {line.shippedQty != null && <div style={{ fontSize: 11, color: "var(--blue)" }}>ส่งจริง {nf(line.shippedQty)}</div>}
+          <div>เต็ม {nf(line.qty)}</div>
+          {line.shippedQty != null && (
+            <div style={{ fontSize: 11 }}>
+              <span style={{ color: "var(--green)" }}>ส่งแล้ว {nf(line.shippedQty)}</span>
+              {" · "}
+              <span style={{ color: "var(--blue)" }}>เหลือ {nf(Number(line.qty) - Number(line.shippedQty))}</span>
+            </div>
+          )}
         </td>
         <td>{line.dueDate ? fmtDate(line.dueDate) : "—"}</td>
         <td>
@@ -172,6 +179,8 @@ export default function PoDetailPage() {
     for (const r of material) m.set(r.poLineId, r.tracking || null);
     return m;
   }, [material]);
+  // PO ยอดเหลือที่แตกออกจาก PO นี้ (โยงด้วย splitFromPoId)
+  const balancePos = useMemo(() => pos.filter((p) => p.splitFromPoId === id), [pos, id]);
 
   const [h, setH] = useState({});
   const [busy, setBusy] = useState(false);
@@ -313,9 +322,17 @@ export default function PoDetailPage() {
               <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={doMerge}>↩ รวมกลับ (ยกเลิกแบ่งส่ง)</button>
             </div>
           ) : (
-            <div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {balancePos.length > 0 && (
+                <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", fontSize: 13 }}>
+                  🔗 PO นี้ถูกแบ่งส่ง — ยอดเหลือไปที่:{" "}
+                  {balancePos.map((bp) => (
+                    <Link key={bp.id} href={`/sahamit/po/${bp.id}`} style={{ color: "var(--accent)", marginRight: 10, fontWeight: 600 }}>{bp.poNumber}</Link>
+                  ))}
+                </div>
+              )}
               {!splitOpen ? (
-                <button className="btn" onClick={openSplit}>✂ แบ่งส่ง (เปิด PO ยอดเหลือ)</button>
+                <button className="btn" style={{ alignSelf: "flex-start" }} onClick={openSplit}>✂ แบ่งส่ง (เปิด PO ยอดเหลือ)</button>
               ) : (
                 <div className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={{ fontWeight: 600 }}>แบ่งส่ง — กรอกยอดส่งจริงต่อบรรทัด (ส่วนที่เหลือจะเปิดเป็น PO ใหม่)</div>

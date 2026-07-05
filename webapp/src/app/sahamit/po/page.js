@@ -6,7 +6,7 @@ import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate } from "@/lib/format";
-import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR } from "@/lib/sahamit/po";
+import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
 import { destinationLabel } from "@/components/sahamit/destinations";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -166,9 +166,14 @@ function PoGroup({ po, lines, priceByFg, isOpen, onToggle, onSaved }) {
     if (l.status === "cancelled") return s;
     const price = priceByFg.get(String(l.fgCode).trim().toLowerCase()) ?? null;
     if (price == null) { if (Number(l.qty) > 0) unpriced += 1; return s; }
-    return s + Number(l.qty || 0) * price;
+    return s + effectivePoQty(l) * price; // แบ่งส่ง: มูลค่านับยอดส่งจริง (ยอดเหลืออยู่ PO ใหม่)
   }, 0);
   const incVat = exVat * VAT;
+
+  // แบ่งส่ง: เต็ม vs คงบน PO นี้ (ส่งจริง) vs ย้ายไป PO ยอดเหลือ
+  const fullQty = poTotalQty(po);
+  const keptQty = (po.lines || []).reduce((s, l) => s + effectivePoQty(l), 0);
+  const isSplit = (po.lines || []).some((l) => l.shippedQty != null);
 
   // สถานะหัว PO: รวมจากบรรทัด (ผ่านวัสดุ); ถ้าไม่มีบรรทัด active → สถานะเดิม
   const hasLines = lines.length > 0;
@@ -186,7 +191,15 @@ function PoGroup({ po, lines, priceByFg, isOpen, onToggle, onSaved }) {
         <td>{po.dueDate ? fmtDate(po.dueDate) : "—"}</td>
         <td>{destinationLabel(po.destination) || "—"}</td>
         <td style={{ textAlign: "right" }}>{poLineCount(po)}</td>
-        <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(poTotalQty(po))}</td>
+        <td style={{ textAlign: "right", fontWeight: 600 }}>
+          {nf(fullQty)}
+          {isSplit && (
+            <div style={{ fontSize: 10.5, fontWeight: 400 }}>
+              <span style={{ color: "var(--green)" }}>ส่งแล้ว {nf(keptQty)}</span>{" · "}
+              <span style={{ color: "var(--blue)" }}>เหลือ {nf(fullQty - keptQty)}</span>
+            </div>
+          )}
+        </td>
         <td style={{ textAlign: "right" }}>
           <div style={{ fontWeight: 600 }}>{baht(exVat)}</div>
           <div style={{ fontSize: 11, color: "var(--text-3)" }}>รวม VAT {baht(incVat)}</div>
