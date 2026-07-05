@@ -1,4 +1,4 @@
-import { getSahamitContext, sahamitError } from '@/lib/sahamit/server';
+import { getSahamitContext, sahamitError, loadSahamitProducts } from '@/lib/sahamit/server';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { buildReconMatrix } from '@/lib/sahamit/reconcileClient';
 import { materialView } from '@/lib/sahamit/material';
@@ -26,11 +26,13 @@ async function loadAll(supabase, customerId) {
 
   const { data: trk } = await supabase.from('sahamit_material_tracking').select('*').eq('customerId', customerId);
   const { data: coverages } = await supabase.from('sahamit_po_coverage').select('*').eq('customerId', customerId);
+  let products = [];
+  try { products = await loadSahamitProducts(supabase, customerId); } catch { products = []; }
 
-  return { rounds: rounds || [], roundsWithLines, pos: pos || [], poLines: poLines || [], posWithLines, holidays, trk: trk || [], coverages: coverages || [] };
+  return { rounds: rounds || [], roundsWithLines, pos: pos || [], poLines: poLines || [], posWithLines, holidays, trk: trk || [], coverages: coverages || [], products };
 }
 
-function buildReport(view, data) {
+function buildReport(view, data, filters = {}) {
   if (view === 'forecast') {
     const rows = [];
     for (const r of data.roundsWithLines) {
@@ -103,10 +105,21 @@ function buildReport(view, data) {
     };
   }
 
-  // default: reconcile (flat) — reflect cross-month coverage
+  // default: reconcile (flat) — reflect cross-month coverage + ตัวกรอง (แบรนด์/ปริมาตร/หมวด)
   const matrix = buildReconMatrix(data.roundsWithLines, data.posWithLines, data.coverages);
+  const prod = new Map((data.products || []).map((p) => [String(p.fgCode).trim().toLowerCase(), p]));
+  const { brands = [], volumes = [], categories = [] } = filters;
+  const passFilter = (fg) => {
+    if (!brands.length && !volumes.length && !categories.length) return true;
+    const p = prod.get(String(fg).trim().toLowerCase());
+    if (brands.length && !brands.includes(p?.brandName)) return false;
+    if (volumes.length && !volumes.includes(p?.volume ? `${p.volume}${p?.volumeUnit || ''}` : '')) return false;
+    if (categories.length && !categories.includes(p?.category)) return false;
+    return true;
+  };
   const rows = [];
   for (const row of matrix.rows) {
+    if (!passFilter(row.fgCode)) continue;
     for (const m of matrix.months) {
       const c = row.cells[m];
       if (!c || c.status === 'none') continue;
@@ -127,13 +140,16 @@ function buildReport(view, data) {
 export async function GET(request) {
   const ctx = await getSahamitContext();
   if (!ctx.ok) return sahamitError(ctx);
-  const view = (new URL(request.url).searchParams.get('view') || 'reconcile').toLowerCase();
+  const sp = new URL(request.url).searchParams;
+  const view = (sp.get('view') || 'reconcile').toLowerCase();
+  const csv = (k) => (sp.get(k) ? sp.get(k).split(',').map((s) => s.trim()).filter(Boolean) : []);
+  const filters = { brands: csv('brands'), volumes: csv('volumes'), categories: csv('categories') };
 
   let data;
   try { data = await loadAll(ctx.supabase, ctx.customerId); }
   catch (e) { return Response.json({ error: e.message }, { status: 500 }); }
 
-  const report = buildReport(view, data);
+  const report = buildReport(view, data, filters);
   const buf = await reportToXlsxBuffer(report);
   return new Response(buf, {
     status: 200,

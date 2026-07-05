@@ -202,8 +202,14 @@ export default function ReconcilePage() {
               <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
             ))}
           </div>
-          <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=reconcile", "_blank")}>
-            <Download size={16} /> Excel
+          <button className="btn ghost" onClick={() => {
+            const p = new URLSearchParams({ view: "reconcile" });
+            if (brands.length) p.set("brands", brands.join(","));
+            if (volumes.length) p.set("volumes", volumes.join(","));
+            if (categories.length) p.set("categories", categories.join(","));
+            window.open(`/api/sahamit/export?${p.toString()}`, "_blank");
+          }}>
+            <Download size={16} /> Excel{filterCount > 0 ? " (กรองแล้ว)" : ""}
           </button>
         </div>
       }
