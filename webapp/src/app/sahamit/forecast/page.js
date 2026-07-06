@@ -6,6 +6,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
+import { productMetaText } from "@/lib/sahamit/productMeta";
 import RoundComparison from "@/components/sahamit/RoundComparison";
 import ForecastImportModal from "@/components/sahamit/ForecastImportModal";
 
@@ -157,7 +158,12 @@ export default function ForecastPage() {
                   {overview.map((s) => (
                     <tr key={s.fgCode}>
                       <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
-                      <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>{s.productName || "— ไม่รู้จัก —"}</td>
+                      <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>
+                        {s.productName || "— ไม่รู้จัก —"}
+                        {productMetaText(productByFg.get(String(s.fgCode).trim().toLowerCase())) && (
+                          <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(productByFg.get(String(s.fgCode).trim().toLowerCase()))}</div>
+                        )}
+                      </td>
                       <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(s.total)}</td>
                       <td style={{ textAlign: "right" }}>#{s.roundNo}</td>
                       <td>{fmtDate(s.receivedDate)}</td>
@@ -207,7 +213,12 @@ export default function ForecastPage() {
                         ...rows.map((r) => (
                           <tr key={r.fgCode}>
                             <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
-                            <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>{r.productName || "— ไม่รู้จัก —"}</td>
+                            <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>
+                              {r.productName || "— ไม่รู้จัก —"}
+                              {productMetaText(productByFg.get(String(r.fgCode).trim().toLowerCase()), { withCategory: false }) && (
+                                <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(productByFg.get(String(r.fgCode).trim().toLowerCase()), { withCategory: false })}</div>
+                              )}
+                            </td>
                             {matrix.months.map((m) => (
                               <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{r.qty[m] ? nf(r.qty[m]) : "·"}</td>
                             ))}
@@ -277,7 +288,7 @@ export default function ForecastPage() {
               {comparison && (
                 <div>
                   <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>การเปลี่ยนแปลงของรอบที่เลือก (#{selectedNo})</h2>
-                  <RoundComparison comparison={comparison} />
+                  <RoundComparison comparison={comparison} productByFg={productByFg} />
                 </div>
               )}
             </div>

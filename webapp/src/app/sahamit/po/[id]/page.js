@@ -6,6 +6,7 @@ import { FileText, Save, Trash2, History, Truck, ChevronDown, ChevronRight, Aler
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
+import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { fmtDate } from "@/lib/format";
 import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
@@ -26,7 +27,7 @@ function matCell(dueDate, arrivedAt) {
 // One PO line with an inline editor: reschedule (expected date + reason →
 // history), mark delivered, change qty/due/status/destination, split, delete.
 // PM/RM แสดงอย่างเดียว (แก้ที่เมนูวัสดุ).
-function PoLineRow({ line, tracking, onChanged }) {
+function PoLineRow({ line, tracking, product, onChanged }) {
   const [open, setOpen] = useState(false);
   const [showHist, setShowHist] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -83,7 +84,10 @@ function PoLineRow({ line, tracking, onChanged }) {
           {line.fgCode}
           {line.splitFromPoLineId && <span className="ui-badge" style={{ marginLeft: 6, color: "var(--blue)", borderColor: "var(--blue)" }}>ยอดแยก</span>}
         </td>
-        <td style={{ color: line.productName ? "inherit" : "var(--amber)" }}>{line.productName || "— ไม่รู้จัก —"}</td>
+        <td style={{ color: line.productName ? "inherit" : "var(--amber)" }}>
+          {line.productName || "— ไม่รู้จัก —"}
+          {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
+        </td>
         <td style={{ textAlign: "right" }}>
           <div>เต็ม {nf(line.qty)}</div>
           {line.shippedQty != null && (
@@ -177,6 +181,8 @@ export default function PoDetailPage() {
   const id = params.id;
   const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
   const { data: material } = useApiList("/api/sahamit/material");
+  const { data: products } = useApiList("/api/sahamit/products");
+  const prodIdx = useMemo(() => indexProducts(products), [products]);
   const po = useMemo(() => pos.find((p) => p.id === id) || null, [pos, id]);
   const trackByLine = useMemo(() => {
     const m = new Map();
@@ -426,7 +432,7 @@ export default function PoDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} onChanged={reload} />)}
+                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} product={prodIdx.get(String(l.fgCode).trim().toLowerCase())} onChanged={reload} />)}
               </tbody>
             </table>
           </div>

@@ -1,5 +1,6 @@
 "use client";
 import { AlertTriangle, ArrowUp, ArrowDown, Plus, X, MoveRight, CheckCircle2 } from "lucide-react";
+import { productMetaText } from "@/lib/sahamit/productMeta";
 
 // Renders the round-to-round comparison from compareRounds(): a peak-drop alert
 // section first (the items S&S must ask the customer about), then a per-SKU
@@ -32,7 +33,8 @@ function ChangeChips({ diff }) {
   );
 }
 
-export default function RoundComparison({ comparison }) {
+export default function RoundComparison({ comparison, productByFg }) {
+  const metaOf = (fg) => productMetaText(productByFg?.get?.(String(fg).trim().toLowerCase()));
   if (!comparison) return null;
   if (!comparison.hasPrev) {
     return (
@@ -94,7 +96,10 @@ export default function RoundComparison({ comparison }) {
             ) : changed.map((s) => (
               <tr key={s.fgCode}>
                 <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
-                <td>{s.productName || <span style={{ color: "var(--amber)" }}>— ไม่รู้จัก —</span>}</td>
+                <td>
+                  {s.productName || <span style={{ color: "var(--amber)" }}>— ไม่รู้จัก —</span>}
+                  {metaOf(s.fgCode) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{metaOf(s.fgCode)}</div>}
+                </td>
                 <td style={{ textAlign: "right" }}>{fmt(s.prevTotal)}</td>
                 <td style={{ textAlign: "right" }}>{fmt(s.targetTotal)}</td>
                 <td style={{ textAlign: "right", color: s.net > 0 ? "var(--green)" : s.net < 0 ? "var(--red)" : "var(--text-3)", fontWeight: 600 }}>

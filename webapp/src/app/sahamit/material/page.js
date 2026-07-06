@@ -4,6 +4,7 @@ import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download } from "l
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
+import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { fmtDate } from "@/lib/format";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -17,7 +18,7 @@ function matCell(dueDate, arrivedAt) {
 
 // One PO line: lead-time view (read-only) + PM/RM editor (กำหนดถึง + ปุ่มมาแล้ว).
 // นี่คือ "ที่เดียว" ที่แก้วันวัสดุได้ (หน้า POs โชว์อย่างเดียว).
-function MaterialRow({ row, onSaved }) {
+function MaterialRow({ row, product, onSaved }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [d, setD] = useState({});
@@ -56,6 +57,7 @@ function MaterialRow({ row, onSaved }) {
         <td className="font-mono" style={{ fontWeight: 600 }}>
           {row.fgCode}
           <div style={{ fontSize: 11, color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
+          {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
         </td>
         <td className="font-mono">{row.poNumber}</td>
         <td style={{ textAlign: "right" }}>{nf(row.qty)}</td>
@@ -113,6 +115,8 @@ function MaterialRow({ row, onSaved }) {
 
 export default function MaterialPage() {
   const { data: rows, loading, error, reload } = useApiList("/api/sahamit/material");
+  const { data: products } = useApiList("/api/sahamit/products");
+  const prodIdx = useMemo(() => indexProducts(products), [products]);
 
   const stats = useMemo(() => ({
     total: rows.length,
@@ -171,7 +175,7 @@ export default function MaterialPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => <MaterialRow key={r.poLineId} row={r} onSaved={reload} />)}
+                {rows.map((r) => <MaterialRow key={r.poLineId} row={r} product={prodIdx.get(String(r.fgCode).trim().toLowerCase())} onSaved={reload} />)}
               </tbody>
             </table>
           </div>

@@ -7,6 +7,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
+import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { destinationLabel } from "@/components/sahamit/destinations";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -24,7 +25,7 @@ function matCell(dueDate, arrivedAt) {
 
 // บรรทัดสินค้าใน PO: โชว์วัสดุ (read-only) + สถานะ auto + ปุ่มเดินสถานะ (ผลิต/ส่ง/ปิด).
 // `row` = แถวจาก /api/sahamit/material (มี status + tracking).
-function PoLineRow({ row, onSaved }) {
+function PoLineRow({ row, product, onSaved }) {
   const [busy, setBusy] = useState(false);
   const t = row.tracking || {};
   const stage = lineStage(row.status, !!t.pmArrivedAt, !!t.rmArrivedAt);
@@ -52,6 +53,7 @@ function PoLineRow({ row, onSaved }) {
       <td className="font-mono" style={{ fontWeight: 600 }}>
         {row.fgCode}
         <div style={{ fontSize: 11, color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
+        {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
       </td>
       <td style={{ textAlign: "right" }}>{nf(row.qty)}</td>
       <td>{row.deliveryMonth || "—"}</td>
@@ -83,6 +85,7 @@ export default function PoPage() {
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p.price == null ? null : Number(p.price));
     return m;
   }, [products]);
+  const prodIdx = useMemo(() => indexProducts(products), [products]);
 
   // material lines grouped by PO number (คัดเฉพาะบรรทัด active แล้วจาก API)
   const matByPo = useMemo(() => {
@@ -150,7 +153,7 @@ export default function PoPage() {
             </thead>
             <tbody>
               {pos.map((po) => (
-                <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} />
+                <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} />
               ))}
             </tbody>
           </table>
@@ -160,7 +163,7 @@ export default function PoPage() {
   );
 }
 
-function PoGroup({ po, lines, priceByFg, isOpen, onToggle, onSaved }) {
+function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved }) {
   let unpriced = 0;
   const exVat = (po.lines || []).reduce((s, l) => {
     if (l.status === "cancelled") return s;
@@ -232,7 +235,7 @@ function PoGroup({ po, lines, priceByFg, isOpen, onToggle, onSaved }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {lines.map((r) => <PoLineRow key={r.poLineId} row={r} onSaved={onSaved} />)}
+                    {lines.map((r) => <PoLineRow key={r.poLineId} row={r} product={prodIdx.get(String(r.fgCode).trim().toLowerCase())} onSaved={onSaved} />)}
                   </tbody>
                 </table>
               </div>
