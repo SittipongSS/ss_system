@@ -39,6 +39,22 @@ export default function ProjectFormModal({
       .catch(() => {});
   }, [open]);
 
+  // FG picker scope: once a customer is chosen, load THAT customer's FGs (which
+  // may have been registered by another team — product.team = creator's team),
+  // so cross-team FGs of the same customer are linkable. Before a customer is
+  // picked (FG-first flow), fall back to the team-scoped allProducts prop.
+  const [customerProducts, setCustomerProducts] = useState(null);
+  useEffect(() => {
+    if (!open || !form.customerId) { setCustomerProducts(null); return; }
+    let cancelled = false;
+    fetch(`/api/products?customerId=${encodeURIComponent(form.customerId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { if (!cancelled) setCustomerProducts(d || []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, form.customerId]);
+  const effectiveProducts = form.customerId && customerProducts ? customerProducts : allProducts;
+
   useEffect(() => {
     if (open) {
       if (editingId && initialData) {
@@ -68,14 +84,14 @@ export default function ProjectFormModal({
   const fgCategoryLock = form.projectProducts.length > 0;
   useEffect(() => {
     if (!open) return;
-    const fgs = form.projectProducts.map((pp) => allProducts.find((p) => p.id === pp.productId)).filter(Boolean);
+    const fgs = form.projectProducts.map((pp) => effectiveProducts.find((p) => p.id === pp.productId)).filter(Boolean);
     if (!fgs.length) return; // ไม่มี FG → คงค่าที่ผู้ใช้เลือกเองไว้
     const code = fgs.some((f) => f.categoryCode === "01-002") ? "01-002" : (fgs[0].categoryCode || "");
     const [mainCode = "", typeCode = ""] = code ? code.split("-") : [];
     if (code === form.productMainCategory && mainCode === form.mainCode && typeCode === form.typeCode) return;
     const sub = categories.find((c) => c.mainCategoryCode === mainCode && c.typeCode === typeCode)?.nameTh || "";
     setForm((f) => ({ ...f, productMainCategory: code, mainCode, typeCode, productSubCategory: sub }));
-  }, [open, form.projectProducts, allProducts, categories]);
+  }, [open, form.projectProducts, effectiveProducts, categories]);
 
   const change = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -89,7 +105,7 @@ export default function ProjectFormModal({
       // Auto-fill customer/name from the first linked FG (only when still empty).
       // หมวดสินค้าไม่เซ็ตที่นี่ — ปล่อยให้ effect ด้านล่าง derive จาก FG ทั้งหมด
       // (01-002 เป็นใหญ่สุด) เพื่อให้ "FG เป็นตัวกำหนดหมวด" เสมอ
-      const firstFg = newProducts[0] ? allProducts.find(p => p.id === newProducts[0].productId) : null;
+      const firstFg = newProducts[0] ? effectiveProducts.find(p => p.id === newProducts[0].productId) : null;
       if (firstFg && !isSelected) {
         return {
           ...f,
@@ -278,7 +294,7 @@ export default function ProjectFormModal({
               {form.projectProducts.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
                   {form.projectProducts.map(pp => {
-                    const p = allProducts.find(x => x.id === pp.productId);
+                    const p = effectiveProducts.find(x => x.id === pp.productId);
                     if (!p) return null;
                     const cat = categories.find(c => c.mainCategoryCode === p.categoryCode?.split("-")[0] && c.typeCode === p.categoryCode?.split("-")[1]);
                     return (
@@ -306,7 +322,7 @@ export default function ProjectFormModal({
               
               <Select fullWidth value="" onChange={(e) => { if(e.target.value) toggleFg(e.target.value); }}>
                 <option value="">— เพิ่ม FG —</option>
-                {allProducts
+                {effectiveProducts
                   .filter(pr => !form.projectProducts.some(pp => pp.productId === pr.id))
                   // ผูกได้หลายหมวด (ไม่กรองตามหมวด) — หมวดของโปรเจกต์จะ derive จาก FG เอง
                   .map(pr => (
