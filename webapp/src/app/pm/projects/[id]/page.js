@@ -853,6 +853,12 @@ export default function ProjectDetailPage() {
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
   const linkedIds = new Set((p.projectProducts || []).map((x) => x.productId));
+  // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โปรเจกต์ที่ไม่ได้มาจากดีล
+  // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต 01-002 อย่างน้อยหนึ่งตัว — ไม่งั้นไม่ต้องมี
+  // ทะเบียนภาษี.
+  const dealWon = !p.dealId || ["won", "in_project"].includes(p.dealStage);
+  const hasExciseFg = (p.projectProducts || []).some((x) => (x.product?.categoryCode || "") === "01-002");
+  const recommendTaxReg = dealWon && hasExciseFg;
   const formPhases = [...new Set(processedTasks.map((t) => t.phase).filter(Boolean))];
 
   const total = processedTasks.length;
@@ -1075,13 +1081,13 @@ export default function ProjectDetailPage() {
                   <GitCommit size={14} /> {issuingRev ? "กำลังออก…" : `ออก Rev. ${nextRev}`}
                 </button>
               )}
-              {canCreateTaxRegistration && (
+              {canCreateTaxRegistration && recommendTaxReg && (
                 <button
                   onClick={createTaxRegistrationFromProject}
                   disabled={creatingTaxReg || !(p.projectProducts || []).length}
                   className="btn"
                   style={{ whiteSpace: "nowrap" }}
-                  title={(p.projectProducts || []).length ? "สร้างทะเบียนภาษี draft จาก FG ในโปรเจกต์นี้" : "ต้องผูก FG ก่อนจึงสร้างทะเบียนภาษีได้"}
+                  title="สร้างทะเบียนภาษี draft จาก FG หมวดสรรพสามิต (01-002) ในโปรเจกต์นี้"
                 >
                   <ShieldCheck size={14} /> {creatingTaxReg ? "กำลังสร้าง..." : "สร้างทะเบียนภาษี"}
                 </button>

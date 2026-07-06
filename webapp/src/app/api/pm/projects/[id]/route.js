@@ -47,6 +47,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     ...l,
     product: l.product
   }));
+
+  // Linked sales deal (at most one — projectId is unique). Surfaced so the UI can
+  // gate downstream actions (e.g. tax registration only once the deal is won).
+  const { data: linkedDeal } = await supabase
+    .from('sales_deals').select('id, stage').eq('projectId', project.id).maybeSingle();
   
   // Tell the client whether THIS user may edit THIS record (cap + row scope),
   // so the UI gates edit controls by ownership — not just the pm:edit cap.
@@ -79,7 +84,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt, maxRev });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt, maxRev, dealId: linkedDeal?.id ?? null, dealStage: linkedDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]
@@ -175,6 +180,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
+  // Two-way name sync: keep the linked sales deal's title matching the project
+  // name (the deal PATCH mirrors the reverse). Direct table write, no loop.
+  if ('name' in updates && project.name !== data.name) {
+    await supabase.from('sales_deals').update({ title: data.name, updatedAt: updates.updatedAt }).eq('projectId', id);
+  }
+
   const summary = data.status !== project.status
     ? `เปลี่ยนสถานะโปรเจกต์ ${data.code || id}: ${project.status} → ${data.status}` : null;
   await recordAudit({ user, action: 'update', entityType: 'project', entityId: id, before: project, after: data, summary, request: req });
@@ -193,11 +204,47 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return forbidden();
   }
 
+  // Find the linked sales deal BEFORE deleting (the FK is ON DELETE SET NULL, so
+  // after the delete we could no longer locate it by projectId).
+  const { data: linkedDeal } = await supabase
+    .from('sales_deals').select('*').eq('projectId', id).maybeSingle();
+
   const { error } = await supabase.from('projects').delete().eq('id', id);
   if (error) return fail(error.message, 500);
   await recordAudit({
     user, action: 'delete', entityType: 'project', entityId: id, before: project,
     summary: `ลบโปรเจกต์ ${project.code || id} ${project.name || ''}`.trim(), request: req,
   });
+
+  // Auto-return the deal to the pipeline: unlink, revert stage (won if deposit
+  // paid, else back to the pre-project proposal stage), and drop stale link
+  // metadata — otherwise the deal is orphaned at in_project with no project.
+  if (linkedDeal) {
+    const now = new Date().toISOString();
+    const revertStage = linkedDeal.depositPaid ? 'won' : 'timeline_proposed';
+    const { linkedProjectCode, linkedProjectAt, ...restMeta } = linkedDeal.metadata || {};
+    const { data: revertedDeal } = await supabase
+      .from('sales_deals')
+      .update({ projectId: null, stage: revertStage, metadata: restMeta, updatedAt: now })
+      .eq('id', linkedDeal.id)
+      .select()
+      .single();
+    if (revertedDeal && linkedDeal.stage !== revertedDeal.stage) {
+      await supabase.from('sales_deal_stage_history').insert({
+        id: genId('DSH'),
+        dealId: linkedDeal.id,
+        fromStage: linkedDeal.stage,
+        toStage: revertedDeal.stage,
+        changedBy: user.id || null,
+        changedByName: user.name || null,
+      });
+    }
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_deal', entityId: linkedDeal.id,
+      before: linkedDeal, after: revertedDeal || undefined,
+      summary: `คืนดีลสู่ pipeline (ลบโปรเจกต์ ${project.code || id})`, request: req,
+    });
+  }
+
   return ok({ success: true });
 });

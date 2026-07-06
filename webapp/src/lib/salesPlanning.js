@@ -24,6 +24,15 @@ export const STAGE_LABELS = {
   lost: 'ไม่สำเร็จ (Lost)',
 };
 
+// Feature toggles — modules intentionally hidden in the UI for now (Phase 1
+// keeps the commercial spine only). Flip to true to re-enable; backend/data and
+// API routes stay intact so no data is lost while hidden.
+export const SALES_FEATURES = {
+  quotations: false,
+  documents: false,
+  shipment: false,
+};
+
 export const DEFAULT_PROBABILITY_BY_STAGE = {
   lead: 10,
   qualified: 30,
@@ -99,7 +108,9 @@ export function normalizeStage(value) {
 }
 
 export function forecastAmount(deal) {
-  return toMoney(deal?.projectValue) * (toProbability(deal?.probability, deal?.stage) / 100);
+  // Probability weighting was dropped — "คาดการณ์" duplicated "มูลค่า", so the
+  // forecast is simply the full project value.
+  return toMoney(deal?.projectValue);
 }
 
 export function applyDealScope(query, user) {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { ClipboardList, ExternalLink, FileText, LineChart, PackageCheck, RefreshCcw } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import { STAGE_LABELS } from "@/lib/salesPlanning";
+import { SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 
 const money = (value) =>
   Number(value || 0).toLocaleString("th-TH", {
@@ -122,10 +122,13 @@ export default function DealOverviewPage() {
 
           <section className="kpi-grid">
             <Stat label="สถานะ" value={stageBadge(deal.stage)} hint={deal.depositPaid ? "ได้รับมัดจำ" : "ยังไม่ยืนยันมัดจำ"} />
-            <Stat label="มูลค่าโครงการ" value={money(deal.projectValue)} hint={`โอกาส ${deal.probability || 0}%`} />
-            <Stat label="คาดการณ์ (ถ่วงน้ำหนัก)" value={money(Number(deal.projectValue || 0) * Number(deal.probability || 0) / 100)} hint={deal.forecastMonth || "-"} />
-            <Stat label="ใบเสนอที่รับแล้ว" value={acceptedQuote ? money(acceptedQuote.totalAmount) : "-"} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอที่รับ"} />
-            <Stat label="เอกสารค้าง" value={pendingDocs.length} hint={`${data.documents?.length || 0} รายการ`} />
+            <Stat label="มูลค่าโครงการ" value={money(deal.projectValue)} hint={deal.forecastMonth || "-"} />
+            {SALES_FEATURES.quotations && (
+              <Stat label="ใบเสนอที่รับแล้ว" value={acceptedQuote ? money(acceptedQuote.totalAmount) : "-"} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอที่รับ"} />
+            )}
+            {SALES_FEATURES.documents && (
+              <Stat label="เอกสารค้าง" value={pendingDocs.length} hint={`${data.documents?.length || 0} รายการ`} />
+            )}
           </section>
 
           <section className="glass-panel" style={{ padding: 16 }}>
@@ -140,12 +143,16 @@ export default function DealOverviewPage() {
                 <Stat label="โครงการ" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
                 <Stat label="ประเภท" value={data.project.type || "-"} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
                 <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={(data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", ") || "-"} />
-                <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : "-"} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
+                {SALES_FEATURES.shipment && (
+                  <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : "-"} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
+                )}
               </div>
             ) : <Empty>ยังไม่ได้ผูกโครงการ PM</Empty>}
           </section>
 
+          {(SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
           <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+            {SALES_FEATURES.quotations && (
             <section className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <FileText size={17} aria-hidden="true" />
@@ -171,7 +178,9 @@ export default function DealOverviewPage() {
                 </div>
               ) : <Empty>ยังไม่มีใบเสนอราคา</Empty>}
             </section>
+            )}
 
+            {SALES_FEATURES.documents && (
             <section className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <ClipboardList size={17} aria-hidden="true" />
@@ -196,7 +205,9 @@ export default function DealOverviewPage() {
                 </div>
               ) : <Empty>ยังไม่มีรายการเอกสาร</Empty>}
             </section>
+            )}
           </div>
+          )}
 
           <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
             <section className="glass-panel" style={{ padding: 16 }}>
