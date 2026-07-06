@@ -159,9 +159,9 @@ export default function HomeHubPage() {
                 <LineChart size={24} strokeWidth={1.5} />
               </div>
               <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>Sales Planning</h2>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>แผนงานขาย</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
-                  วางแผน pipeline, forecast, target และจุดส่งต่อสู่ PM ตามสันหลังงานขาย
+                  จัดการโอกาสการขาย, พยากรณ์ยอด, เป้าหมาย และส่งต่องานให้ PM
                 </p>
               </div>
               <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>

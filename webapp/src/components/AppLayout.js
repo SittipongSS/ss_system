@@ -176,10 +176,12 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      label: 'Sales Planning',
+      label: 'แผนงานขาย',
       system: 'salesplan',
       items: [
-        { href: '/sales-planning', name: 'ภาพรวม', icon: LineChart, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
+        { href: '/sales-planning', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
+        { href: '/sales-planning/deals', name: 'ดีล (Pipeline)', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
+        { href: '/sales-planning/targets', name: 'เป้าหมาย', icon: Flag, cap: 'salesplan:view', match: (p) => p.startsWith('/sales-planning/targets') },
       ],
     },
     {
@@ -199,7 +201,7 @@ export default function AppLayout({ children }) {
   const systemSubtitle =
     activeSystem === 'master' ? 'ฐานข้อมูล'
       : activeSystem === 'pm' ? 'จัดการโครงการ'
-        : activeSystem === 'salesplan' ? 'Sales Planning'
+        : activeSystem === 'salesplan' ? 'แผนงานขาย'
           : activeSystem === 'sahamit' ? 'งานสหมิตร'
             : activeSystem === 'users' ? 'จัดการผู้ใช้'
               : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
