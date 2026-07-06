@@ -87,6 +87,8 @@ export async function loadSahamitProducts(supabase, customerId) {
         brandName: p.brandNameEn || p.brandName || null,
         volume: p.volume ?? null,
         volumeUnit: p.volumeUnit ?? null,
+        assignee: p.assignee || null,
+        ownerId: p.ownerId || null,
         categoryCode: categoryCode ?? null,
         category: (categoryCode && typeName.get(categoryCode)) || categoryCode || null,
         // มูลค่า = qty × ราคาโรงงาน (factory price = costPrice ใน master; ดู products

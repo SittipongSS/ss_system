@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download } from "lucide-react";
+import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, RefreshCcw } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -17,6 +17,7 @@ const TABS = [
 ];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 const nfBaht = (n) => "฿" + Math.round(Number(n) || 0).toLocaleString("th-TH");
+const thisMonth = () => new Date().toISOString().slice(0, 7);
 
 export default function ForecastPage() {
   const { data: rounds, loading, error, reload } = useApiList("/api/sahamit/forecast/rounds");
@@ -25,6 +26,8 @@ export default function ForecastPage() {
   const [tab, setTab] = useState("matrix");
   const [showImport, setShowImport] = useState(false);
   const [editRound, setEditRound] = useState(null); // round being edited, or null = create
+  const [syncCloseMonth, setSyncCloseMonth] = useState(thisMonth());
+  const [syncing, setSyncing] = useState(false);
 
   // Default selection = the latest round, kept in sync as rounds load/change.
   useEffect(() => {
@@ -90,6 +93,33 @@ export default function ForecastPage() {
   const openCreate = () => { setEditRound(null); setShowImport(true); };
   const openEdit = (r) => { setEditRound(r); setShowImport(true); };
   const closeModal = () => { setShowImport(false); setEditRound(null); };
+
+  const closeMonthOptions = useMemo(() => {
+    const months = new Set([thisMonth(), ...matrix.months]);
+    const baseYear = Number(thisMonth().slice(0, 4));
+    for (let y = baseYear - 1; y <= baseYear + 2; y++) {
+      for (let m = 1; m <= 12; m++) months.add(`${y}-${String(m).padStart(2, "0")}`);
+    }
+    return [...months].sort();
+  }, [matrix.months]);
+
+  const syncSalesPlan = async () => {
+    if (!selectedRound) return;
+    setSyncing(true);
+    try {
+      const closeMonthByDemand = Object.fromEntries((matrix.months || []).map((m) => [m, syncCloseMonth]));
+      const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/sync-sales-planning`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ closeMonthByDemand }),
+      });
+      alert(`ซิงก์เข้าแผนการขายแล้ว: สร้าง ${json.created?.length || 0}, อัปเดต ${json.updated?.length || 0}, ข้าม ${json.skipped?.length || 0}`);
+    } catch (e) {
+      alert(e.message || "ซิงก์เข้าแผนการขายไม่สำเร็จ");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const deleteRound = async (r) => {
     if (!confirm(`ลบ FC รอบที่ ${r.roundNo}? (ลบบรรทัดทั้งหมดในรอบนี้ด้วย)`)) return;
@@ -189,6 +219,19 @@ export default function ForecastPage() {
                   <button className="btn sm" onClick={() => openEdit(selectedRound)}><Pencil size={14} /> แก้รอบนี้</button>
                 )}
                 <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>
+                {selectedRound && (
+                  <>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
+                      เดือนคาดปิด
+                      <select className="premium-select" style={{ height: 32, minWidth: 110 }} value={syncCloseMonth} onChange={(e) => setSyncCloseMonth(e.target.value)}>
+                        {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </label>
+                    <button className="btn sm btn-primary" onClick={syncSalesPlan} disabled={syncing}>
+                      <RefreshCcw size={14} /> {syncing ? "กำลังซิงก์..." : "ส่งเข้าแผนการขาย"}
+                    </button>
+                  </>
+                )}
               </div>
 
               {matrix.rows.length === 0 ? (

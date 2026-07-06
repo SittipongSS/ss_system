@@ -74,8 +74,8 @@ export async function insertWinSideEffects({
   });
 }
 
-export async function markWon({ supabase, user, deal, source = 'manual', projectValue, projectId, metadata = {}, request, auditSummary }) {
-  const patch = buildWinPatch({ deal, source, projectValue, projectId, metadata });
+export async function markWon({ supabase, user, deal, source = 'manual', now = new Date().toISOString(), projectValue, projectId, metadata = {}, request, auditSummary }) {
+  const patch = buildWinPatch({ deal, source, now, projectValue, projectId, metadata });
   const { data, error } = await supabase
     .from('sales_deals')
     .update(patch)

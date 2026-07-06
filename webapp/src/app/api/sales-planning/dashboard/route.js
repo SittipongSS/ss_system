@@ -9,7 +9,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const month = monthKey(new URL(req.url).searchParams.get('month')) || monthKey(new Date().toISOString());
 
-  let dealsQuery = supabase.from('sales_deals').select('*').eq('forecastMonth', month);
+  let dealsQuery = supabase.from('sales_deals').select('*');
   dealsQuery = applyDealScope(dealsQuery, user);
   const { data: deals, error: dealsError } = await dealsQuery;
   if (dealsError) return fail(dealsError.message, 500);
@@ -19,24 +19,25 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const { data: targets, error: targetsError } = await targetsQuery;
   if (targetsError) return fail(targetsError.message, 500);
 
-  const openDeals = (deals || []).filter((d) => !['won', 'in_project', 'lost'].includes(d.stage));
-  const wonDeals = (deals || []).filter((d) => ['won', 'in_project'].includes(d.stage));
+  const isWon = (d) => ['won', 'in_project'].includes(d.stage);
+  const isOpen = (d) => !['won', 'in_project', 'lost'].includes(d.stage);
+  const wonMonth = (d) => monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
+  const openDeals = (deals || []).filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
+  const wonDeals = (deals || []).filter((d) => isWon(d) && wonMonth(d) === month);
+  const monthDeals = [...openDeals, ...wonDeals, ...(deals || []).filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month)];
   const targetAmount = (targets || []).reduce((sum, t) => sum + Number(t.targetAmount || 0), 0);
   const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
   const wonValue = wonDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
 
   const byStage = {};
-  for (const d of deals || []) {
+  for (const d of monthDeals) {
     const bucket = byStage[d.stage] || { stage: d.stage, count: 0, value: 0, weighted: 0 };
     bucket.count += 1;
     bucket.value += Number(d.projectValue || 0);
     bucket.weighted += forecastAmount(d);
     byStage[d.stage] = bucket;
   }
-
-  const isWon = (d) => ['won', 'in_project'].includes(d.stage);
-  const isOpen = (d) => !['won', 'in_project', 'lost'].includes(d.stage);
 
   // Per-SA breakdown: target (person-level rows) vs won vs weighted forecast.
   // Team-level target rows (ownerId null) are aggregated in byTeam, not here.
@@ -52,7 +53,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (!t.ownerId) continue;
     ownerBucket(t.ownerId, t.ownerName, t.team).target += Number(t.targetAmount || 0);
   }
-  for (const d of deals || []) {
+  for (const d of [...openDeals, ...wonDeals]) {
     const b = ownerBucket(d.ownerId, d.ownerName, d.team);
     if (isWon(d)) { b.won += Number(d.projectValue || 0); b.wonCount += 1; }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
@@ -70,7 +71,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     return teamMap[key];
   };
   for (const t of targets || []) teamBucket(t.team).target += Number(t.targetAmount || 0);
-  for (const d of deals || []) {
+  for (const d of [...openDeals, ...wonDeals]) {
     const b = teamBucket(d.team);
     if (isWon(d)) { b.won += Number(d.projectValue || 0); b.wonCount += 1; }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
@@ -82,7 +83,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   return ok({
     month,
     totals: {
-      deals: deals?.length || 0,
+      deals: monthDeals.length,
       openDeals: openDeals.length,
       targetAmount,
       pipelineValue,
