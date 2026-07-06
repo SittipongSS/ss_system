@@ -6,6 +6,7 @@ import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, Li
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
 import { KpiCard, PerfTable, money, thisMonth } from "@/components/salesPlanning/ui";
+import { SALES_FEATURES } from "@/lib/salesPlanning";
 
 export default function SalesPlanningOverviewPage() {
   const canReview = useCan("salesplan:review");
@@ -25,13 +26,13 @@ export default function SalesPlanningOverviewPage() {
     try {
       const [dashRes, sahamitRiskRes, reviewRes] = await Promise.all([
         fetch(`/api/sales-planning/dashboard?month=${encodeURIComponent(month)}`),
-        fetch(`/api/sales-planning/sahamit-risk?month=${encodeURIComponent(month)}`),
-        fetch(`/api/sales-planning/forecast-reviews?month=${encodeURIComponent(month)}`),
+        SALES_FEATURES.sahamitRisk ? fetch(`/api/sales-planning/sahamit-risk?month=${encodeURIComponent(month)}`) : Promise.resolve(null),
+        SALES_FEATURES.forecastReview ? fetch(`/api/sales-planning/forecast-reviews?month=${encodeURIComponent(month)}`) : Promise.resolve(null),
       ]);
       if (!dashRes.ok) throw new Error((await dashRes.json()).error || "โหลด dashboard ไม่สำเร็จ");
       setDashboard(await dashRes.json());
-      setSahamitRisk(sahamitRiskRes.ok ? await sahamitRiskRes.json() : null);
-      const nextReview = reviewRes.ok ? await reviewRes.json() : null;
+      setSahamitRisk(sahamitRiskRes?.ok ? await sahamitRiskRes.json() : null);
+      const nextReview = reviewRes?.ok ? await reviewRes.json() : null;
       setForecastReview(nextReview);
       setReviewNotes(nextReview?.notes || "");
     } catch (e) {
@@ -88,7 +89,7 @@ export default function SalesPlanningOverviewPage() {
     <Workspace
       icon={<LineChart size={22} />}
       title="แผนงานขาย — ภาพรวม"
-      subtitle="เป้า vs ยอด, forecast และความเสี่ยงเวลาปิดขาย"
+      subtitle="เป้า vs ยอด และมูลค่าดีลเปิด"
       headerRight={headerRight}
     >
       <div className="flex flex-col gap-5">
@@ -100,10 +101,9 @@ export default function SalesPlanningOverviewPage() {
 
         <section className="kpi-grid" aria-busy={loading}>
           <KpiCard icon={<Target size={16} aria-hidden="true" />} label="เป้า" value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
-          <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์ (ถ่วงน้ำหนัก)" value={money(totals.weightedForecast)} hint="ดีลเปิด × โอกาส" />
           <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ`} />
           <KpiCard icon={<LineChart size={16} aria-hidden="true" />} label="ปิดได้ (นับยอด)" value={money(totals.wonValue)} hint={`ส่วนต่าง ${money(totals.targetGap)}`} />
-          {sahamitRisk?.enabled && (
+          {SALES_FEATURES.sahamitRisk && sahamitRisk?.enabled && (
             <KpiCard
               icon={<AlertTriangle size={16} aria-hidden="true" />}
               label="ความเสี่ยง FC สหมิตร"
@@ -120,7 +120,7 @@ export default function SalesPlanningOverviewPage() {
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>เป้า vs ยอดจริง</h2>
               <span className="ui-badge">{month}</span>
               <div className="spacer" />
-              <span style={{ color: "var(--text-3)", fontSize: 12 }}>ปิดได้ = นับยอด · คาดการณ์ = ดีลเปิด × โอกาส</span>
+              <span style={{ color: "var(--text-3)", fontSize: 12 }}>ปิดได้ = นับยอด · คาดการณ์ = มูลค่าดีลเปิด</span>
             </div>
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
               <div>
@@ -135,6 +135,7 @@ export default function SalesPlanningOverviewPage() {
           </section>
         )}
 
+        {SALES_FEATURES.forecastReview && (
         <section className="glass-panel" style={{ padding: 16 }}>
           <div className="flex items-center gap-2 mb-3">
             <CheckCircle2 size={17} aria-hidden="true" style={{ color: forecastReview?.status === "approved" ? "var(--green)" : "var(--text-3)" }} />
@@ -176,8 +177,9 @@ export default function SalesPlanningOverviewPage() {
             </div>
           )}
         </section>
+        )}
 
-        {sahamitRisk?.enabled && (
+        {SALES_FEATURES.sahamitRisk && sahamitRisk?.enabled && (
           <section className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <AlertTriangle size={17} aria-hidden="true" style={{ color: sahamitRiskRows.length ? "var(--amber)" : "var(--green)" }} />

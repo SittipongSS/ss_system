@@ -31,6 +31,8 @@ export const SALES_FEATURES = {
   quotations: false,
   documents: false,
   shipment: false,
+  forecastReview: false, // "ทบทวนพยากรณ์ยอด" panel on the overview
+  sahamitRisk: false,    // "ความเสี่ยง / ตรวจย้อน FC สหมิตร" KPI + panel
 };
 
 export const DEFAULT_PROBABILITY_BY_STAGE = {
