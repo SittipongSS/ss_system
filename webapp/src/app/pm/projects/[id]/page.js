@@ -8,7 +8,7 @@ import {
   TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed, Pause,
   Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
-  GitCommit, History, RotateCcw,
+  GitCommit, History, RotateCcw, ShieldCheck, PackageCheck,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -164,6 +164,7 @@ export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const hasEditCap = useCan("pm:edit");
+  const canCreateTaxRegistration = useCan("products:edit");
   const userRole = useRole();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -201,6 +202,8 @@ export default function ProjectDetailPage() {
   const [revNote, setRevNote] = useState("");
   const [revError, setRevError] = useState("");
   const [toast, setToast] = useState(null); // { kind: 'success'|'error'|'info', msg }
+  const [creatingTaxReg, setCreatingTaxReg] = useState(false);
+  const [creatingShipmentPrep, setCreatingShipmentPrep] = useState(false);
   const [confirmState, setConfirmState] = useState(null); // ยืนยันแบบ promise (แทน window.confirm)
   const [showDrop, setShowDrop] = useState(false); // modal ยกเลิกโปรเจกต์ (แทน window.prompt)
   const [dropReason, setDropReason] = useState("");
@@ -240,6 +243,44 @@ export default function ProjectDetailPage() {
     });
     if (res.ok) { const updated = await res.json(); setData((d) => ({ ...d, ...updated })); }
     return res.ok;
+  };
+
+  const createTaxRegistrationFromProject = async () => {
+    if (!p?.id) return;
+    setCreatingTaxReg(true);
+    try {
+      const res = await fetch("/api/excise-registrations/from-project", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: p.id }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ kind: "error", msg: payload.error || "สร้างทะเบียนภาษีจากโปรเจกต์ไม่สำเร็จ" });
+        return;
+      }
+      setToast({ kind: "success", msg: `สร้างทะเบียนภาษี ${payload.fgCode || ""} แล้ว` });
+      router.push(`/tax/registrations/${payload.id}`);
+    } finally {
+      setCreatingTaxReg(false);
+    }
+  };
+
+  const createShipmentPrepFromProject = async () => {
+    if (!p?.id) return;
+    setCreatingShipmentPrep(true);
+    try {
+      const res = await fetch(`/api/pm/projects/${p.id}/shipment-prep`, { method: "POST" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ kind: "error", msg: payload.error || "สร้างเอกสารเตรียมส่งของไม่สำเร็จ" });
+        return;
+      }
+      setToast({ kind: payload.reused ? "info" : "success", msg: payload.reused ? "เปิดเอกสารเตรียมส่งของเดิม" : "สร้างเอกสารเตรียมส่งของแล้ว" });
+      router.push(`/pm/projects/${p.code || p.id}/shipment-prep`);
+    } finally {
+      setCreatingShipmentPrep(false);
+    }
   };
 
   // ── เฟส 1: แก้ task แบบ "ค้างก่อน-ยืนยันรวด" (ลด error จากการกดพลาด) ───────
@@ -1022,6 +1063,28 @@ export default function ProjectDetailPage() {
               {canEdit && (
                 <button onClick={openIssueRev} disabled={issuingRev} className="btn" style={{ whiteSpace: "nowrap" }} title={`freeze เอกสารทั้งชุดเป็นเวอร์ชันใหม่ — เลขรันอัตโนมัติเป็น Rev. ${nextRev} (จะขึ้นบนหน้าพิมพ์)`}>
                   <GitCommit size={14} /> {issuingRev ? "กำลังออก…" : `ออก Rev. ${nextRev}`}
+                </button>
+              )}
+              {canCreateTaxRegistration && (
+                <button
+                  onClick={createTaxRegistrationFromProject}
+                  disabled={creatingTaxReg || !(p.projectProducts || []).length}
+                  className="btn"
+                  style={{ whiteSpace: "nowrap" }}
+                  title={(p.projectProducts || []).length ? "สร้างทะเบียนภาษี draft จาก FG ในโปรเจกต์นี้" : "ต้องผูก FG ก่อนจึงสร้างทะเบียนภาษีได้"}
+                >
+                  <ShieldCheck size={14} /> {creatingTaxReg ? "กำลังสร้าง..." : "สร้างทะเบียนภาษี"}
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  onClick={createShipmentPrepFromProject}
+                  disabled={creatingShipmentPrep || !(p.projectProducts || []).length}
+                  className="btn"
+                  style={{ whiteSpace: "nowrap" }}
+                  title={(p.projectProducts || []).length ? "สร้าง/เปิดเอกสารเตรียมส่งของจาก FG ในโปรเจกต์นี้" : "ต้องผูก FG ก่อนจึงสร้างเอกสารเตรียมส่งของได้"}
+                >
+                  <PackageCheck size={14} /> {creatingShipmentPrep ? "กำลังสร้าง..." : "เตรียมส่งของ"}
                 </button>
               )}
               <button onClick={openRevisions} className="btn" style={{ whiteSpace: "nowrap" }} title="ดู/พิมพ์เวอร์ชันเอกสารที่เคยออก">
