@@ -173,8 +173,9 @@ const ROLE_CAPS = {
   admin: SUPERUSER_CAPS,
   // ae_supervisor: sales head — all-team data scope, but not a system admin.
   ae_supervisor: SALES_HEAD_CAPS,
-  // team lead: ops + may delete orders (scoped to own team via deleteScope)
-  senior_ae: [...SALES_OPS, 'sales:delete'],
+  // team lead: ops + may delete orders (scoped to own team via deleteScope) +
+  // sets Sales Planning targets for their own team (team-level + per-AE).
+  senior_ae: [...SALES_OPS, 'sales:delete', 'salesplan:target'],
   // back-office + front-office: same capabilities, differ only by edit SCOPE
   ac: SALES_OPS,
   ae: SALES_OPS,
