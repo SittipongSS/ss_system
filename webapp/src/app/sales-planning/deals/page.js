@@ -42,7 +42,7 @@ export default function SalesPlanningPipelinePage() {
         fetch(`/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
         fetch("/api/master/customers"),
       ]);
-      if (!dealsRes.ok) throw new Error((await dealsRes.json()).error || "โหลด pipeline ไม่สำเร็จ");
+      if (!dealsRes.ok) throw new Error((await dealsRes.json()).error || "โหลดโครงการไม่สำเร็จ");
       setDeals(await dealsRes.json());
       setCustomers(customersRes.ok ? await customersRes.json() : []);
     } catch (e) {
@@ -98,21 +98,21 @@ export default function SalesPlanningPipelinePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "บันทึก deal ไม่สำเร็จ");
+      if (!res.ok) throw new Error((await res.json()).error || "บันทึกโครงการไม่สำเร็จ");
       setDealModal(false);
       await load();
     } catch (e2) {
-      setError(e2.message || "บันทึก deal ไม่สำเร็จ");
+      setError(e2.message || "บันทึกโครงการไม่สำเร็จ");
     } finally {
       setSubmitting(false);
     }
   };
 
   const deleteDeal = async (deal) => {
-    if (!window.confirm(`ลบ deal "${deal.title}"?`)) return;
+    if (!window.confirm(`ลบโครงการ "${deal.title}"?`)) return;
     setError("");
     const res = await fetch(`/api/sales-planning/deals/${deal.id}`, { method: "DELETE" });
-    if (!res.ok) setError((await res.json()).error || "ลบ deal ไม่สำเร็จ");
+    if (!res.ok) setError((await res.json()).error || "ลบโครงการไม่สำเร็จ");
     await load();
   };
 
@@ -195,7 +195,7 @@ export default function SalesPlanningPipelinePage() {
   };
 
   const createProject = async (deal) => {
-    if (!window.confirm(`สร้าง PM project จาก deal "${deal.title}"?`)) return;
+    if (!window.confirm(`สร้าง PM project จากโครงการ "${deal.title}"?`)) return;
     setCreatingProjectId(deal.id);
     setError("");
     try {
@@ -213,11 +213,11 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  // ส่งต่อคลัง: สร้างเอกสารเตรียมส่งของจากโครงการที่ผูกกับ deal (idempotent ฝั่ง PM)
+  // ส่งต่อคลัง: สร้างเอกสารเตรียมส่งของจากโครงการที่ผูกกับ Sales Planning (idempotent ฝั่ง PM)
   // แล้วเปิดหน้า PM shipment-prep เพื่อดู/พิมพ์ ส่งให้คลังดำเนินการ.
   const createShipmentPrep = async (deal) => {
     if (!deal.projectId) return;
-    if (!window.confirm(`สร้างเอกสารเตรียมส่งของจากโครงการของ deal "${deal.title}"?`)) return;
+    if (!window.confirm(`สร้างเอกสารเตรียมส่งของจากโครงการ "${deal.title}"?`)) return;
     setShippingDealId(deal.id);
     setError("");
     try {
@@ -236,17 +236,17 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  // ปิดดีลเป็น Won ในคลิกเดียว — นับเป็นยอด + ปิด forecast (ผ่าน markWon กลาง).
+  // ปิดโครงการเป็น Won ในคลิกเดียว — นับเป็นยอด + ปิด forecast (ผ่าน markWon กลาง).
   const markDealWon = async (deal) => {
-    if (!window.confirm(`ปิดดีล "${deal.title}" เป็น Won?\nยืนยันว่าได้รับมัดจำ/ยืนยันจากลูกค้าแล้ว — จะนับเป็นยอดและปิด forecast ของดีลนี้`)) return;
+    if (!window.confirm(`ปิดโครงการ "${deal.title}" เป็น Won?\nยืนยันว่าได้รับมัดจำ/ยืนยันจากลูกค้าแล้ว — จะนับเป็นยอดและปิด forecast ของโครงการนี้`)) return;
     setWinningDealId(deal.id);
     setError("");
     try {
       const res = await fetch(`/api/sales-planning/deals/${deal.id}/win`, { method: "POST" });
-      if (!res.ok) throw new Error((await res.json()).error || "ปิดดีลไม่สำเร็จ");
+      if (!res.ok) throw new Error((await res.json()).error || "ปิดโครงการไม่สำเร็จ");
       await load();
     } catch (e) {
-      setError(e.message || "ปิดดีลไม่สำเร็จ");
+      setError(e.message || "ปิดโครงการไม่สำเร็จ");
     } finally {
       setWinningDealId(null);
     }
@@ -336,7 +336,7 @@ export default function SalesPlanningPipelinePage() {
       </button>
       {canEdit && (
         <button type="button" className="btn btn-primary" onClick={openNewDeal}>
-          <Plus size={15} aria-hidden="true" /> เพิ่ม deal
+          <Plus size={15} aria-hidden="true" /> เพิ่มโครงการ
         </button>
       )}
     </>
@@ -345,8 +345,8 @@ export default function SalesPlanningPipelinePage() {
   return (
     <Workspace
       icon={<FolderKanban size={22} />}
-      title="แผนงานขาย — ดีล (Pipeline)"
-      subtitle="จัดการดีล / โอกาสการขาย และส่งต่อ PM · ปิดดีล"
+      title="แผนงานขาย — โครงการ (Pipeline)"
+      subtitle="จัดการโครงการขายและส่งต่อ PM · PM อาจเกิดก่อนหรือหลัง Won ได้"
       back={{ href: "/sales-planning", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}
     >
@@ -361,21 +361,21 @@ export default function SalesPlanningPipelinePage() {
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="search-glass" style={{ width: 280 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหา deal / ลูกค้า / owner" aria-label="ค้นหา deal" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / owner" aria-label="ค้นหาโครงการ" />
             </div>
             <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="premium-select" aria-label="กรอง stage" style={{ width: 180 }}>
               <option value="all">ทุก stage</option>
               {DEAL_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
             </select>
             <div className="spacer" />
-            <span className="ui-badge">{filteredDeals.length} deals</span>
+            <span className="ui-badge">{filteredDeals.length} โครงการ</span>
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
             <table className="w-full text-sm">
               <thead>
                 <tr>
-                  <th>ดีล</th>
+                  <th>โครงการ</th>
                   <th>สถานะ</th>
                   <th>เจ้าของ</th>
                   <th className="num">มูลค่า</th>
@@ -383,7 +383,7 @@ export default function SalesPlanningPipelinePage() {
                   {SALES_FEATURES.quotations && <th>ใบเสนอ</th>}
                   {SALES_FEATURES.documents && <th>เอกสาร</th>}
                   {SALES_FEATURES.shipment && <th>ส่ง</th>}
-                  <th>360</th>
+                  <th>ศูนย์รวม</th>
                   <th></th>
                 </tr>
               </thead>
@@ -391,7 +391,7 @@ export default function SalesPlanningPipelinePage() {
                 {filteredDeals.map((deal) => (
                   <tr key={deal.id} className="premium-row">
                     <td>
-                      <button type="button" className="linklike text-left" onClick={() => openEditDeal(deal)} disabled={!deal.canEdit} title={deal.canEdit ? undefined : "แก้ได้เฉพาะเจ้าของ deal"}>
+                      <button type="button" className="linklike text-left" onClick={() => openEditDeal(deal)} disabled={!deal.canEdit} title={deal.canEdit ? undefined : "แก้ได้เฉพาะเจ้าของโครงการ"}>
                         <strong>{deal.title}</strong>
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}</span>
                       </button>
@@ -443,13 +443,13 @@ export default function SalesPlanningPipelinePage() {
                     )}
                     <td>
                       <a className="btn ghost" href={`/sales-planning/deals/${deal.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        <ExternalLink size={14} aria-hidden="true" /> 360
+                        <ExternalLink size={14} aria-hidden="true" /> ศูนย์รวม
                       </a>
                     </td>
                     <td className="num">
                       <div className="flex items-center gap-2 justify-end">
                         {deal.canEdit && !["won", "in_project", "lost"].includes(deal.stage) && (
-                          <button type="button" className="btn ghost" onClick={() => markDealWon(deal)} disabled={winningDealId === deal.id} title="ปิดดีลเป็น Won (นับยอด + ปิด forecast)">
+                          <button type="button" className="btn ghost" onClick={() => markDealWon(deal)} disabled={winningDealId === deal.id} title="ปิดโครงการเป็น Won (นับยอด + ปิด forecast)">
                             <CheckCircle2 size={14} aria-hidden="true" /> {winningDealId === deal.id ? "..." : "Won"}
                           </button>
                         )}
@@ -465,7 +465,7 @@ export default function SalesPlanningPipelinePage() {
                 {!filteredDeals.length && (
                   <tr>
                     <td colSpan={12} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
-                      ยังไม่มีดีลในเดือนนี้ {canEdit ? "เริ่มจากปุ่มเพิ่ม deal ด้านบน" : ""}
+                      ยังไม่มีโครงการในเดือนนี้ {canEdit ? "เริ่มจากปุ่มเพิ่มโครงการด้านบน" : ""}
                     </td>
                   </tr>
                 )}
@@ -475,10 +475,10 @@ export default function SalesPlanningPipelinePage() {
         </section>
       </div>
 
-      <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไข deal" : "เพิ่ม deal"} size="lg">
+      <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไขโครงการ" : "เพิ่มโครงการ"} size="lg">
         <form onSubmit={saveDeal} className="form-grid" aria-busy={submitting} style={{ padding: 18 }}>
           <label>
-            ชื่อดีล
+            ชื่อโครงการ
             <input className="premium-input" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} required />
           </label>
           <label>

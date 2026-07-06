@@ -67,10 +67,10 @@ export default function DealOverviewPage() {
     setError("");
     try {
       const res = await fetch(`/api/sales-planning/deals/${id}/overview`);
-      if (!res.ok) throw new Error((await res.json()).error || "load deal overview failed");
+      if (!res.ok) throw new Error((await res.json()).error || "load project center failed");
       setData(await res.json());
     } catch (e) {
-      setError(e.message || "load deal overview failed");
+      setError(e.message || "load project center failed");
     } finally {
       setLoading(false);
     }
@@ -100,8 +100,8 @@ export default function DealOverviewPage() {
   return (
     <Workspace
       icon={<LineChart size={22} />}
-      title={deal?.title || "ดีล 360"}
-      subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ภาพรวมดีล"}
+      title={deal?.title || "ศูนย์รวมโครงการ"}
+      subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมโครงการ"}
       back={{ href: "/sales-planning", label: "กลับไปแผนงานขาย" }}
       headerRight={headerRight}
       loading={loading}
