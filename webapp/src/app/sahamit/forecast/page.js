@@ -155,20 +155,21 @@ export default function ForecastPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {overview.map((s) => (
+                  {overview.map((s) => {
+                    const meta = productMetaText(productByFg.get(String(s.fgCode).trim().toLowerCase()));
+                    return (
                     <tr key={s.fgCode}>
                       <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
                       <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>
                         {s.productName || "— ไม่รู้จัก —"}
-                        {productMetaText(productByFg.get(String(s.fgCode).trim().toLowerCase())) && (
-                          <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(productByFg.get(String(s.fgCode).trim().toLowerCase()))}</div>
-                        )}
+                        {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
                       </td>
                       <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(s.total)}</td>
                       <td style={{ textAlign: "right" }}>#{s.roundNo}</td>
                       <td>{fmtDate(s.receivedDate)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -210,21 +211,22 @@ export default function ForecastPage() {
                             {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
                           </td>
                         </tr>,
-                        ...rows.map((r) => (
+                        ...rows.map((r) => {
+                          const meta = productMetaText(productByFg.get(String(r.fgCode).trim().toLowerCase()), { withCategory: false });
+                          return (
                           <tr key={r.fgCode}>
                             <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
                             <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>
                               {r.productName || "— ไม่รู้จัก —"}
-                              {productMetaText(productByFg.get(String(r.fgCode).trim().toLowerCase()), { withCategory: false }) && (
-                                <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(productByFg.get(String(r.fgCode).trim().toLowerCase()), { withCategory: false })}</div>
-                              )}
+                              {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
                             </td>
                             {matrix.months.map((m) => (
                               <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{r.qty[m] ? nf(r.qty[m]) : "·"}</td>
                             ))}
                             <td style={{ textAlign: "right", fontWeight: 700 }}>{nf(r.total)}</td>
                           </tr>
-                        )),
+                          );
+                        }),
                       ])}
                     </tbody>
                     <tfoot>
