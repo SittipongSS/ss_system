@@ -5,7 +5,7 @@ import { CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, Plus
 import Modal from "@/components/Modal";
 import Workspace from "@/components/ui/Workspace";
 import { useCan } from "@/lib/roleContext";
-import { DEAL_STAGES, STAGE_LABELS } from "@/lib/salesPlanning";
+import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { initialDealForm, money, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 
 export default function SalesPlanningPipelinePage() {
@@ -78,7 +78,6 @@ export default function SalesPlanningPipelinePage() {
       customerName: deal.customerName || "",
       stage: deal.stage || "lead",
       projectValue: deal.projectValue ?? "",
-      probability: deal.probability ?? "",
       forecastMonth: deal.forecastMonth || month,
       expectedCloseDate: deal.expectedCloseDate || "",
       depositPaid: !!deal.depositPaid,
@@ -347,7 +346,7 @@ export default function SalesPlanningPipelinePage() {
     <Workspace
       icon={<FolderKanban size={22} />}
       title="แผนงานขาย — ดีล (Pipeline)"
-      subtitle="จัดการดีล / โอกาสการขาย และส่งต่อ PM · ใบเสนอราคา · ส่งของ · ปิดดีล"
+      subtitle="จัดการดีล / โอกาสการขาย และส่งต่อ PM · ปิดดีล"
       back={{ href: "/sales-planning", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}
     >
@@ -380,12 +379,10 @@ export default function SalesPlanningPipelinePage() {
                   <th>สถานะ</th>
                   <th>เจ้าของ</th>
                   <th className="num">มูลค่า</th>
-                  <th className="num">โอกาส</th>
-                  <th className="num">คาดการณ์</th>
                   <th>PM</th>
-                  <th>ใบเสนอ</th>
-                  <th>เอกสาร</th>
-                  <th>ส่ง</th>
+                  {SALES_FEATURES.quotations && <th>ใบเสนอ</th>}
+                  {SALES_FEATURES.documents && <th>เอกสาร</th>}
+                  {SALES_FEATURES.shipment && <th>ส่ง</th>}
                   <th>360</th>
                   <th></th>
                 </tr>
@@ -402,8 +399,6 @@ export default function SalesPlanningPipelinePage() {
                     <td>{stageBadge(deal.stage)}</td>
                     <td>{deal.ownerName || deal.team || "-"}</td>
                     <td className="num mono">{money(deal.projectValue)}</td>
-                    <td className="num mono">{deal.probability || 0}%</td>
-                    <td className="num mono">{money(Number(deal.projectValue || 0) * Number(deal.probability || 0) / 100)}</td>
                     <td>
                       {deal.projectId ? (
                         <a className="btn ghost" href={`/pm/projects/${deal.projectId}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -417,29 +412,35 @@ export default function SalesPlanningPipelinePage() {
                         <span style={{ color: "var(--text-3)" }}>-</span>
                       )}
                     </td>
-                    <td>
-                      <button type="button" className="btn ghost" onClick={() => openQuotations(deal)}>
-                        <FileText size={14} aria-hidden="true" /> ใบเสนอ
-                      </button>
-                    </td>
-                    <td>
-                      <button type="button" className="btn ghost" onClick={() => openDocuments(deal)}>
-                        <ClipboardList size={14} aria-hidden="true" /> เอกสาร
-                      </button>
-                    </td>
-                    <td>
-                      {deal.projectId ? (
-                        deal.canEdit ? (
-                          <button type="button" className="btn ghost" onClick={() => createShipmentPrep(deal)} disabled={shippingDealId === deal.id}>
-                            <Truck size={14} aria-hidden="true" /> {shippingDealId === deal.id ? "กำลังสร้าง..." : "ส่ง"}
-                          </button>
+                    {SALES_FEATURES.quotations && (
+                      <td>
+                        <button type="button" className="btn ghost" onClick={() => openQuotations(deal)}>
+                          <FileText size={14} aria-hidden="true" /> ใบเสนอ
+                        </button>
+                      </td>
+                    )}
+                    {SALES_FEATURES.documents && (
+                      <td>
+                        <button type="button" className="btn ghost" onClick={() => openDocuments(deal)}>
+                          <ClipboardList size={14} aria-hidden="true" /> เอกสาร
+                        </button>
+                      </td>
+                    )}
+                    {SALES_FEATURES.shipment && (
+                      <td>
+                        {deal.projectId ? (
+                          deal.canEdit ? (
+                            <button type="button" className="btn ghost" onClick={() => createShipmentPrep(deal)} disabled={shippingDealId === deal.id}>
+                              <Truck size={14} aria-hidden="true" /> {shippingDealId === deal.id ? "กำลังสร้าง..." : "ส่ง"}
+                            </button>
+                          ) : (
+                            <span style={{ color: "var(--text-3)" }}>-</span>
+                          )
                         ) : (
-                          <span style={{ color: "var(--text-3)" }}>-</span>
-                        )
-                      ) : (
-                        <span style={{ color: "var(--text-3)" }} title="ต้องส่งต่อ PM ก่อน">-</span>
-                      )}
-                    </td>
+                          <span style={{ color: "var(--text-3)" }} title="ต้องส่งต่อ PM ก่อน">-</span>
+                        )}
+                      </td>
+                    )}
                     <td>
                       <a className="btn ghost" href={`/sales-planning/deals/${deal.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                         <ExternalLink size={14} aria-hidden="true" /> 360
@@ -502,10 +503,6 @@ export default function SalesPlanningPipelinePage() {
             <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
           </label>
           <label>
-            โอกาส (%)
-            <input type="number" min="0" max="100" step="1" className="premium-input mono" value={dealForm.probability} onChange={(e) => setDealForm({ ...dealForm, probability: e.target.value })} />
-          </label>
-          <label>
             คาดปิดได้ (วันที่)
             <input type="date" className="premium-input" value={dealForm.expectedCloseDate} onChange={(e) => setDealForm({ ...dealForm, expectedCloseDate: e.target.value })} />
           </label>
@@ -514,7 +511,7 @@ export default function SalesPlanningPipelinePage() {
             ได้รับมัดจำแล้ว
           </label>
           <label style={{ gridColumn: "1 / -1" }}>
-            หมายเหตุ
+            รายละเอียด
             <textarea className="premium-input" rows={3} value={dealForm.notes} onChange={(e) => setDealForm({ ...dealForm, notes: e.target.value })} />
           </label>
           <div className="drawer-actions" style={{ gridColumn: "1 / -1" }}>

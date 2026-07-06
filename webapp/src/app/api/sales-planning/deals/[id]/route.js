@@ -89,6 +89,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     .single();
   if (error) return fail(error.message, 500);
 
+  // Keep the linked PM project's name in sync with the deal title (two-way sync;
+  // the project PATCH mirrors the reverse). Direct table write, no loop.
+  if (before.projectId && 'title' in body && before.title !== data.title) {
+    await supabase.from('projects').update({ name: data.title, updatedAt: patch.updatedAt }).eq('id', before.projectId);
+  }
+
   if (before.stage !== data.stage) {
     await supabase.from('sales_deal_stage_history').insert({
       id: genId('DSH'),
