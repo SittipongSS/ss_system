@@ -5,6 +5,7 @@ import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { roundMatrix } from "@/lib/sahamit/forecastClient";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
+import { productMeta } from "@/lib/format";
 
 // Create one FC round. The month columns run from a start month to an end month
 // (the round's last month) and the grid updates live when either changes. Rows
@@ -59,11 +60,6 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
     return m;
   }, [products]);
-
-  // Brand + size shown alongside the name so lookalike SKUs (same product,
-  // different pack size / brand line) are easy to tell apart while picking.
-  const productMeta = (p) =>
-    [p?.brandName, p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : null].filter(Boolean).join(" · ");
 
   // Reset (create) or prefill (edit) when the modal is (re)opened or the target
   // round changes. In edit mode the grid is loaded from the round's lines.

@@ -12,3 +12,15 @@ export function categoryOf(fgCode) {
 export function isExciseCategory(categoryCode) {
   return categoryCode === '01-002';
 }
+
+// Resolve an fgCode against a productTypes list → { found, code, typeInfo }
+// (or null for an empty fgCode). Client-safe: takes the already-loaded list,
+// no DB access. Shared by the product form + edit modal so the category
+// lookup lives in one place.
+export function categoryInfo(fgCode, productTypes = []) {
+  if (!fgCode) return null;
+  const code = categoryOf(fgCode);
+  if (!code) return { found: false, code: null };
+  const typeInfo = productTypes.find((t) => `${t.mainCategoryCode}-${t.typeCode}` === code);
+  return { found: !!typeInfo, code, typeInfo };
+}

@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, Factory } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { categoryOf } from "@/lib/master/categoryOf";
+import { categoryInfo } from "@/lib/master/categoryOf";
 import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
@@ -50,13 +50,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     }
   }, [open, product?.id]);
 
-  const getCategoryInfo = (fgCode) => {
-    if (!fgCode) return null;
-    const code = categoryOf(fgCode);
-    if (!code) return { found: false, code: null };
-    const typeInfo = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
-    return { found: !!typeInfo, code, typeInfo };
-  };
+  const getCategoryInfo = (fgCode) => categoryInfo(fgCode, productTypes);
 
   if (!product) return null;
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
