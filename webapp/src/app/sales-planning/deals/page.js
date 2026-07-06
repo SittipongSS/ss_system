@@ -506,10 +506,6 @@ export default function SalesPlanningPipelinePage() {
             คาดปิดได้ (วันที่)
             <input type="date" className="premium-input" value={dealForm.expectedCloseDate} onChange={(e) => setDealForm({ ...dealForm, expectedCloseDate: e.target.value })} />
           </label>
-          <label className="flex items-center gap-2" style={{ alignSelf: "end", minHeight: 40 }}>
-            <input type="checkbox" checked={dealForm.depositPaid} onChange={(e) => setDealForm({ ...dealForm, depositPaid: e.target.checked })} />
-            ได้รับมัดจำแล้ว
-          </label>
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียด
             <textarea className="premium-input" rows={3} value={dealForm.notes} onChange={(e) => setDealForm({ ...dealForm, notes: e.target.value })} />
