@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext } from "react";
-import { can as _can } from "./permissions";
+import { can as _can, sanitizeExtraCaps } from "./permissions";
 
 // Provided by AppLayout (which already knows the signed-in user's role).
 // Pages use useCan('<resource>:<action>') to show/hide actions.
@@ -9,6 +9,11 @@ export const RoleContext = createContext(null);
 // The signed-in user's team (ODM/KA/SV), or null for non-team roles. Kept in a
 // separate context so useRole/useCan stay simple string consumers.
 export const TeamContext = createContext(null);
+
+// Per-user capability grants (app_metadata.extraCaps) — additive caps on top of
+// the role, e.g. an SA granted the LG legal:approve. useCan unions these so the
+// approve/reject buttons show for a grantee, mirroring the server's canUser.
+export const ExtraCapsContext = createContext(null);
 
 export function useRole() {
   return useContext(RoleContext);
@@ -21,5 +26,7 @@ export function useTeam() {
 }
 
 export function useCan(cap) {
-  return _can(useContext(RoleContext), cap);
+  const role = useContext(RoleContext);
+  const extra = sanitizeExtraCaps(useContext(ExtraCapsContext));
+  return _can(role, cap) || extra.includes(cap);
 }

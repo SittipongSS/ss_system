@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { departmentFor } from '@/lib/permissions';
+import { departmentFor, sanitizeExtraCaps } from '@/lib/permissions';
 
 // Server-side identity for API route handlers. Reads the signed-in user from
 // the Supabase session cookie and returns the fields needed for access checks:
@@ -39,6 +39,9 @@ export async function getCurrentUser() {
     role,
     team: user.app_metadata?.team || null,
     department: user.app_metadata?.department || departmentFor(role) || null,
+    // Per-user capability grants (e.g. an SA granted the LG legal:approve). The
+    // effective caps are role caps ∪ these — see capsForUser/canUser.
+    extraCaps: sanitizeExtraCaps(user.app_metadata?.extraCaps),
     name: user.user_metadata?.name || user.email || 'user',
   };
 }

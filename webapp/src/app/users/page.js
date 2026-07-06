@@ -12,6 +12,8 @@ import {
   DEPARTMENT_NAMES_TH,
   departmentFor,
   rolesForDepartment,
+  GRANTABLE_CAPS,
+  GRANTABLE_CAP_LABELS,
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import { fmtPhone } from "@/lib/format";
@@ -19,7 +21,7 @@ import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 
-const emptyForm = { email: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM" };
+const emptyForm = { email: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM", extraCaps: [] };
 
 export default function UserManagement() {
   const canManage = useCan("users:manage");
@@ -103,6 +105,7 @@ export default function UserManagement() {
       department: u.department || departmentFor(u.role) || DEPARTMENTS[0],
       role: u.role || "ae",
       team: u.team || TEAMS[0],
+      extraCaps: Array.isArray(u.extraCaps) ? u.extraCaps : [],
       password: "",
     });
   };
@@ -117,6 +120,7 @@ export default function UserManagement() {
       role: editForm.role,
       department: editForm.department,
       team: normalizeTeam(editForm.role, editForm.team),
+      extraCaps: editForm.extraCaps || [],
     };
     if (editForm.password) payload.password = editForm.password;
     try {
@@ -372,6 +376,12 @@ function UserFields({ form, setForm, requirePassword, edit }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isTeamRole = TEAM_ROLES.includes(form.role);
   const deptRoles = rolesForDepartment(form.department);
+  const grants = form.extraCaps || [];
+  const toggleGrant = (cap) =>
+    setForm((f) => {
+      const cur = f.extraCaps || [];
+      return { ...f, extraCaps: cur.includes(cap) ? cur.filter((c) => c !== cap) : [...cur, cap] };
+    });
 
   // Switching department resets role to the first role of that department.
   const setDepartment = (dep) =>
@@ -503,6 +513,28 @@ function UserFields({ form, setForm, requirePassword, edit }) {
             <option value="">— ไม่ต้องระบุ —</option>
           )}
         </select>
+      </div>
+
+      {/* —— สิทธิ์เสริมรายคน (grants) —— */}
+      <SectionHeading>สิทธิ์เสริม (นอกเหนือจากตำแหน่ง)</SectionHeading>
+      <div className="form-group col-span-2" style={{ marginTop: -4 }}>
+        <p className="text-[11px] text-[var(--text-3)] mb-2">
+          ให้สิทธิ์ฝ่ายกฎหมาย (LG) เพิ่มกับผู้ใช้รายนี้ เช่น ให้พนักงานขายอนุมัติ/ยื่นภาษีแทน LG ได้
+          — มีผลข้ามทุกทีม ใช้เมื่อจำเป็นเท่านั้น
+        </p>
+        <div className="flex flex-col gap-2">
+          {GRANTABLE_CAPS.map((cap) => (
+            <label key={cap} className="flex items-start gap-2 cursor-pointer text-[13px]">
+              <input
+                type="checkbox"
+                checked={grants.includes(cap)}
+                onChange={() => toggleGrant(cap)}
+                style={{ marginTop: 2 }}
+              />
+              <span className="text-[var(--text-2)]">{GRANTABLE_CAP_LABELS[cap] || cap}</span>
+            </label>
+          ))}
+        </div>
       </div>
     </div>
   );

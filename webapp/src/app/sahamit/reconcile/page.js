@@ -7,6 +7,7 @@ import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { predictShifts } from "@/lib/sahamit/predict";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 
 // token → CSS var
@@ -43,6 +44,7 @@ export default function ReconcilePage() {
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
   const { data: locks } = useApiList("/api/sahamit/locks");
   const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
+  const { data: predAcks, reload: reloadAcks } = useApiList("/api/sahamit/pred-ack");
   const { data: products } = useApiList("/api/sahamit/products");
   const [view, setView] = useState("recon");
   const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
@@ -57,6 +59,7 @@ export default function ReconcilePage() {
   // hint colored by urgency (days to month-end). Pure — logic lives in predict.js.
   const today = useMemo(() => toLocalISODate(new Date()), []);
   const predictions = useMemo(() => predictShifts(rounds, pos, { today, locks }), [rounds, pos, today, locks]);
+  const ackSet = useMemo(() => new Set((predAcks || []).map((a) => `${a.fgCode}||${a.month}`)), [predAcks]);
 
   // fgCode → product (แบรนด์/ปริมาตร/ราคาโรงงาน) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
   const productByFg = useMemo(() => {
@@ -130,18 +133,31 @@ export default function ReconcilePage() {
   // Click a cell → open the detail modal (แทนการเด้งไปหน้าเต็ม).
   const openCell = (fg, m) => setCellSel({ fg, m });
 
+  // "ดูแล้ว" ป้ายคาดการณ์ (ปิด/เปิดเตือน) — S4
+  const toggleAck = async (fg, m, isAcked) => {
+    try {
+      await sahamitFetch("/api/sahamit/pred-ack", {
+        method: isAcked ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fgCode: fg, month: m }),
+      });
+      reloadAcks();
+    } catch (e) { alert(e.message); }
+  };
+
   const renderCell = (cell, fg, m) => {
     if (!cell || cell.status === "none") {
       return <td key={m} style={{ textAlign: "center", color: "var(--text-3)", padding: "6px 5px" }}>·</td>;
     }
     const hasCov = cell.coverageIn > 0 || cell.coverageOut > 0;
     const pred = predictions.get(`${fg}||${m}`);
+    const acked = pred && ackSet.has(`${fg}||${m}`);
     const predBadge = pred ? (
       <div
-        style={{ fontSize: 9.5, fontWeight: 600, color: URGENCY_COLOR[pred.urgency], display: "flex", alignItems: "center", justifyContent: "center", gap: 2, marginTop: 2, whiteSpace: "nowrap" }}
-        title={`ระบบคาดว่าจะเลื่อนไป ${pred.toMonth} (${pred.pattern}) · เหลือ ${pred.daysLeft} วันถึงสิ้นเดือน · ยังไม่มี PO`}
+        style={{ fontSize: 9.5, fontWeight: acked ? 400 : 600, color: acked ? "var(--text-3)" : URGENCY_COLOR[pred.urgency], display: "flex", alignItems: "center", justifyContent: "center", gap: 2, marginTop: 2, whiteSpace: "nowrap", opacity: acked ? 0.7 : 1 }}
+        title={acked ? `ดูแล้ว (ปิดเตือน) · คาดว่าจะเลื่อนไป ${pred.toMonth}` : `ระบบคาดว่าจะเลื่อนไป ${pred.toMonth} (${pred.pattern}) · เหลือ ${pred.daysLeft} วันถึงสิ้นเดือน · ยังไม่มี PO`}
       >
-        <span style={{ fontSize: 10 }}>✨</span> →{shortMonth(pred.toMonth)}
+        <span style={{ fontSize: 10 }}>{acked ? "👁" : "✨"}</span> →{shortMonth(pred.toMonth)}
       </div>
     ) : null;
     const badges = hasCov ? (
@@ -347,6 +363,8 @@ export default function ReconcilePage() {
         coverages={coverages}
         prediction={cellSel ? predictions.get(`${cellSel.fg}||${cellSel.m}`) || null : null}
         product={cellSel ? productOf(cellSel.fg) : null}
+        acked={cellSel ? ackSet.has(`${cellSel.fg}||${cellSel.m}`) : false}
+        onToggleAck={() => cellSel && toggleAck(cellSel.fg, cellSel.m, ackSet.has(`${cellSel.fg}||${cellSel.m}`))}
         onCoverageChanged={reloadCoverages}
       />
     </Workspace>

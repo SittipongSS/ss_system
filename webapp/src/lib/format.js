@@ -56,6 +56,17 @@ export const fmtName = (input) => {
   return abbreviateFullName(input.name) || String(input.email || "").trim();
 };
 
+// ชื่อสินค้าสำหรับแสดงผลระบบทั่วไป — อังกฤษก่อน ถ้าไม่มีค่อยไทย (migration 0059).
+export const productName = (p) => (p?.productDescriptionEn || p?.productDescription || "").trim();
+
+// ชื่อสินค้าสำหรับ "หน้า /database" — โชว์ทั้งสองภาษา EN · TH (มีอย่างเดียว → อันนั้น).
+export const productNameBoth = (p) => {
+  const e = (p?.productDescriptionEn || "").trim();
+  const t = (p?.productDescription || "").trim();
+  if (e && t) return `${e} · ${t}`;
+  return e || t;
+};
+
 // เบอร์โทร (§2.2): มือถือ 10 หลัก → xxx-xxx-xxxx, บ้าน 9 หลัก → xx-xxx-xxxx.
 // รูปแบบอื่นคืนค่าเดิม (ไม่ดัดแปลงเลขที่จับรูปไม่ได้).
 export const fmtPhone = (raw) => {

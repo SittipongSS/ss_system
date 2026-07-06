@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { FileText, Save, Trash2, History, Truck, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
+import { FileText, Save, Trash2, History, Truck, ChevronDown, ChevronRight, AlertCircle, PackageCheck, ExternalLink } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -10,6 +10,9 @@ import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { fmtDate } from "@/lib/format";
 import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
+import { useCan } from "@/lib/roleContext";
+import ConfirmModal from "@/components/tax/ConfirmModal";
+import Toast from "@/components/ui/Toast";
 
 const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -174,6 +177,7 @@ function PoLineRow({ line, tracking, product, onChanged }) {
 export default function PoDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const canCreateProject = useCan("pm:edit");
   const id = params.id;
   const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
   const { data: material } = useApiList("/api/sahamit/material");
@@ -192,6 +196,9 @@ export default function PoDetailPage() {
   const [busy, setBusy] = useState(false);
   const [hErr, setHErr] = useState("");
   const [headerExpanded, setHeaderExpanded] = useState(false); // ย่อไว้ก่อนแบบหัว ISO
+  const [projectConfirmOpen, setProjectConfirmOpen] = useState(false);
+  const [projectBusy, setProjectBusy] = useState(false);
+  const [toast, setToast] = useState(null);
 
   // แบ่งส่ง (split): ระบุยอดส่งจริงต่อบรรทัด → เปิด PO ยอดเหลือ
   const [splitOpen, setSplitOpen] = useState(false);
@@ -246,6 +253,22 @@ export default function PoDetailPage() {
     setBusy(false);
   };
 
+  const createProject = async () => {
+    setProjectBusy(true);
+    try {
+      const payload = await sahamitFetch(`/api/sahamit/po/${id}/create-project`, { method: "POST" });
+      setProjectConfirmOpen(false);
+      if (payload.warning) setToast({ kind: "info", msg: payload.warning });
+      const project = payload.project;
+      if (project?.code || project?.id) router.push(`/pm/projects/${project.code || project.id}`);
+      else await reload();
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message || "สร้างโปรเจกต์ไม่สำเร็จ" });
+    } finally {
+      setProjectBusy(false);
+    }
+  };
+
   return (
     <Workspace
       icon={<FileText size={22} />}
@@ -253,6 +276,7 @@ export default function PoDetailPage() {
       subtitle="รายละเอียดใบสั่งซื้อ (ลูกค้า AR-109)"
       back={{ href: "/sahamit/po", label: "Purchase Orders" }}
     >
+      <Toast toast={toast} onClose={() => setToast(null)} />
       {error && (
         <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
           <AlertCircle size={18} /> {error}
@@ -272,6 +296,17 @@ export default function PoDetailPage() {
           <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>จำนวนรายการ</div><div style={{ fontSize: 20, fontWeight: 700 }}>{poLineCount(po)}</div></div>
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>ยอดรวม (ชิ้น)</div><div style={{ fontSize: 20, fontWeight: 700 }}>{nf(poTotalQty(po))}</div></div>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {po.projectId ? (
+                <button type="button" className="btn btn-primary" onClick={() => router.push(`/pm/projects/${po.projectId}`)}>
+                  <ExternalLink size={14} /> เปิด PM Project
+                </button>
+              ) : canCreateProject ? (
+                <button type="button" className="btn btn-primary" onClick={() => setProjectConfirmOpen(true)} disabled={!po.lines?.length}>
+                  <PackageCheck size={14} /> สร้าง RE-ORDER Project
+                </button>
+              ) : null}
+            </div>
           </div>
 
           {/* Header editor — ย่อ/ขยายได้ แบบหัว ISO */}
@@ -403,6 +438,15 @@ export default function PoDetailPage() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        open={projectConfirmOpen}
+        onClose={() => !projectBusy && setProjectConfirmOpen(false)}
+        onConfirm={createProject}
+        title="สร้าง RE-ORDER Project จาก PO นี้?"
+        message={`ระบบจะสร้าง PM project จาก PO ${po?.poNumber || ""} และผูก FG/จำนวนจากรายการใน PO นี้ กดซ้ำภายหลังจะเปิดโปรเจกต์เดิม ไม่สร้างซ้ำ`}
+        confirmLabel={projectBusy ? "กำลังสร้าง..." : "สร้างโปรเจกต์"}
+        danger={false}
+      />
     </Workspace>
   );
 }

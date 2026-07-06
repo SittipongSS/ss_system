@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScope } from '@/lib/permissions';
+import { viewScopeUser } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export async function GET() {
     .from('excise_registrations')
     .select('*')
     .order('createdAt', { ascending: false });
-  if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+  if (viewScopeUser(user) === 'team') query = query.eq('team', user?.team ?? null);
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -67,9 +67,10 @@ export async function POST(request) {
     id: 'REG-' + Date.now().toString().slice(-6),
     productId: product.id,
     customerId: customer.id,
+    projectId: body.projectId || null,
     fgCode: product.fgCode,
-    productName: product.productDescription,
-    brandName: product.brandName,
+    productName: product.productDescriptionEn || product.productDescription,
+    brandName: product.brandNameEn || product.brandName,
     customerName: customer.name,
     taxId: customer.taxId,
     isExciseTaxable,
@@ -82,7 +83,16 @@ export async function POST(request) {
     team: user?.team ?? null,
     ownerId: user?.id ?? null,
     assignee: body.assignee || user?.name || 'Sales',
-    metadata: {},
+    // Both-language snapshot in metadata (no dedicated column) so tax/registrations
+    // search matches TH *and* EN — productName/brandName above are EN-first, so the
+    // Thai name would otherwise be unsearchable once an EN name exists.
+    metadata: {
+      productNameTh: product.productDescription || null,
+      productNameEn: product.productDescriptionEn || null,
+      brandNameTh: product.brandName || null,
+      brandNameEn: product.brandNameEn || null,
+      ...(body.projectCode ? { projectCode: body.projectCode } : {}),
+    },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

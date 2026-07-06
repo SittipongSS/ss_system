@@ -9,7 +9,9 @@ import { useCan } from "@/lib/roleContext";
 // `order` is expected to carry `items: [{ ..., product }]`.
 export default function OrderDetailModal({ order, open, onClose }) {
   // Receipts/filing docs are managed by sales (filing) + legal (tax approval).
-  const canEditOrderDocs = useCan("sales:act") || useCan("legal:approve");
+  const canActSales = useCan("sales:act");
+  const canApproveLegal = useCan("legal:approve");
+  const canEditOrderDocs = canActSales || canApproveLegal;
   if (!order) return null;
   const items = order.items || [];
 
@@ -131,7 +133,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
                       {it.product?.fgCode || "-"}
                     </td>
                     <td className="text-xs text-[var(--text-2)]">
-                      {it.product?.productDescription || "-"}
+                      {it.product?.productDescriptionEn || it.product?.productDescription || "-"}
                     </td>
                     <td className="text-center font-mono font-semibold">{it.quantity}</td>
                     <td className="num font-mono font-bold text-[var(--text)]">

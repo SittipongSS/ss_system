@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, validateIdentity, departmentFor, normalizeDepartment } from '@/lib/permissions';
+import { can, validateIdentity, departmentFor, normalizeDepartment, sanitizeExtraCaps } from '@/lib/permissions';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +35,8 @@ export async function GET() {
         role: u.app_metadata?.role || null,
         team: u.app_metadata?.team || null,
         department: normalizeDepartment(u.app_metadata?.department) || departmentFor(u.app_metadata?.role) || null,
+        // Per-user capability grants (e.g. an SA granted the LG legal:approve).
+        extraCaps: sanitizeExtraCaps(u.app_metadata?.extraCaps),
         createdAt: u.created_at,
         lastSignInAt: u.last_sign_in_at,
         // Banned (disabled) accounts can't sign in and lose their session on the
@@ -67,6 +69,9 @@ export async function POST(request) {
   const invalid = validateIdentity(role, team, body.department);
   if (invalid) return Response.json({ error: invalid }, { status: 400 });
   const department = normalizeDepartment(body.department) || departmentFor(role);
+  // Per-user capability grants — whitelisted (GRANTABLE_CAPS) so a create call
+  // can never mint admin-system caps. Stored in app_metadata (service-role-only).
+  const extraCaps = sanitizeExtraCaps(body.extraCaps);
 
   const { data, error } = await supabase.auth.admin.createUser({
     email,
@@ -76,7 +81,7 @@ export async function POST(request) {
     // must_change_password forces a self-service password change on first login
     // (the admin-assigned password is temporary). Stored in app_metadata so the
     // user can't clear it client-side — only our /api/account/password route does.
-    app_metadata: { role, department, must_change_password: true, ...(team ? { team } : {}) },
+    app_metadata: { role, department, must_change_password: true, ...(team ? { team } : {}), ...(extraCaps.length ? { extraCaps } : {}) },
   });
   if (error) return Response.json({ error: error.message }, { status: 400 });
   await recordAudit({

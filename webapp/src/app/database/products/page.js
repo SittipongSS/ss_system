@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Package, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import { canApproveMasterData, isSuperuser, canSeeProductCost } from "@/lib/permissions";
+import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -16,6 +16,8 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
+import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
+import { productNameBoth } from "@/lib/format";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -26,11 +28,13 @@ const MANAGE_KEY = "/api/master/products?manage=1";
 // registration flow (/excise).
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
+  const canMargin = useCan("products:margin");
   const role = useRole();
   const myTeam = useTeam();
-  // ราคาโรงงานเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin (products:margin),
-  // ตรงกับที่ฝั่ง server ทำ redactProductMargin (ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์).
-  const canSeeCost = canSeeProductCost(role);
+  // ราคาโรงงานเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin หรือผู้ที่ได้รับสิทธิ์
+  // products:margin (เช่น SA ที่ทำรายงานผู้บริหาร). ใช้ useCan เพื่อให้ตรงกับ redactProductMargin
+  // ฝั่ง server (รวม per-user grant) — ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์.
+  const canSeeCost = canEdit || canMargin;
   // Senior AE approves only own team; supervisor/admin any team. (Products GET is
   // already team-scoped, but the explicit check keeps the rule consistent.)
   const canApproveRow = (rec) =>
@@ -48,7 +52,9 @@ export default function ProductRegistry() {
     customerId: "",
     fgCode: "",
     productDescription: "",
+    productDescriptionEn: "",
     brandName: "",
+    brandNameEn: "",
     volume: "",
     volumeUnit: "ml",
     costPrice: "",
@@ -137,16 +143,25 @@ export default function ProductRegistry() {
     () => [...customers].sort((a, b) => (a.name || "").localeCompare(b.name || "")),
     [customers],
   );
-  const brandOptions = useMemo(() => {
-    const c = customers.find((x) => x.id === formData.customerId);
-    return [...new Set((c?.brands || []).map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  }, [customers, formData.customerId]);
+  const selectedCustomer = useMemo(
+    () => customers.find((x) => x.id === formData.customerId),
+    [customers, formData.customerId],
+  );
+  // แบรนด์ = ช่องเดียว โชว์สองภาษา (EN · TH). value ที่เก็บภายใน = TH (คีย์) ถ้ามี ไม่งั้น EN.
+  const brandOptions = useMemo(() => normalizeBrands(selectedCustomer?.brands || []), [selectedCustomer]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // เปลี่ยนลูกค้า → ล้างแบรนด์เดิม เพราะรายการแบรนด์ผูกกับลูกค้า
-    if (name === "customerId") setFormData((f) => ({ ...f, customerId: value, brandName: "" }));
+    // เปลี่ยนลูกค้า → ล้างแบรนด์เดิม (TH+EN) เพราะรายการแบรนด์ผูกกับลูกค้า
+    if (name === "customerId") setFormData((f) => ({ ...f, customerId: value, brandName: "", brandNameEn: "" }));
     else setFormData((f) => ({ ...f, [name]: value }));
+  };
+
+  // เลือก/พิมพ์แบรนด์ในช่องเดียว → เก็บทั้ง TH+EN จากแบรนด์ของลูกค้า (match ด้วย th หรือ en);
+  // พิมพ์ใหม่ที่ไม่มีในลิสต์ → ถือเป็นชื่อไทย, EN ว่าง.
+  const pickBrand = (v) => {
+    const hit = (selectedCustomer?.brands || []).find((b) => brandTh(b) === v || brandEn(b) === v);
+    setFormData((f) => ({ ...f, brandName: hit ? brandTh(hit) : v, brandNameEn: hit ? brandEn(hit) : "" }));
   };
 
   const openForm = () => {
@@ -158,7 +173,11 @@ export default function ProductRegistry() {
     e.preventDefault();
     // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
     if (!formData.customerId) { alert("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
-    if (!formData.brandName?.trim()) { alert("กรุณาระบุชื่อแบรนด์"); return; }
+    if (!formData.brandName?.trim() && !formData.brandNameEn?.trim()) { alert("กรุณาระบุชื่อแบรนด์"); return; }
+    // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
+    if (!formData.productDescription?.trim() && !formData.productDescriptionEn?.trim()) {
+      alert("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
+    }
     if (!isExciseCategory(categoryOf(formData.fgCode))) {
       if (
         !confirm(
@@ -211,7 +230,7 @@ export default function ProductRegistry() {
     if (!showInactive && p.isActive === false) return false;
     if (statusFilter !== "all" && approvalStatusOf(p) !== statusFilter) return false;
     if (!q) return true;
-    return [p.fgCode, p.productDescription, p.brandName].some((v) => (v || "").toLowerCase().includes(q));
+    return [p.fgCode, p.productDescription, p.productDescriptionEn, p.brandName, p.brandNameEn].some((v) => (v || "").toLowerCase().includes(q));
   });
 
   // Pending records this user may approve — surfaced at the top as a queue.
@@ -297,7 +316,7 @@ export default function ProductRegistry() {
             items={approvalQueue}
             onDecide={decide}
             primary={(p) => p.fgCode}
-            secondary={(p) => `${p.productDescription}${p.brandName ? ` · ${p.brandName}` : ""}`}
+            secondary={(p) => { const b = brandBoth(p.brandName, p.brandNameEn); return `${productNameBoth(p)}${b ? ` · ${b}` : ""}`; }}
             onOpen={open}
           />
         </>
@@ -320,7 +339,7 @@ export default function ProductRegistry() {
               <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescription}</div>
+                    <div className="font-semibold text-[var(--text)] text-sm truncate">{productNameBoth(p)}</div>
                     <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode}</div>
                     {cat && <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{cat.main} · {cat.sub}</div>}
                   </div>
@@ -330,7 +349,7 @@ export default function ProductRegistry() {
                   </div>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[var(--text-2)] truncate">{p.brandName || "-"}</span>
+                  <span className="text-[var(--text-2)] truncate">{brandBoth(p.brandName, p.brandNameEn) || "-"}</span>
                   <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</span>
                 </div>
                 {canSeeCost && (
@@ -343,7 +362,9 @@ export default function ProductRegistry() {
                   <span className="text-[var(--text-3)]">ราคาขายปลีก</span>
                   <div className="text-right">
                     <div className="font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</div>
-                    {!isExempt && taxPerUnit(p) > 0 && (
+                    {isExempt ? (
+                      <div className="mt-0.5"><span className="status-pill success text-[10px]">ยกเว้นภาษี</span></div>
+                    ) : taxPerUnit(p) > 0 && (
                       <div className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {formatMoney(taxPerUnit(p))}</div>
                     )}
                   </div>
@@ -385,7 +406,7 @@ export default function ProductRegistry() {
                   return (
                     <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: 0.55 } : undefined}>
                       <td>
-                        <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
+                        <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
                         <div className="text-[11px] text-[var(--text-3)] mt-1 font-mono">{p.fgCode}</div>
                       </td>
                       <td>
@@ -396,12 +417,14 @@ export default function ProductRegistry() {
                           </div>
                         ) : <span className="text-[var(--text-3)]">-</span>}
                       </td>
-                      <td className="text-[var(--text-2)]">{p.brandName || "-"}</td>
+                      <td className="text-[var(--text-2)]">{brandBoth(p.brandName, p.brandNameEn) || "-"}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
                       {canSeeCost && <td className="num mono text-[var(--text-2)]">{formatMoney(p.costPrice)}</td>}
                       <td className="num mono text-[var(--text-2)]">
                         {formatMoney(p.retailPriceIncVat)}
-                        {!isExempt && taxRate > 0 && (
+                        {isExempt ? (
+                          <div className="mt-0.5"><span className="status-pill success text-[10px]">ยกเว้นภาษี</span></div>
+                        ) : taxRate > 0 && (
                           <div className="text-[11px] text-[var(--text-3)] font-normal mt-0.5">ภาษี/ชิ้น: {formatMoney(taxRate)}</div>
                         )}
                       </td>
@@ -484,8 +507,13 @@ export default function ProductRegistry() {
                 })()}
               </div>
               <div className="form-group col-span-2">
-                <label>รายละเอียดสินค้า <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="productDescription" value={formData.productDescription} onChange={handleChange} required placeholder="เช่น Midnight Bloom 50ml" className="premium-input w-full" />
+                <label>ชื่อสินค้า / รายละเอียด (ไทย)</label>
+                <input type="text" name="productDescription" value={formData.productDescription} onChange={handleChange} placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
+              </div>
+              <div className="form-group col-span-2">
+                <label>ชื่อสินค้า / รายละเอียด (อังกฤษ)</label>
+                <input type="text" name="productDescriptionEn" value={formData.productDescriptionEn} onChange={handleChange} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
+                <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
               </div>
               <div className="form-group">
                 <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
@@ -507,12 +535,13 @@ export default function ProductRegistry() {
                 <SearchableSelect
                   allowFreeText
                   disabled={!formData.customerId}
-                  options={brandOptions.map((b) => ({ value: b, label: b }))}
-                  value={formData.brandName}
-                  onChange={(v) => handleChange({ target: { name: "brandName", value: v } })}
+                  options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
+                  value={formData.brandName || formData.brandNameEn}
+                  onChange={pickBrand}
                   placeholder={formData.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"}
                   emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
                 />
+                <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — แก้ชื่อแบรนด์ได้ที่หน้าลูกค้า</span>
               </div>
             </div>
           </div>

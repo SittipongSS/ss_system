@@ -83,8 +83,8 @@ export async function loadSahamitProducts(supabase, customerId) {
       return {
         id: p.id,
         fgCode: p.fgCode,
-        name: p.productDescription ?? p.fgCode,
-        brandName: p.brandName ?? null,
+        name: p.productDescriptionEn || p.productDescription || p.fgCode,
+        brandName: p.brandNameEn || p.brandName || null,
         volume: p.volume ?? null,
         volumeUnit: p.volumeUnit ?? null,
         categoryCode: categoryCode ?? null,

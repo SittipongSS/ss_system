@@ -2,12 +2,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Flag } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Flag } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
-import { RoleContext, TeamContext } from '@/lib/roleContext';
+import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 const SUPABASE_CONFIGURED =
@@ -29,6 +29,7 @@ export default function AppLayout({ children }) {
   const pathname = usePathname();
   const [role, setRole] = useState(null);
   const [team, setTeam] = useState(null);
+  const [extraCaps, setExtraCaps] = useState(null); // per-user LG/margin grants
   const [userName, setUserName] = useState('');
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
@@ -83,6 +84,7 @@ export default function AppLayout({ children }) {
       // Role + team come from app_metadata (service-role-only; users cannot self-edit it).
       setRole(user.app_metadata?.role || 'user');
       setTeam(user.app_metadata?.team || null);
+      setExtraCaps(Array.isArray(user.app_metadata?.extraCaps) ? user.app_metadata.extraCaps : []);
       // Force a password change on first login / after an admin reset.
       setMustChangePwd(!!user.app_metadata?.must_change_password);
       setUserName(dName);
@@ -96,6 +98,7 @@ export default function AppLayout({ children }) {
     const sys =
       pathname.startsWith('/pm') ? 'pm'
       : pathname.startsWith('/database') ? 'master'
+      : pathname.startsWith('/sales-planning') ? 'salesplan'
       : pathname.startsWith('/sahamit') ? 'sahamit'
       : pathname === '/users' ? 'users'
       : pathname === '/audit' ? 'audit'
@@ -173,6 +176,15 @@ export default function AppLayout({ children }) {
       ],
     },
     {
+      label: 'แผนงานขาย',
+      system: 'salesplan',
+      items: [
+        { href: '/sales-planning', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
+        { href: '/sales-planning/deals', name: 'ดีล (Pipeline)', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
+        { href: '/sales-planning/targets', name: 'เป้าหมาย', icon: Flag, cap: 'salesplan:view', match: (p) => p.startsWith('/sales-planning/targets') },
+      ],
+    },
+    {
       label: 'งานสหมิตร',
       system: 'sahamit',
       items: [
@@ -189,10 +201,11 @@ export default function AppLayout({ children }) {
   const systemSubtitle =
     activeSystem === 'master' ? 'ฐานข้อมูล'
       : activeSystem === 'pm' ? 'จัดการโครงการ'
-        : activeSystem === 'sahamit' ? 'งานสหมิตร'
-          : activeSystem === 'users' ? 'จัดการผู้ใช้'
-            : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
-              : 'ภาษีสรรพสามิต';
+        : activeSystem === 'salesplan' ? 'แผนงานขาย'
+          : activeSystem === 'sahamit' ? 'งานสหมิตร'
+            : activeSystem === 'users' ? 'จัดการผู้ใช้'
+              : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
+                : 'ภาษีสรรพสามิต';
 
   // Show only the current system's groups (+ 'both'), then only menus the role
   // is allowed to see.
@@ -285,11 +298,6 @@ export default function AppLayout({ children }) {
           >
             {mobileOpen ? <X size={20} strokeWidth={2} /> : <Menu size={20} strokeWidth={2} />}
           </button>
-          <div className="search-bar">
-            <Search size={16} className="icon-l" strokeWidth={2} />
-            <input type="text" placeholder="ค้นหา สินค้า, รหัสลูกค้า..." />
-          </div>
-
           <div className="topbar-actions">
             {/* Login User Info */}
             <div className="topbar-user-info">
@@ -333,7 +341,9 @@ export default function AppLayout({ children }) {
 
         <div className="page">
           <RoleContext.Provider value={role}>
-            <TeamContext.Provider value={team}>{children}</TeamContext.Provider>
+            <ExtraCapsContext.Provider value={extraCaps}>
+              <TeamContext.Provider value={team}>{children}</TeamContext.Provider>
+            </ExtraCapsContext.Provider>
           </RoleContext.Provider>
         </div>
       </main>

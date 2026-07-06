@@ -61,7 +61,9 @@ build/render ผ่านแล้ว แต่ logic+data ต้องกดจ
 ## 4. 🟢 ขัดเงา (เล็ก)
 - ตัวกรองกระทบยอดให้มีผลกับ **Excel export** (ตอนนี้ export ทั้งหมด)
 - หน้ารายละเอียด PO: ให้แก้ **กำหนดส่ง/สถานที่ระดับหัว** ได้ (ตอนนี้แก้ได้แค่ตอนสร้าง)
-- **S4** ปิดเสียงป้ายคาดการณ์ ✨ (acknowledge/snooze) — ต้อง migration, optional
+- ✅ **S4** ปิดเสียงป้ายคาดการณ์ ✨ (acknowledge/snooze) — เสร็จ: ตาราง `sahamit_fc_pred_ack`
+  (migration **0071**, รันมือ), API `/api/sahamit/pred-ack` (GET/POST/DELETE), ปุ่ม "👁 ดูแล้ว"
+  ในกริด + modal (ป้ายจางลง). เหลือ verify prod
 
 ---
 
