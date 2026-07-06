@@ -6,6 +6,7 @@ import CoveragePanel from "@/components/sahamit/CoveragePanel";
 import { fmtDate } from "@/lib/format";
 import { cellDetail, RECON_STATUS_COLOR } from "@/lib/sahamit/reconcileClient";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
+import { productMetaText } from "@/lib/sahamit/productMeta";
 
 // รายละเอียดช่องกระทบยอด (SKU × เดือน) แบบ modal — แทนการเด้งไปหน้าเต็ม.
 // รับ matrix/rounds/pos/coverages/prediction ที่หน้ากระทบยอดมีอยู่แล้ว ไม่โหลดซ้ำ.
@@ -22,7 +23,7 @@ const TABS = [
   { key: "coverage", label: "ชดเชยยอดข้ามเดือน" },
 ];
 
-export default function CellDetailModal({ open, onClose, fgCode, month, matrix, rounds, pos, coverages, prediction, acked, onToggleAck, onCoverageChanged }) {
+export default function CellDetailModal({ open, onClose, fgCode, month, matrix, rounds, pos, coverages, prediction, product, acked, onToggleAck, onCoverageChanged }) {
   const [tab, setTab] = useState("overview");
 
   const row = useMemo(() => (matrix?.rows || []).find((r) => r.fgCode === fgCode), [matrix, fgCode]);
@@ -43,7 +44,8 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
     cell.status === "unforecasted" ? `สั่ง PO นอกแผน ${nf(poQty)} ชิ้น (ไม่มี FC)` :
     cell.label;
 
-  const title = `${row?.productName || fgCode} · ${fgCode} · เดือน ${month}`;
+  const meta = productMetaText(product);
+  const title = `${row?.productName || fgCode} · ${fgCode} · เดือน ${month}${meta ? ` · ${meta}` : ""}`;
 
   return (
     <Modal open={open} onClose={onClose} title={title} size="lg" closeOnOverlay>

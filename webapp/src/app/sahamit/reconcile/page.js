@@ -362,6 +362,7 @@ export default function ReconcilePage() {
         pos={pos}
         coverages={coverages}
         prediction={cellSel ? predictions.get(`${cellSel.fg}||${cellSel.m}`) || null : null}
+        product={cellSel ? productOf(cellSel.fg) : null}
         acked={cellSel ? ackSet.has(`${cellSel.fg}||${cellSel.m}`) : false}
         onToggleAck={() => cellSel && toggleAck(cellSel.fg, cellSel.m, ackSet.has(`${cellSel.fg}||${cellSel.m}`))}
         onCoverageChanged={reloadCoverages}

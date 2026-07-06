@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BarChart3, AlertCircle, TriangleAlert } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
+import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { fmtDate } from "@/lib/format";
 import { buildReport } from "@/lib/sahamit/reportClient";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
@@ -40,6 +41,7 @@ export default function ReportPage() {
   const loading = l1 || l2;
   const error = e1 || e2;
   const rep = useMemo(() => buildReport(rounds, pos, coverages, products), [rounds, pos, coverages, products]);
+  const prodIdx = useMemo(() => indexProducts(products), [products]);
 
   return (
     <Workspace
@@ -108,7 +110,12 @@ export default function ReportPage() {
                   {rep.perSku.map((s) => (
                     <tr key={s.fgCode}>
                       <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
-                      <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>{s.productName || "— ไม่รู้จัก —"}</td>
+                      <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>
+                        {s.productName || "— ไม่รู้จัก —"}
+                        {productMetaText(prodIdx.get(String(s.fgCode).trim().toLowerCase())) && (
+                          <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(prodIdx.get(String(s.fgCode).trim().toLowerCase()))}</div>
+                        )}
+                      </td>
                       <td style={{ textAlign: "right" }}>{nf(s.fcQty)}</td>
                       <td style={{ textAlign: "right" }}>{nf(s.poQty)}</td>
                       <td style={{ textAlign: "right", color: s.price == null ? "var(--amber)" : "inherit" }}>{s.price == null ? "—" : baht(s.price)}</td>
