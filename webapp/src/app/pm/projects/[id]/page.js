@@ -227,7 +227,6 @@ export default function ProjectDetailPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
     fetch("/api/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
     fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
     fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(d || [])).catch(() => {});
@@ -236,6 +235,17 @@ export default function ProjectDetailPage() {
       if (Array.isArray(d) && d.length) setHolidays(d.map((h) => h.date));
     }).catch(() => {});
   }, []);
+  // FG picker: scope to the project's customer so cross-team FGs of the same
+  // customer show up (product.team = creator's team, not the customer's).
+  const projectCustomerId = data?.customerId;
+  useEffect(() => {
+    if (!data) return;
+    const url = projectCustomerId
+      ? `/api/products?customerId=${encodeURIComponent(projectCustomerId)}`
+      : "/api/products";
+    fetch(url).then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectCustomerId]);
 
   const updateProject = async (patch) => {
     const res = await fetch(`/api/pm/projects/${id}`, {

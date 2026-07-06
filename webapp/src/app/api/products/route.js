@@ -13,11 +13,20 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
-  const manage = new URL(request.url).searchParams.get('manage') === '1';
+  const url = new URL(request.url);
+  const manage = url.searchParams.get('manage') === '1';
+  // A PM project is bound to one customer, and that customer's FGs may have been
+  // registered by a DIFFERENT team (product.team = creator's team, not the
+  // customer's). Scoping by customerId therefore intentionally BYPASSES team
+  // scope so the project product-picker can see all of its customer's FGs.
+  // The approval gate + isActive filter + margin redaction below still apply.
+  const customerId = url.searchParams.get('customerId');
 
   let query = supabase.from('products').select('*').order('createdAt', { ascending: false });
+  if (customerId) query = query.eq('customerId', customerId);
   // Team-scoped roles only see their own team's products; 'all' sees everything.
-  if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+  // Skipped when filtering by customerId (see note above).
+  else if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
   // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
   if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
 
