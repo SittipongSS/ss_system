@@ -362,7 +362,9 @@ export default function ProductRegistry() {
                   <span className="text-[var(--text-3)]">ราคาขายปลีก</span>
                   <div className="text-right">
                     <div className="font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</div>
-                    {!isExempt && taxPerUnit(p) > 0 && (
+                    {isExempt ? (
+                      <div className="mt-0.5"><span className="status-pill success text-[10px]">ยกเว้นภาษี</span></div>
+                    ) : taxPerUnit(p) > 0 && (
                       <div className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {formatMoney(taxPerUnit(p))}</div>
                     )}
                   </div>
@@ -420,7 +422,9 @@ export default function ProductRegistry() {
                       {canSeeCost && <td className="num mono text-[var(--text-2)]">{formatMoney(p.costPrice)}</td>}
                       <td className="num mono text-[var(--text-2)]">
                         {formatMoney(p.retailPriceIncVat)}
-                        {!isExempt && taxRate > 0 && (
+                        {isExempt ? (
+                          <div className="mt-0.5"><span className="status-pill success text-[10px]">ยกเว้นภาษี</span></div>
+                        ) : taxRate > 0 && (
                           <div className="text-[11px] text-[var(--text-3)] font-normal mt-0.5">ภาษี/ชิ้น: {formatMoney(taxRate)}</div>
                         )}
                       </td>

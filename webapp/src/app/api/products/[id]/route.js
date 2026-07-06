@@ -155,7 +155,13 @@ export async function PATCH(request, { params }) {
 
   // Re-approval rule (ทุกระบบ): editing an APPROVED product drops it back to
   // 'pending' so a Senior AE+ must re-approve. No-op if it wasn't approved.
-  const reapproval = resetApprovalOnEdit(product, user);
+  // EXCEPTION: a pure พัก/เปิดใช้ toggle (isActive-only) is a lifecycle action,
+  // not a spec edit — it must NOT un-approve the product (that would silently
+  // pull an approved, selling product out of the approved-only pickers and
+  // force a fresh approval just to resume it).
+  const isLifecycleToggleOnly =
+    body.isActive !== undefined && Object.keys(body).every((k) => k === 'isActive');
+  const reapproval = isLifecycleToggleOnly ? null : resetApprovalOnEdit(product, user);
   if (reapproval) Object.assign(updated, reapproval);
 
   const { data, error } = await supabase
