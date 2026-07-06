@@ -107,14 +107,14 @@ export default function ReportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rep.perSku.map((s) => (
+                  {rep.perSku.map((s) => {
+                    const meta = productMetaText(prodIdx.get(String(s.fgCode).trim().toLowerCase()));
+                    return (
                     <tr key={s.fgCode}>
                       <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
                       <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>
                         {s.productName || "— ไม่รู้จัก —"}
-                        {productMetaText(prodIdx.get(String(s.fgCode).trim().toLowerCase())) && (
-                          <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(prodIdx.get(String(s.fgCode).trim().toLowerCase()))}</div>
-                        )}
+                        {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
                       </td>
                       <td style={{ textAlign: "right" }}>{nf(s.fcQty)}</td>
                       <td style={{ textAlign: "right" }}>{nf(s.poQty)}</td>
@@ -122,7 +122,8 @@ export default function ReportPage() {
                       <td style={{ textAlign: "right" }}>{baht(s.fcValue)}</td>
                       <td style={{ textAlign: "right", fontWeight: 600, color: C.teal }}>{baht(s.poValue)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {rep.perSku.length === 0 && (
                     <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text-3)", padding: 20 }}>ยังไม่มีข้อมูล FC/PO</td></tr>
                   )}
