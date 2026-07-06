@@ -346,6 +346,7 @@ export default function ReconcilePage() {
         pos={pos}
         coverages={coverages}
         prediction={cellSel ? predictions.get(`${cellSel.fg}||${cellSel.m}`) || null : null}
+        product={cellSel ? productOf(cellSel.fg) : null}
         onCoverageChanged={reloadCoverages}
       />
     </Workspace>
