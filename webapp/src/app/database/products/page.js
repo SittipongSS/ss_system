@@ -15,7 +15,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
-import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
+import { categoryOf, isExciseCategory, categoryInfo } from "@/lib/master/categoryOf";
 import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth } from "@/lib/format";
 
@@ -108,19 +108,13 @@ export default function ProductRegistry() {
     }
   };
 
-  const getCategoryInfo = (fgCode) => {
-    if (!fgCode) return null;
-    const code = categoryOf(fgCode);
-    if (!code) return { found: false, code: null };
-    const typeInfo = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
-    return { found: !!typeInfo, code, typeInfo };
-  };
+  const getCategoryInfo = (fgCode) => categoryInfo(fgCode, productTypes);
 
   // Main category (เช่น ODM) + sub-category name for the list — prefers the
   // stored categoryCode (set on save), falls back to deriving it from fgCode
   // for legacy rows saved before that column existed.
   const categoryLabelOf = (p) => {
-    const code = p.categoryCode || getCategoryInfo(p.fgCode)?.code;
+    const code = p.categoryCode || categoryOf(p.fgCode);
     if (!code) return null;
     const info = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
     if (!info) return null;

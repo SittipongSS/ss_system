@@ -67,6 +67,14 @@ export const productNameBoth = (p) => {
   return e || t;
 };
 
+// "แบรนด์ · ขนาด" hint for product pickers so lookalike SKUs (same product,
+// different pack size / brand line) are easy to tell apart. Keeps volume 0
+// (a real size) — only null/undefined/"" is treated as missing.
+export const productMeta = (p) =>
+  [p?.brandName, p?.volume != null && p?.volume !== "" ? `${p.volume}${p?.volumeUnit || ""}` : null]
+    .filter(Boolean)
+    .join(" · ");
+
 // เบอร์โทร (§2.2): มือถือ 10 หลัก → xxx-xxx-xxxx, บ้าน 9 หลัก → xx-xxx-xxxx.
 // รูปแบบอื่นคืนค่าเดิม (ไม่ดัดแปลงเลขที่จับรูปไม่ได้).
 export const fmtPhone = (raw) => {

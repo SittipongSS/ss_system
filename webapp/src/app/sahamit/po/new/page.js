@@ -7,6 +7,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { DestinationToggle } from "@/components/sahamit/destinations";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
+import { productMeta } from "@/lib/format";
 
 // สร้าง PO — หน้าเต็ม. กำหนดรับของ + สถานที่ส่ง เป็นระดับหัว PO (ทั้ง PO ใช้ค่าเดียว);
 // รายการสินค้าใส่แค่ จำนวน. เรียงฟอร์ม: หัวเอกสาร → เพิ่มรายการ → ตารางรายการ.
@@ -33,8 +34,6 @@ export default function PoCreatePage() {
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
     return m;
   }, [products]);
-  const productMeta = (p) =>
-    [p?.brandName, p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : null].filter(Boolean).join(" · ");
 
   const addRow = (fgCodeRaw) => {
     const code = String(fgCodeRaw || "").trim();
