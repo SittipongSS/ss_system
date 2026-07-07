@@ -39,21 +39,19 @@ export async function GET(request, { params }) {
   const receivedMonth = (po.receivedDate || '').slice(0, 7) || null;
   const activeLines = (po.lines || []).filter((l) => l.status !== 'cancelled' && toQty(l.qty) > 0);
 
-  // ดีล open ที่มาจาก forecast (ผ่าน junction) → map fgCode → deals
-  const { data: links } = await supabase.from('sales_deal_forecast_lines').select('*').eq('customerId', customerId);
-  const dealIds = [...new Set((links || []).map((l) => l.dealId))];
-  const { data: deals } = dealIds.length
-    ? await supabase.from('sales_deals').select('*').in('id', dealIds)
-    : { data: [] };
-  const openById = new Map((deals || []).filter((d) => !d.projectId && !CLOSED.includes(d.stage)).map((d) => [d.id, d]));
-  const allOpen = [...openById.values()]; // ดีล open ที่มาจาก forecast ทั้งหมด (สำหรับ fallback ให้เลือกเอง)
+  // ดีล open ที่มาจาก forecast — จับ fgCode จาก deal.metadata.fgCodes (เก็บบนตัวดีลเอง
+  // ทุกดีล forecast มี ไม่พึ่ง junction ที่อาจหลุดตอนแก้/ลบรอบ) → map normFg → deals
+  const { data: deals } = await supabase.from('sales_deals').select('*')
+    .eq('customerId', customerId).is('projectId', null).eq('metadata->>source', 'sahamit-forecast');
+  const allOpen = (deals || []).filter((d) => !CLOSED.includes(d.stage));
   const byFg = new Map(); // normFg → Map(dealId→deal)
-  for (const l of links || []) {
-    const d = openById.get(l.dealId);
-    if (!d) continue;
-    const k = norm(l.fgCode);
-    if (!byFg.has(k)) byFg.set(k, new Map());
-    byFg.get(k).set(d.id, d);
+  for (const d of allOpen) {
+    for (const fg of (d.metadata?.fgCodes || [])) {
+      const k = norm(fg);
+      if (!k) continue;
+      if (!byFg.has(k)) byFg.set(k, new Map());
+      byFg.get(k).set(d.id, d);
+    }
   }
 
   // บรรทัดที่ PO นี้ settle ไปแล้ว (จาก deal.metadata.sahamitPoId + fgCodes)
