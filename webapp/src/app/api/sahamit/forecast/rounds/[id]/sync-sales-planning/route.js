@@ -91,6 +91,7 @@ export async function POST(request, { params }) {
   if (existingError) return Response.json({ error: existingError.message }, { status: 500 });
 
   const existingByKey = new Map();
+  const existingByMonth = new Map(); // demandMonth -> [deal] ของรอบนี้ (ทุก owner)
   for (const deal of existingRows || []) {
     const meta = deal.metadata || {};
     if (meta.source !== 'sahamit-forecast' || meta.sahamitForecastRoundId !== round.id) continue;
@@ -99,7 +100,15 @@ export async function POST(request, { params }) {
       demandMonth: meta.sahamitDemandMonth,
       ownerName: deal.ownerName || meta.ownerName || null,
     }), deal);
+    const dm = meta.sahamitDemandMonth;
+    if (!existingByMonth.has(dm)) existingByMonth.set(dm, []);
+    existingByMonth.get(dm).push(deal);
   }
+
+  // จำนวนกลุ่ม (owner) ต่อเดือนในการซิงก์รอบนี้ — ใช้ตัดสินว่าปลอดภัยที่จะ reuse
+  // ดีลเดิมเมื่อ ownerName เปลี่ยน (assignee ของสินค้าถูกแก้) แทนการสร้างดีลซ้ำ.
+  const bucketsPerMonth = {};
+  for (const b of groups.values()) bucketsPerMonth[b.demandMonth] = (bucketsPerMonth[b.demandMonth] || 0) + 1;
 
   const now = new Date().toISOString();
   const created = [];
@@ -110,7 +119,14 @@ export async function POST(request, { params }) {
     const fgCodes = [...bucket.fgCodes].sort();
     const closeDate = lastDayOfMonth(bucket.closeMonth);
     const key = dealKey({ roundId: round.id, demandMonth: bucket.demandMonth, ownerName: bucket.ownerName });
-    const existing = existingByKey.get(key);
+    let existing = existingByKey.get(key);
+    // ownerName เปลี่ยน → key ไม่ตรง. ถ้าเดือนนี้มีดีลเดิม active ใบเดียว และรอบนี้
+    // ก็ซิงก์เดือนนี้แค่กลุ่มเดียว → reuse (reassign) แทนสร้างดีลซ้ำ (ปลอดภัย ไม่กำกวม).
+    if (!existing && bucketsPerMonth[bucket.demandMonth] === 1) {
+      const openSameMonth = (existingByMonth.get(bucket.demandMonth) || [])
+        .filter((d) => !['won', 'in_project', 'lost'].includes(d.stage));
+      if (openSameMonth.length === 1) existing = openSameMonth[0];
+    }
     const metadata = {
       ...(existing?.metadata || {}),
       source: 'sahamit-forecast',
