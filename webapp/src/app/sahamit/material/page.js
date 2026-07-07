@@ -1,10 +1,12 @@
 "use client";
 import { useMemo, useState, useEffect } from "react";
-import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download } from "lucide-react";
+import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
+import { lineStage, STAGE_LABEL } from "@/lib/sahamit/po";
 import { fmtDate } from "@/lib/format";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -113,10 +115,44 @@ function MaterialRow({ row, product, onSaved }) {
   );
 }
 
+// stage ปัจจุบันของบรรทัดวัสดุ (auto จาก PM/RM + สถานะที่กดเดิน)
+const rowStage = (r) => lineStage(r.status, !!r.tracking?.pmArrivedAt, !!r.tracking?.rmArrivedAt);
+
 export default function MaterialPage() {
   const { data: rows, loading, error, reload } = useApiList("/api/sahamit/material");
   const { data: products } = useApiList("/api/sahamit/products");
   const prodIdx = useMemo(() => indexProducts(products), [products]);
+
+  const [search, setSearch] = useState("");
+  const [fcSel, setFcSel] = useState([]);     // "in" | "out"
+  const [stageSel, setStageSel] = useState([]); // stage keys
+  const [issueSel, setIssueSel] = useState([]); // "late" | "slip"
+  const q = search.trim().toLowerCase();
+
+  // ตัวเลือกสถานะ = เฉพาะ stage ที่มีจริงในข้อมูล (เรียงตามลำดับ label)
+  const stageOptions = useMemo(() => {
+    const present = new Set(rows.map(rowStage));
+    return Object.keys(STAGE_LABEL).filter((k) => present.has(k)).map((k) => ({ value: k, label: STAGE_LABEL[k] }));
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    if (!q && !fcSel.length && !stageSel.length && !issueSel.length) return rows;
+    return rows.filter((r) => {
+      if (q && !String(r.fgCode).toLowerCase().includes(q)
+        && !String(r.productName || "").toLowerCase().includes(q)
+        && !String(r.poNumber || "").toLowerCase().includes(q)) return false;
+      if (fcSel.length && !fcSel.includes(r.inForecast ? "in" : "out")) return false;
+      if (stageSel.length && !stageSel.includes(rowStage(r))) return false;
+      if (issueSel.length) {
+        const hit = (issueSel.includes("late") && r.lateVsDue) || (issueSel.includes("slip") && r.ourSlip);
+        if (!hit) return false;
+      }
+      return true;
+    });
+  }, [rows, q, fcSel, stageSel, issueSel]);
+
+  const filterCount = fcSel.length + stageSel.length + issueSel.length;
+  const clearFilters = () => { setFcSel([]); setStageSel([]); setIssueSel([]); };
 
   const stats = useMemo(() => ({
     total: rows.length,
@@ -165,6 +201,23 @@ export default function MaterialPage() {
             <Stat n={stats.slip} label="เราส่งช้า" color="var(--red)" />
           </div>
 
+          <div className="toolbar" style={{ marginBottom: 14 }}>
+            <div className="search-glass" style={{ width: 240 }}>
+              <Search size={18} color="var(--text-3)" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า / เลข PO..." />
+            </div>
+            <FilterPopover
+              count={filterCount}
+              onClear={clearFilters}
+              groups={[
+                { key: "fc", label: "ในแผน (FC)", options: [{ value: "in", label: "ตรง FC" }, { value: "out", label: "นอก FC" }], selected: fcSel, onChange: setFcSel },
+                { key: "stage", label: "สถานะ", options: stageOptions, selected: stageSel, onChange: setStageSel },
+                { key: "issue", label: "ปัญหา", options: [{ value: "late", label: "เกินกำหนด (PO/lead)" }, { value: "slip", label: "เราส่งช้า" }], selected: issueSel, onChange: setIssueSel },
+              ]}
+            />
+            {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {rows.length} บรรทัด</span>}
+          </div>
+
           <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
             <table className="premium-table sticky-col1">
               <thead>
@@ -175,7 +228,11 @@ export default function MaterialPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => <MaterialRow key={r.poLineId} row={r} product={prodIdx.get(String(r.fgCode).trim().toLowerCase())} onSaved={reload} />)}
+                {filteredRows.length === 0 ? (
+                  <tr><td colSpan={12} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มีบรรทัดตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
+                ) : (
+                  filteredRows.map((r) => <MaterialRow key={r.poLineId} row={r} product={prodIdx.get(String(r.fgCode).trim().toLowerCase())} onSaved={reload} />)
+                )}
               </tbody>
             </table>
           </div>
