@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { AlertTriangle, ClipboardList, ExternalLink, FileText, LineChart, PackageCheck, RefreshCcw } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, LineChart, Lock, PackageCheck, RefreshCcw, Trophy } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import Modal from "@/components/Modal";
 import { SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
+import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -62,6 +64,56 @@ function Empty({ children }) {
   return <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>{children}</div>;
 }
 
+// แถบ lifecycle: ลีด → … → เข้าโครงการ (lost = แถบแดงแทน)
+function DealStepper({ steps, lost }) {
+  if (lost) {
+    return (
+      <div className="glass-panel" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center" }}>
+        <Ban size={16} aria-hidden="true" /> ดีลนี้ปิดแบบไม่สำเร็จ (Lost)
+      </div>
+    );
+  }
+  return (
+    <div className="glass-panel" style={{ padding: "12px 14px", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      {steps.map((s, i) => (
+        <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5,
+            fontWeight: s.state === "current" ? 700 : 500,
+            color: s.state === "done" ? "var(--green)" : s.state === "current" ? "var(--accent)" : "var(--text-3)",
+          }}>
+            {s.state === "done" ? <CheckCircle2 size={14} aria-hidden="true" /> : <Circle size={14} fill={s.state === "current" ? "currentColor" : "none"} aria-hidden="true" />}
+            {s.label}
+          </span>
+          {i < steps.length - 1 && <ArrowRight size={12} aria-hidden="true" style={{ color: "var(--text-3)", opacity: 0.5 }} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// การ์ดปลายทางส่งต่อ 1 ระบบ (PM / สรรพสามิต / ส่งของ / PO)
+function RouteCard({ route, onCreateProject, busy, canEdit }) {
+  const color = route.status === "done" ? "var(--green)" : route.status === "available" ? "var(--accent)" : "var(--text-3)";
+  const badge = route.status === "done" ? "เสร็จแล้ว" : route.status === "available" ? "พร้อมทำ" : "ล็อก";
+  return (
+    <div className="glass-panel" style={{ padding: 14, borderLeft: `3px solid ${color}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontWeight: 700, fontSize: 14 }}>{route.label}</span>
+        <span className="ui-badge" style={{ marginLeft: "auto", color }}>{badge}</span>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-3)", margin: "6px 0 10px" }}>{route.hint}</div>
+      {route.status === "locked" ? (
+        <button type="button" className="btn ghost sm" disabled><Lock size={13} aria-hidden="true" /> ล็อก</button>
+      ) : route.action === "create-project" && canEdit ? (
+        <button type="button" className="btn btn-primary sm" onClick={onCreateProject} disabled={busy}><PackageCheck size={13} aria-hidden="true" /> สร้างโครงการ</button>
+      ) : route.href ? (
+        <a className="btn sm" href={route.href}><ExternalLink size={13} aria-hidden="true" /> เปิด</a>
+      ) : null}
+    </div>
+  );
+}
+
 export default function DealOverviewPage() {
   const params = useParams();
   const id = params?.id;
@@ -92,8 +144,69 @@ export default function DealOverviewPage() {
   const pendingDocs = useMemo(() => (data?.documents || []).filter((doc) => doc.status === "pending"), [data]);
 
   const deal = data?.deal;
+  const canEdit = !!data?.canEdit;
+  const lc = useMemo(
+    () => (deal ? dealLifecycle(deal, {
+      projectProducts: data?.projectProducts,
+      exciseRegistrations: data?.exciseRegistrations,
+      sahamitPo: data?.sahamitPo,
+      shipmentPrep: data?.shipmentPrep,
+    }) : null),
+    [deal, data],
+  );
+
+  const [actionBusy, setActionBusy] = useState("");
+  const [lostOpen, setLostOpen] = useState(false);
+  const [lostReason, setLostReason] = useState("");
+
+  const runAction = useCallback(async (key, url, opts) => {
+    setActionBusy(key);
+    setError("");
+    try {
+      const res = await fetch(url, opts);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
+      await load();
+      return true;
+    } catch (e) {
+      setError(e.message || "ทำรายการไม่สำเร็จ");
+      return false;
+    } finally {
+      setActionBusy("");
+    }
+  }, [load]);
+
+  const doWin = () => runAction("win", `/api/sales-planning/deals/${id}/win`, { method: "POST" });
+  const doCreateProject = () => runAction("project", `/api/sales-planning/deals/${id}/create-project`, { method: "POST" });
+  const doLost = async () => {
+    const okDone = await runAction("lost", `/api/sales-planning/deals/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage: "lost", lostReason: lostReason.trim() || null }),
+    });
+    if (okDone) { setLostOpen(false); setLostReason(""); }
+  };
+
+  // ปุ่มหลักของการ์ด "ขั้นต่อไป" ตาม nextAction.kind
+  const nextPrimary = () => {
+    if (!canEdit || !lc?.nextAction) return null;
+    const k = lc.nextAction.kind;
+    if (k === "win") return <button type="button" className="btn btn-primary" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
+    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={doCreateProject} disabled={!!actionBusy}><PackageCheck size={14} aria-hidden="true" /> สร้างโครงการ</button>;
+    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/pm/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> เปิดโครงการ</a>;
+    return null;
+  };
   const headerRight = (
     <>
+      {canEdit && lc?.canGo && (
+        <button type="button" className="btn btn-primary" onClick={doWin} disabled={!!actionBusy}>
+          <Trophy size={15} aria-hidden="true" /> ปิดได้ (Won)
+        </button>
+      )}
+      {canEdit && lc?.canNoGo && (
+        <button type="button" className="btn ghost" onClick={() => setLostOpen(true)} disabled={!!actionBusy}>
+          <Ban size={15} aria-hidden="true" /> ไม่ไปต่อ
+        </button>
+      )}
       {deal?.projectId && (
         <a className="btn" href={`/pm/projects/${deal.projectId}`}>
           <ExternalLink size={15} aria-hidden="true" /> โครงการ PM
@@ -122,6 +235,19 @@ export default function DealOverviewPage() {
 
       {deal && (
         <div className="flex flex-col gap-5">
+          {lc && <DealStepper steps={lc.steps} lost={deal.stage === "lost"} />}
+
+          {lc?.nextAction && (
+            <div className="glass-panel" style={{ padding: 16, borderLeft: "3px solid var(--accent)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 600 }}>ขั้นต่อไป</div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>{lc.nextAction.label}</div>
+                {lc.nextAction.hint && <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>{lc.nextAction.hint}</div>}
+              </div>
+              {nextPrimary()}
+            </div>
+          )}
+
           {!!data?.warnings?.length && (
             <div className="glass-panel" role="status" style={{ padding: "12px 14px", color: "var(--amber)", borderColor: "var(--amber)" }}>
               {data.warnings.join(" · ")}
@@ -234,15 +360,23 @@ export default function DealOverviewPage() {
           </div>
           )}
 
-          <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+          {lc && (
             <section className="glass-panel" style={{ padding: 16 }}>
-              <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>งานปลายน้ำ</h2>
-              <div className="grid gap-3">
-                <Stat label="ทะเบียนภาษี" value={data.exciseRegistrations?.length || 0} hint={(data.exciseRegistrations || []).map((row) => row.status).filter(Boolean).slice(0, 3).join(", ") || "-"} />
-                <Stat label="PO สหมิตร" value={data.sahamitPo?.poNumber || "-"} hint={data.sahamitPo ? `${data.sahamitPo.lines?.length || 0} รายการ PO` : "ยังไม่ผูก"} />
+              <div className="flex items-center gap-2 mb-3">
+                <ArrowRight size={17} aria-hidden="true" />
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ส่งต่อ (Routing)</h2>
               </div>
+              {lc.routes.length ? (
+                <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+                  {lc.routes.map((route) => (
+                    <RouteCard key={route.kind} route={route} onCreateProject={doCreateProject} busy={!!actionBusy} canEdit={canEdit} />
+                  ))}
+                </div>
+              ) : <Empty>ยังไม่มีปลายทางที่ต้องส่งต่อ</Empty>}
             </section>
+          )}
 
+          <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
             <section className="glass-panel" style={{ padding: 16 }}>
               <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>ความเคลื่อนไหวล่าสุด</h2>
               {(data.stageHistory || []).length ? (
@@ -261,6 +395,27 @@ export default function DealOverviewPage() {
           </div>
         </div>
       )}
+
+      <Modal open={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดดีลแบบไม่สำเร็จ (Lost)" size="sm">
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+            เหตุผล (ไม่บังคับ)
+            <textarea
+              rows={3}
+              value={lostReason}
+              onChange={(e) => setLostReason(e.target.value)}
+              placeholder="เช่น ลูกค้าเลือกคู่แข่ง / ราคาสูงเกิน / เลื่อนโครงการ"
+              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text-1)", fontSize: 13, resize: "vertical" }}
+            />
+          </label>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="btn ghost" onClick={() => setLostOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
+            <button type="button" className="btn" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={doLost} disabled={!!actionBusy}>
+              <Ban size={14} aria-hidden="true" /> {actionBusy === "lost" ? "กำลังบันทึก..." : "ยืนยัน Lost"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </Workspace>
   );
 }
