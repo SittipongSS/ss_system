@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FileText, Save, Trash2, History, Truck, ChevronDown, ChevronRight, AlertCircle, PackageCheck, ExternalLink } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
+import { apiCache } from "@/lib/apiCache";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { fmtDate } from "@/lib/format";
@@ -254,7 +255,11 @@ export default function PoDetailPage() {
       await sahamitFetch(`/api/sahamit/po/${id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(h),
       });
-      reload();
+      await reload();
+      // ล้าง cache ที่หน้ากระทบยอด/วัสดุใช้ร่วม → เปิดหน้าเหล่านั้นจะเห็นค่าล่าสุด ไม่ค้างของเก่า
+      apiCache.delete("/api/sahamit/po");
+      apiCache.delete("/api/sahamit/material");
+      setToast({ kind: "success", msg: "บันทึก PO แล้ว — กระทบยอด/วัสดุจะอัปเดตเมื่อเปิดหน้านั้น" });
     } catch (e) { setHErr(e.message); }
     setBusy(false);
   };
@@ -421,7 +426,7 @@ export default function PoDetailPage() {
                 <label>หมายเหตุ</label>
                 <input className="premium-input" value={h.note || ""} onChange={(e) => setH({ ...h, note: e.target.value })} />
               </div>
-              <button className="btn" onClick={saveHeader} disabled={busy}><Save size={14} /> บันทึกหัว PO</button>
+              <button className="btn btn-primary" onClick={saveHeader} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก PO"}</button>
             </div>
             {hErr && <div style={{ color: "var(--red)", fontSize: 13 }}>{hErr}</div>}
             </div>
@@ -495,7 +500,7 @@ export default function PoDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} product={prodIdx.get(String(l.fgCode).trim().toLowerCase())} onChanged={reload} />)}
+                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} product={prodIdx.get(String(l.fgCode).trim().toLowerCase())} onChanged={async () => { await reload(); apiCache.delete("/api/sahamit/po"); apiCache.delete("/api/sahamit/material"); }} />)}
               </tbody>
             </table>
           </div>
