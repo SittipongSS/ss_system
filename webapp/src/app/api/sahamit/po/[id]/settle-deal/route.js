@@ -107,22 +107,34 @@ export async function POST(request, { params }) {
   const productIndex = indexByFgCode(products);
   const now = new Date().toISOString();
 
+  // กันเชื่อมซ้ำ: บรรทัดที่ PO นี้ settle ไปแล้ว (ดีลมี metadata.sahamitPoId = PO นี้)
+  // จะไม่ถูก settle ซ้ำ แม้ client ส่งมาอีก. จับด้วย fgCode (normalize) เหมือนตอน GET.
+  const { data: alreadySettled } = await supabase
+    .from('sales_deals').select('metadata').eq('customerId', customerId).eq('metadata->>sahamitPoId', po.id);
+  const settledFg = new Set();
+  for (const d of alreadySettled || []) for (const fg of (d.metadata?.fgCodes || [])) settledFg.add(norm(fg));
+
   const results = [];
+  const skipped = [];
   for (const s of settlements) {
     const line = activeLines.find((l) => l.id === s.poLineId);
     if (!line) continue;
     if (!s.dealId && !s.createNew) continue; // ข้าม
+    if (settledFg.has(norm(line.fgCode))) { skipped.push(line.id); continue; } // เชื่อมไปแล้ว
     const deal = await settleOnePoLine({
       supabase, user, po, customer, line, productIndex,
       dealId: s.dealId || null, createNew: !!s.createNew, now, request,
     });
-    if (deal) results.push({ poLineId: line.id, dealId: deal.id, title: deal.title });
+    if (deal) {
+      results.push({ poLineId: line.id, dealId: deal.id, title: deal.title });
+      settledFg.add(norm(line.fgCode)); // กันซ้ำภายในคำขอเดียวกัน (สองบรรทัด fgCode เดียว)
+    }
   }
 
   if (results.length) {
     await supabase.from('sahamit_pos')
-      .update({ salesDealId: results[0].dealId, updatedAt: now })
+      .update({ salesDealId: po.salesDealId || results[0].dealId, updatedAt: now })
       .eq('id', po.id).eq('customerId', customerId);
   }
-  return Response.json({ settled: results.length, results });
+  return Response.json({ settled: results.length, results, skipped: skipped.length });
 }

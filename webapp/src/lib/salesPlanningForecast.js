@@ -337,7 +337,7 @@ export async function settlePoIntoSalesDeal({ supabase, user, po, customer, acti
     let target = null;
     if (chosenDealId) {
       const { data: d } = await supabase.from('sales_deals').select('*').eq('id', chosenDealId).maybeSingle();
-      if (d && !d.projectId && !CLOSED_STAGES.includes(d.stage)) {
+      if (d && d.customerId === po.customerId && !d.projectId && !CLOSED_STAGES.includes(d.stage)) {
         const { data: links } = await supabase.from('sales_deal_forecast_lines').select('*').eq('dealId', d.id);
         target = { deal: d, links: links || [] };
       }
@@ -415,7 +415,8 @@ export async function settleOnePoLine({ supabase, user, po, customer, line, prod
 
   if (dealId) {
     const { data: d } = await supabase.from('sales_deals').select('*').eq('id', dealId).maybeSingle();
-    if (!d || d.projectId || CLOSED_STAGES.includes(d.stage)) return null;
+    // ต้องเป็นดีลของลูกค้าเดียวกับ PO, ยังไม่ปิด, ยังไม่ผูกโปรเจกต์ (กันเชื่อมข้ามลูกค้า/ซ้ำ)
+    if (!d || d.customerId !== po.customerId || d.projectId || CLOSED_STAGES.includes(d.stage)) return null;
     const { data: links } = await supabase.from('sales_deal_forecast_lines').select('*').eq('dealId', d.id);
     const won = await settleMappedDealWithPo({
       supabase, user, deal: d, links: links || [], poQtyByFg: poQty, priceOf, project: null, po, now, request,
