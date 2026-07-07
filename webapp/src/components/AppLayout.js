@@ -181,7 +181,7 @@ export default function AppLayout({ children }) {
       items: [
         { href: '/sales-planning', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
         { href: '/sales-planning/deals', name: 'โครงการ (Pipeline)', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
-        { href: '/sales-planning/targets', name: 'เป้าหมาย', icon: Flag, cap: 'salesplan:view', match: (p) => p.startsWith('/sales-planning/targets') },
+        { href: '/sales-planning/targets', name: 'วางเป้าหมาย', icon: Flag, cap: 'salesplan:view', match: (p) => p.startsWith('/sales-planning/targets') },
       ],
     },
     {
