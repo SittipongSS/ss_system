@@ -202,8 +202,8 @@ export default function PoDetailPage() {
   const [projectBusy, setProjectBusy] = useState(false);
   const [settleBusy, setSettleBusy] = useState(false);
   const [settleOpen, setSettleOpen] = useState(false);
-  const [settleCands, setSettleCands] = useState(null); // null = กำลังโหลด
-  const [settleChoice, setSettleChoice] = useState(null); // dealId | "new"
+  const [settleData, setSettleData] = useState(null); // { poReceivedMonth, lines } | null=กำลังโหลด
+  const [settleChoices, setSettleChoices] = useState({}); // poLineId -> dealId | "new" | "skip"
   const [toast, setToast] = useState(null);
 
   // แบ่งส่ง (split): ระบุยอดส่งจริงต่อบรรทัด → เปิด PO ยอดเหลือ
@@ -275,32 +275,42 @@ export default function PoDetailPage() {
     }
   };
 
-  // เปิด modal เลือกดีล (โหลดดีลที่ระบบแนะนำ)
+  // เปิด modal จับคู่รายบรรทัด (โหลด candidate ต่อบรรทัด)
   const openSettleModal = async () => {
     setSettleOpen(true);
-    setSettleCands(null);
-    setSettleChoice(null);
+    setSettleData(null);
+    setSettleChoices({});
     try {
       const data = await sahamitFetch(`/api/sahamit/po/${id}/settle-deal`);
-      setSettleCands(data);
-      setSettleChoice(data.candidates?.length ? (data.suggestedDealId || data.candidates[0].id) : "new");
+      setSettleData(data);
+      const init = {};
+      for (const ln of data.lines || []) {
+        init[ln.poLineId] = ln.settledDealId ? "settled" : (ln.suggestedDealId || "new");
+      }
+      setSettleChoices(init);
     } catch (e) {
       setSettleOpen(false);
       setToast({ kind: "error", msg: e.message || "โหลดดีลที่แนะนำไม่สำเร็จ" });
     }
   };
 
-  // ยืนยันเชื่อม PO → ดีล → ปิด Won (ตามที่เลือกใน modal)
+  // ยืนยันเชื่อม PO → ดีล รายบรรทัด (ปิด Won ได้หลายดีล)
   const confirmSettle = async () => {
-    if (!settleChoice) return;
+    const settlements = (settleData?.lines || [])
+      .filter((ln) => !ln.settledDealId)
+      .map((ln) => ({ ln, choice: settleChoices[ln.poLineId] }))
+      .filter((x) => x.choice && x.choice !== "skip")
+      .map(({ ln, choice }) => (choice === "new"
+        ? { poLineId: ln.poLineId, createNew: true }
+        : { poLineId: ln.poLineId, dealId: choice }));
+    if (!settlements.length) { setToast({ kind: "info", msg: "ไม่มีบรรทัดที่จะเชื่อม" }); return; }
     setSettleBusy(true);
     try {
-      const body = settleChoice === "new" ? { createNew: true } : { dealId: settleChoice };
       const payload = await sahamitFetch(`/api/sahamit/po/${id}/settle-deal`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settlements }),
       });
       setSettleOpen(false);
-      setToast({ kind: "success", msg: `ปิด Won เข้าดีลแล้ว${payload.matchedBy === "stub" ? " (ดีลใหม่ — PO นอก forecast)" : payload.deal?.parentDealId ? " (แยกดีลบางส่วน)" : ""}` });
+      setToast({ kind: "success", msg: `ปิด Won เข้าดีลแล้ว ${payload.settled || 0} ดีล` });
       await reload();
     } catch (e) {
       setToast({ kind: "error", msg: e.message || "เชื่อมดีลไม่สำเร็จ" });
@@ -337,16 +347,17 @@ export default function PoDetailPage() {
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>จำนวนรายการ</div><div style={{ fontSize: 20, fontWeight: 700 }}>{poLineCount(po)}</div></div>
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>ยอดรวม (ชิ้น)</div><div style={{ fontSize: 20, fontWeight: 700 }}>{nf(poTotalQty(po))}</div></div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              {/* การขาย (หลัก): เชื่อม PO เข้าดีล → ปิด Won */}
-              {po.salesDealId ? (
-                <a className="btn btn-primary" href={`/sales-planning/deals/${po.salesDealId}`}>
-                  <ExternalLink size={14} /> ดีลที่เชื่อม (Won)
-                </a>
-              ) : canSettle ? (
+              {/* การขาย (หลัก): เชื่อม PO เข้าดีลรายบรรทัด → ปิด Won */}
+              {canSettle && (
                 <button type="button" className="btn btn-primary" onClick={openSettleModal} disabled={!po.lines?.length}>
-                  <PackageCheck size={14} /> เชื่อมเข้าดีล (ปิด Won)
+                  <PackageCheck size={14} /> {po.salesDealId ? "จัดการการเชื่อมดีล" : "เชื่อมเข้าดีล (ปิด Won)"}
                 </button>
-              ) : null}
+              )}
+              {po.salesDealId && (
+                <a className="btn ghost" href={`/sales-planning/deals/${po.salesDealId}`}>
+                  <ExternalLink size={14} /> เปิดดีล
+                </a>
+              )}
 
               {/* PM project (ออปชัน) */}
               {po.projectId ? (
@@ -500,44 +511,60 @@ export default function PoDetailPage() {
         danger={false}
       />
 
-      <Modal open={settleOpen} onClose={() => !settleBusy && setSettleOpen(false)} title="เชื่อม PO เข้าดีลแผนการขาย (ปิด Won)" size="md">
+      <Modal open={settleOpen} onClose={() => !settleBusy && setSettleOpen(false)} title="เชื่อม PO เข้าดีลแผนการขาย (ปิด Won รายบรรทัด)" size="lg">
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-          {!settleCands ? (
+          {!settleData ? (
             <div style={{ color: "var(--text-3)", fontSize: 13 }}>กำลังโหลดดีลที่แนะนำ…</div>
           ) : (
             <>
-              {settleCands.candidates?.length ? (
-                <>
-                  <div style={{ fontSize: 13, color: settleCands.hasMatch ? "var(--text-2)" : "var(--amber)" }}>
-                    {settleCands.hasMatch
-                      ? "เลือกดีลที่จะปิด Won (เฉพาะดีลที่สินค้าตรงกับ PO):"
-                      : "ไม่มีดีลที่สินค้าตรงกับ PO นี้ — แสดงดีล open ทั้งหมดให้เลือก:"}
-                  </div>
-                  {settleCands.candidates.map((c) => (
-                    <label key={c.id} className="glass-panel" style={{ padding: "10px 12px", display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", borderColor: settleChoice === c.id ? "var(--accent)" : undefined }}>
-                      <input type="radio" name="settle-choice" checked={settleChoice === c.id} onChange={() => setSettleChoice(c.id)} style={{ marginTop: 3 }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600 }}>
-                          {c.title}
-                          {c.id === settleCands.suggestedDealId && <span style={{ fontSize: 11, color: "var(--green)", marginLeft: 6 }}>· แนะนำ</span>}
-                        </div>
-                        <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                          เดือนคาด PO {c.forecastMonth || "—"} · ฿{nf(c.projectValue)} · {c.overlap > 0 ? `ตรงสินค้า ${c.overlap} รายการ` : "ไม่ตรงสินค้า PO"}{c.ownerName ? ` · ${c.ownerName}` : ""}
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </>
-              ) : (
-                <div style={{ fontSize: 13, color: "var(--text-2)" }}>ไม่พบดีลที่ตรงกับสินค้าใน PO นี้ — จะสร้างดีลใหม่ (PO นอก forecast)</div>
-              )}
-              <label className="glass-panel" style={{ padding: "10px 12px", display: "flex", gap: 10, alignItems: "center", cursor: "pointer", borderColor: settleChoice === "new" ? "var(--accent)" : undefined }}>
-                <input type="radio" name="settle-choice" checked={settleChoice === "new"} onChange={() => setSettleChoice("new")} />
-                <div style={{ fontWeight: 600 }}>สร้างดีลใหม่ (PO นอก forecast)</div>
-              </label>
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                จับคู่แต่ละสินค้าใน PO กับดีลของมันเอง (แนะนำดีลที่เดือนคาดปิดใกล้เดือนรับ PO {settleData.poReceivedMonth || "—"} สุด) — ปิด Won ได้หลายดีล
+              </div>
+              <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>สินค้า</th>
+                      <th style={{ textAlign: "right" }}>จำนวน</th>
+                      <th style={{ minWidth: 240 }}>เชื่อมกับดีล</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {settleData.lines.map((ln) => (
+                      <tr key={ln.poLineId}>
+                        <td>
+                          <span className="font-mono" style={{ fontWeight: 600 }}>{ln.fgCode}</span>
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>{ln.productName || "—"}</div>
+                        </td>
+                        <td style={{ textAlign: "right" }}>{nf(ln.qty)}</td>
+                        <td>
+                          {ln.settledDealId ? (
+                            <a className="ui-badge" style={{ color: "var(--green)" }} href={`/sales-planning/deals/${ln.settledDealId}`}>เชื่อมแล้ว (Won) →</a>
+                          ) : (
+                            <select
+                              className="premium-select"
+                              style={{ height: 32, minWidth: 230 }}
+                              value={settleChoices[ln.poLineId] || "new"}
+                              onChange={(e) => setSettleChoices((p) => ({ ...p, [ln.poLineId]: e.target.value }))}
+                            >
+                              {ln.candidates.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.title} · คาดปิด {c.forecastMonth || "—"} · ฿{nf(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : ""}
+                                </option>
+                              ))}
+                              <option value="new">— สร้างดีลใหม่ (PO นอก forecast) —</option>
+                              <option value="skip">— ข้าม (ไม่เชื่อม) —</option>
+                            </select>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
                 <button className="btn" onClick={() => setSettleOpen(false)} disabled={settleBusy}>ยกเลิก</button>
-                <button className="btn btn-primary" onClick={confirmSettle} disabled={settleBusy || !settleChoice}>
+                <button className="btn btn-primary" onClick={confirmSettle} disabled={settleBusy}>
                   {settleBusy ? "กำลังปิด Won…" : "ยืนยันปิด Won"}
                 </button>
               </div>

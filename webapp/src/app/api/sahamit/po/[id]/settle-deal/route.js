@@ -1,9 +1,11 @@
 import { getSahamitContext, sahamitError, loadSahamitProducts, indexByFgCode } from '@/lib/sahamit/server';
 import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
-import { settlePoIntoSalesDeal, listMappedDealCandidatesForPo } from '@/lib/salesPlanningForecast';
+import { settleOnePoLine, monthGap } from '@/lib/salesPlanningForecast';
 
 export const dynamic = 'force-dynamic';
 
+const CLOSED = ['won', 'in_project', 'lost'];
+const lc = (v) => String(v || '').trim().toLowerCase();
 function toQty(value) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -20,11 +22,8 @@ async function loadPoWithLines(supabase, customerId, id) {
   return { ...po, lines: lines || [] };
 }
 
-function poFgCodes(activeLines) {
-  return [...new Set((activeLines || []).map((l) => String(l.fgCode || '').trim()).filter(Boolean))];
-}
-
-// GET — ดีลที่ระบบแนะนำให้เชื่อม (สำหรับ modal เลือกเอง). ไม่แก้ข้อมูล.
+// GET — จับคู่ราย "บรรทัด PO": แต่ละสินค้าใน PO เสนอดีลที่ fgCode ตรง เรียงตาม
+// ความใกล้ของ "เดือนคาดปิดดีล" กับ "เดือนที่รับ PO". ไม่แก้ข้อมูล.
 export async function GET(request, { params }) {
   const ctx = await getSahamitContext();
   if (!ctx.ok) return sahamitError(ctx);
@@ -35,49 +34,57 @@ export async function GET(request, { params }) {
   const po = await loadPoWithLines(supabase, customerId, id);
   if (!po) return Response.json({ error: 'ไม่พบ PO นี้' }, { status: 404 });
 
-  if (po.salesDealId) {
-    const { data: existing } = await supabase.from('sales_deals').select('*').eq('id', po.salesDealId).maybeSingle();
-    return Response.json({ alreadyLinked: true, linkedDeal: existing || null, candidates: [] });
+  const receivedMonth = (po.receivedDate || '').slice(0, 7) || null;
+  const activeLines = (po.lines || []).filter((l) => l.status !== 'cancelled' && toQty(l.qty) > 0);
+
+  // ดีล open ที่มาจาก forecast (ผ่าน junction) → map fgCode → deals
+  const { data: links } = await supabase.from('sales_deal_forecast_lines').select('*').eq('customerId', customerId);
+  const dealIds = [...new Set((links || []).map((l) => l.dealId))];
+  const { data: deals } = dealIds.length
+    ? await supabase.from('sales_deals').select('*').in('id', dealIds)
+    : { data: [] };
+  const openById = new Map((deals || []).filter((d) => !d.projectId && !CLOSED.includes(d.stage)).map((d) => [d.id, d]));
+  const byFg = new Map(); // fgLower → Map(dealId→deal)
+  for (const l of links || []) {
+    const d = openById.get(l.dealId);
+    if (!d) continue;
+    const k = lc(l.fgCode);
+    if (!byFg.has(k)) byFg.set(k, new Map());
+    byFg.get(k).set(d.id, d);
   }
 
-  const activeLines = (po.lines || []).filter((l) => l.status !== 'cancelled' && toQty(l.qty) > 0);
-  const poMonth = (po.dueDate || '').slice(0, 7) || null;
+  // บรรทัดที่ PO นี้ settle ไปแล้ว (จาก deal.metadata.sahamitPoId + fgCodes)
+  const { data: settled } = await supabase
+    .from('sales_deals').select('id, metadata').eq('customerId', customerId).eq('metadata->>sahamitPoId', po.id);
+  const settledByFg = new Map();
+  for (const d of settled || []) for (const fg of (d.metadata?.fgCodes || [])) settledByFg.set(lc(fg), d.id);
 
-  // ดีลที่มี junction (เรียงตัวตรง fgCode ก่อน; รวมตัวที่ไม่ตรงด้วยเพื่อให้เลือกได้)
-  const scored = activeLines.length
-    ? await listMappedDealCandidatesForPo(supabase, customerId, poFgCodes(activeLines), poMonth, { includeZeroOverlap: true })
-    : [];
-  const seen = new Set(scored.map((s) => s.deal.id));
+  const lines = activeLines.map((line) => {
+    const k = lc(line.fgCode);
+    const candidates = [...(byFg.get(k)?.values() || [])]
+      .map((d) => ({
+        id: d.id, title: d.title, forecastMonth: d.forecastMonth,
+        projectValue: d.projectValue, ownerName: d.ownerName,
+        gap: monthGap(d.forecastMonth, receivedMonth),
+      }))
+      .sort((a, b) => a.gap - b.gap || String(a.forecastMonth || '').localeCompare(String(b.forecastMonth || '')));
+    return {
+      poLineId: line.id,
+      fgCode: line.fgCode,
+      productName: line.productName,
+      qty: toQty(line.qty),
+      deliveryMonth: line.deliveryMonth || (line.dueDate || '').slice(0, 7) || null,
+      settledDealId: settledByFg.get(k) || null,
+      candidates,
+      suggestedDealId: candidates[0]?.id || null,
+    };
+  });
 
-  // fallback: ดีล open ที่มาจาก FC แต่ junction หลุด (แก้/ลบรอบ) — จะได้ไม่หายไปจากตัวเลือก
-  const { data: extra } = await supabase
-    .from('sales_deals').select('*').eq('customerId', customerId).is('projectId', null);
-  const extraCands = (extra || [])
-    .filter((d) => !['won', 'in_project', 'lost'].includes(d.stage) && d.metadata?.source === 'sahamit-forecast' && !seen.has(d.id))
-    .map((d) => ({ deal: d, overlap: 0 }));
-
-  const all = [...scored, ...extraCands].map(({ deal, overlap }) => ({
-    id: deal.id,
-    title: deal.title,
-    forecastMonth: deal.forecastMonth,
-    projectValue: deal.projectValue,
-    stage: deal.stage,
-    ownerName: deal.ownerName,
-    fgCodes: Array.isArray(deal.metadata?.fgCodes) ? deal.metadata.fgCodes : [],
-    overlap,
-  }));
-  // เสนอเฉพาะดีลที่ "สินค้าตรงกับ PO" (overlap>0); เปิดกว้างทั้งหมดเป็น fallback
-  // เฉพาะกรณีไม่มีดีลไหนตรงเลย (จะได้ไม่เป็นทางตัน)
-  const matched = all.filter((c) => c.overlap > 0);
-  const candidates = matched.length ? matched : all;
-  const hasMatch = matched.length > 0;
-  return Response.json({ alreadyLinked: false, suggestedDealId: candidates[0]?.id || null, hasMatch, candidates });
+  return Response.json({ poNumber: po.poNumber, poReceivedMonth: receivedMonth, lines });
 }
 
-// POST /api/sahamit/po/[id]/settle-deal — เชื่อม PO เข้าดีลแผนการขายแล้วปิด Won
-// (action หลัก, ไม่ต้องมี PM project). idempotent ผ่าน sahamit_pos.salesDealId.
-// body: { dealId? } เลือกดีลเอง, { createNew:true } สร้างดีลใหม่ (นอก forecast),
-// ไม่ระบุ = auto-match.
+// POST — settle รายบรรทัด. body: { settlements: [{ poLineId, dealId } | { poLineId, createNew:true }] }
+// ปิด Won ได้หลายดีลจาก PO ใบเดียว.
 export async function POST(request, { params }) {
   const ctx = await getSahamitContext();
   if (!ctx.ok) return sahamitError(ctx);
@@ -86,29 +93,33 @@ export async function POST(request, { params }) {
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
+  const settlements = Array.isArray(body.settlements) ? body.settlements : [];
+  if (!settlements.length) return Response.json({ error: 'ยังไม่ได้เลือกบรรทัดที่จะเชื่อม' }, { status: 400 });
+
   const po = await loadPoWithLines(supabase, customerId, id);
   if (!po) return Response.json({ error: 'ไม่พบ PO นี้' }, { status: 404 });
 
-  if (po.salesDealId) {
-    const { data: existing } = await supabase.from('sales_deals').select('*').eq('id', po.salesDealId).maybeSingle();
-    return Response.json({ deal: existing, alreadyLinked: true });
-  }
-
   const activeLines = (po.lines || []).filter((l) => l.status !== 'cancelled' && toQty(l.qty) > 0);
-  if (!activeLines.length) return Response.json({ error: 'PO ต้องมีบรรทัดที่ใช้งานอย่างน้อยหนึ่งรายการ' }, { status: 400 });
-
   const products = await loadSahamitProducts(supabase, customerId);
   const productIndex = indexByFgCode(products);
   const now = new Date().toISOString();
 
-  const { deal, matchedBy } = await settlePoIntoSalesDeal({
-    supabase, user, po, customer, activeLines, productIndex, project: null,
-    chosenDealId: body.dealId || null, forceStub: !!body.createNew, now, request,
-  });
-  if (!deal) return Response.json({ error: 'เชื่อมดีลไม่สำเร็จ (ดีลที่เลือกอาจถูกปิด/เชื่อมไปแล้ว หรือ PO ไม่มีจำนวนตรงกับดีล)' }, { status: 400 });
-
-  if (deal?.id) {
-    await supabase.from('sahamit_pos').update({ salesDealId: deal.id, updatedAt: now }).eq('id', po.id).eq('customerId', customerId);
+  const results = [];
+  for (const s of settlements) {
+    const line = activeLines.find((l) => l.id === s.poLineId);
+    if (!line) continue;
+    if (!s.dealId && !s.createNew) continue; // ข้าม
+    const deal = await settleOnePoLine({
+      supabase, user, po, customer, line, productIndex,
+      dealId: s.dealId || null, createNew: !!s.createNew, now, request,
+    });
+    if (deal) results.push({ poLineId: line.id, dealId: deal.id, title: deal.title });
   }
-  return Response.json({ deal, matchedBy });
+
+  if (results.length) {
+    await supabase.from('sahamit_pos')
+      .update({ salesDealId: results[0].dealId, updatedAt: now })
+      .eq('id', po.id).eq('customerId', customerId);
+  }
+  return Response.json({ settled: results.length, results });
 }
