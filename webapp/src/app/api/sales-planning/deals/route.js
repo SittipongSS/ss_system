@@ -13,6 +13,7 @@ import {
   toMoney,
   toProbability,
 } from '@/lib/salesPlanning';
+import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // Per-row edit flag so the UI hides actions that would 403 (AE sees the whole
   // team's pipeline but may only act on its own deals).
   const editor = canEditSalesPlanning(user);
-  const rows = (data || []).map((d) => ({ ...d, canEdit: editor && inSalesEditScope(user, d) }));
+  const driftMap = await loadForecastDriftMap(supabase, data || []).catch(() => new Map());
+  const rows = (data || []).map((d) => ({
+    ...d,
+    canEdit: editor && inSalesEditScope(user, d),
+    forecastDrift: driftMap.get(d.id) || null,
+  }));
   return ok(rows);
 });
 
