@@ -8,43 +8,13 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode, loadProject } from '@/lib/pm/projectsRepo';
-import { createWonDealStub } from '@/lib/salesPlanningWin';
-import { resolveMappedDealForPo, settleMappedDealWithPo } from '@/lib/salesPlanningForecast';
+import { settlePoIntoSalesDeal, linkProjectToSettledDeal } from '@/lib/salesPlanningForecast';
 
 export const dynamic = 'force-dynamic';
 
 function toQty(value) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function poLineValue(lines, productIndex) {
-  return (lines || []).reduce((sum, line) => {
-    const product = productIndex.get(String(line.fgCode || '').trim().toLowerCase());
-    const price = Number(product?.price ?? 0);
-    return sum + (toQty(line.qty) * (Number.isFinite(price) ? price : 0));
-  }, 0);
-}
-
-function poReceivedAt(po, fallback) {
-  return po.receivedDate ? `${po.receivedDate}T00:00:00.000Z` : fallback;
-}
-
-// PO delivery month (header dueDate, or line expected/due) — ใช้จับดีลที่ใกล้เดือนสุด
-function poDeliveryMonth(po, lines) {
-  const fromLines = (lines || []).map((line) => monthOf(line.expectedDate || line.dueDate)).filter(Boolean).sort();
-  return monthOf(po.dueDate) || fromLines[0] || null;
-}
-
-// รวมจำนวนตาม fgCode ของ PO (สำหรับคำนวณ coverage ของดีลที่ map ไว้)
-function poQtyByFg(lines) {
-  const m = new Map();
-  for (const line of lines || []) {
-    const fg = String(line.fgCode || '').trim();
-    if (!fg) continue;
-    m.set(fg, (m.get(fg) || 0) + toQty(line.qty));
-  }
-  return m;
 }
 
 async function loadPoWithLines(supabase, customerId, id) {
@@ -216,56 +186,17 @@ export async function POST(request, { params }) {
   let deal = null;
   let warning = null;
   try {
-    const projectValue = poLineValue(activeLines, productIndex);
-    // หาดีลที่ PO นี้เติมเต็ม ผ่าน Forecast↔Sales mapping (junction) — ไม่เดา fgCode เอง
-    const poFgCodes = poQtyByFg(activeLines);
-    const matched = await resolveMappedDealForPo(supabase, customer.id, [...poFgCodes.keys()], poDeliveryMonth(po, activeLines));
-    if (matched) {
-      deal = await settleMappedDealWithPo({
-        supabase,
-        user,
-        deal: matched.deal,
-        links: matched.links,
-        poQtyByFg: poFgCodes,
-        priceOf: (fg) => productIndex.get(String(fg || '').trim().toLowerCase())?.price ?? 0,
-        project,
-        po,
-        now,
-        request,
-      });
-    }
-    if (!deal) {
-      deal = await createWonDealStub({
-        supabase,
-        user,
-        source: 'sahamit-po',
-        request,
-        auditSummary: `create won-deal stub from Sahamit PO ${po.poNumber}`,
-        row: {
-          customerId: customer.id,
-          customerName: customer.name || null,
-          title: `Sahamit PO ${po.poNumber}`,
-          projectValue,
-          forecastMonth: po.receivedDate || po.dueDate || now,
-          expectedCloseDate: po.receivedDate || po.docDate || todayStr(),
-          confirmedAt: poReceivedAt(po, now),
-          notes: po.note || null,
-          ownerId: user.id || null,
-          ownerName: user.name || null,
-          team: user.team || 'KA',
-          projectId: project.id,
-          metadata: {
-            source: 'sahamit-po',
-            sahamitPoId: po.id,
-            poNumber: po.poNumber,
-            poReceivedDate: po.receivedDate || null,
-            poDueDate: po.dueDate || null,
-            projectCode: project.code,
-            quoteRef: po.quoteRef || null,
-            bypassPipeline: true,
-          },
-        },
-      });
+    if (po.salesDealId) {
+      // PO ถูก settle เข้าดีลไปแล้ว (ปิด Won ก่อนหน้า) → แค่ผูก PM เข้าดีลเดิม (won → in_project)
+      const { data: settled } = await supabase.from('sales_deals').select('*').eq('id', po.salesDealId).maybeSingle();
+      deal = settled ? await linkProjectToSettledDeal({ supabase, user, deal: settled, project, now, request }) : null;
+    } else {
+      // ยังไม่เคย settle → ปิด Won เข้าดีล พร้อมผูก PM ในคราวเดียว
+      const res = await settlePoIntoSalesDeal({ supabase, user, po, customer, activeLines, productIndex, project, now, request });
+      deal = res.deal;
+      if (deal?.id) {
+        await supabase.from('sahamit_pos').update({ salesDealId: deal.id }).eq('id', po.id).eq('customerId', customerId);
+      }
     }
     if (deal?.id) {
       await supabase
@@ -274,7 +205,7 @@ export async function POST(request, { params }) {
         .eq('id', project.id);
     }
   } catch (e) {
-    warning = `cannot create won-deal stub: ${e.message}`;
+    warning = `cannot settle sales deal: ${e.message}`;
   }
 
   await recordAudit({
