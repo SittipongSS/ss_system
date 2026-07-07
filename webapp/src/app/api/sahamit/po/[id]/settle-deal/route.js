@@ -6,6 +6,8 @@ export const dynamic = 'force-dynamic';
 
 const CLOSED = ['won', 'in_project', 'lost'];
 const lc = (v) => String(v || '').trim().toLowerCase();
+// normalize fgCode สำหรับจับคู่: ตัดช่องว่าง/ขีด/จุด ให้ "ABC-001" = "ABC 001" = "abc001"
+const norm = (v) => lc(v).replace(/[\s\-_.]/g, '');
 function toQty(value) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -44,11 +46,12 @@ export async function GET(request, { params }) {
     ? await supabase.from('sales_deals').select('*').in('id', dealIds)
     : { data: [] };
   const openById = new Map((deals || []).filter((d) => !d.projectId && !CLOSED.includes(d.stage)).map((d) => [d.id, d]));
-  const byFg = new Map(); // fgLower → Map(dealId→deal)
+  const allOpen = [...openById.values()]; // ดีล open ที่มาจาก forecast ทั้งหมด (สำหรับ fallback ให้เลือกเอง)
+  const byFg = new Map(); // normFg → Map(dealId→deal)
   for (const l of links || []) {
     const d = openById.get(l.dealId);
     if (!d) continue;
-    const k = lc(l.fgCode);
+    const k = norm(l.fgCode);
     if (!byFg.has(k)) byFg.set(k, new Map());
     byFg.get(k).set(d.id, d);
   }
@@ -57,17 +60,21 @@ export async function GET(request, { params }) {
   const { data: settled } = await supabase
     .from('sales_deals').select('id, metadata').eq('customerId', customerId).eq('metadata->>sahamitPoId', po.id);
   const settledByFg = new Map();
-  for (const d of settled || []) for (const fg of (d.metadata?.fgCodes || [])) settledByFg.set(lc(fg), d.id);
+  for (const d of settled || []) for (const fg of (d.metadata?.fgCodes || [])) settledByFg.set(norm(fg), d.id);
+
+  const cand = (d, match) => ({
+    id: d.id, title: d.title, forecastMonth: d.forecastMonth,
+    projectValue: d.projectValue, ownerName: d.ownerName, match,
+    gap: monthGap(d.forecastMonth, receivedMonth),
+  });
+  const byGap = (a, b) => a.gap - b.gap || String(a.forecastMonth || '').localeCompare(String(b.forecastMonth || ''));
 
   const lines = activeLines.map((line) => {
-    const k = lc(line.fgCode);
-    const candidates = [...(byFg.get(k)?.values() || [])]
-      .map((d) => ({
-        id: d.id, title: d.title, forecastMonth: d.forecastMonth,
-        projectValue: d.projectValue, ownerName: d.ownerName,
-        gap: monthGap(d.forecastMonth, receivedMonth),
-      }))
-      .sort((a, b) => a.gap - b.gap || String(a.forecastMonth || '').localeCompare(String(b.forecastMonth || '')));
+    const k = norm(line.fgCode);
+    const matched = [...(byFg.get(k)?.values() || [])].map((d) => cand(d, true)).sort(byGap);
+    const matchedIds = new Set(matched.map((c) => c.id));
+    // ดีล open อื่น ๆ (สินค้าไม่ตรง) — ใส่ท้ายลิสต์ให้เลือกเองได้ ถ้าจับ fgCode ไม่เจอ
+    const others = allOpen.filter((d) => !matchedIds.has(d.id)).map((d) => cand(d, false)).sort(byGap);
     return {
       poLineId: line.id,
       fgCode: line.fgCode,
@@ -75,8 +82,8 @@ export async function GET(request, { params }) {
       qty: toQty(line.qty),
       deliveryMonth: line.deliveryMonth || (line.dueDate || '').slice(0, 7) || null,
       settledDealId: settledByFg.get(k) || null,
-      candidates,
-      suggestedDealId: candidates[0]?.id || null,
+      candidates: [...matched, ...others],
+      suggestedDealId: matched[0]?.id || null, // แนะนำเฉพาะตัวที่สินค้าตรง
     };
   });
 
