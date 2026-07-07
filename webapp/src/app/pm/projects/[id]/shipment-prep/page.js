@@ -8,8 +8,8 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import { useCan } from "@/lib/roleContext";
+import { fmtDate } from "@/lib/format";
 
-const fmtDate = (value) => value ? new Date(value).toLocaleDateString("th-TH") : "-";
 const num = (value) => Number(value || 0).toLocaleString("th-TH");
 
 export default function ShipmentPrepPage() {

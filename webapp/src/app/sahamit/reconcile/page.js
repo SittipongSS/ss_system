@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ClipboardCheck, AlertCircle, Download } from "lucide-react";
+import { ClipboardCheck, AlertCircle, Download, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import CellDetailModal from "@/components/sahamit/CellDetailModal";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -9,6 +9,7 @@ import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { predictShifts } from "@/lib/sahamit/predict";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
+import { fmtMoneyCompact, fmtYearMonth } from "@/lib/format";
 
 // token → CSS var
 const C = {
@@ -31,12 +32,9 @@ const VIEWS = [
 ];
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
-const nfBaht = (n) => "฿" + Math.round(Number(n) || 0).toLocaleString("th-TH");
+const nfBaht = (n) => fmtMoneyCompact(n);
 const URGENCY_COLOR = { high: "var(--red)", medium: "var(--amber)", low: "var(--violet)" };
-const shortMonth = (ym) => {
-  try { return new Date(`${ym}-02`).toLocaleDateString("th-TH", { month: "short" }); }
-  catch { return ym; }
-};
+const shortMonth = (ym) => fmtYearMonth(ym);
 const volLabel = (p) => (p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "");
 
 export default function ReconcilePage() {
@@ -48,9 +46,11 @@ export default function ReconcilePage() {
   const { data: products } = useApiList("/api/sahamit/products");
   const [view, setView] = useState("recon");
   const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
+  const [search, setSearch] = useState("");
   const [brands, setBrands] = useState([]);
   const [volumes, setVolumes] = useState([]);
   const [categories, setCategories] = useState([]);
+  const q = search.trim().toLowerCase();
 
   const loading = l1 || l2;
   const error = e1 || e2;
@@ -83,17 +83,18 @@ export default function ReconcilePage() {
     return { brands: toOpts(b), volumes: toOpts(v), categories: toOpts(c) };
   }, [matrix, productByFg]);
 
-  // แถวที่ผ่านตัวกรอง (ว่าง = ไม่กรอง). สินค้าที่ไม่รู้จัก master จะไม่ผ่านเมื่อมีตัวกรอง.
+  // แถวที่ผ่านตัวกรอง (ว่าง = ไม่กรอง). สินค้าที่ไม่รู้จัก master จะไม่ผ่านเมื่อมีตัวกรอง แบรนด์/ปริมาตร/หมวด.
   const filteredRows = useMemo(() => {
-    if (!brands.length && !volumes.length && !categories.length) return matrix.rows;
+    if (!q && !brands.length && !volumes.length && !categories.length) return matrix.rows;
     return matrix.rows.filter((r) => {
+      if (q && !String(r.fgCode).toLowerCase().includes(q) && !String(r.productName || "").toLowerCase().includes(q)) return false;
       const p = productByFg.get(String(r.fgCode).trim().toLowerCase());
       if (brands.length && !brands.includes(p?.brandName)) return false;
       if (volumes.length && !volumes.includes(volLabel(p))) return false;
       if (categories.length && !categories.includes(p?.category)) return false;
       return true;
     });
-  }, [matrix, productByFg, brands, volumes, categories]);
+  }, [matrix, productByFg, q, brands, volumes, categories]);
 
   const filterCount = brands.length + volumes.length + categories.length;
 
@@ -232,7 +233,11 @@ export default function ReconcilePage() {
     >
       {/* ตัวกรองอยู่ในเนื้อหา (ไม่ใช่ในหัว) เพราะหัว premium-header เป็น overflow:hidden จะตัด dropdown */}
       {!loading && !error && matrix.rows.length > 0 && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+        <div className="toolbar" style={{ marginBottom: 12 }}>
+          <div className="search-glass" style={{ width: 240 }}>
+            <Search size={18} color="var(--text-3)" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
+          </div>
           <FilterPopover
             count={filterCount}
             onClear={() => { setBrands([]); setVolumes([]); setCategories([]); }}
@@ -242,7 +247,7 @@ export default function ReconcilePage() {
               { key: "category", label: "หมวดสินค้า", options: filterOptions.categories, selected: categories, onChange: setCategories },
             ]}
           />
-          {filterCount > 0 && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
+          {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
         </div>
       )}
       {error && (

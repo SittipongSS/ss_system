@@ -4143,6 +4143,37 @@ button.empty-state { width: 100%; font: inherit; }
   overflow-x: auto;
 }
 
+/* Cell padding / alignment for the glass table variant. Unlike .premium-table
+   this class only styled the shell, so cells inherited Tailwind preflight's zero
+   padding and .num never right-aligned. Mirror .premium-table's rhythm. */
+.premium-glass-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.premium-glass-table thead th {
+  padding: 10px 14px;
+  text-align: left;
+  vertical-align: bottom;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+.premium-glass-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.premium-glass-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.premium-glass-table th.num,
+.premium-glass-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .premium-row {
   transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }

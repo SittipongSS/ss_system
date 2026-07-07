@@ -5,7 +5,7 @@ import { Plus, RefreshCcw, Save, Target, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
-import { SALES_TEAMS, TARGET_OWNER_ROLES, initialTargetForm, money, thisMonth } from "@/components/salesPlanning/ui";
+import { MonthPicker, SALES_TEAMS, TARGET_OWNER_ROLES, initialTargetForm, money, thisMonth } from "@/components/salesPlanning/ui";
 
 export default function SalesPlanningTargetsPage() {
   const canTarget = useCan("salesplan:target");
@@ -13,6 +13,7 @@ export default function SalesPlanningTargetsPage() {
   const team = useTeam();
   const isSuper = role === "admin" || role === "ae_supervisor";
   const [month, setMonth] = useState(thisMonth());
+  const [allMonths, setAllMonths] = useState(false);
   const [targets, setTargets] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +27,7 @@ export default function SalesPlanningTargetsPage() {
     setError("");
     try {
       const [targetsRes, usersRes] = await Promise.all([
-        fetch(`/api/sales-planning/targets?month=${encodeURIComponent(month)}`),
+        fetch(allMonths ? "/api/sales-planning/targets" : `/api/sales-planning/targets?month=${encodeURIComponent(month)}`),
         fetch("/api/pm/assignable-users"),
       ]);
       if (!targetsRes.ok) throw new Error((await targetsRes.json()).error || "โหลด target ไม่สำเร็จ");
@@ -37,7 +38,7 @@ export default function SalesPlanningTargetsPage() {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, allMonths]);
 
   useEffect(() => {
     load();
@@ -119,7 +120,7 @@ export default function SalesPlanningTargetsPage() {
 
   const headerRight = (
     <>
-      <input type="month" aria-label="เดือนเป้าหมาย" className="premium-input" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 150 }} />
+      <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
       <button type="button" className="btn" onClick={load} disabled={loading}>
         <RefreshCcw size={15} aria-hidden="true" /> รีเฟรช
       </button>
@@ -134,7 +135,7 @@ export default function SalesPlanningTargetsPage() {
   return (
     <Workspace
       icon={<Target size={22} />}
-      title="แผนงานขาย — เป้าหมาย"
+      title="บริหารงานขาย — เป้าหมาย"
       subtitle="ตั้งเป้ารายเดือน: ระดับทีม และรายบุคคล (SA)"
       back={{ href: "/sales-planning", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}

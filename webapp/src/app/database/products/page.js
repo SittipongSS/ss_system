@@ -17,7 +17,7 @@ import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import { categoryOf, isExciseCategory, categoryInfo } from "@/lib/master/categoryOf";
 import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
-import { productNameBoth } from "@/lib/format";
+import { productNameBoth, fmtMoney } from "@/lib/format";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -64,9 +64,6 @@ export default function ProductRegistry() {
   const [submitting, setSubmitting] = useState(false);
   const [userName, setUserName] = useState("");
   const [search, setSearch] = useState("");
-
-  const formatMoney = (a) =>
-    a == null ? "-" : a.toLocaleString("th-TH", { style: "currency", currency: "THB", minimumFractionDigits: 2 });
 
   const fetchProducts = async () => {
     try {
@@ -349,17 +346,17 @@ export default function ProductRegistry() {
                 {canSeeCost && (
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-[var(--text-3)]">ราคาโรงงาน</span>
-                    <span className="font-mono text-[var(--text-2)]">{formatMoney(p.costPrice)}</span>
+                    <span className="font-mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[var(--text-3)]">ราคาขายปลีก</span>
                   <div className="text-right">
-                    <div className="font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</div>
+                    <div className="font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</div>
                     {isExempt ? (
                       <div className="mt-0.5"><span className="status-pill success text-[10px]">ยกเว้นภาษี</span></div>
                     ) : taxPerUnit(p) > 0 && (
-                      <div className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {formatMoney(taxPerUnit(p))}</div>
+                      <div className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</div>
                     )}
                   </div>
                 </div>
@@ -413,13 +410,13 @@ export default function ProductRegistry() {
                       </td>
                       <td className="text-[var(--text-2)]">{brandBoth(p.brandName, p.brandNameEn) || "-"}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
-                      {canSeeCost && <td className="num mono text-[var(--text-2)]">{formatMoney(p.costPrice)}</td>}
+                      {canSeeCost && <td className="num mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</td>}
                       <td className="num mono text-[var(--text-2)]">
-                        {formatMoney(p.retailPriceIncVat)}
+                        {fmtMoney(p.retailPriceIncVat)}
                         {isExempt ? (
                           <div className="mt-0.5"><span className="status-pill success text-[10px]">ยกเว้นภาษี</span></div>
                         ) : taxRate > 0 && (
-                          <div className="text-[11px] text-[var(--text-3)] font-normal mt-0.5">ภาษี/ชิ้น: {formatMoney(taxRate)}</div>
+                          <div className="text-[11px] text-[var(--text-3)] font-normal mt-0.5">ภาษี/ชิ้น: {fmtMoney(taxRate)}</div>
                         )}
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>

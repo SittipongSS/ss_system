@@ -6,7 +6,7 @@ import Modal from "@/components/Modal";
 import Workspace from "@/components/ui/Workspace";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
-import { initialDealForm, money, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
+import { MonthPicker, initialDealForm, money, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 
 export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
@@ -331,10 +331,7 @@ export default function SalesPlanningPipelinePage() {
 
   const headerRight = (
     <>
-      <input type="month" aria-label="เดือน forecast" className="premium-input" value={month} onChange={(e) => setMonth(e.target.value)} disabled={allMonths} style={{ width: 150, opacity: allMonths ? 0.5 : 1 }} />
-      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
-        <input type="checkbox" checked={allMonths} onChange={(e) => setAllMonths(e.target.checked)} /> ทุกเดือน
-      </label>
+      <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
       <button type="button" className="btn" onClick={load} disabled={loading}>
         <RefreshCcw size={15} aria-hidden="true" /> รีเฟรช
       </button>
@@ -349,7 +346,7 @@ export default function SalesPlanningPipelinePage() {
   return (
     <Workspace
       icon={<FolderKanban size={22} />}
-      title="แผนงานขาย — โครงการ (Pipeline)"
+      title="บริหารงานขาย — โครงการ"
       subtitle="จัดการโครงการขายและส่งต่อ PM · PM อาจเกิดก่อนหรือหลัง Won ได้"
       back={{ href: "/sales-planning", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}

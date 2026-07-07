@@ -8,7 +8,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { apiCache } from "@/lib/apiCache";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
@@ -218,7 +218,7 @@ export default function PoDetailPage() {
     setShipped(init); setBalanceNo(""); setSplitOpen(true);
   };
   const doSplit = async () => {
-    if (!balanceNo.trim()) { alert("ระบุเลขที่ PO ยอดเหลือ"); return; }
+    // เลขที่ PO ยอดเหลือไม่บังคับ — เว้นว่างได้ (ระบบตั้งเลขชั่วคราวให้)
     const lines = (po?.lines || []).map((l) => ({ lineId: l.id, shippedQty: Number(shipped[l.id]) }));
     if (!lines.some((l) => Number.isFinite(l.shippedQty) && l.shippedQty >= 0)) { alert("กรอกยอดส่งจริง"); return; }
     setSplitBusy(true);
@@ -454,9 +454,9 @@ export default function PoDetailPage() {
               ) : (
                 <div className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={{ fontWeight: 600 }}>แบ่งส่ง — กรอกยอดส่งจริงต่อบรรทัด (ส่วนที่เหลือจะเปิดเป็น PO ใหม่)</div>
-                  <div className="form-group" style={{ maxWidth: 260 }}>
-                    <label>เลขที่ PO ยอดเหลือ <span style={{ color: "var(--red)" }}>*</span></label>
-                    <input className="premium-input font-mono" value={balanceNo} onChange={(e) => setBalanceNo(e.target.value)} placeholder="เช่น PO-2607-001-R (แก้ทีหลังได้)" />
+                  <div className="form-group" style={{ maxWidth: 300 }}>
+                    <label>เลขที่ PO ยอดเหลือ <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(ไม่บังคับ — เว้นว่างได้ แก้ทีหลัง)</span></label>
+                    <input className="premium-input font-mono" value={balanceNo} onChange={(e) => setBalanceNo(e.target.value)} placeholder="เว้นว่างไว้ก่อนได้ (ระบบตั้งเลขชั่วคราวให้)" />
                   </div>
                   <div className="premium-table-wrapper">
                     <table className="premium-table">
@@ -554,7 +554,7 @@ export default function PoDetailPage() {
                             >
                               {ln.candidates.map((c) => (
                                 <option key={c.id} value={c.id}>
-                                  {c.title} · คาดปิด {c.forecastMonth || "—"} · ฿{nf(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
+                                  {c.title} · คาดปิด {c.forecastMonth || "—"} · {fmtMoneyCompact(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
                                 </option>
                               ))}
                               <option value="new">— สร้างดีลใหม่ (PO นอก forecast) —</option>
