@@ -397,6 +397,55 @@ export async function settlePoIntoSalesDeal({ supabase, user, po, customer, acti
   return { deal, matchedBy: 'stub' };
 }
 
+// Month distance helper is exported for per-line candidate ranking on the client/route.
+export function monthGap(a, b) { return monthDistance(a, b); }
+
+// Settle ONE PO line into a chosen deal (or create a new stub) — project optional.
+// ใช้กับ modal จับคู่รายบรรทัด: PO 1 ใบมีหลายสินค้า แต่ละบรรทัด → ดีลของตัวเอง.
+// dealId = ปิด Won ดีลนั้นด้วย coverage เฉพาะ qty ของบรรทัดนี้; createNew = won stub.
+export async function settleOnePoLine({ supabase, user, po, customer, line, productIndex, dealId = null, createNew = false, now, request }) {
+  const fg = String(line.fgCode || '').trim();
+  const qty = Number(line.qty || 0);
+  if (!fg || qty <= 0) return null;
+  const poQty = new Map([[fg, qty]]);
+  const priceOf = (f) => productIndex.get(String(f || '').trim().toLowerCase())?.price ?? 0;
+  const price = Number(priceOf(fg));
+  const lineValue = qty * (Number.isFinite(price) ? price : 0);
+  const wonNow = po.receivedDate ? `${po.receivedDate}T00:00:00.000Z` : now;
+
+  if (dealId) {
+    const { data: d } = await supabase.from('sales_deals').select('*').eq('id', dealId).maybeSingle();
+    if (!d || d.projectId || CLOSED_STAGES.includes(d.stage)) return null;
+    const { data: links } = await supabase.from('sales_deal_forecast_lines').select('*').eq('dealId', d.id);
+    const won = await settleMappedDealWithPo({
+      supabase, user, deal: d, links: links || [], poQtyByFg: poQty, priceOf, project: null, po, now, request,
+    });
+    if (won) return won;
+    // fgCode ดีลไม่ตรงบรรทัดนี้ (coverage 0) → ปิด Won ทั้งดีลด้วยมูลค่าบรรทัด (manual-link)
+    return markWon({
+      supabase, user, deal: d, source: 'sahamit-po', now: wonNow, projectValue: lineValue, projectId: null,
+      metadata: { sahamitPoId: po.id, poNumber: po.poNumber, poReceivedDate: po.receivedDate || null, fgCodes: [fg], wonMatchedBy: 'manual-link' },
+      request, auditSummary: `manual-link Sahamit PO ${po.poNumber} line ${fg} → deal ${d.id}`,
+    });
+  }
+
+  if (createNew) {
+    return createWonDealStub({
+      supabase, user, source: 'sahamit-po', request,
+      auditSummary: `won stub from Sahamit PO ${po.poNumber} line ${fg}`,
+      row: {
+        customerId: po.customerId, customerName: customer?.name || null,
+        title: `${line.productName || fg} · PO ${po.poNumber}`,
+        projectValue: lineValue, forecastMonth: po.receivedDate || po.dueDate || now,
+        expectedCloseDate: po.receivedDate || po.docDate || null, confirmedAt: wonNow,
+        notes: po.note || null, ownerId: user.id || null, ownerName: user.name || null, team: user.team || 'KA', projectId: null,
+        metadata: { source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber, poReceivedDate: po.receivedDate || null, fgCodes: [fg], bypassPipeline: true },
+      },
+    });
+  }
+  return null;
+}
+
 // ผูก PM project เข้าดีลที่ปิด Won ไว้แล้ว (ยกระดับ won → in_project). ใช้ตอน
 // สร้าง PM ทีหลังจาก PO ที่ settle เข้าดีลไปแล้ว.
 export async function linkProjectToSettledDeal({ supabase, user, deal, project, now, request }) {
