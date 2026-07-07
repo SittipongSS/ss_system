@@ -1,5 +1,5 @@
 import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 
 export const dynamic = 'force-dynamic';
@@ -63,8 +63,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
 
+  const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, deal);
+
   return ok({
     deal,
+    canEdit,
     forecastDrift,
     quotations: quotations.data,
     documents: documents.data,

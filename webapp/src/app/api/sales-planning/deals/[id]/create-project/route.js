@@ -7,7 +7,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
-import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, inSalesEditScope } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,7 +102,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     insertedTasks = taskRows || [];
   }
 
-  const nextStage = deal.stage === 'won' || deal.depositPaid ? 'in_project' : 'timeline_proposed';
+  // เดินหน้าเท่านั้น: won/มัดจำแล้ว → in_project; ก่อนขั้น "เสนอไทม์ไลน์" → timeline_proposed;
+  // ถ้าอยู่ขั้นสูงกว่านั้นแล้ว (awaiting_confirm/deposit_pending) คงสถานะเดิม ไม่ถอยหลัง.
+  const stageIdx = (s) => DEAL_STAGES.indexOf(s);
+  const nextStage = (deal.stage === 'won' || deal.depositPaid)
+    ? 'in_project'
+    : stageIdx(deal.stage) < stageIdx('timeline_proposed') ? 'timeline_proposed' : deal.stage;
   const { data: updatedDeal, error: linkError } = await supabase
     .from('sales_deals')
     .update({

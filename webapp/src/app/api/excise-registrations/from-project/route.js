@@ -41,11 +41,20 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     : { data: [] };
 
   const existingKey = new Set((existing || []).map((r) => `${r.productId}:${r.customerId || project.customerId || ''}`));
-  const candidate = links.find((link) => {
+  const eligible = (link) => {
     const customerId = link.product?.customerId || project.customerId;
     return link.product && customerId && !existingKey.has(`${link.productId}:${customerId}`);
-  });
-  if (!candidate) return conflict('FG ในโปรเจกต์นี้ถูกสร้างทะเบียนภาษีไว้แล้ว หรือยังไม่มีลูกค้าเจ้าของ FG');
+  };
+  // ระบุ FG เจาะจงได้ผ่าน body.productId (จากหน้าศูนย์ดีล ที่เช็คสถานะราย FG แล้ว);
+  // ไม่ระบุ = auto-pick FG ตัวแรกที่ยังไม่ขึ้นทะเบียน (พฤติกรรมเดิมของหน้า PM)
+  const candidate = body.productId
+    ? links.find((link) => link.productId === body.productId && eligible(link))
+    : links.find(eligible);
+  if (!candidate) {
+    return conflict(body.productId
+      ? 'FG นี้ถูกขึ้นทะเบียนไว้แล้ว หรือไม่มีลูกค้าเจ้าของ FG'
+      : 'FG ในโปรเจกต์นี้ถูกสร้างทะเบียนภาษีไว้แล้ว หรือยังไม่มีลูกค้าเจ้าของ FG');
+  }
 
   const product = candidate.product;
   const customerId = product.customerId || project.customerId;
