@@ -178,6 +178,7 @@ export default function PoDetailPage() {
   const params = useParams();
   const router = useRouter();
   const canCreateProject = useCan("pm:edit");
+  const canSettle = useCan("salesplan:edit");
   const id = params.id;
   const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
   const { data: material } = useApiList("/api/sahamit/material");
@@ -198,6 +199,7 @@ export default function PoDetailPage() {
   const [headerExpanded, setHeaderExpanded] = useState(false); // ย่อไว้ก่อนแบบหัว ISO
   const [projectConfirmOpen, setProjectConfirmOpen] = useState(false);
   const [projectBusy, setProjectBusy] = useState(false);
+  const [settleBusy, setSettleBusy] = useState(false);
   const [toast, setToast] = useState(null);
 
   // แบ่งส่ง (split): ระบุยอดส่งจริงต่อบรรทัด → เปิด PO ยอดเหลือ
@@ -269,6 +271,21 @@ export default function PoDetailPage() {
     }
   };
 
+  // เชื่อม PO เข้าดีลแผนการขาย → ปิด Won (action หลัก, ไม่ต้องมี PM)
+  const settleDeal = async () => {
+    setSettleBusy(true);
+    try {
+      const payload = await sahamitFetch(`/api/sahamit/po/${id}/settle-deal`, { method: "POST" });
+      if (payload.alreadyLinked) setToast({ kind: "info", msg: "PO นี้เชื่อมดีลไว้แล้ว" });
+      else setToast({ kind: "success", msg: `ปิด Won เข้าดีลแล้ว${payload.matchedBy === "stub" ? " (สร้างดีลใหม่ — PO นอก forecast)" : payload.deal?.parentDealId ? " (แยกดีลบางส่วน)" : ""}` });
+      await reload();
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message || "เชื่อมดีลไม่สำเร็จ" });
+    } finally {
+      setSettleBusy(false);
+    }
+  };
+
   return (
     <Workspace
       icon={<FileText size={22} />}
@@ -297,13 +314,25 @@ export default function PoDetailPage() {
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>จำนวนรายการ</div><div style={{ fontSize: 20, fontWeight: 700 }}>{poLineCount(po)}</div></div>
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>ยอดรวม (ชิ้น)</div><div style={{ fontSize: 20, fontWeight: 700 }}>{nf(poTotalQty(po))}</div></div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {/* การขาย (หลัก): เชื่อม PO เข้าดีล → ปิด Won */}
+              {po.salesDealId ? (
+                <a className="btn btn-primary" href={`/sales-planning/deals/${po.salesDealId}`}>
+                  <ExternalLink size={14} /> ดีลที่เชื่อม (Won)
+                </a>
+              ) : canSettle ? (
+                <button type="button" className="btn btn-primary" onClick={settleDeal} disabled={settleBusy || !po.lines?.length}>
+                  <PackageCheck size={14} /> {settleBusy ? "กำลังปิด Won..." : "เชื่อมเข้าดีล (ปิด Won)"}
+                </button>
+              ) : null}
+
+              {/* PM project (ออปชัน) */}
               {po.projectId ? (
-                <button type="button" className="btn btn-primary" onClick={() => router.push(`/pm/projects/${po.projectId}`)}>
+                <button type="button" className="btn" onClick={() => router.push(`/pm/projects/${po.projectId}`)}>
                   <ExternalLink size={14} /> เปิด PM Project
                 </button>
               ) : canCreateProject ? (
-                <button type="button" className="btn btn-primary" onClick={() => setProjectConfirmOpen(true)} disabled={!po.lines?.length}>
-                  <PackageCheck size={14} /> สร้าง RE-ORDER Project
+                <button type="button" className="btn ghost" onClick={() => setProjectConfirmOpen(true)} disabled={!po.lines?.length}>
+                  <PackageCheck size={14} /> สร้าง PM (ออปชัน)
                 </button>
               ) : null}
             </div>

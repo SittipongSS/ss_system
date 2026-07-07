@@ -1,6 +1,7 @@
 import { genId } from '@/lib/id';
+import { recordAudit } from '@/lib/audit';
 import { monthKey, toMoney } from '@/lib/salesPlanning';
-import { insertWinSideEffects, markWon, winStageForProject } from '@/lib/salesPlanningWin';
+import { createWonDealStub, insertWinSideEffects, markWon, winStageForProject } from '@/lib/salesPlanningWin';
 
 const CLOSED_STAGES = ['won', 'in_project', 'lost'];
 const lc = (v) => String(v || '').trim().toLowerCase();
@@ -203,13 +204,14 @@ export async function loadForecastDrift(supabase, deal) {
 //  - partial        → SPLIT: child deal (covered) = Won, parent keeps the rest open
 // Returns the WON deal (child on split, or the deal itself), or null if the PO
 // does not actually cover any allocated qty.
-export async function settleMappedDealWithPo({ supabase, user, deal, links, poQtyByFg, priceOf, project, po, now, request }) {
+export async function settleMappedDealWithPo({ supabase, user, deal, links, poQtyByFg, priceOf, project = null, po, now, request }) {
+  const projectId = project?.id || null;
   const wonMeta = {
     sahamitPoId: po.id,
     poNumber: po.poNumber,
     poReceivedDate: po.receivedDate || null,
     poDueDate: po.dueDate || null,
-    projectCode: project.code,
+    projectCode: project?.code || null,
     quoteRef: po.quoteRef || null,
     wonMatchedBy: 'fc-mapping',
   };
@@ -218,11 +220,11 @@ export async function settleMappedDealWithPo({ supabase, user, deal, links, poQt
   const cov = computeCoverage(links, poQtyByFg, priceOf);
   if (!cov.anyCovered) return null;
 
-  // เต็ม → ปิดทั้งดีล ไม่ต้อง split
+  // เต็ม → ปิดทั้งดีล ไม่ต้อง split (projectId อาจเป็น null = ปิด Won โดยยังไม่สร้าง PM)
   if (cov.allCovered) {
     return markWon({
       supabase, user, deal, source: 'sahamit-po', now: wonNow,
-      projectValue: cov.coveredValue, projectId: project.id,
+      projectValue: cov.coveredValue, projectId,
       metadata: wonMeta, request,
       auditSummary: `mark Sahamit forecast deal won from PO ${po.poNumber}`,
     });
@@ -236,7 +238,7 @@ export async function settleMappedDealWithPo({ supabase, user, deal, links, poQt
     customerId: deal.customerId,
     customerName: deal.customerName,
     title: `${deal.title} (ส่งมอบ ${po.poNumber})`,
-    stage: winStageForProject(project.id),
+    stage: winStageForProject(projectId),
     projectValue: toMoney(cov.coveredValue),
     probability: 100,
     forecastMonth: deal.forecastMonth,
@@ -247,7 +249,7 @@ export async function settleMappedDealWithPo({ supabase, user, deal, links, poQt
     ownerId: deal.ownerId,
     ownerName: deal.ownerName,
     team: deal.team,
-    projectId: project.id,
+    projectId,
     parentDealId: deal.id,
     metadata: {
       ...(deal.metadata || {}),
@@ -303,4 +305,81 @@ export async function settleMappedDealWithPo({ supabase, user, deal, links, poQt
   });
 
   return child;
+}
+
+// ── Orchestration: settle a PO into a sales deal (project OPTIONAL) ──────────
+// action หลัก = ปิด Won เข้าดีล; ถ้าเจอดีลที่ map ไว้ → settle (เต็ม/หรือ split),
+// ถ้าไม่เจอ → สร้าง won-deal stub (PO นอก forecast). คืน { deal, matchedBy }.
+export async function settlePoIntoSalesDeal({ supabase, user, po, customer, activeLines, productIndex, project = null, now, request }) {
+  const poQty = new Map();
+  let stubValue = 0;
+  for (const line of activeLines || []) {
+    const fg = String(line.fgCode || '').trim();
+    const q = Number(line.qty || 0);
+    if (!fg || q <= 0) continue;
+    poQty.set(fg, (poQty.get(fg) || 0) + q);
+    const price = Number(productIndex.get(fg.toLowerCase())?.price ?? 0);
+    stubValue += q * (Number.isFinite(price) ? price : 0);
+  }
+  const priceOf = (fg) => productIndex.get(String(fg || '').trim().toLowerCase())?.price ?? 0;
+
+  const matched = await resolveMappedDealForPo(supabase, po.customerId, [...poQty.keys()], monthKey(po.dueDate));
+  if (matched) {
+    const deal = await settleMappedDealWithPo({
+      supabase, user, deal: matched.deal, links: matched.links,
+      poQtyByFg: poQty, priceOf, project, po, now, request,
+    });
+    if (deal) return { deal, matchedBy: 'fc-mapping' };
+  }
+
+  const wonNow = po.receivedDate ? `${po.receivedDate}T00:00:00.000Z` : now;
+  const deal = await createWonDealStub({
+    supabase, user, source: 'sahamit-po', request,
+    auditSummary: `create won-deal stub from Sahamit PO ${po.poNumber}`,
+    row: {
+      customerId: po.customerId,
+      customerName: customer?.name || null,
+      title: `Sahamit PO ${po.poNumber}`,
+      projectValue: stubValue,
+      forecastMonth: po.receivedDate || po.dueDate || now,
+      expectedCloseDate: po.receivedDate || po.docDate || null,
+      confirmedAt: wonNow,
+      notes: po.note || null,
+      ownerId: user.id || null,
+      ownerName: user.name || null,
+      team: user.team || 'KA',
+      projectId: project?.id || null,
+      metadata: {
+        source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber,
+        poReceivedDate: po.receivedDate || null, poDueDate: po.dueDate || null,
+        projectCode: project?.code || null, quoteRef: po.quoteRef || null, bypassPipeline: true,
+      },
+    },
+  });
+  return { deal, matchedBy: 'stub' };
+}
+
+// ผูก PM project เข้าดีลที่ปิด Won ไว้แล้ว (ยกระดับ won → in_project). ใช้ตอน
+// สร้าง PM ทีหลังจาก PO ที่ settle เข้าดีลไปแล้ว.
+export async function linkProjectToSettledDeal({ supabase, user, deal, project, now, request }) {
+  if (!deal || deal.projectId) return deal;
+  const patch = {
+    projectId: project.id,
+    stage: 'in_project',
+    metadata: { ...(deal.metadata || {}), projectCode: project.code, projectLinkedAt: now },
+    updatedAt: now,
+  };
+  const { data, error } = await supabase.from('sales_deals').update(patch).eq('id', deal.id).select().single();
+  if (error) throw error;
+  if (deal.stage !== 'in_project') {
+    await supabase.from('sales_deal_stage_history').insert({
+      id: genId('DSH'), dealId: deal.id, fromStage: deal.stage, toStage: 'in_project',
+      changedBy: user.id || null, changedByName: user.name || null,
+    });
+  }
+  await recordAudit({
+    user, action: 'update', entityType: 'sales_deal', entityId: deal.id,
+    before: deal, after: data, summary: `link PM project ${project.code} to sales deal ${deal.id}`, request,
+  });
+  return data;
 }
