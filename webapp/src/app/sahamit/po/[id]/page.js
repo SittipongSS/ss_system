@@ -508,7 +508,11 @@ export default function PoDetailPage() {
             <>
               {settleCands.candidates?.length ? (
                 <>
-                  <div style={{ fontSize: 13, color: "var(--text-2)" }}>เลือกดีลที่จะปิด Won (ดีลบนสุด = ระบบแนะนำ):</div>
+                  <div style={{ fontSize: 13, color: settleCands.hasMatch ? "var(--text-2)" : "var(--amber)" }}>
+                    {settleCands.hasMatch
+                      ? "เลือกดีลที่จะปิด Won (เฉพาะดีลที่สินค้าตรงกับ PO):"
+                      : "ไม่มีดีลที่สินค้าตรงกับ PO นี้ — แสดงดีล open ทั้งหมดให้เลือก:"}
+                  </div>
                   {settleCands.candidates.map((c) => (
                     <label key={c.id} className="glass-panel" style={{ padding: "10px 12px", display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", borderColor: settleChoice === c.id ? "var(--accent)" : undefined }}>
                       <input type="radio" name="settle-choice" checked={settleChoice === c.id} onChange={() => setSettleChoice(c.id)} style={{ marginTop: 3 }} />
