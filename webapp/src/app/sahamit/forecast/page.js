@@ -13,6 +13,7 @@ import ForecastImportModal from "@/components/sahamit/ForecastImportModal";
 const TABS = [
   { key: "overview", label: "รายการสินค้า" },
   { key: "matrix", label: "ตารางจัดการ (Matrix)" },
+  { key: "lines", label: "รายเดือน (สร้างดีล)" },
   { key: "history", label: "ประวัติ / เทียบรอบ" },
 ];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -26,8 +27,8 @@ export default function ForecastPage() {
   const [tab, setTab] = useState("matrix");
   const [showImport, setShowImport] = useState(false);
   const [editRound, setEditRound] = useState(null); // round being edited, or null = create
-  // เลือก forecast line (ราย fgCode ของรอบที่ดู) → สร้าง "1 ดีล" เข้าแผนการขาย
-  const [selectedFg, setSelectedFg] = useState(() => new Set());
+  // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 ดีล" เข้าแผนการขาย
+  const [selectedLines, setSelectedLines] = useState(() => new Set());
   const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
   const [dealTitle, setDealTitle] = useState("");
   const [creating, setCreating] = useState(false);
@@ -106,45 +107,72 @@ export default function ForecastPage() {
     return [...months].sort();
   }, [matrix.months]);
 
-  // ล้าง selection เมื่อสลับรอบ (fgCode คนละชุด)
-  useEffect(() => { setSelectedFg(new Set()); setDealTitle(""); }, [selectedNo]);
+  // ตารางราย line: 1 แถว = 1 สินค้า × 1 เดือน × 1 จำนวน (แต่ละ line ของรอบที่เลือก)
+  // เรียงตามหมวด → รหัสสินค้า → เดือน; แนบราคา/มูลค่าจาก master สำหรับสร้างดีล
+  const lineList = useMemo(() => {
+    const rows = (selectedRound?.lines || [])
+      .filter((l) => Number(l.qty || 0) > 0)
+      .map((l) => {
+        const p = productByFg.get(String(l.fgCode).trim().toLowerCase());
+        const price = p?.price == null ? null : Number(p.price);
+        const qty = Number(l.qty) || 0;
+        return {
+          id: l.id, fgCode: l.fgCode, productName: l.productName, month: l.month, qty,
+          price, amount: price == null ? null : qty * price,
+          category: p?.category || "— ไม่ระบุหมวด —",
+        };
+      });
+    rows.sort((a, b) =>
+      a.category.localeCompare(b.category) ||
+      String(a.fgCode).localeCompare(String(b.fgCode)) ||
+      String(a.month).localeCompare(String(b.month)));
+    return rows;
+  }, [selectedRound, productByFg]);
 
-  const toggleFg = (fg) => setSelectedFg((prev) => {
+  const lineGroups = useMemo(() => {
+    const g = new Map();
+    for (const r of lineList) { if (!g.has(r.category)) g.set(r.category, []); g.get(r.category).push(r); }
+    return [...g.entries()];
+  }, [lineList]);
+
+  // ล้าง selection เมื่อสลับรอบ (line คนละชุด)
+  useEffect(() => { setSelectedLines(new Set()); setDealTitle(""); }, [selectedNo]);
+
+  const toggleLine = (id) => setSelectedLines((prev) => {
     const next = new Set(prev);
-    if (next.has(fg)) next.delete(fg); else next.add(fg);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
-  const setGroup = (rows, on) => setSelectedFg((prev) => {
+  const setLineGroup = (rows, on) => setSelectedLines((prev) => {
     const next = new Set(prev);
-    for (const r of rows) { if (on) next.add(r.fgCode); else next.delete(r.fgCode); }
+    for (const r of rows) { if (on) next.add(r.id); else next.delete(r.id); }
     return next;
   });
-  const allRowsSelected = matrix.rows.length > 0 && matrix.rows.every((r) => selectedFg.has(r.fgCode));
+  const allLinesSelected = lineList.length > 0 && lineList.every((r) => selectedLines.has(r.id));
 
-  // สรุปรายการที่เลือก (จำนวน + มูลค่าราคาโรงงาน) สำหรับแถบสร้างดีล
+  // สรุป line ที่เลือก (จำนวน + มูลค่าราคาโรงงาน) สำหรับแถบสร้างดีล
   const selection = useMemo(() => {
     let qty = 0, value = 0, unpriced = 0;
-    for (const r of matrix.rows) {
-      if (!selectedFg.has(r.fgCode)) continue;
-      qty += Number(r.total) || 0;
-      const price = productByFg.get(String(r.fgCode).trim().toLowerCase())?.price;
-      if (price == null) { if (r.total > 0) unpriced += 1; continue; }
-      value += (Number(r.total) || 0) * Number(price);
+    for (const r of lineList) {
+      if (!selectedLines.has(r.id)) continue;
+      qty += r.qty;
+      if (r.price == null) { unpriced += 1; continue; }
+      value += r.amount;
     }
-    return { count: selectedFg.size, qty, value, unpriced };
-  }, [selectedFg, matrix, productByFg]);
+    return { count: selectedLines.size, qty, value, unpriced };
+  }, [selectedLines, lineList]);
 
   const createDeal = async () => {
-    if (!selectedRound || !selectedFg.size) return;
+    if (!selectedRound || !selectedLines.size) return;
     setCreating(true);
     try {
       const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/create-sales-deal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fgCodes: [...selectedFg], forecastMonth: dealMonth, title: dealTitle.trim() || undefined }),
+        body: JSON.stringify({ lineIds: [...selectedLines], forecastMonth: dealMonth, title: dealTitle.trim() || undefined }),
       });
       alert(`สร้างดีลเข้าแผนการขายแล้ว: ${json.deal?.title || ""} (${json.lines || 0} รายการ)`);
-      setSelectedFg(new Set());
+      setSelectedLines(new Set());
       setDealTitle("");
     } catch (e) {
       alert(e.message || "สร้างดีลเข้าแผนการขายไม่สำเร็จ");
@@ -253,17 +281,90 @@ export default function ForecastPage() {
                 <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>
                 {matrix.rows.length > 0 && (
                   <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
-                    ติ๊กเลือกสินค้าเพื่อสร้างดีลเข้าแผนการขาย
+                    ไปแท็บ “รายเดือน (สร้างดีล)” เพื่อเลือกรายการส่งเข้าแผนการขาย
                   </span>
                 )}
               </div>
 
-              {/* แถบสร้างดีลจากรายการที่เลือก (โผล่เมื่อมีการติ๊ก) */}
+              {matrix.rows.length === 0 ? (
+                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>รอบนี้ยังไม่มีรายการ</div>
+              ) : (
+                <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+                  <table className="premium-table sticky-col1">
+                    <thead>
+                      <tr>
+                        <th style={{ minWidth: 120 }}>รหัสสินค้า</th>
+                        <th style={{ minWidth: 160 }}>ชื่อสินค้า</th>
+                        {matrix.months.map((m) => <th key={m} style={{ textAlign: "right" }}>{m}</th>)}
+                        <th style={{ textAlign: "right" }}>รวม</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matrixGroups.flatMap(([cat, rows]) => [
+                        <tr key={`cat-${cat}`}>
+                          <td colSpan={matrix.months.length + 3} style={{ position: "static", background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
+                            {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
+                          </td>
+                        </tr>,
+                        ...rows.map((r) => {
+                          const meta = productMetaText(productByFg.get(String(r.fgCode).trim().toLowerCase()), { withCategory: false });
+                          return (
+                          <tr key={r.fgCode}>
+                            <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
+                            <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>
+                              {r.productName || "— ไม่รู้จัก —"}
+                              {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
+                            </td>
+                            {matrix.months.map((m) => (
+                              <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{r.qty[m] ? nf(r.qty[m]) : "·"}</td>
+                            ))}
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>{nf(r.total)}</td>
+                          </tr>
+                          );
+                        }),
+                      ])}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={2} style={{ background: "var(--panel-2)", fontWeight: 600, color: "var(--text-2)", borderTop: "2px solid var(--border)" }}>
+                          รวมมูลค่า (฿)
+                          {matrixValue.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11, fontWeight: 400 }}> · {matrixValue.unpriced} SKU ไม่มีราคา</span>}
+                        </td>
+                        {matrix.months.map((m) => (
+                          <td key={m} style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(matrixValue.byMonth[m])}</td>
+                        ))}
+                        <td style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(matrixValue.grand)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* รายเดือน (สร้างดีล) — 1 แถว = สินค้า × เดือน × จำนวน; ติ๊กเลือกส่งเข้าแผนการขาย */}
+          {tab === "lines" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <label style={{ fontSize: 13, color: "var(--text-2)" }}>รอบ:</label>
+                <select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
+                  {[...rounds].reverse().map((r) => (
+                    <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} หน่วย</option>
+                  ))}
+                </select>
+                {lineList.length > 0 && (
+                  <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
+                    ติ๊กเลือกรายการ (สินค้า×เดือน) เพื่อรวมเป็นดีลเดียว
+                  </span>
+                )}
+              </div>
+
+              {/* แถบสร้างดีลจาก line ที่เลือก */}
               {selection.count > 0 && (
                 <div className="glass-panel" style={{ padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", borderLeft: "3px solid var(--accent, var(--blue))" }}>
                   <div style={{ fontSize: 13 }}>
                     เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> หน่วย · <b>{nfBaht(selection.value)}</b>
-                    {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11 }}> · {selection.unpriced} SKU ไม่มีราคา</span>}
+                    {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11 }}> · {selection.unpriced} รายการไม่มีราคา</span>}
                   </div>
                   <input
                     className="premium-input"
@@ -281,71 +382,51 @@ export default function ForecastPage() {
                   <button className="btn sm btn-primary" onClick={createDeal} disabled={creating}>
                     <Send size={14} /> {creating ? "กำลังสร้าง..." : "สร้างแผนการขาย"}
                   </button>
-                  <button className="btn-icon" title="ล้างที่เลือก" onClick={() => setSelectedFg(new Set())}><X size={15} /></button>
+                  <button className="btn-icon" title="ล้างที่เลือก" onClick={() => setSelectedLines(new Set())}><X size={15} /></button>
                 </div>
               )}
 
-              {matrix.rows.length === 0 ? (
+              {lineList.length === 0 ? (
                 <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>รอบนี้ยังไม่มีรายการ</div>
               ) : (
                 <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
-                  <table className="premium-table sticky-col1">
+                  <table className="premium-table">
                     <thead>
                       <tr>
                         <th style={{ width: 34, textAlign: "center" }}>
-                          <input type="checkbox" checked={allRowsSelected} onChange={(e) => setGroup(matrix.rows, e.target.checked)} title="เลือกทั้งหมด" />
+                          <input type="checkbox" checked={allLinesSelected} onChange={(e) => setLineGroup(lineList, e.target.checked)} title="เลือกทั้งหมด" />
                         </th>
                         <th style={{ minWidth: 120 }}>รหัสสินค้า</th>
                         <th style={{ minWidth: 160 }}>ชื่อสินค้า</th>
-                        {matrix.months.map((m) => <th key={m} style={{ textAlign: "right" }}>{m}</th>)}
-                        <th style={{ textAlign: "right" }}>รวม</th>
+                        <th style={{ textAlign: "center" }}>เดือน</th>
+                        <th style={{ textAlign: "right" }}>จำนวน</th>
+                        <th style={{ textAlign: "right" }}>มูลค่า (฿)</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {matrixGroups.flatMap(([cat, rows]) => {
-                        const groupAllOn = rows.every((r) => selectedFg.has(r.fgCode));
-                        return [
+                      {lineGroups.flatMap(([cat, rows]) => [
                         <tr key={`cat-${cat}`}>
-                          <td style={{ position: "static", background: "var(--panel-2)", textAlign: "center", padding: "8px 10px" }}>
-                            <input type="checkbox" checked={groupAllOn} onChange={(e) => setGroup(rows, e.target.checked)} title={`เลือกหมวด ${cat}`} />
+                          <td style={{ background: "var(--panel-2)", textAlign: "center", padding: "8px 10px" }}>
+                            <input type="checkbox" checked={rows.every((r) => selectedLines.has(r.id))} onChange={(e) => setLineGroup(rows, e.target.checked)} title={`เลือกหมวด ${cat}`} />
                           </td>
-                          <td colSpan={matrix.months.length + 3} style={{ position: "static", background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
+                          <td colSpan={5} style={{ background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
                             {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
                           </td>
                         </tr>,
-                        ...rows.map((r) => {
-                          const meta = productMetaText(productByFg.get(String(r.fgCode).trim().toLowerCase()), { withCategory: false });
-                          return (
-                          <tr key={r.fgCode} style={{ background: selectedFg.has(r.fgCode) ? "var(--panel-2)" : undefined }}>
+                        ...rows.map((r) => (
+                          <tr key={r.id} style={{ background: selectedLines.has(r.id) ? "var(--panel-2)" : undefined }}>
                             <td style={{ textAlign: "center" }}>
-                              <input type="checkbox" checked={selectedFg.has(r.fgCode)} onChange={() => toggleFg(r.fgCode)} />
+                              <input type="checkbox" checked={selectedLines.has(r.id)} onChange={() => toggleLine(r.id)} />
                             </td>
                             <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
-                            <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>
-                              {r.productName || "— ไม่รู้จัก —"}
-                              {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
-                            </td>
-                            {matrix.months.map((m) => (
-                              <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{r.qty[m] ? nf(r.qty[m]) : "·"}</td>
-                            ))}
-                            <td style={{ textAlign: "right", fontWeight: 700 }}>{nf(r.total)}</td>
+                            <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>{r.productName || "— ไม่รู้จัก —"}</td>
+                            <td style={{ textAlign: "center" }}>{r.month}</td>
+                            <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(r.qty)}</td>
+                            <td style={{ textAlign: "right", color: r.amount == null ? "var(--amber)" : "inherit" }}>{r.amount == null ? "—" : nfBaht(r.amount)}</td>
                           </tr>
-                          );
-                        }),
-                      ];})}
+                        )),
+                      ])}
                     </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colSpan={3} style={{ background: "var(--panel-2)", fontWeight: 600, color: "var(--text-2)", borderTop: "2px solid var(--border)" }}>
-                          รวมมูลค่า (฿)
-                          {matrixValue.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11, fontWeight: 400 }}> · {matrixValue.unpriced} SKU ไม่มีราคา</span>}
-                        </td>
-                        {matrix.months.map((m) => (
-                          <td key={m} style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(matrixValue.byMonth[m])}</td>
-                        ))}
-                        <td style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(matrixValue.grand)}</td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
               )}
