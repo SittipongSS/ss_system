@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { AlertTriangle, ClipboardList, ExternalLink, FileText, LineChart, PackageCheck, RefreshCcw } from "lucide-react";
+import { AlertTriangle, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, RefreshCcw } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 
@@ -107,10 +107,10 @@ export default function DealOverviewPage() {
 
   return (
     <Workspace
-      icon={<LineChart size={22} />}
+      icon={<FolderKanban size={22} />}
       title={deal?.title || "ศูนย์รวมโครงการ"}
       subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมโครงการ"}
-      back={{ href: "/sales-planning", label: "กลับไปแผนงานขาย" }}
+      back={{ href: "/sales-planning", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}
       loading={loading}
     >

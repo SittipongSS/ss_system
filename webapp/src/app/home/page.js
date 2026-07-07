@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart, Wallet } from "lucide-react";
+import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart, CircleDollarSign } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
 import { landingFor, can, canAccessSahamit } from "@/lib/permissions";
@@ -156,7 +156,7 @@ export default function HomeHubPage() {
                 className="brand-logo"
                 style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
               >
-                <Wallet size={24} strokeWidth={1.5} />
+                <CircleDollarSign size={24} strokeWidth={1.5} />
               </div>
               <div>
                 <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>บริหารงานขาย</h2>

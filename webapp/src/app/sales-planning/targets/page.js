@@ -135,7 +135,7 @@ export default function SalesPlanningTargetsPage() {
   return (
     <Workspace
       icon={<Target size={22} />}
-      title="แผนงานขาย — เป้าหมาย"
+      title="บริหารงานขาย — เป้าหมาย"
       subtitle="ตั้งเป้ารายเดือน: ระดับทีม และรายบุคคล (SA)"
       back={{ href: "/sales-planning", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}

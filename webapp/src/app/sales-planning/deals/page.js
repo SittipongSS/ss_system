@@ -346,7 +346,7 @@ export default function SalesPlanningPipelinePage() {
   return (
     <Workspace
       icon={<FolderKanban size={22} />}
-      title="แผนงานขาย — โครงการ (Pipeline)"
+      title="บริหารงานขาย — โครงการ"
       subtitle="จัดการโครงการขายและส่งต่อ PM · PM อาจเกิดก่อนหรือหลัง Won ได้"
       back={{ href: "/sales-planning", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}
