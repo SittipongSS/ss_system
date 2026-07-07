@@ -18,8 +18,9 @@ export async function POST(request, { params }) {
 
   let body;
   try { body = await request.json(); } catch { return Response.json({ error: 'invalid json' }, { status: 400 }); }
-  const balancePoNumber = String(body?.balancePoNumber || '').trim();
-  if (!balancePoNumber) return Response.json({ error: 'ต้องระบุเลขที่ PO ยอดเหลือ' }, { status: 400 });
+  // เลขที่ PO ยอดเหลือ "ไม่บังคับ" — เว้นว่างได้ ระบบจะตั้งเลขชั่วคราวให้ (แก้ทีหลัง)
+  let balancePoNumber = String(body?.balancePoNumber || '').trim();
+  const autoNumber = !balancePoNumber;
 
   // PO ต้นทาง + บรรทัด
   const { data: po } = await supabase
@@ -29,10 +30,19 @@ export async function POST(request, { params }) {
     .from('sahamit_po_lines').select('*').eq('poId', id).eq('customerId', customerId);
   const lineById = new Map((lines || []).map((l) => [l.id, l]));
 
-  // เลข PO ยอดเหลือห้ามซ้ำ
-  const { data: dup } = await supabase
-    .from('sahamit_pos').select('id').eq('customerId', customerId).eq('poNumber', balancePoNumber).maybeSingle();
-  if (dup) return Response.json({ error: `เลขที่ PO "${balancePoNumber}" มีอยู่แล้ว` }, { status: 409 });
+  // เลขที่ PO ทั้งหมดของลูกค้า — ใช้ทั้งกันซ้ำ + สร้างเลขยอดเหลือชั่วคราวที่ไม่ชน
+  const { data: allPos } = await supabase
+    .from('sahamit_pos').select('poNumber').eq('customerId', customerId);
+  const takenNumbers = new Set((allPos || []).map((p) => p.poNumber));
+
+  if (autoNumber) {
+    // เลขชั่วคราว "<PO แม่>-R" (ต่อท้ายเลขถ้าชน) — ผู้ใช้แก้เป็นเลขจริงภายหลังได้
+    const base = `${po.poNumber}-R`;
+    balancePoNumber = base;
+    for (let i = 2; takenNumbers.has(balancePoNumber); i++) balancePoNumber = `${base}${i}`;
+  } else if (takenNumbers.has(balancePoNumber)) {
+    return Response.json({ error: `เลขที่ PO "${balancePoNumber}" มีอยู่แล้ว` }, { status: 409 });
+  }
 
   // ตรวจ + เตรียม: shipped ต้อง 0<shipped<qty (มียอดเหลือ) จึงจะแบ่ง
   const req = Array.isArray(body?.lines) ? body.lines : [];
@@ -61,7 +71,8 @@ export async function POST(request, { params }) {
   const balancePo = {
     id: balancePoId, poNumber: balancePoNumber, customerId,
     docDate: null, receivedDate: null, dueDate: po.dueDate, destination: po.destination,
-    quoteRef: po.quoteRef || null, note: `ยอดเหลือจาก PO ${po.poNumber}`,
+    quoteRef: po.quoteRef || null,
+    note: autoNumber ? `ยอดเหลือจาก PO ${po.poNumber} · เลข PO ชั่วคราว (รอแก้เป็นเลขจริง)` : `ยอดเหลือจาก PO ${po.poNumber}`,
     splitFromPoId: po.id, createdById: user?.id ?? null, createdByName: user?.name ?? null,
     createdAt: nowIso, updatedAt: nowIso,
   };
