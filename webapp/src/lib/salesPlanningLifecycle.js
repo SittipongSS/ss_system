@@ -78,6 +78,66 @@ function buildSteps(stage) {
   }));
 }
 
+// สถานะทะเบียนสรรพสามิต (จาก excise workflow): draft→pending_legal→approved (rejected=ตีกลับ)
+const REG_STATUS_HINT = {
+  draft: 'ทะเบียนฉบับร่าง — แนบเอกสาร/ส่งอนุมัติ',
+  pending_legal: 'รอฝ่ายกฎหมายอนุมัติ',
+  rejected: 'ถูกตีกลับ — แก้ไขแล้วส่งใหม่',
+};
+
+// รวมรายการ FG หมวด 01-002 ของดีล (ให้ productId ถ้ามีจาก project_products)
+function collectExciseFgEntries(deal, projectProducts) {
+  const entries = [];
+  const seen = new Set();
+  for (const row of projectProducts || []) {
+    const fg = row?.product?.fgCode || row?.fgCode;
+    if (!fg || !isExciseCategory(categoryOf(fg))) continue;
+    const key = String(row.productId || fg);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({ fgCode: String(fg), productId: row.productId || null });
+  }
+  if (!entries.length) {
+    for (const fg of (deal?.metadata?.fgCodes || [])) {
+      if (!fg || !isExciseCategory(categoryOf(fg)) || seen.has(String(fg))) continue;
+      seen.add(String(fg));
+      entries.push({ fgCode: String(fg), productId: null });
+    }
+  }
+  return entries;
+}
+
+// หาทะเบียนที่ตรงกับ FG (จับด้วย productId ก่อน แล้ว fallback fgCode)
+function matchRegistration(entry, regs) {
+  const fg = entry.fgCode.trim().toLowerCase();
+  return (regs || []).find((r) =>
+    (entry.productId && r.productId === entry.productId) ||
+    (r.fgCode && String(r.fgCode).trim().toLowerCase() === fg),
+  ) || null;
+}
+
+// สรรพสามิตรายตัว FG: ยังไม่ขึ้น→สร้างทะเบียน, กำลังขึ้น→ไปทำต่อ, อนุมัติแล้ว→ไปยื่นชำระ
+function buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProject) {
+  const entries = collectExciseFgEntries(deal, projectProducts);
+  if (!entries.length) return []; // ไม่มี FG 01-002 → ไม่โชว์การ์ดสรรพสามิต
+  if (!hasProject) {
+    return [{ kind: 'excise', label: 'ทะเบียนสรรพสามิต', status: 'locked', hint: 'สร้างโครงการ PM ก่อน', actionKind: null, href: null }];
+  }
+  const multi = entries.length > 1;
+  return entries.map((e) => {
+    const reg = matchRegistration(e, exciseRegistrations);
+    const kind = multi ? `excise:${e.fgCode}` : 'excise';
+    const label = multi ? `ทะเบียน ${e.fgCode}` : 'ทะเบียนสรรพสามิต';
+    if (!reg) {
+      return { kind, label, status: 'available', hint: `${e.fgCode} ยังไม่ขึ้นทะเบียน`, actionKind: 'create-excise', actionLabel: 'สร้างทะเบียน', productId: e.productId, href: null };
+    }
+    if (reg.status === 'approved') {
+      return { kind, label, status: 'done', hint: `${e.fgCode} ขึ้นทะเบียนแล้ว → ไปยื่นชำระ`, actionKind: null, href: '/tax/filings', linkLabel: 'ไปยื่นชำระ' };
+    }
+    return { kind, label, status: 'progress', hint: `${e.fgCode}: ${REG_STATUS_HINT[reg.status] || 'อยู่ระหว่างขึ้นทะเบียน'}`, actionKind: null, href: `/tax/registrations/${reg.id}`, linkLabel: 'เปิดทะเบียน' };
+  });
+}
+
 // routing: ส่งต่อไประบบที่ทำงานจริง. related = { projectProducts, exciseRegistrations, sahamitPo, shipmentPrep }
 function buildRoutes(deal, related) {
   const { projectProducts = [], exciseRegistrations = [], sahamitPo = null } = related || {};
@@ -92,23 +152,14 @@ function buildRoutes(deal, related) {
     label: 'โครงการ PM',
     status: hasProject ? 'done' : pmUnlockable ? 'available' : 'locked',
     href: projectHref,
-    action: hasProject ? null : 'create-project',
+    linkLabel: 'เปิดโครงการ',
+    actionKind: hasProject ? null : pmUnlockable ? 'create-project' : null,
+    actionLabel: 'สร้างโครงการ',
     hint: hasProject ? 'ผูกโครงการแล้ว' : pmUnlockable ? 'สร้างโครงการเพื่อเริ่มผลิต' : 'ถึงขั้น "เสนอไทม์ไลน์" ก่อน',
   });
 
-  // 2) สรรพสามิต — เฉพาะดีลที่มี FG หมวด 01-002 เท่านั้น
-  if (dealHasExciseFg(deal, projectProducts)) {
-    const regCount = exciseRegistrations.length;
-    const firstReg = exciseRegistrations[0];
-    routes.push({
-      kind: 'excise',
-      label: 'ทะเบียนสรรพสามิต',
-      status: regCount > 0 ? 'done' : hasProject ? 'available' : 'locked',
-      href: regCount > 0 && firstReg ? `/tax/registrations/${firstReg.id}` : hasProject ? projectHref : null,
-      action: hasProject && regCount === 0 ? 'create-excise' : null,
-      hint: regCount > 0 ? `มีทะเบียน ${regCount} รายการ` : hasProject ? 'สร้างทะเบียนจากโครงการ' : 'สร้างโครงการ PM ก่อน',
-    });
-  }
+  // 2) สรรพสามิต — รายตัว FG หมวด 01-002 ตามสถานะทะเบียน
+  for (const r of buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProject)) routes.push(r);
 
   // 3) ส่งของ — เมื่อเปิด flag shipment เท่านั้น
   if (SALES_FEATURES.shipment) {
@@ -117,7 +168,8 @@ function buildRoutes(deal, related) {
       label: 'เตรียมส่งของ',
       status: !hasProject ? 'locked' : related?.shipmentPrep ? 'done' : 'available',
       href: projectHref,
-      action: null,
+      linkLabel: 'เปิด',
+      actionKind: null,
       hint: !hasProject ? 'สร้างโครงการ PM ก่อน' : related?.shipmentPrep ? 'มีเอกสารส่งของแล้ว' : 'ไปเตรียมเอกสารส่งของใน PM',
     });
   }
@@ -129,7 +181,8 @@ function buildRoutes(deal, related) {
       label: `PO สหมิตร ${sahamitPo.poNumber || ''}`.trim(),
       status: 'done',
       href: `/sahamit/po/${sahamitPo.id}`,
-      action: null,
+      linkLabel: 'เปิด',
+      actionKind: null,
       hint: `${sahamitPo.lines?.length || 0} รายการ`,
     });
   }

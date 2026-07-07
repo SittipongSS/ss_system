@@ -93,24 +93,25 @@ function DealStepper({ steps, lost }) {
 }
 
 // การ์ดปลายทางส่งต่อ 1 ระบบ (PM / สรรพสามิต / ส่งของ / PO)
-function RouteCard({ route, onCreateProject, onCreateExcise, busy, canEdit }) {
-  const color = route.status === "done" ? "var(--green)" : route.status === "available" ? "var(--accent)" : "var(--text-3)";
-  const badge = route.status === "done" ? "เสร็จแล้ว" : route.status === "available" ? "พร้อมทำ" : "ล็อก";
+const ROUTE_BADGE = { done: "เสร็จแล้ว", available: "พร้อมทำ", progress: "กำลังดำเนินการ", locked: "ล็อก" };
+const ROUTE_COLOR = { done: "var(--green)", available: "var(--accent)", progress: "var(--amber)", locked: "var(--text-3)" };
+function RouteCard({ route, onAction, busy, canEdit }) {
+  const color = ROUTE_COLOR[route.status] || "var(--text-3)";
   return (
     <div className="glass-panel" style={{ padding: 14, borderLeft: `3px solid ${color}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontWeight: 700, fontSize: 14 }}>{route.label}</span>
-        <span className="ui-badge" style={{ marginLeft: "auto", color }}>{badge}</span>
+        <span className="ui-badge" style={{ marginLeft: "auto", color }}>{ROUTE_BADGE[route.status] || route.status}</span>
       </div>
       <div style={{ fontSize: 12, color: "var(--text-3)", margin: "6px 0 10px" }}>{route.hint}</div>
-      {route.status === "locked" ? (
-        <button type="button" className="btn ghost sm" disabled><Lock size={13} aria-hidden="true" /> ล็อก</button>
-      ) : route.action === "create-project" && canEdit ? (
-        <button type="button" className="btn btn-primary sm" onClick={onCreateProject} disabled={busy}><PackageCheck size={13} aria-hidden="true" /> สร้างโครงการ</button>
-      ) : route.action === "create-excise" && canEdit ? (
-        <button type="button" className="btn btn-primary sm" onClick={onCreateExcise} disabled={busy}><FileText size={13} aria-hidden="true" /> สร้างทะเบียน</button>
+      {route.actionKind && canEdit ? (
+        <button type="button" className="btn btn-primary sm" onClick={() => onAction(route)} disabled={busy}>
+          {route.actionKind === "create-project" ? <PackageCheck size={13} aria-hidden="true" /> : <FileText size={13} aria-hidden="true" />} {route.actionLabel}
+        </button>
       ) : route.href ? (
-        <a className="btn sm" href={route.href}><ExternalLink size={13} aria-hidden="true" /> เปิด</a>
+        <a className="btn sm" href={route.href}><ExternalLink size={13} aria-hidden="true" /> {route.linkLabel || "เปิด"}</a>
+      ) : route.status === "locked" ? (
+        <button type="button" className="btn ghost sm" disabled><Lock size={13} aria-hidden="true" /> ล็อก</button>
       ) : null}
     </div>
   );
@@ -181,8 +182,8 @@ export default function DealOverviewPage() {
   const doWin = () => runAction("win", `/api/sales-planning/deals/${id}/win`, { method: "POST" });
   const doCreateProject = () => runAction("project", `/api/sales-planning/deals/${id}/create-project`, { method: "POST" });
 
-  // สร้างทะเบียนสรรพสามิตจากโครงการ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
-  const doCreateExcise = async () => {
+  // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
+  const doCreateExcise = async (productId) => {
     if (!deal?.projectId) return;
     setActionBusy("excise");
     setError("");
@@ -190,7 +191,7 @@ export default function DealOverviewPage() {
       const res = await fetch(`/api/excise-registrations/from-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: deal.projectId }),
+        body: JSON.stringify({ projectId: deal.projectId, ...(productId ? { productId } : {}) }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "สร้างทะเบียนสรรพสามิตไม่สำเร็จ");
@@ -201,6 +202,12 @@ export default function DealOverviewPage() {
     } finally {
       setActionBusy("");
     }
+  };
+
+  // dispatch ปุ่ม action ของการ์ด Routing
+  const onRouteAction = (route) => {
+    if (route.actionKind === "create-project") doCreateProject();
+    else if (route.actionKind === "create-excise") doCreateExcise(route.productId);
   };
   const doLost = async () => {
     const okDone = await runAction("lost", `/api/sales-planning/deals/${id}`, {
@@ -394,7 +401,7 @@ export default function DealOverviewPage() {
               {lc.routes.length ? (
                 <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
                   {lc.routes.map((route) => (
-                    <RouteCard key={route.kind} route={route} onCreateProject={doCreateProject} onCreateExcise={doCreateExcise} busy={!!actionBusy} canEdit={canEdit} />
+                    <RouteCard key={route.kind} route={route} onAction={onRouteAction} busy={!!actionBusy} canEdit={canEdit} />
                   ))}
                 </div>
               ) : <Empty>ยังไม่มีปลายทางที่ต้องส่งต่อ</Empty>}

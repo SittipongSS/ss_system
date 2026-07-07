@@ -96,6 +96,13 @@ dealLifecycle(deal, related) → {
 
 **การ์ด "งานปลายน้ำ" เดิมยกระดับจาก read-only → มีปุ่ม action** ต่อรายการ พร้อมป้ายสถานะ ทำแล้ว/ยัง/ล็อก.
 
+### กฎสรรพสามิต: รายตัว FG + ตามสถานะทะเบียน (สำคัญ)
+การ์ดสรรพสามิตแยก **ราย FG (หมวด 01-002)** และดูสถานะทะเบียนของ FG นั้น ๆ (จับด้วย `productId` ก่อน แล้ว fallback `fgCode`):
+- **ยังไม่ขึ้นทะเบียน** → ปุ่ม "สร้างทะเบียน" (POST `from-project` พร้อม `productId` เจาะจง)
+- **กำลังขึ้น** (`draft`/`pending_legal`/`rejected`) → ลิงก์ "เปิดทะเบียน" ไปทำต่อ (ไม่สร้างซ้ำ)
+- **อนุมัติแล้ว** (`approved`) → ลิงก์ "ไปยื่นชำระ" (`/tax/filings`) ไม่ให้สร้างทะเบียนซ้ำ
+> lifecycle: ทะเบียน `draft→pending_legal→approved` (rejected=ตีกลับ) แยกจากการยื่นชำระ (orders: pending→received→filing→complete); uniqueness = `(productId, customerId)`.
+
 ### กฎสรรพสามิต: เฉพาะ FG หมวด 01-002 (สำคัญ)
 ภาษีสรรพสามิตคิดเฉพาะสินค้า **หมวด `01-002` (น้ำหอมฉีดผิวกาย)** เท่านั้น — reuse helper ที่มีอยู่
 [`categoryOf(fgCode)`](src/lib/master/categoryOf.js) + `isExciseCategory(cat)` (`cat === '01-002'`).
