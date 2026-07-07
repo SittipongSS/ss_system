@@ -5,14 +5,8 @@ import Link from "next/link";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LineChart, RefreshCcw, Target, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
-import { KpiCard, money, thisMonth } from "@/components/salesPlanning/ui";
+import { KpiCard, MONTH_LABELS, MonthPicker, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import { SALES_FEATURES } from "@/lib/salesPlanning";
-
-const MONTH_LABELS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-
-function monthsForYear(year) {
-  return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
-}
 
 function metricCell(row, month) {
   const cell = row.months?.[month] || {};
@@ -180,8 +174,8 @@ export default function SalesPlanningOverviewPage() {
   const canReview = useCan("salesplan:review");
   const team = useTeam();
   const currentMonth = thisMonth();
-  const [year, setYear] = useState(currentMonth.slice(0, 4));
   const [month, setMonth] = useState(currentMonth);
+  const year = month.slice(0, 4);
   const [yearDashboards, setYearDashboards] = useState([]);
   const [sahamitRisk, setSahamitRisk] = useState(null);
   const [forecastReview, setForecastReview] = useState(null);
@@ -191,10 +185,6 @@ export default function SalesPlanningOverviewPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const months = useMemo(() => monthsForYear(year), [year]);
-  const yearOptions = useMemo(() => {
-    const y = Number(currentMonth.slice(0, 4));
-    return Array.from({ length: 7 }, (_, i) => String(y - 3 + i));
-  }, [currentMonth]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -251,22 +241,7 @@ export default function SalesPlanningOverviewPage() {
   const sahamitRiskRows = (sahamitRisk?.rows || []).filter((row) => row.risk).slice(0, 8);
   const headerRight = (
     <>
-      <select
-        className="premium-select"
-        value={year}
-        onChange={(e) => {
-          const nextYear = e.target.value;
-          setYear(nextYear);
-          setMonth(`${nextYear}-${month.slice(5, 7)}`);
-        }}
-        aria-label="ปี"
-        style={{ width: 104 }}
-      >
-        {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
-      </select>
-      <select className="premium-select" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="เดือนที่ทบทวน" style={{ width: 150 }}>
-        {months.map((m, i) => <option key={m} value={m}>{MONTH_LABELS[i]} {year}</option>)}
-      </select>
+      <MonthPicker value={month} onChange={setMonth} />
       <Link className="btn" href="/sales-planning/deals"><FolderKanban size={15} aria-hidden="true" /> โครงการ</Link>
       <Link className="btn" href="/sales-planning/targets"><Target size={15} aria-hidden="true" /> เป้าหมาย</Link>
       <button type="button" className="btn" onClick={load} disabled={loading}>
