@@ -549,7 +549,7 @@ export default function PoDetailPage() {
                             >
                               {ln.candidates.map((c) => (
                                 <option key={c.id} value={c.id}>
-                                  {c.title} · คาดปิด {c.forecastMonth || "—"} · ฿{nf(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : ""}
+                                  {c.title} · คาดปิด {c.forecastMonth || "—"} · ฿{nf(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
                                 </option>
                               ))}
                               <option value="new">— สร้างดีลใหม่ (PO นอก forecast) —</option>
