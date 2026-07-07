@@ -1,6 +1,6 @@
 import { getSahamitContext, sahamitError, loadSahamitProducts, indexByFgCode } from '@/lib/sahamit/server';
-import { canEditSalesPlanning } from '@/lib/salesPlanning';
-import { settlePoIntoSalesDeal } from '@/lib/salesPlanningForecast';
+import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
+import { settlePoIntoSalesDeal, listMappedDealCandidatesForPo } from '@/lib/salesPlanningForecast';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +20,47 @@ async function loadPoWithLines(supabase, customerId, id) {
   return { ...po, lines: lines || [] };
 }
 
+function poFgCodes(activeLines) {
+  return [...new Set((activeLines || []).map((l) => String(l.fgCode || '').trim()).filter(Boolean))];
+}
+
+// GET — ดีลที่ระบบแนะนำให้เชื่อม (สำหรับ modal เลือกเอง). ไม่แก้ข้อมูล.
+export async function GET(request, { params }) {
+  const ctx = await getSahamitContext();
+  if (!ctx.ok) return sahamitError(ctx);
+  const { supabase, customerId, user } = ctx;
+  if (!canViewSalesPlanning(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+
+  const { id } = await params;
+  const po = await loadPoWithLines(supabase, customerId, id);
+  if (!po) return Response.json({ error: 'ไม่พบ PO นี้' }, { status: 404 });
+
+  if (po.salesDealId) {
+    const { data: existing } = await supabase.from('sales_deals').select('*').eq('id', po.salesDealId).maybeSingle();
+    return Response.json({ alreadyLinked: true, linkedDeal: existing || null, candidates: [] });
+  }
+
+  const activeLines = (po.lines || []).filter((l) => l.status !== 'cancelled' && toQty(l.qty) > 0);
+  const scored = activeLines.length
+    ? await listMappedDealCandidatesForPo(supabase, customerId, poFgCodes(activeLines), (po.dueDate || '').slice(0, 7) || null)
+    : [];
+  const candidates = scored.map(({ deal, overlap }) => ({
+    id: deal.id,
+    title: deal.title,
+    forecastMonth: deal.forecastMonth,
+    projectValue: deal.projectValue,
+    stage: deal.stage,
+    ownerName: deal.ownerName,
+    fgCodes: Array.isArray(deal.metadata?.fgCodes) ? deal.metadata.fgCodes : [],
+    overlap,
+  }));
+  return Response.json({ alreadyLinked: false, suggestedDealId: candidates[0]?.id || null, candidates });
+}
+
 // POST /api/sahamit/po/[id]/settle-deal — เชื่อม PO เข้าดีลแผนการขายแล้วปิด Won
 // (action หลัก, ไม่ต้องมี PM project). idempotent ผ่าน sahamit_pos.salesDealId.
+// body: { dealId? } เลือกดีลเอง, { createNew:true } สร้างดีลใหม่ (นอก forecast),
+// ไม่ระบุ = auto-match.
 export async function POST(request, { params }) {
   const ctx = await getSahamitContext();
   if (!ctx.ok) return sahamitError(ctx);
@@ -29,6 +68,7 @@ export async function POST(request, { params }) {
   if (!canEditSalesPlanning(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
   const { id } = await params;
+  const body = await request.json().catch(() => ({}));
   const po = await loadPoWithLines(supabase, customerId, id);
   if (!po) return Response.json({ error: 'ไม่พบ PO นี้' }, { status: 404 });
 
@@ -45,8 +85,10 @@ export async function POST(request, { params }) {
   const now = new Date().toISOString();
 
   const { deal, matchedBy } = await settlePoIntoSalesDeal({
-    supabase, user, po, customer, activeLines, productIndex, project: null, now, request,
+    supabase, user, po, customer, activeLines, productIndex, project: null,
+    chosenDealId: body.dealId || null, forceStub: !!body.createNew, now, request,
   });
+  if (!deal) return Response.json({ error: 'เชื่อมดีลไม่สำเร็จ (ดีลที่เลือกอาจถูกปิด/เชื่อมไปแล้ว หรือ PO ไม่มีจำนวนตรงกับดีล)' }, { status: 400 });
 
   if (deal?.id) {
     await supabase.from('sahamit_pos').update({ salesDealId: deal.id, updatedAt: now }).eq('id', po.id).eq('customerId', customerId);
