@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X } from "lucide-react";
+import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2 } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate } from "@/lib/format";
@@ -24,6 +25,9 @@ export default function ForecastPage() {
   const { data: rounds, loading, error, reload } = useApiList("/api/sahamit/forecast/rounds");
   const { data: products } = useApiList("/api/sahamit/products");
   const { data: assignables } = useApiList("/api/pm/assignable-users");
+  // forecast line ที่ถูกสร้างเป็นดีลไปแล้ว (กันสร้างซ้ำตั้งแต่ UI)
+  const { data: mappedLineIds, reload: reloadMapped } = useApiList("/api/sahamit/forecast/mapped-lines");
+  const mappedSet = useMemo(() => new Set((mappedLineIds || []).map(String)), [mappedLineIds]);
   const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae"), [assignables]);
   const [selectedNo, setSelectedNo] = useState(null);
   const [tab, setTab] = useState("matrix");
@@ -34,6 +38,7 @@ export default function ForecastPage() {
   const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
   const [dealOwnerId, setDealOwnerId] = useState(""); // AE เจ้าของดีล (role=ae เท่านั้น)
   const [creating, setCreating] = useState(false);
+  const [dealModalOpen, setDealModalOpen] = useState(false); // modal ยืนยันสร้างแผนการขาย
 
   // Default selection = the latest round, kept in sync as rounds load/change.
   useEffect(() => {
@@ -122,6 +127,7 @@ export default function ForecastPage() {
           id: l.id, fgCode: l.fgCode, productName: l.productName, month: l.month, qty,
           price, amount: price == null ? null : qty * price,
           category: p?.category || "— ไม่ระบุหมวด —",
+          mapped: mappedSet.has(String(l.id)), // มีดีลอยู่แล้ว
         };
       });
     rows.sort((a, b) =>
@@ -129,7 +135,7 @@ export default function ForecastPage() {
       String(a.fgCode).localeCompare(String(b.fgCode)) ||
       String(a.month).localeCompare(String(b.month)));
     return rows;
-  }, [selectedRound, productByFg]);
+  }, [selectedRound, productByFg, mappedSet]);
 
   const lineGroups = useMemo(() => {
     const g = new Map();
@@ -147,12 +153,14 @@ export default function ForecastPage() {
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
+  // เลือก/ยกเลิกทั้งกลุ่ม — ข้าม line ที่มีดีลแล้ว (เลือกไม่ได้)
   const setLineGroup = (rows, on) => setSelectedLines((prev) => {
     const next = new Set(prev);
-    for (const r of rows) { if (on) next.add(r.id); else next.delete(r.id); }
+    for (const r of rows) { if (r.mapped) continue; if (on) next.add(r.id); else next.delete(r.id); }
     return next;
   });
-  const allLinesSelected = lineList.length > 0 && lineList.every((r) => selectedLines.has(r.id));
+  const selectableLines = useMemo(() => lineList.filter((r) => !r.mapped), [lineList]);
+  const allLinesSelected = selectableLines.length > 0 && selectableLines.every((r) => selectedLines.has(r.id));
 
   // สรุป line ที่เลือก (จำนวน + มูลค่าราคาโรงงาน) สำหรับแถบสร้างดีล
   const selection = useMemo(() => {
@@ -176,8 +184,11 @@ export default function ForecastPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineIds: [...selectedLines], forecastMonth: dealMonth, ownerId: dealOwnerId }),
       });
-      alert(`สร้างดีลเข้าแผนการขายแล้ว ${json.count || 0} ดีล (1 รายการ = 1 ดีล)`);
+      const skipMsg = json.skipped ? ` (ข้ามที่มีดีลแล้ว ${json.skipped} รายการ)` : "";
+      alert(`สร้างดีลเข้าแผนการขายแล้ว ${json.count || 0} ดีล (1 รายการ = 1 ดีล)${skipMsg}`);
       setSelectedLines(new Set());
+      setDealModalOpen(false);
+      reloadMapped();
     } catch (e) {
       alert(e.message || "สร้างดีลเข้าแผนการขายไม่สำเร็จ");
     } finally {
@@ -363,28 +374,15 @@ export default function ForecastPage() {
                 )}
               </div>
 
-              {/* แถบสร้างดีลจาก line ที่เลือก */}
+              {/* แถบสรุปที่เลือก → กดปุ่มเปิด modal ยืนยันสร้างแผนการขาย */}
               {selection.count > 0 && (
                 <div className="glass-panel" style={{ padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", borderLeft: "3px solid var(--accent, var(--blue))" }}>
                   <div style={{ fontSize: 13 }}>
-                    เลือก <b>{selection.count}</b> รายการ → สร้าง <b>{selection.count}</b> ดีล · <b>{nf(selection.qty)}</b> หน่วย · <b>{nfBaht(selection.value)}</b>
+                    เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> หน่วย · <b>{nfBaht(selection.value)}</b>
                     {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11 }}> · {selection.unpriced} รายการไม่มีราคา</span>}
                   </div>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
-                    AE เจ้าของ
-                    <select className="premium-select" style={{ height: 32, minWidth: 140 }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
-                      {!aeList.length && <option value="">— ไม่มี AE —</option>}
-                      {aeList.map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
-                    </select>
-                  </label>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
-                    เดือนคาดได้รับ PO
-                    <select className="premium-select" style={{ height: 32, minWidth: 110 }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
-                      {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </label>
-                  <button className="btn sm btn-primary" onClick={createDeal} disabled={creating || !dealOwnerId}>
-                    <Send size={14} /> {creating ? "กำลังสร้าง..." : "สร้างแผนการขาย"}
+                  <button className="btn sm btn-primary" style={{ marginLeft: "auto" }} onClick={() => setDealModalOpen(true)}>
+                    <Send size={14} /> สร้างแผนการขาย ({selection.count})
                   </button>
                   <button className="btn-icon" title="ล้างที่เลือก" onClick={() => setSelectedLines(new Set())}><X size={15} /></button>
                 </div>
@@ -418,12 +416,25 @@ export default function ForecastPage() {
                           </td>
                         </tr>,
                         ...rows.map((r) => (
-                          <tr key={r.id} style={{ background: selectedLines.has(r.id) ? "var(--panel-2)" : undefined }}>
+                          <tr key={r.id} style={{ background: selectedLines.has(r.id) ? "var(--panel-2)" : undefined, opacity: r.mapped ? 0.6 : 1 }}>
                             <td style={{ textAlign: "center" }}>
-                              <input type="checkbox" checked={selectedLines.has(r.id)} onChange={() => toggleLine(r.id)} />
+                              <input
+                                type="checkbox"
+                                checked={selectedLines.has(r.id)}
+                                disabled={r.mapped}
+                                onChange={() => toggleLine(r.id)}
+                                title={r.mapped ? "รายการนี้ถูกสร้างเป็นดีลแล้ว" : undefined}
+                              />
                             </td>
                             <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
-                            <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>{r.productName || "— ไม่รู้จัก —"}</td>
+                            <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>
+                              {r.productName || "— ไม่รู้จัก —"}
+                              {r.mapped && (
+                                <span className="ui-badge" style={{ marginLeft: 8, color: "var(--green)", fontSize: 10.5 }}>
+                                  <CheckCircle2 size={11} style={{ verticalAlign: "-1px" }} /> มีดีลแล้ว
+                                </span>
+                              )}
+                            </td>
                             <td style={{ textAlign: "center" }}>{r.month}</td>
                             <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(r.qty)}</td>
                             <td style={{ textAlign: "right", color: r.amount == null ? "var(--amber)" : "inherit" }}>{r.amount == null ? "—" : nfBaht(r.amount)}</td>
@@ -487,6 +498,43 @@ export default function ForecastPage() {
           )}
         </>
       )}
+
+      {/* Modal ยืนยันสร้างแผนการขายจากรายการที่เลือก */}
+      <Modal open={dealModalOpen} onClose={() => !creating && setDealModalOpen(false)} title="สร้างแผนการขายจาก Forecast" size="md">
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="glass-panel" style={{ padding: "12px 14px", fontSize: 13, lineHeight: 1.7 }}>
+            เลือก <b>{selection.count}</b> รายการ (สินค้า×เดือน) → สร้าง <b>{selection.count}</b> ดีล
+            <span style={{ color: "var(--text-3)" }}> (1 รายการ = 1 ดีล)</span>
+            <br />
+            รวม <b>{nf(selection.qty)}</b> หน่วย · มูลค่า <b>{nfBaht(selection.value)}</b>
+            {selection.unpriced > 0 && (
+              <span style={{ color: "var(--amber)", fontSize: 12 }}> · {selection.unpriced} รายการไม่มีราคา (มูลค่า = 0)</span>
+            )}
+          </div>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
+            AE เจ้าของดีล
+            <select className="premium-select" style={{ height: 36 }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
+              {!aeList.length && <option value="">— ไม่มี AE —</option>}
+              {aeList.map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
+            เดือนคาดได้รับ PO
+            <select className="premium-select" style={{ height: 36 }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
+              {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </label>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+            <button className="btn ghost" onClick={() => setDealModalOpen(false)} disabled={creating}>ยกเลิก</button>
+            <button className="btn btn-primary" onClick={createDeal} disabled={creating || !dealOwnerId || !selection.count}>
+              <Send size={14} /> {creating ? "กำลังสร้าง..." : `สร้าง ${selection.count} ดีล`}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <ForecastImportModal
         open={showImport}

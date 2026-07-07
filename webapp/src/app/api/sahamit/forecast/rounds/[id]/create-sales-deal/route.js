@@ -78,30 +78,26 @@ export async function POST(request, { params }) {
   });
   if (!picked.length) return Response.json({ error: 'รายการที่เลือกไม่มีจำนวนที่ผูกได้' }, { status: 400 });
 
-  // Dedup: ตัด line ที่ถูกผูกกับดีล (ยัง active, ไม่ lost) อยู่แล้ว — กันดีลซ้ำเมื่อ
-  // เลือก line เดิมซ้ำหรือกดสร้างสองครั้ง.
-  const pickedLineIds = picked.map((l) => String(l.id));
+  // กันซ้ำ: forecast line ที่เคยสร้างดีลไปแล้ว (ดีลยังไม่ถูกยกเลิก) จะไม่สร้างดีลซ้ำอีก.
+  // ใช้ junction (sales_deal_forecast_lines.forecastLineId) เป็นกุญแจกันซ้ำ.
+  const pickedLineIds = picked.map((line) => String(line.id));
   const { data: existingLinks } = await supabase
     .from('sales_deal_forecast_lines')
     .select('forecastLineId, dealId')
-    .eq('customerId', customer.id)
+    .eq('customerId', customerId)
     .in('forecastLineId', pickedLineIds);
-  let linkedLineIds = new Set();
-  const linkedDealIds = [...new Set((existingLinks || []).map((l) => l.dealId))];
-  if (linkedDealIds.length) {
-    const { data: linkedDeals } = await supabase
-      .from('sales_deals')
-      .select('id, stage')
-      .in('id', linkedDealIds);
-    const activeDealIds = new Set((linkedDeals || []).filter((d) => d.stage !== 'lost').map((d) => d.id));
-    linkedLineIds = new Set(
-      (existingLinks || []).filter((l) => activeDealIds.has(l.dealId)).map((l) => String(l.forecastLineId)),
-    );
+  const blockedLineIds = new Set();
+  if (existingLinks?.length) {
+    const linkDealIds = [...new Set(existingLinks.map((l) => l.dealId).filter(Boolean))];
+    const { data: linkDeals } = await supabase
+      .from('sales_deals').select('id, stage').in('id', linkDealIds.length ? linkDealIds : ['__none__']);
+    const activeDealIds = new Set((linkDeals || []).filter((d) => d.stage !== 'lost').map((d) => d.id));
+    for (const l of existingLinks) if (activeDealIds.has(l.dealId)) blockedLineIds.add(String(l.forecastLineId));
   }
-  const toCreate = picked.filter((l) => !linkedLineIds.has(String(l.id)));
-  const skippedCount = picked.length - toCreate.length;
+  const toCreate = picked.filter((line) => !blockedLineIds.has(String(line.id)));
+  const skipped = picked.length - toCreate.length;
   if (!toCreate.length) {
-    return Response.json({ error: 'ทุกรายการที่เลือกมีดีลอยู่แล้ว', skipped: skippedCount }, { status: 400 });
+    return Response.json({ error: 'รายการที่เลือกถูกสร้างเป็นดีลไปแล้วทั้งหมด', skipped, count: 0 }, { status: 409 });
   }
 
   const now = new Date().toISOString();
@@ -186,10 +182,10 @@ export async function POST(request, { params }) {
     action: 'create',
     entityType: 'sales_deal',
     entityId: created[0]?.id || round.id,
-    after: { count: created.length, skipped: skippedCount, ownerName, forecastMonth },
-    summary: `create ${created.length} sales deal(s) from Sahamit FC #${round.roundNo} (1 line = 1 deal, AE ${ownerName})`,
+    after: { count: created.length, ownerName, forecastMonth, skipped },
+    summary: `create ${created.length} sales deal(s) from Sahamit FC #${round.roundNo} (1 line = 1 deal, AE ${ownerName}${skipped ? `, ข้ามซ้ำ ${skipped}` : ''})`,
     request,
   });
 
-  return Response.json({ deals: created, count: created.length, skipped: skippedCount });
+  return Response.json({ deals: created, count: created.length, skipped });
 }
