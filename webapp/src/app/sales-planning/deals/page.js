@@ -12,6 +12,7 @@ export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
   const canReview = useCan("salesplan:review");
   const [month, setMonth] = useState(thisMonth());
+  const [allMonths, setAllMonths] = useState(false);
   const [deals, setDeals] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +40,7 @@ export default function SalesPlanningPipelinePage() {
     setError("");
     try {
       const [dealsRes, customersRes] = await Promise.all([
-        fetch(`/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
+        fetch(allMonths ? "/api/sales-planning/deals" : `/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
         fetch("/api/master/customers"),
       ]);
       if (!dealsRes.ok) throw new Error((await dealsRes.json()).error || "โหลดโครงการไม่สำเร็จ");
@@ -50,7 +51,7 @@ export default function SalesPlanningPipelinePage() {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, allMonths]);
 
   useEffect(() => {
     load();
@@ -330,7 +331,10 @@ export default function SalesPlanningPipelinePage() {
 
   const headerRight = (
     <>
-      <input type="month" aria-label="เดือน forecast" className="premium-input" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 150 }} />
+      <input type="month" aria-label="เดือน forecast" className="premium-input" value={month} onChange={(e) => setMonth(e.target.value)} disabled={allMonths} style={{ width: 150, opacity: allMonths ? 0.5 : 1 }} />
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
+        <input type="checkbox" checked={allMonths} onChange={(e) => setAllMonths(e.target.checked)} /> ทุกเดือน
+      </label>
       <button type="button" className="btn" onClick={load} disabled={loading}>
         <RefreshCcw size={15} aria-hidden="true" /> รีเฟรช
       </button>

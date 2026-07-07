@@ -16,24 +16,24 @@ function monthDistance(a, b) {
   return Math.abs((ya * 12 + mo) - (yb * 12 + mn));
 }
 
-// Resolve which OPEN sales deal a PO fulfils, using the real Forecast↔Sales
-// mapping (sales_deal_forecast_lines) instead of the old fgCode/month heuristic.
-// Returns { deal, links } where links = ALL junction rows of that deal (needed
-// for coverage/split), or null when no mapped deal overlaps the PO.
-export async function resolveMappedDealForPo(supabase, customerId, poFgCodes, poMonth) {
+// List OPEN sales deals a PO could fulfil, using the real Forecast↔Sales mapping
+// (sales_deal_forecast_lines). Returns scored candidates [{ deal, links, overlap }]
+// sorted best-first (overlap → nearest month → oldest). Empty if none overlap.
+// Excludes closed (won/in_project/lost) + already project-linked deals → ดีลที่
+// settle ไปแล้วจะไม่โผล่ให้เลือกซ้ำ.
+export async function listMappedDealCandidatesForPo(supabase, customerId, poFgCodes, poMonth) {
   const wanted = new Set([...poFgCodes].map(lc).filter(Boolean));
-  if (!wanted.size) return null;
+  if (!wanted.size) return [];
 
   const { data: allLinks, error: linkErr } = await supabase
     .from('sales_deal_forecast_lines')
     .select('*')
     .eq('customerId', customerId);
   if (linkErr) throw linkErr;
-  if (!allLinks?.length) return null;
+  if (!allLinks?.length) return [];
 
-  // ดีลที่มี line อย่างน้อยหนึ่งตรง fgCode ของ PO
   const dealIds = [...new Set(allLinks.filter((l) => wanted.has(lc(l.fgCode))).map((l) => l.dealId))];
-  if (!dealIds.length) return null;
+  if (!dealIds.length) return [];
 
   const { data: deals, error: dealErr } = await supabase
     .from('sales_deals')
@@ -42,7 +42,7 @@ export async function resolveMappedDealForPo(supabase, customerId, poFgCodes, po
   if (dealErr) throw dealErr;
 
   const open = (deals || []).filter((d) => !d.projectId && !CLOSED_STAGES.includes(d.stage));
-  if (!open.length) return null;
+  if (!open.length) return [];
 
   const linksByDeal = new Map();
   for (const l of allLinks) {
@@ -55,15 +55,19 @@ export async function resolveMappedDealForPo(supabase, customerId, poFgCodes, po
     const overlap = links.filter((l) => wanted.has(lc(l.fgCode))).length;
     return { deal, links, overlap };
   }).filter((r) => r.overlap > 0);
-  if (!scored.length) return null;
 
   scored.sort((a, b) =>
     b.overlap - a.overlap ||
     monthDistance(a.deal.forecastMonth, poMonth) - monthDistance(b.deal.forecastMonth, poMonth) ||
     String(a.deal.createdAt || '').localeCompare(String(b.deal.createdAt || '')),
   );
-  const best = scored[0];
-  return { deal: best.deal, links: best.links };
+  return scored;
+}
+
+// Best single candidate (auto-match). Returns { deal, links } or null.
+export async function resolveMappedDealForPo(supabase, customerId, poFgCodes, poMonth) {
+  const scored = await listMappedDealCandidatesForPo(supabase, customerId, poFgCodes, poMonth);
+  return scored.length ? { deal: scored[0].deal, links: scored[0].links } : null;
 }
 
 // Compute how much of each mapped line the PO covers (by fgCode qty), first-come
@@ -310,7 +314,7 @@ export async function settleMappedDealWithPo({ supabase, user, deal, links, poQt
 // ── Orchestration: settle a PO into a sales deal (project OPTIONAL) ──────────
 // action หลัก = ปิด Won เข้าดีล; ถ้าเจอดีลที่ map ไว้ → settle (เต็ม/หรือ split),
 // ถ้าไม่เจอ → สร้าง won-deal stub (PO นอก forecast). คืน { deal, matchedBy }.
-export async function settlePoIntoSalesDeal({ supabase, user, po, customer, activeLines, productIndex, project = null, now, request }) {
+export async function settlePoIntoSalesDeal({ supabase, user, po, customer, activeLines, productIndex, project = null, chosenDealId = null, forceStub = false, now, request }) {
   const poQty = new Map();
   let stubValue = 0;
   for (const line of activeLines || []) {
@@ -323,13 +327,25 @@ export async function settlePoIntoSalesDeal({ supabase, user, po, customer, acti
   }
   const priceOf = (fg) => productIndex.get(String(fg || '').trim().toLowerCase())?.price ?? 0;
 
-  const matched = await resolveMappedDealForPo(supabase, po.customerId, [...poQty.keys()], monthKey(po.dueDate));
-  if (matched) {
-    const deal = await settleMappedDealWithPo({
-      supabase, user, deal: matched.deal, links: matched.links,
-      poQtyByFg: poQty, priceOf, project, po, now, request,
-    });
-    if (deal) return { deal, matchedBy: 'fc-mapping' };
+  if (!forceStub) {
+    // เลือกดีลเอง (chosenDealId) หรือ auto-match ดีลที่เข้าข่ายมากสุด
+    let target = null;
+    if (chosenDealId) {
+      const { data: d } = await supabase.from('sales_deals').select('*').eq('id', chosenDealId).maybeSingle();
+      if (d && !d.projectId && !CLOSED_STAGES.includes(d.stage)) {
+        const { data: links } = await supabase.from('sales_deal_forecast_lines').select('*').eq('dealId', d.id);
+        target = { deal: d, links: links || [] };
+      }
+    } else {
+      target = await resolveMappedDealForPo(supabase, po.customerId, [...poQty.keys()], monthKey(po.dueDate));
+    }
+    if (target) {
+      const deal = await settleMappedDealWithPo({
+        supabase, user, deal: target.deal, links: target.links,
+        poQtyByFg: poQty, priceOf, project, po, now, request,
+      });
+      if (deal) return { deal, matchedBy: chosenDealId ? 'chosen' : 'fc-mapping' };
+    }
   }
 
   const wonNow = po.receivedDate ? `${po.receivedDate}T00:00:00.000Z` : now;
