@@ -38,10 +38,48 @@ function fgSet(lines) {
   return new Set((lines || []).map((line) => String(line.fgCode || '').trim()).filter(Boolean));
 }
 
+function dealEligibleForWin(deal) {
+  return !!deal && !deal.projectId && !['won', 'in_project', 'lost'].includes(deal.stage);
+}
+
+// จับคู่ดีลผ่าน junction sales_deal_forecast_lines — mapping ที่ผู้ใช้เลือกเองใน
+// Phase 1 (create-sales-deal) เป็นแหล่งความจริง. นับ overlap ราย line ที่ fgCode
+// ตรงกับ PO และเดือน demand อยู่ในเดือนส่งมอบของ PO.
+async function findForecastDealViaJunction(supabase, customerId, deliveryMonths, poFgCodes) {
+  const { data: links, error } = await supabase
+    .from('sales_deal_forecast_lines')
+    .select('dealId, fgCode, demandMonth')
+    .eq('customerId', customerId);
+  if (error) throw error;
+
+  const overlapByDeal = new Map();
+  for (const link of links || []) {
+    const fg = String(link.fgCode || '').trim();
+    if (!fg || !poFgCodes.has(fg)) continue;
+    const month = monthKey(link.demandMonth);
+    if (month && !deliveryMonths.has(month)) continue;
+    overlapByDeal.set(link.dealId, (overlapByDeal.get(link.dealId) || 0) + 1);
+  }
+  if (!overlapByDeal.size) return null;
+
+  const { data: deals, error: dealError } = await supabase
+    .from('sales_deals')
+    .select('*')
+    .in('id', [...overlapByDeal.keys()]);
+  if (dealError) throw dealError;
+
+  return (deals || [])
+    .filter(dealEligibleForWin)
+    .map((deal) => ({ deal, score: overlapByDeal.get(deal.id) || 0 }))
+    .sort((a, b) => b.score - a.score || String(a.deal.expectedCloseDate || '').localeCompare(String(b.deal.expectedCloseDate || '')))[0]?.deal || null;
+}
+
+// Fallback สำหรับดีลเก่าที่สร้างจาก sync-sales-planning (ก่อน Phase 1) ซึ่งเก็บ
+// เดือน demand ไว้ใน metadata.sahamitDemandMonth ไม่มีแถวใน junction.
 function scoreForecastDeal(deal, deliveryMonths, poFgCodes) {
   const meta = deal.metadata || {};
   if (meta.source !== 'sahamit-forecast') return -1;
-  if (deal.projectId || ['won', 'in_project', 'lost'].includes(deal.stage)) return -1;
+  if (!dealEligibleForWin(deal)) return -1;
   const demandMonth = monthKey(meta.sahamitDemandMonth);
   if (!demandMonth || !deliveryMonths.has(demandMonth)) return -1;
   const dealFgCodes = Array.isArray(meta.fgCodes) ? meta.fgCodes : [];
@@ -53,6 +91,12 @@ async function findForecastDealForPo(supabase, customerId, lines, po) {
   const deliveryMonths = new Set((lines || []).map((line) => lineDeliveryMonth(line, po)).filter(Boolean));
   if (!deliveryMonths.size) return null;
   const poFgCodes = fgSet(lines);
+
+  // 1) mapping ที่ผู้ใช้เลือกเอง (Phase 1) มาก่อนเสมอ
+  const viaJunction = await findForecastDealViaJunction(supabase, customerId, deliveryMonths, poFgCodes);
+  if (viaJunction) return viaJunction;
+
+  // 2) heuristic เดิมสำหรับดีลเก่าที่ยังไม่มีแถว junction
   const { data, error } = await supabase
     .from('sales_deals')
     .select('*')
