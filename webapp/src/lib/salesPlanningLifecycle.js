@@ -99,12 +99,13 @@ function buildRoutes(deal, related) {
   // 2) สรรพสามิต — เฉพาะดีลที่มี FG หมวด 01-002 เท่านั้น
   if (dealHasExciseFg(deal, projectProducts)) {
     const regCount = exciseRegistrations.length;
+    const firstReg = exciseRegistrations[0];
     routes.push({
       kind: 'excise',
       label: 'ทะเบียนสรรพสามิต',
       status: regCount > 0 ? 'done' : hasProject ? 'available' : 'locked',
-      href: hasProject ? projectHref : null,
-      action: !hasProject || regCount > 0 ? null : 'create-excise',
+      href: regCount > 0 && firstReg ? `/tax/registrations/${firstReg.id}` : hasProject ? projectHref : null,
+      action: hasProject && regCount === 0 ? 'create-excise' : null,
       hint: regCount > 0 ? `มีทะเบียน ${regCount} รายการ` : hasProject ? 'สร้างทะเบียนจากโครงการ' : 'สร้างโครงการ PM ก่อน',
     });
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, LineChart, Lock, PackageCheck, RefreshCcw, Trophy } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
@@ -93,7 +93,7 @@ function DealStepper({ steps, lost }) {
 }
 
 // การ์ดปลายทางส่งต่อ 1 ระบบ (PM / สรรพสามิต / ส่งของ / PO)
-function RouteCard({ route, onCreateProject, busy, canEdit }) {
+function RouteCard({ route, onCreateProject, onCreateExcise, busy, canEdit }) {
   const color = route.status === "done" ? "var(--green)" : route.status === "available" ? "var(--accent)" : "var(--text-3)";
   const badge = route.status === "done" ? "เสร็จแล้ว" : route.status === "available" ? "พร้อมทำ" : "ล็อก";
   return (
@@ -107,6 +107,8 @@ function RouteCard({ route, onCreateProject, busy, canEdit }) {
         <button type="button" className="btn ghost sm" disabled><Lock size={13} aria-hidden="true" /> ล็อก</button>
       ) : route.action === "create-project" && canEdit ? (
         <button type="button" className="btn btn-primary sm" onClick={onCreateProject} disabled={busy}><PackageCheck size={13} aria-hidden="true" /> สร้างโครงการ</button>
+      ) : route.action === "create-excise" && canEdit ? (
+        <button type="button" className="btn btn-primary sm" onClick={onCreateExcise} disabled={busy}><FileText size={13} aria-hidden="true" /> สร้างทะเบียน</button>
       ) : route.href ? (
         <a className="btn sm" href={route.href}><ExternalLink size={13} aria-hidden="true" /> เปิด</a>
       ) : null}
@@ -116,6 +118,7 @@ function RouteCard({ route, onCreateProject, busy, canEdit }) {
 
 export default function DealOverviewPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params?.id;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -177,6 +180,28 @@ export default function DealOverviewPage() {
 
   const doWin = () => runAction("win", `/api/sales-planning/deals/${id}/win`, { method: "POST" });
   const doCreateProject = () => runAction("project", `/api/sales-planning/deals/${id}/create-project`, { method: "POST" });
+
+  // สร้างทะเบียนสรรพสามิตจากโครงการ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
+  const doCreateExcise = async () => {
+    if (!deal?.projectId) return;
+    setActionBusy("excise");
+    setError("");
+    try {
+      const res = await fetch(`/api/excise-registrations/from-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: deal.projectId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "สร้างทะเบียนสรรพสามิตไม่สำเร็จ");
+      if (payload.id) router.push(`/tax/registrations/${payload.id}`);
+      else await load();
+    } catch (e) {
+      setError(e.message || "สร้างทะเบียนสรรพสามิตไม่สำเร็จ");
+    } finally {
+      setActionBusy("");
+    }
+  };
   const doLost = async () => {
     const okDone = await runAction("lost", `/api/sales-planning/deals/${id}`, {
       method: "PATCH",
@@ -369,7 +394,7 @@ export default function DealOverviewPage() {
               {lc.routes.length ? (
                 <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
                   {lc.routes.map((route) => (
-                    <RouteCard key={route.kind} route={route} onCreateProject={doCreateProject} busy={!!actionBusy} canEdit={canEdit} />
+                    <RouteCard key={route.kind} route={route} onCreateProject={doCreateProject} onCreateExcise={doCreateExcise} busy={!!actionBusy} canEdit={canEdit} />
                   ))}
                 </div>
               ) : <Empty>ยังไม่มีปลายทางที่ต้องส่งต่อ</Empty>}

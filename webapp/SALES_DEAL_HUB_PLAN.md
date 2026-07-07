@@ -159,11 +159,13 @@ Component ใหม่ (เล็ก, อยู่ในหน้าเดีย
 3. `GoNoGoButtons` (Won ผ่าน /win, Lost ผ่าน PATCH + modal เหตุผล)
 4. verify: ปิด Won ได้, Lost บันทึกเหตุผล, stepper อัปเดต
 
-**เฟส 2 — Routing panel** (ส่งต่อ)
-5. `RoutingPanel`: ปุ่มสร้าง/เปิดโครงการ PM (reuse create-project)
-6. ปุ่มสรรพสามิต → deep-link Tax prefill (ต่อจาก projectId); ส่งของ → PM shipment-prep
-7. ป้ายสถานะทำแล้ว/ยัง/ล็อก ต่อปลายทาง
-8. verify: จากดีล won → สร้างโครงการ → เห็นปุ่มสรรพสามิตปลดล็อก → ไป Tax prefill ถูกตัว
+**เฟส 2 — Routing panel** (ส่งต่อ) — ✅ ทำแล้ว
+5. `RoutingPanel` + `RouteCard`: ปุ่มสร้าง/เปิดโครงการ PM (reuse create-project)
+6. ปุ่มสรรพสามิต: reuse `POST /api/excise-registrations/from-project {projectId}` (ตัวเดียวกับหน้า PM
+   ที่เขียน projectId + metadata.salesDealId อยู่แล้ว) → แล้ว `router.push('/tax/registrations/<id>')`.
+   **ตอบ open decision #2:** ไม่ทำ query-param prefill ใหม่ — ใช้ POST action เดิม เพราะครบและไม่แตะ Tax
+7. ป้ายสถานะทำแล้ว/ยัง/ล็อก ต่อปลายทาง; done → ลิงก์ไปทะเบียนจริง
+8. shipment → รอเปิด flag `shipment` (แสดง/ลิงก์ไป PM shipment-prep)
 
 > เฟส 1 ใช้งานได้จบในตัว (ตัดสินใจ+ปิดดีล). เฟส 2 เพิ่มการส่งต่อ. รีวิว/ทดสอบทีละเฟส.
 
