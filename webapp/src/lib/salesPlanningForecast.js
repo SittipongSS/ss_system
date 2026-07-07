@@ -21,9 +21,11 @@ function monthDistance(a, b) {
 // sorted best-first (overlap → nearest month → oldest). Empty if none overlap.
 // Excludes closed (won/in_project/lost) + already project-linked deals → ดีลที่
 // settle ไปแล้วจะไม่โผล่ให้เลือกซ้ำ.
-export async function listMappedDealCandidatesForPo(supabase, customerId, poFgCodes, poMonth) {
+export async function listMappedDealCandidatesForPo(supabase, customerId, poFgCodes, poMonth, { includeZeroOverlap = false } = {}) {
   const wanted = new Set([...poFgCodes].map(lc).filter(Boolean));
-  if (!wanted.size) return [];
+  // includeZeroOverlap: โชว์ดีล open ที่มาจาก forecast ทั้งหมด (สำหรับ modal เลือกเอง)
+  // แม้ fgCode ไม่ตรง — เรียงตัวที่ overlap มากก่อน. auto-match (create-project) ไม่ใช้โหมดนี้.
+  if (!wanted.size && !includeZeroOverlap) return [];
 
   const { data: allLinks, error: linkErr } = await supabase
     .from('sales_deal_forecast_lines')
@@ -32,7 +34,10 @@ export async function listMappedDealCandidatesForPo(supabase, customerId, poFgCo
   if (linkErr) throw linkErr;
   if (!allLinks?.length) return [];
 
-  const dealIds = [...new Set(allLinks.filter((l) => wanted.has(lc(l.fgCode))).map((l) => l.dealId))];
+  // overlap-only: เฉพาะดีลที่ fgCode ตรง; includeZeroOverlap: ดีลที่มี junction ทุกตัว
+  const dealIds = includeZeroOverlap
+    ? [...new Set(allLinks.map((l) => l.dealId))]
+    : [...new Set(allLinks.filter((l) => wanted.has(lc(l.fgCode))).map((l) => l.dealId))];
   if (!dealIds.length) return [];
 
   const { data: deals, error: dealErr } = await supabase
@@ -54,7 +59,7 @@ export async function listMappedDealCandidatesForPo(supabase, customerId, poFgCo
     const links = linksByDeal.get(deal.id) || [];
     const overlap = links.filter((l) => wanted.has(lc(l.fgCode))).length;
     return { deal, links, overlap };
-  }).filter((r) => r.overlap > 0);
+  }).filter((r) => includeZeroOverlap || r.overlap > 0);
 
   scored.sort((a, b) =>
     b.overlap - a.overlap ||
@@ -345,6 +350,23 @@ export async function settlePoIntoSalesDeal({ supabase, user, po, customer, acti
         poQtyByFg: poQty, priceOf, project, po, now, request,
       });
       if (deal) return { deal, matchedBy: chosenDealId ? 'chosen' : 'fc-mapping' };
+
+      // ผู้ใช้เลือกดีลเอง แต่ fgCode ของ PO ไม่ตรงกับดีลนั้น (coverage 0) → ยังปิด Won
+      // ทั้งดีลด้วยมูลค่า PO (manual link) แทนที่จะไปสร้างดีล stub ใหม่
+      if (chosenDealId) {
+        const wonNow = po.receivedDate ? `${po.receivedDate}T00:00:00.000Z` : now;
+        const deal2 = await markWon({
+          supabase, user, deal: target.deal, source: 'sahamit-po', now: wonNow,
+          projectValue: stubValue, projectId: project?.id || null,
+          metadata: {
+            sahamitPoId: po.id, poNumber: po.poNumber, poReceivedDate: po.receivedDate || null,
+            poDueDate: po.dueDate || null, projectCode: project?.code || null,
+            quoteRef: po.quoteRef || null, wonMatchedBy: 'manual-link',
+          },
+          request, auditSummary: `manual-link Sahamit PO ${po.poNumber} → deal ${target.deal.id}`,
+        });
+        return { deal: deal2, matchedBy: 'chosen' };
+      }
     }
   }
 

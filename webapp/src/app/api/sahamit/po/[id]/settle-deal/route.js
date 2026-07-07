@@ -41,10 +41,22 @@ export async function GET(request, { params }) {
   }
 
   const activeLines = (po.lines || []).filter((l) => l.status !== 'cancelled' && toQty(l.qty) > 0);
+  const poMonth = (po.dueDate || '').slice(0, 7) || null;
+
+  // ดีลที่มี junction (เรียงตัวตรง fgCode ก่อน; รวมตัวที่ไม่ตรงด้วยเพื่อให้เลือกได้)
   const scored = activeLines.length
-    ? await listMappedDealCandidatesForPo(supabase, customerId, poFgCodes(activeLines), (po.dueDate || '').slice(0, 7) || null)
+    ? await listMappedDealCandidatesForPo(supabase, customerId, poFgCodes(activeLines), poMonth, { includeZeroOverlap: true })
     : [];
-  const candidates = scored.map(({ deal, overlap }) => ({
+  const seen = new Set(scored.map((s) => s.deal.id));
+
+  // fallback: ดีล open ที่มาจาก FC แต่ junction หลุด (แก้/ลบรอบ) — จะได้ไม่หายไปจากตัวเลือก
+  const { data: extra } = await supabase
+    .from('sales_deals').select('*').eq('customerId', customerId).is('projectId', null);
+  const extraCands = (extra || [])
+    .filter((d) => !['won', 'in_project', 'lost'].includes(d.stage) && d.metadata?.source === 'sahamit-forecast' && !seen.has(d.id))
+    .map((d) => ({ deal: d, overlap: 0 }));
+
+  const candidates = [...scored, ...extraCands].map(({ deal, overlap }) => ({
     id: deal.id,
     title: deal.title,
     forecastMonth: deal.forecastMonth,

@@ -518,7 +518,7 @@ export default function PoDetailPage() {
                           {c.id === settleCands.suggestedDealId && <span style={{ fontSize: 11, color: "var(--green)", marginLeft: 6 }}>· แนะนำ</span>}
                         </div>
                         <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                          เดือนคาด PO {c.forecastMonth || "—"} · ฿{nf(c.projectValue)} · ตรง {c.overlap} รายการ{c.ownerName ? ` · ${c.ownerName}` : ""}
+                          เดือนคาด PO {c.forecastMonth || "—"} · ฿{nf(c.projectValue)} · {c.overlap > 0 ? `ตรงสินค้า ${c.overlap} รายการ` : "ไม่ตรงสินค้า PO"}{c.ownerName ? ` · ${c.ownerName}` : ""}
                         </div>
                       </div>
                     </label>
