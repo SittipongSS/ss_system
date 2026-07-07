@@ -8,8 +8,8 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode, loadProject } from '@/lib/pm/projectsRepo';
-import { createWonDealStub, markWon } from '@/lib/salesPlanningWin';
-import { monthKey } from '@/lib/salesPlanning';
+import { createWonDealStub } from '@/lib/salesPlanningWin';
+import { resolveMappedDealForPo, settleMappedDealWithPo } from '@/lib/salesPlanningForecast';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,38 +30,21 @@ function poReceivedAt(po, fallback) {
   return po.receivedDate ? `${po.receivedDate}T00:00:00.000Z` : fallback;
 }
 
-function lineDeliveryMonth(line, po) {
-  return monthOf(line.expectedDate || line.dueDate || po.dueDate);
+// PO delivery month (header dueDate, or line expected/due) — ใช้จับดีลที่ใกล้เดือนสุด
+function poDeliveryMonth(po, lines) {
+  const fromLines = (lines || []).map((line) => monthOf(line.expectedDate || line.dueDate)).filter(Boolean).sort();
+  return monthOf(po.dueDate) || fromLines[0] || null;
 }
 
-function fgSet(lines) {
-  return new Set((lines || []).map((line) => String(line.fgCode || '').trim()).filter(Boolean));
-}
-
-function scoreForecastDeal(deal, deliveryMonths, poFgCodes) {
-  const meta = deal.metadata || {};
-  if (meta.source !== 'sahamit-forecast') return -1;
-  if (deal.projectId || ['won', 'in_project', 'lost'].includes(deal.stage)) return -1;
-  const demandMonth = monthKey(meta.sahamitDemandMonth);
-  if (!demandMonth || !deliveryMonths.has(demandMonth)) return -1;
-  const dealFgCodes = Array.isArray(meta.fgCodes) ? meta.fgCodes : [];
-  const overlap = dealFgCodes.filter((fg) => poFgCodes.has(String(fg || '').trim())).length;
-  return overlap || 1;
-}
-
-async function findForecastDealForPo(supabase, customerId, lines, po) {
-  const deliveryMonths = new Set((lines || []).map((line) => lineDeliveryMonth(line, po)).filter(Boolean));
-  if (!deliveryMonths.size) return null;
-  const poFgCodes = fgSet(lines);
-  const { data, error } = await supabase
-    .from('sales_deals')
-    .select('*')
-    .eq('customerId', customerId);
-  if (error) throw error;
-  return (data || [])
-    .map((deal) => ({ deal, score: scoreForecastDeal(deal, deliveryMonths, poFgCodes) }))
-    .filter((row) => row.score > 0)
-    .sort((a, b) => b.score - a.score || String(a.deal.expectedCloseDate || '').localeCompare(String(b.deal.expectedCloseDate || '')))[0]?.deal || null;
+// รวมจำนวนตาม fgCode ของ PO (สำหรับคำนวณ coverage ของดีลที่ map ไว้)
+function poQtyByFg(lines) {
+  const m = new Map();
+  for (const line of lines || []) {
+    const fg = String(line.fgCode || '').trim();
+    if (!fg) continue;
+    m.set(fg, (m.get(fg) || 0) + toQty(line.qty));
+  }
+  return m;
 }
 
 async function loadPoWithLines(supabase, customerId, id) {
@@ -234,29 +217,24 @@ export async function POST(request, { params }) {
   let warning = null;
   try {
     const projectValue = poLineValue(activeLines, productIndex);
-    const matchedDeal = await findForecastDealForPo(supabase, customer.id, activeLines, po);
-    if (matchedDeal) {
-      deal = await markWon({
+    // หาดีลที่ PO นี้เติมเต็ม ผ่าน Forecast↔Sales mapping (junction) — ไม่เดา fgCode เอง
+    const poFgCodes = poQtyByFg(activeLines);
+    const matched = await resolveMappedDealForPo(supabase, customer.id, [...poFgCodes.keys()], poDeliveryMonth(po, activeLines));
+    if (matched) {
+      deal = await settleMappedDealWithPo({
         supabase,
         user,
-        deal: matchedDeal,
-        source: 'sahamit-po',
-        now: poReceivedAt(po, now),
-        projectValue,
-        projectId: project.id,
+        deal: matched.deal,
+        links: matched.links,
+        poQtyByFg: poFgCodes,
+        priceOf: (fg) => productIndex.get(String(fg || '').trim().toLowerCase())?.price ?? 0,
+        project,
+        po,
+        now,
         request,
-        auditSummary: `mark Sahamit forecast deal won from PO ${po.poNumber}`,
-        metadata: {
-          sahamitPoId: po.id,
-          poNumber: po.poNumber,
-          poReceivedDate: po.receivedDate || null,
-          poDueDate: po.dueDate || null,
-          projectCode: project.code,
-          quoteRef: po.quoteRef || null,
-          wonMatchedBy: 'fc-vs-po',
-        },
       });
-    } else {
+    }
+    if (!deal) {
       deal = await createWonDealStub({
         supabase,
         user,

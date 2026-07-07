@@ -14,6 +14,7 @@ import {
   toProbability,
 } from '@/lib/salesPlanning';
 import { buildWinPatch } from '@/lib/salesPlanningWin';
+import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const deal = await loadDeal(supabase, id);
   if (!deal) return notFound('ไม่พบ deal');
   if (!inSalesViewScope(user, deal)) return forbidden();
-  return ok(deal);
+  const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
+  return ok({ ...deal, forecastDrift });
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {

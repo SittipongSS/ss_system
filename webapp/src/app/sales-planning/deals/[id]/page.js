@@ -2,9 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { ClipboardList, ExternalLink, FileText, LineChart, PackageCheck, RefreshCcw } from "lucide-react";
+import { AlertTriangle, ClipboardList, ExternalLink, FileText, LineChart, PackageCheck, RefreshCcw } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
+
+// ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
+function driftText(it) {
+  if (it.kind === "dropped") return `${it.fgCode}: ถูกตัดออกจาก FC ล่าสุด (เดิม ${it.month} · ${Number(it.fromQty || 0).toLocaleString("th-TH")})`;
+  if (it.kind === "shifted") return `${it.fgCode}: เลื่อนเดือน ${it.month} → ${(it.toMonths || []).join(", ")}`;
+  if (it.kind === "qtyChanged") return `${it.fgCode} (${it.month}): จำนวน ${Number(it.fromQty || 0).toLocaleString("th-TH")} → ${Number(it.toQty || 0).toLocaleString("th-TH")}`;
+  return `${it.fgCode}: มีการเปลี่ยนแปลง`;
+}
 
 const money = (value) =>
   Number(value || 0).toLocaleString("th-TH", {
@@ -117,6 +125,23 @@ export default function DealOverviewPage() {
           {!!data?.warnings?.length && (
             <div className="glass-panel" role="status" style={{ padding: "12px 14px", color: "var(--amber)", borderColor: "var(--amber)" }}>
               {data.warnings.join(" · ")}
+            </div>
+          )}
+
+          {data?.forecastDrift?.hasDrift && (
+            <div className="glass-panel" role="status" style={{ padding: "12px 14px", borderColor: "var(--amber)", borderLeft: "3px solid var(--amber)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--amber)", fontWeight: 700 }}>
+                <AlertTriangle size={16} aria-hidden="true" />
+                FC สหมิตรรอบล่าสุด (#{data.forecastDrift.latestRoundNo}) ต่างจากตอนสร้างดีล
+              </div>
+              <ul style={{ margin: "8px 0 4px", paddingLeft: 20, fontSize: 13 }}>
+                {data.forecastDrift.items.map((it, i) => (
+                  <li key={i} style={{ marginBottom: 3 }}>{driftText(it)}</li>
+                ))}
+              </ul>
+              <div style={{ color: "var(--text-3)", fontSize: 12 }}>
+                คำแนะนำ: ดีลถูกล็อกตัวเลขไว้ตอน map — ปรับ “เดือนคาดได้รับ PO” / มูลค่าดีลเองหากต้องการให้ตรงกับ FC ล่าสุด
+              </div>
             </div>
           )}
 

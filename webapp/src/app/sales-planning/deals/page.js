@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, Plus, RefreshCcw, Save, Search, Trash2, Truck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, Plus, RefreshCcw, Save, Search, Trash2, Truck } from "lucide-react";
 import Modal from "@/components/Modal";
 import Workspace from "@/components/ui/Workspace";
 import { useCan } from "@/lib/roleContext";
@@ -392,7 +392,12 @@ export default function SalesPlanningPipelinePage() {
                   <tr key={deal.id} className="premium-row">
                     <td>
                       <button type="button" className="linklike text-left" onClick={() => openEditDeal(deal)} disabled={!deal.canEdit} title={deal.canEdit ? undefined : "แก้ได้เฉพาะเจ้าของโครงการ"}>
-                        <strong>{deal.title}</strong>
+                        <strong>
+                          {deal.title}
+                          {deal.forecastDrift?.hasDrift && (
+                            <AlertTriangle size={13} aria-label="FC ล่าสุดเปลี่ยนจากตอน map" title={`FC รอบ #${deal.forecastDrift.latestRoundNo} เปลี่ยนจากตอนสร้างดีล`} style={{ color: "var(--amber)", marginLeft: 6, verticalAlign: "-1px" }} />
+                          )}
+                        </strong>
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}</span>
                       </button>
                     </td>
