@@ -23,6 +23,8 @@ const thisMonth = () => new Date().toISOString().slice(0, 7);
 export default function ForecastPage() {
   const { data: rounds, loading, error, reload } = useApiList("/api/sahamit/forecast/rounds");
   const { data: products } = useApiList("/api/sahamit/products");
+  const { data: assignables } = useApiList("/api/pm/assignable-users");
+  const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae"), [assignables]);
   const [selectedNo, setSelectedNo] = useState(null);
   const [tab, setTab] = useState("matrix");
   const [showImport, setShowImport] = useState(false);
@@ -30,7 +32,7 @@ export default function ForecastPage() {
   // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 ดีล" เข้าแผนการขาย
   const [selectedLines, setSelectedLines] = useState(() => new Set());
   const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
-  const [dealTitle, setDealTitle] = useState("");
+  const [dealOwnerId, setDealOwnerId] = useState(""); // AE เจ้าของดีล (role=ae เท่านั้น)
   const [creating, setCreating] = useState(false);
 
   // Default selection = the latest round, kept in sync as rounds load/change.
@@ -136,7 +138,9 @@ export default function ForecastPage() {
   }, [lineList]);
 
   // ล้าง selection เมื่อสลับรอบ (line คนละชุด)
-  useEffect(() => { setSelectedLines(new Set()); setDealTitle(""); }, [selectedNo]);
+  useEffect(() => { setSelectedLines(new Set()); }, [selectedNo]);
+  // default AE = คนแรกในลิสต์ (ถ้ายังไม่เลือก)
+  useEffect(() => { if (!dealOwnerId && aeList.length) setDealOwnerId(aeList[0].id); }, [aeList, dealOwnerId]);
 
   const toggleLine = (id) => setSelectedLines((prev) => {
     const next = new Set(prev);
@@ -164,16 +168,16 @@ export default function ForecastPage() {
 
   const createDeal = async () => {
     if (!selectedRound || !selectedLines.size) return;
+    if (!dealOwnerId) { alert("ต้องเลือก AE เจ้าของดีล"); return; }
     setCreating(true);
     try {
       const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/create-sales-deal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lineIds: [...selectedLines], forecastMonth: dealMonth, title: dealTitle.trim() || undefined }),
+        body: JSON.stringify({ lineIds: [...selectedLines], forecastMonth: dealMonth, ownerId: dealOwnerId }),
       });
-      alert(`สร้างดีลเข้าแผนการขายแล้ว: ${json.deal?.title || ""} (${json.lines || 0} รายการ)`);
+      alert(`สร้างดีลเข้าแผนการขายแล้ว ${json.count || 0} ดีล (1 รายการ = 1 ดีล)`);
       setSelectedLines(new Set());
-      setDealTitle("");
     } catch (e) {
       alert(e.message || "สร้างดีลเข้าแผนการขายไม่สำเร็จ");
     } finally {
@@ -363,23 +367,23 @@ export default function ForecastPage() {
               {selection.count > 0 && (
                 <div className="glass-panel" style={{ padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", borderLeft: "3px solid var(--accent, var(--blue))" }}>
                   <div style={{ fontSize: 13 }}>
-                    เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> หน่วย · <b>{nfBaht(selection.value)}</b>
+                    เลือก <b>{selection.count}</b> รายการ → สร้าง <b>{selection.count}</b> ดีล · <b>{nf(selection.qty)}</b> หน่วย · <b>{nfBaht(selection.value)}</b>
                     {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11 }}> · {selection.unpriced} รายการไม่มีราคา</span>}
                   </div>
-                  <input
-                    className="premium-input"
-                    style={{ height: 32, minWidth: 200, flex: "1 1 200px" }}
-                    placeholder="ชื่อดีล (เว้นว่างให้ระบบตั้งให้)"
-                    value={dealTitle}
-                    onChange={(e) => setDealTitle(e.target.value)}
-                  />
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
+                    AE เจ้าของ
+                    <select className="premium-select" style={{ height: 32, minWidth: 140 }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
+                      {!aeList.length && <option value="">— ไม่มี AE —</option>}
+                      {aeList.map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
+                    </select>
+                  </label>
                   <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
                     เดือนคาดได้รับ PO
                     <select className="premium-select" style={{ height: 32, minWidth: 110 }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
                       {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </label>
-                  <button className="btn sm btn-primary" onClick={createDeal} disabled={creating}>
+                  <button className="btn sm btn-primary" onClick={createDeal} disabled={creating || !dealOwnerId}>
                     <Send size={14} /> {creating ? "กำลังสร้าง..." : "สร้างแผนการขาย"}
                   </button>
                   <button className="btn-icon" title="ล้างที่เลือก" onClick={() => setSelectedLines(new Set())}><X size={15} /></button>

@@ -30,9 +30,9 @@ async function loadRound(supabase, customerId, id) {
   return { ...round, lines: lines || [] };
 }
 
-// สร้าง "1 ดีล" จาก forecast line ที่ผู้ใช้เลือก (หลาย fgCode) แล้วผูกทุก line
-// เข้าดีลผ่าน sales_deal_forecast_lines (many-to-many). ต่างจาก sync เดิมที่
-// auto-group ตาม (เดือน×เจ้าของ) เป็นหลายดีล — อันนี้ผู้ใช้คุมว่าจะรวมอะไรเป็นดีลเดียว.
+// สร้างดีล "1 forecast line = 1 ดีล" (line = สินค้า×เดือน) จากรายการที่เลือก.
+// เจ้าของดีล = AE (role=ae) ที่เลือกจาก dropdown เท่านั้น. เลือกหลาย line →
+// สร้างหลายดีล (ดีลละ line, junction 1 แถว/ดีล).
 export async function POST(request, { params }) {
   const ctx = await getSahamitContext();
   if (!ctx.ok) return sahamitError(ctx);
@@ -45,7 +45,17 @@ export async function POST(request, { params }) {
   const forecastMonth = monthKey(body.forecastMonth);
   if (!forecastMonth) return Response.json({ error: 'ต้องระบุเดือนคาดได้รับ PO (forecastMonth)' }, { status: 400 });
 
-  // เลือกได้ 2 แบบ: lineIds (ราย line = สินค้า×เดือน, แม่นสุด) หรือ fgCodes (ทุกเดือนของสินค้านั้น)
+  // เจ้าของดีลต้องเป็น AE (role=ae) เท่านั้น — ตรวจจาก app_metadata ฝั่ง server
+  if (!body.ownerId) return Response.json({ error: 'ต้องเลือก AE เจ้าของดีล' }, { status: 400 });
+  const { data: ownerRes, error: ownerErr } = await supabase.auth.admin.getUserById(String(body.ownerId));
+  const owner = ownerRes?.user;
+  if (ownerErr || !owner) return Response.json({ error: 'ไม่พบผู้ใช้ AE ที่เลือก' }, { status: 400 });
+  if (owner.app_metadata?.role !== 'ae') return Response.json({ error: 'เจ้าของดีลต้องเป็น AE เท่านั้น' }, { status: 400 });
+  const ownerId = owner.id;
+  const ownerName = owner.user_metadata?.name || owner.email || null;
+  const ownerTeam = owner.app_metadata?.team || user.team || 'KA';
+
+  // เลือกได้ 2 แบบ: lineIds (ราย line, แม่นสุด) หรือ fgCodes (ทุกเดือนของสินค้านั้น)
   const lineIds = new Set((Array.isArray(body.lineIds) ? body.lineIds : []).map((v) => String(v || '')).filter(Boolean));
   const fgCodesSel = new Set(
     (Array.isArray(body.fgCodes) ? body.fgCodes : [])
@@ -68,113 +78,92 @@ export async function POST(request, { params }) {
   });
   if (!picked.length) return Response.json({ error: 'รายการที่เลือกไม่มีจำนวนที่ผูกได้' }, { status: 400 });
 
-  let value = 0;
-  let totalQty = 0;
-  const fgCodes = new Set();
-  const productNames = new Set();
-  let derivedOwnerName = null;
-  let derivedOwnerId = null;
+  const now = new Date().toISOString();
+  const closeDate = lastDayOfMonth(forecastMonth);
+  const created = [];
+
+  // 1 line = 1 ดีล — วนสร้างทีละ line (พร้อม rollback ถ้าพลาดกลางทาง)
   for (const line of picked) {
     const product = productIndex.get(String(line.fgCode || '').trim().toLowerCase());
     const price = Number(product?.price ?? 0);
     const qty = Number(line.qty || 0);
-    value += qty * (Number.isFinite(price) ? price : 0);
-    totalQty += qty;
-    fgCodes.add(line.fgCode);
-    if (line.productName || product?.name) productNames.add(line.productName || product.name);
-    // เจ้าของเริ่มต้น = assignee ของสินค้าแรกที่มีค่า (ผู้ใช้ override ผ่าน body ได้)
-    if (!derivedOwnerName && product?.assignee) { derivedOwnerName = product.assignee; derivedOwnerId = product.ownerId || null; }
+    const productName = line.productName || product?.name || line.fgCode;
+    const demandMonth = monthKey(line.month);
+
+    const dealRow = {
+      id: genId('DEAL'),
+      customerId: customer.id,
+      customerName: customer.name || null,
+      title: `${productName} · ${line.month}`,
+      stage: 'qualified',
+      projectValue: toMoney(qty * (Number.isFinite(price) ? price : 0)),
+      probability: 30,
+      forecastMonth,
+      expectedCloseDate: closeDate,
+      depositPaid: false,
+      confirmedAt: null,
+      lostReason: null,
+      notes: `สร้างจาก FC สหมิตร รอบ #${round.roundNo} · ${line.fgCode} (${line.month})`,
+      ownerId,
+      ownerName,
+      team: ownerTeam,
+      metadata: {
+        source: 'sahamit-forecast',
+        sahamitForecastRoundId: round.id,
+        sahamitForecastRoundNo: round.roundNo,
+        fgCodes: [line.fgCode],
+        productNames: [productName],
+        forecastQty: qty,
+        demandMonth,
+        fcReceivedDate: round.receivedDate || null,
+        ownerName,
+        syncedAt: now,
+      },
+    };
+
+    const { data: deal, error: dealError } = await supabase.from('sales_deals').insert(dealRow).select().single();
+    if (dealError) {
+      if (created.length) await supabase.from('sales_deals').delete().in('id', created.map((d) => d.id));
+      return Response.json({ error: dealError.message }, { status: 500 });
+    }
+
+    const { error: linkError } = await supabase.from('sales_deal_forecast_lines').insert({
+      id: genId('SDF'),
+      dealId: deal.id,
+      forecastLineId: line.id,
+      customerId: customer.id,
+      fgCode: line.fgCode,
+      demandMonth,
+      qtyAllocated: qty,
+      createdById: user.id || null,
+      createdByName: user.name || null,
+    });
+    if (linkError) {
+      await supabase.from('sales_deals').delete().in('id', [...created.map((d) => d.id), deal.id]);
+      return Response.json({ error: `ผูกรายการ FC เข้าดีลไม่สำเร็จ: ${linkError.message}` }, { status: 500 });
+    }
+
+    await supabase.from('sales_deal_stage_history').insert({
+      id: genId('DSH'), dealId: deal.id, fromStage: null, toStage: deal.stage,
+      changedBy: user.id || null, changedByName: user.name || null,
+    });
+    await supabase.from('sales_deal_forecasts').insert({
+      id: genId('DFC'), dealId: deal.id, forecastMonth,
+      forecastAmount: forecastAmount(deal), probability: deal.probability,
+      source: 'sahamit-forecast', createdBy: user.id || null, createdByName: user.name || null,
+    });
+    created.push(deal);
   }
-
-  const ownerName = body.ownerName || derivedOwnerName || user.name || null;
-  const ownerId = body.ownerId || (body.ownerName ? null : derivedOwnerId) || user.id || null;
-  const closeDate = lastDayOfMonth(forecastMonth);
-  const now = new Date().toISOString();
-  const sortedFg = [...fgCodes].sort();
-  const title = body.title?.trim()
-    || `Sahamit FC #${round.roundNo} · ${forecastMonth}${ownerName ? ` · ${ownerName}` : ''}`;
-
-  const metadata = {
-    source: 'sahamit-forecast',
-    sahamitForecastRoundId: round.id,
-    sahamitForecastRoundNo: round.roundNo,
-    fgCodes: sortedFg,
-    productNames: [...productNames].sort(),
-    forecastQty: totalQty,
-    fcReceivedDate: round.receivedDate || null,
-    ownerName: ownerName || null,
-    syncedAt: now,
-  };
-
-  const dealRow = {
-    id: genId('DEAL'),
-    customerId: customer.id,
-    customerName: customer.name || null,
-    title,
-    stage: 'qualified',
-    projectValue: toMoney(value),
-    probability: 30,
-    forecastMonth,
-    expectedCloseDate: closeDate,
-    depositPaid: false,
-    confirmedAt: null,
-    lostReason: null,
-    notes: body.notes?.trim() || `สร้างจาก FC สหมิตร รอบ #${round.roundNo} (${sortedFg.length} รายการ)`,
-    ownerId,
-    ownerName,
-    team: user.team || 'KA',
-    metadata,
-  };
-
-  const { data: deal, error: dealError } = await supabase.from('sales_deals').insert(dealRow).select().single();
-  if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
-
-  const junctionRows = picked.map((line) => ({
-    id: genId('SDF'),
-    dealId: deal.id,
-    forecastLineId: line.id,
-    customerId: customer.id,
-    fgCode: line.fgCode,
-    demandMonth: monthKey(line.month),
-    qtyAllocated: Number(line.qty || 0),
-    createdById: user.id || null,
-    createdByName: user.name || null,
-  }));
-  const { error: linkError } = await supabase.from('sales_deal_forecast_lines').insert(junctionRows);
-  if (linkError) {
-    // rollback ดีลที่เพิ่งสร้าง เพื่อไม่ให้เหลือดีลลอยไม่มี line ผูก
-    await supabase.from('sales_deals').delete().eq('id', deal.id);
-    return Response.json({ error: `ผูกรายการ FC เข้าดีลไม่สำเร็จ: ${linkError.message}` }, { status: 500 });
-  }
-
-  await supabase.from('sales_deal_stage_history').insert({
-    id: genId('DSH'),
-    dealId: deal.id,
-    fromStage: null,
-    toStage: deal.stage,
-    changedBy: user.id || null,
-    changedByName: user.name || null,
-  });
-  await supabase.from('sales_deal_forecasts').insert({
-    id: genId('DFC'),
-    dealId: deal.id,
-    forecastMonth: deal.forecastMonth || forecastMonth,
-    forecastAmount: forecastAmount(deal),
-    probability: deal.probability,
-    source: 'sahamit-forecast',
-    createdBy: user.id || null,
-    createdByName: user.name || null,
-  });
 
   await recordAudit({
     user,
     action: 'create',
     entityType: 'sales_deal',
-    entityId: deal.id,
-    after: { title: deal.title, lines: junctionRows.length, projectValue: deal.projectValue },
-    summary: `create Sales deal from Sahamit FC #${round.roundNo} (${junctionRows.length} lines)`,
+    entityId: created[0]?.id || round.id,
+    after: { count: created.length, ownerName, forecastMonth },
+    summary: `create ${created.length} sales deal(s) from Sahamit FC #${round.roundNo} (1 line = 1 deal, AE ${ownerName})`,
     request,
   });
 
-  return Response.json({ deal, lines: junctionRows.length });
+  return Response.json({ deals: created, count: created.length });
 }
