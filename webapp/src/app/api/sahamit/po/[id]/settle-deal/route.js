@@ -56,7 +56,7 @@ export async function GET(request, { params }) {
     .filter((d) => !['won', 'in_project', 'lost'].includes(d.stage) && d.metadata?.source === 'sahamit-forecast' && !seen.has(d.id))
     .map((d) => ({ deal: d, overlap: 0 }));
 
-  const candidates = [...scored, ...extraCands].map(({ deal, overlap }) => ({
+  const all = [...scored, ...extraCands].map(({ deal, overlap }) => ({
     id: deal.id,
     title: deal.title,
     forecastMonth: deal.forecastMonth,
@@ -66,7 +66,12 @@ export async function GET(request, { params }) {
     fgCodes: Array.isArray(deal.metadata?.fgCodes) ? deal.metadata.fgCodes : [],
     overlap,
   }));
-  return Response.json({ alreadyLinked: false, suggestedDealId: candidates[0]?.id || null, candidates });
+  // เสนอเฉพาะดีลที่ "สินค้าตรงกับ PO" (overlap>0); เปิดกว้างทั้งหมดเป็น fallback
+  // เฉพาะกรณีไม่มีดีลไหนตรงเลย (จะได้ไม่เป็นทางตัน)
+  const matched = all.filter((c) => c.overlap > 0);
+  const candidates = matched.length ? matched : all;
+  const hasMatch = matched.length > 0;
+  return Response.json({ alreadyLinked: false, suggestedDealId: candidates[0]?.id || null, hasMatch, candidates });
 }
 
 // POST /api/sahamit/po/[id]/settle-deal — เชื่อม PO เข้าดีลแผนการขายแล้วปิด Won
