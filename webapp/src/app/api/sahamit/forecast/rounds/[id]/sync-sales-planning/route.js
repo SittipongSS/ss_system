@@ -131,12 +131,13 @@ export async function POST(request, { params }) {
     }
 
     if (existing) {
+      // forecastMonth / expectedCloseDate เป็นของสายขาย (Sales Forecast Month = เดือน
+      // ที่คาดได้รับ PO) — re-sync ไม่เขียนทับค่าที่ผู้ใช้ปรับแล้ว. FC drift ให้ขึ้นธง
+      // แนะนำแทน (Phase 3) ไม่ดันเดือนอัตโนมัติ.
       const { data, error } = await supabase
         .from('sales_deals')
         .update({
           projectValue: toMoney(bucket.value),
-          forecastMonth: bucket.closeMonth,
-          expectedCloseDate: closeDate,
           ownerId: existing.ownerId || bucket.ownerId || user.id || null,
           ownerName: existing.ownerName || bucket.ownerName || user.name || null,
           team: existing.team || bucket.team,
