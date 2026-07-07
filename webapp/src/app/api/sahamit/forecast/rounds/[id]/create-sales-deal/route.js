@@ -78,12 +78,38 @@ export async function POST(request, { params }) {
   });
   if (!picked.length) return Response.json({ error: 'รายการที่เลือกไม่มีจำนวนที่ผูกได้' }, { status: 400 });
 
+  // Dedup: ตัด line ที่ถูกผูกกับดีล (ยัง active, ไม่ lost) อยู่แล้ว — กันดีลซ้ำเมื่อ
+  // เลือก line เดิมซ้ำหรือกดสร้างสองครั้ง.
+  const pickedLineIds = picked.map((l) => String(l.id));
+  const { data: existingLinks } = await supabase
+    .from('sales_deal_forecast_lines')
+    .select('forecastLineId, dealId')
+    .eq('customerId', customer.id)
+    .in('forecastLineId', pickedLineIds);
+  let linkedLineIds = new Set();
+  const linkedDealIds = [...new Set((existingLinks || []).map((l) => l.dealId))];
+  if (linkedDealIds.length) {
+    const { data: linkedDeals } = await supabase
+      .from('sales_deals')
+      .select('id, stage')
+      .in('id', linkedDealIds);
+    const activeDealIds = new Set((linkedDeals || []).filter((d) => d.stage !== 'lost').map((d) => d.id));
+    linkedLineIds = new Set(
+      (existingLinks || []).filter((l) => activeDealIds.has(l.dealId)).map((l) => String(l.forecastLineId)),
+    );
+  }
+  const toCreate = picked.filter((l) => !linkedLineIds.has(String(l.id)));
+  const skippedCount = picked.length - toCreate.length;
+  if (!toCreate.length) {
+    return Response.json({ error: 'ทุกรายการที่เลือกมีดีลอยู่แล้ว', skipped: skippedCount }, { status: 400 });
+  }
+
   const now = new Date().toISOString();
   const closeDate = lastDayOfMonth(forecastMonth);
   const created = [];
 
   // 1 line = 1 ดีล — วนสร้างทีละ line (พร้อม rollback ถ้าพลาดกลางทาง)
-  for (const line of picked) {
+  for (const line of toCreate) {
     const product = productIndex.get(String(line.fgCode || '').trim().toLowerCase());
     const price = Number(product?.price ?? 0);
     const qty = Number(line.qty || 0);
@@ -160,10 +186,10 @@ export async function POST(request, { params }) {
     action: 'create',
     entityType: 'sales_deal',
     entityId: created[0]?.id || round.id,
-    after: { count: created.length, ownerName, forecastMonth },
+    after: { count: created.length, skipped: skippedCount, ownerName, forecastMonth },
     summary: `create ${created.length} sales deal(s) from Sahamit FC #${round.roundNo} (1 line = 1 deal, AE ${ownerName})`,
     request,
   });
 
-  return Response.json({ deals: created, count: created.length });
+  return Response.json({ deals: created, count: created.length, skipped: skippedCount });
 }
