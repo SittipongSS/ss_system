@@ -25,7 +25,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const openDeals = (deals || []).filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
   const wonDeals = (deals || []).filter((d) => isWon(d) && wonMonth(d) === month);
   const monthDeals = [...openDeals, ...wonDeals, ...(deals || []).filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month)];
-  const targetAmount = (targets || []).reduce((sum, t) => sum + Number(t.targetAmount || 0), 0);
   const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
   const wonValue = wonDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
@@ -38,6 +37,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     bucket.weighted += forecastAmount(d);
     byStage[d.stage] = bucket;
   }
+
+  // แถว "ผี": ไม่มีทั้งเป้า/won/คาดการณ์/จำนวนดีล — เกิดจาก target ค้างค่า 0
+  // หรือถังที่ถูกสร้างโดยไม่มีข้อมูลจริง → ตัดทิ้งไม่ให้โผล่บนหน้า.
+  const isEmptyBucket = (b) => !b.target && !b.won && !b.weighted && !b.openCount && !b.wonCount;
 
   // Per-SA breakdown: target (person-level rows) vs won vs weighted forecast.
   // Team-level target rows (ownerId null) are aggregated in byTeam, not here.
@@ -59,26 +62,42 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
   }
   const byOwner = Object.values(ownerMap)
+    .filter((b) => !isEmptyBucket(b))
     .map((b) => ({ ...b, gap: b.target - b.won }))
     .sort((a, b) => b.target - a.target || b.won - a.won);
 
-  // Per-team breakdown: sums ALL target rows for the team (team-level + per-SA).
-  // Assumes a team uses EITHER a team-level target OR per-SA targets, not both.
+  // Per-team breakdown. เป้าต่อทีม = team-level (ownerId ว่าง) ถ้ามี, ไม่งั้นรวมราย SA
+  // — กันบวกซ้ำเมื่อทีมมี target ทั้งสองแบบ (เดิมบวกรวมทั้งคู่ = เป้าเบิ้ล).
   const teamMap = {};
+  const teamKey = (team) => team || 'ไม่ระบุ';
   const teamBucket = (team) => {
-    const key = team || 'ไม่ระบุ';
+    const key = teamKey(team);
     if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, openCount: 0, wonCount: 0 };
     return teamMap[key];
   };
-  for (const t of targets || []) teamBucket(t.team).target += Number(t.targetAmount || 0);
+  const teamTargetParts = {};
+  for (const t of targets || []) {
+    const key = teamKey(t.team);
+    teamBucket(t.team);
+    if (!teamTargetParts[key]) teamTargetParts[key] = { level: 0, person: 0 };
+    if (t.ownerId) teamTargetParts[key].person += Number(t.targetAmount || 0);
+    else teamTargetParts[key].level += Number(t.targetAmount || 0);
+  }
+  for (const [key, parts] of Object.entries(teamTargetParts)) {
+    teamMap[key].target = parts.level > 0 ? parts.level : parts.person;
+  }
   for (const d of [...openDeals, ...wonDeals]) {
     const b = teamBucket(d.team);
     if (isWon(d)) { b.won += Number(d.projectValue || 0); b.wonCount += 1; }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
   }
   const byTeam = Object.values(teamMap)
+    .filter((b) => !isEmptyBucket(b))
     .map((b) => ({ ...b, gap: b.target - b.won }))
     .sort((a, b) => b.target - a.target);
+
+  // KPI เป้ารวม ใช้เป้าต่อทีมที่ dedup แล้ว (สอดคล้องกับ byTeam ไม่บวกซ้ำ)
+  const targetAmount = byTeam.reduce((sum, b) => sum + Number(b.target || 0), 0);
 
   return ok({
     month,
