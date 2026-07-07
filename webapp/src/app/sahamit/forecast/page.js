@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, RefreshCcw } from "lucide-react";
+import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -26,8 +26,11 @@ export default function ForecastPage() {
   const [tab, setTab] = useState("matrix");
   const [showImport, setShowImport] = useState(false);
   const [editRound, setEditRound] = useState(null); // round being edited, or null = create
-  const [syncCloseMonth, setSyncCloseMonth] = useState(thisMonth());
-  const [syncing, setSyncing] = useState(false);
+  // เลือก forecast line (ราย fgCode ของรอบที่ดู) → สร้าง "1 ดีล" เข้าแผนการขาย
+  const [selectedFg, setSelectedFg] = useState(() => new Set());
+  const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
+  const [dealTitle, setDealTitle] = useState("");
+  const [creating, setCreating] = useState(false);
 
   // Default selection = the latest round, kept in sync as rounds load/change.
   useEffect(() => {
@@ -103,21 +106,50 @@ export default function ForecastPage() {
     return [...months].sort();
   }, [matrix.months]);
 
-  const syncSalesPlan = async () => {
-    if (!selectedRound) return;
-    setSyncing(true);
+  // ล้าง selection เมื่อสลับรอบ (fgCode คนละชุด)
+  useEffect(() => { setSelectedFg(new Set()); setDealTitle(""); }, [selectedNo]);
+
+  const toggleFg = (fg) => setSelectedFg((prev) => {
+    const next = new Set(prev);
+    if (next.has(fg)) next.delete(fg); else next.add(fg);
+    return next;
+  });
+  const setGroup = (rows, on) => setSelectedFg((prev) => {
+    const next = new Set(prev);
+    for (const r of rows) { if (on) next.add(r.fgCode); else next.delete(r.fgCode); }
+    return next;
+  });
+  const allRowsSelected = matrix.rows.length > 0 && matrix.rows.every((r) => selectedFg.has(r.fgCode));
+
+  // สรุปรายการที่เลือก (จำนวน + มูลค่าราคาโรงงาน) สำหรับแถบสร้างดีล
+  const selection = useMemo(() => {
+    let qty = 0, value = 0, unpriced = 0;
+    for (const r of matrix.rows) {
+      if (!selectedFg.has(r.fgCode)) continue;
+      qty += Number(r.total) || 0;
+      const price = productByFg.get(String(r.fgCode).trim().toLowerCase())?.price;
+      if (price == null) { if (r.total > 0) unpriced += 1; continue; }
+      value += (Number(r.total) || 0) * Number(price);
+    }
+    return { count: selectedFg.size, qty, value, unpriced };
+  }, [selectedFg, matrix, productByFg]);
+
+  const createDeal = async () => {
+    if (!selectedRound || !selectedFg.size) return;
+    setCreating(true);
     try {
-      const closeMonthByDemand = Object.fromEntries((matrix.months || []).map((m) => [m, syncCloseMonth]));
-      const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/sync-sales-planning`, {
+      const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/create-sales-deal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ closeMonthByDemand }),
+        body: JSON.stringify({ fgCodes: [...selectedFg], forecastMonth: dealMonth, title: dealTitle.trim() || undefined }),
       });
-      alert(`ซิงก์เข้าแผนการขายแล้ว: สร้าง ${json.created?.length || 0}, อัปเดต ${json.updated?.length || 0}, ข้าม ${json.skipped?.length || 0}`);
+      alert(`สร้างดีลเข้าแผนการขายแล้ว: ${json.deal?.title || ""} (${json.lines || 0} รายการ)`);
+      setSelectedFg(new Set());
+      setDealTitle("");
     } catch (e) {
-      alert(e.message || "ซิงก์เข้าแผนการขายไม่สำเร็จ");
+      alert(e.message || "สร้างดีลเข้าแผนการขายไม่สำเร็จ");
     } finally {
-      setSyncing(false);
+      setCreating(false);
     }
   };
 
@@ -219,20 +251,39 @@ export default function ForecastPage() {
                   <button className="btn sm" onClick={() => openEdit(selectedRound)}><Pencil size={14} /> แก้รอบนี้</button>
                 )}
                 <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>
-                {selectedRound && (
-                  <>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
-                      เดือนคาดปิด
-                      <select className="premium-select" style={{ height: 32, minWidth: 110 }} value={syncCloseMonth} onChange={(e) => setSyncCloseMonth(e.target.value)}>
-                        {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </label>
-                    <button className="btn sm btn-primary" onClick={syncSalesPlan} disabled={syncing}>
-                      <RefreshCcw size={14} /> {syncing ? "กำลังซิงก์..." : "ส่งเข้าแผนการขาย"}
-                    </button>
-                  </>
+                {matrix.rows.length > 0 && (
+                  <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
+                    ติ๊กเลือกสินค้าเพื่อสร้างดีลเข้าแผนการขาย
+                  </span>
                 )}
               </div>
+
+              {/* แถบสร้างดีลจากรายการที่เลือก (โผล่เมื่อมีการติ๊ก) */}
+              {selection.count > 0 && (
+                <div className="glass-panel" style={{ padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", borderLeft: "3px solid var(--accent, var(--blue))" }}>
+                  <div style={{ fontSize: 13 }}>
+                    เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> หน่วย · <b>{nfBaht(selection.value)}</b>
+                    {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11 }}> · {selection.unpriced} SKU ไม่มีราคา</span>}
+                  </div>
+                  <input
+                    className="premium-input"
+                    style={{ height: 32, minWidth: 200, flex: "1 1 200px" }}
+                    placeholder="ชื่อดีล (เว้นว่างให้ระบบตั้งให้)"
+                    value={dealTitle}
+                    onChange={(e) => setDealTitle(e.target.value)}
+                  />
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
+                    เดือนคาดได้รับ PO
+                    <select className="premium-select" style={{ height: 32, minWidth: 110 }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
+                      {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </label>
+                  <button className="btn sm btn-primary" onClick={createDeal} disabled={creating}>
+                    <Send size={14} /> {creating ? "กำลังสร้าง..." : "สร้างแผนการขาย"}
+                  </button>
+                  <button className="btn-icon" title="ล้างที่เลือก" onClick={() => setSelectedFg(new Set())}><X size={15} /></button>
+                </div>
+              )}
 
               {matrix.rows.length === 0 ? (
                 <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>รอบนี้ยังไม่มีรายการ</div>
@@ -241,6 +292,9 @@ export default function ForecastPage() {
                   <table className="premium-table sticky-col1">
                     <thead>
                       <tr>
+                        <th style={{ width: 34, textAlign: "center" }}>
+                          <input type="checkbox" checked={allRowsSelected} onChange={(e) => setGroup(matrix.rows, e.target.checked)} title="เลือกทั้งหมด" />
+                        </th>
                         <th style={{ minWidth: 120 }}>รหัสสินค้า</th>
                         <th style={{ minWidth: 160 }}>ชื่อสินค้า</th>
                         {matrix.months.map((m) => <th key={m} style={{ textAlign: "right" }}>{m}</th>)}
@@ -248,8 +302,13 @@ export default function ForecastPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {matrixGroups.flatMap(([cat, rows]) => [
+                      {matrixGroups.flatMap(([cat, rows]) => {
+                        const groupAllOn = rows.every((r) => selectedFg.has(r.fgCode));
+                        return [
                         <tr key={`cat-${cat}`}>
+                          <td style={{ position: "static", background: "var(--panel-2)", textAlign: "center", padding: "8px 10px" }}>
+                            <input type="checkbox" checked={groupAllOn} onChange={(e) => setGroup(rows, e.target.checked)} title={`เลือกหมวด ${cat}`} />
+                          </td>
                           <td colSpan={matrix.months.length + 3} style={{ position: "static", background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
                             {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
                           </td>
@@ -257,7 +316,10 @@ export default function ForecastPage() {
                         ...rows.map((r) => {
                           const meta = productMetaText(productByFg.get(String(r.fgCode).trim().toLowerCase()), { withCategory: false });
                           return (
-                          <tr key={r.fgCode}>
+                          <tr key={r.fgCode} style={{ background: selectedFg.has(r.fgCode) ? "var(--panel-2)" : undefined }}>
+                            <td style={{ textAlign: "center" }}>
+                              <input type="checkbox" checked={selectedFg.has(r.fgCode)} onChange={() => toggleFg(r.fgCode)} />
+                            </td>
                             <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
                             <td style={{ color: r.productName ? "inherit" : "var(--amber)" }}>
                               {r.productName || "— ไม่รู้จัก —"}
@@ -270,11 +332,11 @@ export default function ForecastPage() {
                           </tr>
                           );
                         }),
-                      ])}
+                      ];})}
                     </tbody>
                     <tfoot>
                       <tr>
-                        <td colSpan={2} style={{ background: "var(--panel-2)", fontWeight: 600, color: "var(--text-2)", borderTop: "2px solid var(--border)" }}>
+                        <td colSpan={3} style={{ background: "var(--panel-2)", fontWeight: 600, color: "var(--text-2)", borderTop: "2px solid var(--border)" }}>
                           รวมมูลค่า (฿)
                           {matrixValue.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11, fontWeight: 400 }}> · {matrixValue.unpriced} SKU ไม่มีราคา</span>}
                         </td>
