@@ -24,9 +24,13 @@ export async function GET(request) {
 
   let query = supabase.from('products').select('*').order('createdAt', { ascending: false });
   if (customerId) query = query.eq('customerId', customerId);
-  // Team-scoped roles only see their own team's products; 'all' sees everything.
-  // Skipped when filtering by customerId (see note above).
-  else if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+  // Team-scoped roles only see their own team's products in downstream PICKERS;
+  // 'all' sees everything. Skipped when filtering by customerId (see note above)
+  // AND in the master-data management view (manage=1): master data is shared-core,
+  // so every role manages every team's products there — team-scoping it hid other
+  // teams' FGs and let users create duplicates. A team-scoped user with no team
+  // set now sees all (rather than zero) instead of the broken `.eq('team', null)`.
+  else if (!manage && viewScope(user?.role) === 'team' && user?.team) query = query.eq('team', user.team);
   // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
   if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
 
