@@ -9,6 +9,7 @@ import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { predictShifts } from "@/lib/sahamit/predict";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
+import { fmtMoneyCompact, fmtYearMonth } from "@/lib/format";
 
 // token → CSS var
 const C = {
@@ -31,12 +32,9 @@ const VIEWS = [
 ];
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
-const nfBaht = (n) => "฿" + Math.round(Number(n) || 0).toLocaleString("th-TH");
+const nfBaht = (n) => fmtMoneyCompact(n);
 const URGENCY_COLOR = { high: "var(--red)", medium: "var(--amber)", low: "var(--violet)" };
-const shortMonth = (ym) => {
-  try { return new Date(`${ym}-02`).toLocaleDateString("th-TH", { month: "short" }); }
-  catch { return ym; }
-};
+const shortMonth = (ym) => fmtYearMonth(ym);
 const volLabel = (p) => (p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "");
 
 export default function ReconcilePage() {
