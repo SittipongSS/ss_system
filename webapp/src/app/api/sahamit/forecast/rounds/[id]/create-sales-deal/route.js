@@ -45,12 +45,14 @@ export async function POST(request, { params }) {
   const forecastMonth = monthKey(body.forecastMonth);
   if (!forecastMonth) return Response.json({ error: 'ต้องระบุเดือนคาดได้รับ PO (forecastMonth)' }, { status: 400 });
 
-  const selected = new Set(
+  // เลือกได้ 2 แบบ: lineIds (ราย line = สินค้า×เดือน, แม่นสุด) หรือ fgCodes (ทุกเดือนของสินค้านั้น)
+  const lineIds = new Set((Array.isArray(body.lineIds) ? body.lineIds : []).map((v) => String(v || '')).filter(Boolean));
+  const fgCodesSel = new Set(
     (Array.isArray(body.fgCodes) ? body.fgCodes : [])
       .map((fg) => String(fg || '').trim().toLowerCase())
       .filter(Boolean),
   );
-  if (!selected.size) return Response.json({ error: 'ยังไม่ได้เลือกรายการสินค้า' }, { status: 400 });
+  if (!lineIds.size && !fgCodesSel.size) return Response.json({ error: 'ยังไม่ได้เลือกรายการ' }, { status: 400 });
 
   const round = await loadRound(supabase, customerId, id);
   if (!round) return Response.json({ error: 'ไม่พบรอบ FC นี้' }, { status: 404 });
@@ -59,8 +61,10 @@ export async function POST(request, { params }) {
   const productIndex = indexByFgCode(products);
 
   const picked = (round.lines || []).filter((line) => {
-    const fg = String(line.fgCode || '').trim().toLowerCase();
-    return selected.has(fg) && Number(line.qty || 0) > 0;
+    if (Number(line.qty || 0) <= 0) return false;
+    return lineIds.size
+      ? lineIds.has(String(line.id))
+      : fgCodesSel.has(String(line.fgCode || '').trim().toLowerCase());
   });
   if (!picked.length) return Response.json({ error: 'รายการที่เลือกไม่มีจำนวนที่ผูกได้' }, { status: 400 });
 
