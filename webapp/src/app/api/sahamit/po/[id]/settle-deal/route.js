@@ -69,10 +69,8 @@ export async function GET(request, { params }) {
 
   const lines = activeLines.map((line) => {
     const k = norm(line.fgCode);
+    // เสนอ "เฉพาะดีลที่เลข FG ตรงกับสินค้า" เท่านั้น — ถ้าไม่มี → ให้สร้างดีลใหม่/ข้าม
     const matched = [...(byFg.get(k)?.values() || [])].map((d) => cand(d, true)).sort(byGap);
-    const matchedIds = new Set(matched.map((c) => c.id));
-    // ดีล open อื่น ๆ (สินค้าไม่ตรง) — ใส่ท้ายลิสต์ให้เลือกเองได้ ถ้าจับ fgCode ไม่เจอ
-    const others = allOpen.filter((d) => !matchedIds.has(d.id)).map((d) => cand(d, false)).sort(byGap);
     return {
       poLineId: line.id,
       fgCode: line.fgCode,
@@ -80,8 +78,8 @@ export async function GET(request, { params }) {
       qty: toQty(line.qty),
       deliveryMonth: line.deliveryMonth || (line.dueDate || '').slice(0, 7) || null,
       settledDealId: settledByFg.get(k) || null,
-      candidates: [...matched, ...others],
-      suggestedDealId: matched[0]?.id || null, // แนะนำเฉพาะตัวที่สินค้าตรง
+      candidates: matched,
+      suggestedDealId: matched[0]?.id || null,
     };
   });
 
