@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Flag, Wallet } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Target } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
@@ -179,9 +179,9 @@ export default function AppLayout({ children }) {
       label: 'บริหารงานขาย',
       system: 'salesplan',
       items: [
-        { href: '/sales-planning', name: 'ภาพรวม', icon: Wallet, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
-        { href: '/sales-planning/deals', name: 'โครงการ (Pipeline)', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
-        { href: '/sales-planning/targets', name: 'เป้าหมาย', icon: Flag, cap: 'salesplan:view', match: (p) => p.startsWith('/sales-planning/targets') },
+        { href: '/sales-planning', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
+        { href: '/sales-planning/deals', name: 'โครงการ', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
+        { href: '/sales-planning/targets', name: 'เป้าหมาย', icon: Target, cap: 'salesplan:view', match: (p) => p.startsWith('/sales-planning/targets') },
       ],
     },
     {
