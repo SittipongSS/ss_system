@@ -1,27 +1,57 @@
 // Shared formatting helpers — single source of truth for money/date display
-// so every page renders THB and Thai dates identically.
+// so every page renders THB and dates identically.
+//
+// ── System-wide format rules (Change Request 2026-07-07) ────────────────────
+// เงิน: เต็ม = ทศนิยม 2 ตำแหน่งเสมอ (fmtMoney) หรือย่อ x.xxK / x.xxM (fmtMoneyCompact).
+// วันที่: ค.ศ. (คริสต์ศักราช) เท่านั้น — ห้าม พ.ศ. อีกต่อไป. รูปแบบที่อนุญาต:
+//   • DD/MM/YYYY (fmtDate, ค่าเริ่มต้น) / DD/MM/YY (fmtDate ..{short}) — fmtDateNumeric
+//   • YYYY-MM (fmtYearMonth) สำหรับระดับเดือน
+//   • DD/MM/YYYY HH:MM (fmtDateTime) เมื่อต้องการเวลา
+// อย่า format เงิน/วันที่เองด้วย toLocaleString/toLocaleDateString — import จากไฟล์นี้เสมอ.
 
+// เงินเต็ม: ฿ + ทศนิยม 2 ตำแหน่งเสมอ (เช่น "฿1,234.50").
 export const fmtMoney = (amount) =>
-  (amount || 0).toLocaleString("th-TH", {
+  (Number(amount) || 0).toLocaleString("th-TH", {
     style: "currency",
     currency: "THB",
     minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 
-// Date-only (no time), tolerant of null / plain date strings.
-export const fmtDate = (value) => {
-  if (!value) return "-";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return value; // already a display string
-  return d.toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
+// เงินแบบย่อ: ฿ + x.xxK (พัน) / x.xxM (ล้าน); ต่ำกว่าพันแสดงเต็ม 2 ทศนิยม.
+// ใช้ในที่แคบ เช่น KPI card / กราฟ / แดชบอร์ด ที่ตัวเลขยาวเกินไป.
+export const fmtMoneyCompact = (amount) => {
+  const n = Number(amount) || 0;
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1e6) return `${sign}฿${(abs / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `${sign}฿${(abs / 1e3).toFixed(2)}K`;
+  return fmtMoney(n);
 };
 
-// Date + time.
+// Date-only (no time) → DD/MM/YYYY (ค.ศ.); {short:true} → DD/MM/YY.
+// ทนต่อ null และสตริงที่ format มาแล้ว (คืนค่าเดิมถ้าจับรูปไม่ได้).
+export const fmtDate = (value, { short = false } = {}) => fmtDateNumeric(value, { short });
+
+// Date + time → DD/MM/YYYY HH:MM (ค.ศ., 24 ชม.).
 export const fmtDateTime = (value) => {
   if (!value) return "-";
   const d = new Date(value);
-  if (isNaN(d.getTime())) return value;
-  return d.toLocaleString("th-TH");
+  if (isNaN(d.getTime())) return String(value);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${fmtDateNumeric(d)} ${hh}:${mi}`;
+};
+
+// ระดับเดือน → YYYY-MM (ค.ศ.). รับ Date / ISO / "YYYY-MM" / "YYYY-MM-DD".
+export const fmtYearMonth = (value) => {
+  if (!value) return "-";
+  // "2026-07" หรือ "2026-07-xx" — ตัดเอา YYYY-MM ตรง ๆ กัน timezone เพี้ยน.
+  const m = String(value).match(/^(\d{4})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}`;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 
 // ── Display-format standards (Change Request §2) ─────────────────────────

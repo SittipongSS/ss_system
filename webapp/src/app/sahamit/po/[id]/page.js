@@ -8,7 +8,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { apiCache } from "@/lib/apiCache";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
@@ -554,7 +554,7 @@ export default function PoDetailPage() {
                             >
                               {ln.candidates.map((c) => (
                                 <option key={c.id} value={c.id}>
-                                  {c.title} · คาดปิด {c.forecastMonth || "—"} · ฿{nf(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
+                                  {c.title} · คาดปิด {c.forecastMonth || "—"} · {fmtMoneyCompact(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
                                 </option>
                               ))}
                               <option value="new">— สร้างดีลใหม่ (PO นอก forecast) —</option>

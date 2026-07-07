@@ -28,6 +28,7 @@ import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/derived";
 import { useResponsiveView } from "@/lib/useResponsiveView";
+import { fmtDateTime } from "@/lib/format";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -421,7 +422,7 @@ export default function ProjectDetailPage() {
   // ย้อนงานทั้งชุดกลับไปเท่ากับจุดที่เลือก (เซฟใหญ่หรือ Rev). กันย้อนเมื่อยังมีของค้าง.
   const restoreSnapshot = async (row) => {
     if (dirtyCount > 0) { setToast({ kind: "error", msg: "ยังมีการแก้ไขที่ยังไม่บันทึก — กรุณายืนยันหรือยกเลิกก่อนย้อนเวอร์ชัน" }); return; }
-    const label = row.kind === "rev" ? `Rev. ${row.revNo}` : `บันทึกเมื่อ ${new Date(row.createdAt).toLocaleString("th-TH")}`;
+    const label = row.kind === "rev" ? `Rev. ${row.revNo}` : `บันทึกเมื่อ ${fmtDateTime(row.createdAt)}`;
     if (!(await askConfirm({ title: "ย้อนกลับไปจุดนี้?", message: `งานทั้งหมดจะกลับไปเท่ากับ "${label}" (สร้าง/ลบ/แก้ขั้นตอนให้ตรง). จุดบันทึก/Rev อื่นยังอยู่ครบ ย้อนไปจุดอื่นได้อีก.` }))) return;
     const res = await fetch(`/api/pm/projects/${id}/restore`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshotId: row.id }),
@@ -1722,7 +1723,7 @@ export default function ProjectDetailPage() {
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
-                      {r.createdAt ? new Date(r.createdAt).toLocaleString("th-TH") : "-"} · {r.createdByName || "-"}
+                      {r.createdAt ? fmtDateTime(r.createdAt) : "-"} · {r.createdByName || "-"}
                     </div>
                     {r.note && <div style={{ fontSize: "12px", color: "var(--text-3)", whiteSpace: "pre-wrap" }}>{r.note}</div>}
                   </div>
