@@ -1,4 +1,4 @@
-import { can, departmentFor, normalizeDepartment } from '@/lib/permissions';
+import { can, canUser, departmentFor, normalizeDepartment } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // เติม dropdown ผู้รับผิดชอบ. คืนเฉพาะ user ที่มี role (กรอง account ที่ยังไม่ตั้ง role).
 export const GET = withUser(async ({ user, supabase }) => {
   // PM ใช้เติม dropdown ผู้รับผิดชอบ; โมดูล "งานบริหาร" (mgmt) ก็ reuse รายชื่อนี้.
-  if (!can(user?.role, 'pm:view') && !can(user?.role, 'mgmt:view')) return forbidden();
+  if (!can(user?.role, 'pm:view') && !canUser(user, 'mgmt:view')) return forbidden();
 
   const rows = [];
   let page = 1;

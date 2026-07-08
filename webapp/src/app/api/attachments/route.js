@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canEditRecord, canViewRecord } from '@/lib/permissions';
+import { can, canUser, canEditRecord, canViewRecord } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { listAttachments } from '@/lib/master/attachments';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
@@ -40,7 +40,7 @@ export async function GET(request) {
   const parent = await loadParent(supabase, entityType, entityId);
   if (!parent) return Response.json([]); // ไม่มี entity → ไม่มีเอกสาร
   const allowed = isMgmt(entityType)
-    ? can(user?.role, 'mgmt:view')
+    ? canUser(user, 'mgmt:view')
     : canViewRecord(user, RESOURCE[entityType], parent);
   if (!allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
@@ -68,7 +68,7 @@ export async function POST(request) {
   const parent = await loadParent(supabase, entityType, entityId);
   if (!parent) return Response.json({ error: 'ไม่พบระเบียนที่จะแนบเอกสาร' }, { status: 404 });
   const allowedEdit = isMgmt(entityType)
-    ? can(user?.role, 'mgmt:edit')
+    ? canUser(user, 'mgmt:edit')
     : canEditRecord(user, RESOURCE[entityType], parent);
   if (!allowedEdit) {
     return Response.json({ error: 'forbidden' }, { status: 403 });

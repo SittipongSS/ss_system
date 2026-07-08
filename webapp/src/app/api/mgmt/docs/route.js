@@ -1,4 +1,4 @@
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, badRequest, notFound } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { appendUpdate } from '@/lib/mgmt/repo';
@@ -13,7 +13,7 @@ const FEED_ENTITY = { mgmt_task: 'task', mgmt_meeting: 'meeting' };
 // POST /api/mgmt/docs — ผูก (mode:'link', url) หรือ สร้าง (mode:'create', type:'gdoc'|'gsheet', name)
 // Google Doc/Sheet แล้วบันทึกเป็น attachment (metadata.kind). เปิดผ่าน webViewLink ตรง.
 export const POST = withUser(async ({ user, supabase, req }) => {
-  if (!can(user?.role, 'mgmt:edit')) return forbidden();
+  if (!canUser(user, 'mgmt:edit')) return forbidden();
 
   if ((process.env.STORAGE_BACKEND || 'supabase') !== 'drive') {
     return fail('ต้องตั้งค่า Google Drive (STORAGE_BACKEND=drive) ก่อนจึงจะผูก/สร้างเอกสาร Google ได้', 400);

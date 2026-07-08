@@ -1,4 +1,4 @@
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { loadMeeting, appendUpdate } from '@/lib/mgmt/repo';
@@ -11,14 +11,14 @@ const EDITABLE = ['title', 'meetingDate', 'timeText', 'deptCode', 'assigneeId', 
 async function paramId(ctx) { return (await ctx.params).id; }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
-  if (!can(user?.role, 'mgmt:view')) return forbidden();
+  if (!canUser(user, 'mgmt:view')) return forbidden();
   const m = await loadMeeting(supabase, await paramId(ctx));
   if (!m || m.deletedAt) return notFound('ไม่พบการประชุม');
   return ok(m);
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
-  if (!can(user?.role, 'mgmt:edit')) return forbidden();
+  if (!canUser(user, 'mgmt:edit')) return forbidden();
   const id = await paramId(ctx);
   const before = await loadMeeting(supabase, id);
   if (!before || before.deletedAt) return notFound('ไม่พบการประชุม');
@@ -50,7 +50,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 });
 
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
-  if (!can(user?.role, 'mgmt:edit')) return forbidden();
+  if (!canUser(user, 'mgmt:edit')) return forbidden();
   const id = await paramId(ctx);
   const before = await loadMeeting(supabase, id);
   if (!before || before.deletedAt) return notFound('ไม่พบการประชุม');

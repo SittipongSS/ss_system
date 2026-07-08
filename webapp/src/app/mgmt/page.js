@@ -2,8 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, ListTodo, CheckCircle2, Clock3, Circle, AlertTriangle } from "lucide-react";
-import { useRole } from "@/lib/roleContext";
-import { canAccessMgmt } from "@/lib/permissions";
+import { useRole, useCan } from "@/lib/roleContext";
 import KpiCard from "@/components/excise/KpiCard";
 import { TASK_STATUS_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
 
@@ -19,14 +18,15 @@ const fmtDue = (d) => {
 
 export default function MgmtOverviewPage() {
   const role = useRole();
+  const canMgmt = useCan("mgmt:view");
   const router = useRouter();
   const [year, setYear] = useState(nowYear);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (role && !canAccessMgmt(role)) router.replace("/home");
-  }, [role, router]);
+    if (role && !canMgmt) router.replace("/home");
+  }, [role, canMgmt, router]);
 
   useEffect(() => {
     let alive = true;
@@ -52,7 +52,7 @@ export default function MgmtOverviewPage() {
     return `conic-gradient(${stops.join(", ")})`;
   }, [counts]);
 
-  if (role && !canAccessMgmt(role)) return null;
+  if (role && !canMgmt) return null;
 
   return (
     <>

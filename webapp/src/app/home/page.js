@@ -14,6 +14,7 @@ export default function HomeHubPage() {
   const router = useRouter();
   const [role, setRole] = useState(null);
   const [team, setTeam] = useState(null);
+  const [extraCaps, setExtraCaps] = useState([]); // per-user grants (LG/margin/mgmt)
   const [userName, setUserName] = useState("");
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
 
@@ -34,6 +35,7 @@ export default function HomeHubPage() {
         }
         setRole(user.app_metadata?.role || "user");
         setTeam(user.app_metadata?.team || null);
+        setExtraCaps(Array.isArray(user.app_metadata?.extraCaps) ? user.app_metadata.extraCaps : []);
         setUserName(user.user_metadata?.name || user.email || "user");
         // The hub isn't wrapped by AppLayout, so enforce the forced first-login
         // password change here too — otherwise a must-change user could sit on
@@ -76,8 +78,8 @@ export default function HomeHubPage() {
   // SAHAMIT (Planning & Sales) — SA · Key Account team only (+ admin/sales-head
   // oversight). The capability is team-gated inside canAccessSahamit().
   const canSAHAMIT = canAccessSahamit(role, team);
-  // งานบริหาร (mgmt) — admin + secretary เท่านั้น.
-  const canMGMT = canAccessMgmt(role);
+  // งานบริหาร (mgmt) — admin + secretary หรือผู้ใช้ที่ได้รับสิทธิ์เสริม mgmt:view.
+  const canMGMT = canAccessMgmt({ role, extraCaps });
 
   // Balanced column count for wide screens so the cards never leave a lonely
   // orphan on its own row (the old auto-fit gave 3 cols → 3+1 with 4 cards).

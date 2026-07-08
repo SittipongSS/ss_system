@@ -1,4 +1,4 @@
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, badRequest } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { listMeetings, newMeetingId, appendUpdate } from '@/lib/mgmt/repo';
@@ -31,7 +31,7 @@ function buildMeeting(body, { forCreate }) {
 
 // GET /api/mgmt/meetings?year=&deptCode=&followUp=
 export const GET = withUser(async ({ user, supabase, req }) => {
-  if (!can(user?.role, 'mgmt:view')) return forbidden();
+  if (!canUser(user, 'mgmt:view')) return forbidden();
   const sp = new URL(req.url).searchParams;
   try {
     return ok(await listMeetings(supabase, {
@@ -46,7 +46,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
 // POST /api/mgmt/meetings
 export const POST = withUser(async ({ user, supabase, req }) => {
-  if (!can(user?.role, 'mgmt:edit')) return forbidden();
+  if (!canUser(user, 'mgmt:edit')) return forbidden();
   const body = await req.json().catch(() => ({}));
   const built = buildMeeting(body, { forCreate: true });
   if (built.error) return badRequest(built.error);

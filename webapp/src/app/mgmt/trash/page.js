@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, RotateCcw, ListTodo, Users, Target } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
-import { canAccessMgmt } from "@/lib/permissions";
 
 const fmt = (d) => (d ? new Date(d).toLocaleString("th-TH") : "");
 
@@ -11,11 +10,12 @@ export default function MgmtTrashPage() {
   const role = useRole();
   const router = useRouter();
   const canEdit = useCan("mgmt:edit");
+  const canMgmt = useCan("mgmt:view");
   const [data, setData] = useState({ tasks: [], meetings: [], rocks: [] });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { if (role && !canAccessMgmt(role)) router.replace("/home"); }, [role, router]);
+  useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,7 +64,7 @@ export default function MgmtTrashPage() {
     </div>
   );
 
-  if (role && !canAccessMgmt(role)) return null;
+  if (role && !canMgmt) return null;
 
   return (
     <>

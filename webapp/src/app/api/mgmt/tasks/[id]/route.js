@@ -1,4 +1,4 @@
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { loadTask, appendUpdate } from '@/lib/mgmt/repo';
@@ -15,7 +15,7 @@ async function paramId(ctx) {
 
 // GET /api/mgmt/tasks/[id]
 export const GET = withUser(async ({ user, supabase, ctx }) => {
-  if (!can(user?.role, 'mgmt:view')) return forbidden();
+  if (!canUser(user, 'mgmt:view')) return forbidden();
   const id = await paramId(ctx);
   const task = await loadTask(supabase, id);
   if (!task || task.deletedAt) return notFound('ไม่พบงาน');
@@ -24,7 +24,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
 // PATCH /api/mgmt/tasks/[id] — แก้ไข (ยืนยันแล้วส่งมา). status ที่เปลี่ยนลง feed.
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
-  if (!can(user?.role, 'mgmt:edit')) return forbidden();
+  if (!canUser(user, 'mgmt:edit')) return forbidden();
   const id = await paramId(ctx);
   const before = await loadTask(supabase, id);
   if (!before || before.deletedAt) return notFound('ไม่พบงาน');
@@ -58,7 +58,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
 // DELETE /api/mgmt/tasks/[id] — soft-delete (ย้ายลงถังขยะ).
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
-  if (!can(user?.role, 'mgmt:edit')) return forbidden();
+  if (!canUser(user, 'mgmt:edit')) return forbidden();
   const id = await paramId(ctx);
   const before = await loadTask(supabase, id);
   if (!before || before.deletedAt) return notFound('ไม่พบงาน');

@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Target, Plus, Trash2, X, Check } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
-import { canAccessMgmt } from "@/lib/permissions";
 import { toBuddhistYear } from "@/lib/mgmt/constants";
 
 const nowYear = new Date().getFullYear();
@@ -82,13 +81,14 @@ export default function MgmtRocksPage() {
   const role = useRole();
   const router = useRouter();
   const canEdit = useCan("mgmt:edit");
+  const canMgmt = useCan("mgmt:view");
   const [year, setYear] = useState(nowYear);
   const [rows, setRows] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addDept, setAddDept] = useState("");
 
-  useEffect(() => { if (role && !canAccessMgmt(role)) router.replace("/home"); }, [role, router]);
+  useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
   useEffect(() => {
     fetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
@@ -119,7 +119,7 @@ export default function MgmtRocksPage() {
     else alert((await res.json().catch(() => ({}))).error || "เพิ่มไม่สำเร็จ");
   };
 
-  if (role && !canAccessMgmt(role)) return null;
+  if (role && !canMgmt) return null;
 
   return (
     <>

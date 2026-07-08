@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, deleteScope, canAccessMgmt, can, capsFor } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, deleteScope, canAccessMgmt, can, capsFor, sanitizeExtraCaps, GRANTABLE_CAPS } from './permissions';
 
 test('pmTaskScopes by role', () => {
   assert.deepEqual(pmTaskScopes('admin'), ['mine', 'team', 'all']);
@@ -35,16 +35,30 @@ test('pmTaskEditTier: workflow edit for assignee / same-dept staff', () => {
   assert.equal(pmTaskEditTier({ role: 'staff', id: 'p', department: 'PC' }, { assigneeId: null, role: 'PC' }, { ownerId: 'u2' }), 'workflow');
 });
 
-test('canAccessMgmt: admin + secretary only (NOT sales head)', () => {
-  assert.equal(canAccessMgmt('admin'), true);
-  assert.equal(canAccessMgmt('secretary'), true);
+test('canAccessMgmt: admin + secretary by role (NOT sales head)', () => {
+  assert.equal(canAccessMgmt({ role: 'admin' }), true);
+  assert.equal(canAccessMgmt({ role: 'secretary' }), true);
   // sales head must NOT inherit mgmt caps from the superuser set
-  assert.equal(canAccessMgmt('ae_supervisor'), false);
-  assert.equal(canAccessMgmt('senior_ae'), false);
-  assert.equal(canAccessMgmt('ae'), false);
-  assert.equal(canAccessMgmt('legal'), false);
-  assert.equal(canAccessMgmt('viewer'), false);
-  assert.equal(canAccessMgmt('staff'), false);
+  assert.equal(canAccessMgmt({ role: 'ae_supervisor' }), false);
+  assert.equal(canAccessMgmt({ role: 'senior_ae' }), false);
+  assert.equal(canAccessMgmt({ role: 'ae' }), false);
+  assert.equal(canAccessMgmt({ role: 'legal' }), false);
+  assert.equal(canAccessMgmt({ role: 'viewer' }), false);
+  assert.equal(canAccessMgmt({ role: 'staff' }), false);
+});
+
+test('canAccessMgmt: honours a per-user mgmt:view grant (like LG)', () => {
+  // an SA granted mgmt:view to help the secretary — no role change
+  assert.equal(canAccessMgmt({ role: 'ae', extraCaps: ['mgmt:view'] }), true);
+  assert.equal(canAccessMgmt({ role: 'ae_supervisor', extraCaps: ['mgmt:view', 'mgmt:edit'] }), true);
+  // an mgmt:edit-only grant does NOT open the module (pages gate on mgmt:view)
+  assert.equal(canAccessMgmt({ role: 'ae', extraCaps: ['mgmt:edit'] }), false);
+});
+
+test('mgmt caps are grantable per-user (whitelist)', () => {
+  assert.ok(GRANTABLE_CAPS.includes('mgmt:view'));
+  assert.ok(GRANTABLE_CAPS.includes('mgmt:edit'));
+  assert.deepEqual(sanitizeExtraCaps(['mgmt:view', 'mgmt:edit', 'users:manage']), ['mgmt:view', 'mgmt:edit']);
 });
 
 test('secretary holds ONLY the mgmt caps (no tax/pm/master leak)', () => {

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Flag, Briefcase, Target, Trash2, CircleDollarSign } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { can, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
@@ -227,7 +227,9 @@ export default function AppLayout({ children }) {
     .filter((g) => g.system === 'both' || g.system === activeSystem)
     // SAHAMIT is team-gated (KA only) beyond the per-item capability check.
     .filter((g) => g.system !== 'sahamit' || canAccessSahamit(role, team))
-    .map((g) => ({ ...g, items: g.items.filter((it) => can(role, it.cap)) }))
+    // canUser (not can) so a per-user grant — e.g. an SA granted mgmt:view to
+    // help the secretary — surfaces that system's menu items too.
+    .map((g) => ({ ...g, items: g.items.filter((it) => canUser({ role, extraCaps }, it.cap)) }))
     .filter((g) => g.items.length > 0);
 
   return (

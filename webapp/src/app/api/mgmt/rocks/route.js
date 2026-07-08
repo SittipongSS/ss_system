@@ -1,4 +1,4 @@
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, badRequest } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { listRockImprove, newRockId } from '@/lib/mgmt/repo';
@@ -13,7 +13,7 @@ function cleanGoals(goals) {
 
 // GET /api/mgmt/rocks?year=
 export const GET = withUser(async ({ user, supabase, req }) => {
-  if (!can(user?.role, 'mgmt:view')) return forbidden();
+  if (!canUser(user, 'mgmt:view')) return forbidden();
   const year = new URL(req.url).searchParams.get('year') || undefined;
   try {
     return ok(await listRockImprove(supabase, { year }));
@@ -24,7 +24,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
 // POST /api/mgmt/rocks — สร้างแถวของแผนก/ปี (1 แถว/แผนก/ปี, unique).
 export const POST = withUser(async ({ user, supabase, req }) => {
-  if (!can(user?.role, 'mgmt:edit')) return forbidden();
+  if (!canUser(user, 'mgmt:edit')) return forbidden();
   const body = await req.json().catch(() => ({}));
   const year = Number(body.year);
   const deptCode = (body.deptCode || '').trim();
