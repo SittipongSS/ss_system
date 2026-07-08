@@ -79,9 +79,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('projectValue' in body && !alreadyWon) patch.projectValue = toMoney(body.projectValue);
   // wonValue = มูลค่าปิดจริง — แก้ได้เมื่อ Won แล้ว (แก้ตัวเลขจริงย้อนหลัง)
   if (bodyWonValue != null && alreadyWon) patch.wonValue = bodyWonValue;
-  // โครงการที่ backfill มาจาก PM เก่า (needsReview) — เมื่อผู้ดูแลเติมมูลค่าจริง (>0)
+  // โครงการที่ backfill มาจาก PM เก่า (needsReview, stage=timeline_proposed) — เมื่อ
+  // ผู้ดูแลเติมมูลค่าคาดการณ์ (projectValue>0) หรือปิด Won ด้วยมูลค่าจริง (wonValue>0)
   // ให้ปลดธง needsReview/bypassPipeline เพื่อให้เข้ายอด/FC ตามปกติ (เฟส 5)
-  if (before.metadata?.needsReview && bodyWonValue != null && bodyWonValue > 0) {
+  const filledForecast = 'projectValue' in patch && Number(patch.projectValue) > 0;
+  const filledWon = 'wonValue' in patch && Number(patch.wonValue) > 0;
+  if (before.metadata?.needsReview && (filledForecast || filledWon)) {
     const baseMeta = 'metadata' in patch ? (patch.metadata || {}) : (before.metadata || {});
     patch.metadata = { ...baseMeta, needsReview: false, bypassPipeline: false };
   }
