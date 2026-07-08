@@ -1,6 +1,8 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
+import { canDeleteRecord } from '@/lib/permissions';
+import { loadProject, deleteProjectDeep, projectHasExciseRegistrations } from '@/lib/pm/projectsRepo';
+import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canEditSalesPlanning,
   canViewSalesPlanning,
@@ -135,25 +137,66 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok(data);
 });
 
+// ลบโครงการ (ดีล) = ลบทั้งสาย: ดีล + PM project + ลูกทั้งหมด (Sales เป็นแม่).
+// ตารางลูกฝั่งขาย (activities/history/forecasts/quotations/forecast_lines) cascade
+// เองผ่าน FK; ฝั่ง project ลบผ่าน deleteProjectDeep. กันลบเคสที่จะทำให้ยอด/ประวัติหาย.
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
 
   const { id } = await ctx.params;
   const before = await loadDeal(supabase, id);
-  if (!before) return notFound('ไม่พบ deal');
+  if (!before) return notFound('ไม่พบโครงการ');
   if (!inSalesEditScope(user, before)) return forbidden();
+
+  // กันลบสิ่งที่นับเป็นยอด/มีหลักฐานทางบัญชีแล้ว (M8): โครงการที่ปิด Won,
+  // หรือมาจาก PO สหมิตร (settle เข้ายอดแล้ว) — ให้ยกเลิกด้วยวิธีอื่นแทนการลบ.
+  if (['won', 'in_project'].includes(before.stage)) {
+    return conflict('โครงการนี้ปิดการขาย (Won) แล้ว — ลบไม่ได้ เพราะถูกนับเป็นยอดขาย');
+  }
+  if (before.metadata?.sahamitPoId) {
+    return conflict('โครงการนี้มาจาก PO สหมิตร — ลบไม่ได้ (จัดการที่เอกสาร PO แทน)');
+  }
+
+  // มี PM project ผูกอยู่ → ต้องมีสิทธิ์ลบ project ด้วย (กัน AE ลบดีลแล้วลาก
+  // timeline ที่ทีมทำไปด้วย) + กันลบถ้ามีทะเบียนสรรพสามิต (link ไม่มี FK จะกำพร้า).
+  let project = null;
+  let removed = null;
+  if (before.projectId) {
+    project = await loadProject(supabase, before.projectId);
+    if (project) {
+      if (!canDeleteRecord(user, 'projects', project)) {
+        return forbidden('โครงการนี้มีงานผลิต (PM) ผูกอยู่ — ต้องมีสิทธิ์ลบโครงการผลิตด้วยจึงจะลบได้');
+      }
+      if (await projectHasExciseRegistrations(supabase, project.id)) {
+        return conflict('โครงการนี้มีทะเบียนสรรพสามิตผูกอยู่ — ยกเลิก/ลบทะเบียนก่อนจึงจะลบโครงการได้');
+      }
+      removed = await deleteProjectDeep(supabase, project.id).catch((e) => { throw e; });
+    }
+  }
 
   const { error } = await supabase.from('sales_deals').delete().eq('id', id);
   if (error) return fail(error.message, 500);
+
+  if (project) {
+    await recordAudit({
+      user,
+      action: 'delete',
+      entityType: 'project',
+      entityId: project.id,
+      before: project,
+      summary: `ลบโครงการผลิต ${project.code || project.id} (พร้อมโครงการขาย ${dealAuditLabel(before)})`,
+      request: req,
+    });
+  }
   await recordAudit({
     user,
     action: 'delete',
     entityType: 'sales_deal',
     entityId: id,
     before,
-    summary: `ลบ sales deal ${dealAuditLabel(before)}`,
+    summary: `ลบโครงการ ${dealAuditLabel(before)}${project ? ` + งานผลิต ${project.code || project.id}` : ''}`,
     request: req,
   });
-  return ok({ ok: true });
+  return ok({ ok: true, deletedProject: project?.id || null, removed });
 });
