@@ -115,7 +115,7 @@ export default function ProjectsPage() {
     if (!editingId) {
       // รหัสโครงการสร้างอัตโนมัติฝั่งเซิร์ฟเวอร์ — แจ้งให้ผู้ใช้เห็นก่อนนำทางเข้าหน้าโปรเจกต์
       if (data.code) setToast({ kind: "success", msg: `สร้างโปรเจกต์สำเร็จ — รหัส ${data.code}` });
-      router.push(`/pm/projects/${data.code || data.id}`);
+      router.push(`/sa/projects/${data.code || data.id}`);
     }
   };
 
@@ -222,7 +222,7 @@ export default function ProjectsPage() {
     const overdue = getOverdueCount(p);
     const cStatus = getComputedStatus(p);
     return (
-      <tr key={p.id} className="premium-row" style={{ cursor: "pointer", ...(archive ? { opacity: 0.85 } : null) }} onClick={() => router.push(`/pm/projects/${p.code || p.id}`)}>
+      <tr key={p.id} className="premium-row" style={{ cursor: "pointer", ...(archive ? { opacity: 0.85 } : null) }} onClick={() => router.push(`/sa/projects/${p.code || p.id}`)}>
         <td>
           <div style={{ fontSize: "11px", color: "var(--text-3)" }} className="font-mono">{p.code}</div>
           <div style={{ fontSize: "13px", fontWeight: 500 }}>{p.name}</div>
@@ -287,7 +287,7 @@ export default function ProjectsPage() {
           {/* Sales เป็นแม่ (แผน merge เฟส 2): โครงการเกิดจากบริหารงานขาย — ปุ่มนี้พาไป
               สร้างโครงการที่นั่น แล้วกด "สร้างงานผลิต" เพื่อได้ timeline PM. */}
           {canEdit && (
-            <Link href="/sales-planning/deals" className="btn btn-primary" style={{ padding: "0 18px", fontWeight: 600 }} title="โครงการเริ่มที่บริหารงานขาย แล้วส่งต่อมาเป็นงานผลิต">
+            <Link href="/sa/deals" className="btn btn-primary" style={{ padding: "0 18px", fontWeight: 600 }} title="โครงการเริ่มที่บริหารงานขาย แล้วส่งต่อมาเป็นงานผลิต">
               <Plus size={16} /> สร้างโครงการ (ที่บริหารงานขาย)
             </Link>
           )}

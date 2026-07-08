@@ -107,7 +107,7 @@ const normalizeMaster = (path) => path.replace(/^\/api\/master\//, '/api/');
 // NOTE: the proxy is coarse (role-only). /sahamit is opened here for any sales
 // role, but the page guard + API handlers narrow it to team===KA + customer
 // AR-109 (the proxy can't see team/customer). See canAccessSahamit().
-const OPEN_PAGES = ['/home', '/pm', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt'];
+const OPEN_PAGES = ['/home', '/sa', '/pm', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/

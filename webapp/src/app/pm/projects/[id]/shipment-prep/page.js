@@ -69,7 +69,7 @@ export default function ShipmentPrepPage() {
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-        <Link href={`/pm/projects/${project.code || project.id}`} className="linklike" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+        <Link href={`/sa/projects/${project.code || project.id}`} className="linklike" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
           <ArrowLeft size={16} /> กลับไปโปรเจกต์
         </Link>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>

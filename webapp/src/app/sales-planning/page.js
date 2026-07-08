@@ -335,8 +335,8 @@ export default function SalesPlanningOverviewPage() {
   const headerRight = (
     <>
       <MonthPicker value={month} onChange={setMonth} />
-      <Link className="btn" href="/sales-planning/deals"><FolderKanban size={15} aria-hidden="true" /> โครงการ</Link>
-      <Link className="btn" href="/sales-planning/targets"><Target size={15} aria-hidden="true" /> เป้าหมาย</Link>
+      <Link className="btn" href="/sa/deals"><FolderKanban size={15} aria-hidden="true" /> โครงการ</Link>
+      <Link className="btn" href="/sa/targets"><Target size={15} aria-hidden="true" /> เป้าหมาย</Link>
     </>
   );
 

@@ -603,7 +603,7 @@ export default function CustomerDetails() {
         )
       )}
 
-      {/* Projects Tab — PM 360-view, read-only (manage in /pm) */}
+      {/* Projects Tab — PM 360-view, read-only (manage in /sa) */}
       {activeTab === "projects" && (
         projects.length === 0 ? (
           <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีโปรเจกต์ของลูกค้ารายนี้</div>
@@ -614,7 +614,7 @@ export default function CustomerDetails() {
             </div>
             <div className="p-3 grid grid-cols-1 gap-2">
               {projects.map((p) => (
-                <div key={p.id} onClick={() => router.push(`/pm/projects/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-3 flex items-center justify-between gap-3">
+                <div key={p.id} onClick={() => router.push(`/sa/projects/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-semibold text-sm text-[var(--text)] truncate">{p.name || p.code}</div>
                     <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.code}</div>

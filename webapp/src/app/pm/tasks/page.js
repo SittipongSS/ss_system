@@ -358,7 +358,7 @@ export default function MyWorkPage() {
     // งานโปรเจกต์ → คลิกไปแก้แผนที่หน้า timeline; งานเพิ่มเติม → คลิกเปิด modal แก้ (เฉพาะคนที่จัดการได้)
     const handleCardClick = isExtra
       ? (canManageExtra(t) ? () => openEdit(t) : undefined)
-      : () => router.push(`/pm/projects/${g.code || t.projectId}`);
+      : () => router.push(`/sa/projects/${g.code || t.projectId}`);
     return (
       <div key={t.id} style={{ display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
@@ -549,7 +549,7 @@ export default function MyWorkPage() {
                                     <span style={{ fontSize: "11px", color: "var(--text-3)", fontWeight: 600, minWidth: "58px" }}>{g.done}/{g.tasks.length} · {g.pct}%</span>
                                   </>
                                 )}
-                                <button onClick={(e) => { e.stopPropagation(); router.push(`/pm/projects/${g.code || g.projectId}`); }} title="เปิดหน้าโปรเจกต์" style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "3px", display: "flex", alignItems: "center" }}>
+                                <button onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${g.code || g.projectId}`); }} title="เปิดหน้าโปรเจกต์" style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", padding: "3px", display: "flex", alignItems: "center" }}>
                                   <ExternalLink size={14} />
                                 </button>
                               </div>
@@ -559,7 +559,7 @@ export default function MyWorkPage() {
                         {!isCollapsed && g.tasks.map((t) => {
                           const u = getUrgencyInfo(t);
                           return (
-                            <tr key={t.id} className="premium-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/pm/projects/${g.code || t.projectId}`)}>
+                            <tr key={t.id} className="premium-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/sa/projects/${g.code || t.projectId}`)}>
                               <td onClick={(e) => e.stopPropagation()}>
                                 {canUpdateTask(t) ? (
                                   statusSelect(t, setProjectStatus)
@@ -630,7 +630,7 @@ export default function MyWorkPage() {
                             <div className="progress" style={{ width: "60px" }}><span className={g.pct === 100 ? "done" : ""} style={{ width: `${g.pct}%` }} /></div>
                           </>
                         )}
-                        <span onClick={(e) => { e.stopPropagation(); router.push(`/pm/projects/${g.code || g.projectId}`); }} title="เปิดหน้าโปรเจกต์" className="btn-icon" style={{ flexShrink: 0 }}><ExternalLink size={14} /></span>
+                        <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${g.code || g.projectId}`); }} title="เปิดหน้าโปรเจกต์" className="btn-icon" style={{ flexShrink: 0 }}><ExternalLink size={14} /></span>
                       </button>
                       {!isCollapsed && (
                         <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "14px" }}>
@@ -687,7 +687,7 @@ export default function MyWorkPage() {
                       <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "11px", flexWrap: "wrap" }}>
                         {statusSelect(t, setPersonalStatus)}
                         {(t.dueDate) && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
-                        {proj && <span onClick={() => router.push(`/pm/projects/${proj.code || t.projectId}`)} style={{ cursor: "pointer", fontSize: "10px", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }} className="font-mono">{proj.code}</span>}
+                        {proj && <span onClick={() => router.push(`/sa/projects/${proj.code || t.projectId}`)} style={{ cursor: "pointer", fontSize: "10px", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }} className="font-mono">{proj.code}</span>}
                       </div>
                     </div>
                   );

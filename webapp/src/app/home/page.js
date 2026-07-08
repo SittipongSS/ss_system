@@ -58,8 +58,8 @@ export default function HomeHubPage() {
   if (!role) return null;
 
   const enterTax = () => router.push(landingFor(role));
-  const enterPM = () => router.push("/pm");
-  const enterSalesPlanning = () => router.push("/sales-planning");
+  const enterPM = () => router.push("/sa/tasks");
+  const enterSalesPlanning = () => router.push("/sa");
   const enterSAHAMIT = () => router.push("/sahamit");
   const enterMGMT = () => router.push("/mgmt");
   // Land on each system's command-center "ภาพรวม" (consistent with tax/pm/sahamit).

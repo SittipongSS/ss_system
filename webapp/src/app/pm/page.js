@@ -45,8 +45,8 @@ export default function PmOverview() {
   const overdue = openTasks.filter((t) => { const d = daysToDue(t); return d !== null && d < 0; });
   const urgent = openTasks.filter(isUrgent); // เลยกำหนด/เหลือ ≤3 วัน
 
-  const goProjects = () => router.push("/pm/projects");
-  const goTasks = () => router.push("/pm/tasks");
+  const goProjects = () => router.push("/sa/deals");
+  const goTasks = () => router.push("/sa/tasks");
 
   // คิวงาน: โครงการล่าช้า + งานของฉันที่ต้องรีบ (เรียงเลยกำหนดก่อน).
   const queue = [];
@@ -55,7 +55,7 @@ export default function PmOverview() {
       id: `pj-${p.id}`, tone: "danger", badge: "ล่าช้า",
       title: `${p.code || ""} · ${p.name || p.customerName || "โครงการ"}`.trim(),
       subtitle: `เจ้าของงาน ${p.aeOwner || "-"}`,
-      cta: "เปิดโครงการ", onClick: () => router.push(`/pm/projects/${p.id}`),
+      cta: "เปิดโครงการ", onClick: () => router.push(`/sa/projects/${p.id}`),
     })
   );
   urgent
@@ -84,7 +84,7 @@ export default function PmOverview() {
         <section>
           <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
             <FolderKanban size={16} /> โครงการ
-            <Link href="/pm/projects" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
+            <Link href="/sa/deals" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
           </div>
           <div className="kpi-grid">
             <KpiCard label="ใหม่" value={pj.New} tone="neutral" icon={FolderKanban} onClick={goProjects} />
@@ -99,7 +99,7 @@ export default function PmOverview() {
         <section>
           <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
             <ListTodo size={16} /> งานของฉัน
-            <Link href="/pm/tasks" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
+            <Link href="/sa/tasks" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
           </div>
           <div className="kpi-grid">
             <KpiCard label="ต้องรีบ (≤3 วัน)" value={urgent.length} tone="warning" icon={ListTodo} onClick={goTasks} />
