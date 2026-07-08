@@ -8,7 +8,7 @@ export function winStageForProject(_projectId) {
   return 'won';
 }
 
-export function buildWinPatch({ deal = {}, source = 'manual', now = new Date().toISOString(), projectValue, projectId, metadata = {} } = {}) {
+export function buildWinPatch({ deal = {}, source = 'manual', now = new Date().toISOString(), wonValue, projectValue, projectId, metadata = {} } = {}) {
   const nextProjectId = projectId || deal.projectId || null;
   const extraMetadata = metadata && typeof metadata === 'object' ? metadata : {};
   const patch = {
@@ -25,6 +25,12 @@ export function buildWinPatch({ deal = {}, source = 'manual', now = new Date().t
     },
   };
 
+  // มูลค่าปิดจริง (actual): ใช้ wonValue ที่ส่งมา (แหล่ง manual บังคับกรอก; แหล่ง PO
+  // สหมิตรส่งมูลค่าที่ PO ครอบคลุมจริง). ตกไปใช้ค่าเดิมของดีล/มูลค่าคาดการณ์เพื่อกัน null.
+  const actual = wonValue !== undefined ? wonValue : (deal.wonValue ?? projectValue ?? deal.projectValue);
+  patch.wonValue = toMoney(actual);
+  // projectValue = มูลค่า "คาดการณ์" — เขียนทับเฉพาะเมื่อผู้เรียกส่งมาโดยตรง (เช่น
+  // สร้างดีลลูก/ดีล stub ที่คาดการณ์=จริง). การปิด Won ปกติไม่แตะ projectValue (freeze).
   if (projectValue !== undefined) patch.projectValue = toMoney(projectValue);
   if (nextProjectId) patch.projectId = nextProjectId;
   return patch;
@@ -76,8 +82,8 @@ export async function insertWinSideEffects({
   });
 }
 
-export async function markWon({ supabase, user, deal, source = 'manual', now = new Date().toISOString(), projectValue, projectId, metadata = {}, request, auditSummary }) {
-  const patch = buildWinPatch({ deal, source, now, projectValue, projectId, metadata });
+export async function markWon({ supabase, user, deal, source = 'manual', now = new Date().toISOString(), wonValue, projectValue, projectId, metadata = {}, request, auditSummary }) {
+  const patch = buildWinPatch({ deal, source, now, wonValue, projectValue, projectId, metadata });
   const { data, error } = await supabase
     .from('sales_deals')
     .update(patch)
@@ -108,6 +114,8 @@ export async function createWonDealStub({ supabase, user, row, source = 'manual'
     id: row.id || genId('DEAL'),
     stage: winStageForProject(row.projectId),
     projectValue: toMoney(row.projectValue),
+    // ดีล stub เกิดตอนปิด Won อยู่แล้ว → คาดการณ์=จริง (wonValue = projectValue)
+    wonValue: toMoney(row.wonValue ?? row.projectValue),
     probability: 100,
     forecastMonth: monthKey(row.forecastMonth || row.expectedCloseDate || now),
     depositPaid: true,

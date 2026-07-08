@@ -201,6 +201,7 @@ export default function DealOverviewPage() {
 
   const deal = data?.deal;
   const canEdit = !!data?.canEdit;
+  const alreadyWon = ["won", "in_project"].includes(deal?.stage);
   const lc = useMemo(
     () => (deal ? dealLifecycle(deal, {
       projectProducts: data?.projectProducts,
@@ -323,7 +324,20 @@ export default function DealOverviewPage() {
     }
   }, [load]);
 
-  const doWin = () => runAction("win", `/api/sales-planning/deals/${id}/win`, { method: "POST" });
+  // ปิด Won ต้องกรอกมูลค่าปิดจริง — เปิดโมดัลรับตัวเลข (prefill = มูลค่าคาดการณ์)
+  const [winOpen, setWinOpen] = useState(false);
+  const [winValue, setWinValue] = useState("");
+  const doWin = () => { setWinValue(deal?.projectValue ?? ""); setWinOpen(true); };
+  const submitWin = async () => {
+    const v = Number(winValue);
+    if (!Number.isFinite(v) || v <= 0) { setError("ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0"); return; }
+    const okDone = await runAction("win", `/api/sales-planning/deals/${id}/win`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wonValue: v }),
+    });
+    if (okDone) setWinOpen(false);
+  };
 
   // สร้างโครงการ PM ผ่านโมดัล (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล
   const openCreatePM = () => {
@@ -352,6 +366,7 @@ export default function DealOverviewPage() {
       customerId: deal.customerId || "",
       stage: deal.stage || "lead",
       projectValue: deal.projectValue ?? "",
+      wonValue: deal.wonValue ?? "",
       forecastMonth: deal.forecastMonth || "",
       expectedCloseDate: deal.expectedCloseDate || "",
       depositPaid: !!deal.depositPaid,
@@ -557,7 +572,17 @@ export default function DealOverviewPage() {
           )}
 
           <section id="deal-kpi" className="kpi-grid">
-            <Stat label="มูลค่าโครงการ" value={money(deal.projectValue)} hint={deal.forecastMonth ? `เดือนพยากรณ์ ${deal.forecastMonth}` : "ไม่มีเดือนพยากรณ์"} />
+            {alreadyWon ? (
+              <Stat
+                label="มูลค่าปิดจริง (Won)"
+                value={money(deal.wonValue ?? deal.projectValue)}
+                hint={Number(deal.projectValue) !== Number(deal.wonValue ?? deal.projectValue)
+                  ? `คาดการณ์ ${money(deal.projectValue)} · ต่าง ${money(Number(deal.projectValue) - Number(deal.wonValue ?? deal.projectValue))}`
+                  : `ตรงกับคาดการณ์`}
+              />
+            ) : (
+              <Stat label="มูลค่าคาดการณ์" value={money(deal.projectValue)} hint={deal.forecastMonth ? `เดือนพยากรณ์ ${deal.forecastMonth}` : "ไม่มีเดือนพยากรณ์"} />
+            )}
             <Stat
               label="คาดปิด"
               value={deal.expectedCloseDate || "-"}
@@ -771,6 +796,37 @@ export default function DealOverviewPage() {
         </div>
       )}
 
+      <Modal open={winOpen} onClose={() => !actionBusy && setWinOpen(false)} title="ปิดการขาย (Won)" size="sm">
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+            ยืนยันว่าได้รับมัดจำ/ยืนยันจากลูกค้าแล้ว — กรอก <strong>มูลค่าปิดจริง</strong> (ยอดขายที่จะนับเข้าเป้า)
+          </div>
+          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+            มูลค่าปิดจริง (บาท)
+            <input
+              type="number" min="0" step="0.01" className="premium-input mono"
+              value={winValue}
+              onChange={(e) => setWinValue(e.target.value)}
+              autoFocus
+            />
+          </label>
+          {deal && Number(deal.projectValue) > 0 && (
+            <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+              มูลค่าคาดการณ์เดิม: {money(deal.projectValue)}
+              {Number(winValue) > 0 && Number(winValue) !== Number(deal.projectValue) && (
+                <span style={{ color: "var(--amber)" }}> · ต่างจากคาด {money(Number(deal.projectValue) - Number(winValue))}</span>
+              )}
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="btn ghost" onClick={() => setWinOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!actionBusy || !(Number(winValue) > 0)}>
+              <Trophy size={14} aria-hidden="true" /> {actionBusy === "win" ? "กำลังบันทึก..." : "ยืนยัน Won"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดโครงการแบบไม่สำเร็จ (Lost)" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -808,8 +864,10 @@ export default function DealOverviewPage() {
             </label>
             <label>
               สถานะ
+              {/* ปิด Won ทำผ่านปุ่ม "ปิดได้ (Won)" เพื่อกรอกมูลค่าจริง — ไม่ให้เลือก won
+                  จาก dropdown (กัน 400). แต่ถ้าดีลนี้ won อยู่แล้ว ให้คงตัวเลือกไว้เพื่อ revert ได้ */}
               <select className="premium-select" value={dealForm.stage} onChange={(e) => setDealForm({ ...dealForm, stage: e.target.value })}>
-                {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
+                {PIPELINE_STAGES.filter((s) => s !== "won" || alreadyWon).map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
               </select>
             </label>
             <label>
@@ -817,9 +875,15 @@ export default function DealOverviewPage() {
               <input type="month" className="premium-input" value={dealForm.forecastMonth} onChange={(e) => setDealForm({ ...dealForm, forecastMonth: e.target.value })} />
             </label>
             <label>
-              มูลค่าโครงการ
-              <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
+              มูลค่าคาดการณ์{alreadyWon ? " (ล็อกหลังปิด Won)" : ""}
+              <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} disabled={alreadyWon} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
             </label>
+            {alreadyWon && (
+              <label>
+                มูลค่าปิดจริง (Won)
+                <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.wonValue} onChange={(e) => setDealForm({ ...dealForm, wonValue: e.target.value })} />
+              </label>
+            )}
             <label>
               คาดปิดได้ (วันที่)
               <input type="date" className="premium-input" value={dealForm.expectedCloseDate} onChange={(e) => setDealForm({ ...dealForm, expectedCloseDate: e.target.value })} />

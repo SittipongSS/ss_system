@@ -230,10 +230,11 @@ export async function settleMappedDealWithPo({ supabase, user, deal, links, poQt
   if (!cov.anyCovered) return null;
 
   // เต็ม → ปิดทั้งดีล ไม่ต้อง split (projectId อาจเป็น null = ปิด Won โดยยังไม่สร้าง PM)
+  // wonValue = มูลค่าที่ PO ครอบคลุมจริง; projectValue (คาดการณ์) คงเดิม → เห็น variance
   if (cov.allCovered) {
     return markWon({
       supabase, user, deal, source: 'sahamit-po', now: wonNow,
-      projectValue: cov.coveredValue, projectId,
+      wonValue: cov.coveredValue, projectId,
       metadata: wonMeta, request,
       auditSummary: `mark Sahamit forecast deal won from PO ${po.poNumber}`,
     });
@@ -249,6 +250,7 @@ export async function settleMappedDealWithPo({ supabase, user, deal, links, poQt
     title: `${deal.title} (ส่งมอบ ${po.poNumber})`,
     stage: winStageForProject(projectId),
     projectValue: toMoney(cov.coveredValue),
+    wonValue: toMoney(cov.coveredValue),
     probability: 100,
     forecastMonth: deal.forecastMonth,
     expectedCloseDate: deal.expectedCloseDate,
@@ -357,7 +359,7 @@ export async function settlePoIntoSalesDeal({ supabase, user, po, customer, acti
         const wonNow = po.receivedDate ? `${po.receivedDate}T00:00:00.000Z` : now;
         const deal2 = await markWon({
           supabase, user, deal: target.deal, source: 'sahamit-po', now: wonNow,
-          projectValue: stubValue, projectId: project?.id || null,
+          wonValue: stubValue, projectId: project?.id || null,
           metadata: {
             sahamitPoId: po.id, poNumber: po.poNumber, poReceivedDate: po.receivedDate || null,
             poDueDate: po.dueDate || null, projectCode: project?.code || null,
@@ -424,7 +426,7 @@ export async function settleOnePoLine({ supabase, user, po, customer, line, prod
     if (won) return won;
     // fgCode ดีลไม่ตรงบรรทัดนี้ (coverage 0) → ปิด Won ทั้งดีลด้วยมูลค่าบรรทัด (manual-link)
     return markWon({
-      supabase, user, deal: d, source: 'sahamit-po', now: wonNow, projectValue: lineValue, projectId: null,
+      supabase, user, deal: d, source: 'sahamit-po', now: wonNow, wonValue: lineValue, projectId: null,
       metadata: { sahamitPoId: po.id, poNumber: po.poNumber, poReceivedDate: po.receivedDate || null, fgCodes: [fg], wonMatchedBy: 'manual-link' },
       request, auditSummary: `manual-link Sahamit PO ${po.poNumber} line ${fg} → deal ${d.id}`,
     });

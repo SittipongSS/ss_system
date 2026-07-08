@@ -21,6 +21,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const isWon = (d) => ['won', 'in_project'].includes(d.stage);
   const isOpen = (d) => !['won', 'in_project', 'lost'].includes(d.stage);
+  // ยอดปิดจริง = wonValue (มูลค่าปิดจริงที่กรอกตอน Won); fallback projectValue สำหรับ
+  // ดีลเก่าก่อน migration 0081. ค่าคาดการณ์ของดีล won = projectValue (ใช้คิด variance).
+  const wonAmt = (d) => Number(d.wonValue ?? d.projectValue ?? 0);
+  const forecastAmt = (d) => Number(d.projectValue ?? 0);
   const wonMonth = (d) => monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
   const openDeals = (deals || []).filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
   const wonDeals = (deals || []).filter((d) => isWon(d) && wonMonth(d) === month);
@@ -28,11 +32,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const monthDeals = [...openDeals, ...wonDeals, ...lostDeals];
   const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
-  const wonValue = wonDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
-  // "FC เต็ม" = ยอดคาดการณ์รวมทั้งเดือน = ที่ปิดได้ (Won) + ที่ยังเปิด — ไม่รวมดีล
-  // ที่แพ้. "FC คงเหลือ" = FC เต็ม − Actual(Won) = ส่วนที่ยังต้องปิดต่อ (= ที่ยังเปิด).
+  const wonValue = wonDeals.reduce((sum, d) => sum + wonAmt(d), 0);
+  // variance = ผลต่างคาดการณ์ vs ปิดจริง ของดีลที่ Won (บวก = ปิดต่ำกว่าคาด)
+  const wonForecastValue = wonDeals.reduce((sum, d) => sum + forecastAmt(d), 0);
+  const wonVariance = wonForecastValue - wonValue;
+  // "FC เต็ม" = ยอดรวมทั้งเดือน = ปิดจริง (Won) + ที่ยังเปิด (คาดการณ์) — ไม่รวมดีลที่แพ้.
+  // "FC คงเหลือ" = ส่วนที่ยังต้องปิดต่อ = ดีลที่ยังเปิด (open pipeline) เท่านั้น.
   const fullForecast = pipelineValue + wonValue;
-  const remainingForecast = fullForecast - wonValue;
+  const remainingForecast = pipelineValue;
 
   const byStage = {};
   for (const d of monthDeals) {
@@ -63,7 +70,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
   for (const d of [...openDeals, ...wonDeals]) {
     const b = ownerBucket(d.ownerId, d.ownerName, d.team);
-    if (isWon(d)) { b.won += Number(d.projectValue || 0); b.wonCount += 1; }
+    if (isWon(d)) { b.won += wonAmt(d); b.wonCount += 1; }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
   }
   const byOwner = Object.values(ownerMap)
@@ -93,7 +100,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
   for (const d of [...openDeals, ...wonDeals]) {
     const b = teamBucket(d.team);
-    if (isWon(d)) { b.won += Number(d.projectValue || 0); b.wonCount += 1; }
+    if (isWon(d)) { b.won += wonAmt(d); b.wonCount += 1; }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
   }
   const byTeam = Object.values(teamMap)
@@ -113,6 +120,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       pipelineValue,
       weightedForecast,
       wonValue,
+      wonForecastValue,
+      wonVariance,
       fullForecast,
       remainingForecast,
       targetGap: targetAmount - wonValue,
