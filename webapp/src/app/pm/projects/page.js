@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   FolderKanban, Plus, Search, AlertTriangle, ChevronDown, ChevronRight,
   Edit2, Trash2, X, Check, Pause,
@@ -99,7 +100,6 @@ export default function ProjectsPage() {
     };
   }, []);
 
-  const openCreate = () => { setEditingId(null); setInitialData(null); setShowForm(true); };
   const openEdit = (p) => {
     setEditingId(p.id);
     setInitialData(p);
@@ -284,10 +284,12 @@ export default function ProjectsPage() {
           <p>ระบบจัดการโปรเจกต์และติดตามงาน (NPD &amp; Re-Order)</p>
         </div>
         <div className="header-content" style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          {/* Sales เป็นแม่ (แผน merge เฟส 2): โครงการเกิดจากบริหารงานขาย — ปุ่มนี้พาไป
+              สร้างโครงการที่นั่น แล้วกด "สร้างงานผลิต" เพื่อได้ timeline PM. */}
           {canEdit && (
-            <button className="btn btn-primary" onClick={openCreate} style={{ padding: "0 18px", fontWeight: 600 }}>
-              <Plus size={16} /> สร้างโปรเจกต์ใหม่
-            </button>
+            <Link href="/sales-planning/deals" className="btn btn-primary" style={{ padding: "0 18px", fontWeight: 600 }} title="โครงการเริ่มที่บริหารงานขาย แล้วส่งต่อมาเป็นงานผลิต">
+              <Plus size={16} /> สร้างโครงการ (ที่บริหารงานขาย)
+            </Link>
           )}
         </div>
       </div>
