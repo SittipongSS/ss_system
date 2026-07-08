@@ -25,6 +25,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { data: deal } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
   if (!deal) return notFound('deal not found');
   if (!inSalesEditScope(user, deal)) return forbidden();
+  if (deal.stage === 'lost') return badRequest('ดีลนี้ปิดเป็น Lost แล้ว ไม่สามารถรับใบเสนอราคาได้');
 
   const now = new Date().toISOString();
   const { data: accepted, error: acceptError } = await supabase

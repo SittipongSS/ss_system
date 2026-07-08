@@ -1,6 +1,6 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, canReviewSalesForecast, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canReviewSalesForecast, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { quoteApprovalRequirement } from '@/lib/quotationApproval';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +23,7 @@ async function loadDeal(supabase, id) {
 
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
+  if (!canViewSalesPlanning(user)) return forbidden();
 
   const { id } = await ctx.params;
   const quote = await loadQuote(supabase, id);

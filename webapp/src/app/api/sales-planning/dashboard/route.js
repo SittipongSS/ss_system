@@ -24,10 +24,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const wonMonth = (d) => monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
   const openDeals = (deals || []).filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
   const wonDeals = (deals || []).filter((d) => isWon(d) && wonMonth(d) === month);
-  const monthDeals = [...openDeals, ...wonDeals, ...(deals || []).filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month)];
+  const lostDeals = (deals || []).filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month);
+  const monthDeals = [...openDeals, ...wonDeals, ...lostDeals];
   const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
   const wonValue = wonDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
+  // "FC เต็ม" = ยอดคาดการณ์รวมทั้งเดือน = ที่ปิดได้ (Won) + ที่ยังเปิด — ไม่รวมดีล
+  // ที่แพ้. "FC คงเหลือ" = FC เต็ม − Actual(Won) = ส่วนที่ยังต้องปิดต่อ (= ที่ยังเปิด).
+  const fullForecast = pipelineValue + wonValue;
+  const remainingForecast = fullForecast - wonValue;
 
   const byStage = {};
   for (const d of monthDeals) {
@@ -108,6 +113,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       pipelineValue,
       weightedForecast,
       wonValue,
+      fullForecast,
+      remainingForecast,
       targetGap: targetAmount - wonValue,
     },
     byStage: Object.values(byStage),
