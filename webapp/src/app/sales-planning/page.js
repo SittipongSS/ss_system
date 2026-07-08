@@ -170,14 +170,14 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
           ))}
         </div>
       </div>
-      <div className="premium-glass-table table-responsive">
-        <table className="w-full text-sm" style={{ minWidth: 1180 }}>
+      <div className="fz-box premium-glass-table" style={{ "--fz-c1w": "160px" }}>
+        <table className="fz-table w-full text-sm" style={{ minWidth: 1180 }}>
           <thead>
             <tr>
-              <th style={{ minWidth: 150 }}>รายการ</th>
-              <th style={{ minWidth: 90 }}>ค่า</th>
+              <th className="fz-c1" style={{ width: 160, minWidth: 160 }}>รายการ</th>
+              <th className="fz-c2" style={{ width: 96, minWidth: 96 }}>ค่า</th>
               {months.map((month, i) => <th key={month} className="num">{MONTH_LABELS[i]}</th>)}
-              <th className="num">รวมปี</th>
+              <th className="fz-cr num">รวมปี</th>
             </tr>
           </thead>
           <tbody>
@@ -198,12 +198,12 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                       {METRICS.map((m, mi) => (
                         <tr key={`${row.id}-${m.key}`} className="premium-row" style={mi === 0 ? { borderTop: "2px solid var(--border)" } : undefined}>
                           {mi === 0 && (
-                            <td rowSpan={METRICS.length} style={{ verticalAlign: "top" }}>
+                            <td className="fz-c1" rowSpan={METRICS.length} style={{ verticalAlign: "top", width: 160, minWidth: 160 }}>
                               <strong>{row.label}</strong>
                               {row.sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{row.sublabel}</span>}
                             </td>
                           )}
-                          <td style={{ whiteSpace: "nowrap", color: "var(--text-2)" }}>
+                          <td className="fz-c2" style={{ whiteSpace: "nowrap", color: "var(--text-2)" }}>
                             <span aria-hidden="true" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: m.color, marginRight: 6, verticalAlign: "middle" }} />
                             {m.label}
                           </td>
@@ -212,7 +212,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                               {money(mm[m.key])}
                             </td>
                           ))}
-                          <td className="num mono" style={{ fontWeight: 700, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}>
+                          <td className="fz-cr num mono" style={{ fontWeight: 700, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}>
                             {money(totalMetrics[m.key])}
                           </td>
                         </tr>
@@ -232,12 +232,12 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                 {METRICS.map((m, mi) => (
                   <tr key={`grand-${m.key}`} style={{ background: "var(--panel-2)", borderTop: mi === 0 ? "2px solid var(--border)" : undefined }}>
                     {mi === 0 && (
-                      <td rowSpan={METRICS.length} style={{ verticalAlign: "top", fontWeight: 800 }}>
+                      <td className="fz-c1" rowSpan={METRICS.length} style={{ verticalAlign: "top", fontWeight: 800, width: 160, minWidth: 160 }}>
                         รวมทั้งหมด
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: 12, fontWeight: 400 }}>ทุกรายการ</span>
                       </td>
                     )}
-                    <td style={{ whiteSpace: "nowrap", color: "var(--text-2)" }}>
+                    <td className="fz-c2" style={{ whiteSpace: "nowrap", color: "var(--text-2)" }}>
                       <span aria-hidden="true" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: m.color, marginRight: 6, verticalAlign: "middle" }} />
                       {m.label}
                     </td>
@@ -246,7 +246,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                         {money(mm[m.key])}
                       </td>
                     ))}
-                    <td className="num mono" style={{ fontWeight: 800, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}>
+                    <td className="fz-cr num mono" style={{ fontWeight: 800, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}>
                       {money(totalMetrics[m.key])}
                     </td>
                   </tr>
