@@ -2,7 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { isSuperuser } from '@/lib/permissions';
-import { canEditSalesTarget, canViewSalesPlanning, normalizeTargetPeriod, salesPlanningViewScope, toMoney } from '@/lib/salesPlanning';
+import { canEditSalesTarget, canViewSalesPlanning, normalizeTargetPeriod, salesPlanningViewScope, toMoney, yearKey } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +15,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const periodType = periodTypeParam === 'year' || periodTypeParam === 'month' ? periodTypeParam : null;
   // Accept `period` (new) and fall back to legacy `month`.
   const normalized = normalizeTargetPeriod(params.get('period') || params.get('month'), periodType || 'month');
+  // `year` loads a whole year in one shot (12 monthly rows + the yearly anchor)
+  // for the grid — both keys start with the 4-digit year ('2026', '2026-07').
+  const year = yearKey(params.get('year'));
 
   let query = supabase.from('sales_targets').select('*').order('period', { ascending: false });
   // Team-scoped roles see their own team plus SA-wide (team null) targets, which
@@ -22,8 +25,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (salesPlanningViewScope(user.role) === 'team') {
     query = query.or(`team.eq.${user.team ?? ''},team.is.null`);
   }
-  if (periodType) query = query.eq('periodType', periodType);
-  if (normalized) query = query.eq('period', normalized.period);
+  if (year) {
+    query = query.like('period', `${year}%`);
+  } else {
+    if (periodType) query = query.eq('periodType', periodType);
+    if (normalized) query = query.eq('period', normalized.period);
+  }
 
   const { data, error } = await query;
   if (error) return fail(error.message, 500);
