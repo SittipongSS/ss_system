@@ -543,7 +543,7 @@ export default function ProductRegistry() {
             <div className="border-b border-[var(--border)] pb-3 mb-5">
               <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลบรรจุภัณฑ์และราคา (Packaging & Pricing)</h3>
             </div>
-            <div className="form-grid cols-3">
+            <div className="form-grid cols-2">
               <div className="form-group">
                 <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
                 <div className="flex gap-2">
@@ -559,7 +559,7 @@ export default function ProductRegistry() {
                 </div>
               </div>
               <div className="form-group">
-                <label>ชิ้นต่อลัง <span className="text-[10px] font-normal text-[var(--text-3)]">(สำหรับงานสหมิตร)</span></label>
+                <label>จำนวนชิ้นต่อลัง</label>
                 <input type="number" name="piecesPerCase" value={formData.piecesPerCase} onChange={handleChange} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
               </div>
               <div className="form-group">
