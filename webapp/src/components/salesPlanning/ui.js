@@ -21,16 +21,6 @@ export const initialDealForm = {
   notes: "",
 };
 
-export const initialTargetForm = {
-  id: null,
-  targetMonth: "",
-  team: "",
-  ownerId: "",
-  ownerName: "",
-  targetAmount: "",
-  notes: "",
-};
-
 // Roles that can own a per-person sales target (the SA line). ae_supervisor sets
 // team-level targets, not per-person, so it is excluded from the owner picker.
 export const TARGET_OWNER_ROLES = ["senior_ae", "ac", "ae"];
@@ -127,47 +117,6 @@ export function KpiCard({ icon, label, value, hint }) {
         {value}
       </div>
       {hint && <div style={{ marginTop: 4, color: "var(--text-3)", fontSize: 12 }}>{hint}</div>}
-    </div>
-  );
-}
-
-export function PerfTable({ rows, teamMode }) {
-  if (!rows?.length) {
-    return <div style={{ padding: 14, color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีข้อมูล</div>;
-  }
-  return (
-    <div className="premium-glass-table table-responsive">
-      <table className="w-full text-sm">
-        <thead>
-          <tr>
-            <th>{teamMode ? "ทีม" : "รายคน"}</th>
-            <th className="num">เป้า</th>
-            <th className="num">ปิดได้</th>
-            <th className="num">คาดการณ์</th>
-            <th className="num">ส่วนต่าง</th>
-            <th className="num">%</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => {
-            const cov = coveragePct(r.won, r.target);
-            const label = teamMode ? (r.team || "ไม่ระบุ") : r.ownerName;
-            return (
-              <tr key={r.ownerId || r.team || i} className="premium-row">
-                <td>
-                  <strong>{label}</strong>
-                  {!teamMode && r.team && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{r.team}</span>}
-                </td>
-                <td className="num mono">{money(r.target)}</td>
-                <td className="num mono" style={{ color: "var(--green)" }}>{money(r.won)}</td>
-                <td className="num mono" style={{ color: "var(--text-3)" }}>{money(r.weighted)}</td>
-                <td className="num mono" style={{ color: r.gap > 0 ? "var(--amber)" : "var(--green)" }}>{money(r.gap)}</td>
-                <td className="num mono">{cov == null ? "-" : `${cov}%`}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
     </div>
   );
 }
