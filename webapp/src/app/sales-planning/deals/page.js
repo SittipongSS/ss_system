@@ -6,7 +6,8 @@ import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, Fol
 import Modal from "@/components/Modal";
 import Workspace from "@/components/ui/Workspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
+import { isSuperuser } from "@/lib/permissions";
 import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { MonthPicker, initialDealForm, money, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 
@@ -17,6 +18,10 @@ const PIPELINE_STAGES = DEAL_STAGES.filter((s) => s !== "in_project");
 export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
   const canReview = useCan("salesplan:review");
+  const role = useRole();
+  const superuser = isSuperuser(role);
+  const [reviewOnly, setReviewOnly] = useState(false); // ตัวกรอง "รอเติมข้อมูล (backfill)"
+  const [backfilling, setBackfilling] = useState(false);
   const [month, setMonth] = useState(thisMonth());
   const [allMonths, setAllMonths] = useState(false);
   const [deals, setDeals] = useState([]);
@@ -50,7 +55,8 @@ export default function SalesPlanningPipelinePage() {
     setError("");
     try {
       const [dealsRes, customersRes] = await Promise.all([
-        fetch(allMonths ? "/api/sales-planning/deals" : `/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
+        // ตัวกรอง "รอเติมข้อมูล" ต้องดึงทุกเดือน (deal backfill มี forecastMonth=null)
+        fetch((allMonths || reviewOnly) ? "/api/sales-planning/deals" : `/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
         fetch("/api/master/customers"),
       ]);
       if (!dealsRes.ok) throw new Error((await dealsRes.json()).error || "โหลดโครงการไม่สำเร็จ");
@@ -61,7 +67,7 @@ export default function SalesPlanningPipelinePage() {
     } finally {
       setLoading(false);
     }
-  }, [month, allMonths]);
+  }, [month, allMonths, reviewOnly]);
 
   useEffect(() => {
     load();
@@ -76,11 +82,33 @@ export default function SalesPlanningPipelinePage() {
   const filteredDeals = useMemo(() => {
     const q = query.trim().toLowerCase();
     return deals.filter((deal) => {
+      if (reviewOnly && !deal.metadata?.needsReview) return false;
       if (stageFilter !== "all" && deal.stage !== stageFilter) return false;
       if (!q) return true;
       return [deal.title, deal.customerName, deal.ownerName, deal.notes].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [deals, query, stageFilter]);
+  }, [deals, query, stageFilter, reviewOnly]);
+
+  const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
+
+  // นำเข้าโครงการ PM เก่า (superuser) → สร้างโครงการขายผูกให้ แล้วเปิดตัวกรองรอเติมข้อมูล
+  const runBackfill = async () => {
+    if (!window.confirm("นำเข้าโปรเจกต์ PM เก่าที่ยังไม่ผูกงานขาย มาสร้างเป็นโครงการขาย (สถานะ Won รอเติมมูลค่าจริง)?\nรันซ้ำได้ปลอดภัย")) return;
+    setBackfilling(true);
+    setError("");
+    try {
+      const res = await fetch("/api/sales-planning/backfill-projects", { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "นำเข้าไม่สำเร็จ");
+      setReviewOnly(true);
+      await load();
+      window.alert(`นำเข้าแล้ว ${json.created || 0} โครงการ (รอเติมมูลค่าจริง)`);
+    } catch (e) {
+      setError(e.message || "นำเข้าไม่สำเร็จ");
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   const openNewDeal = () => {
     setDealForm({ ...initialDealForm, forecastMonth: month });
@@ -363,6 +391,11 @@ export default function SalesPlanningPipelinePage() {
   const headerRight = (
     <>
       <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
+      {superuser && (
+        <button type="button" className="btn" onClick={runBackfill} disabled={backfilling} title="นำเข้าโปรเจกต์ PM เก่าที่ยังไม่ผูกงานขาย">
+          <PackageCheck size={15} aria-hidden="true" /> {backfilling ? "กำลังนำเข้า..." : "นำเข้าโครงการ PM เก่า"}
+        </button>
+      )}
       <button type="button" className="btn" onClick={load} disabled={loading}>
         <RefreshCcw size={15} aria-hidden="true" /> รีเฟรช
       </button>
@@ -399,6 +432,16 @@ export default function SalesPlanningPipelinePage() {
               <option value="all">ทุก stage</option>
               {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
             </select>
+            {(reviewCount > 0 || reviewOnly) && (
+              <button
+                type="button"
+                className={`btn ${reviewOnly ? "btn-primary" : "ghost"}`}
+                onClick={() => setReviewOnly((v) => !v)}
+                title="โครงการที่นำเข้าจาก PM เก่า ยังไม่ได้เติมมูลค่าจริง"
+              >
+                <AlertTriangle size={15} aria-hidden="true" /> รอเติมข้อมูล{reviewCount > 0 ? ` (${reviewCount})` : ""}
+              </button>
+            )}
             <div className="spacer" />
             <span className="ui-badge">{filteredDeals.length} โครงการ</span>
           </div>

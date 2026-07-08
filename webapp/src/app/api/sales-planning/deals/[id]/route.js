@@ -79,6 +79,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('projectValue' in body && !alreadyWon) patch.projectValue = toMoney(body.projectValue);
   // wonValue = มูลค่าปิดจริง — แก้ได้เมื่อ Won แล้ว (แก้ตัวเลขจริงย้อนหลัง)
   if (bodyWonValue != null && alreadyWon) patch.wonValue = bodyWonValue;
+  // โครงการที่ backfill มาจาก PM เก่า (needsReview) — เมื่อผู้ดูแลเติมมูลค่าจริง (>0)
+  // ให้ปลดธง needsReview/bypassPipeline เพื่อให้เข้ายอด/FC ตามปกติ (เฟส 5)
+  if (before.metadata?.needsReview && bodyWonValue != null && bodyWonValue > 0) {
+    const baseMeta = 'metadata' in patch ? (patch.metadata || {}) : (before.metadata || {});
+    patch.metadata = { ...baseMeta, needsReview: false, bypassPipeline: false };
+  }
   if ('probability' in body || 'stage' in body) patch.probability = toProbability(body.probability ?? before.probability, nextStage);
   if ('forecastMonth' in body || 'expectedCloseDate' in body) {
     patch.forecastMonth = monthKey(body.forecastMonth || body.expectedCloseDate) || null;
