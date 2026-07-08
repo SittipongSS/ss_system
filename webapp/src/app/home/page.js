@@ -1,10 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart, CircleDollarSign } from "lucide-react";
+import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart, CircleDollarSign, Briefcase } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
-import { landingFor, can, canAccessSahamit } from "@/lib/permissions";
+import { landingFor, can, canAccessSahamit, canAccessMgmt } from "@/lib/permissions";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 const SUPABASE_CONFIGURED =
@@ -59,6 +59,7 @@ export default function HomeHubPage() {
   const enterPM = () => router.push("/pm");
   const enterSalesPlanning = () => router.push("/sales-planning");
   const enterSAHAMIT = () => router.push("/sahamit");
+  const enterMGMT = () => router.push("/mgmt");
   // Land on each system's command-center "ภาพรวม" (consistent with tax/pm/sahamit).
   const enterDB = () => router.push("/database");
   // All three systems are open to their normal roles. Tax is visible to anyone
@@ -75,12 +76,14 @@ export default function HomeHubPage() {
   // SAHAMIT (Planning & Sales) — SA · Key Account team only (+ admin/sales-head
   // oversight). The capability is team-gated inside canAccessSahamit().
   const canSAHAMIT = canAccessSahamit(role, team);
+  // งานบริหาร (mgmt) — admin + secretary เท่านั้น.
+  const canMGMT = canAccessMgmt(role);
 
   // Balanced column count for wide screens so the cards never leave a lonely
   // orphan on its own row (the old auto-fit gave 3 cols → 3+1 with 4 cards).
   // 1→1, 2→2, 3→3 (single row), 4→2×2, 5–6→3 rows; anything larger caps at 4.
   // Narrower / portrait screens collapse to 2 then 1 via .system-card-grid CSS.
-  const visibleCount = [canPM, canSalesPlanning, canTax, canSAHAMIT, canDB].filter(Boolean).length;
+  const visibleCount = [canPM, canSalesPlanning, canTax, canSAHAMIT, canMGMT, canDB].filter(Boolean).length;
   const wideCols = { 1: 1, 2: 2, 3: 3, 4: 2, 5: 3, 6: 3 }[visibleCount] || 4;
 
   return (
@@ -235,7 +238,38 @@ export default function HomeHubPage() {
             </button>
           )}
 
-          {/* Card 5 — Master Database (customers / products registry).
+          {/* Card — งานบริหาร (Management/Executive Office). admin + secretary only. */}
+          {canMGMT && (
+            <button
+              onClick={enterMGMT}
+              className="glass-panel system-card"
+              style={{
+                textAlign: "left", padding: "28px", cursor: "pointer",
+                display: "flex", flexDirection: "column", gap: "16px",
+                background: "var(--panel)", color: "inherit",
+              }}
+            >
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <Briefcase size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>งานบริหาร</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  ติดตามงาน บันทึกการประชุม และเป้าหมาย Rock &amp; Improve
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
+                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
+                </span>
+              </div>
+            </button>
+          )}
+
+          {/* Card — Master Database (customers / products registry).
               Kept last so the shared data hub always sits at the end. */}
           {canDB && (
             <button

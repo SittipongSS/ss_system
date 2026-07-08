@@ -84,6 +84,22 @@ export async function ensureUnsortedFolder() {
   return ensureFolder('_unsorted', storageRootId());
 }
 
+// ── โมดูล "งานบริหาร" (mgmt) — โฟลเดอร์แยกจากลูกค้า/สินค้า ────────────
+// งานบริหาร / {งานติดตาม | การประชุม} / "<ชื่อ> (<id>)". ไฟล์ไม่ nest ใต้ลูกค้า.
+async function ensureMgmtSubFolder(sub) {
+  const root = await ensureFolder('งานบริหาร', storageRootId());
+  return ensureFolder(sub, root);
+}
+async function resolveMgmtFolder(entityType, entityId) {
+  const supabase = getSupabaseAdmin();
+  const table = entityType === 'mgmt_meeting' ? 'mgmt_meetings' : 'mgmt_tasks';
+  const subLabel = entityType === 'mgmt_meeting' ? 'การประชุม' : 'งานติดตาม';
+  const parent = await ensureMgmtSubFolder(subLabel);
+  const { data } = await supabase.from(table).select('id, title').eq('id', entityId).maybeSingle();
+  const label = data ? `${data.title} (${data.id})` : String(entityId);
+  return ensureFolder(label, parent);
+}
+
 // โฟลเดอร์ลูกค้า (cache id ลง customers.driveFolderId). ชื่อ "<ชื่อ> (<id>)".
 export async function ensureCustomerFolder(customer) {
   if (customer.driveFolderId) return customer.driveFolderId;
@@ -109,6 +125,9 @@ export async function ensureProductFolder(product, customer) {
 //   order        → โฟลเดอร์ลูกค้า (1 ออเดอร์ครอบหลายสินค้าของลูกค้าเดียว)
 export async function resolveFolderForEntity(entityType, entityId) {
   const supabase = getSupabaseAdmin();
+  if (entityType === 'mgmt_task' || entityType === 'mgmt_meeting') {
+    return resolveMgmtFolder(entityType, entityId);
+  }
   if (entityType === 'customer') {
     const { data } = await supabase.from('customers').select('*').eq('id', entityId).maybeSingle();
     if (!data) throw new Error('ไม่พบลูกค้า');

@@ -107,14 +107,14 @@ const normalizeMaster = (path) => path.replace(/^\/api\/master\//, '/api/');
 // NOTE: the proxy is coarse (role-only). /sahamit is opened here for any sales
 // role, but the page guard + API handlers narrow it to team===KA + customer
 // AR-109 (the proxy can't see team/customer). See canAccessSahamit().
-const OPEN_PAGES = ['/home', '/pm', '/database', '/tax', '/sales-planning', '/sahamit'];
+const OPEN_PAGES = ['/home', '/pm', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
 // products:edit to create (lands as 'pending'), Senior AE+ to approve; excise
 // registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
 // Holiday/product-type writes stay supervisor-only.
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit'];
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
@@ -159,6 +159,8 @@ function apiWriteAllowed(method, path, role) {
   // SAHAMIT module. Coarse cap gate here; team===KA + customer AR-109 scope is
   // enforced inside the handlers (canAccessSahamit), which the proxy can't see.
   if (path.startsWith('/api/sahamit')) return can(role, 'sahamit:edit');
+  // งานบริหาร (mgmt) — admin + secretary only.
+  if (path.startsWith('/api/mgmt')) return can(role, 'mgmt:edit');
   // Master taxonomy (product categories) — supervisor-only writes.
   if (path.startsWith('/api/product-types')) return can(role, 'master:manage');
   // Holiday calendar (working-day source for PM timeline) — supervisor-only writes.
@@ -184,7 +186,8 @@ function apiWriteAllowed(method, path, role) {
       can(role, 'customers:edit') ||
       can(role, 'products:edit') ||
       can(role, 'sales:act') ||
-      can(role, 'legal:approve')
+      can(role, 'legal:approve') ||
+      can(role, 'mgmt:edit')
     );
   }
   return true; // e.g. /api/upload — any signed-in user
