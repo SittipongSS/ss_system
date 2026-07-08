@@ -1,4 +1,4 @@
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, badRequest } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { listDepartments } from '@/lib/mgmt/repo';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 // GET /api/mgmt/departments?all=1 — taxonomy แผนกของโมดูล.
 export const GET = withUser(async ({ user, supabase, req }) => {
-  if (!can(user?.role, 'mgmt:view')) return forbidden();
+  if (!canUser(user, 'mgmt:view')) return forbidden();
   const includeInactive = new URL(req.url).searchParams.get('all') === '1';
   try {
     return ok(await listDepartments(supabase, { includeInactive }));
@@ -18,7 +18,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
 // POST /api/mgmt/departments — เพิ่มแผนก ("เพิ่มแผนก").
 export const POST = withUser(async ({ user, supabase, req }) => {
-  if (!can(user?.role, 'mgmt:edit')) return forbidden();
+  if (!canUser(user, 'mgmt:edit')) return forbidden();
   const body = await req.json().catch(() => ({}));
   const code = (body.code || '').trim();
   const label = (body.label || '').trim() || code;

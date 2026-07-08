@@ -1,4 +1,4 @@
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden } from '@/lib/http';
 import { listTasks, listDepartments } from '@/lib/mgmt/repo';
 import { statusCounts, completionPercent, isOpenStatus } from '@/lib/mgmt/constants';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 // GET /api/mgmt/overview?year= — KPI + ความคืบหน้ารายแผนก + สัดส่วนสถานะ + งานด่วน.
 export const GET = withUser(async ({ user, supabase, req }) => {
-  if (!can(user?.role, 'mgmt:view')) return forbidden();
+  if (!canUser(user, 'mgmt:view')) return forbidden();
   const year = new URL(req.url).searchParams.get('year') || undefined;
   try {
     const [tasks, departments] = await Promise.all([

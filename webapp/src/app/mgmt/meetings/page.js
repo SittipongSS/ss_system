@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Plus, Calendar, Clock3 } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
-import { canAccessMgmt } from "@/lib/permissions";
 import MeetingFormModal from "@/components/mgmt/MeetingFormModal";
 import MeetingDrawer from "@/components/mgmt/MeetingDrawer";
 import { MEETING_FOLLOWUP_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
@@ -20,6 +19,7 @@ export default function MgmtMeetingsPage() {
   const role = useRole();
   const router = useRouter();
   const canEdit = useCan("mgmt:edit");
+  const canMgmt = useCan("mgmt:view");
 
   const [year, setYear] = useState(nowYear);
   const [meetings, setMeetings] = useState([]);
@@ -30,7 +30,7 @@ export default function MgmtMeetingsPage() {
   const [formMeeting, setFormMeeting] = useState(null);
   const [selected, setSelected] = useState(null);
 
-  useEffect(() => { if (role && !canAccessMgmt(role)) router.replace("/home"); }, [role, router]);
+  useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
 
   useEffect(() => {
     fetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
@@ -57,7 +57,7 @@ export default function MgmtMeetingsPage() {
   const openCreate = () => { setFormMeeting(null); setFormOpen(true); };
   const openEdit = (m) => { setSelected(null); setFormMeeting(m); setFormOpen(true); };
 
-  if (role && !canAccessMgmt(role)) return null;
+  if (role && !canMgmt) return null;
 
   return (
     <>

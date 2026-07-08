@@ -2,8 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, Users, ListTodo } from "lucide-react";
-import { useRole } from "@/lib/roleContext";
-import { canAccessMgmt } from "@/lib/permissions";
+import { useRole, useCan } from "@/lib/roleContext";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -12,6 +11,7 @@ const toISO = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
 
 export default function MgmtCalendarPage() {
   const role = useRole();
+  const canMgmt = useCan("mgmt:view");
   const router = useRouter();
   const now = new Date();
   const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
@@ -19,7 +19,7 @@ export default function MgmtCalendarPage() {
   const [meetings, setMeetings] = useState([]);
   const [holidays, setHolidays] = useState([]);
 
-  useEffect(() => { if (role && !canAccessMgmt(role)) router.replace("/home"); }, [role, router]);
+  useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
 
   // holidays (ทั้งหมด) โหลดครั้งเดียว
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function MgmtCalendarPage() {
 
   const todayISO = toISO(now.getFullYear(), now.getMonth(), now.getDate());
 
-  if (role && !canAccessMgmt(role)) return null;
+  if (role && !canMgmt) return null;
 
   return (
     <>

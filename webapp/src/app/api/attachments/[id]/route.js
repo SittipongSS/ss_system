@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canEditRecord } from '@/lib/permissions';
+import { can, canUser, canEditRecord } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
 
@@ -21,7 +21,7 @@ export async function DELETE(request, { params }) {
   if (!att) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
 
   // mgmt: gate ด้วย cap ของโมดูล (ไม่ผ่าน parent customer/product).
-  if (isMgmt(att.entityType) && !can(user?.role, 'mgmt:edit')) {
+  if (isMgmt(att.entityType) && !canUser(user, 'mgmt:edit')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

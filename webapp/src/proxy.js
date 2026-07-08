@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can } from '@/lib/permissions';
+import { can, canUser } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -83,7 +83,7 @@ export async function proxy(request) {
 
   // Role-based write protection for API routes (defense-in-depth; the UI also
   // hides actions). GET is always allowed for any signed-in user.
-  if (user && isApi && !apiWriteAllowed(request.method, path, user.app_metadata?.role)) {
+  if (user && isApi && !apiWriteAllowed(request.method, path, user.app_metadata?.role, user.app_metadata?.extraCaps)) {
     return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
   }
 
@@ -139,9 +139,12 @@ function lockedOut(role, path, method, isApi) {
 // Row-level scope (own team / own record) is enforced inside the route
 // handlers, which can see the target record's team + ownerId — the proxy
 // only sees method + path.
-function apiWriteAllowed(method, path, role) {
+function apiWriteAllowed(method, path, role, extraCaps) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true; // reads ok
   path = normalizeMaster(path); // /api/master/X gated identically to /api/X
+  // mgmt access may be a per-user grant (app_metadata.extraCaps), not just the
+  // role — so mgmt checks go through canUser, not can(role, …).
+  const mgmtUser = { role, extraCaps };
   if (path.startsWith('/api/users')) return can(role, 'users:manage');
   if (path.startsWith('/api/customers')) {
     if (method === 'DELETE') return can(role, 'customers:delete');
@@ -159,8 +162,8 @@ function apiWriteAllowed(method, path, role) {
   // SAHAMIT module. Coarse cap gate here; team===KA + customer AR-109 scope is
   // enforced inside the handlers (canAccessSahamit), which the proxy can't see.
   if (path.startsWith('/api/sahamit')) return can(role, 'sahamit:edit');
-  // งานบริหาร (mgmt) — admin + secretary only.
-  if (path.startsWith('/api/mgmt')) return can(role, 'mgmt:edit');
+  // งานบริหาร (mgmt) — admin + secretary, หรือผู้ใช้ที่ได้รับสิทธิ์เสริม mgmt:edit.
+  if (path.startsWith('/api/mgmt')) return canUser(mgmtUser, 'mgmt:edit');
   // Master taxonomy (product categories) — supervisor-only writes.
   if (path.startsWith('/api/product-types')) return can(role, 'master:manage');
   // Holiday calendar (working-day source for PM timeline) — supervisor-only writes.
@@ -187,7 +190,7 @@ function apiWriteAllowed(method, path, role) {
       can(role, 'products:edit') ||
       can(role, 'sales:act') ||
       can(role, 'legal:approve') ||
-      can(role, 'mgmt:edit')
+      canUser(mgmtUser, 'mgmt:edit')
     );
   }
   return true; // e.g. /api/upload — any signed-in user

@@ -219,11 +219,13 @@ export function can(role, cap) {
 //
 // Only these caps may be granted per-user. Anything else is ignored (defense
 // against a stale/tampered app_metadata array escalating privilege).
-export const GRANTABLE_CAPS = ['legal:view', 'legal:approve', 'products:margin'];
+export const GRANTABLE_CAPS = ['legal:view', 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit'];
 export const GRANTABLE_CAP_LABELS = {
   'legal:view': 'ดูสถานะภาษีทุกทีม (LG)',
   'legal:approve': 'อนุมัติ/ยื่นภาษี แทนฝ่ายกฎหมาย (LG)',
   'products:margin': 'เห็นต้นทุน/กำไรโรงงาน (ทำรายงานผู้บริหาร)',
+  'mgmt:view': 'เข้าดูระบบงานบริหาร (mgmt)',
+  'mgmt:edit': 'เพิ่ม/แก้ไขข้อมูลในระบบงานบริหาร (mgmt)',
 };
 
 // Keep only whitelisted, de-duplicated grants. Accepts anything, returns [].
@@ -278,12 +280,14 @@ export function canAccessSahamit(role, team) {
 }
 
 // ── งานบริหาร (Management / Executive Office) module access ────────────
-// โมดูล mgmt เข้าได้เฉพาะ admin + secretary (ผู้ถือ mgmt:view). scope = ทั้งบริษัท
-// (ไม่ผูก team) — capability อย่างเดียวคุมพอ. ae_supervisor ไม่ได้ mgmt caps
-// (ถูกตัดออกใน SALES_HEAD_EXCLUDED) จึงเข้าไม่ได้. ใช้ที่ /home card, page guard,
-// sidebar และ API handlers.
-export function canAccessMgmt(role) {
-  return can(role, 'mgmt:view');
+// โมดูล mgmt เข้าได้เฉพาะผู้ถือ mgmt:view — admin + secretary โดย role, บวกกับ
+// ผู้ใช้รายคนที่ได้รับ "สิทธิ์เสริม" mgmt:view (app_metadata.extraCaps) เช่นให้ SA
+// ช่วยงานเลขาชั่วคราว. scope = ทั้งบริษัท (ไม่ผูก team) — capability อย่างเดียวคุมพอ.
+// ae_supervisor ไม่ได้ mgmt caps โดย role (ถูกตัดใน SALES_HEAD_EXCLUDED) แต่ได้ถ้า
+// ถูก grant. รับ user object ({ role, extraCaps }) เพื่อให้ grant มีผล.
+// ใช้ที่ /home card, page guard, และ API handlers.
+export function canAccessMgmt(user) {
+  return canUser(user, 'mgmt:view');
 }
 
 // ── Data scope ────────────────────────────────────────────────────────

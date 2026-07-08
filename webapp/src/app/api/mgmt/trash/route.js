@@ -1,4 +1,4 @@
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, badRequest, notFound } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 
@@ -8,7 +8,7 @@ const TABLE = { task: 'mgmt_tasks', meeting: 'mgmt_meetings', rock: 'mgmt_rock_i
 
 // GET /api/mgmt/trash — รายการที่ถูก soft-delete (task/meeting/rock), ล่าสุดก่อน.
 export const GET = withUser(async ({ user, supabase }) => {
-  if (!can(user?.role, 'mgmt:view')) return forbidden();
+  if (!canUser(user, 'mgmt:view')) return forbidden();
   try {
     const [tasks, meetings, rocks] = await Promise.all([
       supabase.from('mgmt_tasks').select('*').not('deletedAt', 'is', null).order('deletedAt', { ascending: false }),
@@ -23,7 +23,7 @@ export const GET = withUser(async ({ user, supabase }) => {
 
 // POST /api/mgmt/trash — กู้คืน (restore) รายการที่ลบ. body: { entity, id }
 export const POST = withUser(async ({ user, supabase, req }) => {
-  if (!can(user?.role, 'mgmt:edit')) return forbidden();
+  if (!canUser(user, 'mgmt:edit')) return forbidden();
   const { entity, id } = await req.json().catch(() => ({}));
   const table = TABLE[entity];
   if (!table || !id) return badRequest('entity/id ไม่ถูกต้อง');

@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ListTodo, Plus, RotateCcw, Search } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
-import { canAccessMgmt } from "@/lib/permissions";
 import TaskFormModal from "@/components/mgmt/TaskFormModal";
 import TaskDrawer from "@/components/mgmt/TaskDrawer";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
@@ -21,6 +20,7 @@ export default function MgmtTasksPage() {
   const role = useRole();
   const router = useRouter();
   const canEdit = useCan("mgmt:edit");
+  const canMgmt = useCan("mgmt:view");
 
   const [year, setYear] = useState(nowYear);
   const [tasks, setTasks] = useState([]);
@@ -33,7 +33,7 @@ export default function MgmtTasksPage() {
   const [formTask, setFormTask] = useState(null);
   const [selected, setSelected] = useState(null);
 
-  useEffect(() => { if (role && !canAccessMgmt(role)) router.replace("/home"); }, [role, router]);
+  useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
 
   useEffect(() => {
     fetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
@@ -74,7 +74,7 @@ export default function MgmtTasksPage() {
   const openCreate = () => { setFormTask(null); setFormOpen(true); };
   const openEdit = (t) => { setSelected(null); setFormTask(t); setFormOpen(true); };
 
-  if (role && !canAccessMgmt(role)) return null;
+  if (role && !canMgmt) return null;
 
   return (
     <>
