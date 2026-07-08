@@ -92,6 +92,20 @@ export function monthKey(value) {
   return /^\d{4}-\d{2}$/.test(s) ? s : null;
 }
 
+export function yearKey(value) {
+  if (!value) return null;
+  const s = String(value).slice(0, 4);
+  return /^\d{4}$/.test(s) ? s : null;
+}
+
+// Normalize a target period into { period, periodType } or null. Yearly targets
+// use a 'YYYY' key, monthly targets a 'YYYY-MM' key.
+export function normalizeTargetPeriod(period, periodType) {
+  const type = periodType === 'year' ? 'year' : 'month';
+  const key = type === 'year' ? yearKey(period) : monthKey(period);
+  return key ? { period: key, periodType: type } : null;
+}
+
 export function toMoney(value, fallback = 0) {
   if (value === '' || value == null) return fallback;
   const n = Number(value);
