@@ -133,6 +133,14 @@ export default function SalesPlanningTargetsPage() {
     return { sa, teams };
   }, [baseTree, effMonths]);
 
+  // Grand total across all teams (the total value being planned) for the footer.
+  const grandMonths = useMemo(() => {
+    const arr = Array(12).fill(0);
+    view.teams.forEach((t) => t.monthAmounts.forEach((v, i) => { arr[i] += v; }));
+    return arr;
+  }, [view]);
+  const grandTotal = sum(grandMonths);
+
   const nodeMap = useMemo(() => {
     const m = new Map();
     m.set("sa", baseTree.sa);
@@ -356,6 +364,23 @@ export default function SalesPlanningTargetsPage() {
                   <tr><td colSpan={14} style={{ padding: 18, color: "var(--text-3)" }}>ไม่พบทีมที่คุณดูแล</td></tr>
                 )}
               </tbody>
+              {teamsToShow.length > 0 && (
+                <tfoot>
+                  <tr style={{ fontWeight: 800 }}>
+                    <td style={{ position: "sticky", left: 0, zIndex: 1, background: "color-mix(in srgb, var(--accent) 16%, var(--bg))", paddingLeft: 10, minWidth: 200, borderTop: "2px solid var(--border)" }}>
+                      รวมทุกทีม (มูลค่ารวม)
+                    </td>
+                    {grandMonths.map((v, i) => (
+                      <td key={i} className="num mono tabular-nums" style={{ minWidth: 76, padding: "6px", borderTop: "2px solid var(--border)", color: v ? "var(--text)" : "var(--text-3)" }}>
+                        {v ? compact(v) : "–"}
+                      </td>
+                    ))}
+                    <td className="num mono tabular-nums" style={{ minWidth: 130, padding: "6px 8px", position: "sticky", right: 0, background: "color-mix(in srgb, var(--accent) 16%, var(--bg))", borderLeft: "1px solid var(--border)", borderTop: "2px solid var(--border)" }}>
+                      {money(grandTotal)}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
