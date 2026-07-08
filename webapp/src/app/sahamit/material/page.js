@@ -7,6 +7,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { lineStage, STAGE_LABEL } from "@/lib/sahamit/po";
+import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { fmtDate } from "@/lib/format";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -62,7 +63,10 @@ function MaterialRow({ row, product, onSaved }) {
           {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
         </td>
         <td className="font-mono">{row.poNumber}</td>
-        <td style={{ textAlign: "right" }}>{nf(row.qty)}</td>
+        <td style={{ textAlign: "right" }}>
+          {nf(row.qty)}
+          {casesText(row.qty, ppcOf(product)) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(row.qty, ppcOf(product))}</div>}
+        </td>
         <td>{row.deliveryMonth || "—"}</td>
         <td>
           <span className="ui-badge" style={{ color: row.inForecast ? "var(--green)" : "var(--violet)", borderColor: row.inForecast ? "var(--green)" : "var(--violet)" }}>

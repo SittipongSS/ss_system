@@ -58,7 +58,7 @@ export function sahamitError(ctx) {
 // (loophole C2): it's stored with productId=null and flagged for the user to map
 // or add to master later — products may grow over time.
 
-// Returns the AR-109 products as a lean list [{ id, fgCode, name, brandName, volume, volumeUnit }].
+// Returns the AR-109 products as a lean list [{ id, fgCode, name, brandName, volume, volumeUnit, piecesPerCase }].
 // Mirrors the master products list (/api/products): only APPROVED + active rows
 // — pending-approval products aren't offered for forecasting. Legacy NULL
 // approvalStatus is treated as approved (pre-0027 rows), same as master.
@@ -87,6 +87,7 @@ export async function loadSahamitProducts(supabase, customerId) {
         brandName: p.brandNameEn || p.brandName || null,
         volume: p.volume ?? null,
         volumeUnit: p.volumeUnit ?? null,
+        piecesPerCase: p.piecesPerCase ?? null, // ชิ้นต่อลัง — ตัวแปลง ลัง↔ชิ้น (0075)
         assignee: p.assignee || null,
         ownerId: p.ownerId || null,
         categoryCode: categoryCode ?? null,

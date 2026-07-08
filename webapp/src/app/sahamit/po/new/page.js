@@ -8,6 +8,7 @@ import { DestinationToggle } from "@/components/sahamit/destinations";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMeta } from "@/lib/format";
+import { ppcOf, casesText } from "@/lib/sahamit/units";
 
 // สร้าง PO — หน้าเต็ม. กำหนดรับของ + สถานที่ส่ง เป็นระดับหัว PO (ทั้ง PO ใช้ค่าเดียว);
 // รายการสินค้าใส่แค่ จำนวน. เรียงฟอร์ม: หัวเอกสาร → เพิ่มรายการ → ตารางรายการ.
@@ -28,12 +29,15 @@ export default function PoCreatePage() {
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // หน่วยที่กรอก: ชิ้น (canonical) หรือ ลัง (คูณชิ้นต่อลังตอนบันทึก)
+  const [entryUnit, setEntryUnit] = useState("piece");
 
   const productIndex = useMemo(() => {
     const m = new Map();
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
     return m;
   }, [products]);
+  const ppcForRow = (r) => ppcOf(r.known ? productIndex.get(String(r.fgCode).trim().toLowerCase()) : null);
 
   const addRow = (fgCodeRaw) => {
     const code = String(fgCodeRaw || "").trim();
@@ -50,10 +54,26 @@ export default function PoCreatePage() {
   const totalQty = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
 
   const submit = async () => {
-    const lines = rows
-      .map((r) => ({ fgCode: r.fgCode, qty: Number(r.qty) }))
-      .filter((l) => l.fgCode && Number.isFinite(l.qty) && l.qty > 0);
+    // ชิ้นเป็น canonical: กรอกลัง → คูณชิ้นต่อลัง (ต่อ SKU) ก่อนบันทึก.
+    const isCase = entryUnit === "case";
+    const missingPpc = [];
+    const lines = [];
+    for (const r of rows) {
+      const qty = Number(r.qty);
+      if (!r.fgCode || !Number.isFinite(qty) || qty <= 0) continue;
+      const ppc = ppcForRow(r);
+      if (isCase) {
+        if (!ppc) { if (!missingPpc.includes(r.fgCode)) missingPpc.push(r.fgCode); continue; }
+        lines.push({ fgCode: r.fgCode, qty: Math.round(qty * ppc) });
+      } else {
+        lines.push({ fgCode: r.fgCode, qty });
+      }
+    }
     if (!poNumber.trim()) { setError("ระบุเลขที่ PO"); return; }
+    if (isCase && missingPpc.length) {
+      setError(`กรอกเป็นลังไม่ได้ — สินค้ายังไม่ได้ตั้ง "ชิ้นต่อลัง": ${missingPpc.join(", ")} (ตั้งที่ข้อมูลสินค้า หรือสลับหน่วยเป็นชิ้น)`);
+      return;
+    }
     if (!lines.length) { setError("เพิ่มรายการสินค้าอย่างน้อย 1 (มีจำนวน > 0)"); return; }
     setBusy(true); setError("");
     try {
@@ -135,6 +155,19 @@ export default function PoCreatePage() {
           </div>
         </div>
 
+        {rows.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
+            <div className="segmented">
+              <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => setEntryUnit("piece")}>ชิ้น</button>
+              <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => setEntryUnit("case")}>ลัง</button>
+            </div>
+            <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+              {entryUnit === "case" ? "ระบบจะคูณ “ชิ้นต่อลัง” แล้วเก็บเป็นชิ้น" : "เก็บตามที่กรอก (ชิ้น)"}
+            </span>
+          </div>
+        )}
+
         {hasUnknown && (
           <div className="ui-badge" style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--amber)", borderColor: "var(--amber)" }}>
             <AlertTriangle size={14} /> มีรหัสที่ไม่รู้จัก (บันทึกได้ แต่ยังไม่ผูกสินค้า)
@@ -146,7 +179,7 @@ export default function PoCreatePage() {
           <div className="premium-table-wrapper">
             <table className="premium-table">
               <thead>
-                <tr><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style={{ textAlign: "right" }}>จำนวน</th><th></th></tr>
+                <tr><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style={{ textAlign: "right" }}>จำนวน ({entryUnit === "case" ? "ลัง" : "ชิ้น"})</th><th></th></tr>
               </thead>
               <tbody>
                 {rows.map((r, ri) => (
@@ -158,8 +191,17 @@ export default function PoCreatePage() {
                       {r.productName || "— ไม่รู้จัก —"}
                       {r.productMeta && <span style={{ color: "var(--text-3)", fontSize: 12 }}> ({r.productMeta})</span>}
                     </td>
-                    <td style={{ padding: 2 }}>
+                    <td style={{ padding: 2, textAlign: "right" }}>
                       <input type="number" min={0} className="premium-input" style={{ width: 120, textAlign: "right", height: 30 }} value={r.qty} onChange={(e) => setQty(ri, e.target.value)} />
+                      {(() => {
+                        const ppc = ppcForRow(r);
+                        const n = Number(r.qty);
+                        if (!ppc || !Number.isFinite(n) || n <= 0) return null;
+                        const hint = entryUnit === "case"
+                          ? `= ${Math.round(n * ppc).toLocaleString("th-TH")} ชิ้น`
+                          : (casesText(n, ppc) ? `= ${casesText(n, ppc)}` : null);
+                        return hint ? <div style={{ fontSize: 10, color: "var(--text-3)" }}>{hint}</div> : null;
+                      })()}
                     </td>
                     <td style={{ textAlign: "center" }}>
                       <button type="button" className="btn-icon" title="ลบแถว" onClick={() => removeRow(ri)}><X size={14} /></button>
@@ -173,7 +215,7 @@ export default function PoCreatePage() {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: 14 }}>
           <span style={{ fontSize: 13, color: "var(--text-3)" }}>
-            {rows.length ? `${rows.length} รายการ · รวม ${totalQty.toLocaleString("th-TH")} หน่วย` : "ยังไม่มีรายการ"}
+            {rows.length ? `${rows.length} รายการ · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : "ยังไม่มีรายการ"}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="btn" onClick={() => router.push("/sahamit/po")} disabled={busy}>ยกเลิก</button>

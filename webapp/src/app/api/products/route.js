@@ -109,6 +109,9 @@ export async function POST(request) {
     brandNameEn: body.brandNameEn ?? null, // snapshot EN ของแบรนด์ (0059)
     volume,
     volumeUnit: body.volumeUnit || 'ml',
+    // ชิ้นต่อลัง (ตัวแปลงหน่วยฝั่งสหมิตร, migration 0075) — optional, null = ยังไม่ตั้ง.
+    piecesPerCase:
+      body.piecesPerCase == null || body.piecesPerCase === '' ? null : Number(body.piecesPerCase),
     costPrice: costPrice == null || costPrice === '' ? null : costPriceNum,
     retailPriceIncVat:
       retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum,

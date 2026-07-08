@@ -9,6 +9,7 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
+import { ppcOf, casesText } from "@/lib/sahamit/units";
 import RoundComparison from "@/components/sahamit/RoundComparison";
 import ForecastImportModal from "@/components/sahamit/ForecastImportModal";
 
@@ -67,6 +68,9 @@ export default function ForecastPage() {
     return m;
   }, [products]);
   const catOf = (fg) => productByFg.get(String(fg).trim().toLowerCase())?.category || "— ไม่ระบุหมวด —";
+  // ชิ้นต่อลังของ SKU (null = ยังไม่ตั้ง) — ใช้โชว์ "ลัง" กำกับจำนวนชิ้นรายสินค้า
+  const ppcFor = (fg) => ppcOf(productByFg.get(String(fg).trim().toLowerCase()));
+  const casesSub = (fg, pieces) => casesText(pieces, ppcFor(fg));
 
   // ตัวเลือกหมวดสินค้าสำหรับตัวกรอง (จากสินค้าทั้งหมดใน master ของ AR-109)
   const categoryOptions = useMemo(() => {
@@ -313,7 +317,10 @@ export default function ForecastPage() {
                         {s.productName || "— ไม่รู้จัก —"}
                         {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
                       </td>
-                      <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(s.total)}</td>
+                      <td style={{ textAlign: "right", fontWeight: 600 }}>
+                        {nf(s.total)}
+                        {casesSub(s.fgCode, s.total) && <div style={{ fontSize: 10.5, fontWeight: 400, color: "var(--text-3)" }}>{casesSub(s.fgCode, s.total)}</div>}
+                      </td>
                       <td style={{ textAlign: "right" }}>#{s.roundNo}</td>
                       <td>{fmtDate(s.receivedDate)}</td>
                     </tr>
@@ -331,7 +338,7 @@ export default function ForecastPage() {
                 <label style={{ fontSize: 13, color: "var(--text-2)" }}>รอบ:</label>
                 <select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
                   {[...rounds].reverse().map((r) => (
-                    <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} หน่วย</option>
+                    <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
                   ))}
                 </select>
                 {selectedRound && (
@@ -379,7 +386,10 @@ export default function ForecastPage() {
                             {matrix.months.map((m) => (
                               <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{r.qty[m] ? nf(r.qty[m]) : "·"}</td>
                             ))}
-                            <td style={{ textAlign: "right", fontWeight: 700 }}>{nf(r.total)}</td>
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>
+                              {nf(r.total)}
+                              {casesSub(r.fgCode, r.total) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{casesSub(r.fgCode, r.total)}</div>}
+                            </td>
                           </tr>
                           );
                         }),
@@ -410,7 +420,7 @@ export default function ForecastPage() {
                 <label style={{ fontSize: 13, color: "var(--text-2)" }}>รอบ:</label>
                 <select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
                   {[...rounds].reverse().map((r) => (
-                    <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} หน่วย</option>
+                    <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
                   ))}
                 </select>
                 {lineList.length > 0 && (
@@ -424,7 +434,7 @@ export default function ForecastPage() {
               {selection.count > 0 && (
                 <div className="glass-panel" style={{ padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", borderLeft: "3px solid var(--accent, var(--blue))" }}>
                   <div style={{ fontSize: 13 }}>
-                    เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> หน่วย · <b>{nfBaht(selection.value)}</b>
+                    เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> ชิ้น · <b>{nfBaht(selection.value)}</b>
                     {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11 }}> · {selection.unpriced} รายการไม่มีราคา</span>}
                   </div>
                   <button className="btn sm btn-primary" style={{ marginLeft: "auto" }} onClick={() => setDealModalOpen(true)}>
@@ -484,7 +494,10 @@ export default function ForecastPage() {
                               )}
                             </td>
                             <td style={{ textAlign: "center" }}>{r.month}</td>
-                            <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(r.qty)}</td>
+                            <td style={{ textAlign: "right", fontWeight: 600 }}>
+                              {nf(r.qty)}
+                              {casesSub(r.fgCode, r.qty) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{casesSub(r.fgCode, r.qty)}</div>}
+                            </td>
                             <td style={{ textAlign: "right", color: r.amount == null ? "var(--amber)" : "inherit" }}>{r.amount == null ? "—" : nfBaht(r.amount)}</td>
                           </tr>
                         )),
@@ -554,7 +567,7 @@ export default function ForecastPage() {
             เลือก <b>{selection.count}</b> รายการ (สินค้า×เดือน) → สร้าง <b>{selection.count}</b> โครงการ
             <span style={{ color: "var(--text-3)" }}> (1 รายการ = 1 โครงการ)</span>
             <br />
-            รวม <b>{nf(selection.qty)}</b> หน่วย · มูลค่า <b>{nfBaht(selection.value)}</b>
+            รวม <b>{nf(selection.qty)}</b> ชิ้น · มูลค่า <b>{nfBaht(selection.value)}</b>
             {selection.unpriced > 0 && (
               <span style={{ color: "var(--amber)", fontSize: 12 }}> · {selection.unpriced} รายการไม่มีราคา (มูลค่า = 0)</span>
             )}

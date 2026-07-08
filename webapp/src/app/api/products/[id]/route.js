@@ -116,6 +116,11 @@ export async function PATCH(request, { params }) {
   ];
   const updated = { ...product };
   for (const k of catalogEditable) if (body[k] !== undefined) updated[k] = body[k];
+  // ชิ้นต่อลัง (0075) — coerce เป็นตัวเลข/null (ฟอร์มส่งมาเป็น string).
+  if (body.piecesPerCase !== undefined) {
+    updated.piecesPerCase =
+      body.piecesPerCase === '' || body.piecesPerCase == null ? null : Number(body.piecesPerCase);
+  }
 
   // Re-point the FG owner (customerId) from master. Keep the denormalized
   // customerName snapshot in sync and reject an unknown customer. NOTE: existing

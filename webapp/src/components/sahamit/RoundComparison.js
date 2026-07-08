@@ -1,6 +1,7 @@
 "use client";
 import { AlertTriangle, ArrowUp, ArrowDown, Plus, X, MoveRight, CheckCircle2 } from "lucide-react";
 import { productMetaText } from "@/lib/sahamit/productMeta";
+import { ppcOf, casesText } from "@/lib/sahamit/units";
 
 // Renders the round-to-round comparison from compareRounds(): a peak-drop alert
 // section first (the items S&S must ask the customer about), then a per-SKU
@@ -35,6 +36,7 @@ function ChangeChips({ diff }) {
 
 export default function RoundComparison({ comparison, productByFg }) {
   const metaOf = (fg) => productMetaText(productByFg?.get?.(String(fg).trim().toLowerCase()));
+  const casesOf = (fg, n) => casesText(n, ppcOf(productByFg?.get?.(String(fg).trim().toLowerCase())));
   if (!comparison) return null;
   if (!comparison.hasPrev) {
     return (
@@ -100,8 +102,14 @@ export default function RoundComparison({ comparison, productByFg }) {
                   {s.productName || <span style={{ color: "var(--amber)" }}>— ไม่รู้จัก —</span>}
                   {metaOf(s.fgCode) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{metaOf(s.fgCode)}</div>}
                 </td>
-                <td style={{ textAlign: "right" }}>{fmt(s.prevTotal)}</td>
-                <td style={{ textAlign: "right" }}>{fmt(s.targetTotal)}</td>
+                <td style={{ textAlign: "right" }}>
+                  {fmt(s.prevTotal)}
+                  {casesOf(s.fgCode, s.prevTotal) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesOf(s.fgCode, s.prevTotal)}</div>}
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  {fmt(s.targetTotal)}
+                  {casesOf(s.fgCode, s.targetTotal) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesOf(s.fgCode, s.targetTotal)}</div>}
+                </td>
                 <td style={{ textAlign: "right", color: s.net > 0 ? "var(--green)" : s.net < 0 ? "var(--red)" : "var(--text-3)", fontWeight: 600 }}>
                   {s.net > 0 ? "+" : ""}{fmt(s.net)}
                 </td>

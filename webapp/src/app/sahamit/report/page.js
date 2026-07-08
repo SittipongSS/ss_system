@@ -5,6 +5,7 @@ import { BarChart3, AlertCircle, TriangleAlert } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
+import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { fmtDate, fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import { buildReport } from "@/lib/sahamit/reportClient";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
@@ -108,7 +109,9 @@ export default function ReportPage() {
                 </thead>
                 <tbody>
                   {rep.perSku.map((s) => {
-                    const meta = productMetaText(prodIdx.get(String(s.fgCode).trim().toLowerCase()));
+                    const p = prodIdx.get(String(s.fgCode).trim().toLowerCase());
+                    const meta = productMetaText(p);
+                    const ppc = ppcOf(p);
                     return (
                     <tr key={s.fgCode}>
                       <td className="font-mono" style={{ fontWeight: 600 }}>{s.fgCode}</td>
@@ -116,8 +119,14 @@ export default function ReportPage() {
                         {s.productName || "— ไม่รู้จัก —"}
                         {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
                       </td>
-                      <td style={{ textAlign: "right" }}>{nf(s.fcQty)}</td>
-                      <td style={{ textAlign: "right" }}>{nf(s.poQty)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {nf(s.fcQty)}
+                        {casesText(s.fcQty, ppc) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(s.fcQty, ppc)}</div>}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {nf(s.poQty)}
+                        {casesText(s.poQty, ppc) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(s.poQty, ppc)}</div>}
+                      </td>
                       <td style={{ textAlign: "right", color: s.price == null ? "var(--amber)" : "inherit" }}>{s.price == null ? "—" : baht(s.price)}</td>
                       <td style={{ textAlign: "right" }}>{baht(s.fcValue)}</td>
                       <td style={{ textAlign: "right", fontWeight: 600, color: C.teal }}>{baht(s.poValue)}</td>
@@ -159,7 +168,12 @@ export default function ReportPage() {
                           <span className="font-mono" style={{ fontSize: 12 }}>{s.fgCode}</span>
                           <span style={{ color: s.productName ? "var(--text-3)" : "var(--amber)", fontSize: 12 }}> · {s.productName || "ไม่รู้จัก"}</span>
                         </td>
-                        <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(s.qty)}</td>
+                        <td style={{ textAlign: "right", fontWeight: 600 }}>
+                          {nf(s.qty)}
+                          {casesText(s.qty, ppcOf(prodIdx.get(String(s.fgCode).trim().toLowerCase()))) && (
+                            <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{casesText(s.qty, ppcOf(prodIdx.get(String(s.fgCode).trim().toLowerCase())))}</div>
+                          )}
+                        </td>
                         <td>{s.deliveryMonth || "—"}</td>
                         <td>{s.expectedDate ? fmtDate(s.expectedDate) : (s.dueDate ? fmtDate(s.dueDate) : "—")}</td>
                         <td>{destinationLabel(s.destination) || <span style={{ color: "var(--text-3)" }}>—</span>}</td>

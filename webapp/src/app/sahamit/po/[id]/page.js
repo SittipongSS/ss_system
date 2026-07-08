@@ -10,6 +10,7 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
+import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
 import ConfirmModal from "@/components/tax/ConfirmModal";
@@ -92,6 +93,7 @@ function PoLineRow({ line, tracking, product, onChanged }) {
         </td>
         <td style={{ textAlign: "right" }}>
           <div>เต็ม {nf(line.qty)}</div>
+          {casesText(line.qty, ppcOf(product)) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{casesText(line.qty, ppcOf(product))}</div>}
           {line.shippedQty != null && (
             <div style={{ fontSize: 11 }}>
               <span style={{ color: "var(--green)" }}>ส่งแล้ว {nf(line.shippedQty)}</span>
@@ -138,7 +140,7 @@ function PoLineRow({ line, tracking, product, onChanged }) {
           <td colSpan={11} style={{ background: "var(--panel-2)" }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "flex-end", padding: "6px 2px" }}>
               <div className="form-group" style={{ width: 90 }}>
-                <label>จำนวน</label>
+                <label>จำนวน (ชิ้น)</label>
                 <input type="number" min={1} className="premium-input" style={{ height: 30 }} value={d.qty} onChange={(e) => setD({ ...d, qty: e.target.value })} />
               </div>
               <div className="form-group" style={{ width: 150 }}>
@@ -468,7 +470,12 @@ export default function PoDetailPage() {
                           return (
                             <tr key={l.id}>
                               <td className="font-mono">{l.fgCode}</td>
-                              <td style={{ textAlign: "right" }}>{nf(l.qty)}</td>
+                              <td style={{ textAlign: "right" }}>
+                                {nf(l.qty)}
+                                {casesText(l.qty, ppcOf(prodIdx.get(String(l.fgCode).trim().toLowerCase()))) && (
+                                  <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(l.qty, ppcOf(prodIdx.get(String(l.fgCode).trim().toLowerCase())))}</div>
+                                )}
+                              </td>
                               <td style={{ padding: 2, textAlign: "right" }}>
                                 <input type="number" min={0} max={l.qty} className="premium-input" style={{ width: 100, textAlign: "right", height: 30 }}
                                   value={shipped[l.id] ?? ""} onChange={(e) => setShipped({ ...shipped, [l.id]: e.target.value })} />
@@ -541,7 +548,12 @@ export default function PoDetailPage() {
                           <span className="font-mono" style={{ fontWeight: 600 }}>{ln.fgCode}</span>
                           <div style={{ fontSize: 11, color: "var(--text-3)" }}>{ln.productName || "—"}</div>
                         </td>
-                        <td style={{ textAlign: "right" }}>{nf(ln.qty)}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {nf(ln.qty)}
+                          {casesText(ln.qty, ppcOf(prodIdx.get(String(ln.fgCode).trim().toLowerCase()))) && (
+                            <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(ln.qty, ppcOf(prodIdx.get(String(ln.fgCode).trim().toLowerCase())))}</div>
+                          )}
+                        </td>
                         <td>
                           {ln.settledDealId ? (
                             <a className="ui-badge" style={{ color: "var(--green)" }} href={`/sa/deals/${ln.settledDealId}`}>เชื่อมแล้ว (Won) →</a>

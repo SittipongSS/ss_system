@@ -3,6 +3,7 @@ import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { buildReconMatrix } from '@/lib/sahamit/reconcileClient';
 import { materialView } from '@/lib/sahamit/material';
 import { PO_STATUS_LABEL } from '@/lib/sahamit/po';
+import { ppcOf, casesFromPieces } from '@/lib/sahamit/units';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,17 +34,24 @@ async function loadAll(supabase, customerId) {
 }
 
 function buildReport(view, data, filters = {}) {
+  // ชิ้นต่อลังต่อ SKU → คอลัมน์ "จำนวน (ลัง)" (ชิ้นเป็นหลัก, ลังเป็นค่าคำนวณ). '' ถ้ายังไม่ตั้ง.
+  const ppcByFg = new Map((data.products || []).map((p) => [String(p.fgCode).trim().toLowerCase(), ppcOf(p)]));
+  const casesVal = (fg, pieces) => {
+    const c = casesFromPieces(pieces, ppcByFg.get(String(fg).trim().toLowerCase()));
+    return c == null ? '' : Number(c.toFixed(2));
+  };
+
   if (view === 'forecast') {
     const rows = [];
     for (const r of data.roundsWithLines) {
-      for (const l of r.lines) rows.push({ round: `#${r.roundNo}`, received: r.receivedDate, fgCode: l.fgCode, name: l.productName || '', month: l.month, qty: Number(l.qty || 0) });
+      for (const l of r.lines) rows.push({ round: `#${r.roundNo}`, received: r.receivedDate, fgCode: l.fgCode, name: l.productName || '', month: l.month, qty: Number(l.qty || 0), qtyCases: casesVal(l.fgCode, Number(l.qty || 0)) });
     }
     return {
       title: 'SAHAMIT Forecast (รายรอบ)',
       columns: [
         { key: 'round', label: 'รอบที่' }, { key: 'received', label: 'วันรับ FC', date: true },
         { key: 'fgCode', label: 'รหัสสินค้า' }, { key: 'name', label: 'ชื่อสินค้า' },
-        { key: 'month', label: 'เดือนที่ต้องการ' }, { key: 'qty', label: 'จำนวน' },
+        { key: 'month', label: 'เดือนที่ต้องการ' }, { key: 'qty', label: 'จำนวน (ชิ้น)' }, { key: 'qtyCases', label: 'จำนวน (ลัง)' },
       ],
       rows,
     };
@@ -54,7 +62,7 @@ function buildReport(view, data, filters = {}) {
     const rows = data.poLines.map((l) => {
       const po = poById.get(l.poId) || {};
       return {
-        poNumber: po.poNumber || '', fgCode: l.fgCode, name: l.productName || '', qty: Number(l.qty || 0),
+        poNumber: po.poNumber || '', fgCode: l.fgCode, name: l.productName || '', qty: Number(l.qty || 0), qtyCases: casesVal(l.fgCode, Number(l.qty || 0)),
         docDate: po.docDate, receivedDate: po.receivedDate, dueDate: l.dueDate, expectedDate: l.expectedDate,
         deliveryMonth: l.deliveryMonth || '', actual: l.actualDeliveredDate, status: PO_STATUS_LABEL[l.status] || l.status,
       };
@@ -63,7 +71,7 @@ function buildReport(view, data, filters = {}) {
       title: 'SAHAMIT Purchase Orders',
       columns: [
         { key: 'poNumber', label: 'เลขที่ PO' }, { key: 'fgCode', label: 'รหัสสินค้า' }, { key: 'name', label: 'ชื่อสินค้า' },
-        { key: 'qty', label: 'จำนวน' }, { key: 'docDate', label: 'วันเอกสาร', date: true }, { key: 'receivedDate', label: 'วันรับ', date: true },
+        { key: 'qty', label: 'จำนวน (ชิ้น)' }, { key: 'qtyCases', label: 'จำนวน (ลัง)' }, { key: 'docDate', label: 'วันเอกสาร', date: true }, { key: 'receivedDate', label: 'วันรับ', date: true },
         { key: 'dueDate', label: 'กำหนดส่ง', date: true }, { key: 'expectedDate', label: 'คาดการณ์ส่ง', date: true },
         { key: 'deliveryMonth', label: 'เดือนส่ง' }, { key: 'actual', label: 'ส่งจริง', date: true }, { key: 'status', label: 'สถานะ' },
       ],
@@ -84,7 +92,7 @@ function buildReport(view, data, filters = {}) {
       const v = materialView(l, fcLookup.get(`${l.fgCode}||${l.deliveryMonth}`) || 0, po.receivedDate, data.holidays);
       const t = trkByLine.get(l.id) || {};
       rows.push({
-        fgCode: l.fgCode, name: l.productName || '', poNumber: po.poNumber || '', qty: Number(l.qty || 0),
+        fgCode: l.fgCode, name: l.productName || '', poNumber: po.poNumber || '', qty: Number(l.qty || 0), qtyCases: casesVal(l.fgCode, Number(l.qty || 0)),
         deliveryMonth: l.deliveryMonth || '', inFc: v.inForecast ? 'ตรง FC' : 'นอก FC', lead: v.leadDays,
         received: po.receivedDate, ready: v.readyDate, due: l.dueDate,
         pm: t.pmArrivedAt ? `มาแล้ว ${t.pmArrivedAt}` : (t.pmDueDate ? `กำหนด ${t.pmDueDate}` : ''),
@@ -96,7 +104,7 @@ function buildReport(view, data, filters = {}) {
       title: 'SAHAMIT Material / Lead-time',
       columns: [
         { key: 'fgCode', label: 'รหัสสินค้า' }, { key: 'name', label: 'ชื่อสินค้า' }, { key: 'poNumber', label: 'PO' },
-        { key: 'qty', label: 'จำนวน' }, { key: 'deliveryMonth', label: 'เดือนส่ง' }, { key: 'inFc', label: 'ในแผน' },
+        { key: 'qty', label: 'จำนวน (ชิ้น)' }, { key: 'qtyCases', label: 'จำนวน (ลัง)' }, { key: 'deliveryMonth', label: 'เดือนส่ง' }, { key: 'inFc', label: 'ในแผน' },
         { key: 'lead', label: 'lead(วัน)' }, { key: 'received', label: 'วันรับ', date: true }, { key: 'ready', label: 'วันส่งแนะนำ', date: true },
         { key: 'due', label: 'กำหนดส่ง', date: true }, { key: 'pm', label: 'PM' }, { key: 'rm', label: 'RM' },
         { key: 'actual', label: 'ส่งจริง', date: true }, { key: 'late', label: 'สถานะส่ง' },
@@ -123,14 +131,14 @@ function buildReport(view, data, filters = {}) {
     for (const m of matrix.months) {
       const c = row.cells[m];
       if (!c || c.status === 'none') continue;
-      rows.push({ fgCode: row.fgCode, name: row.productName || '', month: m, fc: c.fcQty, po: c.poQty, diff: c.poQty - c.fcQty, status: c.label });
+      rows.push({ fgCode: row.fgCode, name: row.productName || '', month: m, fc: c.fcQty, po: c.poQty, diff: c.poQty - c.fcQty, fcCases: casesVal(row.fgCode, c.fcQty), poCases: casesVal(row.fgCode, c.poQty), status: c.label });
     }
   }
   return {
     title: 'SAHAMIT Reconciliation (FC vs PO)',
     columns: [
       { key: 'fgCode', label: 'รหัสสินค้า' }, { key: 'name', label: 'ชื่อสินค้า' }, { key: 'month', label: 'เดือน' },
-      { key: 'fc', label: 'FC' }, { key: 'po', label: 'PO' }, { key: 'diff', label: 'PO − FC' }, { key: 'status', label: 'สถานะ' },
+      { key: 'fc', label: 'FC (ชิ้น)' }, { key: 'po', label: 'PO (ชิ้น)' }, { key: 'fcCases', label: 'FC (ลัง)' }, { key: 'poCases', label: 'PO (ลัง)' }, { key: 'diff', label: 'PO − FC' }, { key: 'status', label: 'สถานะ' },
     ],
     rows,
   };

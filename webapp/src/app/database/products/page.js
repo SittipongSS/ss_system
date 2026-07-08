@@ -57,6 +57,7 @@ export default function ProductRegistry() {
     brandNameEn: "",
     volume: "",
     volumeUnit: "ml",
+    piecesPerCase: "",
     costPrice: "",
     retailPriceIncVat: "",
   };
@@ -556,6 +557,10 @@ export default function ProductRegistry() {
                     <option value="pcs">pcs</option>
                   </Select>
                 </div>
+              </div>
+              <div className="form-group">
+                <label>ชิ้นต่อลัง <span className="text-[10px] font-normal text-[var(--text-3)]">(สำหรับงานสหมิตร)</span></label>
+                <input type="number" name="piecesPerCase" value={formData.piecesPerCase} onChange={handleChange} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
               </div>
               <div className="form-group">
                 <label>ราคาโรงงาน (บาท)</label>

@@ -6,6 +6,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { roundMatrix } from "@/lib/sahamit/forecastClient";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMeta } from "@/lib/format";
+import { ppcOf } from "@/lib/sahamit/units";
 
 // Create one FC round. The month columns run from a start month to an end month
 // (the round's last month) and the grid updates live when either changes. Rows
@@ -48,6 +49,8 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // หน่วยที่ผู้ใช้กรอกในกริด: ชิ้น (ค่าเริ่มต้น = canonical) หรือ ลัง (คูณชิ้นต่อลังตอนบันทึก).
+  const [entryUnit, setEntryUnit] = useState("piece");
 
   // Month columns: live from start/end, unless an upload pinned them.
   const months = useMemo(
@@ -65,7 +68,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   // round changes. In edit mode the grid is loaded from the round's lines.
   useEffect(() => {
     if (!open) return;
-    setUnknown([]); setPick(""); setError(""); setBusy(false);
+    setUnknown([]); setPick(""); setError(""); setBusy(false); setEntryUnit("piece");
     if (editRound) {
       const matrix = roundMatrix(editRound);
       const months = (editRound.coverMonths || []).length ? [...editRound.coverMonths].sort() : matrix.months;
@@ -144,15 +147,29 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   );
 
   const submit = async () => {
+    // ชิ้นเป็น canonical เสมอ: ถ้ากรอกเป็น "ลัง" ให้คูณชิ้นต่อลัง (ต่อ SKU) ก่อนบันทึก.
+    const isCase = entryUnit === "case";
     const lines = [];
+    const missingPpc = [];
     for (const r of rows) {
+      const ppc = ppcOf(productIndex.get(String(r.fgCode).trim().toLowerCase()));
       for (const m of months) {
         const q = Number(r.qty[m]);
-        if (Number.isFinite(q) && q > 0) lines.push({ fgCode: r.fgCode, month: m, qty: q });
+        if (!Number.isFinite(q) || q <= 0) continue;
+        if (isCase) {
+          if (!ppc) { if (!missingPpc.includes(r.fgCode)) missingPpc.push(r.fgCode); continue; }
+          lines.push({ fgCode: r.fgCode, month: m, qty: Math.round(q * ppc) });
+        } else {
+          lines.push({ fgCode: r.fgCode, month: m, qty: q });
+        }
       }
     }
     if (!receivedDate) { setError("ระบุวันที่รับ FC"); return; }
     if (!months.length) { setError("ช่วงเดือนไม่ถูกต้อง (เดือนสุดท้ายต้องไม่ก่อนเดือนเริ่มต้น)"); return; }
+    if (isCase && missingPpc.length) {
+      setError(`กรอกเป็นลังไม่ได้ — สินค้ายังไม่ได้ตั้ง "ชิ้นต่อลัง": ${missingPpc.join(", ")} (ตั้งที่ข้อมูลสินค้า หรือสลับหน่วยเป็นชิ้น)`);
+      return;
+    }
     if (!lines.length) { setError("กรอกจำนวน FC อย่างน้อย 1 รายการ"); return; }
     setBusy(true); setError("");
     try {
@@ -265,6 +282,22 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
 
         {error && <div style={{ color: "var(--red)", fontSize: "13px" }}>{error}</div>}
 
+        {/* หน่วยที่กรอกในกริด — สหมิตรคุยเป็นลัง แต่ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลังตอนบันทึก) */}
+        {hasGrid && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
+            <div className="segmented">
+              <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => setEntryUnit("piece")}>ชิ้น</button>
+              <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => setEntryUnit("case")}>ลัง</button>
+            </div>
+            <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+              {entryUnit === "case"
+                ? "ระบบจะคูณ “ชิ้นต่อลัง” ของแต่ละสินค้าแล้วเก็บเป็นชิ้น"
+                : "เก็บตามที่กรอก (ชิ้น)"}
+            </span>
+          </div>
+        )}
+
         {/* Grid */}
         {hasGrid ? (
           <div className="premium-table-wrapper" style={{ maxHeight: "44vh", overflow: "auto" }}>
@@ -316,7 +349,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: "14px" }}>
           <span style={{ fontSize: "13px", color: "var(--text-3)" }}>
             {months.length ? `${months.length} เดือน` : "ช่วงเดือนไม่ถูกต้อง"}
-            {hasGrid ? ` · ${rows.length} สินค้า · รวม ${totalQty.toLocaleString("th-TH")} หน่วย` : ""}
+            {hasGrid ? ` · ${rows.length} สินค้า · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : ""}
           </span>
           <div style={{ display: "flex", gap: "8px" }}>
             <button type="button" className="btn" onClick={onClose} disabled={busy}>ยกเลิก</button>
