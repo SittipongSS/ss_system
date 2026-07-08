@@ -6,13 +6,13 @@ import Workspace, { Spinner } from "@/components/ui/Workspace";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
-const baht = (n) => "฿" + Math.round(Number(n) || 0).toLocaleString("th-TH");
+const baht = (n) => fmtMoneyCompact(n);
 const VAT = 1.07;
 const C = { amber: "var(--amber)", blue: "var(--blue)", violet: "var(--violet)", green: "var(--green)", "text-3": "var(--text-3)" };
 const today = () => new Date().toISOString().slice(0, 10);

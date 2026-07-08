@@ -1,6 +1,8 @@
 "use client";
 
+import { Trophy } from "lucide-react";
 import { STAGE_LABELS } from "@/lib/salesPlanning";
+import { fmtMoneyCompact } from "@/lib/format";
 
 // Shared presentational helpers for the Sales Planning pages (overview / deals /
 // targets). Kept in one place so the split pages render identical badges/cards.
@@ -34,12 +36,8 @@ export const initialTargetForm = {
 export const TARGET_OWNER_ROLES = ["senior_ae", "ac", "ae"];
 export const SALES_TEAMS = ["ODM", "KA", "SV"];
 
-export const money = (value) =>
-  Number(value || 0).toLocaleString("th-TH", {
-    style: "currency",
-    currency: "THB",
-    maximumFractionDigits: 0,
-  });
+// เงินในแดชบอร์ด/ตารางสรุปแผนขาย — ใช้รูปแบบย่อกลาง (฿x.xxM / ฿x.xxK).
+export const money = (value) => fmtMoneyCompact(value);
 
 export const thisMonth = () => new Date().toISOString().slice(0, 7);
 
@@ -112,6 +110,7 @@ export function stageBadge(stage) {
   }[stage] || "var(--text-3)";
   return (
     <span className="ui-badge" style={{ color, borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+      {stage === "won" && <Trophy size={12} style={{ marginRight: 4, verticalAlign: "-1px" }} />}
       {STAGE_LABELS[stage] || stage}
     </span>
   );

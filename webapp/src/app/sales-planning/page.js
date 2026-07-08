@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LineChart, RefreshCcw, Target, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, RefreshCcw, Target, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
 import { KpiCard, MONTH_LABELS, MonthPicker, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
@@ -259,8 +259,8 @@ export default function SalesPlanningOverviewPage() {
 
   return (
     <Workspace
-      icon={<LineChart size={22} />}
-      title="แผนงานขาย — ภาพรวม"
+      icon={<LayoutDashboard size={22} />}
+      title="บริหารงานขาย — ภาพรวม"
       subtitle="คาดการณ์มูลค่าโครงการ เพื่อผลักไปสู่ Won โดย PM อาจเกิดก่อนหรือหลัง Won ได้"
       headerRight={headerRight}
     >

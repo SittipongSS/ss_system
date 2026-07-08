@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart } from "lucide-react";
+import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart, CircleDollarSign } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
 import { landingFor, can, canAccessSahamit } from "@/lib/permissions";
@@ -156,10 +156,10 @@ export default function HomeHubPage() {
                 className="brand-logo"
                 style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
               >
-                <LineChart size={24} strokeWidth={1.5} />
+                <CircleDollarSign size={24} strokeWidth={1.5} />
               </div>
               <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>แผนงานขาย</h2>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>บริหารงานขาย</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
                   จัดการโอกาสการขาย, พยากรณ์ยอด, เป้าหมาย และส่งต่องานให้ PM
                 </p>
