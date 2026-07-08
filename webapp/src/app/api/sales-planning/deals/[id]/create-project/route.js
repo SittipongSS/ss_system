@@ -23,10 +23,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { id } = await ctx.params;
   const deal = await loadDeal(supabase, id);
-  if (!deal) return notFound('ไม่พบ deal');
+  if (!deal) return notFound('ไม่พบโครงการ');
   if (!inSalesEditScope(user, deal)) return forbidden();
-  if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้าง project จาก deal ที่ lost แล้ว');
-  if (deal.projectId) return conflict('deal นี้ผูก project แล้ว');
+  if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างงานผลิตจากโครงการที่ Lost แล้ว');
+  if (deal.projectId) return conflict('โครงการนี้ผูกงานผลิตแล้ว');
 
   const body = await req.json().catch(() => ({}));
   const startDate = body.startDate || todayStr();
@@ -137,7 +137,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .single();
   if (linkError) {
     await supabase.from('projects').delete().eq('id', project.id);
-    if (linkError.code === 'PGRST116') return conflict('deal นี้ผูก project แล้ว');
+    if (linkError.code === 'PGRST116') return conflict('โครงการนี้ผูกงานผลิตแล้ว');
     return fail(linkError.message, 500);
   }
 

@@ -37,7 +37,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   const { id } = await ctx.params;
   const deal = await loadDeal(supabase, id);
-  if (!deal) return notFound('ไม่พบ deal');
+  if (!deal) return notFound('ไม่พบโครงการ');
   if (!inSalesViewScope(user, deal)) return forbidden();
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
   return ok({ ...deal, forecastDrift });
@@ -49,7 +49,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { id } = await ctx.params;
   const before = await loadDeal(supabase, id);
-  if (!before) return notFound('ไม่พบ deal');
+  if (!before) return notFound('ไม่พบโครงการ');
   if (!inSalesEditScope(user, before)) return forbidden();
 
   const body = await req.json();
