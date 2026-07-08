@@ -9,7 +9,7 @@ import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
-import { MonthPicker, initialDealForm, money, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, MonthPicker, forecastBadge, initialDealForm, money, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -124,6 +124,7 @@ export default function SalesPlanningPipelinePage() {
       stage: deal.stage || "lead",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
+      probability: snapForecastLevel(deal.probability),
       forecastMonth: deal.forecastMonth || month,
       expectedCloseDate: deal.expectedCloseDate || "",
       depositPaid: !!deal.depositPaid,
@@ -159,9 +160,13 @@ export default function SalesPlanningPipelinePage() {
     const withPm = deal.projectId ? "\n\nงานผลิต (PM) ที่ผูกอยู่จะถูกลบพ่วงไปด้วย" : "";
     if (!window.confirm(`ลบโครงการ "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
-    const res = await fetch(`/api/sales-planning/deals/${deal.id}`, { method: "DELETE" });
-    if (!res.ok) setError((await res.json()).error || "ลบโครงการไม่สำเร็จ");
-    await load();
+    try {
+      const res = await fetch(`/api/sales-planning/deals/${deal.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบโครงการไม่สำเร็จ");
+      await load();
+    } catch (e) {
+      setError(e.message || "ลบโครงการไม่สำเร็จ");
+    }
   };
 
   const loadQuotations = async (deal) => {
@@ -451,7 +456,7 @@ export default function SalesPlanningPipelinePage() {
                   <th>สถานะ</th>
                   <th>ผู้ดูแล (AE)</th>
                   <th className="num">มูลค่า</th>
-                  <th>PM</th>
+                  <th>โครงการ</th>
                   {SALES_FEATURES.quotations && <th>ใบเสนอ</th>}
                   {SALES_FEATURES.documents && <th>เอกสาร</th>}
                   {SALES_FEATURES.shipment && <th>ส่ง</th>}
@@ -472,19 +477,24 @@ export default function SalesPlanningPipelinePage() {
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}</span>
                       </Link>
                     </td>
-                    <td>{stageBadge(deal.stage)}</td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        {stageBadge(deal.stage)}
+                        {!["won", "in_project", "lost"].includes(deal.stage) && forecastBadge(deal.probability)}
+                      </div>
+                    </td>
                     <td>{deal.ownerName || deal.team || "-"}</td>
                     <td className="num mono" title={["won", "in_project"].includes(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
                       {["won", "in_project"].includes(deal.stage) ? money(deal.wonValue ?? deal.projectValue) : money(deal.projectValue)}
                     </td>
                     <td>
                       {deal.projectId ? (
-                        <a className="btn ghost" href={`/sa/projects/${deal.projectId}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          <ExternalLink size={14} aria-hidden="true" /> PM
+                        <a className="btn ghost" href={`/sa/projects/${deal.projectId}`} title="จัดการโครงการ" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <PackageCheck size={14} aria-hidden="true" /> จัดการ
                         </a>
                       ) : deal.canEdit && deal.stage !== "lost" ? (
-                        <button type="button" className="btn ghost" onClick={() => openCreatePM(deal)}>
-                          <PackageCheck size={14} aria-hidden="true" /> สร้าง PM
+                        <button type="button" className="btn ghost" onClick={() => openCreatePM(deal)} title="จัดการโครงการ">
+                          <PackageCheck size={14} aria-hidden="true" /> จัดการ
                         </button>
                       ) : (
                         <span style={{ color: "var(--text-3)" }}>-</span>
@@ -571,6 +581,12 @@ export default function SalesPlanningPipelinePage() {
             {/* ปิด Won ใช้ปุ่ม "Won" (กรอกมูลค่าจริง) — ไม่ให้เลือก won จาก dropdown เว้นแต่ดีลนี้ won อยู่แล้ว */}
             <select className="premium-select" value={dealForm.stage} onChange={(e) => setDealForm({ ...dealForm, stage: e.target.value })}>
               {PIPELINE_STAGES.filter((s) => s !== "won" || dealForm.stage === "won").map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
+            </select>
+          </label>
+          <label>
+            โอกาสที่จะปิดได้ (FC%)
+            <select className="premium-select" value={snapForecastLevel(dealForm.probability)} onChange={(e) => setDealForm({ ...dealForm, probability: e.target.value })}>
+              {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
           </label>
           <label>
@@ -829,7 +845,7 @@ export default function SalesPlanningPipelinePage() {
           categories={categories}
           allProducts={allProducts}
           createEndpoint={`/api/sales-planning/deals/${pmDeal.id}/create-project`}
-          createLabel="สร้างโครงการ PM"
+          createLabel="จัดการโครงการ"
         />
       )}
     </Workspace>

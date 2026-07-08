@@ -20,11 +20,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const year = yearKey(params.get('year'));
 
   let query = supabase.from('sales_targets').select('*').order('period', { ascending: false });
-  // Team-scoped roles see their own team plus SA-wide (team null) targets, which
-  // are read-only context (only superusers can edit those — enforced on write).
-  if (salesPlanningViewScope(user.role) === 'team') {
-    query = query.or(`team.eq.${user.team ?? ''},team.is.null`);
-  }
+  // Scope เหมือน deals: team-lead เห็นทีมตัวเอง + SA รวม (team null) เป็น context อ่านอย่างเดียว
+  // (แก้ได้เฉพาะ superuser — บังคับตอน write); AE เห็นเฉพาะเป้ารายบุคคลของตัวเอง;
+  // นอกนั้นไม่เห็น — กันเป้าคนอื่น/ทีมอื่นรั่วเมื่อยิง API ตรง.
+  const scope = salesPlanningViewScope(user.role);
+  if (scope === 'team') query = query.or(`team.eq.${user.team ?? ''},team.is.null`);
+  else if (scope === 'own') query = query.eq('ownerId', user.id ?? '');
+  else if (scope !== 'all') query = query.eq('id', '__no_scope__');
   if (year) {
     query = query.like('period', `${year}%`);
   } else {

@@ -71,8 +71,16 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerName = customer?.name || customerName;
   }
 
-  const stage = normalizeStage(body.stage);
-  if (stage === 'won' && !body.depositPaid) return badRequest('Won ต้องยืนยันว่าได้รับมัดจำแล้ว');
+  let stage = normalizeStage(body.stage);
+  // in_project ถูกยุบเป็น won แล้ว (mig 0082 ตัดออกจาก CHECK) — กัน insert พัง 500
+  // ถ้า client ยังส่งค่าเก่ามา ให้ถือเป็น won.
+  if (stage === 'in_project') stage = 'won';
+  // ปิด Won ตอนสร้างดีลต้องผ่านเงื่อนไขเดียวกับ win-flow: มัดจำ + มูลค่าปิดจริง>0 (M5)
+  const bodyWonValue = toMoney(body.wonValue, null);
+  if (stage === 'won') {
+    if (!body.depositPaid) return badRequest('Won ต้องยืนยันว่าได้รับมัดจำแล้ว');
+    if (bodyWonValue == null || bodyWonValue <= 0) return badRequest('ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0');
+  }
   const row = {
     id: genId('DEAL'),
     customerId: body.customerId || null,
@@ -80,6 +88,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     title: body.title.trim(),
     stage,
     projectValue: toMoney(body.projectValue),
+    wonValue: stage === 'won' ? bodyWonValue : null,
     probability: toProbability(body.probability, stage),
     forecastMonth: monthKey(body.forecastMonth || body.expectedCloseDate),
     expectedCloseDate: body.expectedCloseDate || null,

@@ -16,20 +16,27 @@ import { ArrowLeft } from "lucide-react";
 //   headerRight — ReactNode shown on the right of the header (counts, buttons)
 //   back        — { href, label } → understated back link above the header
 //                 (same pattern as the PM project detail page)
+//   backActions — ReactNode shown at the right end of the back-link row (e.g.
+//                 compact icon-only edit/delete buttons that sit next to กลับ)
 //   rail        — ReactNode pinned under the header (stage rail / stat cards)
 //   toolbar     — ReactNode (search / filters) shown above the body
 //   loading     — when true, render a centred spinner instead of children
 //   children    — page body
-export default function Workspace({ icon, title, subtitle, headerRight, back, rail, toolbar, loading, children }) {
+export default function Workspace({ icon, title, subtitle, headerRight, back, backActions, rail, toolbar, loading, children }) {
   return (
     <>
-      {back && (
-        <Link
-          href={back.href}
-          style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--text-2)", fontSize: "13px", fontWeight: 500, textDecoration: "none", marginBottom: "14px" }}
-        >
-          <ArrowLeft size={16} /> {back.label}
-        </Link>
+      {(back || backActions) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "14px" }}>
+          {back && (
+            <Link
+              href={back.href}
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--text-2)", fontSize: "13px", fontWeight: 500, textDecoration: "none" }}
+            >
+              <ArrowLeft size={16} /> {back.label}
+            </Link>
+          )}
+          {backActions && <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>{backActions}</div>}
+        </div>
       )}
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="header-content">

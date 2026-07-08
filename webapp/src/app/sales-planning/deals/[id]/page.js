@@ -7,8 +7,11 @@ import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
-import { fmtMoney, fmtDateTime } from "@/lib/format";
+import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
+import { useRole, useTeam } from "@/lib/roleContext";
+import { canDeleteRecord } from "@/lib/permissions";
+import { FORECAST_LEVELS, forecastBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -201,6 +204,8 @@ export default function DealOverviewPage() {
 
   const deal = data?.deal;
   const canEdit = !!data?.canEdit;
+  const role = useRole();
+  const team = useTeam();
   const alreadyWon = ["won", "in_project"].includes(deal?.stage);
   const lc = useMemo(
     () => (deal ? dealLifecycle(deal, {
@@ -367,6 +372,7 @@ export default function DealOverviewPage() {
       stage: deal.stage || "lead",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
+      probability: snapForecastLevel(deal.probability),
       forecastMonth: deal.forecastMonth || "",
       expectedCloseDate: deal.expectedCloseDate || "",
       depositPaid: !!deal.depositPaid,
@@ -380,10 +386,13 @@ export default function DealOverviewPage() {
     setError("");
     try {
       const selected = customers.find((c) => c.id === dealForm.customerId);
+      // อย่าให้ชื่อลูกค้าหายเมื่อ dropdown โหลดไม่ครบ/ลูกค้า pending ถูกซ่อน — fallback
+      // ไปชื่อเดิมของดีลก่อน null (เหมือน logic ในหน้า list)
+      const customerName = selected?.name || deal?.customerName || deal?.customer?.name || null;
       const res = await fetch(`/api/sales-planning/deals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...dealForm, customerName: selected?.name || null }),
+        body: JSON.stringify({ ...dealForm, customerName }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
       setDealModalOpen(false);
@@ -412,8 +421,14 @@ export default function DealOverviewPage() {
       setError(e.message || "ลบไม่สำเร็จ");
     }
   };
-  // ลบไม่ได้ถ้าปิด Won แล้ว หรือมาจาก PO สหมิตร (นับยอด/มีหลักฐานแล้ว) — ซ่อนปุ่ม
-  const canDelete = deal && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId;
+  // ลบไม่ได้ถ้า: ปิด Won แล้ว / มาจาก PO สหมิตร (นับยอดแล้ว) / มีทะเบียนสรรพสามิตผูก /
+  // มี PM project ผูกแต่ผู้ใช้ไม่มีสิทธิ์ลบ project (AE/AC = 'none') — ตรงกับที่ API จะปฏิเสธ
+  // จึงไม่โชว์ปุ่มให้กดแล้วเจอ 403/409 (U3).
+  const linkedProject = data?.project || null;
+  const canDeleteLinkedProject = !deal?.projectId || (linkedProject && canDeleteRecord({ role, team }, "projects", linkedProject));
+  const hasExcise = (data?.exciseRegistrations?.length || 0) > 0;
+  const canDelete = deal && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId
+    && canDeleteLinkedProject && !hasExcise;
 
   // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
   const doCreateExcise = async (productId) => {
@@ -456,8 +471,8 @@ export default function DealOverviewPage() {
     if (!canEdit || !lc?.nextAction) return null;
     const k = lc.nextAction.kind;
     if (k === "win") return <button type="button" className="btn btn-primary" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
-    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><PackageCheck size={14} aria-hidden="true" /> สร้างโครงการ</button>;
-    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/sa/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> เปิดโครงการ</a>;
+    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><PackageCheck size={14} aria-hidden="true" /> จัดการโครงการ</button>;
+    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/sa/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> จัดการโครงการ</a>;
     return null;
   };
   const headerRight = (
@@ -472,23 +487,32 @@ export default function DealOverviewPage() {
           <Ban size={15} aria-hidden="true" /> ไม่ไปต่อ
         </button>
       )}
-      {deal?.projectId && (
+      {/* ปุ่ม "จัดการโครงการ" ถาวร: มี PM แล้ว → เปิดหน้าโครงการ, ยังไม่มี → เปิดโมดัลสร้าง */}
+      {deal?.projectId ? (
         <a className="btn" href={`/sa/projects/${deal.projectId}`}>
-          <ExternalLink size={15} aria-hidden="true" /> โครงการ PM
+          <PackageCheck size={15} aria-hidden="true" /> จัดการโครงการ
         </a>
-      )}
-      {canEdit && (
-        <button type="button" className="btn" onClick={openEditDeal} disabled={!!actionBusy}>
-          <Pencil size={15} aria-hidden="true" /> แก้ไข
+      ) : (canEdit && deal?.stage !== "lost") ? (
+        <button type="button" className="btn" onClick={openCreatePM} disabled={!!actionBusy}>
+          <PackageCheck size={15} aria-hidden="true" /> จัดการโครงการ
         </button>
-      )}
-      {canEdit && canDelete && (
-        <button type="button" className="btn ghost" onClick={deleteDeal} disabled={!!actionBusy} title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
-          <Trash2 size={15} aria-hidden="true" /> ลบ
+      ) : null}
+    </>
+  );
+
+  // ปุ่มแก้ไข/ลบ — ไอคอนล้วน วางแถวเดียวกับปุ่มย้อนกลับ (R2)
+  const backActions = canEdit ? (
+    <>
+      <button type="button" className="btn icon-only ghost" onClick={openEditDeal} disabled={!!actionBusy} aria-label="แก้ไขโครงการ" title="แก้ไข">
+        <Pencil size={16} aria-hidden="true" />
+      </button>
+      {canDelete && (
+        <button type="button" className="btn icon-only ghost" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบโครงการ" title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
+          <Trash2 size={16} aria-hidden="true" />
         </button>
       )}
     </>
-  );
+  ) : null;
 
   return (
     <Workspace
@@ -496,6 +520,7 @@ export default function DealOverviewPage() {
       title={deal?.title || "ศูนย์รวมโครงการ"}
       subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมโครงการ"}
       back={{ href: "/sa", label: "กลับไปภาพรวม" }}
+      backActions={backActions}
       headerRight={headerRight}
       loading={loading}
     >
@@ -511,6 +536,7 @@ export default function DealOverviewPage() {
           <section className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 15 }}>{stageBadge(deal.stage)}</span>
+              {!alreadyWon && deal.stage !== "lost" && forecastBadge(deal.probability)}
               <span className="ui-badge" style={{ color: deal.depositPaid ? "var(--green)" : "var(--amber)" }}>
                 {deal.depositPaid ? "ได้รับมัดจำแล้ว" : "ยังไม่ยืนยันมัดจำ"}
               </span>
@@ -868,6 +894,12 @@ export default function DealOverviewPage() {
               </select>
             </label>
             <label>
+              โอกาสที่จะปิดได้ (FC%)
+              <select className="premium-select" value={snapForecastLevel(dealForm.probability)} disabled={alreadyWon} onChange={(e) => setDealForm({ ...dealForm, probability: e.target.value })}>
+                {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+            </label>
+            <label>
               เดือนพยากรณ์
               <input type="month" className="premium-input" value={dealForm.forecastMonth} onChange={(e) => setDealForm({ ...dealForm, forecastMonth: e.target.value })} />
             </label>
@@ -913,7 +945,7 @@ export default function DealOverviewPage() {
         categories={categories}
         allProducts={allProducts}
         createEndpoint={`/api/sales-planning/deals/${id}/create-project`}
-        createLabel="สร้างโครงการ PM"
+        createLabel="จัดการโครงการ"
       />
     </Workspace>
   );
