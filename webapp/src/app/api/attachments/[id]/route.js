@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic';
 
 const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders', registration: 'excise_registrations' };
 const RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
+// โมดูล "งานบริหาร": สิทธิ์ลบ = mgmt:edit (admin+เลขา) — ไม่มี parent customer/product.
+const isMgmt = (entityType) => entityType === 'mgmt_task' || entityType === 'mgmt_meeting';
 
 // DELETE /api/attachments/[id] — ลบ row + best-effort ลบไฟล์ใน storage.
 export async function DELETE(request, { params }) {
@@ -17,6 +19,11 @@ export async function DELETE(request, { params }) {
 
   const att = await getAttachment(id);
   if (!att) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
+
+  // mgmt: gate ด้วย cap ของโมดูล (ไม่ผ่าน parent customer/product).
+  if (isMgmt(att.entityType) && !can(user?.role, 'mgmt:edit')) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
 
   // สิทธิ์ลบ = สิทธิ์แก้ entity แม่ (team scope จาก canEditRecord).
   const table = PARENT_TABLE[att.entityType];
