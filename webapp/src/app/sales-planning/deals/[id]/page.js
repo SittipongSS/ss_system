@@ -73,17 +73,17 @@ function Empty({ children }) {
   return <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>{children}</div>;
 }
 
-// แถบ lifecycle: ลีด → … → เข้าโครงการ (lost = แถบแดงแทน)
+// แถบ lifecycle: ลีด → … → เข้าโครงการ (lost = แถบแดงแทน) — ฝังใน hero สถานะ
 function DealStepper({ steps, lost }) {
   if (lost) {
     return (
-      <div className="glass-panel" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center" }}>
-        <Ban size={16} aria-hidden="true" /> ดีลนี้ปิดแบบไม่สำเร็จ (Lost)
+      <div style={{ color: "var(--red)", display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, fontWeight: 600 }}>
+        <Ban size={16} aria-hidden="true" /> โครงการนี้ปิดแบบไม่สำเร็จ (Lost)
       </div>
     );
   }
   return (
-    <div className="glass-panel" style={{ padding: "12px 14px", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
       {steps.map((s, i) => (
         <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{
@@ -162,6 +162,42 @@ export default function DealOverviewPage() {
 
   const acceptedQuote = useMemo(() => (data?.quotations || []).find((quote) => quote.status === "accepted"), [data]);
   const pendingDocs = useMemo(() => (data?.documents || []).filter((doc) => doc.status === "pending"), [data]);
+
+  // ไทม์ไลน์รวม: อัปเดตงาน (activities) + การเปลี่ยนสถานะ (stageHistory) เรียงเวลาล่าสุดก่อน
+  const timeline = useMemo(() => {
+    const acts = (data?.activities || []).map((a) => ({ type: "activity", at: a.createdAt, act: a }));
+    const stages = (data?.stageHistory || []).map((s) => ({ type: "stage", at: s.changedAt, stage: s }));
+    return [...acts, ...stages].sort((x, y) => String(y.at || "").localeCompare(String(x.at || "")));
+  }, [data]);
+
+  // สรุปความคืบหน้างานผลิต (จาก project_tasks ของโครงการ PM ที่ผูก)
+  const taskSummary = useMemo(() => {
+    const tasks = data?.projectTasks || [];
+    const done = tasks.filter((t) => t.status === "Completed").length;
+    const current = tasks.find((t) => t.status === "In Progress");
+    return { total: tasks.length, done, current };
+  }, [data]);
+
+  // เวลาปัจจุบันจับใน effect (กฎ react-hooks/purity ห้าม Date.now() ระหว่าง render)
+  const [nowMs, setNowMs] = useState(null);
+  useEffect(() => { setNowMs(Date.now()); }, [data]);
+
+  // จำนวนวันตั้งแต่วันที่กำหนด (null ถ้าไม่มีข้อมูล)
+  const daysSince = (iso) => {
+    if (!iso || nowMs == null) return null;
+    const ms = nowMs - new Date(iso).getTime();
+    return Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 86400000)) : null;
+  };
+  const stageSinceAt = data?.stageHistory?.[0]?.changedAt || data?.deal?.createdAt;
+  const daysInStage = daysSince(stageSinceAt);
+  const dealAgeDays = daysSince(data?.deal?.createdAt);
+  // วันคงเหลือถึงวันคาดปิด (ติดลบ = เลยกำหนด)
+  const daysToClose = useMemo(() => {
+    const d = data?.deal?.expectedCloseDate;
+    if (!d || nowMs == null) return null;
+    const diff = Math.ceil((new Date(`${d}T00:00:00`) - nowMs) / 86400000);
+    return Number.isFinite(diff) ? diff : null;
+  }, [data, nowMs]);
 
   const deal = data?.deal;
   const canEdit = !!data?.canEdit;
@@ -451,18 +487,43 @@ export default function DealOverviewPage() {
 
       {deal && (
         <div className="flex flex-col gap-5">
-          {lc && <DealStepper steps={lc.steps} lost={deal.stage === "lost"} />}
-
-          {lc?.nextAction && (
-            <div className="glass-panel" style={{ padding: 16, borderLeft: "3px solid var(--accent)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <div style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 600 }}>ขั้นต่อไป</div>
-                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>{lc.nextAction.label}</div>
-                {lc.nextAction.hint && <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>{lc.nextAction.hint}</div>}
-              </div>
-              {nextPrimary()}
+          {/* Hero สถานะ: สถานะปัจจุบัน + มัดจำ + ผู้ดูแล + stepper + ขั้นต่อไป ในผืนเดียว */}
+          <section className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 15 }}>{stageBadge(deal.stage)}</span>
+              <span className="ui-badge" style={{ color: deal.depositPaid ? "var(--green)" : "var(--amber)" }}>
+                {deal.depositPaid ? "ได้รับมัดจำแล้ว" : "ยังไม่ยืนยันมัดจำ"}
+              </span>
+              <span style={{ fontSize: 13, color: "var(--text-2)" }}>
+                ผู้ดูแล (AE): <strong>{deal.ownerName || "-"}</strong>{deal.team ? ` · ทีม ${deal.team}` : ""}
+              </span>
+              <span style={{ fontSize: 13, color: "var(--text-3)", marginLeft: "auto" }}>
+                ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}
+              </span>
             </div>
-          )}
+            {lc && <DealStepper steps={lc.steps} lost={deal.stage === "lost"} />}
+            {lc?.nextAction && (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 600 }}>ขั้นต่อไป</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>{lc.nextAction.label}</div>
+                  {lc.nextAction.hint && <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>{lc.nextAction.hint}</div>}
+                </div>
+                {nextPrimary()}
+              </div>
+            )}
+          </section>
+
+          {/* เมนูลิงก์ไปแต่ละส่วนของหน้า + ป้ายเฟสถัดไปของส่วนที่ยังไม่เปิดใช้ */}
+          <nav className="glass-panel toolbar" aria-label="ส่วนต่าง ๆ ของโครงการ" style={{ padding: "8px 12px" }}>
+            <a className="btn ghost sm" href="#deal-kpi">ภาพรวม</a>
+            <a className="btn ghost sm" href="#deal-pm">งานผลิต (PM)</a>
+            <a className="btn ghost sm" href="#deal-routing">ส่งต่อ</a>
+            <a className="btn ghost sm" href="#deal-timeline">ความเคลื่อนไหว</a>
+            <span className="spacer" />
+            {!SALES_FEATURES.quotations && <span className="ui-badge" style={{ color: "var(--text-3)" }} title="อยู่ในแผนเฟสถัดไป">ใบเสนอราคา · เฟสถัดไป</span>}
+            {!SALES_FEATURES.shipment && <span className="ui-badge" style={{ color: "var(--text-3)" }} title="อยู่ในแผนเฟสถัดไป">การส่ง · เฟสถัดไป</span>}
+          </nav>
 
           {!!data?.warnings?.length && (
             <div className="glass-panel" role="status" style={{ padding: "12px 14px", color: "var(--amber)", borderColor: "var(--amber)" }}>
@@ -474,7 +535,7 @@ export default function DealOverviewPage() {
             <div className="glass-panel" role="status" style={{ padding: "12px 14px", borderColor: "var(--amber)", borderLeft: "3px solid var(--amber)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--amber)", fontWeight: 700 }}>
                 <AlertTriangle size={16} aria-hidden="true" />
-                FC สหมิตรรอบล่าสุด (#{data.forecastDrift.latestRoundNo}) ต่างจากตอนสร้างดีล
+                FC สหมิตรรอบล่าสุด (#{data.forecastDrift.latestRoundNo}) ต่างจากตอนสร้างโครงการ
               </div>
               <ul style={{ margin: "8px 0 4px", paddingLeft: 20, fontSize: 13 }}>
                 {data.forecastDrift.items.map((it, i) => (
@@ -482,14 +543,28 @@ export default function DealOverviewPage() {
                 ))}
               </ul>
               <div style={{ color: "var(--text-3)", fontSize: 12 }}>
-                คำแนะนำ: ดีลถูกล็อกตัวเลขไว้ตอน map — ปรับ “เดือนคาดได้รับ PO” / มูลค่าดีลเองหากต้องการให้ตรงกับ FC ล่าสุด
+                คำแนะนำ: โครงการถูกล็อกตัวเลขไว้ตอน map — ปรับ “เดือนคาดได้รับ PO” / มูลค่าโครงการเองหากต้องการให้ตรงกับ FC ล่าสุด
               </div>
             </div>
           )}
 
-          <section className="kpi-grid">
-            <Stat label="สถานะ" value={stageBadge(deal.stage)} hint={deal.depositPaid ? "ได้รับมัดจำ" : "ยังไม่ยืนยันมัดจำ"} />
-            <Stat label="มูลค่าโครงการ" value={money(deal.projectValue)} hint={deal.forecastMonth || "-"} />
+          <section id="deal-kpi" className="kpi-grid">
+            <Stat label="มูลค่าโครงการ" value={money(deal.projectValue)} hint={deal.forecastMonth ? `เดือนพยากรณ์ ${deal.forecastMonth}` : "ไม่มีเดือนพยากรณ์"} />
+            <Stat
+              label="คาดปิด"
+              value={deal.expectedCloseDate || "-"}
+              hint={daysToClose == null ? "ยังไม่กำหนด" : daysToClose >= 0 ? `อีก ${daysToClose} วัน` : `เลยกำหนด ${Math.abs(daysToClose)} วัน`}
+            />
+            <Stat
+              label="อยู่ในสถานะนี้"
+              value={daysInStage == null ? "-" : `${daysInStage} วัน`}
+              hint={dealAgeDays == null ? "-" : `อายุโครงการรวม ${dealAgeDays} วัน`}
+            />
+            <Stat
+              label="งานผลิตคืบหน้า"
+              value={deal.projectId && taskSummary.total ? `${taskSummary.done}/${taskSummary.total}` : "-"}
+              hint={!deal.projectId ? "ยังไม่ผูกโครงการ PM" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.total && taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : "-"}
+            />
             {SALES_FEATURES.quotations && (
               <Stat label="ใบเสนอที่รับแล้ว" value={acceptedQuote ? money(acceptedQuote.totalAmount) : "-"} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอที่รับ"} />
             )}
@@ -498,7 +573,7 @@ export default function DealOverviewPage() {
             )}
           </section>
 
-          <section className="glass-panel" style={{ padding: 16 }}>
+          <section id="deal-pm" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <PackageCheck size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานผลิต (PM)</h2>
@@ -508,6 +583,7 @@ export default function DealOverviewPage() {
             {data.project ? (
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
                 <Stat label="โครงการ" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
+                <Stat label="ความคืบหน้า" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : "-"} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : "-"} />
                 <Stat label="ประเภท" value={data.project.type || "-"} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
                 <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={(data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", ") || "-"} />
                 {SALES_FEATURES.shipment && (
@@ -577,7 +653,7 @@ export default function DealOverviewPage() {
           )}
 
           {lc && (
-            <section className="glass-panel" style={{ padding: 16 }}>
+            <section id="deal-routing" className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <ArrowRight size={17} aria-hidden="true" />
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ส่งต่อ (Routing)</h2>
@@ -592,12 +668,12 @@ export default function DealOverviewPage() {
             </section>
           )}
 
-          <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
-            <section className="glass-panel" style={{ padding: 16 }}>
+          {/* ไทม์ไลน์รวม: อัปเดตงาน + การเปลี่ยนสถานะ เรียงตามเวลาเดียวกัน — เห็นเรื่องราวของโครงการในฟีดเดียว */}
+          <section id="deal-timeline" className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <MessageSquare size={17} aria-hidden="true" />
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>อัปเดตงาน</h2>
-                <span className="ui-badge" style={{ marginLeft: "auto", color: "var(--text-3)" }}>{(data.activities || []).length} รายการ</span>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ความเคลื่อนไหว</h2>
+                <span className="ui-badge" style={{ marginLeft: "auto", color: "var(--text-3)" }}>{timeline.length} รายการ</span>
               </div>
 
               {canEdit && (
@@ -626,9 +702,24 @@ export default function DealOverviewPage() {
                 </div>
               )}
 
-              {(data.activities || []).length ? (
+              {timeline.length ? (
                 <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-                  {data.activities.map((act) => {
+                  {timeline.map((item) => {
+                    if (item.type === "stage") {
+                      const row = item.stage;
+                      return (
+                        <li key={`st-${row.id}`} style={{ borderLeft: "3px solid var(--border)", paddingLeft: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span className="ui-badge" style={{ color: "var(--text-3)" }}>สถานะ</span>
+                            <span style={{ fontSize: 13.5 }}>
+                              {STAGE_LABELS[row.fromStage] || row.fromStage || "เริ่ม"} → <strong>{STAGE_LABELS[row.toStage] || row.toStage}</strong>
+                            </span>
+                          </div>
+                          <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>{row.changedByName || "-"} · {row.changedAt ? fmtDateTime(row.changedAt) : "-"}</div>
+                        </li>
+                      );
+                    }
+                    const act = item.act;
                     const meta = ACTIVITY_META[act.kind] || ACTIVITY_META.note;
                     if (editActId === act.id) {
                       return (
@@ -667,29 +758,12 @@ export default function DealOverviewPage() {
                     );
                   })}
                 </ul>
-              ) : <Empty>ยังไม่มีอัปเดตงาน{canEdit ? " — เริ่มโพสต์ได้เลย" : ""}</Empty>}
-            </section>
-
-            <section className="glass-panel" style={{ padding: 16 }}>
-              <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>ความเคลื่อนไหวล่าสุด</h2>
-              {(data.stageHistory || []).length ? (
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {data.stageHistory.slice(0, 6).map((row) => (
-                    <li key={row.id} style={{ marginBottom: 8 }}>
-                      {STAGE_LABELS[row.fromStage] || row.fromStage || "เริ่ม"} → {STAGE_LABELS[row.toStage] || row.toStage}
-                      <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>
-                        {row.changedByName || "-"} · {row.changedAt ? fmtDateTime(row.changedAt) : "-"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <Empty>ยังไม่มีการเปลี่ยนสถานะ</Empty>}
-            </section>
-          </div>
+              ) : <Empty>ยังไม่มีความเคลื่อนไหว{canEdit ? " — เริ่มโพสต์อัปเดตได้เลย" : ""}</Empty>}
+          </section>
         </div>
       )}
 
-      <Modal open={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดดีลแบบไม่สำเร็จ (Lost)" size="sm">
+      <Modal open={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดโครงการแบบไม่สำเร็จ (Lost)" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             เหตุผล (ไม่บังคับ)

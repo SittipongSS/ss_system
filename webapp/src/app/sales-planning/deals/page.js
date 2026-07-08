@@ -380,7 +380,7 @@ export default function SalesPlanningPipelinePage() {
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="search-glass" style={{ width: 280 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / owner" aria-label="ค้นหาโครงการ" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / ผู้ดูแล" aria-label="ค้นหาโครงการ" />
             </div>
             <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="premium-select" aria-label="กรอง stage" style={{ width: 180 }}>
               <option value="all">ทุก stage</option>
@@ -396,7 +396,7 @@ export default function SalesPlanningPipelinePage() {
                 <tr>
                   <th>โครงการ</th>
                   <th>สถานะ</th>
-                  <th>เจ้าของ</th>
+                  <th>ผู้ดูแล (AE)</th>
                   <th className="num">มูลค่า</th>
                   <th>PM</th>
                   {SALES_FEATURES.quotations && <th>ใบเสนอ</th>}
@@ -413,7 +413,7 @@ export default function SalesPlanningPipelinePage() {
                         <strong>
                           {deal.title}
                           {deal.forecastDrift?.hasDrift && (
-                            <AlertTriangle size={13} aria-label="FC ล่าสุดเปลี่ยนจากตอน map" title={`FC รอบ #${deal.forecastDrift.latestRoundNo} เปลี่ยนจากตอนสร้างดีล`} style={{ color: "var(--amber)", marginLeft: 6, verticalAlign: "-1px" }} />
+                            <AlertTriangle size={13} aria-label="FC ล่าสุดเปลี่ยนจากตอน map" title={`FC รอบ #${deal.forecastDrift.latestRoundNo} เปลี่ยนจากตอนสร้างโครงการ`} style={{ color: "var(--amber)", marginLeft: 6, verticalAlign: "-1px" }} />
                           )}
                         </strong>
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}</span>

@@ -35,13 +35,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   let project = { data: null, warning: null };
   let projectProducts = { data: [], warning: null };
+  let projectTasks = { data: [], warning: null };
   let shipmentPrep = { data: null, warning: null };
   let exciseRegistrations = { data: [], warning: null };
   let sahamitPo = { data: null, warning: null };
   if (deal.projectId) {
-    [project, projectProducts, shipmentPrep, exciseRegistrations, sahamitPo] = await Promise.all([
+    [project, projectProducts, projectTasks, shipmentPrep, exciseRegistrations, sahamitPo] = await Promise.all([
       safe('project', supabase.from('projects').select('*').eq('id', deal.projectId).maybeSingle(), null),
       safe('project products', supabase.from('project_products').select('*, product:products(id, fgCode, productDescription, productDescriptionEn)').eq('projectId', deal.projectId), []),
+      safe('project tasks', supabase.from('project_tasks').select('id, name, status, stepOrder').eq('projectId', deal.projectId).order('stepOrder', { ascending: true }), []),
       safe('shipment prep', supabase.from('shipment_prep').select('*, lines:shipment_prep_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
       safe('excise registrations', supabase.from('excise_registrations').select('*').eq('projectId', deal.projectId), []),
       safe('sahamit po', supabase.from('sahamit_pos').select('*, lines:sahamit_po_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
@@ -56,6 +58,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     forecasts.warning,
     project.warning,
     projectProducts.warning,
+    projectTasks.warning,
     shipmentPrep.warning,
     exciseRegistrations.warning,
     sahamitPo.warning,
@@ -76,6 +79,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     forecasts: forecasts.data,
     project: project.data,
     projectProducts: projectProducts.data,
+    projectTasks: projectTasks.data,
     shipmentPrep: shipmentPrep.data,
     exciseRegistrations: exciseRegistrations.data,
     sahamitPo: sahamitPo.data,
