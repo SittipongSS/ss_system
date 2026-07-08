@@ -95,6 +95,7 @@ export default function SalesPlanningPipelinePage() {
       customerName: deal.customerName || "",
       stage: deal.stage || "lead",
       projectValue: deal.projectValue ?? "",
+      wonValue: deal.wonValue ?? "",
       forecastMonth: deal.forecastMonth || month,
       expectedCloseDate: deal.expectedCloseDate || "",
       depositPaid: !!deal.depositPaid,
@@ -257,14 +258,24 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  // ปิดโครงการเป็น Won ในคลิกเดียว — นับเป็นยอด + ปิด forecast (ผ่าน markWon กลาง).
-  const markDealWon = async (deal) => {
-    if (!window.confirm(`ปิดโครงการ "${deal.title}" เป็น Won?\nยืนยันว่าได้รับมัดจำ/ยืนยันจากลูกค้าแล้ว — จะนับเป็นยอดและปิด forecast ของโครงการนี้`)) return;
-    setWinningDealId(deal.id);
+  // ปิดโครงการเป็น Won — เปิดโมดัลรับ "มูลค่าปิดจริง" (prefill = คาดการณ์) ก่อนยืนยัน
+  const [winDeal, setWinDeal] = useState(null);
+  const [winValue, setWinValue] = useState("");
+  const openWin = (deal) => { setWinDeal(deal); setWinValue(deal.projectValue ?? ""); };
+  const submitWin = async () => {
+    if (!winDeal) return;
+    const v = Number(winValue);
+    if (!Number.isFinite(v) || v <= 0) { setError("ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0"); return; }
+    setWinningDealId(winDeal.id);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${deal.id}/win`, { method: "POST" });
+      const res = await fetch(`/api/sales-planning/deals/${winDeal.id}/win`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wonValue: v }),
+      });
       if (!res.ok) throw new Error((await res.json()).error || "ปิดโครงการไม่สำเร็จ");
+      setWinDeal(null);
       await load();
     } catch (e) {
       setError(e.message || "ปิดโครงการไม่สำเร็จ");
@@ -423,7 +434,9 @@ export default function SalesPlanningPipelinePage() {
                     </td>
                     <td>{stageBadge(deal.stage)}</td>
                     <td>{deal.ownerName || deal.team || "-"}</td>
-                    <td className="num mono">{money(deal.projectValue)}</td>
+                    <td className="num mono" title={["won", "in_project"].includes(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
+                      {["won", "in_project"].includes(deal.stage) ? money(deal.wonValue ?? deal.projectValue) : money(deal.projectValue)}
+                    </td>
                     <td>
                       {deal.projectId ? (
                         <a className="btn ghost" href={`/pm/projects/${deal.projectId}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -469,7 +482,7 @@ export default function SalesPlanningPipelinePage() {
                     <td className="num">
                       <div className="flex items-center gap-2 justify-end">
                         {deal.canEdit && !["won", "in_project", "lost"].includes(deal.stage) && (
-                          <button type="button" className="btn ghost" onClick={() => markDealWon(deal)} disabled={winningDealId === deal.id} title="ปิดโครงการเป็น Won (นับยอด + ปิด forecast)">
+                          <button type="button" className="btn ghost" onClick={() => openWin(deal)} disabled={winningDealId === deal.id} title="ปิดโครงการเป็น Won (นับยอด + ปิด forecast)">
                             <CheckCircle2 size={14} aria-hidden="true" /> {winningDealId === deal.id ? "..." : "Won"}
                           </button>
                         )}
@@ -515,8 +528,9 @@ export default function SalesPlanningPipelinePage() {
           </label>
           <label>
             สถานะ
+            {/* ปิด Won ใช้ปุ่ม "Won" (กรอกมูลค่าจริง) — ไม่ให้เลือก won จาก dropdown เว้นแต่ดีลนี้ won อยู่แล้ว */}
             <select className="premium-select" value={dealForm.stage} onChange={(e) => setDealForm({ ...dealForm, stage: e.target.value })}>
-              {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
+              {PIPELINE_STAGES.filter((s) => s !== "won" || dealForm.stage === "won").map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
             </select>
           </label>
           <label>
@@ -524,9 +538,15 @@ export default function SalesPlanningPipelinePage() {
             <input type="month" className="premium-input" value={dealForm.forecastMonth} onChange={(e) => setDealForm({ ...dealForm, forecastMonth: e.target.value })} />
           </label>
           <label>
-            มูลค่าโครงการ
-            <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
+            มูลค่าคาดการณ์{dealForm.stage === "won" ? " (ล็อกหลังปิด Won)" : ""}
+            <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} disabled={dealForm.stage === "won"} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
           </label>
+          {dealForm.stage === "won" && (
+            <label>
+              มูลค่าปิดจริง (Won)
+              <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.wonValue} onChange={(e) => setDealForm({ ...dealForm, wonValue: e.target.value })} />
+            </label>
+          )}
           <label>
             คาดปิดได้ (วันที่)
             <input type="date" className="premium-input" value={dealForm.expectedCloseDate} onChange={(e) => setDealForm({ ...dealForm, expectedCloseDate: e.target.value })} />
@@ -542,6 +562,27 @@ export default function SalesPlanningPipelinePage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal open={!!winDeal} onClose={() => winningDealId ? null : setWinDeal(null)} title="ปิดการขาย (Won)" size="sm">
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+            ปิดโครงการ <strong>{winDeal?.title}</strong> — ยืนยันว่าได้รับมัดจำ/ยืนยันแล้ว กรอก <strong>มูลค่าปิดจริง</strong> (นับเข้าเป้า)
+          </div>
+          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+            มูลค่าปิดจริง (บาท)
+            <input type="number" min="0" step="0.01" className="premium-input mono" value={winValue} onChange={(e) => setWinValue(e.target.value)} autoFocus />
+          </label>
+          {winDeal && Number(winDeal.projectValue) > 0 && Number(winValue) > 0 && Number(winValue) !== Number(winDeal.projectValue) && (
+            <div style={{ fontSize: 12, color: "var(--amber)" }}>ต่างจากคาดการณ์ ({money(winDeal.projectValue)}) {money(Number(winDeal.projectValue) - Number(winValue))}</div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="btn ghost" onClick={() => setWinDeal(null)} disabled={!!winningDealId}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!winningDealId || !(Number(winValue) > 0)}>
+              <CheckCircle2 size={14} aria-hidden="true" /> {winningDealId ? "กำลังบันทึก..." : "ยืนยัน Won"}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <Modal open={quoteModal} onClose={() => setQuoteModal(false)} title={`Quotation${quoteDeal?.title ? ` · ${quoteDeal.title}` : ""}`} size="lg">

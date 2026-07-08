@@ -53,11 +53,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!inSalesEditScope(user, before)) return forbidden();
 
   const body = await req.json();
-  if ('title' in body && !body.title?.trim()) return badRequest('ต้องระบุชื่อ deal');
+  if ('title' in body && !body.title?.trim()) return badRequest('ต้องระบุชื่อโครงการ');
 
+  const alreadyWon = ['won', 'in_project'].includes(before.stage);
   const nextStage = 'stage' in body ? normalizeStage(body.stage) : before.stage;
   const nextDepositPaid = 'depositPaid' in body ? !!body.depositPaid : !!before.depositPaid;
   if (nextStage === 'won' && !nextDepositPaid) return badRequest('Won ต้องยืนยันว่าได้รับมัดจำแล้ว');
+
+  // ปิด Won ผ่าน PATCH ก็ต้องมีมูลค่าปิดจริง (wonValue) เหมือนปุ่มปิด Won
+  const transitioningToWon = nextStage === 'won' && !alreadyWon;
+  const bodyWonValue = 'wonValue' in body ? toMoney(body.wonValue, null) : undefined;
+  if (transitioningToWon && (bodyWonValue == null || bodyWonValue <= 0)) {
+    return badRequest('ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0');
+  }
+
   const patch = {
     updatedAt: new Date().toISOString(),
   };
@@ -66,7 +75,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
   if ('title' in body) patch.title = body.title.trim();
   if ('stage' in body) patch.stage = nextStage;
-  if ('projectValue' in body) patch.projectValue = toMoney(body.projectValue);
+  // projectValue = มูลค่าคาดการณ์ — freeze เมื่อปิด Won แล้ว (แก้ไม่ได้อีก); ก่อน Won แก้ได้
+  if ('projectValue' in body && !alreadyWon) patch.projectValue = toMoney(body.projectValue);
+  // wonValue = มูลค่าปิดจริง — แก้ได้เมื่อ Won แล้ว (แก้ตัวเลขจริงย้อนหลัง)
+  if (bodyWonValue != null && alreadyWon) patch.wonValue = bodyWonValue;
   if ('probability' in body || 'stage' in body) patch.probability = toProbability(body.probability ?? before.probability, nextStage);
   if ('forecastMonth' in body || 'expectedCloseDate' in body) {
     patch.forecastMonth = monthKey(body.forecastMonth || body.expectedCloseDate) || null;
@@ -76,7 +88,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       deal: before,
       source: 'manual',
       now: patch.updatedAt,
-      projectValue: 'projectValue' in patch ? patch.projectValue : before.projectValue,
+      // ปิด Won ใหม่ → ใช้ wonValue ที่กรอก; ที่ Won อยู่แล้ว → คงค่าเดิม (buildWinPatch fallback)
+      wonValue: transitioningToWon ? bodyWonValue : (bodyWonValue ?? before.wonValue),
       projectId: before.projectId,
       metadata: 'metadata' in body ? body.metadata : {},
     }));
