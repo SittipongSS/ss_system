@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 // ต่างจาก /api/users (admin-only, ข้อมูลเต็ม) — อันนี้ผู้ใช้ PM ทุกคนเรียกได้ เพื่อ
 // เติม dropdown ผู้รับผิดชอบ. คืนเฉพาะ user ที่มี role (กรอง account ที่ยังไม่ตั้ง role).
 export const GET = withUser(async ({ user, supabase }) => {
-  if (!can(user?.role, 'pm:view')) return forbidden();
+  // PM ใช้เติม dropdown ผู้รับผิดชอบ; โมดูล "งานบริหาร" (mgmt) ก็ reuse รายชื่อนี้.
+  if (!can(user?.role, 'pm:view') && !can(user?.role, 'mgmt:view')) return forbidden();
 
   const rows = [];
   let page = 1;
