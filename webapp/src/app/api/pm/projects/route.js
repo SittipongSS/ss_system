@@ -1,5 +1,4 @@
-import { pmViewScope, can } from '@/lib/permissions';
-import { ownerProjectIds } from '@/lib/pm/projectsRepo';
+import { viewScope, can } from '@/lib/permissions';
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -12,16 +11,11 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (!user) return unauthorized();
   if (!can(user.role, 'pm:view')) return forbidden();
 
-  const scope = pmViewScope(user?.role);
   let query = supabase.from('projects').select('*').order('createdAt', { ascending: false });
-  if (scope === 'team') {
-    query = query.eq('team', user?.team ?? null);
-  } else if (scope === 'own') {
-    const ids = await ownerProjectIds(supabase, user);
-    if (!ids.length) return ok([]);
-    query = query.in('id', ids);
-  } else if (scope === 'none') {
-    return ok([]);
+  if (viewScope(user?.role) === 'team') {
+    const team = user?.team ?? '';
+    const own = user?.id ?? '';
+    query = query.or(`team.eq.${team},ownerId.eq.${own}`);
   }
 
   const { data, error } = await query;

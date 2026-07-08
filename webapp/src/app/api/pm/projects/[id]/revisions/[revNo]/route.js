@@ -1,4 +1,4 @@
-import { inPmProjectViewScope, can } from '@/lib/permissions';
+import { viewScope, inScope, can } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 
@@ -13,7 +13,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   const project = await loadProject(supabase, id);
   if (!project) return notFound('ไม่พบโปรเจกต์');
-  if (!inPmProjectViewScope(user, project)) {
+  if (viewScope(user?.role) === 'team' && !inScope('team', user, project)) {
     return forbidden();
   }
 

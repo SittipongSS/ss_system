@@ -2,29 +2,16 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmViewScope, pmEditScope, pmTaskScopes, pmTaskEditTier, inPmProjectViewScope, inPmProjectScope, deleteScope, canAccessMgmt, can, capsFor, sanitizeExtraCaps, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, can, capsFor, sanitizeExtraCaps, GRANTABLE_CAPS } from './permissions';
 
 test('pmTaskScopes by role', () => {
   assert.deepEqual(pmTaskScopes('admin'), ['mine', 'team', 'all']);
   assert.deepEqual(pmTaskScopes('ae_supervisor'), ['mine', 'team', 'all']);
   assert.deepEqual(pmTaskScopes('senior_ae'), ['mine', 'team']);
   assert.deepEqual(pmTaskScopes('ac'), ['mine', 'team']);
-  assert.deepEqual(pmTaskScopes('ae'), ['mine']);
+  assert.deepEqual(pmTaskScopes('ae'), ['mine', 'team']);
   assert.deepEqual(pmTaskScopes('staff'), ['mine']);
   assert.deepEqual(pmTaskScopes('viewer'), ['mine']);
-});
-
-test('PM project auth scopes by sales role', () => {
-  assert.equal(pmViewScope('ae'), 'own');
-  assert.equal(pmEditScope('ae'), 'own');
-  assert.equal(pmViewScope('senior_ae'), 'team');
-  assert.equal(pmEditScope('senior_ae'), 'team');
-  assert.equal(pmViewScope('ac'), 'team');
-  assert.equal(pmEditScope('ac'), 'team');
-  assert.equal(pmViewScope('ae_supervisor'), 'all');
-  assert.equal(pmEditScope('ae_supervisor'), 'all');
-  assert.equal(pmViewScope('admin'), 'all');
-  assert.equal(pmEditScope('admin'), 'all');
 });
 
 test('deleteScope for projects (superuser=all, senior_ae=own team, else none)', () => {
@@ -38,14 +25,12 @@ test('deleteScope for projects (superuser=all, senior_ae=own team, else none)', 
 test('pmTaskEditTier: full edit for admin / scoped sales', () => {
   assert.equal(pmTaskEditTier({ role: 'admin', id: 'a' }, { assigneeId: null }, { team: 'KA', ownerId: 'x' }), 'full');
   assert.equal(pmTaskEditTier({ role: 'senior_ae', team: 'ODM', id: 's' }, { assigneeId: null }, { team: 'ODM' }), 'full');
-  assert.equal(pmTaskEditTier({ role: 'ae', team: 'KA', id: 'u1' }, { assigneeId: null }, { team: 'KA', ownerId: 'u1' }), 'full');
-  assert.equal(pmTaskEditTier({ role: 'ae', team: 'KA', id: 'u1', name: 'AE One' }, { assigneeId: null }, { team: 'KA', aeOwner: ' ae  one ' }), 'full');
+  assert.equal(pmTaskEditTier({ role: 'ae', team: 'KA', id: 'u1' }, { assigneeId: null }, { team: 'KA', ownerId: 'u2' }), 'full');
 });
 
-test('inPmProjectScope: AE edits and views only own PM projects', () => {
+test('inPmProjectScope: PM editors may edit own project even when team is missing or stale', () => {
   assert.equal(inPmProjectScope({ role: 'ae', team: 'KA', id: 'u1' }, { team: null, ownerId: 'u1' }), true);
-  assert.equal(inPmProjectViewScope({ role: 'ae', team: 'KA', id: 'u1', name: 'AE One' }, { team: 'ODM', aeOwner: 'AE One' }), true);
-  assert.equal(inPmProjectScope({ role: 'ac', team: 'KA', id: 'u1' }, { team: 'ODM', ownerId: 'u1' }), false);
+  assert.equal(inPmProjectScope({ role: 'ac', team: 'KA', id: 'u1' }, { team: 'ODM', ownerId: 'u1' }), true);
   assert.equal(inPmProjectScope({ role: 'ae', team: 'KA', id: 'u1' }, { team: 'ODM', ownerId: 'u2' }), false);
 });
 

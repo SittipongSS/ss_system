@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, forbidden, notFound, unauthorized, badRequest } from '@/lib/http';
-import { can, inPmProjectViewScope, inPmProjectScope } from '@/lib/permissions';
+import { can, viewScope, pmEditScope, inScope } from '@/lib/permissions';
 import { loadProject } from '@/lib/pm/projectsRepo';
 
 export const dynamic = 'force-dynamic';
@@ -59,8 +59,8 @@ async function requireProjectAccess({ user, supabase, id, edit = false }) {
   if (!project) return { response: notFound('ไม่พบโปรเจกต์') };
 
   if (edit) {
-    if (!inPmProjectScope(user, project)) return { response: forbidden() };
-  } else if (!inPmProjectViewScope(user, project)) {
+    if (!inScope(pmEditScope(user.role), user, project)) return { response: forbidden() };
+  } else if (viewScope(user.role) === 'team' && !inScope('team', user, project)) {
     return { response: forbidden() };
   }
 

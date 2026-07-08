@@ -1,9 +1,9 @@
-import { pmViewScope, inPmProjectViewScope, inPmProjectScope, can } from '@/lib/permissions';
+import { viewScope, pmEditScope, inScope, can } from '@/lib/permissions';
 import { recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
-import { ownerProjectIds, teamProjectIds } from '@/lib/pm/projectsRepo';
+import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
 import { withUser, ok, fail, forbidden, notFound, badRequest, unauthorized } from '@/lib/http';
 
@@ -25,7 +25,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     // and the inScope checks on the other PM routes.
     const { data: project } = await supabase.from('projects').select('*').eq('id', projectId).maybeSingle();
     if (!project) return notFound('ไม่พบโปรเจกต์');
-    if (!inPmProjectViewScope(user, project)) return forbidden();
+    if (!inScope(viewScope(user?.role), user, project)) return forbidden();
 
     const { data, error } = await supabase
       .from('project_tasks')
@@ -36,9 +36,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     return ok(data);
   }
 
-  // Cross-project list — limit by PM project visibility.
-  const scope = pmViewScope(user?.role);
-  if (scope === 'team') {
+  // Cross-project list — limit to the team's projects when team-scoped.
+  if (viewScope(user?.role) === 'team') {
     const ids = await teamProjectIds(supabase, user?.team);
     if (!ids.length) return ok([]);
     const { data, error } = await supabase
@@ -48,18 +47,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .order('stepOrder', { ascending: true });
     if (error) return fail(error.message, 500);
     return ok(data);
-  } else if (scope === 'own') {
-    const ids = await ownerProjectIds(supabase, user);
-    if (!ids.length) return ok([]);
-    const { data, error } = await supabase
-      .from('project_tasks')
-      .select('*')
-      .in('projectId', ids)
-      .order('stepOrder', { ascending: true });
-    if (error) return fail(error.message, 500);
-    return ok(data);
-  } else if (scope === 'none') {
-    return ok([]);
   }
 
   const { data, error } = await supabase
@@ -79,7 +66,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // (own team / own record). Mirrors the checks on the other PM write routes.
   const { data: project } = await supabase.from('projects').select('*').eq('id', body.projectId).maybeSingle();
   if (!project) return notFound('ไม่พบโปรเจกต์');
-  if (!inPmProjectScope(user, project)) {
+  if (!inScope(pmEditScope(user?.role), user, project)) {
     return forbidden();
   }
 

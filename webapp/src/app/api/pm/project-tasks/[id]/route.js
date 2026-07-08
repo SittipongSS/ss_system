@@ -1,4 +1,4 @@
-import { inPmProjectScope, pmTaskEditTier } from '@/lib/permissions';
+import { pmEditScope, inScope, pmTaskEditTier } from '@/lib/permissions';
 import { recalculateGraph, resolveSchedule, todayStr } from '@/lib/pm/schedule';
 import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -140,7 +140,7 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
 
   const { task, project } = await loadTaskWithProject(supabase, id);
   if (!task) return notFound('ไม่พบขั้นตอน');
-  if (!inPmProjectScope(user, project || {})) {
+  if (!inScope(pmEditScope(user?.role), user, project || {})) {
     return forbidden();
   }
 

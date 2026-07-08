@@ -1,4 +1,4 @@
-import { inPmProjectViewScope, inPmProjectScope, canDeleteRecord, can } from '@/lib/permissions';
+import { viewScope, inScope, inPmProjectScope, canDeleteRecord, can } from '@/lib/permissions';
 import { mergeTemplateTasks, recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -32,7 +32,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   const project = await loadProject(supabase, id).catch((e) => { throw e; });
   if (!project) return notFound('ไม่พบโปรเจกต์');
-  if (!inPmProjectViewScope(user, project)) {
+  if (viewScope(user?.role) === 'team' && !inScope('team', user, project)) {
     return forbidden();
   }
 
