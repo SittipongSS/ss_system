@@ -70,6 +70,9 @@ export default function HomeHubPage() {
   const isAdmin = can(role, "users:manage");
   const canPM = isAdmin || can(role, "pm:view");
   const canSalesPlanning = isAdmin || can(role, "salesplan:view");
+  // PM รวมอยู่ใต้ "บริหารงานขาย" แล้ว — ผู้ที่เข้าบริหารงานขายได้จะเข้า PM ผ่านการ์ดนั้น
+  // การ์ด PM แยกจึงเหลือไว้เฉพาะ viewer/staff (มี pm:view แต่ไม่มี salesplan:view)
+  const showPMCard = canPM && !canSalesPlanning;
   const canTax = isAdmin || can(role, "history:view");
   // Database hub card: anyone who can open a registry (sales/legal/staff) — the
   // approval workflow needs AE/AC to reach it, not just admins.
@@ -85,7 +88,7 @@ export default function HomeHubPage() {
   // orphan on its own row (the old auto-fit gave 3 cols → 3+1 with 4 cards).
   // 1→1, 2→2, 3→3 (single row), 4→2×2, 5–6→3 rows; anything larger caps at 4.
   // Narrower / portrait screens collapse to 2 then 1 via .system-card-grid CSS.
-  const visibleCount = [canPM, canSalesPlanning, canTax, canSAHAMIT, canMGMT, canDB].filter(Boolean).length;
+  const visibleCount = [showPMCard, canSalesPlanning, canTax, canSAHAMIT, canMGMT, canDB].filter(Boolean).length;
   const wideCols = { 1: 1, 2: 2, 3: 3, 4: 2, 5: 3, 6: 3 }[visibleCount] || 4;
 
   return (
@@ -114,9 +117,9 @@ export default function HomeHubPage() {
             ...(visibleCount === 1 ? { maxWidth: "420px", margin: "0 auto" } : null),
           }}
         >
-          {/* Card 1 — Project Management. Shown only to roles with pm:view
-              (SALES) or admins; hidden entirely otherwise. */}
-          {canPM && (
+          {/* Card 1 — Project Management (งานผลิต). PM รวมอยู่ใต้ "บริหารงานขาย" แล้ว
+              การ์ดนี้จึงเหลือไว้เฉพาะ viewer/staff ที่มี pm:view แต่ไม่มี salesplan:view */}
+          {showPMCard && (
             <button
               onClick={enterPM}
               className="glass-panel system-card"
@@ -166,7 +169,7 @@ export default function HomeHubPage() {
               <div>
                 <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>บริหารงานขาย</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
-                  จัดการโอกาสการขาย, พยากรณ์ยอด, เป้าหมาย และส่งต่องานให้ PM
+                  โครงการขาย · พยากรณ์ยอด · เป้าหมาย · งานผลิต (PM) ครบในระบบเดียว
                 </p>
               </div>
               <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>

@@ -96,9 +96,10 @@ export default function AppLayout({ children }) {
 
   useEffect(() => {
     const sys =
-      pathname.startsWith('/pm') ? 'pm'
-      : pathname.startsWith('/database') ? 'master'
-      : pathname.startsWith('/sales-planning') ? 'salesplan'
+      pathname.startsWith('/database') ? 'master'
+      // PM รวมอยู่ใต้ระบบ "บริหารงานขาย" (Sales เป็นแม่) — /pm และ /sales-planning
+      // ใช้ sidebar ชุดเดียวกัน (กลุ่มบริหารงานขาย + กลุ่มงานผลิต PM)
+      : (pathname.startsWith('/sales-planning') || pathname.startsWith('/pm')) ? 'salesplan'
       : pathname.startsWith('/sahamit') ? 'sahamit'
       : pathname.startsWith('/mgmt') ? 'mgmt'
       : pathname === '/users' ? 'users'
@@ -168,21 +169,24 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      label: 'จัดการโครงการ',
-      system: 'pm',
-      items: [
-        { href: '/pm', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'pm:view', match: (p) => p === '/pm' },
-        { href: '/pm/projects', name: 'โครงการ', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/pm/projects' || p.startsWith('/pm/projects/') },
-        { href: '/pm/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/pm/tasks' },
-      ],
-    },
-    {
       label: 'บริหารงานขาย',
       system: 'salesplan',
       items: [
         { href: '/sales-planning', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
         { href: '/sales-planning/deals', name: 'โครงการ', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
         { href: '/sales-planning/targets', name: 'วางเป้าหมาย', icon: Target, cap: 'salesplan:view', match: (p) => p.startsWith('/sales-planning/targets') },
+      ],
+    },
+    {
+      // งานผลิต (PM) = ชั้น execution ใต้ "บริหารงานขาย" (system เดียวกัน → โชว์ต่อท้าย
+      // กลุ่มบริหารงานขายใน sidebar ชุดเดียว). viewer/staff ที่มีแค่ pm:view จะเห็น
+      // เฉพาะกลุ่มนี้ (กลุ่มบริหารงานขายถูกกรองทิ้งเพราะไม่มี salesplan:view).
+      label: 'งานผลิต (PM)',
+      system: 'salesplan',
+      items: [
+        { href: '/pm', name: 'ภาพรวมงานผลิต', icon: LayoutDashboard, cap: 'pm:view', match: (p) => p === '/pm' },
+        { href: '/pm/projects', name: 'โครงการผลิต', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/pm/projects' || p.startsWith('/pm/projects/') },
+        { href: '/pm/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/pm/tasks' },
       ],
     },
     {
