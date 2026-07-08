@@ -5,6 +5,7 @@ import {
   requiredConfirmDateForNeedMonth,
   buildSahamitReverseRiskRows,
 } from './salesPlanningReverse';
+import { inSalesEditScope } from './salesPlanning';
 
 test('requiredConfirmDateForNeedMonth subtracts working days from first day of need month', () => {
   assert.equal(requiredConfirmDateForNeedMonth('2026-08', 1, new Set()), '2026-07-31');
@@ -32,4 +33,22 @@ test('buildSahamitReverseRiskRows uses latest covering FC round and flags late F
   assert.equal(rows[0].latestRoundNo, 2);
   assert.equal(rows[0].warehouseNeedMonth, '2026-08');
   assert.equal(rows[0].risk, true);
+});
+
+test('AE can edit PM-backfilled sales deal when PM owner name matches', () => {
+  const ae = { id: 'u-ae-1', role: 'ae', name: 'Sittipong SS', team: 'SA' };
+
+  assert.equal(inSalesEditScope(ae, {
+    ownerId: null,
+    ownerName: '  sittipong   ss ',
+    team: null,
+    metadata: { source: 'pm-backfill' },
+  }), true);
+
+  assert.equal(inSalesEditScope(ae, {
+    ownerId: 'other-user',
+    ownerName: 'Sittipong SS',
+    team: 'SA',
+    metadata: { source: 'manual' },
+  }), false);
 });

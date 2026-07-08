@@ -82,8 +82,21 @@ export function inSalesViewScope(user, record) {
   return inScope(salesPlanningViewScope(user?.role), user, record);
 }
 
+function normalizeOwnerName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function inPmBackfillOwnerScope(user, record) {
+  if (salesPlanningEditScope(user?.role) !== 'own') return false;
+  if (record?.metadata?.source !== 'pm-backfill') return false;
+  const userName = normalizeOwnerName(user?.name);
+  const ownerName = normalizeOwnerName(record?.ownerName);
+  return !!userName && userName === ownerName;
+}
+
 export function inSalesEditScope(user, record) {
-  return inScope(salesPlanningEditScope(user?.role), user, record);
+  return inScope(salesPlanningEditScope(user?.role), user, record)
+    || inPmBackfillOwnerScope(user, record);
 }
 
 export function monthKey(value) {
