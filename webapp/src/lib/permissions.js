@@ -52,17 +52,17 @@
 // tasks can pull a "ผู้รับผิดชอบ" by ฝ่าย; they share one baseline role (`staff`)
 // that only grants read access to Project Management. Codes are kept short
 // (matching the PM step-role codes SA/RD/PC/PD/QC/LG/WH) and shown as-is.
-//   AD = ผู้ดูแลระบบ · SA = ฝ่ายขาย · LG = ฝ่ายกฎหมาย · Viewer = ผู้ดูข้อมูล
+//   AD = ผู้ดูแลระบบ · SEC = ฝ่ายเลขานุการ · SA = ฝ่ายขาย · LG = ฝ่ายกฎหมาย · Viewer = ผู้ดูข้อมูล
 //   PC = ฝ่ายจัดซื้อ · PD = ฝ่ายผลิต · WH = ฝ่ายคลัง · RD = ฝ่ายวิจัยและพัฒนา · QC = ฝ่ายควบคุมคุณภาพ
-export const DEPARTMENTS = ['AD', 'SA', 'LG', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC'];
+export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'LG', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC'];
 // Display label is the code itself (พนักงานคุ้นกับโค้ดบน timeline อยู่แล้ว).
 export const DEPARTMENT_LABELS = {
-  AD: 'Admin', SA: 'SA', LG: 'LG', Viewer: 'Viewer',
+  AD: 'Admin', SEC: 'SEC', SA: 'SA', LG: 'LG', Viewer: 'Viewer',
   PC: 'PC', PD: 'PD', WH: 'WH', RD: 'RD', QC: 'QC',
 };
 // Thai names — used only for tooltips/help text, not the primary display.
 export const DEPARTMENT_NAMES_TH = {
-  AD: 'ผู้ดูแลระบบ', SA: 'ฝ่ายขาย', LG: 'ฝ่ายกฎหมาย', Viewer: 'ผู้ดูข้อมูล',
+  AD: 'ผู้ดูแลระบบ', SEC: 'ฝ่ายเลขานุการ', SA: 'ฝ่ายขาย', LG: 'ฝ่ายกฎหมาย', Viewer: 'ผู้ดูข้อมูล',
   PC: 'ฝ่ายจัดซื้อ', PD: 'ฝ่ายผลิต', WH: 'ฝ่ายคลัง',
   RD: 'ฝ่ายวิจัยและพัฒนา', QC: 'ฝ่ายควบคุมคุณภาพ',
 };
@@ -79,6 +79,7 @@ export function normalizeDepartment(department) {
 // (ODM/KA/SV) live only under SA; LG/Viewer/staff-departments have no teams.
 const DEPARTMENT_ROLES = {
   AD: ['admin'],
+  SEC: ['secretary'],
   SA: ['ae_supervisor', 'senior_ae', 'ac', 'ae'],
   LG: ['legal'],
   Viewer: ['viewer'],
@@ -90,6 +91,7 @@ const DEPARTMENT_ROLES = {
 // staff users always carry an explicit department.
 const ROLE_DEFAULT_DEPARTMENT = {
   admin: 'AD',
+  secretary: 'SEC',
   ae_supervisor: 'SA', senior_ae: 'SA', ac: 'SA', ae: 'SA',
   legal: 'LG', viewer: 'Viewer',
 };
@@ -107,9 +109,10 @@ export const TEAMS = ['ODM', 'KA', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal', 'viewer', 'staff'];
+export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal', 'viewer', 'staff'];
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
+  secretary: 'เลขานุการ (Secretary)',
   ae_supervisor: 'AE Supervisor',
   senior_ae: 'Senior AE',
   ac: 'Account Coordinate',
@@ -146,6 +149,7 @@ const SUPERUSER_CAPS = [
   'master:manage',  // edit category taxonomy (product_types) + master config
   'pm:view', 'pm:edit',
   'sahamit:view', 'sahamit:edit',
+  'mgmt:view', 'mgmt:edit',   // งานบริหาร (Management/Executive Office) — admin + secretary only
 ];
 
 // Admin-only system capabilities — account management, master taxonomy, and the
@@ -158,7 +162,9 @@ const ADMIN_SYSTEM_CAPS = ['users:manage', 'master:manage', 'audit:view'];
 //     it as a break-glass). ae_supervisor still has legal:view (sees tax status).
 //   - products:margin — the factory cost breakdown + profit is restricted to
 //     LG + admin; even the sales head sees only costPrice, not the margin split.
-const SALES_HEAD_EXCLUDED = [...ADMIN_SYSTEM_CAPS, 'legal:approve', 'products:margin'];
+//   - the งานบริหาร module caps (mgmt:*) — that module is admin + secretary only,
+//     the sales head has no role in it.
+const SALES_HEAD_EXCLUDED = [...ADMIN_SYSTEM_CAPS, 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit'];
 
 // Sales head (ae_supervisor): every remaining sales/legal-view/PM capability
 // across ALL teams. Data scope stays 'all' via isSuperuser().
@@ -167,6 +173,9 @@ const SALES_HEAD_CAPS = SUPERUSER_CAPS.filter((c) => !SALES_HEAD_EXCLUDED.includ
 const ROLE_CAPS = {
   // admin: system administrator — full capabilities, all teams (see isSuperuser).
   admin: SUPERUSER_CAPS,
+  // secretary: ฝ่ายเลขานุการ — เข้าได้เฉพาะโมดูล "งานบริหาร" (mgmt) เท่านั้น,
+  // ไม่มีสิทธิ์ในระบบ tax/pm/sahamit/master. scope = ทั้งบริษัท (gate ที่ cap พอ).
+  secretary: ['mgmt:view', 'mgmt:edit'],
   // ae_supervisor: sales head — all-team data scope, but not a system admin.
   ae_supervisor: SALES_HEAD_CAPS,
   // team lead: ops + may delete orders (scoped to own team via deleteScope)
@@ -227,6 +236,15 @@ export function canApproveMasterData(role) {
 export function canAccessSahamit(role, team) {
   if (isSuperuser(role)) return true;           // admin + sales head: cross-team oversight
   return can(role, 'sahamit:view') && team === 'KA';
+}
+
+// ── งานบริหาร (Management / Executive Office) module access ────────────
+// โมดูล mgmt เข้าได้เฉพาะ admin + secretary (ผู้ถือ mgmt:view). scope = ทั้งบริษัท
+// (ไม่ผูก team) — capability อย่างเดียวคุมพอ. ae_supervisor ไม่ได้ mgmt caps
+// (ถูกตัดออกใน SALES_HEAD_EXCLUDED) จึงเข้าไม่ได้. ใช้ที่ /home card, page guard,
+// sidebar และ API handlers.
+export function canAccessMgmt(role) {
+  return can(role, 'mgmt:view');
 }
 
 // ── Data scope ────────────────────────────────────────────────────────

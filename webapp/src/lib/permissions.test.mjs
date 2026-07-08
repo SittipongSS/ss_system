@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, deleteScope } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, deleteScope, canAccessMgmt, can, capsFor } from './permissions';
 
 test('pmTaskScopes by role', () => {
   assert.deepEqual(pmTaskScopes('admin'), ['mine', 'team', 'all']);
@@ -33,6 +33,26 @@ test('pmTaskEditTier: workflow edit for assignee / same-dept staff', () => {
   assert.equal(pmTaskEditTier({ role: 'ae', id: 'u1' }, { assigneeId: 'u1' }, { ownerId: 'u2' }), 'workflow');
   // staff in the same department as the step
   assert.equal(pmTaskEditTier({ role: 'staff', id: 'p', department: 'PC' }, { assigneeId: null, role: 'PC' }, { ownerId: 'u2' }), 'workflow');
+});
+
+test('canAccessMgmt: admin + secretary only (NOT sales head)', () => {
+  assert.equal(canAccessMgmt('admin'), true);
+  assert.equal(canAccessMgmt('secretary'), true);
+  // sales head must NOT inherit mgmt caps from the superuser set
+  assert.equal(canAccessMgmt('ae_supervisor'), false);
+  assert.equal(canAccessMgmt('senior_ae'), false);
+  assert.equal(canAccessMgmt('ae'), false);
+  assert.equal(canAccessMgmt('legal'), false);
+  assert.equal(canAccessMgmt('viewer'), false);
+  assert.equal(canAccessMgmt('staff'), false);
+});
+
+test('secretary holds ONLY the mgmt caps (no tax/pm/master leak)', () => {
+  assert.deepEqual(capsFor('secretary'), ['mgmt:view', 'mgmt:edit']);
+  assert.equal(can('secretary', 'pm:view'), false);
+  assert.equal(can('secretary', 'customers:view'), false);
+  assert.equal(can('secretary', 'users:manage'), false);
+  assert.equal(can('secretary', 'mgmt:edit'), true);
 });
 
 test('pmTaskEditTier: none for outsiders', () => {
