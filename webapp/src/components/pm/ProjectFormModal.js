@@ -10,6 +10,11 @@ import { X } from "lucide-react";
 export default function ProjectFormModal({
   open, onClose, editingId, initialData, onSuccess,
   customers = [], categories = [], allProducts = [],
+  // ปลายทาง POST ตอนสร้างใหม่ (ค่าเริ่มต้น = สร้างโปรเจกต์ PM ปกติ). หน้าบริหารงานขาย
+  // ส่ง endpoint ของดีลเข้ามาเพื่อสร้าง + ผูกโครงการเข้าดีลในคราวเดียว.
+  createEndpoint = "/api/pm/projects",
+  // ข้อความบนปุ่มยืนยันตอนสร้าง (override ได้ เช่น "สร้างโครงการ PM")
+  createLabel = "สร้างโปรเจกต์",
 }) {
   // Assignable users are fetched fresh every time the modal opens (not at the
   // parent page's mount) so a newly-added user shows up without a full reload.
@@ -57,7 +62,9 @@ export default function ProjectFormModal({
 
   useEffect(() => {
     if (open) {
-      if (editingId && initialData) {
+      // initialData ใช้ได้ทั้งตอนแก้ไข (โปรเจกต์เดิม) และตอนสร้างใหม่แบบเติมค่าแนะนำ
+      // (เช่น สร้าง PM จากดีล — เติมชื่อ/ลูกค้า/วันเริ่ม/ผู้ดูแลให้ แต่ปรับแก้ได้)
+      if (initialData) {
         setForm({
           ...blank,
           ...initialData,
@@ -151,7 +158,7 @@ export default function ProjectFormModal({
     delete payload.poNumber;
     try {
       const res = await fetch(
-        editingId ? `/api/pm/projects/${editingId}` : "/api/pm/projects",
+        editingId ? `/api/pm/projects/${editingId}` : createEndpoint,
         {
           method: editingId ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -419,7 +426,7 @@ export default function ProjectFormModal({
         <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
           <button type="button" onClick={onClose} className="btn">ยกเลิก</button>
           <button type="submit" disabled={submitting} className="btn btn-primary px-8">
-            {submitting ? "กำลังบันทึก..." : editingId ? "บันทึกการแก้ไข" : "สร้างโปรเจกต์"}
+            {submitting ? "กำลังบันทึก..." : editingId ? "บันทึกการแก้ไข" : createLabel}
           </button>
         </div>
       </form>

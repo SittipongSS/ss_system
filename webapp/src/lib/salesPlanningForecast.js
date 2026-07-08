@@ -447,21 +447,21 @@ export async function settleOnePoLine({ supabase, user, po, customer, line, prod
   return null;
 }
 
-// ผูก PM project เข้าดีลที่ปิด Won ไว้แล้ว (ยกระดับ won → in_project). ใช้ตอน
-// สร้าง PM ทีหลังจาก PO ที่ settle เข้าดีลไปแล้ว.
+// ผูก PM project เข้าดีลที่ปิด Won ไว้แล้ว. ใช้ตอนสร้าง PM ทีหลังจาก PO ที่ settle
+// เข้าดีลไปแล้ว. สถานะดีลคงเป็น 'won' (การผูกโครงการไม่เปลี่ยนสถานะดีล).
 export async function linkProjectToSettledDeal({ supabase, user, deal, project, now, request }) {
   if (!deal || deal.projectId) return deal;
   const patch = {
     projectId: project.id,
-    stage: 'in_project',
+    stage: 'won',
     metadata: { ...(deal.metadata || {}), projectCode: project.code, projectLinkedAt: now },
     updatedAt: now,
   };
   const { data, error } = await supabase.from('sales_deals').update(patch).eq('id', deal.id).select().single();
   if (error) throw error;
-  if (deal.stage !== 'in_project') {
+  if (deal.stage !== 'won') {
     await supabase.from('sales_deal_stage_history').insert({
-      id: genId('DSH'), dealId: deal.id, fromStage: deal.stage, toStage: 'in_project',
+      id: genId('DSH'), dealId: deal.id, fromStage: deal.stage, toStage: 'won',
       changedBy: user.id || null, changedByName: user.name || null,
     });
   }

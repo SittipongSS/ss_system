@@ -5,6 +5,7 @@ import { categoryOf, isExciseCategory } from '@/lib/master/categoryOf';
 // ใช้บนหน้าศูนย์ดีล (deals/[id]) เพื่อให้ตรรกะไม่กระจายใน UI. เป็น pure function.
 
 // ลำดับหลักของ pipeline (lost เป็นทางแยก terminal — จัดการแยกใน UI)
+// won = สถานะปิดสุดท้าย; งานผลิต (PM) เป็นมิติแยก ไม่ใช่ขั้นถัดไปของดีล
 export const MAIN_SEQUENCE = [
   'lead',
   'qualified',
@@ -13,7 +14,6 @@ export const MAIN_SEQUENCE = [
   'awaiting_confirm',
   'deposit_pending',
   'won',
-  'in_project',
 ];
 
 const CLOSED = ['won', 'in_project', 'lost'];
