@@ -82,10 +82,10 @@ FC split/drift ฝั่งสหมิตรทำงานแล้ว
 ### เฟส 5 · Backfill ข้อมูล PM เก่า (P8, ตอบคำถาม "ข้อมูลใน PM ที่ยังไม่ผูกจะทำไง")
 สองชั้น:
 1. **สคริปต์/endpoint ครั้งเดียว** (superuser): ทุก `projects` ที่ไม่มีดีลชี้ → สร้างดีลผูกอัตโนมัติ
-   - stage: `won` (โปรเจกต์จริงย่อมได้รับงานแล้ว), `wonValue = null`, `projectValue = null`
-   - `metadata: { source: 'pm-backfill', needsReview: true, bypassPipeline: true }` → **ไม่เข้า FC/ยอดเดือนปัจจุบัน** จนกว่าจะเติมมูลค่า
+   - stage: `timeline_proposed` (มีไทม์ไลน์แล้วแต่ **ยังไม่ปิดการขาย** — ผู้ดูแลตัดสินใจปิด Won เอง ไม่เหมาเป็น won), `wonValue = null`, `projectValue = 0`
+   - `metadata: { source: 'pm-backfill', needsReview: true, bypassPipeline: true }` → **ไม่เข้า FC/ยอดเดือนปัจจุบัน** (forecastMonth = null) จนกว่าจะเติมมูลค่า
    - owner/team/customer ดึงจาก project (`ownerId`, `team`, `customerId`)
-2. **หน้า/แถบตรวจ** ใน sales-planning: ตัวกรอง "รอเติมข้อมูล (backfill)" ให้ AE เจ้าของไล่เติม `wonValue`/เดือน แล้วปลดธง `needsReview`
+2. **หน้า/แถบตรวจ** ใน sales-planning: ตัวกรอง "รอเติมข้อมูล (backfill)" ให้ AE เจ้าของไล่เติม `projectValue`/เดือน (หรือปิด Won ด้วย `wonValue`) แล้วปลดธง `needsReview` อัตโนมัติ
 - ระหว่างยังไม่ backfill: หน้า PM list ติดป้าย "ยังไม่ผูกโครงการขาย" ให้เห็นชัด
 
 ### เฟส 6 · เปิดฟีเจอร์ที่พักไว้ (ตามลำดับความพร้อม ไม่บล็อกกัน)

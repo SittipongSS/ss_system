@@ -8,9 +8,10 @@ export const dynamic = 'force-dynamic';
 // POST /api/sales-planning/backfill-projects — งานครั้งเดียว (superuser):
 // โปรเจกต์ PM เก่าที่เกิดก่อนระบบบริหารงานขาย ยังไม่ผูกดีล → สร้าง "โครงการขาย" ผูกให้
 // ทุกตัว เพื่อไม่ให้มีโปรเจกต์ลอยนอกระบบ (Sales เป็นแม่). ดีลที่สร้าง:
-//   stage=won (โปรเจกต์จริง = งานที่ปิดการขายแล้ว), projectValue=0, wonValue=null,
+//   stage=timeline_proposed (มีโปรเจกต์/ไทม์ไลน์แล้ว แต่ "ยังไม่ปิดการขาย" — ให้ผู้ดูแล
+//   ตัดสินใจปิด Won เอง ไม่เหมาเป็น won ให้), projectValue=0, wonValue=null,
 //   forecastMonth/confirmedAt=null → ไม่เข้ายอด/FC เดือนใด, ธง needsReview+bypassPipeline
-// ให้ผู้ดูแล (AE) ไล่เติมมูลค่าจริง/เดือนทีหลังผ่านตัวกรอง "รอเติมข้อมูล".
+// ให้ผู้ดูแล (AE) ไล่เติมมูลค่าคาดการณ์/เดือนทีหลังผ่านตัวกรอง "รอเติมข้อมูล".
 // Idempotent: ข้ามโปรเจกต์ที่ผูกดีลแล้ว → รันซ้ำได้ปลอดภัย.
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -37,14 +38,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     title: p.name || `โครงการ ${p.id}`,
     customerId: p.customerId || null,
     customerName: p.customerName || null,
-    stage: 'won',
-    projectValue: 0,      // NOT NULL DEFAULT 0 — ยอดจริงรอเติมใน wonValue
-    wonValue: null,       // ยังไม่รู้มูลค่าจริง → รอผู้ดูแลเติม
-    probability: 100,
+    stage: 'timeline_proposed',  // มีไทม์ไลน์แล้ว แต่ยังไม่ปิดการขาย (ผู้ดูแลปิด Won เอง)
+    projectValue: 0,      // NOT NULL DEFAULT 0 — มูลค่าคาดการณ์รอผู้ดูแลเติม
+    wonValue: null,       // ยังไม่ Won → ยังไม่มีมูลค่าปิดจริง
+    probability: 65,      // ตรงกับ DEFAULT_PROBABILITY_BY_STAGE.timeline_proposed
     forecastMonth: null,  // null → ไม่ตกเดือนใดในแดชบอร์ด จนกว่าจะเติม
     expectedCloseDate: null,
     confirmedAt: null,
-    depositPaid: true,
+    depositPaid: false,
     ownerId: p.ownerId || null,
     ownerName: p.aeOwner || null,
     team: p.team || null,
