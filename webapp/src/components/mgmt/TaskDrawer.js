@@ -1,11 +1,10 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/Modal";
-import AttachmentsPanel from "@/components/AttachmentsPanel";
+import DocsPanel from "@/components/mgmt/DocsPanel";
 import { Pencil, Trash2, Send } from "lucide-react";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
 
-const DOC_TYPES = [{ key: "other", label: "ไฟล์แนบ" }];
 const fmtDate = (d) => {
   if (!d) return "—";
   const dt = new Date(d + "T00:00:00");
@@ -107,16 +106,8 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
           </div>
         )}
 
-        {/* attachments (upload PDF → Google Drive) */}
-        <AttachmentsPanel
-          entityType="mgmt_task"
-          entityId={task.id}
-          canEdit={canEdit}
-          title="ไฟล์แนบ"
-          note="อัปไฟล์ PDF ขึ้น Google Drive (โฟลเดอร์งานบริหาร)"
-          docTypes={DOC_TYPES}
-          cardColumns={1}
-        />
+        {/* ไฟล์ static (PDF) + Google Doc/Sheet (มีชีวิต) */}
+        <DocsPanel entityType="mgmt_task" entityId={task.id} canEdit={canEdit} />
 
         {/* updates feed */}
         <div>
