@@ -24,10 +24,16 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const wonMonth = (d) => monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
   const openDeals = (deals || []).filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
   const wonDeals = (deals || []).filter((d) => isWon(d) && wonMonth(d) === month);
-  const monthDeals = [...openDeals, ...wonDeals, ...(deals || []).filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month)];
+  const lostDeals = (deals || []).filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month);
+  const monthDeals = [...openDeals, ...wonDeals, ...lostDeals];
   const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
   const wonValue = wonDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
+  const lostValue = lostDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
+  // "FC เต็ม" = ยอดคาดการณ์รวมทุกดีลในเดือน (เปิด + ปิดได้ + แพ้). "FC คงเหลือ" =
+  // FC เต็ม − Actual(Won) = ส่วนที่ยังไม่ปิด (เปิด + แพ้).
+  const fullForecast = pipelineValue + wonValue + lostValue;
+  const remainingForecast = fullForecast - wonValue;
 
   const byStage = {};
   for (const d of monthDeals) {
@@ -40,7 +46,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // แถว "ผี": ไม่มีทั้งเป้า/won/คาดการณ์/จำนวนดีล — เกิดจาก target ค้างค่า 0
   // หรือถังที่ถูกสร้างโดยไม่มีข้อมูลจริง → ตัดทิ้งไม่ให้โผล่บนหน้า.
-  const isEmptyBucket = (b) => !b.target && !b.won && !b.weighted && !b.openCount && !b.wonCount;
+  const isEmptyBucket = (b) => !b.target && !b.won && !b.weighted && !b.lost && !b.openCount && !b.wonCount && !b.lostCount;
 
   // Per-SA breakdown: target (person-level rows) vs won vs weighted forecast.
   // Team-level target rows (ownerId null) are aggregated in byTeam, not here.
@@ -48,7 +54,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const ownerBucket = (id, name, team) => {
     const key = id || 'unassigned';
     if (!ownerMap[key]) {
-      ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, openCount: 0, wonCount: 0 };
+      ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, lost: 0, openCount: 0, wonCount: 0, lostCount: 0 };
     }
     return ownerMap[key];
   };
@@ -56,10 +62,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (!t.ownerId) continue;
     ownerBucket(t.ownerId, t.ownerName, t.team).target += Number(t.targetAmount || 0);
   }
-  for (const d of [...openDeals, ...wonDeals]) {
+  for (const d of [...openDeals, ...wonDeals, ...lostDeals]) {
     const b = ownerBucket(d.ownerId, d.ownerName, d.team);
     if (isWon(d)) { b.won += Number(d.projectValue || 0); b.wonCount += 1; }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
+    else { b.lost += Number(d.projectValue || 0); b.lostCount += 1; }
   }
   const byOwner = Object.values(ownerMap)
     .filter((b) => !isEmptyBucket(b))
@@ -72,7 +79,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const teamKey = (team) => team || 'ไม่ระบุ';
   const teamBucket = (team) => {
     const key = teamKey(team);
-    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, openCount: 0, wonCount: 0 };
+    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, lost: 0, openCount: 0, wonCount: 0, lostCount: 0 };
     return teamMap[key];
   };
   const teamTargetParts = {};
@@ -86,10 +93,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   for (const [key, parts] of Object.entries(teamTargetParts)) {
     teamMap[key].target = parts.level > 0 ? parts.level : parts.person;
   }
-  for (const d of [...openDeals, ...wonDeals]) {
+  for (const d of [...openDeals, ...wonDeals, ...lostDeals]) {
     const b = teamBucket(d.team);
     if (isWon(d)) { b.won += Number(d.projectValue || 0); b.wonCount += 1; }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
+    else { b.lost += Number(d.projectValue || 0); b.lostCount += 1; }
   }
   const byTeam = Object.values(teamMap)
     .filter((b) => !isEmptyBucket(b))
@@ -108,6 +116,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       pipelineValue,
       weightedForecast,
       wonValue,
+      lostValue,
+      fullForecast,
+      remainingForecast,
       targetGap: targetAmount - wonValue,
     },
     byStage: Object.values(byStage),
