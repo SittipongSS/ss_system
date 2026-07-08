@@ -24,6 +24,19 @@ export async function teamProjectIds(supabase, team) {
   return (data || []).map((p) => p.id);
 }
 
+// Internal project ids owned by a user. Legacy PM projects may only have aeOwner
+// (name) without ownerId, so include both forms and de-duplicate.
+export async function ownerProjectIds(supabase, user) {
+  const byId = user?.id
+    ? supabase.from('projects').select('id').eq('ownerId', user.id)
+    : Promise.resolve({ data: [] });
+  const byName = user?.name
+    ? supabase.from('projects').select('id').eq('aeOwner', user.name)
+    : Promise.resolve({ data: [] });
+  const [{ data: a }, { data: b }] = await Promise.all([byId, byName]);
+  return [...new Set([...(a || []), ...(b || [])].map((p) => p.id))];
+}
+
 // Whether a project has excise registrations pointing at it. excise_registrations
 // .projectId is a *logical* link (no FK, migration 0066) so deleting the project
 // would silently orphan tax records — callers block deletion when this is true.
