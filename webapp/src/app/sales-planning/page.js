@@ -16,9 +16,9 @@ const OVERVIEW_TABS = [
 ];
 
 // แถวตัวเลขที่โชว์ต่อช่อง (ตามลำดับบนลงล่าง) พร้อมป้ายชื่อ + สี.
-// forecast (จาก API) = FC ของดีลที่ยังเปิด, lost = ดีลที่แพ้ในเดือนนั้น.
-//   FC เต็ม   = won + forecast(เปิด) + lost   (ทุกดีลในเดือน)
-//   FC คงเหลือ = FC เต็ม − Actual(won) = forecast(เปิด) + lost  (ส่วนที่ยังไม่ปิด)
+// forecast (จาก API) = FC ของดีลที่ยังเปิด (ไม่รวมดีลที่แพ้).
+//   FC เต็ม   = won + forecast(เปิด)                (เป้าหมายที่คาดว่าจะทำได้ทั้งเดือน)
+//   FC คงเหลือ = FC เต็ม − Actual(won) = forecast(เปิด)  (ส่วนที่ยังต้องปิดต่อ)
 const METRICS = [
   { key: "target", label: "เป้า", color: "var(--text)" },
   { key: "full", label: "FC เต็ม", color: "var(--blue)" },
@@ -30,8 +30,7 @@ function deriveMetrics(cell) {
   const target = Number(cell?.target || 0);
   const won = Number(cell?.won || 0);
   const open = Number(cell?.forecast || 0);
-  const lost = Number(cell?.lost || 0);
-  const full = won + open + lost;
+  const full = won + open;
   return { target, full, won, remaining: full - won };
 }
 
@@ -41,20 +40,17 @@ function metricCell(row, month) {
     target: Number(cell.target || 0),
     won: Number(cell.won || 0),
     forecast: Number(cell.forecast || 0),
-    lost: Number(cell.lost || 0),
   };
 }
 
 function addMetric(target, month, value) {
-  if (!target.months[month]) target.months[month] = { target: 0, won: 0, forecast: 0, lost: 0 };
+  if (!target.months[month]) target.months[month] = { target: 0, won: 0, forecast: 0 };
   target.months[month].target += Number(value.target || 0);
   target.months[month].won += Number(value.won || 0);
   target.months[month].forecast += Number(value.forecast || 0);
-  target.months[month].lost += Number(value.lost || 0);
   target.total.target += Number(value.target || 0);
   target.total.won += Number(value.won || 0);
   target.total.forecast += Number(value.forecast || 0);
-  target.total.lost += Number(value.lost || 0);
 }
 
 function buildYearRows(yearDashboards) {
@@ -64,7 +60,7 @@ function buildYearRows(yearDashboards) {
     sublabel: "ทุกทีม",
     team: null,
     months: {},
-    total: { target: 0, won: 0, forecast: 0, lost: 0 },
+    total: { target: 0, won: 0, forecast: 0 },
   };
   const owners = new Map();
   const teams = new Map();
@@ -76,7 +72,6 @@ function buildYearRows(yearDashboards) {
       target: totals.targetAmount || 0,
       won: totals.wonValue || 0,
       forecast: totals.weightedForecast || 0,
-      lost: totals.lostValue || 0,
     });
 
     for (const row of dashboard.byOwner || []) {
@@ -88,14 +83,13 @@ function buildYearRows(yearDashboards) {
           sublabel: row.team || "-",
           team: row.team || "ไม่ระบุทีม",
           months: {},
-          total: { target: 0, won: 0, forecast: 0, lost: 0 },
+          total: { target: 0, won: 0, forecast: 0 },
         });
       }
       addMetric(owners.get(key), month, {
         target: row.target,
         won: row.won,
         forecast: row.weighted,
-        lost: row.lost,
       });
     }
 
@@ -108,14 +102,13 @@ function buildYearRows(yearDashboards) {
           sublabel: "ทีม",
           team: key,
           months: {},
-          total: { target: 0, won: 0, forecast: 0, lost: 0 },
+          total: { target: 0, won: 0, forecast: 0 },
         });
       }
       addMetric(teams.get(key), month, {
         target: row.target,
         won: row.won,
         forecast: row.weighted,
-        lost: row.lost,
       });
     }
   }
