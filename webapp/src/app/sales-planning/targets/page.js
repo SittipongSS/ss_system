@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCcw, Save, Target, X } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCcw, Save, Target, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
@@ -28,7 +28,10 @@ export default function SalesPlanningTargetsPage() {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState({}); // `${nodeKey}|total` | `${nodeKey}|m<i>` -> amount (unsaved)
   const [saving, setSaving] = useState(false);
+  const [collapsed, setCollapsed] = useState({}); // teamKey -> true (default: all expanded)
   const cancelRef = useRef(false);
+
+  const toggleTeam = (t) => setCollapsed((c) => ({ ...c, [t]: !c[t] }));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -127,19 +130,32 @@ export default function SalesPlanningTargetsPage() {
     const teams = baseTree.teams.map((t) => {
       const members = t.members.map(decorate);
       const tv = decorate(t);
-      return { ...tv, members, allocated: sum(members.map((m) => m.annual)) };
+      // Bottom-up roll-up of the team's AE targets (per month + annual), shown
+      // alongside the (independently editable) team target.
+      const memberMonths = Array(12).fill(0);
+      members.forEach((m) => m.monthAmounts.forEach((v, i) => { memberMonths[i] += v; }));
+      return { ...tv, members, memberMonths, allocated: sum(memberMonths) };
     });
     const sa = { ...decorate(baseTree.sa), allocated: sum(teams.map((t) => t.annual)) };
     return { sa, teams };
   }, [baseTree, effMonths]);
 
-  // Grand total across all teams (the total value being planned) for the footer.
+  // Footer row 1: sum of the (editable) team-level targets.
   const grandMonths = useMemo(() => {
     const arr = Array(12).fill(0);
     view.teams.forEach((t) => t.monthAmounts.forEach((v, i) => { arr[i] += v; }));
     return arr;
   }, [view]);
   const grandTotal = sum(grandMonths);
+
+  // Footer row 2: bottom-up sum of every AE target across all teams — the true
+  // total being planned when targets are entered per person.
+  const grandMemberMonths = useMemo(() => {
+    const arr = Array(12).fill(0);
+    view.teams.forEach((t) => t.memberMonths.forEach((v, i) => { arr[i] += v; }));
+    return arr;
+  }, [view]);
+  const grandMemberTotal = sum(grandMemberMonths);
 
   const nodeMap = useMemo(() => {
     const m = new Map();
@@ -306,8 +322,23 @@ export default function SalesPlanningTargetsPage() {
 
   const renderRow = (node, indent, extra = {}) => (
     <tr className="premium-row" style={{ background: extra.bg }}>
-      <td style={{ position: "sticky", left: 0, zIndex: 1, background: extra.stickyBg || "var(--bg)", paddingLeft: 10 + indent * 16, minWidth: 200 }}>
-        <div style={{ fontWeight: extra.bold ? 800 : 500, whiteSpace: "nowrap" }}>{extra.label ?? labelOf(node)}</div>
+      <td className="fz-c1" style={{ background: extra.stickyBg || "var(--bg)", paddingLeft: 10 + indent * 16, minWidth: 210 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {extra.collapsible && (
+            <button
+              type="button"
+              className="btn icon-only ghost"
+              onClick={extra.onToggle}
+              aria-label={extra.collapsed ? "ขยายทีม" : "ย่อทีม"}
+              aria-expanded={!extra.collapsed}
+              title={extra.collapsed ? "ขยายทีม" : "ย่อทีม"}
+              style={{ padding: 2, minWidth: 0, height: "auto" }}
+            >
+              {extra.collapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
+            </button>
+          )}
+          <div style={{ fontWeight: extra.bold ? 800 : 500, whiteSpace: "nowrap" }}>{extra.label ?? labelOf(node)}</div>
+        </div>
         {extra.gap && <GapNote target={node.annual} allocated={node.allocated} />}
         {node.role === "senior_ae" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>หัวหน้าทีม</div>}
       </td>
@@ -316,7 +347,7 @@ export default function SalesPlanningTargetsPage() {
           <NumCell {...cellProps(node, `m${i}`, amt)} display={amt ? compact(amt) : "–"} />
         </td>
       ))}
-      <td className="num" style={{ minWidth: 130, padding: "4px 8px", position: "sticky", right: 0, background: extra.stickyBg || "var(--bg)", borderLeft: "1px solid var(--border)" }}>
+      <td className="fz-cr num" style={{ minWidth: 130, padding: "4px 8px", background: extra.stickyBg || "var(--bg)" }}>
         <NumCell {...cellProps(node, "total", node.annual)} display={money(node.annual)} bold />
       </td>
     </tr>
@@ -340,45 +371,66 @@ export default function SalesPlanningTargetsPage() {
         )}
 
         <div className="glass-panel" style={{ padding: 0, overflow: "hidden" }} aria-busy={loading}>
-          <div className="table-responsive" style={{ overflowX: "auto" }}>
-            <table className="premium-glass-table w-full text-sm" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+          <div className="fz-box">
+            <table className="fz-table premium-glass-table w-full text-sm">
               <thead>
                 <tr>
-                  <th style={{ position: "sticky", left: 0, zIndex: 2, background: "var(--bg)", textAlign: "left", minWidth: 200 }}>ทีม / รายบุคคล</th>
+                  <th className="fz-c1" style={{ background: "var(--bg)", textAlign: "left", minWidth: 210 }}>ทีม / รายบุคคล</th>
                   {MONTH_LABELS.map((m) => <th key={m} className="num" style={{ minWidth: 76 }}>{m}</th>)}
-                  <th className="num" style={{ position: "sticky", right: 0, zIndex: 2, background: "var(--bg)", minWidth: 130, borderLeft: "1px solid var(--border)" }}>รวมทั้งปี</th>
+                  <th className="fz-cr num" style={{ background: "var(--bg)", minWidth: 130 }}>รวมทั้งปี</th>
                 </tr>
               </thead>
               <tbody>
-                {isSuper && renderRow(view.sa, 0, { bold: true, gap: true, stickyBg: "color-mix(in srgb, var(--accent) 10%, var(--bg))", bg: "color-mix(in srgb, var(--accent) 5%, transparent)" })}
-                {view.teams.map((t) => (
-                  <FragmentRows key={t.team}>
-                    {renderRow(t, isSuper ? 1 : 0, { bold: true, gap: true, label: `${TEAM_LABELS[t.team] || t.team} (${t.team})`, stickyBg: "color-mix(in srgb, var(--text) 5%, var(--bg))", bg: "color-mix(in srgb, var(--text) 3%, transparent)" })}
-                    {t.members.map((m) => renderRow(m, isSuper ? 2 : 1))}
-                    {!t.members.length && (
-                      <tr><td colSpan={14} style={{ paddingLeft: 40, color: "var(--text-3)", fontSize: 12 }}>ยังไม่มี AE ในทีมนี้</td></tr>
-                    )}
-                  </FragmentRows>
-                ))}
+                {isSuper && renderRow(view.sa, 0, { bold: true, gap: true, allocLabel: "รวมเป้าทีม", stickyBg: "color-mix(in srgb, var(--accent) 10%, var(--bg))", bg: "color-mix(in srgb, var(--accent) 5%, transparent)" })}
+                {view.teams.map((t) => {
+                  const isCollapsed = !!collapsed[t.team];
+                  return (
+                    <FragmentRows key={t.team}>
+                      {renderRow(t, isSuper ? 1 : 0, {
+                        bold: true, gap: true, allocLabel: "รวมราย AE",
+                        label: `${TEAM_LABELS[t.team] || t.team} (${t.team})`,
+                        collapsible: true, collapsed: isCollapsed, onToggle: () => toggleTeam(t.team),
+                        stickyBg: "color-mix(in srgb, var(--text) 5%, var(--bg))", bg: "color-mix(in srgb, var(--text) 3%, transparent)",
+                      })}
+                      {!isCollapsed && t.members.map((m) => renderRow(m, isSuper ? 2 : 1))}
+                      {!isCollapsed && !t.members.length && (
+                        <tr><td colSpan={14} style={{ paddingLeft: 40, color: "var(--text-3)", fontSize: 12 }}>ยังไม่มี AE ในทีมนี้</td></tr>
+                      )}
+                    </FragmentRows>
+                  );
+                })}
                 {!teamsToShow.length && (
                   <tr><td colSpan={14} style={{ padding: 18, color: "var(--text-3)" }}>ไม่พบทีมที่คุณดูแล</td></tr>
                 )}
               </tbody>
               {teamsToShow.length > 0 && (
                 <tfoot>
-                  <tr style={{ fontWeight: 800 }}>
-                    <td style={{ position: "sticky", left: 0, zIndex: 1, background: "color-mix(in srgb, var(--accent) 16%, var(--bg))", paddingLeft: 10, minWidth: 200, borderTop: "2px solid var(--border)" }}>
-                      รวมทุกทีม (มูลค่ารวม)
-                    </td>
-                    {grandMonths.map((v, i) => (
-                      <td key={i} className="num mono tabular-nums" style={{ minWidth: 76, padding: "6px", borderTop: "2px solid var(--border)", color: v ? "var(--text)" : "var(--text-3)" }}>
-                        {v ? compact(v) : "–"}
-                      </td>
-                    ))}
-                    <td className="num mono tabular-nums" style={{ minWidth: 130, padding: "6px 8px", position: "sticky", right: 0, background: "color-mix(in srgb, var(--accent) 16%, var(--bg))", borderLeft: "1px solid var(--border)", borderTop: "2px solid var(--border)" }}>
-                      {money(grandTotal)}
-                    </td>
-                  </tr>
+                  {(() => {
+                    const FOOT_H = 34; // fixed row height so the two stacked sticky rows line up
+                    const rows = [
+                      { label: "รวมเป้าทีมที่ตั้ง", months: grandMonths, total: grandTotal, accent: 12, top: true },
+                      { label: "รวมราย AE (ทุกทีม)", months: grandMemberMonths, total: grandMemberTotal, accent: 20, top: false },
+                    ];
+                    return rows.map((r, ri) => {
+                      const bg = `color-mix(in srgb, var(--accent) ${r.accent}%, var(--bg))`;
+                      const border = r.top ? "2px solid var(--border)" : "1px solid var(--border)";
+                      const bottom = (rows.length - 1 - ri) * FOOT_H;
+                      const cell = { background: bg, borderTop: border, height: FOOT_H, bottom };
+                      return (
+                        <tr key={r.label} style={{ fontWeight: 800 }}>
+                          <td className="fz-c1 fz-foot" style={{ ...cell, paddingLeft: 10, minWidth: 210 }}>{r.label}</td>
+                          {r.months.map((v, i) => (
+                            <td key={i} className="num mono tabular-nums fz-foot" style={{ ...cell, minWidth: 76, padding: "0 6px", color: v ? "var(--text)" : "var(--text-3)" }}>
+                              {v ? compact(v) : "–"}
+                            </td>
+                          ))}
+                          <td className="fz-cr num mono tabular-nums fz-foot" style={{ ...cell, minWidth: 130, padding: "0 8px" }}>
+                            {money(r.total)}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
                 </tfoot>
               )}
             </table>
@@ -460,16 +512,16 @@ function NumCell({ editing, canEdit, dirty, draft, setDraft, onStart, onCommit, 
   );
 }
 
-function GapNote({ target, allocated }) {
+function GapNote({ target, allocated, allocLabel = "แบ่งแล้ว" }) {
   if (target <= 0 && allocated <= 0) return null;
   const remaining = target - allocated;
   const over = remaining < 0;
   const done = remaining === 0 && target > 0;
   const color = over ? "var(--red)" : done ? "var(--green)" : "var(--amber)";
-  const text = target <= 0 ? "ยังไม่ตั้งเป้ารวม" : over ? `แบ่งเกิน ${money(-remaining)}` : done ? "แบ่งครบพอดี" : `เหลือแบ่ง ${money(remaining)}`;
+  const text = target <= 0 ? "ยังไม่ตั้งเป้ารวม" : over ? `เกินเป้า ${money(-remaining)}` : done ? "ครบพอดี" : `เหลืออีก ${money(remaining)}`;
   return (
     <div style={{ fontSize: 11, color, fontWeight: 600, whiteSpace: "nowrap" }}>
-      แบ่งแล้ว {money(allocated)} · {text}
+      {allocLabel} {money(allocated)} · {text}
     </div>
   );
 }

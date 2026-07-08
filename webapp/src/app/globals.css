@@ -4184,6 +4184,63 @@ button.empty-state { width: 100%; font: inherit; }
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
 }
 
+/* ── Frozen matrix table (Sales overview + วางเป้า) ─────────────────────────
+   A scroll box that caps its height and scrolls BOTH axes, so the sticky header
+   row, footer row, and edge columns all stay pinned while the grid scrolls.
+   Cells opt in to freezing via .fz-c1 / .fz-c2 (left edge, stacked) and .fz-cr
+   (right edge); thead/tfoot freeze automatically. The left offset of the second
+   frozen column comes from --fz-c1w (the width of the first frozen column).
+   Defined after .premium-glass-table so overflow:auto wins when both classes
+   share an element. */
+.fz-box {
+  overflow: auto;
+  /* cap tall grids so header/footer stay useful; short grids shrink to content */
+  max-height: calc(100dvh - 250px);
+  scrollbar-width: thin;
+}
+.fz-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.fz-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--panel-2);
+}
+/* Sticky footer is opt-in via .fz-foot (used where the footer is a single or
+   fixed-height set of rows). bottom offset is set inline per row so stacked
+   footer rows don't overlap; border-box + fixed height keep the offsets exact. */
+.fz-table tfoot td.fz-foot {
+  position: sticky;
+  z-index: 3;
+  background: var(--panel-2);
+  box-sizing: border-box;
+}
+.fz-table .fz-c1,
+.fz-table .fz-c2,
+.fz-table .fz-cr {
+  background: var(--panel);
+}
+.fz-table .fz-c1 { position: sticky; left: 0; z-index: 2; }
+.fz-table .fz-c2 { position: sticky; left: var(--fz-c1w, 150px); z-index: 2; }
+.fz-table .fz-cr { position: sticky; right: 0; z-index: 2; border-left: 1px solid var(--border); }
+/* corners: edge cells inside the frozen header/footer sit above both axes */
+.fz-table thead .fz-c1,
+.fz-table thead .fz-c2,
+.fz-table thead .fz-cr,
+.fz-table tfoot .fz-c1,
+.fz-table tfoot .fz-c2,
+.fz-table tfoot .fz-cr {
+  z-index: 5;
+  background: var(--panel-2);
+}
+/* the lift-on-hover transform breaks sticky positioning inside the scroll box */
+.fz-table .premium-row:hover {
+  transform: none;
+  box-shadow: none;
+}
+
 .premium-badge {
   background: color-mix(in srgb, var(--blue) 15%, transparent);
   color: var(--blue);
