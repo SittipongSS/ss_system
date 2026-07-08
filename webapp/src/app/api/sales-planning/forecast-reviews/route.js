@@ -4,7 +4,9 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import {
   canReviewSalesForecast,
   canViewSalesPlanning,
+  applyDealScope,
   forecastAmount,
+  inSalesViewScope,
   monthKey,
   salesPlanningViewScope,
 } from '@/lib/salesPlanning';
@@ -25,15 +27,15 @@ function applyTeamFilter(query, team) {
 async function monthSummary(supabase, user, reviewMonth, team) {
   let query = supabase
     .from('sales_deals')
-    .select('id, projectValue, probability, stage, team')
+    .select('id, projectValue, probability, stage, team, ownerId, ownerName, metadata')
     .eq('forecastMonth', reviewMonth)
     .neq('stage', 'lost');
   query = applyTeamFilter(query, team);
-  if (salesPlanningViewScope(user.role) === 'team') query = query.eq('team', user.team ?? null);
+  query = applyDealScope(query, user);
 
   const { data, error } = await query;
   if (error) throw error;
-  const deals = data || [];
+  const deals = (data || []).filter((deal) => inSalesViewScope(user, deal));
   return {
     dealCount: deals.length,
     summaryAmount: deals.reduce((sum, deal) => sum + forecastAmount(deal), 0),
