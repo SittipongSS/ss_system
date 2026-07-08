@@ -407,7 +407,7 @@ export default function DealOverviewPage() {
     try {
       const res = await fetch(`/api/sales-planning/deals/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
-      router.push("/sales-planning/deals");
+      router.push("/sa/deals");
     } catch (e) {
       setError(e.message || "ลบไม่สำเร็จ");
     }
@@ -457,7 +457,7 @@ export default function DealOverviewPage() {
     const k = lc.nextAction.kind;
     if (k === "win") return <button type="button" className="btn btn-primary" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
     if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><PackageCheck size={14} aria-hidden="true" /> สร้างโครงการ</button>;
-    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/pm/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> เปิดโครงการ</a>;
+    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/sa/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> เปิดโครงการ</a>;
     return null;
   };
   const headerRight = (
@@ -473,7 +473,7 @@ export default function DealOverviewPage() {
         </button>
       )}
       {deal?.projectId && (
-        <a className="btn" href={`/pm/projects/${deal.projectId}`}>
+        <a className="btn" href={`/sa/projects/${deal.projectId}`}>
           <ExternalLink size={15} aria-hidden="true" /> โครงการ PM
         </a>
       )}
@@ -495,7 +495,7 @@ export default function DealOverviewPage() {
       icon={<FolderKanban size={22} />}
       title={deal?.title || "ศูนย์รวมโครงการ"}
       subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมโครงการ"}
-      back={{ href: "/sales-planning", label: "กลับไปภาพรวม" }}
+      back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}
       loading={loading}
     >
@@ -608,7 +608,7 @@ export default function DealOverviewPage() {
               <PackageCheck size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานผลิต (PM)</h2>
               <div className="spacer" />
-              {data.project && <a className="btn ghost" href={`/pm/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
+              {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
             </div>
             {data.project ? (
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>

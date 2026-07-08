@@ -99,7 +99,7 @@ export default function AppLayout({ children }) {
       pathname.startsWith('/database') ? 'master'
       // PM รวมอยู่ใต้ระบบ "บริหารงานขาย" (Sales เป็นแม่) — /pm และ /sales-planning
       // ใช้ sidebar ชุดเดียวกัน (กลุ่มบริหารงานขาย + กลุ่มงานผลิต PM)
-      : (pathname.startsWith('/sales-planning') || pathname.startsWith('/pm')) ? 'salesplan'
+      : (pathname.startsWith('/sa') || pathname.startsWith('/sales-planning') || pathname.startsWith('/pm')) ? 'salesplan'
       : pathname.startsWith('/sahamit') ? 'sahamit'
       : pathname.startsWith('/mgmt') ? 'mgmt'
       : pathname === '/users' ? 'users'
@@ -172,21 +172,10 @@ export default function AppLayout({ children }) {
       label: 'บริหารงานขาย',
       system: 'salesplan',
       items: [
-        { href: '/sales-planning', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
-        { href: '/sales-planning/deals', name: 'โครงการ', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
-        { href: '/sales-planning/targets', name: 'วางเป้าหมาย', icon: Target, cap: 'salesplan:target', match: (p) => p.startsWith('/sales-planning/targets') },
-      ],
-    },
-    {
-      // งานผลิต (PM) = ชั้น execution ใต้ "บริหารงานขาย" (system เดียวกัน → โชว์ต่อท้าย
-      // กลุ่มบริหารงานขายใน sidebar ชุดเดียว). viewer/staff ที่มีแค่ pm:view จะเห็น
-      // เฉพาะกลุ่มนี้ (กลุ่มบริหารงานขายถูกกรองทิ้งเพราะไม่มี salesplan:view).
-      label: 'งานผลิต (PM)',
-      system: 'salesplan',
-      items: [
-        { href: '/pm', name: 'ภาพรวมงานผลิต', icon: LayoutDashboard, cap: 'pm:view', match: (p) => p === '/pm' },
-        { href: '/pm/projects', name: 'โครงการผลิต', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/pm/projects' || p.startsWith('/pm/projects/') },
-        { href: '/pm/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/pm/tasks' },
+        { href: '/sa', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sa' || p === '/sales-planning' },
+        { href: '/sa/deals', name: 'โครงการ', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sa/deals' || p.startsWith('/sa/deals/') || p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
+        { href: '/sa/targets', name: 'วางเป้าหมาย', icon: Target, cap: 'salesplan:target', match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
+        { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/sa/tasks' || p === '/pm/tasks' },
       ],
     },
     {

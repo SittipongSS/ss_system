@@ -13,9 +13,32 @@ const nextConfig = {
   // resolve @vercel/functions/oidc's optional dynamic import of the AWS SDK
   // (we only use getVercelOidcToken, never the AWS credentials provider).
   serverExternalPackages: ['googleapis', 'google-auth-library', '@vercel/functions'],
-  // Product registry moved from /sa to /products. Keep old links working.
+  // Sales Management owns the /sa namespace. Keep legacy URLs working without
+  // exposing the old system split in user-facing navigation.
+  async rewrites() {
+    return [
+      { source: '/sa', destination: '/sales-planning' },
+      { source: '/sa/deals', destination: '/sales-planning/deals' },
+      { source: '/sa/deals/:path*', destination: '/sales-planning/deals/:path*' },
+      { source: '/sa/targets', destination: '/sales-planning/targets' },
+      { source: '/sa/targets/:path*', destination: '/sales-planning/targets/:path*' },
+      { source: '/sa/projects/:path*', destination: '/pm/projects/:path*' },
+      { source: '/sa/tasks', destination: '/pm/tasks' },
+    ];
+  },
   async redirects() {
-    return [{ source: '/sa', destination: '/products', permanent: true }];
+    return [
+      { source: '/sales-planning', destination: '/sa', permanent: false },
+      { source: '/sales-planning/deals', destination: '/sa/deals', permanent: false },
+      { source: '/sales-planning/deals/:path*', destination: '/sa/deals/:path*', permanent: false },
+      { source: '/sales-planning/targets', destination: '/sa/targets', permanent: false },
+      { source: '/sales-planning/targets/:path*', destination: '/sa/targets/:path*', permanent: false },
+      { source: '/sa/projects', destination: '/sa/deals', permanent: false },
+      { source: '/pm', destination: '/sa', permanent: false },
+      { source: '/pm/projects', destination: '/sa/deals', permanent: false },
+      { source: '/pm/projects/:path*', destination: '/sa/projects/:path*', permanent: false },
+      { source: '/pm/tasks', destination: '/sa/tasks', permanent: false },
+    ];
   },
 };
 

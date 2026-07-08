@@ -288,7 +288,7 @@ export default function ProjectDetailPage() {
         return;
       }
       setToast({ kind: payload.reused ? "info" : "success", msg: payload.reused ? "เปิดเอกสารเตรียมส่งของเดิม" : "สร้างเอกสารเตรียมส่งของแล้ว" });
-      router.push(`/pm/projects/${p.code || p.id}/shipment-prep`);
+      router.push(`/sa/projects/${p.code || p.id}/shipment-prep`);
     } finally {
       setCreatingShipmentPrep(false);
     }
@@ -510,7 +510,7 @@ export default function ProjectDetailPage() {
     if (!(await askConfirm({ title: "ลบโปรเจกต์", message: `ต้องการลบโปรเจกต์ "${data.code} — ${data.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`, confirmLabel: "ลบ" }))) return;
     const res = await fetch(`/api/pm/projects/${data.id}`, { method: "DELETE" });
     if (res.ok) {
-      router.push("/pm/projects");
+      router.push("/sa/deals");
     } else {
       setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ" });
     }
@@ -1027,7 +1027,7 @@ export default function ProjectDetailPage() {
       {/* Top Header Section */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "12px" }}>
         <Link
-          href="/pm/projects"
+          href="/sa/deals"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -1047,7 +1047,7 @@ export default function ProjectDetailPage() {
             {/* Sales เป็นแม่: โครงการที่ผูกงานขายต้องลบที่หน้าบริหารงานขาย (ลบทั้งสาย).
                 โปรเจกต์กำพร้า (ยังไม่ผูกดีล) ลบตรงนี้ได้ตามเดิม. */}
             {data.dealId ? (
-              <Link className="btn-icon" href={`/sales-planning/deals/${data.dealId}`} aria-label="จัดการที่หน้าบริหารงานขาย" title="โครงการนี้ผูกงานขาย — ลบ/จัดการที่หน้าบริหารงานขาย"><ExternalLink size={16} /></Link>
+              <Link className="btn-icon" href={`/sa/deals/${data.dealId}`} aria-label="จัดการที่หน้าบริหารงานขาย" title="โครงการนี้ผูกงานขาย — ลบ/จัดการที่หน้าบริหารงานขาย"><ExternalLink size={16} /></Link>
             ) : (
               <button className="btn-icon danger" onClick={handleDeleteProject} aria-label="ลบโปรเจกต์" title="ลบโปรเจกต์"><Trash2 size={16} /></button>
             )}

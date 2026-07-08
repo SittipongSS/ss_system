@@ -271,7 +271,7 @@ export default function PoDetailPage() {
       setProjectConfirmOpen(false);
       if (payload.warning) setToast({ kind: "info", msg: payload.warning });
       const project = payload.project;
-      if (project?.code || project?.id) router.push(`/pm/projects/${project.code || project.id}`);
+      if (project?.code || project?.id) router.push(`/sa/projects/${project.code || project.id}`);
       else await reload();
     } catch (e) {
       setToast({ kind: "error", msg: e.message || "สร้างโปรเจกต์ไม่สำเร็จ" });
@@ -359,14 +359,14 @@ export default function PoDetailPage() {
                 </button>
               )}
               {po.salesDealId && (
-                <a className="btn ghost" href={`/sales-planning/deals/${po.salesDealId}`}>
+                <a className="btn ghost" href={`/sa/deals/${po.salesDealId}`}>
                   <ExternalLink size={14} /> เปิดโครงการ
                 </a>
               )}
 
               {/* PM project (ออปชัน) */}
               {po.projectId ? (
-                <button type="button" className="btn" onClick={() => router.push(`/pm/projects/${po.projectId}`)}>
+                <button type="button" className="btn" onClick={() => router.push(`/sa/projects/${po.projectId}`)}>
                   <ExternalLink size={14} /> เปิด PM Project
                 </button>
               ) : canCreateProject ? (
@@ -544,7 +544,7 @@ export default function PoDetailPage() {
                         <td style={{ textAlign: "right" }}>{nf(ln.qty)}</td>
                         <td>
                           {ln.settledDealId ? (
-                            <a className="ui-badge" style={{ color: "var(--green)" }} href={`/sales-planning/deals/${ln.settledDealId}`}>เชื่อมแล้ว (Won) →</a>
+                            <a className="ui-badge" style={{ color: "var(--green)" }} href={`/sa/deals/${ln.settledDealId}`}>เชื่อมแล้ว (Won) →</a>
                           ) : (
                             <select
                               className="premium-select"

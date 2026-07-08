@@ -338,7 +338,7 @@ export default function ProductDetails() {
           </div>
           )}
 
-          {/* PM projects this product is part of — read-only, deep-link to /pm. */}
+          {/* PM projects this product is part of — read-only, deep-link to /sa. */}
           {projects.length > 0 && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
@@ -348,7 +348,7 @@ export default function ProductDetails() {
               {projects.map((p) => (
                 <div
                   key={p.id}
-                  onClick={() => router.push(`/pm/projects/${p.id}`)}
+                  onClick={() => router.push(`/sa/projects/${p.id}`)}
                   className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
                 >
                   <div className="min-w-0">

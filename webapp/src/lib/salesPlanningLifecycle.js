@@ -142,7 +142,7 @@ function buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProjec
 function buildRoutes(deal, related) {
   const { projectProducts = [], exciseRegistrations = [], sahamitPo = null } = related || {};
   const hasProject = !!deal.projectId;
-  const projectHref = hasProject ? `/pm/projects/${deal.projectId}` : null;
+  const projectHref = hasProject ? `/sa/projects/${deal.projectId}` : null;
   const routes = [];
 
   // 1) PM project — ปลดล็อกตั้งแต่เสนอไทม์ไลน์ขึ้นไป (project เกิดก่อน win ได้)

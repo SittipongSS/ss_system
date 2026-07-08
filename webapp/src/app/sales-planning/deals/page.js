@@ -278,7 +278,7 @@ export default function SalesPlanningPipelinePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "สร้างเอกสารส่งของไม่สำเร็จ");
-      window.open(`/pm/projects/${deal.projectId}/shipment-prep`, "_blank", "noopener");
+      window.open(`/sa/projects/${deal.projectId}/shipment-prep`, "_blank", "noopener");
     } catch (e) {
       setError(e.message || "สร้างเอกสารส่งของไม่สำเร็จ");
     } finally {
@@ -409,7 +409,7 @@ export default function SalesPlanningPipelinePage() {
       icon={<FolderKanban size={22} />}
       title="บริหารงานขาย — โครงการ"
       subtitle="จัดการโครงการขายและส่งต่อ PM · PM อาจเกิดก่อนหรือหลัง Won ได้"
-      back={{ href: "/sales-planning", label: "กลับไปภาพรวม" }}
+      back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}
     >
       <div className="flex flex-col gap-5">
@@ -462,7 +462,7 @@ export default function SalesPlanningPipelinePage() {
                 {filteredDeals.map((deal) => (
                   <tr key={deal.id} className="premium-row">
                     <td>
-                      <Link href={`/sales-planning/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดโครงการ">
+                      <Link href={`/sa/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดโครงการ">
                         <strong>
                           {deal.title}
                           {deal.forecastDrift?.hasDrift && (
@@ -479,7 +479,7 @@ export default function SalesPlanningPipelinePage() {
                     </td>
                     <td>
                       {deal.projectId ? (
-                        <a className="btn ghost" href={`/pm/projects/${deal.projectId}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <a className="btn ghost" href={`/sa/projects/${deal.projectId}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                           <ExternalLink size={14} aria-hidden="true" /> PM
                         </a>
                       ) : deal.canEdit && deal.stage !== "lost" ? (
