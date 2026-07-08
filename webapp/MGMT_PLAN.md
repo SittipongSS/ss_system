@@ -114,11 +114,11 @@ export function canAccessMgmt(role){ return can(role,'mgmt:view'); }
 
 ---
 
-## E. Data model — migrations 0057+ (รันมือ · ยืนยันเลขล่าสุด 0056 ก่อน)
+## E. Data model — migrations 0076+ (รันมือ · ยืนยันเลขล่าสุด 0075 ก่อน)
 
 camelCase ในเครื่องหมายคำพูด · additive/idempotent · `year` = ค.ศ. (int) · soft-delete ด้วย `deletedAt`
 
-### 0057 — `mgmt_departments` (taxonomy แผนกของโมดูล — "เพิ่มแผนก")
+### 0076 — `mgmt_departments` (taxonomy แผนกของโมดูล — "เพิ่มแผนก")
 ```sql
 create table if not exists public.mgmt_departments (
   code       text primary key,          -- 'HR','MAR','AC','MN','Factory','Plan','QC',...
@@ -130,7 +130,7 @@ create table if not exists public.mgmt_departments (
 alter table public.mgmt_departments enable row level security;
 ```
 
-### 0058 — `mgmt_tasks` (รายการงาน)
+### 0077 — `mgmt_tasks` (รายการงาน)
 ```sql
 create table if not exists public.mgmt_tasks (
   id            text primary key,           -- 'MT-######'
@@ -149,7 +149,7 @@ create index if not exists mgmt_tasks_due_idx on public.mgmt_tasks ("dueDate") w
 alter table public.mgmt_tasks enable row level security;
 ```
 
-### 0059 — `mgmt_meetings` (การประชุม)
+### 0078 — `mgmt_meetings` (การประชุม)
 ```sql
 create table if not exists public.mgmt_meetings (
   id            text primary key,           -- 'MG-######'
@@ -168,7 +168,7 @@ create index if not exists mgmt_meetings_date_idx on public.mgmt_meetings ("meet
 alter table public.mgmt_meetings enable row level security;
 ```
 
-### 0060 — `mgmt_rock_improve` (Rock & Improve — 1 แถว/แผนก/ปี)
+### 0079 — `mgmt_rock_improve` (Rock & Improve — 1 แถว/แผนก/ปี)
 ```sql
 create table if not exists public.mgmt_rock_improve (
   id          text primary key,             -- 'RI-######'
@@ -185,7 +185,7 @@ create table if not exists public.mgmt_rock_improve (
 alter table public.mgmt_rock_improve enable row level security;
 ```
 
-### 0061 — `mgmt_updates` (ประวัติการแก้ไข / feed — polymorphic)
+### 0080 — `mgmt_updates` (ประวัติการแก้ไข / feed — polymorphic)
 ```sql
 create table if not exists public.mgmt_updates (
   id           uuid primary key default gen_random_uuid(),
@@ -279,7 +279,7 @@ alter table public.mgmt_updates enable row level security;
 | # | ไฟล์ | ทำอะไร |
 |---|---|---|
 | 1 | `lib/permissions.js` (+test) | role/ฝ่าย/caps/canAccessMgmt (§D) |
-| 2 | migrations 0057–0061 | 5 ตาราง (§E) รันมือ + seed `mgmt_departments` (HR/MAR/AC/MN/Factory/Plan/QC) |
+| 2 | migrations 0076–0080 | 5 ตาราง (§E) รันมือ + seed `mgmt_departments` (HR/MAR/AC/MN/Factory/Plan/QC) |
 | 3 | `components/AppLayout.js` | system 'mgmt' + sidebar + badge role ใหม่ |
 | 4 | `app/home/page.js` | การ์ด "งานบริหาร" (canAccessMgmt) + wideCols |
 | 5 | `app/mgmt/**` (ใหม่) | **6 หน้า** (§C: Overview/tasks/calendar/meetings/rocks/trash — ตัด Gantt) + หัวโมดูล (layout) |
@@ -298,7 +298,7 @@ alter table public.mgmt_updates enable row level security;
 
 ## J. เฟส
 
-**เฟส 0** — permissions (#1) + migrations 0057–0061 + seed departments (#2) + user เลขาทดสอบ
+**เฟส 0** — permissions (#1) + migrations 0076–0080 + seed departments (#2) + user เลขาทดสอบ
 **เฟส 1 (แกน: req #1–5)** — API tasks+updates+departments+overview (#6,#7) + proxy (#11) + **อัปไฟล์ static** ขึ้น Drive (#9,#10,#13) + หน้า Overview + รายการงาน (drawer ไฟล์/ประวัติ) + แถบปี (#3,#4,#5,#8)
 **เฟส 2 (req #6 + ปฏิทิน + เอกสารมีชีวิต)** — การประชุม (การ์ด+โมดัล+ติดตามต่อ→เชื่อมงาน) + **Google Doc/Sheet ผูก/สร้าง** (DocsPanel + `/api/mgmt/docs` + createGoogleFile + สิทธิ์ §F) + **Calendar ผูกวันหยุด** (#14)
 > Gantt = **ตัดจาก v1** (Calendar ครอบแล้ว) — เพิ่มทีหลังถ้าจำเป็น (reuse `lib/pm/ganttPrint`)

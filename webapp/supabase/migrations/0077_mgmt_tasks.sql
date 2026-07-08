@@ -1,12 +1,12 @@
 -- ============================================================
---  Migration 0058: mgmt_tasks — รายการงาน (ติดตามงานโครงการ) ของโมดูล "งานบริหาร"
+--  Migration 0077: mgmt_tasks — รายการงาน (ติดตามงานโครงการ) ของโมดูล "งานบริหาร"
 --  status: todo(รอเริ่ม) | in_progress(กำลังดำเนิน) | done(เสร็จสมบูรณ์) | cancelled(ยกเลิก)
 --  priority: normal(ปกติ) | urgent(ด่วน). ปีมาจาก dueDate (กรอง — ไม่ partition).
 --  ผู้รับผิดชอบ: assigneeId (ผูก user, nullable) + snapshot ชื่อ. ลบ = soft (deletedAt).
 --  ไฟล์/เอกสาร: ใช้ตาราง attachments (0028) entityType='mgmt_task'.
 --
 --  additive ล้วน, รันซ้ำได้. camelCase ในเครื่องหมายคำพูด.
---  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0057).
+--  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0075).
 -- ============================================================
 
 create table if not exists public.mgmt_tasks (

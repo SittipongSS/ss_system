@@ -1,11 +1,11 @@
 -- ============================================================
---  Migration 0060: mgmt_rock_improve — Rock & Improve (บอร์ดรายแผนก) ของ "งานบริหาร"
+--  Migration 0079: mgmt_rock_improve — Rock & Improve (บอร์ดรายแผนก) ของ "งานบริหาร"
 --  1 แถว/แผนก/ปี: improved="สิ่งที่ดีขึ้น" (สะท้อนผล), goals=รายการเป้าหมายต่อไป.
 --  v1 goals = ["เป้าหมาย 1","เป้าหมาย 2",...] (ข้อความ ตามต้นแบบ); later ยกเป็น
 --  [{text,status,done}] เมื่อทำ "ติดตามผล" เชิงลึก. year = ค.ศ. (int).
 --
 --  additive ล้วน, รันซ้ำได้. camelCase ในเครื่องหมายคำพูด.
---  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0059).
+--  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0075).
 -- ============================================================
 
 create table if not exists public.mgmt_rock_improve (

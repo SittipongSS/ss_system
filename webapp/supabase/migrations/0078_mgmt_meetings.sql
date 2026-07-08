@@ -1,11 +1,11 @@
 -- ============================================================
---  Migration 0059: mgmt_meetings — บันทึกการประชุม ของโมดูล "งานบริหาร"
+--  Migration 0078: mgmt_meetings — บันทึกการประชุม ของโมดูล "งานบริหาร"
 --  followUp: none(ไม่ติดตาม) | follow(ติดตามต่อ). timeText = ช่วงเวลาแบบข้อความ
 --  "9.30–11.00". ปีมาจาก meetingDate (กรอง). ลบ = soft (deletedAt).
 --  ไฟล์/เอกสาร: ใช้ตาราง attachments (0028) entityType='mgmt_meeting'.
 --
 --  additive ล้วน, รันซ้ำได้. camelCase ในเครื่องหมายคำพูด.
---  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0058).
+--  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0075).
 -- ============================================================
 
 create table if not exists public.mgmt_meetings (

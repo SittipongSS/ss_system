@@ -1,11 +1,11 @@
 -- ============================================================
---  Migration 0057: mgmt_departments — taxonomy แผนกของโมดูล "งานบริหาร" (mgmt)
+--  Migration 0076: mgmt_departments — taxonomy แผนกของโมดูล "งานบริหาร" (mgmt)
 --  แผนก business ของโมดูลนี้ (HR/MAR/AC/MN/Factory/Plan/QC ...) — จัดการเอง
 --  ("เพิ่มแผนก"). ⚠ คนละชุดกับ DEPARTMENTS ฝั่งสิทธิ์ (AD/SEC/SA/LG/...) ใน
 --  lib/permissions.js — อย่าปน. ใช้เป็น deptCode ของ mgmt_tasks/meetings/rock_improve.
 --
 --  additive ล้วน, รันซ้ำได้. camelCase ในเครื่องหมายคำพูด.
---  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0056).
+--  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0075).
 -- ============================================================
 
 create table if not exists public.mgmt_departments (

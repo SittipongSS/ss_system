@@ -1,11 +1,11 @@
 -- ============================================================
---  Migration 0061: mgmt_updates — ประวัติการแก้ไข / feed (polymorphic) ของ "งานบริหาร"
+--  Migration 0080: mgmt_updates — ประวัติการแก้ไข / feed (polymorphic) ของ "งานบริหาร"
 --  entityType: 'task' | 'meeting' | 'rock'. kind: edit|status|comment|file|link.
 --  ต่อ entity หนึ่งๆ (task/meeting/rock) เก็บสายอัพเดท + ใช้ทำ activity feed หน้า
 --  Overview. เขียนโดย API หลัง write สำเร็จ (คู่กับ recordAudit).
 --
 --  additive ล้วน, รันซ้ำได้. camelCase ในเครื่องหมายคำพูด.
---  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0060).
+--  ⚠ รันมือบน Supabase SQL Editor (เหมือน 0005-0075).
 -- ============================================================
 
 create table if not exists public.mgmt_updates (
