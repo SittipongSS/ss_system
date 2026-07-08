@@ -14,12 +14,38 @@ export const initialDealForm = {
   customerName: "",
   stage: "lead",
   projectValue: "",
-  probability: "10",
+  probability: "50",
   forecastMonth: "",
   expectedCloseDate: "",
   depositPaid: false,
   notes: "",
 };
+
+// โอกาสที่จะปิดได้ (FC%) — 4 ระดับให้ผู้ใช้เลือกตอนเพิ่ม/แก้โครงการ. เป็นข้อมูลช่วย
+// จัดลำดับความน่าจะปิด ไม่ได้ถ่วงยอด (FC = มูลค่าเต็มตาม M6 ในแผน merge).
+export const FORECAST_LEVELS = [
+  { value: 20, label: "20% · เริ่มต้น" },
+  { value: 50, label: "50% · ปานกลาง" },
+  { value: 80, label: "80% · น่าจะปิดได้" },
+  { value: 100, label: "100% · ปิดได้แล้ว" },
+];
+
+// snap ค่า probability เดิม (10/30/55/65/75/90 ฯลฯ) ให้เข้าระดับ FC ที่ใกล้ที่สุด
+export function snapForecastLevel(p) {
+  const n = Number(p);
+  if (!Number.isFinite(n)) return 50;
+  return FORECAST_LEVELS.reduce((best, l) => (Math.abs(l.value - n) < Math.abs(best - n) ? l.value : best), FORECAST_LEVELS[0].value);
+}
+
+export function forecastBadge(probability) {
+  const p = snapForecastLevel(probability);
+  const color = { 20: "var(--text-3)", 50: "var(--amber)", 80: "var(--teal)", 100: "var(--green)" }[p] || "var(--text-3)";
+  return (
+    <span className="ui-badge" style={{ color, borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+      FC {p}%
+    </span>
+  );
+}
 
 // Roles that can own a per-person sales target. AC (Account Coordinate) is
 // back-office and does not carry a sales target, so it is excluded; ae_supervisor

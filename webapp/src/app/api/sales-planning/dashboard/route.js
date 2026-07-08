@@ -15,8 +15,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (dealsError) return fail(dealsError.message, 500);
   const visibleDeals = (deals || []).filter((d) => inSalesViewScope(user, d));
 
+  // Scope targets เหมือน deals: team-lead เห็นทีมตัวเอง (+ SA รวม เป็น context),
+  // AE เห็นเฉพาะเป้ารายบุคคลของตัวเอง — กันเป้าคนอื่น/ทีมอื่นรั่วผ่าน overview.
+  const scope = salesPlanningViewScope(user.role);
   let targetsQuery = supabase.from('sales_targets').select('*').eq('targetMonth', month);
-  if (salesPlanningViewScope(user.role) === 'team') targetsQuery = targetsQuery.eq('team', user.team ?? null);
+  if (scope === 'team') targetsQuery = targetsQuery.or(`team.eq.${user.team ?? ''},team.is.null`);
+  else if (scope === 'own') targetsQuery = targetsQuery.eq('ownerId', user.id ?? '');
+  else if (scope !== 'all') targetsQuery = targetsQuery.eq('id', '__no_scope__');
   const { data: targets, error: targetsError } = await targetsQuery;
   if (targetsError) return fail(targetsError.message, 500);
 
@@ -50,6 +55,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     bucket.weighted += forecastAmount(d);
     byStage[d.stage] = bucket;
   }
+
+  // pipeline ของดีลที่ยังเปิด แยกตามระดับโอกาสปิด (FC% 20/50/80/100) — โชว์บนภาพรวม.
+  // FC% เป็นข้อมูลจัดลำดับความน่าจะปิด ไม่ถ่วงมูลค่า (value = projectValue เต็ม).
+  const FC_LEVELS = [20, 50, 80, 100];
+  const snapFc = (p) => {
+    const n = Number(p);
+    if (!Number.isFinite(n)) return 50;
+    return FC_LEVELS.reduce((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best), FC_LEVELS[0]);
+  };
+  const fcMap = {};
+  for (const d of openDeals) {
+    const k = snapFc(d.probability);
+    const b = fcMap[k] || { level: k, count: 0, value: 0 };
+    b.count += 1;
+    b.value += Number(d.projectValue || 0);
+    fcMap[k] = b;
+  }
+  const byForecast = FC_LEVELS.map((l) => fcMap[l] || { level: l, count: 0, value: 0 });
 
   // แถว "ผี": ไม่มีทั้งเป้า/won/คาดการณ์/จำนวนดีล — เกิดจาก target ค้างค่า 0
   // หรือถังที่ถูกสร้างโดยไม่มีข้อมูลจริง → ตัดทิ้งไม่ให้โผล่บนหน้า.
@@ -96,8 +119,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, openCount: 0, wonCount: 0 };
     return teamMap[key];
   };
+  // เป้าระดับ SA (team=null) = "ยอดรวมบริษัท" คร่อมทุกทีม — แยกไว้ต่างหาก ไม่ใช่ทีมหนึ่ง
+  // เพื่อไม่ให้ถูกบวกซ้ำกับเป้ารายทีมทั้งใน byTeam และ KPI เป้ารวม.
+  let saWideTarget = 0;
   const teamTargetParts = {};
   for (const t of targets || []) {
+    if (!t.team) { saWideTarget += Number(t.targetAmount || 0); continue; }
     const key = teamKey(t.team);
     teamBucket(t.team);
     if (!teamTargetParts[key]) teamTargetParts[key] = { level: 0, person: 0 };
@@ -113,12 +140,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
   }
   const byTeam = Object.values(teamMap)
+    .filter((b) => b.team) // ตัดถัง null (SA รวม / ดีลไม่ระบุทีม) ออกจากตารางทีม
     .filter((b) => !isEmptyBucket(b))
     .map((b) => ({ ...b, gap: b.target - b.won }))
     .sort((a, b) => b.target - a.target);
 
-  // KPI เป้ารวม ใช้เป้าต่อทีมที่ dedup แล้ว (สอดคล้องกับ byTeam ไม่บวกซ้ำ)
-  const targetAmount = byTeam.reduce((sum, b) => sum + Number(b.target || 0), 0);
+  // KPI เป้ารวม: ผู้ที่เห็นทุกทีม (superuser) ใช้เป้า SA รวมถ้ามี (ไม่งั้นผลรวมรายทีม);
+  // team-lead/AE ใช้ผลรวมเป้าที่ตัวเองเห็น (เป้า SA รวมไม่นับเป็นเป้าของตัวเอง).
+  const teamTargetSum = byTeam.reduce((sum, b) => sum + Number(b.target || 0), 0);
+  const targetAmount = (scope === 'all' && saWideTarget > 0) ? saWideTarget : teamTargetSum;
 
   return ok({
     month,
@@ -126,6 +156,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       deals: monthDeals.length,
       openDeals: openDeals.length,
       targetAmount,
+      saTarget: saWideTarget,
       pipelineValue,
       weightedForecast,
       wonValue,
@@ -136,6 +167,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       targetGap: targetAmount - wonValue,
     },
     byStage: Object.values(byStage),
+    byForecast,
     byOwner,
     byTeam,
     targets: targets || [],

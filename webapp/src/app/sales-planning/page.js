@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Target, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
-import { KpiCard, MONTH_LABELS, MonthPicker, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+import { KpiCard, MONTH_LABELS, MonthPicker, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import { SALES_FEATURES } from "@/lib/salesPlanning";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
@@ -391,6 +391,25 @@ export default function SalesPlanningOverviewPage() {
             />
           )}
         </section>
+
+        {!!selectedDashboard?.byForecast?.length && (
+          <section className="glass-panel" style={{ padding: 16 }}>
+            <div className="flex items-center gap-2 mb-3">
+              <BarChart3 size={17} aria-hidden="true" />
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>โครงการเปิด แยกตามโอกาสปิด (FC%)</h2>
+              <span style={{ color: "var(--text-3)", fontSize: 12 }}>เดือน {month}</span>
+            </div>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+              {selectedDashboard.byForecast.map((b) => (
+                <div key={b.level} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div>{forecastBadge(b.level)}</div>
+                  <div className="font-mono tabular-nums" style={{ fontSize: 18, fontWeight: 800 }}>{money(b.value)}</div>
+                  <div style={{ color: "var(--text-3)", fontSize: 12 }}>{b.count} โครงการ</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <YearGrid title={`ภาพรวมรายเดือน ${year}`} rows={rows.monthRows} months={months} />
         <YearGrid title="รายบุคคล (จัดกลุ่มตามทีม)" rows={rows.ownerRows} months={months} grouped showTotal />

@@ -23,7 +23,7 @@ export default function ProjectFormModal({
     code: "", name: "", customerId: "", type: "NPD",
     startDate: "", dueDate: "", productMainCategory: "", productSubCategory: "", aeOwner: "",
     mainCode: "", typeCode: "",
-    aeSupervisor: "", preparedBy: "", customerEmail: "",
+    aeSupervisor: "", preparedBy: "",
     projectProducts: [],
     quotationNumber: "", brand: "", poNumber: "",
   };
@@ -264,10 +264,6 @@ export default function ProjectFormModal({
                 search: `${c.arCode || ""} ${c.name}`,
               }))}
             />
-          </div>
-          <div className="form-group col-span-2">
-            <label>อีเมลลูกค้า</label>
-            <input type="email" name="customerEmail" value={form.customerEmail} onChange={change} className="premium-input w-full" />
           </div>
         </div>
 

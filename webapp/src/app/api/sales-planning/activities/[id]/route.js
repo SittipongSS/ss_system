@@ -1,6 +1,7 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
+import { sanitizeAttachments } from '../route';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,12 +27,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json().catch(() => ({}));
   const patch = { updatedAt: new Date().toISOString() };
+  const nextAttachments = 'attachments' in body ? sanitizeAttachments(body.attachments) : (activity.attachments || []);
   if ('body' in body) {
-    if (!body.body?.trim()) return badRequest('ต้องระบุรายละเอียด');
-    patch.body = body.body.trim();
+    // ปล่อยข้อความว่างได้ถ้ายังมีไฟล์แนบเหลืออยู่ (โพสต์รูปล้วน)
+    if (!body.body?.trim() && !nextAttachments.length) return badRequest('ต้องระบุรายละเอียดหรือแนบไฟล์');
+    patch.body = (body.body || '').trim();
   }
   if ('kind' in body && ACTIVITY_KINDS.has(body.kind)) patch.kind = body.kind;
   if ('dueDate' in body) patch.dueDate = body.dueDate || null;
+  if ('attachments' in body) patch.attachments = nextAttachments;
 
   const { data, error } = await supabase.from('sales_deal_activities').update(patch).eq('id', id).select().single();
   if (error) return fail(error.message, 500);

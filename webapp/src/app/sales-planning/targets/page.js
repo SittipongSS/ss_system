@@ -229,25 +229,24 @@ export default function SalesPlanningTargetsPage() {
     if (!res.ok) throw new Error((await res.json()).error || "เฉลี่ยเป้าไม่สำเร็จ");
   };
 
+  // ยิงผ่าน bulk (upsert ตาม period/team/ownerId) ไม่ตัดสินใจ POST/PATCH จาก snapshot
+  // เดิม — กันเคส "กรอกเป้าปี (สร้าง 12 แถวไปแล้ว) + แก้เดือนทับ" ยิง POST ซ้ำชน unique 409.
   const saveMonth = async (node, mi, amount) => {
-    const existing = node.months[mi];
-    const url = existing ? `/api/sales-planning/targets/${existing.id}` : "/api/sales-planning/targets";
-    const payload = existing
-      ? { targetAmount: amount }
-      : {
+    const res = await fetch("/api/sales-planning/targets/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [{
           period: `${year}-${String(mi + 1).padStart(2, "0")}`,
           periodType: "month",
           team: node.team || null,
           ownerId: node.ownerId || null,
           ownerName: node.ownerName || null,
           targetAmount: amount,
-        };
-    const res = await fetch(url, {
-      method: existing ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+        }],
+      }),
     });
-    if (!res.ok) throw new Error((await res.json()).error || "บันทึกเดือนไม่สำเร็จ");
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกเดือนไม่สำเร็จ");
   };
 
   // Flush all staged edits: yearly totals first (they redistribute 12 months),
@@ -318,7 +317,7 @@ export default function SalesPlanningTargetsPage() {
   });
 
   const renderRow = (node, indent, extra = {}) => (
-    <tr className="premium-row" style={{ background: extra.bg }}>
+    <tr key={nodeKey(node)} className="premium-row" style={{ background: extra.bg }}>
       <td className="fz-c1" style={{ background: extra.stickyBg || "var(--bg)", paddingLeft: 10 + indent * 16, minWidth: 210 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {extra.collapsible && (
@@ -336,7 +335,7 @@ export default function SalesPlanningTargetsPage() {
           )}
           <div style={{ fontWeight: extra.bold ? 800 : 500, whiteSpace: "nowrap" }}>{extra.label ?? labelOf(node)}</div>
         </div>
-        {extra.gap && <GapNote target={node.annual} allocated={node.allocated} />}
+        {extra.gap && <GapNote target={node.annual} allocated={node.allocated} allocLabel={extra.allocLabel} />}
         {node.role === "senior_ae" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>หัวหน้าทีม</div>}
       </td>
       {node.monthAmounts.map((amt, i) => (

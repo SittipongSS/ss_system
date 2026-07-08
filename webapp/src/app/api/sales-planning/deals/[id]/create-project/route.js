@@ -31,6 +31,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const body = await req.json().catch(() => ({}));
   const startDate = body.startDate || todayStr();
   const dueDate = body.dueDate || deal.expectedCloseDate || null;
+
+  // อีเมลลูกค้าดึงจากทะเบียนลูกค้าอัตโนมัติ (ไม่ให้กรอกในโมดัลแล้ว — R1) เพื่อไม่ให้
+  // ข้อมูลแตกจากแหล่งเดียว; body.customerEmail คงรับไว้เผื่อ caller เก่า.
+  let customerEmail = body.customerEmail || '';
+  const custId = body.customerId || deal.customerId || null;
+  if (!customerEmail && custId) {
+    const { data: cust } = await supabase.from('customers').select('email').eq('id', custId).maybeSingle();
+    customerEmail = cust?.email || '';
+  }
   const autoCode = !body.code;
   let projectCode = body.code || (await generateProjectCode(supabase));
   const now = new Date().toISOString();
@@ -56,7 +65,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     productionQty: '',
     aeSupervisor: body.aeSupervisor || '',
     keyAccountExec: '',
-    customerEmail: body.customerEmail || '',
+    customerEmail,
     preparedBy: body.preparedBy || user.name || '',
     reviewedBy: '',
     team: deal.team || user.team || null,

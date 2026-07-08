@@ -2,13 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, Pencil, Save, Send, Trash2, Trophy, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, Paperclip, Pencil, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
-import { fmtMoney, fmtDateTime } from "@/lib/format";
+import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
+import { useRole, useTeam } from "@/lib/roleContext";
+import { canDeleteRecord } from "@/lib/permissions";
+import { FORECAST_LEVELS, forecastBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
+import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -201,6 +205,8 @@ export default function DealOverviewPage() {
 
   const deal = data?.deal;
   const canEdit = !!data?.canEdit;
+  const role = useRole();
+  const team = useTeam();
   const alreadyWon = ["won", "in_project"].includes(deal?.stage);
   const lc = useMemo(
     () => (deal ? dealLifecycle(deal, {
@@ -221,6 +227,39 @@ export default function DealOverviewPage() {
   const [feedBody, setFeedBody] = useState("");
   const [feedDue, setFeedDue] = useState("");
   const [feedBusy, setFeedBusy] = useState(false);
+  const [feedFiles, setFeedFiles] = useState([]); // { file, url } รูปที่เลือกไว้ (ยังไม่อัป)
+  const [lightbox, setLightbox] = useState(null); // { src, name } พรีวิวเต็มจอ
+
+  // เลือกรูปแนบ (composer) — กรองขนาด/ชนิด client-side ก่อน, สร้าง objectURL พรีวิว
+  const onPickFiles = (e) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = ""; // ให้เลือกไฟล์เดิมซ้ำได้
+    const valid = [];
+    for (const file of picked) {
+      if (!file.type.startsWith("image/")) { setError(`ไฟล์ ${file.name} ไม่ใช่รูปภาพ`); continue; }
+      if (file.size > MAX_UPLOAD_BYTES) { setError(`ไฟล์ ${file.name} ใหญ่เกิน ${MAX_UPLOAD_MB} MB`); continue; }
+      valid.push({ file, url: URL.createObjectURL(file) });
+    }
+    setFeedFiles((prev) => [...prev, ...valid].slice(0, 8));
+  };
+  const removeFeedFile = (idx) => setFeedFiles((prev) => {
+    const next = prev.slice();
+    const [gone] = next.splice(idx, 1);
+    if (gone) URL.revokeObjectURL(gone.url);
+    return next;
+  });
+
+  // อัปโหลดรูปหนึ่งไฟล์ผ่าน /api/upload (Drive/Supabase) → คืน ref สำหรับเก็บใน activity
+  const uploadOneImage = async (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (deal?.customerId) { fd.append("entityType", "customer"); fd.append("entityId", deal.customerId); }
+    if (deal?.customerName) fd.append("customerName", deal.customerName);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload.error || `อัปโหลด ${file.name} ไม่สำเร็จ`);
+    return { fileUrl: payload.url, driveFileId: payload.driveFileId || null, fileName: file.name, mimeType: file.type, sizeBytes: file.size };
+  };
 
   // โมดัลแก้ดีล + สร้าง PM
   const [customers, setCustomers] = useState([]);
@@ -233,10 +272,13 @@ export default function DealOverviewPage() {
   const [pmInitial, setPmInitial] = useState(null);
 
   const postActivity = async () => {
-    if (!feedBody.trim()) return;
+    if (!feedBody.trim() && !feedFiles.length) return;
     setFeedBusy(true);
     setError("");
     try {
+      // อัปรูปที่เลือกไว้ก่อน แล้วแนบ ref ไปกับ activity
+      const attachments = [];
+      for (const f of feedFiles) attachments.push(await uploadOneImage(f.file));
       const res = await fetch("/api/sales-planning/activities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -245,12 +287,15 @@ export default function DealOverviewPage() {
           kind: feedKind,
           body: feedBody.trim(),
           dueDate: feedKind === "next_step" ? (feedDue || null) : null,
+          attachments,
         }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โพสต์อัปเดตไม่สำเร็จ");
       setFeedBody("");
       setFeedDue("");
       setFeedKind("note");
+      feedFiles.forEach((f) => URL.revokeObjectURL(f.url));
+      setFeedFiles([]);
       await load();
     } catch (e) {
       setError(e.message || "โพสต์อัปเดตไม่สำเร็จ");
@@ -367,6 +412,7 @@ export default function DealOverviewPage() {
       stage: deal.stage || "lead",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
+      probability: snapForecastLevel(deal.probability),
       forecastMonth: deal.forecastMonth || "",
       expectedCloseDate: deal.expectedCloseDate || "",
       depositPaid: !!deal.depositPaid,
@@ -380,10 +426,13 @@ export default function DealOverviewPage() {
     setError("");
     try {
       const selected = customers.find((c) => c.id === dealForm.customerId);
+      // อย่าให้ชื่อลูกค้าหายเมื่อ dropdown โหลดไม่ครบ/ลูกค้า pending ถูกซ่อน — fallback
+      // ไปชื่อเดิมของดีลก่อน null (เหมือน logic ในหน้า list)
+      const customerName = selected?.name || deal?.customerName || deal?.customer?.name || null;
       const res = await fetch(`/api/sales-planning/deals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...dealForm, customerName: selected?.name || null }),
+        body: JSON.stringify({ ...dealForm, customerName }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
       setDealModalOpen(false);
@@ -412,8 +461,14 @@ export default function DealOverviewPage() {
       setError(e.message || "ลบไม่สำเร็จ");
     }
   };
-  // ลบไม่ได้ถ้าปิด Won แล้ว หรือมาจาก PO สหมิตร (นับยอด/มีหลักฐานแล้ว) — ซ่อนปุ่ม
-  const canDelete = deal && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId;
+  // ลบไม่ได้ถ้า: ปิด Won แล้ว / มาจาก PO สหมิตร (นับยอดแล้ว) / มีทะเบียนสรรพสามิตผูก /
+  // มี PM project ผูกแต่ผู้ใช้ไม่มีสิทธิ์ลบ project (AE/AC = 'none') — ตรงกับที่ API จะปฏิเสธ
+  // จึงไม่โชว์ปุ่มให้กดแล้วเจอ 403/409 (U3).
+  const linkedProject = data?.project || null;
+  const canDeleteLinkedProject = !deal?.projectId || (linkedProject && canDeleteRecord({ role, team }, "projects", linkedProject));
+  const hasExcise = (data?.exciseRegistrations?.length || 0) > 0;
+  const canDelete = deal && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId
+    && canDeleteLinkedProject && !hasExcise;
 
   // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
   const doCreateExcise = async (productId) => {
@@ -456,8 +511,8 @@ export default function DealOverviewPage() {
     if (!canEdit || !lc?.nextAction) return null;
     const k = lc.nextAction.kind;
     if (k === "win") return <button type="button" className="btn btn-primary" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
-    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><PackageCheck size={14} aria-hidden="true" /> สร้างโครงการ</button>;
-    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/sa/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> เปิดโครงการ</a>;
+    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><PackageCheck size={14} aria-hidden="true" /> จัดการโครงการ</button>;
+    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/sa/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> จัดการโครงการ</a>;
     return null;
   };
   const headerRight = (
@@ -472,23 +527,32 @@ export default function DealOverviewPage() {
           <Ban size={15} aria-hidden="true" /> ไม่ไปต่อ
         </button>
       )}
-      {deal?.projectId && (
+      {/* ปุ่ม "จัดการโครงการ" ถาวร: มี PM แล้ว → เปิดหน้าโครงการ, ยังไม่มี → เปิดโมดัลสร้าง */}
+      {deal?.projectId ? (
         <a className="btn" href={`/sa/projects/${deal.projectId}`}>
-          <ExternalLink size={15} aria-hidden="true" /> โครงการ PM
+          <PackageCheck size={15} aria-hidden="true" /> จัดการโครงการ
         </a>
-      )}
-      {canEdit && (
-        <button type="button" className="btn" onClick={openEditDeal} disabled={!!actionBusy}>
-          <Pencil size={15} aria-hidden="true" /> แก้ไข
+      ) : (canEdit && deal?.stage !== "lost") ? (
+        <button type="button" className="btn" onClick={openCreatePM} disabled={!!actionBusy}>
+          <PackageCheck size={15} aria-hidden="true" /> จัดการโครงการ
         </button>
-      )}
-      {canEdit && canDelete && (
-        <button type="button" className="btn ghost" onClick={deleteDeal} disabled={!!actionBusy} title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
-          <Trash2 size={15} aria-hidden="true" /> ลบ
+      ) : null}
+    </>
+  );
+
+  // ปุ่มแก้ไข/ลบ — ไอคอนล้วน วางแถวเดียวกับปุ่มย้อนกลับ (R2)
+  const backActions = canEdit ? (
+    <>
+      <button type="button" className="btn icon-only ghost" onClick={openEditDeal} disabled={!!actionBusy} aria-label="แก้ไขโครงการ" title="แก้ไข">
+        <Pencil size={16} aria-hidden="true" />
+      </button>
+      {canDelete && (
+        <button type="button" className="btn icon-only ghost" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบโครงการ" title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
+          <Trash2 size={16} aria-hidden="true" />
         </button>
       )}
     </>
-  );
+  ) : null;
 
   return (
     <Workspace
@@ -496,6 +560,7 @@ export default function DealOverviewPage() {
       title={deal?.title || "ศูนย์รวมโครงการ"}
       subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมโครงการ"}
       back={{ href: "/sa", label: "กลับไปภาพรวม" }}
+      backActions={backActions}
       headerRight={headerRight}
       loading={loading}
     >
@@ -511,6 +576,7 @@ export default function DealOverviewPage() {
           <section className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 15 }}>{stageBadge(deal.stage)}</span>
+              {!alreadyWon && deal.stage !== "lost" && forecastBadge(deal.probability)}
               <span className="ui-badge" style={{ color: deal.depositPaid ? "var(--green)" : "var(--amber)" }}>
                 {deal.depositPaid ? "ได้รับมัดจำแล้ว" : "ยังไม่ยืนยันมัดจำ"}
               </span>
@@ -724,8 +790,26 @@ export default function DealOverviewPage() {
                     placeholder="พิมพ์อัปเดตงาน เช่น โทรคุยลูกค้าแล้ว รอส่งใบเสนอราคา..."
                     style={{ resize: "vertical" }}
                   />
-                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <button type="button" className="btn btn-primary sm" onClick={postActivity} disabled={feedBusy || !feedBody.trim()}>
+                  {/* พรีวิวรูปที่เลือกไว้ (ยังไม่อัป) — กดกากบาทเอาออกได้ */}
+                  {!!feedFiles.length && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {feedFiles.map((f, i) => (
+                        <div key={i} style={{ position: "relative", width: 72, height: 72, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+                          <img src={f.url} alt={f.file.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          <button type="button" onClick={() => removeFeedFile(i)} aria-label="เอารูปออก"
+                            style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,.6)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", lineHeight: 0 }}>
+                            <X size={13} aria-hidden="true" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+                    <label className="btn ghost sm" style={{ cursor: "pointer" }} title="แนบรูปภาพ">
+                      <Paperclip size={13} aria-hidden="true" /> แนบรูป
+                      <input type="file" accept={IMAGE_ACCEPT_ATTR} multiple onChange={onPickFiles} style={{ display: "none" }} />
+                    </label>
+                    <button type="button" className="btn btn-primary sm" onClick={postActivity} disabled={feedBusy || (!feedBody.trim() && !feedFiles.length)}>
                       <Send size={13} aria-hidden="true" /> {feedBusy ? "กำลังโพสต์..." : "โพสต์"}
                     </button>
                   </div>
@@ -782,7 +866,21 @@ export default function DealOverviewPage() {
                             </span>
                           )}
                         </div>
-                        <div style={{ margin: "4px 0 2px", fontSize: 13.5, whiteSpace: "pre-wrap" }}>{act.body}</div>
+                        {act.body && <div style={{ margin: "4px 0 2px", fontSize: 13.5, whiteSpace: "pre-wrap" }}>{act.body}</div>}
+                        {!!act.attachments?.length && (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "6px 0 2px" }}>
+                            {act.attachments.map((att, i) => {
+                              const src = `/api/sales-planning/activities/${act.id}/file?i=${i}`;
+                              return (
+                                <button key={i} type="button" onClick={() => setLightbox({ src, name: att.fileName })}
+                                  title={att.fileName || "ดูรูป"}
+                                  style={{ width: 88, height: 88, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", padding: 0, cursor: "pointer", background: "var(--bg)" }}>
+                                  <img src={src} alt={att.fileName || "รูปแนบ"} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                         <div style={{ color: "var(--text-3)", fontSize: 12 }}>{act.createdByName || "-"} · {act.createdAt ? fmtDateTime(act.createdAt) : "-"}</div>
                       </li>
                     );
@@ -868,6 +966,12 @@ export default function DealOverviewPage() {
               </select>
             </label>
             <label>
+              โอกาสที่จะปิดได้ (FC%)
+              <select className="premium-select" value={snapForecastLevel(dealForm.probability)} disabled={alreadyWon} onChange={(e) => setDealForm({ ...dealForm, probability: e.target.value })}>
+                {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+            </label>
+            <label>
               เดือนพยากรณ์
               <input type="month" className="premium-input" value={dealForm.forecastMonth} onChange={(e) => setDealForm({ ...dealForm, forecastMonth: e.target.value })} />
             </label>
@@ -913,8 +1017,25 @@ export default function DealOverviewPage() {
         categories={categories}
         allProducts={allProducts}
         createEndpoint={`/api/sales-planning/deals/${id}/create-project`}
-        createLabel="สร้างโครงการ PM"
+        createLabel="จัดการโครงการ"
       />
+
+      {/* Lightbox พรีวิวรูปเต็มจอ — คลิกที่ใดก็ปิด */}
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-label={lightbox.name || "พรีวิวรูป"}
+          onClick={() => setLightbox(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out" }}
+        >
+          <button type="button" onClick={() => setLightbox(null)} aria-label="ปิด"
+            style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,.15)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center" }}>
+            <X size={20} aria-hidden="true" />
+          </button>
+          <img src={lightbox.src} alt={lightbox.name || "รูปแนบ"} onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8, cursor: "default" }} />
+        </div>
+      )}
     </Workspace>
   );
 }
