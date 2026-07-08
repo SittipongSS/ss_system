@@ -8,7 +8,7 @@ import {
   TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed, Pause,
   Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
-  GitCommit, History, RotateCcw, ShieldCheck, PackageCheck,
+  GitCommit, History, RotateCcw, ShieldCheck, PackageCheck, ExternalLink,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -1044,7 +1044,13 @@ export default function ProjectDetailPage() {
         {canEdit && (
           <div style={{ display: "flex", gap: "8px" }}>
             <button className="btn-icon" onClick={() => setShowEditProject(true)} aria-label="แก้ไขโปรเจกต์" title="แก้ไขโปรเจกต์"><Edit2 size={16} /></button>
-            <button className="btn-icon danger" onClick={handleDeleteProject} aria-label="ลบโปรเจกต์" title="ลบโปรเจกต์"><Trash2 size={16} /></button>
+            {/* Sales เป็นแม่: โครงการที่ผูกงานขายต้องลบที่หน้าบริหารงานขาย (ลบทั้งสาย).
+                โปรเจกต์กำพร้า (ยังไม่ผูกดีล) ลบตรงนี้ได้ตามเดิม. */}
+            {data.dealId ? (
+              <Link className="btn-icon" href={`/sales-planning/deals/${data.dealId}`} aria-label="จัดการที่หน้าบริหารงานขาย" title="โครงการนี้ผูกงานขาย — ลบ/จัดการที่หน้าบริหารงานขาย"><ExternalLink size={16} /></Link>
+            ) : (
+              <button className="btn-icon danger" onClick={handleDeleteProject} aria-label="ลบโปรเจกต์" title="ลบโปรเจกต์"><Trash2 size={16} /></button>
+            )}
           </div>
         )}
       </div>

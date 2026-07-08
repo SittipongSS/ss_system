@@ -126,7 +126,9 @@ export default function SalesPlanningPipelinePage() {
   };
 
   const deleteDeal = async (deal) => {
-    if (!window.confirm(`ลบโครงการ "${deal.title}"?`)) return;
+    // Sales เป็นแม่ — ลบโครงการจะลบงานผลิต PM ที่ผูกอยู่พ่วงไปด้วย
+    const withPm = deal.projectId ? "\n\nงานผลิต (PM) ที่ผูกอยู่จะถูกลบพ่วงไปด้วย" : "";
+    if (!window.confirm(`ลบโครงการ "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
     const res = await fetch(`/api/sales-planning/deals/${deal.id}`, { method: "DELETE" });
     if (!res.ok) setError((await res.json()).error || "ลบโครงการไม่สำเร็จ");
@@ -476,8 +478,8 @@ export default function SalesPlanningPipelinePage() {
                             <Pencil size={15} aria-hidden="true" />
                           </button>
                         )}
-                        {deal.canEdit && (
-                          <button type="button" className="btn icon-only ghost" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบโครงการ">
+                        {deal.canEdit && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId && (
+                          <button type="button" className="btn icon-only ghost" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>
                         )}

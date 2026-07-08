@@ -381,7 +381,13 @@ export default function DealOverviewPage() {
   };
   const deleteDeal = async () => {
     if (!deal) return;
-    if (!window.confirm(`ลบโครงการ "${deal.title}"? การลบนี้ย้อนกลับไม่ได้`)) return;
+    // ระบุให้ชัดว่าจะลบอะไรพ่วงไปบ้าง (Sales เป็นแม่ — ลบทั้งสาย)
+    const extras = [];
+    if (data?.project) extras.push(`งานผลิต PM ${data.project.code || ""}`.trim());
+    if (data?.projectTasks?.length) extras.push(`${data.projectTasks.length} ขั้นตอน`);
+    if (data?.shipmentPrep) extras.push("เอกสารเตรียมส่งของ");
+    const extraText = extras.length ? `\n\nจะลบพ่วงด้วย: ${extras.join(" · ")}` : "";
+    if (!window.confirm(`ลบโครงการ "${deal.title}"?${extraText}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
     try {
       const res = await fetch(`/api/sales-planning/deals/${id}`, { method: "DELETE" });
@@ -391,6 +397,8 @@ export default function DealOverviewPage() {
       setError(e.message || "ลบไม่สำเร็จ");
     }
   };
+  // ลบไม่ได้ถ้าปิด Won แล้ว หรือมาจาก PO สหมิตร (นับยอด/มีหลักฐานแล้ว) — ซ่อนปุ่ม
+  const canDelete = deal && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId;
 
   // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
   const doCreateExcise = async (productId) => {
@@ -459,8 +467,8 @@ export default function DealOverviewPage() {
           <Pencil size={15} aria-hidden="true" /> แก้ไข
         </button>
       )}
-      {canEdit && (
-        <button type="button" className="btn ghost" onClick={deleteDeal} disabled={!!actionBusy} title="ลบโครงการ">
+      {canEdit && canDelete && (
+        <button type="button" className="btn ghost" onClick={deleteDeal} disabled={!!actionBusy} title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
           <Trash2 size={15} aria-hidden="true" /> ลบ
         </button>
       )}

@@ -2,8 +2,8 @@ import { viewScope, pmEditScope, inScope, canDeleteRecord, can } from '@/lib/per
 import { mergeTemplateTasks, recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
-import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
-import { loadProject } from '@/lib/pm/projectsRepo';
+import { withUser, ok, fail, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
+import { loadProject, deleteProjectDeep } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
@@ -192,7 +192,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok({ ...data, ...(productWarning ? { productWarning } : {}) });
 });
 
-// DELETE /api/pm/projects/[id] — supervisor (all) or team lead (own team).
+// DELETE /api/pm/projects/[id] — Sales เป็นแม่ (แผน merge M3): โครงการที่ผูกกับ
+// งานขายต้องลบที่หน้า "บริหารงานขาย" ที่เดียว (ลบทั้งสายพร้อมกัน). ที่นี่รับเฉพาะ
+// โปรเจกต์ "กำพร้า" (ยังไม่ผูกดีล — ข้อมูล PM เก่าก่อน backfill เฟส 5) เท่านั้น.
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id: idOrCode } = await ctx.params;
 
@@ -204,47 +206,23 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return forbidden();
   }
 
-  // Find the linked sales deal BEFORE deleting (the FK is ON DELETE SET NULL, so
-  // after the delete we could no longer locate it by projectId).
+  // ผูกดีลอยู่ → ปฏิเสธ ให้ไปลบที่โครงการ (แม่) — กันการลบ project ทิ้งไว้ให้ดีลกำพร้า
+  // และกันลบซ้ำซ้อนสองที่. โปรเจกต์กำพร้าเท่านั้นที่ลบตรงนี้ได้.
   const { data: linkedDeal } = await supabase
-    .from('sales_deals').select('*').eq('projectId', id).maybeSingle();
+    .from('sales_deals').select('id').eq('projectId', id).maybeSingle();
+  if (linkedDeal) {
+    return conflict('โครงการนี้ผูกกับงานขายแล้ว — ลบที่หน้า "บริหารงานขาย" (จะลบทั้งโครงการและงานผลิตพร้อมกัน)');
+  }
 
-  const { error } = await supabase.from('projects').delete().eq('id', id);
-  if (error) return fail(error.message, 500);
+  try {
+    await deleteProjectDeep(supabase, id);
+  } catch (e) {
+    return fail(e.message, 500);
+  }
   await recordAudit({
     user, action: 'delete', entityType: 'project', entityId: id, before: project,
-    summary: `ลบโปรเจกต์ ${project.code || id} ${project.name || ''}`.trim(), request: req,
+    summary: `ลบโปรเจกต์ (กำพร้า) ${project.code || id} ${project.name || ''}`.trim(), request: req,
   });
-
-  // Auto-return the deal to the pipeline: unlink, revert stage (won if deposit
-  // paid, else back to the pre-project proposal stage), and drop stale link
-  // metadata — otherwise the deal is orphaned at in_project with no project.
-  if (linkedDeal) {
-    const now = new Date().toISOString();
-    const revertStage = linkedDeal.depositPaid ? 'won' : 'timeline_proposed';
-    const { linkedProjectCode, linkedProjectAt, ...restMeta } = linkedDeal.metadata || {};
-    const { data: revertedDeal } = await supabase
-      .from('sales_deals')
-      .update({ projectId: null, stage: revertStage, metadata: restMeta, updatedAt: now })
-      .eq('id', linkedDeal.id)
-      .select()
-      .single();
-    if (revertedDeal && linkedDeal.stage !== revertedDeal.stage) {
-      await supabase.from('sales_deal_stage_history').insert({
-        id: genId('DSH'),
-        dealId: linkedDeal.id,
-        fromStage: linkedDeal.stage,
-        toStage: revertedDeal.stage,
-        changedBy: user.id || null,
-        changedByName: user.name || null,
-      });
-    }
-    await recordAudit({
-      user, action: 'update', entityType: 'sales_deal', entityId: linkedDeal.id,
-      before: linkedDeal, after: revertedDeal || undefined,
-      summary: `คืนดีลสู่ pipeline (ลบโปรเจกต์ ${project.code || id})`, request: req,
-    });
-  }
 
   return ok({ success: true });
 });
