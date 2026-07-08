@@ -110,11 +110,17 @@ export const ATTACHMENT_ENTITY_TYPES = Object.keys(ATTACHMENT_TYPES);
 export const MAX_UPLOAD_MB = 10;
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
-// ── ชนิดไฟล์ที่อนุญาต (เอกสารแนบ = PDF เท่านั้น) ─────────────────────
-// ค่ากลางชุดเดียว: server ใช้บังคับจริง, client ใช้เป็น accept ของ <input>.
-export const ACCEPTED_UPLOAD_MIME = ["application/pdf"];
-export const ACCEPTED_UPLOAD_EXT = ["pdf"];
-export const UPLOAD_ACCEPT_ATTR = "application/pdf,.pdf";
+// ── ชนิดไฟล์ที่อนุญาต (เอกสาร PDF + รูปภาพ) ──────────────────────────
+// ค่ากลางชุดเดียว: server ใช้บังคับจริง (กัน .exe/.html), client ใช้เป็น accept.
+// รูปภาพเปิดให้ตั้งแต่ความเคลื่อนไหวงานขายแนบรูปได้ (ตรงกับข้อความ error เดิม
+// ที่ระบุ PDF/PNG/JPG/WEBP อยู่แล้ว).
+export const ACCEPTED_IMAGE_MIME = ["image/png", "image/jpeg", "image/webp"];
+export const ACCEPTED_IMAGE_EXT = ["png", "jpg", "jpeg", "webp"];
+export const ACCEPTED_UPLOAD_MIME = ["application/pdf", ...ACCEPTED_IMAGE_MIME];
+export const ACCEPTED_UPLOAD_EXT = ["pdf", ...ACCEPTED_IMAGE_EXT];
+export const UPLOAD_ACCEPT_ATTR = "application/pdf,.pdf,image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
+// accept สำหรับที่รับเฉพาะรูป (เช่น composer ความเคลื่อนไหวงานขาย).
+export const IMAGE_ACCEPT_ATTR = "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
 
 // docType ที่ "จำเป็น" ของ entity หนึ่งๆ (รับ override การ์ดได้ เช่น เอกสาร
 // ลูกค้าตามประเภท). ใช้บังคับแนบเอกสารก่อนยื่น — ทั้งฝั่ง UI และ API.

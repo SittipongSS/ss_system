@@ -5,6 +5,23 @@ import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesVi
 export const dynamic = 'force-dynamic';
 
 const ACTIVITY_KINDS = new Set(['note', 'call', 'meeting', 'email', 'next_step']);
+const MAX_ATTACHMENTS = 8;
+
+// รับเฉพาะ ref ไฟล์ที่อัปผ่าน /api/upload แล้ว — เก็บฟิลด์ที่จำเป็นเท่านั้น กัน
+// payload แปลกปลอม (ไฟล์จริงอยู่บน Drive/Supabase; แถวนี้เก็บแค่ตัวชี้).
+export function sanitizeAttachments(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((a) => a && typeof a === 'object' && typeof a.fileUrl === 'string' && a.fileUrl)
+    .slice(0, MAX_ATTACHMENTS)
+    .map((a) => ({
+      fileUrl: String(a.fileUrl),
+      driveFileId: a.driveFileId ? String(a.driveFileId) : null,
+      fileName: a.fileName ? String(a.fileName).slice(0, 200) : null,
+      mimeType: a.mimeType ? String(a.mimeType).slice(0, 100) : null,
+      sizeBytes: Number.isFinite(a.sizeBytes) ? Number(a.sizeBytes) : null,
+    }));
+}
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -32,7 +49,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const body = await req.json();
   if (!body.dealId) return badRequest('ต้องระบุ dealId');
-  if (!body.body?.trim()) return badRequest('ต้องระบุรายละเอียด activity');
+  const attachments = sanitizeAttachments(body.attachments);
+  // ต้องมีข้อความ หรือมีไฟล์แนบอย่างน้อยหนึ่ง (โพสต์รูปล้วนได้)
+  if (!body.body?.trim() && !attachments.length) return badRequest('ต้องระบุรายละเอียดหรือแนบไฟล์');
 
   const { data: deal } = await supabase.from('sales_deals').select('*').eq('id', body.dealId).maybeSingle();
   if (!deal) return notFound('ไม่พบโครงการ');
@@ -42,8 +61,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     id: genId('ACT'),
     dealId: body.dealId,
     kind: ACTIVITY_KINDS.has(body.kind) ? body.kind : 'note',
-    body: body.body.trim(),
+    body: (body.body || '').trim(),
     dueDate: body.dueDate || null,
+    attachments,
     createdBy: user.id || null,
     createdByName: user.name || null,
   };
