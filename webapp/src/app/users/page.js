@@ -16,7 +16,7 @@ import {
   GRANTABLE_CAP_LABELS,
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
-import { fmtPhone } from "@/lib/format";
+import { fmtPhone, fmtDate } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
@@ -273,9 +273,7 @@ export default function UserManagement() {
                         {u.team ? TEAM_LABELS[u.team] || u.team : "-"}
                       </td>
                       <td className="text-[var(--text-3)] text-xs">
-                        {u.lastSignInAt
-                          ? new Date(u.lastSignInAt).toLocaleDateString("th-TH")
-                          : "ยังไม่เคย"}
+                        {u.lastSignInAt ? fmtDate(u.lastSignInAt) : "ยังไม่เคย"}
                       </td>
                       <td className="text-center">
                         <div className="flex items-center justify-center gap-3">

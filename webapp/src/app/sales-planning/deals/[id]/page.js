@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { AlertTriangle, ClipboardList, ExternalLink, FileText, LineChart, PackageCheck, RefreshCcw } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
+import { fmtMoney, fmtDateTime } from "@/lib/format";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -14,12 +15,7 @@ function driftText(it) {
   return `${it.fgCode}: มีการเปลี่ยนแปลง`;
 }
 
-const money = (value) =>
-  Number(value || 0).toLocaleString("th-TH", {
-    style: "currency",
-    currency: "THB",
-    maximumFractionDigits: 0,
-  });
+const money = (value) => fmtMoney(value);
 
 function stageBadge(stage) {
   const color = {
@@ -251,7 +247,7 @@ export default function DealOverviewPage() {
                     <li key={row.id} style={{ marginBottom: 8 }}>
                       {STAGE_LABELS[row.fromStage] || row.fromStage || "เริ่ม"} → {STAGE_LABELS[row.toStage] || row.toStage}
                       <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>
-                        {row.changedByName || "-"} · {row.changedAt ? new Date(row.changedAt).toLocaleString("th-TH") : "-"}
+                        {row.changedByName || "-"} · {row.changedAt ? fmtDateTime(row.changedAt) : "-"}
                       </span>
                     </li>
                   ))}
