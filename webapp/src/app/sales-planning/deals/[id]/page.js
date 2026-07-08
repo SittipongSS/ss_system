@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, Pencil, RefreshCcw, Save, Send, Trash2, Trophy, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, Pencil, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
@@ -487,9 +487,6 @@ export default function DealOverviewPage() {
           <Trash2 size={15} aria-hidden="true" /> ลบ
         </button>
       )}
-      <button type="button" className="btn" onClick={load} disabled={loading}>
-        <RefreshCcw size={15} aria-hidden="true" /> รีเฟรช
-      </button>
     </>
   );
 

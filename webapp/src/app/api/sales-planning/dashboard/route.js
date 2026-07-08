@@ -57,10 +57,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // Per-SA breakdown: target (person-level rows) vs won vs weighted forecast.
   // Team-level target rows (ownerId null) are aggregated in byTeam, not here.
   const ownerMap = {};
+  const normalizedOwnerName = (name) => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
   const ownerBucket = (id, name, team) => {
-    const key = id || 'unassigned';
+    // Prefer name+team over raw ownerId so legacy targets/deals with stale user
+    // ids do not render the same person twice on the overview.
+    const cleanName = normalizedOwnerName(name);
+    const key = cleanName ? `${team || 'no-team'}|${cleanName}` : (id || 'unassigned');
     if (!ownerMap[key]) {
       ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, openCount: 0, wonCount: 0 };
+    } else {
+      ownerMap[key].ownerId ||= id || null;
+      ownerMap[key].ownerName = ownerMap[key].ownerName === 'ไม่ระบุ' && name ? name : ownerMap[key].ownerName;
+      ownerMap[key].team ||= team || null;
     }
     return ownerMap[key];
   };

@@ -12,7 +12,11 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (!can(user.role, 'pm:view')) return forbidden();
 
   let query = supabase.from('projects').select('*').order('createdAt', { ascending: false });
-  if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+  if (viewScope(user?.role) === 'team') {
+    const team = user?.team ?? '';
+    const own = user?.id ?? '';
+    query = query.or(`team.eq.${team},ownerId.eq.${own}`);
+  }
 
   const { data, error } = await query;
   if (error) return fail(error.message, 500);

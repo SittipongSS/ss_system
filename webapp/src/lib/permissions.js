@@ -182,9 +182,9 @@ const ROLE_CAPS = {
   secretary: ['mgmt:view', 'mgmt:edit'],
   // ae_supervisor: sales head — all-team data scope, but not a system admin.
   ae_supervisor: SALES_HEAD_CAPS,
-  // team lead: ops + may delete orders (scoped to own team via deleteScope) +
-  // sets Sales Planning targets for their own team (team-level + per-AE).
-  senior_ae: [...SALES_OPS, 'sales:delete', 'salesplan:target'],
+  // team lead: ops + may delete orders (scoped to own team via deleteScope).
+  // Target planning is reserved for the sales head and admin.
+  senior_ae: [...SALES_OPS, 'sales:delete'],
   // back-office + front-office: same capabilities, differ only by edit SCOPE
   ac: SALES_OPS,
   ae: SALES_OPS,
@@ -331,6 +331,11 @@ export function pmEditScope(role) {
                  // 'workflow' tier in pmTaskEditTier, not the project plan.
 }
 
+export function inPmProjectScope(user, project) {
+  if (inScope(pmEditScope(user?.role), user, project)) return true;
+  return can(user?.role, 'pm:edit') && !!user?.id && user.id === project?.ownerId;
+}
+
 // Delete is stricter than edit:
 //   customers / products — superuser only (org rule)
 //   orders / projects    — superuser (all teams) + senior_ae (own team)
@@ -409,7 +414,7 @@ export function pmTaskScopes(role) {
 //   'workflow' — assignee, or same-department staff: status/progress/notes only
 //   'none'     — may not edit
 export function pmTaskEditTier(user, task, project) {
-  if (inScope(pmEditScope(user?.role), user, project || {})) return 'full';
+  if (inPmProjectScope(user, project || {})) return 'full';
   const ownsTask = !!user?.id && task?.assigneeId === user.id;
   const sameDept = user?.role === 'staff' && !!user?.department
     && normalizeDepartment(user.department) === task?.role;
