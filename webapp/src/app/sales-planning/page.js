@@ -2,13 +2,13 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, RefreshCcw, Target, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Target, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
-import { KpiCard, MONTH_LABELS, MonthPicker, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+import { KpiCard, MONTH_LABELS, MonthPicker, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import { SALES_FEATURES } from "@/lib/salesPlanning";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, fmtMoney } from "@/lib/format";
 
 const OVERVIEW_TABS = [
   { key: "tables", label: "ตาราง" },
@@ -25,6 +25,8 @@ const METRICS = [
   { key: "won", label: "Actual", color: "var(--green)" },
   { key: "remaining", label: "FC คงเหลือ", color: "var(--amber)" },
 ];
+
+const money = (value) => fmtMoney(value);
 
 function deriveMetrics(cell) {
   const target = Number(cell?.target || 0);
@@ -170,8 +172,8 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
           ))}
         </div>
       </div>
-      <div className="fz-box premium-glass-table" style={{ "--fz-c1w": "160px" }}>
-        <table className="fz-table w-full text-sm" style={{ minWidth: 1180 }}>
+      <div className="fz-box premium-glass-table sales-overview-grid" style={{ "--fz-c1w": "170px", "--fz-c2w": "118px" }}>
+        <table className="fz-table w-full text-sm" style={{ minWidth: 1880 }}>
           <thead>
             <tr>
               <th className="fz-c1" style={{ width: 160, minWidth: 160 }}>รายการ</th>
@@ -230,7 +232,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
             return (
               <tfoot>
                 {METRICS.map((m, mi) => (
-                  <tr key={`grand-${m.key}`} style={{ background: "var(--panel-2)", borderTop: mi === 0 ? "2px solid var(--border)" : undefined }}>
+                  <tr key={`grand-${m.key}`} className="fz-total-row" style={{ background: "var(--panel-2)", borderTop: mi === 0 ? "2px solid var(--border)" : undefined }}>
                     {mi === 0 && (
                       <td className="fz-c1" rowSpan={METRICS.length} style={{ verticalAlign: "top", fontWeight: 800, width: 160, minWidth: 160 }}>
                         รวมทั้งหมด
@@ -335,9 +337,6 @@ export default function SalesPlanningOverviewPage() {
       <MonthPicker value={month} onChange={setMonth} />
       <Link className="btn" href="/sales-planning/deals"><FolderKanban size={15} aria-hidden="true" /> โครงการ</Link>
       <Link className="btn" href="/sales-planning/targets"><Target size={15} aria-hidden="true" /> เป้าหมาย</Link>
-      <button type="button" className="btn" onClick={load} disabled={loading}>
-        <RefreshCcw size={15} aria-hidden="true" /> รีเฟรช
-      </button>
     </>
   );
 

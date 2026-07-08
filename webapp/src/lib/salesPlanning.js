@@ -69,8 +69,8 @@ export function canEditSalesPlanning(user) {
 }
 
 export function canEditSalesTarget(user) {
-  // Targets are a supervisory tool — only salesplan:target holders (senior_ae /
-  // ae_supervisor / admin). Plain salesplan:edit (ae/ac) does NOT grant this.
+  // Targets are reserved for the sales head and admin. Plain salesplan:edit
+  // (ae/ac) and team leads do NOT grant this.
   return !!user && can(user.role, 'salesplan:target');
 }
 

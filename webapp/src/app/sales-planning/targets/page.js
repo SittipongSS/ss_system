@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, RefreshCcw, Save, Target, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Save, Target, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
@@ -171,9 +171,9 @@ export default function SalesPlanningTargetsPage() {
     (node) => {
       if (!canTarget) return false;
       if (node.level === "sa") return isSuper;
-      return isSuper || (role === "senior_ae" && node.team === team);
+      return isSuper;
     },
-    [canTarget, isSuper, role, team],
+    [canTarget, isSuper],
   );
 
   const labelOf = (node) =>
@@ -297,9 +297,6 @@ export default function SalesPlanningTargetsPage() {
       >
         {yearOptions.map((y) => <option key={y} value={y}>ปี {y}</option>)}
       </select>
-      <button type="button" className="btn" onClick={() => guardPending(load)} disabled={loading}>
-        <RefreshCcw size={15} aria-hidden="true" /> รีเฟรช
-      </button>
     </>
   );
 
@@ -366,7 +363,7 @@ export default function SalesPlanningTargetsPage() {
         {info && <div className="glass-panel" style={{ padding: "12px 14px", borderColor: "var(--green)", color: "var(--green)" }}>{info}</div>}
         {!canTarget && (
           <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>
-            เฉพาะ Senior AE / หัวหน้าฝ่ายขาย / admin ตั้งเป้าได้ — หน้านี้แสดงเป้าแบบอ่านอย่างเดียว
+            เฉพาะ AE Supervisor / admin ตั้งเป้าได้ — หน้านี้แสดงเป้าแบบอ่านอย่างเดียว
           </div>
         )}
 

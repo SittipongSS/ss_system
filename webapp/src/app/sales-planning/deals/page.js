@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, RefreshCcw, Save, Search, Trash2, Truck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck } from "lucide-react";
 import Modal from "@/components/Modal";
 import Workspace from "@/components/ui/Workspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
@@ -23,7 +23,7 @@ export default function SalesPlanningPipelinePage() {
   const [reviewOnly, setReviewOnly] = useState(false); // ตัวกรอง "รอเติมข้อมูล (backfill)"
   const [backfilling, setBackfilling] = useState(false);
   const [month, setMonth] = useState(thisMonth());
-  const [allMonths, setAllMonths] = useState(false);
+  const [allMonths, setAllMonths] = useState(true);
   const [deals, setDeals] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -396,9 +396,6 @@ export default function SalesPlanningPipelinePage() {
           <PackageCheck size={15} aria-hidden="true" /> {backfilling ? "กำลังนำเข้า..." : "นำเข้าโครงการ PM เก่า"}
         </button>
       )}
-      <button type="button" className="btn" onClick={load} disabled={loading}>
-        <RefreshCcw size={15} aria-hidden="true" /> รีเฟรช
-      </button>
       {canEdit && (
         <button type="button" className="btn btn-primary" onClick={openNewDeal}>
           <Plus size={15} aria-hidden="true" /> เพิ่มโครงการ

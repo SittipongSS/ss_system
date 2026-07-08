@@ -4241,6 +4241,43 @@ button.empty-state { width: 100%; font: inherit; }
   box-shadow: none;
 }
 
+.sales-overview-grid {
+  max-height: calc(100dvh - 230px);
+}
+.sales-overview-grid th,
+.sales-overview-grid td {
+  padding: 9px 12px;
+}
+.sales-overview-grid th.num,
+.sales-overview-grid td.num {
+  min-width: 118px;
+  white-space: nowrap;
+}
+.sales-overview-grid .fz-c1 {
+  width: var(--fz-c1w, 170px) !important;
+  min-width: var(--fz-c1w, 170px) !important;
+}
+.sales-overview-grid .fz-c2 {
+  width: var(--fz-c2w, 118px) !important;
+  min-width: var(--fz-c2w, 118px) !important;
+}
+.sales-overview-grid tfoot {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+}
+.sales-overview-grid tfoot td {
+  background: var(--panel-2);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 18px rgba(0, 0, 0, 0.04);
+}
+.sales-overview-grid tfoot .fz-c1,
+.sales-overview-grid tfoot .fz-c2,
+.sales-overview-grid tfoot .fz-cr {
+  background: var(--panel-2);
+  z-index: 6;
+}
+
 .premium-badge {
   background: color-mix(in srgb, var(--blue) 15%, transparent);
   color: var(--blue);

@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, deleteScope, canAccessMgmt, can, capsFor, sanitizeExtraCaps, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, can, capsFor, sanitizeExtraCaps, GRANTABLE_CAPS } from './permissions';
 
 test('pmTaskScopes by role', () => {
   assert.deepEqual(pmTaskScopes('admin'), ['mine', 'team', 'all']);
@@ -26,6 +26,12 @@ test('pmTaskEditTier: full edit for admin / scoped sales', () => {
   assert.equal(pmTaskEditTier({ role: 'admin', id: 'a' }, { assigneeId: null }, { team: 'KA', ownerId: 'x' }), 'full');
   assert.equal(pmTaskEditTier({ role: 'senior_ae', team: 'ODM', id: 's' }, { assigneeId: null }, { team: 'ODM' }), 'full');
   assert.equal(pmTaskEditTier({ role: 'ae', team: 'KA', id: 'u1' }, { assigneeId: null }, { team: 'KA', ownerId: 'u2' }), 'full');
+});
+
+test('inPmProjectScope: PM editors may edit own project even when team is missing or stale', () => {
+  assert.equal(inPmProjectScope({ role: 'ae', team: 'KA', id: 'u1' }, { team: null, ownerId: 'u1' }), true);
+  assert.equal(inPmProjectScope({ role: 'ac', team: 'KA', id: 'u1' }, { team: 'ODM', ownerId: 'u1' }), true);
+  assert.equal(inPmProjectScope({ role: 'ae', team: 'KA', id: 'u1' }, { team: 'ODM', ownerId: 'u2' }), false);
 });
 
 test('pmTaskEditTier: workflow edit for assignee / same-dept staff', () => {
@@ -67,6 +73,14 @@ test('secretary holds ONLY the mgmt caps (no tax/pm/master leak)', () => {
   assert.equal(can('secretary', 'customers:view'), false);
   assert.equal(can('secretary', 'users:manage'), false);
   assert.equal(can('secretary', 'mgmt:edit'), true);
+});
+
+test('sales targets are limited to admin and sales head', () => {
+  assert.equal(can('admin', 'salesplan:target'), true);
+  assert.equal(can('ae_supervisor', 'salesplan:target'), true);
+  assert.equal(can('senior_ae', 'salesplan:target'), false);
+  assert.equal(can('ac', 'salesplan:target'), false);
+  assert.equal(can('ae', 'salesplan:target'), false);
 });
 
 test('pmTaskEditTier: none for outsiders', () => {
