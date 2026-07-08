@@ -8,6 +8,7 @@ import {
   dealAuditLabel,
   forecastAmount,
   inSalesEditScope,
+  inSalesViewScope,
   monthKey,
   normalizeStage,
   toMoney,
@@ -45,7 +46,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // team's pipeline but may only act on its own deals).
   const editor = canEditSalesPlanning(user);
   const driftMap = await loadForecastDriftMap(supabase, data || []).catch(() => new Map());
-  const rows = (data || []).map((d) => ({
+  const rows = (data || []).filter((d) => inSalesViewScope(user, d)).map((d) => ({
     ...d,
     canEdit: editor && inSalesEditScope(user, d),
     forecastDrift: driftMap.get(d.id) || null,

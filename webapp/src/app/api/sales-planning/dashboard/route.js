@@ -1,5 +1,5 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
-import { applyDealScope, canViewSalesPlanning, forecastAmount, monthKey, salesPlanningViewScope } from '@/lib/salesPlanning';
+import { applyDealScope, canViewSalesPlanning, forecastAmount, inSalesViewScope, monthKey, salesPlanningViewScope } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +13,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   dealsQuery = applyDealScope(dealsQuery, user);
   const { data: deals, error: dealsError } = await dealsQuery;
   if (dealsError) return fail(dealsError.message, 500);
+  const visibleDeals = (deals || []).filter((d) => inSalesViewScope(user, d));
 
   let targetsQuery = supabase.from('sales_targets').select('*').eq('targetMonth', month);
   if (salesPlanningViewScope(user.role) === 'team') targetsQuery = targetsQuery.eq('team', user.team ?? null);
@@ -26,9 +27,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const wonAmt = (d) => Number(d.wonValue ?? d.projectValue ?? 0);
   const forecastAmt = (d) => Number(d.projectValue ?? 0);
   const wonMonth = (d) => monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
-  const openDeals = (deals || []).filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
-  const wonDeals = (deals || []).filter((d) => isWon(d) && wonMonth(d) === month);
-  const lostDeals = (deals || []).filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month);
+  const openDeals = visibleDeals.filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
+  const wonDeals = visibleDeals.filter((d) => isWon(d) && wonMonth(d) === month);
+  const lostDeals = visibleDeals.filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month);
   const monthDeals = [...openDeals, ...wonDeals, ...lostDeals];
   const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);

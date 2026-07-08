@@ -1,4 +1,4 @@
-import { can, inScope, isSuperuser, viewScope } from '@/lib/permissions';
+import { can, inScope, isSuperuser } from '@/lib/permissions';
 
 export const DEAL_STAGES = [
   'lead',
@@ -48,7 +48,10 @@ export const DEFAULT_PROBABILITY_BY_STAGE = {
 };
 
 export function salesPlanningViewScope(role) {
-  return viewScope(role);
+  if (isSuperuser(role)) return 'all';
+  if (role === 'senior_ae' || role === 'ac') return 'team';
+  if (role === 'ae') return 'own';
+  return 'none';
 }
 
 export function salesPlanningEditScope(role) {
@@ -79,7 +82,8 @@ export function canReviewSalesForecast(user) {
 }
 
 export function inSalesViewScope(user, record) {
-  return inScope(salesPlanningViewScope(user?.role), user, record);
+  return inScope(salesPlanningViewScope(user?.role), user, record)
+    || inPmBackfillOwnerScope(user, record);
 }
 
 function normalizeOwnerName(value) {
@@ -143,7 +147,14 @@ export function forecastAmount(deal) {
 }
 
 export function applyDealScope(query, user) {
-  if (salesPlanningViewScope(user?.role) === 'team') return query.eq('team', user?.team ?? null);
+  const scope = salesPlanningViewScope(user?.role);
+  if (scope === 'team') return query.eq('team', user?.team ?? null);
+  if (scope === 'own') {
+    const id = user?.id ?? '';
+    const name = user?.name ?? '';
+    return name ? query.or(`ownerId.eq.${id},ownerName.eq.${name}`) : query.eq('ownerId', id);
+  }
+  if (scope === 'none') return query.eq('id', '__no_sales_planning_scope__');
   return query;
 }
 

@@ -1,4 +1,4 @@
-import { inPmProjectScope } from '@/lib/permissions';
+import { pmEditScope, inScope } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 
@@ -18,7 +18,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const project = await loadProject(supabase, id);
   if (!project) return notFound('ไม่พบโปรเจกต์');
-  if (!inPmProjectScope(user, project)) return forbidden();
+  if (!inScope(pmEditScope(user?.role), user, project)) return forbidden();
 
   const body = await req.json().catch(() => ({}));
   const snapshotId = body.snapshotId;

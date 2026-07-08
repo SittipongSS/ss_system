@@ -318,48 +318,22 @@ export function editScope(role) {
   return 'none'; // legal (acts via approval only) + viewer
 }
 
-// PM (project management) scope:
-//   AE              = own projects only
-//   Senior AE / AC  = own team
-//   AE Supervisor / Admin = all teams
-// Staff/viewer keep their legacy read-only task access through pm:view + My Work.
-export function pmViewScope(role) {
-  if (isSuperuser(role) || role === 'viewer' || role === 'staff') return 'all';
-  if (role === 'senior_ae' || role === 'ac') return 'team';
-  if (role === 'ae') return 'own';
-  return 'none';
-}
-
+// PM (project management) edit scope. PM is a collaborative TEAM tool, so it is
+// MORE permissive than the generic editScope: every sales role — AE included —
+// edits its whole team's projects/plans/timeline. This is deliberately separate
+// from editScope so an AE stays 'own'-scoped on the commercial resources
+// (customers / products / orders) while gaining 'team' authority over PM only.
+// Row-level team scope is still enforced via inScope().
 export function pmEditScope(role) {
   if (isSuperuser(role)) return 'all';
-  if (role === 'senior_ae' || role === 'ac') return 'team';
-  if (role === 'ae') return 'own';
+  if (role === 'senior_ae' || role === 'ac' || role === 'ae') return 'team';
   return 'none'; // legal / viewer; staff edits assigned tasks via the
                  // 'workflow' tier in pmTaskEditTier, not the project plan.
 }
 
-function normalizedName(value) {
-  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-function ownsPmProject(user, project) {
-  if (!user?.id) return false;
-  if (user.id === project?.ownerId) return true;
-  const userName = normalizedName(user?.name);
-  const aeOwner = normalizedName(project?.aeOwner);
-  return !!userName && userName === aeOwner;
-}
-
-export function inPmProjectViewScope(user, project) {
-  const scope = pmViewScope(user?.role);
-  if (scope === 'own') return ownsPmProject(user, project);
-  return inScope(scope, user, project);
-}
-
 export function inPmProjectScope(user, project) {
-  const scope = pmEditScope(user?.role);
-  if (scope === 'own') return can(user?.role, 'pm:edit') && ownsPmProject(user, project);
-  return can(user?.role, 'pm:edit') && inScope(scope, user, project);
+  if (inScope(pmEditScope(user?.role), user, project)) return true;
+  return can(user?.role, 'pm:edit') && !!user?.id && user.id === project?.ownerId;
 }
 
 // Delete is stricter than edit:
@@ -428,7 +402,9 @@ export function canDeleteRecord(user, resource, record) {
 //   mine = tasks assigned to me · team = my team's projects · all = every team
 export function pmTaskScopes(role) {
   if (isSuperuser(role)) return ['mine', 'team', 'all'];
-  if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
+  // AE manages the whole team's projects in PM (see pmEditScope) → may also
+  // browse the team's tasks in My Work, alongside Senior AE / AC.
+  if (role === 'senior_ae' || role === 'ac' || role === 'ae') return ['mine', 'team'];
   return ['mine'];
 }
 

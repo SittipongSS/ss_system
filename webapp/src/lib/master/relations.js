@@ -6,12 +6,13 @@
 //
 // scope: กรองแถวด้วย view-scope ของผู้ใช้ (เหมือน route อื่น) — registrations/
 // orders/products ใช้ canViewRecord; projects ต้องมี pm:view + team scope.
-import { can, canViewRecord, inPmProjectViewScope } from '@/lib/permissions';
+import { can, canViewRecord, viewScope, inScope } from '@/lib/permissions';
 
 // projects ที่ผู้ใช้เห็นได้ (PM เป็นเครื่องมือของ SALES — ต้องมี pm:view).
 function visibleProjects(user, rows) {
   if (!can(user?.role, 'pm:view')) return [];
-  return (rows || []).filter((p) => inPmProjectViewScope(user, p));
+  const scope = viewScope(user?.role);
+  return (rows || []).filter((p) => inScope(scope, user, p));
 }
 
 // ข้อมูลภาษี (registrations/orders) เป็นความลับของระบบภาษี — เปิดให้เฉพาะ role ที่

@@ -5,7 +5,7 @@ import {
   requiredConfirmDateForNeedMonth,
   buildSahamitReverseRiskRows,
 } from './salesPlanningReverse';
-import { inSalesEditScope } from './salesPlanning';
+import { inSalesEditScope, inSalesViewScope, salesPlanningEditScope, salesPlanningViewScope } from './salesPlanning';
 
 test('requiredConfirmDateForNeedMonth subtracts working days from first day of need month', () => {
   assert.equal(requiredConfirmDateForNeedMonth('2026-08', 1, new Set()), '2026-07-31');
@@ -51,4 +51,25 @@ test('AE can edit PM-backfilled sales deal when PM owner name matches', () => {
     team: 'SA',
     metadata: { source: 'manual' },
   }), false);
+});
+
+test('sales plan project auth scopes by sales role', () => {
+  assert.equal(salesPlanningViewScope('ae'), 'own');
+  assert.equal(salesPlanningEditScope('ae'), 'own');
+  assert.equal(salesPlanningViewScope('senior_ae'), 'team');
+  assert.equal(salesPlanningEditScope('senior_ae'), 'team');
+  assert.equal(salesPlanningViewScope('ac'), 'team');
+  assert.equal(salesPlanningEditScope('ac'), 'team');
+  assert.equal(salesPlanningViewScope('ae_supervisor'), 'all');
+  assert.equal(salesPlanningEditScope('ae_supervisor'), 'all');
+  assert.equal(salesPlanningViewScope('admin'), 'all');
+  assert.equal(salesPlanningEditScope('admin'), 'all');
+});
+
+test('AE sees only own sales plan projects, including PM backfill by owner name', () => {
+  const ae = { id: 'u-ae-1', role: 'ae', name: 'Sittipong SS', team: 'KA' };
+
+  assert.equal(inSalesViewScope(ae, { ownerId: 'u-ae-1', ownerName: 'Someone', team: 'ODM' }), true);
+  assert.equal(inSalesViewScope(ae, { ownerId: 'other-user', ownerName: 'Sittipong SS', team: 'KA', metadata: { source: 'manual' } }), false);
+  assert.equal(inSalesViewScope(ae, { ownerId: null, ownerName: 'sittipong ss', team: null, metadata: { source: 'pm-backfill' } }), true);
 });
