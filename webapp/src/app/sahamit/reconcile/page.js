@@ -9,6 +9,7 @@ import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { predictShifts } from "@/lib/sahamit/predict";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
+import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { fmtMoneyCompact, fmtYearMonth } from "@/lib/format";
 
 // token → CSS var
@@ -312,8 +313,8 @@ export default function ReconcilePage() {
                         </td>
                         {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
                         <td style={{ textAlign: "right", verticalAlign: "middle" }}>
-                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {nf(r.fcTotal)}</div>
-                          <div style={{ fontWeight: 700 }}>PO {nf(r.poTotal)}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {nf(r.fcTotal)}{casesText(r.fcTotal, ppcOf(p)) ? ` · ${casesText(r.fcTotal, ppcOf(p))}` : ""}</div>
+                          <div style={{ fontWeight: 700 }}>PO {nf(r.poTotal)}{casesText(r.poTotal, ppcOf(p)) ? ` · ${casesText(r.poTotal, ppcOf(p))}` : ""}</div>
                         </td>
                       </tr>
                     );

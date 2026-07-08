@@ -236,6 +236,10 @@ export default function ProductDetails() {
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.volume} {product.volumeUnit || "ml"}</span>
               </div>
               <div>
+                <span className="text-[var(--text-3)] block mb-1">ชิ้นต่อลัง (Pieces / Case)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${Number(product.piecesPerCase).toLocaleString("th-TH")} ชิ้น/ลัง` : "—"}</span>
+              </div>
+              <div>
                 <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.categoryCode || "-"}</span>
               </div>

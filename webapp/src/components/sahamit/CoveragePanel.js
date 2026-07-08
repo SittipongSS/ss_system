@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { suggestCoverage, suggestCoverageTargets } from "@/lib/sahamit/predict";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
+import { casesText } from "@/lib/sahamit/units";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 
@@ -10,8 +11,9 @@ const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 //  • เดือนนี้ "PO เกิน" (excess>0)  → เสนอ "ส่งไปชดเชย" เดือนที่ขาด (push out)
 // การจัดลำดับ/จำนวนเป็นไปตาม logic ใน predict.js (suggestCoverage / suggestCoverageTargets).
 // `matrix` = ผลจาก buildReconMatrix ที่หน้ากระทบยอดมีอยู่แล้ว.
-export default function CoveragePanel({ fgCode, month, coverages, matrix, onChanged }) {
+export default function CoveragePanel({ fgCode, month, coverages, matrix, piecesPerCase = null, onChanged }) {
   const [busy, setBusy] = useState(false);
+  const caseSuffix = (n) => { const c = casesText(n, piecesPerCase); return c ? ` (${c})` : ""; };
   const related = (coverages || []).filter(
     (c) => c.fgCode === fgCode && (c.sourceMonth === month || c.targetMonth === month),
   );
@@ -86,7 +88,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
                     <span style={{ fontWeight: 600, color: "var(--blue)" }}>
                       💡 {isPull ? `ดึง FC จาก ${s.sourceMonth}` : `ส่ง FC ไป ${s.targetMonth}`}
                     </span>
-                    <span style={{ color: "var(--text-2)" }}> ({nf(s.use)} ชิ้น)</span>
+                    <span style={{ color: "var(--text-2)" }}> ({nf(s.use)} ชิ้น{caseSuffix(s.use)})</span>
                   </div>
                   <button className="btn btn-primary sm" disabled={busy} onClick={() => confirm(s.sourceMonth, s.targetMonth, s.use)}>ยืนยัน</button>
                 </div>
@@ -127,7 +129,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, onChan
             {related.map((c) => (
               <li key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                 <span style={{ color: "var(--blue)" }}>{c.sourceMonth} → {c.targetMonth}</span>
-                <span style={{ fontWeight: 600 }}>{Number(c.qty).toLocaleString("th-TH")}</span>
+                <span style={{ fontWeight: 600 }}>{Number(c.qty).toLocaleString("th-TH")}{caseSuffix(Number(c.qty))}</span>
                 {c.targetMonth === month ? (
                   <span className="ui-badge" style={{ color: "var(--green)", borderColor: "var(--green)" }}>รับเข้า</span>
                 ) : (

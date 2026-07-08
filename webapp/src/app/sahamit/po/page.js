@@ -9,6 +9,7 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
+import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -56,7 +57,10 @@ function PoLineRow({ row, product, onSaved }) {
         <div style={{ fontSize: 11, color: row.productName ? "var(--text-3)" : "var(--amber)" }}>{row.productName || "— ไม่รู้จัก —"}</div>
         {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
       </td>
-      <td style={{ textAlign: "right" }}>{nf(row.qty)}</td>
+      <td style={{ textAlign: "right" }}>
+        {nf(row.qty)}
+        {casesText(row.qty, ppcOf(product)) && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{casesText(row.qty, ppcOf(product))}</div>}
+      </td>
       <td>{row.deliveryMonth || "—"}</td>
       <td>{matCell(t.pmDueDate, t.pmArrivedAt)}</td>
       <td>{matCell(t.rmDueDate, t.rmArrivedAt)}</td>

@@ -13,7 +13,7 @@ import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brand
 const FIELDS = [
   "customerId",
   "fgCode", "productDescription", "productDescriptionEn", "brandName", "brandNameEn",
-  "volume", "volumeUnit", "retailPriceIncVat",
+  "volume", "volumeUnit", "piecesPerCase", "retailPriceIncVat",
 ];
 
 export default function EditProductModal({ open, onClose, onSaved, product, brandOptions = [], customers = [] }) {
@@ -263,6 +263,10 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
                   <option value="pcs">pcs</option>
                 </Select>
               </div>
+            </div>
+            <div className="form-group">
+              <label>ชิ้นต่อลัง <span className="text-[10px] font-normal text-[var(--text-3)]">(สำหรับงานสหมิตร)</span></label>
+              <input type="number" value={form.piecesPerCase ?? ""} onChange={(e) => set("piecesPerCase", e.target.value)} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
             </div>
             <div className="form-group">
               <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>

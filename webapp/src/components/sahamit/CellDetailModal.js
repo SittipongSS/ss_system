@@ -7,6 +7,7 @@ import { fmtDate } from "@/lib/format";
 import { cellDetail, RECON_STATUS_COLOR } from "@/lib/sahamit/reconcileClient";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { productMetaText } from "@/lib/sahamit/productMeta";
+import { ppcOf, casesText } from "@/lib/sahamit/units";
 
 // รายละเอียดช่องกระทบยอด (SKU × เดือน) แบบ modal — แทนการเด้งไปหน้าเต็ม.
 // รับ matrix/rounds/pos/coverages/prediction ที่หน้ากระทบยอดมีอยู่แล้ว ไม่โหลดซ้ำ.
@@ -35,13 +36,16 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
   const poQty = cell?.poQty || 0;
   const diff = poQty - fcQty;
   const pct = fcQty > 0 ? Math.min(100, Math.round((poQty / fcQty) * 100)) : poQty > 0 ? 100 : 0;
+  // ชิ้นต่อลังของสินค้านี้ — ต่อท้ายจำนวนชิ้นด้วย "(x ลัง)" ถ้ารู้ค่า
+  const ppc = ppcOf(product);
+  const withCase = (n) => { const c = casesText(n, ppc); return c ? ` (${c})` : ""; };
   const diffMsg =
     !cell ? "" :
     cell.status === "match" ? "ครบพอดีตามแผน" :
-    cell.status === "pending" ? `ยังไม่มี PO — ขาด ${nf(fcQty)} ชิ้น` :
-    cell.status === "discrepancy" ? `PO ไม่ครบ — ขาดอีก ${nf(fcQty - poQty)} ชิ้น` :
-    cell.status === "over" ? `PO เกินแผน +${nf(diff)} ชิ้น` :
-    cell.status === "unforecasted" ? `สั่ง PO นอกแผน ${nf(poQty)} ชิ้น (ไม่มี FC)` :
+    cell.status === "pending" ? `ยังไม่มี PO — ขาด ${nf(fcQty)} ชิ้น${withCase(fcQty)}` :
+    cell.status === "discrepancy" ? `PO ไม่ครบ — ขาดอีก ${nf(fcQty - poQty)} ชิ้น${withCase(fcQty - poQty)}` :
+    cell.status === "over" ? `PO เกินแผน +${nf(diff)} ชิ้น${withCase(diff)}` :
+    cell.status === "unforecasted" ? `สั่ง PO นอกแผน ${nf(poQty)} ชิ้น${withCase(poQty)} (ไม่มี FC)` :
     cell.label;
 
   const meta = productMetaText(product);
@@ -80,10 +84,12 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                         <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 13, marginLeft: 6 }}>เดิม {nf(cell.originalFc)}</span>
                       )}
                     </div>
+                    {casesText(fcQty, ppc) && <div style={{ fontSize: 12, color: "var(--text-3)" }}>{casesText(fcQty, ppc)}</div>}
                   </div>
                   <div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>Purchase Order (PO)</div>
                     <div style={{ fontSize: 22, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{nf(poQty)}</div>
+                    {casesText(poQty, ppc) && <div style={{ fontSize: 12, color: "var(--text-3)" }}>{casesText(poQty, ppc)}</div>}
                   </div>
                 </div>
                 <div style={{ fontSize: 13, color }}>{diffMsg}</div>
@@ -130,7 +136,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                       <thead><tr><th>รอบที่</th><th>วันที่รับ</th><th style={{ textAlign: "right" }}>จำนวน</th></tr></thead>
                       <tbody>
                         {detail.fcs.map((f, i) => (
-                          <tr key={i}><td>#{f.roundNo}</td><td>{f.receivedDate ? fmtDate(f.receivedDate) : "—"}</td><td style={{ textAlign: "right" }}>{nf(f.qty)}</td></tr>
+                          <tr key={i}><td>#{f.roundNo}</td><td>{f.receivedDate ? fmtDate(f.receivedDate) : "—"}</td><td style={{ textAlign: "right" }}>{nf(f.qty)}{casesText(f.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: 11 }}> ({casesText(f.qty, ppc)})</span>}</td></tr>
                         ))}
                       </tbody>
                     </table>
@@ -149,7 +155,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                         {detail.poLines.map((p, i) => (
                           <tr key={i}>
                             <td className="font-mono">{p.poNumber}</td>
-                            <td style={{ textAlign: "right" }}>{nf(p.qty)}</td>
+                            <td style={{ textAlign: "right" }}>{nf(p.qty)}{casesText(p.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: 11 }}> ({casesText(p.qty, ppc)})</span>}</td>
                             <td>{p.dueDate ? fmtDate(p.dueDate) : "—"}</td>
                             <td>{p.expectedDate ? fmtDate(p.expectedDate) : "—"}</td>
                             <td>{p.actualDeliveredDate ? fmtDate(p.actualDeliveredDate) : "—"}</td>
@@ -165,7 +171,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
           )}
 
           {tab === "coverage" && (
-            <CoveragePanel fgCode={fgCode} month={month} coverages={coverages} matrix={matrix} onChanged={onCoverageChanged} />
+            <CoveragePanel fgCode={fgCode} month={month} coverages={coverages} matrix={matrix} piecesPerCase={ppc} onChanged={onCoverageChanged} />
           )}
         </div>
       )}
