@@ -6,7 +6,7 @@ import FilterPopover from "@/components/ui/FilterPopover";
 import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
 import RoundComparison from "@/components/sahamit/RoundComparison";
@@ -19,7 +19,7 @@ const TABS = [
   { key: "history", label: "ประวัติ / เทียบรอบ" },
 ];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
-const nfBaht = (n) => "฿" + Math.round(Number(n) || 0).toLocaleString("th-TH");
+const nfBaht = (n) => fmtMoneyCompact(n);
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 
 export default function ForecastPage() {

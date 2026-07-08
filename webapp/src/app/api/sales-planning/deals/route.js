@@ -92,6 +92,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     metadata: body.metadata || {},
   };
 
+  // The creator may only mint deals within its own edit scope: an AE cannot
+  // hand ownership to another user, and team-scoped roles cannot create for
+  // another team. Superusers (scope 'all') are unrestricted.
+  if (!inSalesEditScope(user, row)) return forbidden();
+
   const { data, error } = await supabase.from('sales_deals').insert(row).select(selectDeal).single();
   if (error) return fail(error.message, 500);
 

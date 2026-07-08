@@ -84,6 +84,22 @@ export async function ensureUnsortedFolder() {
   return ensureFolder('_unsorted', storageRootId());
 }
 
+// ── โมดูล "งานบริหาร" (mgmt) — โฟลเดอร์แยกจากลูกค้า/สินค้า ────────────
+// งานบริหาร / {งานติดตาม | การประชุม} / "<ชื่อ> (<id>)". ไฟล์ไม่ nest ใต้ลูกค้า.
+async function ensureMgmtSubFolder(sub) {
+  const root = await ensureFolder('งานบริหาร', storageRootId());
+  return ensureFolder(sub, root);
+}
+async function resolveMgmtFolder(entityType, entityId) {
+  const supabase = getSupabaseAdmin();
+  const table = entityType === 'mgmt_meeting' ? 'mgmt_meetings' : 'mgmt_tasks';
+  const subLabel = entityType === 'mgmt_meeting' ? 'การประชุม' : 'งานติดตาม';
+  const parent = await ensureMgmtSubFolder(subLabel);
+  const { data } = await supabase.from(table).select('id, title').eq('id', entityId).maybeSingle();
+  const label = data ? `${data.title} (${data.id})` : String(entityId);
+  return ensureFolder(label, parent);
+}
+
 // โฟลเดอร์ลูกค้า (cache id ลง customers.driveFolderId). ชื่อ "<ชื่อ> (<id>)".
 export async function ensureCustomerFolder(customer) {
   if (customer.driveFolderId) return customer.driveFolderId;
@@ -109,6 +125,9 @@ export async function ensureProductFolder(product, customer) {
 //   order        → โฟลเดอร์ลูกค้า (1 ออเดอร์ครอบหลายสินค้าของลูกค้าเดียว)
 export async function resolveFolderForEntity(entityType, entityId) {
   const supabase = getSupabaseAdmin();
+  if (entityType === 'mgmt_task' || entityType === 'mgmt_meeting') {
+    return resolveMgmtFolder(entityType, entityId);
+  }
   if (entityType === 'customer') {
     const { data } = await supabase.from('customers').select('*').eq('id', entityId).maybeSingle();
     if (!data) throw new Error('ไม่พบลูกค้า');
@@ -175,5 +194,65 @@ export async function deleteFile(driveFileId) {
   } catch (err) {
     // best-effort: ไฟล์อาจถูกลบไปแล้ว — log แต่ไม่ throw (ไม่บล็อกการลบ row).
     console.error('[drive] deleteFile failed', driveFileId, err?.message);
+  }
+}
+
+// ── Google Workspace native files (Doc/Sheet) — เอกสารมีชีวิต ─────────
+// ใช้โดยโมดูล "งานบริหาร": สร้าง/ผูก Google Doc·Sheet เพื่อทำงานร่วมกัน (แก้ในที่).
+// เปิดผ่าน webViewLink ตรง (ไม่ผ่าน proxy) — สิทธิ์คุมด้วย Shared Drive/permission.
+export const GOOGLE_NATIVE_MIME = {
+  gdoc: 'application/vnd.google-apps.document',
+  gsheet: 'application/vnd.google-apps.spreadsheet',
+};
+
+// สร้างไฟล์ Google เปล่าในโฟลเดอร์ที่ระบุ. คืน { id, webViewLink, mimeType, name }.
+export async function createGoogleFile(folderId, name, type) {
+  const mimeType = GOOGLE_NATIVE_MIME[type];
+  if (!mimeType) throw new Error(`ชนิดเอกสารไม่รองรับ: ${type}`);
+  const res = await getDrive().files.create({
+    requestBody: { name, mimeType, parents: [folderId] },
+    fields: 'id, name, mimeType, webViewLink',
+    supportsAllDrives: true,
+  });
+  return res.data;
+}
+
+// อ่าน metadata ไฟล์ (ใช้ตอนผูกลิงก์ที่มีอยู่ — เอา name/mimeType/webViewLink).
+export async function getFileMeta(fileId) {
+  const res = await getDrive().files.get({
+    fileId,
+    fields: 'id, name, mimeType, webViewLink',
+    supportsAllDrives: true,
+  });
+  return res.data;
+}
+
+// แยก fileId จาก Drive URL (รองรับ /d/<id>/, ?id=<id>, /document|spreadsheet/d/<id>).
+export function parseDriveId(url) {
+  if (!url) return null;
+  const s = String(url);
+  const m = s.match(/\/d\/([a-zA-Z0-9_-]{10,})/) || s.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  return m ? m[1] : null;
+}
+
+// map mimeType → kind ('gdoc' | 'gsheet' | null สำหรับชนิดอื่น).
+export function kindFromMime(mimeType) {
+  if (mimeType === GOOGLE_NATIVE_MIME.gdoc) return 'gdoc';
+  if (mimeType === GOOGLE_NATIVE_MIME.gsheet) return 'gsheet';
+  return null;
+}
+
+// ให้สิทธิ์ writer แก่อีเมล Workspace (best-effort — ไฟล์ยังอยู่ใน Shared Drive).
+export async function grantWriter(fileId, email) {
+  if (!fileId || !email) return;
+  try {
+    await getDrive().permissions.create({
+      fileId,
+      requestBody: { type: 'user', role: 'writer', emailAddress: email },
+      sendNotificationEmail: false,
+      supportsAllDrives: true,
+    });
+  } catch (err) {
+    console.error('[drive] grantWriter failed', fileId, email, err?.message);
   }
 }

@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can } from '@/lib/permissions';
+import { can, canUser } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -83,7 +83,7 @@ export async function proxy(request) {
 
   // Role-based write protection for API routes (defense-in-depth; the UI also
   // hides actions). GET is always allowed for any signed-in user.
-  if (user && isApi && !apiWriteAllowed(request.method, path, user.app_metadata?.role)) {
+  if (user && isApi && !apiWriteAllowed(request.method, path, user.app_metadata?.role, user.app_metadata?.extraCaps)) {
     return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
   }
 
@@ -107,14 +107,14 @@ const normalizeMaster = (path) => path.replace(/^\/api\/master\//, '/api/');
 // NOTE: the proxy is coarse (role-only). /sahamit is opened here for any sales
 // role, but the page guard + API handlers narrow it to team===KA + customer
 // AR-109 (the proxy can't see team/customer). See canAccessSahamit().
-const OPEN_PAGES = ['/home', '/pm', '/database', '/tax', '/sales-planning', '/sahamit'];
+const OPEN_PAGES = ['/home', '/pm', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
 // products:edit to create (lands as 'pending'), Senior AE+ to approve; excise
 // registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
 // Holiday/product-type writes stay supervisor-only.
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit'];
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
@@ -139,9 +139,12 @@ function lockedOut(role, path, method, isApi) {
 // Row-level scope (own team / own record) is enforced inside the route
 // handlers, which can see the target record's team + ownerId — the proxy
 // only sees method + path.
-function apiWriteAllowed(method, path, role) {
+function apiWriteAllowed(method, path, role, extraCaps) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true; // reads ok
   path = normalizeMaster(path); // /api/master/X gated identically to /api/X
+  // mgmt access may be a per-user grant (app_metadata.extraCaps), not just the
+  // role — so mgmt checks go through canUser, not can(role, …).
+  const mgmtUser = { role, extraCaps };
   if (path.startsWith('/api/users')) return can(role, 'users:manage');
   if (path.startsWith('/api/customers')) {
     if (method === 'DELETE') return can(role, 'customers:delete');
@@ -159,6 +162,8 @@ function apiWriteAllowed(method, path, role) {
   // SAHAMIT module. Coarse cap gate here; team===KA + customer AR-109 scope is
   // enforced inside the handlers (canAccessSahamit), which the proxy can't see.
   if (path.startsWith('/api/sahamit')) return can(role, 'sahamit:edit');
+  // งานบริหาร (mgmt) — admin + secretary, หรือผู้ใช้ที่ได้รับสิทธิ์เสริม mgmt:edit.
+  if (path.startsWith('/api/mgmt')) return canUser(mgmtUser, 'mgmt:edit');
   // Master taxonomy (product categories) — supervisor-only writes.
   if (path.startsWith('/api/product-types')) return can(role, 'master:manage');
   // Holiday calendar (working-day source for PM timeline) — supervisor-only writes.
@@ -184,7 +189,8 @@ function apiWriteAllowed(method, path, role) {
       can(role, 'customers:edit') ||
       can(role, 'products:edit') ||
       can(role, 'sales:act') ||
-      can(role, 'legal:approve')
+      can(role, 'legal:approve') ||
+      canUser(mgmtUser, 'mgmt:edit')
     );
   }
   return true; // e.g. /api/upload — any signed-in user

@@ -8,11 +8,31 @@ import { useCan, useTeam } from "@/lib/roleContext";
 import { KpiCard, MONTH_LABELS, MonthPicker, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import { SALES_FEATURES } from "@/lib/salesPlanning";
+import { fmtDateTime } from "@/lib/format";
 
 const OVERVIEW_TABS = [
   { key: "tables", label: "ตาราง" },
   { key: "dashboard", label: "แดชบอร์ด" },
 ];
+
+// แถวตัวเลขที่โชว์ต่อช่อง (ตามลำดับบนลงล่าง) พร้อมป้ายชื่อ + สี.
+// forecast (จาก API) = FC ของดีลที่ยังเปิด (ไม่รวมดีลที่แพ้).
+//   FC เต็ม   = won + forecast(เปิด)                (เป้าหมายที่คาดว่าจะทำได้ทั้งเดือน)
+//   FC คงเหลือ = FC เต็ม − Actual(won) = forecast(เปิด)  (ส่วนที่ยังต้องปิดต่อ)
+const METRICS = [
+  { key: "target", label: "เป้า", color: "var(--text)" },
+  { key: "full", label: "FC เต็ม", color: "var(--blue)" },
+  { key: "won", label: "Actual", color: "var(--green)" },
+  { key: "remaining", label: "FC คงเหลือ", color: "var(--amber)" },
+];
+
+function deriveMetrics(cell) {
+  const target = Number(cell?.target || 0);
+  const won = Number(cell?.won || 0);
+  const open = Number(cell?.forecast || 0);
+  const full = won + open;
+  return { target, full, won, remaining: full - won };
+}
 
 function metricCell(row, month) {
   const cell = row.months?.[month] || {};
@@ -117,18 +137,28 @@ function YearGrid({ title, rows, months, grouped = false, empty = "ยังไ�
     );
   }
 
+  const colCount = 2 + months.length + 1; // รายการ + ค่า + เดือน + รวมปี
+
   return (
     <section className="glass-panel" style={{ padding: 16 }}>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
         <BarChart3 size={17} aria-hidden="true" />
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
-        <span className="ui-badge">เป้า / Won / คาดการณ์</span>
+        <div className="flex items-center gap-3" style={{ flexWrap: "wrap" }}>
+          {METRICS.map((m) => (
+            <span key={m.key} className="flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--text-2)" }}>
+              <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: m.color, display: "inline-block" }} />
+              {m.label}
+            </span>
+          ))}
+        </div>
       </div>
       <div className="premium-glass-table table-responsive">
-        <table className="w-full text-sm" style={{ minWidth: 1080 }}>
+        <table className="w-full text-sm" style={{ minWidth: 1180 }}>
           <thead>
             <tr>
-              <th style={{ minWidth: 170 }}>รายการ</th>
+              <th style={{ minWidth: 150 }}>รายการ</th>
+              <th style={{ minWidth: 90 }}>ค่า</th>
               {months.map((month, i) => <th key={month} className="num">{MONTH_LABELS[i]}</th>)}
               <th className="num">รวมปี</th>
             </tr>
@@ -138,35 +168,41 @@ function YearGrid({ title, rows, months, grouped = false, empty = "ยังไ�
               <Fragment key={group}>
                 {grouped && (
                   <tr key={`${group}-group`}>
-                    <td colSpan={14} style={{ background: "var(--panel-2)", color: "var(--text-2)", fontWeight: 700 }}>
+                    <td colSpan={colCount} style={{ background: "var(--panel-2)", color: "var(--text-2)", fontWeight: 700 }}>
                       ทีม {group}
                     </td>
                   </tr>
                 )}
-                {groupRows.map((row) => (
-                  <tr key={row.id} className="premium-row">
-                    <td>
-                      <strong>{row.label}</strong>
-                      {row.sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{row.sublabel}</span>}
-                    </td>
-                    {months.map((month) => {
-                      const cell = metricCell(row, month);
-                      const hasValue = cell.target || cell.won || cell.forecast;
-                      return (
-                        <td key={month} className="num mono" style={{ verticalAlign: "top", color: hasValue ? "var(--text)" : "var(--text-3)" }}>
-                          <div>{money(cell.target)}</div>
-                          <div style={{ color: "var(--green)" }}>{money(cell.won)}</div>
-                          <div style={{ color: "var(--amber)" }}>{money(cell.forecast)}</div>
-                        </td>
-                      );
-                    })}
-                    <td className="num mono" style={{ verticalAlign: "top", fontWeight: 700 }}>
-                      <div>{money(row.total.target)}</div>
-                      <div style={{ color: "var(--green)" }}>{money(row.total.won)}</div>
-                      <div style={{ color: "var(--amber)" }}>{money(row.total.forecast)}</div>
-                    </td>
-                  </tr>
-                ))}
+                {groupRows.map((row) => {
+                  const monthMetrics = months.map((month) => deriveMetrics(metricCell(row, month)));
+                  const totalMetrics = deriveMetrics(row.total);
+                  return (
+                    <Fragment key={row.id}>
+                      {METRICS.map((m, mi) => (
+                        <tr key={`${row.id}-${m.key}`} className="premium-row" style={mi === 0 ? { borderTop: "2px solid var(--border)" } : undefined}>
+                          {mi === 0 && (
+                            <td rowSpan={METRICS.length} style={{ verticalAlign: "top" }}>
+                              <strong>{row.label}</strong>
+                              {row.sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{row.sublabel}</span>}
+                            </td>
+                          )}
+                          <td style={{ whiteSpace: "nowrap", color: "var(--text-2)" }}>
+                            <span aria-hidden="true" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: m.color, marginRight: 6, verticalAlign: "middle" }} />
+                            {m.label}
+                          </td>
+                          {monthMetrics.map((mm, ci) => (
+                            <td key={months[ci]} className="num mono" style={{ color: mm[m.key] ? m.color : "var(--text-3)" }}>
+                              {money(mm[m.key])}
+                            </td>
+                          ))}
+                          <td className="num mono" style={{ fontWeight: 700, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}>
+                            {money(totalMetrics[m.key])}
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </Fragment>
             ))}
           </tbody>
@@ -351,7 +387,7 @@ export default function SalesPlanningOverviewPage() {
             </div>
             {forecastReview?.reviewedByName && (
               <div style={{ marginTop: 8, color: "var(--text-3)", fontSize: 12 }}>
-                ทบทวนล่าสุดโดย {forecastReview.reviewedByName} {forecastReview.reviewedAt ? `เมื่อ ${new Date(forecastReview.reviewedAt).toLocaleString("th-TH")}` : ""}
+                ทบทวนล่าสุดโดย {forecastReview.reviewedByName} {forecastReview.reviewedAt ? `เมื่อ ${fmtDateTime(forecastReview.reviewedAt)}` : ""}
               </div>
             )}
           </section>

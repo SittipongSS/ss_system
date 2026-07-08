@@ -2,10 +2,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Target } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Flag, Briefcase, Target, Trash2, CircleDollarSign } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { can, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
@@ -100,6 +100,7 @@ export default function AppLayout({ children }) {
       : pathname.startsWith('/database') ? 'master'
       : pathname.startsWith('/sales-planning') ? 'salesplan'
       : pathname.startsWith('/sahamit') ? 'sahamit'
+      : pathname.startsWith('/mgmt') ? 'mgmt'
       : pathname === '/users' ? 'users'
       : pathname === '/audit' ? 'audit'
       : 'tax';
@@ -185,6 +186,18 @@ export default function AppLayout({ children }) {
       ],
     },
     {
+      label: 'งานบริหาร',
+      system: 'mgmt',
+      items: [
+        { href: '/mgmt', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'mgmt:view', match: (p) => p === '/mgmt' },
+        { href: '/mgmt/tasks', name: 'รายการงาน', icon: ListTodo, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/tasks') },
+        { href: '/mgmt/calendar', name: 'ปฏิทิน', icon: CalendarDays, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/calendar') },
+        { href: '/mgmt/meetings', name: 'การประชุม', icon: Users, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/meetings') },
+        { href: '/mgmt/rocks', name: 'Rock & Improve', icon: Target, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/rocks') },
+        { href: '/mgmt/trash', name: 'ถังขยะ', icon: Trash2, cap: 'mgmt:edit', match: (p) => p.startsWith('/mgmt/trash') },
+      ],
+    },
+    {
       label: 'งานสหมิตร',
       system: 'sahamit',
       items: [
@@ -203,9 +216,10 @@ export default function AppLayout({ children }) {
       : activeSystem === 'pm' ? 'จัดการโครงการ'
         : activeSystem === 'salesplan' ? 'บริหารงานขาย'
           : activeSystem === 'sahamit' ? 'งานสหมิตร'
-            : activeSystem === 'users' ? 'จัดการผู้ใช้'
-              : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
-                : 'ภาษีสรรพสามิต';
+            : activeSystem === 'mgmt' ? 'งานบริหาร'
+              : activeSystem === 'users' ? 'จัดการผู้ใช้'
+                : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
+                  : 'ภาษีสรรพสามิต';
 
   // Show only the current system's groups (+ 'both'), then only menus the role
   // is allowed to see.
@@ -213,7 +227,9 @@ export default function AppLayout({ children }) {
     .filter((g) => g.system === 'both' || g.system === activeSystem)
     // SAHAMIT is team-gated (KA only) beyond the per-item capability check.
     .filter((g) => g.system !== 'sahamit' || canAccessSahamit(role, team))
-    .map((g) => ({ ...g, items: g.items.filter((it) => can(role, it.cap)) }))
+    // canUser (not can) so a per-user grant — e.g. an SA granted mgmt:view to
+    // help the secretary — surfaces that system's menu items too.
+    .map((g) => ({ ...g, items: g.items.filter((it) => canUser({ role, extraCaps }, it.cap)) }))
     .filter((g) => g.items.length > 0);
 
   return (
@@ -304,7 +320,7 @@ export default function AppLayout({ children }) {
               <div className="user-avatar">{userInitials || userName.substring(0, 2).toUpperCase()}</div>
               <div className="user-info" style={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '8px' }}>
                 <span className="user-name" style={{ fontSize: '13px', fontWeight: '600' }}>{userName}</span>
-                <span className={`topbar-user-role ${role === 'admin' || role === 'ae_supervisor' || role === 'legal' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}`} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
+                <span className={`topbar-user-role ${role === 'admin' || role === 'ae_supervisor' || role === 'legal' || role === 'secretary' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}`} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
                   {team ? `${ROLE_LABELS[role] || role} · ${TEAM_LABELS[team] || team}` : (ROLE_LABELS[role] || role)}
                 </span>
               </div>

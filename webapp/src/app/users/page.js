@@ -16,7 +16,7 @@ import {
   GRANTABLE_CAP_LABELS,
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
-import { fmtPhone } from "@/lib/format";
+import { fmtPhone, fmtDate } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
@@ -273,9 +273,7 @@ export default function UserManagement() {
                         {u.team ? TEAM_LABELS[u.team] || u.team : "-"}
                       </td>
                       <td className="text-[var(--text-3)] text-xs">
-                        {u.lastSignInAt
-                          ? new Date(u.lastSignInAt).toLocaleDateString("th-TH")
-                          : "ยังไม่เคย"}
+                        {u.lastSignInAt ? fmtDate(u.lastSignInAt) : "ยังไม่เคย"}
                       </td>
                       <td className="text-center">
                         <div className="flex items-center justify-center gap-3">
@@ -519,8 +517,8 @@ function UserFields({ form, setForm, requirePassword, edit }) {
       <SectionHeading>สิทธิ์เสริม (นอกเหนือจากตำแหน่ง)</SectionHeading>
       <div className="form-group col-span-2" style={{ marginTop: -4 }}>
         <p className="text-[11px] text-[var(--text-3)] mb-2">
-          ให้สิทธิ์ฝ่ายกฎหมาย (LG) เพิ่มกับผู้ใช้รายนี้ เช่น ให้พนักงานขายอนุมัติ/ยื่นภาษีแทน LG ได้
-          — มีผลข้ามทุกทีม ใช้เมื่อจำเป็นเท่านั้น
+          ให้สิทธิ์เพิ่มกับผู้ใช้รายนี้ เช่น ให้พนักงานขายอนุมัติ/ยื่นภาษีแทนฝ่ายกฎหมาย (LG)
+          หรือให้ช่วยงานในระบบงานบริหาร (mgmt) แทนเลขาชั่วคราว — มีผลข้ามทุกทีม ใช้เมื่อจำเป็นเท่านั้น
         </p>
         <div className="flex flex-col gap-2">
           {GRANTABLE_CAPS.map((cap) => (

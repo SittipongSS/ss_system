@@ -79,6 +79,13 @@ export const ATTACHMENT_TYPES = {
     { key: "approval_letter", label: "ใบอนุมัติขึ้นทะเบียน", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
+  // โมดูล "งานบริหาร" (mgmt) — แนบไฟล์อิสระ (ไม่มีเอกสารบังคับ), การ์ดเดียวแนบได้หลายไฟล์.
+  mgmt_task: [
+    { key: "other", label: "ไฟล์แนบ", required: false },
+  ],
+  mgmt_meeting: [
+    { key: "other", label: "ไฟล์แนบ", required: false },
+  ],
 };
 
 // ฟิลด์รายละเอียด (แท็ค) เพิ่มเติมต่อเอกสาร เก็บใน attachments.metadata (jsonb).

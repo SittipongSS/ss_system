@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, deleteScope } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, deleteScope, canAccessMgmt, can, capsFor, sanitizeExtraCaps, GRANTABLE_CAPS } from './permissions';
 
 test('pmTaskScopes by role', () => {
   assert.deepEqual(pmTaskScopes('admin'), ['mine', 'team', 'all']);
@@ -33,6 +33,40 @@ test('pmTaskEditTier: workflow edit for assignee / same-dept staff', () => {
   assert.equal(pmTaskEditTier({ role: 'ae', id: 'u1' }, { assigneeId: 'u1' }, { ownerId: 'u2' }), 'workflow');
   // staff in the same department as the step
   assert.equal(pmTaskEditTier({ role: 'staff', id: 'p', department: 'PC' }, { assigneeId: null, role: 'PC' }, { ownerId: 'u2' }), 'workflow');
+});
+
+test('canAccessMgmt: admin + secretary by role (NOT sales head)', () => {
+  assert.equal(canAccessMgmt({ role: 'admin' }), true);
+  assert.equal(canAccessMgmt({ role: 'secretary' }), true);
+  // sales head must NOT inherit mgmt caps from the superuser set
+  assert.equal(canAccessMgmt({ role: 'ae_supervisor' }), false);
+  assert.equal(canAccessMgmt({ role: 'senior_ae' }), false);
+  assert.equal(canAccessMgmt({ role: 'ae' }), false);
+  assert.equal(canAccessMgmt({ role: 'legal' }), false);
+  assert.equal(canAccessMgmt({ role: 'viewer' }), false);
+  assert.equal(canAccessMgmt({ role: 'staff' }), false);
+});
+
+test('canAccessMgmt: honours a per-user mgmt:view grant (like LG)', () => {
+  // an SA granted mgmt:view to help the secretary — no role change
+  assert.equal(canAccessMgmt({ role: 'ae', extraCaps: ['mgmt:view'] }), true);
+  assert.equal(canAccessMgmt({ role: 'ae_supervisor', extraCaps: ['mgmt:view', 'mgmt:edit'] }), true);
+  // an mgmt:edit-only grant does NOT open the module (pages gate on mgmt:view)
+  assert.equal(canAccessMgmt({ role: 'ae', extraCaps: ['mgmt:edit'] }), false);
+});
+
+test('mgmt caps are grantable per-user (whitelist)', () => {
+  assert.ok(GRANTABLE_CAPS.includes('mgmt:view'));
+  assert.ok(GRANTABLE_CAPS.includes('mgmt:edit'));
+  assert.deepEqual(sanitizeExtraCaps(['mgmt:view', 'mgmt:edit', 'users:manage']), ['mgmt:view', 'mgmt:edit']);
+});
+
+test('secretary holds ONLY the mgmt caps (no tax/pm/master leak)', () => {
+  assert.deepEqual(capsFor('secretary'), ['mgmt:view', 'mgmt:edit']);
+  assert.equal(can('secretary', 'pm:view'), false);
+  assert.equal(can('secretary', 'customers:view'), false);
+  assert.equal(can('secretary', 'users:manage'), false);
+  assert.equal(can('secretary', 'mgmt:edit'), true);
 });
 
 test('pmTaskEditTier: none for outsiders', () => {

@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canEditRecord, canViewRecord } from '@/lib/permissions';
+import { can, canUser, canEditRecord, canViewRecord } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { listAttachments } from '@/lib/master/attachments';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
@@ -13,8 +13,14 @@ const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'order
 // resource key passed to the permission helpers (matches lib/permissions).
 const RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 
+// โมดูล "งานบริหาร" (mgmt): แนบไฟล์กับ task/meeting — สิทธิ์คุมด้วย mgmt cap
+// (admin+เลขา) ไม่ใช่ canViewRecord ของ parent customer/product. parent = แค่เช็ก
+// ว่า row มีจริง (ไม่ถูกลบ) เพื่อไม่ให้แนบกับ id ลอย.
+const MGMT_TABLE = { mgmt_task: 'mgmt_tasks', mgmt_meeting: 'mgmt_meetings' };
+const isMgmt = (entityType) => !!MGMT_TABLE[entityType];
+
 async function loadParent(supabase, entityType, entityId) {
-  const table = PARENT_TABLE[entityType];
+  const table = PARENT_TABLE[entityType] || MGMT_TABLE[entityType];
   if (!table) return null;
   const { data } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
   return data || null;
@@ -33,7 +39,10 @@ export async function GET(request) {
   const user = await getCurrentUser();
   const parent = await loadParent(supabase, entityType, entityId);
   if (!parent) return Response.json([]); // ไม่มี entity → ไม่มีเอกสาร
-  if (!canViewRecord(user, RESOURCE[entityType], parent)) {
+  const allowed = isMgmt(entityType)
+    ? canUser(user, 'mgmt:view')
+    : canViewRecord(user, RESOURCE[entityType], parent);
+  if (!allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -58,7 +67,10 @@ export async function POST(request) {
 
   const parent = await loadParent(supabase, entityType, entityId);
   if (!parent) return Response.json({ error: 'ไม่พบระเบียนที่จะแนบเอกสาร' }, { status: 404 });
-  if (!canEditRecord(user, RESOURCE[entityType], parent)) {
+  const allowedEdit = isMgmt(entityType)
+    ? canUser(user, 'mgmt:edit')
+    : canEditRecord(user, RESOURCE[entityType], parent);
+  if (!allowedEdit) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
