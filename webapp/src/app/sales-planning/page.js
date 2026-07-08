@@ -2,12 +2,18 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LineChart, RefreshCcw, Target, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, RefreshCcw, Target, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
 import { KpiCard, MONTH_LABELS, MonthPicker, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import { SALES_FEATURES } from "@/lib/salesPlanning";
 import { fmtDateTime } from "@/lib/format";
+
+const OVERVIEW_TABS = [
+  { key: "tables", label: "ตาราง" },
+  { key: "dashboard", label: "แดชบอร์ด" },
+];
 
 function metricCell(row, month) {
   const cell = row.months?.[month] || {};
@@ -176,6 +182,7 @@ export default function SalesPlanningOverviewPage() {
   const team = useTeam();
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
+  const [tab, setTab] = useState("tables");
   const year = month.slice(0, 4);
   const [yearDashboards, setYearDashboards] = useState([]);
   const [sahamitRisk, setSahamitRisk] = useState(null);
@@ -253,8 +260,8 @@ export default function SalesPlanningOverviewPage() {
 
   return (
     <Workspace
-      icon={<LineChart size={22} />}
-      title="แผนงานขาย — ภาพรวม"
+      icon={<LayoutDashboard size={22} />}
+      title="บริหารงานขาย — ภาพรวม"
       subtitle="คาดการณ์มูลค่าโครงการ เพื่อผลักไปสู่ Won โดย PM อาจเกิดก่อนหรือหลัง Won ได้"
       headerRight={headerRight}
     >
@@ -265,6 +272,29 @@ export default function SalesPlanningOverviewPage() {
           </div>
         )}
 
+        <div className="tabs-header" role="tablist" aria-label="มุมมองภาพรวม">
+          {OVERVIEW_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              className={`tab-btn ${tab === t.key ? "active" : ""}`}
+              onClick={() => setTab(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "dashboard" && (
+          <div aria-busy={loading}>
+            <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} />
+          </div>
+        )}
+
+        {tab === "tables" && (
+        <>
         <section className="kpi-grid" aria-busy={loading}>
           <KpiCard icon={<Target size={16} aria-hidden="true" />} label="เป้าเดือนที่เลือก" value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
           <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์" value={money(totals.weightedForecast)} hint="มูลค่าโครงการเปิดที่คาดว่าจะปิดให้เป็น Won" />
@@ -373,6 +403,8 @@ export default function SalesPlanningOverviewPage() {
               </div>
             )}
           </section>
+        )}
+        </>
         )}
       </div>
     </Workspace>

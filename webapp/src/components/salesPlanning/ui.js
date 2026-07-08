@@ -1,5 +1,6 @@
 "use client";
 
+import { Trophy } from "lucide-react";
 import { STAGE_LABELS } from "@/lib/salesPlanning";
 import { fmtMoneyCompact } from "@/lib/format";
 
@@ -109,6 +110,7 @@ export function stageBadge(stage) {
   }[stage] || "var(--text-3)";
   return (
     <span className="ui-badge" style={{ color, borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+      {stage === "won" && <Trophy size={12} style={{ marginRight: 4, verticalAlign: "-1px" }} />}
       {STAGE_LABELS[stage] || stage}
     </span>
   );

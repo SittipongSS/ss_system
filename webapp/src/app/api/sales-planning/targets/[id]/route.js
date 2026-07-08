@@ -1,7 +1,7 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { isSuperuser } from '@/lib/permissions';
-import { canEditSalesTarget, inSalesEditScope, monthKey, toMoney } from '@/lib/salesPlanning';
+import { canEditSalesTarget, inSalesEditScope, normalizeTargetPeriod, toMoney } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,10 +22,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json();
   const patch = { updatedAt: new Date().toISOString() };
-  if ('targetMonth' in body) {
-    const targetMonth = monthKey(body.targetMonth);
-    if (!targetMonth) return badRequest('ต้องระบุเดือนเป้าหมาย');
-    patch.targetMonth = targetMonth;
+  if ('period' in body || 'periodType' in body || 'targetMonth' in body) {
+    const normalized = normalizeTargetPeriod(
+      body.period ?? body.targetMonth ?? before.period,
+      body.periodType ?? before.periodType,
+    );
+    if (!normalized) return badRequest('ต้องระบุช่วงเวลาเป้าหมาย');
+    patch.period = normalized.period;
+    patch.periodType = normalized.periodType;
+    patch.targetMonth = normalized.periodType === 'month' ? normalized.period : null;
   }
   for (const key of ['ownerId', 'notes']) {
     if (key in body) patch[key] = body[key] || null;
@@ -50,7 +55,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: data.id,
     before,
     after: data,
-    summary: `แก้ไข sales target ${data.targetMonth} ${data.team || ''}`.trim(),
+    summary: `แก้ไข sales target ${data.period} ${data.team || 'SA รวม'}`.trim(),
     request: req,
   });
   return ok(data);
@@ -73,7 +78,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     entityType: 'sales_target',
     entityId: id,
     before,
-    summary: `ลบ sales target ${before.targetMonth} ${before.team || ''}`.trim(),
+    summary: `ลบ sales target ${before.period} ${before.team || 'SA รวม'}`.trim(),
     request: req,
   });
   return ok({ ok: true });

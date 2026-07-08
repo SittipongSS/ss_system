@@ -3,14 +3,23 @@
 // run under raw Node. Appends `.js` when an extensionless relative specifier
 // fails to resolve. Used via: node --import ./scripts/test-loader.mjs --test ...
 import { register } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+
+// '@/…' resolves to <cwd>/src/… (mirrors jsconfig paths) so tested modules can
+// use the same bundler-style alias as app code.
+const SRC = pathToFileURL(join(process.cwd(), 'src') + '/').href;
 
 register(
   'data:text/javascript,' + encodeURIComponent(`
+    const SRC = ${JSON.stringify(SRC)};
     export async function resolve(spec, ctx, next) {
-      if ((spec.startsWith('./') || spec.startsWith('../')) && !/\\.[mc]?js$/.test(spec)) {
-        try { return await next(spec, ctx); } catch { return next(spec + '.js', ctx); }
+      let s = spec;
+      if (s.startsWith('@/')) s = SRC + s.slice(2);
+      if ((s.startsWith('./') || s.startsWith('../') || s.startsWith('file:')) && !/\\.[mc]?js$/.test(s)) {
+        try { return await next(s, ctx); } catch { return next(s + '.js', ctx); }
       }
-      return next(spec, ctx);
+      return next(s, ctx);
     }
   `),
   import.meta.url,

@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2 } from "lucide-react";
+import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import FilterPopover from "@/components/ui/FilterPopover";
 import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -31,6 +32,9 @@ export default function ForecastPage() {
   const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae"), [assignables]);
   const [selectedNo, setSelectedNo] = useState(null);
   const [tab, setTab] = useState("matrix");
+  const [search, setSearch] = useState("");
+  const [catSel, setCatSel] = useState([]); // หมวดสินค้าที่เลือกกรอง
+  const q = search.trim().toLowerCase();
   const [showImport, setShowImport] = useState(false);
   const [editRound, setEditRound] = useState(null); // round being edited, or null = create
   // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 ดีล" เข้าแผนการขาย
@@ -64,33 +68,51 @@ export default function ForecastPage() {
   }, [products]);
   const catOf = (fg) => productByFg.get(String(fg).trim().toLowerCase())?.category || "— ไม่ระบุหมวด —";
 
-  // จัดกลุ่มแถว matrix ตามหมวดสินค้า
+  // ตัวเลือกหมวดสินค้าสำหรับตัวกรอง (จากสินค้าทั้งหมดใน master ของ AR-109)
+  const categoryOptions = useMemo(() => {
+    const s = new Set();
+    for (const p of products) if (p.category) s.add(p.category);
+    return [...s].sort((a, b) => String(a).localeCompare(String(b))).map((c) => ({ value: c, label: c }));
+  }, [products]);
+
+  // เงื่อนไขผ่านคำค้น (รหัส/ชื่อ) + หมวด — ใช้ร่วมทุกแท็บที่เป็นรายการสินค้า
+  const passFg = (fgCode, productName) => {
+    if (q && !String(fgCode).toLowerCase().includes(q) && !String(productName || "").toLowerCase().includes(q)) return false;
+    if (catSel.length && !catSel.includes(catOf(fgCode))) return false;
+    return true;
+  };
+  const filterCount = catSel.length;
+
+  // จัดกลุ่มแถว matrix ตามหมวดสินค้า (หลังกรอง)
   const matrixGroups = useMemo(() => {
     const g = new Map();
     for (const r of matrix.rows) {
+      if (!passFg(r.fgCode, r.productName)) continue;
       const cat = catOf(r.fgCode);
       if (!g.has(cat)) g.set(cat, []);
       g.get(cat).push(r);
     }
     return [...g.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matrix, productByFg]);
+  }, [matrix, productByFg, q, catSel]);
 
-  // แถวรวมมูลค่า (ราคาโรงงาน × จำนวน) ต่อเดือน + รวม — เหมือนหน้ากระทบยอด
+  // แถวรวมมูลค่า (ราคาโรงงาน × จำนวน) ต่อเดือน + รวม — คิดตามแถวที่แสดง (หลังกรอง)
   const matrixValue = useMemo(() => {
     const byMonth = {};
     for (const m of matrix.months) byMonth[m] = 0;
     let grand = 0, unpriced = 0;
     for (const r of matrix.rows) {
+      if (!passFg(r.fgCode, r.productName)) continue;
       const p = productByFg.get(String(r.fgCode).trim().toLowerCase());
       const price = p?.price == null ? null : Number(p.price);
       if (price == null) { if (r.total > 0) unpriced += 1; continue; }
-      for (const m of matrix.months) { const q = Number(r.qty[m]) || 0; byMonth[m] += q * price; grand += q * price; }
+      for (const m of matrix.months) { const qv = Number(r.qty[m]) || 0; byMonth[m] += qv * price; grand += qv * price; }
     }
     return { byMonth, grand, unpriced };
-  }, [matrix, productByFg]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrix, productByFg, q, catSel]);
 
-  // Overview: latest known qty per SKU (the most recent round that lists it).
+  // Overview: latest known qty per SKU (the most recent round that lists it) — หลังกรอง
   const overview = useMemo(() => {
     const map = new Map();
     for (const r of rounds) {
@@ -98,8 +120,11 @@ export default function ForecastPage() {
         map.set(row.fgCode, { fgCode: row.fgCode, productName: row.productName, total: row.total, roundNo: r.roundNo, receivedDate: r.receivedDate });
       }
     }
-    return [...map.values()].sort((a, b) => String(a.fgCode).localeCompare(String(b.fgCode)));
-  }, [rounds]);
+    return [...map.values()]
+      .filter((s) => passFg(s.fgCode, s.productName))
+      .sort((a, b) => String(a.fgCode).localeCompare(String(b.fgCode)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rounds, q, catSel, productByFg]);
 
   const openCreate = () => { setEditRound(null); setShowImport(true); };
   const openEdit = (r) => { setEditRound(r); setShowImport(true); };
@@ -118,7 +143,7 @@ export default function ForecastPage() {
   // เรียงตามหมวด → รหัสสินค้า → เดือน; แนบราคา/มูลค่าจาก master สำหรับสร้างดีล
   const lineList = useMemo(() => {
     const rows = (selectedRound?.lines || [])
-      .filter((l) => Number(l.qty || 0) > 0)
+      .filter((l) => Number(l.qty || 0) > 0 && passFg(l.fgCode, l.productName))
       .map((l) => {
         const p = productByFg.get(String(l.fgCode).trim().toLowerCase());
         const price = p?.price == null ? null : Number(p.price);
@@ -135,7 +160,8 @@ export default function ForecastPage() {
       String(a.fgCode).localeCompare(String(b.fgCode)) ||
       String(a.month).localeCompare(String(b.month)));
     return rows;
-  }, [selectedRound, productByFg, mappedSet]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRound, productByFg, mappedSet, q, catSel]);
 
   const lineGroups = useMemo(() => {
     const g = new Map();
@@ -246,6 +272,21 @@ export default function ForecastPage() {
             ))}
           </div>
 
+          {/* ค้นหา + กรองหมวด — มีผลกับแท็บที่เป็นรายการสินค้า (ไม่รวมประวัติ/เทียบรอบ) */}
+          {tab !== "history" && (
+            <div className="toolbar" style={{ margin: "12px 0" }}>
+              <div className="search-glass" style={{ width: 240 }}>
+                <Search size={18} color="var(--text-3)" />
+                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
+              </div>
+              <FilterPopover
+                count={filterCount}
+                onClear={() => setCatSel([])}
+                groups={[{ key: "category", label: "หมวดสินค้า", options: categoryOptions, selected: catSel, onChange: setCatSel }]}
+              />
+            </div>
+          )}
+
           {/* รายการสินค้า (Overview) — ยอดล่าสุดต่อ SKU */}
           {tab === "overview" && (
             <div className="premium-table-wrapper">
@@ -260,6 +301,9 @@ export default function ForecastPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {overview.length === 0 && (
+                    <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
+                  )}
                   {overview.map((s) => {
                     const meta = productMetaText(productByFg.get(String(s.fgCode).trim().toLowerCase()));
                     return (
@@ -303,6 +347,8 @@ export default function ForecastPage() {
 
               {matrix.rows.length === 0 ? (
                 <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>รอบนี้ยังไม่มีรายการ</div>
+              ) : matrixGroups.length === 0 ? (
+                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</div>
               ) : (
                 <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
                   <table className="premium-table sticky-col1">
@@ -389,7 +435,9 @@ export default function ForecastPage() {
               )}
 
               {lineList.length === 0 ? (
-                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>รอบนี้ยังไม่มีรายการ</div>
+                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>
+                  {q || filterCount > 0 ? "ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง" : "รอบนี้ยังไม่มีรายการ"}
+                </div>
               ) : (
                 <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
                   <table className="premium-table">

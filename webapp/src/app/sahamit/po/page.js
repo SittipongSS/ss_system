@@ -1,14 +1,15 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download } from "lucide-react";
+import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
-import { destinationLabel } from "@/components/sahamit/destinations";
+import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 const baht = (n) => fmtMoneyCompact(n);
@@ -78,6 +79,10 @@ export default function PoPage() {
   const { data: material, reload: reloadMaterial } = useApiList("/api/sahamit/material");
   const { data: products } = useApiList("/api/sahamit/products");
   const [openPo, setOpenPo] = useState({});
+  const [search, setSearch] = useState("");
+  const [statusSel, setStatusSel] = useState([]);  // poRollupStatus keys
+  const [destSel, setDestSel] = useState([]);       // destination keys
+  const q = search.trim().toLowerCase();
 
   // ราคาโรงงาน (costPrice, ก่อน VAT) ต่อ fgCode — สำหรับยอดรวมมูลค่า PO
   const priceByFg = useMemo(() => {
@@ -86,6 +91,37 @@ export default function PoPage() {
     return m;
   }, [products]);
   const prodIdx = useMemo(() => indexProducts(products), [products]);
+
+  // ตัวเลือกตัวกรอง (สถานะ/สถานที่ส่ง) จำกัดเฉพาะที่มีจริงใน PO ปัจจุบัน
+  const statusOptions = useMemo(() => {
+    const present = new Set(pos.map(poRollupStatus));
+    return Object.keys(PO_STATUS_LABEL).filter((k) => present.has(k)).map((k) => ({ value: k, label: PO_STATUS_LABEL[k] }));
+  }, [pos]);
+  const destOptions = useMemo(() => {
+    const present = new Set(pos.map((p) => p.destination).filter(Boolean));
+    return DESTINATIONS.filter((d) => present.has(d.key)).map((d) => ({ value: d.key, label: d.label }));
+  }, [pos]);
+
+  // PO ที่ผ่านคำค้น + ตัวกรอง. คำค้นครอบคลุม เลข PO, สถานที่ส่ง, และรหัส/ชื่อสินค้าในบรรทัด
+  const filteredPos = useMemo(() => {
+    if (!q && !statusSel.length && !destSel.length) return pos;
+    return pos.filter((po) => {
+      if (statusSel.length && !statusSel.includes(poRollupStatus(po))) return false;
+      if (destSel.length && !destSel.includes(po.destination)) return false;
+      if (q) {
+        const hay = [
+          po.poNumber,
+          destinationLabel(po.destination),
+          ...(po.lines || []).flatMap((l) => [l.fgCode, prodIdx.get(String(l.fgCode).trim().toLowerCase())?.name]),
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [pos, q, statusSel, destSel, prodIdx]);
+
+  const filterCount = statusSel.length + destSel.length;
+  const clearFilters = () => { setStatusSel([]); setDestSel([]); };
 
   // material lines grouped by PO number (คัดเฉพาะบรรทัด active แล้วจาก API)
   const matByPo = useMemo(() => {
@@ -134,30 +170,52 @@ export default function PoPage() {
           </Link>
         </div>
       ) : (
-        <div className="premium-table-wrapper">
-          <table className="premium-table">
-            <thead>
-              <tr>
-                <th style={{ width: 32 }}></th>
-                <th>เลขที่ PO</th>
-                <th>วันที่เอกสาร</th>
-                <th>วันรับ PO</th>
-                <th>กำหนดส่ง</th>
-                <th>สถานที่ส่ง</th>
-                <th style={{ textAlign: "right" }}>รายการ</th>
-                <th style={{ textAlign: "right" }}>จำนวนรวม</th>
-                <th style={{ textAlign: "right" }}>มูลค่า PO</th>
-                <th>สถานะ</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {pos.map((po) => (
-                <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="toolbar" style={{ marginBottom: 14 }}>
+            <div className="search-glass" style={{ width: 240 }}>
+              <Search size={18} color="var(--text-3)" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาเลข PO / สินค้า / สถานที่ส่ง..." />
+            </div>
+            <FilterPopover
+              count={filterCount}
+              onClear={clearFilters}
+              groups={[
+                { key: "status", label: "สถานะ", options: statusOptions, selected: statusSel, onChange: setStatusSel },
+                { key: "dest", label: "สถานที่ส่ง", options: destOptions, selected: destSel, onChange: setDestSel },
+              ]}
+            />
+            {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredPos.length} จาก {pos.length} ใบ</span>}
+          </div>
+
+          <div className="premium-table-wrapper">
+            <table className="premium-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 32 }}></th>
+                  <th>เลขที่ PO</th>
+                  <th>วันที่เอกสาร</th>
+                  <th>วันรับ PO</th>
+                  <th>กำหนดส่ง</th>
+                  <th>สถานที่ส่ง</th>
+                  <th style={{ textAlign: "right" }}>รายการ</th>
+                  <th style={{ textAlign: "right" }}>จำนวนรวม</th>
+                  <th style={{ textAlign: "right" }}>มูลค่า PO</th>
+                  <th>สถานะ</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPos.length === 0 ? (
+                  <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มี PO ตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
+                ) : (
+                  filteredPos.map((po) => (
+                    <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </Workspace>
   );
