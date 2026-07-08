@@ -99,7 +99,9 @@ export default function AppLayout({ children }) {
       pathname.startsWith('/database') ? 'master'
       // PM รวมอยู่ใต้ระบบ "บริหารงานขาย" (Sales เป็นแม่) — /pm และ /sales-planning
       // ใช้ sidebar ชุดเดียวกัน (กลุ่มบริหารงานขาย + กลุ่มงานผลิต PM)
-      : (pathname.startsWith('/sa') || pathname.startsWith('/sales-planning') || pathname.startsWith('/pm')) ? 'salesplan'
+      // '/sa' is bounded (=== '/sa' or '/sa/…') so it does NOT swallow '/sahamit',
+      // which is a separate system checked below.
+      : (pathname === '/sa' || pathname.startsWith('/sa/') || pathname.startsWith('/sales-planning') || pathname.startsWith('/pm')) ? 'salesplan'
       : pathname.startsWith('/sahamit') ? 'sahamit'
       : pathname.startsWith('/mgmt') ? 'mgmt'
       : pathname === '/users' ? 'users'
