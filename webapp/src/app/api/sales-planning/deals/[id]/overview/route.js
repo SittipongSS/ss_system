@@ -22,7 +22,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   const { data: deal, error } = await supabase.from('sales_deals').select(dealSelect).eq('id', id).maybeSingle();
   if (error) return fail(error.message, 500);
-  if (!deal) return notFound('deal not found');
+  if (!deal) return notFound('ไม่พบโครงการ');
   if (!inSalesViewScope(user, deal)) return forbidden();
 
   const [quotations, documents, activities, stageHistory, forecasts] = await Promise.all([

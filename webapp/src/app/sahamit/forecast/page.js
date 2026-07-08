@@ -15,7 +15,7 @@ import ForecastImportModal from "@/components/sahamit/ForecastImportModal";
 const TABS = [
   { key: "overview", label: "รายการสินค้า" },
   { key: "matrix", label: "ตารางจัดการ (Matrix)" },
-  { key: "lines", label: "รายเดือน (สร้างดีล)" },
+  { key: "lines", label: "รายเดือน (สร้างโครงการ)" },
   { key: "history", label: "ประวัติ / เทียบรอบ" },
 ];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -26,7 +26,7 @@ export default function ForecastPage() {
   const { data: rounds, loading, error, reload } = useApiList("/api/sahamit/forecast/rounds");
   const { data: products } = useApiList("/api/sahamit/products");
   const { data: assignables } = useApiList("/api/pm/assignable-users");
-  // forecast line ที่ถูกสร้างเป็นดีลไปแล้ว (กันสร้างซ้ำตั้งแต่ UI)
+  // forecast line ที่ถูกสร้างเป็นโครงการไปแล้ว (กันสร้างซ้ำตั้งแต่ UI)
   const { data: mappedLineIds, reload: reloadMapped } = useApiList("/api/sahamit/forecast/mapped-lines");
   const mappedSet = useMemo(() => new Set((mappedLineIds || []).map(String)), [mappedLineIds]);
   const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae"), [assignables]);
@@ -37,10 +37,10 @@ export default function ForecastPage() {
   const q = search.trim().toLowerCase();
   const [showImport, setShowImport] = useState(false);
   const [editRound, setEditRound] = useState(null); // round being edited, or null = create
-  // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 ดีล" เข้าแผนการขาย
+  // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 โครงการ" เข้าแผนการขาย
   const [selectedLines, setSelectedLines] = useState(() => new Set());
   const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
-  const [dealOwnerId, setDealOwnerId] = useState(""); // AE เจ้าของดีล (role=ae เท่านั้น)
+  const [dealOwnerId, setDealOwnerId] = useState(""); // ผู้ดูแล (AE) (role=ae เท่านั้น)
   const [creating, setCreating] = useState(false);
   const [dealModalOpen, setDealModalOpen] = useState(false); // modal ยืนยันสร้างแผนการขาย
 
@@ -140,7 +140,7 @@ export default function ForecastPage() {
   }, [matrix.months]);
 
   // ตารางราย line: 1 แถว = 1 สินค้า × 1 เดือน × 1 จำนวน (แต่ละ line ของรอบที่เลือก)
-  // เรียงตามหมวด → รหัสสินค้า → เดือน; แนบราคา/มูลค่าจาก master สำหรับสร้างดีล
+  // เรียงตามหมวด → รหัสสินค้า → เดือน; แนบราคา/มูลค่าจาก master สำหรับสร้างโครงการ
   const lineList = useMemo(() => {
     const rows = (selectedRound?.lines || [])
       .filter((l) => Number(l.qty || 0) > 0 && passFg(l.fgCode, l.productName))
@@ -152,7 +152,7 @@ export default function ForecastPage() {
           id: l.id, fgCode: l.fgCode, productName: l.productName, month: l.month, qty,
           price, amount: price == null ? null : qty * price,
           category: p?.category || "— ไม่ระบุหมวด —",
-          mapped: mappedSet.has(String(l.id)), // มีดีลอยู่แล้ว
+          mapped: mappedSet.has(String(l.id)), // มีโครงการอยู่แล้ว
         };
       });
     rows.sort((a, b) =>
@@ -179,7 +179,7 @@ export default function ForecastPage() {
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
-  // เลือก/ยกเลิกทั้งกลุ่ม — ข้าม line ที่มีดีลแล้ว (เลือกไม่ได้)
+  // เลือก/ยกเลิกทั้งกลุ่ม — ข้าม line ที่มีโครงการแล้ว (เลือกไม่ได้)
   const setLineGroup = (rows, on) => setSelectedLines((prev) => {
     const next = new Set(prev);
     for (const r of rows) { if (r.mapped) continue; if (on) next.add(r.id); else next.delete(r.id); }
@@ -188,7 +188,7 @@ export default function ForecastPage() {
   const selectableLines = useMemo(() => lineList.filter((r) => !r.mapped), [lineList]);
   const allLinesSelected = selectableLines.length > 0 && selectableLines.every((r) => selectedLines.has(r.id));
 
-  // สรุป line ที่เลือก (จำนวน + มูลค่าราคาโรงงาน) สำหรับแถบสร้างดีล
+  // สรุป line ที่เลือก (จำนวน + มูลค่าราคาโรงงาน) สำหรับแถบสร้างโครงการ
   const selection = useMemo(() => {
     let qty = 0, value = 0, unpriced = 0;
     for (const r of lineList) {
@@ -202,7 +202,7 @@ export default function ForecastPage() {
 
   const createDeal = async () => {
     if (!selectedRound || !selectedLines.size) return;
-    if (!dealOwnerId) { alert("ต้องเลือก AE เจ้าของดีล"); return; }
+    if (!dealOwnerId) { alert("ต้องเลือกผู้ดูแล (AE)"); return; }
     setCreating(true);
     try {
       const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/create-sales-deal`, {
@@ -210,13 +210,13 @@ export default function ForecastPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineIds: [...selectedLines], forecastMonth: dealMonth, ownerId: dealOwnerId }),
       });
-      const skipMsg = json.skipped ? ` (ข้ามที่มีดีลแล้ว ${json.skipped} รายการ)` : "";
-      alert(`สร้างดีลเข้าแผนการขายแล้ว ${json.count || 0} ดีล (1 รายการ = 1 ดีล)${skipMsg}`);
+      const skipMsg = json.skipped ? ` (ข้ามที่มีโครงการแล้ว ${json.skipped} รายการ)` : "";
+      alert(`สร้างโครงการเข้าแผนการขายแล้ว ${json.count || 0} โครงการ (1 รายการ = 1 โครงการ)${skipMsg}`);
       setSelectedLines(new Set());
       setDealModalOpen(false);
       reloadMapped();
     } catch (e) {
-      alert(e.message || "สร้างดีลเข้าแผนการขายไม่สำเร็จ");
+      alert(e.message || "สร้างโครงการเข้าแผนการขายไม่สำเร็จ");
     } finally {
       setCreating(false);
     }
@@ -340,7 +340,7 @@ export default function ForecastPage() {
                 <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>
                 {matrix.rows.length > 0 && (
                   <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
-                    ไปแท็บ “รายเดือน (สร้างดีล)” เพื่อเลือกรายการส่งเข้าแผนการขาย
+                    ไปแท็บ “รายเดือน (สร้างโครงการ)” เพื่อเลือกรายการส่งเข้าแผนการขาย
                   </span>
                 )}
               </div>
@@ -403,7 +403,7 @@ export default function ForecastPage() {
             </div>
           )}
 
-          {/* รายเดือน (สร้างดีล) — 1 แถว = สินค้า × เดือน × จำนวน; ติ๊กเลือกส่งเข้าแผนการขาย */}
+          {/* รายเดือน (สร้างโครงการ) — 1 แถว = สินค้า × เดือน × จำนวน; ติ๊กเลือกส่งเข้าแผนการขาย */}
           {tab === "lines" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -415,7 +415,7 @@ export default function ForecastPage() {
                 </select>
                 {lineList.length > 0 && (
                   <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
-                    ติ๊กเลือกรายการ (สินค้า×เดือน) เพื่อรวมเป็นดีลเดียว
+                    ติ๊กเลือกรายการ (สินค้า×เดือน) เพื่อรวมเป็นโครงการเดียว
                   </span>
                 )}
               </div>
@@ -471,7 +471,7 @@ export default function ForecastPage() {
                                 checked={selectedLines.has(r.id)}
                                 disabled={r.mapped}
                                 onChange={() => toggleLine(r.id)}
-                                title={r.mapped ? "รายการนี้ถูกสร้างเป็นดีลแล้ว" : undefined}
+                                title={r.mapped ? "รายการนี้ถูกสร้างเป็นโครงการแล้ว" : undefined}
                               />
                             </td>
                             <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
@@ -479,7 +479,7 @@ export default function ForecastPage() {
                               {r.productName || "— ไม่รู้จัก —"}
                               {r.mapped && (
                                 <span className="ui-badge" style={{ marginLeft: 8, color: "var(--green)", fontSize: 10.5 }}>
-                                  <CheckCircle2 size={11} style={{ verticalAlign: "-1px" }} /> มีดีลแล้ว
+                                  <CheckCircle2 size={11} style={{ verticalAlign: "-1px" }} /> มีโครงการแล้ว
                                 </span>
                               )}
                             </td>
@@ -551,8 +551,8 @@ export default function ForecastPage() {
       <Modal open={dealModalOpen} onClose={() => !creating && setDealModalOpen(false)} title="สร้างแผนการขายจาก Forecast" size="md">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="glass-panel" style={{ padding: "12px 14px", fontSize: 13, lineHeight: 1.7 }}>
-            เลือก <b>{selection.count}</b> รายการ (สินค้า×เดือน) → สร้าง <b>{selection.count}</b> ดีล
-            <span style={{ color: "var(--text-3)" }}> (1 รายการ = 1 ดีล)</span>
+            เลือก <b>{selection.count}</b> รายการ (สินค้า×เดือน) → สร้าง <b>{selection.count}</b> โครงการ
+            <span style={{ color: "var(--text-3)" }}> (1 รายการ = 1 โครงการ)</span>
             <br />
             รวม <b>{nf(selection.qty)}</b> หน่วย · มูลค่า <b>{nfBaht(selection.value)}</b>
             {selection.unpriced > 0 && (
@@ -561,7 +561,7 @@ export default function ForecastPage() {
           </div>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
-            AE เจ้าของดีล
+            ผู้ดูแล (AE)
             <select className="premium-select" style={{ height: 36 }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
               {!aeList.length && <option value="">— ไม่มี AE —</option>}
               {aeList.map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
@@ -578,7 +578,7 @@ export default function ForecastPage() {
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
             <button className="btn ghost" onClick={() => setDealModalOpen(false)} disabled={creating}>ยกเลิก</button>
             <button className="btn btn-primary" onClick={createDeal} disabled={creating || !dealOwnerId || !selection.count}>
-              <Send size={14} /> {creating ? "กำลังสร้าง..." : `สร้าง ${selection.count} ดีล`}
+              <Send size={14} /> {creating ? "กำลังสร้าง..." : `สร้าง ${selection.count} โครงการ`}
             </button>
           </div>
         </div>

@@ -295,11 +295,11 @@ export default function PoDetailPage() {
       setSettleChoices(init);
     } catch (e) {
       setSettleOpen(false);
-      setToast({ kind: "error", msg: e.message || "โหลดดีลที่แนะนำไม่สำเร็จ" });
+      setToast({ kind: "error", msg: e.message || "โหลดโครงการที่แนะนำไม่สำเร็จ" });
     }
   };
 
-  // ยืนยันเชื่อม PO → ดีล รายบรรทัด (ปิด Won ได้หลายดีล)
+  // ยืนยันเชื่อม PO → โครงการ รายบรรทัด (ปิด Won ได้หลายโครงการ)
   const confirmSettle = async () => {
     const settlements = (settleData?.lines || [])
       .filter((ln) => !ln.settledDealId)
@@ -315,10 +315,10 @@ export default function PoDetailPage() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settlements }),
       });
       setSettleOpen(false);
-      setToast({ kind: "success", msg: `ปิด Won เข้าดีลแล้ว ${payload.settled || 0} ดีล` });
+      setToast({ kind: "success", msg: `ปิด Won เข้าโครงการแล้ว ${payload.settled || 0} โครงการ` });
       await reload();
     } catch (e) {
-      setToast({ kind: "error", msg: e.message || "เชื่อมดีลไม่สำเร็จ" });
+      setToast({ kind: "error", msg: e.message || "เชื่อมโครงการไม่สำเร็จ" });
     } finally {
       setSettleBusy(false);
     }
@@ -352,15 +352,15 @@ export default function PoDetailPage() {
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>จำนวนรายการ</div><div style={{ fontSize: 20, fontWeight: 700 }}>{poLineCount(po)}</div></div>
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>ยอดรวม (ชิ้น)</div><div style={{ fontSize: 20, fontWeight: 700 }}>{nf(poTotalQty(po))}</div></div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              {/* การขาย (หลัก): เชื่อม PO เข้าดีลรายบรรทัด → ปิด Won */}
+              {/* การขาย (หลัก): เชื่อม PO เข้าโครงการรายบรรทัด → ปิด Won */}
               {canSettle && (
                 <button type="button" className="btn btn-primary" onClick={openSettleModal} disabled={!po.lines?.length}>
-                  <PackageCheck size={14} /> {po.salesDealId ? "จัดการการเชื่อมดีล" : "เชื่อมเข้าดีล (ปิด Won)"}
+                  <PackageCheck size={14} /> {po.salesDealId ? "จัดการการเชื่อมโครงการ" : "เชื่อมเข้าโครงการ (ปิด Won)"}
                 </button>
               )}
               {po.salesDealId && (
                 <a className="btn ghost" href={`/sales-planning/deals/${po.salesDealId}`}>
-                  <ExternalLink size={14} /> เปิดดีล
+                  <ExternalLink size={14} /> เปิดโครงการ
                 </a>
               )}
 
@@ -516,14 +516,14 @@ export default function PoDetailPage() {
         danger={false}
       />
 
-      <Modal open={settleOpen} onClose={() => !settleBusy && setSettleOpen(false)} title="เชื่อม PO เข้าดีลแผนการขาย (ปิด Won รายบรรทัด)" size="lg">
+      <Modal open={settleOpen} onClose={() => !settleBusy && setSettleOpen(false)} title="เชื่อม PO เข้าโครงการแผนการขาย (ปิด Won รายบรรทัด)" size="lg">
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           {!settleData ? (
-            <div style={{ color: "var(--text-3)", fontSize: 13 }}>กำลังโหลดดีลที่แนะนำ…</div>
+            <div style={{ color: "var(--text-3)", fontSize: 13 }}>กำลังโหลดโครงการที่แนะนำ…</div>
           ) : (
             <>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                จับคู่แต่ละสินค้าใน PO กับดีลของมันเอง (แนะนำดีลที่เดือนคาดปิดใกล้เดือนรับ PO {settleData.poReceivedMonth || "—"} สุด) — ปิด Won ได้หลายดีล
+                จับคู่แต่ละสินค้าใน PO กับโครงการของมันเอง (แนะนำโครงการที่เดือนคาดปิดใกล้เดือนรับ PO {settleData.poReceivedMonth || "—"} สุด) — ปิด Won ได้หลายโครงการ
               </div>
               <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
                 <table className="premium-table">
@@ -531,7 +531,7 @@ export default function PoDetailPage() {
                     <tr>
                       <th>สินค้า</th>
                       <th style={{ textAlign: "right" }}>จำนวน</th>
-                      <th style={{ minWidth: 240 }}>เชื่อมกับดีล</th>
+                      <th style={{ minWidth: 240 }}>เชื่อมกับโครงการ</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -557,7 +557,7 @@ export default function PoDetailPage() {
                                   {c.title} · คาดปิด {c.forecastMonth || "—"} · {fmtMoneyCompact(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
                                 </option>
                               ))}
-                              <option value="new">— สร้างดีลใหม่ (PO นอก forecast) —</option>
+                              <option value="new">— สร้างโครงการใหม่ (PO นอก forecast) —</option>
                               <option value="skip">— ข้าม (ไม่เชื่อม) —</option>
                             </select>
                           )}

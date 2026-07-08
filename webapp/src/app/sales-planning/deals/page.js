@@ -670,7 +670,7 @@ export default function SalesPlanningPipelinePage() {
                 {!quotations.length && (
                   <tr>
                     <td colSpan={7} style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>
-                      ยังไม่มีใบเสนอราคาสำหรับดีลนี้
+                      ยังไม่มีใบเสนอราคาสำหรับโครงการนี้
                     </td>
                   </tr>
                 )}

@@ -58,7 +58,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!canEditSalesPlanning(user)) return forbidden();
 
   const body = await req.json();
-  if (!body.title?.trim()) return badRequest('ต้องระบุชื่อ deal');
+  if (!body.title?.trim()) return badRequest('ต้องระบุชื่อโครงการ');
 
   let customerName = body.customerName || null;
   if (body.customerId) {

@@ -46,11 +46,11 @@ export async function POST(request, { params }) {
   if (!forecastMonth) return Response.json({ error: 'ต้องระบุเดือนคาดได้รับ PO (forecastMonth)' }, { status: 400 });
 
   // เจ้าของดีลต้องเป็น AE (role=ae) เท่านั้น — ตรวจจาก app_metadata ฝั่ง server
-  if (!body.ownerId) return Response.json({ error: 'ต้องเลือก AE เจ้าของดีล' }, { status: 400 });
+  if (!body.ownerId) return Response.json({ error: 'ต้องเลือกผู้ดูแล (AE)' }, { status: 400 });
   const { data: ownerRes, error: ownerErr } = await supabase.auth.admin.getUserById(String(body.ownerId));
   const owner = ownerRes?.user;
   if (ownerErr || !owner) return Response.json({ error: 'ไม่พบผู้ใช้ AE ที่เลือก' }, { status: 400 });
-  if (owner.app_metadata?.role !== 'ae') return Response.json({ error: 'เจ้าของดีลต้องเป็น AE เท่านั้น' }, { status: 400 });
+  if (owner.app_metadata?.role !== 'ae') return Response.json({ error: 'ผู้ดูแลต้องเป็น AE เท่านั้น' }, { status: 400 });
   const ownerId = owner.id;
   const ownerName = owner.user_metadata?.name || owner.email || null;
   const ownerTeam = owner.app_metadata?.team || user.team || 'KA';
@@ -97,7 +97,7 @@ export async function POST(request, { params }) {
   const toCreate = picked.filter((line) => !blockedLineIds.has(String(line.id)));
   const skipped = picked.length - toCreate.length;
   if (!toCreate.length) {
-    return Response.json({ error: 'รายการที่เลือกถูกสร้างเป็นดีลไปแล้วทั้งหมด', skipped, count: 0 }, { status: 409 });
+    return Response.json({ error: 'รายการที่เลือกถูกสร้างเป็นโครงการไปแล้วทั้งหมด', skipped, count: 0 }, { status: 409 });
   }
 
   const now = new Date().toISOString();
@@ -162,7 +162,7 @@ export async function POST(request, { params }) {
     });
     if (linkError) {
       await supabase.from('sales_deals').delete().in('id', [...created.map((d) => d.id), deal.id]);
-      return Response.json({ error: `ผูกรายการ FC เข้าดีลไม่สำเร็จ: ${linkError.message}` }, { status: 500 });
+      return Response.json({ error: `ผูกรายการ FC เข้าโครงการไม่สำเร็จ: ${linkError.message}` }, { status: 500 });
     }
 
     await supabase.from('sales_deal_stage_history').insert({
