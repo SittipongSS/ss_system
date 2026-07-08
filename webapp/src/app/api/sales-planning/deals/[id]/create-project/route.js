@@ -35,28 +35,29 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   let projectCode = body.code || (await generateProjectCode(supabase));
   const now = new Date().toISOString();
 
+  // ฟิลด์จากโมดัลสร้างโครงการ (เหมือนหน้า PM) — ปรับแก้ได้ ใช้ค่าจากดีลเป็น default
   const baseRow = {
     name: body.name || deal.title,
-    customerId: deal.customerId || null,
-    customerName: deal.customerName || null,
+    customerId: body.customerId || deal.customerId || null,
+    customerName: body.customerName || deal.customerName || null,
     type: body.type === 'RE-ORDER' ? 'RE-ORDER' : 'NPD',
     urgency: body.urgency || 'Schedule',
-    aeOwner: deal.ownerName || user.name || '',
-    acOwner: '',
+    aeOwner: body.aeOwner || deal.ownerName || user.name || '',
+    acOwner: body.acOwner || '',
     status: 'New',
     startDate,
     dueDate,
-    productMainCategory: '',
-    productSubCategory: '',
+    productMainCategory: body.productMainCategory || '',
+    productSubCategory: body.productSubCategory || '',
     docNumber: '',
-    productName: deal.title || '',
+    productName: body.name || deal.title || '',
     productCode: '',
     orderQty: '',
     productionQty: '',
-    aeSupervisor: '',
+    aeSupervisor: body.aeSupervisor || '',
     keyAccountExec: '',
-    customerEmail: '',
-    preparedBy: user.name || '',
+    customerEmail: body.customerEmail || '',
+    preparedBy: body.preparedBy || user.name || '',
     reviewedBy: '',
     team: deal.team || user.team || null,
     ownerId: deal.ownerId || user.id || null,
@@ -102,12 +103,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     insertedTasks = taskRows || [];
   }
 
-  // เดินหน้าเท่านั้น: won/มัดจำแล้ว → in_project; ก่อนขั้น "เสนอไทม์ไลน์" → timeline_proposed;
-  // ถ้าอยู่ขั้นสูงกว่านั้นแล้ว (awaiting_confirm/deposit_pending) คงสถานะเดิม ไม่ถอยหลัง.
+  // ผูก FG ที่เลือกในโมดัล (ถ้ามี) — non-fatal เหมือนหน้า PM
+  let productWarning = null;
+  if (Array.isArray(body.projectProducts) && body.projectProducts.length > 0) {
+    const ppRows = body.projectProducts
+      .filter((p) => p.productId)
+      .map((p) => ({ id: genId('PP'), projectId: project.id, productId: p.productId, orderQty: p.orderQty || null, productionQty: p.productionQty || null }));
+    if (ppRows.length) {
+      const { error: ppErr } = await supabase.from('project_products').insert(ppRows);
+      if (ppErr) productWarning = 'เชื่อมสินค้า (FG) เข้าโปรเจกต์ไม่สำเร็จ — โปรดผูกใหม่ที่หน้าโปรเจกต์';
+    }
+  }
+
+  // เดินหน้าเท่านั้น: ก่อนขั้น "เสนอไทม์ไลน์" → เลื่อนเป็น timeline_proposed; ขั้นสูงกว่านั้น
+  // (รวม won) คงสถานะเดิม. การสร้าง PM ไม่ผลักดีลเป็น won/สถานะปิด — won ปิดแยกต่างหาก.
   const stageIdx = (s) => DEAL_STAGES.indexOf(s);
-  const nextStage = (deal.stage === 'won' || deal.depositPaid)
-    ? 'in_project'
-    : stageIdx(deal.stage) < stageIdx('timeline_proposed') ? 'timeline_proposed' : deal.stage;
+  const nextStage = stageIdx(deal.stage) < stageIdx('timeline_proposed') ? 'timeline_proposed' : deal.stage;
   const { data: updatedDeal, error: linkError } = await supabase
     .from('sales_deals')
     .update({
@@ -159,5 +170,5 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
 
-  return ok({ project: { ...project, tasks: insertedTasks }, deal: updatedDeal }, 201);
+  return ok({ project: { ...project, tasks: insertedTasks }, deal: updatedDeal, productWarning }, 201);
 });
