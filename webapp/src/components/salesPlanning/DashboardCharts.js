@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { BarChart3, Layers, Target } from "lucide-react";
 import { coveragePct, money, SALES_TEAMS } from "@/components/salesPlanning/ui";
+import { fmtMoneyCompact } from "@/lib/format";
 
 // Dashboard / chart tab for the sales-planning overview. Renders hand-rolled
 // responsive SVG bar charts (the app has no charting library) comparing the
@@ -25,13 +26,8 @@ function niceMax(value) {
   return step * pow;
 }
 
-function compactMoney(value) {
-  const n = Number(value || 0);
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${(n / 1_000_000).toLocaleString("th-TH", { maximumFractionDigits: 1 })} ล.`;
-  if (abs >= 1_000) return `${(n / 1_000).toLocaleString("th-TH", { maximumFractionDigits: 0 })} ก.`;
-  return n.toLocaleString("th-TH");
-}
+// ป้ายแกนกราฟ — ใช้รูปแบบเงินย่อกลางตามกฎทั้งระบบ (฿x.xxK / ฿x.xxM).
+const compactMoney = (value) => fmtMoneyCompact(value);
 
 function Legend() {
   return (

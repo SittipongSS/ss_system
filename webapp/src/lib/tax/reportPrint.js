@@ -13,7 +13,15 @@ const fmtDate = (v) => {
   if (!v) return "-";
   const d = new Date(v);
   if (isNaN(d.getTime())) return esc(v);
-  return d.toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getFullYear()}`; // DD/MM/YYYY (ค.ศ.)
+};
+// เวลาพิมพ์เอกสาร → DD/MM/YYYY HH:MM (ค.ศ.).
+const genAt = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 const cellText = (c, val) => {
   if (c.money) return fmtMoney(val);
@@ -111,7 +119,7 @@ export function buildReportPrintHTML(report, meta = {}) {
       <thead><tr>${head}</tr></thead>
       <tbody>${body}${summaryRow}</tbody>
     </table>
-    <div class="gen">พิมพ์เมื่อ ${new Date().toLocaleString("th-TH")} · ${esc(COMPANY)}</div>
+    <div class="gen">พิมพ์เมื่อ ${genAt()} · ${esc(COMPANY)}</div>
   </div>
 </body></html>`;
 }

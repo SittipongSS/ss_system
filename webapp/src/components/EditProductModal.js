@@ -6,6 +6,7 @@ import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { categoryInfo } from "@/lib/master/categoryOf";
 import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
+import { fmtMoney } from "@/lib/format";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
 // (Excise APPROVAL still lives on the registration.) Layout/styling mirrors the
@@ -156,9 +157,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   );
 
   const money = (v) =>
-    v == null || v === "" || Number.isNaN(Number(v))
-      ? "-"
-      : new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" }).format(Number(v));
+    v == null || v === "" || Number.isNaN(Number(v)) ? "-" : fmtMoney(v);
 
   const cat = getCategoryInfo(form.fgCode);
   const catBox = (() => {

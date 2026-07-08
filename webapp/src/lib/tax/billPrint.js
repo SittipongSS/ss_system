@@ -19,7 +19,9 @@ const fmtDate = (v) => {
   if (!v) return "-";
   const d = new Date(v);
   if (isNaN(d.getTime())) return esc(v);
-  return d.toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getFullYear()}`; // DD/MM/YYYY (ค.ศ.)
 };
 
 export function buildBillPrintHTML(order, customer = {}) {

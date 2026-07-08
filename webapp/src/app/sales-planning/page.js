@@ -8,6 +8,7 @@ import { useCan, useTeam } from "@/lib/roleContext";
 import { KpiCard, MONTH_LABELS, MonthPicker, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import { SALES_FEATURES } from "@/lib/salesPlanning";
+import { fmtDateTime } from "@/lib/format";
 
 const OVERVIEW_TABS = [
   { key: "tables", label: "ตาราง" },
@@ -351,7 +352,7 @@ export default function SalesPlanningOverviewPage() {
             </div>
             {forecastReview?.reviewedByName && (
               <div style={{ marginTop: 8, color: "var(--text-3)", fontSize: 12 }}>
-                ทบทวนล่าสุดโดย {forecastReview.reviewedByName} {forecastReview.reviewedAt ? `เมื่อ ${new Date(forecastReview.reviewedAt).toLocaleString("th-TH")}` : ""}
+                ทบทวนล่าสุดโดย {forecastReview.reviewedByName} {forecastReview.reviewedAt ? `เมื่อ ${fmtDateTime(forecastReview.reviewedAt)}` : ""}
               </div>
             )}
           </section>

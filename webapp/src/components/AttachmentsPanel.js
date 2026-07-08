@@ -13,6 +13,7 @@
 //  • ฟอร์มรายละเอียด (order — entity ที่มี ATTACHMENT_META_FIELDS) — เก็บ
 //    เลขใบเสร็จ/วันที่/ยอด/อ้างอิงออเดอร์ ฯลฯ ลง metadata.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fmtDate } from "@/lib/format";
 import {
   FileText, Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
 } from "lucide-react";
@@ -380,7 +381,7 @@ export default function AttachmentsPanel({
                         <div className="text-[10px] text-[var(--text-3)] mt-0.5">
                           {formatSize(it.sizeBytes)}
                           {it.uploadedByName ? ` · โดย ${it.uploadedByName}` : ""}
-                          {it.createdAt ? ` · ${new Date(it.createdAt).toLocaleDateString("th-TH")}` : ""}
+                          {it.createdAt ? ` · ${fmtDate(it.createdAt)}` : ""}
                         </div>
                       </div>
                     </div>
