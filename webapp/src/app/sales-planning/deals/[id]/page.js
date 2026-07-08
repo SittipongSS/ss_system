@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, RefreshCcw, Send, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, Pencil, RefreshCcw, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
-import { SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
+import ProjectFormModal from "@/components/pm/ProjectFormModal";
+import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 
@@ -18,6 +19,9 @@ function driftText(it) {
 }
 
 const money = (value) => fmtMoney(value);
+
+// สถานะที่เลือกได้ (won = ปิดสุดท้าย; ไม่มี in_project ให้เลือก แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
+const PIPELINE_STAGES = DEAL_STAGES.filter((s) => s !== "in_project");
 
 // ประเภทอัปเดตงาน (feed) — ตรงกับ CHECK ของตาราง sales_deal_activities (mig 0063)
 const ACTIVITY_META = {
@@ -149,6 +153,13 @@ export default function DealOverviewPage() {
     load();
   }, [load]);
 
+  // ข้อมูลสำหรับโมดัลแก้ดีล + สร้างโครงการ PM — โหลดครั้งเดียว
+  useEffect(() => {
+    fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
+    fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
+    fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
+  }, []);
+
   const acceptedQuote = useMemo(() => (data?.quotations || []).find((quote) => quote.status === "accepted"), [data]);
   const pendingDocs = useMemo(() => (data?.documents || []).filter((doc) => doc.status === "pending"), [data]);
 
@@ -173,6 +184,16 @@ export default function DealOverviewPage() {
   const [feedBody, setFeedBody] = useState("");
   const [feedDue, setFeedDue] = useState("");
   const [feedBusy, setFeedBusy] = useState(false);
+
+  // โมดัลแก้ดีล + สร้าง PM
+  const [customers, setCustomers] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [allProducts, setAllProducts] = useState([]);
+  const [dealModalOpen, setDealModalOpen] = useState(false);
+  const [dealForm, setDealForm] = useState(null);
+  const [savingDeal, setSavingDeal] = useState(false);
+  const [pmModalOpen, setPmModalOpen] = useState(false);
+  const [pmInitial, setPmInitial] = useState(null);
 
   const postActivity = async () => {
     if (!feedBody.trim()) return;
@@ -201,6 +222,55 @@ export default function DealOverviewPage() {
     }
   };
 
+  // แก้ไข/ลบ อัปเดตงาน
+  const [editActId, setEditActId] = useState("");
+  const [editKind, setEditKind] = useState("note");
+  const [editBody, setEditBody] = useState("");
+  const [editDue, setEditDue] = useState("");
+
+  const startEditActivity = (act) => {
+    setEditActId(act.id);
+    setEditKind(act.kind || "note");
+    setEditBody(act.body || "");
+    setEditDue(act.dueDate || "");
+  };
+  const cancelEditActivity = () => { setEditActId(""); setEditBody(""); setEditDue(""); };
+
+  const saveEditActivity = async () => {
+    if (!editBody.trim()) return;
+    setFeedBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/activities/${editActId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: editKind, body: editBody.trim(), dueDate: editKind === "next_step" ? (editDue || null) : null }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "แก้ไขอัปเดตไม่สำเร็จ");
+      cancelEditActivity();
+      await load();
+    } catch (e) {
+      setError(e.message || "แก้ไขอัปเดตไม่สำเร็จ");
+    } finally {
+      setFeedBusy(false);
+    }
+  };
+
+  const deleteActivity = async (act) => {
+    if (!window.confirm("ลบอัปเดตงานนี้?")) return;
+    setFeedBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/activities/${act.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบอัปเดตไม่สำเร็จ");
+      await load();
+    } catch (e) {
+      setError(e.message || "ลบอัปเดตไม่สำเร็จ");
+    } finally {
+      setFeedBusy(false);
+    }
+  };
+
   const runAction = useCallback(async (key, url, opts) => {
     setActionBusy(key);
     setError("");
@@ -218,7 +288,73 @@ export default function DealOverviewPage() {
   }, [load]);
 
   const doWin = () => runAction("win", `/api/sales-planning/deals/${id}/win`, { method: "POST" });
-  const doCreateProject = () => runAction("project", `/api/sales-planning/deals/${id}/create-project`, { method: "POST" });
+
+  // สร้างโครงการ PM ผ่านโมดัล (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล
+  const openCreatePM = () => {
+    if (!deal) return;
+    setPmInitial({
+      name: deal.title || "",
+      customerId: deal.customerId || "",
+      startDate: new Date().toISOString().slice(0, 10),
+      dueDate: deal.expectedCloseDate || "",
+      type: "NPD",
+      aeOwner: deal.ownerName || "",
+    });
+    setPmModalOpen(true);
+  };
+  const handlePmSuccess = async (payload) => {
+    setPmModalOpen(false);
+    if (payload?.productWarning) setError(payload.productWarning);
+    await load();
+  };
+
+  // แก้ไขดีล (โมดัล)
+  const openEditDeal = () => {
+    if (!deal) return;
+    setDealForm({
+      title: deal.title || "",
+      customerId: deal.customerId || "",
+      stage: deal.stage || "lead",
+      projectValue: deal.projectValue ?? "",
+      forecastMonth: deal.forecastMonth || "",
+      expectedCloseDate: deal.expectedCloseDate || "",
+      depositPaid: !!deal.depositPaid,
+      notes: deal.notes || "",
+    });
+    setDealModalOpen(true);
+  };
+  const saveDeal = async (e) => {
+    e.preventDefault();
+    setSavingDeal(true);
+    setError("");
+    try {
+      const selected = customers.find((c) => c.id === dealForm.customerId);
+      const res = await fetch(`/api/sales-planning/deals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...dealForm, customerName: selected?.name || null }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
+      setDealModalOpen(false);
+      await load();
+    } catch (e2) {
+      setError(e2.message || "บันทึกไม่สำเร็จ");
+    } finally {
+      setSavingDeal(false);
+    }
+  };
+  const deleteDeal = async () => {
+    if (!deal) return;
+    if (!window.confirm(`ลบโครงการ "${deal.title}"? การลบนี้ย้อนกลับไม่ได้`)) return;
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/deals/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+      router.push("/sales-planning/deals");
+    } catch (e) {
+      setError(e.message || "ลบไม่สำเร็จ");
+    }
+  };
 
   // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
   const doCreateExcise = async (productId) => {
@@ -244,7 +380,7 @@ export default function DealOverviewPage() {
 
   // dispatch ปุ่ม action ของการ์ด Routing
   const onRouteAction = (route) => {
-    if (route.actionKind === "create-project") doCreateProject();
+    if (route.actionKind === "create-project") openCreatePM();
     else if (route.actionKind === "create-excise") doCreateExcise(route.productId);
   };
   const doLost = async () => {
@@ -261,7 +397,7 @@ export default function DealOverviewPage() {
     if (!canEdit || !lc?.nextAction) return null;
     const k = lc.nextAction.kind;
     if (k === "win") return <button type="button" className="btn btn-primary" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
-    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={doCreateProject} disabled={!!actionBusy}><PackageCheck size={14} aria-hidden="true" /> สร้างโครงการ</button>;
+    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><PackageCheck size={14} aria-hidden="true" /> สร้างโครงการ</button>;
     if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/pm/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> เปิดโครงการ</a>;
     return null;
   };
@@ -281,6 +417,16 @@ export default function DealOverviewPage() {
         <a className="btn" href={`/pm/projects/${deal.projectId}`}>
           <ExternalLink size={15} aria-hidden="true" /> โครงการ PM
         </a>
+      )}
+      {canEdit && (
+        <button type="button" className="btn" onClick={openEditDeal} disabled={!!actionBusy}>
+          <Pencil size={15} aria-hidden="true" /> แก้ไข
+        </button>
+      )}
+      {canEdit && (
+        <button type="button" className="btn ghost" onClick={deleteDeal} disabled={!!actionBusy} title="ลบโครงการ">
+          <Trash2 size={15} aria-hidden="true" /> ลบ
+        </button>
       )}
       <button type="button" className="btn" onClick={load} disabled={loading}>
         <RefreshCcw size={15} aria-hidden="true" /> รีเฟรช
@@ -484,11 +630,36 @@ export default function DealOverviewPage() {
                 <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
                   {data.activities.map((act) => {
                     const meta = ACTIVITY_META[act.kind] || ACTIVITY_META.note;
+                    if (editActId === act.id) {
+                      return (
+                        <li key={act.id} style={{ borderLeft: `3px solid ${meta.color}`, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <select className="premium-select" value={editKind} onChange={(e) => setEditKind(e.target.value)} style={{ width: 140 }} aria-label="ประเภทอัปเดต">
+                              {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                            </select>
+                            {editKind === "next_step" && (
+                              <input type="date" className="premium-input" value={editDue} onChange={(e) => setEditDue(e.target.value)} style={{ width: 160 }} aria-label="กำหนดวัน" />
+                            )}
+                          </div>
+                          <textarea className="premium-input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} style={{ resize: "vertical" }} />
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                            <button type="button" className="btn ghost sm" onClick={cancelEditActivity} disabled={feedBusy}><X size={13} aria-hidden="true" /> ยกเลิก</button>
+                            <button type="button" className="btn btn-primary sm" onClick={saveEditActivity} disabled={feedBusy || !editBody.trim()}><Save size={13} aria-hidden="true" /> บันทึก</button>
+                          </div>
+                        </li>
+                      );
+                    }
                     return (
                       <li key={act.id} style={{ borderLeft: `3px solid ${meta.color}`, paddingLeft: 10 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                           <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>
                           {act.dueDate && <span style={{ fontSize: 12, color: "var(--amber)" }}>กำหนด {act.dueDate}</span>}
+                          {canEdit && (
+                            <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
+                              <button type="button" className="btn icon-only ghost" onClick={() => startEditActivity(act)} aria-label="แก้ไขอัปเดต" disabled={feedBusy}><Pencil size={14} aria-hidden="true" /></button>
+                              <button type="button" className="btn icon-only ghost" onClick={() => deleteActivity(act)} aria-label="ลบอัปเดต" disabled={feedBusy}><Trash2 size={14} aria-hidden="true" /></button>
+                            </span>
+                          )}
                         </div>
                         <div style={{ margin: "4px 0 2px", fontSize: 13.5, whiteSpace: "pre-wrap" }}>{act.body}</div>
                         <div style={{ color: "var(--text-3)", fontSize: 12 }}>{act.createdByName || "-"} · {act.createdAt ? fmtDateTime(act.createdAt) : "-"}</div>
@@ -538,6 +709,69 @@ export default function DealOverviewPage() {
           </div>
         </div>
       </Modal>
+
+      <Modal open={dealModalOpen} onClose={() => setDealModalOpen(false)} title="แก้ไขโครงการ" size="lg">
+        {dealForm && (
+          <form onSubmit={saveDeal} className="form-grid" aria-busy={savingDeal} style={{ padding: 18 }}>
+            <label>
+              ชื่อโครงการ
+              <input className="premium-input" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} required />
+            </label>
+            <label>
+              ลูกค้า
+              <select className="premium-select" value={dealForm.customerId} onChange={(e) => setDealForm({ ...dealForm, customerId: e.target.value })}>
+                <option value="">ไม่ผูกฐานข้อมูลลูกค้า</option>
+                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            <label>
+              สถานะ
+              <select className="premium-select" value={dealForm.stage} onChange={(e) => setDealForm({ ...dealForm, stage: e.target.value })}>
+                {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
+              </select>
+            </label>
+            <label>
+              เดือนพยากรณ์
+              <input type="month" className="premium-input" value={dealForm.forecastMonth} onChange={(e) => setDealForm({ ...dealForm, forecastMonth: e.target.value })} />
+            </label>
+            <label>
+              มูลค่าโครงการ
+              <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
+            </label>
+            <label>
+              คาดปิดได้ (วันที่)
+              <input type="date" className="premium-input" value={dealForm.expectedCloseDate} onChange={(e) => setDealForm({ ...dealForm, expectedCloseDate: e.target.value })} />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input type="checkbox" checked={dealForm.depositPaid} onChange={(e) => setDealForm({ ...dealForm, depositPaid: e.target.checked })} />
+              ได้รับมัดจำแล้ว (จำเป็นสำหรับสถานะ Won)
+            </label>
+            <label style={{ gridColumn: "1 / -1" }}>
+              รายละเอียด
+              <textarea className="premium-input" rows={3} value={dealForm.notes} onChange={(e) => setDealForm({ ...dealForm, notes: e.target.value })} />
+            </label>
+            <div className="drawer-actions" style={{ gridColumn: "1 / -1" }}>
+              <button type="button" className="btn" onClick={() => setDealModalOpen(false)}>ยกเลิก</button>
+              <button type="submit" className="btn btn-primary" disabled={savingDeal}>
+                <Save size={15} aria-hidden="true" /> {savingDeal ? "กำลังบันทึก..." : "บันทึก"}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <ProjectFormModal
+        open={pmModalOpen}
+        onClose={() => setPmModalOpen(false)}
+        editingId={null}
+        initialData={pmInitial}
+        onSuccess={handlePmSuccess}
+        customers={customers}
+        categories={categories}
+        allProducts={allProducts}
+        createEndpoint={`/api/sales-planning/deals/${id}/create-project`}
+        createLabel="สร้างโครงการ PM"
+      />
     </Workspace>
   );
 }

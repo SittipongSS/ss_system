@@ -2,8 +2,10 @@ import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { dealAuditLabel, forecastAmount, monthKey, toMoney } from '@/lib/salesPlanning';
 
-export function winStageForProject(projectId) {
-  return projectId ? 'in_project' : 'won';
+// Won คือสถานะปิดสุดท้ายของดีลเสมอ — การมี/ผูก PM project เป็นมิติงานผลิตแยกต่างหาก
+// ไม่ใช่สถานะดีล (เดิมเคยยกเป็น 'in_project'). คง arg projectId ไว้เพื่อความเข้ากันได้.
+export function winStageForProject(_projectId) {
+  return 'won';
 }
 
 export function buildWinPatch({ deal = {}, source = 'manual', now = new Date().toISOString(), projectValue, projectId, metadata = {} } = {}) {

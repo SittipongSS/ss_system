@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, Plus, RefreshCcw, Save, Search, Trash2, Truck } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, RefreshCcw, Save, Search, Trash2, Truck } from "lucide-react";
 import Modal from "@/components/Modal";
 import Workspace from "@/components/ui/Workspace";
+import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { MonthPicker, initialDealForm, money, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
+
+// สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
+// แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
+const PIPELINE_STAGES = DEAL_STAGES.filter((s) => s !== "in_project");
 
 export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
@@ -15,6 +21,8 @@ export default function SalesPlanningPipelinePage() {
   const [allMonths, setAllMonths] = useState(false);
   const [deals, setDeals] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -31,9 +39,11 @@ export default function SalesPlanningPipelinePage() {
   const [documents, setDocuments] = useState([]);
   const [docLoading, setDocLoading] = useState(false);
   const [docForm, setDocForm] = useState({ kind: "customer_brief", title: "", status: "pending", dueDate: "", notes: "" });
-  const [creatingProjectId, setCreatingProjectId] = useState(null);
   const [shippingDealId, setShippingDealId] = useState(null);
   const [winningDealId, setWinningDealId] = useState(null);
+  const [pmModalOpen, setPmModalOpen] = useState(false);
+  const [pmDeal, setPmDeal] = useState(null);
+  const [pmInitial, setPmInitial] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,6 +66,12 @@ export default function SalesPlanningPipelinePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // ข้อมูลสำหรับโมดัลสร้างโครงการ PM (หมวดสินค้า + FG) — โหลดครั้งเดียว
+  useEffect(() => {
+    fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
+    fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
+  }, []);
 
   const filteredDeals = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -195,23 +211,25 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  const createProject = async (deal) => {
-    if (!window.confirm(`สร้าง PM project จากโครงการ "${deal.title}"?`)) return;
-    setCreatingProjectId(deal.id);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/deals/${deal.id}/create-project`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "สร้าง PM project ไม่สำเร็จ");
-      await load();
-    } catch (e) {
-      setError(e.message || "สร้าง PM project ไม่สำเร็จ");
-    } finally {
-      setCreatingProjectId(null);
-    }
+  // เปิดโมดัลสร้างโครงการ PM (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล — ปรับแก้ได้
+  const openCreatePM = (deal) => {
+    setPmDeal(deal);
+    setPmInitial({
+      name: deal.title || "",
+      customerId: deal.customerId || "",
+      startDate: new Date().toISOString().slice(0, 10),
+      dueDate: deal.expectedCloseDate || "",
+      type: "NPD",
+      aeOwner: deal.ownerName || "",
+    });
+    setPmModalOpen(true);
+  };
+
+  const handlePmSuccess = async (data) => {
+    setPmModalOpen(false);
+    setPmDeal(null);
+    if (data?.productWarning) setError(data.productWarning);
+    await load();
   };
 
   // ส่งต่อคลัง: สร้างเอกสารเตรียมส่งของจากโครงการที่ผูกกับ Sales Planning (idempotent ฝั่ง PM)
@@ -366,7 +384,7 @@ export default function SalesPlanningPipelinePage() {
             </div>
             <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="premium-select" aria-label="กรอง stage" style={{ width: 180 }}>
               <option value="all">ทุก stage</option>
-              {DEAL_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
+              {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
             </select>
             <div className="spacer" />
             <span className="ui-badge">{filteredDeals.length} โครงการ</span>
@@ -384,7 +402,6 @@ export default function SalesPlanningPipelinePage() {
                   {SALES_FEATURES.quotations && <th>ใบเสนอ</th>}
                   {SALES_FEATURES.documents && <th>เอกสาร</th>}
                   {SALES_FEATURES.shipment && <th>ส่ง</th>}
-                  <th>ศูนย์รวม</th>
                   <th></th>
                 </tr>
               </thead>
@@ -392,7 +409,7 @@ export default function SalesPlanningPipelinePage() {
                 {filteredDeals.map((deal) => (
                   <tr key={deal.id} className="premium-row">
                     <td>
-                      <button type="button" className="linklike text-left" onClick={() => openEditDeal(deal)} disabled={!deal.canEdit} title={deal.canEdit ? undefined : "แก้ได้เฉพาะเจ้าของโครงการ"}>
+                      <Link href={`/sales-planning/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดโครงการ">
                         <strong>
                           {deal.title}
                           {deal.forecastDrift?.hasDrift && (
@@ -400,7 +417,7 @@ export default function SalesPlanningPipelinePage() {
                           )}
                         </strong>
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}</span>
-                      </button>
+                      </Link>
                     </td>
                     <td>{stageBadge(deal.stage)}</td>
                     <td>{deal.ownerName || deal.team || "-"}</td>
@@ -411,8 +428,8 @@ export default function SalesPlanningPipelinePage() {
                           <ExternalLink size={14} aria-hidden="true" /> PM
                         </a>
                       ) : deal.canEdit && deal.stage !== "lost" ? (
-                        <button type="button" className="btn ghost" onClick={() => createProject(deal)} disabled={creatingProjectId === deal.id}>
-                          <Plus size={14} aria-hidden="true" /> {creatingProjectId === deal.id ? "กำลังสร้าง..." : "สร้าง PM"}
+                        <button type="button" className="btn ghost" onClick={() => openCreatePM(deal)}>
+                          <PackageCheck size={14} aria-hidden="true" /> สร้าง PM
                         </button>
                       ) : (
                         <span style={{ color: "var(--text-3)" }}>-</span>
@@ -447,11 +464,6 @@ export default function SalesPlanningPipelinePage() {
                         )}
                       </td>
                     )}
-                    <td>
-                      <a className="btn ghost" href={`/sales-planning/deals/${deal.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        <ExternalLink size={14} aria-hidden="true" /> ศูนย์รวม
-                      </a>
-                    </td>
                     <td className="num">
                       <div className="flex items-center gap-2 justify-end">
                         {deal.canEdit && !["won", "in_project", "lost"].includes(deal.stage) && (
@@ -460,7 +472,12 @@ export default function SalesPlanningPipelinePage() {
                           </button>
                         )}
                         {deal.canEdit && (
-                          <button type="button" className="btn icon-only ghost" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`}>
+                          <button type="button" className="btn icon-only ghost" onClick={() => openEditDeal(deal)} aria-label={`แก้ไข ${deal.title}`} title="แก้ไขโครงการ">
+                            <Pencil size={15} aria-hidden="true" />
+                          </button>
+                        )}
+                        {deal.canEdit && (
+                          <button type="button" className="btn icon-only ghost" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบโครงการ">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>
                         )}
@@ -470,7 +487,7 @@ export default function SalesPlanningPipelinePage() {
                 ))}
                 {!filteredDeals.length && (
                   <tr>
-                    <td colSpan={12} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={6 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีโครงการในเดือนนี้ {canEdit ? "เริ่มจากปุ่มเพิ่มโครงการด้านบน" : ""}
                     </td>
                   </tr>
@@ -497,7 +514,7 @@ export default function SalesPlanningPipelinePage() {
           <label>
             สถานะ
             <select className="premium-select" value={dealForm.stage} onChange={(e) => setDealForm({ ...dealForm, stage: e.target.value })}>
-              {DEAL_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
+              {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
             </select>
           </label>
           <label>
@@ -717,6 +734,21 @@ export default function SalesPlanningPipelinePage() {
           </div>
         </div>
       </Modal>
+
+      {pmDeal && (
+        <ProjectFormModal
+          open={pmModalOpen}
+          onClose={() => setPmModalOpen(false)}
+          editingId={null}
+          initialData={pmInitial}
+          onSuccess={handlePmSuccess}
+          customers={customers}
+          categories={categories}
+          allProducts={allProducts}
+          createEndpoint={`/api/sales-planning/deals/${pmDeal.id}/create-project`}
+          createLabel="สร้างโครงการ PM"
+        />
+      )}
     </Workspace>
   );
 }
