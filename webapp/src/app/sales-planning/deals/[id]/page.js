@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, PackageCheck, RefreshCcw, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, RefreshCcw, Send, Trophy } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import { SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
@@ -18,6 +18,15 @@ function driftText(it) {
 }
 
 const money = (value) => fmtMoney(value);
+
+// ประเภทอัปเดตงาน (feed) — ตรงกับ CHECK ของตาราง sales_deal_activities (mig 0063)
+const ACTIVITY_META = {
+  note: { label: "บันทึก", color: "var(--text-3)" },
+  call: { label: "โทร", color: "var(--blue)" },
+  meeting: { label: "ประชุม", color: "var(--violet)" },
+  email: { label: "อีเมล", color: "var(--teal)" },
+  next_step: { label: "ขั้นถัดไป", color: "var(--amber)" },
+};
 
 function stageBadge(stage) {
   const color = {
@@ -158,6 +167,39 @@ export default function DealOverviewPage() {
   const [actionBusy, setActionBusy] = useState("");
   const [lostOpen, setLostOpen] = useState(false);
   const [lostReason, setLostReason] = useState("");
+
+  // ฟีดอัปเดตงาน (sales_deal_activities)
+  const [feedKind, setFeedKind] = useState("note");
+  const [feedBody, setFeedBody] = useState("");
+  const [feedDue, setFeedDue] = useState("");
+  const [feedBusy, setFeedBusy] = useState(false);
+
+  const postActivity = async () => {
+    if (!feedBody.trim()) return;
+    setFeedBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/sales-planning/activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dealId: id,
+          kind: feedKind,
+          body: feedBody.trim(),
+          dueDate: feedKind === "next_step" ? (feedDue || null) : null,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โพสต์อัปเดตไม่สำเร็จ");
+      setFeedBody("");
+      setFeedDue("");
+      setFeedKind("note");
+      await load();
+    } catch (e) {
+      setError(e.message || "โพสต์อัปเดตไม่สำเร็จ");
+    } finally {
+      setFeedBusy(false);
+    }
+  };
 
   const runAction = useCallback(async (key, url, opts) => {
     setActionBusy(key);
@@ -405,6 +447,58 @@ export default function DealOverviewPage() {
           )}
 
           <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+            <section className="glass-panel" style={{ padding: 16 }}>
+              <div className="flex items-center gap-2 mb-3">
+                <MessageSquare size={17} aria-hidden="true" />
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>อัปเดตงาน</h2>
+                <span className="ui-badge" style={{ marginLeft: "auto", color: "var(--text-3)" }}>{(data.activities || []).length} รายการ</span>
+              </div>
+
+              {canEdit && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <select className="premium-select" value={feedKind} onChange={(e) => setFeedKind(e.target.value)} style={{ width: 140 }} aria-label="ประเภทอัปเดต">
+                      {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                    </select>
+                    {feedKind === "next_step" && (
+                      <input type="date" className="premium-input" value={feedDue} onChange={(e) => setFeedDue(e.target.value)} style={{ width: 160 }} aria-label="กำหนดวันขั้นถัดไป" />
+                    )}
+                  </div>
+                  <textarea
+                    className="premium-input"
+                    rows={2}
+                    value={feedBody}
+                    onChange={(e) => setFeedBody(e.target.value)}
+                    placeholder="พิมพ์อัปเดตงาน เช่น โทรคุยลูกค้าแล้ว รอส่งใบเสนอราคา..."
+                    style={{ resize: "vertical" }}
+                  />
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button type="button" className="btn btn-primary sm" onClick={postActivity} disabled={feedBusy || !feedBody.trim()}>
+                      <Send size={13} aria-hidden="true" /> {feedBusy ? "กำลังโพสต์..." : "โพสต์"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(data.activities || []).length ? (
+                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+                  {data.activities.map((act) => {
+                    const meta = ACTIVITY_META[act.kind] || ACTIVITY_META.note;
+                    return (
+                      <li key={act.id} style={{ borderLeft: `3px solid ${meta.color}`, paddingLeft: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>
+                          {act.dueDate && <span style={{ fontSize: 12, color: "var(--amber)" }}>กำหนด {act.dueDate}</span>}
+                        </div>
+                        <div style={{ margin: "4px 0 2px", fontSize: 13.5, whiteSpace: "pre-wrap" }}>{act.body}</div>
+                        <div style={{ color: "var(--text-3)", fontSize: 12 }}>{act.createdByName || "-"} · {act.createdAt ? fmtDateTime(act.createdAt) : "-"}</div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : <Empty>ยังไม่มีอัปเดตงาน{canEdit ? " — เริ่มโพสต์ได้เลย" : ""}</Empty>}
+            </section>
+
             <section className="glass-panel" style={{ padding: 16 }}>
               <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>ความเคลื่อนไหวล่าสุด</h2>
               {(data.stageHistory || []).length ? (
