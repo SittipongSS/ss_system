@@ -249,7 +249,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           <div className="border-b border-[var(--border)] pb-3 mb-5">
             <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลบรรจุภัณฑ์และราคา (Packaging & Pricing)</h3>
           </div>
-          <div className="form-grid cols-3">
+          <div className="form-grid cols-2">
             <div className="form-group">
               <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
               <div className="flex gap-2">
@@ -265,12 +265,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               </div>
             </div>
             <div className="form-group">
-              <label>ชิ้นต่อลัง <span className="text-[10px] font-normal text-[var(--text-3)]">(สำหรับงานสหมิตร)</span></label>
+              <label>จำนวนชิ้นต่อลัง</label>
               <input type="number" value={form.piecesPerCase ?? ""} onChange={(e) => set("piecesPerCase", e.target.value)} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
-            </div>
-            <div className="form-group">
-              <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
-              <input type="number" value={form.retailPriceIncVat ?? ""} onChange={(e) => set("retailPriceIncVat", e.target.value)} min="0" step="0.01" className="premium-input w-full font-mono" />
             </div>
             <div className="form-group">
               <label>ราคาโรงงาน (บาท)</label>
@@ -285,6 +281,10 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               <span id="factory-price-readonly-help" className="text-xs text-[var(--text-3)] mt-1">
                 ช่องนี้ดูอย่างเดียว ต้องกด “อัปเดตราคาโรงงาน” ด้านล่างเพื่อแก้ราคา
               </span>
+            </div>
+            <div className="form-group">
+              <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
+              <input type="number" value={form.retailPriceIncVat ?? ""} onChange={(e) => set("retailPriceIncVat", e.target.value)} min="0" step="0.01" className="premium-input w-full font-mono" />
             </div>
           </div>
 
