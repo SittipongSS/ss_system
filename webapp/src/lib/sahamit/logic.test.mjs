@@ -12,6 +12,7 @@ import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
 import { buildReconMatrix, cellDetail } from './reconcileClient.js';
 import { leadDaysFor, recommendedReadyDate, materialView, LEAD_IN_FC, LEAD_OUT_FC } from './material.js';
 import { detectFlags } from './flags.js';
+import { avgShiftForSku, predictShifts, suggestCoverage, suggestCoverageTargets, addMonths, urgencyOf } from './predict.js';
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -257,7 +258,7 @@ test('buildReconMatrix coverMonths: a shift is NOT double-counted (total preserv
   assert.equal(a.fcTotal, 100); // Apr 0 + May 100 — NOT 200
 });
 
-test('buildReconMatrix coverage: PO excess in one month covers shortfall in another', () => {
+test('buildReconMatrix coverage: move FC (PO fixed) — source becomes covered, target matches', () => {
   const rounds = [{ roundNo: 1, coverMonths: ['2026-06', '2026-07'], lines: [
     { fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 100 },
   ] }];
@@ -268,19 +269,126 @@ test('buildReconMatrix coverage: PO excess in one month covers shortfall in anot
   assert.equal(before.cells['2026-06'].status, 'pending');
   assert.equal(before.cells['2026-07'].status, 'over');
 
-  // Allocate 100 of Jul's PO to cover Jun
-  const cov = [{ fgCode: 'A', sourceMonth: '2026-07', targetMonth: '2026-06', qty: 100 }];
+  // ชดเชย = ย้าย FC 100 จาก Jun → Jul (PO อยู่กับที่ที่ Jul). Jul FC 200 = PO 200; Jun FC ถูกดึงออก
+  const cov = [{ fgCode: 'A', sourceMonth: '2026-06', targetMonth: '2026-07', qty: 100 }];
   const after = buildReconMatrix(rounds, pos, cov).rows.find((r) => r.fgCode === 'A');
-  assert.equal(after.cells['2026-06'].status, 'match');     // covered → matches FC
-  assert.equal(after.cells['2026-06'].coverageIn, 100);
-  assert.equal(after.cells['2026-06'].poQty, 0);            // displayed PO unchanged (actual)
-  assert.equal(after.cells['2026-07'].status, 'match');     // excess allocated away
-  assert.equal(after.cells['2026-07'].coverageOut, 100);
-  assert.equal(after.cells['2026-07'].poQty, 200);          // displayed PO unchanged (actual)
+  assert.equal(after.cells['2026-06'].status, 'covered');   // FC moved out → ชดเชย
+  assert.equal(after.cells['2026-06'].fcQty, 0);
+  assert.equal(after.cells['2026-06'].originalFc, 100);     // ยอด FC เดิมเก็บไว้ตรวจ
+  assert.equal(after.cells['2026-06'].coverageOut, 100);
+  assert.equal(after.cells['2026-06'].poQty, 0);            // PO ไม่ขยับ
+  assert.equal(after.cells['2026-07'].status, 'match');     // FC เท่ากับ PO แล้ว
+  assert.equal(after.cells['2026-07'].fcQty, 200);
+  assert.equal(after.cells['2026-07'].coverageIn, 100);
+  assert.equal(after.cells['2026-07'].poQty, 200);          // PO ไม่ขยับ
+});
+
+test('buildReconMatrix: แบ่งส่ง — PO เดิมนับ shippedQty, PO ยอดเหลือนับเต็ม (ไม่นับซ้ำ)', () => {
+  const rounds = [{ roundNo: 1, coverMonths: ['2026-07'], lines: [{ fgCode: 'A', month: '2026-07', qty: 1000 }] }];
+  const pos = [
+    { poNumber: 'A', lines: [{ fgCode: 'A', deliveryMonth: '2026-07', qty: 1000, shippedQty: 600 }] }, // เดิม ส่งจริง 600
+    { poNumber: 'B', splitFromPoId: 'A', lines: [{ fgCode: 'A', deliveryMonth: '2026-07', qty: 400 }] },  // ยอดเหลือ 400
+  ];
+  const row = buildReconMatrix(rounds, pos).rows.find((r) => r.fgCode === 'A');
+  assert.equal(row.cells['2026-07'].poQty, 1000); // 600 + 400 (ไม่ใช่ 1400)
+  assert.equal(row.cells['2026-07'].status, 'match');
 });
 
 test('cellDetail lists contributing FC rounds and active PO lines', () => {
   const d = cellDetail(RC_ROUNDS, RC_POS, 'A', '2026-07');
   assert.deepEqual(d.fcs.map((f) => f.roundNo), [1, 2]); // both rounds had Jul
   assert.equal(d.poLines.length, 1);                      // cancelled excluded? no — detail shows all; but only 1 Jul PO exists
+});
+
+// ── predict.js (shift prediction & coverage suggestion) ─────────────────────
+
+test('addMonths / urgencyOf helpers', () => {
+  assert.equal(addMonths('2026-11', 2), '2027-01'); // wraps the year
+  assert.equal(addMonths('2026-03', 1), '2026-04');
+  assert.equal(urgencyOf(10), 'high');
+  assert.equal(urgencyOf(45), 'medium');
+  assert.equal(urgencyOf(90), 'low');
+});
+
+test('avgShiftForSku learns the shift distance from round history, defaults +1', () => {
+  // No history (one round) → default +1.
+  const one = [{ roundNo: 1, lines: [{ fgCode: 'A', month: '2026-01', qty: 100 }] }];
+  assert.equal(avgShiftForSku(one, 'A'), 1);
+
+  // Two rounds: Jan(100) → Mar(100) is a +2 shift (qty within 50%).
+  const two = [
+    { roundNo: 1, coverMonths: ['2026-01', '2026-02', '2026-03'], lines: [{ fgCode: 'A', month: '2026-01', qty: 100 }] },
+    { roundNo: 2, coverMonths: ['2026-01', '2026-02', '2026-03'], lines: [{ fgCode: 'A', month: '2026-03', qty: 100 }] },
+  ];
+  assert.equal(avgShiftForSku(two, 'A'), 2);
+});
+
+test('predictShifts predicts ONLY for SKUs with real shift history (first round stays quiet)', () => {
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-06', '2026-07', '2026-08'], lines: [
+      { fgCode: 'A', month: '2026-06', qty: 100, productName: 'Alpha' },
+      { fgCode: 'A', month: '2026-07', qty: 100 },
+      { fgCode: 'B', month: '2026-08', qty: 50, productName: 'Bravo' }, // B never moves
+    ] },
+    { roundNo: 2, coverMonths: ['2026-06', '2026-07', '2026-08'], lines: [
+      { fgCode: 'A', month: '2026-07', qty: 100 },
+      { fgCode: 'A', month: '2026-08', qty: 100 }, // A: Jun→Aug shift (+2)
+      { fgCode: 'B', month: '2026-08', qty: 50 },
+    ] },
+  ];
+  const preds = predictShifts(rounds, [], { today: '2026-07-01' });
+  // A has shifted before → its still-pending month is predicted, target = +2.
+  assert.ok(preds.has('A||2026-08'));
+  assert.equal(preds.get('A||2026-08').toMonth, '2026-10');
+  assert.equal(preds.get('A||2026-08').avgShift, 2);
+  assert.equal(preds.get('A||2026-08').productName, 'Alpha');
+  // B never shifted → NO prediction even though it's pending (this is the fix).
+  assert.ok(!preds.has('B||2026-08'));
+
+  // A single first round (no history at all) predicts nothing.
+  assert.equal(predictShifts([rounds[0]], [], { today: '2026-07-01' }).size, 0);
+});
+
+test('predictShifts skips locked cells and returns empty without a clock', () => {
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-06', '2026-07'], lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }] },
+    { roundNo: 2, coverMonths: ['2026-06', '2026-07'], lines: [{ fgCode: 'A', month: '2026-07', qty: 100 }] }, // Jun→Jul (+1)
+  ];
+  assert.ok(predictShifts(rounds, [], { today: '2026-06-15' }).has('A||2026-07')); // pending + history
+  const locked = predictShifts(rounds, [], { today: '2026-06-15', locks: [{ fgCode: 'A', month: '2026-07' }] });
+  assert.ok(!locked.has('A||2026-07')); // locked → skipped
+  assert.equal(predictShifts(rounds, [], {}).size, 0); // no today → pure no-op
+});
+
+test('suggestCoverage: target needs FC (PO>FC) → pull FC from months with FC>PO, nearest first', () => {
+  // Sep has PO 200 but no FC (need 200). Aug & Dec have FC without PO (spare) → sources.
+  const rounds = [{
+    roundNo: 1, coverMonths: ['2026-08', '2026-09', '2026-12'],
+    lines: [
+      { fgCode: 'A', month: '2026-08', qty: 100 }, // FC 100, no PO → spare 100
+      { fgCode: 'A', month: '2026-12', qty: 100 }, // FC 100, no PO → spare 100
+    ],
+  }];
+  const pos = [{ poNumber: 'PO1', lines: [{ fgCode: 'A', deliveryMonth: '2026-09', qty: 200 }] }]; // Sep need 200
+  const matrix = buildReconMatrix(rounds, pos);
+  const s = suggestCoverage(matrix, 'A', '2026-09');
+  assert.deepEqual(s.map((x) => x.sourceMonth), ['2026-08', '2026-12']); // Aug (1mo) before Dec (3mo)
+  assert.equal(s[0].canCover, 100);
+});
+
+test('suggestCoverageTargets: month has FC>PO (spare) → send FC to months with PO>FC, nearest+capped', () => {
+  // Aug FC 300 / PO 100 → spare 200. Sep PO 200 no FC (need 200) → send 200 to Sep.
+  const rounds = [{
+    roundNo: 1, coverMonths: ['2026-08', '2026-09'],
+    lines: [{ fgCode: 'A', month: '2026-08', qty: 300 }],
+  }];
+  const pos = [{ poNumber: 'PO1', lines: [
+    { fgCode: 'A', deliveryMonth: '2026-08', qty: 100 }, // Aug FC300/PO100 → spare 200
+    { fgCode: 'A', deliveryMonth: '2026-09', qty: 200 }, // Sep FC0/PO200 → need 200
+  ] }];
+  const matrix = buildReconMatrix(rounds, pos);
+  const t = suggestCoverageTargets(matrix, 'A', '2026-08');
+  assert.deepEqual(t, [{ targetMonth: '2026-09', use: 200 }]);
+  // Sep has no spare FC → nothing to send.
+  assert.deepEqual(suggestCoverageTargets(matrix, 'A', '2026-09'), []);
 });

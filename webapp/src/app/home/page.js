@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart, Briefcase } from "lucide-react";
+import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart, CircleDollarSign, Briefcase } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
 import { landingFor, can, canAccessSahamit, canAccessMgmt } from "@/lib/permissions";
@@ -56,21 +56,18 @@ export default function HomeHubPage() {
   if (!role) return null;
 
   const enterTax = () => router.push(landingFor(role));
-  const enterPM = () => router.push("/pm/projects");
+  const enterPM = () => router.push("/pm");
+  const enterSalesPlanning = () => router.push("/sales-planning");
   const enterSAHAMIT = () => router.push("/sahamit");
   const enterMGMT = () => router.push("/mgmt");
-  // No /database hub page — land directly on the first registry the role can open.
-  const enterDB = () =>
-    router.push(
-      can(role, "products:view") ? "/database/products"
-        : can(role, "customers:view") ? "/database/customers"
-          : "/database/holidays"
-    );
+  // Land on each system's command-center "ภาพรวม" (consistent with tax/pm/sahamit).
+  const enterDB = () => router.push("/database");
   // All three systems are open to their normal roles. Tax is visible to anyone
   // who can see the tax workflow (SA/LG via history:view). Keep in sync with
   // OPEN_PAGES/lockedOut in proxy.js + the tax nav gate in AppLayout.
   const isAdmin = can(role, "users:manage");
   const canPM = isAdmin || can(role, "pm:view");
+  const canSalesPlanning = isAdmin || can(role, "salesplan:view");
   const canTax = isAdmin || can(role, "history:view");
   // Database hub card: anyone who can open a registry (sales/legal/staff) — the
   // approval workflow needs AE/AC to reach it, not just admins.
@@ -86,7 +83,7 @@ export default function HomeHubPage() {
   // orphan on its own row (the old auto-fit gave 3 cols → 3+1 with 4 cards).
   // 1→1, 2→2, 3→3 (single row), 4→2×2, 5–6→3 rows; anything larger caps at 4.
   // Narrower / portrait screens collapse to 2 then 1 via .system-card-grid CSS.
-  const visibleCount = [canPM, canTax, canSAHAMIT, canMGMT, canDB].filter(Boolean).length;
+  const visibleCount = [canPM, canSalesPlanning, canTax, canSAHAMIT, canMGMT, canDB].filter(Boolean).length;
   const wideCols = { 1: 1, 2: 2, 3: 3, 4: 2, 5: 3, 6: 3 }[visibleCount] || 4;
 
   return (
@@ -147,7 +144,38 @@ export default function HomeHubPage() {
             </button>
           )}
 
-          {/* Card 2 — Excise Tax (SA/LG/admin via history:view). */}
+          {/* Card 2 — Sales Planning. Commercial planning before handoff to PM. */}
+          {canSalesPlanning && (
+            <button
+              onClick={enterSalesPlanning}
+              className="glass-panel system-card"
+              style={{
+                textAlign: "left", padding: "28px", cursor: "pointer",
+                display: "flex", flexDirection: "column", gap: "16px",
+                background: "var(--panel)", color: "inherit",
+              }}
+            >
+              <div
+                className="brand-logo"
+                style={{ width: "48px", height: "48px", borderRadius: "var(--radius-lg)", background: "#181f4b" }}
+              >
+                <CircleDollarSign size={24} strokeWidth={1.5} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>บริหารงานขาย</h2>
+                <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
+                  จัดการโอกาสการขาย, พยากรณ์ยอด, เป้าหมาย และส่งต่องานให้ PM
+                </p>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--accent, var(--navy))" }}>
+                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  เข้าใช้งาน <ArrowRight size={15} strokeWidth={2} />
+                </span>
+              </div>
+            </button>
+          )}
+
+          {/* Card 3 — Excise Tax (SA/LG/admin via history:view). */}
           {canTax && (
             <button
               onClick={enterTax}
@@ -178,7 +206,7 @@ export default function HomeHubPage() {
             </button>
           )}
 
-          {/* Card 3 — SAHAMIT (Planning & Sales). KA team only (+ admin/
+          {/* Card 4 — SAHAMIT (Planning & Sales). KA team only (+ admin/
               sales-head oversight); hidden entirely otherwise. */}
           {canSAHAMIT && (
             <button
@@ -241,7 +269,7 @@ export default function HomeHubPage() {
             </button>
           )}
 
-          {/* Card 4 — Master Database (customers / products registry).
+          {/* Card — Master Database (customers / products registry).
               Kept last so the shared data hub always sits at the end. */}
           {canDB && (
             <button

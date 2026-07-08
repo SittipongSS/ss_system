@@ -13,30 +13,10 @@ import ConfirmModal from "@/components/tax/ConfirmModal";
 import { isSuperuser } from "@/lib/permissions";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
+import { daysToDue, isUrgent } from "@/lib/pm/derived";
 
 const TASK_STATUS_TH = { Pending: "รอ", "In Progress": "ทำอยู่", Completed: "เสร็จ" };
 const SCOPE_TH = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
-
-// วันที่ใช้วัดความเร่งด่วน: finishDate ก่อน แล้วค่อย dueDate
-const targetDate = (t) => t.finishDate || t.dueDate || null;
-
-// จำนวนวันถึงกำหนด (ลบ = เลยกำหนด) — null ถ้าไม่มีกำหนด
-const daysToDue = (t) => {
-  const td = targetDate(t);
-  if (!td) return null;
-  const d = new Date(td);
-  if (isNaN(d.getTime())) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  d.setHours(0, 0, 0, 0);
-  return Math.floor((d - today) / (1000 * 60 * 60 * 24));
-};
-
-// ต้องรีบ = ยังไม่เสร็จ และเลยกำหนด/เหลือ ≤3 วัน
-const isUrgent = (t) => {
-  if (t.status === "Completed") return false;
-  const dd = daysToDue(t);
-  return dd !== null && dd <= 3;
-};
 
 const getUrgencyInfo = (task) => {
   if (task.status === "Completed") return { color: "var(--green)", label: "เสร็จแล้ว", icon: <CheckCircle2 size={12} /> };

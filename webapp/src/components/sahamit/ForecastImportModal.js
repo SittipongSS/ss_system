@@ -1,8 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Upload, Download, AlertTriangle, Plus, X } from "lucide-react";
+import { Upload, Download, AlertTriangle, Plus, X, Pencil } from "lucide-react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { roundMatrix } from "@/lib/sahamit/forecastClient";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
+import { productMeta } from "@/lib/format";
 
 // Create one FC round. The month columns run from a start month to an end month
 // (the round's last month) and the grid updates live when either changes. Rows
@@ -34,7 +37,7 @@ function monthsBetween(start, end) {
   return out;
 }
 
-export default function ForecastImportModal({ open, onClose, onCreated, products = [] }) {
+export default function ForecastImportModal({ open, onClose, onCreated, products = [], editRound = null, existingRounds = [], onEditExisting }) {
   const [receivedDate, setReceivedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [startMonth, setStartMonth] = useState(thisMonth);
@@ -58,18 +61,29 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     return m;
   }, [products]);
 
-  // Brand + size shown alongside the name so lookalike SKUs (same product,
-  // different pack size / brand line) are easy to tell apart while picking.
-  const productMeta = (p) =>
-    [p?.brandName, p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : null].filter(Boolean).join(" · ");
-
-  // Reset everything when the modal is (re)opened.
+  // Reset (create) or prefill (edit) when the modal is (re)opened or the target
+  // round changes. In edit mode the grid is loaded from the round's lines.
   useEffect(() => {
     if (!open) return;
-    setReceivedDate(new Date().toISOString().slice(0, 10));
-    setNote(""); setStartMonth(thisMonth()); setEndMonth(addMonths(thisMonth(), 3));
-    setMonthsOverride(null); setRows([]); setUnknown([]); setPick(""); setError(""); setBusy(false);
-  }, [open]);
+    setUnknown([]); setPick(""); setError(""); setBusy(false);
+    if (editRound) {
+      const matrix = roundMatrix(editRound);
+      const months = (editRound.coverMonths || []).length ? [...editRound.coverMonths].sort() : matrix.months;
+      setReceivedDate(String(editRound.receivedDate || "").slice(0, 10) || new Date().toISOString().slice(0, 10));
+      setNote(editRound.note || "");
+      setMonthsOverride(months);
+      if (months.length) { setStartMonth(months[0]); setEndMonth(months[months.length - 1]); }
+      setRows(matrix.rows.map((r) => {
+        const hit = productIndex.get(String(r.fgCode || "").trim().toLowerCase());
+        return { fgCode: r.fgCode, productName: r.productName || hit?.name || null, productMeta: hit ? productMeta(hit) : "", known: !!hit, qty: { ...r.qty } };
+      }));
+    } else {
+      setReceivedDate(new Date().toISOString().slice(0, 10));
+      setNote(""); setStartMonth(thisMonth()); setEndMonth(addMonths(thisMonth(), 3));
+      setMonthsOverride(null); setRows([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editRound]);
 
   // Month columns run from start to end (independent from/to pickers). Changing
   // either clears any upload-pinned months; the grid columns update live.
@@ -104,9 +118,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/sahamit/forecast/import", { method: "POST", body: fd });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "นำเข้าไม่สำเร็จ");
+      const json = await sahamitFetch("/api/sahamit/forecast/import", { method: "POST", body: fd });
       const fileMonths = json.months || [];
       setMonthsOverride(fileMonths);
       if (fileMonths.length) { setStartMonth(fileMonths[0]); setEndMonth(fileMonths[fileMonths.length - 1]); }
@@ -144,13 +156,14 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     if (!lines.length) { setError("กรอกจำนวน FC อย่างน้อย 1 รายการ"); return; }
     setBusy(true); setError("");
     try {
-      const res = await fetch("/api/sahamit/forecast/rounds", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ receivedDate, note, coverMonths: months, lines }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "บันทึกไม่สำเร็จ");
+      const json = await sahamitFetch(
+        editRound ? `/api/sahamit/forecast/rounds/${editRound.id}` : "/api/sahamit/forecast/rounds",
+        {
+          method: editRound ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ receivedDate, note, coverMonths: months, lines }),
+        },
+      );
       onCreated?.(json);
       onClose?.();
     } catch (e) {
@@ -160,9 +173,12 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   };
 
   const hasGrid = months.length > 0 && rows.length > 0;
+  // Duplicate received-date guard (create mode only): flag if another round was
+  // already logged on this date — likely a re-entry of data already captured.
+  const dupRound = !editRound && existingRounds.find((r) => String(r.receivedDate || "").slice(0, 10) === receivedDate);
 
   return (
-    <Modal open={open} onClose={onClose} title="นำเข้ารอบ FC ใหม่" size="lg">
+    <Modal open={open} onClose={onClose} title={editRound ? `แก้ FC รอบที่ ${editRound.roundNo}` : "นำเข้ารอบ FC ใหม่"} size="lg">
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {/* Round meta + month range (start → last month; grid updates live) */}
         <div className="form-grid cols-3">
@@ -227,6 +243,20 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
           </label>
         </div>
 
+        {dupRound && (
+          <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--amber)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <AlertTriangle size={16} style={{ color: "var(--amber)" }} />
+            <span style={{ fontSize: 13 }}>
+              วันที่รับนี้เคยลง<strong> รอบที่ {dupRound.roundNo} </strong>แล้ว — อาจลงข้อมูลซ้ำ
+            </span>
+            {onEditExisting && (
+              <button type="button" className="btn sm" style={{ marginLeft: "auto" }} onClick={() => onEditExisting(dupRound)}>
+                <Pencil size={14} /> ไปแก้รอบ {dupRound.roundNo}
+              </button>
+            )}
+          </div>
+        )}
+
         {unknown.length > 0 && (
           <div className="ui-badge" style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--amber)", borderColor: "var(--amber)" }}>
             <AlertTriangle size={14} /> รหัสไม่รู้จัก {unknown.length} รายการ: {unknown.join(", ")} (บันทึกได้ แต่ยังไม่ผูกสินค้า)
@@ -238,7 +268,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
         {/* Grid */}
         {hasGrid ? (
           <div className="premium-table-wrapper" style={{ maxHeight: "44vh", overflow: "auto" }}>
-            <table className="premium-table">
+            <table className="premium-table sticky-col1">
               <thead>
                 <tr>
                   <th style={{ minWidth: 120 }}>รหัสสินค้า</th>
@@ -291,7 +321,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
           <div style={{ display: "flex", gap: "8px" }}>
             <button type="button" className="btn" onClick={onClose} disabled={busy}>ยกเลิก</button>
             <button type="button" className="btn btn-primary px-6" onClick={submit} disabled={busy || !hasGrid}>
-              {busy ? "กำลังบันทึก..." : "บันทึกรอบ FC"}
+              {busy ? "กำลังบันทึก..." : editRound ? "บันทึกการแก้ไข" : "บันทึกรอบ FC"}
             </button>
           </div>
         </div>

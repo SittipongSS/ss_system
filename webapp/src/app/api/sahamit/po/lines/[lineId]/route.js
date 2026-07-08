@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { getSahamitContext, sahamitError } from '@/lib/sahamit/server';
-import { deliveryMonthOf } from '@/lib/sahamit/po';
+import { deliveryMonthOf, cleanDestination } from '@/lib/sahamit/po';
+import { insertPoLinesTolerant, updatePoLineTolerant } from '@/lib/sahamit/poServer';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -47,6 +48,7 @@ export async function PATCH(request, { params }) {
       qty: splitQty,
       dueDate: body.dueDate || line.dueDate,
       expectedDate: body.expectedDate || line.expectedDate,
+      destination: line.destination ?? null,
       expectedHistory: [],
       actualDeliveredDate: null,
       deliveryMonth: deliveryMonthOf({ expectedDate: body.expectedDate || line.expectedDate, dueDate: body.dueDate || line.dueDate }),
@@ -54,7 +56,7 @@ export async function PATCH(request, { params }) {
       status: 'open',
       createdAt: nowIso,
     };
-    const { error: insErr } = await supabase.from('sahamit_po_lines').insert(balance);
+    const insErr = await insertPoLinesTolerant(supabase, [balance]);
     if (insErr) return Response.json({ error: insErr.message }, { status: 500 });
 
     const { data: parent, error: updErr } = await supabase
@@ -98,6 +100,7 @@ export async function PATCH(request, { params }) {
     if (body.actualDeliveredDate && !('status' in body)) patch.status = 'delivered';
   }
   if ('status' in body) patch.status = body.status;
+  if ('destination' in body) patch.destination = cleanDestination(body.destination);
 
   // Recompute the FC-matching month if either date moved.
   if ('expectedDate' in patch || 'dueDate' in patch) {
@@ -109,8 +112,7 @@ export async function PATCH(request, { params }) {
 
   if (!Object.keys(patch).length) return Response.json(line);
 
-  const { data: updated, error } = await supabase
-    .from('sahamit_po_lines').update(patch).eq('id', lineId).eq('customerId', customerId).select().single();
+  const { data: updated, error } = await updatePoLineTolerant(supabase, lineId, customerId, patch);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   await recordAudit({

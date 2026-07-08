@@ -4,6 +4,7 @@ import Modal from "@/components/Modal";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { brandThList } from "@/lib/master/brands";
 import { X } from "lucide-react";
 
 export default function ProjectFormModal({
@@ -38,6 +39,22 @@ export default function ProjectFormModal({
       .catch(() => {});
   }, [open]);
 
+  // FG picker scope: once a customer is chosen, load THAT customer's FGs (which
+  // may have been registered by another team — product.team = creator's team),
+  // so cross-team FGs of the same customer are linkable. Before a customer is
+  // picked (FG-first flow), fall back to the team-scoped allProducts prop.
+  const [customerProducts, setCustomerProducts] = useState(null);
+  useEffect(() => {
+    if (!open || !form.customerId) { setCustomerProducts(null); return; }
+    let cancelled = false;
+    fetch(`/api/products?customerId=${encodeURIComponent(form.customerId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { if (!cancelled) setCustomerProducts(d || []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, form.customerId]);
+  const effectiveProducts = form.customerId && customerProducts ? customerProducts : allProducts;
+
   useEffect(() => {
     if (open) {
       if (editingId && initialData) {
@@ -67,14 +84,14 @@ export default function ProjectFormModal({
   const fgCategoryLock = form.projectProducts.length > 0;
   useEffect(() => {
     if (!open) return;
-    const fgs = form.projectProducts.map((pp) => allProducts.find((p) => p.id === pp.productId)).filter(Boolean);
+    const fgs = form.projectProducts.map((pp) => effectiveProducts.find((p) => p.id === pp.productId)).filter(Boolean);
     if (!fgs.length) return; // ไม่มี FG → คงค่าที่ผู้ใช้เลือกเองไว้
     const code = fgs.some((f) => f.categoryCode === "01-002") ? "01-002" : (fgs[0].categoryCode || "");
     const [mainCode = "", typeCode = ""] = code ? code.split("-") : [];
     if (code === form.productMainCategory && mainCode === form.mainCode && typeCode === form.typeCode) return;
     const sub = categories.find((c) => c.mainCategoryCode === mainCode && c.typeCode === typeCode)?.nameTh || "";
     setForm((f) => ({ ...f, productMainCategory: code, mainCode, typeCode, productSubCategory: sub }));
-  }, [open, form.projectProducts, allProducts, categories]);
+  }, [open, form.projectProducts, effectiveProducts, categories]);
 
   const change = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -88,13 +105,13 @@ export default function ProjectFormModal({
       // Auto-fill customer/name from the first linked FG (only when still empty).
       // หมวดสินค้าไม่เซ็ตที่นี่ — ปล่อยให้ effect ด้านล่าง derive จาก FG ทั้งหมด
       // (01-002 เป็นใหญ่สุด) เพื่อให้ "FG เป็นตัวกำหนดหมวด" เสมอ
-      const firstFg = newProducts[0] ? allProducts.find(p => p.id === newProducts[0].productId) : null;
+      const firstFg = newProducts[0] ? effectiveProducts.find(p => p.id === newProducts[0].productId) : null;
       if (firstFg && !isSelected) {
         return {
           ...f,
           projectProducts: newProducts,
           customerId: f.customerId || firstFg.customerId || "",
-          name: f.name || firstFg.brandName || firstFg.productDescription || "",
+          name: f.name || firstFg.brandNameEn || firstFg.brandName || firstFg.productDescriptionEn || firstFg.productDescription || "",
         };
       }
       return { ...f, projectProducts: newProducts };
@@ -165,9 +182,8 @@ export default function ProjectFormModal({
   // ตัวเลือกแบรนด์ = แบรนด์ที่ลูกค้า "เป็นเจ้าของ" (customers.brands[]) — master ของแบรนด์.
   // กรองตามลูกค้า "เสมอ": ยังไม่เลือกลูกค้า → ไม่มีแบรนด์ให้เลือก (กันโชว์แบรนด์ข้ามลูกค้า)
   const brandOptions = useMemo(() => {
-    const dedup = (arr) => [...new Set(arr.map((b) => (b || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const selected = customers.find((c) => c.id === form.customerId);
-    return selected ? dedup(selected.brands || []) : [];
+    return selected ? brandThList(selected.brands || []) : [];
   }, [customers, form.customerId]);
 
   const subCatOptions = useMemo(
@@ -230,10 +246,17 @@ export default function ProjectFormModal({
           
           <div className="form-group col-span-2">
             <label>บริษัทลูกค้า</label>
-            <Select fullWidth name="customerId" value={form.customerId} onChange={change}>
-              <option value="">— เลือกลูกค้า —</option>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
+            <SearchableSelect
+              value={form.customerId}
+              onChange={(v) => setForm((f) => ({ ...f, customerId: v }))}
+              placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+              emptyText="ไม่พบลูกค้า"
+              options={customers.map((c) => ({
+                value: c.id,
+                label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
+                search: `${c.arCode || ""} ${c.name}`,
+              }))}
+            />
           </div>
           <div className="form-group col-span-2">
             <label>อีเมลลูกค้า</label>
@@ -271,7 +294,7 @@ export default function ProjectFormModal({
               {form.projectProducts.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
                   {form.projectProducts.map(pp => {
-                    const p = allProducts.find(x => x.id === pp.productId);
+                    const p = effectiveProducts.find(x => x.id === pp.productId);
                     if (!p) return null;
                     const cat = categories.find(c => c.mainCategoryCode === p.categoryCode?.split("-")[0] && c.typeCode === p.categoryCode?.split("-")[1]);
                     return (
@@ -284,7 +307,7 @@ export default function ProjectFormModal({
                               {cat ? cat.nameTh : p.categoryCode || "ไม่มีหมวด"}
                             </span>
                           </div>
-                          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{p.productDescription || p.brandName || "-"}</div>
+                          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{p.productDescriptionEn || p.productDescription || p.brandNameEn || p.brandName || "-"}</div>
                         </div>
                         <div style={{ display: "flex", gap: "8px", width: "240px", maxWidth: "100%" }}>
                           <input type="text" placeholder="สั่งซื้อ" value={pp.orderQty} onChange={(e) => updateFgQty(pp.productId, "orderQty", e.target.value)} className="premium-input w-full text-[12px] h-[32px]" />
@@ -299,11 +322,11 @@ export default function ProjectFormModal({
               
               <Select fullWidth value="" onChange={(e) => { if(e.target.value) toggleFg(e.target.value); }}>
                 <option value="">— เพิ่ม FG —</option>
-                {allProducts
+                {effectiveProducts
                   .filter(pr => !form.projectProducts.some(pp => pp.productId === pr.id))
                   // ผูกได้หลายหมวด (ไม่กรองตามหมวด) — หมวดของโปรเจกต์จะ derive จาก FG เอง
                   .map(pr => (
-                  <option key={pr.id} value={pr.id}>{pr.fgCode} — {pr.productDescription || pr.brandName || ""} {pr.volume ? `(${pr.volume} ml)` : ""}</option>
+                  <option key={pr.id} value={pr.id}>{pr.fgCode} — {pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""} {pr.volume ? `(${pr.volume} ml)` : ""}</option>
                 ))}
               </Select>
             </div>

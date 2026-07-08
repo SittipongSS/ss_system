@@ -19,7 +19,9 @@ const fmtDate = (v) => {
   if (!v) return "-";
   const d = new Date(v);
   if (isNaN(d.getTime())) return esc(v);
-  return d.toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getFullYear()}`; // DD/MM/YYYY (ค.ศ.)
 };
 
 export function buildBillPrintHTML(order, customer = {}) {
@@ -39,7 +41,7 @@ export function buildBillPrintHTML(order, customer = {}) {
     return {
       i: i + 1,
       fgCode: p.fgCode || it.registration?.fgCode || "-",
-      name: p.productDescription || it.registration?.productName || "-",
+      name: p.productDescriptionEn || p.productDescription || it.registration?.productName || "-",
       qty, incVat, exVat, perUnit,
       tax: r2(perUnit * qty),         // line total from the rounded per-unit
     };

@@ -37,6 +37,8 @@
 //   history:view   | audit:view
 //   master:manage  (edit shared master taxonomy, e.g. product_types categories)
 //   pm:view        | pm:edit        (project management — SALES only)
+//   salesplan:view | salesplan:edit | salesplan:review | salesplan:target
+//     (Sales Planning commercial spine: pipeline / forecast / target / review)
 //   sahamit:view   | sahamit:edit   (SAHAMIT Planning & Sales — FC/PO/Reconcile.
 //     Capability is held by every sales role, but ACCESS is further narrowed to
 //     team === 'KA' (+ admin / sales head oversight) via canAccessSahamit(). The
@@ -133,6 +135,7 @@ const SALES_OPS = [
   'products:view', 'products:edit',
   'sales:view', 'sales:act',
   'pm:view', 'pm:edit',
+  'salesplan:view', 'salesplan:edit',
   // SAHAMIT module — granted to every sales role; team===KA narrows actual access.
   'sahamit:view', 'sahamit:edit',
   'history:view',
@@ -148,6 +151,7 @@ const SUPERUSER_CAPS = [
   'users:manage',
   'master:manage',  // edit category taxonomy (product_types) + master config
   'pm:view', 'pm:edit',
+  'salesplan:view', 'salesplan:edit', 'salesplan:review', 'salesplan:target',
   'sahamit:view', 'sahamit:edit',
   'mgmt:view', 'mgmt:edit',   // งานบริหาร (Management/Executive Office) — admin + secretary only
 ];
@@ -178,8 +182,9 @@ const ROLE_CAPS = {
   secretary: ['mgmt:view', 'mgmt:edit'],
   // ae_supervisor: sales head — all-team data scope, but not a system admin.
   ae_supervisor: SALES_HEAD_CAPS,
-  // team lead: ops + may delete orders (scoped to own team via deleteScope)
-  senior_ae: [...SALES_OPS, 'sales:delete'],
+  // team lead: ops + may delete orders (scoped to own team via deleteScope) +
+  // sets Sales Planning targets for their own team (team-level + per-AE).
+  senior_ae: [...SALES_OPS, 'sales:delete', 'salesplan:target'],
   // back-office + front-office: same capabilities, differ only by edit SCOPE
   ac: SALES_OPS,
   ae: SALES_OPS,
@@ -203,6 +208,40 @@ export function capsFor(role) {
 
 export function can(role, cap) {
   return capsFor(role).includes(cap);
+}
+
+// ── Per-user capability grants (app_metadata.extraCaps) ───────────────
+// A user keeps their base role but an admin may GRANT a small, whitelisted set
+// of extra capabilities on top — e.g. a Sales lead who must also do the ฝ่าย
+// กฎหมาย (LG) work while LG is short-staffed. Grants are additive only; they
+// never remove a role's caps and can never escalate to the admin-system caps
+// (users/master/audit are deliberately NOT grantable).
+//
+// Only these caps may be granted per-user. Anything else is ignored (defense
+// against a stale/tampered app_metadata array escalating privilege).
+export const GRANTABLE_CAPS = ['legal:view', 'legal:approve', 'products:margin'];
+export const GRANTABLE_CAP_LABELS = {
+  'legal:view': 'ดูสถานะภาษีทุกทีม (LG)',
+  'legal:approve': 'อนุมัติ/ยื่นภาษี แทนฝ่ายกฎหมาย (LG)',
+  'products:margin': 'เห็นต้นทุน/กำไรโรงงาน (ทำรายงานผู้บริหาร)',
+};
+
+// Keep only whitelisted, de-duplicated grants. Accepts anything, returns [].
+export function sanitizeExtraCaps(extraCaps) {
+  if (!Array.isArray(extraCaps)) return [];
+  return [...new Set(extraCaps.filter((c) => GRANTABLE_CAPS.includes(c)))];
+}
+
+// A user's EFFECTIVE capabilities = role caps ∪ sanitized per-user grants.
+// Prefer this over can(role, …) wherever a `user` object is in hand.
+export function capsForUser(user) {
+  const base = capsFor(user?.role);
+  const extra = sanitizeExtraCaps(user?.extraCaps);
+  return extra.length ? [...new Set([...base, ...extra])] : base;
+}
+
+export function canUser(user, cap) {
+  return capsForUser(user).includes(cap);
 }
 
 // Superuser roles: 'all'-team data scope on every resource (view/edit/delete).
@@ -256,6 +295,16 @@ export function canAccessMgmt(role) {
 export function viewScope(role) {
   if (isSuperuser(role) || role === 'legal' || role === 'viewer' || role === 'staff') return 'all';
   return 'team'; // senior_ae, ac, ae, and unknown viewer
+}
+
+// User-aware view scope: a per-user grant of legal:view (an SA acting as LG)
+// widens visibility to ALL teams, exactly like the built-in `legal` role — so a
+// grantee sees every team's tax records they now have to approve. Falls back to
+// the role-only viewScope for everyone else. Use this (not viewScope(role)) in
+// handlers that have the full user object and cover legal-touchable resources.
+export function viewScopeUser(user) {
+  if (canUser(user, 'legal:view')) return 'all';
+  return viewScope(user?.role);
 }
 
 export function editScope(role) {
@@ -324,13 +373,14 @@ export function inScope(scope, user, record) {
 export function canViewRecord(user, resource, record) {
   // Customers are a central registry — any signed-in sales/legal user may view.
   if (resource === 'customers') return true;
-  return inScope(viewScope(user?.role), user, record);
+  return inScope(viewScopeUser(user), user, record);
 }
 
 export function canEditRecord(user, resource, record) {
   // Legal tax approval spans all teams (legal processes tax for everyone),
-  // but legal does not edit the customer registry.
-  if (resource !== 'customers' && can(user?.role, 'legal:approve')) return true;
+  // but legal does not edit the customer registry. Honours a per-user
+  // legal:approve grant (an SA acting as LG) the same as the built-in role.
+  if (resource !== 'customers' && canUser(user, 'legal:approve')) return true;
   return inScope(editScope(user?.role), user, record);
 }
 
@@ -397,8 +447,8 @@ const LEGAL_FIELDS_BY_RESOURCE = {
 export function allowedEditFields(user, resource, salesEditable) {
   const allowed = new Set();
   const salesActCap = RESOURCE_SALES_CAP[resource] || `${resource}:edit`;
-  if (can(user?.role, salesActCap)) salesEditable.forEach((f) => allowed.add(f));
-  if (can(user?.role, 'legal:approve')) {
+  if (canUser(user, salesActCap)) salesEditable.forEach((f) => allowed.add(f));
+  if (canUser(user, 'legal:approve')) {
     (LEGAL_FIELDS_BY_RESOURCE[resource] || LEGAL_PRODUCT_FIELDS).forEach((f) => allowed.add(f));
   }
   return allowed;
@@ -422,15 +472,21 @@ export function canSeeProductCost(role) {
   return can(role, 'products:margin') || can(role, 'products:edit');
 }
 
+// User-aware variant — honours a per-user products:margin grant (needed so a
+// grantee sees costPrice both in the API redaction below and in the client UI).
+export function canSeeProductCostUser(user) {
+  return canUser(user, 'products:margin') || canUser(user, 'products:edit');
+}
+
 // Return a copy of `product` redacted for `user`: strip MARGIN_FIELDS unless
 // they hold products:margin, and strip costPrice too unless canSeeProductCost.
 // Pass-through (same ref) for margin-holders / falsy input. Use
 // `.map(p => redactProductMargin(user, p))` for list responses.
 export function redactProductMargin(user, product) {
-  if (!product || can(user?.role, 'products:margin')) return product;
+  if (!product || canUser(user, 'products:margin')) return product;
   const out = { ...product };
   for (const f of MARGIN_FIELDS) delete out[f];
-  if (!canSeeProductCost(user?.role)) delete out.costPrice;
+  if (!canSeeProductCostUser(user)) delete out.costPrice;
   return out;
 }
 

@@ -8,7 +8,7 @@ import {
   TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed, Pause,
   Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
-  GitCommit, History, RotateCcw,
+  GitCommit, History, RotateCcw, ShieldCheck, PackageCheck,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -26,33 +26,15 @@ import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
+import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/derived";
 import { useResponsiveView } from "@/lib/useResponsiveView";
+import { fmtDateTime } from "@/lib/format";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
   "On Hold": "ระงับ (On Hold)", Dropped: "ยกเลิก (Dropped)",
 };
 
-const getComputedStatus = (p) => {
-  if (!p) return "";
-  if (p.status === "Dropped") return "Dropped";
-  if (p.status === "On Hold") return "On Hold";
-  
-  const total = p.tasks?.length || 0;
-  const done = p.tasks?.filter((t) => t.status === "Completed").length || 0;
-  if (total > 0 && done === total) return "Completed";
-  
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const overdueCount = (p.tasks || []).filter((t) => t.status !== "Completed" && t.finishDate && new Date(t.finishDate) < today).length;
-  if (overdueCount > 0) return "Delayed";
-  
-  if (total === 0 || p.tasks.every(t => t.status === "Pending")) return "New";
-  
-  return "On Track";
-};
-
-const statusDotColor = (s) => s === "Completed" ? "var(--green)" : s === "On Track" ? "var(--green)" : s === "Delayed" ? "var(--red)" : s === "On Hold" ? "var(--amber)" : s === "Dropped" ? "var(--red)" : "var(--accent)";
-const statusPillClass = (s) => s === "Completed" ? "success" : s === "On Track" ? "success" : s === "Delayed" ? "danger" : s === "On Hold" ? "warning" : s === "Dropped" ? "danger" : "primary";
 
 const ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
 
@@ -183,6 +165,7 @@ export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const hasEditCap = useCan("pm:edit");
+  const canCreateTaxRegistration = useCan("products:edit");
   const userRole = useRole();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -220,6 +203,8 @@ export default function ProjectDetailPage() {
   const [revNote, setRevNote] = useState("");
   const [revError, setRevError] = useState("");
   const [toast, setToast] = useState(null); // { kind: 'success'|'error'|'info', msg }
+  const [creatingTaxReg, setCreatingTaxReg] = useState(false);
+  const [creatingShipmentPrep, setCreatingShipmentPrep] = useState(false);
   const [confirmState, setConfirmState] = useState(null); // ยืนยันแบบ promise (แทน window.confirm)
   const [showDrop, setShowDrop] = useState(false); // modal ยกเลิกโปรเจกต์ (แทน window.prompt)
   const [dropReason, setDropReason] = useState("");
@@ -243,7 +228,6 @@ export default function ProjectDetailPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
     fetch("/api/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
     fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
     fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(d || [])).catch(() => {});
@@ -252,6 +236,17 @@ export default function ProjectDetailPage() {
       if (Array.isArray(d) && d.length) setHolidays(d.map((h) => h.date));
     }).catch(() => {});
   }, []);
+  // FG picker: scope to the project's customer so cross-team FGs of the same
+  // customer show up (product.team = creator's team, not the customer's).
+  const projectCustomerId = data?.customerId;
+  useEffect(() => {
+    if (!data) return;
+    const url = projectCustomerId
+      ? `/api/products?customerId=${encodeURIComponent(projectCustomerId)}`
+      : "/api/products";
+    fetch(url).then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectCustomerId]);
 
   const updateProject = async (patch) => {
     const res = await fetch(`/api/pm/projects/${id}`, {
@@ -259,6 +254,44 @@ export default function ProjectDetailPage() {
     });
     if (res.ok) { const updated = await res.json(); setData((d) => ({ ...d, ...updated })); }
     return res.ok;
+  };
+
+  const createTaxRegistrationFromProject = async () => {
+    if (!p?.id) return;
+    setCreatingTaxReg(true);
+    try {
+      const res = await fetch("/api/excise-registrations/from-project", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: p.id }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ kind: "error", msg: payload.error || "สร้างทะเบียนภาษีจากโปรเจกต์ไม่สำเร็จ" });
+        return;
+      }
+      setToast({ kind: "success", msg: `สร้างทะเบียนภาษี ${payload.fgCode || ""} แล้ว` });
+      router.push(`/tax/registrations/${payload.id}`);
+    } finally {
+      setCreatingTaxReg(false);
+    }
+  };
+
+  const createShipmentPrepFromProject = async () => {
+    if (!p?.id) return;
+    setCreatingShipmentPrep(true);
+    try {
+      const res = await fetch(`/api/pm/projects/${p.id}/shipment-prep`, { method: "POST" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ kind: "error", msg: payload.error || "สร้างเอกสารเตรียมส่งของไม่สำเร็จ" });
+        return;
+      }
+      setToast({ kind: payload.reused ? "info" : "success", msg: payload.reused ? "เปิดเอกสารเตรียมส่งของเดิม" : "สร้างเอกสารเตรียมส่งของแล้ว" });
+      router.push(`/pm/projects/${p.code || p.id}/shipment-prep`);
+    } finally {
+      setCreatingShipmentPrep(false);
+    }
   };
 
   // ── เฟส 1: แก้ task แบบ "ค้างก่อน-ยืนยันรวด" (ลด error จากการกดพลาด) ───────
@@ -389,7 +422,7 @@ export default function ProjectDetailPage() {
   // ย้อนงานทั้งชุดกลับไปเท่ากับจุดที่เลือก (เซฟใหญ่หรือ Rev). กันย้อนเมื่อยังมีของค้าง.
   const restoreSnapshot = async (row) => {
     if (dirtyCount > 0) { setToast({ kind: "error", msg: "ยังมีการแก้ไขที่ยังไม่บันทึก — กรุณายืนยันหรือยกเลิกก่อนย้อนเวอร์ชัน" }); return; }
-    const label = row.kind === "rev" ? `Rev. ${row.revNo}` : `บันทึกเมื่อ ${new Date(row.createdAt).toLocaleString("th-TH")}`;
+    const label = row.kind === "rev" ? `Rev. ${row.revNo}` : `บันทึกเมื่อ ${fmtDateTime(row.createdAt)}`;
     if (!(await askConfirm({ title: "ย้อนกลับไปจุดนี้?", message: `งานทั้งหมดจะกลับไปเท่ากับ "${label}" (สร้าง/ลบ/แก้ขั้นตอนให้ตรง). จุดบันทึก/Rev อื่นยังอยู่ครบ ย้อนไปจุดอื่นได้อีก.` }))) return;
     const res = await fetch(`/api/pm/projects/${id}/restore`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshotId: row.id }),
@@ -821,6 +854,12 @@ export default function ProjectDetailPage() {
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
   const linkedIds = new Set((p.projectProducts || []).map((x) => x.productId));
+  // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โปรเจกต์ที่ไม่ได้มาจากดีล
+  // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต 01-002 อย่างน้อยหนึ่งตัว — ไม่งั้นไม่ต้องมี
+  // ทะเบียนภาษี.
+  const dealWon = !p.dealId || ["won", "in_project"].includes(p.dealStage);
+  const hasExciseFg = (p.projectProducts || []).some((x) => (x.product?.categoryCode || "") === "01-002");
+  const recommendTaxReg = dealWon && hasExciseFg;
   const formPhases = [...new Set(processedTasks.map((t) => t.phase).filter(Boolean))];
 
   const total = processedTasks.length;
@@ -950,7 +989,7 @@ export default function ProjectDetailPage() {
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                   <div style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: "150px" }}>
-                    {actualProd.productDescription || actualProd.brandName || "-"}
+                    {actualProd.productDescriptionEn || actualProd.productDescription || actualProd.brandNameEn || actualProd.brandName || "-"}
                   </div>
                   <div style={{ display: "flex", gap: "8px", width: "220px", maxWidth: "100%", flexShrink: 0 }}>
                     <input type="text" placeholder="สั่งซื้อ" defaultValue={pp.orderQty || ""} disabled={!canEdit} onBlur={(e) => { if (e.target.value !== (pp.orderQty || "")) updateProductQty(pp.productId, "orderQty", e.target.value); }} className="premium-input w-full text-[12px] h-[30px]" />
@@ -969,9 +1008,9 @@ export default function ProjectDetailPage() {
             size="sm"
             options={allProducts.filter(pr => !linkedIds.has(pr.id)).map(pr => ({
               value: pr.id,
-              label: `${pr.fgCode} — ${pr.productDescription || pr.brandName || ""}`,
-              search: `${pr.fgCode || ""} ${pr.productDescription || ""}`,
-              render: <span><strong>{pr.fgCode}</strong> — {pr.productDescription || pr.brandName || ""}</span>,
+              label: `${pr.fgCode} — ${pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""}`,
+              search: `${pr.fgCode || ""} ${pr.productDescription || ""} ${pr.productDescriptionEn || ""}`,
+              render: <span><strong>{pr.fgCode}</strong> — {pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""}</span>,
             }))}
             value={addingProduct}
             onChange={setAddingProduct}
@@ -1041,6 +1080,28 @@ export default function ProjectDetailPage() {
               {canEdit && (
                 <button onClick={openIssueRev} disabled={issuingRev} className="btn" style={{ whiteSpace: "nowrap" }} title={`freeze เอกสารทั้งชุดเป็นเวอร์ชันใหม่ — เลขรันอัตโนมัติเป็น Rev. ${nextRev} (จะขึ้นบนหน้าพิมพ์)`}>
                   <GitCommit size={14} /> {issuingRev ? "กำลังออก…" : `ออก Rev. ${nextRev}`}
+                </button>
+              )}
+              {canCreateTaxRegistration && recommendTaxReg && (
+                <button
+                  onClick={createTaxRegistrationFromProject}
+                  disabled={creatingTaxReg || !(p.projectProducts || []).length}
+                  className="btn"
+                  style={{ whiteSpace: "nowrap" }}
+                  title="สร้างทะเบียนภาษี draft จาก FG หมวดสรรพสามิต (01-002) ในโปรเจกต์นี้"
+                >
+                  <ShieldCheck size={14} /> {creatingTaxReg ? "กำลังสร้าง..." : "สร้างทะเบียนภาษี"}
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  onClick={createShipmentPrepFromProject}
+                  disabled={creatingShipmentPrep || !(p.projectProducts || []).length}
+                  className="btn"
+                  style={{ whiteSpace: "nowrap" }}
+                  title={(p.projectProducts || []).length ? "สร้าง/เปิดเอกสารเตรียมส่งของจาก FG ในโปรเจกต์นี้" : "ต้องผูก FG ก่อนจึงสร้างเอกสารเตรียมส่งของได้"}
+                >
+                  <PackageCheck size={14} /> {creatingShipmentPrep ? "กำลังสร้าง..." : "เตรียมส่งของ"}
                 </button>
               )}
               <button onClick={openRevisions} className="btn" style={{ whiteSpace: "nowrap" }} title="ดู/พิมพ์เวอร์ชันเอกสารที่เคยออก">
@@ -1662,7 +1723,7 @@ export default function ProjectDetailPage() {
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
-                      {r.createdAt ? new Date(r.createdAt).toLocaleString("th-TH") : "-"} · {r.createdByName || "-"}
+                      {r.createdAt ? fmtDateTime(r.createdAt) : "-"} · {r.createdByName || "-"}
                     </div>
                     {r.note && <div style={{ fontSize: "12px", color: "var(--text-3)", whiteSpace: "pre-wrap" }}>{r.note}</div>}
                   </div>

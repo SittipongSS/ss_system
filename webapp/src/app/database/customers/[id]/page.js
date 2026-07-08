@@ -15,7 +15,9 @@ import StatusBadge from "@/components/excise/StatusBadge";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import ContactsEditor from "@/components/database/ContactsEditor";
-import { fmtPhone, fmtNationalId } from "@/lib/format";
+import BrandsEditor from "@/components/database/BrandsEditor";
+import { brandBothOf, brandBoth, normalizeBrands } from "@/lib/master/brands";
+import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 
 export default function CustomerDetails() {
@@ -51,7 +53,7 @@ export default function CustomerDetails() {
     phone: "",
     address: "",
     shippingAddress: "",
-    brandsStr: "",
+    brands: [],
     contacts: [],
     creditTerms: "",
   });
@@ -80,7 +82,7 @@ export default function CustomerDetails() {
           phone: data.customer.phone || "",
           address: data.customer.address || "",
           shippingAddress: data.customer.shippingAddress || "",
-          brandsStr: (data.customer.brands || []).join(", "),
+          brands: normalizeBrands(data.customer.brands),
           // contacts[] (0033); fall back to legacy singles for rows not yet migrated.
           contacts: Array.isArray(data.customer.contacts) && data.customer.contacts.length
             ? data.customer.contacts
@@ -118,15 +120,6 @@ export default function CustomerDetails() {
       .catch(() => {});
   }, [id]);
 
-  const formatMoney = (amount) => {
-    if (amount === undefined || amount === null) return "฿0.00";
-    return amount.toLocaleString("th-TH", {
-      style: "currency",
-      currency: "THB",
-      minimumFractionDigits: 2,
-    });
-  };
-
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -146,10 +139,7 @@ export default function CustomerDetails() {
       phone: formData.phone,
       address: formData.address,
       shippingAddress: formData.shippingAddress || null,
-      brands: formData.brandsStr
-        .split(",")
-        .map((b) => b.trim())
-        .filter((b) => b),
+      brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)
       contacts: formData.contacts || [],
       creditTerms: formData.creditTerms || null,
     };
@@ -302,11 +292,7 @@ export default function CustomerDetails() {
           </h1>
           <p>
             วันที่สร้าง:{" "}
-            {new Date(customer.createdAt).toLocaleDateString("th-TH", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
+            {fmtDate(customer.createdAt)}
           </p>
         </div>
 
@@ -340,8 +326,8 @@ export default function CustomerDetails() {
               ? [
                   { label: "สินค้าทั้งหมด", value: products.length },
                   { label: "ใบสั่งซื้อทั้งหมด", value: orders.length },
-                  { label: "ภาษีชำระแล้ว", value: formatMoney(totalPaidTax), tone: "success" },
-                  { label: "ภาษีค้างชำระ", value: formatMoney(totalPendingTax), tone: totalPendingTax ? "warn" : undefined },
+                  { label: "ภาษีชำระแล้ว", value: fmtMoney(totalPaidTax), tone: "success" },
+                  { label: "ภาษีค้างชำระ", value: fmtMoney(totalPendingTax), tone: totalPendingTax ? "warn" : undefined },
                 ]
               : [
                   { label: "สินค้าทั้งหมด", value: products.length },
@@ -351,7 +337,7 @@ export default function CustomerDetails() {
         />
         {canViewTax && hasTaxObligation && (
           <p className="text-[11px] text-[var(--text-3)] mt-2">
-            ยอดภาษีรวมสะสม {formatMoney(totalTaxAccrued)} — สรรพสามิต {formatMoney(totalExciseTax)} + ท้องถิ่น {formatMoney(totalLocalTax)}
+            ยอดภาษีรวมสะสม {fmtMoney(totalTaxAccrued)} — สรรพสามิต {fmtMoney(totalExciseTax)} + ท้องถิ่น {fmtMoney(totalLocalTax)}
           </p>
         )}
       </div>
@@ -403,7 +389,9 @@ export default function CustomerDetails() {
           <div className="flex flex-wrap gap-1.5">
             {customer.brands && customer.brands.length > 0 ? (
               customer.brands.map((b, i) => (
-                <span key={i} className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[11px] text-[var(--text-2)] font-semibold">{b}</span>
+                <span key={i} className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[11px] text-[var(--text-2)] font-semibold">
+                  {brandBothOf(b)}
+                </span>
               ))
             ) : (
               <span className="text-[var(--text-3)] text-xs italic">ไม่มีข้อมูลแบรนด์</span>
@@ -461,16 +449,16 @@ export default function CustomerDetails() {
                 <div key={p.id} onClick={() => (window.location.href = `/database/products/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-semibold text-[var(--text)] text-sm truncate">{p.productDescription}</div>
-                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode} · {p.brandName}</div>
+                      <div className="font-semibold text-[var(--text)] text-sm truncate">{productNameBoth(p)}</div>
+                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode} · {brandBoth(p.brandName, p.brandNameEn)}</div>
                     </div>
                     <ProductStatusPill status={p.status} />
                   </div>
                   <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
-                    <span className="font-mono text-[var(--text-2)]">{p.volume} ml · {formatMoney(p.retailPriceIncVat)}</span>
+                    <span className="font-mono text-[var(--text-2)]">{p.volume} ml · {fmtMoney(p.retailPriceIncVat)}</span>
                     {canViewTax && (
                       <span className="text-[var(--text-2)]">
-                        {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : <span className="font-mono">{formatMoney(taxRate)}</span>}
+                        {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : <span className="font-mono">{fmtMoney(taxRate)}</span>}
                       </span>
                     )}
                   </div>
@@ -503,14 +491,14 @@ export default function CustomerDetails() {
                       <tr key={p.id} onClick={() => (window.location.href = `/database/products/${p.id}`)} className="clickable-row">
                         <td className="font-semibold font-mono text-[var(--text)]">{p.fgCode}</td>
                         <td>
-                          <div className="font-semibold text-[var(--text)]">{p.productDescription}</div>
-                          <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {p.brandName}</div>
+                          <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
+                          <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {brandBoth(p.brandName, p.brandNameEn)}</div>
                         </td>
                         <td className="font-mono">{p.volume} ml</td>
-                        <td className="num font-mono text-[var(--text-2)]">{formatMoney(p.retailPriceIncVat)}</td>
+                        <td className="num font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</td>
                         {canViewTax && (
                           <td className="num font-mono text-[var(--text-2)]">
-                            {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(taxRate)}
+                            {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(taxRate)}
                           </td>
                         )}
                         <td className="text-center"><ProductStatusPill status={p.status} /></td>
@@ -567,7 +555,7 @@ export default function CustomerDetails() {
                   <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
                     <span className="text-[var(--text-3)]">กำหนดส่ง: {o.deliveryDate || "-"}</span>
                     <span className="font-mono font-bold text-[var(--text)]">
-                      {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(o.totalTax)}
+                      {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(o.totalTax)}
                     </span>
                   </div>
                 </div>
@@ -601,7 +589,7 @@ export default function CustomerDetails() {
                         <td className="font-mono text-xs text-[var(--text-2)]">{o.poReference || "-"}</td>
                         <td className="text-center font-mono font-semibold">{itemCount}</td>
                         <td className="num font-mono font-bold text-[var(--text)]">
-                          {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : formatMoney(o.totalTax)}
+                          {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(o.totalTax)}
                         </td>
                         <td className="text-center text-xs">{o.deliveryDate || "-"}</td>
                         <td className="text-center"><OrderStatusPill status={o.status} /></td>
@@ -710,9 +698,12 @@ export default function CustomerDetails() {
               <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} rows={3} placeholder="เว้นว่าง = ใช้ที่อยู่ออกเอกสาร" className="premium-input w-full text-xs" style={{ padding: "8px 12px", resize: "none" }}></textarea>
             </div>
             <div className="form-group col-span-2">
-              <label>ชื่อแบรนด์สินค้า (Brands) <span className="text-[var(--red)]">*</span></label>
-              <input type="text" name="brandsStr" value={formData.brandsStr} onChange={handleInputChange} required placeholder="คั่นด้วยเครื่องหมายคอมมา เช่น Brand A, Brand B" className="premium-input w-full text-xs" />
-              <span className="text-[10px] text-[var(--text-3)] mt-1">คั่นด้วยลูกน้ำ (,)</span>
+              <label>ชื่อแบรนด์สินค้า (Brands)</label>
+              <BrandsEditor
+                value={formData.brands}
+                onChange={(v) => setFormData((f) => ({ ...f, brands: v }))}
+              />
+              <span className="text-[10px] text-[var(--text-3)] mt-1">ชื่อไทยจำเป็น, ชื่ออังกฤษไม่บังคับ</span>
             </div>
           </div>
 

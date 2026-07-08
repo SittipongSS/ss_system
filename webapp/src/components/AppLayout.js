@@ -2,12 +2,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Flag, Briefcase, Target, Trash2 } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Flag, Briefcase, Target, Trash2, CircleDollarSign } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
-import { RoleContext, TeamContext } from '@/lib/roleContext';
+import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 const SUPABASE_CONFIGURED =
@@ -29,6 +29,7 @@ export default function AppLayout({ children }) {
   const pathname = usePathname();
   const [role, setRole] = useState(null);
   const [team, setTeam] = useState(null);
+  const [extraCaps, setExtraCaps] = useState(null); // per-user LG/margin grants
   const [userName, setUserName] = useState('');
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
@@ -83,11 +84,12 @@ export default function AppLayout({ children }) {
       // Role + team come from app_metadata (service-role-only; users cannot self-edit it).
       setRole(user.app_metadata?.role || 'user');
       setTeam(user.app_metadata?.team || null);
+      setExtraCaps(Array.isArray(user.app_metadata?.extraCaps) ? user.app_metadata.extraCaps : []);
       // Force a password change on first login / after an admin reset.
       setMustChangePwd(!!user.app_metadata?.must_change_password);
       setUserName(dName);
       setUserInitials(inits);
-      try { localStorage.setItem('userName', full); } catch {}
+      try { localStorage.setItem('userName', dName); } catch {}
       prefetchData();
     });
   }, [router]);
@@ -96,6 +98,7 @@ export default function AppLayout({ children }) {
     const sys =
       pathname.startsWith('/pm') ? 'pm'
       : pathname.startsWith('/database') ? 'master'
+      : pathname.startsWith('/sales-planning') ? 'salesplan'
       : pathname.startsWith('/sahamit') ? 'sahamit'
       : pathname.startsWith('/mgmt') ? 'mgmt'
       : pathname === '/users' ? 'users'
@@ -145,25 +148,20 @@ export default function AppLayout({ children }) {
   // returns to the hub to switch.
   const allGroups = [
     {
-      label: 'ข้อมูลหลัก',
+      label: 'ฐานข้อมูล',
       system: 'master',
       items: [
+        { href: '/database', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'customers:view', match: (p) => p === '/database' },
         { href: '/database/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
         { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
         { href: '/database/holidays', name: 'วันหยุด (ปฏิทินทำการ)', icon: CalendarDays, cap: 'master:manage', match: (p) => p.startsWith('/database/holidays') },
       ],
     },
     {
-      label: 'ภาพรวม',
-      system: 'tax',
-      items: [
-        { href: '/tax', name: 'Overview', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
-      ],
-    },
-    {
       label: 'งานภาษีสรรพสามิต',
       system: 'tax',
       items: [
+        { href: '/tax', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
         { href: '/tax/registrations', name: 'การขึ้นทะเบียน', icon: ClipboardCheck, cap: 'history:view', match: (p) => p.startsWith('/tax/registrations') },
         { href: '/tax/filings', name: 'การยื่นชำระภาษี', icon: ReceiptText, cap: 'history:view', match: (p) => p.startsWith('/tax/filings') },
         { href: '/tax/reports', name: 'รายงาน', icon: BarChart3, cap: 'history:view', match: (p) => p === '/tax/reports' },
@@ -173,8 +171,18 @@ export default function AppLayout({ children }) {
       label: 'จัดการโครงการ',
       system: 'pm',
       items: [
+        { href: '/pm', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'pm:view', match: (p) => p === '/pm' },
         { href: '/pm/projects', name: 'โครงการ', icon: FolderKanban, cap: 'pm:view', match: (p) => p === '/pm/projects' || p.startsWith('/pm/projects/') },
         { href: '/pm/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/pm/tasks' },
+      ],
+    },
+    {
+      label: 'บริหารงานขาย',
+      system: 'salesplan',
+      items: [
+        { href: '/sales-planning', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sales-planning' },
+        { href: '/sales-planning/deals', name: 'โครงการ', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
+        { href: '/sales-planning/targets', name: 'วางเป้าหมาย', icon: Target, cap: 'salesplan:view', match: (p) => p.startsWith('/sales-planning/targets') },
       ],
     },
     {
@@ -193,12 +201,12 @@ export default function AppLayout({ children }) {
       label: 'งานสหมิตร',
       system: 'sahamit',
       items: [
-        { href: '/sahamit', name: 'Overview', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
+        { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
         { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
         { href: '/sahamit/po', name: 'Purchase Orders', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
         { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },
-        { href: '/sahamit/review', name: 'ตรวจการเปลี่ยน FC', icon: Flag, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/review') },
         { href: '/sahamit/material', name: 'วัสดุ / Lead time', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
+        { href: '/sahamit/report', name: 'รายงานมูลค่า', icon: BarChart3, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/report') },
       ],
     },
   ];
@@ -206,11 +214,12 @@ export default function AppLayout({ children }) {
   const systemSubtitle =
     activeSystem === 'master' ? 'ฐานข้อมูล'
       : activeSystem === 'pm' ? 'จัดการโครงการ'
-        : activeSystem === 'sahamit' ? 'งานสหมิตร'
-          : activeSystem === 'mgmt' ? 'งานบริหาร'
-          : activeSystem === 'users' ? 'จัดการผู้ใช้'
-            : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
-              : 'ภาษีสรรพสามิต';
+        : activeSystem === 'salesplan' ? 'บริหารงานขาย'
+          : activeSystem === 'sahamit' ? 'งานสหมิตร'
+            : activeSystem === 'mgmt' ? 'งานบริหาร'
+              : activeSystem === 'users' ? 'จัดการผู้ใช้'
+                : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
+                  : 'ภาษีสรรพสามิต';
 
   // Show only the current system's groups (+ 'both'), then only menus the role
   // is allowed to see.
@@ -303,11 +312,6 @@ export default function AppLayout({ children }) {
           >
             {mobileOpen ? <X size={20} strokeWidth={2} /> : <Menu size={20} strokeWidth={2} />}
           </button>
-          <div className="search-bar">
-            <Search size={16} className="icon-l" strokeWidth={2} />
-            <input type="text" placeholder="ค้นหา สินค้า, รหัสลูกค้า..." />
-          </div>
-
           <div className="topbar-actions">
             {/* Login User Info */}
             <div className="topbar-user-info">
@@ -351,7 +355,9 @@ export default function AppLayout({ children }) {
 
         <div className="page">
           <RoleContext.Provider value={role}>
-            <TeamContext.Provider value={team}>{children}</TeamContext.Provider>
+            <ExtraCapsContext.Provider value={extraCaps}>
+              <TeamContext.Provider value={team}>{children}</TeamContext.Provider>
+            </ExtraCapsContext.Provider>
           </RoleContext.Provider>
         </div>
       </main>

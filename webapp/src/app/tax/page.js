@@ -3,18 +3,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, ClipboardCheck, ReceiptText, BarChart3, ChevronRight } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import { useRole } from "@/lib/roleContext";
+import { useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
-import { deptOf, seesSA, seesLG } from "@/lib/excise/workflow";
 import KpiCard from "@/components/excise/KpiCard";
 import WorkQueue from "@/components/excise/WorkQueue";
 
 // Excise command center — role-aware landing. KPI rails for both tracks +
 // a single "งานของฉันตอนนี้" queue that deep-links into the list drawers.
 export default function TaxDashboard() {
-  const role = useRole();
-  const dept = deptOf(role);
+  // Which queue lanes to show is capability-driven, not department-driven, so an
+  // SA granted the LG legal:approve sees BOTH the sales lane and the legal lane.
+  const canSA = useCan("sales:act");    // SA lane: draft/rejected regs + receive/fix orders
+  const canLG = useCan("legal:approve"); // LG lane: approve regs + file orders
   const router = useRouter();
   const { data: regs, loading: l1 } = useApiList("/api/excise-registrations");
   const { data: orders, loading: l2 } = useApiList("/api/orders");
@@ -43,7 +44,7 @@ export default function TaxDashboard() {
 
   // Build the role's action queue.
   const queue = [];
-  if (seesSA(dept)) {
+  if (canSA) {
     regs.filter((x) => x.status === "draft").forEach((x) =>
       queue.push({ id: `rd-${x.id}`, status: "draft", title: `${x.fgCode} · ${x.productName}`, subtitle: `${x.customerName || "-"} — แนบเอกสารแล้วยื่นขึ้นทะเบียน`, cta: "แนบ/ยื่น", onClick: () => goReg("draft") }));
     regs.filter((x) => x.status === "rejected").forEach((x) =>
@@ -53,7 +54,7 @@ export default function TaxDashboard() {
     orders.filter((x) => x.status === "rejected").forEach((x) =>
       queue.push({ id: `ox-${x.id}`, status: "rejected", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: `${itemsLine(x)} — ${x.rejectionReason || "ตีกลับ"}`, cta: "แก้ไข", onClick: () => goFil("rejected") }));
   }
-  if (seesLG(dept)) {
+  if (canLG) {
     regs.filter((x) => x.status === "pending_legal").forEach((x) =>
       queue.push({ id: `rl-${x.id}`, status: "pending_legal", title: `${x.fgCode} · ${x.productName}`, subtitle: `${x.customerName || "-"} — รอตรวจขึ้นทะเบียน`, cta: "ตรวจอนุมัติ", onClick: () => goReg("pending_legal") }));
     orders.filter((x) => x.status === "received").forEach((x) =>
@@ -65,7 +66,7 @@ export default function TaxDashboard() {
   return (
     <Workspace
       icon={<LayoutDashboard size={22} />}
-      title="Overview"
+      title="ภาพรวม"
       subtitle="งานที่ต้องทำของคุณ + ภาพรวมทั้งสองสายงาน"
       loading={l1 || l2}
       headerRight={<Link href="/tax/reports" className="btn btn-secondary flex items-center gap-1.5"><BarChart3 size={16} /> รายงาน</Link>}

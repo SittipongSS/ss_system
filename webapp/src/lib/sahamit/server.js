@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canAccessSahamit } from '@/lib/permissions';
+import { categoryOf } from '@/lib/master/categoryOf';
 
 // ── SAHAMIT server-side scope guard ───────────────────────────────────
 // The proxy only gates by role (coarse). EVERY /api/sahamit handler must call
@@ -68,16 +69,33 @@ export async function loadSahamitProducts(supabase, customerId) {
     .eq('customerId', customerId)
     .or('approvalStatus.eq.approved,approvalStatus.is.null');
   if (error) throw new Error(error.message);
+
+  // categoryCode → ชื่อหมวด (nameTh) จาก product_types (ใช้กรอง/แสดงในกระทบยอด).
+  const { data: types } = await supabase
+    .from('product_types')
+    .select('mainCategoryCode,typeCode,nameTh,nameEn');
+  const typeName = new Map((types || []).map((t) => [`${t.mainCategoryCode}-${t.typeCode}`, t.nameTh || t.nameEn]));
+
   return (data || [])
     .filter((p) => p.isActive !== false)
-    .map((p) => ({
-      id: p.id,
-      fgCode: p.fgCode,
-      name: p.productDescription ?? p.fgCode,
-      brandName: p.brandName ?? null,
-      volume: p.volume ?? null,
-      volumeUnit: p.volumeUnit ?? null,
-    }));
+    .map((p) => {
+      const categoryCode = p.categoryCode || categoryOf(p.fgCode);
+      return {
+        id: p.id,
+        fgCode: p.fgCode,
+        name: p.productDescriptionEn || p.productDescription || p.fgCode,
+        brandName: p.brandNameEn || p.brandName || null,
+        volume: p.volume ?? null,
+        volumeUnit: p.volumeUnit ?? null,
+        assignee: p.assignee || null,
+        ownerId: p.ownerId || null,
+        categoryCode: categoryCode ?? null,
+        category: (categoryCode && typeName.get(categoryCode)) || categoryCode || null,
+        // มูลค่า = qty × ราคาโรงงาน (factory price = costPrice ใน master; ดู products
+        // route: `const factoryPrice = costPrice`). ใช้ร่วมทั้งกระทบยอด + รายงานมูลค่า.
+        price: p.costPrice ?? null,
+      };
+    });
 }
 
 // Build a fgCode → product index (case-insensitive, trimmed).

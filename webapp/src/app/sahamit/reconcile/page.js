@@ -1,21 +1,20 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ClipboardCheck, AlertCircle, Download } from "lucide-react";
+import { ClipboardCheck, AlertCircle, Download, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
-import Modal from "@/components/Modal";
+import CellDetailModal from "@/components/sahamit/CellDetailModal";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
-import { fmtDate } from "@/lib/format";
-import { buildReconMatrix, cellDetail } from "@/lib/sahamit/reconcileClient";
-import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
+import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
+import { predictShifts } from "@/lib/sahamit/predict";
+import { sahamitFetch } from "@/lib/sahamit/apiClient";
+import { toLocalISODate } from "@/lib/pm/dateHelpers";
+import { fmtMoneyCompact, fmtYearMonth } from "@/lib/format";
 
 // token → CSS var
 const C = {
   green: "var(--green)", teal: "var(--teal)", amber: "var(--amber)",
   red: "var(--red)", violet: "var(--violet)", blue: "var(--blue)", "text-3": "var(--text-3)",
-};
-const STATUS_COLOR = {
-  match: "green", covered: "green", over: "teal", unforecasted: "violet",
-  discrepancy: "amber", pending: "red", shifted: "blue", cancelled: "text-3", none: "text-3",
 };
 const LEGEND = [
   { s: "match", c: "green", t: "ครบ (FC=PO)" },
@@ -23,6 +22,8 @@ const LEGEND = [
   { s: "discrepancy", c: "amber", t: "PO ไม่ครบ" },
   { s: "pending", c: "red", t: "รอ PO" },
   { s: "unforecasted", c: "violet", t: "นอก FC" },
+  { s: "covered", c: "text-3", t: "ครอบคลุมข้ามเดือน" },
+  { s: "shifted", c: "text-3", t: "เลื่อนเดือน" },
 ];
 const VIEWS = [
   { key: "recon", label: "FC vs PO" },
@@ -31,71 +32,176 @@ const VIEWS = [
 ];
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
+const nfBaht = (n) => fmtMoneyCompact(n);
+const URGENCY_COLOR = { high: "var(--red)", medium: "var(--amber)", low: "var(--violet)" };
+const shortMonth = (ym) => fmtYearMonth(ym);
+const volLabel = (p) => (p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "");
 
 export default function ReconcilePage() {
   const { data: rounds, loading: l1, error: e1 } = useApiList("/api/sahamit/forecast/rounds");
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
-  const { data: locks, reload: reloadLocks } = useApiList("/api/sahamit/locks");
+  const { data: locks } = useApiList("/api/sahamit/locks");
   const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
+  const { data: predAcks, reload: reloadAcks } = useApiList("/api/sahamit/pred-ack");
+  const { data: products } = useApiList("/api/sahamit/products");
   const [view, setView] = useState("recon");
-  const [drill, setDrill] = useState(null); // { fgCode, month }
+  const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
+  const [search, setSearch] = useState("");
+  const [brands, setBrands] = useState([]);
+  const [volumes, setVolumes] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const q = search.trim().toLowerCase();
 
   const loading = l1 || l2;
   const error = e1 || e2;
   const matrix = useMemo(() => buildReconMatrix(rounds, pos, coverages), [rounds, pos, coverages]);
-  const lockByKey = useMemo(() => {
-    const m = new Map();
-    for (const lk of locks) m.set(`${lk.fgCode}||${lk.month}`, lk);
-    return m;
-  }, [locks]);
+  // Proactive shift prediction (เฟส S1): pending cells (FC, no PO) get a "✨ →month"
+  // hint colored by urgency (days to month-end). Pure — logic lives in predict.js.
+  const today = useMemo(() => toLocalISODate(new Date()), []);
+  const predictions = useMemo(() => predictShifts(rounds, pos, { today, locks }), [rounds, pos, today, locks]);
+  const ackSet = useMemo(() => new Set((predAcks || []).map((a) => `${a.fgCode}||${a.month}`)), [predAcks]);
 
-  // Lock the selected cell at its current FC (agreed), or unlock if already locked.
-  const toggleLock = async (fg, month) => {
-    const existing = lockByKey.get(`${fg}||${month}`);
-    try {
-      if (existing) {
-        await fetch(`/api/sahamit/locks/${existing.id}`, { method: "DELETE" });
-      } else {
-        const row = matrix.rows.find((r) => r.fgCode === fg);
-        const lockedQty = row?.cells[month]?.fcQty || 0;
-        const res = await fetch("/api/sahamit/locks", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fgCode: fg, month, lockedQty }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ล็อกไม่สำเร็จ");
+  // fgCode → product (แบรนด์/ปริมาตร/ราคาโรงงาน) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
+  const productByFg = useMemo(() => {
+    const m = new Map();
+    for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
+    return m;
+  }, [products]);
+  const productOf = (fg) => productByFg.get(String(fg).trim().toLowerCase()) || null;
+
+  // ตัวเลือกตัวกรอง (แบรนด์/ปริมาตร/หมวด) จากสินค้าที่อยู่ในกริด
+  const filterOptions = useMemo(() => {
+    const b = new Set(), v = new Set(), c = new Set();
+    for (const r of matrix.rows) {
+      const p = productByFg.get(String(r.fgCode).trim().toLowerCase());
+      if (p?.brandName) b.add(p.brandName);
+      const vl = p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "";
+      if (vl) v.add(vl);
+      if (p?.category) c.add(p.category);
+    }
+    const toOpts = (s) => [...s].sort((x, y) => String(x).localeCompare(String(y))).map((x) => ({ value: x, label: x }));
+    return { brands: toOpts(b), volumes: toOpts(v), categories: toOpts(c) };
+  }, [matrix, productByFg]);
+
+  // แถวที่ผ่านตัวกรอง (ว่าง = ไม่กรอง). สินค้าที่ไม่รู้จัก master จะไม่ผ่านเมื่อมีตัวกรอง แบรนด์/ปริมาตร/หมวด.
+  const filteredRows = useMemo(() => {
+    if (!q && !brands.length && !volumes.length && !categories.length) return matrix.rows;
+    return matrix.rows.filter((r) => {
+      if (q && !String(r.fgCode).toLowerCase().includes(q) && !String(r.productName || "").toLowerCase().includes(q)) return false;
+      const p = productByFg.get(String(r.fgCode).trim().toLowerCase());
+      if (brands.length && !brands.includes(p?.brandName)) return false;
+      if (volumes.length && !volumes.includes(volLabel(p))) return false;
+      if (categories.length && !categories.includes(p?.category)) return false;
+      return true;
+    });
+  }, [matrix, productByFg, q, brands, volumes, categories]);
+
+  const filterCount = brands.length + volumes.length + categories.length;
+
+  // จัดกลุ่มแถวตามหมวดสินค้า (แสดงหัวหมวดคั่น)
+  const catGroups = useMemo(() => {
+    const m = new Map();
+    for (const r of filteredRows) {
+      const cat = productByFg.get(String(r.fgCode).trim().toLowerCase())?.category || "— ไม่ระบุหมวด —";
+      if (!m.has(cat)) m.set(cat, []);
+      m.get(cat).push(r);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filteredRows, productByFg]);
+
+  // มูลค่ารายเดือน (ราคา×จำนวน) — คิดตามแถวที่แสดง (หลังกรอง). ราคา = ราคาโรงงาน
+  // (costPrice) จาก products — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
+  const valueSummary = useMemo(() => {
+    const byMonth = {};
+    for (const m of matrix.months) byMonth[m] = { fc: 0, po: 0 };
+    let gFc = 0, gPo = 0, unpriced = 0;
+    for (const row of filteredRows) {
+      const p = productByFg.get(String(row.fgCode).trim().toLowerCase());
+      const price = p?.price == null ? null : Number(p.price);
+      if (price == null) { if (row.fcTotal > 0 || row.poTotal > 0) unpriced += 1; continue; }
+      for (const m of matrix.months) {
+        const c = row.cells[m];
+        if (!c) continue;
+        byMonth[m].fc += (c.fcQty || 0) * price;
+        byMonth[m].po += (c.poQty || 0) * price;
       }
-      reloadLocks();
+      gFc += (row.fcTotal || 0) * price;
+      gPo += (row.poTotal || 0) * price;
+    }
+    return { byMonth, gFc, gPo, unpriced };
+  }, [matrix, productByFg, filteredRows]);
+
+  // Click a cell → open the detail modal (แทนการเด้งไปหน้าเต็ม).
+  const openCell = (fg, m) => setCellSel({ fg, m });
+
+  // "ดูแล้ว" ป้ายคาดการณ์ (ปิด/เปิดเตือน) — S4
+  const toggleAck = async (fg, m, isAcked) => {
+    try {
+      await sahamitFetch("/api/sahamit/pred-ack", {
+        method: isAcked ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fgCode: fg, month: m }),
+      });
+      reloadAcks();
     } catch (e) { alert(e.message); }
   };
-  const detail = useMemo(
-    () => (drill ? cellDetail(rounds, pos, drill.fgCode, drill.month) : null),
-    [drill, rounds, pos],
-  );
 
   const renderCell = (cell, fg, m) => {
-    if (!cell || cell.status === "none") return <td key={m} style={{ textAlign: "center", color: "var(--text-3)" }}>·</td>;
-    const color = C[STATUS_COLOR[cell.status]] || C["text-3"];
-    const tint = `color-mix(in srgb, ${color} 12%, var(--panel))`;
-    const locked = lockByKey.has(`${fg}||${m}`);
-    return (
-      <td
-        key={m}
-        onClick={() => setDrill({ fgCode: fg, month: m })}
-        title={locked ? `${cell.label} · ล็อกแล้ว` : cell.label}
-        style={{ cursor: "pointer", background: view === "recon" ? tint : undefined, textAlign: "center", padding: "4px 6px", position: "relative" }}
+    if (!cell || cell.status === "none") {
+      return <td key={m} style={{ textAlign: "center", color: "var(--text-3)", padding: "6px 5px" }}>·</td>;
+    }
+    const hasCov = cell.coverageIn > 0 || cell.coverageOut > 0;
+    const pred = predictions.get(`${fg}||${m}`);
+    const acked = pred && ackSet.has(`${fg}||${m}`);
+    const predBadge = pred ? (
+      <div
+        style={{ fontSize: 9.5, fontWeight: acked ? 400 : 600, color: acked ? "var(--text-3)" : URGENCY_COLOR[pred.urgency], display: "flex", alignItems: "center", justifyContent: "center", gap: 2, marginTop: 2, whiteSpace: "nowrap", opacity: acked ? 0.7 : 1 }}
+        title={acked ? `ดูแล้ว (ปิดเตือน) · คาดว่าจะเลื่อนไป ${pred.toMonth}` : `ระบบคาดว่าจะเลื่อนไป ${pred.toMonth} (${pred.pattern}) · เหลือ ${pred.daysLeft} วันถึงสิ้นเดือน · ยังไม่มี PO`}
       >
-        {locked && <span style={{ position: "absolute", top: 1, right: 2, fontSize: 9 }} title="ล็อก (ตกลงแล้ว)">🔒</span>}
-        {(cell.coverageIn > 0 || cell.coverageOut > 0) && <span style={{ position: "absolute", top: 1, left: 2, fontSize: 9, color: "var(--blue)" }} title="ชดเชยข้ามเดือน">⇄</span>}
-        {view === "fc" ? (
-          <span>{cell.fcQty ? nf(cell.fcQty) : "·"}</span>
-        ) : view === "po" ? (
-          <span>{cell.poQty ? nf(cell.poQty) : "·"}</span>
-        ) : (
-          <div style={{ lineHeight: 1.25, fontSize: 12 }}>
-            <div style={{ color: "var(--text-2)" }}>{nf(cell.fcQty)}</div>
-            <div style={{ color, fontWeight: 600, borderTop: "1px solid var(--border)" }}>{nf(cell.poQty)}</div>
+        <span style={{ fontSize: 10 }}>{acked ? "👁" : "✨"}</span> →{shortMonth(pred.toMonth)}
+      </div>
+    ) : null;
+    const badges = hasCov ? (
+      <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชย FC ข้ามเดือน (รับ FC ${nf(cell.coverageIn)} / ส่ง FC ${nf(cell.coverageOut)}) · PO อยู่กับที่`}>⇄</span>
+    ) : null;
+    // Single-value views (FC / PO): one number, but colored by reconcile status
+    // (เขียว=ครบ / แดง=รอ PO / เหลือง=ไม่ครบ ฯลฯ) เหมือนมุมมอง FC vs PO.
+    if (view === "fc" || view === "po") {
+      const val = view === "fc" ? cell.fcQty : cell.poQty;
+      return (
+        <td key={m} style={{ padding: "5px 5px" }}>
+          <div className={`grid-cell-box ${cell.status}`} onClick={() => openCell(fg, m)} title={cell.label} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
+            {badges}
+            <span className="cell-val fc" style={{ fontSize: 14, fontWeight: 600 }}>{val ? nf(val) : "·"}</span>
+            <span className="cell-status-tag">{cell.label}</span>
+            {view === "fc" && predBadge}
           </div>
-        )}
+        </td>
+      );
+    }
+    // FC vs PO view: status-colored box with FC/PO lines + status tag.
+    return (
+      <td key={m} style={{ padding: "5px 5px" }}>
+        <div
+          className={`grid-cell-box ${cell.status}`}
+          onClick={() => openCell(fg, m)}
+          title={cell.label}
+          style={{ position: "relative" }}
+        >
+          {badges}
+          <div className="cell-value-line">
+            <span className="cell-lbl">FC</span>
+            <span className="cell-val fc">
+              {nf(cell.fcQty)}
+              {cell.originalFc != null && cell.originalFc !== cell.fcQty && (
+                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 10, marginLeft: 3 }}>{nf(cell.originalFc)}</span>
+              )}
+            </span>
+          </div>
+          <div className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{nf(cell.poQty)}</span></div>
+          <span className="cell-status-tag">{cell.label}</span>
+          {predBadge}
+        </div>
       </td>
     );
   };
@@ -113,12 +219,37 @@ export default function ReconcilePage() {
               <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
             ))}
           </div>
-          <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=reconcile", "_blank")}>
-            <Download size={16} /> Excel
+          <button className="btn ghost" onClick={() => {
+            const p = new URLSearchParams({ view: "reconcile" });
+            if (brands.length) p.set("brands", brands.join(","));
+            if (volumes.length) p.set("volumes", volumes.join(","));
+            if (categories.length) p.set("categories", categories.join(","));
+            window.open(`/api/sahamit/export?${p.toString()}`, "_blank");
+          }}>
+            <Download size={16} /> Excel{filterCount > 0 ? " (กรองแล้ว)" : ""}
           </button>
         </div>
       }
     >
+      {/* ตัวกรองอยู่ในเนื้อหา (ไม่ใช่ในหัว) เพราะหัว premium-header เป็น overflow:hidden จะตัด dropdown */}
+      {!loading && !error && matrix.rows.length > 0 && (
+        <div className="toolbar" style={{ marginBottom: 12 }}>
+          <div className="search-glass" style={{ width: 240 }}>
+            <Search size={18} color="var(--text-3)" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
+          </div>
+          <FilterPopover
+            count={filterCount}
+            onClear={() => { setBrands([]); setVolumes([]); setCategories([]); }}
+            groups={[
+              { key: "brand", label: "แบรนด์", options: filterOptions.brands, selected: brands, onChange: setBrands },
+              { key: "volume", label: "ปริมาตร", options: filterOptions.volumes, selected: volumes, onChange: setVolumes },
+              { key: "category", label: "หมวดสินค้า", options: filterOptions.categories, selected: categories, onChange: setCategories },
+            ]}
+          />
+          {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
+        </div>
+      )}
       {error && (
         <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
           <AlertCircle size={18} /> {error}
@@ -144,141 +275,103 @@ export default function ReconcilePage() {
               </span>
             ))}
             {view === "recon" && <span style={{ color: "var(--text-3)" }}>· แต่ละช่อง: บน=FC ล่าง=PO · คลิกเพื่อดูรายละเอียด</span>}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--violet)" }}>
+              ✨ คาดว่าจะเลื่อน (สี = ความเร่งด่วน: <b style={{ color: "var(--red)" }}>≤30</b>/<b style={{ color: "var(--amber)" }}>≤60</b>/<b style={{ color: "var(--violet)" }}>วัน</b>)
+            </span>
           </div>
 
-          <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
-            <table className="premium-table">
+          <div className="reconciliation-container">
+            <table className="reconcile-grid">
               <thead>
                 <tr>
-                  <th style={{ position: "sticky", left: 0, zIndex: 2, background: "var(--panel-2)", minWidth: 200 }}>สินค้า</th>
-                  {matrix.months.map((m) => <th key={m} style={{ textAlign: "center", whiteSpace: "nowrap" }}>{m}</th>)}
-                  <th style={{ textAlign: "right" }}>รวม FC</th>
-                  <th style={{ textAlign: "right" }}>รวม PO</th>
+                  <th>สินค้า / SKU</th>
+                  {matrix.months.map((m) => (
+                    <th key={m}><div>{m}</div></th>
+                  ))}
+                  <th style={{ textAlign: "right" }}>รวม</th>
                 </tr>
               </thead>
               <tbody>
-                {matrix.rows.map((r) => (
-                  <tr key={r.fgCode}>
-                    <td style={{ position: "sticky", left: 0, zIndex: 1, background: "var(--panel)" }}>
-                      <div className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</div>
-                      <div style={{ fontSize: 11, color: r.productName ? "var(--text-3)" : "var(--amber)" }}>{r.productName || "— ไม่รู้จัก —"}</div>
+                {catGroups.flatMap(([cat, rows]) => [
+                  <tr key={`cat-${cat}`}>
+                    <td colSpan={matrix.months.length + 2} style={{ position: "static", background: "var(--panel-2)", fontWeight: 700, color: "var(--text-2)", padding: "8px 10px" }}>
+                      {cat} <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 12 }}>({rows.length})</span>
                     </td>
-                    {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
-                    <td style={{ textAlign: "right", color: "var(--text-2)" }}>{nf(r.fcTotal)}</td>
-                    <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(r.poTotal)}</td>
+                  </tr>,
+                  ...rows.map((r) => {
+                    const p = productOf(r.fgCode);
+                    const meta = [p?.brandName, volLabel(p)].filter(Boolean).join(" · ");
+                    return (
+                      <tr key={r.fgCode}>
+                        <td>
+                          <div className="product-row-info">
+                            <span className="product-row-name" style={r.productName ? undefined : { color: "var(--amber)" }} title={r.productName || r.fgCode}>{r.productName || "— ไม่รู้จัก —"}</span>
+                            <span className="product-row-sku">{r.fgCode}</span>
+                            {meta && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{meta}</span>}
+                          </div>
+                        </td>
+                        {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
+                        <td style={{ textAlign: "right", verticalAlign: "middle" }}>
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {nf(r.fcTotal)}</div>
+                          <div style={{ fontWeight: 700 }}>PO {nf(r.poTotal)}</div>
+                        </td>
+                      </tr>
+                    );
+                  }),
+                ])}
+                {filteredRows.length === 0 && (
+                  <tr>
+                    <td colSpan={matrix.months.length + 2} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>
+                      ไม่มีสินค้าตรงตัวกรอง — ปรับตัวกรอง หรือกด “ล้างทั้งหมด”
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
+              <tfoot>
+                <tr className="recon-value-row">
+                  <td>
+                    รวมมูลค่า{view === "fc" ? " (FC)" : view === "po" ? " (PO)" : ""}
+                    {valueSummary.unpriced > 0 && (
+                      <span style={{ color: "var(--amber)", fontSize: 11, fontWeight: 400 }} title="สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม">
+                        {" "}· {valueSummary.unpriced} SKU ไม่มีราคา
+                      </span>
+                    )}
+                  </td>
+                  {matrix.months.map((m) => {
+                    const v = valueSummary.byMonth[m] || { fc: 0, po: 0 };
+                    return (
+                      <td key={m} style={{ textAlign: "right" }}>
+                        {view !== "po" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{nfBaht(v.fc)}</div>}
+                        {view !== "fc" && <div style={{ fontWeight: 700 }}>{nfBaht(v.po)}</div>}
+                      </td>
+                    );
+                  })}
+                  <td style={{ textAlign: "right" }}>
+                    {view !== "po" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{nfBaht(valueSummary.gFc)}</div>}
+                    {view !== "fc" && <div style={{ fontWeight: 700 }}>{nfBaht(valueSummary.gPo)}</div>}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </>
       )}
 
-      {/* Cell drill-down */}
-      <Modal open={!!drill} onClose={() => setDrill(null)} title={drill ? `${drill.fgCode} · ${drill.month}` : ""} size="md">
-        {detail && drill && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              {lockByKey.has(`${drill.fgCode}||${drill.month}`) ? (
-                <button className="btn ghost sm" onClick={() => toggleLock(drill.fgCode, drill.month)}>🔒 ปลดล็อก (ล็อกที่ {nf(lockByKey.get(`${drill.fgCode}||${drill.month}`).lockedQty)})</button>
-              ) : (
-                <button className="btn sm" onClick={() => toggleLock(drill.fgCode, drill.month)}>🔒 ล็อก (ตกลงแล้ว)</button>
-              )}
-            </div>
-            <div>
-              <h3 style={{ fontWeight: 600, marginBottom: 8 }}>Forecast (ตามรอบ)</h3>
-              {detail.fcs.length === 0 ? <div style={{ color: "var(--text-3)", fontSize: 13 }}>— ไม่มี FC เดือนนี้ —</div> : (
-                <table className="premium-table">
-                  <thead><tr><th>รอบที่</th><th>วันที่รับ</th><th style={{ textAlign: "right" }}>จำนวน</th></tr></thead>
-                  <tbody>
-                    {detail.fcs.map((f, i) => (
-                      <tr key={i}><td>#{f.roundNo}</td><td>{f.receivedDate ? fmtDate(f.receivedDate) : "—"}</td><td style={{ textAlign: "right" }}>{nf(f.qty)}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <div>
-              <h3 style={{ fontWeight: 600, marginBottom: 8 }}>Purchase Orders (ส่งเดือนนี้)</h3>
-              {detail.poLines.length === 0 ? <div style={{ color: "var(--text-3)", fontSize: 13 }}>— ไม่มี PO เดือนนี้ —</div> : (
-                <table className="premium-table">
-                  <thead><tr><th>เลขที่ PO</th><th style={{ textAlign: "right" }}>จำนวน</th><th>กำหนดส่ง</th><th>ส่งจริง</th><th>สถานะ</th></tr></thead>
-                  <tbody>
-                    {detail.poLines.map((p, i) => (
-                      <tr key={i}>
-                        <td className="font-mono">{p.poNumber}</td>
-                        <td style={{ textAlign: "right" }}>{nf(p.qty)}</td>
-                        <td>{p.dueDate ? fmtDate(p.dueDate) : "—"}</td>
-                        <td>{p.actualDeliveredDate ? fmtDate(p.actualDeliveredDate) : "—"}</td>
-                        <td>{PO_STATUS_LABEL[p.status] || p.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <CoveragePanel fgCode={drill.fgCode} month={drill.month} coverages={coverages} onChanged={reloadCoverages} />
-          </div>
-        )}
-      </Modal>
+      <CellDetailModal
+        open={!!cellSel}
+        onClose={() => setCellSel(null)}
+        fgCode={cellSel?.fg}
+        month={cellSel?.m}
+        matrix={matrix}
+        rounds={rounds}
+        pos={pos}
+        coverages={coverages}
+        prediction={cellSel ? predictions.get(`${cellSel.fg}||${cellSel.m}`) || null : null}
+        product={cellSel ? productOf(cellSel.fg) : null}
+        acked={cellSel ? ackSet.has(`${cellSel.fg}||${cellSel.m}`) : false}
+        onToggleAck={() => cellSel && toggleAck(cellSel.fg, cellSel.m, ackSet.has(`${cellSel.fg}||${cellSel.m}`))}
+        onCoverageChanged={reloadCoverages}
+      />
     </Workspace>
-  );
-}
-
-// Cross-month PO coverage for one (sku, month): list allocations touching this
-// cell + add/remove. "รับเข้า" = PO from another month covers this month's FC;
-// "ส่งออก" = this month's PO excess covers another month.
-function CoveragePanel({ fgCode, month, coverages, onChanged }) {
-  const [dir, setDir] = useState("in");
-  const [other, setOther] = useState("");
-  const [qty, setQty] = useState("");
-  const [busy, setBusy] = useState(false);
-  const related = coverages.filter((c) => c.fgCode === fgCode && (c.sourceMonth === month || c.targetMonth === month));
-
-  const add = async () => {
-    if (!/^\d{4}-\d{2}$/.test(other) || !(Number(qty) > 0)) { alert("ระบุอีกเดือน (YYYY-MM) และจำนวน > 0"); return; }
-    const sourceMonth = dir === "in" ? other : month;
-    const targetMonth = dir === "in" ? month : other;
-    setBusy(true);
-    try {
-      const res = await fetch("/api/sahamit/coverage", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fgCode, sourceMonth, targetMonth, qty: Number(qty) }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || "ไม่สำเร็จ");
-      setOther(""); setQty(""); onChanged?.();
-    } catch (e) { alert(e.message); }
-    setBusy(false);
-  };
-  const remove = async (id) => { await fetch(`/api/sahamit/coverage/${id}`, { method: "DELETE" }); onChanged?.(); };
-
-  return (
-    <div>
-      <h3 style={{ fontWeight: 600, marginBottom: 8 }}>ชดเชยข้ามเดือน</h3>
-      {related.length > 0 && (
-        <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", fontSize: 13 }}>
-          {related.map((c) => (
-            <li key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ color: "var(--blue)" }}>{c.sourceMonth} → {c.targetMonth}</span>
-              <span style={{ fontWeight: 600 }}>{Number(c.qty).toLocaleString("th-TH")}</span>
-              {c.targetMonth === month
-                ? <span className="ui-badge" style={{ color: "var(--green)", borderColor: "var(--green)" }}>รับเข้า</span>
-                : <span className="ui-badge" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>ส่งออก</span>}
-              <button className="btn-icon" title="ลบ" onClick={() => remove(c.id)} style={{ marginLeft: "auto" }}>✕</button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
-        <select className="premium-select" style={{ height: 30, width: 170 }} value={dir} onChange={(e) => setDir(e.target.value)}>
-          <option value="in">เดือนนี้รับชดเชยจาก…</option>
-          <option value="out">เดือนนี้ส่งไปชดเชย…</option>
-        </select>
-        <input type="month" className="premium-input" style={{ height: 30 }} value={other} onChange={(e) => setOther(e.target.value)} />
-        <input type="number" min={1} className="premium-input" style={{ height: 30, width: 100 }} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="จำนวน" />
-        <button className="btn sm" onClick={add} disabled={busy}>เพิ่มชดเชย</button>
-      </div>
-    </div>
   );
 }

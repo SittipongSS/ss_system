@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { viewScope, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
 import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
 import { recordAudit } from '@/lib/audit';
+import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 
 export const dynamic = 'force-dynamic';
 // Approval gate: by default GET returns only APPROVED products, so downstream
@@ -12,11 +13,20 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
-  const manage = new URL(request.url).searchParams.get('manage') === '1';
+  const url = new URL(request.url);
+  const manage = url.searchParams.get('manage') === '1';
+  // A PM project is bound to one customer, and that customer's FGs may have been
+  // registered by a DIFFERENT team (product.team = creator's team, not the
+  // customer's). Scoping by customerId therefore intentionally BYPASSES team
+  // scope so the project product-picker can see all of its customer's FGs.
+  // The approval gate + isActive filter + margin redaction below still apply.
+  const customerId = url.searchParams.get('customerId');
 
   let query = supabase.from('products').select('*').order('createdAt', { ascending: false });
+  if (customerId) query = query.eq('customerId', customerId);
   // Team-scoped roles only see their own team's products; 'all' sees everything.
-  if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+  // Skipped when filtering by customerId (see note above).
+  else if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
   // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
   if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
 
@@ -94,7 +104,9 @@ export async function POST(request) {
     customerId: customer.id,
     customerName: customer.name,
     productDescription: body.productDescription ?? null,
+    productDescriptionEn: body.productDescriptionEn ?? null, // ชื่อสินค้า EN (0059)
     brandName: body.brandName ?? null,
+    brandNameEn: body.brandNameEn ?? null, // snapshot EN ของแบรนด์ (0059)
     volume,
     volumeUnit: body.volumeUnit || 'ml',
     costPrice: costPrice == null || costPrice === '' ? null : costPriceNum,
@@ -135,6 +147,13 @@ export async function POST(request) {
     }
     return Response.json({ error: error.message }, { status: 500 });
   }
+  await recordProductPriceHistory({
+    user,
+    productId: data.id,
+    after: data,
+    changeType: 'create',
+    metadata: { fgCode: data.fgCode, customerId: data.customerId },
+  });
   await recordAudit({ user, action: 'create', entityType: 'product', entityId: data.id, after: data, request });
   return Response.json(data, { status: 201 });
 }

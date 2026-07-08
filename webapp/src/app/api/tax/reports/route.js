@@ -1,5 +1,5 @@
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScope, can } from '@/lib/permissions';
+import { viewScopeUser, canUser } from '@/lib/permissions';
 import { buildReport, REPORTS } from '@/lib/tax/reports';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { buildRegistrationFilesZip } from '@/lib/tax/registrationFiles';
@@ -19,7 +19,7 @@ export async function GET(request) {
 
   const user = await getCurrentUser();
   // Team-scoped roles are pinned to their own team; 'all' roles may filter by ?team.
-  const team = viewScope(user?.role) === 'team' ? (user?.team ?? null) : searchParams.get('team') || null;
+  const team = viewScopeUser(user) === 'team' ? (user?.team ?? null) : searchParams.get('team') || null;
   const filter = {
     from: searchParams.get('from') || null,
     to: searchParams.get('to') || null,
@@ -30,8 +30,9 @@ export async function GET(request) {
     ids: (searchParams.get('ids') || '').split(',').map((s) => s.trim()).filter(Boolean),
     // Optional doc-type filter for the ZIP export (which attachment types to include).
     docTypes: (searchParams.get('docTypes') || '').split(',').map((s) => s.trim()).filter(Boolean),
-    // Factory cost/profit columns are confidential — LG + admin only.
-    margin: can(user?.role, 'products:margin'),
+    // Factory cost/profit columns are confidential — LG + admin (and any user
+    // granted products:margin, e.g. an SA making management reports).
+    margin: canUser(user, 'products:margin'),
   };
 
   // ZIP of attachment files, foldered per registration (registration report only).

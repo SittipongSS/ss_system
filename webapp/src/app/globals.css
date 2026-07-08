@@ -1055,7 +1055,11 @@ h1, h2, h3, h4, h5, h6 {
 /* Reconciliation Grid Matrix */
 .reconciliation-container {
   overflow: auto;
-  height: calc(100vh - 52px - 180px);
+  /* max-height (not fixed height) so the box shrinks to content on short grids
+     yet caps + scrolls internally on tall ones (keeps the sticky header useful).
+     dvh handles mobile browser chrome; headroom bumped for the ✨ prediction
+     legend line so the grid never overflows the viewport. */
+  max-height: calc(100dvh - 230px);
   min-height: 300px;
   scrollbar-width: thin;
   border-radius: var(--radius);
@@ -1139,6 +1143,28 @@ h1, h2, h3, h4, h5, h6 {
 
 .reconcile-grid tbody tr:hover {
   background: var(--panel-2);
+}
+
+/* Value summary row (มูลค่ารายเดือน). Frozen to the bottom of the scroll
+   container so it stays visible while scrolling; opaque bg so sticky cells
+   occlude content underneath; heavier top border to set it apart. */
+.reconcile-grid tfoot td {
+  background: var(--panel-2);
+  border-top: 2px solid var(--border);
+  padding: 10px;
+  vertical-align: middle;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+.reconcile-grid tfoot td:first-child {
+  font-weight: 600;
+  color: var(--text-2);
+  left: 0;
+  z-index: 4; /* bottom-left corner: above both sticky axes */
+}
+.reconcile-grid tfoot td:last-child {
+  z-index: 4; /* bottom-right corner */
 }
 
 .product-row-info {
@@ -1916,6 +1942,25 @@ button.empty-state { width: 100%; font: inherit; }
 
 .premium-table th:last-child {
   border-top-right-radius: var(--radius-lg);
+}
+
+/* Opt-in: freeze the first column on wide grids (SAHAMIT forecast matrix /
+   material / import). Scoped via .sticky-col1 so ordinary tables are untouched.
+   Needs an opaque background to occlude cells scrolling underneath. */
+.premium-table.sticky-col1 th:first-child,
+.premium-table.sticky-col1 td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 4;                 /* above body cells, below the sticky header (z5) */
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+.premium-table.sticky-col1 th:first-child {
+  z-index: 6;                 /* header/first-col corner on top of everything */
+  background: var(--panel-2);
+}
+.premium-table.sticky-col1 tr:hover td:first-child {
+  background: var(--panel-2);
 }
 
 /* Tabs */
@@ -4012,7 +4057,10 @@ button.empty-state { width: 100%; font: inherit; }
   flex-wrap: wrap;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
   position: relative;
-  overflow: hidden;
+  /* overflow ต้องเป็น visible: ปุ่มใน headerRight (เช่น dropdown "ไฟล์แนบ (ZIP)"
+     หน้ารายงาน) เด้ง popover ลงมาใต้ขอบเฮดเดอร์ — overflow:hidden จะ clip ทิ้ง.
+     gradient background ถูก border-radius ตัดขอบมนให้อยู่แล้ว ไม่ต้องพึ่ง hidden. */
+  overflow: visible;
 }
 
 
@@ -4095,6 +4143,37 @@ button.empty-state { width: 100%; font: inherit; }
   overflow-x: auto;
 }
 
+/* Cell padding / alignment for the glass table variant. Unlike .premium-table
+   this class only styled the shell, so cells inherited Tailwind preflight's zero
+   padding and .num never right-aligned. Mirror .premium-table's rhythm. */
+.premium-glass-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.premium-glass-table thead th {
+  padding: 10px 14px;
+  text-align: left;
+  vertical-align: bottom;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+.premium-glass-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.premium-glass-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.premium-glass-table th.num,
+.premium-glass-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .premium-row {
   transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
@@ -4141,6 +4220,20 @@ button.empty-state { width: 100%; font: inherit; }
   background: color-mix(in oklab, var(--red) 10%, transparent);
   color: var(--red);
   border-color: color-mix(in oklab, var(--red) 20%, transparent);
+}
+
+.linklike {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+.linklike:hover:not(:disabled) {
+  color: var(--accent);
+}
+.linklike:disabled {
+  cursor: default;
 }
 
 /* Global Search */
@@ -4241,4 +4334,160 @@ button.empty-state { width: 100%; font: inherit; }
   overflow: visible !important;
   overflow-x: visible !important;
   overflow-y: visible !important;
+}
+
+.shipment-print-sheet {
+  background: #fff;
+  color: #171717;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.shipment-print-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  border-bottom: 2px solid #171717;
+  padding-bottom: 18px;
+}
+
+.shipment-print-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  color: #525252;
+  text-transform: uppercase;
+}
+
+.shipment-print-head h1 {
+  margin: 4px 0;
+  font-size: 26px;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.shipment-print-head p {
+  margin: 0;
+  color: #404040;
+  font-size: 13px;
+  text-wrap: pretty;
+}
+
+.shipment-print-meta {
+  min-width: 220px;
+  border: 1px solid #d4d4d4;
+}
+
+.shipment-print-meta div,
+.shipment-print-info div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.shipment-print-meta div:last-child,
+.shipment-print-info div:last-child {
+  border-bottom: 0;
+}
+
+.shipment-print-meta span,
+.shipment-print-info span {
+  color: #525252;
+  font-size: 12px;
+}
+
+.shipment-print-info {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid #d4d4d4;
+  margin: 18px 0;
+}
+
+.shipment-print-info div {
+  border-right: 1px solid #e5e5e5;
+  border-bottom: 0;
+  flex-direction: column;
+}
+
+.shipment-print-info div:last-child {
+  border-right: 0;
+}
+
+.shipment-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.shipment-print-table th,
+.shipment-print-table td {
+  border: 1px solid #d4d4d4;
+  padding: 9px 10px;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.shipment-print-table th {
+  background: #f5f5f5;
+  text-align: left;
+  font-weight: 700;
+}
+
+.shipment-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.shipment-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.shipment-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 54px;
+}
+
+.shipment-signatures div {
+  border-top: 1px solid #171717;
+  padding-top: 8px;
+  text-align: center;
+  min-height: 44px;
+}
+
+.shipment-signatures span {
+  color: #404040;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .shipment-print-sheet { padding: 18px; }
+  .shipment-print-head { flex-direction: column; }
+  .shipment-print-meta { width: 100%; }
+  .shipment-print-info { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media print {
+  .no-print,
+  .app-sidebar,
+  .sidebar,
+  nav,
+  aside {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  .shipment-print-sheet {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+  }
 }

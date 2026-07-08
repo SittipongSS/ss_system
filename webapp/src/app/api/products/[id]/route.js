@@ -6,6 +6,7 @@ import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { recordAudit } from '@/lib/audit';
+import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -80,7 +81,7 @@ export async function PATCH(request, { params }) {
     await recordAudit({
       user, action: 'update', entityType: 'product', entityId: id,
       before: product, after: decided,
-      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${decided.productDescription || id}`,
+      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${decided.productDescriptionEn || decided.productDescription || id}`,
       request,
     });
     return Response.json(decided);
@@ -108,7 +109,7 @@ export async function PATCH(request, { params }) {
   // here too (was previously only changeable via the excise registration step);
   // excise APPROVAL still lives on the registration.
   const catalogEditable = [
-    'fgCode', 'productDescription', 'brandName',
+    'fgCode', 'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
     'volume', 'volumeUnit', 'costPrice', 'retailPriceIncVat', 'assignee',
     'categoryCode', 'metadata',
     'isActive', // lifecycle flag (0036) — พัก/เลิกใช้สินค้า
@@ -154,7 +155,13 @@ export async function PATCH(request, { params }) {
 
   // Re-approval rule (ทุกระบบ): editing an APPROVED product drops it back to
   // 'pending' so a Senior AE+ must re-approve. No-op if it wasn't approved.
-  const reapproval = resetApprovalOnEdit(product, user);
+  // EXCEPTION: a pure พัก/เปิดใช้ toggle (isActive-only) is a lifecycle action,
+  // not a spec edit — it must NOT un-approve the product (that would silently
+  // pull an approved, selling product out of the approved-only pickers and
+  // force a fresh approval just to resume it).
+  const isLifecycleToggleOnly =
+    body.isActive !== undefined && Object.keys(body).every((k) => k === 'isActive');
+  const reapproval = isLifecycleToggleOnly ? null : resetApprovalOnEdit(product, user);
   if (reapproval) Object.assign(updated, reapproval);
 
   const { data, error } = await supabase
@@ -170,6 +177,14 @@ export async function PATCH(request, { params }) {
     return Response.json({ error: error.message }, { status: 500 });
   }
   // Audit เก็บ record เต็ม (ก่อน redact margin) — หน้า /audit เป็น supervisor only.
+  await recordProductPriceHistory({
+    user,
+    productId: id,
+    before: product,
+    after: data,
+    changeType: 'update',
+    metadata: { fgCode: data.fgCode, customerId: data.customerId },
+  });
   await recordAudit({ user, action: 'update', entityType: 'product', entityId: id, before: product, after: data, request });
   return Response.json(redactProductMargin(user, data));
 }
