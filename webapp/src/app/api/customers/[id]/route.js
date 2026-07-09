@@ -151,6 +151,38 @@ export async function PATCH(request, { params }) {
     return Response.json(decided);
   }
 
+  // ── Add-brand action (ปุ่ม "+" ในฟอร์มเลือกแบรนด์) ────────────────────
+  // เพิ่มแบรนด์เข้า brands[] อย่างเดียว และ "ไม่" reset เป็น pending: กฎที่ล็อก
+  // ไว้คือแบรนด์ไม่เข้า approval workflow (เป็นแอตทริบิวต์ของลูกค้าที่อนุมัติ
+  // แล้ว) — ถ้า revert ที่นี่ ลูกค้าจะหายจาก picker ทันทีที่กด "+" กลางฟอร์ม
+  // สร้างสินค้า/ดีล. การแก้แบรนด์ผ่านฟอร์มลูกค้าเต็ม (body.brands) ยังเข้า
+  // re-approval ตามปกติด้านล่าง.
+  if (body.addBrand !== undefined) {
+    const [brand] = normalizeBrands([body.addBrand]);
+    if (!brand) {
+      return Response.json({ error: 'ต้องระบุชื่อแบรนด์อย่างน้อย 1 ภาษา' }, { status: 400 });
+    }
+    const current = normalizeBrands(customer.brands);
+    const merged = normalizeBrands([...current, brand]);
+    if (merged.length === current.length) {
+      return Response.json({ error: 'ลูกค้ารายนี้มีแบรนด์นี้อยู่แล้ว — เลือกจากรายการได้เลย' }, { status: 409 });
+    }
+    const { data: updated, error: addErr } = await supabase
+      .from('customers')
+      .update({ brands: merged, updatedAt: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (addErr) return Response.json({ error: addErr.message }, { status: 500 });
+    await recordAudit({
+      user, action: 'update', entityType: 'customer', entityId: id,
+      before: customer, after: updated,
+      summary: `เพิ่มแบรนด์ "${brand.en || brand.th}" ให้ลูกค้า ${customer.name || id}`,
+      request,
+    });
+    return Response.json(updated);
+  }
+
   if (body.arCode && body.arCode !== customer.arCode) {
     const { data: dup } = await supabase
       .from('customers')

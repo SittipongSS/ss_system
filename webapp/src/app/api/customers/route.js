@@ -1,13 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canApproveMasterData } from '@/lib/permissions';
+import { canApproveMasterData, viewScopeUser } from '@/lib/permissions';
 import { normalizeBrands } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
-// Customers are a central registry — every signed-in user can view all of them
-// (so teams don't re-register the same customer). Edit/delete is team-scoped.
+// Customers are a central registry (so teams don't re-register the same
+// customer) but the LIST is team-scoped by default (กฎ ลูกค้า›แบรนด์›สินค้า):
+// AE/AC/Senior see only customers their team ดูแล (teams[] — fallback team) to
+// keep pickers short. `?scope=all` widens to every customer (database page /
+// ตามหาลูกค้าที่ทีมอื่นดูแลอยู่แล้ว) and `?manage=1` implies it. Record-level
+// access (GET /[id]) stays open to everyone — cross-team flows that derive a
+// customer from a product (excise/PM) are unaffected. Edit/delete team-scoped.
 //
 // Approval gate: by default GET returns only APPROVED customers, so every
 // downstream consumer (orders, excise registration, PM pickers) automatically
@@ -15,7 +20,9 @@ export const dynamic = 'force-dynamic';
 // see all statuses (with badges + approve/reject actions).
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
-  const manage = new URL(request.url).searchParams.get('manage') === '1';
+  const params = new URL(request.url).searchParams;
+  const manage = params.get('manage') === '1';
+  const scopeAll = manage || params.get('scope') === 'all';
 
   let query = supabase.from('customers').select('*').order('createdAt', { ascending: false });
   // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
@@ -28,7 +35,19 @@ export async function GET(request) {
   // keep them in the management view. Filtered in JS (not the query) so it stays
   // resilient if migration 0030 hasn't run yet — a missing column reads as
   // undefined, which we treat as active. Legacy NULL is active too.
-  const rows = manage ? data : (data || []).filter((c) => c.isActive !== false);
+  let rows = manage ? data : (data || []).filter((c) => c.isActive !== false);
+
+  // Default team scope — customers with no team at all are shared rows every
+  // team can see. A team-scoped user without a team can't be scoped → show all.
+  if (!scopeAll) {
+    const user = await getCurrentUser();
+    if (viewScopeUser(user) === 'team' && user?.team) {
+      rows = rows.filter((c) => {
+        const teams = Array.isArray(c.teams) && c.teams.length ? c.teams : (c.team ? [c.team] : []);
+        return teams.length === 0 || teams.includes(user.team);
+      });
+    }
+  }
   return Response.json(rows);
 }
 

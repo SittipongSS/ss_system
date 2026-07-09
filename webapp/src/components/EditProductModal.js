@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Factory } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import AddBrandButton from "@/components/master/AddBrandButton";
 import { categoryInfo } from "@/lib/master/categoryOf";
 import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { fmtMoney } from "@/lib/format";
@@ -28,6 +29,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   const [priceSubmitting, setPriceSubmitting] = useState(false);
   const [priceError, setPriceError] = useState(null);
   const [priceSaved, setPriceSaved] = useState(false);
+  // แบรนด์ที่เพิ่งเพิ่มผ่านปุ่ม "+" ในโมดัลนี้ (customers prop ยังไม่รีเฟรช)
+  const [extraBrands, setExtraBrands] = useState([]);
 
   useEffect(() => {
     if (open && product) {
@@ -40,6 +43,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
       setError(null);
       setPriceError(null);
       setPriceSaved(false);
+      setExtraBrands([]);
 
       // Fetch product types if not already fetched
       if (productTypes.length === 0) {
@@ -61,15 +65,21 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   // clears the brand — the brand list is scoped per customer, same as the add form.
   const selCustomer = customers.find((c) => c.id === form.customerId);
   // แบรนด์ = ช่องเดียว โชว์ EN · TH; ไม่มี selCustomer ใช้ prop เดิม (string[]) แปลงเป็น {th,en}.
-  const brandOptionList = selCustomer
-    ? normalizeBrands(selCustomer.brands || [])
-    : (brandOptions || []).map((b) => ({ th: b, en: "" }));
+  const customerBrands = [
+    ...(selCustomer ? normalizeBrands(selCustomer.brands || []) : (brandOptions || []).map((b) => ({ th: b, en: "" }))),
+    ...extraBrands,
+  ];
+  // แบรนด์เดิมของสินค้าที่ไม่อยู่ในลิสต์ลูกค้า (free-text ยุคเก่า) — แทรกไว้ไม่ให้ค่าหาย
+  const currentBrandValue = form.brandName || form.brandNameEn || "";
+  const brandOptionList = currentBrandValue && !customerBrands.some((b) => brandTh(b) === currentBrandValue || brandEn(b) === currentBrandValue)
+    ? [{ th: form.brandName || "", en: form.brandNameEn || "" }, ...customerBrands]
+    : customerBrands;
 
-  const handleCustomerChange = (v) => setForm((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }));
-  // เลือก/พิมพ์แบรนด์ → เก็บทั้ง TH+EN จากแบรนด์ของลูกค้า (match ด้วย th หรือ en);
-  // พิมพ์ใหม่ → ถือเป็นชื่อไทย, EN ว่าง.
+  const handleCustomerChange = (v) => { setExtraBrands([]); setForm((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" })); };
+  // เลือกแบรนด์ → เก็บทั้ง TH+EN จากลิสต์ (match ด้วย th หรือ en). ไม่มี free-text
+  // แล้ว — แบรนด์ใหม่ต้องเพิ่มเข้าลูกค้าผ่านปุ่ม "+" (กฎ ลูกค้า›แบรนด์›สินค้า).
   const handleBrandChange = (v) => {
-    const hit = (selCustomer?.brands || []).find((b) => brandTh(b) === v || brandEn(b) === v);
+    const hit = brandOptionList.find((b) => brandTh(b) === v || brandEn(b) === v);
     setForm((f) => ({ ...f, brandName: hit ? brandTh(hit) : v, brandNameEn: hit ? brandEn(hit) : "" }));
   };
 
@@ -219,26 +229,45 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
                 onChange={handleCustomerChange}
                 placeholder="ค้นหารหัส / ชื่อลูกค้า..."
                 emptyText="ไม่พบลูกค้า"
-                options={customers.map((c) => ({
-                  value: c.id,
-                  label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
-                  search: `${c.arCode || ""} ${c.name}`,
-                }))}
+                options={(() => {
+                  const opts = customers.map((c) => ({
+                    value: c.id,
+                    label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
+                    search: `${c.arCode || ""} ${c.name}`,
+                  }));
+                  // เจ้าของปัจจุบันอาจไม่อยู่ในลิสต์ (list ถูก scope ตามทีม แต่สินค้า
+                  // ข้ามทีมมีจริง) — แทรกไว้ไม่ให้ค่าเดิมโชว์ว่างตอนแก้ไข
+                  if (form.customerId && !opts.some((o) => o.value === form.customerId)) {
+                    opts.unshift({ value: form.customerId, label: product.customerName || form.customerId });
+                  }
+                  return opts;
+                })()}
               />
               <span className="text-xs text-[var(--text-3)] mt-1">เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ</span>
             </div>
             <div className="form-group">
               <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-              <SearchableSelect
-                allowFreeText
-                disabled={!form.customerId}
-                options={brandOptionList.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
-                value={form.brandName || form.brandNameEn || ""}
-                onChange={handleBrandChange}
-                placeholder={form.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"}
-                emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
-              />
-              <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — แก้ชื่อแบรนด์ได้ที่หน้าลูกค้า</span>
+              <div className="flex gap-1.5 items-center">
+                <div className="flex-1 min-w-0">
+                  <SearchableSelect
+                    disabled={!form.customerId}
+                    options={brandOptionList.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
+                    value={form.brandName || form.brandNameEn || ""}
+                    onChange={handleBrandChange}
+                    placeholder={form.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
+                    emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — กด + เพื่อเพิ่ม"
+                  />
+                </div>
+                <AddBrandButton
+                  customerId={form.customerId}
+                  disabled={!form.customerId}
+                  onAdded={(b) => {
+                    setExtraBrands((x) => [...x, b]);
+                    setForm((f) => ({ ...f, brandName: b.th, brandNameEn: b.en }));
+                  }}
+                />
+              </div>
+              <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่มใหม่ด้วยปุ่ม +, แก้ชื่อได้ที่หน้าลูกค้า</span>
             </div>
           </div>
         </div>
