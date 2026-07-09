@@ -149,13 +149,13 @@ function buildRoutes(deal, related) {
   const pmUnlockable = ['timeline_proposed', 'awaiting_confirm', 'deposit_pending', 'won', 'in_project'].includes(deal.stage);
   routes.push({
     kind: 'pm',
-    label: 'โครงการ PM',
+    label: 'ไทม์ไลน์',
     status: hasProject ? 'done' : pmUnlockable ? 'available' : 'locked',
     href: projectHref,
-    linkLabel: 'เปิดโครงการ',
+    linkLabel: 'เปิดไทม์ไลน์',
     actionKind: hasProject ? null : pmUnlockable ? 'create-project' : null,
-    actionLabel: 'สร้างโครงการ',
-    hint: hasProject ? 'ผูกโครงการแล้ว' : pmUnlockable ? 'สร้างโครงการเพื่อเริ่มผลิต' : 'ถึงขั้น "เสนอไทม์ไลน์" ก่อน',
+    actionLabel: '+ สร้างไทม์ไลน์',
+    hint: hasProject ? 'ผูกไทม์ไลน์แล้ว' : pmUnlockable ? 'สร้างไทม์ไลน์เพื่อเริ่มผลิต' : 'ถึงขั้น "เสนอไทม์ไลน์" ก่อน',
   });
 
   // 2) สรรพสามิต — รายตัว FG หมวด 01-002 ตามสถานะทะเบียน
