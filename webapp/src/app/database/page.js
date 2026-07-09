@@ -60,8 +60,8 @@ export default function DatabaseOverview() {
   // Extract unique teams for the filter dropdown
   const allTeams = useMemo(() => {
     const teams = new Set();
-    rawProducts.forEach(p => p.team && teams.add(p.team));
-    rawCustomers.forEach(c => teamsOf(c).forEach(t => teams.add(t)));
+    (rawProducts || []).forEach(p => p.team && teams.add(p.team));
+    (rawCustomers || []).forEach(c => teamsOf(c).forEach(t => teams.add(t)));
     return Array.from(teams).sort();
   }, [rawProducts, rawCustomers]);
 
@@ -81,8 +81,8 @@ export default function DatabaseOverview() {
       return true;
     };
     return {
-      products: rawProducts.filter(filterFn),
-      customers: rawCustomers.filter(filterFn)
+      products: (rawProducts || []).filter(filterFn),
+      customers: (rawCustomers || []).filter(filterFn)
     };
   }, [rawProducts, rawCustomers, timeframe, teamFilter]);
 
