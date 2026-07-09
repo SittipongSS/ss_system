@@ -215,6 +215,16 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
       <button type="button" className="btn ghost sm" onClick={() => changeScale(0.1)} disabled={scale >= 1.4} aria-label="ขยายสเกลตาราง" title="ขยายสเกล"><Plus size={14} aria-hidden="true" /></button>
     </div>
   );
+  const [rowH, setRowH] = useState(0); // px เพิ่มความสูงของแต่ละแถว (0 = ปกติ)
+  const changeRowH = (d) => setRowH((h) => Math.min(48, Math.max(0, h + d)));
+  const rowStyleFor = (extra) => (rowH ? { ...extra, height: 34 + rowH } : extra);
+  const rowHControl = (
+    <div className="flex items-center" style={{ gap: 2 }}>
+      <button type="button" className="btn ghost sm" onClick={() => changeRowH(-8)} disabled={rowH <= 0} aria-label="ลดความสูงแถว" title="ลดความสูงแถว"><Minus size={14} aria-hidden="true" /></button>
+      <span style={{ fontSize: 11, color: "var(--text-3)" }} title="ความสูงแถว">สูงแถว</span>
+      <button type="button" className="btn ghost sm" onClick={() => changeRowH(8)} disabled={rowH >= 48} aria-label="เพิ่มความสูงแถว" title="เพิ่มความสูงแถว"><Plus size={14} aria-hidden="true" /></button>
+    </div>
+  );
   const fcToggle = (
     <button type="button" className="btn ghost sm" onClick={() => setShowFc((v) => !v)} title={showFc ? "ย่อ FC (โชว์ยอดรวม)" : "ขยาย FC (แตกตาม %)"}>
       {showFc ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />} {showFc ? "ย่อ FC" : "ขยาย FC"}
@@ -250,6 +260,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {scaleControl}
+          {rowHControl}
           {fcToggle}
           <FullscreenButton isFs={isFs} onToggle={toggle} />
         </div>
@@ -288,7 +299,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                   return (
                     <Fragment key={row.id}>
                       {metrics.map((m, mi) => (
-                        <tr key={`${row.id}-${m.key}`} className="premium-row" style={mi === 0 ? { borderTop: "2px solid var(--border)" } : undefined}>
+                        <tr key={`${row.id}-${m.key}`} className="premium-row" style={rowStyleFor(mi === 0 ? { borderTop: "2px solid var(--border)" } : undefined)}>
                           {mi === 0 && (
                             <td className="fz-c1" rowSpan={metrics.length} style={{ verticalAlign: "top", width: 160, minWidth: 160 }}>
                               <strong>{row.label}</strong>
@@ -322,7 +333,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
             return (
               <tfoot>
                 {metrics.map((m, mi) => (
-                  <tr key={`grand-${m.key}`} className="fz-total-row" style={{ background: "var(--panel-2)", borderTop: mi === 0 ? "2px solid var(--border)" : undefined }}>
+                  <tr key={`grand-${m.key}`} className="fz-total-row" style={rowStyleFor({ background: "var(--panel-2)", borderTop: mi === 0 ? "2px solid var(--border)" : undefined })}>
                     {mi === 0 && (
                       <td className="fz-c1" rowSpan={metrics.length} style={{ verticalAlign: "top", fontWeight: 800, width: 160, minWidth: 160 }}>
                         รวมทั้งหมด
