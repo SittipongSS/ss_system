@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -14,7 +14,7 @@ import { isSuperuser } from "@/lib/permissions";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
-import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS } from "@/lib/pm/tasks";
+import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจาก timeline โปรเจกต์ (project_tasks)
@@ -74,6 +74,27 @@ const SORT_OPTIONS = [
   { key: "name", label: "ชื่องาน" },
 ];
 
+// Kanban: คอลัมน์ตามสถานะ
+const BOARD_COLS = [
+  { key: "Pending", label: "รอ", color: "var(--text-3)" },
+  { key: "In Progress", label: "ทำอยู่", color: "var(--accent)" },
+  { key: "Completed", label: "เสร็จ", color: "var(--green)" },
+];
+
+// Eisenhower: 4 ช่อง สำคัญ × ด่วน
+const MATRIX_QUADS = [
+  { key: "do", sub: "สำคัญ + ด่วน", color: "var(--red)" },
+  { key: "plan", sub: "สำคัญ ไม่ด่วน", color: "var(--green)" },
+  { key: "deleg", sub: "ไม่สำคัญ + ด่วน", color: "var(--amber)" },
+  { key: "drop", sub: "ไม่สำคัญ ไม่ด่วน", color: "var(--text-3)" },
+];
+
+const WEEKDAYS_TH = ["จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส.", "อา."];
+const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+// index ของวัน (0=อา..6=ส.) → คอลัมน์ที่ขึ้นต้นวันจันทร์ (จ.=0 .. อา.=6)
+const mondayIndex = (jsDay) => (jsDay + 6) % 7;
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 export default function TasksPage() {
   const router = useRouter();
   const [toast, setToast] = useState(null);
@@ -99,6 +120,8 @@ export default function TasksPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("asc");
+  // ปฏิทิน: เดือนที่กำลังดู (เริ่มที่เดือนปัจจุบัน)
+  const [calRef, setCalRef] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
 
   // task modal
   const [showModal, setShowModal] = useState(false);
@@ -282,6 +305,59 @@ export default function TasksPage() {
     return null;
   };
 
+  // การ์ดย่อ — ใช้ในมุมมองบอร์ด (Kanban) และเมทริกซ์ (Eisenhower)
+  const miniCard = (t) => {
+    const u = getUrgencyInfo(t);
+    const manage = canManageTask(t);
+    const done = t.status === "Completed";
+    const assigneeName = t.assigneeId ? (usersMap[t.assigneeId] || "—") : null;
+    return (
+      <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={manage ? "คลิกเพื่อแก้ไขงาน" : undefined} className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: manage ? "pointer" : "default" }}>
+        <div style={{ fontSize: "13px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+          {t.important && <Star size={12} color="var(--amber)" fill="var(--amber)" />}
+          {t.urgent && <Flame size={12} color="var(--red)" />}
+          {t.title}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "10px" }}>
+          {t.category && <span style={{ background: "var(--panel-2)", padding: "1px 6px", borderRadius: "9px", color: "var(--text-2)" }}>{t.category}</span>}
+          {(scope !== "mine" || (t.assigneeId && t.assigneeId !== me?.id)) && assigneeName && (
+            <span style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "1px 6px", borderRadius: "9px", color: "var(--accent)" }}><User size={9} style={{ display: "inline", verticalAlign: "-1px" }} /> {assigneeName}</span>
+          )}
+          {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
+        </div>
+        {manage && <div onClick={(e) => e.stopPropagation()}>{statusSelect(t)}</div>}
+      </div>
+    );
+  };
+
+  // ── ปฏิทิน: ทำแผนที่ dueDate → งาน + โครงตารางเดือนที่กำลังดู ──
+  const calByDate = useMemo(() => {
+    const m = new Map();
+    for (const t of visible) {
+      if (!t.dueDate) continue;
+      const k = t.dueDate.slice(0, 10);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(t);
+    }
+    return m;
+  }, [visible]);
+  const calNoDue = useMemo(() => visible.filter((t) => !t.dueDate), [visible]);
+  const calCells = useMemo(() => {
+    const first = new Date(calRef.y, calRef.m, 1);
+    const daysInMonth = new Date(calRef.y, calRef.m + 1, 0).getDate();
+    const lead = mondayIndex(first.getDay());
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(calRef.y, calRef.m, d));
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [calRef]);
+  const todayStr = ymd(new Date());
+  const shiftMonth = (delta) => setCalRef((r) => {
+    const d = new Date(r.y, r.m + delta, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+
   return (
     <div>
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
@@ -290,7 +366,7 @@ export default function TasksPage() {
           <p>มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับดีลและโปรเจกต์ได้{me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}</p>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-          <ViewSwitcher value={view} onChange={setView} modes={["list", "table"]} />
+          <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
           <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
         </div>
       </div>
@@ -356,6 +432,87 @@ export default function TasksPage() {
 
       {loading ? (
         <SkeletonRows />
+      ) : view === "board" ? (
+        /* ── Kanban board (ตามสถานะ) ── */
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", alignItems: "start" }}>
+          {BOARD_COLS.map((col) => {
+            const items = visible.filter((t) => t.status === col.key);
+            return (
+              <div key={col.key} className="glass-panel" style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", borderBottom: "1px solid var(--border)", borderTop: `3px solid ${col.color}`, fontWeight: 700, fontSize: "13px" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: col.color }} />
+                  {col.label}
+                  <span style={{ marginLeft: "auto", fontSize: "12px", color: "var(--text-3)", fontWeight: 500 }}>{items.length}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", minHeight: "60px" }}>
+                  {items.length === 0 ? <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>—</div> : items.map(miniCard)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : view === "matrix" ? (
+        /* ── Eisenhower matrix (สำคัญ × ด่วน) ── */
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px", alignItems: "start" }}>
+          {MATRIX_QUADS.map((quad) => {
+            const items = visible.filter((t) => eisenhowerQuadrant(t) === quad.key);
+            return (
+              <div key={quad.key} className="glass-panel" style={{ padding: 0, overflow: "hidden", borderTop: `3px solid ${quad.color}` }}>
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ fontWeight: 700, fontSize: "13px", color: quad.color }}>
+                    {QUADRANT_LABELS[quad.key]}
+                    <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--text-3)", fontWeight: 500 }}>{items.length}</span>
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{quad.sub}</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", minHeight: "60px" }}>
+                  {items.length === 0 ? <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>—</div> : items.map(miniCard)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : view === "calendar" ? (
+        /* ── ปฏิทินรายเดือน (ตามกำหนดเสร็จ) ── */
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", marginBottom: "12px" }}>
+            <button className="btn-icon" onClick={() => shiftMonth(-1)} aria-label="เดือนก่อน"><ChevronLeft size={16} /></button>
+            <div style={{ fontWeight: 700, fontSize: "15px", minWidth: "170px", textAlign: "center" }}>{MONTHS_TH[calRef.m]} {calRef.y + 543}</div>
+            <button className="btn-icon" onClick={() => shiftMonth(1)} aria-label="เดือนถัดไป"><ChevronRight size={16} /></button>
+          </div>
+          <div className="glass-panel" style={{ padding: "10px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", marginBottom: "4px" }}>
+              {WEEKDAYS_TH.map((w) => <div key={w} style={{ textAlign: "center", fontSize: "11px", fontWeight: 700, color: "var(--text-3)", padding: "4px 0" }}>{w}</div>)}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
+              {calCells.map((d, i) => {
+                if (!d) return <div key={i} style={{ minHeight: "84px", borderRadius: "8px", background: "color-mix(in srgb, var(--panel-2) 40%, transparent)" }} />;
+                const dayKey = ymd(d);
+                const items = calByDate.get(dayKey) || [];
+                const isToday = dayKey === todayStr;
+                return (
+                  <div key={i} style={{ minHeight: "84px", borderRadius: "8px", border: `1px solid ${isToday ? "var(--accent)" : "var(--border)"}`, padding: "4px", display: "flex", flexDirection: "column", gap: "3px", background: "var(--panel)" }}>
+                    <div style={{ fontSize: "11px", fontWeight: isToday ? 700 : 500, color: isToday ? "var(--accent)" : "var(--text-3)", textAlign: "right", padding: "0 2px" }}>{d.getDate()}</div>
+                    {items.slice(0, 3).map((t) => {
+                      const u = getUrgencyInfo(t);
+                      const manage = canManageTask(t);
+                      return (
+                        <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={t.title} style={{ fontSize: "10px", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: manage ? "pointer" : "default", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
+                          {t.status === "Completed" ? <CheckCircle2 size={9} /> : t.important ? <Star size={9} /> : null}
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+                        </div>
+                      );
+                    })}
+                    {items.length > 3 && <div style={{ fontSize: "9px", color: "var(--text-3)", paddingLeft: "3px" }}>+{items.length - 3}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {calNoDue.length > 0 && (
+            <div style={{ marginTop: "10px", fontSize: "12px", color: "var(--text-3)" }}>+ อีก {calNoDue.length} งานที่ยังไม่กำหนดวันเสร็จ (ดูในมุมมองรายการ)</div>
+          )}
+        </div>
       ) : visible.length === 0 ? (
         <EmptyState icon={Plus} dashed onClick={openAdd}>
           {statusFilter !== "all" || q || assigneeFilter !== "all" || categoryFilter !== "all"

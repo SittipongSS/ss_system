@@ -101,7 +101,7 @@ create index if not exists personal_tasks_deal_idx on personal_tasks ("dealId");
 | เฟส | เนื้อหา | หมายเหตุ |
 |---|---|---|
 | **1** ✅ | mig 0085 + ขยาย API (`my-work` team/all เห็นงานมอบหมาย + resolve deals; `personal-tasks` POST/PATCH สิทธิ์มอบหมายตามลำดับชั้น `canAssignTask` + completedAt อัตโนมัติ + audit) + หน้า `/sa/tasks` (เปลี่ยนหัวเป็น "งาน", แดชบอร์ด, ฟอร์มใหม่: วันเริ่ม/หมวด/สำคัญ-ด่วน/ยาก/เชื่อมดีล-โปรเจกต์/มอบหมาย, การ์ดโชว์ meta) | ✅ ลงมือแล้ว — build+lint ผ่าน. `lib/pm/tasks.js`, `lib/usersRepo.js`. **หน้ารื้อเป็นรายการเดียว (flat) — ตัด project_tasks ออกทั้งหมด**, list/table view, กรองหมวด/ผู้รับ/สถานะ |
-| **2** | Kanban + ปฏิทิน + Eisenhower + section งานในหน้า deal detail | view เสริม ไม่มี migration |
+| **2** 🔶 | ✅ Kanban + ปฏิทิน + Eisenhower (เพิ่มเป็น view mode ใน ViewSwitcher: list/table/board/calendar/matrix) · ⏳ section งานในหน้า deal detail (ยังไม่ทำ) | view เสริม ไม่มี migration — ทำงานบนรายการที่กรองอยู่แล้ว |
 | **3** | หน้า KPI ทีม `/sa/tasks/kpi` + คะแนนถ่วงน้ำหนัก | วัดผล |
 | **4 (option)** | สถานะเพิ่ม (ตรวจสอบ/แก้ไข), หน้าตั้งน้ำหนัก KPI, รวม `project_tasks` เข้า KPI, แจ้งเตือนงานพรุ่งนี้ | ทำเมื่อใช้จริงแล้วต้องการ |
 
