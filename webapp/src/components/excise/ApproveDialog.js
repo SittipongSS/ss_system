@@ -82,8 +82,8 @@ export default function ApproveDialog({ open, onClose, onDone, registration }) {
           {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
         </div>
 
-        <div className="drawer-section flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="btn btn-secondary" disabled={busy}>ยกเลิก</button>
+        <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+          <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>
           <button type="submit" className="btn btn-primary px-6" disabled={busy || !approvalNumber.trim()}>
             {busy ? "กำลังบันทึก..." : "ยืนยันอนุมัติ"}
           </button>
