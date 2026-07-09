@@ -204,7 +204,7 @@ export default function ProjectDetailPage() {
   const [revError, setRevError] = useState("");
   const [toast, setToast] = useState(null); // { kind: 'success'|'error'|'info', msg }
   const [creatingTaxReg, setCreatingTaxReg] = useState(false);
-  const [creatingShipmentPrep, setCreatingShipmentPrep] = useState(false);
+
   const [confirmState, setConfirmState] = useState(null); // ยืนยันแบบ promise (แทน window.confirm)
   const [showDrop, setShowDrop] = useState(false); // modal ยกเลิกโปรเจกต์ (แทน window.prompt)
   const [dropReason, setDropReason] = useState("");
@@ -1099,17 +1099,7 @@ export default function ProjectDetailPage() {
                   <ShieldCheck size={14} /> {creatingTaxReg ? "กำลังสร้าง..." : "สร้างทะเบียนภาษี"}
                 </button>
               )}
-              {canEdit && (
-                <button
-                  onClick={createShipmentPrepFromProject}
-                  disabled={creatingShipmentPrep || !(p.projectProducts || []).length}
-                  className="btn"
-                  style={{ whiteSpace: "nowrap" }}
-                  title={(p.projectProducts || []).length ? "สร้าง/เปิดเอกสารเตรียมส่งของจาก FG ในโปรเจกต์นี้" : "ต้องผูก FG ก่อนจึงสร้างเอกสารเตรียมส่งของได้"}
-                >
-                  <PackageCheck size={14} /> {creatingShipmentPrep ? "กำลังสร้าง..." : "เตรียมส่งของ"}
-                </button>
-              )}
+
               <button onClick={openRevisions} className="btn" style={{ whiteSpace: "nowrap" }} title="ดู/พิมพ์เวอร์ชันเอกสารที่เคยออก">
                 <History size={14} /> ประวัติเวอร์ชัน
               </button>
