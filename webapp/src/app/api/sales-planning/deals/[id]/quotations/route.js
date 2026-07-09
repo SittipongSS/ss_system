@@ -62,7 +62,8 @@ async function seedLinesFromProject(supabase, deal) {
 function normalizeManualLines(lines = []) {
   return lines
     .map((line, index) => {
-      const qty = toMoney(line.qty, 1) || 1;
+      // เว้นว่าง/ไม่ระบุ → default 1; ระบุ 0 มาจริง → 0 (ให้ filter qty>0 ตัดออก ไม่ใช่ดันเป็น 1)
+      const qty = line.qty === '' || line.qty == null ? 1 : toMoney(line.qty, 0);
       const unitPrice = toMoney(line.unitPrice);
       return {
         id: genId('QTL'),

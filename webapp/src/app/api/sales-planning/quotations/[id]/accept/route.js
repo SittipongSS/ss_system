@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
+import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
+import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, inSalesEditScope } from '@/lib/salesPlanning';
 import { markWon } from '@/lib/salesPlanningWin';
 import { quoteCanBeAccepted } from '@/lib/quotationApproval';
 
@@ -19,13 +19,27 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('quotation not found');
+  if (quote.status === 'accepted') return badRequest('ใบเสนอราคานี้ถูกรับแล้ว');
   if (['cancelled', 'rejected'].includes(quote.status)) return badRequest('quotation cannot be accepted');
   if (!quoteCanBeAccepted(quote)) return badRequest('quotation approval is required before accept');
+  // ยอดต้อง > 0 ไม่งั้นการรับจะไปล้าง projectValue ของดีลเป็น 0 (N3)
+  if (!(Number(quote.totalAmount) > 0)) return badRequest('ใบเสนอราคายอดรวมต้องมากกว่า 0');
 
   const { data: deal } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
   if (!deal) return notFound('ไม่พบโครงการ');
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('โครงการนี้ปิดเป็น Lost แล้ว ไม่สามารถรับใบเสนอราคาได้');
+  if (['won', 'in_project'].includes(deal.stage)) return badRequest('โครงการนี้ปิดการขาย (Won) แล้ว');
+
+  // กันรับใบที่สองทับใบแรก — โครงการหนึ่งรับได้ใบเดียว (ยกเลิกใบเดิมก่อน)
+  const { data: priorAccepted } = await supabase
+    .from('quotations')
+    .select('id, quoteNumber')
+    .eq('dealId', deal.id)
+    .eq('status', 'accepted')
+    .neq('id', quote.id)
+    .limit(1);
+  if (priorAccepted?.length) return conflict(`โครงการนี้รับใบเสนอราคา ${priorAccepted[0].quoteNumber || ''} ไปแล้ว — ยกเลิกใบเดิมก่อน`);
 
   const now = new Date().toISOString();
   const { data: accepted, error: acceptError } = await supabase
@@ -55,7 +69,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
         user,
         deal,
         source: 'quotation',
-        projectValue: quote.totalAmount || 0,
+        projectValue: quote.totalAmount,
         metadata: acceptedMetadata,
         request: req,
         auditSummary: `update deal from accepted quotation ${quote.quoteNumber}`,
@@ -64,11 +78,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       return fail(dealError.message, 500);
     }
   } else {
+    // อย่าดึง stage ถอยหลัง: เลื่อนเป็น awaiting_confirm เฉพาะเมื่อยังอยู่ก่อนหน้านั้น
+    // (ดีลที่ deposit_pending อยู่แล้วต้องไม่ถูกลากกลับ)
+    const nextStage = DEAL_STAGES.indexOf(deal.stage) < DEAL_STAGES.indexOf('awaiting_confirm')
+      ? 'awaiting_confirm'
+      : deal.stage;
     const { data: nextDeal, error: dealError } = await supabase
       .from('sales_deals')
       .update({
-        stage: 'awaiting_confirm',
-        projectValue: quote.totalAmount || 0,
+        stage: nextStage,
+        projectValue: quote.totalAmount,
         updatedAt: now,
         metadata: {
           ...(deal.metadata || {}),
