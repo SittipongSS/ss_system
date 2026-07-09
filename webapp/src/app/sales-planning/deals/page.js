@@ -11,6 +11,7 @@ import { isSuperuser } from "@/lib/permissions";
 import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, forecastBadge, initialDealForm, money, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
+import { brandThList } from "@/lib/master/brands";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -124,6 +125,7 @@ export default function SalesPlanningPipelinePage() {
       customerName: deal.customerName || "",
       stage: deal.stage || "lead",
       projectType: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
+      brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
       probability: snapForecastLevel(deal.probability),
@@ -259,6 +261,7 @@ export default function SalesPlanningPipelinePage() {
       dueDate: deal.expectedCloseDate || "",
       type: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
       aeOwner: deal.ownerName || "",
+      metadata: { brand: deal.metadata?.brand || "" },
     });
     setPmModalOpen(true);
   };
@@ -477,7 +480,7 @@ export default function SalesPlanningPipelinePage() {
                             <AlertTriangle size={13} aria-label="FC ล่าสุดเปลี่ยนจากตอน map" title={`FC รอบ #${deal.forecastDrift.latestRoundNo} เปลี่ยนจากตอนสร้างโครงการ`} style={{ color: "var(--amber)", marginLeft: 6, verticalAlign: "-1px" }} />
                           )}
                         </strong>
-                        <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}</span>
+                        <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}{deal.metadata?.brand ? ` · ${deal.metadata.brand}` : ""}</span>
                       </Link>
                     </td>
                     <td>
@@ -495,12 +498,12 @@ export default function SalesPlanningPipelinePage() {
                     </td>
                     <td>
                       {deal.projectId ? (
-                        <a className="btn ghost" href={`/sa/projects/${deal.projectId}`} title="จัดการโครงการ" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <a className="btn ghost" href={`/sa/projects/${deal.projectId}`} title="จัดการไทม์ไลน์" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                           <PackageCheck size={14} aria-hidden="true" /> จัดการ
                         </a>
                       ) : deal.canEdit && deal.stage !== "lost" ? (
-                        <button type="button" className="btn ghost" onClick={() => openCreatePM(deal)} title="จัดการโครงการ">
-                          <PackageCheck size={14} aria-hidden="true" /> จัดการ
+                        <button type="button" className="btn ghost" onClick={() => openCreatePM(deal)} title="สร้างไทม์ไลน์ (ยังไม่มี)">
+                          <Plus size={14} aria-hidden="true" /> สร้าง
                         </button>
                       ) : (
                         <span style={{ color: "var(--text-3)" }}>-</span>
@@ -587,6 +590,17 @@ export default function SalesPlanningPipelinePage() {
             <select className="premium-select" value={dealForm.projectType} onChange={(e) => setDealForm({ ...dealForm, projectType: e.target.value })}>
               <option value="NPD">NPD (สินค้าใหม่)</option>
               <option value="RE-ORDER">RE-ORDER (สั่งซ้ำ)</option>
+            </select>
+          </label>
+          <label>
+            แบรนด์
+            <select className="premium-select" value={dealForm.brand} onChange={(e) => setDealForm({ ...dealForm, brand: e.target.value })} disabled={!dealForm.customerId}>
+              <option value="">{dealForm.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน"}</option>
+              {(() => {
+                const opts = brandThList((customers.find((c) => c.id === dealForm.customerId)?.brands) || []);
+                const withCur = dealForm.brand && !opts.includes(dealForm.brand) ? [dealForm.brand, ...opts] : opts;
+                return withCur.map((b) => <option key={b} value={b}>{b}</option>);
+              })()}
             </select>
           </label>
           <label>

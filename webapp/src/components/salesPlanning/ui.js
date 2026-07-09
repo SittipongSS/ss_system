@@ -14,6 +14,7 @@ export const initialDealForm = {
   customerName: "",
   stage: "lead",
   projectType: "NPD", // NPD | RE-ORDER — ส่งต่อเป็นค่าตั้งต้นตอนสร้างไทม์ไลน์ PM
+  brand: "",          // ชื่อแบรนด์ (เลือกจากแบรนด์ของลูกค้า) — เก็บใน metadata.brand
   projectValue: "",
   probability: "50",
   forecastMonth: "",
