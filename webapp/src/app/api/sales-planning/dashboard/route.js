@@ -1,5 +1,5 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, forecastAmount, monthKey } from '@/lib/salesPlanning';
+import { canViewSalesPlanning, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -140,7 +140,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .filter((b) => b.team) // ตัดถัง null (SA รวม / ดีลไม่ระบุทีม) ออกจากตารางทีม
     .filter((b) => !isEmptyBucket(b))
     .map((b) => ({ ...b, gap: b.target - b.won }))
-    .sort((a, b) => b.target - a.target);
+    .sort((a, b) => teamRank(a.team) - teamRank(b.team) || b.target - a.target);
 
   // KPI เป้ารวม (ภาพรวมทั้งฝ่าย): ใช้เป้า SA รวมถ้าตั้งไว้ (ครอบทุกทีม) ไม่งั้นผลรวมรายทีม.
   const teamTargetSum = byTeam.reduce((sum, b) => sum + Number(b.target || 0), 0);
