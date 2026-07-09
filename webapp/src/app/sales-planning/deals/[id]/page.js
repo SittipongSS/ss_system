@@ -13,6 +13,7 @@ import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord } from "@/lib/permissions";
 import { FORECAST_LEVELS, forecastBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { brandThList } from "@/lib/master/brands";
+import AddBrandButton from "@/components/master/AddBrandButton";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
@@ -972,14 +973,24 @@ export default function DealOverviewPage() {
             </label>
             <label>
               แบรนด์
-              <select className="premium-select" value={dealForm.brand} onChange={(e) => setDealForm({ ...dealForm, brand: e.target.value })} disabled={!dealForm.customerId}>
-                <option value="">{dealForm.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน"}</option>
-                {(() => {
-                  const opts = brandThList((customers.find((c) => c.id === dealForm.customerId)?.brands) || []);
-                  const withCur = dealForm.brand && !opts.includes(dealForm.brand) ? [dealForm.brand, ...opts] : opts;
-                  return withCur.map((b) => <option key={b} value={b}>{b}</option>);
-                })()}
-              </select>
+              <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <select className="premium-select" style={{ flex: 1, minWidth: 0 }} value={dealForm.brand} onChange={(e) => setDealForm({ ...dealForm, brand: e.target.value })} disabled={!dealForm.customerId}>
+                  <option value="">{dealForm.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน"}</option>
+                  {(() => {
+                    const opts = brandThList((customers.find((c) => c.id === dealForm.customerId)?.brands) || []);
+                    const withCur = dealForm.brand && !opts.includes(dealForm.brand) ? [dealForm.brand, ...opts] : opts;
+                    return withCur.map((b) => <option key={b} value={b}>{b}</option>);
+                  })()}
+                </select>
+                <AddBrandButton
+                  customerId={dealForm.customerId}
+                  disabled={!dealForm.customerId}
+                  onAdded={(b, updatedCustomer) => {
+                    setCustomers((prev) => prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c)));
+                    setDealForm((f) => ({ ...f, brand: b.th || b.en }));
+                  }}
+                />
+              </span>
             </label>
             <label>
               สถานะ

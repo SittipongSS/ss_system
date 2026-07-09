@@ -7,6 +7,7 @@ import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import AddBrandButton from "@/components/master/AddBrandButton";
 import Workspace from "@/components/ui/Workspace";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
@@ -524,16 +525,33 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-                <SearchableSelect
-                  allowFreeText
-                  disabled={!formData.customerId}
-                  options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
-                  value={formData.brandName || formData.brandNameEn}
-                  onChange={pickBrand}
-                  placeholder={formData.customerId ? "เลือกแบรนด์ หรือพิมพ์ใหม่" : "เลือกลูกค้าก่อน"}
-                  emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
-                />
-                <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — แก้ชื่อแบรนด์ได้ที่หน้าลูกค้า</span>
+                <div className="flex gap-1.5 items-center">
+                  <div className="flex-1 min-w-0">
+                    <SearchableSelect
+                      disabled={!formData.customerId}
+                      options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
+                      value={formData.brandName || formData.brandNameEn}
+                      onChange={pickBrand}
+                      placeholder={formData.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
+                      emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — กด + เพื่อเพิ่ม"
+                    />
+                  </div>
+                  <AddBrandButton
+                    customerId={formData.customerId}
+                    disabled={!formData.customerId}
+                    onAdded={(b, updatedCustomer) => {
+                      // อัปเดตลูกค้าใน state ของหน้า → brandOptions (derive จาก
+                      // selectedCustomer) เห็นแบรนด์ใหม่ทันที + cache ไม่ค้างของเก่า
+                      setCustomers((prev) => {
+                        const next = prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c));
+                        apiCache.set("/api/master/customers", next);
+                        return next;
+                      });
+                      setFormData((f) => ({ ...f, brandName: b.th, brandNameEn: b.en }));
+                    }}
+                  />
+                </div>
+                <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่มใหม่ด้วยปุ่ม +, แก้ชื่อได้ที่หน้าลูกค้า</span>
               </div>
             </div>
           </div>

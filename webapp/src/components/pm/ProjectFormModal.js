@@ -4,6 +4,7 @@ import Modal from "@/components/Modal";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import AddBrandButton from "@/components/master/AddBrandButton";
 import { brandThList } from "@/lib/master/brands";
 import { X } from "lucide-react";
 
@@ -118,6 +119,9 @@ export default function ProjectFormModal({
           ...f,
           projectProducts: newProducts,
           customerId: f.customerId || firstFg.customerId || "",
+          // FG-first flow: เติมแบรนด์จาก FG ให้ด้วย (เฉพาะตอนยังว่าง) — สอดคล้อง
+          // กฎ ลูกค้า›แบรนด์›สินค้า และทำให้ตัวกรอง FG ตามแบรนด์เข้าที่เอง
+          brand: f.brand || firstFg.brandName || firstFg.brandNameEn || "",
           name: f.name || firstFg.brandNameEn || firstFg.brandName || firstFg.productDescriptionEn || firstFg.productDescription || "",
         };
       }
@@ -188,10 +192,16 @@ export default function ProjectFormModal({
 
   // ตัวเลือกแบรนด์ = แบรนด์ที่ลูกค้า "เป็นเจ้าของ" (customers.brands[]) — master ของแบรนด์.
   // กรองตามลูกค้า "เสมอ": ยังไม่เลือกลูกค้า → ไม่มีแบรนด์ให้เลือก (กันโชว์แบรนด์ข้ามลูกค้า)
+  // extraBrands = แบรนด์ที่เพิ่งเพิ่มผ่านปุ่ม "+" (customers prop ยังไม่รีเฟรช);
+  // แบรนด์เดิมของโปรเจกต์ที่ไม่อยู่ในลิสต์ (free-text ยุคเก่า) แทรกไว้ไม่ให้ค่าหาย.
+  const [extraBrands, setExtraBrands] = useState([]);
+  useEffect(() => { if (open) setExtraBrands([]); }, [open, form.customerId]);
   const brandOptions = useMemo(() => {
     const selected = customers.find((c) => c.id === form.customerId);
-    return selected ? brandThList(selected.brands || []) : [];
-  }, [customers, form.customerId]);
+    const base = selected ? brandThList(selected.brands || []) : [];
+    const merged = [...new Set([...base, ...extraBrands])];
+    return form.brand && !merged.includes(form.brand) ? [form.brand, ...merged] : merged;
+  }, [customers, form.customerId, extraBrands, form.brand]);
 
   const subCatOptions = useMemo(
     () => categories.filter((c) => c.mainCategoryCode === form.mainCode && c.typeCode && (c.nameTh || c.nameEn || "").trim()), // ข้ามหมวดรองที่ code ว่าง/มีแต่รหัส
@@ -255,14 +265,23 @@ export default function ProjectFormModal({
             <label>บริษัทลูกค้า</label>
             <SearchableSelect
               value={form.customerId}
-              onChange={(v) => setForm((f) => ({ ...f, customerId: v }))}
+              // เปลี่ยนลูกค้า → ล้างแบรนด์ (ลิสต์แบรนด์ผูกกับลูกค้า)
+              onChange={(v) => setForm((f) => ({ ...f, customerId: v, brand: v === f.customerId ? f.brand : "" }))}
               placeholder="ค้นหารหัส / ชื่อลูกค้า..."
               emptyText="ไม่พบลูกค้า"
-              options={customers.map((c) => ({
-                value: c.id,
-                label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
-                search: `${c.arCode || ""} ${c.name}`,
-              }))}
+              options={(() => {
+                const opts = customers.map((c) => ({
+                  value: c.id,
+                  label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
+                  search: `${c.arCode || ""} ${c.name}`,
+                }));
+                // ลูกค้าปัจจุบันอาจไม่อยู่ในลิสต์ (list ถูก scope ตามทีม แต่โปรเจกต์
+                // อ้างลูกค้าข้ามทีมได้) — แทรกไว้ไม่ให้ค่าเดิมโชว์ว่าง/หลุดตอนแก้ไข
+                if (form.customerId && !opts.some((o) => o.value === form.customerId)) {
+                  opts.unshift({ value: form.customerId, label: initialData?.customerName || form.customerId });
+                }
+                return opts;
+              })()}
             />
           </div>
         </div>
@@ -273,15 +292,27 @@ export default function ProjectFormModal({
 
         <div className="form-group" style={{ marginBottom: "18px" }}>
           <label>แบรนด์ (Brand)</label>
-          <SearchableSelect
-            allowFreeText
-            disabled={!form.customerId}
-            value={form.brand}
-            onChange={(v) => setForm((f) => ({ ...f, brand: v }))}
-            options={brandOptions.map((b) => ({ value: b, label: b }))}
-            placeholder={form.customerId ? "เลือกหรือค้นหาแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
-            emptyText="ไม่พบแบรนด์ของลูกค้านี้ (พิมพ์เพื่อเพิ่มใหม่)"
-          />
+          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <SearchableSelect
+                disabled={!form.customerId}
+                value={form.brand}
+                onChange={(v) => setForm((f) => ({ ...f, brand: v }))}
+                options={brandOptions.map((b) => ({ value: b, label: b }))}
+                placeholder={form.customerId ? "เลือกหรือค้นหาแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
+                emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — กด + เพื่อเพิ่ม"
+              />
+            </div>
+            <AddBrandButton
+              customerId={form.customerId}
+              disabled={!form.customerId}
+              onAdded={(b) => {
+                const name = b.th || b.en;
+                setExtraBrands((x) => [...x, name]);
+                setForm((f) => ({ ...f, brand: name }));
+              }}
+            />
+          </div>
         </div>
 
         <div style={{ border: "1px dashed var(--border)", borderRadius: "var(--radius)", padding: "14px 16px", background: "var(--panel)", marginBottom: "18px" }}>
@@ -292,7 +323,7 @@ export default function ProjectFormModal({
           
           {linkFg && (
             <div style={{ marginTop: "12px" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "8px" }}>เลือก FG (รายการจะกรองตาม <b>หมวดสินค้า</b> ที่เลือกด้านล่าง) ระบบจะดึงข้อมูลลูกค้าและหมวดหมู่มาให้อัตโนมัติ</div>
+              <div style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "8px" }}>เลือก FG (รายการกรองตาม <b>แบรนด์</b> ที่เลือกด้านบน — ไม่เลือกแบรนด์ = โชว์ทุกแบรนด์ของลูกค้า) ระบบจะดึงข้อมูลลูกค้าและหมวดหมู่มาให้อัตโนมัติ</div>
               
               {form.projectProducts.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
@@ -327,6 +358,9 @@ export default function ProjectFormModal({
                 <option value="">— เพิ่ม FG —</option>
                 {effectiveProducts
                   .filter(pr => !form.projectProducts.some(pp => pp.productId === pr.id))
+                  // กฎ ลูกค้า›แบรนด์›สินค้า: เลือกแบรนด์แล้ว → โชว์เฉพาะ FG ของแบรนด์นั้น
+                  // (ยังไม่เลือกแบรนด์ = ทุกแบรนด์ของลูกค้า — FG ไร้แบรนด์ไม่หายจากลิสต์)
+                  .filter(pr => !form.brand || pr.brandName === form.brand || pr.brandNameEn === form.brand)
                   // ผูกได้หลายหมวด (ไม่กรองตามหมวด) — หมวดของโปรเจกต์จะ derive จาก FG เอง
                   .map(pr => (
                   <option key={pr.id} value={pr.id}>{pr.fgCode} — {pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""} {pr.volume ? `(${pr.volume} ml)` : ""}</option>
