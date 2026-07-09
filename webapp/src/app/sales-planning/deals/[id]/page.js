@@ -525,7 +525,7 @@ export default function DealOverviewPage() {
   const nextPrimary = () => {
     if (!canEdit || !lc?.nextAction) return null;
     const k = lc.nextAction.kind;
-    if (k === "win") return <button type="button" className="btn btn-primary" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
+    if (k === "win") return <button type="button" className="btn btn-success" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
     if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์</button>;
     if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/sa/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> จัดการไทม์ไลน์</a>;
     return null;
@@ -533,7 +533,7 @@ export default function DealOverviewPage() {
   const headerRight = (
     <>
       {canEdit && lc?.canGo && (
-        <button type="button" className="btn btn-primary" onClick={doWin} disabled={!!actionBusy}>
+        <button type="button" className="btn btn-success" onClick={doWin} disabled={!!actionBusy}>
           <Trophy size={15} aria-hidden="true" /> ปิดได้ (Won)
         </button>
       )}
@@ -558,11 +558,11 @@ export default function DealOverviewPage() {
   // ปุ่มแก้ไข/ลบ — ไอคอนล้วน วางแถวเดียวกับปุ่มย้อนกลับ (R2)
   const backActions = canEdit ? (
     <>
-      <button type="button" className="btn icon-only ghost" onClick={openEditDeal} disabled={!!actionBusy} aria-label="แก้ไขโครงการ" title="แก้ไข">
+      <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={openEditDeal} disabled={!!actionBusy} aria-label="แก้ไขโครงการ" title="แก้ไข">
         <Pencil size={16} aria-hidden="true" />
       </button>
       {canDelete && (
-        <button type="button" className="btn icon-only ghost" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบโครงการ" title="ลบโครงการ (ลบไทม์ไลน์พ่วงด้วย)">
+        <button type="button" className="btn-icon danger" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบโครงการ" title="ลบโครงการ (ลบไทม์ไลน์พ่วงด้วย)">
           <Trash2 size={16} aria-hidden="true" />
         </button>
       )}
@@ -915,8 +915,8 @@ export default function DealOverviewPage() {
                           {act.dueDate && <span style={{ fontSize: 12, color: "var(--amber)" }}>กำหนด {act.dueDate}</span>}
                           {canEdit && (
                             <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
-                              <button type="button" className="btn icon-only ghost" onClick={() => startEditActivity(act)} aria-label="แก้ไขอัปเดต" disabled={feedBusy}><Pencil size={14} aria-hidden="true" /></button>
-                              <button type="button" className="btn icon-only ghost" onClick={() => deleteActivity(act)} aria-label="ลบอัปเดต" disabled={feedBusy}><Trash2 size={14} aria-hidden="true" /></button>
+                              <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => startEditActivity(act)} aria-label="แก้ไขอัปเดต" disabled={feedBusy}><Pencil size={14} aria-hidden="true" /></button>
+                              <button type="button" className="btn-icon danger" onClick={() => deleteActivity(act)} aria-label="ลบอัปเดต" disabled={feedBusy}><Trash2 size={14} aria-hidden="true" /></button>
                             </span>
                           )}
                         </div>

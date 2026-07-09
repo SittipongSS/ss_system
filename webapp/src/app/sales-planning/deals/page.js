@@ -542,17 +542,17 @@ export default function SalesPlanningPipelinePage() {
                     <td className="num">
                       <div className="flex items-center gap-2 justify-end">
                         {deal.canEdit && !["won", "in_project", "lost"].includes(deal.stage) && (
-                          <button type="button" className="btn ghost" onClick={() => openWin(deal)} disabled={winningDealId === deal.id} title="ปิดโครงการเป็น Won (นับยอด + ปิด forecast)">
+                          <button type="button" className="btn ghost" style={{ color: "var(--green)", borderColor: "color-mix(in srgb, var(--green) 30%, transparent)", background: "color-mix(in srgb, var(--green) 10%, transparent)" }} onClick={() => openWin(deal)} disabled={winningDealId === deal.id} title="ปิดโครงการเป็น Won (นับยอด + ปิด forecast)">
                             <CheckCircle2 size={14} aria-hidden="true" /> {winningDealId === deal.id ? "..." : "Won"}
                           </button>
                         )}
                         {deal.canEdit && (
-                          <button type="button" className="btn icon-only ghost" onClick={() => openEditDeal(deal)} aria-label={`แก้ไข ${deal.title}`} title="แก้ไขโครงการ">
+                          <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => openEditDeal(deal)} aria-label={`แก้ไข ${deal.title}`} title="แก้ไขโครงการ">
                             <Pencil size={15} aria-hidden="true" />
                           </button>
                         )}
                         {deal.canEdit && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId && (
-                          <button type="button" className="btn icon-only ghost" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
+                          <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>
                         )}
