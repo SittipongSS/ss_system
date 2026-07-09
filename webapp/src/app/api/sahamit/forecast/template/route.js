@@ -23,7 +23,7 @@ export async function GET(request) {
   wb.creator = 'SAHAMIT';
   const ws = wb.addWorksheet('Forecast');
 
-  const header = ['รหัสสินค้า', 'ชื่อสินค้า', ...months];
+  const header = ['รหัสสินค้า', 'ชื่อสินค้า', 'แบรนด์', 'ปริมาตร', ...months];
   const headerRow = ws.addRow(header);
   headerRow.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -32,20 +32,28 @@ export async function GET(request) {
   });
 
   for (const p of products) {
-    ws.addRow([p.fgCode, p.name, ...months.map(() => '')]);
+    ws.addRow([p.fgCode, p.name, p.brandName || '', p.volume ? `${p.volume} ${p.volumeUnit || 'ml'}` : '', ...months.map(() => '')]);
   }
 
   ws.getColumn(1).width = 18;
   ws.getColumn(2).width = 36;
-  for (let i = 0; i < months.length; i++) ws.getColumn(3 + i).width = 11;
-  ws.views = [{ state: 'frozen', xSplit: 2, ySplit: 1 }];
+  ws.getColumn(3).width = 20;
+  ws.getColumn(4).width = 15;
+  for (let i = 0; i < months.length; i++) ws.getColumn(5 + i).width = 11;
+  ws.views = [{ state: 'frozen', xSplit: 4, ySplit: 1 }];
 
   const buf = Buffer.from(await wb.xlsx.writeBuffer());
+
+  const now = new Date();
+  const yymmdd = now.getFullYear().toString().slice(2) + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+  const hhmmss = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+  const ts = `${yymmdd}-${hhmmss}`;
+
   return new Response(buf, {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="sahamit_forecast_template.xlsx"',
+      'Content-Disposition': `attachment; filename="${ts}_sahamit_forecast_template.xlsx"`,
     },
   });
 }
