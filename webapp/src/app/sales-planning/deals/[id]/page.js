@@ -684,7 +684,7 @@ export default function DealOverviewPage() {
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานของโครงการ</h2>
               <span className="ui-badge" style={{ color: "var(--text-2)" }}>{dealTaskSummary.done}/{dealTaskSummary.total} เสร็จ</span>
               <div className="spacer" />
-              <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิดหน้างาน</a>
+              <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>
             </div>
             {(data.dealTasks || []).length ? (
               <div className="premium-glass-table table-responsive">
@@ -715,7 +715,7 @@ export default function DealOverviewPage() {
                 </table>
               </div>
             ) : (
-              <Empty>ยังไม่มีงานของโครงการนี้ กด “เปิดหน้างาน” แล้วสร้างงานโดยเลือกผูกกับโครงการนี้ได้</Empty>
+              <Empty>ยังไม่มีงานของโครงการนี้ กด “เปิด” แล้วสร้างงานโดยเลือกผูกกับโครงการนี้ได้</Empty>
             )}
           </section>
 
@@ -748,7 +748,7 @@ export default function DealOverviewPage() {
                 <div style={{ marginBottom: 12 }}>ยังไม่ได้สร้างไทม์ไลน์</div>
                 {canEdit && deal?.stage !== "lost" && ['timeline_proposed', 'awaiting_confirm', 'deposit_pending', 'won', 'in_project'].includes(deal?.stage) && (
                   <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}>
-                    สร้างไทม์ไลน์
+                    <Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์
                   </button>
                 )}
               </Empty>
