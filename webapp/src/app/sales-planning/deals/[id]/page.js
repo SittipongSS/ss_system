@@ -696,10 +696,17 @@ export default function DealOverviewPage() {
             )}
           </section>
 
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 430px), 1fr))",
+            gap: 20,
+            alignItems: "start",
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           <section id="deal-tasks" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <ClipboardList size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานที่ผูกกับดีล</h2>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานที่ผูกกับโครงการ</h2>
               <span className="ui-badge" style={{ color: "var(--text-2)" }}>{dealTaskSummary.done}/{dealTaskSummary.total} เสร็จ</span>
               <div className="spacer" />
               <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิดหน้างาน</a>
@@ -733,7 +740,7 @@ export default function DealOverviewPage() {
                 </table>
               </div>
             ) : (
-              <Empty>ยังไม่มีงานที่ผูกกับดีลนี้ กด “เปิดหน้างาน” แล้วสร้างงานโดยเลือกผูกกับดีลนี้ได้</Empty>
+              <Empty>ยังไม่มีงานที่ผูกกับโครงการนี้ กด “เปิดหน้างาน” แล้วสร้างงานโดยเลือกผูกกับโครงการนี้ได้</Empty>
             )}
           </section>
 
@@ -816,6 +823,8 @@ export default function DealOverviewPage() {
           </div>
           )}
 
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           {lc && (
             <section id="deal-routing" className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
@@ -956,6 +965,8 @@ export default function DealOverviewPage() {
                 </ul>
               ) : <Empty>ยังไม่มีความเคลื่อนไหว{canEdit ? " — เริ่มโพสต์อัปเดตได้เลย" : ""}</Empty>}
           </section>
+            </div>
+          </div>
         </div>
       )}
 
