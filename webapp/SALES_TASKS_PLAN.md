@@ -88,7 +88,7 @@ create index if not exists personal_tasks_deal_idx on personal_tasks ("dealId");
 
 - ฟอร์มงานเลือก "ผูกกับ: ดีล | โปรเจกต์ | ไม่ผูก" — โชว์รหัส+ชื่อ ลิงก์คลิกไปหน้า detail
 - หน้า deal detail (`/sa/deals/[id]`) เพิ่มแท็บ/section "งาน" แสดงงานที่ผูกดีลนั้น + ปุ่มเพิ่มงานจากในดีล (เฟส 2)
-- `project_tasks` (งานตามเทมเพลตโปรเจกต์) **ยังแสดงร่วม** ในหน้ารายการเหมือน my-work เดิม (read-only ตามกติกา draft-confirm เดิม) แต่**ไม่นับ** ใน KPI เฟสแรก — เกณฑ์วัดต้องนิ่งก่อนค่อยรวม
+- `project_tasks` (งานขั้นตอนที่ระบบ gen จาก timeline โปรเจกต์) **ไม่แสดง** ในหน้านี้แล้ว (ตัดสินใจ 2026-07-09) — หน้า "งาน" เป็นระบบมอบหมายงานล้วน ๆ จาก personal_tasks เหมือน kinn Assignment Tracker. งานขั้นตอนโปรเจกต์ดู/แก้ที่หน้า timeline ของโปรเจกต์โดยตรง. งานที่อยาก track ใน "งาน" ให้สร้าง personal task แล้วผูกโปรเจกต์/ดีลเอง
 
 ### 4.5 API
 
@@ -100,7 +100,7 @@ create index if not exists personal_tasks_deal_idx on personal_tasks ("dealId");
 
 | เฟส | เนื้อหา | หมายเหตุ |
 |---|---|---|
-| **1** ✅ | mig 0085 + ขยาย API (`my-work` team/all เห็นงานมอบหมาย + resolve deals; `personal-tasks` POST/PATCH สิทธิ์มอบหมายตามลำดับชั้น `canAssignTask` + completedAt อัตโนมัติ + audit) + หน้า `/sa/tasks` (เปลี่ยนหัวเป็น "งาน", แดชบอร์ดนับงานทั้งหมด, ฟอร์มใหม่: วันเริ่ม/หมวด/สำคัญ-ด่วน/ยาก/เชื่อมดีล-โปรเจกต์/มอบหมาย, การ์ดโชว์ meta) | ✅ ลงมือแล้ว — build+lint ผ่าน. `lib/pm/tasks.js` (หมวด/ยาก/progress/eisenhower), `lib/usersRepo.js` (teamUserIds) |
+| **1** ✅ | mig 0085 + ขยาย API (`my-work` team/all เห็นงานมอบหมาย + resolve deals; `personal-tasks` POST/PATCH สิทธิ์มอบหมายตามลำดับชั้น `canAssignTask` + completedAt อัตโนมัติ + audit) + หน้า `/sa/tasks` (เปลี่ยนหัวเป็น "งาน", แดชบอร์ด, ฟอร์มใหม่: วันเริ่ม/หมวด/สำคัญ-ด่วน/ยาก/เชื่อมดีล-โปรเจกต์/มอบหมาย, การ์ดโชว์ meta) | ✅ ลงมือแล้ว — build+lint ผ่าน. `lib/pm/tasks.js`, `lib/usersRepo.js`. **หน้ารื้อเป็นรายการเดียว (flat) — ตัด project_tasks ออกทั้งหมด**, list/table view, กรองหมวด/ผู้รับ/สถานะ |
 | **2** | Kanban + ปฏิทิน + Eisenhower + section งานในหน้า deal detail | view เสริม ไม่มี migration |
 | **3** | หน้า KPI ทีม `/sa/tasks/kpi` + คะแนนถ่วงน้ำหนัก | วัดผล |
 | **4 (option)** | สถานะเพิ่ม (ตรวจสอบ/แก้ไข), หน้าตั้งน้ำหนัก KPI, รวม `project_tasks` เข้า KPI, แจ้งเตือนงานพรุ่งนี้ | ทำเมื่อใช้จริงแล้วต้องการ |
