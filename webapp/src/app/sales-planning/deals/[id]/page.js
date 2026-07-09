@@ -10,7 +10,7 @@ import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
-import { canDeleteRecord } from "@/lib/permissions";
+import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
 import { FORECAST_LEVELS, forecastBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
@@ -482,7 +482,8 @@ export default function DealOverviewPage() {
   const linkedProject = data?.project || null;
   const canDeleteLinkedProject = !deal?.projectId || (linkedProject && canDeleteRecord({ role, team }, "projects", linkedProject));
   const hasExcise = (data?.exciseRegistrations?.length || 0) > 0;
-  const canDelete = deal && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId
+  const superuser = isSuperuser(role);
+  const canDelete = deal && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId
     && canDeleteLinkedProject && !hasExcise;
 
   // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน

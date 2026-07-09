@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { canDeleteRecord } from '@/lib/permissions';
+import { canDeleteRecord, isSuperuser } from '@/lib/permissions';
 import { loadProject, deleteProjectDeep, projectHasExciseRegistrations } from '@/lib/pm/projectsRepo';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
@@ -183,8 +183,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   // กันลบสิ่งที่นับเป็นยอด/มีหลักฐานทางบัญชีแล้ว (M8): โครงการที่ปิด Won,
   // หรือมาจาก PO สหมิตร (settle เข้ายอดแล้ว) — ให้ยกเลิกด้วยวิธีอื่นแทนการลบ.
-  if (['won', 'in_project'].includes(before.stage)) {
-    return conflict('โครงการนี้ปิดการขาย (Won) แล้ว — ลบไม่ได้ เพราะถูกนับเป็นยอดขาย');
+  if (['won', 'in_project'].includes(before.stage) && !isSuperuser(user.role)) {
+    return conflict('โครงการนี้ปิดการขาย (Won) แล้ว — ลบไม่ได้ เพราะถูกนับเป็นยอดขาย (ต้องการสิทธิ์แอดมิน)');
   }
   if (before.metadata?.sahamitPoId) {
     return conflict('โครงการนี้มาจาก PO สหมิตร — ลบไม่ได้ (จัดการที่เอกสาร PO แทน)');

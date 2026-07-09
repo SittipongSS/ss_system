@@ -551,7 +551,7 @@ export default function SalesPlanningPipelinePage() {
                             <Pencil size={15} aria-hidden="true" />
                           </button>
                         )}
-                        {deal.canEdit && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId && (
+                        {deal.canEdit && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId && (
                           <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>
