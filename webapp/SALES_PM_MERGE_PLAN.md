@@ -56,6 +56,8 @@ FC split/drift ฝั่งสหมิตรทำงานแล้ว
 
 > ลำดับแนะนำ: N2/N3 ปิดก่อนเปิด `SALES_FEATURES.quotations` (เฟส 6 ห้ามเปิดจนกว่าจะแก้) · N1/N4/N5/N6 แก้ได้เลยไม่ต้องรอ · N7-N9 เก็บกวาดรอบถัดไป
 
+**อัปเดต: แก้แล้ว (merge หมด)** — N1/N4/N5/N6/U1-U6 (PR #163) · **N2/N3 + N9(qty0/approve-reject state) แก้แล้ว** (branch quotation-guards): เพดานอนุมัติเป็นค่าคงที่ server (client ลดไม่ได้ ยัง force เข้มได้) + accept guard (รับซ้ำ/won/ยอด0/stage ถอย/ใบที่สองทับ) + approve/reject เช็คสถานะ pending + qty0 ไม่ถูก coerce เป็น 1 + unit test quotationApproval. **เหลือ N7 (forecast-reviews ข้ามทีม), N8 (create-project orphan), N9 ที่เหลือ (target ownerName, targets/bulk txn, applyDealScope .or escaping, backfill unique) — ยังไม่แก้.** เมื่อ N2/N3 ปิดแล้ว **เฟส 6 เปิด `SALES_FEATURES.quotations` ได้** (แต่ควรปิด N7/N8 ก่อนใช้งานจริงเต็มรูปแบบ)
+
 ฝั่ง UI (ตรวจ 4 หน้า + components):
 
 | # | ปัญหา | หลักฐาน | ระดับ |

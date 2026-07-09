@@ -61,6 +61,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   } else {
     if (!canReviewSalesForecast(user)) return forbidden();
     if (!['approve', 'reject'].includes(action)) return badRequest('invalid approval action');
+    // อนุมัติ/ตีกลับได้เฉพาะใบที่ "รออนุมัติ" อยู่จริง (กันแก้ทับใบที่ยกเลิก/รับ/ตีกลับไปแล้ว)
+    if (['cancelled', 'accepted', 'rejected'].includes(quote.status)) return badRequest('ใบเสนอราคานี้ไม่อยู่ในสถานะที่อนุมัติ/ตีกลับได้');
+    if (quote.approvalStatus !== 'pending') return badRequest('ใบเสนอราคานี้ไม่ได้อยู่ระหว่างรออนุมัติ');
     patch = {
       ...patch,
       approvalStatus: action === 'approve' ? 'approved' : 'rejected',
