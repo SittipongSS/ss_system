@@ -408,6 +408,24 @@ export function pmTaskScopes(role) {
   return ['mine'];
 }
 
+// Authority to ASSIGN a task to someone (Sales Task Management / งานมอบหมาย).
+//   superuser (admin/ae_supervisor) → anyone, any team
+//   senior_ae / ac / ae            → someone in their OWN team (mirrors pmEditScope
+//                                     'team' — a sales member may hand work to a
+//                                     teammate; row visibility still team-scoped)
+//   everyone else                  → only themselves
+// `assigner` = { id, role, team }; `assignee` = { id, team }. Assigning to
+// oneself is always allowed. Used by the personal-tasks API + the task form.
+export function canAssignTask(assigner, assignee) {
+  if (!assigner?.id || !assignee?.id) return false;
+  if (assigner.id === assignee.id) return true;
+  if (isSuperuser(assigner.role)) return true;
+  if ((assigner.role === 'senior_ae' || assigner.role === 'ac' || assigner.role === 'ae')) {
+    return !!assigner.team && assigner.team === assignee.team;
+  }
+  return false;
+}
+
 // Authority to edit a single project task. Pure — caller passes the loaded
 // task + parent project. Returns:
 //   'full'     — may edit the whole plan (team-scoped sales/admin)

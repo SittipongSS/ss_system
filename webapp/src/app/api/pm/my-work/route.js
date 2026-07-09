@@ -1,6 +1,7 @@
 import { normalizeDepartment, pmTaskScopes, can } from '@/lib/permissions';
 import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
+import { teamUserIds } from '@/lib/usersRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,14 +63,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   ]);
   const minePersonal = [...(byOwner || []), ...(byAssignee || [])];
 
+  // team/all: งานที่ "ถูกมอบหมาย" (assigneeId ≠ null) ให้คนในขอบเขต + งานที่ผูก
+  // โปรเจกต์ในขอบเขต. งานส่วนตัวที่ไม่ได้มอบหมาย (assigneeId ว่าง) ไม่หลุดออกไป.
   let extraPersonal = [];
   if (scope === 'team' || scope === 'all') {
-    let q = supabase.from('personal_tasks').select('*').not('projectId', 'is', null);
+    const queries = [];
     if (scope === 'team') {
-      const teamProjIds = await teamProjectIds(supabase, user.team);
-      q = teamProjIds.length ? q.in('projectId', teamProjIds) : null;
+      const [teamProjIds, teamIds] = await Promise.all([
+        teamProjectIds(supabase, user.team),
+        teamUserIds(supabase, user.team),
+      ]);
+      if (teamProjIds.length) queries.push(supabase.from('personal_tasks').select('*').in('projectId', teamProjIds));
+      if (teamIds.length) queries.push(supabase.from('personal_tasks').select('*').in('assigneeId', teamIds));
+    } else { // all
+      queries.push(supabase.from('personal_tasks').select('*').not('projectId', 'is', null));
+      queries.push(supabase.from('personal_tasks').select('*').not('assigneeId', 'is', null));
     }
-    if (q) { const { data } = await q.order('createdAt', { ascending: false }); extraPersonal = data || []; }
+    const results = await Promise.all(queries.map((q) => q.order('createdAt', { ascending: false })));
+    extraPersonal = results.flatMap((r) => r.data || []);
   }
   const seenP = new Set();
   const personalTasks = [...(minePersonal || []), ...extraPersonal]
@@ -87,6 +98,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     projects = Object.fromEntries((ps || []).map((p) => [p.id, p]));
   }
 
+  // ── deals map สำหรับงานที่ผูกดีล ──
+  const dealIds = [...new Set([
+    ...projectTasks.map((t) => t.dealId),
+    ...personalTasks.map((t) => t.dealId),
+  ].filter(Boolean))];
+  let deals = {};
+  if (dealIds.length) {
+    const { data: ds } = await supabase
+      .from('sales_deals').select('id, title, customerName, team, stage').in('id', dealIds);
+    deals = Object.fromEntries((ds || []).map((d) => [d.id, d]));
+  }
+
   return ok({
     scope,
     allowedScopes: allowed,
@@ -94,5 +117,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     projectTasks,
     personalTasks: personalTasks || [],
     projects,
+    deals,
   });
 });

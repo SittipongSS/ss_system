@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, ChevronRight, ChevronDown, ExternalLink, Flame, ArrowUpDown, ArrowUp, ArrowDown, Table2, PlusCircle, Check, Calendar, Flag } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, ChevronRight, ChevronDown, ExternalLink, Flame, ArrowUpDown, ArrowUp, ArrowDown, Table2, PlusCircle, Check, Calendar, Flag, Briefcase, Tag, Star, UserPlus } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -10,10 +10,11 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
-import { isSuperuser } from "@/lib/permissions";
+import { isSuperuser, canAssignTask } from "@/lib/permissions";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
+import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS } from "@/lib/pm/tasks";
 
 const TASK_STATUS_TH = { Pending: "รอ", "In Progress": "ทำอยู่", Completed: "เสร็จ" };
 const SCOPE_TH = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
@@ -58,7 +59,11 @@ const makeComparator = (sortKey, dir = "asc") => {
   return (a, b) => ((a.stepOrder ?? 0) - (b.stepOrder ?? 0)) * mul;
 };
 
-const PERSONAL_BLANK = { title: "", note: "", dueDate: "", projectId: "", assigneeId: "" };
+const PERSONAL_BLANK = {
+  title: "", note: "", startDate: "", dueDate: "",
+  linkType: "none", projectId: "", dealId: "", assigneeId: "",
+  category: "", important: false, urgent: false, difficulty: 2,
+};
 
 const SORT_OPTIONS = [
   { key: "default", label: "ลำดับขั้นตอน" },
@@ -79,8 +84,10 @@ export default function MyWorkPage() {
   const [projectTasks, setProjectTasks] = useState([]);
   const [personalTasks, setPersonalTasks] = useState([]);
   const [projectsMap, setProjectsMap] = useState({});
+  const [dealsMap, setDealsMap] = useState({});
   const [me, setMe] = useState(null);
   const [allProjects, setAllProjects] = useState([]);
+  const [allDeals, setAllDeals] = useState([]);
   const [users, setUsers] = useState([]);
   const [usersMap, setUsersMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -114,6 +121,7 @@ export default function MyWorkPage() {
       setProjectTasks(d.projectTasks || []);
       setPersonalTasks(d.personalTasks || []);
       setProjectsMap(d.projects || {});
+      setDealsMap(d.deals || {});
       if (d.me) setMe(d.me);
       if (d.allowedScopes) setAllowedScopes(d.allowedScopes);
       if (d.scope && d.scope !== sc) setScope(d.scope);
@@ -128,7 +136,17 @@ export default function MyWorkPage() {
       setUsersMap(Object.fromEntries((u || []).map((x) => [x.id, x.name])));
     }).catch(() => {});
     fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((p) => setAllProjects(p || [])).catch(() => {});
+    fetch("/api/sales-planning/deals").then((r) => (r.ok ? r.json() : [])).then((d) => setAllDeals(d || [])).catch(() => {});
   }, []);
+
+  // ผู้ใช้ที่ "ฉันมอบหมายงานให้ได้" (สะท้อน canAssignTask ฝั่ง server):
+  //   superuser → ทุกคน · sales role → คนในทีมตัวเอง · อื่น ๆ → ตัวเองเท่านั้น
+  const assignableUsers = useMemo(() => {
+    if (!me) return [];
+    if (isSuperuser(me.role)) return users;
+    if (["senior_ae", "ac", "ae"].includes(me.role) && me.team) return users.filter((u) => u.team === me.team);
+    return users.filter((u) => u.id === me.id);
+  }, [me, users]);
 
   const q = search.trim().toLowerCase();
 
@@ -159,13 +177,18 @@ export default function MyWorkPage() {
   // กรองแผนก/ผู้รับผิดชอบไม่ใช้กับงานส่วนตัว (ไม่มีฟิลด์เหล่านี้) → ซ่อนเมื่อมีตัวกรองนั้นอยู่
   const filterByMeta = deptFilter !== "all" || assigneeFilter !== "all";
 
-  // สรุปภาพรวม (อิงงานโปรเจกต์ใน scope + ตัวกรองแผนก/ผู้รับผิดชอบปัจจุบัน)
+  // สรุปภาพรวม (งานโปรเจกต์ + งานมอบหมาย/งานอื่นใน scope). ตัวกรองแผนก/ผู้รับผิดชอบ
+  // ใช้กับงานโปรเจกต์เท่านั้น → เมื่อกรองอยู่ ไม่นับงานนอกโปรเจกต์ (สอดคล้องกับที่แสดง).
+  const statPool = useMemo(
+    () => [...scopedProjectTasks, ...(filterByMeta ? [] : personalTasks)],
+    [scopedProjectTasks, filterByMeta, personalTasks],
+  );
   const stats = useMemo(() => ({
-    all: scopedProjectTasks.length,
-    progress: scopedProjectTasks.filter((t) => t.status === "In Progress").length,
-    urgent: scopedProjectTasks.filter(isUrgent).length,
-    done: scopedProjectTasks.filter((t) => t.status === "Completed").length,
-  }), [scopedProjectTasks]);
+    all: statPool.length,
+    progress: statPool.filter((t) => t.status === "In Progress").length,
+    urgent: statPool.filter(isUrgent).length,
+    done: statPool.filter((t) => t.status === "Completed").length,
+  }), [statPool]);
 
   const comparator = useMemo(() => makeComparator(sortKey, sortDir), [sortKey, sortDir]);
 
@@ -233,13 +256,19 @@ export default function MyWorkPage() {
 
   const totalShown = projGroups.reduce((n, g) => n + g.tasks.length + g.extra.length, 0);
 
-  // ใครจัดการงานเพิ่มเติมได้ (mirror server): เจ้าของ/ผู้รับมอบ/superuser/หัวหน้าทีมโปรเจกต์
+  // ใครจัดการงานได้ (mirror server canManage): เจ้าของ/ผู้รับมอบ/superuser/หัวหน้าทีม
+  // (senior_ae) ที่อยู่ทีมเดียวกับผู้รับมอบ-หรือ-เจ้าของงาน (หรือทีมโปรเจกต์ที่ผูกไว้).
+  const userTeamOf = (id) => users.find((u) => u.id === id)?.team || null;
   const canManageExtra = (t) => {
     if (!me) return false;
     if (t.ownerId === me.id || t.assigneeId === me.id) return true;
     if (isSuperuser(me.role)) return true;
-    const proj = resolveProj(t.projectId);
-    return me.role === "senior_ae" && me.team && proj.team === me.team;
+    if (me.role === "senior_ae" && me.team) {
+      const targetTeam = userTeamOf(t.assigneeId || t.ownerId);
+      if (targetTeam && targetTeam === me.team) return true;
+      if (resolveProj(t.projectId)?.team === me.team) return true;
+    }
+    return false;
   };
   const extraAssigneeName = (t) => usersMap[t.assigneeId] || usersMap[t.ownerId] || "—";
   const extraStatusCell = (t) => (canManageExtra(t)
@@ -256,24 +285,41 @@ export default function MyWorkPage() {
 
   // ── personal task CRUD ──
   const openAdd = () => { setEditingId(null); setForm(PERSONAL_BLANK); setShowModal(true); };
-  const openEdit = (t) => { setEditingId(t.id); setForm({ title: t.title, note: t.note || "", dueDate: t.dueDate || "", projectId: t.projectId || "", assigneeId: t.assigneeId || "" }); setShowModal(true); };
+  const openEdit = (t) => {
+    setEditingId(t.id);
+    setForm({
+      title: t.title, note: t.note || "",
+      startDate: t.startDate || "", dueDate: t.dueDate || "",
+      linkType: t.dealId ? "deal" : t.projectId ? "project" : "none",
+      projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
+      category: t.category || "", important: !!t.important, urgent: !!t.urgent,
+      difficulty: t.difficulty ?? 2,
+    });
+    setShowModal(true);
+  };
   const savePersonal = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) { setToast({ kind: "error", msg: "ต้องระบุชื่องาน" }); return; }
     setSaving(true);
     try {
       const url = editingId ? `/api/pm/personal-tasks/${editingId}` : "/api/pm/personal-tasks";
+      const projectId = form.linkType === "project" ? (form.projectId || null) : null;
+      const dealId = form.linkType === "deal" ? (form.dealId || null) : null;
       const res = await fetch(url, {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: form.title,
           note: form.note,
+          startDate: form.startDate || null,
           dueDate: form.dueDate || null,
-          projectId: form.projectId || null,
-          // ส่ง assigneeId เฉพาะตอนผูกโปรเจกต์ — เลี่ยงแตะคอลัมน์เมื่อเป็นงานส่วนตัว
-          // (กันพังถ้ายังไม่รัน migration 0026). ส่งค่าว่างเพื่อ "ถอนการมอบหมาย" ได้
-          ...(form.projectId ? { assigneeId: form.assigneeId || null } : {}),
+          projectId,
+          dealId,
+          assigneeId: form.assigneeId || null,
+          category: form.category || null,
+          important: !!form.important,
+          urgent: !!form.urgent,
+          difficulty: form.difficulty,
         }),
       });
       if (res.ok) { setShowModal(false); loadWork(scope); }
@@ -425,8 +471,8 @@ export default function MyWorkPage() {
     <div>
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
         <div className="header-content">
-          <h1><span className="premium-header-icon"><ListTodo size={22} /></span> งานของฉัน (My Work)</h1>
-          <p>งานโปรเจกต์ที่มอบหมายให้คุณ + งานเพิ่มเติมในโปรเจกต์ + งานส่วนตัว รวมในที่เดียว</p>
+          <h1><span className="premium-header-icon"><ListTodo size={22} /></span> งาน (Tasks)</h1>
+          <p>มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับดีลและโปรเจกต์ได้{me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}</p>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <ViewSwitcher value={view} onChange={setView} modes={["list", "table"]} />
@@ -648,46 +694,67 @@ export default function MyWorkPage() {
             )}
           </section>
 
-          {/* ── งานส่วนตัว ── */}
+          {/* ── งานมอบหมาย / งานอื่น ๆ (นอกโปรเจกต์) ── */}
           <section style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
               <div style={{ fontSize: "15px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-                <User size={17} color="var(--purple)" /> งานส่วนตัว
-                <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>{visiblePersonal.length} งาน · เห็นเฉพาะคุณ · นอกโปรเจกต์</span>
+                <UserPlus size={17} color="var(--purple)" /> งานมอบหมาย / งานอื่น ๆ
+                <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--text-3)" }}>
+                  {visiblePersonal.length} งาน · {scope === "mine" ? "งานที่มอบหมายให้คุณ + งานส่วนตัว" : `${SCOPE_TH[scope]} · นอกโปรเจกต์`}
+                </span>
               </div>
-              {/* ปุ่มเพิ่มงานซ้ำตรงหัวข้อ — กดง่ายขึ้นเวลาเลื่อนอยู่ส่วนนี้ */}
               <button onClick={openAdd} className="btn sm">
                 <Plus size={14} /> เพิ่มงาน
               </button>
             </div>
             {visiblePersonal.length === 0 ? (
               <EmptyState icon={Plus} dashed onClick={openAdd}>
-                {statusFilter !== "all" ? "ไม่มีงานส่วนตัวตรงกับตัวกรองนี้" : "ยังไม่มีงานส่วนตัว — กดเพื่อสร้าง to-do ของคุณ (เช่น โทรตามลูกค้า, เตรียมเอกสาร)"}
+                {statusFilter !== "all" ? "ไม่มีงานตรงกับตัวกรองนี้" : "ยังไม่มีงาน — กดเพื่อสร้าง/มอบหมายงาน (เช่น โทรตามลูกค้า, เตรียมใบเสนอราคา)"}
               </EmptyState>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))", gap: "12px" }}>
                 {visiblePersonal.map((t) => {
                   const u = getUrgencyInfo(t);
                   const proj = t.projectId ? (allProjects.find((p) => p.id === t.projectId) || projectsMap[t.projectId]) : null;
+                  const deal = t.dealId ? (dealsMap[t.dealId] || allDeals.find((d) => d.id === t.dealId)) : null;
                   const done = t.status === "Completed";
+                  const manage = canManageExtra(t);
+                  const assigneeName = t.assigneeId ? (usersMap[t.assigneeId] || "—") : null;
                   return (
-                    <div key={t.id} onClick={() => openEdit(t)} title="คลิกเพื่อแก้ไขงาน" className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
+                    <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={manage ? "คลิกเพื่อแก้ไขงาน" : undefined} className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: manage ? "pointer" : "default" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                         <span title={TASK_STATUS_TH[t.status]} style={{ padding: "2px", flexShrink: 0, color: statusDot(t.status), display: "flex" }}>
                           {statusIcon(t.status)}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "14px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)" }}>{t.title}</div>
+                          <div style={{ fontSize: "14px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" />}
+                            {t.urgent && <Flame size={13} color="var(--red)" />}
+                            {t.title}
+                          </div>
                           {t.note && <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{t.note}</div>}
                         </div>
-                        <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
-                          <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>
-                        </div>
+                        {manage && (
+                          <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
+                            <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>
+                          </div>
+                        )}
+                      </div>
+                      {/* meta chips: หมวด · ความยาก · ผู้รับ (นอก mine) */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "10px" }}>
+                        {t.category && <span style={{ background: "var(--panel-2)", padding: "2px 7px", borderRadius: "10px", color: "var(--text-2)" }}><Tag size={10} style={{ display: "inline", verticalAlign: "-1px" }} /> {t.category}</span>}
+                        {t.difficulty === 3 && <span style={{ background: "color-mix(in srgb, var(--red) 12%, transparent)", padding: "2px 7px", borderRadius: "10px", color: "var(--red)" }}>ยาก</span>}
+                        {(scope !== "mine" || (t.assigneeId && t.assigneeId !== me?.id)) && assigneeName && (
+                          <span style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "2px 7px", borderRadius: "10px", color: "var(--accent)" }}><User size={10} style={{ display: "inline", verticalAlign: "-1px" }} /> {assigneeName}</span>
+                        )}
                       </div>
                       <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "11px", flexWrap: "wrap" }}>
-                        {statusSelect(t, setPersonalStatus)}
+                        {manage ? statusSelect(t, setPersonalStatus) : (
+                          <span className={`status-pill dot ${done ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }}>{TASK_STATUS_TH[t.status] || t.status}</span>
+                        )}
                         {(t.dueDate) && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
                         {proj && <span onClick={() => router.push(`/sa/projects/${proj.code || t.projectId}`)} style={{ cursor: "pointer", fontSize: "10px", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }} className="font-mono">{proj.code}</span>}
+                        {deal && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: "4px", color: "var(--purple)" }}><Briefcase size={10} /> {deal.title}</span>}
                       </div>
                     </div>
                   );
@@ -698,7 +765,7 @@ export default function MyWorkPage() {
         </div>
       )}
 
-      {/* task modal — ผูกโปรเจกต์ = "งานเพิ่มเติม" (มอบหมายในทีมได้); ไม่ผูก = "งานส่วนตัว" */}
+      {/* task modal — มอบหมาย/ติดตามงาน: ผูกดีล/โปรเจกต์/ไม่ผูก + ผู้รับผิดชอบ + สำคัญ/ด่วน/ยาก */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editingId ? "แก้ไขงาน" : "เพิ่มงาน"} size="md">
         <form onSubmit={savePersonal}>
           <div className="grid gap-[14px]">
@@ -708,41 +775,84 @@ export default function MyWorkPage() {
             </div>
             <div className="form-group">
               <label>รายละเอียด</label>
-              <textarea value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" rows={3} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
+              <textarea value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" rows={2} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
             </div>
+
+            {/* วันที่ */}
             <div className="pm-form-grid gap-3">
               <div className="form-group">
-                <label>กำหนดส่ง</label>
-                <input type="date" value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} className="premium-input w-full" />
+                <label>วันเริ่ม</label>
+                <input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className="premium-input w-full" />
               </div>
               <div className="form-group">
-                <label>ผูกโปรเจกต์ <span className="text-[11px] text-[var(--text-3)] font-normal">(ไม่บังคับ)</span></label>
-                {/* เปลี่ยนโปรเจกต์ → ล้างผู้รับมอบ (อาจคนละทีม) */}
-                <Select fullWidth value={form.projectId} onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, assigneeId: "" }))}>
-                  <option value="">— ไม่ผูก (งานส่วนตัว) —</option>
-                  {allProjects.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+                <label>กำหนดเสร็จ</label>
+                <input type="date" value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} className="premium-input w-full" />
+              </div>
+            </div>
+
+            {/* หมวดหมู่ + ความยาก */}
+            <div className="pm-form-grid gap-3">
+              <div className="form-group">
+                <label><Tag size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> หมวดหมู่</label>
+                <Select fullWidth value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
+                  <option value="">— ไม่ระบุ —</option>
+                  {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </Select>
+              </div>
+              <div className="form-group">
+                <label>ระดับความยาก</label>
+                <Select fullWidth value={String(form.difficulty)} onChange={(e) => setForm((f) => ({ ...f, difficulty: Number(e.target.value) }))}>
+                  {DIFFICULTY_OPTIONS.map((d) => <option key={d} value={d}>{DIFFICULTY_LABELS[d]}</option>)}
                 </Select>
               </div>
             </div>
-            {/* ช่องมอบหมาย "ผู้รับผิดชอบ" แสดงตลอดเพื่อให้หาเจอ — กดใช้ได้เมื่อผูกโปรเจกต์แล้ว
-                (กติกาเดิม: มอบหมายได้เฉพาะงานที่ผูกโปรเจกต์ และเป็นคนในทีมของโปรเจกต์นั้น) */}
-            {(() => {
-              const proj = form.projectId ? allProjects.find((p) => p.id === form.projectId) : null;
-              const team = proj?.team ?? null;
-              const teammates = users.filter((u) => team && u.team === team);
-              const linked = !!form.projectId;
-              return (
-                <div className="form-group">
-                  <label>มอบหมายให้ (ผู้รับผิดชอบ) <span className="text-[11px] text-[var(--text-3)] font-normal">(คนในทีมของโปรเจกต์ — งานจะไปอยู่ใน "งานของฉัน" ของคนนั้น)</span></label>
-                  <Select fullWidth value={form.assigneeId} disabled={!linked} onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}>
-                    <option value="">{linked ? "— ไม่มอบหมาย (ของฉัน) —" : "— เลือกโปรเจกต์ก่อนจึงจะมอบหมายได้ —"}</option>
-                    {teammates.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </Select>
-                  {!linked && <div className="text-[11px] text-[var(--text-3)] mt-1">ผูกโปรเจกต์ด้านบนก่อน แล้วจะมอบหมายผู้รับผิดชอบ (คนในทีมของโปรเจกต์) ได้</div>}
-                  {linked && teammates.length === 0 && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่มีสมาชิกในทีมนี้ให้มอบหมาย</div>}
-                </div>
-              );
-            })()}
+
+            {/* สำคัญ / ด่วน (Eisenhower) */}
+            <div className="form-group">
+              <label>ความสำคัญ</label>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button type="button" onClick={() => setForm((f) => ({ ...f, important: !f.important }))} className={`btn sm${form.important ? " btn-primary" : ""}`}>
+                  <Star size={14} /> สำคัญ
+                </button>
+                <button type="button" onClick={() => setForm((f) => ({ ...f, urgent: !f.urgent }))} className={`btn sm${form.urgent ? " btn-primary" : ""}`}>
+                  <Flame size={14} /> ด่วน
+                </button>
+              </div>
+            </div>
+
+            {/* การเชื่อมโยง: ไม่ผูก / ดีล / โปรเจกต์ */}
+            <div className="form-group">
+              <label>เชื่อมกับ</label>
+              <div className="segmented" style={{ marginBottom: "8px" }}>
+                {[["none", "ไม่ผูก"], ["deal", "ดีล"], ["project", "โปรเจกต์"]].map(([k, lbl]) => (
+                  <button type="button" key={k} className={form.linkType === k ? "active" : ""} onClick={() => setForm((f) => ({ ...f, linkType: k }))}>{lbl}</button>
+                ))}
+              </div>
+              {form.linkType === "deal" && (
+                <Select fullWidth value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
+                  <option value="">— เลือกดีล —</option>
+                  {allDeals.map((d) => <option key={d.id} value={d.id}>{d.title}{d.customerName ? ` — ${d.customerName}` : ""}</option>)}
+                </Select>
+              )}
+              {form.linkType === "project" && (
+                <Select fullWidth value={form.projectId} onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value }))}>
+                  <option value="">— เลือกโปรเจกต์ —</option>
+                  {allProjects.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+                </Select>
+              )}
+            </div>
+
+            {/* มอบหมายให้ (ตามลำดับชั้น) */}
+            <div className="form-group">
+              <label><UserPlus size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>
+              <Select fullWidth value={form.assigneeId} onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}>
+                <option value="">— ตัวฉันเอง —</option>
+                {assignableUsers.filter((u) => u.id !== me?.id).map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
+              </Select>
+              {me && !isSuperuser(me.role) && !["senior_ae", "ac", "ae"].includes(me.role) && (
+                <div className="text-[11px] text-[var(--text-3)] mt-1">ตำแหน่งของคุณมอบหมายงานให้คนอื่นไม่ได้ — สร้างเป็นงานของตัวเองเท่านั้น</div>
+              )}
+            </div>
           </div>
           <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
             <button type="button" onClick={() => setShowModal(false)} className="btn">ยกเลิก</button>
