@@ -2,7 +2,7 @@
 
 > ปรับใช้จากเทมเพลต Google Sheets **"kinn Assignment Tracker [MASTER_DISTRIBUTION] V1.1"**
 > แทนที่เมนู **"งานของฉัน"** (`/sa/tasks`) ในระบบบริหารงานขาย
-> สถานะ: 📋 แผน — ยังไม่ลงมือ | เขียน 2026-07-09
+> สถานะ: ✅ เฟส 1 ลงมือแล้ว (2026-07-09) — เหลือเฟส 2-4 | ⚠ ต้องรัน migration 0085 บน Supabase prod ก่อน merge
 
 ---
 
@@ -100,7 +100,7 @@ create index if not exists personal_tasks_deal_idx on personal_tasks ("dealId");
 
 | เฟส | เนื้อหา | หมายเหตุ |
 |---|---|---|
-| **1** | mig 0085 + ขยาย API + หน้า `/sa/tasks` ใหม่ (แดชบอร์ด + view รายการ + ฟอร์มมอบหมาย + ผูกดีล/โปรเจกต์) | แทนเมนูเดิมได้เลย ใช้งานหลักครบ |
+| **1** ✅ | mig 0085 + ขยาย API (`my-work` team/all เห็นงานมอบหมาย + resolve deals; `personal-tasks` POST/PATCH สิทธิ์มอบหมายตามลำดับชั้น `canAssignTask` + completedAt อัตโนมัติ + audit) + หน้า `/sa/tasks` (เปลี่ยนหัวเป็น "งาน", แดชบอร์ดนับงานทั้งหมด, ฟอร์มใหม่: วันเริ่ม/หมวด/สำคัญ-ด่วน/ยาก/เชื่อมดีล-โปรเจกต์/มอบหมาย, การ์ดโชว์ meta) | ✅ ลงมือแล้ว — build+lint ผ่าน. `lib/pm/tasks.js` (หมวด/ยาก/progress/eisenhower), `lib/usersRepo.js` (teamUserIds) |
 | **2** | Kanban + ปฏิทิน + Eisenhower + section งานในหน้า deal detail | view เสริม ไม่มี migration |
 | **3** | หน้า KPI ทีม `/sa/tasks/kpi` + คะแนนถ่วงน้ำหนัก | วัดผล |
 | **4 (option)** | สถานะเพิ่ม (ตรวจสอบ/แก้ไข), หน้าตั้งน้ำหนัก KPI, รวม `project_tasks` เข้า KPI, แจ้งเตือนงานพรุ่งนี้ | ทำเมื่อใช้จริงแล้วต้องการ |
