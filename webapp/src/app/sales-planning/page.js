@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Target, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, Target, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
 import { KpiCard, MONTH_LABELS, MonthPicker, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
@@ -197,7 +197,16 @@ function sumRows(rows) {
 function YearGrid({ title, rows, months, grouped = false, showTotal = false, empty = "ยังไม่มีข้อมูล" }) {
   const { ref: fsRef, isFs, toggle } = useFullscreen();
   const [showFc, setShowFc] = useState(false); // ย่อ FC (default) = โชว์ FC Total; ขยาย = แตกราย %
+  const [scale, setScale] = useState(1); // สเกลตาราง (ปุ่ม +/-) 0.6–1.4
   const metrics = showFc ? METRICS : METRICS.filter((m) => !m.detail);
+  const changeScale = (delta) => setScale((s) => Math.round(Math.min(1.4, Math.max(0.6, s + delta)) * 10) / 10);
+  const scaleControl = (
+    <div className="flex items-center" style={{ gap: 2 }}>
+      <button type="button" className="btn ghost sm" onClick={() => changeScale(-0.1)} disabled={scale <= 0.6} aria-label="ย่อสเกลตาราง" title="ย่อสเกล"><Minus size={14} aria-hidden="true" /></button>
+      <button type="button" className="btn ghost sm" onClick={() => setScale(1)} title="สเกลปกติ" style={{ minWidth: 44 }}>{Math.round(scale * 100)}%</button>
+      <button type="button" className="btn ghost sm" onClick={() => changeScale(0.1)} disabled={scale >= 1.4} aria-label="ขยายสเกลตาราง" title="ขยายสเกล"><Plus size={14} aria-hidden="true" /></button>
+    </div>
+  );
   const fcToggle = (
     <button type="button" className="btn ghost sm" onClick={() => setShowFc((v) => !v)} title={showFc ? "ย่อ FC (โชว์ยอดรวม)" : "ขยาย FC (แตกตาม %)"}>
       {showFc ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />} {showFc ? "ย่อ FC" : "ขยาย FC"}
@@ -231,7 +240,8 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
       <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
         <BarChart3 size={17} aria-hidden="true" />
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {scaleControl}
           {fcToggle}
           <FullscreenButton isFs={isFs} onToggle={toggle} />
         </div>
@@ -244,7 +254,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
           ))}
         </div>
       </div>
-      <div className="fz-box premium-glass-table sales-overview-grid" style={{ "--fz-c1w": "170px", "--fz-c2w": "118px" }}>
+      <div className="fz-box premium-glass-table sales-overview-grid" style={{ "--fz-c1w": "170px", "--fz-c2w": "118px", zoom: scale }}>
         <table className="fz-table w-full text-sm" style={{ minWidth: 1880 }}>
           <thead>
             <tr>
