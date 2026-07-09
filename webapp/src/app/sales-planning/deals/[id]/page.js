@@ -563,7 +563,7 @@ export default function DealOverviewPage() {
       icon={<FolderKanban size={22} />}
       title={deal?.title || "ศูนย์รวมโครงการ"}
       subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมโครงการ"}
-      back={{ href: "/sa", label: "กลับไปภาพรวม" }}
+      back={{ href: "/sa/deals", label: "กลับหน้าโครงการ" }}
       backActions={backActions}
       headerRight={headerRight}
       loading={loading}
