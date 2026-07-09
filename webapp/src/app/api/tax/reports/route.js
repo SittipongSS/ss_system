@@ -42,7 +42,11 @@ export async function GET(request) {
     }
     try {
       const { buffer } = await buildRegistrationFilesZip(filter);
-      const fname = `registration-files-${new Date().toISOString().slice(0, 10)}.zip`;
+      const now = new Date();
+      const yymmdd = now.getFullYear().toString().slice(2) + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+      const hhmmss = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+      const ts = `${yymmdd}-${hhmmss}`;
+      const fname = `${ts}_registration-files.zip`;
       return new Response(buffer, {
         headers: {
           'Content-Type': 'application/zip',
@@ -63,7 +67,11 @@ export async function GET(request) {
 
   if (format === 'xlsx') {
     const buf = await reportToXlsxBuffer(report);
-    const fname = `report-${type}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const now = new Date();
+    const yymmdd = now.getFullYear().toString().slice(2) + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+    const hhmmss = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+    const ts = `${yymmdd}-${hhmmss}`;
+    const fname = `${ts}_report-${type}.xlsx`;
     return new Response(buf, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

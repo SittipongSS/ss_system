@@ -43,11 +43,17 @@ export async function GET(request) {
   ws.views = [{ state: 'frozen', xSplit: 4, ySplit: 1 }];
 
   const buf = Buffer.from(await wb.xlsx.writeBuffer());
+
+  const now = new Date();
+  const yymmdd = now.getFullYear().toString().slice(2) + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+  const hhmmss = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+  const ts = `${yymmdd}-${hhmmss}`;
+
   return new Response(buf, {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="sahamit_forecast_template.xlsx"',
+      'Content-Disposition': `attachment; filename="${ts}_sahamit_forecast_template.xlsx"`,
     },
   });
 }

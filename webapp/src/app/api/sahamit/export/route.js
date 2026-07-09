@@ -99,10 +99,14 @@ function buildReport(view, data, filters = {}) {
 
   if (view === 'po') {
     const poById = new Map(data.pos.map((p) => [p.id, p]));
+    const prodByFg = new Map((data.products || []).map((p) => [String(p.fgCode).trim().toLowerCase(), p]));
     const rows = data.poLines.map((l) => {
       const po = poById.get(l.poId) || {};
+      const prod = prodByFg.get(String(l.fgCode).trim().toLowerCase());
       return {
-        poNumber: po.poNumber || '', fgCode: l.fgCode, name: l.productName || '', qty: Number(l.qty || 0), qtyCases: casesVal(l.fgCode, Number(l.qty || 0)),
+        poNumber: po.poNumber || '', fgCode: l.fgCode, name: l.productName || '', 
+        brand: prod?.brandName || '', volume: prod?.volume ? `${prod.volume} ${prod.volumeUnit || 'ml'}` : '',
+        qty: Number(l.qty || 0), qtyCases: casesVal(l.fgCode, Number(l.qty || 0)),
         docDate: po.docDate, receivedDate: po.receivedDate, dueDate: l.dueDate, expectedDate: l.expectedDate,
         deliveryMonth: l.deliveryMonth || '', actual: l.actualDeliveredDate, status: PO_STATUS_LABEL[l.status] || l.status,
       };
@@ -111,6 +115,7 @@ function buildReport(view, data, filters = {}) {
       title: 'SAHAMIT Purchase Orders',
       columns: [
         { key: 'poNumber', label: 'เลขที่ PO' }, { key: 'fgCode', label: 'รหัสสินค้า' }, { key: 'name', label: 'ชื่อสินค้า' },
+        { key: 'brand', label: 'แบรนด์' }, { key: 'volume', label: 'ปริมาตร' },
         { key: 'qty', label: 'จำนวน (ชิ้น)' }, { key: 'qtyCases', label: 'จำนวน (ลัง)' }, { key: 'docDate', label: 'วันเอกสาร', date: true }, { key: 'receivedDate', label: 'วันรับ', date: true },
         { key: 'dueDate', label: 'กำหนดส่ง', date: true }, { key: 'expectedDate', label: 'คาดการณ์ส่ง', date: true },
         { key: 'deliveryMonth', label: 'เดือนส่ง' }, { key: 'actual', label: 'ส่งจริง', date: true }, { key: 'status', label: 'สถานะ' },
@@ -199,11 +204,17 @@ export async function GET(request) {
 
   const report = buildReport(view, data, filters);
   const buf = await reportToXlsxBuffer(report);
+  
+  const now = new Date();
+  const yymmdd = now.getFullYear().toString().slice(2) + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+  const hhmmss = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+  const ts = `${yymmdd}-${hhmmss}`;
+
   return new Response(buf, {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="sahamit_${view}.xlsx"`,
+      'Content-Disposition': `attachment; filename="${ts}_sahamit_${view}.xlsx"`,
     },
   });
 }
