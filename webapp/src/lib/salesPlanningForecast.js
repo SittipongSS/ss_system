@@ -393,6 +393,7 @@ export async function settlePoIntoSalesDeal({ supabase, user, po, customer, acti
         source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber,
         poReceivedDate: po.receivedDate || null, poDueDate: po.dueDate || null,
         projectCode: project?.code || null, quoteRef: po.quoteRef || null, bypassPipeline: true,
+        projectType: 'RE-ORDER',
       },
     },
   });
@@ -442,7 +443,7 @@ export async function settleOnePoLine({ supabase, user, po, customer, line, prod
         projectValue: lineValue, forecastMonth: po.receivedDate || po.dueDate || now,
         expectedCloseDate: po.receivedDate || po.docDate || null, confirmedAt: wonNow,
         notes: po.note || null, ownerId: user.id || null, ownerName: user.name || null, team: user.team || 'KA', projectId: null,
-        metadata: { source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber, poReceivedDate: po.receivedDate || null, fgCodes: [fg], bypassPipeline: true },
+        metadata: { source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber, poReceivedDate: po.receivedDate || null, fgCodes: [fg], bypassPipeline: true, projectType: 'RE-ORDER' },
       },
     });
   }

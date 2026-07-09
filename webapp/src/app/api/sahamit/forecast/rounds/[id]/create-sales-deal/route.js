@@ -131,6 +131,7 @@ export async function POST(request, { params }) {
       team: ownerTeam,
       metadata: {
         source: 'sahamit-forecast',
+        projectType: 'RE-ORDER',
         sahamitForecastRoundId: round.id,
         sahamitForecastRoundNo: round.roundNo,
         fgCodes: [line.fgCode],
