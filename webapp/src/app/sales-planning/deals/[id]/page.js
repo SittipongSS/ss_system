@@ -743,7 +743,16 @@ export default function DealOverviewPage() {
                   <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : "-"} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
                 )}
               </div>
-            ) : <Empty>ยังไม่ได้สร้างไทม์ไลน์</Empty>}
+            ) : (
+              <Empty>
+                <div style={{ marginBottom: 12 }}>ยังไม่ได้สร้างไทม์ไลน์</div>
+                {canEdit && deal?.stage !== "lost" && ['timeline_proposed', 'awaiting_confirm', 'deposit_pending', 'won', 'in_project'].includes(deal?.stage) && (
+                  <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}>
+                    สร้างไทม์ไลน์
+                  </button>
+                )}
+              </Empty>
+            )}
           </section>
 
           {(SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
