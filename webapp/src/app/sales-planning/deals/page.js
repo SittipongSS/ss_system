@@ -10,6 +10,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, forecastBadge, initialDealForm, money, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
+import { fmtMoney, fmtName } from "@/lib/format";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -455,9 +456,10 @@ export default function SalesPlanningPipelinePage() {
                 <tr>
                   <th>โครงการ</th>
                   <th>สถานะ</th>
+                  <th>ประเภท</th>
                   <th>ผู้ดูแล (AE)</th>
                   <th className="num">มูลค่า</th>
-                  <th>โครงการ</th>
+                  <th>ไทม์ไลน์</th>
                   {SALES_FEATURES.quotations && <th>ใบเสนอ</th>}
                   {SALES_FEATURES.documents && <th>เอกสาร</th>}
                   {SALES_FEATURES.shipment && <th>ส่ง</th>}
@@ -484,9 +486,12 @@ export default function SalesPlanningPipelinePage() {
                         {!["won", "in_project", "lost"].includes(deal.stage) && forecastBadge(deal.probability)}
                       </div>
                     </td>
-                    <td>{deal.ownerName || deal.team || "-"}</td>
+                    <td>
+                      <span className="ui-badge" style={{ color: "var(--text-2)" }}>{deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD"}</span>
+                    </td>
+                    <td>{deal.ownerName ? fmtName(deal.ownerName) : (deal.team || "-")}</td>
                     <td className="num mono" title={["won", "in_project"].includes(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
-                      {["won", "in_project"].includes(deal.stage) ? money(deal.wonValue ?? deal.projectValue) : money(deal.projectValue)}
+                      {["won", "in_project"].includes(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
                     </td>
                     <td>
                       {deal.projectId ? (
@@ -553,7 +558,7 @@ export default function SalesPlanningPipelinePage() {
                 ))}
                 {!filteredDeals.length && (
                   <tr>
-                    <td colSpan={6 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={7 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีโครงการในเดือนนี้ {canEdit ? "เริ่มจากปุ่มเพิ่มโครงการด้านบน" : ""}
                     </td>
                   </tr>
