@@ -242,7 +242,7 @@ export default function ForecastPage() {
       back={{ href: "/sahamit", label: "SAHAMIT" }}
       headerRight={
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=forecast", "_blank")}>
+          <button className="btn ghost" onClick={() => window.open(`/api/sahamit/export?view=forecast&roundNo=${selectedNo || ''}`, "_blank")}>
             <Download size={16} /> Excel
           </button>
           <button className="btn btn-primary" onClick={openCreate}>
