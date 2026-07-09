@@ -85,7 +85,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const cleanName = normalizedOwnerName(name);
     const key = cleanName ? `${team || 'no-team'}|${cleanName}` : (id || 'unassigned');
     if (!ownerMap[key]) {
-      ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, openCount: 0, wonCount: 0 };
+      ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
     } else {
       ownerMap[key].ownerId ||= id || null;
       ownerMap[key].ownerName = ownerMap[key].ownerName === 'ไม่ระบุ' && name ? name : ownerMap[key].ownerName;
@@ -100,7 +100,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   for (const d of [...openDeals, ...wonDeals]) {
     const b = ownerBucket(d.ownerId, d.ownerName, d.team);
     if (isWon(d)) { b.won += wonAmt(d); b.wonCount += 1; }
-    else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
+    else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
   const byOwner = Object.values(ownerMap)
     .filter((b) => !isEmptyBucket(b))
@@ -113,7 +113,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const teamKey = (team) => team || 'ไม่ระบุ';
   const teamBucket = (team) => {
     const key = teamKey(team);
-    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, openCount: 0, wonCount: 0 };
+    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
     return teamMap[key];
   };
   // เป้าระดับ SA (team=null) = "ยอดรวมบริษัท" คร่อมทุกทีม — แยกไว้ต่างหาก ไม่ใช่ทีมหนึ่ง
@@ -134,7 +134,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   for (const d of [...openDeals, ...wonDeals]) {
     const b = teamBucket(d.team);
     if (isWon(d)) { b.won += wonAmt(d); b.wonCount += 1; }
-    else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; }
+    else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
   const byTeam = Object.values(teamMap)
     .filter((b) => b.team) // ตัดถัง null (SA รวม / ดีลไม่ระบุทีม) ออกจากตารางทีม
