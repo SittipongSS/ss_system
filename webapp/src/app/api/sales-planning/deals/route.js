@@ -10,6 +10,7 @@ import {
   inSalesEditScope,
   inSalesViewScope,
   monthKey,
+  normalizeProjectType,
   normalizeStage,
   toMoney,
   toProbability,
@@ -99,7 +100,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     ownerId: body.ownerId || user.id || null,
     ownerName: body.ownerName || user.name || null,
     team: body.team || user.team || null,
-    metadata: body.metadata || {},
+    // projectType (NPD/RE-ORDER) เก็บใน metadata — ใช้เป็นค่าตั้งต้นตอนสร้างไทม์ไลน์ PM
+    metadata: { ...(body.metadata || {}), projectType: normalizeProjectType(body.projectType ?? body.metadata?.projectType) },
   };
 
   // The creator may only mint deals within its own edit scope: an AE cannot
