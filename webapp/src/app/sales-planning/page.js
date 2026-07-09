@@ -276,7 +276,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
         </div>
       </div>
       <div className="fz-box premium-glass-table sales-overview-grid" style={{ "--fz-c1w": "170px", "--fz-c2w": "118px", zoom: scale, maxHeight: boxMaxHeight }}>
-        <table className="fz-table w-full text-sm" style={{ minWidth: 1880 }}>
+        <table className="fz-table interactive-grid w-full text-sm" style={{ minWidth: 1880 }}>
           <thead>
             <tr>
               <th className="fz-c1" style={{ width: 160, minWidth: 160 }}>รายการ</th>

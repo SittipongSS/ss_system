@@ -22,8 +22,8 @@ export default function SahamitOverview() {
   const activePos = pos.filter((p) => poRollupStatus(p) !== "cancelled");
   const followUp = pos.filter((p) => ["open", "partial"].includes(poRollupStatus(p)));
   
-  // Recent POs for mini-table (limit 5)
-  const recentFollowUps = [...followUp].sort((a, b) => new Date(a.poDate || 0) - new Date(b.poDate || 0)).slice(0, 5);
+  // Recent POs for mini-table (limit 5, oldest open first)
+  const recentFollowUps = [...followUp].sort((a, b) => new Date(a.receivedDate || 0) - new Date(b.receivedDate || 0)).slice(0, 5);
   
   // Recent FC for activity
   const recentFCs = [...rounds].sort((a, b) => new Date(b.receivedDate || 0) - new Date(a.receivedDate || 0)).slice(0, 3);
@@ -85,7 +85,7 @@ export default function SahamitOverview() {
                   {recentFollowUps.map(p => (
                     <tr key={p.id} onClick={() => router.push(`/sahamit/po?q=${p.poNumber}`)} style={{ cursor: "pointer" }} className="hover-row">
                       <td style={{ paddingLeft: "20px", fontWeight: 500, color: "var(--accent)" }}>{p.poNumber}</td>
-                      <td>{p.poDate || "-"}</td>
+                      <td>{p.receivedDate || "-"}</td>
                       <td>
                         <span className={`status-pill ${poRollupStatus(p) === "open" ? "warning" : "info"}`}>
                           {poRollupStatus(p) === "open" ? "รอผลิต" : "ทยอยส่ง"}
