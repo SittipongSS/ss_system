@@ -312,7 +312,7 @@ export default function CustomerDirectory() {
                 <tr>
                   <SortTh label="รหัสลูกค้า" sortKey="arCode" sort={sort} />
                   <SortTh label="ชื่อลูกค้า / บริษัท" sortKey="name" sort={sort} />
-                  <SortTh label="แบรนด์ทั้งหมด" sortKey="brands" sort={sort} />
+                  <SortTh label="แบรนด์ (EN/TH)" sortKey="brands" sort={sort} />
                   <SortTh label="ที่อยู่" sortKey="address" sort={sort} />
                   <th>สถานะ</th>
                 </tr>
@@ -488,7 +488,7 @@ export default function CustomerDirectory() {
                 ></textarea>
               </div>
               <div className="form-group col-span-2">
-                <label>ชื่อแบรนด์สินค้า (Brands)</label>
+                <label>แบรนด์สินค้า (EN/TH)</label>
                 <BrandsEditor
                   value={formData.brands}
                   onChange={(v) => setFormData((f) => ({ ...f, brands: v }))}
