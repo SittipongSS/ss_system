@@ -45,10 +45,10 @@ const money = (value) => fmtMoney(value);
 const pctFmt = (value) => (value == null ? "–" : `${value}%`);
 
 // แถวตัวเลขที่โชว์ต่อช่อง (ตามลำดับบนลงล่าง) พร้อมป้ายชื่อ + สี.
-//   FC 20/50/80/100 = มูลค่าโครงการเปิด แยกตามระดับโอกาสปิด (probability)
-//   FC Total       = ผลรวม FC ทุกระดับ (= มูลค่าโครงการเปิดทั้งหมด)
+//   FC 20/50/80/100 = มูลค่าคาดการณ์ของดีลที่ "ยังเปิด" แยกตามระดับโอกาสปิด
+//   FC Total       = มูลค่าคาดการณ์ทั้งเดือน = เปิด + ปิดได้ (AT) + แพ้ (Lost)
 //   AT (Actual)    = ยอดปิดจริง (won)
-//   FC คงเหลือ      = เป้าที่ยังต้องปิดอีก = Target − AT (ไม่ต่ำกว่า 0)
+//   FC คงเหลือ      = FC Total − AT − Lost = ยอดที่ยังเปิดอยู่ (= ผลรวม FC 20..100)
 //   %              = ความสำเร็จ = AT / Target
 // detail:true = แถวย่อย FC ตามระดับ % — ซ่อนได้เมื่อ "ย่อ FC" (เหลือ FC Total)
 const METRICS = [
@@ -68,12 +68,14 @@ const FC_KEYS = ["fc20", "fc50", "fc80", "fc100"];
 function deriveMetrics(cell) {
   const target = Number(cell?.target || 0);
   const won = Number(cell?.won || 0); // AT (ยอดปิดจริง)
+  const lost = Number(cell?.lost || 0); // มูลค่าคาดการณ์ของดีลที่แพ้
   const fc20 = Number(cell?.fc20 || 0);
   const fc50 = Number(cell?.fc50 || 0);
   const fc80 = Number(cell?.fc80 || 0);
   const fc100 = Number(cell?.fc100 || 0);
-  const fcTotal = fc20 + fc50 + fc80 + fc100; // = มูลค่าโครงการเปิดทั้งหมด
-  const remaining = Math.max(0, target - won); // FC คงเหลือ = เป้าที่ยังต้องปิด
+  const fcOpen = fc20 + fc50 + fc80 + fc100; // ยอดคาดการณ์ของดีลที่ยังเปิด
+  const fcTotal = fcOpen + won + lost;       // FC ทั้งเดือน = เปิด + ปิดได้ + แพ้
+  const remaining = fcTotal - won - lost;    // FC คงเหลือ = ยอดที่ยังเปิดอยู่ (= fcOpen)
   const pct = target > 0 ? Math.round((won / target) * 100) : null;
   return { target, fc20, fc50, fc80, fc100, fcTotal, won, remaining, pct };
 }
@@ -83,6 +85,7 @@ function metricCell(row, month) {
   return {
     target: Number(cell.target || 0),
     won: Number(cell.won || 0),
+    lost: Number(cell.lost || 0),
     forecast: Number(cell.forecast || 0),
     fc20: Number(cell.fc20 || 0),
     fc50: Number(cell.fc50 || 0),
@@ -91,14 +94,16 @@ function metricCell(row, month) {
   };
 }
 
+const CELL_KEYS = ["target", "won", "lost", "forecast", ...FC_KEYS];
+
 function blankCell() {
-  return { target: 0, won: 0, forecast: 0, fc20: 0, fc50: 0, fc80: 0, fc100: 0 };
+  return Object.fromEntries(CELL_KEYS.map((k) => [k, 0]));
 }
 
 function addMetric(target, month, value) {
   if (!target.months[month]) target.months[month] = blankCell();
   const cell = target.months[month];
-  for (const k of ["target", "won", "forecast", ...FC_KEYS]) {
+  for (const k of CELL_KEYS) {
     cell[k] += Number(value[k] || 0);
     target.total[k] += Number(value[k] || 0);
   }
@@ -129,6 +134,7 @@ function buildYearRows(yearDashboards) {
     addMetric(monthSummary, month, {
       target: totals.targetAmount || 0,
       won: totals.wonValue || 0,
+      lost: totals.lostForecast || 0,
       forecast: totals.weightedForecast || 0,
       ...fcFields(dashboard.byForecast),
     });
@@ -148,6 +154,7 @@ function buildYearRows(yearDashboards) {
       addMetric(owners.get(key), month, {
         target: row.target,
         won: row.won,
+        lost: row.lost,
         forecast: row.weighted,
         ...fcFromObj(row.fc),
       });
@@ -168,6 +175,7 @@ function buildYearRows(yearDashboards) {
       addMetric(teams.get(key), month, {
         target: row.target,
         won: row.won,
+        lost: row.lost,
         forecast: row.weighted,
         ...fcFromObj(row.fc),
       });
@@ -183,7 +191,7 @@ function buildYearRows(yearDashboards) {
 // รวมทุกแถวเป็นแถวเดียว (มูลค่ารวมต่อเดือน + ทั้งปี) สำหรับแถวสรุปท้ายตาราง.
 function sumRows(rows) {
   const total = { id: "grand-total", label: "รวมทั้งหมด", months: {}, total: blankCell() };
-  const keys = ["target", "won", "forecast", ...FC_KEYS];
+  const keys = CELL_KEYS;
   for (const r of rows) {
     for (const [m, v] of Object.entries(r.months || {})) {
       if (!total.months[m]) total.months[m] = blankCell();
@@ -205,6 +213,16 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
       <button type="button" className="btn ghost sm" onClick={() => changeScale(-0.1)} disabled={scale <= 0.6} aria-label="ย่อสเกลตาราง" title="ย่อสเกล"><Minus size={14} aria-hidden="true" /></button>
       <button type="button" className="btn ghost sm" onClick={() => setScale(1)} title="สเกลปกติ" style={{ minWidth: 44 }}>{Math.round(scale * 100)}%</button>
       <button type="button" className="btn ghost sm" onClick={() => changeScale(0.1)} disabled={scale >= 1.4} aria-label="ขยายสเกลตาราง" title="ขยายสเกล"><Plus size={14} aria-hidden="true" /></button>
+    </div>
+  );
+  const [rowH, setRowH] = useState(0); // px เพิ่มความสูงของแต่ละแถว (0 = ปกติ)
+  const changeRowH = (d) => setRowH((h) => Math.min(48, Math.max(0, h + d)));
+  const rowStyleFor = (extra) => (rowH ? { ...extra, height: 34 + rowH } : extra);
+  const rowHControl = (
+    <div className="flex items-center" style={{ gap: 2 }}>
+      <button type="button" className="btn ghost sm" onClick={() => changeRowH(-8)} disabled={rowH <= 0} aria-label="ลดความสูงแถว" title="ลดความสูงแถว"><Minus size={14} aria-hidden="true" /></button>
+      <span style={{ fontSize: 11, color: "var(--text-3)" }} title="ความสูงแถว">สูงแถว</span>
+      <button type="button" className="btn ghost sm" onClick={() => changeRowH(8)} disabled={rowH >= 48} aria-label="เพิ่มความสูงแถว" title="เพิ่มความสูงแถว"><Plus size={14} aria-hidden="true" /></button>
     </div>
   );
   const fcToggle = (
@@ -242,6 +260,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {scaleControl}
+          {rowHControl}
           {fcToggle}
           <FullscreenButton isFs={isFs} onToggle={toggle} />
         </div>
@@ -280,7 +299,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                   return (
                     <Fragment key={row.id}>
                       {metrics.map((m, mi) => (
-                        <tr key={`${row.id}-${m.key}`} className="premium-row" style={mi === 0 ? { borderTop: "2px solid var(--border)" } : undefined}>
+                        <tr key={`${row.id}-${m.key}`} className="premium-row" style={rowStyleFor(mi === 0 ? { borderTop: "2px solid var(--border)" } : undefined)}>
                           {mi === 0 && (
                             <td className="fz-c1" rowSpan={metrics.length} style={{ verticalAlign: "top", width: 160, minWidth: 160 }}>
                               <strong>{row.label}</strong>
@@ -314,7 +333,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
             return (
               <tfoot>
                 {metrics.map((m, mi) => (
-                  <tr key={`grand-${m.key}`} className="fz-total-row" style={{ background: "var(--panel-2)", borderTop: mi === 0 ? "2px solid var(--border)" : undefined }}>
+                  <tr key={`grand-${m.key}`} className="fz-total-row" style={rowStyleFor({ background: "var(--panel-2)", borderTop: mi === 0 ? "2px solid var(--border)" : undefined })}>
                     {mi === 0 && (
                       <td className="fz-c1" rowSpan={metrics.length} style={{ verticalAlign: "top", fontWeight: 800, width: 160, minWidth: 160 }}>
                         รวมทั้งหมด
