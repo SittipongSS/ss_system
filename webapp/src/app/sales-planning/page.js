@@ -7,7 +7,7 @@ import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
 import { KpiCard, MONTH_LABELS, MonthPicker, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
-import { SALES_FEATURES } from "@/lib/salesPlanning";
+import { SALES_FEATURES, teamRank } from "@/lib/salesPlanning";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 
 const OVERVIEW_TABS = [
@@ -50,12 +50,13 @@ const pctFmt = (value) => (value == null ? "–" : `${value}%`);
 //   AT (Actual)    = ยอดปิดจริง (won)
 //   FC คงเหลือ      = เป้าที่ยังต้องปิดอีก = Target − AT (ไม่ต่ำกว่า 0)
 //   %              = ความสำเร็จ = AT / Target
+// detail:true = แถวย่อย FC ตามระดับ % — ซ่อนได้เมื่อ "ย่อ FC" (เหลือ FC Total)
 const METRICS = [
   { key: "target", label: "Target", color: "var(--text)" },
-  { key: "fc20", label: "FC 20%", color: "var(--text-3)" },
-  { key: "fc50", label: "FC 50%", color: "var(--amber)" },
-  { key: "fc80", label: "FC 80%", color: "var(--teal)" },
-  { key: "fc100", label: "FC 100%", color: "var(--green)" },
+  { key: "fc20", label: "FC 20%", color: "var(--text-3)", detail: true },
+  { key: "fc50", label: "FC 50%", color: "var(--amber)", detail: true },
+  { key: "fc80", label: "FC 80%", color: "var(--teal)", detail: true },
+  { key: "fc100", label: "FC 100%", color: "var(--green)", detail: true },
   { key: "fcTotal", label: "FC Total", color: "var(--blue)" },
   { key: "won", label: "AT", color: "var(--violet)" },
   { key: "remaining", label: "FC คงเหลือ", color: "var(--amber)" },
@@ -173,8 +174,9 @@ function buildYearRows(yearDashboards) {
     }
   }
 
-  const ownerRows = [...owners.values()].sort((a, b) => String(a.team).localeCompare(String(b.team)) || b.total.won - a.total.won);
-  const teamRows = [...teams.values()].sort((a, b) => b.total.won - a.total.won || String(a.label).localeCompare(String(b.label)));
+  // จัดลำดับทีมตามมาตรฐาน KA → ODM → SV (แล้วค่อยเรียงยอด/ชื่อภายในทีม)
+  const ownerRows = [...owners.values()].sort((a, b) => teamRank(a.team) - teamRank(b.team) || b.total.won - a.total.won);
+  const teamRows = [...teams.values()].sort((a, b) => teamRank(a.team) - teamRank(b.team) || String(a.label).localeCompare(String(b.label)));
   return { monthRows: [monthSummary], ownerRows, teamRows };
 }
 
@@ -194,6 +196,13 @@ function sumRows(rows) {
 
 function YearGrid({ title, rows, months, grouped = false, showTotal = false, empty = "ยังไม่มีข้อมูล" }) {
   const { ref: fsRef, isFs, toggle } = useFullscreen();
+  const [showFc, setShowFc] = useState(false); // ย่อ FC (default) = โชว์ FC Total; ขยาย = แตกราย %
+  const metrics = showFc ? METRICS : METRICS.filter((m) => !m.detail);
+  const fcToggle = (
+    <button type="button" className="btn ghost sm" onClick={() => setShowFc((v) => !v)} title={showFc ? "ย่อ FC (โชว์ยอดรวม)" : "ขยาย FC (แตกตาม %)"}>
+      {showFc ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />} {showFc ? "ย่อ FC" : "ขยาย FC"}
+    </button>
+  );
   const groups = grouped
     ? rows.reduce((acc, row) => {
         const key = row.team || "ไม่ระบุทีม";
@@ -222,9 +231,12 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
       <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
         <BarChart3 size={17} aria-hidden="true" />
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
-        <FullscreenButton isFs={isFs} onToggle={toggle} />
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          {fcToggle}
+          <FullscreenButton isFs={isFs} onToggle={toggle} />
+        </div>
         <div className="flex items-center gap-3" style={{ flexWrap: "wrap", width: "100%" }}>
-          {METRICS.map((m) => (
+          {metrics.map((m) => (
             <span key={m.key} className="flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--text-2)" }}>
               <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: m.color, display: "inline-block" }} />
               {m.label}
@@ -257,10 +269,10 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                   const totalMetrics = deriveMetrics(row.total);
                   return (
                     <Fragment key={row.id}>
-                      {METRICS.map((m, mi) => (
+                      {metrics.map((m, mi) => (
                         <tr key={`${row.id}-${m.key}`} className="premium-row" style={mi === 0 ? { borderTop: "2px solid var(--border)" } : undefined}>
                           {mi === 0 && (
-                            <td className="fz-c1" rowSpan={METRICS.length} style={{ verticalAlign: "top", width: 160, minWidth: 160 }}>
+                            <td className="fz-c1" rowSpan={metrics.length} style={{ verticalAlign: "top", width: 160, minWidth: 160 }}>
                               <strong>{row.label}</strong>
                               {row.sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{row.sublabel}</span>}
                             </td>
@@ -291,10 +303,10 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
             const totalMetrics = deriveMetrics(totalRow.total);
             return (
               <tfoot>
-                {METRICS.map((m, mi) => (
+                {metrics.map((m, mi) => (
                   <tr key={`grand-${m.key}`} className="fz-total-row" style={{ background: "var(--panel-2)", borderTop: mi === 0 ? "2px solid var(--border)" : undefined }}>
                     {mi === 0 && (
-                      <td className="fz-c1" rowSpan={METRICS.length} style={{ verticalAlign: "top", fontWeight: 800, width: 160, minWidth: 160 }}>
+                      <td className="fz-c1" rowSpan={metrics.length} style={{ verticalAlign: "top", fontWeight: 800, width: 160, minWidth: 160 }}>
                         รวมทั้งหมด
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: 12, fontWeight: 400 }}>ทุกรายการ</span>
                       </td>

@@ -52,7 +52,8 @@ export function forecastBadge(probability) {
 // back-office and does not carry a sales target, so it is excluded; ae_supervisor
 // sets team-level targets, not per-person, so it is excluded too.
 export const TARGET_OWNER_ROLES = ["senior_ae", "ae"];
-export const SALES_TEAMS = ["ODM", "KA", "SV"];
+// ลำดับทีมมาตรฐาน KA → ODM → SV (ใช้ทั้งคอลัมน์/แถวหน้าวางเป้า และการจัดกลุ่มภาพรวม)
+export const SALES_TEAMS = ["KA", "ODM", "SV"];
 
 // เงินในแดชบอร์ด/ตารางสรุปแผนขาย — ใช้รูปแบบย่อกลาง (฿x.xxM / ฿x.xxK).
 export const money = (value) => fmtMoneyCompact(value);

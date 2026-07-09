@@ -147,6 +147,13 @@ export function normalizeProjectType(value) {
   return value === 'RE-ORDER' ? 'RE-ORDER' : 'NPD';
 }
 
+// ลำดับทีมมาตรฐานทั้งระบบ: KA → ODM → SV (ทีมที่ไม่รู้จักไปท้ายสุด).
+export const TEAM_ORDER = ['KA', 'ODM', 'SV'];
+export function teamRank(team) {
+  const i = TEAM_ORDER.indexOf(team);
+  return i < 0 ? TEAM_ORDER.length : i;
+}
+
 export function forecastAmount(deal) {
   // Probability weighting was dropped — "คาดการณ์" duplicated "มูลค่า", so the
   // forecast is simply the full project value.
