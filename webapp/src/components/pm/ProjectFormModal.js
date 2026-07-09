@@ -20,14 +20,14 @@ export default function ProjectFormModal({
   // Assignable users are fetched fresh every time the modal opens (not at the
   // parent page's mount) so a newly-added user shows up without a full reload.
   const [users, setUsers] = useState([]);
-  const blank = {
+  const blank = useMemo(() => ({
     code: "", name: "", customerId: "", type: "NPD",
     startDate: "", dueDate: "", productMainCategory: "", productSubCategory: "", aeOwner: "",
     mainCode: "", typeCode: "",
     aeSupervisor: "", preparedBy: "",
     projectProducts: [],
     quotationNumber: "", brand: "", poNumber: "",
-  };
+  }), []);
 
   const [form, setForm] = useState(blank);
   const [linkFg, setLinkFg] = useState(false);
@@ -84,7 +84,7 @@ export default function ProjectFormModal({
         setLinkFg(false);
       }
     }
-  }, [open, editingId, initialData]);
+  }, [open, editingId, initialData, blank]);
 
   // ข้อ 1: หมวดสินค้า "อิงตาม FG ที่ผูก" — ถ้ามี FG ที่เป็น 01-002 (สรรพสามิต)
   // แม้แต่ตัวเดียว ทั้งโปรเจกต์ใช้หมวด 01-002 (เป็นใหญ่สุด → ได้ template เสียภาษี);
@@ -99,7 +99,7 @@ export default function ProjectFormModal({
     if (code === form.productMainCategory && mainCode === form.mainCode && typeCode === form.typeCode) return;
     const sub = categories.find((c) => c.mainCategoryCode === mainCode && c.typeCode === typeCode)?.nameTh || "";
     setForm((f) => ({ ...f, productMainCategory: code, mainCode, typeCode, productSubCategory: sub }));
-  }, [open, form.projectProducts, effectiveProducts, categories]);
+  }, [open, form.projectProducts, effectiveProducts, categories, form.productMainCategory, form.mainCode, form.typeCode]);
 
   const change = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
