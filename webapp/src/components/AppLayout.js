@@ -186,7 +186,6 @@ export default function AppLayout({ children }) {
       items: [
         { href: '/mgmt', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'mgmt:view', match: (p) => p === '/mgmt' },
         { href: '/mgmt/tasks', name: 'รายการงาน', icon: ListTodo, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/tasks') },
-        { href: '/mgmt/calendar', name: 'ปฏิทิน', icon: CalendarDays, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/calendar') },
         { href: '/mgmt/meetings', name: 'การประชุม', icon: Users, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/meetings') },
         { href: '/mgmt/rocks', name: 'Rock & Improve', icon: Target, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/rocks') },
         { href: '/mgmt/trash', name: 'ถังขยะ', icon: Trash2, cap: 'mgmt:edit', match: (p) => p.startsWith('/mgmt/trash') },
@@ -281,6 +280,18 @@ export default function AppLayout({ children }) {
               })}
             </li>
           ))}
+          {canUser({ role, extraCaps }, 'mgmt:view') && (
+            <li className="nav-group" style={{ marginTop: 'auto', marginBottom: '8px' }}>
+              <Link
+                href="/mgmt/calendar"
+                className={`nav-item ${pathname.startsWith('/mgmt/calendar') ? 'active' : ''}`}
+                title={isCollapsed ? 'ปฏิทิน' : undefined}
+              >
+                <CalendarDays size={18} className="ico" />
+                <span className="nav-label">ปฏิทิน</span>
+              </Link>
+            </li>
+          )}
         </ul>
 
         {/* Sidebar Footer containing Theme Toggle */}
