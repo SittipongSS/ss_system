@@ -10,7 +10,7 @@ import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
-import { canDeleteRecord } from "@/lib/permissions";
+import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
 import { FORECAST_LEVELS, forecastBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
@@ -482,7 +482,8 @@ export default function DealOverviewPage() {
   const linkedProject = data?.project || null;
   const canDeleteLinkedProject = !deal?.projectId || (linkedProject && canDeleteRecord({ role, team }, "projects", linkedProject));
   const hasExcise = (data?.exciseRegistrations?.length || 0) > 0;
-  const canDelete = deal && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId
+  const superuser = isSuperuser(role);
+  const canDelete = deal && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId
     && canDeleteLinkedProject && !hasExcise;
 
   // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
@@ -526,8 +527,6 @@ export default function DealOverviewPage() {
     if (!canEdit || !lc?.nextAction) return null;
     const k = lc.nextAction.kind;
     if (k === "win") return <button type="button" className="btn btn-success" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
-    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์</button>;
-    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/sa/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> จัดการไทม์ไลน์</a>;
     return null;
   };
   const headerRight = (
@@ -542,16 +541,6 @@ export default function DealOverviewPage() {
           <Ban size={15} aria-hidden="true" /> ไม่ไปต่อ
         </button>
       )}
-      {/* มีไทม์ไลน์ PM แล้ว → "จัดการ"; ยังไม่มี → "+ สร้าง" (ให้ต่างจากปุ่มจัดการชัดเจน) */}
-      {deal?.projectId ? (
-        <a className="btn" href={`/sa/projects/${deal.projectId}`}>
-          <PackageCheck size={15} aria-hidden="true" /> จัดการไทม์ไลน์
-        </a>
-      ) : (canEdit && deal?.stage !== "lost") ? (
-        <button type="button" className="btn" onClick={openCreatePM} disabled={!!actionBusy}>
-          <Plus size={15} aria-hidden="true" /> สร้างไทม์ไลน์
-        </button>
-      ) : null}
     </>
   );
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import Workspace from "@/components/ui/Workspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
@@ -440,16 +440,7 @@ export default function SalesPlanningPipelinePage() {
               <option value="all">ทุก stage</option>
               {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
             </select>
-            {(reviewCount > 0 || reviewOnly) && (
-              <button
-                type="button"
-                className={`btn ${reviewOnly ? "btn-primary" : "ghost"}`}
-                onClick={() => setReviewOnly((v) => !v)}
-                title="โครงการที่นำเข้าจาก PM เก่า ยังไม่ได้เติมมูลค่าจริง"
-              >
-                <AlertTriangle size={15} aria-hidden="true" /> รอเติมข้อมูล{reviewCount > 0 ? ` (${reviewCount})` : ""}
-              </button>
-            )}
+
             <div className="spacer" />
             <span className="ui-badge">{filteredDeals.length} โครงการ</span>
           </div>
@@ -542,8 +533,8 @@ export default function SalesPlanningPipelinePage() {
                     <td className="num">
                       <div className="flex items-center gap-2 justify-end">
                         {deal.canEdit && !["won", "in_project", "lost"].includes(deal.stage) && (
-                          <button type="button" className="btn ghost" style={{ color: "var(--green)", borderColor: "color-mix(in srgb, var(--green) 30%, transparent)", background: "color-mix(in srgb, var(--green) 10%, transparent)" }} onClick={() => openWin(deal)} disabled={winningDealId === deal.id} title="ปิดโครงการเป็น Won (นับยอด + ปิด forecast)">
-                            <CheckCircle2 size={14} aria-hidden="true" /> {winningDealId === deal.id ? "..." : "Won"}
+                          <button type="button" className="btn btn-success sm" onClick={() => openWin(deal)} disabled={winningDealId === deal.id} title="ปิดโครงการเป็น Won (นับยอด + ปิด forecast)">
+                            <Trophy size={14} aria-hidden="true" /> {winningDealId === deal.id ? "..." : "Won"}
                           </button>
                         )}
                         {deal.canEdit && (
@@ -551,7 +542,7 @@ export default function SalesPlanningPipelinePage() {
                             <Pencil size={15} aria-hidden="true" />
                           </button>
                         )}
-                        {deal.canEdit && !["won", "in_project"].includes(deal.stage) && !deal.metadata?.sahamitPoId && (
+                        {deal.canEdit && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId && (
                           <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>
