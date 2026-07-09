@@ -44,7 +44,7 @@ function Legend() {
 }
 
 // Grouped vertical bar chart. `data` = [{ label, target, forecast, won }].
-function GroupedBarChart({ data, height = 320 }) {
+function GroupedBarChart({ data, height = 320, onBarClick, onMouseMove, onMouseLeave }) {
   const W = 960;
   const H = height;
   const padL = 56;
@@ -73,13 +73,14 @@ function GroupedBarChart({ data, height = 320 }) {
   const hasData = data.some((d) => SERIES.some((s) => Number(d[s.key] || 0) > 0));
 
   return (
-    <div style={{ width: "100%", overflowX: "auto" }}>
+    <div style={{ width: "100%", overflowX: "auto", position: "relative" }}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
         role="img"
         aria-label="กราฟเทียบเป้า คาดการณ์ และ Won"
         style={{ display: "block", minWidth: Math.max(520, groups * 46) }}
+        onMouseLeave={onMouseLeave}
       >
         {/* y grid + labels */}
         {ticks.map((t, i) => (
@@ -95,18 +96,36 @@ function GroupedBarChart({ data, height = 320 }) {
         {data.map((d, gi) => {
           const gx = padL + gi * groupW + (groupW - clusterW) / 2;
           return (
-            <g key={d.label ?? gi}>
+            <g key={d.label ?? gi} className="chart-group">
               {SERIES.map((s, si) => {
                 const v = Number(d[s.key] || 0);
                 const bx = gx + si * barW;
                 const bh = v > 0 ? Math.max(1, plotH - (y(v) - padT)) : 0;
                 return (
-                  <rect key={s.key} x={bx} y={y(v)} width={barW - 2} height={bh} rx="2" fill={s.color}>
-                    <title>{`${d.label} · ${s.label}: ${money(v)}`}</title>
-                  </rect>
+                  <rect 
+                    key={s.key} 
+                    x={bx} 
+                    y={y(v)} 
+                    width={barW - 2} 
+                    height={bh} 
+                    rx="2" 
+                    fill={s.color}
+                    className="chart-bar"
+                    style={{ cursor: onBarClick ? "pointer" : "default" }}
+                    onClick={() => onBarClick && onBarClick(d, s)}
+                    onMouseMove={(e) => onMouseMove && onMouseMove(e, d, s, v)}
+                  />
                 );
               })}
-              <text x={padL + gi * groupW + groupW / 2} y={H - padB + 18} textAnchor="middle" fontSize="11" fill="var(--text-2)">
+              <text 
+                x={padL + gi * groupW + groupW / 2} 
+                y={H - padB + 18} 
+                textAnchor="middle" 
+                fontSize="11" 
+                fill="var(--text-2)"
+                style={{ cursor: onBarClick ? "pointer" : "default" }}
+                onClick={() => onBarClick && onBarClick(d)}
+              >
                 {d.label}
               </text>
             </g>
@@ -157,8 +176,21 @@ function Panel({ icon, title, badge, children }) {
   );
 }
 
-export default function DashboardCharts({ rows, months, monthLabels, year }) {
-  const [teamKey, setTeamKey] = useState("all");
+export default function DashboardCharts({ rows, months, monthLabels, year, teamKey = "all", onTeamKeyChange }) {
+  const [tooltip, setTooltip] = useState(null);
+
+  const handleMouseMove = (e, d, s, v) => {
+    const rect = e.currentTarget.closest("svg").getBoundingClientRect();
+    setTooltip({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      label: d.label,
+      series: s.label,
+      color: s.color,
+      value: v,
+    });
+  };
+  const handleMouseLeave = () => setTooltip(null);
 
   // Source for the monthly view: all-team summary or a single team's row.
   const teamRowMap = useMemo(() => {
@@ -192,11 +224,11 @@ export default function DashboardCharts({ rows, months, monthLabels, year }) {
       <div className="flex items-center gap-3" style={{ flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-3)" }}>เลือกทีม</span>
         <div className="segmented" role="group" aria-label="เลือกทีม">
-          <button type="button" className={teamKey === "all" ? "active" : ""} aria-pressed={teamKey === "all"} onClick={() => setTeamKey("all")}>
+          <button type="button" className={teamKey === "all" ? "active" : ""} aria-pressed={teamKey === "all"} onClick={() => onTeamKeyChange("all")}>
             ทุกทีม
           </button>
           {SALES_TEAMS.map((t) => (
-            <button key={t} type="button" className={teamKey === t ? "active" : ""} aria-pressed={teamKey === t} onClick={() => setTeamKey(t)}>
+            <button key={t} type="button" className={teamKey === t ? "active" : ""} aria-pressed={teamKey === t} onClick={() => onTeamKeyChange(t)}>
               {t}
             </button>
           ))}
@@ -234,7 +266,25 @@ export default function DashboardCharts({ rows, months, monthLabels, year }) {
         title={`เทียบรายเดือน ${year} — ${teamLabel}`}
         badge={<span className="ui-badge" style={{ color: "var(--text-3)" }}>12 เดือน</span>}
       >
-        <GroupedBarChart data={monthData} />
+        <div style={{ position: "relative" }}>
+          <GroupedBarChart 
+            data={monthData} 
+            onMouseMove={handleMouseMove} 
+            onMouseLeave={handleMouseLeave} 
+          />
+          {tooltip && (
+            <div className="chart-tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+              <div className="chart-tooltip-header">{tooltip.label}</div>
+              <div className="chart-tooltip-row">
+                <span>
+                  <span className="chart-tooltip-color" style={{ background: tooltip.color }} />
+                  {tooltip.series}
+                </span>
+                <span className="font-mono" style={{ fontWeight: 700 }}>{money(tooltip.value)}</span>
+              </div>
+            </div>
+          )}
+        </div>
       </Panel>
 
       <Panel
@@ -242,7 +292,13 @@ export default function DashboardCharts({ rows, months, monthLabels, year }) {
         title={`เทียบรายทีม — รวมปี ${year}`}
         badge={<span className="ui-badge" style={{ color: "var(--text-3)" }}>{SALES_TEAMS.join(" · ")}</span>}
       >
-        <GroupedBarChart data={teamData} height={300} />
+        <GroupedBarChart 
+          data={teamData} 
+          height={300} 
+          onBarClick={(d) => d.label && onTeamKeyChange(d.label)}
+          onMouseMove={handleMouseMove} 
+          onMouseLeave={handleMouseLeave} 
+        />
       </Panel>
     </div>
   );
