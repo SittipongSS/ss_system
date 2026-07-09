@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Save, Send, Trash2, Trophy, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
@@ -118,29 +118,20 @@ function DealStepper({ steps, lost }) {
   );
 }
 
-// การ์ดปลายทางส่งต่อ 1 ระบบ (PM / สรรพสามิต / ส่งของ / PO)
-const ROUTE_BADGE = { done: "เสร็จแล้ว", available: "พร้อมทำ", progress: "กำลังดำเนินการ", locked: "ล็อก" };
 const ROUTE_COLOR = { done: "var(--green)", available: "var(--accent)", progress: "var(--amber)", locked: "var(--text-3)" };
-function RouteCard({ route, onAction, busy, canEdit }) {
+function RouteMenuButton({ route, onAction, busy, canEdit }) {
   const color = ROUTE_COLOR[route.status] || "var(--text-3)";
-  return (
-    <div className="glass-panel" style={{ padding: 14, borderLeft: `3px solid ${color}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontWeight: 700, fontSize: 14 }}>{route.label}</span>
-        <span className="ui-badge" style={{ marginLeft: "auto", color }}>{ROUTE_BADGE[route.status] || route.status}</span>
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-3)", margin: "6px 0 10px" }}>{route.hint}</div>
-      {route.actionKind && canEdit ? (
-        <button type="button" className="btn btn-primary sm" onClick={() => onAction(route)} disabled={busy}>
-          {route.actionKind?.startsWith("create-") ? <Plus size={13} aria-hidden="true" /> : <FileText size={13} aria-hidden="true" />} {route.actionLabel}
-        </button>
-      ) : route.href ? (
-        <a className="btn sm" href={route.href}><ExternalLink size={13} aria-hidden="true" /> {route.linkLabel || "เปิด"}</a>
-      ) : route.status === "locked" ? (
-        <button type="button" className="btn ghost sm" disabled><Lock size={13} aria-hidden="true" /> ล็อก</button>
-      ) : null}
-    </div>
-  );
+  if (route.actionKind && canEdit) {
+    return (
+      <button type="button" className={`btn sm${route.status === "available" ? " btn-primary" : ""}`} onClick={() => onAction(route)} disabled={busy} title={route.hint} style={{ borderColor: color }}>
+        {route.actionKind?.startsWith("create-") ? <Plus size={13} aria-hidden="true" /> : <FileText size={13} aria-hidden="true" />} {route.actionLabel || route.label}
+      </button>
+    );
+  }
+  if (route.href) {
+    return <a className="btn sm" href={route.href} title={route.hint} style={{ borderColor: color }}><ExternalLink size={13} aria-hidden="true" /> {route.linkLabel || route.label}</a>;
+  }
+  return null;
 }
 
 export default function DealOverviewPage() {
@@ -631,9 +622,11 @@ export default function DealOverviewPage() {
             <a className="btn ghost sm" href="#deal-kpi">ภาพรวม</a>
             <a className="btn ghost sm" href="#deal-tasks">งาน</a>
             <a className="btn ghost sm" href="#deal-pm">งานผลิต (PM)</a>
-            <a className="btn ghost sm" href="#deal-routing">ส่งต่อ</a>
             <a className="btn ghost sm" href="#deal-timeline">ความเคลื่อนไหว</a>
             <span className="spacer" />
+            {lc?.routes?.map((route) => (
+              <RouteMenuButton key={route.kind} route={route} onAction={onRouteAction} busy={!!actionBusy} canEdit={canEdit} />
+            ))}
             {!SALES_FEATURES.quotations && <span className="ui-badge" style={{ color: "var(--text-3)" }} title="อยู่ในแผนเฟสถัดไป">ใบเสนอราคา · เฟสถัดไป</span>}
             {!SALES_FEATURES.shipment && <span className="ui-badge" style={{ color: "var(--text-3)" }} title="อยู่ในแผนเฟสถัดไป">การส่ง · เฟสถัดไป</span>}
           </nav>
@@ -825,22 +818,6 @@ export default function DealOverviewPage() {
 
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
-          {lc && (
-            <section id="deal-routing" className="glass-panel" style={{ padding: 16 }}>
-              <div className="flex items-center gap-2 mb-3">
-                <ArrowRight size={17} aria-hidden="true" />
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ส่งต่อ (Routing)</h2>
-              </div>
-              {lc.routes.length ? (
-                <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                  {lc.routes.map((route) => (
-                    <RouteCard key={route.kind} route={route} onAction={onRouteAction} busy={!!actionBusy} canEdit={canEdit} />
-                  ))}
-                </div>
-              ) : <Empty>ยังไม่มีปลายทางที่ต้องส่งต่อ</Empty>}
-            </section>
-          )}
-
           {/* ไทม์ไลน์รวม: อัปเดตงาน + การเปลี่ยนสถานะ เรียงตามเวลาเดียวกัน — เห็นเรื่องราวของโครงการในฟีดเดียว */}
           <section id="deal-timeline" className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
