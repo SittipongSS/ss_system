@@ -11,6 +11,7 @@ import {
   inSalesEditScope,
   inSalesViewScope,
   monthKey,
+  normalizeProjectType,
   normalizeStage,
   toMoney,
   toProbability,
@@ -107,6 +108,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const filledWon = Number(patch.wonValue ?? before.wonValue) > 0;
   if (before.metadata?.needsReview && (filledForecast || filledWon)) {
     patch.metadata = { ...(patch.metadata || before.metadata || {}), needsReview: false, bypassPipeline: false };
+  }
+  // projectType (NPD/RE-ORDER) — merge ทับ metadata ล่าสุดเสมอ (หลัง buildWinPatch/needsReview)
+  if ('projectType' in body) {
+    patch.metadata = { ...(patch.metadata || before.metadata || {}), projectType: normalizeProjectType(body.projectType) };
   }
 
   const { data, error } = await supabase

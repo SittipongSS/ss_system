@@ -15,6 +15,32 @@ const OVERVIEW_TABS = [
   { key: "dashboard", label: "แดชบอร์ด" },
 ];
 
+// ดูเต็มจอสำหรับ element เดียว (คืน ref + สถานะ + ปุ่ม toggle). ใช้ซ้ำได้ทุกตาราง.
+function useFullscreen() {
+  const ref = useRef(null);
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    const onFs = () => setIsFs(document.fullscreenElement === ref.current);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  const toggle = () => {
+    if (typeof document === "undefined") return;
+    if (document.fullscreenElement === ref.current) document.exitFullscreen?.();
+    else ref.current?.requestFullscreen?.();
+  };
+  return { ref, isFs, toggle };
+}
+
+// ปุ่มดูเต็มจอ (ไอคอน + ข้อความ) — ใช้ในหัวแต่ละตาราง.
+function FullscreenButton({ isFs, onToggle }) {
+  return (
+    <button type="button" className="btn ghost sm" onClick={onToggle} title={isFs ? "ออกจากเต็มจอ" : "ดูเต็มจอ"} style={{ marginLeft: "auto" }}>
+      {isFs ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />} {isFs ? "ออกเต็มจอ" : "เต็มจอ"}
+    </button>
+  );
+}
+
 const money = (value) => fmtMoney(value);
 const pctFmt = (value) => (value == null ? "–" : `${value}%`);
 
@@ -167,6 +193,7 @@ function sumRows(rows) {
 }
 
 function YearGrid({ title, rows, months, grouped = false, showTotal = false, empty = "ยังไม่มีข้อมูล" }) {
+  const { ref: fsRef, isFs, toggle } = useFullscreen();
   const groups = grouped
     ? rows.reduce((acc, row) => {
         const key = row.team || "ไม่ระบุทีม";
@@ -179,7 +206,10 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
   if (!rows.length) {
     return (
       <section className="glass-panel" style={{ padding: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
+        <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
+          <FullscreenButton isFs={isFs} onToggle={toggle} />
+        </div>
         <div style={{ marginTop: 12, color: "var(--text-3)" }}>{empty}</div>
       </section>
     );
@@ -188,11 +218,12 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
   const colCount = 2 + months.length + 1; // รายการ + ค่า + เดือน + รวมปี
 
   return (
-    <section className="glass-panel" style={{ padding: 16 }}>
+    <section ref={fsRef} className="glass-panel" style={isFs ? { padding: 20, background: "var(--bg)", height: "100vh", overflow: "auto" } : { padding: 16 }}>
       <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
         <BarChart3 size={17} aria-hidden="true" />
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
-        <div className="flex items-center gap-3" style={{ flexWrap: "wrap" }}>
+        <FullscreenButton isFs={isFs} onToggle={toggle} />
+        <div className="flex items-center gap-3" style={{ flexWrap: "wrap", width: "100%" }}>
           {METRICS.map((m) => (
             <span key={m.key} className="flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--text-2)" }}>
               <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: m.color, display: "inline-block" }} />
@@ -299,20 +330,6 @@ export default function SalesPlanningOverviewPage() {
   const [allMonths, setAllMonths] = useState(false); // รวมทั้งปีในการ์ด KPI/FC
   const [tab, setTab] = useState("tables");
   const year = month.slice(0, 4);
-
-  // ── ดูเต็มจอ (fullscreen) ของกล่องภาพรวม ───────────────────────────
-  const fsRef = useRef(null);
-  const [isFs, setIsFs] = useState(false);
-  useEffect(() => {
-    const onFs = () => setIsFs(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFs);
-    return () => document.removeEventListener("fullscreenchange", onFs);
-  }, []);
-  const toggleFullscreen = () => {
-    if (typeof document === "undefined") return;
-    if (!document.fullscreenElement) fsRef.current?.requestFullscreen?.();
-    else document.exitFullscreen?.();
-  };
   const [yearDashboards, setYearDashboards] = useState([]);
   const [sahamitRisk, setSahamitRisk] = useState(null);
   const [forecastReview, setForecastReview] = useState(null);
@@ -403,9 +420,6 @@ export default function SalesPlanningOverviewPage() {
   const headerRight = (
     <>
       <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
-      <button type="button" className="btn" onClick={toggleFullscreen} title={isFs ? "ออกจากเต็มจอ" : "ดูเต็มจอ"}>
-        {isFs ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />} {isFs ? "ออกเต็มจอ" : "เต็มจอ"}
-      </button>
       <Link className="btn" href="/sa/deals"><FolderKanban size={15} aria-hidden="true" /> โครงการ</Link>
       <Link className="btn" href="/sa/targets"><Target size={15} aria-hidden="true" /> เป้าหมาย</Link>
     </>
@@ -418,19 +432,7 @@ export default function SalesPlanningOverviewPage() {
       subtitle="คาดการณ์มูลค่าโครงการ เพื่อผลักไปสู่ Won โดย PM อาจเกิดก่อนหรือหลัง Won ได้"
       headerRight={headerRight}
     >
-      <div
-        ref={fsRef}
-        className="flex flex-col gap-5"
-        style={isFs ? { background: "var(--bg)", padding: 20, height: "100vh", overflow: "auto" } : undefined}
-      >
-        {isFs && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>บริหารงานขาย — ภาพรวม ({periodLabel})</h1>
-            <button type="button" className="btn" style={{ marginLeft: "auto" }} onClick={toggleFullscreen}>
-              <Minimize2 size={15} aria-hidden="true" /> ออกเต็มจอ
-            </button>
-          </div>
-        )}
+      <div className="flex flex-col gap-5">
         {error && (
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>
             {error}

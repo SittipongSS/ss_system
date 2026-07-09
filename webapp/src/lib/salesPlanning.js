@@ -140,6 +140,13 @@ export function normalizeStage(value) {
   return DEAL_STAGES.includes(value) ? value : 'lead';
 }
 
+// ประเภทโครงการ (ตรงกับ projects.type ของ PM) — เลือกตั้งแต่หน้าโครงการขาย เพื่อส่ง
+// เป็นค่าตั้งต้นตอนสร้างไทม์ไลน์ PM. เก็บใน sales_deals.metadata.projectType (ไม่มี column แยก).
+export const PROJECT_TYPES = ['NPD', 'RE-ORDER'];
+export function normalizeProjectType(value) {
+  return value === 'RE-ORDER' ? 'RE-ORDER' : 'NPD';
+}
+
 export function forecastAmount(deal) {
   // Probability weighting was dropped — "คาดการณ์" duplicated "มูลค่า", so the
   // forecast is simply the full project value.

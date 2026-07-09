@@ -49,7 +49,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     name: body.name || deal.title,
     customerId: body.customerId || deal.customerId || null,
     customerName: body.customerName || deal.customerName || null,
-    type: body.type === 'RE-ORDER' ? 'RE-ORDER' : 'NPD',
+    // ประเภทมาจาก body (โมดัลไทม์ไลน์) → ตกไปที่ค่าที่เลือกไว้บนโครงการขาย (metadata.projectType)
+    type: (body.type ?? deal.metadata?.projectType) === 'RE-ORDER' ? 'RE-ORDER' : 'NPD',
     urgency: body.urgency || 'Schedule',
     aeOwner: body.aeOwner || deal.ownerName || user.name || '',
     acOwner: body.acOwner || '',

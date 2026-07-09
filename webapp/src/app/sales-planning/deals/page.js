@@ -122,6 +122,7 @@ export default function SalesPlanningPipelinePage() {
       customerId: deal.customerId || "",
       customerName: deal.customerName || "",
       stage: deal.stage || "lead",
+      projectType: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
       probability: snapForecastLevel(deal.probability),
@@ -255,7 +256,7 @@ export default function SalesPlanningPipelinePage() {
       customerId: deal.customerId || "",
       startDate: new Date().toISOString().slice(0, 10),
       dueDate: deal.expectedCloseDate || "",
-      type: "NPD",
+      type: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
       aeOwner: deal.ownerName || "",
     });
     setPmModalOpen(true);
@@ -574,6 +575,13 @@ export default function SalesPlanningPipelinePage() {
             <select className="premium-select" value={dealForm.customerId} onChange={(e) => setDealForm({ ...dealForm, customerId: e.target.value })}>
               <option value="">ไม่ผูกฐานข้อมูลลูกค้า</option>
               {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <label>
+            ประเภทโครงการ
+            <select className="premium-select" value={dealForm.projectType} onChange={(e) => setDealForm({ ...dealForm, projectType: e.target.value })}>
+              <option value="NPD">NPD (สินค้าใหม่)</option>
+              <option value="RE-ORDER">RE-ORDER (สั่งซ้ำ)</option>
             </select>
           </label>
           <label>

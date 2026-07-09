@@ -13,6 +13,7 @@ export const initialDealForm = {
   customerId: "",
   customerName: "",
   stage: "lead",
+  projectType: "NPD", // NPD | RE-ORDER — ส่งต่อเป็นค่าตั้งต้นตอนสร้างไทม์ไลน์ PM
   projectValue: "",
   probability: "50",
   forecastMonth: "",
