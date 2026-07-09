@@ -157,7 +157,6 @@ export default function AppLayout({ children }) {
         { href: '/database', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'customers:view', match: (p) => p === '/database' },
         { href: '/database/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
         { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
-        { href: '/database/holidays', name: 'วันหยุด (ปฏิทินทำการ)', icon: CalendarDays, cap: 'master:manage', match: (p) => p.startsWith('/database/holidays') },
       ],
     },
     {
@@ -186,7 +185,6 @@ export default function AppLayout({ children }) {
       items: [
         { href: '/mgmt', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'mgmt:view', match: (p) => p === '/mgmt' },
         { href: '/mgmt/tasks', name: 'รายการงาน', icon: ListTodo, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/tasks') },
-        { href: '/mgmt/calendar', name: 'ปฏิทิน', icon: CalendarDays, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/calendar') },
         { href: '/mgmt/meetings', name: 'การประชุม', icon: Users, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/meetings') },
         { href: '/mgmt/rocks', name: 'Rock & Improve', icon: Target, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/rocks') },
         { href: '/mgmt/trash', name: 'ถังขยะ', icon: Trash2, cap: 'mgmt:edit', match: (p) => p.startsWith('/mgmt/trash') },
@@ -281,6 +279,16 @@ export default function AppLayout({ children }) {
               })}
             </li>
           ))}
+          <li className="nav-group" style={{ marginTop: 'auto', marginBottom: '8px' }}>
+            <Link
+              href="/database/holidays"
+              className={`nav-item ${pathname.startsWith('/database/holidays') ? 'active' : ''}`}
+              title={isCollapsed ? 'ปฏิทิน' : undefined}
+            >
+              <CalendarDays size={18} className="ico" />
+              <span className="nav-label">ปฏิทิน</span>
+            </Link>
+          </li>
         </ul>
 
         {/* Sidebar Footer containing Theme Toggle */}
