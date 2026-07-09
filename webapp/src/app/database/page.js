@@ -163,7 +163,7 @@ export default function DatabaseOverview() {
       });
     });
     return q;
-  }, [products, customers, canApprove, canApproveProduct, canApproveCustomer, router]);
+  }, [products, customers, canApprove, role, myTeam, router]);
 
   return (
     <Workspace
