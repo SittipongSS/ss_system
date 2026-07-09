@@ -51,33 +51,32 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     projectTasks = data || [];
   }
 
-  // ── งาน personal_tasks ──
-  //   • งานส่วนตัว (ไม่ผูกโปรเจกต์) + งานเพิ่มเติมที่ฉันสร้าง/ถูกมอบ → เห็นเสมอ
-  //   • งานเพิ่มเติม (ผูกโปรเจกต์) ของคนอื่น → เห็นตาม scope (team = โปรเจกต์ทีมฉัน, all = ทุกอัน)
-  //   • งานส่วนตัวของคนอื่น (ไม่ผูก) → ไม่หลุดเข้า team/all
-  // 2 query แยก (ไม่ใช้ .or กับ assigneeId) — เผื่อยังไม่รัน migration 0026 คอลัมน์
-  // assigneeId ยังไม่มี: query นั้นจะ error เฉยๆ (data=null) ไม่ทำให้งานส่วนตัวหาย
+  // ── งาน personal_tasks (ระบบติดตามงาน — ผู้มีสิทธิ์ต้องเห็น "งาน" ทั้งหมดในขอบเขต) ──
+  //   • mine = งานที่ฉันเป็นเจ้าของ หรือถูกมอบหมายให้ฉัน
+  //   • team = งานทุกงานที่คนในทีมฉันเป็นเจ้าของ/ผู้รับมอบ + งานที่ผูกโปรเจกต์ของทีม
+  //   • all  = ทุกงานในระบบ (admin / sales head ติดตามได้ทุกทีม — วัดผลได้)
+  // เดิม team/all ดึงเฉพาะงานที่ "มอบหมาย/ผูกโปรเจกต์" ทำให้งานที่ผู้ใช้สร้างให้ตัวเอง
+  // (ไม่มอบหมาย + ไม่ผูกโปรเจกต์ เช่นผูกแค่ดีลหรือไม่ผูกเลย) หลุดจากสายตา admin — แก้แล้ว.
   const [{ data: byOwner }, { data: byAssignee }] = await Promise.all([
     supabase.from('personal_tasks').select('*').eq('ownerId', user.id).order('createdAt', { ascending: false }),
     supabase.from('personal_tasks').select('*').eq('assigneeId', user.id).order('createdAt', { ascending: false }),
   ]);
   const minePersonal = [...(byOwner || []), ...(byAssignee || [])];
 
-  // team/all: งานที่ "ถูกมอบหมาย" (assigneeId ≠ null) ให้คนในขอบเขต + งานที่ผูก
-  // โปรเจกต์ในขอบเขต. งานส่วนตัวที่ไม่ได้มอบหมาย (assigneeId ว่าง) ไม่หลุดออกไป.
   let extraPersonal = [];
-  if (scope === 'team' || scope === 'all') {
+  if (scope === 'all') {
+    const { data } = await supabase.from('personal_tasks').select('*').order('createdAt', { ascending: false });
+    extraPersonal = data || [];
+  } else if (scope === 'team') {
+    const [teamProjIds, teamIds] = await Promise.all([
+      teamProjectIds(supabase, user.team),
+      teamUserIds(supabase, user.team),
+    ]);
     const queries = [];
-    if (scope === 'team') {
-      const [teamProjIds, teamIds] = await Promise.all([
-        teamProjectIds(supabase, user.team),
-        teamUserIds(supabase, user.team),
-      ]);
-      if (teamProjIds.length) queries.push(supabase.from('personal_tasks').select('*').in('projectId', teamProjIds));
-      if (teamIds.length) queries.push(supabase.from('personal_tasks').select('*').in('assigneeId', teamIds));
-    } else { // all
-      queries.push(supabase.from('personal_tasks').select('*').not('projectId', 'is', null));
-      queries.push(supabase.from('personal_tasks').select('*').not('assigneeId', 'is', null));
+    if (teamProjIds.length) queries.push(supabase.from('personal_tasks').select('*').in('projectId', teamProjIds));
+    if (teamIds.length) {
+      queries.push(supabase.from('personal_tasks').select('*').in('assigneeId', teamIds));
+      queries.push(supabase.from('personal_tasks').select('*').in('ownerId', teamIds));
     }
     const results = await Promise.all(queries.map((q) => q.order('createdAt', { ascending: false })));
     extraPersonal = results.flatMap((r) => r.data || []);
