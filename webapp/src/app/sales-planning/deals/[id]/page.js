@@ -178,7 +178,7 @@ export default function DealOverviewPage() {
     return [...acts, ...stages].sort((x, y) => String(y.at || "").localeCompare(String(x.at || "")));
   }, [data]);
 
-  // สรุปความคืบหน้างานผลิต (จาก project_tasks ของโครงการ PM ที่ผูก)
+  // สรุปความคืบหน้าไทม์ไลน์ (จาก project_tasks ของโครงการ PM ที่ผูก)
   const taskSummary = useMemo(() => {
     const tasks = data?.projectTasks || [];
     const done = tasks.filter((t) => t.status === "Completed").length;
@@ -462,7 +462,7 @@ export default function DealOverviewPage() {
     if (!deal) return;
     // ระบุให้ชัดว่าจะลบอะไรพ่วงไปบ้าง (Sales เป็นแม่ — ลบทั้งสาย)
     const extras = [];
-    if (data?.project) extras.push(`งานผลิต PM ${data.project.code || ""}`.trim());
+    if (data?.project) extras.push(`ไทม์ไลน์ ${data.project.code || ""}`.trim());
     if (data?.projectTasks?.length) extras.push(`${data.projectTasks.length} ขั้นตอน`);
     if (data?.shipmentPrep) extras.push("เอกสารเตรียมส่งของ");
     const extraText = extras.length ? `\n\nจะลบพ่วงด้วย: ${extras.join(" · ")}` : "";
@@ -562,7 +562,7 @@ export default function DealOverviewPage() {
         <Pencil size={16} aria-hidden="true" />
       </button>
       {canDelete && (
-        <button type="button" className="btn icon-only ghost" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบโครงการ" title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
+        <button type="button" className="btn icon-only ghost" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบโครงการ" title="ลบโครงการ (ลบไทม์ไลน์พ่วงด้วย)">
           <Trash2 size={16} aria-hidden="true" />
         </button>
       )}
@@ -621,7 +621,7 @@ export default function DealOverviewPage() {
           <nav className="glass-panel toolbar" aria-label="ส่วนต่าง ๆ ของโครงการ" style={{ padding: "8px 12px" }}>
             <a className="btn ghost sm" href="#deal-kpi">ภาพรวม</a>
             <a className="btn ghost sm" href="#deal-tasks">งาน</a>
-            <a className="btn ghost sm" href="#deal-pm">งานผลิต (PM)</a>
+            <a className="btn ghost sm" href="#deal-pm">ไทม์ไลน์</a>
             <a className="btn ghost sm" href="#deal-timeline">ความเคลื่อนไหว</a>
             <span className="spacer" />
             {lc?.routes?.map((route) => (
@@ -677,9 +677,9 @@ export default function DealOverviewPage() {
               hint={dealAgeDays == null ? "-" : `อายุโครงการรวม ${dealAgeDays} วัน`}
             />
             <Stat
-              label="งานผลิตคืบหน้า"
+              label="ไทม์ไลน์คืบหน้า"
               value={deal.projectId && taskSummary.total ? `${taskSummary.done}/${taskSummary.total}` : "-"}
-              hint={!deal.projectId ? "ยังไม่ผูกโครงการ PM" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.total && taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : "-"}
+              hint={!deal.projectId ? "ยังไม่ได้สร้างไทม์ไลน์" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.total && taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : "-"}
             />
             {SALES_FEATURES.quotations && (
               <Stat label="ใบเสนอที่รับแล้ว" value={acceptedQuote ? money(acceptedQuote.totalAmount) : "-"} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอที่รับ"} />
@@ -689,17 +689,10 @@ export default function DealOverviewPage() {
             )}
           </section>
 
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 430px), 1fr))",
-            gap: 20,
-            alignItems: "start",
-          }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           <section id="deal-tasks" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <ClipboardList size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานที่ผูกกับโครงการ</h2>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานของโครงการ</h2>
               <span className="ui-badge" style={{ color: "var(--text-2)" }}>{dealTaskSummary.done}/{dealTaskSummary.total} เสร็จ</span>
               <div className="spacer" />
               <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิดหน้างาน</a>
@@ -733,20 +726,27 @@ export default function DealOverviewPage() {
                 </table>
               </div>
             ) : (
-              <Empty>ยังไม่มีงานที่ผูกกับโครงการนี้ กด “เปิดหน้างาน” แล้วสร้างงานโดยเลือกผูกกับโครงการนี้ได้</Empty>
+              <Empty>ยังไม่มีงานของโครงการนี้ กด “เปิดหน้างาน” แล้วสร้างงานโดยเลือกผูกกับโครงการนี้ได้</Empty>
             )}
           </section>
 
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 430px), 1fr))",
+            gap: 20,
+            alignItems: "start",
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           <section id="deal-pm" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <PackageCheck size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานผลิต (PM)</h2>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ไทม์ไลน์</h2>
               <div className="spacer" />
               {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
             </div>
             {data.project ? (
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                <Stat label="โครงการ" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
+                <Stat label="ไทม์ไลน์" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
                 <Stat label="ความคืบหน้า" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : "-"} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : "-"} />
                 <Stat label="ประเภท" value={data.project.type || "-"} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
                 <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={(data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", ") || "-"} />
@@ -754,7 +754,7 @@ export default function DealOverviewPage() {
                   <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : "-"} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
                 )}
               </div>
-            ) : <Empty>ยังไม่ได้ผูกโครงการ PM</Empty>}
+            ) : <Empty>ยังไม่ได้สร้างไทม์ไลน์</Empty>}
           </section>
 
           {(SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
