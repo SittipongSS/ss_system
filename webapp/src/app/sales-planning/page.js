@@ -367,6 +367,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
 
 export default function SalesPlanningOverviewPage() {
   const canReview = useCan("salesplan:review");
+  const canTarget = useCan("salesplan:target");
   const team = useTeam();
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
@@ -464,7 +465,7 @@ export default function SalesPlanningOverviewPage() {
     <>
       <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
       <Link className="btn" href="/sa/deals"><FolderKanban size={15} aria-hidden="true" /> โครงการ</Link>
-      <Link className="btn" href="/sa/targets"><Target size={15} aria-hidden="true" /> เป้าหมาย</Link>
+      {canTarget && <Link className="btn" href="/sa/targets"><Target size={15} aria-hidden="true" /> เป้าหมาย</Link>}
     </>
   );
 
