@@ -313,7 +313,7 @@ export default function TasksPage() {
     const proj = t.projectId ? resolveProj(t.projectId) : null;
     const deal = t.dealId ? resolveDeal(t.dealId) : null;
     if (proj) return <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }} className="font-mono" style={{ cursor: "pointer", fontSize: "10px", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }}>{proj.code}</span>;
-    if (deal) return <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: "4px", color: "var(--purple)" }}><Briefcase size={10} /> {deal.title}</span>;
+    if (deal) return <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: "4px", color: "var(--purple)" }}><Briefcase size={10} /> {deal.title}</span>;
     return null;
   };
 
