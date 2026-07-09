@@ -6,6 +6,12 @@
 
 ---
 
+## Update 2026-07-09
+
+- Phase 2 is now complete in code: Kanban, Calendar, Eisenhower Matrix, and the deal detail task section are implemented.
+- Phase 3 is now implemented in code: `/sa/tasks/kpi` and `GET /api/sales-planning/task-kpi`.
+- Remaining optional work: configurable KPI weights, extra workflow statuses, project-task KPI inclusion, and reminder/notification polish.
+
 ## 1. สิ่งที่เทมเพลตต้นแบบมี (สำรวจจากชีตจริง)
 
 | แท็บ | เนื้อหา |

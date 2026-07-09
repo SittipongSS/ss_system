@@ -177,7 +177,7 @@ export default function AppLayout({ children }) {
         { href: '/sa', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sa' || p === '/sales-planning' },
         { href: '/sa/deals', name: 'โครงการ', icon: FolderKanban, cap: 'salesplan:view', match: (p) => p === '/sa/deals' || p.startsWith('/sa/deals/') || p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
         { href: '/sa/targets', name: 'วางเป้าหมาย', icon: Target, cap: 'salesplan:target', match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
-        { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/sa/tasks' || p === '/pm/tasks' },
+        { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },
     {

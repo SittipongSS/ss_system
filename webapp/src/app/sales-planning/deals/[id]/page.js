@@ -79,6 +79,17 @@ function Empty({ children }) {
   return <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>{children}</div>;
 }
 
+const TASK_STATUS_META = {
+  Pending: { label: "รอ", color: "var(--text-3)" },
+  "In Progress": { label: "กำลังทำ", color: "var(--accent)" },
+  Completed: { label: "เสร็จแล้ว", color: "var(--green)" },
+};
+
+function TaskStatusBadge({ status }) {
+  const meta = TASK_STATUS_META[status] || { label: status || "-", color: "var(--text-3)" };
+  return <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>;
+}
+
 // แถบ lifecycle: ลีด → … → เข้าโครงการ (lost = แถบแดงแทน) — ฝังใน hero สถานะ
 function DealStepper({ steps, lost }) {
   if (lost) {
@@ -182,6 +193,14 @@ export default function DealOverviewPage() {
     const done = tasks.filter((t) => t.status === "Completed").length;
     const current = tasks.find((t) => t.status === "In Progress");
     return { total: tasks.length, done, current };
+  }, [data]);
+  const dealTaskSummary = useMemo(() => {
+    const tasks = data?.dealTasks || [];
+    return {
+      total: tasks.length,
+      done: tasks.filter((t) => t.status === "Completed").length,
+      active: tasks.filter((t) => t.status !== "Completed").length,
+    };
   }, [data]);
 
   // เวลาปัจจุบันจับใน effect (กฎ react-hooks/purity ห้าม Date.now() ระหว่าง render)
@@ -610,6 +629,7 @@ export default function DealOverviewPage() {
           {/* เมนูลิงก์ไปแต่ละส่วนของหน้า + ป้ายเฟสถัดไปของส่วนที่ยังไม่เปิดใช้ */}
           <nav className="glass-panel toolbar" aria-label="ส่วนต่าง ๆ ของโครงการ" style={{ padding: "8px 12px" }}>
             <a className="btn ghost sm" href="#deal-kpi">ภาพรวม</a>
+            <a className="btn ghost sm" href="#deal-tasks">งาน</a>
             <a className="btn ghost sm" href="#deal-pm">งานผลิต (PM)</a>
             <a className="btn ghost sm" href="#deal-routing">ส่งต่อ</a>
             <a className="btn ghost sm" href="#deal-timeline">ความเคลื่อนไหว</a>
@@ -673,6 +693,47 @@ export default function DealOverviewPage() {
             )}
             {SALES_FEATURES.documents && (
               <Stat label="เอกสารค้าง" value={pendingDocs.length} hint={`${data.documents?.length || 0} รายการ`} />
+            )}
+          </section>
+
+          <section id="deal-tasks" className="glass-panel" style={{ padding: 16 }}>
+            <div className="flex items-center gap-2 mb-3">
+              <ClipboardList size={17} aria-hidden="true" />
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานที่ผูกกับดีล</h2>
+              <span className="ui-badge" style={{ color: "var(--text-2)" }}>{dealTaskSummary.done}/{dealTaskSummary.total} เสร็จ</span>
+              <div className="spacer" />
+              <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิดหน้างาน</a>
+            </div>
+            {(data.dealTasks || []).length ? (
+              <div className="premium-glass-table table-responsive">
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>งาน</th>
+                      <th>สถานะ</th>
+                      <th>ผู้รับผิดชอบ</th>
+                      <th>กำหนดเสร็จ</th>
+                      <th>หมวด</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.dealTasks.map((task) => (
+                      <tr key={task.id} className="premium-row">
+                        <td style={{ fontWeight: 700 }}>
+                          {task.title}
+                          {task.note && <div style={{ marginTop: 2, color: "var(--text-3)", fontSize: 12, fontWeight: 500 }}>{task.note}</div>}
+                        </td>
+                        <td><TaskStatusBadge status={task.status} /></td>
+                        <td>{task.assigneeName || task.ownerName || "-"}</td>
+                        <td>{task.dueDate ? fmtDate(task.dueDate) : <span style={{ color: "var(--text-3)" }}>-</span>}</td>
+                        <td>{task.category || <span style={{ color: "var(--text-3)" }}>-</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty>ยังไม่มีงานที่ผูกกับดีลนี้ กด “เปิดหน้างาน” แล้วสร้างงานโดยเลือกผูกกับดีลนี้ได้</Empty>
             )}
           </section>
 

@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -11,6 +12,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { isSuperuser } from "@/lib/permissions";
+import { useRole } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
@@ -97,6 +99,7 @@ const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0
 
 export default function TasksPage() {
   const router = useRouter();
+  const role = useRole();
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
@@ -131,6 +134,7 @@ export default function TasksPage() {
 
   // กันผลลัพธ์ที่มาช้า/สลับลำดับเมื่อสลับ scope เร็ว ๆ
   const loadSeq = useRef(0);
+  const deepLinkHandled = useRef(false);
   const loadWork = async (sc) => {
     const seq = ++loadSeq.current;
     setLoading(true);
@@ -225,6 +229,14 @@ export default function TasksPage() {
 
   // ── CRUD ──
   const openAdd = () => { setEditingId(null); setForm(PERSONAL_BLANK); setShowModal(true); };
+  useEffect(() => {
+    const dealId = new URLSearchParams(window.location.search).get("dealId");
+    if (!dealId || deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+    setEditingId(null);
+    setForm({ ...PERSONAL_BLANK, linkType: "deal", dealId });
+    setShowModal(true);
+  }, []);
   const openEdit = (t) => {
     setEditingId(t.id);
     setForm({
@@ -357,6 +369,8 @@ export default function TasksPage() {
     const d = new Date(r.y, r.m + delta, 1);
     return { y: d.getFullYear(), m: d.getMonth() };
   });
+  const effectiveRole = me?.role || role;
+  const canSeeKpi = !!effectiveRole && (isSuperuser(effectiveRole) || effectiveRole === "senior_ae");
 
   return (
     <div>
@@ -367,6 +381,7 @@ export default function TasksPage() {
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
+          {canSeeKpi && <Link href="/sa/tasks/kpi" className="btn"><BarChart3 size={16} /> KPI ทีม</Link>}
           <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
         </div>
       </div>

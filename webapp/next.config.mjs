@@ -5,6 +5,7 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: ['127.0.0.1'],
   turbopack: {
     root: rootDir,
   },
@@ -24,6 +25,7 @@ const nextConfig = {
       { source: '/sa/targets/:path*', destination: '/sales-planning/targets/:path*' },
       { source: '/sa/projects/:path*', destination: '/pm/projects/:path*' },
       { source: '/sa/tasks', destination: '/pm/tasks' },
+      { source: '/sa/tasks/:path*', destination: '/pm/tasks/:path*' },
     ];
   },
   async redirects() {
@@ -38,6 +40,7 @@ const nextConfig = {
       { source: '/pm/projects', destination: '/sa/deals', permanent: false },
       { source: '/pm/projects/:path*', destination: '/sa/projects/:path*', permanent: false },
       { source: '/pm/tasks', destination: '/sa/tasks', permanent: false },
+      { source: '/pm/tasks/:path*', destination: '/sa/tasks/:path*', permanent: false },
     ];
   },
 };
