@@ -109,9 +109,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (before.metadata?.needsReview && (filledForecast || filledWon)) {
     patch.metadata = { ...(patch.metadata || before.metadata || {}), needsReview: false, bypassPipeline: false };
   }
-  // projectType (NPD/RE-ORDER) — merge ทับ metadata ล่าสุดเสมอ (หลัง buildWinPatch/needsReview)
+  // projectType (NPD/RE-ORDER) + brand — merge ทับ metadata ล่าสุดเสมอ (หลัง buildWinPatch/needsReview)
   if ('projectType' in body) {
     patch.metadata = { ...(patch.metadata || before.metadata || {}), projectType: normalizeProjectType(body.projectType) };
+  }
+  if ('brand' in body) {
+    patch.metadata = { ...(patch.metadata || before.metadata || {}), brand: body.brand || '' };
   }
 
   const { data, error } = await supabase

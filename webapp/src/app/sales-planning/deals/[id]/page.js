@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, Paperclip, Pencil, Save, Send, Trash2, Trophy, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
@@ -12,6 +12,7 @@ import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord } from "@/lib/permissions";
 import { FORECAST_LEVELS, forecastBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
+import { brandThList } from "@/lib/master/brands";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
@@ -119,7 +120,7 @@ function RouteCard({ route, onAction, busy, canEdit }) {
       <div style={{ fontSize: 12, color: "var(--text-3)", margin: "6px 0 10px" }}>{route.hint}</div>
       {route.actionKind && canEdit ? (
         <button type="button" className="btn btn-primary sm" onClick={() => onAction(route)} disabled={busy}>
-          {route.actionKind === "create-project" ? <PackageCheck size={13} aria-hidden="true" /> : <FileText size={13} aria-hidden="true" />} {route.actionLabel}
+          {route.actionKind?.startsWith("create-") ? <Plus size={13} aria-hidden="true" /> : <FileText size={13} aria-hidden="true" />} {route.actionLabel}
         </button>
       ) : route.href ? (
         <a className="btn sm" href={route.href}><ExternalLink size={13} aria-hidden="true" /> {route.linkLabel || "เปิด"}</a>
@@ -394,6 +395,7 @@ export default function DealOverviewPage() {
       dueDate: deal.expectedCloseDate || "",
       type: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
       aeOwner: deal.ownerName || "",
+      metadata: { brand: deal.metadata?.brand || "" },
     });
     setPmModalOpen(true);
   };
@@ -411,6 +413,7 @@ export default function DealOverviewPage() {
       customerId: deal.customerId || "",
       stage: deal.stage || "lead",
       projectType: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
+      brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
       probability: snapForecastLevel(deal.probability),
@@ -512,8 +515,8 @@ export default function DealOverviewPage() {
     if (!canEdit || !lc?.nextAction) return null;
     const k = lc.nextAction.kind;
     if (k === "win") return <button type="button" className="btn btn-primary" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
-    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><PackageCheck size={14} aria-hidden="true" /> จัดการโครงการ</button>;
-    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/sa/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> จัดการโครงการ</a>;
+    if (k === "create_project") return <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}><Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์</button>;
+    if (k === "open_project" && deal.projectId) return <a className="btn btn-primary" href={`/sa/projects/${deal.projectId}`}><ExternalLink size={14} aria-hidden="true" /> จัดการไทม์ไลน์</a>;
     return null;
   };
   const headerRight = (
@@ -528,14 +531,14 @@ export default function DealOverviewPage() {
           <Ban size={15} aria-hidden="true" /> ไม่ไปต่อ
         </button>
       )}
-      {/* ปุ่ม "จัดการโครงการ" ถาวร: มี PM แล้ว → เปิดหน้าโครงการ, ยังไม่มี → เปิดโมดัลสร้าง */}
+      {/* มีไทม์ไลน์ PM แล้ว → "จัดการ"; ยังไม่มี → "+ สร้าง" (ให้ต่างจากปุ่มจัดการชัดเจน) */}
       {deal?.projectId ? (
         <a className="btn" href={`/sa/projects/${deal.projectId}`}>
-          <PackageCheck size={15} aria-hidden="true" /> จัดการโครงการ
+          <PackageCheck size={15} aria-hidden="true" /> จัดการไทม์ไลน์
         </a>
       ) : (canEdit && deal?.stage !== "lost") ? (
         <button type="button" className="btn" onClick={openCreatePM} disabled={!!actionBusy}>
-          <PackageCheck size={15} aria-hidden="true" /> จัดการโครงการ
+          <Plus size={15} aria-hidden="true" /> สร้างไทม์ไลน์
         </button>
       ) : null}
     </>
@@ -578,6 +581,7 @@ export default function DealOverviewPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 15 }}>{stageBadge(deal.stage)}</span>
               <span className="ui-badge" style={{ color: "var(--text-2)" }}>{deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD"}</span>
+              {deal.metadata?.brand && <span className="ui-badge" style={{ color: "var(--text-2)" }}>แบรนด์ {deal.metadata.brand}</span>}
               {!alreadyWon && deal.stage !== "lost" && forecastBadge(deal.probability)}
               <span className="ui-badge" style={{ color: deal.depositPaid ? "var(--green)" : "var(--amber)" }}>
                 {deal.depositPaid ? "ได้รับมัดจำแล้ว" : "ยังไม่ยืนยันมัดจำ"}
@@ -964,6 +968,17 @@ export default function DealOverviewPage() {
               <select className="premium-select" value={dealForm.projectType} onChange={(e) => setDealForm({ ...dealForm, projectType: e.target.value })}>
                 <option value="NPD">NPD (สินค้าใหม่)</option>
                 <option value="RE-ORDER">RE-ORDER (สั่งซ้ำ)</option>
+              </select>
+            </label>
+            <label>
+              แบรนด์
+              <select className="premium-select" value={dealForm.brand} onChange={(e) => setDealForm({ ...dealForm, brand: e.target.value })} disabled={!dealForm.customerId}>
+                <option value="">{dealForm.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน"}</option>
+                {(() => {
+                  const opts = brandThList((customers.find((c) => c.id === dealForm.customerId)?.brands) || []);
+                  const withCur = dealForm.brand && !opts.includes(dealForm.brand) ? [dealForm.brand, ...opts] : opts;
+                  return withCur.map((b) => <option key={b} value={b}>{b}</option>);
+                })()}
               </select>
             </label>
             <label>

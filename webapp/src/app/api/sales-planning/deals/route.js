@@ -100,8 +100,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     ownerId: body.ownerId || user.id || null,
     ownerName: body.ownerName || user.name || null,
     team: body.team || user.team || null,
-    // projectType (NPD/RE-ORDER) เก็บใน metadata — ใช้เป็นค่าตั้งต้นตอนสร้างไทม์ไลน์ PM
-    metadata: { ...(body.metadata || {}), projectType: normalizeProjectType(body.projectType ?? body.metadata?.projectType) },
+    // projectType (NPD/RE-ORDER) + brand เก็บใน metadata — ส่งต่อเป็นค่าตั้งต้นตอนสร้างไทม์ไลน์ PM
+    metadata: {
+      ...(body.metadata || {}),
+      projectType: normalizeProjectType(body.projectType ?? body.metadata?.projectType),
+      brand: (body.brand ?? body.metadata?.brand ?? '') || '',
+    },
   };
 
   // The creator may only mint deals within its own edit scope: an AE cannot

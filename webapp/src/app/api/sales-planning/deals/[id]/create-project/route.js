@@ -73,6 +73,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     ownerId: deal.ownerId || user.id || null,
     metadata: {
       ...(body.metadata || {}),
+      // แบรนด์: ใช้ที่โมดัลไทม์ไลน์ส่งมา ตกไปที่แบรนด์ที่เลือกไว้บนโครงการขาย
+      brand: body.metadata?.brand ?? deal.metadata?.brand ?? '',
       salesDealId: deal.id,
       salesDealTitle: deal.title,
       salesStage: deal.stage,
