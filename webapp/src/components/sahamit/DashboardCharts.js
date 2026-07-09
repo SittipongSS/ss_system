@@ -80,7 +80,7 @@ export default function DashboardCharts({ rounds, pos, coverages = [] }) {
     return [
       { name: "รอดำเนินการ", value: counts.open || 0, color: "var(--amber)" },
       { name: "ทยอยส่ง", value: counts.partial || 0, color: "var(--blue)" },
-      { name: "เสร็จสิ้น", value: counts.fulfilled || 0, color: "var(--green)" },
+      { name: "ส่งครบ (เสร็จสิ้น)", value: counts.delivered || 0, color: "var(--green)" },
     ].filter(d => d.value > 0);
   }, [pos]);
 
@@ -98,8 +98,8 @@ export default function DashboardCharts({ rounds, pos, coverages = [] }) {
                 <YAxis tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val} tick={{ fontSize: 12, fill: "var(--text-3)" }} axisLine={false} tickLine={false} dx={-10} />
                 <RechartsTooltip content={<CustomBarTooltip />} cursor={{ fill: "var(--panel-2)", opacity: 0.5 }} />
                 <Legend wrapperStyle={{ fontSize: "13px", paddingTop: "10px" }} />
-                <Bar dataKey="Forecast" name="ยอด Forecast" fill="var(--violet)" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                <Bar dataKey="PO" name="ยอด PO ที่ได้รับ" fill="var(--teal)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="Forecast" name="ยอด Forecast" fill="var(--blue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="PO" name="ยอด PO ที่ได้รับ" fill="var(--accent)" radius={[4, 4, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
           ) : (

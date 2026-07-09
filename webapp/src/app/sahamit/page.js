@@ -28,9 +28,9 @@ export default function SahamitOverview() {
   // Recent FC for activity
   const recentFCs = [...rounds].sort((a, b) => new Date(b.receivedDate || 0) - new Date(a.receivedDate || 0)).slice(0, 3);
 
-  // Success rate estimation (Fulfilled vs Total)
-  const fulfilledPos = pos.filter((p) => poRollupStatus(p) === "fulfilled");
-  const fulfillmentRate = activePos.length > 0 ? Math.round((fulfilledPos.length / activePos.length) * 100) : 0;
+  // Success rate estimation (Delivered vs Total)
+  const deliveredPos = pos.filter((p) => poRollupStatus(p) === "delivered");
+  const fulfillmentRate = activePos.length > 0 ? Math.round((deliveredPos.length / activePos.length) * 100) : 0;
 
   return (
     <Workspace
