@@ -346,12 +346,12 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
         )}
 
         {/* Footer */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: "14px" }}>
-          <span style={{ fontSize: "13px", color: "var(--text-3)" }}>
+        <div className="flex justify-between items-center gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+          <span className="text-[13px] text-[var(--text-3)]">
             {months.length ? `${months.length} เดือน` : "ช่วงเดือนไม่ถูกต้อง"}
             {hasGrid ? ` · ${rows.length} สินค้า · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : ""}
           </span>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div className="flex gap-2">
             <button type="button" className="btn" onClick={onClose} disabled={busy}>ยกเลิก</button>
             <button type="button" className="btn btn-primary px-6" onClick={submit} disabled={busy || !hasGrid}>
               {busy ? "กำลังบันทึก..." : editRound ? "บันทึกการแก้ไข" : "บันทึกรอบ FC"}

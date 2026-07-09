@@ -48,14 +48,14 @@ export default function ConfirmDialog({
           <p style={{ color: "var(--red)", marginTop: 10, fontSize: 13 }}>{err}</p>
         )}
       </div>
-      <div className="drawer-section flex justify-end gap-2">
+      <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
         {!hideCancel && (
-          <button className="btn btn-secondary" onClick={onClose} disabled={busy}>
+          <button className="btn" onClick={onClose} disabled={busy}>
             {cancelLabel}
           </button>
         )}
         <button
-          className={`btn ${danger ? "btn-danger" : "btn-primary"}`}
+          className={`btn px-6 ${danger ? "btn-danger" : "btn-primary"}`}
           onClick={run}
           disabled={busy}
         >
