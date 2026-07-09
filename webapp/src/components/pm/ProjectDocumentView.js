@@ -140,7 +140,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
   });
 
   const [users, setUsers] = useState([]);
-  const tasks = project.tasks || [];
+  const tasks = useMemo(() => project.tasks || [], [project.tasks]);
 
   // popover ตั้ง predecessors เมื่อคลิกบาร์ (ไม่ได้ลาก) — { task, x, y }
   const [depPopover, setDepPopover] = useState(null);
@@ -651,10 +651,11 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
   );
 }
 
+let activeDragRef = null;
+
 // ── บาร์ลากได้แบบ Monday/ClickUp ──
 function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, onPickDeps }) {
-  const dragRef = useRef(null);
-  const [, force] = useReducer((x) => x + 1, 0);
+  const [dragState, setDragState] = useState(null);
   // pending = ตำแหน่ง optimistic หลังปล่อยเมาส์ (เก็บเป็น ISO) คงไว้จนข้อมูลจริงจาก server กลับมา
   // → กันบาร์เด้งกลับตำแหน่งเดิมแว้บหนึ่งระหว่างรอ reload
   const [pending, setPending] = useState(null);
@@ -664,7 +665,7 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
   const fIdxRaw = dayIndexOf(task.finishDate, rangeStartMs);
   const baseFinishIdx = isNaN(fIdxRaw) ? baseStartIdx : Math.max(fIdxRaw, baseStartIdx);
 
-  const d = dragRef.current;
+  const d = dragState;
   const pendS = pending ? dayIndexOf(pending.s, rangeStartMs) : NaN;
   const pendF = pending ? dayIndexOf(pending.f, rangeStartMs) : NaN;
   const sIdx = d ? d.curS : (!isNaN(pendS) ? pendS : baseStartIdx);
@@ -691,22 +692,24 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
     if (!canEdit) return;
     if (task.isMilestone && mode !== "move") return;
     e.preventDefault(); e.stopPropagation();
-    dragRef.current = { mode, startX: e.clientX, origS: baseStartIdx, origF: baseFinishIdx, curS: baseStartIdx, curF: baseFinishIdx, moved: false };
-    force();
+    const initialDrag = { mode, startX: e.clientX, origS: baseStartIdx, origF: baseFinishIdx, curS: baseStartIdx, curF: baseFinishIdx, moved: false };
+    activeDragRef = initialDrag;
+    setDragState(initialDrag);
     const onMove = (ev) => {
-      const cur = dragRef.current; if (!cur) return;
+      const cur = activeDragRef; if (!cur) return;
       const dd = Math.round((ev.clientX - cur.startX) / pxPerDay);
       if (dd !== 0) cur.moved = true;
       if (cur.mode === "move") { cur.curS = cur.origS + dd; cur.curF = cur.origF + dd; }
       else if (cur.mode === "left") { cur.curS = Math.min(cur.origS + dd, cur.origF); }
       else if (cur.mode === "right") { cur.curF = Math.max(cur.origF + dd, cur.origS); }
-      force();
+      setDragState({ ...cur });
     };
     const onUp = (ev) => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      const cur = dragRef.current;
-      dragRef.current = null;
+      const cur = activeDragRef;
+      activeDragRef = null;
+      setDragState(null);
       const willChange = cur && cur.moved && (
         cur.mode === "right" ? cur.curF !== cur.origF : cur.curS !== cur.origS
       );
@@ -719,7 +722,6 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
         if (cur && !cur.moved && cur.mode === "move" && canEdit && onPickDeps) {
           onPickDeps(task, { x: ev.clientX, y: ev.clientY });
         }
-        force();
       }
     };
     window.addEventListener("pointermove", onMove);
