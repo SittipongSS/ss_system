@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Target, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Target, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
 import { KpiCard, MONTH_LABELS, MonthPicker, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
@@ -267,8 +267,23 @@ export default function SalesPlanningOverviewPage() {
   const team = useTeam();
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
+  const [allMonths, setAllMonths] = useState(false); // รวมทั้งปีในการ์ด KPI/FC
   const [tab, setTab] = useState("tables");
   const year = month.slice(0, 4);
+
+  // ── ดูเต็มจอ (fullscreen) ของกล่องภาพรวม ───────────────────────────
+  const fsRef = useRef(null);
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  const toggleFullscreen = () => {
+    if (typeof document === "undefined") return;
+    if (!document.fullscreenElement) fsRef.current?.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  };
   const [yearDashboards, setYearDashboards] = useState([]);
   const [sahamitRisk, setSahamitRisk] = useState(null);
   const [forecastReview, setForecastReview] = useState(null);
@@ -311,6 +326,28 @@ export default function SalesPlanningOverviewPage() {
   const selectedDashboard = yearDashboards.find((d) => d.month === month) || yearDashboards[0] || null;
   const rows = useMemo(() => buildYearRows(yearDashboards), [yearDashboards]);
 
+  // รวมทั้งปี (โหมด "ทุกเดือน"): บวก KPI + byForecast ข้ามทุกเดือนในปีที่เลือก.
+  const yearAggregate = useMemo(() => {
+    const t = { targetAmount: 0, weightedForecast: 0, pipelineValue: 0, wonValue: 0, openDeals: 0, saTarget: 0 };
+    const fc = { 20: 0, 50: 0, 80: 0, 100: 0 };
+    const fcCount = { 20: 0, 50: 0, 80: 0, 100: 0 };
+    let targetRows = 0;
+    for (const d of yearDashboards) {
+      const dt = d.totals || {};
+      t.targetAmount += Number(dt.targetAmount || 0);
+      t.weightedForecast += Number(dt.weightedForecast || 0);
+      t.pipelineValue += Number(dt.pipelineValue || 0);
+      t.wonValue += Number(dt.wonValue || 0);
+      t.openDeals += Number(dt.openDeals || 0);
+      t.saTarget += Number(dt.saTarget || 0);
+      targetRows += d.targets?.length || 0;
+      for (const b of d.byForecast || []) { fc[b.level] += Number(b.value || 0); fcCount[b.level] += Number(b.count || 0); }
+    }
+    t.targetGap = t.targetAmount - t.wonValue;
+    const byForecast = [20, 50, 80, 100].map((l) => ({ level: l, value: fc[l], count: fcCount[l] }));
+    return { totals: t, byForecast, targetRows };
+  }, [yearDashboards]);
+
   const saveForecastReview = async (status) => {
     setSubmitting(true);
     setError("");
@@ -329,12 +366,17 @@ export default function SalesPlanningOverviewPage() {
     }
   };
 
-  const totals = selectedDashboard?.totals || {};
-  const targetRows = selectedDashboard?.targets?.length || 0;
+  const totals = (allMonths ? yearAggregate.totals : selectedDashboard?.totals) || {};
+  const targetRows = allMonths ? yearAggregate.targetRows : (selectedDashboard?.targets?.length || 0);
+  const byForecast = allMonths ? yearAggregate.byForecast : selectedDashboard?.byForecast;
+  const periodLabel = allMonths ? `ทั้งปี ${year}` : `เดือน ${month}`;
   const sahamitRiskRows = (sahamitRisk?.rows || []).filter((row) => row.risk).slice(0, 8);
   const headerRight = (
     <>
-      <MonthPicker value={month} onChange={setMonth} />
+      <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
+      <button type="button" className="btn" onClick={toggleFullscreen} title={isFs ? "ออกจากเต็มจอ" : "ดูเต็มจอ"}>
+        {isFs ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />} {isFs ? "ออกเต็มจอ" : "เต็มจอ"}
+      </button>
       <Link className="btn" href="/sa/deals"><FolderKanban size={15} aria-hidden="true" /> โครงการ</Link>
       <Link className="btn" href="/sa/targets"><Target size={15} aria-hidden="true" /> เป้าหมาย</Link>
     </>
@@ -347,7 +389,19 @@ export default function SalesPlanningOverviewPage() {
       subtitle="คาดการณ์มูลค่าโครงการ เพื่อผลักไปสู่ Won โดย PM อาจเกิดก่อนหรือหลัง Won ได้"
       headerRight={headerRight}
     >
-      <div className="flex flex-col gap-5">
+      <div
+        ref={fsRef}
+        className="flex flex-col gap-5"
+        style={isFs ? { background: "var(--bg)", padding: 20, height: "100vh", overflow: "auto" } : undefined}
+      >
+        {isFs && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>บริหารงานขาย — ภาพรวม ({periodLabel})</h1>
+            <button type="button" className="btn" style={{ marginLeft: "auto" }} onClick={toggleFullscreen}>
+              <Minimize2 size={15} aria-hidden="true" /> ออกเต็มจอ
+            </button>
+          </div>
+        )}
         {error && (
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>
             {error}
@@ -378,7 +432,7 @@ export default function SalesPlanningOverviewPage() {
         {tab === "tables" && (
         <>
         <section className="kpi-grid" aria-busy={loading}>
-          <KpiCard icon={<Target size={16} aria-hidden="true" />} label="เป้าเดือนที่เลือก" value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
+          <KpiCard icon={<Target size={16} aria-hidden="true" />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
           <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์" value={money(totals.weightedForecast)} hint="มูลค่าโครงการเปิดที่คาดว่าจะปิดให้เป็น Won" />
           <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าโครงการเปิด" value={money(totals.pipelineValue)} hint={`โครงการเปิด ${totals.openDeals || 0} รายการ`} />
           <KpiCard icon={<LineChart size={16} aria-hidden="true" />} label="Won" value={money(totals.wonValue)} hint={`ส่วนต่าง ${money(totals.targetGap)}`} />
@@ -392,15 +446,15 @@ export default function SalesPlanningOverviewPage() {
           )}
         </section>
 
-        {!!selectedDashboard?.byForecast?.length && (
+        {!!byForecast?.length && (
           <section className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <BarChart3 size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>โครงการเปิด แยกตามโอกาสปิด (FC%)</h2>
-              <span style={{ color: "var(--text-3)", fontSize: 12 }}>เดือน {month}</span>
+              <span style={{ color: "var(--text-3)", fontSize: 12 }}>{periodLabel}</span>
             </div>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-              {selectedDashboard.byForecast.map((b) => (
+              {byForecast.map((b) => (
                 <div key={b.level} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
                   <div>{forecastBadge(b.level)}</div>
                   <div className="font-mono tabular-nums" style={{ fontSize: 18, fontWeight: 800 }}>{money(b.value)}</div>

@@ -75,6 +75,7 @@ export function MonthPicker({ value, onChange, allMonths = false, onAllMonths })
   const currentYear = Number(thisMonth().slice(0, 4));
   const year = value.slice(0, 4);
   const yearOptions = Array.from({ length: 7 }, (_, i) => String(currentYear - 3 + i));
+  // โหมด "ทุกเดือน": ปิดเฉพาะตัวเลือกเดือน (ปียังเปลี่ยนเพื่อดูทั้งปีอื่นได้)
   const disabled = !!(onAllMonths && allMonths);
   const dim = { opacity: disabled ? 0.5 : 1 };
   return (
@@ -82,10 +83,9 @@ export function MonthPicker({ value, onChange, allMonths = false, onAllMonths })
       <select
         className="premium-select"
         value={year}
-        disabled={disabled}
         onChange={(e) => onChange(`${e.target.value}-${value.slice(5, 7)}`)}
         aria-label="ปี"
-        style={{ width: 104, ...dim }}
+        style={{ width: 104 }}
       >
         {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
       </select>
