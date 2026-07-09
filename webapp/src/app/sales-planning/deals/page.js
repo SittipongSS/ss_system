@@ -24,7 +24,6 @@ export default function SalesPlanningPipelinePage() {
   const role = useRole();
   const superuser = isSuperuser(role);
   const [reviewOnly, setReviewOnly] = useState(false); // ตัวกรอง "รอเติมข้อมูล (backfill)"
-  const [backfilling, setBackfilling] = useState(false);
   const [month, setMonth] = useState(thisMonth());
   const [allMonths, setAllMonths] = useState(true);
   const [deals, setDeals] = useState([]);
@@ -93,25 +92,6 @@ export default function SalesPlanningPipelinePage() {
   }, [deals, query, stageFilter, reviewOnly]);
 
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
-
-  // นำเข้าโครงการ PM เก่า (superuser) → สร้างโครงการขายผูกให้ แล้วเปิดตัวกรองรอเติมข้อมูล
-  const runBackfill = async () => {
-    if (!window.confirm("นำเข้าโปรเจกต์ PM เก่าที่ยังไม่ผูกงานขาย มาสร้างเป็นโครงการขาย (สถานะ Won รอเติมมูลค่าจริง)?\nรันซ้ำได้ปลอดภัย")) return;
-    setBackfilling(true);
-    setError("");
-    try {
-      const res = await fetch("/api/sales-planning/backfill-projects", { method: "POST" });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "นำเข้าไม่สำเร็จ");
-      setReviewOnly(true);
-      await load();
-      window.alert(`นำเข้าแล้ว ${json.created || 0} โครงการ (รอเติมมูลค่าจริง)`);
-    } catch (e) {
-      setError(e.message || "นำเข้าไม่สำเร็จ");
-    } finally {
-      setBackfilling(false);
-    }
-  };
 
   const openNewDeal = () => {
     setDealForm({ ...initialDealForm, forecastMonth: month });
@@ -402,11 +382,7 @@ export default function SalesPlanningPipelinePage() {
   const headerRight = (
     <>
       <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
-      {superuser && (
-        <button type="button" className="btn" onClick={runBackfill} disabled={backfilling} title="นำเข้าโปรเจกต์ PM เก่าที่ยังไม่ผูกงานขาย">
-          <PackageCheck size={15} aria-hidden="true" /> {backfilling ? "กำลังนำเข้า..." : "นำเข้าโครงการ PM เก่า"}
-        </button>
-      )}
+
       {canEdit && (
         <button type="button" className="btn btn-primary" onClick={openNewDeal}>
           <Plus size={15} aria-hidden="true" /> เพิ่มโครงการ
