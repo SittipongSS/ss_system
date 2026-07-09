@@ -276,9 +276,6 @@ export default function ReconcilePage() {
               </span>
             ))}
             {view === "recon" && <span style={{ color: "var(--text-3)" }}>· แต่ละช่อง: บน=FC ล่าง=PO · คลิกเพื่อดูรายละเอียด</span>}
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--violet)" }}>
-              ✨ คาดว่าจะเลื่อน (สี = ความเร่งด่วน: <b style={{ color: "var(--red)" }}>≤30</b>/<b style={{ color: "var(--amber)" }}>≤60</b>/<b style={{ color: "var(--violet)" }}>วัน</b>)
-            </span>
           </div>
 
           <div className="reconciliation-container">

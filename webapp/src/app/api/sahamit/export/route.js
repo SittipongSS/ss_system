@@ -46,15 +46,55 @@ function buildReport(view, data, filters = {}) {
     for (const r of data.roundsWithLines) {
       for (const l of r.lines) rows.push({ round: `#${r.roundNo}`, received: r.receivedDate, fgCode: l.fgCode, name: l.productName || '', month: l.month, qty: Number(l.qty || 0), qtyCases: casesVal(l.fgCode, Number(l.qty || 0)) });
     }
-    return {
+    const listReport = {
       title: 'SAHAMIT Forecast (รายรอบ)',
       columns: [
         { key: 'round', label: 'รอบที่' }, { key: 'received', label: 'วันรับ FC', date: true },
         { key: 'fgCode', label: 'รหัสสินค้า' }, { key: 'name', label: 'ชื่อสินค้า' },
-        { key: 'month', label: 'เดือนที่ต้องการ' }, { key: 'qty', label: 'จำนวน (ชิ้น)' }, { key: 'qtyCases', label: 'จำนวน (ลัง)' },
+        { key: 'month', label: 'เดือนที่ต้องการ' }, { key: 'qty', label: 'จำนวน (ชิ้น)', num: true }, { key: 'qtyCases', label: 'จำนวน (ลัง)', num: true },
       ],
       rows,
     };
+
+    const targetRoundNo = filters.roundNo ? Number(filters.roundNo) : null;
+    let round = targetRoundNo ? data.roundsWithLines.find(r => r.roundNo === targetRoundNo) : data.roundsWithLines[data.roundsWithLines.length - 1];
+    
+    if (round) {
+      const monthsSet = new Set();
+      const fgMap = new Map();
+      for (const l of round.lines) {
+        if (Number(l.qty || 0) <= 0) continue;
+        monthsSet.add(l.month);
+        if (!fgMap.has(l.fgCode)) fgMap.set(l.fgCode, { fgCode: l.fgCode, name: l.productName || '', qty: {}, total: 0 });
+        const row = fgMap.get(l.fgCode);
+        row.qty[l.month] = (row.qty[l.month] || 0) + Number(l.qty || 0);
+        row.total += Number(l.qty || 0);
+      }
+      const months = [...monthsSet].sort();
+      
+      const gridColumns = [
+        { key: 'fgCode', label: 'รหัสสินค้า' },
+        { key: 'name', label: 'ชื่อสินค้า' }
+      ];
+      for (const m of months) gridColumns.push({ key: `m_${m}`, label: m, num: true });
+      gridColumns.push({ key: 'total', label: 'รวม (ชิ้น)', num: true });
+      gridColumns.push({ key: 'totalCases', label: 'รวม (ลัง)', num: true });
+      
+      const gridRows = [...fgMap.values()].sort((a,b) => String(a.fgCode).localeCompare(String(b.fgCode))).map(r => {
+        const out = { fgCode: r.fgCode, name: r.name, total: r.total, totalCases: casesVal(r.fgCode, r.total) };
+        for (const m of months) out[`m_${m}`] = r.qty[m] || 0;
+        return out;
+      });
+
+      const gridReport = {
+        title: `Matrix (Round #${round.roundNo})`,
+        columns: gridColumns,
+        rows: gridRows
+      };
+
+      return [gridReport, listReport];
+    }
+    return [listReport];
   }
 
   if (view === 'po') {
