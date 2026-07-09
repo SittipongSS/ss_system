@@ -7,6 +7,7 @@ import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam } from "@/lib/roleContext";
 import { KpiCard, MONTH_LABELS, MonthPicker, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
+import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
 import { SALES_FEATURES, teamRank } from "@/lib/salesPlanning";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 
@@ -202,7 +203,7 @@ function sumRows(rows) {
   return total;
 }
 
-function YearGrid({ title, rows, months, grouped = false, showTotal = false, empty = "ยังไม่มีข้อมูล" }) {
+function YearGrid({ title, rows, months, grouped = false, showTotal = false, empty = "ยังไม่มีข้อมูล", onCellClick }) {
   const { ref: fsRef, isFs, toggle } = useFullscreen();
   const [showFc, setShowFc] = useState(false); // ย่อ FC (default) = โชว์ FC Total; ขยาย = แตกราย %
   const [scale, setScale] = useState(1); // สเกลตาราง (ปุ่ม +/-) 0.6–1.4
@@ -312,12 +313,25 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                             <span aria-hidden="true" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: m.color, marginRight: 6, verticalAlign: "middle" }} />
                             {m.label}
                           </td>
-                          {monthMetrics.map((mm, ci) => (
-                            <td key={months[ci]} className="num mono" style={{ color: mm[m.key] ? m.color : "var(--text-3)" }}>
-                              {(m.fmt || money)(mm[m.key])}
-                            </td>
-                          ))}
-                          <td className="fz-cr num mono" style={{ fontWeight: 700, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}>
+                          {monthMetrics.map((mm, ci) => {
+                            const val = mm[m.key];
+                            const interactive = onCellClick && m.key !== "target" && val > 0;
+                            return (
+                              <td 
+                                key={months[ci]} 
+                                className={`num mono ${interactive ? "cell-interactive" : ""}`} 
+                                style={{ color: val ? m.color : "var(--text-3)" }}
+                                onClick={() => interactive && onCellClick(row, months[ci], m.key)}
+                              >
+                                {(m.fmt || money)(val)}
+                              </td>
+                            );
+                          })}
+                          <td 
+                            className={`fz-cr num mono ${onCellClick && m.key !== "target" && totalMetrics[m.key] > 0 ? "cell-interactive" : ""}`} 
+                            style={{ fontWeight: 700, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}
+                            onClick={() => onCellClick && m.key !== "target" && totalMetrics[m.key] > 0 && onCellClick(row, null, m.key)}
+                          >
                             {(m.fmt || money)(totalMetrics[m.key])}
                           </td>
                         </tr>
@@ -378,6 +392,8 @@ export default function SalesPlanningOverviewPage() {
   const [sahamitRisk, setSahamitRisk] = useState(null);
   const [forecastReview, setForecastReview] = useState(null);
   const [reviewNotes, setReviewNotes] = useState("");
+  const [teamFilter, setTeamFilter] = useState("all");
+  const [drillDownFilter, setDrillDownFilter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -459,6 +475,31 @@ export default function SalesPlanningOverviewPage() {
   const totals = (allMonths ? yearAggregate.totals : selectedDashboard?.totals) || {};
   const targetRows = allMonths ? yearAggregate.targetRows : (selectedDashboard?.targets?.length || 0);
   const byForecast = allMonths ? yearAggregate.byForecast : selectedDashboard?.byForecast;
+
+  const filteredOwnerRows = useMemo(() => {
+    if (!rows.ownerRows) return [];
+    if (teamFilter === "all") return rows.ownerRows;
+    return rows.ownerRows.filter(r => r.team === teamFilter);
+  }, [rows.ownerRows, teamFilter]);
+
+  const handleChartTeamClick = (t) => {
+    setTeamFilter(t);
+    setTab("tables");
+    setTimeout(() => {
+      document.querySelector('.sales-overview-grid')?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
+  const handleCellClick = (row, m, metricKey) => {
+    if (metricKey === "target") return;
+    setDrillDownFilter({
+      month: m,
+      ownerId: row.id.includes(":") || row.id === "grand-total" ? null : row.id,
+      team: row.team,
+      metric: metricKey,
+      label: row.label
+    });
+  };
   const periodLabel = allMonths ? `ทั้งปี ${year}` : `เดือน ${month}`;
   const sahamitRiskRows = (sahamitRisk?.rows || []).filter((row) => row.risk).slice(0, 8);
   const headerRight = (
@@ -500,7 +541,7 @@ export default function SalesPlanningOverviewPage() {
 
         {tab === "dashboard" && (
           <div aria-busy={loading}>
-            <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} />
+            <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} teamKey={teamFilter} onTeamKeyChange={handleChartTeamClick} />
           </div>
         )}
 
@@ -540,9 +581,17 @@ export default function SalesPlanningOverviewPage() {
           </section>
         )}
 
-        <YearGrid title={`ภาพรวมรายเดือน ${year}`} rows={rows.monthRows} months={months} />
-        <YearGrid title="รายบุคคล (จัดกลุ่มตามทีม)" rows={rows.ownerRows} months={months} grouped showTotal />
-        <YearGrid title="รายทีม" rows={rows.teamRows} months={months} showTotal />
+        <YearGrid title={`ภาพรวมเดือน ${year}`} rows={rows.monthRows} months={months} onCellClick={handleCellClick} />
+        
+        {teamFilter !== "all" && (
+          <div style={{ marginTop: 16, marginBottom: -8, display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" className="btn-clear-filter" onClick={() => setTeamFilter("all")}>
+              <X size={14} aria-hidden="true" /> เลิกกรองทีม ({teamFilter})
+            </button>
+          </div>
+        )}
+        <YearGrid title="รายบุคคล (จัดกลุ่มตามทีม)" rows={filteredOwnerRows} months={months} grouped showTotal onCellClick={handleCellClick} />
+        <YearGrid title="รายทีม" rows={rows.teamRows} months={months} showTotal onCellClick={handleCellClick} />
 
         {SALES_FEATURES.forecastReview && (
           <section className="glass-panel" style={{ padding: 16 }}>
@@ -637,6 +686,13 @@ export default function SalesPlanningOverviewPage() {
         </>
         )}
       </div>
+      
+      {drillDownFilter && (
+        <DealDrillDownModal 
+          filter={drillDownFilter} 
+          onClose={() => setDrillDownFilter(null)} 
+        />
+      )}
     </Workspace>
   );
 }
