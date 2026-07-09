@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -337,7 +337,15 @@ export default function TasksPage() {
           )}
           {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
         </div>
-        {manage && <div onClick={(e) => e.stopPropagation()}>{statusSelect(t)}</div>}
+        {manage && (
+          <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+            {statusSelect(t)}
+            <div style={{ display: "flex", gap: "2px" }}>
+              <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={13} /></button>
+              <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={13} /></button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -547,6 +555,7 @@ export default function TasksPage() {
                 <th>ความยาก</th>
                 <th onClick={() => handleSort("due")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>กำหนดเสร็จ {sortArrow("due")}</span></th>
                 <th>เชื่อมโยง</th>
+                <th style={{ width: "70px", textAlign: "right" }}>จัดการ</th>
               </tr>
             </thead>
             <tbody>
@@ -580,6 +589,14 @@ export default function TasksPage() {
                       ) : <span style={{ color: "var(--text-3)" }}>—</span>}
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>{linkChip(t) || <span style={{ color: "var(--text-3)" }}>—</span>}</td>
+                    <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
+                      {manage && (
+                        <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
+                          <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>
+                          <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={14} /></button>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -608,6 +625,7 @@ export default function TasksPage() {
                   </div>
                   {manage && (
                     <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
+                      <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>
                       <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>
                     </div>
                   )}
