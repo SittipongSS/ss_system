@@ -1,24 +1,45 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, ClipboardCheck, ReceiptText, BarChart3, ChevronRight } from "lucide-react";
+import { useState, useMemo } from "react";
+import { LayoutDashboard, ClipboardCheck, ReceiptText, BarChart3, ChevronRight, Calendar } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan } from "@/lib/roleContext";
-import { fmtMoney } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import KpiCard from "@/components/excise/KpiCard";
 import WorkQueue from "@/components/excise/WorkQueue";
+import { RegsDonutChart, OrdersComposedChart } from "@/components/excise/TaxDashboardCharts";
 
-// Excise command center — role-aware landing. KPI rails for both tracks +
-// a single "งานของฉันตอนนี้" queue that deep-links into the list drawers.
+// Helper for date filtering
+function isWithinRange(dateStr, range) {
+  if (!dateStr || range === "all") return true;
+  const d = new Date(dateStr);
+  const now = new Date();
+  
+  if (range === "month") {
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }
+  if (range === "quarter") {
+    const currentQ = Math.floor(now.getMonth() / 3);
+    const dateQ = Math.floor(d.getMonth() / 3);
+    return currentQ === dateQ && d.getFullYear() === now.getFullYear();
+  }
+  return true;
+}
+
 export default function TaxDashboard() {
-  // Which queue lanes to show is capability-driven, not department-driven, so an
-  // SA granted the LG legal:approve sees BOTH the sales lane and the legal lane.
-  const canSA = useCan("sales:act");    // SA lane: draft/rejected regs + receive/fix orders
-  const canLG = useCan("legal:approve"); // LG lane: approve regs + file orders
+  const canSA = useCan("sales:act");
+  const canLG = useCan("legal:approve");
   const router = useRouter();
-  const { data: regs, loading: l1 } = useApiList("/api/excise-registrations");
-  const { data: orders, loading: l2 } = useApiList("/api/orders");
+  
+  const { data: rawRegs, loading: l1 } = useApiList("/api/excise-registrations");
+  const { data: rawOrders, loading: l2 } = useApiList("/api/orders");
+
+  const [timeRange, setTimeRange] = useState("all"); // 'all', 'month', 'quarter'
+
+  // Filter data based on selected time range
+  const regs = useMemo(() => rawRegs.filter(r => isWithinRange(r.createdAt, timeRange)), [rawRegs, timeRange]);
+  const orders = useMemo(() => rawOrders.filter(o => isWithinRange(o.createdAt, timeRange)), [rawOrders, timeRange]);
 
   const r = {
     draft: regs.filter((x) => x.status === "draft").length,
@@ -26,19 +47,27 @@ export default function TaxDashboard() {
     approved: regs.filter((x) => x.status === "approved").length,
     rejected: regs.filter((x) => x.status === "rejected").length,
   };
+  
   const o = {
-    pending: orders.filter((x) => x.status === "pending").length,
-    received: orders.filter((x) => x.status === "received").length,
-    filing: orders.filter((x) => x.status === "filing").length,
-    complete: orders.filter((x) => x.status === "complete").length,
-    rejected: orders.filter((x) => x.status === "rejected").length,
+    pending: orders.filter((x) => x.status === "pending"),
+    received: orders.filter((x) => x.status === "received"),
+    filing: orders.filter((x) => x.status === "filing"),
+    complete: orders.filter((x) => x.status === "complete"),
+  };
+
+  const getCountAndTax = (list) => {
+    return {
+      count: list.length,
+      tax: list.reduce((sum, item) => sum + (item.totalTax || 0), 0)
+    };
   };
 
   const itemsLine = (ord) => {
     const n = ord.items?.length || 0;
-    const tax = (ord.totalTax || 0) === 0 ? "ยกเว้นภาษี" : `ภาษี ${fmtMoney(ord.totalTax)}`;
+    const tax = (ord.totalTax || 0) === 0 ? "ยกเว้นภาษี" : `ภาษี ฿${(ord.totalTax || 0).toLocaleString("th-TH")}`;
     return `${n} รายการ · ${tax}`;
   };
+
   const goReg = (status) => router.push(`/tax/registrations?status=${status}`);
   const goFil = (status) => router.push(`/tax/filings?status=${status}`);
 
@@ -69,40 +98,100 @@ export default function TaxDashboard() {
       title="ภาพรวม"
       subtitle="งานที่ต้องทำของคุณ + ภาพรวมทั้งสองสายงาน"
       loading={l1 || l2}
-      headerRight={<Link href="/tax/reports" className="btn btn-secondary flex items-center gap-1.5"><BarChart3 size={16} /> รายงาน</Link>}
-    >
-      <div className="flex flex-col gap-6">
-        {/* Track 1 */}
-        <section>
-          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
-            <ClipboardCheck size={16} /> การขึ้นทะเบียน
-            <Link href="/tax/registrations" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
+      headerRight={
+        <div className="flex items-center gap-3">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border)] rounded-md flex items-center p-1 shadow-sm">
+            <Calendar size={14} className="mx-2 text-[var(--text-3)]" />
+            <select 
+              value={timeRange} 
+              onChange={(e) => setTimeRange(e.target.value)}
+              className="bg-transparent text-sm border-none outline-none text-[var(--text-2)] font-medium pr-2 cursor-pointer"
+            >
+              <option value="all">ทั้งหมด (All Time)</option>
+              <option value="month">เดือนนี้ (This Month)</option>
+              <option value="quarter">ไตรมาสนี้ (This Quarter)</option>
+            </select>
           </div>
-          <div className="kpi-grid">
-            <KpiCard label="ฉบับร่าง" value={r.draft} tone="neutral" icon={ClipboardCheck} onClick={() => goReg("draft")} />
-            <KpiCard label="รออนุมัติ" value={r.pending_legal} tone="warning" onClick={() => goReg("pending_legal")} />
-            <KpiCard label="ขึ้นทะเบียนแล้ว" value={r.approved} tone="success" onClick={() => goReg("approved")} />
-            <KpiCard label="ตีกลับให้แก้ไข" value={r.rejected} tone="danger" onClick={() => goReg("rejected")} />
+          <Link href="/tax/reports" className="btn btn-secondary flex items-center gap-1.5"><BarChart3 size={16} /> รายงาน</Link>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        
+        {/* Track 1: การขึ้นทะเบียน */}
+        <section>
+          <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text-1)", fontWeight: 600, fontSize: 16 }}>
+            <ClipboardCheck size={20} className="text-[var(--accent)]" /> การขึ้นทะเบียน (Registrations)
+            <Link href="/tax/registrations" className="flex items-center ml-auto text-sm text-[var(--accent)] hover:underline">
+              เปิดหน้างาน <ChevronRight size={16} />
+            </Link>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-1 glass-panel p-4 h-[220px]">
+              <div className="text-sm font-semibold text-[var(--text-2)] mb-2">สัดส่วนสถานะการขึ้นทะเบียน</div>
+              <RegsDonutChart regs={regs} />
+            </div>
+            <div className="lg:col-span-3 kpi-grid">
+              <KpiCard label="ฉบับร่าง" value={r.draft} tone="neutral" icon={ClipboardCheck} onClick={() => goReg("draft")} />
+              <KpiCard label="รออนุมัติ" value={r.pending_legal} tone="warning" onClick={() => goReg("pending_legal")} />
+              <KpiCard label="ขึ้นทะเบียนแล้ว" value={r.approved} tone="success" onClick={() => goReg("approved")} />
+              <KpiCard label="ตีกลับให้แก้ไข" value={r.rejected} tone="danger" onClick={() => goReg("rejected")} />
+            </div>
           </div>
         </section>
 
-        {/* Track 2 */}
+        {/* Track 2: การยื่นชำระภาษี */}
         <section>
-          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
-            <ReceiptText size={16} /> การยื่นชำระภาษี
-            <Link href="/tax/filings" className="flex items-center" style={{ marginLeft: "auto", fontSize: 13, color: "var(--accent)" }}>เปิดหน้างาน <ChevronRight size={14} /></Link>
+          <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text-1)", fontWeight: 600, fontSize: 16 }}>
+            <ReceiptText size={20} className="text-[var(--accent)]" /> การยื่นชำระภาษี (Tax Filings)
+            <Link href="/tax/filings" className="flex items-center ml-auto text-sm text-[var(--accent)] hover:underline">
+              เปิดหน้างาน <ChevronRight size={16} />
+            </Link>
           </div>
-          <div className="kpi-grid">
-            <KpiCard label="รอรับเงิน" value={o.pending} tone="danger" icon={ReceiptText} onClick={() => goFil("pending")} />
-            <KpiCard label="รอยื่น" value={o.received} tone="warning" onClick={() => goFil("received")} />
-            <KpiCard label="กำลังยื่น" value={o.filing} tone="info" onClick={() => goFil("filing")} />
-            <KpiCard label="ชำระแล้ว" value={o.complete} tone="success" onClick={() => goFil("complete")} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-2 glass-panel p-4 h-[260px]">
+              <div className="text-sm font-semibold text-[var(--text-2)] mb-2">สรุปรายการและยอดเงินภาษี</div>
+              <OrdersComposedChart orders={orders} />
+            </div>
+            <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+              <KpiCard 
+                label="รอรับเงิน" 
+                value={getCountAndTax(o.pending).count} 
+                taxValue={getCountAndTax(o.pending).tax}
+                tone="danger" 
+                icon={ReceiptText} 
+                onClick={() => goFil("pending")} 
+              />
+              <KpiCard 
+                label="รอยื่น" 
+                value={getCountAndTax(o.received).count} 
+                taxValue={getCountAndTax(o.received).tax}
+                tone="warning" 
+                onClick={() => goFil("received")} 
+              />
+              <KpiCard 
+                label="กำลังยื่น" 
+                value={getCountAndTax(o.filing).count} 
+                taxValue={getCountAndTax(o.filing).tax}
+                tone="info" 
+                onClick={() => goFil("filing")} 
+              />
+              <KpiCard 
+                label="ชำระแล้ว" 
+                value={getCountAndTax(o.complete).count} 
+                taxValue={getCountAndTax(o.complete).tax}
+                tone="success" 
+                onClick={() => goFil("complete")} 
+              />
+            </div>
           </div>
         </section>
 
         {/* Action queue */}
         <section>
-          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-2)", fontWeight: 600, fontSize: 14 }}>
+          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text-1)", fontWeight: 600, fontSize: 16 }}>
             งานของฉันตอนนี้ {queue.length > 0 && <span className="ui-badge danger">{queue.length}</span>}
           </div>
           <WorkQueue items={queue} />
