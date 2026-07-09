@@ -526,14 +526,14 @@ export default function DealOverviewPage() {
   const nextPrimary = () => {
     if (!canEdit || !lc?.nextAction) return null;
     const k = lc.nextAction.kind;
-    if (k === "win") return <button type="button" className="btn btn-success" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> ปิดได้ (Won)</button>;
+    if (k === "win") return <button type="button" className="btn btn-success" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> Won</button>;
     return null;
   };
   const headerRight = (
     <>
       {canEdit && lc?.canGo && (
         <button type="button" className="btn btn-success" onClick={doWin} disabled={!!actionBusy}>
-          <Trophy size={15} aria-hidden="true" /> ปิดได้ (Won)
+          <Trophy size={15} aria-hidden="true" /> Won
         </button>
       )}
       {canEdit && lc?.canNoGo && (
