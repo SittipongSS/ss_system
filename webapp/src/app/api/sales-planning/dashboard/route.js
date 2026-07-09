@@ -1,5 +1,5 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
-import { applyDealScope, canViewSalesPlanning, forecastAmount, inSalesViewScope, monthKey, salesPlanningViewScope } from '@/lib/salesPlanning';
+import { canViewSalesPlanning, forecastAmount, monthKey } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,20 +9,17 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const month = monthKey(new URL(req.url).searchParams.get('month')) || monthKey(new Date().toISOString());
 
-  let dealsQuery = supabase.from('sales_deals').select('*');
-  dealsQuery = applyDealScope(dealsQuery, user);
-  const { data: deals, error: dealsError } = await dealsQuery;
+  // ภาพรวมเป็นระดับ "ทั้งฝ่าย" — เปิดให้ทุก sales role เห็นทุกทีม (นโยบาย: overview
+  // โปร่งใสทั้งบริษัท). การจำกัด scope ตามทีม/เจ้าของ ยังบังคับที่หน้า pipeline
+  // (deals) และหน้าวางเป้า (targets) ตามเดิม — เฉพาะภาพรวมนี้ที่เห็นครบ.
+  const { data: deals, error: dealsError } = await supabase.from('sales_deals').select('*');
   if (dealsError) return fail(dealsError.message, 500);
-  const visibleDeals = (deals || []).filter((d) => inSalesViewScope(user, d));
+  const visibleDeals = deals || [];
 
-  // Scope targets เหมือน deals: team-lead เห็นทีมตัวเอง (+ SA รวม เป็น context),
-  // AE เห็นเฉพาะเป้ารายบุคคลของตัวเอง — กันเป้าคนอื่น/ทีมอื่นรั่วผ่าน overview.
-  const scope = salesPlanningViewScope(user.role);
-  let targetsQuery = supabase.from('sales_targets').select('*').eq('targetMonth', month);
-  if (scope === 'team') targetsQuery = targetsQuery.or(`team.eq.${user.team ?? ''},team.is.null`);
-  else if (scope === 'own') targetsQuery = targetsQuery.eq('ownerId', user.id ?? '');
-  else if (scope !== 'all') targetsQuery = targetsQuery.eq('id', '__no_scope__');
-  const { data: targets, error: targetsError } = await targetsQuery;
+  const { data: targets, error: targetsError } = await supabase
+    .from('sales_targets')
+    .select('*')
+    .eq('targetMonth', month);
   if (targetsError) return fail(targetsError.message, 500);
 
   const isWon = (d) => ['won', 'in_project'].includes(d.stage);
@@ -145,10 +142,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .map((b) => ({ ...b, gap: b.target - b.won }))
     .sort((a, b) => b.target - a.target);
 
-  // KPI เป้ารวม: ผู้ที่เห็นทุกทีม (superuser) ใช้เป้า SA รวมถ้ามี (ไม่งั้นผลรวมรายทีม);
-  // team-lead/AE ใช้ผลรวมเป้าที่ตัวเองเห็น (เป้า SA รวมไม่นับเป็นเป้าของตัวเอง).
+  // KPI เป้ารวม (ภาพรวมทั้งฝ่าย): ใช้เป้า SA รวมถ้าตั้งไว้ (ครอบทุกทีม) ไม่งั้นผลรวมรายทีม.
   const teamTargetSum = byTeam.reduce((sum, b) => sum + Number(b.target || 0), 0);
-  const targetAmount = (scope === 'all' && saWideTarget > 0) ? saWideTarget : teamTargetSum;
+  const targetAmount = saWideTarget > 0 ? saWideTarget : teamTargetSum;
 
   return ok({
     month,
