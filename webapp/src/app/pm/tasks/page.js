@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -11,14 +12,15 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { isSuperuser } from "@/lib/permissions";
+import { useRole } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
 import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
-// (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจาก timeline โปรเจกต์ (project_tasks)
-// อีกต่อไป — งานเหล่านั้นดู/แก้ที่หน้า timeline ของโปรเจกต์โดยตรง.
+// (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
+// อีกต่อไป — งานเหล่านั้นดู/แก้ที่หน้าไทม์ไลน์โดยตรง.
 
 const TASK_STATUS_TH = { Pending: "รอ", "In Progress": "ทำอยู่", Completed: "เสร็จ" };
 const SCOPE_TH = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
@@ -97,6 +99,7 @@ const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0
 
 export default function TasksPage() {
   const router = useRouter();
+  const role = useRole();
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
@@ -131,6 +134,7 @@ export default function TasksPage() {
 
   // กันผลลัพธ์ที่มาช้า/สลับลำดับเมื่อสลับ scope เร็ว ๆ
   const loadSeq = useRef(0);
+  const deepLinkHandled = useRef(false);
   const loadWork = async (sc) => {
     const seq = ++loadSeq.current;
     setLoading(true);
@@ -225,6 +229,14 @@ export default function TasksPage() {
 
   // ── CRUD ──
   const openAdd = () => { setEditingId(null); setForm(PERSONAL_BLANK); setShowModal(true); };
+  useEffect(() => {
+    const dealId = new URLSearchParams(window.location.search).get("dealId");
+    if (!dealId || deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+    setEditingId(null);
+    setForm({ ...PERSONAL_BLANK, linkType: "deal", dealId });
+    setShowModal(true);
+  }, []);
   const openEdit = (t) => {
     setEditingId(t.id);
     setForm({
@@ -296,7 +308,7 @@ export default function TasksPage() {
     { key: "done", label: "เสร็จแล้ว", count: stats.done, color: "var(--green)", icon: <CheckCircle2 size={18} /> },
   ];
 
-  // ป้ายกำกับ (ดีล/โปรเจกต์) ใช้ซ้ำทั้ง card + table
+  // ป้ายกำกับ (โครงการ/ไทม์ไลน์) ใช้ซ้ำทั้ง card + table
   const linkChip = (t) => {
     const proj = t.projectId ? resolveProj(t.projectId) : null;
     const deal = t.dealId ? resolveDeal(t.dealId) : null;
@@ -365,16 +377,19 @@ export default function TasksPage() {
     const d = new Date(r.y, r.m + delta, 1);
     return { y: d.getFullYear(), m: d.getMonth() };
   });
+  const effectiveRole = me?.role || role;
+  const canSeeKpi = !!effectiveRole && (isSuperuser(effectiveRole) || effectiveRole === "senior_ae");
 
   return (
     <div>
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
         <div className="header-content">
           <h1><span className="premium-header-icon"><ListTodo size={22} /></span> งาน (Tasks)</h1>
-          <p>มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับดีลและโปรเจกต์ได้{me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}</p>
+          <p>มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้{me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}</p>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
+          {canSeeKpi && <Link href="/sa/tasks/kpi" className="btn"><BarChart3 size={16} /> KPI ทีม</Link>}
           <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
         </div>
       </div>
@@ -686,19 +701,19 @@ export default function TasksPage() {
             <div className="form-group">
               <label>เชื่อมกับ</label>
               <div className="segmented" style={{ marginBottom: "8px" }}>
-                {[["none", "ไม่ผูก"], ["deal", "ดีล"], ["project", "โปรเจกต์"]].map(([k, lbl]) => (
+                {[["none", "ไม่ผูก"], ["deal", "โครงการ"], ["project", "ไทม์ไลน์"]].map(([k, lbl]) => (
                   <button type="button" key={k} className={form.linkType === k ? "active" : ""} onClick={() => setForm((f) => ({ ...f, linkType: k }))}>{lbl}</button>
                 ))}
               </div>
               {form.linkType === "deal" && (
                 <Select fullWidth value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
-                  <option value="">— เลือกดีล —</option>
+                  <option value="">— เลือกโครงการ —</option>
                   {allDeals.map((d) => <option key={d.id} value={d.id}>{d.title}{d.customerName ? ` — ${d.customerName}` : ""}</option>)}
                 </Select>
               )}
               {form.linkType === "project" && (
                 <Select fullWidth value={form.projectId} onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value }))}>
-                  <option value="">— เลือกโปรเจกต์ —</option>
+                  <option value="">— เลือกไทม์ไลน์ —</option>
                   {allProjects.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
                 </Select>
               )}

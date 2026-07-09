@@ -1,6 +1,7 @@
 import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { loadForecastDrift } from '@/lib/salesPlanningForecast';
+import { loadUserDirectory } from '@/lib/usersRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,12 +26,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!deal) return notFound('ไม่พบโครงการ');
   if (!inSalesViewScope(user, deal)) return forbidden();
 
-  const [quotations, documents, activities, stageHistory, forecasts] = await Promise.all([
+  const [quotations, documents, activities, stageHistory, forecasts, dealTasks] = await Promise.all([
     safe('quotations', supabase.from('quotations').select('*, lines:quotation_lines(*)').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
     safe('documents', supabase.from('sales_deal_documents').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
     safe('activities', supabase.from('sales_deal_activities').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
     safe('stage history', supabase.from('sales_deal_stage_history').select('*').eq('dealId', deal.id).order('changedAt', { ascending: false }), []),
     safe('forecasts', supabase.from('sales_deal_forecasts').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
+    safe('deal tasks', supabase.from('personal_tasks').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
   ]);
 
   let project = { data: null, warning: null };
@@ -56,6 +58,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     activities.warning,
     stageHistory.warning,
     forecasts.warning,
+    dealTasks.warning,
     project.warning,
     projectProducts.warning,
     projectTasks.warning,
@@ -65,6 +68,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   ].filter(Boolean);
 
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
+  const users = await loadUserDirectory(supabase).catch(() => new Map());
+  const enrichedDealTasks = (dealTasks.data || []).map((task) => ({
+    ...task,
+    ownerName: users.get(task.ownerId)?.name || null,
+    assigneeName: task.assigneeId ? (users.get(task.assigneeId)?.name || null) : null,
+  }));
 
   const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, deal);
 
@@ -75,6 +84,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     quotations: quotations.data,
     documents: documents.data,
     activities: activities.data,
+    dealTasks: enrichedDealTasks,
     stageHistory: stageHistory.data,
     forecasts: forecasts.data,
     project: project.data,

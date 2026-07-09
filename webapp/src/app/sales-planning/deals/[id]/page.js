@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Lock, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Save, Send, Trash2, Trophy, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
@@ -79,6 +79,17 @@ function Empty({ children }) {
   return <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>{children}</div>;
 }
 
+const TASK_STATUS_META = {
+  Pending: { label: "รอ", color: "var(--text-3)" },
+  "In Progress": { label: "กำลังทำ", color: "var(--accent)" },
+  Completed: { label: "เสร็จแล้ว", color: "var(--green)" },
+};
+
+function TaskStatusBadge({ status }) {
+  const meta = TASK_STATUS_META[status] || { label: status || "-", color: "var(--text-3)" };
+  return <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>;
+}
+
 // แถบ lifecycle: ลีด → … → เข้าโครงการ (lost = แถบแดงแทน) — ฝังใน hero สถานะ
 function DealStepper({ steps, lost }) {
   if (lost) {
@@ -107,29 +118,20 @@ function DealStepper({ steps, lost }) {
   );
 }
 
-// การ์ดปลายทางส่งต่อ 1 ระบบ (PM / สรรพสามิต / ส่งของ / PO)
-const ROUTE_BADGE = { done: "เสร็จแล้ว", available: "พร้อมทำ", progress: "กำลังดำเนินการ", locked: "ล็อก" };
 const ROUTE_COLOR = { done: "var(--green)", available: "var(--accent)", progress: "var(--amber)", locked: "var(--text-3)" };
-function RouteCard({ route, onAction, busy, canEdit }) {
+function RouteMenuButton({ route, onAction, busy, canEdit }) {
   const color = ROUTE_COLOR[route.status] || "var(--text-3)";
-  return (
-    <div className="glass-panel" style={{ padding: 14, borderLeft: `3px solid ${color}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontWeight: 700, fontSize: 14 }}>{route.label}</span>
-        <span className="ui-badge" style={{ marginLeft: "auto", color }}>{ROUTE_BADGE[route.status] || route.status}</span>
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-3)", margin: "6px 0 10px" }}>{route.hint}</div>
-      {route.actionKind && canEdit ? (
-        <button type="button" className="btn btn-primary sm" onClick={() => onAction(route)} disabled={busy}>
-          {route.actionKind?.startsWith("create-") ? <Plus size={13} aria-hidden="true" /> : <FileText size={13} aria-hidden="true" />} {route.actionLabel}
-        </button>
-      ) : route.href ? (
-        <a className="btn sm" href={route.href}><ExternalLink size={13} aria-hidden="true" /> {route.linkLabel || "เปิด"}</a>
-      ) : route.status === "locked" ? (
-        <button type="button" className="btn ghost sm" disabled><Lock size={13} aria-hidden="true" /> ล็อก</button>
-      ) : null}
-    </div>
-  );
+  if (route.actionKind && canEdit) {
+    return (
+      <button type="button" className={`btn sm${route.status === "available" ? " btn-primary" : ""}`} onClick={() => onAction(route)} disabled={busy} title={route.hint} style={{ borderColor: color }}>
+        {route.actionKind?.startsWith("create-") ? <Plus size={13} aria-hidden="true" /> : <FileText size={13} aria-hidden="true" />} {route.actionLabel || route.label}
+      </button>
+    );
+  }
+  if (route.href) {
+    return <a className="btn sm" href={route.href} title={route.hint} style={{ borderColor: color }}><ExternalLink size={13} aria-hidden="true" /> {route.linkLabel || route.label}</a>;
+  }
+  return null;
 }
 
 export default function DealOverviewPage() {
@@ -176,12 +178,20 @@ export default function DealOverviewPage() {
     return [...acts, ...stages].sort((x, y) => String(y.at || "").localeCompare(String(x.at || "")));
   }, [data]);
 
-  // สรุปความคืบหน้างานผลิต (จาก project_tasks ของโครงการ PM ที่ผูก)
+  // สรุปความคืบหน้าไทม์ไลน์ (จาก project_tasks ของโครงการ PM ที่ผูก)
   const taskSummary = useMemo(() => {
     const tasks = data?.projectTasks || [];
     const done = tasks.filter((t) => t.status === "Completed").length;
     const current = tasks.find((t) => t.status === "In Progress");
     return { total: tasks.length, done, current };
+  }, [data]);
+  const dealTaskSummary = useMemo(() => {
+    const tasks = data?.dealTasks || [];
+    return {
+      total: tasks.length,
+      done: tasks.filter((t) => t.status === "Completed").length,
+      active: tasks.filter((t) => t.status !== "Completed").length,
+    };
   }, [data]);
 
   // เวลาปัจจุบันจับใน effect (กฎ react-hooks/purity ห้าม Date.now() ระหว่าง render)
@@ -452,7 +462,7 @@ export default function DealOverviewPage() {
     if (!deal) return;
     // ระบุให้ชัดว่าจะลบอะไรพ่วงไปบ้าง (Sales เป็นแม่ — ลบทั้งสาย)
     const extras = [];
-    if (data?.project) extras.push(`งานผลิต PM ${data.project.code || ""}`.trim());
+    if (data?.project) extras.push(`ไทม์ไลน์ ${data.project.code || ""}`.trim());
     if (data?.projectTasks?.length) extras.push(`${data.projectTasks.length} ขั้นตอน`);
     if (data?.shipmentPrep) extras.push("เอกสารเตรียมส่งของ");
     const extraText = extras.length ? `\n\nจะลบพ่วงด้วย: ${extras.join(" · ")}` : "";
@@ -552,7 +562,7 @@ export default function DealOverviewPage() {
         <Pencil size={16} aria-hidden="true" />
       </button>
       {canDelete && (
-        <button type="button" className="btn icon-only ghost" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบโครงการ" title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
+        <button type="button" className="btn icon-only ghost" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบโครงการ" title="ลบโครงการ (ลบไทม์ไลน์พ่วงด้วย)">
           <Trash2 size={16} aria-hidden="true" />
         </button>
       )}
@@ -610,10 +620,13 @@ export default function DealOverviewPage() {
           {/* เมนูลิงก์ไปแต่ละส่วนของหน้า + ป้ายเฟสถัดไปของส่วนที่ยังไม่เปิดใช้ */}
           <nav className="glass-panel toolbar" aria-label="ส่วนต่าง ๆ ของโครงการ" style={{ padding: "8px 12px" }}>
             <a className="btn ghost sm" href="#deal-kpi">ภาพรวม</a>
-            <a className="btn ghost sm" href="#deal-pm">งานผลิต (PM)</a>
-            <a className="btn ghost sm" href="#deal-routing">ส่งต่อ</a>
+            <a className="btn ghost sm" href="#deal-tasks">งาน</a>
+            <a className="btn ghost sm" href="#deal-pm">ไทม์ไลน์</a>
             <a className="btn ghost sm" href="#deal-timeline">ความเคลื่อนไหว</a>
             <span className="spacer" />
+            {lc?.routes?.map((route) => (
+              <RouteMenuButton key={route.kind} route={route} onAction={onRouteAction} busy={!!actionBusy} canEdit={canEdit} />
+            ))}
             {!SALES_FEATURES.quotations && <span className="ui-badge" style={{ color: "var(--text-3)" }} title="อยู่ในแผนเฟสถัดไป">ใบเสนอราคา · เฟสถัดไป</span>}
             {!SALES_FEATURES.shipment && <span className="ui-badge" style={{ color: "var(--text-3)" }} title="อยู่ในแผนเฟสถัดไป">การส่ง · เฟสถัดไป</span>}
           </nav>
@@ -664,9 +677,9 @@ export default function DealOverviewPage() {
               hint={dealAgeDays == null ? "-" : `อายุโครงการรวม ${dealAgeDays} วัน`}
             />
             <Stat
-              label="งานผลิตคืบหน้า"
+              label="ไทม์ไลน์คืบหน้า"
               value={deal.projectId && taskSummary.total ? `${taskSummary.done}/${taskSummary.total}` : "-"}
-              hint={!deal.projectId ? "ยังไม่ผูกโครงการ PM" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.total && taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : "-"}
+              hint={!deal.projectId ? "ยังไม่ได้สร้างไทม์ไลน์" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.total && taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : "-"}
             />
             {SALES_FEATURES.quotations && (
               <Stat label="ใบเสนอที่รับแล้ว" value={acceptedQuote ? money(acceptedQuote.totalAmount) : "-"} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอที่รับ"} />
@@ -676,16 +689,64 @@ export default function DealOverviewPage() {
             )}
           </section>
 
+          <section id="deal-tasks" className="glass-panel" style={{ padding: 16 }}>
+            <div className="flex items-center gap-2 mb-3">
+              <ClipboardList size={17} aria-hidden="true" />
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานของโครงการ</h2>
+              <span className="ui-badge" style={{ color: "var(--text-2)" }}>{dealTaskSummary.done}/{dealTaskSummary.total} เสร็จ</span>
+              <div className="spacer" />
+              <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิดหน้างาน</a>
+            </div>
+            {(data.dealTasks || []).length ? (
+              <div className="premium-glass-table table-responsive">
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>งาน</th>
+                      <th>สถานะ</th>
+                      <th>ผู้รับผิดชอบ</th>
+                      <th>กำหนดเสร็จ</th>
+                      <th>หมวด</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.dealTasks.map((task) => (
+                      <tr key={task.id} className="premium-row">
+                        <td style={{ fontWeight: 700 }}>
+                          {task.title}
+                          {task.note && <div style={{ marginTop: 2, color: "var(--text-3)", fontSize: 12, fontWeight: 500 }}>{task.note}</div>}
+                        </td>
+                        <td><TaskStatusBadge status={task.status} /></td>
+                        <td>{task.assigneeName || task.ownerName || "-"}</td>
+                        <td>{task.dueDate ? fmtDate(task.dueDate) : <span style={{ color: "var(--text-3)" }}>-</span>}</td>
+                        <td>{task.category || <span style={{ color: "var(--text-3)" }}>-</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty>ยังไม่มีงานของโครงการนี้ กด “เปิดหน้างาน” แล้วสร้างงานโดยเลือกผูกกับโครงการนี้ได้</Empty>
+            )}
+          </section>
+
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 430px), 1fr))",
+            gap: 20,
+            alignItems: "start",
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           <section id="deal-pm" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <PackageCheck size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานผลิต (PM)</h2>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ไทม์ไลน์</h2>
               <div className="spacer" />
               {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
             </div>
             {data.project ? (
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                <Stat label="โครงการ" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
+                <Stat label="ไทม์ไลน์" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
                 <Stat label="ความคืบหน้า" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : "-"} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : "-"} />
                 <Stat label="ประเภท" value={data.project.type || "-"} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
                 <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={(data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", ") || "-"} />
@@ -693,7 +754,7 @@ export default function DealOverviewPage() {
                   <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : "-"} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
                 )}
               </div>
-            ) : <Empty>ยังไม่ได้ผูกโครงการ PM</Empty>}
+            ) : <Empty>ยังไม่ได้สร้างไทม์ไลน์</Empty>}
           </section>
 
           {(SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
@@ -755,22 +816,8 @@ export default function DealOverviewPage() {
           </div>
           )}
 
-          {lc && (
-            <section id="deal-routing" className="glass-panel" style={{ padding: 16 }}>
-              <div className="flex items-center gap-2 mb-3">
-                <ArrowRight size={17} aria-hidden="true" />
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ส่งต่อ (Routing)</h2>
-              </div>
-              {lc.routes.length ? (
-                <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                  {lc.routes.map((route) => (
-                    <RouteCard key={route.kind} route={route} onAction={onRouteAction} busy={!!actionBusy} canEdit={canEdit} />
-                  ))}
-                </div>
-              ) : <Empty>ยังไม่มีปลายทางที่ต้องส่งต่อ</Empty>}
-            </section>
-          )}
-
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           {/* ไทม์ไลน์รวม: อัปเดตงาน + การเปลี่ยนสถานะ เรียงตามเวลาเดียวกัน — เห็นเรื่องราวของโครงการในฟีดเดียว */}
           <section id="deal-timeline" className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
@@ -895,6 +942,8 @@ export default function DealOverviewPage() {
                 </ul>
               ) : <Empty>ยังไม่มีความเคลื่อนไหว{canEdit ? " — เริ่มโพสต์อัปเดตได้เลย" : ""}</Empty>}
           </section>
+            </div>
+          </div>
         </div>
       )}
 
