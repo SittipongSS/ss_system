@@ -138,7 +138,7 @@ export function stageBadge(stage) {
 
 export function KpiCard({ icon, label, value, hint }) {
   return (
-    <div className="glass-panel" style={{ padding: "16px", minHeight: 108 }}>
+    <div className="glass-panel interactive-card" style={{ padding: "16px", minHeight: 108 }}>
       <div className="flex items-center gap-2" style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 600 }}>
         {icon}
         <span>{label}</span>

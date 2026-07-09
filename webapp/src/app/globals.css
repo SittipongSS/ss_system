@@ -4585,3 +4585,96 @@ button.empty-state { width: 100%; font: inherit; }
     padding: 0;
   }
 }
+/* Interactive Cards */
+.interactive-card {
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  cursor: default;
+}
+.interactive-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: color-mix(in srgb, var(--primary-color) 30%, var(--border));
+}
+
+/* Interactive Grid Hover */
+.interactive-grid tbody tr.premium-row:hover td {
+  background: color-mix(in srgb, var(--primary-color) 4%, transparent) !important;
+}
+.interactive-grid tbody tr.premium-row:hover td.fz-c1,
+.interactive-grid tbody tr.premium-row:hover td.fz-c2,
+.interactive-grid tbody tr.premium-row:hover td.fz-cr {
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--panel)) !important;
+}
+
+/* Interactive Cell (Drill-down) */
+.cell-interactive {
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+.cell-interactive:hover {
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent) !important;
+  color: var(--primary-color) !important;
+}
+.cell-interactive::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 50%, transparent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+.cell-interactive:hover::after {
+  opacity: 1;
+}
+
+/* Custom Tooltip for Charts */
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  color: var(--text-1);
+  font-size: 13px;
+  z-index: 100;
+  transform: translate(-50%, -100%);
+  margin-top: -12px;
+  min-width: 150px;
+  transition: opacity 0.1s ease, transform 0.1s ease;
+  backdrop-filter: blur(8px);
+}
+.chart-tooltip-header {
+  font-weight: 700;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+}
+.chart-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.chart-tooltip-row:last-child {
+  margin-bottom: 0;
+}
+.chart-tooltip-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+/* Chart bar hover interaction */
+.chart-bar {
+  transition: opacity 0.2s ease;
+}
+.chart-group:hover .chart-bar:not(:hover) {
+  opacity: 0.3;
+}
