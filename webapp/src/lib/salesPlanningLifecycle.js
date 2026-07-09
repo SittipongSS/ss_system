@@ -145,19 +145,7 @@ function buildRoutes(deal, related) {
   const projectHref = hasProject ? `/sa/projects/${deal.projectId}` : null;
   const routes = [];
 
-  // 1) PM project — ปลดล็อกตั้งแต่เสนอไทม์ไลน์ขึ้นไป (project เกิดก่อน win ได้)
-  const pmUnlockable = ['timeline_proposed', 'awaiting_confirm', 'deposit_pending', 'won', 'in_project'].includes(deal.stage);
-  routes.push({
-    kind: 'pm',
-    label: 'ไทม์ไลน์',
-    status: hasProject ? 'done' : pmUnlockable ? 'available' : 'locked',
-    href: projectHref,
-    linkLabel: 'เปิดไทม์ไลน์',
-    actionKind: hasProject ? null : pmUnlockable ? 'create-project' : null,
-    actionLabel: '+ สร้างไทม์ไลน์',
-    hint: hasProject ? 'ผูกไทม์ไลน์แล้ว' : pmUnlockable ? 'สร้างไทม์ไลน์เพื่อเริ่มผลิต' : 'ถึงขั้น "เสนอไทม์ไลน์" ก่อน',
-  });
-
+  // PM project route is now handled natively in the Timeline card in UI.
   // 2) สรรพสามิต — รายตัว FG หมวด 01-002 ตามสถานะทะเบียน
   for (const r of buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProject)) routes.push(r);
 
