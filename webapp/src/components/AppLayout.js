@@ -157,7 +157,6 @@ export default function AppLayout({ children }) {
         { href: '/database', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'customers:view', match: (p) => p === '/database' },
         { href: '/database/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
         { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
-        { href: '/database/holidays', name: 'วันหยุด (ปฏิทินทำการ)', icon: CalendarDays, cap: 'master:manage', match: (p) => p.startsWith('/database/holidays') },
       ],
     },
     {
@@ -280,18 +279,16 @@ export default function AppLayout({ children }) {
               })}
             </li>
           ))}
-          {canUser({ role, extraCaps }, 'mgmt:view') && (
-            <li className="nav-group" style={{ marginTop: 'auto', marginBottom: '8px' }}>
-              <Link
-                href="/mgmt/calendar"
-                className={`nav-item ${pathname.startsWith('/mgmt/calendar') ? 'active' : ''}`}
-                title={isCollapsed ? 'ปฏิทิน' : undefined}
-              >
-                <CalendarDays size={18} className="ico" />
-                <span className="nav-label">ปฏิทิน</span>
-              </Link>
-            </li>
-          )}
+          <li className="nav-group" style={{ marginTop: 'auto', marginBottom: '8px' }}>
+            <Link
+              href="/database/holidays"
+              className={`nav-item ${pathname.startsWith('/database/holidays') ? 'active' : ''}`}
+              title={isCollapsed ? 'ปฏิทิน' : undefined}
+            >
+              <CalendarDays size={18} className="ico" />
+              <span className="nav-label">ปฏิทิน</span>
+            </Link>
+          </li>
         </ul>
 
         {/* Sidebar Footer containing Theme Toggle */}
