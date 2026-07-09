@@ -15,25 +15,40 @@ const OVERVIEW_TABS = [
   { key: "dashboard", label: "แดชบอร์ด" },
 ];
 
+const money = (value) => fmtMoney(value);
+const pctFmt = (value) => (value == null ? "–" : `${value}%`);
+
 // แถวตัวเลขที่โชว์ต่อช่อง (ตามลำดับบนลงล่าง) พร้อมป้ายชื่อ + สี.
-// forecast (จาก API) = FC ของดีลที่ยังเปิด (ไม่รวมดีลที่แพ้).
-//   FC เต็ม   = won + forecast(เปิด)                (เป้าหมายที่คาดว่าจะทำได้ทั้งเดือน)
-//   FC คงเหลือ = FC เต็ม − Actual(won) = forecast(เปิด)  (ส่วนที่ยังต้องปิดต่อ)
+//   FC 20/50/80/100 = มูลค่าโครงการเปิด แยกตามระดับโอกาสปิด (probability)
+//   FC Total       = ผลรวม FC ทุกระดับ (= มูลค่าโครงการเปิดทั้งหมด)
+//   AT (Actual)    = ยอดปิดจริง (won)
+//   FC คงเหลือ      = เป้าที่ยังต้องปิดอีก = Target − AT (ไม่ต่ำกว่า 0)
+//   %              = ความสำเร็จ = AT / Target
 const METRICS = [
-  { key: "target", label: "เป้า", color: "var(--text)" },
-  { key: "full", label: "FC เต็ม", color: "var(--blue)" },
-  { key: "won", label: "Actual", color: "var(--green)" },
+  { key: "target", label: "Target", color: "var(--text)" },
+  { key: "fc20", label: "FC 20%", color: "var(--text-3)" },
+  { key: "fc50", label: "FC 50%", color: "var(--amber)" },
+  { key: "fc80", label: "FC 80%", color: "var(--teal)" },
+  { key: "fc100", label: "FC 100%", color: "var(--green)" },
+  { key: "fcTotal", label: "FC Total", color: "var(--blue)" },
+  { key: "won", label: "AT", color: "var(--violet)" },
   { key: "remaining", label: "FC คงเหลือ", color: "var(--amber)" },
+  { key: "pct", label: "%", color: "var(--text-2)", fmt: pctFmt },
 ];
 
-const money = (value) => fmtMoney(value);
+const FC_KEYS = ["fc20", "fc50", "fc80", "fc100"];
 
 function deriveMetrics(cell) {
   const target = Number(cell?.target || 0);
-  const won = Number(cell?.won || 0);
-  const open = Number(cell?.forecast || 0);
-  const full = won + open;
-  return { target, full, won, remaining: full - won };
+  const won = Number(cell?.won || 0); // AT (ยอดปิดจริง)
+  const fc20 = Number(cell?.fc20 || 0);
+  const fc50 = Number(cell?.fc50 || 0);
+  const fc80 = Number(cell?.fc80 || 0);
+  const fc100 = Number(cell?.fc100 || 0);
+  const fcTotal = fc20 + fc50 + fc80 + fc100; // = มูลค่าโครงการเปิดทั้งหมด
+  const remaining = Math.max(0, target - won); // FC คงเหลือ = เป้าที่ยังต้องปิด
+  const pct = target > 0 ? Math.round((won / target) * 100) : null;
+  return { target, fc20, fc50, fc80, fc100, fcTotal, won, remaining, pct };
 }
 
 function metricCell(row, month) {
@@ -42,17 +57,24 @@ function metricCell(row, month) {
     target: Number(cell.target || 0),
     won: Number(cell.won || 0),
     forecast: Number(cell.forecast || 0),
+    fc20: Number(cell.fc20 || 0),
+    fc50: Number(cell.fc50 || 0),
+    fc80: Number(cell.fc80 || 0),
+    fc100: Number(cell.fc100 || 0),
   };
 }
 
+function blankCell() {
+  return { target: 0, won: 0, forecast: 0, fc20: 0, fc50: 0, fc80: 0, fc100: 0 };
+}
+
 function addMetric(target, month, value) {
-  if (!target.months[month]) target.months[month] = { target: 0, won: 0, forecast: 0 };
-  target.months[month].target += Number(value.target || 0);
-  target.months[month].won += Number(value.won || 0);
-  target.months[month].forecast += Number(value.forecast || 0);
-  target.total.target += Number(value.target || 0);
-  target.total.won += Number(value.won || 0);
-  target.total.forecast += Number(value.forecast || 0);
+  if (!target.months[month]) target.months[month] = blankCell();
+  const cell = target.months[month];
+  for (const k of ["target", "won", "forecast", ...FC_KEYS]) {
+    cell[k] += Number(value[k] || 0);
+    target.total[k] += Number(value[k] || 0);
+  }
 }
 
 function buildYearRows(yearDashboards) {
@@ -62,10 +84,17 @@ function buildYearRows(yearDashboards) {
     sublabel: "ทุกทีม",
     team: null,
     months: {},
-    total: { target: 0, won: 0, forecast: 0 },
+    total: blankCell(),
   };
   const owners = new Map();
   const teams = new Map();
+  // แตก byForecast (array ระดับ FC) เป็นฟิลด์ fc20..fc100 ของ cell
+  const fcFields = (fcArr) => {
+    const byLevel = {};
+    for (const b of fcArr || []) byLevel[b.level] = Number(b.value || 0);
+    return { fc20: byLevel[20] || 0, fc50: byLevel[50] || 0, fc80: byLevel[80] || 0, fc100: byLevel[100] || 0 };
+  };
+  const fcFromObj = (fc) => ({ fc20: Number(fc?.[20] || 0), fc50: Number(fc?.[50] || 0), fc80: Number(fc?.[80] || 0), fc100: Number(fc?.[100] || 0) });
 
   for (const dashboard of yearDashboards) {
     const month = dashboard.month;
@@ -74,6 +103,7 @@ function buildYearRows(yearDashboards) {
       target: totals.targetAmount || 0,
       won: totals.wonValue || 0,
       forecast: totals.weightedForecast || 0,
+      ...fcFields(dashboard.byForecast),
     });
 
     for (const row of dashboard.byOwner || []) {
@@ -85,13 +115,14 @@ function buildYearRows(yearDashboards) {
           sublabel: row.team || "-",
           team: row.team || "ไม่ระบุทีม",
           months: {},
-          total: { target: 0, won: 0, forecast: 0 },
+          total: blankCell(),
         });
       }
       addMetric(owners.get(key), month, {
         target: row.target,
         won: row.won,
         forecast: row.weighted,
+        ...fcFromObj(row.fc),
       });
     }
 
@@ -104,13 +135,14 @@ function buildYearRows(yearDashboards) {
           sublabel: "ทีม",
           team: key,
           months: {},
-          total: { target: 0, won: 0, forecast: 0 },
+          total: blankCell(),
         });
       }
       addMetric(teams.get(key), month, {
         target: row.target,
         won: row.won,
         forecast: row.weighted,
+        ...fcFromObj(row.fc),
       });
     }
   }
@@ -122,17 +154,14 @@ function buildYearRows(yearDashboards) {
 
 // รวมทุกแถวเป็นแถวเดียว (มูลค่ารวมต่อเดือน + ทั้งปี) สำหรับแถวสรุปท้ายตาราง.
 function sumRows(rows) {
-  const total = { id: "grand-total", label: "รวมทั้งหมด", months: {}, total: { target: 0, won: 0, forecast: 0 } };
+  const total = { id: "grand-total", label: "รวมทั้งหมด", months: {}, total: blankCell() };
+  const keys = ["target", "won", "forecast", ...FC_KEYS];
   for (const r of rows) {
     for (const [m, v] of Object.entries(r.months || {})) {
-      if (!total.months[m]) total.months[m] = { target: 0, won: 0, forecast: 0 };
-      total.months[m].target += Number(v.target || 0);
-      total.months[m].won += Number(v.won || 0);
-      total.months[m].forecast += Number(v.forecast || 0);
+      if (!total.months[m]) total.months[m] = blankCell();
+      for (const k of keys) total.months[m][k] += Number(v[k] || 0);
     }
-    total.total.target += Number(r.total?.target || 0);
-    total.total.won += Number(r.total?.won || 0);
-    total.total.forecast += Number(r.total?.forecast || 0);
+    for (const k of keys) total.total[k] += Number(r.total?.[k] || 0);
   }
   return total;
 }
@@ -211,11 +240,11 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                           </td>
                           {monthMetrics.map((mm, ci) => (
                             <td key={months[ci]} className="num mono" style={{ color: mm[m.key] ? m.color : "var(--text-3)" }}>
-                              {money(mm[m.key])}
+                              {(m.fmt || money)(mm[m.key])}
                             </td>
                           ))}
                           <td className="fz-cr num mono" style={{ fontWeight: 700, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}>
-                            {money(totalMetrics[m.key])}
+                            {(m.fmt || money)(totalMetrics[m.key])}
                           </td>
                         </tr>
                       ))}
@@ -245,11 +274,11 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                     </td>
                     {monthMetrics.map((mm, ci) => (
                       <td key={months[ci]} className="num mono" style={{ fontWeight: 700, color: mm[m.key] ? m.color : "var(--text-3)" }}>
-                        {money(mm[m.key])}
+                        {(m.fmt || money)(mm[m.key])}
                       </td>
                     ))}
                     <td className="fz-cr num mono" style={{ fontWeight: 800, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}>
-                      {money(totalMetrics[m.key])}
+                      {(m.fmt || money)(totalMetrics[m.key])}
                     </td>
                   </tr>
                 ))}
