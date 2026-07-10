@@ -165,7 +165,7 @@ export function buildProjectTasks(project, projectId) {
   const raw = template.map((t, idx) => ({
     ...t,
     id: genTaskId(),
-    status: idx === 0 ? 'In Progress' : 'Pending',
+    status: 'Pending',
     assignee: defaultAssignee(t.role, project),
   }));
 
@@ -226,7 +226,7 @@ export function mergeTemplateTasks(project, existingTasks) {
     return {
       ...t,
       id: prev?.id || genTaskId(),
-      status: prev?.status || (idx === 0 ? 'In Progress' : 'Pending'),
+      status: prev?.status || 'Pending',
       assignee: prev?.assignee ?? defaultAssignee(t.role, project),
       actualFinishDate: prev?.actualFinishDate ?? null,
       cellsOverride: prev?.cellsOverride ?? null,

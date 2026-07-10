@@ -1,14 +1,14 @@
 // Auto status propagation for project tasks, driven by the predecessor graph.
 //
-// โมเดล: ระบบจัดการเฉพาะคู่ Pending ↔ "In Progress" อัตโนมัติ ส่วน "Completed"
-// เป็นการกระทำของผู้ใช้ (คงไว้เสมอ ไม่ถูก auto un-complete). กฎเดียว:
+// โมเดล: ควบคุมสถานะ "Pending" อัตโนมัติเมื่อไม่พร้อม ส่วน "In Progress" และ "Completed"
+// เป็นการกระทำของผู้ใช้ (ให้คงไว้ ไม่ถูก auto เปลี่ยน นอกจากกรณีไม่พร้อม) กฎ:
 //   ready(t) = predecessor ทุกตัว "Completed" (หรือไม่มี / ชี้ไป task ที่ถูกลบ)
-//   ถ้า t ไม่ใช่ Completed → ready ? "In Progress" : "Pending"
+//   ถ้า t ไม่ใช่ Completed → ready ? คงสถานะเดิม : "Pending"
 //
 // ครอบคลุมโจทย์ทั้งหมดด้วย single pass (readiness ขึ้นกับสถานะ Completed ซึ่ง pass นี้
 // ไม่แตะ จึง deterministic ไม่ต้อง topological sort):
-//   - งานแรก (ไม่มี predecessor) → In Progress ; งานขนาน (หลายตัวไม่มี pred) → In Progress ทุกตัว
-//   - กดเสร็จขั้นหนึ่ง → ขั้นถัดที่เชื่อมกันพร้อมแล้ว → In Progress อัตโนมัติ
+//   - ขั้นตอนใหม่ทุกขั้น ค่าเริ่มต้นคือ "Pending" (รอดำเนินการ)
+//   - กดเสร็จขั้นหนึ่ง → ขั้นถัดที่เชื่อมกันจะยังคงสถานะเดิม (Pending) จนกว่าผู้ใช้จะเริ่มทำ (In Progress)
 //   - ถอยจากเสร็จ / ลบ-แก้ predecessor → คำนวณใหม่ทั้งกราฟ (ขั้นถัดที่ไม่พร้อมแล้ว → กลับเป็น Pending)
 
 export function computeAutoStatuses(tasks) {
@@ -21,7 +21,7 @@ export function computeAutoStatuses(tasks) {
       const p = byId.get(pid);
       return !p || p.status === 'Completed'; // pred ที่หาไม่เจอ (ถูกลบ) = ไม่บล็อก
     });
-    next.set(t.id, ready ? 'In Progress' : 'Pending');
+    next.set(t.id, ready ? t.status : 'Pending');
   }
   return next;
 }
