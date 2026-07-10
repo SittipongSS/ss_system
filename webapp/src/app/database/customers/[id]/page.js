@@ -669,8 +669,8 @@ export default function CustomerDetails() {
               <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className="premium-input w-full text-xs" />
             </div>
             <div className="form-group col-span-2 sm:col-span-1">
-              <label>เลขประจำตัวผู้เสียภาษี <span className="text-[var(--red)]">*</span></label>
-              <input type="text" name="taxId" value={formData.taxId} onChange={handleInputChange} required className="premium-input w-full font-mono text-xs" />
+              <label>เลขประจำตัวผู้เสียภาษี</label>
+              <input type="text" name="taxId" value={formData.taxId} onChange={handleInputChange} placeholder="เลข 13 หลัก (ถ้ามี)" className="premium-input w-full font-mono text-xs" />
             </div>
             <div className="form-group col-span-2 sm:col-span-1">
               <label>สาขา (Branch)</label>

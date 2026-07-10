@@ -204,7 +204,9 @@ export async function PATCH(request, { params }) {
     'team', 'ownerId',
     'isActive',  // lifecycle flag (0030) — พักใช้/เปิดใช้ลูกค้า; edit-level gate (canEditRecord above)
   ]) {
-    if (body[k] !== undefined) updates[k] = body[k];
+    if (body[k] !== undefined) {
+      updates[k] = (k === 'taxId' && body[k] === '') ? null : body[k];
+    }
   }
   // brands (0059): normalize to [{th,en}] — accepts legacy string[] too.
   if (body.brands !== undefined) updates.brands = normalizeBrands(body.brands);

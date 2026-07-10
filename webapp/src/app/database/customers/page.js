@@ -425,15 +425,14 @@ export default function CustomerDirectory() {
               </div>
               <div className="form-group">
                 <label>
-                  เลขประจำตัวผู้เสียภาษี <span className="text-[var(--red)]">*</span>
+                  เลขประจำตัวผู้เสียภาษี
                 </label>
                 <input
                   type="text"
                   name="taxId"
                   value={formData.taxId}
                   onChange={handleChange}
-                  required
-                  placeholder="เลข 13 หลัก"
+                  placeholder="เลข 13 หลัก (ถ้ามี)"
                   className="premium-input w-full font-mono"
                 />
               </div>
