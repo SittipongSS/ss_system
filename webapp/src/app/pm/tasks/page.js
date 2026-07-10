@@ -17,6 +17,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
 import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
+import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -321,7 +322,9 @@ export default function TasksPage() {
     const u = getUrgencyInfo(t);
     const manage = canManageTask(t);
     const done = t.status === "Completed";
-    const assigneeName = t.assigneeId ? (usersMap[t.assigneeId] || "—") : null;
+    const activeAssignee = t.assigneeId || t.ownerId;
+    const assigneeName = activeAssignee ? (usersMap[activeAssignee] || "—") : null;
+    const proxyUpdater = t.updatedBy && t.updatedBy !== activeAssignee ? (usersMap[t.updatedBy] || "ใครบางคน") : null;
     return (
       <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={manage ? "คลิกเพื่อแก้ไขงาน" : undefined} className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: manage ? "pointer" : "default" }}>
         <div style={{ fontSize: "13px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
@@ -331,9 +334,10 @@ export default function TasksPage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "10px" }}>
           {t.category && <span style={{ background: "var(--panel-2)", padding: "1px 6px", borderRadius: "9px", color: "var(--text-2)" }}>{t.category}</span>}
-          {(scope !== "mine" || (t.assigneeId && t.assigneeId !== me?.id)) && assigneeName && (
+          {(scope !== "mine" || (activeAssignee && activeAssignee !== me?.id)) && assigneeName && (
             <span style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "1px 6px", borderRadius: "9px", color: "var(--accent)" }}><User size={9} style={{ display: "inline", verticalAlign: "-1px" }} /> {assigneeName}</span>
           )}
+          {proxyUpdater && <span style={{ background: "color-mix(in srgb, var(--purple) 12%, transparent)", padding: "1px 6px", borderRadius: "9px", color: "var(--purple)" }} title={`อัปเดตโดย ${proxyUpdater} (ทำแทน)`}>✏️ {proxyUpdater}</span>}
           {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
         </div>
         {manage && (
@@ -387,8 +391,7 @@ export default function TasksPage() {
           <p>มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้{me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}</p>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-          <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
-          {canSeeKpi && <Link href="/sa/tasks/kpi" className="btn"><BarChart3 size={16} /> KPI ทีม</Link>}
+          <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix", ...(canSeeKpi ? ["kpi"] : [])]} />
           <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
         </div>
       </div>
@@ -419,7 +422,8 @@ export default function TasksPage() {
       </div>
 
       {/* ── แถบเครื่องมือ ── */}
-      <div className="toolbar" style={{ marginBottom: "20px" }}>
+      {view !== "kpi" && (
+        <div className="toolbar" style={{ marginBottom: "20px" }}>
         <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
           <Search size={18} color="var(--text-3)" />
           <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -450,10 +454,13 @@ export default function TasksPage() {
             {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
           </button>
         </div>
-      </div>
+        </div>
+      )}
 
       {loading ? (
         <SkeletonRows />
+      ) : view === "kpi" ? (
+        <SalesKpiDashboard />
       ) : view === "board" ? (
         /* ── Kanban board (ตามสถานะ) ── */
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", alignItems: "start" }}>
@@ -577,7 +584,12 @@ export default function TasksPage() {
                       {t.note && <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{t.note}</div>}
                     </td>
                     <td>{t.category ? <span style={{ fontSize: "11px", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>
-                    {scope !== "mine" && <td style={{ fontSize: "13px" }}>{t.assigneeId ? (usersMap[t.assigneeId] || "—") : <span style={{ color: "var(--text-3)" }}>—</span>}</td>}
+                    {scope !== "mine" && <td style={{ fontSize: "13px" }}>
+                      {(t.assigneeId || t.ownerId) ? (usersMap[t.assigneeId || t.ownerId] || "—") : <span style={{ color: "var(--text-3)" }}>—</span>}
+                      {t.updatedBy && t.updatedBy !== (t.assigneeId || t.ownerId) && (
+                        <span style={{ marginLeft: 4, background: "color-mix(in srgb, var(--purple) 12%, transparent)", color: "var(--purple)", padding: "1px 4px", borderRadius: 4, fontSize: 10 }} title={`อัปเดตโดย ${usersMap[t.updatedBy] || "ใครบางคน"} (ทำแทน)`}>✏️</span>
+                      )}
+                    </td>}
                     <td style={{ fontSize: "13px" }}>{DIFFICULTY_LABELS[t.difficulty] || DIFFICULTY_LABELS[2]}</td>
                     <td>
                       {t.dueDate ? (
