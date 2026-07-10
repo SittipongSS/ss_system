@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, Target, X, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import { useCan, useTeam } from "@/lib/roleContext";
+import { useCan, useTeam, useRole } from "@/lib/roleContext";
 import { KpiCard, MONTH_LABELS, MonthPicker, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
@@ -385,6 +385,8 @@ export default function SalesPlanningOverviewPage() {
   const canReview = useCan("salesplan:review");
   const canTarget = useCan("salesplan:target");
   const team = useTeam();
+  const role = useRole();
+  const canSeeKpi = role === "admin" || role === "ae_supervisor";
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
   const [allMonths, setAllMonths] = useState(false); // รวมทั้งปีในการ์ด KPI/FC
@@ -527,7 +529,7 @@ export default function SalesPlanningOverviewPage() {
         )}
 
         <div className="tabs-header" role="tablist" aria-label="มุมมองภาพรวม">
-          {OVERVIEW_TABS.map((t) => (
+          {OVERVIEW_TABS.filter((t) => t.key !== "task_kpi" || canSeeKpi).map((t) => (
             <button
               key={t.key}
               type="button"
@@ -547,7 +549,7 @@ export default function SalesPlanningOverviewPage() {
           </div>
         )}
 
-        {tab === "task_kpi" && (
+        {tab === "task_kpi" && canSeeKpi && (
           <div style={{ marginTop: "16px" }}>
             <SalesKpiDashboard />
           </div>
