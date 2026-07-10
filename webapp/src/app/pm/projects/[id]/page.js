@@ -190,11 +190,6 @@ export default function ProjectDetailPage() {
   const [showEditTask, setShowEditTask] = useState(false);
   const [depPopover, setDepPopover] = useState(null); // popover แก้ predecessors ในตาราง — { task, x, y }
   const [dirty, setDirty] = useState({}); // เฟส 1: การแก้ task ที่ค้างรอยืนยัน (taskId -> patch รวม)
-  // "งานเพิ่มเติม" (personal_tasks ผูกโปรเจกต์) — งานนอกแผน assign ในทีมได้ ไม่เข้า Gantt
-  const [showExtra, setShowExtra] = useState(false);
-  const [editingExtraId, setEditingExtraId] = useState(null);
-  const [extraForm, setExtraForm] = useState({ title: "", note: "", dueDate: "", assigneeId: "" });
-  const [savingExtra, setSavingExtra] = useState(false);
   // เฟส 2: document revision control — ออก Revise = freeze เอกสารทั้งชุดเป็นเวอร์ชัน + เลข Rev
   const [showRevisions, setShowRevisions] = useState(false);
   const [revisions, setRevisions] = useState([]);
@@ -554,43 +549,6 @@ export default function ProjectDetailPage() {
     if (res.ok) await load();
   };
 
-  // ── งานเพิ่มเติม CRUD ──
-  const openAddExtra = () => { setEditingExtraId(null); setExtraForm({ title: "", note: "", dueDate: "", assigneeId: "" }); setShowExtra(true); };
-  const openEditExtra = (t) => { setEditingExtraId(t.id); setExtraForm({ title: t.title, note: t.note || "", dueDate: t.dueDate || "", assigneeId: t.assigneeId || "" }); setShowExtra(true); };
-  const saveExtra = async (e) => {
-    e.preventDefault();
-    if (!extraForm.title.trim()) { setToast({ kind: "error", msg: "ต้องระบุชื่องาน" }); return; }
-    setSavingExtra(true);
-    try {
-      const url = editingExtraId ? `/api/pm/personal-tasks/${editingExtraId}` : "/api/pm/personal-tasks";
-      const res = await fetch(url, {
-        method: editingExtraId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: extraForm.title.trim(), note: extraForm.note || "",
-          dueDate: extraForm.dueDate || null,
-          projectId: data?.id ?? id,
-          assigneeId: extraForm.assigneeId || null,
-        }),
-      });
-      if (res.ok) { setShowExtra(false); await load(); }
-      else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ" });
-    } catch { setToast({ kind: "error", msg: "เกิดข้อผิดพลาด" }); }
-    finally { setSavingExtra(false); }
-  };
-  const setExtraStatus = async (t, status) => {
-    if (status === t.status) return;
-    setData((d) => ({ ...d, personalTasks: (d.personalTasks || []).map((x) => x.id === t.id ? { ...x, status } : x) }));
-    const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
-    if (!res.ok) load();
-  };
-  const deleteExtra = async (t) => {
-    if (!(await askConfirm({ title: "ลบงานเพิ่มเติม", message: `ลบงานเพิ่มเติม "${t.title}" ?`, confirmLabel: "ลบ" }))) return;
-    const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
-    if (res.ok) setData((d) => ({ ...d, personalTasks: (d.personalTasks || []).filter((x) => x.id !== t.id) }));
-    else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ" });
-  };
-
   const togglePhase = (phase) => setCollapsedPhases((prev) => {
     const next = new Set(prev);
     next.has(phase) ? next.delete(phase) : next.add(phase);
@@ -871,69 +829,6 @@ export default function ProjectDetailPage() {
   const isDone = pct === 100;
   const accent = isDone ? "var(--green)" : "var(--accent)";
   const milestones = processedTasks.filter((t) => t.isMilestone);
-
-  // ── งานเพิ่มเติม (นอกแผน, ผูกโปรเจกต์นี้) ──
-  const extraTasks = data.personalTasks || [];
-  const me = data.me;
-  const teamMates = users.filter((u) => p.team && u.team === p.team);
-  const canManageExtra = (t) => {
-    if (!me) return false;
-    if (t.ownerId === me.id || t.assigneeId === me.id) return true;
-    if (isSuperuser(userRole)) return true;
-    return userRole === "senior_ae" && me.team && p.team === me.team;
-  };
-  const extraAssigneeName = (t) =>
-    users.find((u) => u.id === t.assigneeId)?.name
-    || (t.ownerId ? `${users.find((u) => u.id === t.ownerId)?.name || "ผู้สร้าง"} (สร้าง)` : "—");
-
-  const extraStatusControl = (t) => canManageExtra(t) ? (
-    <StatusSelect value={t.status} onChange={(v) => setExtraStatus(t, v)} />
-  ) : (
-    <span className="status-pill dot" style={{ "--dot": taskStatusColor(t.status) }} title="เปลี่ยนสถานะได้เฉพาะเจ้าของ/ผู้รับมอบ/หัวหน้าทีม">{t.status}</span>
-  );
-
-  // section "งานเพิ่มเติม" ใช้ทั้งใน List และ Table view (ไม่เข้า Gantt/พิมพ์)
-  const renderExtraSection = () => (
-    <div className="glass-panel" style={{ padding: "16px 18px", marginTop: "16px", borderTop: "3px solid color-mix(in srgb, var(--purple) 40%, transparent)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: extraTasks.length ? "12px" : "0" }}>
-        <div style={{ fontSize: "14px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-          <User size={16} color="var(--purple)" /> งานเพิ่มเติม
-          <span style={{ fontSize: "11px", fontWeight: 400, color: "var(--text-3)" }}>{extraTasks.length} งาน · งานนอกแผน — ไม่เข้า Gantt</span>
-        </div>
-        <button onClick={openAddExtra} className="btn sm"><Plus size={14} /> เพิ่มงานเพิ่มเติม</button>
-      </div>
-      {extraTasks.length === 0 ? (
-        <div style={{ fontSize: "12px", color: "var(--text-3)" }}>ยังไม่มีงานเพิ่มเติม — ใช้บันทึกงานตามต่อ/ขั้นตอนเสริมที่ไม่อยู่ในไทม์ไลน์ และมอบหมายให้คนในทีมได้</div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))", gap: "12px" }}>
-          {extraTasks.map((t) => {
-            const isDoneT = t.status === "Completed";
-            return (
-              <div key={t.id} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${taskStatusColor(t.status)}`, background: "color-mix(in srgb, var(--purple) 4%, var(--panel))" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "14px", fontWeight: 600, textDecoration: isDoneT ? "line-through" : "none", color: isDoneT ? "var(--text-3)" : "var(--text)" }}>{t.title}</div>
-                    {t.note && <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{t.note}</div>}
-                  </div>
-                  {canManageExtra(t) && (
-                    <div style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
-                      <button className="btn-icon" onClick={() => openEditExtra(t)} aria-label="แก้ไข" title="แก้ไข"><Edit2 size={14} /></button>
-                      <button className="btn-icon danger" onClick={() => deleteExtra(t)} aria-label="ลบ" title="ลบ"><Trash2 size={14} /></button>
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                  {extraStatusControl(t)}
-                  <span style={{ fontSize: "11px", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: "4px" }}><User size={12} /> {extraAssigneeName(t)}</span>
-                  {t.dueDate && <span style={{ fontSize: "11px", color: "var(--text-3)", display: "inline-flex", alignItems: "center", gap: "4px" }}><Calendar size={12} /> {formatDate(t.dueDate)}</span>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
 
   const renderChip = (Icon, label, color) => (
     <span className="chip" style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)`, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}>
@@ -1307,7 +1202,6 @@ export default function ProjectDetailPage() {
               </table>
             </div>
           )}
-          {renderExtraSection()}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -1512,8 +1406,6 @@ export default function ProjectDetailPage() {
               </div>
             );
           })}
-
-          {renderExtraSection()}
         </div>
       )}
       </div>
@@ -1633,43 +1525,6 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         )}
-      </Modal>
-
-      {/* งานเพิ่มเติม modal — สร้าง/แก้งานนอกแผนที่ผูกโปรเจกต์นี้ (assign ในทีมได้) */}
-      <Modal open={showExtra} onClose={() => setShowExtra(false)} title={editingExtraId ? "แก้ไขงานเพิ่มเติม" : "เพิ่มงานเพิ่มเติม"} size="md">
-        <form onSubmit={saveExtra}>
-          <div className="grid gap-[14px]">
-            <div className="form-group">
-              <label>ชื่องาน <span className="text-[var(--red)]">*</span></label>
-              <input value={extraForm.title} onChange={(e) => setExtraForm((f) => ({ ...f, title: e.target.value }))} required className="premium-input w-full" placeholder="เช่น ตามเอกสารจากลูกค้า, นัดประชุมเพิ่ม" />
-            </div>
-            <div className="form-group">
-              <label>รายละเอียด</label>
-              <textarea value={extraForm.note} onChange={(e) => setExtraForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" rows={2} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
-            </div>
-            <div className="pm-form-grid gap-3">
-              <div className="form-group">
-                <label>กำหนดส่ง</label>
-                <input type="date" value={extraForm.dueDate} onChange={(e) => setExtraForm((f) => ({ ...f, dueDate: e.target.value }))} className="premium-input w-full" />
-              </div>
-              <div className="form-group">
-                <label>มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(คนในทีม)</span></label>
-                <Select fullWidth value={extraForm.assigneeId} onChange={(e) => setExtraForm((f) => ({ ...f, assigneeId: e.target.value }))}>
-                  <option value="">— ไม่มอบหมาย (ของฉัน) —</option>
-                  {teamMates.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </Select>
-                {p.team && teamMates.length === 0 && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่มีสมาชิกในทีมนี้ให้มอบหมาย</div>}
-              </div>
-            </div>
-            <div style={{ fontSize: "11px", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "4px" }}>
-              <AlertTriangle size={11} /> งานเพิ่มเติมเป็นงานนอกแผน — ไม่เข้า Gantt และไม่กระทบการคำนวณกำหนดการ
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
-            <button type="button" onClick={() => setShowExtra(false)} className="btn">ยกเลิก</button>
-            <button type="submit" disabled={savingExtra} className="btn btn-primary px-8">{editingExtraId ? "บันทึก" : "เพิ่ม"}</button>
-          </div>
-        </form>
       </Modal>
 
       <Modal open={showIssueRev} onClose={() => !issuingRev && setShowIssueRev(false)} title="ออกเวอร์ชันเอกสารใหม่ (Revise)" size="sm">

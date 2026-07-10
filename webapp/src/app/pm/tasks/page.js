@@ -242,7 +242,7 @@ export default function TasksPage() {
     setForm({
       title: t.title, note: t.note || "",
       startDate: t.startDate || "", dueDate: t.dueDate || "",
-      linkType: t.dealId ? "deal" : t.projectId ? "project" : "none",
+      linkType: t.dealId ? "deal" : "none",
       projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
       category: t.category || "", important: !!t.important, urgent: !!t.urgent,
       difficulty: t.difficulty ?? 2,
@@ -265,7 +265,6 @@ export default function TasksPage() {
           note: form.note,
           startDate: form.startDate || null,
           dueDate: form.dueDate || null,
-          projectId,
           dealId,
           assigneeId: form.assigneeId || null,
           category: form.category || null,
@@ -701,7 +700,7 @@ export default function TasksPage() {
             <div className="form-group">
               <label>เชื่อมกับ</label>
               <div className="segmented" style={{ marginBottom: "8px" }}>
-                {[["none", "ไม่ผูก"], ["deal", "โครงการ"], ["project", "ไทม์ไลน์"]].map(([k, lbl]) => (
+                {[["none", "ไม่ผูก"], ["deal", "โครงการ"]].map(([k, lbl]) => (
                   <button type="button" key={k} className={form.linkType === k ? "active" : ""} onClick={() => setForm((f) => ({ ...f, linkType: k }))}>{lbl}</button>
                 ))}
               </div>
@@ -709,12 +708,6 @@ export default function TasksPage() {
                 <Select fullWidth value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
                   <option value="">— เลือกโครงการ —</option>
                   {allDeals.map((d) => <option key={d.id} value={d.id}>{d.title}{d.customerName ? ` — ${d.customerName}` : ""}</option>)}
-                </Select>
-              )}
-              {form.linkType === "project" && (
-                <Select fullWidth value={form.projectId} onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value }))}>
-                  <option value="">— เลือกไทม์ไลน์ —</option>
-                  {allProjects.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
                 </Select>
               )}
             </div>
