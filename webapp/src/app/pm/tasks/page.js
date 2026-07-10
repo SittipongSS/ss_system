@@ -571,13 +571,13 @@ export default function TasksPage() {
                         <span className={`status-pill dot ${t.status === "Completed" ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }}>{TASK_STATUS_TH[t.status] || t.status}</span>
                       )}
                     </td>
-                    <td style={{ fontWeight: 500 }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                        {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" />}
-                        {t.urgent && <Flame size={13} color="var(--red)" />}
-                        {t.title}
-                      </span>
-                      {t.note && <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{t.note}</div>}
+                    <td style={{ fontWeight: 500, whiteSpace: "normal", wordBreak: "break-word", minWidth: "220px", lineHeight: 1.4 }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", flexWrap: "wrap" }}>
+                        {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" style={{ flexShrink: 0, marginTop: "2px" }} />}
+                        {t.urgent && <Flame size={13} color="var(--red)" style={{ flexShrink: 0, marginTop: "2px" }} />}
+                        <span style={{ flex: 1 }}>{t.title}</span>
+                      </div>
+                      {t.note && <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px" }}>{t.note}</div>}
                     </td>
                     <td>{t.category ? <span style={{ fontSize: "11px", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>
                     {scope !== "mine" && <td style={{ fontSize: "13px" }}>
