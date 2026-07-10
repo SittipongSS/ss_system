@@ -178,7 +178,7 @@ export default function ProjectDetailPage() {
   const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" }); // list | table | document
   const [showAddTask, setShowAddTask] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
-  const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false });
+  const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" });
   const [collapsedPhases, setCollapsedPhases] = useState(() => new Set());
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -537,7 +537,7 @@ export default function ProjectDetailPage() {
       setShowAddTask(false);
       setInsertAfterId(null);
       setInsertBeforeId(null);
-      setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false });
+      setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" });
       load();
     } else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "เพิ่มขั้นตอนไม่สำเร็จ" });
   };
@@ -1094,7 +1094,7 @@ export default function ProjectDetailPage() {
                 </Select>
               </div>
               {canEdit && (
-                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary sm">
+                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} className="btn btn-primary sm">
                   <Plus size={14} /> เพิ่มขั้นตอน
                 </button>
               )}
@@ -1209,7 +1209,7 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             {canEdit && (
-              <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} className="btn btn-primary sm">
+              <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} className="btn btn-primary sm">
                 <Plus size={14} /> เพิ่มขั้นตอน
               </button>
             )}
@@ -1308,7 +1308,7 @@ export default function ProjectDetailPage() {
                   <div style={{ display: "flex", flexDirection: "column", paddingLeft: task.phase ? "12px" : "0" }}>
                     {isFirstOfPhase && canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "0 0 4px", zIndex: 2 }}>
-                        <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอนก่อนหัวแถวแรกของเฟสนี้">
+                        <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอนก่อนหัวแถวแรกของเฟสนี้">
                           <PlusCircle size={14} />
                         </button>
                       </div>
@@ -1396,7 +1396,7 @@ export default function ProjectDetailPage() {
 
                     {canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "4px 0", zIndex: 2 }}>
-                        <button onClick={() => { setInsertBeforeId(null); setInsertAfterId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [task.id], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
+                        <button onClick={() => { setInsertBeforeId(null); setInsertAfterId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [task.id], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
                           <PlusCircle size={14} />
                         </button>
                       </div>
@@ -1450,9 +1450,13 @@ export default function ProjectDetailPage() {
             <div className="pm-form-grid gap-3">
               <div className="form-group" style={{ gridColumn: "span 2" }}>
                 <label>แผนก (Role)</label>
-                <Select fullWidth value={taskForm.role} onChange={(e) => setTaskForm((f) => ({ ...f, role: e.target.value }))}>
+                <Select fullWidth value={taskForm.role} onChange={(e) => setTaskForm((f) => ({ ...f, role: e.target.value, assigneeId: e.target.value === "SA" ? taskForm.assigneeId : "" }))}>
                   {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                 </Select>
+              </div>
+              <div className="form-group" style={{ gridColumn: "span 2" }}>
+                <label>ผู้รับผิดชอบ</label>
+                <AssigneeField form={taskForm} setForm={setTaskForm} users={users} />
               </div>
             </div>
 
@@ -1517,13 +1521,83 @@ export default function ProjectDetailPage() {
       {/* Edit task modal — ใช้จาก Table view (แก้ในที่ ไม่สลับไป List) */}
       <Modal open={showEditTask} onClose={closeEditModal} title="แก้ไขขั้นตอน" size="md">
         {editForm && editTask && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {renderStepEditFields(editTask.id)}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-              <button className="btn btn-secondary sm" onClick={closeEditModal}>ยกเลิก</button>
-              <button className="btn btn-primary sm" onClick={saveEditModal}><Check size={14} /> ตกลง</button>
+          <form onSubmit={(e) => { e.preventDefault(); saveEditModal(); }}>
+            <div className="grid gap-[14px]">
+              <div className="form-group">
+                <label>ชื่อขั้นตอน <span className="text-[var(--red)]">*</span></label>
+                <input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} required className="premium-input w-full" placeholder="ระบุชื่อขั้นตอน" />
+              </div>
+
+              <div className="pm-form-grid gap-3">
+                <div className="form-group" style={{ gridColumn: "span 2" }}>
+                  <label>แผนก (Role)</label>
+                  <Select fullWidth value={editForm.role} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" }))}>
+                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </Select>
+                </div>
+                <div className="form-group" style={{ gridColumn: "span 2" }}>
+                  <label>ผู้รับผิดชอบ</label>
+                  <AssigneeField form={editForm} setForm={setEditForm} users={users} />
+                </div>
+              </div>
+
+              <div className="pm-form-grid gap-3">
+                <div className="form-group">
+                  <label>วันที่เริ่ม <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เว้นว่างเพื่ออิงตามงานที่รอ)</span></label>
+                  <input type="date" value={editForm.startDate || ""} onChange={(e) => syncSchedule({ startDate: e.target.value })} className="premium-input w-full" />
+                </div>
+                <div className="form-group">
+                  <label>วันสิ้นสุด <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(กรอกแล้วจำนวนวันจะคำนวณให้)</span></label>
+                  <input type="date" value={editForm.finishDate || ""} min={editForm.startDate || undefined} disabled={!editForm.startDate} onChange={(e) => syncSchedule({ finishDate: e.target.value })} className="premium-input w-full" title={editForm.startDate ? "วันสิ้นสุดของขั้นตอน" : "กรอกวันที่เริ่มก่อน"} />
+                </div>
+                <div className="form-group">
+                  <label>จำนวนวันทำการ</label>
+                  <input type="number" min="1" value={editForm.durationDays} onChange={(e) => syncSchedule({ durationDays: e.target.value })} className="premium-input w-full" />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>เฟส (Phase)</label>
+                <SearchableSelect
+                  allowFreeText
+                  options={formPhases.map((ph) => ({ value: ph, label: ph }))}
+                  value={editForm.phase || ""}
+                  onChange={(v) => setEditForm((f) => ({ ...f, phase: v }))}
+                  placeholder="เลือกหรือพิมพ์เฟสใหม่"
+                  emptyText="ยังไม่มีเฟส (พิมพ์เพื่อเพิ่มใหม่)"
+                />
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text)", fontWeight: 500 }}>
+                <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm((f) => ({ ...f, isMilestone: e.target.checked }))} style={{ accentColor: "var(--amber)", width: "16px", height: "16px", cursor: "pointer" }} />
+                ตั้งเป็น Milestone <span style={{ fontSize: "10px", background: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)", padding: "2px 8px", borderRadius: "12px", border: "1px solid color-mix(in srgb, var(--amber) 40%, transparent)", marginLeft: "4px", display: "inline-flex", alignItems: "center", fontWeight: 600 }}><Flag size={10} style={{ marginRight: "4px" }} /> จุดสังเกตหลัก</span>
+              </label>
+
+              <div className="form-group">
+                <label>หมายเหตุ</label>
+                <textarea value={editForm.note || ""} onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ resize: "vertical" }} />
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-2)", marginTop: "8px" }}>
+                  <input type="checkbox" checked={editForm.showNoteInPrint || false} onChange={(e) => setEditForm((f) => ({ ...f, showNoteInPrint: e.target.checked }))} style={{ accentColor: "var(--accent)", width: "16px", height: "16px", cursor: "pointer" }} />
+                  แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
+                </label>
+              </div>
+
+              <div className="form-group border-t border-[var(--border)] pt-[14px]">
+                <label>งานที่ต้องรอให้เสร็จก่อน (Predecessors) <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เลือกได้หลายงาน)</span></label>
+                <PredecessorPicker
+                  tasks={processedTasks}
+                  selfId={editTask.id}
+                  value={editForm.predecessors || []}
+                  onChange={(predecessors) => setEditForm((f) => ({ ...f, predecessors }))}
+                  maxHeight={150}
+                />
+              </div>
             </div>
-          </div>
+            <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+              <button type="button" onClick={closeEditModal} className="btn">ยกเลิก</button>
+              <button type="submit" className="btn btn-primary px-8"><Check size={14} className="mr-1" /> ตกลง</button>
+            </div>
+          </form>
         )}
       </Modal>
 
