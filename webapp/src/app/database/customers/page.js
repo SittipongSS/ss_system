@@ -487,13 +487,13 @@ export default function CustomerDirectory() {
                 ></textarea>
               </div>
               <div className="form-group col-span-2">
-                <label>แบรนด์สินค้า (EN/TH)</label>
+                <label>แบรนด์สินค้า</label>
                 <BrandsEditor
                   value={formData.brands}
                   onChange={(v) => setFormData((f) => ({ ...f, brands: v }))}
                 />
                 <span className="text-[11px] text-[var(--text-3)] mt-1">
-                  ใส่ได้หลายแบรนด์ — ชื่อไทยจำเป็น, ชื่ออังกฤษไม่บังคับ
+                  ใส่ได้หลายแบรนด์
                 </span>
               </div>
             </div>
