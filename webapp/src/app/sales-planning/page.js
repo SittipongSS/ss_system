@@ -10,10 +10,12 @@ import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
 import { SALES_FEATURES, teamRank } from "@/lib/salesPlanning";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
+import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
 
 const OVERVIEW_TABS = [
   { key: "tables", label: "ตาราง" },
   { key: "dashboard", label: "แดชบอร์ด" },
+  { key: "task_kpi", label: "KPI งาน" },
 ];
 
 // ดูเต็มจอสำหรับ element เดียว (คืน ref + สถานะ + ปุ่ม toggle). ใช้ซ้ำได้ทุกตาราง.
@@ -542,6 +544,12 @@ export default function SalesPlanningOverviewPage() {
         {tab === "dashboard" && (
           <div aria-busy={loading}>
             <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} teamKey={teamFilter} onTeamKeyChange={handleChartTeamClick} />
+          </div>
+        )}
+
+        {tab === "task_kpi" && (
+          <div style={{ marginTop: "16px" }}>
+            <SalesKpiDashboard />
           </div>
         )}
 

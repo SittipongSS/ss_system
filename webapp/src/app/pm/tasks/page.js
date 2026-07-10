@@ -391,7 +391,7 @@ export default function TasksPage() {
           <p>มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้{me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}</p>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-          <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix", ...(canSeeKpi ? ["kpi"] : [])]} />
+          <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
           <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
         </div>
       </div>
@@ -422,8 +422,7 @@ export default function TasksPage() {
       </div>
 
       {/* ── แถบเครื่องมือ ── */}
-      {view !== "kpi" && (
-        <div className="toolbar" style={{ marginBottom: "20px" }}>
+      <div className="toolbar" style={{ marginBottom: "20px" }}>
         <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
           <Search size={18} color="var(--text-3)" />
           <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -455,12 +454,9 @@ export default function TasksPage() {
           </button>
         </div>
         </div>
-      )}
 
       {loading ? (
         <SkeletonRows />
-      ) : view === "kpi" ? (
-        <SalesKpiDashboard />
       ) : view === "board" ? (
         /* ── Kanban board (ตามสถานะ) ── */
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", alignItems: "start" }}>
