@@ -68,12 +68,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const { data } = await supabase.from('personal_tasks').select('*').order('createdAt', { ascending: false });
     extraPersonal = data || [];
   } else if (scope === 'team') {
-    const [teamProjIds, teamIds] = await Promise.all([
+    const [teamProjIds, teamIds, { data: teamDeals }] = await Promise.all([
       teamProjectIds(supabase, user.team),
       teamUserIds(supabase, user.team),
+      supabase.from('sales_deals').select('id').eq('team', user.team ?? null),
     ]);
+    const teamDealIds = (teamDeals || []).map((d) => d.id);
     const queries = [];
     if (teamProjIds.length) queries.push(supabase.from('personal_tasks').select('*').in('projectId', teamProjIds));
+    if (teamDealIds.length) queries.push(supabase.from('personal_tasks').select('*').in('dealId', teamDealIds));
     if (teamIds.length) {
       queries.push(supabase.from('personal_tasks').select('*').in('assigneeId', teamIds));
       queries.push(supabase.from('personal_tasks').select('*').in('ownerId', teamIds));
