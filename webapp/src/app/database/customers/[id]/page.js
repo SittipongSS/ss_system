@@ -385,7 +385,7 @@ export default function CustomerDetails() {
           )}
         </div>
         <div className="mt-5 pt-4 border-t border-[var(--border)]">
-          <span className="text-[var(--text-3)] block text-[11px] mb-1.5">แบรนด์สินค้าที่ดูแล (EN/TH)</span>
+          <span className="text-[var(--text-3)] block text-[11px] mb-1.5">แบรนด์สินค้าที่ดูแล</span>
           <div className="flex flex-wrap gap-1.5">
             {customer.brands && customer.brands.length > 0 ? (
               customer.brands.map((b, i) => (
@@ -698,12 +698,12 @@ export default function CustomerDetails() {
               <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} rows={3} placeholder="เว้นว่าง = ใช้ที่อยู่ออกเอกสาร" className="premium-input w-full text-xs" style={{ padding: "8px 12px", resize: "none" }}></textarea>
             </div>
             <div className="form-group col-span-2">
-              <label>แบรนด์สินค้า (EN/TH)</label>
+              <label>แบรนด์สินค้า</label>
               <BrandsEditor
                 value={formData.brands}
                 onChange={(v) => setFormData((f) => ({ ...f, brands: v }))}
               />
-              <span className="text-[10px] text-[var(--text-3)] mt-1">ชื่อไทยจำเป็น, ชื่ออังกฤษไม่บังคับ</span>
+              <span className="text-[10px] text-[var(--text-3)] mt-1">ใส่ได้หลายแบรนด์</span>
             </div>
           </div>
 
