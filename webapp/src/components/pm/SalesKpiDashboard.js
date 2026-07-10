@@ -1,10 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { BarChart3, CalendarDays, ListTodo, RefreshCw, Trophy, Users, X } from "lucide-react";
 import { ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
-import Workspace from "@/components/ui/Workspace";
 import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
 
@@ -35,7 +33,7 @@ function ScoreBadge({ value }) {
   return <span className="ui-badge mono tabular-nums" style={{ color }}>{n}</span>;
 }
 
-export default function SalesTaskKpiPage() {
+export default function SalesKpiDashboard() {
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(monthEnd);
   const [team, setTeam] = useState("");
@@ -91,25 +89,11 @@ export default function SalesTaskKpiPage() {
     if (e && e.activePayload && e.activePayload.length) {
       const clickedTeam = e.activePayload[0].payload.team;
       setChartTeamFilter(prev => prev === clickedTeam ? "" : clickedTeam);
-      setTimeout(() => {
-        document.getElementById("individual-kpi-section")?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
     }
   };
 
   return (
-    <Workspace
-      icon={<BarChart3 size={22} />}
-      title="KPI งานขาย"
-      subtitle="วัดผลจากงานที่มอบหมายใน Sales Task Management ตามช่วงวันที่และ scope ของผู้ใช้"
-      back={{ href: "/sa/tasks", label: "กลับไปงาน" }}
-      headerRight={(
-        <>
-          <Link href="/sa/tasks" className="btn ghost"><ListTodo size={15} /> งาน</Link>
-          <button type="button" className="btn" onClick={load} disabled={loading}><RefreshCw size={15} /> รีเฟรช</button>
-        </>
-      )}
-    >
+    <div>
       <div className="toolbar" style={{ marginBottom: 18 }}>
         <span className="toolbar-label"><CalendarDays size={14} /> ช่วงวันที่</span>
         <input type="date" className="premium-input" value={from} onChange={(e) => setFrom(e.target.value)} style={{ width: 150 }} />
@@ -120,6 +104,8 @@ export default function SalesTaskKpiPage() {
             {(data?.availableTeams || []).map((t) => <option key={t} value={t}>{t}</option>)}
           </Select>
         )}
+        <div className="spacer" />
+        <button type="button" className="btn btn-secondary sm" onClick={load} disabled={loading}><RefreshCw size={14} /> รีเฟรชข้อมูล</button>
       </div>
 
       {error && (
@@ -248,6 +234,6 @@ export default function SalesTaskKpiPage() {
           </section>
         </div>
       )}
-    </Workspace>
+    </div>
   );
 }

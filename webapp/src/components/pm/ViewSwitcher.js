@@ -1,5 +1,5 @@
 "use client";
-import { ListTodo, Table2, FileText, FolderKanban, CalendarDays, LayoutGrid } from "lucide-react";
+import { ListTodo, Table2, FileText, FolderKanban, CalendarDays, LayoutGrid, BarChart3 } from "lucide-react";
 
 // ไอคอน + ป้ายมาตรฐานของมุมมอง PM — แหล่งเดียว ใช้ร่วมทุกหน้า
 // (My Work: list/table · Project detail: list/table/document ·
@@ -11,6 +11,7 @@ export const VIEW_META = {
   board:    { icon: FolderKanban, label: "บอร์ด" },
   calendar: { icon: CalendarDays, label: "ปฏิทิน" },
   matrix:   { icon: LayoutGrid,   label: "ความสำคัญ" },
+  kpi:      { icon: BarChart3,    label: "KPI" },
 };
 
 // segmented แบบ icon-only — รับรายการ mode ที่จะแสดง

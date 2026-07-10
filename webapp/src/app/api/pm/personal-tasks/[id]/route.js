@@ -87,6 +87,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     updates.completedAt = updates.status === 'Completed' ? today() : null;
   }
 
+  updates.updatedBy = user.id;
   updates.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase.from('personal_tasks').update(updates).eq('id', id).select().single();
