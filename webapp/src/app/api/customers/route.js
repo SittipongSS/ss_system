@@ -81,7 +81,7 @@ export async function POST(request) {
     id: 'CUS-' + randomUUID(),
     arCode: body.arCode,
     name: body.name,
-    taxId: body.taxId,
+    taxId: body.taxId || null,
     customerType: body.customerType === 'individual' ? 'individual' : 'company', // migration 0034
     branchCode: body.branchCode || '00000', // '00000' = สำนักงานใหญ่ (migration 0032)
     phone: body.phone || null,
