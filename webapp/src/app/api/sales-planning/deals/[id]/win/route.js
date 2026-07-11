@@ -24,6 +24,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const body = await req.json().catch(() => ({}));
   const wonValue = toMoney(body.wonValue, null);
   if (wonValue == null || wonValue <= 0) return badRequest('ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0');
+  // เดือนที่ปิดจริง (เลือกได้; buildWinPatch จะ sanitize ผ่าน monthKey อีกชั้น)
+  const wonMonth = body.wonMonth || null;
 
   try {
     const updated = await markWon({
@@ -32,6 +34,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       deal,
       source: 'manual',
       wonValue,
+      wonMonth,
       request: req,
       auditSummary: `ปิดโครงการ (Won) ${dealAuditLabel(deal)} มูลค่า ${wonValue.toLocaleString('th-TH')}`,
     });

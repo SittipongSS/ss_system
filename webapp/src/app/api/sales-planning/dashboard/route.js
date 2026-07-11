@@ -28,7 +28,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // ดีลเก่าก่อน migration 0081. ค่าคาดการณ์ของดีล won = projectValue (ใช้คิด variance).
   const wonAmt = (d) => Number(d.wonValue ?? d.projectValue ?? 0);
   const forecastAmt = (d) => Number(d.projectValue ?? 0);
-  const wonMonth = (d) => monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
+  // เดือนที่นับยอด Won: ใช้เดือนที่ผู้ใช้เลือกตอนกด Won ก่อน (metadata.wonMonth),
+  // ไม่งั้นเดือนของ confirmedAt / วันรับ PO / forecastMonth ตามลำดับ (ดีลเก่า).
+  const wonMonth = (d) => monthKey(d.metadata?.wonMonth) || monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
   const openDeals = visibleDeals.filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
   const wonDeals = visibleDeals.filter((d) => isWon(d) && wonMonth(d) === month);
   const lostDeals = visibleDeals.filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month);
