@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
-  if (!can(user.role, 'audit:view')) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!canUser(user, 'audit:view')) return Response.json({ error: 'forbidden' }, { status: 403 });
 
   const sp = new URL(request.url).searchParams;
   const months = sp.get('months') || '6';

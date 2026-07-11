@@ -166,6 +166,26 @@ test('viewer: cost/margin stays a per-user grant (ติ๊กเปิดสิ
   assert.equal(canUser(granted, 'legal:approve'), false);
 });
 
+test('admin read surfaces (audit/users) are grantable per-user — read only, no write escalation', () => {
+  // both are whitelisted grants now...
+  assert.ok(GRANTABLE_CAPS.includes('audit:view'));
+  assert.ok(GRANTABLE_CAPS.includes('users:view'));
+  assert.deepEqual(sanitizeExtraCaps(['audit:view', 'users:view']), ['audit:view', 'users:view']);
+  // ...but the admin WRITE caps stay ungrantable (defense against escalation).
+  assert.deepEqual(sanitizeExtraCaps(['users:manage', 'master:manage']), []);
+
+  // A viewer with the ticks gains the read windows...
+  const viewer = { role: 'viewer', extraCaps: ['audit:view', 'users:view'] };
+  assert.equal(canUser(viewer, 'audit:view'), true);
+  assert.equal(canUser(viewer, 'users:view'), true);
+  // ...but NEVER the account-management write cap — users:view ≠ users:manage.
+  assert.equal(canUser(viewer, 'users:manage'), false);
+  assert.equal(canUser(viewer, 'master:manage'), false);
+  // a plain viewer (no grant) sees neither
+  assert.equal(canUser({ role: 'viewer' }, 'audit:view'), false);
+  assert.equal(canUser({ role: 'viewer' }, 'users:view'), false);
+});
+
 test('pmTaskEditTier: none for outsiders', () => {
   // senior_ae on another team's project, not the assignee
   assert.equal(pmTaskEditTier({ role: 'senior_ae', team: 'ODM', id: 's' }, { assigneeId: 'x', role: 'SA' }, { team: 'KA', ownerId: 'o' }), 'none');

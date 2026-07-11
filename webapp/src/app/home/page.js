@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart, CircleDollarSign, Briefcase } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
-import { landingFor, can, canAccessSahamit, canAccessMgmt } from "@/lib/permissions";
+import { landingFor, can, canUser, canAccessSahamit, canAccessMgmt } from "@/lib/permissions";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 const SUPABASE_CONFIGURED =
@@ -310,9 +310,9 @@ export default function HomeHubPage() {
 
         {/* Footer — user management (admins) + logout */}
         <div style={{ textAlign: "center", marginTop: "32px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", flexWrap: "wrap" }}>
-          {isAdmin && (
-            <button onClick={() => router.push("/users")} className="btn ghost" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }} title="จัดการผู้ใช้">
-              <Users size={15} strokeWidth={2} /> จัดการผู้ใช้
+          {(isAdmin || canUser({ role, extraCaps }, "users:view")) && (
+            <button onClick={() => router.push("/users")} className="btn ghost" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }} title={isAdmin ? "จัดการผู้ใช้" : "รายชื่อผู้ใช้"}>
+              <Users size={15} strokeWidth={2} /> {isAdmin ? "จัดการผู้ใช้" : "รายชื่อผู้ใช้"}
             </button>
           )}
           <button onClick={handleLogout} className="btn ghost" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>

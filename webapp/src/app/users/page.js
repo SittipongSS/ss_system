@@ -201,15 +201,17 @@ export default function UserManagement() {
         </div>
         <div className="flex items-center gap-3">
           <div className="pill ok">ทั้งหมด {users.length} คน</div>
-          <button
-            onClick={() => {
-              setCreateForm(emptyForm);
-              setShowCreate(true);
-            }}
-            className="btn btn-primary flex items-center gap-1.5"
-          >
-            <Plus size={16} /> เพิ่มผู้ใช้
-          </button>
+          {canManage && (
+            <button
+              onClick={() => {
+                setCreateForm(emptyForm);
+                setShowCreate(true);
+              }}
+              className="btn btn-primary flex items-center gap-1.5"
+            >
+              <Plus size={16} /> เพิ่มผู้ใช้
+            </button>
+          )}
         </div>
       </div>
 
@@ -229,13 +231,13 @@ export default function UserManagement() {
                   <SortTh label="ฝ่าย" sortKey="department" sort={sort} />
                   <SortTh label="ทีม" sortKey="team" sort={sort} />
                   <SortTh label="เข้าใช้ล่าสุด" sortKey="lastSignInAt" sort={sort} />
-                  <th className="text-center">จัดการ</th>
+                  {canManage && <th className="text-center">จัดการ</th>}
                 </tr>
               </thead>
               <tbody>
                 {sortedUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="9" className="text-center py-10 text-[var(--text-3)]">
+                    <td colSpan={canManage ? 9 : 8} className="text-center py-10 text-[var(--text-3)]">
                       ยังไม่มีผู้ใช้ในระบบ
                     </td>
                   </tr>
@@ -275,31 +277,33 @@ export default function UserManagement() {
                       <td className="text-[var(--text-3)] text-xs">
                         {u.lastSignInAt ? fmtDate(u.lastSignInAt) : "ยังไม่เคย"}
                       </td>
-                      <td className="text-center">
-                        <div className="flex items-center justify-center gap-3">
-                          <button
-                            onClick={() => openEdit(u)}
-                            className="text-[var(--accent)] hover:opacity-70"
-                            title="แก้ไข"
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleToggleDisabled(u)}
-                            className={`hover:opacity-70 ${u.disabled ? "text-[var(--green,green)]" : "text-[var(--text-3)]"}`}
-                            title={u.disabled ? "เปิดใช้บัญชี" : "ปิดบัญชี (บังคับออกจากระบบ)"}
-                          >
-                            {u.disabled ? <Unlock size={16} /> : <Lock size={16} />}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(u)}
-                            className="text-[var(--red)] hover:opacity-70"
-                            title="ลบ"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
+                      {canManage && (
+                        <td className="text-center">
+                          <div className="flex items-center justify-center gap-3">
+                            <button
+                              onClick={() => openEdit(u)}
+                              className="text-[var(--accent)] hover:opacity-70"
+                              title="แก้ไข"
+                            >
+                              <Pencil size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleToggleDisabled(u)}
+                              className={`hover:opacity-70 ${u.disabled ? "text-[var(--green,green)]" : "text-[var(--text-3)]"}`}
+                              title={u.disabled ? "เปิดใช้บัญชี" : "ปิดบัญชี (บังคับออกจากระบบ)"}
+                            >
+                              {u.disabled ? <Unlock size={16} /> : <Lock size={16} />}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(u)}
+                              className="text-[var(--red)] hover:opacity-70"
+                              title="ลบ"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}
