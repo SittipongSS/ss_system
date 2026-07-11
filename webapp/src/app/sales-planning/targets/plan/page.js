@@ -14,6 +14,7 @@ import {
   distributeBySeasonal,
   normalizeToPercent,
 } from "@/lib/salesForecast";
+import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
 
 const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
 const thisYearNum = () => Number(thisMonth().slice(0, 4));
@@ -416,15 +417,14 @@ function StepNav({ step }) {
 
 function MoneyInput({ value, onChange, disabled, placeholder, align = "right" }) {
   return (
-    <input
-      type="number"
-      min="0"
-      step="1000"
+    <FormattedNumberInput
+      min={0}
+      step={1000}
       className="premium-input mono"
       value={value === 0 ? "" : value}
       placeholder={placeholder ?? "0"}
       disabled={disabled}
-      onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
+      onChange={(val) => onChange(Math.max(0, val || 0))}
       onFocus={(e) => e.target.select()}
       style={{ width: "100%", textAlign: align, padding: "6px 8px" }}
     />
@@ -683,9 +683,9 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
                 <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: 12 }}>%</td>
                 {monthPct.map((p, i) => (
                   <td key={i} className="num" style={{ padding: "3px 4px" }}>
-                    <input type="number" min="0" step="0.5" className="premium-input mono"
+                    <FormattedNumberInput min={0} step={0.5} className="premium-input mono"
                       value={Number(p.toFixed(1))}
-                      onChange={(e) => setMonth(i, Number(e.target.value) || 0)}
+                      onChange={(v) => setMonth(i, v || 0)}
                       onFocus={(e) => e.target.select()}
                       style={{ width: "100%", textAlign: "right", padding: "4px 4px", fontSize: 12 }} />
                   </td>

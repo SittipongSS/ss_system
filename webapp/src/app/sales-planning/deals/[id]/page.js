@@ -238,6 +238,11 @@ export default function DealOverviewPage() {
   const [lostOpen, setLostOpen] = useState(false);
   const [lostReason, setLostReason] = useState("");
 
+  const [confirmState, setConfirmState] = useState({ open: false, title: "", message: "", action: null, isDanger: false, confirmLabel: "ยืนยัน" });
+  const requestConfirm = (title, message, action, confirmLabel = "ยืนยัน", isDanger = false) => {
+    setConfirmState({ open: true, title, message, action, confirmLabel, isDanger });
+  };
+
   // ฟีดอัปเดตงาน (sales_deal_activities)
   const [feedKind, setFeedKind] = useState("note");
   const [feedBody, setFeedBody] = useState("");
@@ -355,18 +360,19 @@ export default function DealOverviewPage() {
   };
 
   const deleteActivity = async (act) => {
-    if (!window.confirm("ลบอัปเดตงานนี้?")) return;
-    setFeedBusy(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/activities/${act.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบอัปเดตไม่สำเร็จ");
-      await load();
-    } catch (e) {
-      setError(e.message || "ลบอัปเดตไม่สำเร็จ");
-    } finally {
-      setFeedBusy(false);
-    }
+    requestConfirm("ลบอัปเดต", "ลบอัปเดตงานนี้?", async () => {
+      setFeedBusy(true);
+      setError("");
+      try {
+        const res = await fetch(`/api/sales-planning/activities/${act.id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบอัปเดตไม่สำเร็จ");
+        await load();
+      } catch (e) {
+        setError(e.message || "ลบอัปเดตไม่สำเร็จ");
+      } finally {
+        setFeedBusy(false);
+      }
+    }, "ลบ", true);
   };
 
   const runAction = useCallback(async (key, url, opts) => {
@@ -510,15 +516,17 @@ export default function DealOverviewPage() {
     if (data?.projectTasks?.length) extras.push(`${data.projectTasks.length} ขั้นตอน`);
     if (data?.shipmentPrep) extras.push("เอกสารเตรียมส่งของ");
     const extraText = extras.length ? `\n\nจะลบพ่วงด้วย: ${extras.join(" · ")}` : "";
-    if (!window.confirm(`ลบดีล "${deal.title}"?${extraText}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/deals/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
-      router.push("/sa/deals");
-    } catch (e) {
-      setError(e.message || "ลบไม่สำเร็จ");
-    }
+    
+    requestConfirm("ลบดีล", `ลบดีล "${deal.title}"?${extraText}\n\nการลบนี้ย้อนกลับไม่ได้`, async () => {
+      setError("");
+      try {
+        const res = await fetch(`/api/sales-planning/deals/${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
+        router.push("/sa/deals");
+      } catch (e) {
+        setError(e.message || "ลบไม่สำเร็จ");
+      }
+    }, "ลบดีล", true);
   };
   // ลบไม่ได้ถ้า: ปิด Won แล้ว / มาจาก PO สหมิตร (นับยอดแล้ว) / มีทะเบียนสรรพสามิตผูก /
   // มี PM project ผูกแต่ผู้ใช้ไม่มีสิทธิ์ลบ project (AE/AC = 'none') — ตรงกับที่ API จะปฏิเสธ
@@ -1016,53 +1024,65 @@ export default function DealOverviewPage() {
       )}
 
       {/* เฟส B: โมดัลผูกดีลเข้าโครงการเดิมของลูกค้า — เลือกโครงการ + วันเริ่ม segment */}
-      <Modal open={linkOpen} onClose={() => !actionBusy && setLinkOpen(false)} title="ผูกกับโครงการเดิม" size="sm">
-        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <SlidePanel open={linkOpen} isOpen={linkOpen} onClose={() => !actionBusy && setLinkOpen(false)} title="ผูกกับโครงการเดิม" width="max-w-md" footer={
+        <>
+          <button type="button" className="btn ghost" onClick={() => setLinkOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
+          <button type="button" className="btn btn-primary" onClick={submitLinkProject} disabled={!!actionBusy || !linkProjectId}>
+            {actionBusy === "link-project" ? "กำลังผูก…" : "ผูกเข้าโครงการ"}
+          </button>
+        </>
+      }>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
             ดีลนี้จะถูกผูกเข้าโครงการที่เลือก และต่อขั้นตอนตาม template ประเภท <strong>{DEAL_TYPE_LABELS[dealTypeOf(deal)]}</strong> เป็นช่วงใหม่ท้ายไทม์ไลน์
           </div>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            โครงการของ {deal?.customerName || deal?.customer?.name || "ลูกค้า"}
-            <select className="premium-select" value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)} disabled={linkLoading}>
-              <option value="">{linkLoading ? "กำลังโหลด…" : linkProjects.length ? "— เลือกโครงการ —" : "ลูกค้ารายนี้ยังไม่มีโครงการ"}</option>
-              {linkProjects.map((p) => (
-                <option key={p.id} value={p.id}>{p.code || p.id} · {p.name}{p.type ? ` (${p.type})` : ""}</option>
-              ))}
-            </select>
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            วันเริ่มงานช่วงนี้
-            <input type="date" className="premium-input" value={linkStartDate} onChange={(e) => setLinkStartDate(e.target.value)} />
-          </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="btn ghost" onClick={() => setLinkOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submitLinkProject} disabled={!!actionBusy || !linkProjectId}>
-              {actionBusy === "link-project" ? "กำลังผูก…" : "ผูกเข้าโครงการ"}
-            </button>
+          <div className="form-grid">
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+              โครงการของ {deal?.customerName || deal?.customer?.name || "ลูกค้า"}
+              <select className="premium-select" value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)} disabled={linkLoading}>
+                <option value="">{linkLoading ? "กำลังโหลด…" : linkProjects.length ? "— เลือกโครงการ —" : "ลูกค้ารายนี้ยังไม่มีโครงการ"}</option>
+                {linkProjects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.code || p.id} · {p.name}{p.type ? ` (${p.type})` : ""}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+              วันเริ่มงานช่วงนี้
+              <DatePicker value={linkStartDate} onChange={(v) => setLinkStartDate(v)} />
+            </label>
           </div>
         </div>
-      </Modal>
+      </SlidePanel>
 
-      <Modal open={winOpen} onClose={() => !actionBusy && setWinOpen(false)} title="ปิดการขาย (Won)" size="sm">
-        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <SlidePanel open={winOpen} isOpen={winOpen} onClose={() => !actionBusy && setWinOpen(false)} title="ปิดการขาย (Won)" width="max-w-md" footer={
+        <>
+          <button type="button" className="btn ghost" onClick={() => setWinOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
+          <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!actionBusy || !(Number(winValue) > 0)}>
+            <Trophy size={14} aria-hidden="true" /> {actionBusy === "win" ? "กำลังบันทึก..." : "ยืนยัน Won"}
+          </button>
+        </>
+      }>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
             ยืนยันว่าได้รับมัดจำ/ยืนยันจากลูกค้าแล้ว — กรอก <strong>มูลค่าปิดจริง</strong> (ยอดขายที่จะนับเข้าเป้า)
           </div>
-          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-            มูลค่าปิดจริง (บาท)
-            <input
-              type="number" min="0" step="0.01" className="premium-input mono"
-              value={winValue}
-              onChange={(e) => setWinValue(e.target.value)}
-              autoFocus
-            />
-          </label>
-          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-            เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT และ FC จะย้ายมาเดือนนี้ แล้วล็อก</span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <MonthPicker value={winMonth} onChange={setWinMonth} />
-            </div>
-          </label>
+          <div className="form-grid">
+            <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+              มูลค่าปิดจริง (บาท)
+              <FormattedNumberInput
+                min={0} step={0.01} className="premium-input mono"
+                value={winValue}
+                onChange={(v) => setWinValue(v)}
+                autoFocus
+              />
+            </label>
+            <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+              เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT และ FC จะย้ายมาเดือนนี้ แล้วล็อก</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <MonthPicker value={winMonth} onChange={setWinMonth} />
+              </div>
+            </label>
+          </div>
           {deal && Number(deal.projectValue) > 0 && (
             <div style={{ fontSize: 12, color: "var(--text-3)" }}>
               มูลค่าคาดการณ์เดิม: {money(deal.projectValue)}
@@ -1071,35 +1091,33 @@ export default function DealOverviewPage() {
               )}
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="btn ghost" onClick={() => setWinOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!actionBusy || !(Number(winValue) > 0)}>
-              <Trophy size={14} aria-hidden="true" /> {actionBusy === "win" ? "กำลังบันทึก..." : "ยืนยัน Won"}
-            </button>
-          </div>
         </div>
-      </Modal>
+      </SlidePanel>
 
-      <Modal open={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดดีลแบบไม่สำเร็จ (Lost)" size="sm">
-        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-            เหตุผล (ไม่บังคับ)
-            <textarea
-              rows={3}
-              value={lostReason}
-              onChange={(e) => setLostReason(e.target.value)}
-              placeholder="เช่น ลูกค้าเลือกคู่แข่ง / ราคาสูงเกิน / เลื่อนโครงการ"
-              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text-1)", fontSize: 13, resize: "vertical" }}
-            />
-          </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="btn ghost" onClick={() => setLostOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
-            <button type="button" className="btn" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={doLost} disabled={!!actionBusy}>
-              <Ban size={14} aria-hidden="true" /> {actionBusy === "lost" ? "กำลังบันทึก..." : "ยืนยัน Lost"}
-            </button>
+      <SlidePanel open={lostOpen} isOpen={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดดีลแบบไม่สำเร็จ (Lost)" width="max-w-md" footer={
+        <>
+          <button type="button" className="btn ghost" onClick={() => setLostOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
+          <button type="button" className="btn" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={doLost} disabled={!!actionBusy}>
+            <Ban size={14} aria-hidden="true" /> {actionBusy === "lost" ? "กำลังบันทึก..." : "ยืนยัน Lost"}
+          </button>
+        </>
+      }>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="form-grid">
+            <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+              เหตุผล (ไม่บังคับ)
+              <textarea
+                className="premium-input"
+                rows={3}
+                value={lostReason}
+                onChange={(e) => setLostReason(e.target.value)}
+                placeholder="เช่น ลูกค้าเลือกคู่แข่ง / ราคาสูงเกิน / เลื่อนโครงการ"
+                style={{ resize: "vertical" }}
+              />
+            </label>
           </div>
         </div>
-      </Modal>
+      </SlidePanel>
 
       <SlidePanel 
         isOpen={dealModalOpen} 
@@ -1228,6 +1246,19 @@ export default function DealOverviewPage() {
         allProducts={allProducts}
         createEndpoint={`/api/sales-planning/deals/${id}/create-project`}
         createLabel="จัดการโครงการ"
+      />
+
+      <ConfirmDialog
+        open={confirmState.open}
+        onClose={() => setConfirmState(s => ({ ...s, open: false }))}
+        onConfirm={async () => {
+          if (confirmState.action) await confirmState.action();
+          setConfirmState(s => ({ ...s, open: false }));
+        }}
+        title={confirmState.title}
+        description={confirmState.message}
+        confirmLabel={confirmState.confirmLabel}
+        isDanger={confirmState.isDanger}
       />
 
       {/* Lightbox พรีวิวรูปเต็มจอ — คลิกที่ใดก็ปิด */}

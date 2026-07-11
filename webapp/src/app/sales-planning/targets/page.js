@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Save, Sparkles, Target, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 
@@ -490,21 +491,24 @@ function FragmentRows({ children }) {
 function NumCell({ editing, canEdit, dirty, draft, setDraft, onStart, onCommit, onCancel, display, bold }) {
   if (editing) {
     return (
-      <input
+      <FormattedNumberInput
         autoFocus
-        type="number"
-        min="0"
-        step="1000"
+        min={0}
+        step={1000}
         className="premium-input mono"
         style={{ width: "100%", textAlign: "right", padding: "4px 6px", fontWeight: bold ? 800 : 500 }}
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(val) => setDraft(val)}
         onFocus={(e) => e.target.select()}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
           else if (e.key === "Escape") { onCancel(); e.currentTarget.blur(); }
         }}
-        onBlur={onCommit}
+        onBlur={(e) => {
+          // Temporarily disable the onBlur prop to avoid duplicate triggers if needed,
+          // but since we updated FormattedNumberInput, it will call onCommit smoothly.
+          onCommit(e);
+        }}
       />
     );
   }

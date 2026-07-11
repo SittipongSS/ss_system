@@ -327,7 +327,11 @@ button, select, input, textarea {
   gap: 4px;
   flex: 1;
   margin-left: 16px;
-  overflow: hidden;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+}
+.topnav-menu::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 .topnav-item {
   display: inline-flex;
@@ -339,6 +343,7 @@ button, select, input, textarea {
   font-size: 13.5px;
   border-radius: 6px;
   white-space: nowrap;
+  flex-shrink: 0;
   transition: color 0.12s, background 0.12s;
 }
 .topnav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
