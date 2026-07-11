@@ -1,0 +1,123 @@
+// พิมพ์ใบเสนอราคา FM-SA-01 (เฟส D) — เปิดหน้าต่างพิมพ์ A4 (pattern เดียวกับ ganttPrint).
+// หัวเอกสารมีโลโก้บริษัทตามกฎแบรนด์ (public/brand-logo.png — SALES_REVAMP_PLAN §5.2).
+import { fmtDate } from '@/lib/format';
+
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const money = (v) => Number(v || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// หัวเอกสารกลาง: โลโก้ + ชื่อบริษัท + ชื่อฟอร์ม + เลขที่ — ใช้ซ้ำกับเอกสารขายตัวถัดไป (SO/ใบส่งของ)
+export function printHeaderHtml({ formCode, title, docNumber, docDate }) {
+  return `
+  <div class="doc-head">
+    <div class="brand">
+      <img src="/brand-logo.png" alt="Scent & Sense" />
+      <div>
+        <div class="co">บริษัท เซ้นท์ แอนด์ เซนส์ จำกัด — Scent &amp; Sense Co., Ltd.</div>
+        <div class="form">${esc(title)} <span class="code">${esc(formCode)}</span></div>
+      </div>
+    </div>
+    <div class="docmeta">
+      <div><span>เลขที่:</span> <strong>${esc(docNumber)}</strong></div>
+      <div><span>วันที่:</span> ${esc(docDate)}</div>
+    </div>
+  </div>`;
+}
+
+export function openQuotePrintWindow(quote) {
+  const lines = quote.lines || [];
+  const hasLineDiscount = lines.some((l) => Number(l.discountAmount) > 0);
+  const rows = lines
+    .slice()
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    .map((l, i) => `
+      <tr>
+        <td class="c">${i + 1}</td>
+        <td>${esc(l.description)}${l.fgCode ? `<div class="fg">${esc(l.fgCode)}</div>` : ''}</td>
+        <td class="n">${Number(l.qty || 0).toLocaleString('th-TH')}</td>
+        <td class="n">${money(l.unitPrice)}</td>
+        ${hasLineDiscount ? `<td class="n">${Number(l.discountAmount) > 0 ? money(l.discountAmount) : '-'}</td>` : ''}
+        <td class="n">${money(l.lineTotal)}</td>
+      </tr>`)
+    .join('');
+
+  const totals = `
+    <tr><td>รวมเป็นเงิน</td><td class="n">${money(quote.subtotal)}</td></tr>
+    ${Number(quote.discountAmount) > 0 ? `<tr><td>ส่วนลด${quote.discountType === 'percent' ? ` ${Number(quote.discountValue)}%` : ''}</td><td class="n">-${money(quote.discountAmount)}</td></tr>` : ''}
+    ${Number(quote.vatRate) > 0 ? `<tr><td>ภาษีมูลค่าเพิ่ม ${Number(quote.vatRate)}%</td><td class="n">${money(quote.vatAmount)}</td></tr>` : ''}
+    <tr class="grand"><td>ยอดรวมทั้งสิ้น${Number(quote.vatRate) > 0 ? '' : ' (รวมภาษีมูลค่าเพิ่ม)'}</td><td class="n">${money(quote.totalAmount)}</td></tr>`;
+
+  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8">
+  <title>${esc(quote.quoteNumber)} — ใบเสนอราคา</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'IBM Plex Sans Thai', 'Sarabun', system-ui, sans-serif; font-size: 13px; color: #1c1e26; margin: 0; padding: 24px 28px; }
+    .doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 3px solid #21385e; padding-bottom: 12px; margin-bottom: 14px; }
+    .brand { display: flex; gap: 12px; align-items: center; }
+    .brand img { height: 52px; width: auto; border-radius: 8px; }
+    .co { font-weight: 700; font-size: 14px; }
+    .form { font-size: 13px; color: #444; margin-top: 2px; }
+    .form .code { color: #21385e; font-weight: 700; margin-left: 6px; }
+    .docmeta { text-align: right; font-size: 13px; white-space: nowrap; }
+    .docmeta span { color: #666; }
+    .cust { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+    .cust .box { border: 1px solid #ccc; border-radius: 8px; padding: 8px 12px; flex: 1; }
+    .cust .lbl { font-size: 11px; color: #666; }
+    table.items { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    table.items th { background: #21385e; color: #fff; padding: 6px 8px; font-size: 12px; }
+    table.items td { border: 1px solid #ccc; padding: 6px 8px; vertical-align: top; }
+    td.c { text-align: center; } td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    .fg { font-size: 11px; color: #666; }
+    .bottom { display: flex; gap: 16px; align-items: flex-start; }
+    .notes { flex: 1; border: 1px solid #ccc; border-radius: 8px; padding: 8px 12px; min-height: 80px; white-space: pre-wrap; }
+    .notes .lbl, .terms .lbl { font-size: 11px; color: #666; margin-bottom: 2px; }
+    .terms { margin-top: 8px; }
+    table.totals { width: 280px; border-collapse: collapse; }
+    table.totals td { padding: 5px 10px; border-bottom: 1px solid #ddd; }
+    table.totals td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    table.totals tr.grand td { font-weight: 800; border-top: 2px solid #21385e; border-bottom: 3px double #21385e; font-size: 14px; }
+    .signs { display: flex; justify-content: space-around; gap: 24px; margin-top: 42px; }
+    .sign { text-align: center; width: 200px; }
+    .sign .line { border-bottom: 1px dotted #888; height: 36px; margin-bottom: 6px; }
+    .sign .who { font-size: 12px; color: #444; }
+    @media print { body { padding: 0; } }
+  </style></head><body>
+  ${printHeaderHtml({ formCode: 'FM-SA-01', title: 'ใบเสนอราคา / QUOTATION', docNumber: quote.quoteNumber, docDate: fmtDate(quote.quoteDate) })}
+  <div class="cust">
+    <div class="box">
+      <div class="lbl">ลูกค้า / CUSTOMER</div>
+      <strong>${esc(quote.customerName || '-')}</strong>
+      ${quote.deal?.title ? `<div style="font-size:12px;color:#555">งาน: ${esc(quote.deal.title)}</div>` : ''}
+    </div>
+    <div class="box" style="max-width:240px">
+      <div class="lbl">ยืนราคาถึง / VALID UNTIL</div>
+      <strong>${quote.validUntil ? fmtDate(quote.validUntil) : '-'}</strong>
+      ${quote.revisionNo > 0 ? `<div style="font-size:12px;color:#b0483b">ฉบับแก้ไข R${quote.revisionNo}</div>` : ''}
+    </div>
+  </div>
+  <table class="items">
+    <thead><tr>
+      <th style="width:36px">ลำดับ</th><th>รายการ</th><th style="width:70px">จำนวน</th>
+      <th style="width:90px">ราคา/หน่วย</th>${hasLineDiscount ? '<th style="width:80px">ส่วนลด</th>' : ''}<th style="width:100px">จำนวนเงิน</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="bottom">
+    <div style="flex:1">
+      <div class="notes"><div class="lbl">หมายเหตุ / REMARKS</div>${esc(quote.notes || '-')}</div>
+      <div class="terms"><div class="lbl">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>${esc(quote.paymentTerms || '-')}</div>
+    </div>
+    <table class="totals"><tbody>${totals}</tbody></table>
+  </div>
+  <div class="signs">
+    <div class="sign"><div class="line"></div><div class="who">ผู้เสนอราคา<br>${esc(quote.createdByName || '')}</div></div>
+    <div class="sign"><div class="line"></div><div class="who">ผู้อนุมัติ (Scent &amp; Sense)</div></div>
+    <div class="sign"><div class="line"></div><div class="who">ผู้ยืนยันสั่งซื้อ (ลูกค้า)<br>วันที่ ____/____/______</div></div>
+  </div>
+  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 250));</script>
+  </body></html>`;
+
+  const win = window.open('', '_blank', 'noopener,width=900,height=1100');
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+}

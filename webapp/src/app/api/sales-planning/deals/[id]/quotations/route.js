@@ -12,6 +12,7 @@ import {
   toMoney,
 } from '@/lib/salesPlanning';
 import { quoteApprovalRequirement } from '@/lib/quotationApproval';
+import { normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,64 +22,6 @@ async function loadDeal(supabase, id) {
   const { data, error } = await supabase.from('sales_deals').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   return data;
-}
-
-function productLabel(product) {
-  return product?.productDescription || product?.productDescriptionEn || product?.fgCode || 'สินค้า';
-}
-
-function qtyFromProjectProduct(row) {
-  const raw = row?.orderQty || row?.productionQty || 1;
-  const n = Number(String(raw).replace(/,/g, ''));
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
-
-async function seedLinesFromProject(supabase, deal) {
-  if (!deal.projectId) return [];
-  const { data } = await supabase
-    .from('project_products')
-    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, retailPriceIncVat)')
-    .eq('projectId', deal.projectId);
-  return (data || []).map((row, index) => {
-    const qty = qtyFromProjectProduct(row);
-    const unitPrice = toMoney(row.product?.retailPriceIncVat);
-    return {
-      id: genId('QTL'),
-      productId: row.productId || row.product?.id || null,
-      fgCode: row.product?.fgCode || null,
-      description: productLabel(row.product),
-      qty,
-      unitPrice,
-      lineTotal: qty * unitPrice,
-      source: 'project_products',
-      sortOrder: index,
-      metadata: {
-        projectProductId: row.id,
-      },
-    };
-  });
-}
-
-function normalizeManualLines(lines = []) {
-  return lines
-    .map((line, index) => {
-      // เว้นว่าง/ไม่ระบุ → default 1; ระบุ 0 มาจริง → 0 (ให้ filter qty>0 ตัดออก ไม่ใช่ดันเป็น 1)
-      const qty = line.qty === '' || line.qty == null ? 1 : toMoney(line.qty, 0);
-      const unitPrice = toMoney(line.unitPrice);
-      return {
-        id: genId('QTL'),
-        productId: line.productId || null,
-        fgCode: line.fgCode || null,
-        description: line.description || line.fgCode || `รายการ ${index + 1}`,
-        qty,
-        unitPrice,
-        lineTotal: qty * unitPrice,
-        source: 'manual',
-        sortOrder: index,
-        metadata: line.metadata || {},
-      };
-    })
-    .filter((line) => line.description && line.qty > 0);
 }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
@@ -114,47 +57,48 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!lines.length) lines = await seedLinesFromProject(supabase, deal);
   if (!lines.length) return badRequest('ต้องมีอย่างน้อย 1 line หรือผูก PM project ที่มี FG ก่อน');
 
-  const totals = quoteTotals(lines);
+  // ส่วนลดท้ายใบ + VAT (เฟส D — FM-SA-01): default vatRate 0 = ราคารวม VAT แล้ว
+  const discountType = ['percent', 'amount'].includes(body.discountType) ? body.discountType : null;
+  const discountValue = discountType ? toMoney(body.discountValue) : 0;
+  const vatRate = toMoney(body.vatRate, 0);
+  const totals = quoteTotals(lines, { discountType, discountValue, vatRate });
   const approval = quoteApprovalRequirement(totals, body.metadata || {});
-  let quoteNumber = body.quoteNumber || (await generateQuoteNumber(supabase));
-  let quote = null;
-  let error = null;
+  // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
+  const { base, quoteNumber } = await generateQuoteNumber(supabase);
   const quoteId = genId('QT');
-  for (let attempt = 0; attempt < 5; attempt++) {
-    ({ data: quote, error } = await supabase
-      .from('quotations')
-      .insert({
-        id: quoteId,
-        dealId: deal.id,
-        quoteNumber,
-        status: body.status === 'sent' ? 'sent' : 'draft',
-        quoteDate: body.quoteDate || new Date().toISOString().slice(0, 10),
-        validUntil: body.validUntil || null,
-        customerId: deal.customerId || null,
-        customerName: deal.customerName || null,
-        ...totals,
-        approvalStatus: approval.required ? 'pending' : 'not_required',
-        approvalReason: approval.reason,
-        approvalRequestedAt: approval.required ? new Date().toISOString() : null,
-        approvalRequestedBy: approval.required ? user.id || null : null,
-        approvalRequestedByName: approval.required ? user.name || null : null,
-        notes: body.notes || null,
-        metadata: {
-          ...(body.metadata || {}),
-          approvalThreshold: approval.threshold,
-        },
-        createdBy: user.id || null,
-        createdByName: user.name || null,
-      })
-      .select()
-      .single());
-    if (!error) break;
-    if (error.code === '23505' && !body.quoteNumber) {
-      quoteNumber = await generateQuoteNumber(supabase);
-      continue;
-    }
-    break;
-  }
+  const { data: quote, error } = await supabase
+    .from('quotations')
+    .insert({
+      id: quoteId,
+      dealId: deal.id,
+      quoteNumber,
+      baseNumber: base,
+      revisionNo: 0,
+      status: body.status === 'sent' ? 'sent' : 'draft',
+      quoteDate: body.quoteDate || new Date().toISOString().slice(0, 10),
+      validUntil: body.validUntil || null,
+      customerId: deal.customerId || null,
+      customerName: deal.customerName || null,
+      ...totals,
+      discountType,
+      discountValue,
+      vatRate,
+      paymentTerms: (body.paymentTerms || '').trim() || null,
+      approvalStatus: approval.required ? 'pending' : 'not_required',
+      approvalReason: approval.reason,
+      approvalRequestedAt: approval.required ? new Date().toISOString() : null,
+      approvalRequestedBy: approval.required ? user.id || null : null,
+      approvalRequestedByName: approval.required ? user.name || null : null,
+      notes: body.notes || null,
+      metadata: {
+        ...(body.metadata || {}),
+        approvalThreshold: approval.threshold,
+      },
+      createdBy: user.id || null,
+      createdByName: user.name || null,
+    })
+    .select()
+    .single();
   if (error) return fail(error.code === '23505' ? `เลข quotation ซ้ำ: ${quoteNumber}` : error.message, error.code === '23505' ? 409 : 500);
 
   const rows = lines.map((line) => ({ ...line, quotationId: quote.id }));

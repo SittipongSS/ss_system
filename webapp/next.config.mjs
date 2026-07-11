@@ -23,6 +23,9 @@ const nextConfig = {
       { source: '/sa/leads', destination: '/sales-planning/leads' },
       { source: '/sa/leads/:path*', destination: '/sales-planning/leads/:path*' },
       { source: '/sa/kpi', destination: '/sales-planning/kpi' },
+      // เฟส D: ใบเสนอราคา
+      { source: '/sa/quotations', destination: '/sales-planning/quotations' },
+      { source: '/sa/quotations/:path*', destination: '/sales-planning/quotations/:path*' },
       { source: '/sa/deals', destination: '/sales-planning/deals' },
       { source: '/sa/deals/:path*', destination: '/sales-planning/deals/:path*' },
       { source: '/sa/targets', destination: '/sales-planning/targets' },
