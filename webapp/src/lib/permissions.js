@@ -420,7 +420,10 @@ export function canAssignTask(assigner, assignee) {
   if (!assigner?.id || !assignee?.id) return false;
   if (assigner.id === assignee.id) return true;
   if (isSuperuser(assigner.role)) return true;
-  if ((assigner.role === 'senior_ae' || assigner.role === 'ac' || assigner.role === 'ae')) {
+  // Any team member (Senior AE / AE / AC) may hand work to any teammate —
+  // peer-to-peer within the team, not just top-down. Uses the canonical
+  // TEAM_ROLES list so server + client + this rule never drift apart.
+  if (TEAM_ROLES.includes(assigner.role)) {
     return !!assigner.team && assigner.team === assignee.team;
   }
   return false;

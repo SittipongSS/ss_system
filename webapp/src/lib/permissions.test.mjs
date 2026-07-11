@@ -2,7 +2,40 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, can, capsFor, sanitizeExtraCaps, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, can, capsFor, sanitizeExtraCaps, canAssignTask, GRANTABLE_CAPS } from './permissions';
+
+test('canAssignTask: teammates assign to each other; sup/admin to anyone', () => {
+  const ae = { id: 'u1', role: 'ae', team: 'KA' };
+  const acMate = { id: 'u2', role: 'ac', team: 'KA' };
+  const seniorMate = { id: 'u3', role: 'senior_ae', team: 'KA' };
+  const otherTeam = { id: 'u9', role: 'ae', team: 'ODM' };
+
+  // assigning to oneself is always allowed
+  assert.equal(canAssignTask(ae, { id: 'u1', team: 'KA' }), true);
+
+  // any team member → any teammate (peer-to-peer, not just top-down)
+  assert.equal(canAssignTask(ae, acMate), true);            // AE → AC
+  assert.equal(canAssignTask(ae, seniorMate), true);        // AE → Senior AE (upward)
+  assert.equal(canAssignTask(acMate, ae), true);            // AC → AE
+  assert.equal(canAssignTask(seniorMate, ae), true);        // Senior AE → AE
+
+  // cross-team is blocked for team roles
+  assert.equal(canAssignTask(ae, otherTeam), false);
+  // a team member with no team set can only self-assign
+  assert.equal(canAssignTask({ id: 'u1', role: 'ae', team: null }, acMate), false);
+
+  // superuser → anyone, any team (sup/admin)
+  assert.equal(canAssignTask({ id: 's', role: 'ae_supervisor', team: null }, otherTeam), true);
+  assert.equal(canAssignTask({ id: 'a', role: 'admin', team: null }, otherTeam), true);
+
+  // read-only / non-sales roles cannot assign to others (even same team)
+  assert.equal(canAssignTask({ id: 'v', role: 'viewer', team: 'KA' }, acMate), false);
+  assert.equal(canAssignTask({ id: 'w', role: 'staff', team: 'KA' }, acMate), false);
+
+  // missing ids → false
+  assert.equal(canAssignTask(null, acMate), false);
+  assert.equal(canAssignTask(ae, null), false);
+});
 
 test('pmTaskScopes by role', () => {
   assert.deepEqual(pmTaskScopes('admin'), ['mine', 'team', 'all']);

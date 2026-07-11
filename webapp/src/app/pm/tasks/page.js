@@ -11,7 +11,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
-import { isSuperuser } from "@/lib/permissions";
+import { isSuperuser, TEAM_ROLES } from "@/lib/permissions";
 import { useRole } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
@@ -167,7 +167,7 @@ export default function TasksPage() {
   const assignableUsers = useMemo(() => {
     if (!me) return [];
     if (isSuperuser(me.role)) return users;
-    if (["senior_ae", "ac", "ae"].includes(me.role) && me.team) return users.filter((u) => u.team === me.team);
+    if (TEAM_ROLES.includes(me.role) && me.team) return users.filter((u) => u.team === me.team);
     return users.filter((u) => u.id === me.id);
   }, [me, users]);
 
@@ -731,7 +731,7 @@ export default function TasksPage() {
                 <option value="">— ตัวฉันเอง —</option>
                 {assignableUsers.filter((u) => u.id !== me?.id).map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
               </Select>
-              {me && !isSuperuser(me.role) && !["senior_ae", "ac", "ae"].includes(me.role) && (
+              {me && !isSuperuser(me.role) && !TEAM_ROLES.includes(me.role) && (
                 <div className="text-[11px] text-[var(--text-3)] mt-1">ตำแหน่งของคุณมอบหมายงานให้คนอื่นไม่ได้ — สร้างเป็นงานของตัวเองเท่านั้น</div>
               )}
             </div>
