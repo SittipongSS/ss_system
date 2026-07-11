@@ -148,6 +148,17 @@ reopen: เพิ่มดีล RE-ORDER ใหม่ → กลับ 'reopene
 **`customers`** — มี customerType (0034) + เอกสารแนบ (0028) แล้ว → เพิ่ม checklist "เอกสารจำเป็น" ตอนเปิดลูกค้า
 (นิติบุคคล vs บุคคล ต่างชุด) + เอกสาร Vendor = เฟสอนาคต (ยังไม่ออกแบบ)
 
+**`sales_deal_activities` (0063 มีแล้ว: note/call/meeting/email/next_step ต่อดีล)** — มติผู้ใช้:
+อัปเดต/บันทึกประชุม/ความเคลื่อนไหว **บันทึกแยกต่อดีล แล้วรวมที่โครงการ** (pattern เดียวกับ timeline segment):
+```
++ activityAt timestamptz  (เวลานัด/เวลาเกิดเหตุการณ์ — แยกจาก createdAt เวลาบันทึก)
++ meetingMode ('onsite_customer_visit','onsite_at_office','online')  เฉพาะ kind='meeting'
+· ระดับลีด (ก่อนเกิดดีล): นัด/ติดต่อบันทึกใน lead_events (เฟส C) — พอเปิดโครงการ ประวัติตามไปด้วย leadId
+· ระดับโครงการ: feed รวมกิจกรรมทุกดีล เรียงเวลา (Project 360 เฟส G) — อ่านอย่างเดียว เขียนที่ดีลเสมอ
+· อนาคต: ปฏิทินนัด = view อ่านจาก activityAt (kind meeting/next_step) ของลีด+ดีลทั้งหมด
+  — ไม่มีตารางใหม่ ข้อมูลพร้อมตั้งแต่เฟส C; เชื่อม mgmt meetings ค่อยดูเมื่อถึงตอนนั้น
+```
+
 ### 2.3 แผนที่ entity รวม
 
 ```
@@ -271,7 +282,7 @@ list ฝั่ง PM → ดรอป unique → link-project → `project_tasks
 - **แนะนำทำก่อนเฟส C** — เมนูใหม่ (ลีด/ใบเสนอราคา/ไทม์ไลน์/KPI) จะได้เกิดบน top bar เลย
   ไม่ต้องทำสองรอบ; ปล่อยครั้งเดียวทั้งเว็บ
 
-### เฟส C · โมดูลลีด + SLA/KPI — mig 0092 (`sales_leads`, `lead_events`)
+### เฟส C · โมดูลลีด + SLA/KPI — mig 0092 (`sales_leads`, `lead_events`, +คอลัมน์ activities §2.2)
 - หน้า `/sa/leads`: ฟอร์มกรอก (Marketing) · คิวคัดกรอง (Supervisor เลือกทีม) · คิวกระจาย (Senior เลือก AE)
   · ปุ่มบันทึกติดต่อ/นัดประชุม · ตีกลับพร้อมเหตุผล
 - action "เปิดลูกค้า" (ส่งเข้า flow master เดิม — approval workflow ลูกค้าใหม่มีแล้ว 0027)
@@ -304,6 +315,8 @@ list ฝั่ง PM → ดรอป unique → link-project → `project_tasks
 ### เฟส G · 360 + KPI เต็มรูป + เมนูไทม์ไลน์รวม
 - Project 360 feed + Customer 360 (เฟส 4 เดิม) + `/sa/timeline` Gantt รวม + `/sa/kpi` เต็ม
   (FC accuracy, %Target, conversion funnel ลีด→ลูกค้า→won) + drill-down
+- feed โครงการ = กิจกรรมทุกดีล + lead_events ก่อนเปิดโครงการ เรียงเวลาเดียว (เขียนที่ดีล/ลีดเสมอ)
+- (อนาคต หลัง G) ปฏิทินนัดรวม — view จาก `activityAt` ของลีด+ดีล; เชื่อม mgmt meetings ค่อยตัดสินใจตอนนั้น
 
 **ลำดับบังคับ:** A → B (DB unique) · D ก่อน E (SO อ้างใบเสนอราคา) · C ขนานได้ · F หลัง E · G ท้าย
 · **T ขนานได้ทุกเมื่อ แนะนำก่อน C** · เช็ก `STORAGE_BACKEND=drive` บน prod ก่อน C/E (§2.4)
@@ -358,11 +371,11 @@ list ฝั่ง PM → ดรอป unique → link-project → `project_tasks
 | — | ไฟล์แนบ | **Google Drive เท่านั้น** (ผ่าน `/api/upload` + `STORAGE_BACKEND=drive`) ไม่ใช้ Supabase storage |
 | — | Navigation | **ย้าย sidebar → top bar frozen ทั้งระบบ** (§5.1, เฟส T) |
 | — | Integration อนาคต | SCENT→RD · NPD→RD/PD/PC · RE-ORDER→PD/PC (§1.1 — วางช่องเชื่อมไว้ ยังไม่ implement) |
+| 5 | นัดประชุม/ความเคลื่อนไหว | **บันทึกแยกต่อดีล → รวม feed ที่โครงการ** (pattern เดียวกับ timeline); ลีดใช้ lead_events ช่วงก่อนเกิดดีล; ปฏิทินนัด = view อนาคตอ่านจาก `activityAt` (§2.2) |
 
 **ยังเปิดอยู่ (ตอบก่อนเฟสที่เกี่ยว):**
 
 4. **SO number** — ใช้ SO-YYMMXXXX รูปแบบเดียวกับ QT? (เสนอ: ใช่ — ตอบก่อนเฟส E)
-5. **นัดประชุม** — บันทึกแค่บนลีด (เฟส C) พอไหม หรือต้องมีปฏิทินนัด/เชื่อม mgmt meetings? (เสนอ: บนลีดก่อน)
 6. **FC accuracy** — สูตร `1−|FC−AT|/FC` ต่อดีลแล้วเฉลี่ย โอเคไหม + วัดเป็นรายเดือนตาม forecastMonth?
 7. **เอกสาร Vendor** — requirement ยังไม่นิ่ง → จอดไว้เฟสอนาคต (ตามที่ระบุ "ค่อยพัฒนาต่อ")
 
