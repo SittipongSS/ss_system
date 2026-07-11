@@ -151,15 +151,22 @@ export function stageBadge(stage) {
 
 export function KpiCard({ icon, label, value, hint }) {
   return (
-    <div className="glass-panel interactive-card" style={{ padding: "16px", minHeight: 108 }}>
-      <div className="flex items-center gap-2" style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 600 }}>
-        {icon}
-        <span>{label}</span>
+    <div className="glass-panel relative overflow-hidden group transition-all duration-300 hover:shadow-lg hover:-translate-y-1" style={{ padding: "20px", minHeight: 116 }}>
+      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[var(--accent)]/10 to-transparent rounded-full blur-2xl -mr-10 -mt-10 transition-opacity group-hover:opacity-100 opacity-50" />
+      <div className="relative z-10 flex flex-col h-full justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--panel-2)] text-[var(--accent)] shadow-sm">
+            {icon}
+          </div>
+          <span style={{ color: "var(--text-2)", fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}>{label}</span>
+        </div>
+        <div className="mt-4">
+          <div className="font-mono tabular-nums tracking-tight" style={{ fontSize: 28, fontWeight: 800, color: "var(--text)", lineHeight: 1 }}>
+            {value}
+          </div>
+          {hint && <div className="mt-2 text-xs font-medium" style={{ color: "var(--text-3)" }}>{hint}</div>}
+        </div>
       </div>
-      <div className="font-mono tabular-nums" style={{ marginTop: 10, fontSize: 22, fontWeight: 800, color: "var(--text)" }}>
-        {value}
-      </div>
-      {hint && <div style={{ marginTop: 4, color: "var(--text-3)", fontSize: 12 }}>{hint}</div>}
     </div>
   );
 }
