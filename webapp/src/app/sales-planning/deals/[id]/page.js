@@ -827,6 +827,8 @@ export default function DealOverviewPage() {
               <div className="flex items-center gap-2 mb-3">
                 <FileText size={17} aria-hidden="true" />
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ใบเสนอราคา</h2>
+                <div className="spacer" />
+                <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>
               </div>
               {(data.quotations || []).length ? (
                 <div className="premium-glass-table table-responsive">
@@ -837,7 +839,7 @@ export default function DealOverviewPage() {
                     <tbody>
                       {data.quotations.map((quote) => (
                         <tr key={quote.id} className="premium-row">
-                          <td className="mono">{quote.quoteNumber}</td>
+                          <td className="mono"><Link href={`/sa/quotations/${quote.id}`} className="linklike">{quote.quoteNumber}</Link></td>
                           <td>{stageBadge(quote.status)}</td>
                           <td>{stageBadge(quote.approvalStatus || "not_required")}</td>
                           <td className="num mono">{money(quote.totalAmount)}</td>
@@ -846,7 +848,7 @@ export default function DealOverviewPage() {
                     </tbody>
                   </table>
                 </div>
-              ) : <Empty>ยังไม่มีใบเสนอราคา</Empty>}
+              ) : <Empty>ยังไม่มีใบเสนอราคา — สร้างได้จากเมนู <Link href="/sa/quotations" className="linklike">ใบเสนอราคา</Link></Empty>}
             </section>
             )}
 

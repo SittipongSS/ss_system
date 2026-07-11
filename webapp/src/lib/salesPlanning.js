@@ -28,7 +28,7 @@ export const STAGE_LABELS = {
 // keeps the commercial spine only). Flip to true to re-enable; backend/data and
 // API routes stay intact so no data is lost while hidden.
 export const SALES_FEATURES = {
-  quotations: false,
+  quotations: true, // เฟส D: FM-SA-01 เต็มรูป (เมนู /sa/quotations + editor + revise + พิมพ์)
   documents: false,
   shipment: false,
   forecastReview: false, // "ทบทวนพยากรณ์ยอด" panel on the overview
@@ -193,24 +193,40 @@ export function dealAuditLabel(deal) {
   return `${deal?.title || 'deal'}${deal?.customerName ? ` · ${deal.customerName}` : ''}`;
 }
 
+// เลขใบเสนอราคา FM-SA-01: QT-YYMMXXXX-R (YY ค.ศ. · MM เดือน · XXXX เลขรันรีเซ็ต
+// ต่อเดือน — มติ #3 · R = revision เริ่ม 0). เลขรันออกจาก DB แบบ atomic
+// (RPC next_quote_number — mig 0092) กันเลขซ้ำเมื่อสร้างพร้อมกัน.
 export async function generateQuoteNumber(supabase, now = new Date()) {
-  const prefix = `QT-${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-  const { data: latest } = await supabase
-    .from('quotations')
-    .select('quoteNumber')
-    .ilike('quoteNumber', `${prefix}%`)
-    .order('quoteNumber', { ascending: false })
-    .limit(1);
-  let nextNum = 1;
-  if (latest?.[0]?.quoteNumber) {
-    const lastNum = parseInt(latest[0].quoteNumber.slice(prefix.length), 10);
-    if (!Number.isNaN(lastNum)) nextNum = lastNum + 1;
-  }
-  return `${prefix}${nextNum.toString().padStart(3, '0')}`;
+  const month = `${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+  const { data, error } = await supabase.rpc('next_quote_number', { p_month: month });
+  if (error) throw new Error(`ออกเลขใบเสนอราคาไม่สำเร็จ: ${error.message}`);
+  const base = `QT-${month}${String(data).padStart(4, '0')}`;
+  return { base, quoteNumber: `${base}-0` };
 }
 
-export function quoteTotals(lines = []) {
-  const subtotal = lines.reduce((sum, line) => sum + toMoney(line.lineTotal ?? (toMoney(line.qty, 1) * toMoney(line.unitPrice))), 0);
-  const vatAmount = 0;
-  return { subtotal, vatAmount, totalAmount: subtotal + vatAmount };
+// ส่วนลดหนึ่งชั้น (ใช้ทั้งรายบรรทัด + ท้ายใบ): percent = % ของฐาน, amount = บาทตรง
+export function discountAmountOf(base, discountType, discountValue) {
+  const b = toMoney(base);
+  const v = toMoney(discountValue);
+  if (!discountType || v <= 0) return 0;
+  const amt = discountType === 'percent' ? (b * Math.min(v, 100)) / 100 : v;
+  return Math.min(amt, b); // ส่วนลดไม่เกินฐาน — ยอดไม่ติดลบ
+}
+
+// ยอดสุทธิรายบรรทัด: qty × unitPrice − ส่วนลดบรรทัด
+export function quoteLineNet(line = {}) {
+  const gross = toMoney(line.qty, 1) * toMoney(line.unitPrice);
+  const discountAmount = discountAmountOf(gross, line.discountType, line.discountValue);
+  return { gross, discountAmount, lineTotal: gross - discountAmount };
+}
+
+// รวมทั้งใบ (FM-SA-01): subtotal(หลังลดรายบรรทัด) − ส่วนลดท้ายใบ = ฐานภาษี → + VAT
+// vatRate default 0 = "ราคารวม VAT แล้ว" (ราคาตั้งต้น seed จาก retailPriceIncVat);
+// เลือก 7 เมื่อต้องการบวก VAT แยกท้ายใบ.
+export function quoteTotals(lines = [], { discountType = null, discountValue = 0, vatRate = 0 } = {}) {
+  const subtotal = lines.reduce((sum, line) => sum + quoteLineNet(line).lineTotal, 0);
+  const discountAmount = discountAmountOf(subtotal, discountType, discountValue);
+  const taxable = subtotal - discountAmount;
+  const vatAmount = +(taxable * (toMoney(vatRate) / 100)).toFixed(2);
+  return { subtotal, discountAmount, vatAmount, totalAmount: taxable + vatAmount };
 }
