@@ -4,7 +4,7 @@
 > พร้อมยก "ประเภทดีล" เป็นฟิลด์จริง เข้าชุดกับ [`SALES_PM_ROADMAP.md`](SALES_PM_ROADMAP.md)
 > (โมเดล 2 ชั้น deal=commercial / project=execution — **ยังคงเดิม** แค่เปลี่ยน cardinality)
 >
-> สถานะ: **ร่างเพื่อรีวิว — ยังไม่ลงมือ** (อัปเดต 2026-07-11 รอบ 4 — 3 ประเภท + ไทม์ไลน์แยกต่อดีลแล้วรวมที่โครงการ)
+> สถานะ: **มติครบ — พร้อมเริ่มเฟส 1** (อัปเดต 2026-07-11 รอบ 5 — เคาะมติ 5 ข้อ + KPI FC Total/Actual/FC คงเหลือ)
 
 ---
 
@@ -129,21 +129,22 @@ UPDATE public.sales_deals
   WHERE metadata ? 'projectType';
 
 CREATE INDEX IF NOT EXISTS sales_deals_type_idx ON public.sales_deals ("dealType");
+
+-- SCENT เป็น type โครงการได้ตั้งแต่เฟส 1 (มติ #1: แยก template เลย)
+ALTER TABLE public.projects DROP CONSTRAINT IF EXISTS projects_type_check;
+ALTER TABLE public.projects
+  ADD CONSTRAINT projects_type_check CHECK ("type" IN ('SCENT','NPD','RE-ORDER'));
 ```
 - `metadata.projectType` คงเขียนคู่ไว้ 1 เฟส (transition) แล้วค่อยเลิก
 - `dealType` ใช้ค่าเดียวกับ `projects.type` → passthrough ตรงตอนสร้างโครงการ (ไม่มี mapping)
 
-### 0089 — `projects_type_scent` + `deal_project_many`
+### 0089 — `deal_project_many` (เฟส 2)
 ```sql
-ALTER TABLE public.projects DROP CONSTRAINT IF EXISTS projects_type_check;
-ALTER TABLE public.projects
-  ADD CONSTRAINT projects_type_check CHECK ("type" IN ('SCENT','NPD','RE-ORDER'));
-
 DROP INDEX IF EXISTS public.sales_deals_project_id_uidx;
 -- plain index sales_deals_project_id_idx มีอยู่แล้ว (0064)
 ```
 - **ไม่มี partial unique ต่อประเภท** — รองรับเคสจริง (ออกแบบกลิ่นหลายรอบ / สินค้าหลายตัวจากกลิ่นเดียว)
-  คุมด้วย UI guidance + audit แทน (open decision #2)
+  คุมด้วย UI guidance + audit แทน (มติ #2)
 
 ### 0090 — `project_tasks_deal_link` (เฟส 2)
 ```sql
@@ -174,19 +175,25 @@ CREATE INDEX IF NOT EXISTS sahamit_pos_project_id_idx ON public.sahamit_pos ("pr
 
 ## 4. กติกามูลค่า / FC / AT (single source)
 
-helper ใหม่ **`src/lib/sales/projectRollup.js`** (pure + unit test) — ใช้ทั้งหน้า PM / Sales / Customer 360:
+helper ใหม่ **`src/lib/sales/projectRollup.js`** (pure + unit test) — ใช้ทั้งหน้า PM / Sales / Customer 360.
+**KPI ที่ต้องโชว์บนหน้าโครงการ (มติผู้ใช้): FC Total · Actual · FC คงเหลือ** + มูลค่ารวม:
 
 ```
 rollupDeals(deals[]) → {
-  at:        Σ wonAmt(deal)       ของดีล stage=won            // ยอดจริง
-  fc:        Σ projectValue        ของดีลเปิด (ไม่ lost/won)   // pipeline
-  fcWeighted:Σ projectValue×prob%  ของดีลเปิด                  // อ้างอิง
-  total:     at + fc                                           // "มูลค่าโครงการ"
-  byType:    { SCENT: {...}, NPD: {...}, 'RE-ORDER': {...} }
-  counts:    { open, won, lost }
+  fcTotal:    Σ projectValue        ของดีล won + เปิด (ไม่นับ lost)  // FC Total — แผนทั้งโครงการ
+  actual:     Σ wonAmt(deal)        ของดีล stage=won                 // Actual (AT) — ยอดจริงที่ปิดได้
+  fcRemaining:Σ projectValue        ของดีลเปิด                       // FC คงเหลือ — ที่ยังต้องตามปิด
+  total:      actual + fcRemaining                                   // มูลค่าโครงการ (ยอดจริง+ที่เหลือ)
+  fcWeighted: Σ projectValue×prob%  ของดีลเปิด                       // อ้างอิง
+  byType:     { SCENT: {...}, NPD: {...}, 'RE-ORDER': {...} }        // ทุก metric แยก 3 ประเภท
+  counts:     { open, won, lost }
   nextForecastMonth: min(forecastMonth ของดีลเปิด)
 }
 ```
+
+- หมายเหตุ: `fcTotal − actual ≠ fcRemaining` เมื่อยอดปิดจริงต่างจาก FC (`wonValue ≠ projectValue`)
+  — ส่วนต่างนี้คือ variance (dashboard เดิมมี `wonVariance` แล้ว) โชว์เป็นตัวเสริมได้
+- นิยามเดียวกับ dashboard เดิม (`fullForecast`/`remainingForecast`) — ย้ายมาไว้ helper แล้วให้ dashboard เรียกใช้
 
 - `wonAmt` reuse นิยามเดิมของ dashboard (`wonValue ?? projectValue ?? 0`) — **ห้ามนิยามซ้ำ**:
   ย้าย/export จาก dashboard route มาไว้ที่ helper แล้วให้ dashboard เรียกใช้
@@ -198,29 +205,32 @@ rollupDeals(deals[]) → {
 
 ## 5. เฟสการทำ
 
-### เฟส 1 · ประเภทดีล 3 ค่า (dealType) — เริ่มเก็บข้อมูลแยกได้ทันที ★ เริ่มก่อน
-- migration 0088 + backfill
+### เฟส 1 · ประเภทดีล 3 ค่า + แยก template — SCENT ครบวงจรตั้งแต่แรก ★ เริ่มก่อน
+- migration 0088 + backfill (รวม `projects.type` รับ SCENT — มติ #1)
 - [`salesPlanning.js`](src/lib/salesPlanning.js): `DEAL_TYPES = ['SCENT','NPD','RE-ORDER']` + labels ไทย
   (พัฒนากลิ่น / พัฒนาสินค้า / สั่งผลิตซ้ำ) แทน `PROJECT_TYPES` (คง alias ให้โค้ดเก่า)
+- **แยก template เป็น 3 ชุด (มติ #1)**: [`templates.js`](src/lib/pm/templates.js) →
+  `SCENT_TEMPLATE` (steps 1–8 เดิม) · `NPD_TEMPLATE` ใหม่ (steps 15–47: Mock-up→ส่งมอบ,
+  แก้ `dependsOnSteps` ที่อ้าง [3]/[17] ข้ามรอย) · `REORDER_TEMPLATE` เดิม;
+  `templateFor(type)` 3 ทาง — unit test นับ step/phase/milestone ครบ; โครงการเก่าไม่กระทบ
 - API deals CRUD อ่าน/เขียน `dealType` (คู่กับ `metadata.projectType` ชั่วคราว —
   หมายเหตุ: `normalizeProjectType()` เดิมบีบทุกอย่างเป็น NPD ต้องรองรับ SCENT)
 - UI: dropdown 3 ประเภทตอนสร้าง/แก้ดีล + badge สี 3 ประเภทใน pipeline/ตาราง + filter ตามประเภท
+  + ตัวเลือก type ใน [`ProjectFormModal`](src/components/pm/ProjectFormModal.js)
+- ดีล SCENT `create-project` ได้เลยด้วย template ตัวเอง (ยังอยู่ใต้กติกา 1:1 เดิมจนเฟส 2 —
+  ดีล NPD ที่ตามมาค่อย link เข้าโครงการเดียวกันเมื่อเฟส 2 ออก)
 - สาย Sahamit ที่ hardcode `'RE-ORDER'` ([`salesPlanningForecast.js:396,446`](src/lib/salesPlanningForecast.js),
   [`create-sales-deal/route.js:134`](src/app/api/sahamit/forecast/rounds/[id]/create-sales-deal/route.js)) → เขียนลง `dealType` ด้วย
-- dashboard: การ์ด/กราฟแยก 3 ประเภท (FC·AT per type)
-- **ดีล SCENT สร้างได้เลยแต่ยังสร้างโครงการไม่ได้** (template ยังไม่แยก — มาเฟส 2); ระหว่างรอ
-  ให้ `create-project` ของดีล SCENT ล็อกปุ่ม + hint "รอเฟส 2" (หรือ fallback NPD template ชั่วคราว — เลือกตอนทำ)
-- **ไม่แตะ cardinality — เสี่ยงต่ำ**
+- dashboard: การ์ด/กราฟแยก 3 ประเภท (FC Total·Actual·FC คงเหลือ per type)
+- **ไม่แตะ cardinality — เสี่ยงต่ำ** (template ใช้ตอน gen เท่านั้น)
 
-### เฟส 2 · โครงการรวมหลายดีล + แยก template (แกนหลัก)
-1. **แยก template**: [`templates.js`](src/lib/pm/templates.js) → `SCENT_TEMPLATE` (steps 1–8 เดิม) ·
-   `NPD_TEMPLATE` ใหม่ (steps 15–47: Mock-up→ส่งมอบ, แก้ `dependsOnSteps` ที่อ้าง [3]/[17] ข้ามรอย) ·
-   `REORDER_TEMPLATE` เดิม; `templateFor(type)` 3 ทาง — unit test นับ step/phase/milestone ครบ
+### เฟส 2 · โครงการรวมหลายดีล (แกนหลัก)
+1. *(แยก template ทำแล้วในเฟส 1)*
 2. **ฝั่ง PM อ่านเป็น list** — แก้จุด `.maybeSingle()` ทั้ง 3:
    - project GET → `deals: [{id, title, stage, dealType, projectValue, wonValue, forecastMonth}]`
      (คง `dealId`/`dealStage` = ดีลก่อตั้ง ไว้ 1 เฟส เพื่อ backward compat)
    - delete guard → เช็ก `count > 0` (ทุกดีล) · **เลิก title sync สองทาง**
-3. deploy ข้อ 1–2 → รัน migration 0089+0090 บน prod (SCENT ใน projects.type + ดรอป unique + `project_tasks.dealId` พร้อม backfill)
+3. deploy ข้อ 2 → รัน migration 0089+0090 บน prod (ดรอป unique + `project_tasks.dealId` พร้อม backfill)
    - **ไทม์ไลน์ต่อ segment**: gen/append task เขียน `dealId` เสมอ · regen ใน
      [`schedule.js`](src/lib/pm/schedule.js) เปลี่ยน key จับคู่จากชื่อ → `dealId`+ชื่อ (กันชื่อชนข้าม segment)
      · anchor คิดต่อ segment (วันเริ่มของดีลนั้น) forward-only เหมือนเดิม
@@ -235,7 +245,8 @@ rollupDeals(deals[]) → {
 5. **back-pointer**: เลิกอ่าน `projects.metadata.salesDealId` เป็น source of truth —
    excise `from-project` + shipment-prep รับ `dealId` ตรงจากผู้เรียก; fallback: ดีลเดียวใช้ดีลนั้น, หลายดีลให้เลือก
 6. UI หน้าโครงการ PM: แผง **"ดีลในโครงการ"** (ตาราง: ประเภท/สถานะ/มูลค่า/FC เดือน) +
-   แถว KPI rollup (มูลค่ารวม · FC · AT · #ดีล) จาก `projectRollup.js` — reuse `KpiCard` + module overview pattern
+   แถว KPI rollup (**FC Total · Actual · FC คงเหลือ** · มูลค่ารวม · #ดีล) จาก `projectRollup.js`
+   — reuse `KpiCard` + module overview pattern
 7. UI หน้าดีล: ปุ่มคู่ "สร้างโครงการใหม่ / ผูกกับโครงการเดิม" + การ์ด "ดีลอื่นในโครงการเดียวกัน"
 
 ### เฟส 3 · RE-ORDER เข้าโครงการเดิม (สาย Sahamit)
@@ -267,7 +278,7 @@ rollupDeals(deals[]) → {
 | `deals/[id]/page.js` | 484–742, 1024 | dropdown 3 ประเภท · การ์ดดีลร่วมโครงการ · ปุ่ม link-project | 1, 2 |
 | `api/sales-planning/dashboard/route.js` | 15–149 | มิติ byType 3 ค่า · ย้าย `wonAmt` เข้า helper | 1 |
 | `salesPlanningForecast.js` | 49, 342, 396, 422, 446 | เขียน dealType · filter เปิด≠ไม่มีโครงการ | 1, 3 |
-| `lib/pm/templates.js` | ทั้งไฟล์ | แยก SCENT/NPD template + แก้ dependsOnSteps + `templateFor` 3 ทาง | 2 |
+| `lib/pm/templates.js` | ทั้งไฟล์ | แยก SCENT/NPD template + แก้ dependsOnSteps + `templateFor` 3 ทาง | 1 |
 | `api/pm/projects/[id]/route.js` | 53, 186, 211 | maybeSingle→list · เลิก title sync · delete guard นับทุกดีล | 2 |
 | `lib/pm/schedule.js` | 219–272 | จับคู่/regen scope ต่อ dealId (key = dealId+name) · anchor ต่อ segment | 2 |
 | Gantt + มุมมอง timeline | — | swimlane ต่อดีล (สีตามประเภท) · หน้าดีลเห็นเฉพาะ segment ตัวเอง | 2 |
@@ -278,21 +289,27 @@ rollupDeals(deals[]) → {
 | `deals/[id]/overview/route.js` | 38–56 | เพิ่ม sibling deals ของโครงการเดียวกัน | 2 |
 | `excise-registrations/from-project/route.js` | 96 | รับ `dealId` ตรง (เลิกพึ่ง metadata.salesDealId) | 2 |
 | `pm/projects/[id]/shipment-prep/route.js` | 110 | เดียวกัน | 2 |
-| `components/pm/ProjectFormModal.js` | 235–236 | ตัวเลือก type 3 ค่า | 2 |
+| `components/pm/ProjectFormModal.js` | 235–236 | ตัวเลือก type 3 ค่า | 1 |
 | `pm/projects/[id]/page.js` | 105, … | แผงดีล + KPI rollup + สี type SCENT | 2 |
 | `sahamit/po/[id]/create-project/route.js` | 49–51, 87, 167, 204 | ตัวเลือกแนบโครงการเดิม (default จับคู่ FG) | 3 |
 | หน้าลูกค้า (master) | — | แท็บโครงการ + rollup | 4 |
 
 ---
 
-## 7. Open decisions (ขอมติก่อนลงมือเฟสนั้น)
+## 7. มติ (เคาะแล้ว 2026-07-11)
 
-1. **ดีล SCENT ระหว่างเฟส 1 (template ยังไม่แยก)** — ล็อกปุ่มสร้างโครงการ (เสนอ) หรือ fallback ใช้ NPD template เต็มเส้นไปก่อน
-2. **จำกัดจำนวนดีลต่อประเภทในโครงการไหม** (เช่น NPD ≤1) — เสนอ: **ไม่ล็อกที่ DB**
-   (รองรับออกแบบกลิ่นหลายรอบ / หลายสินค้า) ใช้ UI เตือน + audit; ถ้าสินค้าใหม่ตัวที่ 2 ควรแนะนำเปิดโครงการใหม่
-3. **RE-ORDER บังคับผูกโครงการตอนไหน** — เสนอ: อย่างช้าตอน **won** (สร้างลอย ๆ วาง FC ได้ ปิด Won ต้องระบุโครงการ)
-4. **`dealId`/`dealStage` เดิมใน project GET** — คงไว้กี่เฟสก่อนตัด (เสนอ: คง 1 เฟส = ดีลก่อตั้ง)
-5. **ผูกดีลข้ามลูกค้า** — เสนอ: ห้ามเด็ดขาด (validate customer ตรงกัน) ไม่มี override
+| # | เรื่อง | มติ |
+|---|---|---|
+| 1 | ดีล SCENT กับ template | **แยก template ตั้งแต่เฟส 1** — SCENT สร้างโครงการด้วย template ตัวเองได้ทันที ไม่มี fallback |
+| 2 | จำกัดจำนวนดีลต่อประเภทในโครงการ | ไม่ล็อกที่ DB — UI เตือน + audit (ตามที่เสนอ) |
+| 3 | RE-ORDER บังคับผูกโครงการตอนไหน | สร้างลอย ๆ วาง FC ได้ ปิด Won ต้องระบุโครงการ (ตามที่เสนอ) |
+| 4 | field `dealId`/`dealStage` เดิมใน project GET | คงชี้ดีลก่อตั้งไว้ 1 เฟสระหว่างเปลี่ยนผ่าน แล้วตัดในเฟส 3 — เป็นเรื่อง plumbing ภายใน ไม่กระทบผู้ใช้ (ดูคำอธิบายใต้ตาราง) |
+| 5 | ผูกดีลข้ามลูกค้า | ห้ามเด็ดขาด — validate customer ตรงกัน (ตามที่เสนอ) |
+
+> **อธิบายข้อ 4:** โค้ดหน้าโครงการทุกวันนี้มีช่องข้อมูล "ดีลของโครงการ" อยู่ **1 ช่อง** (`dealId`/`dealStage`)
+> ใช้โชว์ป้าย/ลิงก์ไปดีล เมื่อโครงการมีหลายดีล ช่องเดียวไม่พอ → เปลี่ยนเป็น list (`deals[]`)
+> คำถามเดิมคือ "ช่องเก่าลบเลยไหม" — คำตอบที่ใช้: **เก็บช่องเก่าไว้ชั่วคราว** (ชี้ดีลก่อตั้ง)
+> เพื่อให้หน้าจอ/โค้ดส่วนที่ยังไม่ถูกแก้ไม่พังระหว่างเปลี่ยนผ่าน แล้วลบทิ้งเมื่อทุกจุดย้ายไปใช้ list แล้ว
 
 ---
 
@@ -315,7 +332,9 @@ rollupDeals(deals[]) → {
 
 ## 9. แผนทดสอบ (ต่อเฟส)
 
-- เฟส 1: lint+build+`node --test`; สร้างดีล 3 ประเภท → badge/filter/dashboard แยกถูก; ดีลเก่า backfill เป็น NPD/RE-ORDER ตรง `metadata.projectType` เดิม
+- เฟส 1: lint+build+`node --test` (รวม test template 3 ชุด); สร้างดีล 3 ประเภท → badge/filter/dashboard แยกถูก;
+  ดีล SCENT สร้างโครงการ → timeline มีเฉพาะขั้นขาย+ออกแบบกลิ่น; ดีล NPD สร้างโครงการ → timeline เริ่มที่ Mock-up;
+  ดีลเก่า backfill เป็น NPD/RE-ORDER ตรง `metadata.projectType` เดิม; โครงการเก่า timeline ไม่เปลี่ยน
 - เฟส 2: ดีล SCENT ก่อตั้งโครงการ → timeline มีเฉพาะขั้นออกแบบกลิ่น; ดีล NPD link เข้าโครงการเดิม →
   task ชุด Mock-up→ส่งมอบ ต่อท้ายเป็น draft **เป็น segment ใหม่ (anchor ของตัวเอง)**;
   Gantt โครงการเห็น 2 swimlane สีต่างกัน; หน้าดีลเห็นเฉพาะ segment ตัวเอง + สถานะดีลคิดจาก task ตัวเอง;
