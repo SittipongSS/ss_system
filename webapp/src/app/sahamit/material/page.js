@@ -9,6 +9,7 @@ import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { lineStage, STAGE_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { fmtDate } from "@/lib/format";
+import { useCan } from "@/lib/roleContext";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 
@@ -21,7 +22,7 @@ function matCell(dueDate, arrivedAt) {
 
 // One PO line: lead-time view (read-only) + PM/RM editor (กำหนดถึง + ปุ่มมาแล้ว).
 // นี่คือ "ที่เดียว" ที่แก้วันวัสดุได้ (หน้า POs โชว์อย่างเดียว).
-function MaterialRow({ row, product, onSaved }) {
+function MaterialRow({ row, product, onSaved, canEdit }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [d, setD] = useState({});
@@ -86,7 +87,7 @@ function MaterialRow({ row, product, onSaved }) {
           {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : "—"}
           {row.ourSlip && <div style={{ fontSize: 10.5, color: "var(--red)" }}>เราส่งช้า</div>}
         </td>
-        <td><button className="btn-icon" onClick={() => setOpen((v) => !v)} title="แก้สถานะวัสดุ">{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
+        <td>{canEdit && <button className="btn-icon" onClick={() => setOpen((v) => !v)} title="แก้สถานะวัสดุ">{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>}</td>
       </tr>
       {open && (
         <tr>
@@ -126,6 +127,7 @@ export default function MaterialPage() {
   const { data: rows, loading, error, reload } = useApiList("/api/sahamit/material");
   const { data: products } = useApiList("/api/sahamit/products");
   const prodIdx = useMemo(() => indexProducts(products), [products]);
+  const canEdit = useCan("sahamit:edit");
 
   const [search, setSearch] = useState("");
   const [fcSel, setFcSel] = useState([]);     // "in" | "out"
@@ -235,7 +237,7 @@ export default function MaterialPage() {
                 {filteredRows.length === 0 ? (
                   <tr><td colSpan={12} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มีบรรทัดตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
                 ) : (
-                  filteredRows.map((r) => <MaterialRow key={r.poLineId} row={r} product={prodIdx.get(String(r.fgCode).trim().toLowerCase())} onSaved={reload} />)
+                  filteredRows.map((r) => <MaterialRow key={r.poLineId} row={r} product={prodIdx.get(String(r.fgCode).trim().toLowerCase())} onSaved={reload} canEdit={canEdit} />)
                 )}
               </tbody>
             </table>

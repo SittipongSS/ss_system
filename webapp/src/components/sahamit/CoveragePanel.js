@@ -11,7 +11,7 @@ const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 //  • เดือนนี้ "PO เกิน" (excess>0)  → เสนอ "ส่งไปชดเชย" เดือนที่ขาด (push out)
 // การจัดลำดับ/จำนวนเป็นไปตาม logic ใน predict.js (suggestCoverage / suggestCoverageTargets).
 // `matrix` = ผลจาก buildReconMatrix ที่หน้ากระทบยอดมีอยู่แล้ว.
-export default function CoveragePanel({ fgCode, month, coverages, matrix, piecesPerCase = null, onChanged }) {
+export default function CoveragePanel({ fgCode, month, coverages, matrix, piecesPerCase = null, canEdit = true, onChanged }) {
   const [busy, setBusy] = useState(false);
   const caseSuffix = (n) => { const c = casesText(n, piecesPerCase); return c ? ` (${c})` : ""; };
   const related = (coverages || []).filter(
@@ -90,7 +90,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
                     </span>
                     <span style={{ color: "var(--text-2)" }}> ({nf(s.use)} ชิ้น{caseSuffix(s.use)})</span>
                   </div>
-                  <button className="btn btn-primary sm" disabled={busy} onClick={() => confirm(s.sourceMonth, s.targetMonth, s.use)}>ยืนยัน</button>
+                  {canEdit && <button className="btn btn-primary sm" disabled={busy} onClick={() => confirm(s.sourceMonth, s.targetMonth, s.use)}>ยืนยัน</button>}
                 </div>
               );
             })}
@@ -135,7 +135,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
                 ) : (
                   <span className="ui-badge" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>ส่งออก</span>
                 )}
-                <button className="btn-icon" title="ลบ" onClick={() => remove(c.id)} style={{ marginLeft: "auto" }}>✕</button>
+                {canEdit && <button className="btn-icon" title="ลบ" onClick={() => remove(c.id)} style={{ marginLeft: "auto" }}>✕</button>}
               </li>
             ))}
           </ul>

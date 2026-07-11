@@ -5,12 +5,13 @@ import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { fmtDate } from "@/lib/format";
 import { FLAG_KIND_LABEL, FLAG_STATUS_LABEL } from "@/lib/sahamit/flags";
+import { useCan } from "@/lib/roleContext";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 const KIND_COLOR = { drop: "var(--red)", shift_suspect: "var(--blue)", lockedBreak: "var(--amber)" };
 const STATUS_COLOR = { open: "var(--red)", confirmed_shift: "var(--blue)", confirmed_cut: "var(--amber)", ignored: "var(--text-3)" };
 
-function FlagRow({ flag, onSaved }) {
+function FlagRow({ flag, onSaved, canEdit }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [d, setD] = useState({});
@@ -43,7 +44,7 @@ function FlagRow({ flag, onSaved }) {
         <td style={{ textAlign: "right" }}>{nf(flag.prevQty)} → {nf(flag.newQty)} <span style={{ color: "var(--red)" }}>(−{nf(flag.drop)})</span></td>
         <td>#{flag.roundNo}</td>
         <td><span style={{ color: STATUS_COLOR[flag.status], fontWeight: 600 }}>{FLAG_STATUS_LABEL[flag.status] || flag.status}{flag.status === "confirmed_shift" && flag.shiftToMonth ? ` → ${flag.shiftToMonth}` : ""}</span></td>
-        <td style={{ textAlign: "right" }}><button className="btn-icon" onClick={() => setOpen((v) => !v)} title="เคลียร์">{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
+        <td style={{ textAlign: "right" }}>{canEdit && <button className="btn-icon" onClick={() => setOpen((v) => !v)} title="เคลียร์">{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>}</td>
       </tr>
       {open && (
         <tr>
@@ -77,6 +78,7 @@ const TABS = [{ key: "open", label: "ต้องตรวจ" }, { key: "all", 
 
 export default function ReviewPage() {
   const { data: flags, loading, error, reload } = useApiList("/api/sahamit/flags");
+  const canEdit = useCan("sahamit:edit");
   const [tab, setTab] = useState("open");
   const shown = useMemo(() => (tab === "open" ? flags.filter((f) => f.status === "open") : flags), [flags, tab]);
 
@@ -110,7 +112,7 @@ export default function ReviewPage() {
               <tr><th>สินค้า</th><th>เดือน</th><th>ชนิด</th><th style={{ textAlign: "right" }}>เปลี่ยน</th><th>รอบ</th><th>สถานะ</th><th></th></tr>
             </thead>
             <tbody>
-              {shown.map((f) => <FlagRow key={f.id} flag={f} onSaved={reload} />)}
+              {shown.map((f) => <FlagRow key={f.id} flag={f} onSaved={reload} canEdit={canEdit} />)}
             </tbody>
           </table>
         </div>

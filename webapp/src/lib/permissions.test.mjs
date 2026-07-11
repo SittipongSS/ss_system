@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, can, canUser, capsFor, editScope, viewScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, GRANTABLE_CAPS } from './permissions';
 
 test('canAssignTask: teammates assign to each other; sup/admin to anyone', () => {
   const ae = { id: 'u1', role: 'ae', team: 'KA' };
@@ -145,6 +145,10 @@ test('viewer: sees every module read-only, but can never write', () => {
   // SAHAMIT is team-gated (KA) for sales roles, but the whole-system observer
   // sees it despite having no team (writes still blocked by lack of sahamit:edit).
   assert.equal(canAccessSahamit('viewer', null), true);
+  // PM: viewer never edits a project task — not even one assigned to it, and not
+  // the plan (pmEditScope 'none'). Guards the 'workflow' tier that pm:view opens.
+  assert.equal(pmEditScope('viewer'), 'none');
+  assert.equal(pmTaskEditTier({ role: 'viewer', id: 'v' }, { assigneeId: 'v' }, { ownerId: 'x' }), 'none');
 });
 
 test('viewer: cost/margin stays a per-user grant (ติ๊กเปิดสิทธิ like LG)', () => {

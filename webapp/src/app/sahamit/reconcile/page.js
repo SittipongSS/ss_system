@@ -11,6 +11,7 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { fmtMoneyCompact, fmtYearMonth } from "@/lib/format";
+import { useCan } from "@/lib/roleContext";
 
 // token → CSS var
 const C = {
@@ -45,6 +46,7 @@ export default function ReconcilePage() {
   const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
   const { data: predAcks, reload: reloadAcks } = useApiList("/api/sahamit/pred-ack");
   const { data: products } = useApiList("/api/sahamit/products");
+  const canEdit = useCan("sahamit:edit");
   const [view, setView] = useState("recon");
   const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
   const [search, setSearch] = useState("");
@@ -367,6 +369,7 @@ export default function ReconcilePage() {
         prediction={cellSel ? predictions.get(`${cellSel.fg}||${cellSel.m}`) || null : null}
         product={cellSel ? productOf(cellSel.fg) : null}
         acked={cellSel ? ackSet.has(`${cellSel.fg}||${cellSel.m}`) : false}
+        canEdit={canEdit}
         onToggleAck={() => cellSel && toggleAck(cellSel.fg, cellSel.m, ackSet.has(`${cellSel.fg}||${cellSel.m}`))}
         onCoverageChanged={reloadCoverages}
       />
