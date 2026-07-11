@@ -107,7 +107,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
 
   setHolidays([...(await holidaySet())]);
-  const tasks = applyAutoStatuses(buildProjectTasks(project, project.id));
+  // เฟส B: task ชุดก่อตั้งติดป้ายดีลเจ้าของ (timeline segment ต่อดีล — mig 0090)
+  const tasks = applyAutoStatuses(buildProjectTasks(project, project.id, deal.id));
   let insertedTasks = [];
   if (tasks.length) {
     const { data: taskRows, error: taskError } = await supabase

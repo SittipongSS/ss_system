@@ -28,7 +28,8 @@ import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/derived";
 import { useResponsiveView } from "@/lib/useResponsiveView";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, fmtMoneyCompact } from "@/lib/format";
+import { dealTypeBadge } from "@/components/salesPlanning/ui";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -1031,6 +1032,36 @@ export default function ProjectDetailPage() {
         </div>
 
         </div>
+
+      {/* เฟส B: แผงดีลในโครงการ — โครงการ = ภาชนะรวมดีล (SCENT→NPD→RE-ORDER…)
+          KPI rollup จากดีลทุกใบ (FC Total · Actual · FC คงเหลือ · มูลค่ารวม) */}
+      {(p.deals || []).length > 0 && (
+        <div className="glass-panel" style={{ padding: "16px 20px", marginBottom: "24px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>ดีลในโครงการ ({p.deals.length})</h3>
+            <div className="spacer" style={{ flex: 1 }} />
+            {p.dealsRollup && (
+              <div style={{ display: "flex", gap: 14, fontSize: 12.5, flexWrap: "wrap" }} className="mono tabular-nums">
+                <span><span style={{ color: "var(--text-3)" }}>FC Total </span><strong>{fmtMoneyCompact(p.dealsRollup.fcTotal)}</strong></span>
+                <span><span style={{ color: "var(--text-3)" }}>Actual </span><strong style={{ color: "var(--green)" }}>{fmtMoneyCompact(p.dealsRollup.actual)}</strong></span>
+                <span><span style={{ color: "var(--text-3)" }}>FC คงเหลือ </span><strong style={{ color: p.dealsRollup.fcRemaining > 0 ? "var(--amber)" : "inherit" }}>{fmtMoneyCompact(p.dealsRollup.fcRemaining)}</strong></span>
+                <span><span style={{ color: "var(--text-3)" }}>มูลค่ารวม </span><strong>{fmtMoneyCompact(p.dealsRollup.totalValue)}</strong></span>
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {p.deals.map((d) => (
+              <a key={d.id} href={`/sa/deals/${d.id}`} className="btn ghost sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }} title={`เปิดดีล ${d.title}`}>
+                {dealTypeBadge(d.dealType || d.metadata?.projectType)}
+                <span style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.title}</span>
+                <span className="ui-badge" style={{ color: ["won", "in_project"].includes(d.stage) ? "var(--green)" : d.stage === "lost" ? "var(--red)" : "var(--text-3)" }}>
+                  {["won", "in_project"].includes(d.stage) ? `Won ${fmtMoneyCompact(d.wonValue ?? d.projectValue)}` : d.stage === "lost" ? "Lost" : `FC ${fmtMoneyCompact(d.projectValue)}${d.forecastMonth ? ` · ${d.forecastMonth}` : ""}`}
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {p.status === "Dropped" && (
         <div style={{ marginBottom: "24px", padding: "18px 24px", background: "color-mix(in srgb, var(--red) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 40%, transparent)", borderRadius: "12px", borderLeft: "5px solid var(--red)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", zIndex: 10, position: "relative" }}>

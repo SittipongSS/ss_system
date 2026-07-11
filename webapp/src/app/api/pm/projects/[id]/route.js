@@ -7,6 +7,7 @@ import { loadProject, deleteProjectDeep } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
+import { rollupDeals } from '@/lib/sales/projectRollup';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,11 +49,18 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     product: l.product
   }));
 
-  // Linked sales deal (at most one — projectId is unique). Surfaced so the UI can
-  // gate downstream actions (e.g. tax registration only once the deal is won).
-  const { data: linkedDeal } = await supabase
-    .from('sales_deals').select('id, stage').eq('projectId', project.id).maybeSingle();
-  
+  // ดีลที่ผูกโครงการนี้ — เฟส B: หลายดีลต่อโครงการ (SCENT→NPD→RE-ORDER…) อ่านเป็น list.
+  // ดีลก่อตั้ง = ตัวแรกสุด (createdAt เก่าสุด) — คง dealId/dealStage ชี้ดีลก่อตั้งไว้
+  // 1 เฟส เพื่อ backward compat กับ UI ที่ยังไม่ย้ายไปใช้ deals[] (ตัดในเฟสถัดไป).
+  const { data: linkedDeals } = await supabase
+    .from('sales_deals')
+    .select('id, title, stage, dealType, projectValue, wonValue, forecastMonth, formulaName, metadata, createdAt')
+    .eq('projectId', project.id)
+    .order('createdAt', { ascending: true });
+  const deals = linkedDeals || [];
+  const foundingDeal = deals[0] || null;
+  const dealsRollup = rollupDeals(deals);
+
   // Tell the client whether THIS user may edit THIS record (cap + row scope),
   // so the UI gates edit controls by ownership — not just the pm:edit cap.
   const canEdit = inPmProjectScope(user, project);
@@ -84,7 +92,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt, maxRev, dealId: linkedDeal?.id ?? null, dealStage: linkedDeal?.stage ?? null });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt, maxRev, deals, dealsRollup, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]
@@ -122,6 +130,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     setHolidays([...(await holidaySet())]);
     const { data: existing } = await supabase
       .from('project_tasks').select('*').eq('projectId', id).order('stepOrder', { ascending: true });
+    // เฟส B: โครงการหลาย segment (หลายดีล) — merge/resync ทั้งชุดจะจับคู่ชื่อข้าม segment
+    // แล้วลบงานผิดตัว → ข้าม resync อัตโนมัติ (จัดการขั้นสรรพสามิตของ segment ใหม่
+    // ตั้งแต่ตอน gen ด้วย categoryOnly อยู่แล้ว; ปรับย้อนหลังทำมือ/เฟสถัดไป)
+    const segIds = new Set((existing || []).map((t) => t.dealId).filter(Boolean));
+    if (segIds.size > 1) {
+      await recordAudit({ user, action: 'update', entityType: 'project', entityId: id, before: project, after: data, summary: `เปลี่ยนหมวดสินค้า ${data.code || id} (หลาย segment — ข้าม resync ขั้นตอนอัตโนมัติ)`, request: req });
+      return ok(data);
+    }
     const { templateRows, customRows, toDeleteIds, existingIds } = mergeTemplateTasks(data, existing || []);
 
     if (toDeleteIds.length) await supabase.from('project_tasks').delete().in('id', toDeleteIds);
@@ -180,11 +196,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
-  // Two-way name sync: keep the linked sales deal's title matching the project
-  // name (the deal PATCH mirrors the reverse). Direct table write, no loop.
-  if ('name' in updates && project.name !== data.name) {
-    await supabase.from('sales_deals').update({ title: data.name, updatedAt: updates.updatedAt }).eq('projectId', id);
-  }
+  // เฟส B: เลิก sync ชื่อโครงการ→ชื่อดีล — โครงการมีได้หลายดีล (ชื่อดีล ≠ ชื่อโครงการ
+  // อีกต่อไป) การ sync จะทับชื่อทุกดีลด้วยชื่อเดียว. ฝั่งดีล→โครงการก็ตัดคู่กัน.
 
   const summary = data.status !== project.status
     ? `เปลี่ยนสถานะโครงการ ${data.code || id}: ${project.status} → ${data.status}` : null;
@@ -206,12 +219,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return forbidden();
   }
 
-  // ผูกดีลอยู่ → ปฏิเสธ ให้ไปลบที่โครงการ (แม่) — กันการลบ project ทิ้งไว้ให้ดีลกำพร้า
-  // และกันลบซ้ำซ้อนสองที่. โครงการกำพร้าเท่านั้นที่ลบตรงนี้ได้.
-  const { data: linkedDeal } = await supabase
-    .from('sales_deals').select('id').eq('projectId', id).maybeSingle();
-  if (linkedDeal) {
-    return conflict('โครงการนี้ผูกกับงานขายแล้ว — ลบที่หน้า "บริหารงานขาย" (จะลบทั้งโครงการและงานผลิตพร้อมกัน)');
+  // ผูกดีลอยู่ (กี่ใบก็ตาม — เฟส B หลายดีลต่อโครงการ) → ปฏิเสธ ให้ไปลบที่ฝั่งงานขาย
+  // กันการลบ project ทิ้งไว้ให้ดีลกำพร้า. โครงการกำพร้า (0 ดีล) เท่านั้นที่ลบตรงนี้ได้.
+  const { count: linkedCount } = await supabase
+    .from('sales_deals').select('id', { count: 'exact', head: true }).eq('projectId', id);
+  if ((linkedCount || 0) > 0) {
+    return conflict('โครงการนี้ผูกกับดีลอยู่ — ลบดีลที่หน้า "บริหารงานขาย" ก่อน (ดีลสุดท้ายจะลบโครงการพ่วงไปด้วย)');
   }
 
   try {
