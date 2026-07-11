@@ -24,7 +24,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     // just by passing its projectId. Mirrors the no-projectId branch below
     // and the inScope checks on the other PM routes.
     const { data: project } = await supabase.from('projects').select('*').eq('id', projectId).maybeSingle();
-    if (!project) return notFound('ไม่พบโปรเจกต์');
+    if (!project) return notFound('ไม่พบโครงการ');
     if (!inScope(viewScope(user?.role), user, project)) return forbidden();
 
     const { data, error } = await supabase
@@ -65,7 +65,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // Row-level scope: a task may only be added to a project the user may edit
   // (own team / own record). Mirrors the checks on the other PM write routes.
   const { data: project } = await supabase.from('projects').select('*').eq('id', body.projectId).maybeSingle();
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   if (!inScope(pmEditScope(user?.role), user, project)) {
     return forbidden();
   }
@@ -136,7 +136,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (error) return fail(error.message, 500);
 
   // ขั้นใหม่อาจทำให้กราฟเปลี่ยน (เช่นแทรกขั้นที่ไม่มี predecessor = พร้อมทำทันที,
-  // หรือไปคั่นกลางทำให้ขั้นถัดไม่พร้อม) → คำนวณสถานะทั้งโปรเจกต์ใหม่. client เรียก load() ต่อ.
+  // หรือไปคั่นกลางทำให้ขั้นถัดไม่พร้อม) → คำนวณสถานะทั้งโครงการใหม่. client เรียก load() ต่อ.
   await propagateAndPersist(supabase, body.projectId);
 
   return ok(data, 201);

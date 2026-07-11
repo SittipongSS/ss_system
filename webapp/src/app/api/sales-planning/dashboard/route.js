@@ -1,5 +1,5 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
+import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,6 +74,17 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     fcMap[k] = b;
   }
   const byForecast = FC_LEVELS.map((l) => fcMap[l] || { level: l, count: 0, value: 0 });
+
+  // แยกตามประเภทดีล 3 ค่า (SCENT/NPD/RE-ORDER — เฟส A): FC Total = won+open ของเดือนนี้,
+  // Actual = ปิดจริง, FC คงเหลือ = open ที่ยังต้องตามปิด — นิยามเดียวกับ KPI รวมด้านบน.
+  const typeMap = Object.fromEntries(DEAL_TYPES.map((t) => [t, { type: t, fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0 }]));
+  for (const d of monthDeals) {
+    const b = typeMap[dealTypeOf(d)];
+    if (isWon(d)) { b.actual += wonAmt(d); b.fcTotal += wonAmt(d); b.wonCount += 1; }
+    else if (d.stage === 'lost') { b.lostCount += 1; }
+    else { b.fcRemaining += forecastAmt(d); b.fcTotal += forecastAmt(d); b.openCount += 1; }
+  }
+  const byType = DEAL_TYPES.map((t) => typeMap[t]);
 
   // แถว "ผี": ไม่มีทั้งเป้า/won/คาดการณ์/จำนวนดีล — เกิดจาก target ค้างค่า 0
   // หรือถังที่ถูกสร้างโดยไม่มีข้อมูลจริง → ตัดทิ้งไม่ให้โผล่บนหน้า.
@@ -171,6 +182,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     },
     byStage: Object.values(byStage),
     byForecast,
+    byType,
     byOwner,
     byTeam,
     targets: targets || [],

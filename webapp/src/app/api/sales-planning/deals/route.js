@@ -10,7 +10,7 @@ import {
   inSalesEditScope,
   inSalesViewScope,
   monthKey,
-  normalizeProjectType,
+  normalizeDealType,
   normalizeStage,
   toMoney,
   toProbability,
@@ -60,7 +60,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!canEditSalesPlanning(user)) return forbidden();
 
   const body = await req.json();
-  if (!body.title?.trim()) return badRequest('ต้องระบุชื่อโครงการ');
+  if (!body.title?.trim()) return badRequest('ต้องระบุชื่อดีล');
 
   let customerName = body.customerName || null;
   if (body.customerId) {
@@ -100,10 +100,15 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     ownerId: body.ownerId || user.id || null,
     ownerName: body.ownerName || user.name || null,
     team: body.team || user.team || null,
-    // projectType (NPD/RE-ORDER) + brand เก็บใน metadata — ส่งต่อเป็นค่าตั้งต้นตอนสร้างไทม์ไลน์ PM
+    // ประเภทดีล 3 ค่า (SCENT/NPD/RE-ORDER) = คอลัมน์จริง (mig 0088) — ค่าตรงกับ
+    // projects.type ส่งต่อเป็น template ตอนสร้างโครงการ PM. transition: เขียน
+    // metadata.projectType คู่ไว้ 1 เฟส ให้โค้ด/แคชเก่าอ่านได้.
+    dealType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
+    // ชื่อสูตรกลิ่น (ดีล SCENT — จุดปลั๊กอิน RD ในอนาคต)
+    formulaName: (body.formulaName || '').trim() || null,
     metadata: {
       ...(body.metadata || {}),
-      projectType: normalizeProjectType(body.projectType ?? body.metadata?.projectType),
+      projectType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
       brand: (body.brand ?? body.metadata?.brand ?? '') || '',
     },
   };

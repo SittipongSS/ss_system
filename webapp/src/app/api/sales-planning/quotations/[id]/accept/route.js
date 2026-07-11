@@ -26,12 +26,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!(Number(quote.totalAmount) > 0)) return badRequest('ใบเสนอราคายอดรวมต้องมากกว่า 0');
 
   const { data: deal } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
-  if (deal.stage === 'lost') return badRequest('โครงการนี้ปิดเป็น Lost แล้ว ไม่สามารถรับใบเสนอราคาได้');
-  if (['won', 'in_project'].includes(deal.stage)) return badRequest('โครงการนี้ปิดการขาย (Won) แล้ว');
+  if (deal.stage === 'lost') return badRequest('ดีลนี้ปิดเป็น Lost แล้ว ไม่สามารถรับใบเสนอราคาได้');
+  if (['won', 'in_project'].includes(deal.stage)) return badRequest('ดีลนี้ปิดการขาย (Won) แล้ว');
 
-  // กันรับใบที่สองทับใบแรก — โครงการหนึ่งรับได้ใบเดียว (ยกเลิกใบเดิมก่อน)
+  // กันรับใบที่สองทับใบแรก — ดีลหนึ่งรับได้ใบเดียว (ยกเลิกใบเดิมก่อน)
   const { data: priorAccepted } = await supabase
     .from('quotations')
     .select('id, quoteNumber')
@@ -39,7 +39,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .eq('status', 'accepted')
     .neq('id', quote.id)
     .limit(1);
-  if (priorAccepted?.length) return conflict(`โครงการนี้รับใบเสนอราคา ${priorAccepted[0].quoteNumber || ''} ไปแล้ว — ยกเลิกใบเดิมก่อน`);
+  if (priorAccepted?.length) return conflict(`ดีลนี้รับใบเสนอราคา ${priorAccepted[0].quoteNumber || ''} ไปแล้ว — ยกเลิกใบเดิมก่อน`);
 
   const now = new Date().toISOString();
   const { data: accepted, error: acceptError } = await supabase

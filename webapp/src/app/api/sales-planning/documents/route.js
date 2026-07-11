@@ -22,7 +22,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!dealId) return badRequest('dealId is required');
 
   const deal = await loadDeal(supabase, dealId);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesViewScope(user, deal)) return forbidden();
 
   const { data, error } = await supabase
@@ -43,7 +43,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!body.title?.trim()) return badRequest('title is required');
 
   const deal = await loadDeal(supabase, body.dealId);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
 
   const row = {

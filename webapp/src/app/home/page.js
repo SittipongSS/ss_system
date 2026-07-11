@@ -137,7 +137,7 @@ export default function HomeHubPage() {
                 <FolderKanban size={24} strokeWidth={1.5} />
               </div>
               <div>
-                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>จัดการโครงการ</h2>
+                <h2 style={{ fontSize: "17px", fontWeight: 600, marginBottom: "6px" }}>งานโครงการ (PM)</h2>
                 <p style={{ color: "var(--text-3)", fontSize: "13px", lineHeight: 1.6 }}>
                   ติดตามและบริหารงานโครงการ มอบหมายงาน และดูความคืบหน้า
                 </p>

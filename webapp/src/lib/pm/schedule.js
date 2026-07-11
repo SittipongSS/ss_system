@@ -1,8 +1,8 @@
 // PM scheduling + task generation (ported/condensed from ss-cj ProjectContext).
-// ใช้ทั้งฝั่ง server (ตอน gen tasks ตอนสร้างโปรเจกต์) และ client (คำนวณ timeline ใหม่).
+// ใช้ทั้งฝั่ง server (ตอน gen tasks ตอนสร้างโครงการ) และ client (คำนวณ timeline ใหม่).
 // v1: forward scheduling (จากวันเริ่ม). predecessors = task ที่ต้องเสร็จก่อน.
 import { isBusinessDay } from './dateHelpers';
-import { templateFor, defaultAssignee } from './templates';
+import { templateFor, templateForMerge, defaultAssignee } from './templates';
 
 export const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -41,7 +41,7 @@ export function recalculateSchedule(tasks, project, allTasks = tasks) {
   return recalculateForward(tasks, anchor, allTasks);
 }
 
-// คำนวณ start/finish ของทุก task แบบ forward จากวันเริ่มโปรเจกต์
+// คำนวณ start/finish ของทุก task แบบ forward จากวันเริ่มโครงการ
 // เคารพ predecessors (เริ่มหลัง predecessor ที่เสร็จช้าสุด) และ manual startDate override
 // allTasks: ฐานสำหรับ resolve predecessors (ใช้ตอน partial recalc — ส่งเฉพาะ
 // ช่วง task ที่ต้องเลื่อน แต่ predecessors อาจชี้ไป task ก่อนหน้าที่อยู่นอกช่วง).
@@ -209,7 +209,9 @@ export function buildProjectTasks(project, projectId) {
 // คืน { rows: แถวสุดท้ายทั้งหมด (insert/update), toDeleteIds: id ที่ต้องลบ }.
 export function mergeTemplateTasks(project, existingTasks) {
   const cat = project.productMainCategory || '';
-  const fullTemplate = templateFor(project.type);
+  // legacy-aware: โครงการ NPD เก่า (มี task ช่วงกลิ่นจากก่อนแยก template) ใช้ชุดเต็มเส้น
+  // เพื่อไม่ลบงานช่วงกลิ่นทิ้งตอน resync (ดู templateForMerge ใน templates.js)
+  const fullTemplate = templateForMerge(project.type, existingTasks);
   const filtered = fullTemplate.filter((t) => {
     if (t.categoryOnly && t.categoryOnly !== cat) return false;
     if (t.categoryExclude && t.categoryExclude === cat) return false;

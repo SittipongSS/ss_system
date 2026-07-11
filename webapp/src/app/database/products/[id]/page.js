@@ -346,7 +346,7 @@ export default function ProductDetails() {
           {projects.length > 0 && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-              <FolderKanban size={16} className="text-[var(--accent)]" /> โปรเจกต์ที่เกี่ยวข้อง ({projects.length})
+              <FolderKanban size={16} className="text-[var(--accent)]" /> โครงการที่เกี่ยวข้อง ({projects.length})
             </h3>
             <div className="space-y-2">
               {projects.map((p) => (

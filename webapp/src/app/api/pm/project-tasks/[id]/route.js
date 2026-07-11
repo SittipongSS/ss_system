@@ -34,7 +34,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!task) return notFound('ไม่พบขั้นตอน');
 
   // สิทธิ์แก้ไขมี 2 ระดับ (รวม logic ไว้ที่ pmTaskEditTier ใน permissions.js):
-  //   full     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโปรเจกต์)
+  //   full     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโครงการ)
   //   workflow — ผู้รับผิดชอบ (assigneeId) หรือ staff ฝ่ายเดียวกับขั้นตอน (role===department)
   //              อัปเดตได้เฉพาะสถานะ/ความคืบหน้า/โน้ต ไม่แตะวันเริ่ม/ลำดับ/การมอบหมาย
   const tier = pmTaskEditTier(user, task, project);
@@ -95,7 +95,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // ── #1 recalc (dependency-driven): แก้วันเริ่ม/จำนวนวัน/predecessors/ปักหมุด →
-  // คำนวณ timeline ทั้งกราฟใหม่จากวันเริ่มโปรเจกต์ตามสาย predecessor จริง แล้ว persist
+  // คำนวณ timeline ทั้งกราฟใหม่จากวันเริ่มโครงการตามสาย predecessor จริง แล้ว persist
   // เฉพาะแถวที่เปลี่ยน. ขั้นที่ไม่ผูกกับขั้นนี้จะไม่ขยับ (ต่างจาก slice แบบเดิมที่ลากทุกขั้นที่อยู่หลัง) ──
   const schedulingChanged = SCHEDULE_FIELDS.some((k) => k in updates) || 'startLocked' in updates;
   if (schedulingChanged && project) {

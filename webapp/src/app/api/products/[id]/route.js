@@ -212,7 +212,7 @@ export async function DELETE(request, { params }) {
   }
 
   // ข้อ 3: guard ก่อนลบ — กันไม่ให้เกิด record กำพร้า (live DB ไม่มี FK constraint จริง).
-  // ถ้าสินค้านี้ยังถูกอ้างใน โปรเจกต์/รายการออเดอร์/การขึ้นทะเบียน → ห้ามลบ.
+  // ถ้าสินค้านี้ยังถูกอ้างใน โครงการ/รายการออเดอร์/การขึ้นทะเบียน → ห้ามลบ.
   const [ppRef, itemRef, regRef] = await Promise.all([
     supabase.from('project_products').select('projectId').eq('productId', id),
     supabase.from('order_items').select('orderId').eq('productId', id),
@@ -223,7 +223,7 @@ export async function DELETE(request, { params }) {
   const refs = [];
   const projIds = [...new Set((ppRef.data || []).map((r) => r.projectId))];
   const orderIds = [...new Set((itemRef.data || []).map((r) => r.orderId))];
-  if (projIds.length) refs.push(`${projIds.length} โปรเจกต์ (${projIds.join(', ')})`);
+  if (projIds.length) refs.push(`${projIds.length} โครงการ (${projIds.join(', ')})`);
   if (orderIds.length) refs.push(`${orderIds.length} ออเดอร์ (${orderIds.join(', ')})`);
   if (regRef.data?.length) refs.push(`${regRef.data.length} การขึ้นทะเบียน`);
   const block = referencedBlock('สินค้า', refs);

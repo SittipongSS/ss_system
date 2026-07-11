@@ -23,8 +23,8 @@ async function userTeam(supabase, id) {
 // ใครจัดการงานนี้ได้ (full authority — แก้ทุกฟิลด์/ลบ/เปลี่ยนผู้รับมอบหมาย):
 //   - เจ้าของ (ownerId) / ผู้รับมอบ (assigneeId) / superuser
 //   - หัวหน้าทีม (senior_ae) ที่อยู่ทีมเดียวกับ "ผู้รับมอบ/เจ้าของงาน" หรือ
-//     ทีมเดียวกับ "โปรเจกต์ที่ผูก" — ตรงกับ canManageTask ฝั่ง client (เดิม server
-//     ไม่เช็คทีมโปรเจกต์ ทำให้ปุ่มโชว์แต่กดแล้ว 403).
+//     ทีมเดียวกับ "โครงการที่ผูก" — ตรงกับ canManageTask ฝั่ง client (เดิม server
+//     ไม่เช็คทีมโครงการ ทำให้ปุ่มโชว์แต่กดแล้ว 403).
 async function canManage(supabase, task, user) {
   if (!user) return false;
   if (task.ownerId === user.id) return true;
@@ -117,10 +117,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
-  // อ้างอิงโปรเจกต์/ดีลต้องมีจริง
+  // อ้างอิงโครงการ/ดีลต้องมีจริง
   if (updates.projectId) {
     const { data: proj } = await supabase.from('projects').select('id').eq('id', updates.projectId).maybeSingle();
-    if (!proj) return badRequest('ไม่พบโปรเจกต์');
+    if (!proj) return badRequest('ไม่พบโครงการ');
   }
   if (updates.dealId) {
     const { data: deal } = await supabase.from('sales_deals').select('id').eq('id', updates.dealId).maybeSingle();

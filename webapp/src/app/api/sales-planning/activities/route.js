@@ -31,7 +31,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!dealId) return badRequest('ต้องระบุ dealId');
 
   const { data: deal } = await supabase.from('sales_deals').select('*').eq('id', dealId).maybeSingle();
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesViewScope(user, deal)) return forbidden();
 
   const { data, error } = await supabase
@@ -54,7 +54,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!body.body?.trim() && !attachments.length) return badRequest('ต้องระบุรายละเอียดหรือแนบไฟล์');
 
   const { data: deal } = await supabase.from('sales_deals').select('*').eq('id', body.dealId).maybeSingle();
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
 
   const row = {

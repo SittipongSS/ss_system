@@ -332,7 +332,7 @@ export function buildGanttPrintHTML(project) {
         </tr>
         <tr>${weekHeadCells}</tr>
       </thead>
-      ${bodyTbodies || `<tbody><tr><td colspan="${totalCols}" style="text-align:center;padding:20px;color:#837868">ยังไม่มีขั้นตอนในโปรเจกต์นี้</td></tr></tbody>`}
+      ${bodyTbodies || `<tbody><tr><td colspan="${totalCols}" style="text-align:center;padding:20px;color:#837868">ยังไม่มีขั้นตอนในโครงการนี้</td></tr></tbody>`}
     </table>
 
     <div class="legend">

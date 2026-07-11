@@ -11,11 +11,11 @@ import { X } from "lucide-react";
 export default function ProjectFormModal({
   open, onClose, editingId, initialData, onSuccess,
   customers = [], categories = [], allProducts = [],
-  // ปลายทาง POST ตอนสร้างใหม่ (ค่าเริ่มต้น = สร้างโปรเจกต์ PM ปกติ). หน้าบริหารงานขาย
+  // ปลายทาง POST ตอนสร้างใหม่ (ค่าเริ่มต้น = สร้างโครงการ PM ปกติ). หน้าบริหารงานขาย
   // ส่ง endpoint ของดีลเข้ามาเพื่อสร้าง + ผูกโครงการเข้าดีลในคราวเดียว.
   createEndpoint = "/api/pm/projects",
   // ข้อความบนปุ่มยืนยันตอนสร้าง (override ได้ เช่น "สร้างโครงการ PM")
-  createLabel = "สร้างโปรเจกต์",
+  createLabel = "สร้างโครงการ",
 }) {
   // Assignable users are fetched fresh every time the modal opens (not at the
   // parent page's mount) so a newly-added user shows up without a full reload.
@@ -63,7 +63,7 @@ export default function ProjectFormModal({
 
   useEffect(() => {
     if (open) {
-      // initialData ใช้ได้ทั้งตอนแก้ไข (โปรเจกต์เดิม) และตอนสร้างใหม่แบบเติมค่าแนะนำ
+      // initialData ใช้ได้ทั้งตอนแก้ไข (โครงการเดิม) และตอนสร้างใหม่แบบเติมค่าแนะนำ
       // (เช่น สร้าง PM จากดีล — เติมชื่อ/ลูกค้า/วันเริ่ม/ผู้ดูแลให้ แต่ปรับแก้ได้)
       if (initialData) {
         setForm({
@@ -87,7 +87,7 @@ export default function ProjectFormModal({
   }, [open, editingId, initialData, blank]);
 
   // ข้อ 1: หมวดสินค้า "อิงตาม FG ที่ผูก" — ถ้ามี FG ที่เป็น 01-002 (สรรพสามิต)
-  // แม้แต่ตัวเดียว ทั้งโปรเจกต์ใช้หมวด 01-002 (เป็นใหญ่สุด → ได้ template เสียภาษี);
+  // แม้แต่ตัวเดียว ทั้งโครงการใช้หมวด 01-002 (เป็นใหญ่สุด → ได้ template เสียภาษี);
   // ถ้าไม่มีตัวไหนเป็น 01-002 ใช้หมวดของ FG ตัวแรกเพื่อแสดงผล. ไม่มี FG → ปล่อยให้เลือกเอง
   const fgCategoryLock = form.projectProducts.length > 0;
   useEffect(() => {
@@ -139,9 +139,9 @@ export default function ProjectFormModal({
   const submit = async (e) => {
     e.preventDefault();
     setFormError("");
-    // วันเริ่ม = anchor ของ timeline → บังคับใส่ (โปรเจกต์ย้อนหลังต้องตั้งวันจริงในอดีต)
-    if (!form.startDate) { setFormError("กรุณาระบุวันที่เริ่มโปรเจกต์"); return; }
-    // ข้อ 2: แจ้งเตือนก่อนปรับขั้นตอน — เมื่อแก้โปรเจกต์เดิมแล้วสถานะสรรพสามิต
+    // วันเริ่ม = anchor ของ timeline → บังคับใส่ (โครงการย้อนหลังต้องตั้งวันจริงในอดีต)
+    if (!form.startDate) { setFormError("กรุณาระบุวันที่เริ่มโครงการ"); return; }
+    // ข้อ 2: แจ้งเตือนก่อนปรับขั้นตอน — เมื่อแก้โครงการเดิมแล้วสถานะสรรพสามิต
     // (01-002) พลิก ระบบจะเพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต + คำนวณกำหนดการใหม่
     if (editingId) {
       const wasExcise = (initialData?.productMainCategory || "") === "01-002";
@@ -174,7 +174,7 @@ export default function ProjectFormModal({
         // รหัสโครงการสร้างอัตโนมัติฝั่งเซิร์ฟเวอร์ — แจ้งสำเร็จ (toast) จัดการที่ผู้เรียก onSuccess
         onSuccess(data);
       } else {
-        setFormError(data.error || (editingId ? "บันทึกไม่สำเร็จ" : "สร้างโปรเจกต์ไม่สำเร็จ"));
+        setFormError(data.error || (editingId ? "บันทึกไม่สำเร็จ" : "สร้างโครงการไม่สำเร็จ"));
       }
     } catch { setFormError("เกิดข้อผิดพลาด"); }
     finally { setSubmitting(false); }
@@ -193,7 +193,7 @@ export default function ProjectFormModal({
   // ตัวเลือกแบรนด์ = แบรนด์ที่ลูกค้า "เป็นเจ้าของ" (customers.brands[]) — master ของแบรนด์.
   // กรองตามลูกค้า "เสมอ": ยังไม่เลือกลูกค้า → ไม่มีแบรนด์ให้เลือก (กันโชว์แบรนด์ข้ามลูกค้า)
   // extraBrands = แบรนด์ที่เพิ่งเพิ่มผ่านปุ่ม "+" (customers prop ยังไม่รีเฟรช);
-  // แบรนด์เดิมของโปรเจกต์ที่ไม่อยู่ในลิสต์ (free-text ยุคเก่า) แทรกไว้ไม่ให้ค่าหาย.
+  // แบรนด์เดิมของโครงการที่ไม่อยู่ในลิสต์ (free-text ยุคเก่า) แทรกไว้ไม่ให้ค่าหาย.
   const [extraBrands, setExtraBrands] = useState([]);
   useEffect(() => { if (open) setExtraBrands([]); }, [open, form.customerId]);
   const brandOptions = useMemo(() => {
@@ -216,7 +216,7 @@ export default function ProjectFormModal({
   const subLabel = (c) => `${c.typeCode} ${c.nameTh || c.nameEn || ""}`.trim();
 
   return (
-    <Modal open={open} onClose={onClose} title={editingId ? "แก้ไขโปรเจกต์" : "สร้างโปรเจกต์ใหม่"} size="lg">
+    <Modal open={open} onClose={onClose} title={editingId ? "แก้ไขโครงการ" : "สร้างโครงการใหม่"} size="lg">
       <form onSubmit={submit}>
         <div className="pm-form-grid gap-[18px]">
           <div className="col-span-2 text-[15px] font-semibold text-[var(--text)] border-b border-[var(--border)] pb-2 mb-2 flex items-center gap-2">
@@ -232,17 +232,18 @@ export default function ProjectFormModal({
           <div className={`form-group${editingId && form.code ? "" : " col-span-2"}`}>
             <label>ประเภทงาน</label>
             <Select fullWidth name="type" value={form.type} onChange={change} disabled={!!editingId}>
-              <option value="NPD">NPD (สินค้าใหม่)</option>
-              <option value="RE-ORDER">RE-ORDER (สั่งซ้ำ)</option>
+              <option value="SCENT">SCENT (พัฒนากลิ่น)</option>
+              <option value="NPD">NPD (พัฒนาสินค้า)</option>
+              <option value="RE-ORDER">RE-ORDER (สั่งผลิตซ้ำ)</option>
             </Select>
           </div>
           <div className="form-group col-span-2">
-            <label>ชื่อโปรเจกต์ / สินค้า <span className="text-[var(--red)]">*</span></label>
+            <label>ชื่อโครงการ / สินค้า <span className="text-[var(--red)]">*</span></label>
             <input name="name" value={form.name} onChange={change} required className="premium-input w-full" />
           </div>
           <div className="form-group">
-            <label>วันที่เริ่มโปรเจกต์ <span className="text-[var(--red)]">*</span></label>
-            <input type="date" name="startDate" value={form.startDate} onChange={change} required className="premium-input w-full" title="วันเริ่มเป็นจุดอ้างอิงของ timeline — โปรเจกต์ย้อนหลังให้ใส่วันจริงในอดีต" />
+            <label>วันที่เริ่มโครงการ <span className="text-[var(--red)]">*</span></label>
+            <input type="date" name="startDate" value={form.startDate} onChange={change} required className="premium-input w-full" title="วันเริ่มเป็นจุดอ้างอิงของ timeline — โครงการย้อนหลังให้ใส่วันจริงในอดีต" />
           </div>
           <div className="form-group">
             <label>Due Date <span className="text-[var(--text-3)] font-normal">(กำหนดส่งลูกค้า)</span></label>
@@ -275,7 +276,7 @@ export default function ProjectFormModal({
                   label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
                   search: `${c.arCode || ""} ${c.name}`,
                 }));
-                // ลูกค้าปัจจุบันอาจไม่อยู่ในลิสต์ (list ถูก scope ตามทีม แต่โปรเจกต์
+                // ลูกค้าปัจจุบันอาจไม่อยู่ในลิสต์ (list ถูก scope ตามทีม แต่โครงการ
                 // อ้างลูกค้าข้ามทีมได้) — แทรกไว้ไม่ให้ค่าเดิมโชว์ว่าง/หลุดตอนแก้ไข
                 if (form.customerId && !opts.some((o) => o.value === form.customerId)) {
                   opts.unshift({ value: form.customerId, label: initialData?.customerName || form.customerId });
@@ -361,7 +362,7 @@ export default function ProjectFormModal({
                   // กฎ ลูกค้า›แบรนด์›สินค้า: เลือกแบรนด์แล้ว → โชว์เฉพาะ FG ของแบรนด์นั้น
                   // (ยังไม่เลือกแบรนด์ = ทุกแบรนด์ของลูกค้า — FG ไร้แบรนด์ไม่หายจากลิสต์)
                   .filter(pr => !form.brand || pr.brandName === form.brand || pr.brandNameEn === form.brand)
-                  // ผูกได้หลายหมวด (ไม่กรองตามหมวด) — หมวดของโปรเจกต์จะ derive จาก FG เอง
+                  // ผูกได้หลายหมวด (ไม่กรองตามหมวด) — หมวดของโครงการจะ derive จาก FG เอง
                   .map(pr => (
                   <option key={pr.id} value={pr.id}>{pr.fgCode} — {pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""} {pr.volume ? `(${pr.volume} ml)` : ""}</option>
                 ))}

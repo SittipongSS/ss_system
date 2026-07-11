@@ -32,7 +32,7 @@ export function applyAutoStatuses(tasks) {
   return (tasks || []).map((t) => ({ ...t, status: next.get(t.id) ?? t.status }));
 }
 
-// โหลด task ทั้งโปรเจกต์ คำนวณสถานะใหม่ แล้ว persist เฉพาะแถวที่เปลี่ยนจริง.
+// โหลด task ทั้งโครงการ คำนวณสถานะใหม่ แล้ว persist เฉพาะแถวที่เปลี่ยนจริง.
 // รับ supabase client เข้ามา (lib ไม่ผูกกับ supabaseAdmin โดยตรง).
 export async function propagateAndPersist(supabase, projectId) {
   const { data: all } = await supabase

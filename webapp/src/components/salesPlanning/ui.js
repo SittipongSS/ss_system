@@ -1,7 +1,7 @@
 "use client";
 
 import { Trophy } from "lucide-react";
-import { STAGE_LABELS } from "@/lib/salesPlanning";
+import { DEAL_TYPE_LABELS, normalizeDealType, STAGE_LABELS } from "@/lib/salesPlanning";
 import { fmtMoneyCompact } from "@/lib/format";
 
 // Shared presentational helpers for the Sales Planning pages (overview / deals /
@@ -13,8 +13,9 @@ export const initialDealForm = {
   customerId: "",
   customerName: "",
   stage: "lead",
-  projectType: "NPD", // NPD | RE-ORDER — ส่งต่อเป็นค่าตั้งต้นตอนสร้างไทม์ไลน์ PM
-  brand: "",          // ชื่อแบรนด์ (เลือกจากแบรนด์ของลูกค้า) — เก็บใน metadata.brand
+  dealType: "NPD",  // SCENT | NPD | RE-ORDER — คอลัมน์จริง (mig 0088) ส่งต่อเป็น template ตอนสร้างโครงการ PM
+  formulaName: "",  // ชื่อสูตรกลิ่น (SCENT — จุดปลั๊กอิน RD ในอนาคต)
+  brand: "",        // ชื่อแบรนด์ (เลือกจากแบรนด์ของลูกค้า) — เก็บใน metadata.brand
   projectValue: "",
   probability: "50",
   forecastMonth: "",
@@ -22,6 +23,18 @@ export const initialDealForm = {
   depositPaid: false,
   notes: "",
 };
+
+// ป้ายประเภทดีล 3 ค่า — สีคงที่ทั้งระบบ: SCENT=amber (งานกลิ่น) · NPD=blue (พัฒนาสินค้า)
+// · RE-ORDER=teal (ผลิตซ้ำ). ใช้ทุกหน้า sales ให้อ่านประเภทได้ด้วยตาเดียว.
+export const DEAL_TYPE_COLORS = { SCENT: "var(--amber)", NPD: "var(--blue)", "RE-ORDER": "var(--teal)" };
+export function dealTypeBadge(type) {
+  const t = normalizeDealType(type);
+  return (
+    <span className="ui-badge" style={{ color: DEAL_TYPE_COLORS[t], borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+      {DEAL_TYPE_LABELS[t]}
+    </span>
+  );
+}
 
 // โอกาสที่จะปิดได้ (FC%) — 4 ระดับให้ผู้ใช้เลือกตอนเพิ่ม/แก้โครงการ. เป็นข้อมูลช่วย
 // จัดลำดับความน่าจะปิด ไม่ได้ถ่วงยอด (FC = มูลค่าเต็มตาม M6 ในแผน merge).

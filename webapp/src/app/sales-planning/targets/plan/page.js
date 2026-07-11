@@ -269,7 +269,7 @@ export default function SalesTargetPlanPage() {
         }
       }
       setInfo("วางเป้าเรียบร้อย กำลังพาไปหน้าตารางเป้า…");
-      setTimeout(() => router.push("/sales-planning/targets"), 900);
+      setTimeout(() => router.push("/sa/targets"), 900);
     } catch (e) {
       setError(e.message || "วางเป้าไม่สำเร็จ");
     } finally {
@@ -279,7 +279,7 @@ export default function SalesTargetPlanPage() {
 
   if (!canTarget || !isSuper) {
     return (
-      <Workspace icon={<Target size={22} />} title="วางแผนเป้าหมาย" back={{ href: "/sales-planning/targets", label: "กลับ" }}>
+      <Workspace icon={<Target size={22} />} title="วางแผนเป้าหมาย" back={{ href: "/sa/targets", label: "กลับ" }}>
         <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>
           เฉพาะ AE Supervisor / admin ใช้ตัวช่วยวางเป้าได้
         </div>
@@ -292,7 +292,7 @@ export default function SalesTargetPlanPage() {
       icon={<Sparkles size={22} />}
       title="ตัวช่วยวางเป้าหมายขาย"
       subtitle={`วางเป้าปี ${targetYear} — กรอกประวัติ → ระบบคาดการณ์ → แบ่งทีม → แบ่งคนและรายเดือน`}
-      back={{ href: "/sales-planning/targets", label: "ตารางเป้า" }}
+      back={{ href: "/sa/targets", label: "ตารางเป้า" }}
       headerRight={
         <select
           className="premium-select"

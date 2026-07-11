@@ -1,8 +1,8 @@
 "use client";
 import Select from "@/components/ui/Select";
 
-// สถานะงาน PM (ขั้นตอนโปรเจกต์ + งานส่วนตัว) — สี + ป้าย (เต็ม/สั้น) แหล่งเดียว
-// ใช้ร่วมทั้งหน้า timeline ของโปรเจกต์และ My Work แทน dropdown ○◷✓ ที่ copy ซ้ำหลายจุด
+// สถานะงาน PM (ขั้นตอนโครงการ + งานส่วนตัว) — สี + ป้าย (เต็ม/สั้น) แหล่งเดียว
+// ใช้ร่วมทั้งหน้า timeline ของโครงการและ My Work แทน dropdown ○◷✓ ที่ copy ซ้ำหลายจุด
 export const TASK_STATUS_META = {
   Pending:       { color: "var(--text-3)", glyph: "○", full: "รอดำเนินการ", short: "รอ" },
   "In Progress": { color: "var(--accent)", glyph: "◷", full: "กำลังทำ",     short: "ทำอยู่" },

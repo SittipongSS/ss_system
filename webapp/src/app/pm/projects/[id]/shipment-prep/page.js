@@ -61,7 +61,7 @@ export default function ShipmentPrepPage() {
   if (loading) return <SkeletonRows />;
 
   if (!project) {
-    return <EmptyState icon={FileText}>ไม่พบโปรเจกต์</EmptyState>;
+    return <EmptyState icon={FileText}>ไม่พบโครงการ</EmptyState>;
   }
 
   return (
@@ -70,7 +70,7 @@ export default function ShipmentPrepPage() {
 
       <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
         <Link href={`/sa/projects/${project.code || project.id}`} className="linklike" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-          <ArrowLeft size={16} /> กลับไปโปรเจกต์
+          <ArrowLeft size={16} /> กลับไปโครงการ
         </Link>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <button type="button" className="btn" onClick={load}>
@@ -89,7 +89,7 @@ export default function ShipmentPrepPage() {
           <div>
             <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>ยังไม่มีเอกสารเตรียมส่งของ</h2>
             <p style={{ margin: "6px 0 0", color: "var(--text-2)", fontSize: "13px" }}>
-              ระบบจะสร้างรายการจาก FG ที่ผูกอยู่ในโปรเจกต์นี้ แล้วเปิดเป็นเอกสารพร้อมพิมพ์สำหรับคลัง
+              ระบบจะสร้างรายการจาก FG ที่ผูกอยู่ในโครงการนี้ แล้วเปิดเป็นเอกสารพร้อมพิมพ์สำหรับคลัง
             </p>
           </div>
           {canEditPm && (
@@ -113,7 +113,7 @@ export default function ShipmentPrepPage() {
             </div>
           </header>
 
-          <section className="shipment-print-info" aria-label="ข้อมูลโปรเจกต์">
+          <section className="shipment-print-info" aria-label="ข้อมูลโครงการ">
             <div><span>Project</span><strong>{project.code || project.id}</strong></div>
             <div><span>AE</span><strong>{project.aeOwner || "-"}</strong></div>
             <div><span>PO</span><strong>{project.metadata?.poNumber || prep.metadata?.poNumber || "-"}</strong></div>

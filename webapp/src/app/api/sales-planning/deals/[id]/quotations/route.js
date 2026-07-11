@@ -87,7 +87,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   const { id } = await ctx.params;
   const deal = await loadDeal(supabase, id);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesViewScope(user, deal)) return forbidden();
 
   const { data, error } = await supabase
@@ -105,7 +105,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { id } = await ctx.params;
   const deal = await loadDeal(supabase, id);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างใบเสนอราคาจากโครงการที่ Lost แล้ว');
 

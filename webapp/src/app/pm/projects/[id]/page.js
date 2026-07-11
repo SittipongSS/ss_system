@@ -201,7 +201,7 @@ export default function ProjectDetailPage() {
   const [creatingTaxReg, setCreatingTaxReg] = useState(false);
 
   const [confirmState, setConfirmState] = useState(null); // ยืนยันแบบ promise (แทน window.confirm)
-  const [showDrop, setShowDrop] = useState(false); // modal ยกเลิกโปรเจกต์ (แทน window.prompt)
+  const [showDrop, setShowDrop] = useState(false); // modal ยกเลิกโครงการ (แทน window.prompt)
   const [dropReason, setDropReason] = useState("");
   const isFirstLoad = useRef(true);
 
@@ -262,7 +262,7 @@ export default function ProjectDetailPage() {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setToast({ kind: "error", msg: payload.error || "สร้างทะเบียนภาษีจากโปรเจกต์ไม่สำเร็จ" });
+        setToast({ kind: "error", msg: payload.error || "สร้างทะเบียนภาษีจากโครงการไม่สำเร็จ" });
         return;
       }
       setToast({ kind: "success", msg: `สร้างทะเบียนภาษี ${payload.fgCode || ""} แล้ว` });
@@ -334,7 +334,7 @@ export default function ProjectDetailPage() {
       } catch { failed[taskId] = patch; continue; } // network error → ถือว่าไม่สำเร็จ
       if (!res.ok) { failed[taskId] = patch; continue; } // 403/409/500 → อย่ากลืนเงียบ
       // เตือนเมื่อปักวันเริ่มไม่ได้ตามที่เลือก: ขอ startDate มา แต่ server บันทึกเป็นวันอื่น
-      // (เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ไม่ได้ หรือไม่ใช่วันทำการ → เลื่อนไปวันที่ทำได้)
+      // (เร็วกว่างานก่อนหน้า/วันเริ่มโครงการไม่ได้ หรือไม่ใช่วันทำการ → เลื่อนไปวันที่ทำได้)
       if (patch.startDate) {
         const saved = await res.json().catch(() => null);
         if (saved?.startDate && saved.startDate !== patch.startDate) clamped++;
@@ -352,7 +352,7 @@ export default function ProjectDetailPage() {
       setData((d) => ({ ...d, tasks: (d.tasks || []).map((t) => (failed[t.id] ? { ...t, ...failed[t.id] } : t)) }));
       setToast({ kind: "error", msg: `บันทึกไม่สำเร็จ ${failedCount} ขั้น (สิทธิ์ไม่พอ/ข้อมูลชนกัน/เครือข่าย) — การแก้ที่ค้างยังอยู่ ลองกดยืนยันอีกครั้ง` });
     } else if (clamped) {
-      setToast({ kind: "info", msg: `ปักวันเริ่มไม่ได้ตามที่เลือก ${clamped} ขั้น — วันเริ่มต้องไม่เร็วกว่างานก่อนหน้า/วันเริ่มโปรเจกต์ และต้องเป็นวันทำการ (ระบบเลื่อนไปวันที่ใกล้สุดที่ทำได้). โปรเจกต์ย้อนหลังให้ตั้ง “วันเริ่มโปรเจกต์” ก่อน` });
+      setToast({ kind: "info", msg: `ปักวันเริ่มไม่ได้ตามที่เลือก ${clamped} ขั้น — วันเริ่มต้องไม่เร็วกว่างานก่อนหน้า/วันเริ่มโครงการ และต้องเป็นวันทำการ (ระบบเลื่อนไปวันที่ใกล้สุดที่ทำได้). โครงการย้อนหลังให้ตั้ง “วันเริ่มโครงการ” ก่อน` });
     }
   };
   const dirtyCount = Object.keys(dirty).length;
@@ -502,7 +502,7 @@ export default function ProjectDetailPage() {
 
   const handleDeleteProject = async () => {
     if (!data) return;
-    if (!(await askConfirm({ title: "ลบโปรเจกต์", message: `ต้องการลบโปรเจกต์ "${data.code} — ${data.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`, confirmLabel: "ลบ" }))) return;
+    if (!(await askConfirm({ title: "ลบโครงการ", message: `ต้องการลบโครงการ "${data.code} — ${data.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`, confirmLabel: "ลบ" }))) return;
     const res = await fetch(`/api/pm/projects/${data.id}`, { method: "DELETE" });
     if (res.ok) {
       router.push("/sa/deals");
@@ -812,7 +812,7 @@ export default function ProjectDetailPage() {
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
   const linkedIds = new Set((p.projectProducts || []).map((x) => x.productId));
-  // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โปรเจกต์ที่ไม่ได้มาจากดีล
+  // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โครงการที่ไม่ได้มาจากดีล
   // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต 01-002 อย่างน้อยหนึ่งตัว — ไม่งั้นไม่ต้องมี
   // ทะเบียนภาษี.
   const dealWon = !p.dealId || ["won", "in_project"].includes(p.dealStage);
@@ -933,18 +933,18 @@ export default function ProjectDetailPage() {
             textDecoration: "none",
           }}
         >
-          <ArrowLeft size={16} /> กลับไปหน้ารวมโปรเจกต์
+          <ArrowLeft size={16} /> กลับไปหน้ารวมโครงการ
         </Link>
         
         {canEdit && (
           <div style={{ display: "flex", gap: "8px" }}>
-            <button className="btn-icon" onClick={() => setShowEditProject(true)} aria-label="แก้ไขโปรเจกต์" title="แก้ไขโปรเจกต์"><Edit2 size={16} /></button>
+            <button className="btn-icon" onClick={() => setShowEditProject(true)} aria-label="แก้ไขโครงการ" title="แก้ไขโครงการ"><Edit2 size={16} /></button>
             {/* Sales เป็นแม่: โครงการที่ผูกงานขายต้องลบที่หน้าบริหารงานขาย (ลบทั้งสาย).
-                โปรเจกต์กำพร้า (ยังไม่ผูกดีล) ลบตรงนี้ได้ตามเดิม. */}
+                โครงการกำพร้า (ยังไม่ผูกดีล) ลบตรงนี้ได้ตามเดิม. */}
             {data.dealId ? (
               <Link className="btn-icon" href={`/sa/deals/${data.dealId}`} aria-label="จัดการที่หน้าบริหารงานขาย" title="โครงการนี้ผูกงานขาย — ลบ/จัดการที่หน้าบริหารงานขาย"><ExternalLink size={16} /></Link>
             ) : (
-              <button className="btn-icon danger" onClick={handleDeleteProject} aria-label="ลบโปรเจกต์" title="ลบโปรเจกต์"><Trash2 size={16} /></button>
+              <button className="btn-icon danger" onClick={handleDeleteProject} aria-label="ลบโครงการ" title="ลบโครงการ"><Trash2 size={16} /></button>
             )}
           </div>
         )}
@@ -959,7 +959,7 @@ export default function ProjectDetailPage() {
                 <span style={{ background: "var(--accent)", color: "#fff", padding: "7px", borderRadius: "9px", display: "flex" }}>
                   <GanttChart size={18} />
                 </span>
-                <span>Timeline Project: {p.code}</span>
+                <span>โครงการ {p.code} — ไทม์ไลน์</span>
               </h2>
               <p style={{ margin: "5px 0 0 40px", fontSize: "12.5px", color: "var(--text-2)" }}>
                 {p.name} | ลูกค้า: {p.customerName || "-"} | AE: {p.aeOwner || "-"}
@@ -989,7 +989,7 @@ export default function ProjectDetailPage() {
                   disabled={creatingTaxReg || !(p.projectProducts || []).length}
                   className="btn"
                   style={{ whiteSpace: "nowrap" }}
-                  title="สร้างทะเบียนภาษี draft จาก FG หมวดสรรพสามิต (01-002) ในโปรเจกต์นี้"
+                  title="สร้างทะเบียนภาษี draft จาก FG หมวดสรรพสามิต (01-002) ในโครงการนี้"
                 >
                   <ShieldCheck size={14} /> {creatingTaxReg ? "กำลังสร้าง..." : "สร้างทะเบียนภาษี"}
                 </button>
@@ -1035,7 +1035,7 @@ export default function ProjectDetailPage() {
       {p.status === "Dropped" && (
         <div style={{ marginBottom: "24px", padding: "18px 24px", background: "color-mix(in srgb, var(--red) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 40%, transparent)", borderRadius: "12px", borderLeft: "5px solid var(--red)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", zIndex: 10, position: "relative" }}>
           <div>
-            <div style={{ color: "var(--red)", fontWeight: 800, fontSize: "14px", display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}><X size={16} strokeWidth={3} /> โปรเจกต์นี้ถูกยกเลิกแล้ว</div>
+            <div style={{ color: "var(--red)", fontWeight: 800, fontSize: "14px", display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}><X size={16} strokeWidth={3} /> โครงการนี้ถูกยกเลิกแล้ว</div>
             {p.metadata?.lossReason && (
               <div style={{ fontSize: "13px", color: "var(--red)", display: "flex", alignItems: "flex-start", gap: "6px", fontWeight: 500 }}>
                 <span style={{ fontWeight: 700 }}>เหตุผล:</span> <span>{p.metadata.lossReason}</span>
@@ -1410,7 +1410,7 @@ export default function ProjectDetailPage() {
       )}
       </div>
 
-      {/* Footer — ยกเลิกโปรเจกต์ (Drop) หรือ On Hold */}
+      {/* Footer — ยกเลิกโครงการ (Drop) หรือ On Hold */}
       {hasWriteAccess && p.status !== "Completed" && p.status !== "Dropped" && (
         <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
           {p.status === "On Hold" ? (
@@ -1425,14 +1425,14 @@ export default function ProjectDetailPage() {
                 <Pause size={14} /> ระงับชั่วคราว (On Hold)
               </button>
               <button type="button" className="btn btn-danger" onClick={openDrop}>
-                <X size={14} /> ยกเลิกโปรเจกต์ (Drop)
+                <X size={14} /> ยกเลิกโครงการ (Drop)
               </button>
             </>
           )}
 
           {p.status === "On Hold" && (
             <button type="button" className="btn btn-danger" onClick={openDrop}>
-              <X size={14} /> ยกเลิกโปรเจกต์ (Drop)
+              <X size={14} /> ยกเลิกโครงการ (Drop)
             </button>
           )}
         </div>
@@ -1682,7 +1682,7 @@ export default function ProjectDetailPage() {
         danger={confirmState?.danger ?? true}
       />
 
-      <Modal open={showDrop} onClose={() => setShowDrop(false)} title="ยกเลิกโปรเจกต์" size="sm">
+      <Modal open={showDrop} onClose={() => setShowDrop(false)} title="ยกเลิกโครงการ" size="sm">
         <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", color: "var(--text-3)" }}>
             เหตุผลที่ลูกค้ายกเลิก/ไม่ไปต่อ
@@ -1697,7 +1697,7 @@ export default function ProjectDetailPage() {
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", padding: "0 20px 16px" }}>
           <button className="btn" onClick={() => setShowDrop(false)}>ยกเลิก</button>
-          <button className="btn btn-danger px-6" onClick={confirmDrop}>ยืนยันยกเลิกโปรเจกต์</button>
+          <button className="btn btn-danger px-6" onClick={confirmDrop}>ยืนยันยกเลิกโครงการ</button>
         </div>
       </Modal>
 
@@ -1708,7 +1708,7 @@ export default function ProjectDetailPage() {
           editingId={p.id}
           initialData={p}
           onSuccess={(data) => {
-            // บั๊ก D: หลังแก้โปรเจกต์ (อาจ resync ขั้นตอนสรรพสามิตใน DB) ต้อง reload
+            // บั๊ก D: หลังแก้โครงการ (อาจ resync ขั้นตอนสรรพสามิตใน DB) ต้อง reload
             // ทั้งก้อน — PATCH คืนแค่แถว project ไม่มี tasks ที่เปลี่ยน
             setShowEditProject(false);
             // เชื่อมสินค้า (FG) ไม่สำเร็จ → เตือน (PATCH ลบของเดิมไปแล้ว ต้องผูกใหม่)

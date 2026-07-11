@@ -56,7 +56,7 @@ async function requireProjectAccess({ user, supabase, id, edit = false }) {
   if (!can(user.role, 'pm:view')) return { response: forbidden() };
 
   const project = await loadProject(supabase, id);
-  if (!project) return { response: notFound('ไม่พบโปรเจกต์') };
+  if (!project) return { response: notFound('ไม่พบโครงการ') };
 
   if (edit) {
     if (!inScope(pmEditScope(user.role), user, project)) return { response: forbidden() };
@@ -91,7 +91,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit)')
     .eq('projectId', project.id);
   if (linkError) return fail(linkError.message, 500);
-  if (!links?.length) return badRequest('ต้องผูก FG ในโปรเจกต์ก่อนสร้างเอกสารเตรียมส่งของ');
+  if (!links?.length) return badRequest('ต้องผูก FG ในโครงการก่อนสร้างเอกสารเตรียมส่งของ');
 
   const prepId = genId('SHP');
   const prep = {
@@ -160,7 +160,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityType: 'shipment_prep',
     entityId: prepId,
     after: { ...inserted, lines: lineRows },
-    summary: `สร้างเอกสารเตรียมส่งของจากโปรเจกต์ ${project.code || project.id}`.trim(),
+    summary: `สร้างเอกสารเตรียมส่งของจากโครงการ ${project.code || project.id}`.trim(),
     request: req,
   });
 

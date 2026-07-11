@@ -12,19 +12,19 @@ export const dynamic = 'force-dynamic';
 // การเปลี่ยนทั้งหมดทำใน Postgres function pm_restore_snapshot (migration 0044) ซึ่งรันใน
 // transaction เดียว → atomic: สำเร็จทั้งหมดหรือไม่เปลี่ยนเลย (กันข้อมูลค้างครึ่ง ๆ ถ้าพังกลางคัน).
 // ไม่สร้างจุดบันทึกใหม่ตอนย้อน (กันประวัติรก) — จุดบันทึก/Rev เดิมยังอยู่ครบ ย้อนซ้ำได้.
-// หมายเหตุ: v1 ย้อนเฉพาะ "ขั้นตอนงาน" (timeline) — ไม่แตะหัวเอกสาร/ข้อมูลโปรเจกต์/เลข Rev.
+// หมายเหตุ: v1 ย้อนเฉพาะ "ขั้นตอนงาน" (timeline) — ไม่แตะหัวเอกสาร/ข้อมูลโครงการ/เลข Rev.
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
 
   const project = await loadProject(supabase, id);
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   if (!inScope(pmEditScope(user?.role), user, project)) return forbidden();
 
   const body = await req.json().catch(() => ({}));
   const snapshotId = body.snapshotId;
   if (!snapshotId) return fail('ต้องระบุ snapshotId', 400);
 
-  // ยืนยันว่า snapshot เป็นของโปรเจกต์นี้จริงก่อน → 404 ที่สื่อความหมาย (RPC จะตรวจซ้ำอีกชั้น)
+  // ยืนยันว่า snapshot เป็นของโครงการนี้จริงก่อน → 404 ที่สื่อความหมาย (RPC จะตรวจซ้ำอีกชั้น)
   const { data: snap, error: snapErr } = await supabase
     .from('project_doc_revisions')
     .select('id, kind, revNo')

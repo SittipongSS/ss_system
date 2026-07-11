@@ -28,7 +28,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!before) return notFound('document not found');
 
   const deal = await loadDeal(supabase, before.dealId);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
 
   const body = await req.json();
@@ -66,7 +66,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!before) return notFound('document not found');
 
   const deal = await loadDeal(supabase, before.dealId);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
 
   const { error } = await supabase.from('sales_deal_documents').delete().eq('id', id);

@@ -305,7 +305,7 @@ export default function SalesPlanningTargetsPage() {
   const headerRight = (
     <>
       {isSuper && canTarget && (
-        <Link href="/sales-planning/targets/plan" className="btn btn-primary" style={{ fontWeight: 700 }}>
+        <Link href="/sa/targets/plan" className="btn btn-primary" style={{ fontWeight: 700 }}>
           <Sparkles size={16} aria-hidden="true" /> วางแผนเป้าใหม่
         </Link>
       )}
@@ -375,7 +375,7 @@ export default function SalesPlanningTargetsPage() {
   return (
     <Workspace
       icon={<Target size={22} />}
-      title="แผนงานขาย — วางเป้าหมาย"
+      title="บริหารงานขาย — วางเป้าหมาย"
       subtitle="กรอกเป้าทั้งปีในคอลัมน์ขวาสุด ระบบเฉลี่ยลง 12 เดือนให้อัตโนมัติ แล้วกด “บันทึก” เพื่อยืนยัน"
       back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}

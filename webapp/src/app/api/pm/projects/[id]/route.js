@@ -31,7 +31,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!can(user.role, 'pm:view')) return forbidden();
 
   const project = await loadProject(supabase, id).catch((e) => { throw e; });
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   if (viewScope(user?.role) === 'team' && !inScope('team', user, project)) {
     return forbidden();
   }
@@ -39,7 +39,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const [{ data: tasks }, { data: links }, { data: personalTasks }] = await Promise.all([
     supabase.from('project_tasks').select('*').eq('projectId', project.id).order('stepOrder', { ascending: true }),
     supabase.from('project_products').select('*, product:products(*)').eq('projectId', project.id),
-    // "งานเพิ่มเติม" ที่ผูกโปรเจกต์นี้ — เห็นร่วมกันทั้งโปรเจกต์ (ไม่กรองเจ้าของ). ไม่เข้า Gantt.
+    // "งานเพิ่มเติม" ที่ผูกโครงการนี้ — เห็นร่วมกันทั้งโครงการ (ไม่กรองเจ้าของ). ไม่เข้า Gantt.
     supabase.from('personal_tasks').select('*').eq('projectId', project.id).order('createdAt', { ascending: false }),
   ]);
 
@@ -57,7 +57,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // so the UI gates edit controls by ownership — not just the pm:edit cap.
   const canEdit = inPmProjectScope(user, project);
   // me: ใช้ฝั่ง client gate ปุ่มจัดการ "งานเพิ่มเติม" (owner/assignee/lead) + กรอง
-  // ผู้รับมอบใน dropdown ตามทีมโปรเจกต์.
+  // ผู้รับมอบใน dropdown ตามทีมโครงการ.
   const me = user ? { id: user.id, name: user.name, role: user.role, team: user.team ?? null } : null;
   // วันที่ของ Rev ที่ "อยู่ตอนนี้" (currentRev เป็นตัวชี้ — อาจถูกย้อนถอยหลังได้) — โชว์ในหัวพิมพ์
   // และ maxRev = เลข Rev สูงสุดที่เคยออก → ใช้คำนวณเลข Rev ถัดไป (ออก Rev ใหม่ = max+1 ไม่ชนเลข)
@@ -92,7 +92,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id: idOrCode } = await ctx.params;
 
   const project = await loadProject(supabase, idOrCode);
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   if (!inPmProjectScope(user, project)) {
     return forbidden();
   }
@@ -106,7 +106,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { data, error } = await supabase.from('projects').update(updates).eq('id', id).select().single();
   if (error) {
     // code ซ้ำ (unique constraint) → 409 ให้ตรงกับ POST แทน 500 ที่กำกวม
-    if (error.code === '23505') return fail('รหัสโปรเจกต์ซ้ำ: ' + (updates.code ?? ''), 409);
+    if (error.code === '23505') return fail('รหัสโครงการซ้ำ: ' + (updates.code ?? ''), 409);
     return fail(error.message, 500);
   }
 
@@ -176,7 +176,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       }));
       const { error: ppErr } = await supabase.from('project_products').insert(ppRows);
       // ลบของเดิมไปแล้ว แต่ insert ใหม่ fail → แจ้ง warning (อย่าตอบเหมือนสำเร็จ)
-      if (ppErr) { console.error('Failed to link products during PATCH:', ppErr.message); productWarning = 'อัปเดตรายการสินค้า (FG) ไม่สำเร็จ — โปรดตรวจ/ผูกใหม่ที่หน้าโปรเจกต์'; }
+      if (ppErr) { console.error('Failed to link products during PATCH:', ppErr.message); productWarning = 'อัปเดตรายการสินค้า (FG) ไม่สำเร็จ — โปรดตรวจ/ผูกใหม่ที่หน้าโครงการ'; }
     }
   }
 
@@ -187,19 +187,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   const summary = data.status !== project.status
-    ? `เปลี่ยนสถานะโปรเจกต์ ${data.code || id}: ${project.status} → ${data.status}` : null;
+    ? `เปลี่ยนสถานะโครงการ ${data.code || id}: ${project.status} → ${data.status}` : null;
   await recordAudit({ user, action: 'update', entityType: 'project', entityId: id, before: project, after: data, summary, request: req });
   return ok({ ...data, ...(productWarning ? { productWarning } : {}) });
 });
 
 // DELETE /api/pm/projects/[id] — Sales เป็นแม่ (แผน merge M3): โครงการที่ผูกกับ
 // งานขายต้องลบที่หน้า "บริหารงานขาย" ที่เดียว (ลบทั้งสายพร้อมกัน). ที่นี่รับเฉพาะ
-// โปรเจกต์ "กำพร้า" (ยังไม่ผูกดีล — ข้อมูล PM เก่าก่อน backfill เฟส 5) เท่านั้น.
+// โครงการ "กำพร้า" (ยังไม่ผูกดีล — ข้อมูล PM เก่าก่อน backfill เฟส 5) เท่านั้น.
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id: idOrCode } = await ctx.params;
 
   const project = await loadProject(supabase, idOrCode);
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   const id = project.id;
   // delete scope: superuser=all; senior_ae=own team; others none (deleteScope 'projects')
   if (!canDeleteRecord(user, 'projects', project)) {
@@ -207,7 +207,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // ผูกดีลอยู่ → ปฏิเสธ ให้ไปลบที่โครงการ (แม่) — กันการลบ project ทิ้งไว้ให้ดีลกำพร้า
-  // และกันลบซ้ำซ้อนสองที่. โปรเจกต์กำพร้าเท่านั้นที่ลบตรงนี้ได้.
+  // และกันลบซ้ำซ้อนสองที่. โครงการกำพร้าเท่านั้นที่ลบตรงนี้ได้.
   const { data: linkedDeal } = await supabase
     .from('sales_deals').select('id').eq('projectId', id).maybeSingle();
   if (linkedDeal) {
@@ -221,7 +221,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   }
   await recordAudit({
     user, action: 'delete', entityType: 'project', entityId: id, before: project,
-    summary: `ลบโปรเจกต์ (กำพร้า) ${project.code || id} ${project.name || ''}`.trim(), request: req,
+    summary: `ลบโครงการ (กำพร้า) ${project.code || id} ${project.name || ''}`.trim(), request: req,
   });
 
   return ok({ success: true });

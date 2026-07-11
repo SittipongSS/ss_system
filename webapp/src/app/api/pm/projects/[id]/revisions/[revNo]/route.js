@@ -12,7 +12,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!can(user.role, 'pm:view')) return forbidden(); // legal/unknown ไม่มีสิทธิ์ดู snapshot PM
 
   const project = await loadProject(supabase, id);
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   if (viewScope(user?.role) === 'team' && !inScope('team', user, project)) {
     return forbidden();
   }
