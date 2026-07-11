@@ -450,6 +450,8 @@ export function canAssignTask(assigner, assignee) {
 //   'none'     — may not edit
 export function pmTaskEditTier(user, task, project) {
   if (inPmProjectScope(user, project || {})) return 'full';
+  // viewer is a pure read-only observer — never edits, even a task assigned to it.
+  if (user?.role === 'viewer') return 'none';
   const ownsTask = !!user?.id && task?.assigneeId === user.id;
   const sameDept = user?.role === 'staff' && !!user?.department
     && normalizeDepartment(user.department) === task?.role;

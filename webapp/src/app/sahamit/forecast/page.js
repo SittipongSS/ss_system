@@ -12,6 +12,7 @@ import { productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import RoundComparison from "@/components/sahamit/RoundComparison";
 import ForecastImportModal from "@/components/sahamit/ForecastImportModal";
+import { useCan } from "@/lib/roleContext";
 
 const TABS = [
   { key: "overview", label: "รายการสินค้า" },
@@ -31,6 +32,7 @@ export default function ForecastPage() {
   const { data: mappedLineIds, reload: reloadMapped } = useApiList("/api/sahamit/forecast/mapped-lines");
   const mappedSet = useMemo(() => new Set((mappedLineIds || []).map(String)), [mappedLineIds]);
   const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae"), [assignables]);
+  const canEdit = useCan("sahamit:edit");
   const [selectedNo, setSelectedNo] = useState(null);
   const [tab, setTab] = useState("matrix");
   const [search, setSearch] = useState("");
@@ -245,9 +247,11 @@ export default function ForecastPage() {
           <button className="btn ghost" onClick={() => window.open(`/api/sahamit/export?view=forecast&roundNo=${selectedNo || ''}`, "_blank")}>
             <Download size={16} /> Excel
           </button>
-          <button className="btn btn-primary" onClick={openCreate}>
-            <Plus size={16} /> นำเข้ารอบ FC
-          </button>
+          {canEdit && (
+            <button className="btn btn-primary" onClick={openCreate}>
+              <Plus size={16} /> นำเข้ารอบ FC
+            </button>
+          )}
         </div>
       }
     >
@@ -264,9 +268,11 @@ export default function ForecastPage() {
           <LineChart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: 600, fontSize: 15 }}>ยังไม่มีรอบ FC</div>
           <div style={{ fontSize: 13, marginTop: 6 }}>เริ่มจากนำเข้ารอบแรกจากลูกค้า</div>
-          <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={openCreate}>
-            <Plus size={16} /> นำเข้ารอบ FC
-          </button>
+          {canEdit && (
+            <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={openCreate}>
+              <Plus size={16} /> นำเข้ารอบ FC
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -341,10 +347,10 @@ export default function ForecastPage() {
                     <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
                   ))}
                 </select>
-                {selectedRound && (
+                {canEdit && selectedRound && (
                   <button className="btn sm" onClick={() => openEdit(selectedRound)}><Pencil size={14} /> แก้รอบนี้</button>
                 )}
-                <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>
+                {canEdit && <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>}
                 {matrix.rows.length > 0 && (
                   <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
                     ไปแท็บ “รายเดือน (สร้างโครงการ)” เพื่อเลือกรายการส่งเข้าแผนการขาย
@@ -437,10 +443,12 @@ export default function ForecastPage() {
                     เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> ชิ้น · <b>{nfBaht(selection.value)}</b>
                     {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: 11 }}> · {selection.unpriced} รายการไม่มีราคา</span>}
                   </div>
-                  <button className="btn sm btn-primary" style={{ marginLeft: "auto" }} onClick={() => setDealModalOpen(true)}>
-                    <Send size={14} /> สร้างแผนการขาย ({selection.count})
-                  </button>
-                  <button className="btn-icon" title="ล้างที่เลือก" onClick={() => setSelectedLines(new Set())}><X size={15} /></button>
+                  {canEdit && (
+                    <button className="btn sm btn-primary" style={{ marginLeft: "auto" }} onClick={() => setDealModalOpen(true)}>
+                      <Send size={14} /> สร้างแผนการขาย ({selection.count})
+                    </button>
+                  )}
+                  <button className="btn-icon" style={canEdit ? undefined : { marginLeft: "auto" }} title="ล้างที่เลือก" onClick={() => setSelectedLines(new Set())}><X size={15} /></button>
                 </div>
               )}
 
@@ -540,8 +548,12 @@ export default function ForecastPage() {
                         <td style={{ textAlign: "right" }}>{roundSkuCount(r)}</td>
                         <td style={{ textAlign: "right", fontWeight: 600 }}>{nf(roundTotal(r))}</td>
                         <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                          <button className="btn-icon" title="แก้รอบนี้" onClick={(e) => { e.stopPropagation(); openEdit(r); }}><Pencil size={15} /></button>
-                          <button className="btn-icon" title="ลบรอบนี้" onClick={(e) => { e.stopPropagation(); deleteRound(r); }}><Trash2 size={15} /></button>
+                          {canEdit && (
+                            <>
+                              <button className="btn-icon" title="แก้รอบนี้" onClick={(e) => { e.stopPropagation(); openEdit(r); }}><Pencil size={15} /></button>
+                              <button className="btn-icon" title="ลบรอบนี้" onClick={(e) => { e.stopPropagation(); deleteRound(r); }}><Trash2 size={15} /></button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}

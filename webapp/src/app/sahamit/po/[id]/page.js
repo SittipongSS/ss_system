@@ -30,7 +30,7 @@ function matCell(dueDate, arrivedAt) {
 // One PO line with an inline editor: reschedule (expected date + reason →
 // history), mark delivered, change qty/due/status/destination, split, delete.
 // PM/RM แสดงอย่างเดียว (แก้ที่เมนูวัสดุ).
-function PoLineRow({ line, tracking, product, onChanged }) {
+function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
   const [open, setOpen] = useState(false);
   const [showHist, setShowHist] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -117,8 +117,12 @@ function PoLineRow({ line, tracking, product, onChanged }) {
         <td>{destinationLabel(line.destination) || <span style={{ color: "var(--text-3)" }}>—</span>}</td>
         <td><span className="status-pill">{PO_STATUS_LABEL[line.status] || line.status}</span></td>
         <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-          <button className="btn-icon" title="แก้ไข/เลื่อน/ส่งจริง" onClick={() => setOpen((v) => !v)}>{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>
-          <button className="btn-icon" title="ลบ" onClick={del} disabled={busy}><Trash2 size={15} /></button>
+          {canEdit && (
+            <>
+              <button className="btn-icon" title="แก้ไข/เลื่อน/ส่งจริง" onClick={() => setOpen((v) => !v)}>{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>
+              <button className="btn-icon" title="ลบ" onClick={del} disabled={busy}><Trash2 size={15} /></button>
+            </>
+          )}
         </td>
       </tr>
 
@@ -183,6 +187,7 @@ export default function PoDetailPage() {
   const router = useRouter();
   const canCreateProject = useCan("pm:edit");
   const canSettle = useCan("salesplan:edit");
+  const canEdit = useCan("sahamit:edit");
   const id = params.id;
   const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
   const { data: material } = useApiList("/api/sahamit/material");
@@ -428,7 +433,7 @@ export default function PoDetailPage() {
                 <label>หมายเหตุ</label>
                 <input className="premium-input" value={h.note || ""} onChange={(e) => setH({ ...h, note: e.target.value })} />
               </div>
-              <button className="btn btn-primary" onClick={saveHeader} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก PO"}</button>
+              {canEdit && <button className="btn btn-primary" onClick={saveHeader} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก PO"}</button>}
             </div>
             {hErr && <div style={{ color: "var(--red)", fontSize: 13 }}>{hErr}</div>}
             </div>
@@ -439,7 +444,7 @@ export default function PoDetailPage() {
           {po.splitFromPoId ? (
             <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--blue)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 13, color: "var(--text-2)" }}>🔗 PO นี้คือ <b>ยอดเหลือจากการแบ่งส่ง</b> (โยงกับ PO แม่)</span>
-              <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={doMerge}>↩ รวมกลับ (ยกเลิกแบ่งส่ง)</button>
+              {canEdit && <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={doMerge}>↩ รวมกลับ (ยกเลิกแบ่งส่ง)</button>}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -452,7 +457,7 @@ export default function PoDetailPage() {
                 </div>
               )}
               {!splitOpen ? (
-                <button className="btn" style={{ alignSelf: "flex-start" }} onClick={openSplit}>✂ แบ่งส่ง (เปิด PO ยอดเหลือ)</button>
+                canEdit ? <button className="btn" style={{ alignSelf: "flex-start" }} onClick={openSplit}>✂ แบ่งส่ง (เปิด PO ยอดเหลือ)</button> : null
               ) : (
                 <div className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={{ fontWeight: 600 }}>แบ่งส่ง — กรอกยอดส่งจริงต่อบรรทัด (ส่วนที่เหลือจะเปิดเป็น PO ใหม่)</div>
@@ -507,7 +512,7 @@ export default function PoDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} product={prodIdx.get(String(l.fgCode).trim().toLowerCase())} onChanged={async () => { await reload(); apiCache.delete("/api/sahamit/po"); apiCache.delete("/api/sahamit/material"); }} />)}
+                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} product={prodIdx.get(String(l.fgCode).trim().toLowerCase())} onChanged={async () => { await reload(); apiCache.delete("/api/sahamit/po"); apiCache.delete("/api/sahamit/material"); }} canEdit={canEdit} />)}
               </tbody>
             </table>
           </div>

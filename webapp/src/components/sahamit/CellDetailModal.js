@@ -24,7 +24,7 @@ const TABS = [
   { key: "coverage", label: "ชดเชยยอดข้ามเดือน" },
 ];
 
-export default function CellDetailModal({ open, onClose, fgCode, month, matrix, rounds, pos, coverages, prediction, product, acked, onToggleAck, onCoverageChanged }) {
+export default function CellDetailModal({ open, onClose, fgCode, month, matrix, rounds, pos, coverages, prediction, product, acked, canEdit = true, onToggleAck, onCoverageChanged }) {
   const [tab, setTab] = useState("overview");
 
   const row = useMemo(() => (matrix?.rows || []).find((r) => r.fgCode === fgCode), [matrix, fgCode]);
@@ -113,12 +113,14 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                   <div style={{ fontSize: 13, color: "var(--text-2)" }}>
                     ยังไม่มี PO ({prediction.pattern} · เหลือ {prediction.daysLeft} วันถึงสิ้นเดือน) — จัดการชดเชยข้ามเดือนได้ในแท็บ “ชดเชยยอดข้ามเดือน”
                   </div>
-                  <div>
-                    <button className="btn ghost sm" onClick={onToggleAck}>
-                      {acked ? "🔔 เปิดเตือนอีกครั้ง" : "👁 ดูแล้ว (ปิดเตือน)"}
-                    </button>
-                    {acked && <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: 8 }}>ปิดเตือนช่องนี้แล้ว (ป้ายในกริดจะจางลง)</span>}
-                  </div>
+                  {canEdit && (
+                    <div>
+                      <button className="btn ghost sm" onClick={onToggleAck}>
+                        {acked ? "🔔 เปิดเตือนอีกครั้ง" : "👁 ดูแล้ว (ปิดเตือน)"}
+                      </button>
+                      {acked && <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: 8 }}>ปิดเตือนช่องนี้แล้ว (ป้ายในกริดจะจางลง)</span>}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -171,7 +173,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
           )}
 
           {tab === "coverage" && (
-            <CoveragePanel fgCode={fgCode} month={month} coverages={coverages} matrix={matrix} piecesPerCase={ppc} onChanged={onCoverageChanged} />
+            <CoveragePanel fgCode={fgCode} month={month} coverages={coverages} matrix={matrix} piecesPerCase={ppc} canEdit={canEdit} onChanged={onCoverageChanged} />
           )}
         </div>
       )}

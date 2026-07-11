@@ -9,6 +9,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMeta } from "@/lib/format";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
+import { useCan } from "@/lib/roleContext";
 
 // สร้าง PO — หน้าเต็ม. กำหนดรับของ + สถานที่ส่ง เป็นระดับหัว PO (ทั้ง PO ใช้ค่าเดียว);
 // รายการสินค้าใส่แค่ จำนวน. เรียงฟอร์ม: หัวเอกสาร → เพิ่มรายการ → ตารางรายการ.
@@ -16,6 +17,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export default function PoCreatePage() {
   const router = useRouter();
+  const canEdit = useCan("sahamit:edit");
   const { data: products } = useApiList("/api/sahamit/products");
 
   const [poNumber, setPoNumber] = useState("");
@@ -85,6 +87,24 @@ export default function PoCreatePage() {
       router.push("/sahamit/po");
     } catch (e) { setError(e.message); setBusy(false); }
   };
+
+  // viewer (ไม่มี sahamit:edit) เข้าหน้าสร้าง PO ไม่ได้ — โชว์ข้อความอย่างเดียว
+  if (!canEdit) {
+    return (
+      <Workspace
+        icon={<FileText size={22} />}
+        title="บันทึก PO ใหม่"
+        subtitle="กำหนดรับ + สถานที่ส่ง = ทั้ง PO · รายการใส่แค่จำนวน (ลูกค้า AR-109)"
+        back={{ href: "/sahamit/po", label: "Purchase Orders" }}
+      >
+        <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
+          <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
+          <div style={{ fontWeight: 600, fontSize: 15 }}>ไม่มีสิทธิ์สร้าง PO</div>
+          <div style={{ fontSize: 13, marginTop: 6 }}>บัญชีนี้ดูข้อมูลได้อย่างเดียว</div>
+        </div>
+      </Workspace>
+    );
+  }
 
   return (
     <Workspace

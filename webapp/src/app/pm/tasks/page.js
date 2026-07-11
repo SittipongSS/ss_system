@@ -12,7 +12,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { isSuperuser, TEAM_ROLES } from "@/lib/permissions";
-import { useRole } from "@/lib/roleContext";
+import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
@@ -101,6 +101,9 @@ const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0
 export default function TasksPage() {
   const router = useRouter();
   const role = useRole();
+  // สิทธิ์เขียนงาน (สร้าง/แก้ไข/ลบ/เปลี่ยนสถานะ) = pm:edit — ตรงกับ proxy ที่กัน
+  // การเขียน /api/pm ด้วย pm:edit. viewer/staff (มีแค่ pm:view) เห็นหน้านี้แบบอ่านอย่างเดียว.
+  const canEdit = useCan("pm:edit");
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
@@ -179,6 +182,7 @@ export default function TasksPage() {
   // ใครจัดการงานได้ (mirror server canManage): เจ้าของ/ผู้รับมอบ/superuser/หัวหน้าทีม
   const canManageTask = (t) => {
     if (!me) return false;
+    if (!canEdit) return false; // read-only role (viewer/staff) — never manages tasks
     if (t.ownerId === me.id || t.assigneeId === me.id) return true;
     if (isSuperuser(me.role)) return true;
     if (me.role === "senior_ae" && me.team) {
@@ -395,7 +399,7 @@ export default function TasksPage() {
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
-          <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>
+          {canEdit && <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>}
         </div>
       </div>
 
@@ -542,10 +546,12 @@ export default function TasksPage() {
           )}
         </div>
       ) : visible.length === 0 ? (
-        <EmptyState icon={Plus} dashed onClick={openAdd}>
+        <EmptyState icon={Plus} dashed onClick={canEdit ? openAdd : undefined}>
           {statusFilter !== "all" || q || assigneeFilter !== "all" || categoryFilter !== "all"
             ? "ไม่มีงานตรงกับตัวกรองนี้"
-            : "ยังไม่มีงาน — กดเพื่อสร้าง/มอบหมายงาน (เช่น โทรตามลูกค้า, เตรียมใบเสนอราคา)"}
+            : canEdit
+              ? "ยังไม่มีงาน — กดเพื่อสร้าง/มอบหมายงาน (เช่น โทรตามลูกค้า, เตรียมใบเสนอราคา)"
+              : "ยังไม่มีงาน"}
         </EmptyState>
       ) : view === "table" ? (
         /* ── Table view ── */

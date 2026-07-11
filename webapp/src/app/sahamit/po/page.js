@@ -11,6 +11,7 @@ import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, po
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
+import { useCan } from "@/lib/roleContext";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 const baht = (n) => fmtMoneyCompact(n);
@@ -27,7 +28,7 @@ function matCell(dueDate, arrivedAt) {
 
 // บรรทัดสินค้าใน PO: โชว์วัสดุ (read-only) + สถานะ auto + ปุ่มเดินสถานะ (ผลิต/ส่ง/ปิด).
 // `row` = แถวจาก /api/sahamit/material (มี status + tracking).
-function PoLineRow({ row, product, onSaved }) {
+function PoLineRow({ row, product, onSaved, canEdit }) {
   const [busy, setBusy] = useState(false);
   const t = row.tracking || {};
   const stage = lineStage(row.status, !!t.pmArrivedAt, !!t.rmArrivedAt);
@@ -44,11 +45,12 @@ function PoLineRow({ row, product, onSaved }) {
     setBusy(false);
   };
 
+  // viewer (ไม่มี sahamit:edit) เห็นสถานะอย่างเดียว — ซ่อนปุ่มเดินสถานะ
   let action = null;
   if (stage === "waiting_materials") action = <span style={{ fontSize: 11, color: "var(--text-3)" }}>รอ PM/RM</span>;
-  else if (stage === "ready_produce") action = <button className="btn sm" disabled={busy} onClick={() => advance({ status: "produced" })}>ผลิตเสร็จ →</button>;
-  else if (stage === "produced") action = <button className="btn btn-primary sm" disabled={busy} onClick={() => advance({ status: "delivered", actualDeliveredDate: today() })}>ส่งแล้ว →</button>;
-  else if (stage === "delivered") action = <button className="btn sm" disabled={busy} onClick={() => advance({ status: "closed" })}>ปิดงาน →</button>;
+  else if (canEdit && stage === "ready_produce") action = <button className="btn sm" disabled={busy} onClick={() => advance({ status: "produced" })}>ผลิตเสร็จ →</button>;
+  else if (canEdit && stage === "produced") action = <button className="btn btn-primary sm" disabled={busy} onClick={() => advance({ status: "delivered", actualDeliveredDate: today() })}>ส่งแล้ว →</button>;
+  else if (canEdit && stage === "delivered") action = <button className="btn sm" disabled={busy} onClick={() => advance({ status: "closed" })}>ปิดงาน →</button>;
 
   return (
     <tr>
@@ -86,6 +88,7 @@ export default function PoPage() {
   const [search, setSearch] = useState("");
   const [statusSel, setStatusSel] = useState([]);  // poRollupStatus keys
   const [destSel, setDestSel] = useState([]);       // destination keys
+  const canEdit = useCan("sahamit:edit");
   const q = search.trim().toLowerCase();
 
   // ราคาโรงงาน (costPrice, ก่อน VAT) ต่อ fgCode — สำหรับยอดรวมมูลค่า PO
@@ -150,9 +153,11 @@ export default function PoPage() {
           <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=po", "_blank")}>
             <Download size={16} /> Excel
           </button>
-          <Link href="/sahamit/po/new" className="btn btn-primary">
-            <Plus size={16} /> บันทึก PO
-          </Link>
+          {canEdit && (
+            <Link href="/sahamit/po/new" className="btn btn-primary">
+              <Plus size={16} /> บันทึก PO
+            </Link>
+          )}
         </div>
       }
     >
@@ -169,9 +174,11 @@ export default function PoPage() {
           <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: 600, fontSize: 15 }}>ยังไม่มี PO</div>
           <div style={{ fontSize: 13, marginTop: 6 }}>เริ่มจากบันทึก PO ที่ลูกค้าส่งมา</div>
-          <Link href="/sahamit/po/new" className="btn btn-primary" style={{ marginTop: 16 }}>
-            <Plus size={16} /> บันทึก PO
-          </Link>
+          {canEdit && (
+            <Link href="/sahamit/po/new" className="btn btn-primary" style={{ marginTop: 16 }}>
+              <Plus size={16} /> บันทึก PO
+            </Link>
+          )}
         </div>
       ) : (
         <>
@@ -213,7 +220,7 @@ export default function PoPage() {
                   <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มี PO ตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
                 ) : (
                   filteredPos.map((po) => (
-                    <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} />
+                    <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} canEdit={canEdit} />
                   ))
                 )}
               </tbody>
@@ -225,7 +232,7 @@ export default function PoPage() {
   );
 }
 
-function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved }) {
+function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, canEdit }) {
   let unpriced = 0;
   const exVat = (po.lines || []).reduce((s, l) => {
     if (l.status === "cancelled") return s;
@@ -297,7 +304,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {lines.map((r) => <PoLineRow key={r.poLineId} row={r} product={prodIdx.get(String(r.fgCode).trim().toLowerCase())} onSaved={onSaved} />)}
+                    {lines.map((r) => <PoLineRow key={r.poLineId} row={r} product={prodIdx.get(String(r.fgCode).trim().toLowerCase())} onSaved={onSaved} canEdit={canEdit} />)}
                   </tbody>
                 </table>
               </div>
