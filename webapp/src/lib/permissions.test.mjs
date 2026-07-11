@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, GRANTABLE_CAPS } from './permissions';
 
 test('canAssignTask: teammates assign to each other; sup/admin to anyone', () => {
   const ae = { id: 'u1', role: 'ae', team: 'KA' };
@@ -150,6 +150,19 @@ test('viewer: sees every module read-only, but can never write', () => {
   // the plan (pmEditScope 'none'). Guards the 'workflow' tier that pm:view opens.
   assert.equal(pmEditScope('viewer'), 'none');
   assert.equal(pmTaskEditTier({ role: 'viewer', id: 'v' }, { assigneeId: 'v' }, { ownerId: 'x' }), 'none');
+  // Sales Task KPI dashboard is read-only oversight → the monitor sees it too.
+  assert.equal(canSeeTaskKpi('viewer'), true);
+});
+
+test('canSeeTaskKpi: oversight roles + read-only monitor, not the rank-and-file', () => {
+  assert.equal(canSeeTaskKpi('admin'), true);
+  assert.equal(canSeeTaskKpi('ae_supervisor'), true);
+  assert.equal(canSeeTaskKpi('senior_ae'), true);
+  assert.equal(canSeeTaskKpi('viewer'), true);
+  assert.equal(canSeeTaskKpi('ae'), false);
+  assert.equal(canSeeTaskKpi('ac'), false);
+  assert.equal(canSeeTaskKpi('staff'), false);
+  assert.equal(canSeeTaskKpi('legal'), false);
 });
 
 test('viewer: cost/margin stays a per-user grant (ติ๊กเปิดสิทธิ like LG)', () => {

@@ -11,7 +11,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
-import { isSuperuser, TEAM_ROLES } from "@/lib/permissions";
+import { isSuperuser, TEAM_ROLES, canSeeTaskKpi } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
@@ -388,7 +388,7 @@ export default function TasksPage() {
     return { y: d.getFullYear(), m: d.getMonth() };
   });
   const effectiveRole = me?.role || role;
-  const canSeeKpi = !!effectiveRole && (isSuperuser(effectiveRole) || effectiveRole === "senior_ae");
+  const canSeeKpi = !!effectiveRole && canSeeTaskKpi(effectiveRole);
 
   return (
     <div>

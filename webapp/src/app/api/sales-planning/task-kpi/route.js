@@ -1,5 +1,5 @@
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
-import { can, isSuperuser } from '@/lib/permissions';
+import { can, canSeeTaskKpi } from '@/lib/permissions';
 import { loadUserDirectory, teamUserIds } from '@/lib/usersRepo';
 
 export const dynamic = 'force-dynamic';
@@ -118,8 +118,7 @@ async function loadTasksForUsers(supabase, ids) {
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  const canSeeKpi = isSuperuser(user.role) || user.role === 'senior_ae';
-  if (!can(user.role, 'pm:view') || !canSeeKpi) return forbidden();
+  if (!can(user.role, 'pm:view') || !canSeeTaskKpi(user.role)) return forbidden();
 
   const url = new URL(req.url);
   const period = clampPeriod(url.searchParams.get('from'), url.searchParams.get('to'));

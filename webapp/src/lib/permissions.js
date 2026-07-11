@@ -423,6 +423,16 @@ export function canDeleteRecord(user, resource, record) {
 // ── PM (project management) predicates ────────────────────────────────
 // Which task scopes a role may request in My Work:
 //   mine = tasks assigned to me · team = my team's projects · all = every team
+// Who may see the Sales Task KPI dashboard (team leaderboard / scores) on the
+// tasks page + /api/sales-planning/task-kpi. Read-only oversight:
+//   superuser (admin / sales head) → all teams
+//   senior_ae                      → own team (scoped in the handler)
+//   viewer                         → all teams (whole-system read-only monitor)
+// Single source of truth so the client toggle and the server guard never drift.
+export function canSeeTaskKpi(role) {
+  return isSuperuser(role) || role === 'senior_ae' || role === 'viewer';
+}
+
 export function pmTaskScopes(role) {
   if (isSuperuser(role)) return ['mine', 'team', 'all'];
   // viewer = whole-system read-only observer → sees every team's tasks. It has no
