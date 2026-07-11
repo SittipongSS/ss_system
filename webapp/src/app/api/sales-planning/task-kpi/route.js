@@ -29,8 +29,10 @@ function inPeriod(task, from, to) {
   return dates.some((d) => d >= from && d <= to);
 }
 
+// % มาตรฐานระบบ: ละเอียดทศนิยม 2 ตำแหน่ง (แสดงผลผ่าน fmtPct ฝั่ง client);
+// คะแนนรวม (score) ยังปัดจำนวนเต็มที่ finalize ตามเดิม.
 function pct(n, d) {
-  return d > 0 ? Math.round((n / d) * 100) : 0;
+  return d > 0 ? Math.round((n / d) * 10000) / 100 : 0;
 }
 
 // KPI credit follows whoever actually does the task: a proxy who pulled it

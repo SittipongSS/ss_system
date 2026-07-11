@@ -7,7 +7,22 @@
 //   • DD/MM/YYYY (fmtDate, ค่าเริ่มต้น) / DD/MM/YY (fmtDate ..{short}) — fmtDateNumeric
 //   • YYYY-MM (fmtYearMonth) สำหรับระดับเดือน
 //   • DD/MM/YYYY HH:MM (fmtDateTime) เมื่อต้องการเวลา
-// อย่า format เงิน/วันที่เองด้วย toLocaleString/toLocaleDateString — import จากไฟล์นี้เสมอ.
+// เปอร์เซ็นต์ (Change Request 2026-07-11): % ที่มาจากการคำนวณสัดส่วน/อัตรา
+//   (เช่น AT/Target, coverage, อัตราเสร็จ) = ทศนิยม 2 ตำแหน่งเสมอ → fmtPct + toPct2.
+//   ยกเว้นค่าระดับคงที่ (เช่น FC 20/50/80/100%) ที่เป็น label ไม่ใช่ผลคำนวณ.
+// อย่า format เงิน/วันที่/% เองด้วย toLocaleString — import จากไฟล์นี้เสมอ.
+
+// % มาตรฐานทั้งระบบ: ทศนิยม 2 ตำแหน่งเสมอ (เช่น "87.50%") พร้อม comma คั่นหลักพัน.
+// รับค่าเป็น "เปอร์เซ็นต์" อยู่แล้ว (87.5 ไม่ใช่ 0.875); null/ไม่ใช่ตัวเลข → "–".
+export const fmtPct = (value) =>
+  value == null || Number.isNaN(Number(value))
+    ? "–"
+    : `${Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+// อัตราส่วน → % ละเอียด 2 ตำแหน่ง (คู่กับ fmtPct): toPct2(875, 1000) = 87.5.
+// ตัวหารไม่มี/เป็น 0 → null (ให้ fmtPct แสดง "–").
+export const toPct2 = (num, den) =>
+  !den || Number(den) <= 0 ? null : Math.round((Number(num || 0) / Number(den)) * 10000) / 100;
 
 // เงินเต็ม: ฿ + ทศนิยม 2 ตำแหน่งเสมอ (เช่น "฿1,234.50").
 export const fmtMoney = (amount) =>

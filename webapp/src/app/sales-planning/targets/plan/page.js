@@ -12,13 +12,14 @@ import {
   splitByProportion,
   seasonalProfile,
   distributeBySeasonal,
-  normalizeToPercent,
 } from "@/lib/salesForecast";
+import { fmtPct, toPct2 } from "@/lib/format";
 
 const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
 const thisYearNum = () => Number(thisMonth().slice(0, 4));
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { maximumFractionDigits: 0 });
-const pct = (n) => `${(Number(n || 0) * 100).toFixed(0)}%`;
+// อัตราส่วน (0.12) → "12.00%" — มาตรฐานระบบ % ทศนิยม 2 ตำแหน่ง (lib/format)
+const pct = (n) => fmtPct(Math.round(Number(n || 0) * 10000) / 100);
 const sum = (arr) => arr.reduce((s, v) => s + Number(v || 0), 0);
 
 const STEPS = [
@@ -67,8 +68,9 @@ export default function SalesTargetPlanPage() {
   const [teamTargets, setTeamTargets] = useState({}); // { [team]: amount }
 
   // Step 4 — per-person amount within each team, and the 12-month season shape.
+  // ฤดูกาลกรอกเป็น "มูลค่า" ต่อเดือน (ระดับบริษัท) — % เป็นค่าคำนวณจากสัดส่วนมูลค่า.
   const [personTargets, setPersonTargets] = useState({}); // { [ownerId]: amount }
-  const [monthPct, setMonthPct] = useState(Array(12).fill(100 / 12));
+  const [monthAmounts, setMonthAmounts] = useState(Array(12).fill(0));
 
   const latestHistYear = historyYears[historyYears.length - 1];
 
@@ -168,13 +170,24 @@ export default function SalesTargetPlanPage() {
     setPersonTargets(next);
   }, [teamMembers, teamTargets, systemActuals, latestHistYear]);
 
+  // เป้าบริษัทที่ใช้อ้างอิงตารางฤดูกาล = ผลรวมเป้าทีม (ตกไปใช้เป้ารวมถ้ายังไม่แบ่งทีม)
+  const seasonCompanyTotal = useMemo(
+    () => sum(SALES_TEAMS.map((t) => teamTargets[t])) || Number(finalTarget || 0),
+    [teamTargets, finalTarget],
+  );
+
   const seedSeason = useCallback(() => {
     const byMonth = systemActuals?.[latestHistYear]?.byMonth;
     const prof = seasonalProfile(byMonth || []);
-    setMonthPct(normalizeToPercent(prof.map((f) => f * 100)));
-  }, [systemActuals, latestHistYear]);
+    setMonthAmounts(distributeBySeasonal(seasonCompanyTotal, prof));
+  }, [systemActuals, latestHistYear, seasonCompanyTotal]);
 
-  const seasonSumPct = sum(monthPct);
+  const seasonTotal = sum(monthAmounts);
+  // สัดส่วนฤดูกาล (อัตราส่วนต่อเดือน) จากมูลค่าที่กรอก — ยังไม่กรอกเลย = เฉลี่ยเท่ากัน
+  const seasonProfile = useMemo(
+    () => (seasonTotal > 0 ? monthAmounts.map((a) => Number(a || 0) / seasonTotal) : Array(12).fill(1 / 12)),
+    [monthAmounts, seasonTotal],
+  );
 
   // ---- Navigation with per-step seeding ----
   const goNext = async () => {
@@ -206,7 +219,7 @@ export default function SalesTargetPlanPage() {
     setFinalTarget(0);
     setTeamTargets({});
     setPersonTargets({});
-    setMonthPct(Array(12).fill(100 / 12));
+    setMonthAmounts(Array(12).fill(0));
   };
 
   // ---- Persistence ----
@@ -236,7 +249,7 @@ export default function SalesTargetPlanPage() {
     setError("");
     setInfo("");
     try {
-      const profile = monthPct.map((p) => p / 100);
+      const profile = seasonProfile;
       const months = monthsForYear(String(targetYear));
       const writeNode = async ({ team, ownerId, ownerName, annual }) => {
         const monthAmounts = distributeBySeasonal(annual, profile);
@@ -351,9 +364,11 @@ export default function SalesTargetPlanPage() {
               teamTargets={teamTargets}
               personTargets={personTargets}
               setPersonTargets={setPersonTargets}
-              monthPct={monthPct}
-              setMonthPct={setMonthPct}
-              seasonSumPct={seasonSumPct}
+              monthAmounts={monthAmounts}
+              setMonthAmounts={setMonthAmounts}
+              seasonProfile={seasonProfile}
+              seasonTotal={seasonTotal}
+              seasonCompanyTotal={seasonCompanyTotal}
               reseedPeople={seedPersonTargets}
               reseedSeason={seedSeason}
             />
@@ -455,7 +470,7 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
           <tbody>
             {years.map((y) => {
               const row = companyHist[y] || {};
-              const attain = row.target > 0 ? Math.round((Number(row.actual || 0) / Number(row.target)) * 100) : null;
+              const attain = toPct2(row.actual, row.target);
               const hasSystem = Number(systemActuals?.[y]?.total || 0) > 0;
               return (
                 <tr key={y} className="premium-row">
@@ -463,7 +478,7 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
                   <td className="num"><MoneyInput value={Number(row.target || 0)} onChange={(v) => setC(y, "target", v)} /></td>
                   <td className="num"><MoneyInput value={Number(row.actual || 0)} onChange={(v) => setC(y, "actual", v)} /></td>
                   <td className="num mono" style={{ color: attain == null ? "var(--text-3)" : attain >= 100 ? "var(--green)" : "var(--amber)", fontWeight: 700 }}>
-                    {attain == null ? "–" : `${attain}%`}
+                    {fmtPct(attain)}
                   </td>
                   <td style={{ textAlign: "center" }}>
                     <span className="ui-badge" style={{ color: hasSystem ? "var(--teal)" : "var(--text-3)" }}>
@@ -524,7 +539,7 @@ function Step2Projection({ projection, cap, finalTarget, setFinalTarget, targetY
         <h3 style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>2 · เป้าคาดการณ์ปี {targetYear}</h3>
         <p style={{ color: "var(--text-3)", fontSize: 13 }}>
           จากยอดขายจริงล่าสุด {fmt(projection.lastActual)} · โต YoY เฉลี่ย {pct(projection.rawGrowth)}
-          {projection.attainment != null && <> · ปีก่อนทำได้ {Math.round(projection.attainment * 100)}% ของเป้า</>}
+          {projection.attainment != null && <> · ปีก่อนทำได้ {pct(projection.attainment)} ของเป้า</>}
         </p>
       </div>
 
@@ -614,8 +629,9 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
   );
 }
 
-function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets, setPersonTargets, monthPct, setMonthPct, seasonSumPct, reseedPeople, reseedSeason }) {
-  const setMonth = (i, v) => setMonthPct((arr) => arr.map((x, j) => (j === i ? Math.max(0, v) : x)));
+function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets, setPersonTargets, monthAmounts, setMonthAmounts, seasonProfile, seasonTotal, seasonCompanyTotal, reseedPeople, reseedSeason }) {
+  const setMonth = (i, v) => setMonthAmounts((arr) => arr.map((x, j) => (j === i ? Math.max(0, v) : x)));
+  const seasonDiff = seasonTotal - seasonCompanyTotal;
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -661,12 +677,13 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
         })}
       </div>
 
-      {/* Seasonal distribution */}
+      {/* Seasonal distribution — กรอก "มูลค่า" ต่อเดือน (ระดับบริษัท); % คำนวณให้ */}
       <div className="flex flex-col gap-3">
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h4 style={{ fontWeight: 800, fontSize: 14 }}>สัดส่วนรายเดือน (ฤดูกาล)</h4>
-          <span style={{ fontSize: 12, color: Math.abs(seasonSumPct - 100) < 0.5 ? "var(--green)" : "var(--amber)", fontWeight: 700 }}>
-            รวม {seasonSumPct.toFixed(1)}%
+          <span style={{ fontSize: 12, color: Math.abs(seasonDiff) < 1 ? "var(--green)" : "var(--amber)", fontWeight: 700 }}>
+            รวม {fmt(seasonTotal)} / เป้าบริษัท {fmt(seasonCompanyTotal)}
+            {Math.abs(seasonDiff) >= 1 && ` (${seasonDiff > 0 ? "เกิน" : "ขาด"} ${fmt(Math.abs(seasonDiff))})`}
           </span>
           <button type="button" className="btn sm" onClick={reseedSeason} style={{ marginLeft: "auto" }}><RotateCcw size={14} aria-hidden="true" /> ใช้ฤดูกาลปีก่อน</button>
         </div>
@@ -675,16 +692,17 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
             <thead>
               <tr>
                 <th style={{ textAlign: "left", minWidth: 70 }}></th>
-                {MONTH_LABELS.map((m) => <th key={m} className="num" style={{ minWidth: 62 }}>{m}</th>)}
+                {MONTH_LABELS.map((m) => <th key={m} className="num" style={{ minWidth: 76 }}>{m}</th>)}
               </tr>
             </thead>
             <tbody>
               <tr className="premium-row">
-                <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: 12 }}>%</td>
-                {monthPct.map((p, i) => (
+                <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: 12 }}>มูลค่า</td>
+                {monthAmounts.map((a, i) => (
                   <td key={i} className="num" style={{ padding: "3px 4px" }}>
-                    <input type="number" min="0" step="0.5" className="premium-input mono"
-                      value={Number(p.toFixed(1))}
+                    <input type="number" min="0" step="1000" className="premium-input mono"
+                      value={Number(a || 0) === 0 ? "" : Number(a)}
+                      placeholder="0"
                       onChange={(e) => setMonth(i, Number(e.target.value) || 0)}
                       onFocus={(e) => e.target.select()}
                       style={{ width: "100%", textAlign: "right", padding: "4px 4px", fontSize: 12 }} />
@@ -692,16 +710,18 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
                 ))}
               </tr>
               <tr>
-                <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: 12 }}>บริษัท</td>
-                {distributeBySeasonal(sum(SALES_TEAMS.map((t) => teamTargets[t])), monthPct.map((p) => p / 100)).map((v, i) => (
-                  <td key={i} className="num mono" style={{ fontSize: 11, color: "var(--text-3)", padding: "3px 4px" }}>{fmt(v)}</td>
+                <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: 12 }}>%</td>
+                {seasonProfile.map((f, i) => (
+                  <td key={i} className="num mono" style={{ fontSize: 11, color: "var(--text-3)", padding: "3px 4px" }}>
+                    {seasonTotal > 0 ? fmtPct(Math.round(f * 10000) / 100) : "–"}
+                  </td>
                 ))}
               </tr>
             </tbody>
           </table>
         </div>
         <p style={{ fontSize: 12, color: "var(--text-3)" }}>
-          เป้าแต่ละเดือน = เป้าทั้งปีของแต่ละคน/ทีม × % เดือนนั้น (เดือน ธ.ค. รับเศษปัด) · กด “ยืนยันวางเป้า” เพื่อบันทึกลงตารางเป้าปี {targetYear}
+          กรอกมูลค่าที่คาดว่าจะขายได้ต่อเดือน (ระดับบริษัท) — ระบบคิด % ฤดูกาลให้ · เป้าแต่ละคน/ทีมกระจายตามสัดส่วนนี้ (ธ.ค. รับเศษปัด) · กด “ยืนยันวางเป้า” เพื่อบันทึกลงตารางเป้าปี {targetYear}
         </p>
       </div>
     </div>

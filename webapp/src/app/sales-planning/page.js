@@ -10,7 +10,7 @@ import { KpiCard, MONTH_LABELS, MonthPicker, forecastBadge, monthsForYear, thisM
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
 import { SALES_FEATURES, teamRank } from "@/lib/salesPlanning";
-import { fmtDateTime, fmtMoney } from "@/lib/format";
+import { fmtDateTime, fmtMoney, fmtPct, toPct2 } from "@/lib/format";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
 
 const OVERVIEW_TABS = [
@@ -46,8 +46,8 @@ function FullscreenButton({ isFs, onToggle }) {
 }
 
 const money = (value) => fmtMoney(value);
-// % ความสำเร็จ (AT/Target) — ทศนิยม 2 ตำแหน่งเสมอ เช่น 87.50%
-const pctFmt = (value) => (value == null ? "–" : `${Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
+// % ความสำเร็จ (AT/Target) — มาตรฐานระบบ: ทศนิยม 2 ตำแหน่ง (lib/format)
+const pctFmt = fmtPct;
 
 // แถวตัวเลขที่โชว์ต่อช่อง (ตามลำดับบนลงล่าง) พร้อมป้ายชื่อ + สี.
 //   FC 20/50/80/100 = มูลค่าคาดการณ์ของดีลที่ "ยังเปิด" แยกตามระดับโอกาสปิด
@@ -81,7 +81,7 @@ function deriveMetrics(cell) {
   const fcOpen = fc20 + fc50 + fc80 + fc100; // ยอดคาดการณ์ของดีลที่ยังเปิด
   const fcTotal = fcOpen + won + lost;       // FC ทั้งเดือน = เปิด + ปิดได้ + แพ้
   const remaining = fcTotal - won - lost;    // FC คงเหลือ = ยอดที่ยังเปิดอยู่ (= fcOpen)
-  const pct = target > 0 ? Math.round((won / target) * 10000) / 100 : null;
+  const pct = toPct2(won, target);
   return { target, fc20, fc50, fc80, fc100, fcTotal, won, remaining, pct };
 }
 

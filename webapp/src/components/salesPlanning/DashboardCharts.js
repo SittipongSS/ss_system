@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { BarChart3, Layers, Target } from "lucide-react";
 import { SALES_TEAMS } from "@/components/salesPlanning/ui";
-import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
+import { fmtMoney, fmtMoneyCompact, fmtPct, toPct2 } from "@/lib/format";
 
 // Dashboard / chart tab for the sales-planning overview. Renders hand-rolled
 // responsive SVG bar charts (the app has no charting library) comparing the
@@ -213,12 +213,9 @@ export default function DashboardCharts({ rows, months, monthLabels, year, teamK
   );
 
   const yearTotals = totalsFor(activeSource);
-  // % ต่อเป้า — ทศนิยม 2 ตำแหน่ง ให้ตรงกับแถว % ในแท็บตาราง (coveragePct กลางปัดจำนวนเต็ม
-  // และถูก sahamit ใช้ร่วม จึงคำนวณละเอียดเฉพาะจุดแสดงผลนี้)
-  const pct2 = (won, target) => (!target || Number(target) <= 0 ? null : Math.round((Number(won || 0) / Number(target)) * 10000) / 100);
-  const fmtPct2 = (v) => `${Number(v).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
-  const cov = pct2(yearTotals.won, yearTotals.target);
-  const fcCov = pct2(yearTotals.forecast, yearTotals.target);
+  // % ต่อเป้า — มาตรฐานระบบ: ทศนิยม 2 ตำแหน่ง (lib/format)
+  const cov = toPct2(yearTotals.won, yearTotals.target);
+  const fcCov = toPct2(yearTotals.forecast, yearTotals.target);
   const teamLabel = teamKey === "all" ? "ทุกทีม" : `ทีม ${teamKey}`;
 
   const covColor = cov == null ? "var(--text-3)" : cov >= 100 ? "var(--green)" : cov >= 70 ? "var(--amber)" : "var(--red)";
@@ -257,10 +254,10 @@ export default function DashboardCharts({ rows, months, monthLabels, year, teamK
             <Target size={14} aria-hidden="true" /> ความคืบหน้าต่อเป้า
           </div>
           <div className="font-mono tabular-nums" style={{ marginTop: 10, fontSize: 22, fontWeight: 800, color: covColor }}>
-            {cov == null ? "-" : fmtPct2(cov)}
+            {fmtPct(cov)}
           </div>
           <div style={{ marginTop: 4, color: "var(--text-3)", fontSize: 12 }}>
-            คาดการณ์ {fcCov == null ? "-" : fmtPct2(fcCov)} ของเป้า
+            คาดการณ์ {fmtPct(fcCov)} ของเป้า
           </div>
         </div>
       </section>

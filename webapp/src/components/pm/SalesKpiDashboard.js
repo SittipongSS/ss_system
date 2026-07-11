@@ -5,14 +5,16 @@ import { BarChart3, CalendarDays, ListTodo, RefreshCw, Trophy, Users, X } from "
 import { ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
+import { fmtPct as fmtPctStd } from "@/lib/format";
 
 const today = new Date();
 const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
 const monthEndDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 const monthEnd = `${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth() + 1).padStart(2, "0")}-${String(monthEndDate.getDate()).padStart(2, "0")}`;
 
+// % มาตรฐานระบบ: ทศนิยม 2 ตำแหน่ง (lib/format) — ค่า 0 ต้องแสดง 0.00% ไม่ใช่ "–"
 function fmtPct(value) {
-  return `${Number(value || 0).toLocaleString("th-TH")}%`;
+  return fmtPctStd(Number(value || 0));
 }
 
 function Stat({ icon, label, value, hint, color = "var(--accent)" }) {

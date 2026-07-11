@@ -45,7 +45,8 @@ export function buildReport(rounds, pos, coverages, products) {
   });
 
   const alertCount = (statusCounts.pending || 0) + (statusCounts.discrepancy || 0) + (statusCounts.unforecasted || 0);
-  const coveragePct = fcValue > 0 ? Math.round((poValue / fcValue) * 100) : (poValue > 0 ? 100 : 0);
+  // % ครอบคลุม — มาตรฐานระบบ: ละเอียดทศนิยม 2 ตำแหน่ง (แสดงผลผ่าน fmtPct)
+  const coveragePct = fcValue > 0 ? Math.round((poValue / fcValue) * 10000) / 100 : (poValue > 0 ? 100 : 0);
 
   // Split-delivery opportunities: active lines not yet fully delivered — can be
   // split into a balance line ("แบ่งส่ง") or still awaiting delivery.

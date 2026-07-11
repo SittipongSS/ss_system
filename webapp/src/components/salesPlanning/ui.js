@@ -111,9 +111,10 @@ export function MonthPicker({ value, onChange, allMonths = false, onAllMonths })
   );
 }
 
+// % ครอบคลุมต่อเป้า — มาตรฐานระบบ: ละเอียดทศนิยม 2 ตำแหน่ง (แสดงผลผ่าน fmtPct)
 export function coveragePct(won, target) {
   if (!target || target <= 0) return null;
-  return Math.round((Number(won || 0) / Number(target)) * 100);
+  return Math.round((Number(won || 0) / Number(target)) * 10000) / 100;
 }
 
 export function stageBadge(stage) {

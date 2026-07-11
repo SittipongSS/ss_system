@@ -6,7 +6,7 @@ import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
-import { fmtDate, fmtMoney, fmtMoneyCompact } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtMoneyCompact, fmtPct } from "@/lib/format";
 import { buildReport } from "@/lib/sahamit/reportClient";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { destinationLabel } from "@/components/sahamit/destinations";
@@ -65,7 +65,7 @@ export default function ReportPage() {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <Kpi label="มูลค่า FC (ตามแผน)" value={fmtMoneyCompact(rep.fcValue)} />
             <Kpi label="มูลค่า PO (สั่งจริง)" value={fmtMoneyCompact(rep.poValue)} color={C.teal} />
-            <Kpi label="ครอบคลุม (PO ÷ FC)" value={`${rep.coveragePct}%`} />
+            <Kpi label="ครอบคลุม (PO ÷ FC)" value={fmtPct(rep.coveragePct)} />
             <Kpi label="จุดที่ต้องตาม" value={nf(rep.alertCount)} sub="รอ PO + PO ไม่ครบ + นอกแผน" color={rep.alertCount ? C.red : C.green} />
           </div>
 
