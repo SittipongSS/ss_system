@@ -32,7 +32,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     safe('activities', supabase.from('sales_deal_activities').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
     safe('stage history', supabase.from('sales_deal_stage_history').select('*').eq('dealId', deal.id).order('changedAt', { ascending: false }), []),
     safe('forecasts', supabase.from('sales_deal_forecasts').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
-    safe('deal tasks', supabase.from('personal_tasks').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
+    // งาน: ผูกดีลตรง (dealId) + งานเดิมที่ผูกผ่านไทม์ไลน์ (projectId) — ฟอร์มตัด
+    // การผูกไทม์ไลน์ออกแล้ว แต่ข้อมูลเก่ายังมี ต้องไม่หายไปจากหน้าดีล
+    safe('deal tasks', supabase.from('personal_tasks').select('*')
+      .or(deal.projectId ? `dealId.eq.${deal.id},projectId.eq.${deal.projectId}` : `dealId.eq.${deal.id}`)
+      .order('createdAt', { ascending: false }), []),
   ]);
 
   let project = { data: null, warning: null };
