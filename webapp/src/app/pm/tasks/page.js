@@ -189,9 +189,12 @@ export default function TasksPage() {
     return false;
   };
 
-  // ตัวเลือกกรองผู้รับมอบหมาย (เฉพาะ scope ทีม/ทั้งหมด)
+  // ตัวเลือกกรองตามผู้รับผิดชอบ (เฉพาะ scope ทีม/ทั้งหมด) — ผู้รับผิดชอบ =
+  // ผู้ถูกมอบหมาย ถ้าไม่มีก็เจ้าของงาน (assigneeId || ownerId) ให้ตรงกับคอลัมน์
+  // แสดงผลและ responsibleId ฝั่ง KPI. เดิมใช้ assigneeId ล้วน → คนที่เป็นเจ้าของ
+  // งานตัวเอง (เช่น senior AE) หลุดจากตัวกรองแม้ชื่อจะโชว์ในตาราง.
   const assigneeOptions = useMemo(() => {
-    const ids = Array.from(new Set(personalTasks.map((t) => t.assigneeId).filter(Boolean)));
+    const ids = Array.from(new Set(personalTasks.map((t) => t.assigneeId || t.ownerId).filter(Boolean)));
     return ids.map((id) => ({ id, name: usersMap[id] || "—" })).sort((a, b) => a.name.localeCompare(b.name, "th"));
   }, [personalTasks, usersMap]);
 
@@ -203,7 +206,7 @@ export default function TasksPage() {
   // งานหลังกรอง ค้นหา/ผู้รับ/หมวด (ยังไม่กรองสถานะ — ใช้คำนวณการ์ดสรุป)
   const pool = useMemo(() => personalTasks
     .filter((t) => !q || [t.title, t.note, t.category].some((v) => (v || "").toLowerCase().includes(q)))
-    .filter((t) => assigneeFilter === "all" || t.assigneeId === assigneeFilter)
+    .filter((t) => assigneeFilter === "all" || (t.assigneeId || t.ownerId) === assigneeFilter)
     .filter((t) => categoryFilter === "all" || t.category === categoryFilter),
     [personalTasks, q, assigneeFilter, categoryFilter]);
 
