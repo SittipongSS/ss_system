@@ -54,10 +54,12 @@ test('nextAction ที่ stage สำคัญ', () => {
   assert.equal(dealLifecycle(deal({ stage: 'won', projectId: 'P1' })).nextAction.kind, 'open_project');
 });
 
-test('route PM: locked ที่ lead, available ที่ won ไม่มีโครงการ, done เมื่อมีโครงการ', () => {
-  assert.equal(route(dealLifecycle(deal({ stage: 'lead' })), 'pm').status, 'locked');
-  assert.equal(route(dealLifecycle(deal({ stage: 'won' })), 'pm').status, 'available');
-  assert.equal(route(dealLifecycle(deal({ stage: 'won', projectId: 'P1' })), 'pm').status, 'done');
+// PM/ไทม์ไลน์ ไม่ใช่ route ใน dealLifecycle อีกต่อไป — ย้ายไปจัดการที่การ์ด Timeline
+// ใน UI โดยตรง (commit 1da7cff). buildRoutes จึงไม่คืน kind 'pm' แล้ว.
+test('routes: ไม่มี pm route (ไทม์ไลน์จัดการที่การ์ด Timeline ใน UI)', () => {
+  assert.equal(route(dealLifecycle(deal({ stage: 'lead' })), 'pm'), undefined);
+  assert.equal(route(dealLifecycle(deal({ stage: 'won' })), 'pm'), undefined);
+  assert.equal(route(dealLifecycle(deal({ stage: 'won', projectId: 'P1' })), 'pm'), undefined);
 });
 
 test('route สรรพสามิต: มีเฉพาะดีล FG 01-002; locked ถ้ายังไม่มีโครงการ', () => {
