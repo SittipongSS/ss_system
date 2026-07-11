@@ -95,12 +95,28 @@ export default function SalesPlanningTargetsPage() {
       const members = users
         .filter((u) => TARGET_OWNER_ROLES.includes(u.role) && u.team === t)
         .map((u) => buildNode("ae", t, u));
+      // เป้าค้างของคนที่ไม่อยู่ในทีมแล้ว (ลาออก/ย้ายทีม/เปลี่ยนบทบาท) — target ผูกทีม
+      // ตอนสร้าง จึงยังถูกบวกเข้ายอดทีมในภาพรวมอยู่ ต้องโชว์แถวให้เห็น + เกลี่ยออกได้
+      // ไม่งั้นกลายเป็น "เป้าผี" ที่มองไม่เห็นแต่ยังนับยอด. โชว์เฉพาะคนที่มีเป้า > 0 ในปีนี้.
+      const memberIds = new Set(members.map((m) => m.ownerId));
+      const ghostOwners = new Map();
+      for (const x of targets) {
+        if (x.periodType !== "month" || (x.team || null) !== t || !x.ownerId) continue;
+        if (memberIds.has(x.ownerId) || !Number(x.targetAmount)) continue;
+        if (!ghostOwners.has(x.ownerId)) ghostOwners.set(x.ownerId, x.ownerName || x.ownerId);
+      }
+      const ghosts = [...ghostOwners].map(([id, name]) => {
+        const still = users.find((u) => u.id === id);
+        const node = buildNode("ae", t, { id, name });
+        node.ghost = still ? `ย้ายไปทีม ${still.team || "-"} แล้ว` : "ออกจากระบบแล้ว";
+        return node;
+      });
       const node = buildNode("team", t, null);
-      node.members = members;
+      node.members = [...members, ...ghosts];
       return node;
     });
     return { sa: buildNode("sa", null, null), teams };
-  }, [teamsToShow, users, buildNode]);
+  }, [teamsToShow, users, targets, buildNode]);
 
   // Overlay unsaved edits on top of server data so the grid shows a live preview
   // (a pending yearly total redistributes to 12 months; pending months override).
@@ -343,6 +359,7 @@ export default function SalesPlanningTargetsPage() {
         </div>
         {extra.gap && <GapNote target={node.annual} allocated={node.allocated} allocLabel={extra.allocLabel} />}
         {node.role === "senior_ae" && <div style={{ fontSize: 11, color: "var(--text-3)" }}>หัวหน้าทีม</div>}
+        {node.ghost && <div style={{ fontSize: 11, color: "var(--amber)" }}>{node.ghost} — เป้ายังนับเข้ายอดทีม เกลี่ยออก/ปรับเป็น 0 ได้</div>}
       </td>
       {node.monthAmounts.map((amt, i) => (
         <td key={i} className="num" style={{ minWidth: 76, padding: "4px 6px" }}>
