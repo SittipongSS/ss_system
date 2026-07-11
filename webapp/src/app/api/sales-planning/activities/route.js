@@ -57,12 +57,18 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
 
+  const kind = ACTIVITY_KINDS.has(body.kind) ? body.kind : 'note';
+  const MEETING_MODES = new Set(['onsite_customer_visit', 'onsite_at_office', 'online']);
   const row = {
     id: genId('ACT'),
     dealId: body.dealId,
-    kind: ACTIVITY_KINDS.has(body.kind) ? body.kind : 'note',
+    kind,
     body: (body.body || '').trim(),
     dueDate: body.dueDate || null,
+    // เฟส C (mig 0091): เวลานัด/เวลาเกิดเหตุการณ์จริง + รูปแบบนัด (เฉพาะ meeting) —
+    // ฐานข้อมูลปฏิทินนัดในอนาคต (view จาก activityAt) + KPI นัด onsite/online
+    activityAt: body.activityAt || null,
+    meetingMode: kind === 'meeting' && MEETING_MODES.has(body.meetingMode) ? body.meetingMode : null,
     attachments,
     createdBy: user.id || null,
     createdByName: user.name || null,

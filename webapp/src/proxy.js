@@ -167,6 +167,9 @@ function apiWriteAllowed(method, path, role, extraCaps) {
   }
   // Project management (SALES only). Row-level team scope enforced in handlers.
   if (path.startsWith('/api/pm')) return can(role, 'pm:edit');
+  // ลีด (เฟส C): role marketing มีแค่ salesplan:lead (ไม่มี salesplan:edit) —
+  // เปิดเขียนเฉพาะเส้นลีด; เส้น sales-planning อื่นยังต้อง salesplan:edit ตามเดิม.
+  if (path.startsWith('/api/sales-planning/leads')) return can(role, 'salesplan:lead');
   if (path.startsWith('/api/sales-planning')) return can(role, 'salesplan:edit');
   // SAHAMIT module. Coarse cap gate here; team===KA + customer AR-109 scope is
   // enforced inside the handlers (canAccessSahamit), which the proxy can't see.

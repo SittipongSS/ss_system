@@ -59,7 +59,8 @@ export default function HomeHubPage() {
 
   const enterTax = () => router.push(landingFor(role));
   const enterPM = () => router.push("/sa/tasks");
-  const enterSalesPlanning = () => router.push("/sa");
+  // marketing ไม่มี salesplan:view (เห็นเฉพาะลีด) → เข้าที่คิวลีดโดยตรง
+  const enterSalesPlanning = () => router.push(can(role, "salesplan:view") ? "/sa" : "/sa/leads");
   const enterSAHAMIT = () => router.push("/sahamit");
   const enterMGMT = () => router.push("/mgmt");
   // Land on each system's command-center "ภาพรวม" (consistent with tax/pm/sahamit).
@@ -69,7 +70,9 @@ export default function HomeHubPage() {
   // OPEN_PAGES/lockedOut in proxy.js + the tax nav gate in AppLayout.
   const isAdmin = can(role, "users:manage");
   const canPM = isAdmin || can(role, "pm:view");
-  const canSalesPlanning = isAdmin || can(role, "salesplan:view");
+  // salesplan:lead (role marketing — เฟส C) เข้าระบบขายผ่านการ์ดเดียวกัน:
+  // เมนูข้างในถูกกรองด้วย cap อยู่แล้ว (marketing เห็นเฉพาะ "ลีด")
+  const canSalesPlanning = isAdmin || can(role, "salesplan:view") || can(role, "salesplan:lead");
   // PM รวมอยู่ใต้ "บริหารงานขาย" แล้ว — ผู้ที่เข้าบริหารงานขายได้จะเข้า PM ผ่านการ์ดนั้น
   // การ์ด PM แยกจึงเหลือไว้เฉพาะ staff (มี pm:view แต่ไม่มี salesplan:view); viewer
   // เห็น salesplan:view แล้วจึงเข้า PM ผ่านการ์ด "บริหารงานขาย" เหมือน sales role
