@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Save, Target, X } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronRight, Save, Sparkles, Target, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
@@ -287,6 +288,11 @@ export default function SalesPlanningTargetsPage() {
 
   const headerRight = (
     <>
+      {isSuper && canTarget && (
+        <Link href="/sales-planning/targets/plan" className="btn btn-primary" style={{ fontWeight: 700 }}>
+          <Sparkles size={16} aria-hidden="true" /> วางแผนเป้าใหม่
+        </Link>
+      )}
       <select
         className="premium-select"
         value={year}
