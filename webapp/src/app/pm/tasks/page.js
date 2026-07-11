@@ -607,6 +607,7 @@ export default function TasksPage() {
                 <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>ชื่องาน {sortArrow("name")}</span></th>
                 <th>หมวด</th>
                 {scope !== "mine" && <th>ผู้รับมอบหมาย</th>}
+                {scope !== "mine" && <th>ผู้ทำแทน</th>}
                 <th>ความยาก</th>
                 <th onClick={() => handleSort("due")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>กำหนดเสร็จ {sortArrow("due")}</span></th>
                 <th>เชื่อมโยง</th>
@@ -632,10 +633,10 @@ export default function TasksPage() {
                     </td>
                     <td>{t.category ? <span style={{ fontSize: "11px", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>
                     {scope !== "mine" && <td style={{ fontSize: "13px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <span>{(t.assigneeId || t.ownerId) ? (usersMap[t.assigneeId || t.ownerId] || "—") : <span style={{ color: "var(--text-3)" }}>—</span>}</span>
-                        {proxyBadge(t)}
-                      </div>
+                      {(t.assigneeId || t.ownerId) ? (usersMap[t.assigneeId || t.ownerId] || "—") : <span style={{ color: "var(--text-3)" }}>—</span>}
+                    </td>}
+                    {scope !== "mine" && <td style={{ fontSize: "13px" }}>
+                      {t.proxyBy ? proxyBadge(t) : <span style={{ color: "var(--text-3)" }}>—</span>}
                     </td>}
                     <td style={{ fontSize: "13px" }}>{DIFFICULTY_LABELS[t.difficulty] || DIFFICULTY_LABELS[2]}</td>
                     <td>
