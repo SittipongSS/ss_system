@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3 } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, Undo2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -11,7 +11,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
-import { isSuperuser, TEAM_ROLES } from "@/lib/permissions";
+import { isSuperuser, TEAM_ROLES, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId } from "@/lib/permissions";
 import { useRole } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
@@ -189,6 +189,31 @@ export default function TasksPage() {
     return false;
   };
 
+  // ── ทำแทน (proxy work) — mirror ฝั่ง server (lib/permissions) ──
+  // ผู้รับผิดชอบ = assigneeId || ownerId; ทีมของเขาใช้เช็คสิทธิ์ดึงมาทำแทน.
+  const respTeamOf = (t) => userTeamOf(t.assigneeId || t.ownerId);
+  const canPull = (t) => canPullTask(me, t, respTeamOf(t));
+  const canRelease = (t) => canReleaseTask(me, t, canManageTask(t));
+  // ปรับสถานะได้: ผู้รับผิดชอบ/ผู้ทำแทน/หัวหน้า — เพื่อนร่วมทีมต้องดึงมาทำแทนก่อน.
+  const canSetStatus = (t) => canChangeTaskStatus(me, t, canManageTask(t));
+
+  const setProxy = async (t, action) => {
+    // optimistic: อัปเดต proxyBy ในเครื่องก่อน
+    const nextProxy = action === "pull" ? me?.id : null;
+    setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, proxyBy: nextProxy } : x));
+    try {
+      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyAction: action }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "");
+      loadWork(scope);
+    } catch (e) {
+      setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, proxyBy: t.proxyBy } : x));
+      setToast({ kind: "error", msg: e.message || (action === "pull" ? "ดึงงานไม่สำเร็จ" : "คืนงานไม่สำเร็จ") });
+    }
+  };
+
   // ตัวเลือกกรองตามผู้รับผิดชอบ (เฉพาะ scope ทีม/ทั้งหมด) — ผู้รับผิดชอบ =
   // ผู้ถูกมอบหมาย ถ้าไม่มีก็เจ้าของงาน (assigneeId || ownerId) ให้ตรงกับคอลัมน์
   // แสดงผลและ responsibleId ฝั่ง KPI. เดิมใช้ assigneeId ล้วน → คนที่เป็นเจ้าของ
@@ -297,6 +322,29 @@ export default function TasksPage() {
   const statusSelect = (t) => (
     <StatusSelect value={t.status} variant="short" onClick={(e) => e.stopPropagation()} onChange={(v) => setTaskStatus(t, v)} title="เปลี่ยนสถานะ" />
   );
+  // สถานะ: แก้ได้ (ผู้รับผิดชอบ/ผู้ทำแทน/หัวหน้า) → dropdown, ไม่งั้น → ป้ายอ่านอย่างเดียว
+  const statusCell = (t) => canSetStatus(t)
+    ? statusSelect(t)
+    : <span className={`status-pill dot ${t.status === "Completed" ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }}>{TASK_STATUS_TH[t.status] || t.status}</span>;
+
+  // ป้าย "ทำแทนโดย X" — งานที่ถูกดึงไปทำแทน (KPI คิดให้ผู้ทำแทน)
+  const proxyBadge = (t) => {
+    if (!t.proxyBy) return null;
+    const name = usersMap[t.proxyBy] || "ใครบางคน";
+    const mine = t.proxyBy === me?.id;
+    return (
+      <span title={`ทำแทนโดย ${name} · งานนี้คิด KPI ให้ ${name}`} style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: "color-mix(in srgb, var(--accent) 14%, transparent)", padding: "1px 7px", borderRadius: "9px", color: "var(--accent)", fontWeight: 500 }}>
+        <HandHelping size={11} style={{ display: "inline", verticalAlign: "-1px" }} /> {mine ? "ฉันทำแทน" : name}
+      </span>
+    );
+  };
+
+  // ปุ่ม "ดึงมาทำแทน" / "คืนงาน" — โผล่ตามสิทธิ์
+  const proxyActions = (t) => {
+    if (canPull(t)) return <button className="btn-icon" onClick={(e) => { e.stopPropagation(); setProxy(t, "pull"); }} title="ดึงมาทำแทน (รับงานนี้มาทำ — KPI จะคิดให้ฉัน)"><HandHelping size={14} /></button>;
+    if (t.proxyBy && canRelease(t)) return <button className="btn-icon" onClick={(e) => { e.stopPropagation(); setProxy(t, "release"); }} title="คืนงาน (ยกเลิกการทำแทน)"><Undo2 size={14} /></button>;
+    return null;
+  };
   const deletePersonal = async (t) => {
     if (!(await askConfirm({ title: "ลบงาน", message: `ลบงาน "${t.title}" ?`, confirmLabel: "ลบ" }))) return;
     const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
@@ -327,7 +375,8 @@ export default function TasksPage() {
     const done = t.status === "Completed";
     const activeAssignee = t.assigneeId || t.ownerId;
     const assigneeName = activeAssignee ? (usersMap[activeAssignee] || "—") : null;
-    const proxyUpdater = t.updatedBy && t.updatedBy !== activeAssignee ? (usersMap[t.updatedBy] || "ใครบางคน") : null;
+    const proxyAction = proxyActions(t);
+    const showFooter = manage || canSetStatus(t) || proxyAction;
     return (
       <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={manage ? "คลิกเพื่อแก้ไขงาน" : undefined} className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: manage ? "pointer" : "default" }}>
         <div style={{ fontSize: "13px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
@@ -340,15 +389,16 @@ export default function TasksPage() {
           {(scope !== "mine" || (activeAssignee && activeAssignee !== me?.id)) && assigneeName && (
             <span style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "1px 6px", borderRadius: "9px", color: "var(--accent)" }}><User size={9} style={{ display: "inline", verticalAlign: "-1px" }} /> {assigneeName}</span>
           )}
-          {proxyUpdater && <span style={{ background: "color-mix(in srgb, var(--purple) 12%, transparent)", padding: "1px 6px", borderRadius: "9px", color: "var(--purple)" }} title={`อัปเดตโดย ${proxyUpdater} (ทำแทน)`}>✏️ {proxyUpdater}</span>}
+          {proxyBadge(t)}
           {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
         </div>
-        {manage && (
+        {showFooter && (
           <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-            {statusSelect(t)}
+            <div>{canSetStatus(t) && statusSelect(t)}</div>
             <div style={{ display: "flex", gap: "2px" }}>
-              <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={13} /></button>
-              <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={13} /></button>
+              {proxyAction}
+              {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={13} /></button>}
+              {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={13} /></button>}
             </div>
           </div>
         )}
@@ -557,6 +607,7 @@ export default function TasksPage() {
                 <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>ชื่องาน {sortArrow("name")}</span></th>
                 <th>หมวด</th>
                 {scope !== "mine" && <th>ผู้รับมอบหมาย</th>}
+                {scope !== "mine" && <th>ผู้ทำแทน</th>}
                 <th>ความยาก</th>
                 <th onClick={() => handleSort("due")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>กำหนดเสร็จ {sortArrow("due")}</span></th>
                 <th>เชื่อมโยง</th>
@@ -569,11 +620,7 @@ export default function TasksPage() {
                 const manage = canManageTask(t);
                 return (
                   <tr key={t.id} className="premium-row" onClick={manage ? () => openEdit(t) : undefined} title={manage ? "คลิกเพื่อแก้ไขงาน" : undefined} style={{ cursor: manage ? "pointer" : "default" }}>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      {manage ? statusSelect(t) : (
-                        <span className={`status-pill dot ${t.status === "Completed" ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }}>{TASK_STATUS_TH[t.status] || t.status}</span>
-                      )}
-                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>{statusCell(t)}</td>
                     <td style={{ fontWeight: 500, minWidth: "220px" }}>
                       <div style={{ whiteSpace: "normal", wordBreak: "break-word", maxWidth: "450px", lineHeight: 1.4 }}>
                         <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", flexWrap: "wrap" }}>
@@ -587,9 +634,9 @@ export default function TasksPage() {
                     <td>{t.category ? <span style={{ fontSize: "11px", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>
                     {scope !== "mine" && <td style={{ fontSize: "13px" }}>
                       {(t.assigneeId || t.ownerId) ? (usersMap[t.assigneeId || t.ownerId] || "—") : <span style={{ color: "var(--text-3)" }}>—</span>}
-                      {t.updatedBy && t.updatedBy !== (t.assigneeId || t.ownerId) && (
-                        <span style={{ marginLeft: 4, background: "color-mix(in srgb, var(--purple) 12%, transparent)", color: "var(--purple)", padding: "1px 4px", borderRadius: 4, fontSize: 10 }} title={`อัปเดตโดย ${usersMap[t.updatedBy] || "ใครบางคน"} (ทำแทน)`}>✏️</span>
-                      )}
+                    </td>}
+                    {scope !== "mine" && <td style={{ fontSize: "13px" }}>
+                      {t.proxyBy ? proxyBadge(t) : <span style={{ color: "var(--text-3)" }}>—</span>}
                     </td>}
                     <td style={{ fontSize: "13px" }}>{DIFFICULTY_LABELS[t.difficulty] || DIFFICULTY_LABELS[2]}</td>
                     <td>
@@ -602,12 +649,11 @@ export default function TasksPage() {
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>{linkChip(t) || <span style={{ color: "var(--text-3)" }}>—</span>}</td>
                     <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
-                      {manage && (
-                        <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
-                          <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>
-                          <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={14} /></button>
-                        </div>
-                      )}
+                      <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
+                        {proxyActions(t)}
+                        {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
+                        {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={14} /></button>}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -635,12 +681,11 @@ export default function TasksPage() {
                     </div>
                     {t.note && <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{t.note}</div>}
                   </div>
-                  {manage && (
-                    <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
-                      <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>
-                      <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>
-                    </div>
-                  )}
+                  <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
+                    {proxyActions(t)}
+                    {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
+                    {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>}
+                  </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "10px" }}>
                   {t.category && <span style={{ background: "var(--panel-2)", padding: "2px 7px", borderRadius: "10px", color: "var(--text-2)" }}><Tag size={10} style={{ display: "inline", verticalAlign: "-1px" }} /> {t.category}</span>}
@@ -648,11 +693,10 @@ export default function TasksPage() {
                   {(scope !== "mine" || (t.assigneeId && t.assigneeId !== me?.id)) && assigneeName && (
                     <span style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "2px 7px", borderRadius: "10px", color: "var(--accent)" }}><User size={10} style={{ display: "inline", verticalAlign: "-1px" }} /> {assigneeName}</span>
                   )}
+                  {proxyBadge(t)}
                 </div>
                 <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "11px", flexWrap: "wrap" }}>
-                  {manage ? statusSelect(t) : (
-                    <span className={`status-pill dot ${done ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }}>{TASK_STATUS_TH[t.status] || t.status}</span>
-                  )}
+                  {statusCell(t)}
                   {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
                   {linkChip(t)}
                 </div>
