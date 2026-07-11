@@ -30,15 +30,15 @@ test('buildWinPatch coerces invalid wonValue to 0 via toMoney', () => {
   assert.equal(patch.wonValue, 0);
 });
 
-test('buildWinPatch stores a chosen wonMonth in metadata + moves forecastMonth to it', () => {
+test('buildWinPatch stores the won month (AT) in metadata but never moves forecastMonth (FC)', () => {
   const patch = buildWinPatch({ deal: { forecastMonth: '2026-03', metadata: {} }, wonValue: 100, wonMonth: '2026-06' });
-  assert.equal(patch.metadata.wonMonth, '2026-06');
-  assert.equal(patch.forecastMonth, '2026-06'); // FC follows AT to the chosen month
-  // an invalid month is dropped, not stored, and forecastMonth is left untouched
+  assert.equal(patch.metadata.wonMonth, '2026-06'); // AT books to the chosen month
+  assert.equal('forecastMonth' in patch, false);     // FC stays put — measures forecast accuracy
+  // an invalid month is dropped, not stored
   const bad = buildWinPatch({ deal: { forecastMonth: '2026-03', metadata: {} }, wonValue: 100, wonMonth: 'nope' });
   assert.equal('wonMonth' in bad.metadata, false);
   assert.equal('forecastMonth' in bad, false);
-  // omitted → not stored, forecastMonth untouched (dashboard falls back to confirmedAt)
+  // omitted → not stored (dashboard falls back to confirmedAt)
   const none = buildWinPatch({ deal: { forecastMonth: '2026-03', metadata: {} }, wonValue: 100 });
   assert.equal('wonMonth' in none.metadata, false);
   assert.equal('forecastMonth' in none, false);

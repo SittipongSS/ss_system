@@ -34,6 +34,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const openDeals = visibleDeals.filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
   const wonDeals = visibleDeals.filter((d) => isWon(d) && wonMonth(d) === month);
   const lostDeals = visibleDeals.filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month);
+  // ดีลที่ปิด Won แล้ว แต่ "เดือนพยากรณ์" (FC) = เดือนนี้ — นับ "มูลค่าคาดการณ์" ของมัน
+  // เข้า FC Total ของเดือนนี้ (วัดความแม่นการพยากรณ์). ยอดปิดจริง (AT) ของมันไปนับที่
+  // เดือนที่ปิด (wonMonth) แยกต่างหาก. เดือนตรงกัน = นับทั้ง FC (ที่นี่) และ AT (ใน wonDeals).
+  const wonForecastDeals = visibleDeals.filter((d) => isWon(d) && monthKey(d.forecastMonth) === month);
+  const wonForecastFc = wonForecastDeals.reduce((sum, d) => sum + forecastAmt(d), 0);
   const monthDeals = [...openDeals, ...wonDeals, ...lostDeals];
   const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
@@ -43,9 +48,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const wonVariance = wonForecastValue - wonValue;
   // มูลค่าคาดการณ์ของดีลที่ "แพ้" ในเดือนนี้ — ใช้คิด FC คงเหลือ = FC Total − AT − Lost
   const lostForecast = lostDeals.reduce((sum, d) => sum + forecastAmt(d), 0);
-  // "FC เต็ม" = ยอดรวมทั้งเดือน = ปิดจริง (Won) + ที่ยังเปิด (คาดการณ์) — ไม่รวมดีลที่แพ้.
+  // "FC เต็ม" = ยอดคาดการณ์ทั้งหมดของ "เดือนพยากรณ์" นี้ = ยังเปิด + ปิดได้(Won) + แพ้(Lost)
+  //   ทุกก้อนคิดที่มูลค่า "คาดการณ์" (projectValue) — วัดความแม่นเทียบ AT ที่เก็บได้จริง.
+  //   ดีลที่ Won ใช้ wonForecastFc (คาดการณ์ ณ เดือน FC นี้) ไม่ใช่ยอดปิดจริง (ที่ไปนับเดือน AT).
   // "FC คงเหลือ" = ส่วนที่ยังต้องปิดต่อ = ดีลที่ยังเปิด (open pipeline) เท่านั้น.
-  const fullForecast = pipelineValue + wonValue;
+  const fullForecast = pipelineValue + wonForecastFc + lostForecast;
   const remainingForecast = pipelineValue;
 
   const byStage = {};
@@ -77,7 +84,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // แถว "ผี": ไม่มีทั้งเป้า/won/คาดการณ์/จำนวนดีล — เกิดจาก target ค้างค่า 0
   // หรือถังที่ถูกสร้างโดยไม่มีข้อมูลจริง → ตัดทิ้งไม่ให้โผล่บนหน้า.
-  const isEmptyBucket = (b) => !b.target && !b.won && !b.weighted && !b.lost && !b.openCount && !b.wonCount;
+  const isEmptyBucket = (b) => !b.target && !b.won && !b.weighted && !b.lost && !b.openCount && !b.wonCount && !b.wonForecast;
 
   // Per-SA breakdown: target (person-level rows) vs won vs weighted forecast.
   // Team-level target rows (ownerId null) are aggregated in byTeam, not here.
@@ -89,7 +96,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const cleanName = normalizedOwnerName(name);
     const key = cleanName ? `${team || 'no-team'}|${cleanName}` : (id || 'unassigned');
     if (!ownerMap[key]) {
-      ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
+      ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, lost: 0, wonForecast: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
     } else {
       ownerMap[key].ownerId ||= id || null;
       ownerMap[key].ownerName = ownerMap[key].ownerName === 'ไม่ระบุ' && name ? name : ownerMap[key].ownerName;
@@ -107,6 +114,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     else if (d.stage === 'lost') { b.lost += forecastAmt(d); }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
+  // มูลค่าคาดการณ์ของดีลที่ Won แล้ว แต่ FC = เดือนนี้ (แยกจาก AT ที่ไปนับเดือนที่ปิด)
+  for (const d of wonForecastDeals) {
+    ownerBucket(d.ownerId, d.ownerName, d.team).wonForecast += forecastAmt(d);
+  }
   const byOwner = Object.values(ownerMap)
     .filter((b) => !isEmptyBucket(b))
     .map((b) => ({ ...b, gap: b.target - b.won }))
@@ -118,7 +129,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const teamKey = (team) => team || 'ไม่ระบุ';
   const teamBucket = (team) => {
     const key = teamKey(team);
-    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
+    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, lost: 0, wonForecast: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
     return teamMap[key];
   };
   // เป้าระดับ SA (team=null) = "ยอดรวมบริษัท" คร่อมทุกทีม — แยกไว้ต่างหาก ไม่ใช่ทีมหนึ่ง
@@ -142,6 +153,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     else if (d.stage === 'lost') { b.lost += forecastAmt(d); }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
+  for (const d of wonForecastDeals) {
+    teamBucket(d.team).wonForecast += forecastAmt(d);
+  }
   const byTeam = Object.values(teamMap)
     .filter((b) => b.team) // ตัดถัง null (SA รวม / ดีลไม่ระบุทีม) ออกจากตารางทีม
     .filter((b) => !isEmptyBucket(b))
@@ -163,6 +177,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       weightedForecast,
       wonValue,
       wonForecastValue,
+      wonForecastFc,
       wonVariance,
       lostForecast,
       fullForecast,

@@ -71,15 +71,19 @@ const FC_KEYS = ["fc20", "fc50", "fc80", "fc100"];
 
 function deriveMetrics(cell) {
   const target = Number(cell?.target || 0);
-  const won = Number(cell?.won || 0); // AT (ยอดปิดจริง)
+  const won = Number(cell?.won || 0); // AT (ยอดปิดจริง) — นับตาม "เดือนที่ปิด"
   const lost = Number(cell?.lost || 0); // มูลค่าคาดการณ์ของดีลที่แพ้
+  const wonForecast = Number(cell?.wonForecast || 0); // คาดการณ์ของดีลที่ Won แล้ว แต่ FC = เดือนนี้
   const fc20 = Number(cell?.fc20 || 0);
   const fc50 = Number(cell?.fc50 || 0);
   const fc80 = Number(cell?.fc80 || 0);
   const fc100 = Number(cell?.fc100 || 0);
   const fcOpen = fc20 + fc50 + fc80 + fc100; // ยอดคาดการณ์ของดีลที่ยังเปิด
-  const fcTotal = fcOpen + won + lost;       // FC ทั้งเดือน = เปิด + ปิดได้ + แพ้
-  const remaining = fcTotal - won - lost;    // FC คงเหลือ = ยอดที่ยังเปิดอยู่ (= fcOpen)
+  // FC Total = คาดการณ์ทั้งหมดของ "เดือนพยากรณ์" นี้ = เปิด + ปิดได้(คาดการณ์) + แพ้.
+  // ใช้ wonForecast (คาดการณ์ ณ เดือน FC) ไม่ใช่ won (AT ที่นับตามเดือนปิดจริง) — ดีลที่
+  // ปิดข้ามเดือนจึงยังอยู่ใน FC Total ของเดือนที่คาดไว้ เพื่อวัดความแม่นเทียบ AT.
+  const fcTotal = fcOpen + wonForecast + lost;
+  const remaining = fcOpen;                  // FC คงเหลือ = ยอดที่ยังเปิดอยู่ (ต้องไปเก็บต่อ)
   const pct = target > 0 ? Math.round((won / target) * 100) : null;
   return { target, fc20, fc50, fc80, fc100, fcTotal, won, remaining, pct };
 }
@@ -91,6 +95,7 @@ function metricCell(row, month) {
     won: Number(cell.won || 0),
     lost: Number(cell.lost || 0),
     forecast: Number(cell.forecast || 0),
+    wonForecast: Number(cell.wonForecast || 0),
     fc20: Number(cell.fc20 || 0),
     fc50: Number(cell.fc50 || 0),
     fc80: Number(cell.fc80 || 0),
@@ -98,7 +103,7 @@ function metricCell(row, month) {
   };
 }
 
-const CELL_KEYS = ["target", "won", "lost", "forecast", ...FC_KEYS];
+const CELL_KEYS = ["target", "won", "lost", "forecast", "wonForecast", ...FC_KEYS];
 
 function blankCell() {
   return Object.fromEntries(CELL_KEYS.map((k) => [k, 0]));
@@ -140,6 +145,7 @@ function buildYearRows(yearDashboards) {
       won: totals.wonValue || 0,
       lost: totals.lostForecast || 0,
       forecast: totals.weightedForecast || 0,
+      wonForecast: totals.wonForecastFc || 0,
       ...fcFields(dashboard.byForecast),
     });
 
@@ -160,6 +166,7 @@ function buildYearRows(yearDashboards) {
         won: row.won,
         lost: row.lost,
         forecast: row.weighted,
+        wonForecast: row.wonForecast || 0,
         ...fcFromObj(row.fc),
       });
     }
@@ -181,6 +188,7 @@ function buildYearRows(yearDashboards) {
         won: row.won,
         lost: row.lost,
         forecast: row.weighted,
+        wonForecast: row.wonForecast || 0,
         ...fcFromObj(row.fc),
       });
     }

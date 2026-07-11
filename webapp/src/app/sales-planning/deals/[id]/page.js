@@ -385,9 +385,9 @@ export default function DealOverviewPage() {
   const [winOpen, setWinOpen] = useState(false);
   const [winValue, setWinValue] = useState("");
   const [winMonth, setWinMonth] = useState(thisMonth());
-  // ค่าเริ่มต้นเดือนที่ปิด = เดือนพยากรณ์ของดีล (ที่อาจโยกไว้แล้ว) ไม่งั้นเดือนปัจจุบัน —
-  // กดผ่านเลยจะทำให้ FC กับ AT ตรงเดือนกัน; ผู้ใช้ปรับได้ถ้าปิดย้อนหลังเดือนอื่น
-  const doWin = () => { setWinValue(deal?.projectValue ?? ""); setWinMonth(deal?.forecastMonth || thisMonth()); setWinOpen(true); };
+  // เดือนที่ปิด (Won) = เดือนที่เก็บเงินได้จริง (AT) — เริ่มที่เดือนปัจจุบัน, เลือกย้อนหลังได้.
+  // ไม่ยุ่งกับเดือนพยากรณ์ (FC) ของดีล — FC คงอยู่ที่เดิมเพื่อวัดความแม่นการคาดการณ์
+  const doWin = () => { setWinValue(deal?.projectValue ?? ""); setWinMonth(thisMonth()); setWinOpen(true); };
   const submitWin = async () => {
     const v = Number(winValue);
     if (!Number.isFinite(v) || v <= 0) { setError("ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0"); return; }
@@ -963,7 +963,7 @@ export default function DealOverviewPage() {
             />
           </label>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-            เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT และ FC จะย้ายมาเดือนนี้ แล้วล็อก</span>
+            เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT (ปิดจริง) นับเข้าเดือนนี้ · FC คงอยู่เดือนพยากรณ์เดิม</span>
             <div style={{ display: "flex", gap: 8 }}>
               <MonthPicker value={winMonth} onChange={setWinMonth} />
             </div>

@@ -281,9 +281,9 @@ export default function SalesPlanningPipelinePage() {
   const [winDeal, setWinDeal] = useState(null);
   const [winValue, setWinValue] = useState("");
   const [winMonth, setWinMonth] = useState(thisMonth());
-  // ค่าเริ่มต้นเดือนที่ปิด = เดือนพยากรณ์ของดีล (ที่อาจโยกไว้) ไม่งั้นเดือนปัจจุบัน —
-  // กดผ่านเลยจะทำให้ FC กับ AT ตรงเดือนกัน แล้วถูกล็อกฝั่ง server
-  const openWin = (deal) => { setWinDeal(deal); setWinValue(deal.projectValue ?? ""); setWinMonth(deal.forecastMonth || thisMonth()); };
+  // เดือนที่ปิด (Won) = เดือนที่เก็บเงินได้จริง (AT) — เริ่มที่เดือนปัจจุบัน, เลือกย้อนหลังได้.
+  // ไม่ยุ่งกับเดือนพยากรณ์ (FC) ของดีล
+  const openWin = (deal) => { setWinDeal(deal); setWinValue(deal.projectValue ?? ""); setWinMonth(thisMonth()); };
   const submitWin = async () => {
     if (!winDeal) return;
     const v = Number(winValue);
@@ -641,7 +641,7 @@ export default function SalesPlanningPipelinePage() {
             <div style={{ fontSize: 12, color: "var(--amber)" }}>ต่างจากคาดการณ์ ({money(winDeal.projectValue)}) {money(Number(winDeal.projectValue) - Number(winValue))}</div>
           )}
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-            เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT และ FC จะย้ายมาเดือนนี้ แล้วล็อก</span>
+            เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT (ปิดจริง) นับเข้าเดือนนี้ · FC คงอยู่เดือนพยากรณ์เดิม</span>
             <div style={{ display: "flex", gap: 8 }}>
               <MonthPicker value={winMonth} onChange={setWinMonth} />
             </div>

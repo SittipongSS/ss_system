@@ -37,9 +37,9 @@ export function buildWinPatch({ deal = {}, source = 'manual', now = new Date().t
   // projectValue = มูลค่า "คาดการณ์" — เขียนทับเฉพาะเมื่อผู้เรียกส่งมาโดยตรง (เช่น
   // สร้างดีลลูก/ดีล stub ที่คาดการณ์=จริง). การปิด Won ปกติไม่แตะ projectValue (freeze).
   if (projectValue !== undefined) patch.projectValue = toMoney(projectValue);
-  // เดือนที่เลือกตอน Won ให้ย้าย "เดือนพยากรณ์" (FC) ตามไปด้วย เพื่อให้ FC กับ AT
-  // อยู่เดือนเดียวกัน (วัดความแม่นยำได้ตรง). หลัง Won เดือนนี้ถูก Lock ที่ UI/API.
-  if (chosenWonMonth) patch.forecastMonth = chosenWonMonth;
+  // เดือนที่เลือกตอน Won = "เดือนที่เก็บเงินได้จริง" (AT) → เก็บใน metadata.wonMonth เท่านั้น.
+  // ตั้งใจ "ไม่" ย้าย forecastMonth (FC) — FC ต้องอยู่เดือนที่คาดไว้เดิม เพื่อวัดความแม่น
+  // ของการพยากรณ์ (FC Total เดือนนั้นเทียบกับ AT ที่เก็บได้จริง). โยก FC ทำแยกก่อนปิด.
   if (nextProjectId) patch.projectId = nextProjectId;
   return patch;
 }
