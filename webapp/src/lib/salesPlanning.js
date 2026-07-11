@@ -49,6 +49,9 @@ export const DEFAULT_PROBABILITY_BY_STAGE = {
 
 export function salesPlanningViewScope(role) {
   if (isSuperuser(role)) return 'all';
+  // viewer = whole-system read-only observer → sees every team's deals/pipeline,
+  // exactly like a superuser's view (edit stays 'none' via salesPlanningEditScope).
+  if (role === 'viewer') return 'all';
   if (role === 'senior_ae' || role === 'ac') return 'team';
   if (role === 'ae') return 'own';
   return 'none';

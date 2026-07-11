@@ -44,7 +44,8 @@ test('pmTaskScopes by role', () => {
   assert.deepEqual(pmTaskScopes('ac'), ['mine', 'team']);
   assert.deepEqual(pmTaskScopes('ae'), ['mine', 'team']);
   assert.deepEqual(pmTaskScopes('staff'), ['mine']);
-  assert.deepEqual(pmTaskScopes('viewer'), ['mine']);
+  // viewer = whole-system observer → sees every team's tasks ('all'), not just 'mine'
+  assert.deepEqual(pmTaskScopes('viewer'), ['all']);
 });
 
 test('deleteScope for projects (superuser=all, senior_ae=own team, else none)', () => {

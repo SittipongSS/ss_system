@@ -416,6 +416,10 @@ export function canDeleteRecord(user, resource, record) {
 //   mine = tasks assigned to me · team = my team's projects · all = every team
 export function pmTaskScopes(role) {
   if (isSuperuser(role)) return ['mine', 'team', 'all'];
+  // viewer = whole-system read-only observer → sees every team's tasks. It has no
+  // tasks of its own and no team, so 'all' is the only meaningful scope (giving
+  // just this also keeps the My Work scope tabs clean — no empty 'mine'/'team').
+  if (role === 'viewer') return ['all'];
   // AE manages the whole team's projects in PM (see pmEditScope) → may also
   // browse the team's tasks in My Work, alongside Senior AE / AC.
   if (role === 'senior_ae' || role === 'ac' || role === 'ae') return ['mine', 'team'];
