@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, GRANTABLE_CAPS } from './permissions';
 
 test('canAssignTask: teammates assign to each other; sup/admin to anyone', () => {
   const ae = { id: 'u1', role: 'ae', team: 'KA' };
@@ -35,6 +35,45 @@ test('canAssignTask: teammates assign to each other; sup/admin to anyone', () =>
   // missing ids → false
   assert.equal(canAssignTask(null, acMate), false);
   assert.equal(canAssignTask(ae, null), false);
+});
+
+test('taskCreditId: proxy worker → assignee → owner', () => {
+  assert.equal(taskCreditId({ ownerId: 'o' }), 'o');
+  assert.equal(taskCreditId({ ownerId: 'o', assigneeId: 'a' }), 'a');
+  assert.equal(taskCreditId({ ownerId: 'o', assigneeId: 'a', proxyBy: 'p' }), 'p');
+  assert.equal(taskCreditId({}), null);
+});
+
+test('canPullTask: a teammate may pull a task nobody else holds', () => {
+  const me = { id: 'u2', role: 'ae', team: 'KA' };
+  const task = { ownerId: 'u1', assigneeId: 'u1', proxyBy: null };
+  assert.equal(canPullTask(me, task, 'KA'), true);            // teammate, free task
+  assert.equal(canPullTask(me, task, 'ODM'), false);          // responsible in another team
+  assert.equal(canPullTask(me, { ...task, ownerId: 'u2', assigneeId: 'u2' }, 'KA'), false); // already mine
+  assert.equal(canPullTask(me, { ...task, proxyBy: 'u9' }, 'KA'), false);  // held by someone else
+  assert.equal(canPullTask(me, { ...task, proxyBy: 'u2' }, 'KA'), true);   // already mine → idempotent
+  // superuser may pull across teams
+  assert.equal(canPullTask({ id: 's', role: 'admin', team: null }, task, 'ODM'), true);
+  // read-only / non-sales roles cannot pull even in the same team
+  assert.equal(canPullTask({ id: 'x', role: 'viewer', team: 'KA' }, task, 'KA'), false);
+  assert.equal(canPullTask({ id: 'y', role: 'staff', team: 'KA' }, task, 'KA'), false);
+});
+
+test('canReleaseTask: proxy, responsible, or manager may release', () => {
+  const task = { ownerId: 'u1', assigneeId: 'u1', proxyBy: 'u2' };
+  assert.equal(canReleaseTask({ id: 'u2', role: 'ae' }, task, false), true);   // the proxy
+  assert.equal(canReleaseTask({ id: 'u1', role: 'ae' }, task, false), true);   // the responsible
+  assert.equal(canReleaseTask({ id: 'u9', role: 'ae' }, task, true), true);    // a manager
+  assert.equal(canReleaseTask({ id: 'u9', role: 'ae' }, task, false), false);  // unrelated peer
+  assert.equal(canReleaseTask({ id: 'u2' }, { ...task, proxyBy: null }, false), false); // nothing to release
+});
+
+test('canChangeTaskStatus: responsible/proxy/manager only — peers must pull first', () => {
+  const task = { ownerId: 'u1', assigneeId: 'u1', proxyBy: 'u2' };
+  assert.equal(canChangeTaskStatus({ id: 'u2', role: 'ae' }, task, false), true);   // the proxy who pulled it
+  assert.equal(canChangeTaskStatus({ id: 'u9', role: 'ae' }, task, true), true);    // a manager
+  assert.equal(canChangeTaskStatus({ id: 'u9', role: 'ae' }, task, false), false);  // random teammate → must pull
+  assert.equal(canChangeTaskStatus({ id: 'u9', role: 'ae' }, { ownerId: 'u1', assigneeId: 'u1', proxyBy: null }, false), false);
 });
 
 test('pmTaskScopes by role', () => {

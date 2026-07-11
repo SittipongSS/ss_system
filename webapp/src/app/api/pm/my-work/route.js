@@ -57,11 +57,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   //   • all  = ทุกงานในระบบ (admin / sales head ติดตามได้ทุกทีม — วัดผลได้)
   // เดิม team/all ดึงเฉพาะงานที่ "มอบหมาย/ผูกโปรเจกต์" ทำให้งานที่ผู้ใช้สร้างให้ตัวเอง
   // (ไม่มอบหมาย + ไม่ผูกโปรเจกต์ เช่นผูกแค่ดีลหรือไม่ผูกเลย) หลุดจากสายตา admin — แก้แล้ว.
-  const [{ data: byOwner }, { data: byAssignee }] = await Promise.all([
+  // งานของฉัน = เป็นเจ้าของ, ถูกมอบหมายให้, หรือ "ดึงมาทำแทน" (proxyBy) — งานที่ดึง
+  // มาทำต้องอยู่ในรายการของฉันด้วย เพราะฉันเป็นคนทำจริง (และได้เครดิต KPI).
+  const [{ data: byOwner }, { data: byAssignee }, { data: byProxy }] = await Promise.all([
     supabase.from('personal_tasks').select('*').eq('ownerId', user.id).order('createdAt', { ascending: false }),
     supabase.from('personal_tasks').select('*').eq('assigneeId', user.id).order('createdAt', { ascending: false }),
+    supabase.from('personal_tasks').select('*').eq('proxyBy', user.id).order('createdAt', { ascending: false }),
   ]);
-  const minePersonal = [...(byOwner || []), ...(byAssignee || [])];
+  const minePersonal = [...(byOwner || []), ...(byAssignee || []), ...(byProxy || [])];
 
   let extraPersonal = [];
   if (scope === 'all') {
@@ -80,6 +83,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (teamIds.length) {
       queries.push(supabase.from('personal_tasks').select('*').in('assigneeId', teamIds));
       queries.push(supabase.from('personal_tasks').select('*').in('ownerId', teamIds));
+      queries.push(supabase.from('personal_tasks').select('*').in('proxyBy', teamIds));
     }
     const results = await Promise.all(queries.map((q) => q.order('createdAt', { ascending: false })));
     extraPersonal = results.flatMap((r) => r.data || []);
