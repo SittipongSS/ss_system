@@ -4,7 +4,7 @@
 > พร้อมยก "ประเภทดีล" เป็นฟิลด์จริง เข้าชุดกับ [`SALES_PM_ROADMAP.md`](SALES_PM_ROADMAP.md)
 > (โมเดล 2 ชั้น deal=commercial / project=execution — **ยังคงเดิม** แค่เปลี่ยน cardinality)
 >
-> สถานะ: **มติครบ — พร้อมเริ่มเฟส 1** (อัปเดต 2026-07-11 รอบ 5 — เคาะมติ 5 ข้อ + KPI FC Total/Actual/FC คงเหลือ)
+> สถานะ: **มติครบ — พร้อมเริ่มเฟส 1** (อัปเดต 2026-07-11 รอบ 6 — เพิ่มแผน IA: เมนู/URL/ชื่อเรียกใน UI §5)
 
 ---
 
@@ -169,7 +169,7 @@ CREATE INDEX IF NOT EXISTS sahamit_pos_project_id_idx ON public.sahamit_pos ("pr
 - idempotency ต่อ PO ยังอยู่: `create-project` ใช้ `.is('projectId', null)` guard ต่อ PO เหมือนเดิม
 
 > DDL รันมือบน Supabase SQL Editor ก่อน deploy + `NOTIFY pgrst, 'reload schema'` (memory: deploy-workflow)
-> ลำดับ 0089: **deploy โค้ดที่อ่านดีลเป็น list ก่อน** แล้วค่อยรัน DDL (ดู §8)
+> ลำดับ 0089: **deploy โค้ดที่อ่านดีลเป็น list ก่อน** แล้วค่อยรัน DDL (ดู §9)
 
 ---
 
@@ -203,7 +203,64 @@ rollupDeals(deals[]) → {
 
 ---
 
-## 5. เฟสการทำ
+## 5. เมนู · URL · ชื่อเรียกใน UI (IA)
+
+**ปัญหาวันนี้ (ตรวจโค้ด 2026-07-11):** คำเรียก**กลับด้าน**กับโมเดลใหม่พอดี —
+
+- คำว่า **"โครงการ" ถูกใช้เรียก*ดีล*ทั้งระบบ**: เมนู `/sa/deals` label "โครงการ" ([`AppLayout.js:177`](src/components/AppLayout.js)),
+  หน้า list "บริหารงานขาย — โครงการ", หน้าดีล "ศูนย์รวมโครงการ" ([`deals/[id]/page.js:565`](src/app/sales-planning/deals/[id]/page.js)),
+  attribute "ประเภทโครงการ", KPI "มูลค่าโครงการเปิด"
+- ตัว **project จริงฝั่ง PM กลับใช้ทับศัพท์ "โปรเจกต์"** ("กลับไปหน้ารวมโปรเจกต์", "แก้ไขโปรเจกต์", หัว "Timeline Project:")
+- **`/sa/projects` (index) วันนี้ redirect ไป `/sa/deals`** ([`next.config.mjs:38`](next.config.mjs)) — ไม่มีหน้ารวมโครงการ
+- ชื่อระบบไม่คงเส้น: "บริหารงานขาย" (hub/sidebar) vs "แผนงานขาย" (หน้า targets) + ลิงก์ legacy หลุด `/sa` 2 จุด
+  ([`DealDrillDownModal.js:113`](src/components/salesPlanning/DealDrillDownModal.js), [`targets/plan/page.js:282,295`](src/app/sales-planning/targets/plan/page.js))
+
+### คำมาตรฐาน (ล็อก)
+
+| entity | คำที่ใช้ทุกที่ | เลิกใช้ |
+|---|---|---|
+| `sales_deals` | **ดีล** (+ ประเภทดีล: พัฒนากลิ่น / พัฒนาสินค้า / สั่งผลิตซ้ำ) | "โครงการ" เรียกดีล, "ประเภทโครงการ" |
+| `projects` | **โครงการ** | ทับศัพท์ "โปรเจกต์", "Timeline Project" |
+| ระบบ | **บริหารงานขาย** (เดียว) | "แผนงานขาย", card "จัดการโครงการ" ที่ hub |
+
+### โครง URL + เมนู (namespace `/sa` เดิม — เพิ่ม 1 รายการ)
+
+| เมนู (กลุ่ม บริหารงานขาย) | URL | หน้า | สถานะ |
+|---|---|---|---|
+| ภาพรวม | `/sa` | dashboard เดิม | คงเดิม |
+| **ดีล** | `/sa/deals` | pipeline เดิม | **rename label** (เดิม "โครงการ") |
+| **โครงการ** | `/sa/projects` | **หน้ารวมโครงการ (ใหม่ เฟส 2)**: ตาราง โครงการ×ลูกค้า×ประเภท + KPI FC Total/Actual/FC คงเหลือ + #ดีล | ใหม่ — ยกเลิก redirect `/sa/projects→/sa/deals` |
+| วางเป้าหมาย | `/sa/targets` | เดิม | คงเดิม |
+| งานของฉัน | `/sa/tasks` | เดิม | คงเดิม |
+
+- `/sa/projects/[id]` (หน้าโครงการเดิม) คง URL — เปลี่ยนแค่หัว/ป้ายเป็น "โครงการ"
+- physical folders (`sales-planning/`, `pm/`) + API paths **ไม่ย้าย** — จัดการที่ rewrite ชั้น `next.config.mjs` เท่านั้น (เสี่ยงต่ำ)
+- หน้ารวมโครงการใหม่: ไฟล์จริง `src/app/pm/projects/page.js` + rewrite `/sa/projects → /pm/projects`
+  (แก้ redirect เดิมบรรทัด 38, 40) — ใช้สิทธิ์ `salesplan:view` เดียวกับ deals
+
+### งาน rename (เฟส 1 — ไม่มี migration)
+
+| จุด | เดิม → ใหม่ |
+|---|---|
+| เมนู `/sa/deals` (`AppLayout.js:177`) | โครงการ → **ดีล** |
+| หน้า list (`deals/page.js:397-399`) | "บริหารงานขาย — โครงการ" → "บริหารงานขาย — ดีล"; back "กลับไปภาพรวม" คง |
+| หน้าดีล (`deals/[id]/page.js:565-567,685`) | "ศูนย์รวมโครงการ" → **"ศูนย์รวมดีล"**; back "กลับหน้าโครงการ" → "กลับหน้าดีล"; "งานของโครงการ" → "งานของดีล" |
+| attribute ประเภท (ทุกฟอร์ม/ตาราง) | "ประเภทโครงการ" → **"ประเภทดีล"** |
+| KPI ภาพรวม (`sales-planning/page.js:563`) | "มูลค่าโครงการเปิด/โครงการเปิด N" → "มูลค่าดีลเปิด/ดีลเปิด N" |
+| targets (`targets/page.js:361`) | "แผนงานขาย — วางเป้าหมาย" → "บริหารงานขาย — วางเป้าหมาย" |
+| PM detail (`pm/projects/[id]/page.js:925-962`) | "โปรเจกต์" ทุกจุด → "โครงการ"; "Timeline Project: {code}" → "โครงการ {code} — ไทม์ไลน์" |
+| shipment-prep (`shipment-prep/page.js:64-73`) | "กลับไปโปรเจกต์/ไม่พบโปรเจกต์" → "…โครงการ" |
+| hub card PM (`home/page.js:140`) | "จัดการโครงการ" → "งานโครงการ (PM)" หรือยุบรวม (การ์ดนี้เหลือเฉพาะ staff pm-only) |
+| ลิงก์ legacy 2 จุด | `/sales-planning/…` → `/sa/…` (`DealDrillDownModal.js:113`, `targets/plan:282,295`) |
+
+### งานโครงสร้าง (เฟส 2)
+
+- หน้าใหม่ `/sa/projects` (หน้ารวมโครงการ) + เมนู "โครงการ" + แก้ rewrite/redirect ใน `next.config.mjs`
+- back link ของหน้าโครงการ (`/sa/projects/[id]`) เปลี่ยนจาก `/sa/deals` → `/sa/projects` (หน้ารวมใหม่)
+
+---
+
+## 6. เฟสการทำ
 
 ### เฟส 1 · ประเภทดีล 3 ค่า + แยก template — SCENT ครบวงจรตั้งแต่แรก ★ เริ่มก่อน
 - migration 0088 + backfill (รวม `projects.type` รับ SCENT — มติ #1)
@@ -222,6 +279,8 @@ rollupDeals(deals[]) → {
 - สาย Sahamit ที่ hardcode `'RE-ORDER'` ([`salesPlanningForecast.js:396,446`](src/lib/salesPlanningForecast.js),
   [`create-sales-deal/route.js:134`](src/app/api/sahamit/forecast/rounds/[id]/create-sales-deal/route.js)) → เขียนลง `dealType` ด้วย
 - dashboard: การ์ด/กราฟแยก 3 ประเภท (FC Total·Actual·FC คงเหลือ per type)
+- **rename ทั้งชุดตาม §5** (เมนู "ดีล", "ศูนย์รวมดีล", "ประเภทดีล", เลิก "โปรเจกต์", targets เป็น
+  "บริหารงานขาย", แก้ลิงก์ legacy 2 จุด) — ทำพร้อมกันเพราะ badge/dropdown ประเภทแตะไฟล์เดียวกันอยู่แล้ว
 - **ไม่แตะ cardinality — เสี่ยงต่ำ** (template ใช้ตอน gen เท่านั้น)
 
 ### เฟส 2 · โครงการรวมหลายดีล (แกนหลัก)
@@ -247,7 +306,10 @@ rollupDeals(deals[]) → {
 6. UI หน้าโครงการ PM: แผง **"ดีลในโครงการ"** (ตาราง: ประเภท/สถานะ/มูลค่า/FC เดือน) +
    แถว KPI rollup (**FC Total · Actual · FC คงเหลือ** · มูลค่ารวม · #ดีล) จาก `projectRollup.js`
    — reuse `KpiCard` + module overview pattern
-7. UI หน้าดีล: ปุ่มคู่ "สร้างโครงการใหม่ / ผูกกับโครงการเดิม" + การ์ด "ดีลอื่นในโครงการเดียวกัน"
+7. **หน้ารวมโครงการใหม่ `/sa/projects` + เมนู "โครงการ"** (§5): ตาราง โครงการ×ลูกค้า×ประเภท +
+   KPI rollup ต่อแถว; แก้ rewrite/redirect ใน `next.config.mjs` (ยกเลิก `/sa/projects→/sa/deals`);
+   back link หน้าโครงการชี้กลับหน้ารวมใหม่
+8. UI หน้าดีล: ปุ่มคู่ "สร้างโครงการใหม่ / ผูกกับโครงการเดิม" + การ์ด "ดีลอื่นในโครงการเดียวกัน"
 
 ### เฟส 3 · RE-ORDER เข้าโครงการเดิม (สาย Sahamit)
 - migration 0091 (หลาย PO → โครงการเดียว)
@@ -269,7 +331,7 @@ rollupDeals(deals[]) → {
 
 ---
 
-## 6. จุดที่ต้องแก้ (impact checklist ฝั่งโค้ด)
+## 7. จุดที่ต้องแก้ (impact checklist ฝั่งโค้ด)
 
 | ไฟล์ | บรรทัด | ต้องทำ | เฟส |
 |---|---|---|---|
@@ -293,10 +355,14 @@ rollupDeals(deals[]) → {
 | `pm/projects/[id]/page.js` | 105, … | แผงดีล + KPI rollup + สี type SCENT | 2 |
 | `sahamit/po/[id]/create-project/route.js` | 49–51, 87, 167, 204 | ตัวเลือกแนบโครงการเดิม (default จับคู่ FG) | 3 |
 | หน้าลูกค้า (master) | — | แท็บโครงการ + rollup | 4 |
+| `components/AppLayout.js` | 172–181 | เมนู "ดีล" (rename) + เมนู "โครงการ" ใหม่ → `/sa/projects` | 1, 2 |
+| rename ตาม §5 (7 ไฟล์) | ดูตาราง §5 | "โครงการ"→"ดีล" ฝั่ง sales · "โปรเจกต์"→"โครงการ" ฝั่ง PM · ลิงก์ legacy 2 จุด | 1 |
+| `next.config.mjs` | 38, 40 | ยกเลิก redirect `/sa/projects→/sa/deals` · rewrite ไปหน้ารวมโครงการใหม่ | 2 |
+| `pm/projects/page.js` | ใหม่ | หน้ารวมโครงการ (ตาราง + KPI rollup ต่อแถว) | 2 |
 
 ---
 
-## 7. มติ (เคาะแล้ว 2026-07-11)
+## 8. มติ (เคาะแล้ว 2026-07-11)
 
 | # | เรื่อง | มติ |
 |---|---|---|
@@ -313,7 +379,7 @@ rollupDeals(deals[]) → {
 
 ---
 
-## 8. ความเสี่ยง + การกัน
+## 9. ความเสี่ยง + การกัน
 
 | ความเสี่ยง | การกัน |
 |---|---|
@@ -330,11 +396,14 @@ rollupDeals(deals[]) → {
 
 ---
 
-## 9. แผนทดสอบ (ต่อเฟส)
+## 10. แผนทดสอบ (ต่อเฟส)
 
 - เฟส 1: lint+build+`node --test` (รวม test template 3 ชุด); สร้างดีล 3 ประเภท → badge/filter/dashboard แยกถูก;
   ดีล SCENT สร้างโครงการ → timeline มีเฉพาะขั้นขาย+ออกแบบกลิ่น; ดีล NPD สร้างโครงการ → timeline เริ่มที่ Mock-up;
-  ดีลเก่า backfill เป็น NPD/RE-ORDER ตรง `metadata.projectType` เดิม; โครงการเก่า timeline ไม่เปลี่ยน
+  ดีลเก่า backfill เป็น NPD/RE-ORDER ตรง `metadata.projectType` เดิม; โครงการเก่า timeline ไม่เปลี่ยน;
+  ไล่ทุกหน้า sales/PM ไม่เหลือคำ "โครงการ" ที่หมายถึงดีล / "โปรเจกต์" (grep UI strings ยืนยัน)
+- เฟส 2 (เพิ่ม): เมนู "โครงการ" เปิด `/sa/projects` เห็นตารางโครงการ + KPI ต่อแถวตรงกับหน้า detail;
+  ลิงก์เก่า `/sa/projects` ที่เคย redirect ไป deals ต้องแสดงหน้ารวมใหม่แทน
 - เฟส 2: ดีล SCENT ก่อตั้งโครงการ → timeline มีเฉพาะขั้นออกแบบกลิ่น; ดีล NPD link เข้าโครงการเดิม →
   task ชุด Mock-up→ส่งมอบ ต่อท้ายเป็น draft **เป็น segment ใหม่ (anchor ของตัวเอง)**;
   Gantt โครงการเห็น 2 swimlane สีต่างกัน; หน้าดีลเห็นเฉพาะ segment ตัวเอง + สถานะดีลคิดจาก task ตัวเอง;
