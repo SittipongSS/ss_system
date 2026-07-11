@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Search, LogOut, Moon, Sun, ChevronLeft, ChevronRight, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, Menu, X, LayoutDashboard, BarChart3, LineChart, Boxes, Flag, Briefcase, Target, Trash2, CircleDollarSign } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
@@ -24,6 +24,9 @@ function prefetchData() {
   }
 }
 
+// เฟส T (Sales Revamp §5.1): navigation ทั้งระบบเป็น top bar 2 ชั้นตรึงบนสุด —
+// ชั้นระบบ (โลโก้ navy + ตัวสลับระบบ + user actions) และชั้นเมนูของระบบปัจจุบัน
+// (แนวนอน, จอแคบเลื่อนข้างได้). แทน sidebar เดิมทั้งหมด — เนื้อหาได้เต็มความกว้างจอ.
 export default function AppLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -33,22 +36,19 @@ export default function AppLayout({ children }) {
   const [userName, setUserName] = useState('');
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false); // slide-in drawer on narrow screens
   const [activeSystem, setActiveSystem] = useState('tax');
+  const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
+  const sysMenuRef = useRef(null);
 
   // Self-service password change (any signed-in user, their own account only).
-  // The form itself lives in <ChangePasswordModal>; here we only track whether
-  // it's open and whether the forced first-login change is still pending.
   const [showPwd, setShowPwd] = useState(false);
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
 
   useEffect(() => {
-    // Load theme + sidebar state (independent of auth)
+    // Load theme (independent of auth)
     if (document.documentElement.classList.contains('dark') || document.documentElement.getAttribute('data-theme') === 'dark') {
       setIsDark(true);
     }
-    setIsCollapsed(localStorage.getItem('sidebarCollapsed') === 'true');
 
     // Auth: read the signed-in user from Supabase. If Supabase isn't configured
     // yet (local dev before setup), fall back to a permissive local session.
@@ -98,9 +98,8 @@ export default function AppLayout({ children }) {
     const sys =
       pathname.startsWith('/database') ? 'master'
       // PM รวมอยู่ใต้ระบบ "บริหารงานขาย" (Sales เป็นแม่) — /pm และ /sales-planning
-      // ใช้ sidebar ชุดเดียวกัน (กลุ่มบริหารงานขาย + กลุ่มงานผลิต PM)
-      // '/sa' is bounded (=== '/sa' or '/sa/…') so it does NOT swallow '/sahamit',
-      // which is a separate system checked below.
+      // ใช้เมนูชุดเดียวกัน. '/sa' is bounded (=== '/sa' or '/sa/…') so it does NOT
+      // swallow '/sahamit', which is a separate system checked below.
       : (pathname === '/sa' || pathname.startsWith('/sa/') || pathname.startsWith('/sales-planning') || pathname.startsWith('/pm')) ? 'salesplan'
       : pathname.startsWith('/sahamit') ? 'sahamit'
       : pathname.startsWith('/mgmt') ? 'mgmt'
@@ -109,8 +108,18 @@ export default function AppLayout({ children }) {
       : 'tax';
 
     if (sys) setActiveSystem(sys);
-    setMobileOpen(false); // navigating closes the mobile drawer
+    setSysMenuOpen(false); // navigating closes the system dropdown
   }, [pathname]);
+
+  // ปิด dropdown สลับระบบเมื่อคลิกนอกเมนู
+  useEffect(() => {
+    if (!sysMenuOpen) return;
+    const onDown = (e) => {
+      if (sysMenuRef.current && !sysMenuRef.current.contains(e.target)) setSysMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [sysMenuOpen]);
 
   const toggleTheme = () => {
     if (isDark) {
@@ -126,12 +135,6 @@ export default function AppLayout({ children }) {
     }
   };
 
-  const toggleSidebar = () => {
-    const next = !isCollapsed;
-    setIsCollapsed(next);
-    localStorage.setItem('sidebarCollapsed', String(next));
-  };
-
   const handleLogout = async () => {
     if (SUPABASE_CONFIGURED) {
       try {
@@ -144,15 +147,13 @@ export default function AppLayout({ children }) {
 
   if (!role) return null;
 
-  // Each group belongs to a "system" (the cards on /home): 'master' (shared
-  // master data), 'tax' (excise tax) or 'pm' (project management). 'both' =
-  // cross-cutting (e.g. settings), always shown. The sidebar shows only the
-  // current system's groups so it changes when you switch systems; "หน้าแรก"
-  // returns to the hub to switch.
+  // Each group belongs to a "system" (the cards on /home). The menu row shows
+  // only the current system's items; the system dropdown switches systems.
   const allGroups = [
     {
       label: 'ฐานข้อมูล',
       system: 'master',
+      home: '/database',
       items: [
         { href: '/database', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'customers:view', match: (p) => p === '/database' },
         { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
@@ -162,6 +163,7 @@ export default function AppLayout({ children }) {
     {
       label: 'งานภาษีสรรพสามิต',
       system: 'tax',
+      home: '/tax',
       items: [
         { href: '/tax', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
         { href: '/tax/registrations', name: 'การขึ้นทะเบียน', icon: ClipboardCheck, cap: 'history:view', match: (p) => p.startsWith('/tax/registrations') },
@@ -172,6 +174,7 @@ export default function AppLayout({ children }) {
     {
       label: 'บริหารงานขาย',
       system: 'salesplan',
+      home: '/sa',
       items: [
         { href: '/sa', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sa' || p === '/sales-planning' },
         // "ดีล" = งานขายแต่ละก้อน (SCENT/NPD/RE-ORDER) — คำ "โครงการ" สงวนให้ตัว
@@ -184,6 +187,7 @@ export default function AppLayout({ children }) {
     {
       label: 'งานบริหาร',
       system: 'mgmt',
+      home: '/mgmt',
       items: [
         { href: '/mgmt', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'mgmt:view', match: (p) => p === '/mgmt' },
         { href: '/mgmt/tasks', name: 'รายการงาน', icon: ListTodo, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/tasks') },
@@ -195,6 +199,7 @@ export default function AppLayout({ children }) {
     {
       label: 'งานสหมิตร',
       system: 'sahamit',
+      home: '/sahamit',
       items: [
         { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
         { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
@@ -208,117 +213,65 @@ export default function AppLayout({ children }) {
 
   const systemSubtitle =
     activeSystem === 'master' ? 'ฐานข้อมูล'
-      : activeSystem === 'pm' ? 'จัดการโครงการ'
-        : activeSystem === 'salesplan' ? 'บริหารงานขาย'
-          : activeSystem === 'sahamit' ? 'งานสหมิตร'
-            : activeSystem === 'mgmt' ? 'งานบริหาร'
-              : activeSystem === 'users' ? 'จัดการผู้ใช้'
-                : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
-                  : 'ภาษีสรรพสามิต';
+      : activeSystem === 'salesplan' ? 'บริหารงานขาย'
+        : activeSystem === 'sahamit' ? 'งานสหมิตร'
+          : activeSystem === 'mgmt' ? 'งานบริหาร'
+            : activeSystem === 'users' ? 'จัดการผู้ใช้'
+              : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
+                : 'ภาษีสรรพสามิต';
 
-  // Show only the current system's groups (+ 'both'), then only menus the role
-  // is allowed to see.
-  const navGroups = allGroups
-    .filter((g) => g.system === 'both' || g.system === activeSystem)
-    // SAHAMIT is team-gated (KA only) beyond the per-item capability check.
+  // ระบบที่ผู้ใช้เข้าถึงได้ (ใช้ทั้ง dropdown สลับระบบ และกรองเมนูแถวล่าง).
+  // canUser (not can) so a per-user grant — e.g. an SA granted mgmt:view to
+  // help the secretary — surfaces that system too.
+  const accessibleGroups = allGroups
     .filter((g) => g.system !== 'sahamit' || canAccessSahamit(role, team))
-    // canUser (not can) so a per-user grant — e.g. an SA granted mgmt:view to
-    // help the secretary — surfaces that system's menu items too.
     .map((g) => ({ ...g, items: g.items.filter((it) => canUser({ role, extraCaps }, it.cap)) }))
     .filter((g) => g.items.length > 0);
 
+  const currentGroup = accessibleGroups.find((g) => g.system === activeSystem) || null;
+  const menuItems = currentGroup?.items || [];
+
   return (
-    <div className="app-container" data-sidebar={isCollapsed ? "icon" : "expanded"}>
-      {/* Dim backdrop behind the mobile drawer (≤1000px); tap to dismiss */}
-      <div
-        className={`sidebar-backdrop ${mobileOpen ? 'active' : ''}`}
-        onClick={() => setMobileOpen(false)}
-        aria-hidden="true"
-      />
-      {/* Sidebar Navigation */}
-      <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
-        <div className="brand-section">
-          <img src="/brand-logo.png" alt="Scent &amp; Sense" className="brand-logo-img" />
-          <Link href="/home" className="brand-info-link">
-            <div className="brand-info">
-              <div className="brand-title">Scent &amp; Sense</div>
-              <div className="brand-subtitle">{systemSubtitle}</div>
-            </div>
+    <div className="app-container">
+      {/* ── Top bar 2 ชั้น (ตรึงบนสุดทั้งระบบ) ── */}
+      <header className="topnav">
+        {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
+        <div className="topnav-system">
+          <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
+            <img src="/brand-logo.png" alt="Scent &amp; Sense" className="topnav-brand-img" />
+            <span className="topnav-brand-title">Scent &amp; Sense</span>
           </Link>
-          <button onClick={toggleSidebar} className="sidebar-toggle" title={isCollapsed ? "ขยายแถบเมนู" : "พับแถบเมนู"}>
-            {isCollapsed ? <ChevronRight size={14} strokeWidth={1.5} /> : <ChevronLeft size={14} strokeWidth={1.5} />}
-          </button>
-        </div>
 
-        <ul className="nav-links">
-          <li className="nav-group">
-            <Link
-              href="/home"
-              className={`nav-item ${pathname === '/home' ? 'active' : ''}`}
-              title={isCollapsed ? 'หน้าแรก' : undefined}
+          <div className="topnav-sys" ref={sysMenuRef}>
+            <button
+              type="button"
+              className="topnav-sys-btn"
+              onClick={() => setSysMenuOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={sysMenuOpen}
             >
-              <Home size={18} className="ico" />
-              <span className="nav-label">หน้าแรก</span>
-            </Link>
-          </li>
-          {navGroups.map((group, gi) => (
-            <li key={gi} className="nav-group">
-              {!isCollapsed && <div className="nav-section">{group.label}</div>}
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const active = item.match(pathname);
-                return (
+              {systemSubtitle}
+              <ChevronDown size={14} strokeWidth={2.5} style={{ transform: sysMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+            </button>
+            {sysMenuOpen && (
+              <div className="topnav-sys-menu" role="menu">
+                <Link href="/home" role="menuitem" className={`topnav-sys-item ${pathname === '/home' ? 'active' : ''}`}>
+                  <Home size={15} className="ico" /> หน้าแรก
+                </Link>
+                {accessibleGroups.map((g) => (
                   <Link
-                    href={item.href}
-                    key={item.href}
-                    className={`nav-item ${active ? 'active' : ''}`}
-                    title={isCollapsed ? item.name : undefined}
+                    key={g.system}
+                    href={g.home}
+                    role="menuitem"
+                    className={`topnav-sys-item ${g.system === activeSystem ? 'active' : ''}`}
                   >
-                    <Icon size={18} className="ico" />
-                    <span className="nav-label">{item.name}</span>
+                    <LayoutDashboard size={15} className="ico" /> {g.label}
                   </Link>
-                );
-              })}
-            </li>
-          ))}
-          <li className="nav-group" style={{ marginTop: 'auto', marginBottom: '8px' }}>
-            <Link
-              href="/database/holidays"
-              className={`nav-item ${pathname.startsWith('/database/holidays') ? 'active' : ''}`}
-              title={isCollapsed ? 'ปฏิทิน' : undefined}
-            >
-              <CalendarDays size={18} className="ico" />
-              <span className="nav-label">ปฏิทิน</span>
-            </Link>
-          </li>
-        </ul>
+                ))}
+              </div>
+            )}
+          </div>
 
-        {/* Sidebar Footer containing Theme Toggle */}
-        <div className="sidebar-footer">
-          <button
-            onClick={toggleTheme}
-            className="btn ghost icon-only sidebar-theme-btn"
-            title={isDark ? "Light mode" : "Dark mode"}
-          >
-            {isDark ? <Sun size={16} className="ico" /> : <Moon size={16} className="ico" />}
-          </button>
-          {!isCollapsed && <span className="sidebar-footer-label">{isDark ? 'Dark' : 'Light'}</span>}
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="main-content">
-        <header className="topbar">
-          {/* Hamburger — only visible ≤1000px (see .menu-btn), opens the drawer */}
-          <button
-            onClick={() => setMobileOpen((v) => !v)}
-            className="menu-btn mobile-hamburger"
-            title={mobileOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
-            aria-label={mobileOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
-            aria-expanded={mobileOpen}
-          >
-            {mobileOpen ? <X size={20} strokeWidth={2} /> : <Menu size={20} strokeWidth={2} />}
-          </button>
           <div className="topbar-actions">
             {/* Login User Info */}
             <div className="topbar-user-info">
@@ -330,6 +283,11 @@ export default function AppLayout({ children }) {
                 </span>
               </div>
             </div>
+
+            {/* Theme toggle (เดิมอยู่ footer ของ sidebar) */}
+            <button onClick={toggleTheme} className="btn ghost icon-only" title={isDark ? 'Light mode' : 'Dark mode'}>
+              {isDark ? <Sun size={16} strokeWidth={2} /> : <Moon size={16} strokeWidth={2} />}
+            </button>
 
             {/* Audit log — admins, or a per-user audit:view grant (read-only) */}
             {canUser({ role, extraCaps }, 'audit:view') && (
@@ -355,11 +313,36 @@ export default function AppLayout({ children }) {
             {/* Logout Button */}
             <button onClick={handleLogout} className="btn ghost topbar-logout-btn flex items-center gap-1.5" title="ออกจากระบบ">
               <LogOut size={16} strokeWidth={2} />
-              <span className="font-semibold">ออกจากระบบ</span>
+              <span className="font-semibold topnav-logout-label">ออกจากระบบ</span>
             </button>
           </div>
-        </header>
+        </div>
 
+        {/* ชั้นเมนูของระบบปัจจุบัน — จอแคบเลื่อนแนวนอนได้ (ไม่มี drawer แล้ว) */}
+        <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const active = item.match(pathname);
+            return (
+              <Link href={item.href} key={item.href} className={`topnav-item ${active ? 'active' : ''}`}>
+                <Icon size={16} className="ico" />
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+          <span className="topnav-menu-spacer" />
+          <Link
+            href="/database/holidays"
+            className={`topnav-item ${pathname.startsWith('/database/holidays') ? 'active' : ''}`}
+          >
+            <CalendarDays size={16} className="ico" />
+            <span>ปฏิทิน</span>
+          </Link>
+        </nav>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="main-content">
         <div className="page">
           <RoleContext.Provider value={role}>
             <ExtraCapsContext.Provider value={extraCaps}>
