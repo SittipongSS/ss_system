@@ -443,6 +443,52 @@ export function canAssignTask(assigner, assignee) {
   return false;
 }
 
+// ── Proxy work ("ดึงงานมาทำแทน") ─────────────────────────────────────
+// A teammate may pull someone else's task to do it on their behalf WITHOUT the
+// owner reassigning it. The doer is recorded in `proxyBy` (mig 0087); KPI credit
+// then follows the doer, not the nominal assignee. These are pure predicates —
+// the caller resolves the responsible person's team (respTeam) via the auth
+// directory and passes it in.
+
+// The user a task's KPI credit belongs to: whoever is actually doing it (a proxy
+// who pulled it) → else the assignee → else the owner.
+export function taskCreditId(task) {
+  return task?.proxyBy || task?.assigneeId || task?.ownerId || null;
+}
+
+// May `user` PULL this task to do on behalf? A teammate (shares team with the
+// responsible person, or a superuser) who isn't already the responsible person,
+// when nobody else currently holds it. `respTeam` = team of assignee||owner.
+export function canPullTask(user, task, respTeam) {
+  if (!user?.id || !task) return false;
+  const respId = task.assigneeId || task.ownerId;
+  if (respId === user.id) return false;                        // already yours
+  if (task.proxyBy && task.proxyBy !== user.id) return false;  // held by someone else
+  if (isSuperuser(user.role)) return true;                     // sup/admin → any team
+  // only an actual team member (not a read-only viewer / non-sales staff) may
+  // pull, and only within their own team.
+  return TEAM_ROLES.includes(user.role) && !!user.team && user.team === respTeam;
+}
+
+// May `user` RELEASE (คืนงาน) the proxy hold? The current proxy, the responsible
+// person, or a manager (passed as `manage` — owner/assignee/senior/superuser).
+export function canReleaseTask(user, task, manage) {
+  if (!user?.id || !task?.proxyBy) return false;
+  if (manage) return true;
+  if (task.proxyBy === user.id) return true;
+  const respId = task.assigneeId || task.ownerId;
+  return respId === user.id;
+}
+
+// May `user` change this task's STATUS? Only the responsible person, the proxy
+// who pulled it, or a manager — a random teammate must PULL it first. `manage`
+// = the caller's full-authority result (owner/assignee/senior-team/superuser).
+export function canChangeTaskStatus(user, task, manage) {
+  if (!user?.id || !task) return false;
+  if (manage) return true;
+  return task.proxyBy === user.id;
+}
+
 // Authority to edit a single project task. Pure — caller passes the loaded
 // task + parent project. Returns:
 //   'full'     — may edit the whole plan (team-scoped sales/admin)

@@ -1,4 +1,4 @@
-import { isSuperuser, canAssignTask } from '@/lib/permissions';
+import { isSuperuser, canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
@@ -20,10 +20,11 @@ async function userTeam(supabase, id) {
   return data?.user?.app_metadata?.team ?? null;
 }
 
-// ใครจัดการงานนี้ได้:
+// ใครจัดการงานนี้ได้ (full authority — แก้ทุกฟิลด์/ลบ/เปลี่ยนผู้รับมอบหมาย):
 //   - เจ้าของ (ownerId) / ผู้รับมอบ (assigneeId) / superuser
-//   - หัวหน้าทีม (senior_ae) ที่อยู่ทีมเดียวกับ "ผู้รับมอบ" (ถ้ามอบหมายแล้ว) หรือ
-//     เจ้าของงาน — เพื่อให้ Senior ติดตาม/ปรับงานของลูกทีมได้.
+//   - หัวหน้าทีม (senior_ae) ที่อยู่ทีมเดียวกับ "ผู้รับมอบ/เจ้าของงาน" หรือ
+//     ทีมเดียวกับ "โปรเจกต์ที่ผูก" — ตรงกับ canManageTask ฝั่ง client (เดิม server
+//     ไม่เช็คทีมโปรเจกต์ ทำให้ปุ่มโชว์แต่กดแล้ว 403).
 async function canManage(supabase, task, user) {
   if (!user) return false;
   if (task.ownerId === user.id) return true;
@@ -33,8 +34,17 @@ async function canManage(supabase, task, user) {
     const targetId = task.assigneeId || task.ownerId;
     const targetTeam = await userTeam(supabase, targetId);
     if (targetTeam && targetTeam === user.team) return true;
+    if (task.projectId) {
+      const { data: proj } = await supabase.from('projects').select('team').eq('id', task.projectId).maybeSingle();
+      if (proj?.team && proj.team === user.team) return true;
+    }
   }
   return false;
+}
+
+// ทีมของ "ผู้รับผิดชอบ" งาน (assignee ถ้ามี ไม่งั้น owner) — ใช้เช็คสิทธิ์ดึงมาทำแทน.
+async function responsibleTeam(supabase, task) {
+  return userTeam(supabase, task.assigneeId || task.ownerId);
 }
 
 async function loadTask(supabase, id) {
@@ -42,17 +52,52 @@ async function loadTask(supabase, id) {
   return data || null;
 }
 
-// PATCH /api/pm/personal-tasks/[id] — เจ้าของ/ผู้รับมอบ/หัวหน้าทีม/แอดมิน.
+// PATCH /api/pm/personal-tasks/[id]
+//   • proxyAction 'pull'/'release' — ดึงงานมาทำแทน / คืนงาน (เพื่อนร่วมทีม)
+//   • เปลี่ยน "สถานะ" อย่างเดียว — เจ้าของ/ผู้รับมอบ/ผู้ทำแทน (proxyBy)/หัวหน้า
+//   • แก้ฟิลด์อื่น (ชื่อ/กำหนด/มอบหมาย/ลบ) — full authority (canManage) เท่านั้น
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
+  if (!user) return forbidden();
   const { id } = await ctx.params;
   const task = await loadTask(supabase, id);
   if (!task) return notFound('ไม่พบงาน');
-  if (!(await canManage(supabase, task, user))) return forbidden();
 
   const body = await req.json();
+
+  // ── ดึงมาทำแทน / คืนงาน (proxy work) ──
+  if (body.proxyAction === 'pull' || body.proxyAction === 'release') {
+    const manage = await canManage(supabase, task, user);
+    let proxyUpdate;
+    if (body.proxyAction === 'pull') {
+      const respTeam = await responsibleTeam(supabase, task);
+      if (!canPullTask(user, task, respTeam)) return forbidden('ดึงงานนี้มาทำแทนไม่ได้');
+      proxyUpdate = { proxyBy: user.id };
+    } else {
+      if (!canReleaseTask(user, task, manage)) return forbidden('คืนงานนี้ไม่ได้');
+      proxyUpdate = { proxyBy: null };
+    }
+    proxyUpdate.updatedBy = user.id;
+    proxyUpdate.updatedAt = new Date().toISOString();
+    const { data, error } = await supabase.from('personal_tasks').update(proxyUpdate).eq('id', id).select().single();
+    if (error) return fail(error.message, 500);
+    await recordAudit({ user, action: 'update', entityType: 'task', entityId: id, before: task, after: data, request: req });
+    return ok(data);
+  }
+
+  const manage = await canManage(supabase, task, user);
   const updates = pickFields(body, EDITABLE, {
     nullable: ['startDate', 'dueDate', 'projectId', 'dealId', 'assigneeId', 'category'],
   });
+
+  // สิทธิ์แบบ 2 ระดับ: เปลี่ยน "สถานะ" อย่างเดียว → ผู้ทำแทน/ผู้รับผิดชอบ/หัวหน้าก็ได้;
+  // แก้ฟิลด์อื่นใด ๆ → ต้องมี full authority.
+  const keys = Object.keys(updates);
+  const statusOnly = keys.length > 0 && keys.every((k) => k === 'status');
+  if (statusOnly) {
+    if (!canChangeTaskStatus(user, task, manage)) return forbidden('ต้องดึงงานมาทำแทนก่อนจึงปรับสถานะได้');
+  } else if (!manage) {
+    return forbidden();
+  }
 
   if ('difficulty' in updates) updates.difficulty = normalizeDifficulty(updates.difficulty);
   if ('important' in updates) updates.important = !!updates.important;

@@ -1,5 +1,5 @@
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
-import { can, isSuperuser } from '@/lib/permissions';
+import { can, isSuperuser, taskCreditId } from '@/lib/permissions';
 import { loadUserDirectory, teamUserIds } from '@/lib/usersRepo';
 
 export const dynamic = 'force-dynamic';
@@ -33,9 +33,9 @@ function pct(n, d) {
   return d > 0 ? Math.round((n / d) * 100) : 0;
 }
 
-function responsibleId(task) {
-  return task.assigneeId || task.ownerId || null;
-}
+// KPI credit follows whoever actually does the task: a proxy who pulled it
+// (proxyBy) → else the assignee → else the owner. (shared: lib/permissions)
+const responsibleId = taskCreditId;
 
 function emptyPerson(user) {
   return {
@@ -104,15 +104,19 @@ async function loadTasksForUsers(supabase, ids) {
     return data || [];
   }
 
-  const [byOwner, byAssignee] = await Promise.all([
+  // รวมงานที่ผูกกับ ids ทั้ง 3 ทาง: เจ้าของ, ผู้รับมอบ, และผู้ดึงไปทำแทน (proxyBy)
+  // — งานที่ถูกดึงไปทำแทนต้องนับให้ผู้ทำแทน (kpiCreditId) แม้เจ้าของเดิมอยู่คนละทีม.
+  const [byOwner, byAssignee, byProxy] = await Promise.all([
     supabase.from('personal_tasks').select('*').in('ownerId', ids).order('createdAt', { ascending: false }),
     supabase.from('personal_tasks').select('*').in('assigneeId', ids).order('createdAt', { ascending: false }),
+    supabase.from('personal_tasks').select('*').in('proxyBy', ids).order('createdAt', { ascending: false }),
   ]);
   if (byOwner.error) throw byOwner.error;
   if (byAssignee.error) throw byAssignee.error;
+  if (byProxy.error) throw byProxy.error;
 
   const seen = new Set();
-  return [...(byOwner.data || []), ...(byAssignee.data || [])]
+  return [...(byOwner.data || []), ...(byAssignee.data || []), ...(byProxy.data || [])]
     .filter((task) => (seen.has(task.id) ? false : seen.add(task.id)));
 }
 
