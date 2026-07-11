@@ -6,8 +6,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* IBM Plex Sans Thai — loaded via next/font (--font-plex-sans / --font-plex-mono on <html>) */
-  --font-sans: var(--font-plex-sans), "IBM Plex Sans Thai", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Fonts — Inter for English/Numbers, IBM Plex Sans Thai for Thai */
+  --font-sans: var(--font-inter), var(--font-plex-sans), "IBM Plex Sans Thai", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   /* UI density: keep in sync with the inline `zoom` on <body> in layout.js.
@@ -222,23 +222,25 @@ button, select, input, textarea {
   }
 }
 
-/* ── Top navigation (เฟส T): 2 ชั้นตรึงบนสุดทั้งระบบ — แทน sidebar เดิม ─────
-   ชั้นระบบ = พื้น navy (โทนโลโก้ตามมาตรฐานแบรนด์) · ชั้นเมนู = รายการของระบบ
-   ปัจจุบัน แนวนอน จอแคบเลื่อนข้างได้. sticky element อื่นอ้าง --topnav-h ได้ */
+/* ── Top navigation: 1 ชั้น (Desktop) / Bottom (Mobile) ───── */
 .topnav {
   position: sticky;
   top: 0;
   z-index: 100;
-}
-
-.topnav-system {
-  height: var(--topbar-h);
   background: var(--navy);
   color: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.topnav-inner {
+  height: var(--topbar-h);
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
   padding: 0 20px;
+  gap: 16px;
+  max-width: 1480px;
+  margin: 0 auto;
 }
 
 .topnav-brand {
@@ -313,46 +315,76 @@ button, select, input, textarea {
 .topnav-sys-item.active { color: var(--accent); font-weight: 600; background: var(--accent-soft); }
 
 /* actions ฝั่งขวาบนพื้น navy — ปรับสี ghost/ผู้ใช้ให้อ่านออก */
-.topnav-system .btn.ghost { color: rgba(255, 255, 255, 0.85); }
-.topnav-system .btn.ghost:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.topnav-system .user-name { color: #fff; }
-.topnav-system .user-avatar { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.topnav-inner .btn.ghost { color: rgba(255, 255, 255, 0.85); }
+.topnav-inner .btn.ghost:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.topnav-inner .user-name { color: #fff; }
+.topnav-inner .user-avatar { background: rgba(255, 255, 255, 0.16); color: #fff; }
 
-/* ชั้นเมนูของระบบปัจจุบัน */
+/* ชั้นเมนูของระบบปัจจุบัน (Desktop) */
 .topnav-menu {
-  height: var(--topnav-menu-h);
-  background: var(--panel);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 0 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  margin-left: 16px;
+  overflow: hidden;
 }
-.topnav-menu-spacer { flex: 1; }
 .topnav-item {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 13px;
-  color: var(--text-2);
+  gap: 6px;
+  padding: 6px 12px;
+  color: rgba(255, 255, 255, 0.7);
   text-decoration: none;
   font-size: 13.5px;
+  border-radius: 6px;
   white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color 0.12s, background 0.12s;
 }
-.topnav-item:hover { color: var(--text); background: var(--panel-2); }
+.topnav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 .topnav-item.active {
+  color: #fff;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.15);
+}
+.topnav-item.active svg { color: #fff; }
+
+/* Bottom Navigation (Mobile) */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: var(--panel);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--text-3);
+  text-decoration: none;
+  font-size: 10px;
+  flex: 1;
+  height: 100%;
+}
+.bottom-nav-item.active {
   color: var(--accent);
   font-weight: 600;
-  border-bottom-color: var(--accent);
 }
-.topnav-item.active svg { color: var(--accent); }
+
+.desktop-only { display: flex; }
+.mobile-only { display: none; }
 
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
 .btn.ghost:hover { background: var(--panel-2); }
@@ -360,13 +392,16 @@ button, select, input, textarea {
 .topbar-back-btn { gap: 4px; font-size: 13px; color: var(--text-2); padding: 4px 10px; height: 32px; }
 
 @media (max-width: 1000px) {
-  .topnav-system { padding: 0 12px; gap: 10px; }
+  .topnav-inner { padding: 0 12px; gap: 10px; }
+  .topnav-item { padding: 4px 8px; font-size: 12px; gap: 4px; }
 }
 @media (max-width: 700px) {
+  .desktop-only { display: none !important; }
+  .mobile-only { display: flex !important; }
   .topnav-brand-title { display: none; }
   .topnav-logout-label { display: none; }
-  .topnav-menu { padding: 0 8px; }
   .topbar-user-info { display: none !important; }
+  .page { padding-bottom: 80px; /* space for bottom nav */ }
 }
 
 .topbar-actions {
