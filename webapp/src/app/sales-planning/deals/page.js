@@ -280,7 +280,10 @@ export default function SalesPlanningPipelinePage() {
   // ปิดโครงการเป็น Won — เปิดโมดัลรับ "มูลค่าปิดจริง" (prefill = คาดการณ์) ก่อนยืนยัน
   const [winDeal, setWinDeal] = useState(null);
   const [winValue, setWinValue] = useState("");
-  const openWin = (deal) => { setWinDeal(deal); setWinValue(deal.projectValue ?? ""); };
+  const [winMonth, setWinMonth] = useState(thisMonth());
+  // เดือนที่ปิด (Won) เริ่มที่เดือนพยากรณ์ของดีล — ปรับได้ถ้าปิดคนละเดือน. เดือนนี้จะย้าย
+  // ทั้ง FC และ AT มาอยู่ด้วยกัน (แล้วล็อก) เพื่อเทียบ TG/FC/AT ในเดือนเดียวกัน
+  const openWin = (deal) => { setWinDeal(deal); setWinValue(deal.projectValue ?? ""); setWinMonth(deal.forecastMonth || thisMonth()); };
   const submitWin = async () => {
     if (!winDeal) return;
     const v = Number(winValue);
@@ -291,7 +294,7 @@ export default function SalesPlanningPipelinePage() {
       const res = await fetch(`/api/sales-planning/deals/${winDeal.id}/win`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wonValue: v }),
+        body: JSON.stringify({ wonValue: v, wonMonth: winMonth }),
       });
       if (!res.ok) throw new Error((await res.json()).error || "ปิดโครงการไม่สำเร็จ");
       setWinDeal(null);
@@ -637,6 +640,12 @@ export default function SalesPlanningPipelinePage() {
           {winDeal && Number(winDeal.projectValue) > 0 && Number(winValue) > 0 && Number(winValue) !== Number(winDeal.projectValue) && (
             <div style={{ fontSize: 12, color: "var(--amber)" }}>ต่างจากคาดการณ์ ({money(winDeal.projectValue)}) {money(Number(winDeal.projectValue) - Number(winValue))}</div>
           )}
+          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+            เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT และ FC จะย้ายมาเดือนนี้ แล้วล็อก</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <MonthPicker value={winMonth} onChange={setWinMonth} />
+            </div>
+          </label>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <button type="button" className="btn ghost" onClick={() => setWinDeal(null)} disabled={!!winningDealId}>ยกเลิก</button>
             <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!winningDealId || !(Number(winValue) > 0)}>
