@@ -34,11 +34,17 @@ export default function SalesTargetPlanPage() {
   const role = useRole();
   const isSuper = role === "admin" || role === "ae_supervisor";
 
-  const targetYear = useMemo(() => thisYearNum() + 1, []);
+  // Plan year is selectable — default to the current year so the earliest year
+  // still open for planning is first; the head can switch to next year after.
+  const [targetYear, setTargetYear] = useState(() => thisYearNum());
   const historyYears = useMemo(
     () => [targetYear - 3, targetYear - 2, targetYear - 1].map(String),
     [targetYear],
   );
+  const targetYearOptions = useMemo(() => {
+    const cy = thisYearNum();
+    return [cy, cy + 1, cy + 2];
+  }, []);
 
   const [step, setStep] = useState(1);
   const [users, setUsers] = useState([]);
@@ -189,6 +195,20 @@ export default function SalesTargetPlanPage() {
   };
   const goBack = () => { setError(""); setInfo(""); setStep((s) => Math.max(1, s - 1)); };
 
+  // Switching plan year restarts the wizard — history/projection/splits all change.
+  const changeYear = (y) => {
+    if (y === targetYear) return;
+    if (step > 1 && !window.confirm("เปลี่ยนปีจะเริ่มขั้นตอนใหม่ตั้งแต่ต้น จะเปลี่ยนไหม?")) return;
+    setTargetYear(y);
+    setStep(1);
+    setError("");
+    setInfo("");
+    setFinalTarget(0);
+    setTeamTargets({});
+    setPersonTargets({});
+    setMonthPct(Array(12).fill(100 / 12));
+  };
+
   // ---- Persistence ----
   const saveHistory = async () => {
     const items = [];
@@ -273,6 +293,18 @@ export default function SalesTargetPlanPage() {
       title="ตัวช่วยวางเป้าหมายขาย"
       subtitle={`วางเป้าปี ${targetYear} — กรอกประวัติ → ระบบคาดการณ์ → แบ่งทีม → แบ่งคนและรายเดือน`}
       back={{ href: "/sales-planning/targets", label: "ตารางเป้า" }}
+      headerRight={
+        <select
+          className="premium-select"
+          value={targetYear}
+          onChange={(e) => changeYear(Number(e.target.value))}
+          disabled={saving}
+          aria-label="ปีที่วางเป้า"
+          style={{ width: 150 }}
+        >
+          {targetYearOptions.map((y) => <option key={y} value={y}>วางเป้าปี {y}</option>)}
+        </select>
+      }
     >
       <div className="flex flex-col gap-4" style={{ paddingBottom: 20 }}>
         <StepNav step={step} />
