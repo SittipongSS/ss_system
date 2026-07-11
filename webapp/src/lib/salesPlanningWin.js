@@ -8,9 +8,13 @@ export function winStageForProject(_projectId) {
   return 'won';
 }
 
-export function buildWinPatch({ deal = {}, source = 'manual', now = new Date().toISOString(), wonValue, projectValue, projectId, metadata = {} } = {}) {
+export function buildWinPatch({ deal = {}, source = 'manual', now = new Date().toISOString(), wonValue, projectValue, projectId, wonMonth, metadata = {} } = {}) {
   const nextProjectId = projectId || deal.projectId || null;
   const extraMetadata = metadata && typeof metadata === 'object' ? metadata : {};
+  // เดือนที่ปิดจริง (Won) — ผู้ใช้เลือกได้ตอนกด Won เพื่อให้ยอด AT ตกเดือนที่ถูกต้อง
+  // (เช่น รับมัดจำคนละเดือนกับที่กดในระบบ). เก็บใน metadata (ไม่ต้อง migration);
+  // dashboard ใช้ค่านี้ก่อน confirmedAt. ตกไปใช้เดือนของ confirmedAt/ตอนนี้ถ้าไม่ส่งมา.
+  const chosenWonMonth = monthKey(wonMonth);
   const patch = {
     stage: winStageForProject(nextProjectId),
     depositPaid: true,
@@ -22,6 +26,7 @@ export function buildWinPatch({ deal = {}, source = 'manual', now = new Date().t
       ...extraMetadata,
       wonSource: source,
       wonAt: now,
+      ...(chosenWonMonth ? { wonMonth: chosenWonMonth } : {}),
     },
   };
 
@@ -82,8 +87,8 @@ export async function insertWinSideEffects({
   });
 }
 
-export async function markWon({ supabase, user, deal, source = 'manual', now = new Date().toISOString(), wonValue, projectValue, projectId, metadata = {}, request, auditSummary }) {
-  const patch = buildWinPatch({ deal, source, now, wonValue, projectValue, projectId, metadata });
+export async function markWon({ supabase, user, deal, source = 'manual', now = new Date().toISOString(), wonValue, projectValue, projectId, wonMonth, metadata = {}, request, auditSummary }) {
+  const patch = buildWinPatch({ deal, source, now, wonValue, projectValue, projectId, wonMonth, metadata });
   const { data, error } = await supabase
     .from('sales_deals')
     .update(patch)

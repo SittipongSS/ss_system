@@ -11,7 +11,7 @@ import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
-import { FORECAST_LEVELS, forecastBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, forecastBadge, snapForecastLevel, MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
 import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
@@ -384,14 +384,15 @@ export default function DealOverviewPage() {
   // ปิด Won ต้องกรอกมูลค่าปิดจริง — เปิดโมดัลรับตัวเลข (prefill = มูลค่าคาดการณ์)
   const [winOpen, setWinOpen] = useState(false);
   const [winValue, setWinValue] = useState("");
-  const doWin = () => { setWinValue(deal?.projectValue ?? ""); setWinOpen(true); };
+  const [winMonth, setWinMonth] = useState(thisMonth());
+  const doWin = () => { setWinValue(deal?.projectValue ?? ""); setWinMonth(thisMonth()); setWinOpen(true); };
   const submitWin = async () => {
     const v = Number(winValue);
     if (!Number.isFinite(v) || v <= 0) { setError("ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0"); return; }
     const okDone = await runAction("win", `/api/sales-planning/deals/${id}/win`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wonValue: v }),
+      body: JSON.stringify({ wonValue: v, wonMonth: winMonth }),
     });
     if (okDone) setWinOpen(false);
   };
@@ -958,6 +959,12 @@ export default function DealOverviewPage() {
               onChange={(e) => setWinValue(e.target.value)}
               autoFocus
             />
+          </label>
+          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+            เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอดจะนับเข้าเดือนนี้</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <MonthPicker value={winMonth} onChange={setWinMonth} />
+            </div>
           </label>
           {deal && Number(deal.projectValue) > 0 && (
             <div style={{ fontSize: 12, color: "var(--text-3)" }}>

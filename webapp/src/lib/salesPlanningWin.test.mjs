@@ -29,3 +29,14 @@ test('buildWinPatch coerces invalid wonValue to 0 via toMoney', () => {
   const patch = buildWinPatch({ deal: { metadata: {} }, wonValue: -5 });
   assert.equal(patch.wonValue, 0);
 });
+
+test('buildWinPatch stores a chosen wonMonth in metadata (sanitized to YYYY-MM)', () => {
+  const patch = buildWinPatch({ deal: { metadata: {} }, wonValue: 100, wonMonth: '2026-06' });
+  assert.equal(patch.metadata.wonMonth, '2026-06');
+  // an invalid month is dropped, not stored
+  const bad = buildWinPatch({ deal: { metadata: {} }, wonValue: 100, wonMonth: 'nope' });
+  assert.equal('wonMonth' in bad.metadata, false);
+  // omitted → not stored (dashboard falls back to confirmedAt)
+  const none = buildWinPatch({ deal: { metadata: {} }, wonValue: 100 });
+  assert.equal('wonMonth' in none.metadata, false);
+});
