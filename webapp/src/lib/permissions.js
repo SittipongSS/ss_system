@@ -21,8 +21,12 @@
 //   ac            — Account Coordinate (back-office). Edits whole team, no delete.
 //   ae            — Account Executive (front-office). Edits only own records.
 //   legal         — Legal dept. Views all teams; approves / files tax. No edits.
-//   viewer        — Read-only observer. Sees the Project Management system only
-//                   (all teams' projects), no edits anywhere. Own department.
+//   viewer        — Read-only observer of the WHOLE system. Holds every :view
+//                   capability across all modules (all teams' data, via viewScope
+//                   'all') but cannot add / edit / delete anywhere. Confidential
+//                   factory cost/margin is OFF by default; an admin may tick the
+//                   per-user grant (products:margin) to give one viewer LG-level
+//                   cost sight. Own department.
 //
 // Teams: ODM (New ODM) | KA (Key Account) | SV (Services).
 //
@@ -191,8 +195,17 @@ const ROLE_CAPS = {
   // legal views registries + does tax approval; no edit/delete of sales data.
   // legal is the cost-margin authority (sees the factory cost breakdown + profit).
   legal: ['customers:view', 'products:view', 'products:margin', 'legal:view', 'legal:approve', 'history:view'],
-  // viewer: read-only observer of the Project Management system only (no writes)
-  viewer: ['pm:view'],
+  // viewer: read-only observer of the WHOLE system — holds every :view capability
+  // across all modules (database / tax / sales / PM / sahamit / mgmt) at 'all'-team
+  // scope, but NO edit/act/delete/approve/manage. add/edit/delete is impossible
+  // everywhere: the proxy's capability write-gate (apiWriteAllowed) blocks writes
+  // for lack of the :edit/:act/:delete caps. Confidential factory cost/margin is
+  // NOT here by default — it's grantable per-user (products:margin), same as LG.
+  viewer: [
+    'customers:view', 'products:view',
+    'sales:view', 'legal:view', 'history:view',
+    'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
+  ],
   // staff: a member of a non-sales department (PC/PD/WH/RD/QC). Logs in to see
   // PM + the tasks assigned to them, and may READ the shared master data
   // (products/customers) — but never the cost margin (no products:margin).
@@ -276,6 +289,7 @@ export function canApproveMasterData(role) {
 //   user = { role, team }
 export function canAccessSahamit(role, team) {
   if (isSuperuser(role)) return true;           // admin + sales head: cross-team oversight
+  if (role === 'viewer') return true;           // read-only observer sees every module (writes still blocked by cap)
   return can(role, 'sahamit:view') && team === 'KA';
 }
 

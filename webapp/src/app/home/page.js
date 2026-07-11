@@ -71,7 +71,8 @@ export default function HomeHubPage() {
   const canPM = isAdmin || can(role, "pm:view");
   const canSalesPlanning = isAdmin || can(role, "salesplan:view");
   // PM รวมอยู่ใต้ "บริหารงานขาย" แล้ว — ผู้ที่เข้าบริหารงานขายได้จะเข้า PM ผ่านการ์ดนั้น
-  // การ์ด PM แยกจึงเหลือไว้เฉพาะ viewer/staff (มี pm:view แต่ไม่มี salesplan:view)
+  // การ์ด PM แยกจึงเหลือไว้เฉพาะ staff (มี pm:view แต่ไม่มี salesplan:view); viewer
+  // เห็น salesplan:view แล้วจึงเข้า PM ผ่านการ์ด "บริหารงานขาย" เหมือน sales role
   const showPMCard = canPM && !canSalesPlanning;
   const canTax = isAdmin || can(role, "history:view");
   // Database hub card: anyone who can open a registry (sales/legal/staff) — the

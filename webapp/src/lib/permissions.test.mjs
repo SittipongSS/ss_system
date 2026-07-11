@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, can, capsFor, sanitizeExtraCaps, canAssignTask, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, can, canUser, capsFor, editScope, viewScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, GRANTABLE_CAPS } from './permissions';
 
 test('canAssignTask: teammates assign to each other; sup/admin to anyone', () => {
   const ae = { id: 'u1', role: 'ae', team: 'KA' };
@@ -82,7 +82,8 @@ test('canAccessMgmt: admin + secretary by role (NOT sales head)', () => {
   assert.equal(canAccessMgmt({ role: 'senior_ae' }), false);
   assert.equal(canAccessMgmt({ role: 'ae' }), false);
   assert.equal(canAccessMgmt({ role: 'legal' }), false);
-  assert.equal(canAccessMgmt({ role: 'viewer' }), false);
+  // viewer is a read-only observer of the WHOLE system → sees mgmt too (read-only)
+  assert.equal(canAccessMgmt({ role: 'viewer' }), true);
   assert.equal(canAccessMgmt({ role: 'staff' }), false);
 });
 
@@ -114,6 +115,50 @@ test('sales targets are limited to admin and sales head', () => {
   assert.equal(can('senior_ae', 'salesplan:target'), false);
   assert.equal(can('ac', 'salesplan:target'), false);
   assert.equal(can('ae', 'salesplan:target'), false);
+});
+
+test('viewer: sees every module read-only, but can never write', () => {
+  // Holds every :view capability across all modules...
+  for (const cap of [
+    'customers:view', 'products:view', 'sales:view', 'legal:view', 'history:view',
+    'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
+  ]) {
+    assert.equal(can('viewer', cap), true, `viewer should hold ${cap}`);
+  }
+  // ...at 'all'-team view scope (sees every team's records)...
+  assert.equal(viewScope('viewer'), 'all');
+  // ...but holds NO write/act/delete/approve/manage capability.
+  for (const cap of [
+    'customers:edit', 'customers:delete', 'products:edit', 'products:delete',
+    'sales:act', 'sales:delete', 'legal:approve', 'pm:edit', 'salesplan:edit',
+    'salesplan:target', 'salesplan:review', 'sahamit:edit', 'mgmt:edit',
+    'users:manage', 'master:manage', 'audit:view', 'products:margin',
+  ]) {
+    assert.equal(can('viewer', cap), false, `viewer must NOT hold ${cap}`);
+  }
+  // Edit/delete scope is 'none' everywhere → row-level writes are refused too.
+  const viewer = { role: 'viewer', id: 'v', team: null };
+  assert.equal(editScope('viewer'), 'none');
+  assert.equal(deleteScope('viewer', 'orders'), 'none');
+  assert.equal(canEditRecord(viewer, 'orders', { team: 'KA', ownerId: 'x' }), false);
+  assert.equal(canDeleteRecord(viewer, 'orders', { team: 'KA', ownerId: 'x' }), false);
+  // SAHAMIT is team-gated (KA) for sales roles, but the whole-system observer
+  // sees it despite having no team (writes still blocked by lack of sahamit:edit).
+  assert.equal(canAccessSahamit('viewer', null), true);
+});
+
+test('viewer: cost/margin stays a per-user grant (ติ๊กเปิดสิทธิ like LG)', () => {
+  const plain = { role: 'viewer' };
+  const granted = { role: 'viewer', extraCaps: ['products:margin'] };
+  // off by default...
+  assert.equal(canUser(plain, 'products:margin'), false);
+  // ...but an admin may tick the grant (products:margin is whitelisted)...
+  assert.ok(GRANTABLE_CAPS.includes('products:margin'));
+  assert.deepEqual(sanitizeExtraCaps(['products:margin']), ['products:margin']);
+  // ...and then the viewer sees cost/margin, LG-style — without gaining any write cap.
+  assert.equal(canUser(granted, 'products:margin'), true);
+  assert.equal(canUser(granted, 'products:edit'), false);
+  assert.equal(canUser(granted, 'legal:approve'), false);
 });
 
 test('pmTaskEditTier: none for outsiders', () => {
