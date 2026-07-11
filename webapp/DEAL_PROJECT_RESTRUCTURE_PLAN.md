@@ -11,18 +11,23 @@
 ## 0. โจทย์จากผู้ใช้ + การตีความ
 
 1. **Deal** = การรับลีด/หาลูกค้าเข้ามา เพื่อวาง FC วางแผน
-2. **ประเภทดีล** (นิยามจากผู้ใช้ รอบ 2):
-   - **NPD** = พัฒนากลิ่น + พัฒนาสินค้า + สั่งผลิต (ครบวงจรตั้งแต่ออกแบบกลิ่นจนผลิตครั้งแรก)
-   - **RE-ORDER** = สั่งผลิตสินค้าที่พัฒนาไปแล้วซ้ำ (จำนวนเดิมหรือไม่เดิมก็ได้)
+2. **ประเภทดีล** (นิยามจากผู้ใช้ รอบ 2+3):
+   - **NPD** = พัฒนา**สินค้าใหม่** + สั่งผลิตครั้งแรก — ครอบทั้ง **กลิ่นใหม่** (พัฒนากลิ่นด้วย)
+     และ **กลิ่นเดิม** (เอากลิ่นที่มีอยู่มาทำสินค้าใหม่) — เส้นแบ่งคือ "สินค้าใหม่" ไม่ใช่ "กลิ่นใหม่"
+   - **RE-ORDER** = สั่งผลิต**สินค้าเดิม**ที่พัฒนาไปแล้วซ้ำ (จำนวนเดิมหรือไม่เดิมก็ได้)
 3. **ลูกค้า 1 ราย มีได้หลายโครงการ** · **โครงการ 1 อันมีได้หลายดีล** — หน้าโครงการต้องเห็น:
    **มูลค่าโครงการ · FC · AT (ยอดจริง) · สถานะงาน · ข้อมูลอัปเดต/ติดตาม** และเชื่อมระบบอื่นใน ecosystem เดียว
 
 **ข้อสรุปการวางประเภท (แนะนำ):**
 
 - ใช้ **2 ประเภท: `NPD` / `RE-ORDER`** — ไม่มี `SCENT` เป็นประเภทดีลแยก เพราะ "พัฒนากลิ่น"
-  เป็น**เฟสหนึ่งใน NPD** อยู่แล้ว: [`NPD_TEMPLATE`](src/lib/pm/templates.js) มี Phase 2
+  เป็น**เฟส optional ภายใน NPD**: [`NPD_TEMPLATE`](src/lib/pm/templates.js) มี Phase 2
   "พัฒนาสูตร/ออกแบบกลิ่น" + Phase 3 "Mock-up" ครบ (ส่งกลิ่น/Confirm กลิ่น) แล้วต่อด้วยผลิต
-  → ตรงนิยามผู้ใช้พอดี ไม่ต้องสร้าง template ใหม่
+- **NPD มี 2 รูปแบบย่อย (ไม่ใช่ประเภทแยก): กลิ่นใหม่ / กลิ่นเดิม** — เก็บเป็น attribute เบา ๆ
+  `metadata.scentSource` = `'new' | 'existing'` บนดีล NPD (toggle ตอนสร้างดีล, default `new`)
+  → ตอนสร้างโครงการ ถ้า `existing` ให้ gen timeline โดย**ตัดขั้น Phase 2 (ออกแบบกลิ่น) ออก**
+  (Phase 3 Mock-up ยังอยู่ — ต้องขึ้นต้นแบบสินค้าใหม่เสมอ); task เป็น draft ให้ PM ปรับ/ยืนยันอยู่แล้ว
+  ไม่ทำเป็นคอลัมน์จนกว่าจะต้องรายงานแยกมิตินี้จริง
 - enum เปิดขยายได้: ถ้าวันหน้ามีธุรกิจ "ขายกลิ่นอย่างเดียว ไม่ผลิตสินค้า" ค่อยเพิ่มค่า `SCENT`
   ทีหลัง (แก้ CHECK 1 บรรทัด + template ใหม่) — ไม่ต้องออกแบบเผื่อวันนี้
 - **`dealType` ตรงกับ `projects.type` ที่มีอยู่แล้ว 1:1** (NPD/RE-ORDER) → ไม่ต้องมี mapping layer
@@ -165,6 +170,8 @@ rollupDeals(deals[]) → {
   (พัฒนาสินค้าใหม่ / สั่งผลิตซ้ำ) — reuse `PROJECT_TYPES` เดิมได้เลย (ค่าตรงกัน)
 - API deals CRUD อ่าน/เขียน `dealType` (คู่กับ `metadata.projectType` ชั่วคราว)
 - UI: dropdown ประเภทตอนสร้าง/แก้ดีล + badge สี 2 ประเภทใน pipeline/ตาราง + filter ตามประเภท
+- ดีล NPD: toggle "กลิ่นใหม่ / กลิ่นเดิม" → `metadata.scentSource` (default `new`);
+  ตอน `create-project` ส่งต่อให้ template gen ตัดขั้น Phase 2 เมื่อ `existing` (โค้ด gen อยู่เฟส 2 ได้ถ้าสะดวกกว่า)
 - สาย Sahamit ที่ hardcode `'RE-ORDER'` ([`salesPlanningForecast.js:396,446`](src/lib/salesPlanningForecast.js),
   [`create-sales-deal/route.js:134`](src/app/api/sahamit/forecast/rounds/[id]/create-sales-deal/route.js)) → เขียนลง `dealType` ด้วย
 - dashboard: การ์ด/กราฟแยกตามประเภท (FC·AT per type)
@@ -216,7 +223,8 @@ rollupDeals(deals[]) → {
 | ไฟล์ | บรรทัด | ต้องทำ | เฟส |
 |---|---|---|---|
 | `api/pm/projects/[id]/route.js` | 53, 186, 211 | maybeSingle→list · เลิก title sync · delete guard นับทุกดีล | 2 |
-| `deals/[id]/create-project/route.js` | 29, 137 | จำกัดเป็นทางของ NPD · อุดบั๊ก stage ถอยหลัง | 2 |
+| `deals/[id]/create-project/route.js` | 29, 137 | จำกัดเป็นทางของ NPD · อุดบั๊ก stage ถอยหลัง · ส่ง scentSource ให้ template gen | 2 |
+| `lib/pm/templates.js` + จุด gen timeline | 8–50 | NPD กลิ่นเดิม: ตัดขั้น Phase 2 (ปรับ dependsOnSteps ของ step ที่อ้าง 17) | 2 |
 | `deals/[id]/link-project/route.js` | ใหม่ | action ผูก RE-ORDER เข้าโครงการเดิม | 2 |
 | `salesPlanningWin.js` | 12, 40 | winPatch ไม่ทับ `projectId` ที่ผูกอยู่ | 2 |
 | `salesPlanningForecast.js` | 49, 342, 396, 422, 446 | filter เปิด≠ไม่มีโครงการ · เขียน dealType | 1, 3 |
@@ -265,7 +273,8 @@ rollupDeals(deals[]) → {
 ## 9. แผนทดสอบ (ต่อเฟส)
 
 - เฟส 1: lint+build+`node --test`; สร้างดีล 2 ประเภท → badge/filter/dashboard แยกถูก; ดีลเก่า backfill ตรง `metadata.projectType` เดิม
-- เฟส 2: ดีล NPD สร้างโครงการ → ดีล RE-ORDER (ลูกค้าเดียวกัน) link เข้าโครงการเดียวกัน →
+- เฟส 2: ดีล NPD กลิ่นเดิม → สร้างโครงการ → timeline ไม่มีขั้นออกแบบกลิ่น แต่ยังมี Mock-up;
+  ดีล NPD สร้างโครงการ → ดีล RE-ORDER (ลูกค้าเดียวกัน) link เข้าโครงการเดียวกัน →
   หน้าโครงการโชว์ 2 ดีล + rollup ถูก (AT=won, FC=open); สร้าง NPD ตัวที่ 2 ผูกโครงการเดิม → ถูกกัน;
   ลบโครงการถูกกันเมื่อมีดีล; excise/shipment ระบุดีลถูกตัว
 - เฟส 3: PO ใหม่ของลูกค้าเดิม → default เจอโครงการ FG ตรง → แนบ → เกิด won-deal RE-ORDER ในโครงการ + task draft; PO เดิมกดซ้ำไม่สร้างซ้ำ
