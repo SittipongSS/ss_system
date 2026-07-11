@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText, Plus, Search, Printer } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import Modal from "@/components/Modal";
+import SlidePanel from "@/components/ui/SlidePanel";
 import { useCan } from "@/lib/roleContext";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { dealTypeOf } from "@/lib/salesPlanning";
@@ -192,8 +192,21 @@ export default function QuotationsPage() {
         </section>
       </div>
 
-      <Modal open={createOpen} onClose={() => !creating && setCreateOpen(false)} title="สร้างใบเสนอราคา — เลือกดีล" size="sm">
-        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <SlidePanel 
+        isOpen={createOpen} 
+        onClose={() => !creating && setCreateOpen(false)} 
+        title="สร้างใบเสนอราคา — เลือกดีล" 
+        width="max-w-md"
+        footer={
+          <>
+            <button type="button" className="btn ghost" onClick={() => setCreateOpen(false)} disabled={creating}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={createQuote} disabled={creating || !dealId}>
+              {creating ? "กำลังสร้าง…" : "สร้างและไปแก้ไข"}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
             ใบเสนอราคาผูกกับดีลเสมอ — ระบบจะดึงลูกค้า/สินค้า (FG จากโครงการ) มาตั้งต้นให้ แล้วไปแก้รายละเอียดต่อ
           </div>
@@ -204,14 +217,8 @@ export default function QuotationsPage() {
               {deals.map((d) => <option key={d.id} value={d.id}>{d.title} · {d.customerName || "ไม่มีลูกค้า"}</option>)}
             </select>
           </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="btn ghost" onClick={() => setCreateOpen(false)} disabled={creating}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={createQuote} disabled={creating || !dealId}>
-              {creating ? "กำลังสร้าง…" : "สร้างและไปแก้ไข"}
-            </button>
-          </div>
         </div>
-      </Modal>
+      </SlidePanel>
     </Workspace>
   );
 }

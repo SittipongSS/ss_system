@@ -64,7 +64,7 @@ export default function FormattedNumberInput({
     }
   };
 
-  const handleBlur = () => {
+  const handleBlur = (e) => {
     // Format on blur if there's a valid number
     if (displayValue && displayValue !== '-') {
       const num = parseFloat(displayValue.replace(/,/g, ''));
@@ -74,6 +74,9 @@ export default function FormattedNumberInput({
         setDisplayValue('');
         if (onChange) onChange(null);
       }
+    }
+    if (props.onBlur) {
+      props.onBlur(e);
     }
   };
 

@@ -39,6 +39,7 @@ export default function SalesPlanningPipelinePage() {
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all"); // กรองตามประเภทดีล SCENT/NPD/RE-ORDER
+
   const [dealModal, setDealModal] = useState(false);
   const [dealForm, setDealForm] = useState({ ...initialDealForm, forecastMonth: thisMonth() });
   const [submitting, setSubmitting] = useState(false);
@@ -57,6 +58,11 @@ export default function SalesPlanningPipelinePage() {
   const [pmDeal, setPmDeal] = useState(null);
   const [pmInitial, setPmInitial] = useState(null);
   const [dealToDelete, setDealToDelete] = useState(null);
+  
+  const [confirmState, setConfirmState] = useState({ open: false, title: "", message: "", action: null, isDanger: false, confirmLabel: "ยืนยัน" });
+  const requestConfirm = (title, message, action, confirmLabel = "ยืนยัน", isDanger = false) => {
+    setConfirmState({ open: true, title, message, action, confirmLabel, isDanger });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);

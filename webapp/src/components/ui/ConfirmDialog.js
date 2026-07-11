@@ -4,6 +4,7 @@ import { AlertTriangle, X } from 'lucide-react';
 
 export default function ConfirmDialog({
   isOpen,
+  open,
   onClose,
   onConfirm,
   title = "ยืนยันการทำรายการ",
@@ -13,9 +14,11 @@ export default function ConfirmDialog({
   isDanger = false,
   isLoading = false
 }) {
+  const isDialogVisible = isOpen !== undefined ? isOpen : open;
+
   // Prevent body scroll when open
   useEffect(() => {
-    if (isOpen) {
+    if (isDialogVisible) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -23,9 +26,9 @@ export default function ConfirmDialog({
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen]);
+  }, [isDialogVisible]);
 
-  if (!isOpen) return null;
+  if (!isDialogVisible) return null;
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
