@@ -19,6 +19,10 @@ const nextConfig = {
   async rewrites() {
     return [
       { source: '/sa', destination: '/sales-planning' },
+      // เฟส C: คิวลีด + KPI
+      { source: '/sa/leads', destination: '/sales-planning/leads' },
+      { source: '/sa/leads/:path*', destination: '/sales-planning/leads/:path*' },
+      { source: '/sa/kpi', destination: '/sales-planning/kpi' },
       { source: '/sa/deals', destination: '/sales-planning/deals' },
       { source: '/sa/deals/:path*', destination: '/sales-planning/deals/:path*' },
       { source: '/sa/targets', destination: '/sales-planning/targets' },

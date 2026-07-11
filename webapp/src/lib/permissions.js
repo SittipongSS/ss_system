@@ -60,15 +60,15 @@
 // (matching the PM step-role codes SA/RD/PC/PD/QC/LG/WH) and shown as-is.
 //   AD = ผู้ดูแลระบบ · SEC = ฝ่ายเลขานุการ · SA = ฝ่ายขาย · LG = ฝ่ายกฎหมาย · Viewer = ผู้ดูข้อมูล
 //   PC = ฝ่ายจัดซื้อ · PD = ฝ่ายผลิต · WH = ฝ่ายคลัง · RD = ฝ่ายวิจัยและพัฒนา · QC = ฝ่ายควบคุมคุณภาพ
-export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'LG', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC'];
+export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'MK', 'LG', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC'];
 // Display label is the code itself (พนักงานคุ้นกับโค้ดบน timeline อยู่แล้ว).
 export const DEPARTMENT_LABELS = {
-  AD: 'Admin', SEC: 'SEC', SA: 'SA', LG: 'LG', Viewer: 'Viewer',
+  AD: 'Admin', SEC: 'SEC', SA: 'SA', MK: 'MK', LG: 'LG', Viewer: 'Viewer',
   PC: 'PC', PD: 'PD', WH: 'WH', RD: 'RD', QC: 'QC',
 };
 // Thai names — used only for tooltips/help text, not the primary display.
 export const DEPARTMENT_NAMES_TH = {
-  AD: 'ผู้ดูแลระบบ', SEC: 'ฝ่ายเลขานุการ', SA: 'ฝ่ายขาย', LG: 'ฝ่ายกฎหมาย', Viewer: 'ผู้ดูข้อมูล',
+  AD: 'ผู้ดูแลระบบ', SEC: 'ฝ่ายเลขานุการ', SA: 'ฝ่ายขาย', MK: 'ฝ่ายการตลาด', LG: 'ฝ่ายกฎหมาย', Viewer: 'ผู้ดูข้อมูล',
   PC: 'ฝ่ายจัดซื้อ', PD: 'ฝ่ายผลิต', WH: 'ฝ่ายคลัง',
   RD: 'ฝ่ายวิจัยและพัฒนา', QC: 'ฝ่ายควบคุมคุณภาพ',
 };
@@ -87,6 +87,8 @@ const DEPARTMENT_ROLES = {
   AD: ['admin'],
   SEC: ['secretary'],
   SA: ['ae_supervisor', 'senior_ae', 'ac', 'ae'],
+  // MK = ฝ่ายการตลาด (เฟส C มติ #2): กรอกลีดรายวัน — เห็นเฉพาะเมนูลีด
+  MK: ['marketing'],
   LG: ['legal'],
   Viewer: ['viewer'],
   PC: ['staff'], PD: ['staff'], WH: ['staff'], RD: ['staff'], QC: ['staff'],
@@ -99,6 +101,7 @@ const ROLE_DEFAULT_DEPARTMENT = {
   admin: 'AD',
   secretary: 'SEC',
   ae_supervisor: 'SA', senior_ae: 'SA', ac: 'SA', ae: 'SA',
+  marketing: 'MK',
   legal: 'LG', viewer: 'Viewer',
 };
 
@@ -115,7 +118,7 @@ export const TEAMS = ['ODM', 'KA', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal', 'viewer', 'staff'];
+export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'legal', 'viewer', 'staff'];
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',
@@ -123,6 +126,7 @@ export const ROLE_LABELS = {
   senior_ae: 'Senior AE',
   ac: 'Account Coordinate',
   ae: 'Account Executive',
+  marketing: 'การตลาด (Marketing)',
   legal: 'ฝ่ายกฎหมาย',
   viewer: 'ผู้ดูข้อมูล (Viewer)',
   staff: 'พนักงาน (Staff)',
@@ -140,6 +144,9 @@ const SALES_OPS = [
   'sales:view', 'sales:act',
   'pm:view', 'pm:edit',
   'salesplan:view', 'salesplan:edit',
+  // ลีด (เฟส C): ทุก sales role ทำงานคิวลีดได้ (คัดกรอง/กระจาย/ติดต่อ — row-level
+  // ตาม role บังคับใน handler); role marketing ถือ cap นี้ตัวเดียว (กรอกลีดอย่างเดียว)
+  'salesplan:lead',
   // SAHAMIT module — granted to every sales role; team===KA narrows actual access.
   'sahamit:view', 'sahamit:edit',
   'history:view',
@@ -155,7 +162,7 @@ const SUPERUSER_CAPS = [
   'users:manage',
   'master:manage',  // edit category taxonomy (product_types) + master config
   'pm:view', 'pm:edit',
-  'salesplan:view', 'salesplan:edit', 'salesplan:review', 'salesplan:target',
+  'salesplan:view', 'salesplan:edit', 'salesplan:review', 'salesplan:target', 'salesplan:lead',
   'sahamit:view', 'sahamit:edit',
   'mgmt:view', 'mgmt:edit',   // งานบริหาร (Management/Executive Office) — admin + secretary only
 ];
@@ -192,6 +199,9 @@ const ROLE_CAPS = {
   // back-office + front-office: same capabilities, differ only by edit SCOPE
   ac: SALES_OPS,
   ae: SALES_OPS,
+  // marketing (ฝ่ายการตลาด MK — เฟส C): กรอก/แก้ลีดของตัวเองเท่านั้น เห็นเฉพาะ
+  // เมนูลีด — ไม่มีสิทธิ์ดู pipeline/ลูกค้า/โครงการ/ยอดขายใด ๆ
+  marketing: ['salesplan:lead'],
   // legal views registries + does tax approval; no edit/delete of sales data.
   // legal is the cost-margin authority (sees the factory cost breakdown + profit).
   legal: ['customers:view', 'products:view', 'products:margin', 'legal:view', 'legal:approve', 'history:view'],
