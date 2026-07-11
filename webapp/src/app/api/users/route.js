@@ -1,19 +1,26 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, validateIdentity, departmentFor, normalizeDepartment, sanitizeExtraCaps } from '@/lib/permissions';
+import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, sanitizeExtraCaps } from '@/lib/permissions';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
-// Only ae_supervisor (users:manage) may manage accounts. The proxy gates
-// writes; GET is gated here.
+// Only ae_supervisor / admin (users:manage) may MANAGE accounts (create/edit/
+// delete). The proxy gates writes; this guards the write handlers.
 async function requireAdmin() {
   const user = await getCurrentUser();
   return can(user?.role, 'users:manage') ? user : null;
 }
 
+// READ (GET) is open to users:manage OR a per-user users:view grant (a read-only
+// observer/auditor who may see the account list but not touch it).
+async function requireUsersRead() {
+  const user = await getCurrentUser();
+  return (canUser(user, 'users:view') || can(user?.role, 'users:manage')) ? user : null;
+}
+
 export async function GET() {
-  if (!(await requireAdmin())) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!(await requireUsersRead())) return Response.json({ error: 'forbidden' }, { status: 403 });
   const supabase = getSupabaseAdmin();
 
   const rows = [];

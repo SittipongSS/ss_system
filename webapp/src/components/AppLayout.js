@@ -329,16 +329,16 @@ export default function AppLayout({ children }) {
               </div>
             </div>
 
-            {/* Audit log (Admins only) */}
-            {can(role, 'audit:view') && (
+            {/* Audit log — admins, or a per-user audit:view grant (read-only) */}
+            {canUser({ role, extraCaps }, 'audit:view') && (
               <Link href="/audit" className="btn ghost icon-only" title="บันทึกการใช้งาน">
                 <History size={16} strokeWidth={2} />
               </Link>
             )}
 
-            {/* Manage Users (Admins only) */}
-            {can(role, 'users:manage') && (
-              <Link href="/users" className="btn ghost icon-only" title="จัดการผู้ใช้">
+            {/* User list — admins (manage), or a per-user users:view grant (read-only) */}
+            {(can(role, 'users:manage') || canUser({ role, extraCaps }, 'users:view')) && (
+              <Link href="/users" className="btn ghost icon-only" title={can(role, 'users:manage') ? 'จัดการผู้ใช้' : 'รายชื่อผู้ใช้'}>
                 <Users size={16} strokeWidth={2} />
               </Link>
             )}

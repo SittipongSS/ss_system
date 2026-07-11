@@ -226,19 +226,28 @@ export function can(role, cap) {
 // ── Per-user capability grants (app_metadata.extraCaps) ───────────────
 // A user keeps their base role but an admin may GRANT a small, whitelisted set
 // of extra capabilities on top — e.g. a Sales lead who must also do the ฝ่าย
-// กฎหมาย (LG) work while LG is short-staffed. Grants are additive only; they
-// never remove a role's caps and can never escalate to the admin-system caps
-// (users/master/audit are deliberately NOT grantable).
+// กฎหมาย (LG) work while LG is short-staffed, or a Viewer/auditor who needs the
+// admin-only READ surfaces (audit log, user list). Grants are additive only;
+// they never remove a role's caps.
+//
+// SECURITY: only READ / act caps are grantable. The admin WRITE caps
+// (users:manage, master:manage) are deliberately NOT grantable — a grant can
+// never let someone create/edit/delete users or master taxonomy. audit:view and
+// users:view are read-only windows (audit has no writes; users:view is distinct
+// from users:manage, and every /api/users write is gated on users:manage — the
+// role cap — in the proxy, so a users:view grant can never mutate an account).
 //
 // Only these caps may be granted per-user. Anything else is ignored (defense
 // against a stale/tampered app_metadata array escalating privilege).
-export const GRANTABLE_CAPS = ['legal:view', 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit'];
+export const GRANTABLE_CAPS = ['legal:view', 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit', 'audit:view', 'users:view'];
 export const GRANTABLE_CAP_LABELS = {
   'legal:view': 'ดูสถานะภาษีทุกทีม (LG)',
   'legal:approve': 'อนุมัติ/ยื่นภาษี แทนฝ่ายกฎหมาย (LG)',
   'products:margin': 'เห็นต้นทุน/กำไรโรงงาน (ทำรายงานผู้บริหาร)',
   'mgmt:view': 'เข้าดูระบบงานบริหาร (mgmt)',
   'mgmt:edit': 'เพิ่ม/แก้ไขข้อมูลในระบบงานบริหาร (mgmt)',
+  'audit:view': 'ดูบันทึกการใช้งาน (audit log) — อ่านอย่างเดียว',
+  'users:view': 'ดูรายชื่อผู้ใช้ (/users) — อ่านอย่างเดียว ไม่เพิ่ม/แก้/ลบ',
 };
 
 // Keep only whitelisted, de-duplicated grants. Accepts anything, returns [].
@@ -416,6 +425,10 @@ export function canDeleteRecord(user, resource, record) {
 //   mine = tasks assigned to me · team = my team's projects · all = every team
 export function pmTaskScopes(role) {
   if (isSuperuser(role)) return ['mine', 'team', 'all'];
+  // viewer = whole-system read-only observer → sees every team's tasks. It has no
+  // tasks of its own and no team, so 'all' is the only meaningful scope (giving
+  // just this also keeps the My Work scope tabs clean — no empty 'mine'/'team').
+  if (role === 'viewer') return ['all'];
   // AE manages the whole team's projects in PM (see pmEditScope) → may also
   // browse the team's tasks in My Work, alongside Senior AE / AC.
   if (role === 'senior_ae' || role === 'ac' || role === 'ae') return ['mine', 'team'];

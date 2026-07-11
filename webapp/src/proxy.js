@@ -76,7 +76,7 @@ export async function proxy(request) {
   // (users:manage) reach everything. Non-admins also get the hub (/home), their
   // own-account API, and the master/holiday data the PM forms depend on. The
   // per-role capability gate (apiWriteAllowed) + row-level scope still apply.
-  if (user && !isLogin && lockedOut(user.app_metadata?.role, path, request.method, isApi)) {
+  if (user && !isLogin && lockedOut({ role: user.app_metadata?.role, extraCaps: user.app_metadata?.extraCaps }, path, request.method, isApi)) {
     if (isApi) return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
     return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
   }
@@ -123,16 +123,25 @@ const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types',
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).
 // `/` (login) is handled by the caller and never reaches here.
-function lockedOut(role, path, method, isApi) {
+function lockedOut(user, path, method, isApi) {
   if (!ADMIN_LOCKDOWN) return false;
+  const role = user?.role;
   if (can(role, 'users:manage')) return false; // admin — full access to all systems
   path = normalizeMaster(path); // /api/master/X gated identically to /api/X
   if (isApi) {
     if (startsWithAny(path, OPEN_WRITE_APIS)) return false; // PM + own account: read+write
     if (method === 'GET' && startsWithAny(path, OPEN_READ_APIS)) return false; // supporting reads
+    // Read-only admin surface opened by a per-user grant: the audit log.
+    if (method === 'GET' && path.startsWith('/api/audit') && canUser(user, 'audit:view')) return false;
     return true;
   }
-  return !startsWithAny(path, OPEN_PAGES); // pages: hub + PM only
+  // Pages: the hub + open systems, plus the two admin READ surfaces when granted
+  // per-user (audit log / user list). Grants are read-only; the write APIs stay
+  // gated on the role caps (users:manage) in apiWriteAllowed.
+  if (startsWithAny(path, OPEN_PAGES)) return false;
+  if (path === '/audit' && canUser(user, 'audit:view')) return false;
+  if (path === '/users' && canUser(user, 'users:view')) return false;
+  return true;
 }
 
 // Coarse capability gate: does this role do this KIND of write at all?

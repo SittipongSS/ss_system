@@ -14,7 +14,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const allowed = pmTaskScopes(user.role);
   let scope = new URL(req.url).searchParams.get('scope') || 'mine';
-  if (!allowed.includes(scope)) scope = 'mine';
+  // Fall back to the role's first (default) allowed scope, not a hardcoded 'mine':
+  // a viewer's only scope is 'all', so requesting 'mine' must resolve to 'all'.
+  if (!allowed.includes(scope)) scope = allowed[0];
 
   // ── project tasks ตาม scope ──
   let projectTasks = [];
