@@ -81,7 +81,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // wonValue = มูลค่าปิดจริง — แก้ได้เมื่อ Won แล้ว (แก้ตัวเลขจริงย้อนหลัง)
   if (bodyWonValue != null && alreadyWon) patch.wonValue = bodyWonValue;
   if ('probability' in body || 'stage' in body) patch.probability = toProbability(body.probability ?? before.probability, nextStage);
-  if ('forecastMonth' in body || 'expectedCloseDate' in body) {
+  // เดือนพยากรณ์ (FC): ย้ายได้เฉพาะก่อนปิด Won — หลัง Won ล็อก (เดือนถูกตรึงตอนปิด
+  // เพื่อวัดความแม่นยำ FC vs AT). การปิด Won จะตั้ง forecastMonth ผ่าน buildWinPatch เอง.
+  if (('forecastMonth' in body || 'expectedCloseDate' in body) && !alreadyWon) {
     patch.forecastMonth = monthKey(body.forecastMonth || body.expectedCloseDate) || null;
   }
   if (nextStage === 'won') {
