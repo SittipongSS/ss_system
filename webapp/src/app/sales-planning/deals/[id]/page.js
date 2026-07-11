@@ -6,12 +6,12 @@ import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, Ex
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
+import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
-import { FORECAST_LEVELS, forecastBadge, snapForecastLevel, MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, dealTypeBadge, forecastBadge, snapForecastLevel, MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
 import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
@@ -95,7 +95,7 @@ function DealStepper({ steps, lost }) {
   if (lost) {
     return (
       <div style={{ color: "var(--red)", display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, fontWeight: 600 }}>
-        <Ban size={16} aria-hidden="true" /> โครงการนี้ปิดแบบไม่สำเร็จ (Lost)
+        <Ban size={16} aria-hidden="true" /> ดีลนี้ปิดแบบไม่สำเร็จ (Lost)
       </div>
     );
   }
@@ -407,7 +407,7 @@ export default function DealOverviewPage() {
       customerId: deal.customerId || "",
       startDate: new Date().toISOString().slice(0, 10),
       dueDate: deal.expectedCloseDate || "",
-      type: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
+      type: dealTypeOf(deal),
       aeOwner: deal.ownerName || "",
       metadata: { brand: deal.metadata?.brand || "" },
     });
@@ -426,7 +426,8 @@ export default function DealOverviewPage() {
       title: deal.title || "",
       customerId: deal.customerId || "",
       stage: deal.stage || "lead",
-      projectType: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
+      dealType: dealTypeOf(deal),
+      formulaName: deal.formulaName || "",
       brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
@@ -469,7 +470,7 @@ export default function DealOverviewPage() {
     if (data?.projectTasks?.length) extras.push(`${data.projectTasks.length} ขั้นตอน`);
     if (data?.shipmentPrep) extras.push("เอกสารเตรียมส่งของ");
     const extraText = extras.length ? `\n\nจะลบพ่วงด้วย: ${extras.join(" · ")}` : "";
-    if (!window.confirm(`ลบโครงการ "${deal.title}"?${extraText}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
+    if (!window.confirm(`ลบดีล "${deal.title}"?${extraText}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
     try {
       const res = await fetch(`/api/sales-planning/deals/${id}`, { method: "DELETE" });
@@ -550,11 +551,11 @@ export default function DealOverviewPage() {
   // ปุ่มแก้ไข/ลบ — ไอคอนล้วน วางแถวเดียวกับปุ่มย้อนกลับ (R2)
   const backActions = canEdit ? (
     <>
-      <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={openEditDeal} disabled={!!actionBusy} aria-label="แก้ไขโครงการ" title="แก้ไข">
+      <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={openEditDeal} disabled={!!actionBusy} aria-label="แก้ไขดีล" title="แก้ไข">
         <Pencil size={16} aria-hidden="true" />
       </button>
       {canDelete && (
-        <button type="button" className="btn-icon danger" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบโครงการ" title="ลบโครงการ (ลบไทม์ไลน์พ่วงด้วย)">
+        <button type="button" className="btn-icon danger" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบดีล" title="ลบดีล (ลบโครงการ PM พ่วงด้วย)">
           <Trash2 size={16} aria-hidden="true" />
         </button>
       )}
@@ -564,9 +565,9 @@ export default function DealOverviewPage() {
   return (
     <Workspace
       icon={<FolderKanban size={22} />}
-      title={deal?.title || "ศูนย์รวมโครงการ"}
-      subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมโครงการ"}
-      back={{ href: "/sa/deals", label: "กลับหน้าโครงการ" }}
+      title={deal?.title || "ศูนย์รวมดีล"}
+      subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมดีล"}
+      back={{ href: "/sa/deals", label: "กลับหน้าดีล" }}
       backActions={backActions}
       headerRight={headerRight}
       loading={loading}
@@ -583,7 +584,8 @@ export default function DealOverviewPage() {
           <section className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 15 }}>{stageBadge(deal.stage)}</span>
-              <span className="ui-badge" style={{ color: "var(--text-2)" }}>{deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD"}</span>
+              {dealTypeBadge(dealTypeOf(deal))}
+              {deal.formulaName && <span className="ui-badge" style={{ color: "var(--text-2)" }}>สูตร {deal.formulaName}</span>}
               {deal.metadata?.brand && <span className="ui-badge" style={{ color: "var(--text-2)" }}>แบรนด์ {deal.metadata.brand}</span>}
               {!alreadyWon && deal.stage !== "lost" && forecastBadge(deal.probability)}
               <span className="ui-badge" style={{ color: deal.depositPaid ? "var(--green)" : "var(--amber)" }}>
@@ -610,7 +612,7 @@ export default function DealOverviewPage() {
           </section>
 
           {/* เมนูลิงก์ไปแต่ละส่วนของหน้า + ป้ายเฟสถัดไปของส่วนที่ยังไม่เปิดใช้ */}
-          <nav className="glass-panel toolbar" aria-label="ส่วนต่าง ๆ ของโครงการ" style={{ padding: "8px 12px" }}>
+          <nav className="glass-panel toolbar" aria-label="ส่วนต่าง ๆ ของดีล" style={{ padding: "8px 12px" }}>
             <a className="btn ghost sm" href="#deal-kpi">ภาพรวม</a>
             <a className="btn ghost sm" href="#deal-tasks">งาน</a>
             <a className="btn ghost sm" href="#deal-pm">ไทม์ไลน์</a>
@@ -633,7 +635,7 @@ export default function DealOverviewPage() {
             <div className="glass-panel" role="status" style={{ padding: "12px 14px", borderColor: "var(--amber)", borderLeft: "3px solid var(--amber)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--amber)", fontWeight: 700 }}>
                 <AlertTriangle size={16} aria-hidden="true" />
-                FC สหมิตรรอบล่าสุด (#{data.forecastDrift.latestRoundNo}) ต่างจากตอนสร้างโครงการ
+                FC สหมิตรรอบล่าสุด (#{data.forecastDrift.latestRoundNo}) ต่างจากตอนสร้างดีล
               </div>
               <ul style={{ margin: "8px 0 4px", paddingLeft: 20, fontSize: 13 }}>
                 {data.forecastDrift.items.map((it, i) => (
@@ -641,7 +643,7 @@ export default function DealOverviewPage() {
                 ))}
               </ul>
               <div style={{ color: "var(--text-3)", fontSize: 12 }}>
-                คำแนะนำ: โครงการถูกล็อกตัวเลขไว้ตอน map — ปรับ “เดือนคาดได้รับ PO” / มูลค่าโครงการเองหากต้องการให้ตรงกับ FC ล่าสุด
+                คำแนะนำ: ดีลถูกล็อกตัวเลขไว้ตอน map — ปรับ “เดือนคาดได้รับ PO” / มูลค่าดีลเองหากต้องการให้ตรงกับ FC ล่าสุด
               </div>
             </div>
           )}
@@ -666,7 +668,7 @@ export default function DealOverviewPage() {
             <Stat
               label="อยู่ในสถานะนี้"
               value={daysInStage == null ? "-" : `${daysInStage} วัน`}
-              hint={dealAgeDays == null ? "-" : `อายุโครงการรวม ${dealAgeDays} วัน`}
+              hint={dealAgeDays == null ? "-" : `อายุดีลรวม ${dealAgeDays} วัน`}
             />
             <Stat
               label="ไทม์ไลน์คืบหน้า"
@@ -684,7 +686,7 @@ export default function DealOverviewPage() {
           <section id="deal-tasks" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <ClipboardList size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานของโครงการ</h2>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานของดีล</h2>
               <span className="ui-badge" style={{ color: "var(--text-2)" }}>{dealTaskSummary.done}/{dealTaskSummary.total} เสร็จ</span>
               <div className="spacer" />
               <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>
@@ -718,7 +720,7 @@ export default function DealOverviewPage() {
                 </table>
               </div>
             ) : (
-              <Empty>ยังไม่มีงานของโครงการนี้ กด “เปิด” แล้วสร้างงานโดยเลือกผูกกับโครงการนี้ได้</Empty>
+              <Empty>ยังไม่มีงานของดีลนี้ กด “เปิด” แล้วสร้างงานโดยเลือกผูกกับดีลนี้ได้</Empty>
             )}
           </section>
 
@@ -819,7 +821,7 @@ export default function DealOverviewPage() {
 
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
-          {/* ไทม์ไลน์รวม: อัปเดตงาน + การเปลี่ยนสถานะ เรียงตามเวลาเดียวกัน — เห็นเรื่องราวของโครงการในฟีดเดียว */}
+          {/* ไทม์ไลน์รวม: อัปเดตงาน + การเปลี่ยนสถานะ เรียงตามเวลาเดียวกัน — เห็นเรื่องราวของดีลในฟีดเดียว */}
           <section id="deal-timeline" className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <MessageSquare size={17} aria-hidden="true" />
@@ -985,7 +987,7 @@ export default function DealOverviewPage() {
         </div>
       </Modal>
 
-      <Modal open={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดโครงการแบบไม่สำเร็จ (Lost)" size="sm">
+      <Modal open={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดดีลแบบไม่สำเร็จ (Lost)" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             เหตุผล (ไม่บังคับ)
@@ -1006,11 +1008,11 @@ export default function DealOverviewPage() {
         </div>
       </Modal>
 
-      <Modal open={dealModalOpen} onClose={() => setDealModalOpen(false)} title="แก้ไขโครงการ" size="lg">
+      <Modal open={dealModalOpen} onClose={() => setDealModalOpen(false)} title="แก้ไขดีล" size="lg">
         {dealForm && (
           <form onSubmit={saveDeal} className="form-grid" aria-busy={savingDeal} style={{ padding: 18 }}>
             <label>
-              ชื่อโครงการ
+              ชื่อดีล
               <input className="premium-input" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} required />
             </label>
             <label>
@@ -1021,12 +1023,17 @@ export default function DealOverviewPage() {
               </select>
             </label>
             <label>
-              ประเภทโครงการ
-              <select className="premium-select" value={dealForm.projectType} onChange={(e) => setDealForm({ ...dealForm, projectType: e.target.value })}>
-                <option value="NPD">NPD (สินค้าใหม่)</option>
-                <option value="RE-ORDER">RE-ORDER (สั่งซ้ำ)</option>
+              ประเภทดีล
+              <select className="premium-select" value={dealForm.dealType} onChange={(e) => setDealForm({ ...dealForm, dealType: e.target.value })}>
+                {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
               </select>
             </label>
+            {dealForm.dealType === "SCENT" && (
+              <label>
+                ชื่อสูตรกลิ่น
+                <input className="premium-input" value={dealForm.formulaName} onChange={(e) => setDealForm({ ...dealForm, formulaName: e.target.value })} placeholder="เช่น SS-FLORAL-0042 (เชื่อม RD ในอนาคต)" />
+              </label>
+            )}
             <label>
               แบรนด์
               <span style={{ display: "flex", gap: 6, alignItems: "center" }}>

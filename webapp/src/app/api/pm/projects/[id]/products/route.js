@@ -5,16 +5,16 @@ import { genId } from '@/lib/id';
 
 export const dynamic = 'force-dynamic';
 
-// GET — FG (products) ที่ผูกกับโปรเจกต์นี้
+// GET — FG (products) ที่ผูกกับโครงการนี้
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
-  // เดิมไม่เช็คสิทธิ์เลย → ใครก็อ่าน FG ของโปรเจกต์ใดก็ได้ด้วย id. เช็ค pm:view + row-scope
+  // เดิมไม่เช็คสิทธิ์เลย → ใครก็อ่าน FG ของโครงการใดก็ได้ด้วย id. เช็ค pm:view + row-scope
   // เหมือน POST/DELETE ในไฟล์นี้.
   if (!user) return unauthorized();
   if (!can(user.role, 'pm:view')) return forbidden();
 
   const project = await loadProject(supabase, id);
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   if (viewScope(user.role) === 'team' && !inScope('team', user, project)) return forbidden();
 
   const { data, error } = await supabase
@@ -25,12 +25,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   return ok((data || []).map((l) => l.product).filter(Boolean));
 });
 
-// POST { productId } — ผูก FG เข้าโปรเจกต์ (1 โปรเจกต์มีได้หลาย FG)
+// POST { productId } — ผูก FG เข้าโครงการ (1 โครงการมีได้หลาย FG)
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
 
   const project = await loadProject(supabase, id);
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   if (!inScope(pmEditScope(user?.role), user, project)) {
     return forbidden();
   }
@@ -44,18 +44,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .select('*, product:products(*)')
     .single();
   if (error) {
-    if (error.code === '23505') return conflict('สินค้านี้ผูกกับโปรเจกต์แล้ว');
+    if (error.code === '23505') return conflict('สินค้านี้ผูกกับโครงการแล้ว');
     return fail(error.message, 500);
   }
   return ok(data.product, 201);
 });
 
-// DELETE ?productId=... — ถอด FG ออกจากโปรเจกต์
+// DELETE ?productId=... — ถอด FG ออกจากโครงการ
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
 
   const project = await loadProject(supabase, id);
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   if (!inScope(pmEditScope(user?.role), user, project)) {
     return forbidden();
   }

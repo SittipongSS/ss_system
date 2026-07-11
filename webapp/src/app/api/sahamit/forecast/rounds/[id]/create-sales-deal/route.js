@@ -129,6 +129,7 @@ export async function POST(request, { params }) {
       ownerId,
       ownerName,
       team: ownerTeam,
+      dealType: 'RE-ORDER',
       metadata: {
         source: 'sahamit-forecast',
         projectType: 'RE-ORDER',

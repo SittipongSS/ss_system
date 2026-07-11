@@ -8,8 +8,8 @@ import Workspace from "@/components/ui/Workspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
-import { DEAL_STAGES, SALES_FEATURES, STAGE_LABELS } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, MonthPicker, forecastBadge, initialDealForm, money, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
+import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
+import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
@@ -34,6 +34,7 @@ export default function SalesPlanningPipelinePage() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all"); // กรองตามประเภทดีล SCENT/NPD/RE-ORDER
   const [dealModal, setDealModal] = useState(false);
   const [dealForm, setDealForm] = useState({ ...initialDealForm, forecastMonth: thisMonth() });
   const [submitting, setSubmitting] = useState(false);
@@ -61,7 +62,7 @@ export default function SalesPlanningPipelinePage() {
         fetch((allMonths || reviewOnly) ? "/api/sales-planning/deals" : `/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
         fetch("/api/master/customers"),
       ]);
-      if (!dealsRes.ok) throw new Error((await dealsRes.json()).error || "โหลดโครงการไม่สำเร็จ");
+      if (!dealsRes.ok) throw new Error((await dealsRes.json()).error || "โหลดดีลไม่สำเร็จ");
       setDeals(await dealsRes.json());
       setCustomers(customersRes.ok ? await customersRes.json() : []);
     } catch (e) {
@@ -86,10 +87,11 @@ export default function SalesPlanningPipelinePage() {
     return deals.filter((deal) => {
       if (reviewOnly && !deal.metadata?.needsReview) return false;
       if (stageFilter !== "all" && deal.stage !== stageFilter) return false;
+      if (typeFilter !== "all" && dealTypeOf(deal) !== typeFilter) return false;
       if (!q) return true;
-      return [deal.title, deal.customerName, deal.ownerName, deal.notes].some((v) => (v || "").toLowerCase().includes(q));
+      return [deal.title, deal.customerName, deal.ownerName, deal.notes, deal.formulaName].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [deals, query, stageFilter, reviewOnly]);
+  }, [deals, query, stageFilter, typeFilter, reviewOnly]);
 
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
 
@@ -105,7 +107,8 @@ export default function SalesPlanningPipelinePage() {
       customerId: deal.customerId || "",
       customerName: deal.customerName || "",
       stage: deal.stage || "lead",
-      projectType: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
+      dealType: dealTypeOf(deal),
+      formulaName: deal.formulaName || "",
       brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
@@ -130,27 +133,27 @@ export default function SalesPlanningPipelinePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "บันทึกโครงการไม่สำเร็จ");
+      if (!res.ok) throw new Error((await res.json()).error || "บันทึกดีลไม่สำเร็จ");
       setDealModal(false);
       await load();
     } catch (e2) {
-      setError(e2.message || "บันทึกโครงการไม่สำเร็จ");
+      setError(e2.message || "บันทึกดีลไม่สำเร็จ");
     } finally {
       setSubmitting(false);
     }
   };
 
   const deleteDeal = async (deal) => {
-    // Sales เป็นแม่ — ลบโครงการจะลบงานผลิต PM ที่ผูกอยู่พ่วงไปด้วย
-    const withPm = deal.projectId ? "\n\nงานผลิต (PM) ที่ผูกอยู่จะถูกลบพ่วงไปด้วย" : "";
-    if (!window.confirm(`ลบโครงการ "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
+    // Sales เป็นแม่ — ลบดีลจะลบโครงการ PM ที่ผูกอยู่พ่วงไปด้วย
+    const withPm = deal.projectId ? "\n\nโครงการ (PM) ที่ผูกอยู่จะถูกลบพ่วงไปด้วย" : "";
+    if (!window.confirm(`ลบดีล "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
     try {
       const res = await fetch(`/api/sales-planning/deals/${deal.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบโครงการไม่สำเร็จ");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบดีลไม่สำเร็จ");
       await load();
     } catch (e) {
-      setError(e.message || "ลบโครงการไม่สำเร็จ");
+      setError(e.message || "ลบดีลไม่สำเร็จ");
     }
   };
 
@@ -240,7 +243,7 @@ export default function SalesPlanningPipelinePage() {
       customerId: deal.customerId || "",
       startDate: new Date().toISOString().slice(0, 10),
       dueDate: deal.expectedCloseDate || "",
-      type: deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD",
+      type: dealTypeOf(deal),
       aeOwner: deal.ownerName || "",
       metadata: { brand: deal.metadata?.brand || "" },
     });
@@ -277,7 +280,7 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  // ปิดโครงการเป็น Won — เปิดโมดัลรับ "มูลค่าปิดจริง" (prefill = คาดการณ์) ก่อนยืนยัน
+  // ปิดดีลเป็น Won — เปิดโมดัลรับ "มูลค่าปิดจริง" (prefill = คาดการณ์) ก่อนยืนยัน
   const [winDeal, setWinDeal] = useState(null);
   const [winValue, setWinValue] = useState("");
   const [winMonth, setWinMonth] = useState(thisMonth());
@@ -296,11 +299,11 @@ export default function SalesPlanningPipelinePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wonValue: v, wonMonth: winMonth }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "ปิดโครงการไม่สำเร็จ");
+      if (!res.ok) throw new Error((await res.json()).error || "ปิดดีลไม่สำเร็จ");
       setWinDeal(null);
       await load();
     } catch (e) {
-      setError(e.message || "ปิดโครงการไม่สำเร็จ");
+      setError(e.message || "ปิดดีลไม่สำเร็จ");
     } finally {
       setWinningDealId(null);
     }
@@ -388,7 +391,7 @@ export default function SalesPlanningPipelinePage() {
 
       {canEdit && (
         <button type="button" className="btn btn-primary" onClick={openNewDeal}>
-          <Plus size={15} aria-hidden="true" /> เพิ่มโครงการ
+          <Plus size={15} aria-hidden="true" /> เพิ่มดีล
         </button>
       )}
     </>
@@ -397,8 +400,8 @@ export default function SalesPlanningPipelinePage() {
   return (
     <Workspace
       icon={<FolderKanban size={22} />}
-      title="บริหารงานขาย — โครงการ"
-      subtitle="จัดการโครงการขายและส่งต่อ PM · PM อาจเกิดก่อนหรือหลัง Won ได้"
+      title="บริหารงานขาย — ดีล"
+      subtitle="จัดการดีลขาย (พัฒนากลิ่น / พัฒนาสินค้า / สั่งผลิตซ้ำ) และส่งต่อโครงการ PM"
       back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}
     >
@@ -413,22 +416,26 @@ export default function SalesPlanningPipelinePage() {
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="search-glass" style={{ width: 280 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / ผู้ดูแล" aria-label="ค้นหาโครงการ" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
             </div>
             <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="premium-select" aria-label="กรอง stage" style={{ width: 180 }}>
               <option value="all">ทุก stage</option>
               {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
             </select>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="premium-select" aria-label="กรองประเภทดีล" style={{ width: 170 }}>
+              <option value="all">ทุกประเภท</option>
+              {DEAL_TYPES.map((t) => <option key={t} value={t}>{DEAL_TYPE_LABELS[t]}</option>)}
+            </select>
 
             <div className="spacer" />
-            <span className="ui-badge">{filteredDeals.length} โครงการ</span>
+            <span className="ui-badge">{filteredDeals.length} ดีล</span>
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
             <table className="w-full text-sm">
               <thead>
                 <tr>
-                  <th>โครงการ</th>
+                  <th>ดีล</th>
                   <th>สถานะ</th>
                   <th>ประเภท</th>
                   <th>ผู้ดูแล (AE)</th>
@@ -444,7 +451,7 @@ export default function SalesPlanningPipelinePage() {
                 {filteredDeals.map((deal) => (
                   <tr key={deal.id} className="premium-row">
                     <td>
-                      <Link href={`/sa/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดโครงการ">
+                      <Link href={`/sa/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดดีล">
                         <strong>
                           {deal.title}
                           {deal.forecastDrift?.hasDrift && (
@@ -461,7 +468,7 @@ export default function SalesPlanningPipelinePage() {
                       </div>
                     </td>
                     <td>
-                      <span className="ui-badge" style={{ color: "var(--text-2)" }}>{deal.metadata?.projectType === "RE-ORDER" ? "RE-ORDER" : "NPD"}</span>
+                      {dealTypeBadge(dealTypeOf(deal))}
                     </td>
                     <td>{deal.ownerName ? fmtName(deal.ownerName) : (deal.team || "-")}</td>
                     <td className="num mono" title={["won", "in_project"].includes(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
@@ -512,17 +519,17 @@ export default function SalesPlanningPipelinePage() {
                     <td className="num">
                       <div className="flex items-center gap-2 justify-end">
                         {deal.canEdit && !["won", "in_project", "lost"].includes(deal.stage) && (
-                          <button type="button" className="btn btn-success sm" onClick={() => openWin(deal)} disabled={winningDealId === deal.id} title="ปิดโครงการเป็น Won (นับยอด + ปิด forecast)">
+                          <button type="button" className="btn btn-success sm" onClick={() => openWin(deal)} disabled={winningDealId === deal.id} title="ปิดดีลเป็น Won (นับยอด + ปิด forecast)">
                             <Trophy size={14} aria-hidden="true" /> {winningDealId === deal.id ? "..." : "Won"}
                           </button>
                         )}
                         {deal.canEdit && (
-                          <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => openEditDeal(deal)} aria-label={`แก้ไข ${deal.title}`} title="แก้ไขโครงการ">
+                          <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => openEditDeal(deal)} aria-label={`แก้ไข ${deal.title}`} title="แก้ไขดีล">
                             <Pencil size={15} aria-hidden="true" />
                           </button>
                         )}
                         {deal.canEdit && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId && (
-                          <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบโครงการ (ลบงานผลิตพ่วงด้วย)">
+                          <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบดีล (ลบโครงการ PM ที่ผูกพ่วงด้วย)">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>
                         )}
@@ -533,7 +540,7 @@ export default function SalesPlanningPipelinePage() {
                 {!filteredDeals.length && (
                   <tr>
                     <td colSpan={7 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
-                      ยังไม่มีโครงการในเดือนนี้ {canEdit ? "เริ่มจากปุ่มเพิ่มโครงการด้านบน" : ""}
+                      ยังไม่มีดีลในเดือนนี้ {canEdit ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>
                 )}
@@ -543,10 +550,10 @@ export default function SalesPlanningPipelinePage() {
         </section>
       </div>
 
-      <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไขโครงการ" : "เพิ่มโครงการ"} size="lg">
+      <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไขดีล" : "เพิ่มดีล"} size="lg">
         <form onSubmit={saveDeal} className="form-grid" aria-busy={submitting} style={{ padding: 18 }}>
           <label>
-            ชื่อโครงการ
+            ชื่อดีล
             <input className="premium-input" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} required />
           </label>
           <label>
@@ -557,12 +564,17 @@ export default function SalesPlanningPipelinePage() {
             </select>
           </label>
           <label>
-            ประเภทโครงการ
-            <select className="premium-select" value={dealForm.projectType} onChange={(e) => setDealForm({ ...dealForm, projectType: e.target.value })}>
-              <option value="NPD">NPD (สินค้าใหม่)</option>
-              <option value="RE-ORDER">RE-ORDER (สั่งซ้ำ)</option>
+            ประเภทดีล
+            <select className="premium-select" value={dealForm.dealType} onChange={(e) => setDealForm({ ...dealForm, dealType: e.target.value })}>
+              {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
             </select>
           </label>
+          {dealForm.dealType === "SCENT" && (
+            <label>
+              ชื่อสูตรกลิ่น
+              <input className="premium-input" value={dealForm.formulaName} onChange={(e) => setDealForm({ ...dealForm, formulaName: e.target.value })} placeholder="เช่น SS-FLORAL-0042 (เชื่อม RD ในอนาคต)" />
+            </label>
+          )}
           <label>
             แบรนด์
             <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -631,7 +643,7 @@ export default function SalesPlanningPipelinePage() {
       <Modal open={!!winDeal} onClose={() => winningDealId ? null : setWinDeal(null)} title="ปิดการขาย (Won)" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
-            ปิดโครงการ <strong>{winDeal?.title}</strong> — ยืนยันว่าได้รับมัดจำ/ยืนยันแล้ว กรอก <strong>มูลค่าปิดจริง</strong> (นับเข้าเป้า)
+            ปิดดีล <strong>{winDeal?.title}</strong> — ยืนยันว่าได้รับมัดจำ/ยืนยันแล้ว กรอก <strong>มูลค่าปิดจริง</strong> (นับเข้าเป้า)
           </div>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             มูลค่าปิดจริง (บาท)
@@ -740,7 +752,7 @@ export default function SalesPlanningPipelinePage() {
                 {!quotations.length && (
                   <tr>
                     <td colSpan={7} style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>
-                      ยังไม่มีใบเสนอราคาสำหรับโครงการนี้
+                      ยังไม่มีใบเสนอราคาสำหรับดีลนี้
                     </td>
                   </tr>
                 )}

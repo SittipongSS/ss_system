@@ -15,7 +15,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const { data: deal, error } = await supabase.from('sales_deals').select('*').eq('id', id).maybeSingle();
   if (error) return fail(error.message, 500);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('โครงการนี้ Lost แล้ว ปิดเป็น Won ไม่ได้');
   if (['won', 'in_project'].includes(deal.stage)) return ok(deal); // already won — idempotent

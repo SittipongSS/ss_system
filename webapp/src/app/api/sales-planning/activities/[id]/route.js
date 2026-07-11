@@ -22,7 +22,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const { activity, deal } = await loadActivityAndDeal(supabase, id);
   if (!activity) return notFound('ไม่พบรายการอัปเดต');
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
 
   const body = await req.json().catch(() => ({}));
@@ -47,7 +47,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: id,
     before: activity,
     after: data,
-    summary: `แก้ไขอัปเดตงานของโครงการ ${deal.title || deal.id}`,
+    summary: `แก้ไขอัปเดตงานของดีล ${deal.title || deal.id}`,
     request: req,
   });
   return ok(data);
@@ -60,7 +60,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const { activity, deal } = await loadActivityAndDeal(supabase, id);
   if (!activity) return notFound('ไม่พบรายการอัปเดต');
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
 
   const { error } = await supabase.from('sales_deal_activities').delete().eq('id', id);
@@ -72,7 +72,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     entityType: 'sales_deal_activity',
     entityId: id,
     before: activity,
-    summary: `ลบอัปเดตงานของโครงการ ${deal.title || deal.id}`,
+    summary: `ลบอัปเดตงานของดีล ${deal.title || deal.id}`,
     request: req,
   });
   return ok({ ok: true });

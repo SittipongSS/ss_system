@@ -22,7 +22,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!body.projectId) return badRequest('ต้องระบุ projectId');
 
   const project = await loadProject(supabase, body.projectId);
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   if (!inScope(viewScope(user.role), user, project)) return forbidden();
 
   const { data: links, error: linkError } = await supabase
@@ -30,7 +30,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     .select('*, product:products(*)')
     .eq('projectId', project.id);
   if (linkError) return fail(linkError.message, 500);
-  if (!links?.length) return badRequest('โปรเจกต์นี้ยังไม่มี FG');
+  if (!links?.length) return badRequest('โครงการนี้ยังไม่มี FG');
 
   const productIds = links.map((l) => l.productId).filter(Boolean);
   const { data: existing } = productIds.length
@@ -53,7 +53,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!candidate) {
     return conflict(body.productId
       ? 'FG นี้ถูกขึ้นทะเบียนไว้แล้ว หรือไม่มีลูกค้าเจ้าของ FG'
-      : 'FG ในโปรเจกต์นี้ถูกสร้างทะเบียนภาษีไว้แล้ว หรือยังไม่มีลูกค้าเจ้าของ FG');
+      : 'FG ในโครงการนี้ถูกสร้างทะเบียนภาษีไว้แล้ว หรือยังไม่มีลูกค้าเจ้าของ FG');
   }
 
   const product = candidate.product;
@@ -115,7 +115,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     entityType: 'registration',
     entityId: data.id,
     after: data,
-    summary: `สร้างทะเบียนภาษีจากโปรเจกต์ ${project.code} (${data.fgCode || ''})`.trim(),
+    summary: `สร้างทะเบียนภาษีจากโครงการ ${project.code} (${data.fgCode || ''})`.trim(),
     request: req,
   });
 

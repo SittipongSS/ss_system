@@ -24,8 +24,8 @@ export const GET = withUser(async ({ user, supabase }) => {
 
 // POST /api/pm/personal-tasks — สร้าง/มอบหมายงาน (Sales Task Management).
 //  - มอบหมาย (assigneeId) ตามลำดับชั้น: superuser→ใครก็ได้, sales role→คนในทีมตัวเอง,
-//    อื่น ๆ→ตัวเองเท่านั้น (canAssignTask). ไม่ผูกกับการมีโปรเจกต์อีกต่อไป.
-//  - ผูกได้ทั้งดีล (dealId) และ/หรือโปรเจกต์ (projectId) — nullable ทั้งคู่.
+//    อื่น ๆ→ตัวเองเท่านั้น (canAssignTask). ไม่ผูกกับการมีโครงการอีกต่อไป.
+//  - ผูกได้ทั้งดีล (dealId) และ/หรือโครงการ (projectId) — nullable ทั้งคู่.
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
 
@@ -37,7 +37,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const projectId = body.projectId || null;
   const dealId = body.dealId || null;
 
-  // ── มอบหมาย: ตรวจสิทธิ์ตามลำดับชั้น (ไม่ผูกกับโปรเจกต์) ──
+  // ── มอบหมาย: ตรวจสิทธิ์ตามลำดับชั้น (ไม่ผูกกับโครงการ) ──
   let assigneeId = null;
   let assignedBy = null;
   if (body.assigneeId && body.assigneeId !== user.id) {
@@ -49,10 +49,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     assignedBy = user.id;
   }
 
-  // อ้างอิงโปรเจกต์/ดีลต้องมีจริง (logical link — เช็กกันข้อมูลเสีย).
+  // อ้างอิงโครงการ/ดีลต้องมีจริง (logical link — เช็กกันข้อมูลเสีย).
   if (projectId) {
     const { data: proj } = await supabase.from('projects').select('id').eq('id', projectId).maybeSingle();
-    if (!proj) return badRequest('ไม่พบโปรเจกต์');
+    if (!proj) return badRequest('ไม่พบโครงการ');
   }
   if (dealId) {
     const { data: deal } = await supabase.from('sales_deals').select('id').eq('id', dealId).maybeSingle();

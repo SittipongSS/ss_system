@@ -11,7 +11,7 @@ import {
   inSalesEditScope,
   inSalesViewScope,
   monthKey,
-  normalizeProjectType,
+  normalizeDealType,
   normalizeStage,
   toMoney,
   toProbability,
@@ -38,7 +38,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   const { id } = await ctx.params;
   const deal = await loadDeal(supabase, id);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesViewScope(user, deal)) return forbidden();
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
   return ok({ ...deal, forecastDrift });
@@ -50,11 +50,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { id } = await ctx.params;
   const before = await loadDeal(supabase, id);
-  if (!before) return notFound('ไม่พบโครงการ');
+  if (!before) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, before)) return forbidden();
 
   const body = await req.json();
-  if ('title' in body && !body.title?.trim()) return badRequest('ต้องระบุชื่อโครงการ');
+  if ('title' in body && !body.title?.trim()) return badRequest('ต้องระบุชื่อดีล');
 
   const alreadyWon = ['won', 'in_project'].includes(before.stage);
   const nextStage = 'stage' in body ? normalizeStage(body.stage) : before.stage;
@@ -111,9 +111,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (before.metadata?.needsReview && (filledForecast || filledWon)) {
     patch.metadata = { ...(patch.metadata || before.metadata || {}), needsReview: false, bypassPipeline: false };
   }
-  // projectType (NPD/RE-ORDER) + brand — merge ทับ metadata ล่าสุดเสมอ (หลัง buildWinPatch/needsReview)
-  if ('projectType' in body) {
-    patch.metadata = { ...(patch.metadata || before.metadata || {}), projectType: normalizeProjectType(body.projectType) };
+  // ประเภทดีล (SCENT/NPD/RE-ORDER) — คอลัมน์จริง + เขียน metadata.projectType คู่ (transition
+  // 1 เฟส); merge ทับ metadata ล่าสุดเสมอ (หลัง buildWinPatch/needsReview). รับทั้ง body.dealType
+  // (UI ใหม่) และ body.projectType (caller เก่า).
+  if ('dealType' in body || 'projectType' in body) {
+    const nextType = normalizeDealType(body.dealType ?? body.projectType);
+    patch.dealType = nextType;
+    patch.metadata = { ...(patch.metadata || before.metadata || {}), projectType: nextType };
+  }
+  // ชื่อสูตรกลิ่น (SCENT) — แก้ได้ตลอด (จุดปลั๊กอิน RD ในอนาคต)
+  if ('formulaName' in body) {
+    patch.formulaName = (body.formulaName || '').trim() || null;
   }
   if ('brand' in body) {
     patch.metadata = { ...(patch.metadata || before.metadata || {}), brand: body.brand || '' };
@@ -180,7 +188,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { id } = await ctx.params;
   const before = await loadDeal(supabase, id);
-  if (!before) return notFound('ไม่พบโครงการ');
+  if (!before) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, before)) return forbidden();
 
   // กันลบสิ่งที่นับเป็นยอด/มีหลักฐานทางบัญชีแล้ว (M8): โครงการที่ปิด Won,

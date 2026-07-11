@@ -14,7 +14,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
 
   const { data: project } = await supabase.from('projects').select('*').eq('id', body.projectId).maybeSingle();
-  if (!project) return notFound('ไม่พบโปรเจกต์');
+  if (!project) return notFound('ไม่พบโครงการ');
   // จัดลำดับ = แก้โครงแผน → ต้องมีสิทธิ์ full edit (team-scoped) เหมือนการเพิ่ม/ลบขั้น
   if (!inScope(pmEditScope(user?.role), user, project)) return forbidden();
 

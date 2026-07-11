@@ -12,7 +12,7 @@ import Modal from "@/components/Modal";
 // ป้ายภาษาไทยของ entity / action ที่ audit log บันทึก (ตอนนี้ครอบ customer/product/order).
 const ENTITY_LABELS = {
   customer: "ลูกค้า", product: "สินค้า", order: "ใบยื่น/ออเดอร์",
-  registration: "ทะเบียนสรรพสามิต", project: "โปรเจกต์", user: "ผู้ใช้งาน",
+  registration: "ทะเบียนสรรพสามิต", project: "โครงการ", user: "ผู้ใช้งาน",
 };
 const ACTION_LABELS = { create: "สร้าง", update: "แก้ไข", delete: "ลบ" };
 const ACTION_CLASS = { create: "success", update: "warning", delete: "danger" };

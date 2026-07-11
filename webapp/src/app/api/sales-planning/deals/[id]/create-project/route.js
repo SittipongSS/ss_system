@@ -7,7 +7,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
-import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,10 +23,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { id } = await ctx.params;
   const deal = await loadDeal(supabase, id);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
-  if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างงานผลิตจากโครงการที่ Lost แล้ว');
-  if (deal.projectId) return conflict('โครงการนี้ผูกงานผลิตแล้ว');
+  if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างโครงการจากดีลที่ Lost แล้ว');
+  if (deal.projectId) return conflict('ดีลนี้ผูกโครงการแล้ว');
 
   const body = await req.json().catch(() => ({}));
   const startDate = body.startDate || todayStr();
@@ -49,8 +49,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     name: body.name || deal.title,
     customerId: body.customerId || deal.customerId || null,
     customerName: body.customerName || deal.customerName || null,
-    // ประเภทมาจาก body (โมดัลไทม์ไลน์) → ตกไปที่ค่าที่เลือกไว้บนโครงการขาย (metadata.projectType)
-    type: (body.type ?? deal.metadata?.projectType) === 'RE-ORDER' ? 'RE-ORDER' : 'NPD',
+    // ประเภทมาจาก body (โมดัลไทม์ไลน์) → ตกไปที่ประเภทดีล (dealType คอลัมน์จริง →
+    // fallback metadata เก่า) — SCENT/NPD/RE-ORDER ตรงกับ template ของ PM 1:1
+    type: normalizeDealType(body.type ?? deal.dealType ?? deal.metadata?.projectType),
+    // ชื่อสูตรกลิ่น: โครงการรับสูตรจากดีล (SCENT เขียนสูตร; กลิ่นเดิมอ้างสูตรผ่านโครงการ)
+    formulaName: body.formulaName ?? deal.formulaName ?? null,
     urgency: body.urgency || 'Schedule',
     aeOwner: body.aeOwner || deal.ownerName || user.name || '',
     acOwner: body.acOwner || '',
@@ -95,7 +98,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       .single());
     if (!error) break;
     if (error.code === '23505') {
-      if (!autoCode) return conflict(`รหัสโปรเจกต์ซ้ำ: ${projectCode}`);
+      if (!autoCode) return conflict(`รหัสโครงการซ้ำ: ${projectCode}`);
       projectCode = await generateProjectCode(supabase);
       continue;
     }
@@ -123,7 +126,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       .map((p) => ({ id: genId('PP'), projectId: project.id, productId: p.productId, orderQty: p.orderQty || null, productionQty: p.productionQty || null }));
     if (ppRows.length) {
       const { error: ppErr } = await supabase.from('project_products').insert(ppRows);
-      if (ppErr) productWarning = 'เชื่อมสินค้า (FG) เข้าโปรเจกต์ไม่สำเร็จ — โปรดผูกใหม่ที่หน้าโปรเจกต์';
+      if (ppErr) productWarning = 'เชื่อมสินค้า (FG) เข้าโครงการไม่สำเร็จ — โปรดผูกใหม่ที่หน้าโครงการ';
     }
   }
 
@@ -149,7 +152,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .single();
   if (linkError) {
     await supabase.from('projects').delete().eq('id', project.id);
-    if (linkError.code === 'PGRST116') return conflict('โครงการนี้ผูกงานผลิตแล้ว');
+    if (linkError.code === 'PGRST116') return conflict('ดีลนี้ผูกโครงการแล้ว');
     return fail(linkError.message, 500);
   }
 

@@ -389,6 +389,7 @@ export async function settlePoIntoSalesDeal({ supabase, user, po, customer, acti
       ownerName: user.name || null,
       team: user.team || 'KA',
       projectId: project?.id || null,
+      dealType: 'RE-ORDER',
       metadata: {
         source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber,
         poReceivedDate: po.receivedDate || null, poDueDate: po.dueDate || null,
@@ -418,7 +419,7 @@ export async function settleOnePoLine({ supabase, user, po, customer, line, prod
 
   if (dealId) {
     const { data: d } = await supabase.from('sales_deals').select('*').eq('id', dealId).maybeSingle();
-    // ต้องเป็นดีลของลูกค้าเดียวกับ PO, ยังไม่ปิด, ยังไม่ผูกโปรเจกต์ (กันเชื่อมข้ามลูกค้า/ซ้ำ)
+    // ต้องเป็นดีลของลูกค้าเดียวกับ PO, ยังไม่ปิด, ยังไม่ผูกโครงการ (กันเชื่อมข้ามลูกค้า/ซ้ำ)
     if (!d || d.customerId !== po.customerId || d.projectId || CLOSED_STAGES.includes(d.stage)) return null;
     const { data: links } = await supabase.from('sales_deal_forecast_lines').select('*').eq('dealId', d.id);
     const won = await settleMappedDealWithPo({
@@ -442,7 +443,7 @@ export async function settleOnePoLine({ supabase, user, po, customer, line, prod
         title: `${line.productName || fg} · PO ${po.poNumber}`,
         projectValue: lineValue, forecastMonth: po.receivedDate || po.dueDate || now,
         expectedCloseDate: po.receivedDate || po.docDate || null, confirmedAt: wonNow,
-        notes: po.note || null, ownerId: user.id || null, ownerName: user.name || null, team: user.team || 'KA', projectId: null,
+        notes: po.note || null, ownerId: user.id || null, ownerName: user.name || null, team: user.team || 'KA', projectId: null, dealType: 'RE-ORDER',
         metadata: { source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber, poReceivedDate: po.receivedDate || null, fgCodes: [fg], bypassPipeline: true, projectType: 'RE-ORDER' },
       },
     });

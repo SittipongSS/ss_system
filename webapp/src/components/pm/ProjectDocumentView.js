@@ -329,7 +329,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
           title={headerExpanded ? "ย่อข้อมูลเอกสาร" : "ขยายข้อมูลเอกสาร"}
         >
           {headerExpanded ? <ChevronDown size={18} color="var(--accent)" /> : <ChevronRight size={18} color="var(--accent)" />}
-          <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>ข้อมูลเอกสารประจำโปรเจกต์</span>
+          <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>ข้อมูลเอกสารประจำโครงการ</span>
           {!headerExpanded && (
             <span style={{ fontSize: "13px", color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8, marginLeft: "8px" }}>
               {[project.customerName, pv("productName") || project.name, project.metadata?.brand, fmtDate(project.startDate)].filter(Boolean).join("   ·   ")}
@@ -466,7 +466,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
               {phaseGroups.length === 0 && (
                 <tr>
                   <td colSpan={7} style={{ border: "1px solid var(--border)", padding: "30px", textAlign: "center", color: "var(--text-3)" }}>
-                    ยังไม่มีขั้นตอนในโปรเจกต์นี้
+                    ยังไม่มีขั้นตอนในโครงการนี้
                   </td>
                 </tr>
               )}

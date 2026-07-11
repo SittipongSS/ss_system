@@ -281,7 +281,7 @@ export default function PoDetailPage() {
       if (project?.code || project?.id) router.push(`/sa/projects/${project.code || project.id}`);
       else await reload();
     } catch (e) {
-      setToast({ kind: "error", msg: e.message || "สร้างโปรเจกต์ไม่สำเร็จ" });
+      setToast({ kind: "error", msg: e.message || "สร้างโครงการไม่สำเร็จ" });
     } finally {
       setProjectBusy(false);
     }
@@ -523,8 +523,8 @@ export default function PoDetailPage() {
         onClose={() => !projectBusy && setProjectConfirmOpen(false)}
         onConfirm={createProject}
         title="สร้าง RE-ORDER Project จาก PO นี้?"
-        message={`ระบบจะสร้าง PM project จาก PO ${po?.poNumber || ""} และผูก FG/จำนวนจากรายการใน PO นี้ กดซ้ำภายหลังจะเปิดโปรเจกต์เดิม ไม่สร้างซ้ำ`}
-        confirmLabel={projectBusy ? "กำลังสร้าง..." : "สร้างโปรเจกต์"}
+        message={`ระบบจะสร้าง PM project จาก PO ${po?.poNumber || ""} และผูก FG/จำนวนจากรายการใน PO นี้ กดซ้ำภายหลังจะเปิดโครงการเดิม ไม่สร้างซ้ำ`}
+        confirmLabel={projectBusy ? "กำลังสร้าง..." : "สร้างโครงการ"}
         danger={false}
       />
 

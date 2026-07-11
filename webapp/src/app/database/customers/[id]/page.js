@@ -431,7 +431,7 @@ export default function CustomerDetails() {
         )}
         {projects.length > 0 && (
           <button onClick={() => setActiveTab("projects")} className={`tab-btn ${activeTab === "projects" ? "active" : ""}`}>
-            โปรเจกต์ ({projects.length})
+            โครงการ ({projects.length})
           </button>
         )}
       </div>
@@ -606,11 +606,11 @@ export default function CustomerDetails() {
       {/* Projects Tab — PM 360-view, read-only (manage in /sa) */}
       {activeTab === "projects" && (
         projects.length === 0 ? (
-          <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีโปรเจกต์ของลูกค้ารายนี้</div>
+          <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีโครงการของลูกค้ารายนี้</div>
         ) : (
           <div className="glass-panel">
             <div className="px-4 py-3.5 border-b border-[var(--border)]">
-              <h3 className="font-semibold text-sm text-[var(--text)] flex items-center gap-2"><FolderKanban size={16} className="text-[var(--accent)]" /> โปรเจกต์ที่เกี่ยวข้อง ({projects.length} รายการ)</h3>
+              <h3 className="font-semibold text-sm text-[var(--text)] flex items-center gap-2"><FolderKanban size={16} className="text-[var(--accent)]" /> โครงการที่เกี่ยวข้อง ({projects.length} รายการ)</h3>
             </div>
             <div className="p-3 grid grid-cols-1 gap-2">
               {projects.map((p) => (

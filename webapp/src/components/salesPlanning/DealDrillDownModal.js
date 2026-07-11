@@ -110,7 +110,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
                 {deals.map((d) => (
                   <tr key={d.id} className="premium-row">
                     <td style={{ padding: "12px 20px" }}>
-                      <Link href={`/sales-planning/deals/${d.id}`} className="font-medium" style={{ color: "var(--text)", textDecoration: "none" }}>
+                      <Link href={`/sa/deals/${d.id}`} className="font-medium" style={{ color: "var(--text)", textDecoration: "none" }}>
                         {d.title}
                       </Link>
                       <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>

@@ -6,10 +6,10 @@ import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, La
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam, useRole } from "@/lib/roleContext";
 import { canSeeTaskKpi } from "@/lib/permissions";
-import { KpiCard, MONTH_LABELS, MonthPicker, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+import { KpiCard, MONTH_LABELS, MonthPicker, dealTypeBadge, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
-import { SALES_FEATURES, teamRank } from "@/lib/salesPlanning";
+import { DEAL_TYPES, SALES_FEATURES, teamRank } from "@/lib/salesPlanning";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
 
@@ -445,6 +445,7 @@ export default function SalesPlanningOverviewPage() {
     const t = { targetAmount: 0, weightedForecast: 0, pipelineValue: 0, wonValue: 0, openDeals: 0, saTarget: 0 };
     const fc = { 20: 0, 50: 0, 80: 0, 100: 0 };
     const fcCount = { 20: 0, 50: 0, 80: 0, 100: 0 };
+    const ty = Object.fromEntries(DEAL_TYPES.map((k) => [k, { type: k, fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0 }]));
     let targetRows = 0;
     for (const d of yearDashboards) {
       const dt = d.totals || {};
@@ -456,10 +457,20 @@ export default function SalesPlanningOverviewPage() {
       t.saTarget += Number(dt.saTarget || 0);
       targetRows += d.targets?.length || 0;
       for (const b of d.byForecast || []) { fc[b.level] += Number(b.value || 0); fcCount[b.level] += Number(b.count || 0); }
+      for (const b of d.byType || []) {
+        const acc = ty[b.type];
+        if (!acc) continue;
+        acc.fcTotal += Number(b.fcTotal || 0);
+        acc.actual += Number(b.actual || 0);
+        acc.fcRemaining += Number(b.fcRemaining || 0);
+        acc.openCount += Number(b.openCount || 0);
+        acc.wonCount += Number(b.wonCount || 0);
+      }
     }
     t.targetGap = t.targetAmount - t.wonValue;
     const byForecast = [20, 50, 80, 100].map((l) => ({ level: l, value: fc[l], count: fcCount[l] }));
-    return { totals: t, byForecast, targetRows };
+    const byType = DEAL_TYPES.map((k) => ty[k]);
+    return { totals: t, byForecast, byType, targetRows };
   }, [yearDashboards]);
 
   const saveForecastReview = async (status) => {
@@ -483,6 +494,7 @@ export default function SalesPlanningOverviewPage() {
   const totals = (allMonths ? yearAggregate.totals : selectedDashboard?.totals) || {};
   const targetRows = allMonths ? yearAggregate.targetRows : (selectedDashboard?.targets?.length || 0);
   const byForecast = allMonths ? yearAggregate.byForecast : selectedDashboard?.byForecast;
+  const byType = allMonths ? yearAggregate.byType : selectedDashboard?.byType;
 
   const filteredOwnerRows = useMemo(() => {
     if (!rows.ownerRows) return [];
@@ -522,7 +534,7 @@ export default function SalesPlanningOverviewPage() {
     <Workspace
       icon={<LayoutDashboard size={22} />}
       title="บริหารงานขาย — ภาพรวม"
-      subtitle="คาดการณ์มูลค่าโครงการ เพื่อผลักไปสู่ Won โดย PM อาจเกิดก่อนหรือหลัง Won ได้"
+      subtitle="คาดการณ์มูลค่าดีล เพื่อผลักไปสู่ Won — โครงการ PM อาจเกิดก่อนหรือหลัง Won ได้"
       headerRight={headerRight}
     >
       <div className="flex flex-col gap-5">
@@ -563,8 +575,8 @@ export default function SalesPlanningOverviewPage() {
         <>
         <section className="kpi-grid" aria-busy={loading}>
           <KpiCard icon={<Target size={16} aria-hidden="true" />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
-          <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์" value={money(totals.weightedForecast)} hint="มูลค่าโครงการเปิดที่คาดว่าจะปิดให้เป็น Won" />
-          <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าโครงการเปิด" value={money(totals.pipelineValue)} hint={`โครงการเปิด ${totals.openDeals || 0} รายการ`} />
+          <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์" value={money(totals.weightedForecast)} hint="มูลค่าดีลเปิดที่คาดว่าจะปิดให้เป็น Won" />
+          <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ`} />
           <KpiCard icon={<LineChart size={16} aria-hidden="true" />} label="Won" value={money(totals.wonValue)} hint={`ส่วนต่าง ${money(totals.targetGap)}`} />
           {SALES_FEATURES.sahamitRisk && sahamitRisk?.enabled && (
             <KpiCard
@@ -576,11 +588,33 @@ export default function SalesPlanningOverviewPage() {
           )}
         </section>
 
+        {!!byType?.length && (
+          <section className="glass-panel" style={{ padding: 16 }}>
+            <div className="flex items-center gap-2 mb-3">
+              <BarChart3 size={17} aria-hidden="true" />
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>แยกตามประเภทดีล</h2>
+              <span style={{ color: "var(--text-3)", fontSize: 12 }}>{periodLabel}</span>
+            </div>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+              {byType.map((b) => (
+                <div key={b.type} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div>{dealTypeBadge(b.type)}</div>
+                  <div className="font-mono tabular-nums" style={{ fontSize: 18, fontWeight: 800 }}>{money(b.fcTotal)}</div>
+                  <div style={{ color: "var(--text-3)", fontSize: 12 }}>
+                    Actual {money(b.actual)} · FC คงเหลือ {money(b.fcRemaining)}
+                  </div>
+                  <div style={{ color: "var(--text-3)", fontSize: 12 }}>{b.wonCount} won · {b.openCount} เปิด</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {!!byForecast?.length && (
           <section className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <BarChart3 size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>โครงการเปิด แยกตามโอกาสปิด (FC%)</h2>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ดีลเปิด แยกตามโอกาสปิด (FC%)</h2>
               <span style={{ color: "var(--text-3)", fontSize: 12 }}>{periodLabel}</span>
             </div>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
@@ -588,7 +622,7 @@ export default function SalesPlanningOverviewPage() {
                 <div key={b.level} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
                   <div>{forecastBadge(b.level)}</div>
                   <div className="font-mono tabular-nums" style={{ fontSize: 18, fontWeight: 800 }}>{money(b.value)}</div>
-                  <div style={{ color: "var(--text-3)", fontSize: 12 }}>{b.count} โครงการ</div>
+                  <div style={{ color: "var(--text-3)", fontSize: 12 }}>{b.count} ดีล</div>
                 </div>
               ))}
             </div>

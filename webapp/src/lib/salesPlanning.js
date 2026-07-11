@@ -143,11 +143,25 @@ export function normalizeStage(value) {
   return DEAL_STAGES.includes(value) ? value : 'lead';
 }
 
-// ประเภทโครงการ (ตรงกับ projects.type ของ PM) — เลือกตั้งแต่หน้าโครงการขาย เพื่อส่ง
-// เป็นค่าตั้งต้นตอนสร้างไทม์ไลน์ PM. เก็บใน sales_deals.metadata.projectType (ไม่มี column แยก).
-export const PROJECT_TYPES = ['NPD', 'RE-ORDER'];
-export function normalizeProjectType(value) {
-  return value === 'RE-ORDER' ? 'RE-ORDER' : 'NPD';
+// ประเภทดีล 3 ค่า (เฟส A Sales Revamp) — คอลัมน์จริง sales_deals.dealType (migration 0088)
+// ค่าตรงกับ projects.type ของ PM แบบ 1:1 → passthrough ตรงตอนสร้างโครงการ (เลือก template).
+// SCENT = พัฒนากลิ่น · NPD = พัฒนาสินค้า · RE-ORDER = สั่งผลิตซ้ำ
+// (transition: ยังเขียน metadata.projectType คู่ไว้ 1 เฟส ให้โค้ด/ข้อมูลเก่าอ่านได้)
+export const DEAL_TYPES = ['SCENT', 'NPD', 'RE-ORDER'];
+export const DEAL_TYPE_LABELS = {
+  SCENT: 'พัฒนากลิ่น',
+  NPD: 'พัฒนาสินค้า',
+  'RE-ORDER': 'สั่งผลิตซ้ำ',
+};
+export function normalizeDealType(value) {
+  return DEAL_TYPES.includes(value) ? value : 'NPD';
+}
+// alias เดิม (โค้ดเก่าเรียกชื่อนี้) — PROJECT_TYPES เดิมมีแค่ 2 ค่า ตอนนี้ = DEAL_TYPES
+export const PROJECT_TYPES = DEAL_TYPES;
+export const normalizeProjectType = normalizeDealType;
+// อ่านประเภทจาก deal row: คอลัมน์จริงก่อน แล้ว fallback metadata (ข้อมูลก่อน backfill/แคชเก่า)
+export function dealTypeOf(deal) {
+  return normalizeDealType(deal?.dealType || deal?.metadata?.projectType);
 }
 
 // ลำดับทีมมาตรฐานทั้งระบบ: KA → ODM → SV (ทีมที่ไม่รู้จักไปท้ายสุด).

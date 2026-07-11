@@ -29,7 +29,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const quote = await loadQuote(supabase, id);
   if (!quote) return notFound('quotation not found');
   const deal = await loadDeal(supabase, quote.dealId);
-  if (!deal) return notFound('ไม่พบโครงการ');
+  if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesViewScope(user, deal)) return forbidden();
 
   const body = await req.json().catch(() => ({}));
