@@ -6,6 +6,9 @@ import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
+import SlidePanel from "@/components/ui/SlidePanel";
+import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
+import DatePicker from "@/components/ui/DatePicker";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
@@ -1098,9 +1101,22 @@ export default function DealOverviewPage() {
         </div>
       </Modal>
 
-      <Modal open={dealModalOpen} onClose={() => setDealModalOpen(false)} title="แก้ไขดีล" size="lg">
+      <SlidePanel 
+        isOpen={dealModalOpen} 
+        onClose={() => setDealModalOpen(false)} 
+        title="แก้ไขดีล"
+        width="max-w-xl"
+        footer={
+          <>
+            <button type="button" className="btn" onClick={() => setDealModalOpen(false)}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={saveDeal} disabled={savingDeal}>
+              <Save size={15} aria-hidden="true" /> {savingDeal ? "กำลังบันทึก..." : "บันทึก"}
+            </button>
+          </>
+        }
+      >
         {dealForm && (
-          <form onSubmit={saveDeal} className="form-grid" aria-busy={savingDeal} style={{ padding: 18 }}>
+          <form onSubmit={saveDeal} className="form-grid" aria-busy={savingDeal}>
             <label>
               ชื่อดีล
               <input className="premium-input" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} required />
@@ -1165,17 +1181,29 @@ export default function DealOverviewPage() {
             </label>
             <label>
               มูลค่าคาดการณ์{alreadyWon ? " (ล็อกหลังปิด Won)" : ""}
-              <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} disabled={alreadyWon} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
+              <FormattedNumberInput 
+                value={dealForm.projectValue} 
+                disabled={alreadyWon} 
+                onChange={(v) => setDealForm({ ...dealForm, projectValue: v })} 
+                className="premium-input"
+              />
             </label>
             {alreadyWon && (
               <label>
                 มูลค่าปิดจริง (Won)
-                <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.wonValue} onChange={(e) => setDealForm({ ...dealForm, wonValue: e.target.value })} />
+                <FormattedNumberInput 
+                  value={dealForm.wonValue} 
+                  onChange={(v) => setDealForm({ ...dealForm, wonValue: v })} 
+                  className="premium-input"
+                />
               </label>
             )}
             <label>
               คาดปิดได้ (วันที่)
-              <input type="date" className="premium-input" value={dealForm.expectedCloseDate} onChange={(e) => setDealForm({ ...dealForm, expectedCloseDate: e.target.value })} />
+              <DatePicker 
+                value={dealForm.expectedCloseDate} 
+                onChange={(v) => setDealForm({ ...dealForm, expectedCloseDate: v })} 
+              />
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <input type="checkbox" checked={dealForm.depositPaid} onChange={(e) => setDealForm({ ...dealForm, depositPaid: e.target.checked })} />
@@ -1185,15 +1213,9 @@ export default function DealOverviewPage() {
               รายละเอียด
               <textarea className="premium-input" rows={3} value={dealForm.notes} onChange={(e) => setDealForm({ ...dealForm, notes: e.target.value })} />
             </label>
-            <div className="drawer-actions" style={{ gridColumn: "1 / -1" }}>
-              <button type="button" className="btn" onClick={() => setDealModalOpen(false)}>ยกเลิก</button>
-              <button type="submit" className="btn btn-primary" disabled={savingDeal}>
-                <Save size={15} aria-hidden="true" /> {savingDeal ? "กำลังบันทึก..." : "บันทึก"}
-              </button>
-            </div>
           </form>
         )}
-      </Modal>
+      </SlidePanel>
 
       <ProjectFormModal
         open={pmModalOpen}

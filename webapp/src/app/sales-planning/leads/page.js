@@ -8,6 +8,9 @@ import Link from "next/link";
 import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
+import SlidePanel from "@/components/ui/SlidePanel";
+import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import {
@@ -60,6 +63,7 @@ export default function LeadsPage() {
   const [actMode, setActMode] = useState("online");
   const [actAt, setActAt] = useState("");
   const [actCustomer, setActCustomer] = useState("");
+  const [leadToDelete, setLeadToDelete] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -165,11 +169,16 @@ export default function LeadsPage() {
     }
   };
 
-  const deleteLead = async (lead) => {
-    if (!window.confirm(`ลบลีด "${lead.contactName}"? การลบย้อนกลับไม่ได้`)) return;
+  const confirmDelete = (lead) => {
+    setLeadToDelete(lead);
+  };
+
+  const deleteLead = async () => {
+    if (!leadToDelete) return;
     setError("");
-    const res = await fetch(`/api/sales-planning/leads/${lead.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/sales-planning/leads/${leadToDelete.id}`, { method: "DELETE" });
     if (!res.ok) setError((await res.json().catch(() => ({}))).error || "ลบลีดไม่สำเร็จ");
+    setLeadToDelete(null);
     await load();
   };
 
@@ -302,9 +311,9 @@ export default function LeadsPage() {
                             <Pencil size={14} aria-hidden="true" />
                           </button>
                         )}
-                        {superuser && (
-                          <button type="button" className="btn-icon danger" title="ลบลีด" aria-label={`ลบ ${lead.contactName}`} onClick={() => deleteLead(lead)}>
-                            <Trash2 size={14} aria-hidden="true" />
+                        {canEditRow(lead) && (
+                          <button type="button" className="btn-icon danger" onClick={() => confirmDelete(lead)} aria-label={`ลบ ${lead.contactName}`} title="ลบลีด">
+                            <Trash2 size={15} aria-hidden="true" />
                           </button>
                         )}
                       </div>
@@ -321,8 +330,21 @@ export default function LeadsPage() {
       </div>
 
       {/* ฟอร์มรับ/แก้ลีด */}
-      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"} size="lg">
-        <form onSubmit={saveLead} className="form-grid" aria-busy={busy === "save"} style={{ padding: 18 }}>
+      <SlidePanel 
+        isOpen={formOpen} 
+        onClose={() => setFormOpen(false)} 
+        title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"}
+        width="max-w-xl"
+        footer={
+          <>
+            <button type="button" className="btn ghost" onClick={() => setFormOpen(false)}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={saveLead} disabled={busy === "save"}>
+              <Plus size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกลีด"}
+            </button>
+          </>
+        }
+      >
+        <form onSubmit={saveLead} className="form-grid" aria-busy={busy === "save"}>
           <label>
             ชื่อลูกค้า/ผู้ติดต่อ *
             <input className="premium-input" value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} required />
@@ -361,18 +383,18 @@ export default function LeadsPage() {
           </label>
           <label>
             Budget (บาท)
-            <input type="number" min="0" step="0.01" className="premium-input mono" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} />
+            <FormattedNumberInput 
+              value={form.budget} 
+              onChange={(v) => setForm({ ...form, budget: v })} 
+              className="premium-input"
+            />
           </label>
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียดเพิ่มเติม
             <textarea className="premium-input" rows={3} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
           </label>
-          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="btn ghost" onClick={() => setFormOpen(false)}>ยกเลิก</button>
-            <button type="submit" className="btn btn-primary" disabled={busy === "save"}><Plus size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกลีด"}</button>
-          </div>
         </form>
-      </Modal>
+      </SlidePanel>
 
       {/* โมดัล action ตาม transition */}
       <Modal open={!!actionModal} onClose={() => !busy && setActionModal(null)} size="sm"
@@ -450,6 +472,16 @@ export default function LeadsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!leadToDelete}
+        onClose={() => setLeadToDelete(null)}
+        onConfirm={deleteLead}
+        title="ลบลีด"
+        message={`คุณต้องการลบลีด "${leadToDelete?.contactName}" ใช่หรือไม่? การลบนี้ไม่สามารถย้อนกลับได้`}
+        confirmLabel="ลบลีด"
+        isDanger={true}
+      />
     </Workspace>
   );
 }

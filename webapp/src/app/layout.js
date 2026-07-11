@@ -1,4 +1,4 @@
-import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
+import { IBM_Plex_Sans_Thai, IBM_Plex_Mono, Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
@@ -20,6 +20,11 @@ const ibmPlexMono = IBM_Plex_Mono({
   variable: "--font-plex-mono",
 });
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
 export const metadata = {
   title: "ระบบ Scent and Sense",
   description: "ระบบจัดการทะเบียนสินค้า ลูกค้า ขออนุมัติและยื่นชำระภาษีสรรพสามิต",
@@ -27,7 +32,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="th" className={`${ibmPlexSansThai.variable} ${ibmPlexMono.variable}`} suppressHydrationWarning>
+    <html lang="th" className={`${ibmPlexSansThai.variable} ${ibmPlexMono.variable} ${inter.variable}`} suppressHydrationWarning>
       <body className="font-sans antialiased transition-colors duration-300">
         {/* Anti-FOUC theme script. next/script with beforeInteractive is injected
             into <head> and runs before hydration, so the theme is set before
