@@ -152,8 +152,9 @@ const genTaskId = () => `PT-${Date.now().toString(36)}-${(_seq++).toString(36)}`
 
 // สร้าง task rows จาก template ตามประเภท + หมวดสินค้า + คำนวณวันเริ่ม-เสร็จ
 // project: { type, productMainCategory, startDate, aeOwner } ; projectId: ผูกหลัง insert
+// dealId (เฟส B): ดีลเจ้าของ segment — ทุก task ติดป้ายดีล (mig 0090)
 // คืน array ของ row พร้อม insert ลง project_tasks (camelCase)
-export function buildProjectTasks(project, projectId) {
+export function buildProjectTasks(project, projectId, dealId = null) {
   const cat = project.productMainCategory || '';
   const template = templateFor(project.type).filter((t) => {
     if (t.categoryOnly && t.categoryOnly !== cat) return false;
@@ -184,6 +185,7 @@ export function buildProjectTasks(project, projectId) {
   return computed.map((t, idx) => ({
     id: t.id,
     projectId,
+    dealId,
     stepOrder: idx,
     name: t.name,
     role: t.role,
@@ -198,6 +200,22 @@ export function buildProjectTasks(project, projectId) {
     status: t.status,
     predecessors: t.predecessors || [],
     cellsOverride: t.cellsOverride ?? null,
+  }));
+}
+
+// ── เฟส B: ต่อ timeline segment ของดีลใหม่เข้าโครงการเดิม ──────────────────
+// ดีลที่ผูกเข้าโครงการภายหลัง (link-project) ได้ task ชุดตาม template ของประเภทดีล
+// ตัวเอง ต่อท้าย stepOrder เดิม โดย anchor ที่วันเริ่มของ segment (ไม่ใช่วันเริ่มโครงการ):
+// task รากของ segment (ไม่มี predecessor) ถูก pin ด้วย startLocked เพื่อไม่ให้ถูกดูด
+// กลับไป anchor โครงการเวลา recalculateGraph ทั้งโครงการ (pin เลื่อนช้าได้ ไม่ถอย).
+export function buildAppendedTasks(project, { dealType, dealId, startDate, existingTasks = [] }) {
+  const segProject = { ...project, type: dealType, startDate: startDate || todayStr(), createdAt: null };
+  const rows = buildProjectTasks(segProject, project.id, dealId);
+  const baseOrder = (existingTasks || []).reduce((m, t) => Math.max(m, Number(t.stepOrder ?? 0)), -1) + 1;
+  return rows.map((r, i) => ({
+    ...r,
+    stepOrder: baseOrder + i,
+    startLocked: (r.predecessors || []).length === 0,
   }));
 }
 
@@ -248,9 +266,14 @@ export function mergeTemplateTasks(project, existingTasks) {
 
   const computed = recalculateSchedule(withPreds, project);
 
+  // เฟส B: segment เดียว → task ทุกแถวเป็นของดีลเดียวกัน (คง dealId เดิม; แถวใหม่
+  // เช่นขั้นสรรพสามิตที่เพิ่งเข้าหมวด รับ dealId ของ segment)
+  const segDealId = (existingTasks || []).find((t) => t.dealId)?.dealId ?? null;
+
   const templateRows = computed.map((t, idx) => ({
     id: t.id,
     projectId: project.id,
+    dealId: t.dealId ?? segDealId,
     stepOrder: idx,
     name: t.name,
     role: t.role,

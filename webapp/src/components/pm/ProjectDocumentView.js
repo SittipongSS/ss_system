@@ -225,15 +225,36 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
     return { days, months };
   }, [rangeStartMs, totalDays]);
 
-  // ── จัดกลุ่มตามเฟส (คงลำดับ) ──
+  // ── จัดกลุ่มตาม segment (ดีล) → เฟส (คงลำดับ) ──
+  // เฟส B: โครงการมีหลายดีล — แบ่งเฟส "ภายในแต่ละ segment" กันเฟสชื่อซ้ำข้ามดีล
+  // (เช่น "เตรียมการผลิต" ของ NPD กับ RE-ORDER รอบ 2) ถูกยุบรวมเป็นกลุ่มเดียวผิด ๆ.
+  // โครงการดีลเดียว (ข้อมูลเดิมทั้งหมด) ได้ผลเหมือนเดิมทุกประการ.
   const phaseGroups = useMemo(() => {
-    const order = [];
-    tasks.forEach((t) => { const p = t.phase || "—"; if (!order.includes(p)) order.push(p); });
-    return order.map((phase, i) => ({
-      phase, phaseNum: i + 1,
-      tasks: tasks.filter((t) => (t.phase || "—") === phase),
-    }));
-  }, [tasks]);
+    const dealById = new Map((project?.deals || []).map((d) => [d.id, d]));
+    const segIds = [];
+    tasks.forEach((t) => { const s = t.dealId || null; if (!segIds.includes(s)) segIds.push(s); });
+    const multiSegment = segIds.length > 1;
+    const groups = [];
+    for (const segId of segIds) {
+      const segTasks = tasks.filter((t) => (t.dealId || null) === segId);
+      const deal = segId ? dealById.get(segId) : null;
+      const segLabel = multiSegment
+        ? (deal ? `${deal.title}${deal.dealType ? ` · ${deal.dealType}` : ""}` : "งานทั่วไปของโครงการ")
+        : null;
+      const order = [];
+      segTasks.forEach((t) => { const p = t.phase || "—"; if (!order.includes(p)) order.push(p); });
+      order.forEach((phase, i) => {
+        groups.push({
+          key: `${segId || "none"}|${phase}`,
+          phase,
+          segLabel: i === 0 ? segLabel : null, // ป้ายดีลเฉพาะกลุ่มแรกของ segment
+          phaseNum: groups.length + 1,
+          tasks: segTasks.filter((t) => (t.phase || "—") === phase),
+        });
+      });
+    }
+    return groups;
+  }, [tasks, project?.deals]);
 
   // ── วัดความกว้างข้อความจริงด้วย Canvas API ──
   const descW = useMemo(() => {
@@ -472,7 +493,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
               )}
               {phaseGroups.map((group) => (
                 <PhaseBlock
-                  key={group.phase}
+                  key={group.key || group.phase}
                   group={group}
                   rangeStartMs={rangeStartMs}
                   totalDays={totalDays}
@@ -481,8 +502,8 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
                   gridBg={gridBg}
                   todayIdx={todayIdx}
                   freezeLeft={freezeLeft}
-                  collapsed={collapsedPhases.has(group.phase)}
-                  onToggleCollapse={() => togglePhase(group.phase)}
+                  collapsed={collapsedPhases.has(group.key || group.phase)}
+                  onToggleCollapse={() => togglePhase(group.key || group.phase)}
                   canEdit={canEdit}
                   onCommitTask={(taskId, updates) => onUpdateTask(taskId, updates)}
                   onPickDeps={(task, anchor) => setDepPopover({ task, ...anchor })}
@@ -558,8 +579,17 @@ function TimelineCell({ children, pxPerDay, timelineWidth, gridBg, todayIdx, tot
 
 function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, gridBg, todayIdx, freezeLeft, collapsed, onToggleCollapse, canEdit, onCommitTask, onPickDeps }) {
   const phaseBg = "color-mix(in srgb, var(--accent) 8%, var(--panel))";
+  const segBg = "color-mix(in srgb, var(--navy) 14%, var(--panel))";
   return (
     <>
+      {/* เฟส B: แถบคั่น segment — โชว์ว่างานช่วงถัดไปเป็นของดีลไหน (เฉพาะโครงการหลายดีล) */}
+      {group.segLabel && (
+        <tr style={{ background: segBg }}>
+          <td colSpan={7} style={{ border: "1px solid var(--border)", padding: "6px 12px", fontWeight: 700, fontSize: "12.5px", position: "sticky", left: 0 }}>
+            {group.segLabel}
+          </td>
+        </tr>
+      )}
       <tr style={{ background: phaseBg, cursor: "pointer" }} onClick={onToggleCollapse} title={collapsed ? "ขยายรายการ" : "ย่อรายการ"}>
         <td style={{ ...freezeTd(freezeLeft[0], { textAlign: "center", fontWeight: 600, background: phaseBg }) }}>{group.phaseNum}</td>
         <td style={{ ...freezeTd(freezeLeft[1], { fontWeight: 600, background: phaseBg }) }}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -399,6 +400,42 @@ export default function DealOverviewPage() {
     if (okDone) setWinOpen(false);
   };
 
+  // เฟส B: ผูกดีลเข้า "โครงการเดิม" ของลูกค้า (หลายดีลต่อโครงการ) — โหลดโครงการ
+  // ของลูกค้ารายนี้มาให้เลือก แล้วต่อ task ชุดตามประเภทดีลเป็น segment ใหม่
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkProjects, setLinkProjects] = useState([]);
+  const [linkProjectId, setLinkProjectId] = useState("");
+  const [linkStartDate, setLinkStartDate] = useState("");
+  const [linkLoading, setLinkLoading] = useState(false);
+  const openLinkProject = async () => {
+    if (!deal?.customerId) return;
+    setLinkOpen(true);
+    setLinkLoading(true);
+    setLinkProjects([]);
+    setLinkProjectId("");
+    setLinkStartDate(new Date().toISOString().slice(0, 10));
+    try {
+      const res = await fetch("/api/pm/projects");
+      const rows = res.ok ? await res.json() : [];
+      const mine = (Array.isArray(rows) ? rows : []).filter((p) => p.customerId === deal.customerId);
+      setLinkProjects(mine);
+      if (mine.length === 1) setLinkProjectId(mine[0].id);
+    } catch {
+      setLinkProjects([]);
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+  const submitLinkProject = async () => {
+    if (!linkProjectId) { setError("เลือกโครงการที่จะผูกก่อน"); return; }
+    const okDone = await runAction("link-project", `/api/sales-planning/deals/${id}/link-project`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: linkProjectId, startDate: linkStartDate || undefined }),
+    });
+    if (okDone) setLinkOpen(false);
+  };
+
   // สร้างโครงการ PM ผ่านโมดัล (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล
   const openCreatePM = () => {
     if (!deal) return;
@@ -739,22 +776,45 @@ export default function DealOverviewPage() {
               {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
             </div>
             {data.project ? (
+              <>
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                <Stat label="ไทม์ไลน์" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
-                <Stat label="ความคืบหน้า" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : "-"} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : "-"} />
+                <Stat label="โครงการ" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
+                <Stat label="ความคืบหน้า (segment นี้)" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : "-"} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : "-"} />
                 <Stat label="ประเภท" value={data.project.type || "-"} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
                 <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={(data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", ") || "-"} />
                 {SALES_FEATURES.shipment && (
                   <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : "-"} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
                 )}
               </div>
+              {/* เฟส B: ดีลอื่นในโครงการเดียวกัน (SCENT→NPD→RE-ORDER…) — ลิงก์ข้าม */}
+              {(data.siblingDeals || []).length > 0 && (
+                <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 600, marginBottom: 6 }}>ดีลอื่นในโครงการนี้</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {data.siblingDeals.map((sib) => (
+                      <Link key={sib.id} href={`/sa/deals/${sib.id}`} className="btn ghost sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        {dealTypeBadge(dealTypeOf(sib))}
+                        <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sib.title}</span>
+                        {stageBadge(sib.stage)}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+              </>
             ) : (
               <Empty>
                 <div style={{ marginBottom: 12 }}>ยังไม่ได้สร้างไทม์ไลน์</div>
                 {canEdit && deal?.stage !== "lost" && ['timeline_proposed', 'awaiting_confirm', 'deposit_pending', 'won', 'in_project'].includes(deal?.stage) && (
-                  <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}>
-                    <Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์
-                  </button>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                    <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}>
+                      <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
+                    </button>
+                    {/* เฟส B: ผูกเข้าโครงการเดิมของลูกค้า (ต่อ segment ตามประเภทดีล) */}
+                    <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy || !deal?.customerId} title={deal?.customerId ? "ผูกดีลเข้าโครงการที่มีอยู่ของลูกค้ารายนี้" : "ต้องผูกลูกค้าก่อน"}>
+                      <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
+                    </button>
+                  </div>
                 )}
               </Empty>
             )}
@@ -949,6 +1009,34 @@ export default function DealOverviewPage() {
           </div>
         </div>
       )}
+
+      {/* เฟส B: โมดัลผูกดีลเข้าโครงการเดิมของลูกค้า — เลือกโครงการ + วันเริ่ม segment */}
+      <Modal open={linkOpen} onClose={() => !actionBusy && setLinkOpen(false)} title="ผูกกับโครงการเดิม" size="sm">
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+            ดีลนี้จะถูกผูกเข้าโครงการที่เลือก และต่อขั้นตอนตาม template ประเภท <strong>{DEAL_TYPE_LABELS[dealTypeOf(deal)]}</strong> เป็นช่วงใหม่ท้ายไทม์ไลน์
+          </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+            โครงการของ {deal?.customerName || deal?.customer?.name || "ลูกค้า"}
+            <select className="premium-select" value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)} disabled={linkLoading}>
+              <option value="">{linkLoading ? "กำลังโหลด…" : linkProjects.length ? "— เลือกโครงการ —" : "ลูกค้ารายนี้ยังไม่มีโครงการ"}</option>
+              {linkProjects.map((p) => (
+                <option key={p.id} value={p.id}>{p.code || p.id} · {p.name}{p.type ? ` (${p.type})` : ""}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+            วันเริ่มงานช่วงนี้
+            <input type="date" className="premium-input" value={linkStartDate} onChange={(e) => setLinkStartDate(e.target.value)} />
+          </label>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="btn ghost" onClick={() => setLinkOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={submitLinkProject} disabled={!!actionBusy || !linkProjectId}>
+              {actionBusy === "link-project" ? "กำลังผูก…" : "ผูกเข้าโครงการ"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={winOpen} onClose={() => !actionBusy && setWinOpen(false)} title="ปิดการขาย (Won)" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>

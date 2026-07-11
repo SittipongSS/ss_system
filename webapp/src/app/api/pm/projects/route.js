@@ -1,5 +1,6 @@
 import { viewScope, can } from '@/lib/permissions';
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
+import { rollupDeals } from '@/lib/sales/projectRollup';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,14 +27,29 @@ export const GET = withUser(async ({ user, supabase }) => {
   // round-trip per project. We only pull the columns those views need.
   const ids = (data || []).map((p) => p.id);
   if (ids.length) {
-    const { data: tasks } = await supabase
-      .from('project_tasks')
-      .select('id, projectId, name, status, finishDate, stepOrder')
-      .in('projectId', ids)
-      .order('stepOrder', { ascending: true });
+    const [{ data: tasks }, { data: deals }] = await Promise.all([
+      supabase
+        .from('project_tasks')
+        .select('id, projectId, name, status, finishDate, stepOrder')
+        .in('projectId', ids)
+        .order('stepOrder', { ascending: true }),
+      // เฟส B: ดีลของแต่ละโครงการ (หลายดีลต่อโครงการ) — หน้ารวมโครงการใช้คิด KPI
+      // FC Total / Actual / FC คงเหลือ ต่อแถว ผ่าน rollup กลาง
+      supabase
+        .from('sales_deals')
+        .select('id, projectId, title, stage, dealType, projectValue, wonValue, forecastMonth, metadata, createdAt')
+        .in('projectId', ids)
+        .order('createdAt', { ascending: true }),
+    ]);
     const byProject = {};
     for (const t of tasks || []) (byProject[t.projectId] ??= []).push(t);
-    for (const p of data) p.tasks = byProject[p.id] || [];
+    const dealsByProject = {};
+    for (const d of deals || []) (dealsByProject[d.projectId] ??= []).push(d);
+    for (const p of data) {
+      p.tasks = byProject[p.id] || [];
+      p.deals = dealsByProject[p.id] || [];
+      p.dealsRollup = rollupDeals(p.deals);
+    }
   }
 
   return ok(data);

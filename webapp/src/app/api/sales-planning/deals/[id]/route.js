@@ -135,11 +135,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     .single();
   if (error) return fail(error.message, 500);
 
-  // Keep the linked PM project's name in sync with the deal title (two-way sync;
-  // the project PATCH mirrors the reverse). Direct table write, no loop.
-  if (before.projectId && 'title' in body && before.title !== data.title) {
-    await supabase.from('projects').update({ name: data.title, updatedAt: patch.updatedAt }).eq('id', before.projectId);
-  }
+  // เฟส B: เลิก sync ชื่อดีล→ชื่อโครงการ — โครงการมีได้หลายดีล ชื่อไม่ผูกกันอีกต่อไป
+  // (ฝั่งโครงการ→ดีล ตัดคู่กันใน api/pm/projects/[id]/route.js)
 
   if (before.stage !== data.stage) {
     await supabase.from('sales_deal_stage_history').insert({
@@ -200,20 +197,30 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return conflict('โครงการนี้มาจาก PO สหมิตร — ลบไม่ได้ (จัดการที่เอกสาร PO แทน)');
   }
 
-  // มี PM project ผูกอยู่ → ต้องมีสิทธิ์ลบ project ด้วย (กัน AE ลบดีลแล้วลาก
-  // timeline ที่ทีมทำไปด้วย) + กันลบถ้ามีทะเบียนสรรพสามิต (link ไม่มี FK จะกำพร้า).
+  // มีโครงการ PM ผูกอยู่ — เฟส B โครงการมีได้หลายดีล:
+  //   ดีลสุดท้ายของโครงการ → ลบโครงการพ่วง (ต้องมีสิทธิ์ลบ project + ไม่มีทะเบียนสรรพสามิต)
+  //   ยังมีดีลพี่น้องอยู่   → ลบเฉพาะ timeline segment ของดีลนี้ ห้ามแตะโครงการ/ดีลอื่น
   let project = null;
   let removed = null;
   if (before.projectId) {
     project = await loadProject(supabase, before.projectId);
     if (project) {
-      if (!canDeleteRecord(user, 'projects', project)) {
-        return forbidden('โครงการนี้มีงานผลิต (PM) ผูกอยู่ — ต้องมีสิทธิ์ลบโครงการผลิตด้วยจึงจะลบได้');
+      const { count: siblingCount } = await supabase
+        .from('sales_deals').select('id', { count: 'exact', head: true })
+        .eq('projectId', project.id).neq('id', id);
+      if ((siblingCount || 0) > 0) {
+        // ลบแค่ task ชุดของดีลนี้ (segment — mig 0090) แล้วปล่อยโครงการไว้กับดีลที่เหลือ
+        await supabase.from('project_tasks').delete().eq('projectId', project.id).eq('dealId', id);
+        project = null; // ไม่ลบโครงการ — audit ด้านล่างจะไม่บันทึกฝั่ง project
+      } else {
+        if (!canDeleteRecord(user, 'projects', project)) {
+          return forbidden('โครงการนี้มีงานผลิต (PM) ผูกอยู่ — ต้องมีสิทธิ์ลบโครงการผลิตด้วยจึงจะลบได้');
+        }
+        if (await projectHasExciseRegistrations(supabase, project.id)) {
+          return conflict('โครงการนี้มีทะเบียนสรรพสามิตผูกอยู่ — ยกเลิก/ลบทะเบียนก่อนจึงจะลบโครงการได้');
+        }
+        removed = await deleteProjectDeep(supabase, project.id).catch((e) => { throw e; });
       }
-      if (await projectHasExciseRegistrations(supabase, project.id)) {
-        return conflict('โครงการนี้มีทะเบียนสรรพสามิตผูกอยู่ — ยกเลิก/ลบทะเบียนก่อนจึงจะลบโครงการได้');
-      }
-      removed = await deleteProjectDeep(supabase, project.id).catch((e) => { throw e; });
     }
   }
 

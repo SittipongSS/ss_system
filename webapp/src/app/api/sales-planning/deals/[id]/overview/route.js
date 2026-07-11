@@ -45,14 +45,19 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   let shipmentPrep = { data: null, warning: null };
   let exciseRegistrations = { data: [], warning: null };
   let sahamitPo = { data: null, warning: null };
+  let siblingDeals = { data: [], warning: null };
   if (deal.projectId) {
-    [project, projectProducts, projectTasks, shipmentPrep, exciseRegistrations, sahamitPo] = await Promise.all([
+    [project, projectProducts, projectTasks, shipmentPrep, exciseRegistrations, sahamitPo, siblingDeals] = await Promise.all([
       safe('project', supabase.from('projects').select('*').eq('id', deal.projectId).maybeSingle(), null),
       safe('project products', supabase.from('project_products').select('*, product:products(id, fgCode, productDescription, productDescriptionEn)').eq('projectId', deal.projectId), []),
-      safe('project tasks', supabase.from('project_tasks').select('id, name, status, stepOrder').eq('projectId', deal.projectId).order('stepOrder', { ascending: true }), []),
+      // เฟส B: หน้าดีลเห็นไทม์ไลน์เฉพาะ segment ของตัวเอง + งานกลางของโครงการ (dealId ว่าง —
+      // ขั้นตอน custom/ข้อมูลก่อน backfill) — ไม่ปนงานของดีลพี่น้อง
+      safe('project tasks', supabase.from('project_tasks').select('id, name, status, stepOrder, dealId').eq('projectId', deal.projectId).or(`dealId.eq.${deal.id},dealId.is.null`).order('stepOrder', { ascending: true }), []),
       safe('shipment prep', supabase.from('shipment_prep').select('*, lines:shipment_prep_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
       safe('excise registrations', supabase.from('excise_registrations').select('*').eq('projectId', deal.projectId), []),
       safe('sahamit po', supabase.from('sahamit_pos').select('*, lines:sahamit_po_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
+      // ดีลอื่นในโครงการเดียวกัน (เฟส B: หลายดีลต่อโครงการ) — ลิงก์ข้ามบนหน้าดีล
+      safe('sibling deals', supabase.from('sales_deals').select('id, title, stage, dealType, projectValue, wonValue, forecastMonth').eq('projectId', deal.projectId).neq('id', deal.id).order('createdAt', { ascending: true }), []),
     ]);
   }
 
@@ -97,6 +102,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     shipmentPrep: shipmentPrep.data,
     exciseRegistrations: exciseRegistrations.data,
     sahamitPo: sahamitPo.data,
+    siblingDeals: siblingDeals.data,
     warnings,
   });
 });
