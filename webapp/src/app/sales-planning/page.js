@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, Target, X, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam, useRole } from "@/lib/roleContext";
+import { canSeeTaskKpi } from "@/lib/permissions";
 import { KpiCard, MONTH_LABELS, MonthPicker, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
@@ -386,7 +387,9 @@ export default function SalesPlanningOverviewPage() {
   const canTarget = useCan("salesplan:target");
   const team = useTeam();
   const role = useRole();
-  const canSeeKpi = role === "admin" || role === "ae_supervisor";
+  // KPI งาน = single source canSeeTaskKpi (admin / sales head / senior_ae oversight
+  // + viewer read-only monitor). ตรงกับ guard ของ /api/sales-planning/task-kpi.
+  const canSeeKpi = canSeeTaskKpi(role);
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
   const [allMonths, setAllMonths] = useState(false); // รวมทั้งปีในการ์ด KPI/FC
