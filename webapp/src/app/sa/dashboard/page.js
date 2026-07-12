@@ -582,11 +582,7 @@ export default function SalesPlanningOverviewPage() {
 
         {tab === "overview" && (
           <>
-          <div aria-busy={loading}>
-            <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} teamKey={teamFilter} onTeamKeyChange={handleChartTeamClick} />
-          </div>
-
-        <section className="kpi-grid mt-5" aria-busy={loading}>
+        <section className="kpi-grid mb-5" aria-busy={loading}>
           <KpiCard icon={<Target size={16} aria-hidden="true" />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
           <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์" value={money(totals.weightedForecast)} hint="มูลค่าดีลเปิดที่คาดว่าจะปิดให้เป็น Won" />
           <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ`} />
@@ -600,6 +596,10 @@ export default function SalesPlanningOverviewPage() {
             />
           )}
         </section>
+        
+          <div aria-busy={loading}>
+            <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} teamKey={teamFilter} onTeamKeyChange={handleChartTeamClick} />
+          </div>
 
         {!!byType?.length && (
           <section className="glass-panel" style={{ padding: 16 }}>
