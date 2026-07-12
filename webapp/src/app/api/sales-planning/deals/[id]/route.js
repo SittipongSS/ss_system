@@ -123,6 +123,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('formulaName' in body) {
     patch.formulaName = (body.formulaName || '').trim() || null;
   }
+  // หมวดสินค้า (DL1 — mig 0094): ใช้เลือก timeline template ตามหมวด
+  if ('categoryCode' in body) {
+    patch.categoryCode = (body.categoryCode || '').trim() || null;
+  }
   if ('brand' in body) {
     patch.metadata = { ...(patch.metadata || before.metadata || {}), brand: body.brand || '' };
   }
@@ -223,6 +227,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       }
     }
   }
+
+  // DL1: เก็บกวาดไทม์ไลน์ลอยของดีล (projectId ว่าง) — FK dealId เป็น SET NULL
+  // ถ้าไม่ลบเองจะเหลือ task กำพร้าไร้เจ้าของ
+  await supabase.from('project_tasks').delete().eq('dealId', id).is('projectId', null);
 
   const { error } = await supabase.from('sales_deals').delete().eq('id', id);
   if (error) return fail(error.message, 500);

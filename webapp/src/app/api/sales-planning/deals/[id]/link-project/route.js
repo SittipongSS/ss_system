@@ -44,17 +44,42 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   setHolidays([...(await holidaySet())]);
   const { data: existing } = await supabase
     .from('project_tasks').select('id, stepOrder').eq('projectId', project.id);
-  const segTasks = applyAutoStatuses(buildAppendedTasks(project, {
-    dealType: dealTypeOf(deal),
-    dealId: deal.id,
-    startDate,
-    existingTasks: existing || [],
-  }));
+  // DL1: ดีลมีไทม์ไลน์ลอยของตัวเองแล้ว → โครงการ "รับเลี้ยง" ชุดเดิม (เติม projectId
+  // + ต่อ stepOrder ท้าย + pin ราก segment กันโดนดูดไป anchor โครงการ) — ไม่ gen ซ้ำ
+  const { data: floating } = await supabase
+    .from('project_tasks').select('*').eq('dealId', deal.id).is('projectId', null)
+    .order('stepOrder', { ascending: true });
   let insertedTasks = [];
-  if (segTasks.length) {
-    const { data: taskRows, error: taskErr } = await supabase.from('project_tasks').insert(segTasks).select();
-    if (taskErr) return fail(`ต่อไทม์ไลน์ของดีลไม่สำเร็จ: ${taskErr.message}`, 500);
-    insertedTasks = taskRows || [];
+  let adopted = 0;
+  if ((floating || []).length) {
+    const baseOrder = (existing || []).reduce((m, t) => Math.max(m, Number(t.stepOrder ?? 0)), -1) + 1;
+    for (let i = 0; i < floating.length; i++) {
+      const t = floating[i];
+      const { error: adoptErr } = await supabase.from('project_tasks').update({
+        projectId: project.id,
+        stepOrder: baseOrder + i,
+        startLocked: (t.predecessors || []).length === 0 ? true : (t.startLocked ?? false),
+      }).eq('id', t.id);
+      if (adoptErr) {
+        // ถอนคืน: ปล่อยชุดที่ย้ายแล้วกลับเป็น task ลอยของดีลตามเดิม
+        await supabase.from('project_tasks').update({ projectId: null })
+          .in('id', floating.slice(0, i).map((x) => x.id));
+        return fail(`ย้ายไทม์ไลน์ของดีลเข้าโครงการไม่สำเร็จ: ${adoptErr.message}`, 500);
+      }
+    }
+    adopted = floating.length;
+  } else {
+    const segTasks = applyAutoStatuses(buildAppendedTasks(project, {
+      dealType: dealTypeOf(deal),
+      dealId: deal.id,
+      startDate,
+      existingTasks: existing || [],
+    }));
+    if (segTasks.length) {
+      const { data: taskRows, error: taskErr } = await supabase.from('project_tasks').insert(segTasks).select();
+      if (taskErr) return fail(`ต่อไทม์ไลน์ของดีลไม่สำเร็จ: ${taskErr.message}`, 500);
+      insertedTasks = taskRows || [];
+    }
   }
 
   // ผูกดีล (guard .is projectId null — กันยิงซ้ำ/แข่งกัน; แพ้ = ถอน task ที่เพิ่งต่อ)
@@ -74,6 +99,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .single();
   if (linkErr) {
     if (insertedTasks.length) await supabase.from('project_tasks').delete().in('id', insertedTasks.map((t) => t.id));
+    if (adopted) {
+      await supabase.from('project_tasks').update({ projectId: null })
+        .in('id', (floating || []).map((x) => x.id));
+    }
     if (linkErr.code === 'PGRST116') return conflict('ดีลนี้ผูกโครงการแล้ว');
     return fail(linkErr.message, 500);
   }
@@ -96,9 +125,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: deal.id,
     before: deal,
     after: updatedDeal,
-    summary: `ผูกดีล ${dealAuditLabel(deal)} เข้าโครงการเดิม ${project.code || project.id} (+${insertedTasks.length} ขั้นตอน segment ${dealTypeOf(deal)})`,
+    summary: `ผูกดีล ${dealAuditLabel(deal)} เข้าโครงการเดิม ${project.code || project.id} (${adopted ? `รับเลี้ยงไทม์ไลน์เดิม ${adopted}` : `+${insertedTasks.length}`} ขั้นตอน segment ${dealTypeOf(deal)})`,
     request: req,
   });
 
-  return ok({ deal: updatedDeal, project: { id: project.id, code: project.code, name: project.name }, appendedTasks: insertedTasks.length }, 201);
+  return ok({ deal: updatedDeal, project: { id: project.id, code: project.code, name: project.name }, appendedTasks: insertedTasks.length + adopted, adoptedTasks: adopted }, 201);
 });

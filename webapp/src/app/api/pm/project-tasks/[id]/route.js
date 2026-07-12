@@ -19,25 +19,33 @@ const EDITABLE = [
 ];
 
 // Load the task + its parent project (for team-scope checks).
+// DL1: task ลอยของดีล (projectId ว่าง — mig 0094) ใช้ scope จากดีลแทน
+// (pseudo-project {team, aeOwner} ให้ pmTaskEditTier/inScope เช็คทีมได้เหมือนเดิม)
 async function loadTaskWithProject(supabase, id) {
   const { data: task } = await supabase.from('project_tasks').select('*').eq('id', id).maybeSingle();
-  if (!task) return { task: null, project: null };
+  if (!task) return { task: null, project: null, scopeRow: null };
+  if (!task.projectId && task.dealId) {
+    const { data: deal } = await supabase.from('sales_deals')
+      .select('id, team, ownerName').eq('id', task.dealId).maybeSingle();
+    return { task, project: null, scopeRow: deal ? { team: deal.team, aeOwner: deal.ownerName } : null };
+  }
   const { data: project } = await supabase.from('projects').select('*').eq('id', task.projectId).maybeSingle();
-  return { task, project };
+  return { task, project, scopeRow: project };
 }
 
 // PATCH /api/pm/project-tasks/[id]
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
 
-  const { task, project } = await loadTaskWithProject(supabase, id);
+  const { task, project, scopeRow } = await loadTaskWithProject(supabase, id);
   if (!task) return notFound('ไม่พบขั้นตอน');
 
   // สิทธิ์แก้ไขมี 2 ระดับ (รวม logic ไว้ที่ pmTaskEditTier ใน permissions.js):
   //   full     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโครงการ)
   //   workflow — ผู้รับผิดชอบ (assigneeId) หรือ staff ฝ่ายเดียวกับขั้นตอน (role===department)
   //              อัปเดตได้เฉพาะสถานะ/ความคืบหน้า/โน้ต ไม่แตะวันเริ่ม/ลำดับ/การมอบหมาย
-  const tier = pmTaskEditTier(user, task, project);
+  // task ลอยของดีล (DL1): scopeRow = ทีม/AE ของดีล แทนโครงการ
+  const tier = pmTaskEditTier(user, task, scopeRow);
   if (tier === 'none') return forbidden();
   const workflowEdit = tier === 'workflow';
 
@@ -90,8 +98,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ── auto status: แก้สถานะ/predecessors ของขั้นนี้ → คำนวณสถานะทั้งกราฟใหม่
   // (กดเสร็จ → ขั้นถัดไปที่พร้อม เป็น In Progress ; ถอย/แก้ pred → ขั้นถัดที่ไม่พร้อม กลับ Pending).
   // client reload เมื่อ status/predecessors เปลี่ยน จึงเห็นผลกับขั้นอื่นทันที.
-  if (project && ('status' in updates || 'predecessors' in updates)) {
-    await propagateAndPersist(supabase, project.id);
+  if ('status' in updates || 'predecessors' in updates) {
+    // task ลอยของดีล: propagate ภายในชุดของดีล (projectId ว่าง + dealId)
+    await propagateAndPersist(supabase, project?.id ?? null, { dealId: task.dealId });
   }
 
   // ── #1 recalc (dependency-driven): แก้วันเริ่ม/จำนวนวัน/predecessors/ปักหมุด →
@@ -138,9 +147,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 export const DELETE = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
 
-  const { task, project } = await loadTaskWithProject(supabase, id);
+  const { task, project, scopeRow } = await loadTaskWithProject(supabase, id);
   if (!task) return notFound('ไม่พบขั้นตอน');
-  if (!inScope(pmEditScope(user?.role), user, project || {})) {
+  if (!inScope(pmEditScope(user?.role), user, scopeRow || {})) {
     return forbidden();
   }
 
@@ -186,6 +195,9 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
 
     // ลบขั้นแล้ว → ขั้นถัดที่อ้างขั้นนี้อาจพร้อมทำงาน → คำนวณสถานะทั้งกราฟใหม่
     await propagateAndPersist(supabase, project.id);
+  } else if (task.dealId) {
+    // task ลอยของดีล — propagate ภายในชุดของดีล
+    await propagateAndPersist(supabase, null, { dealId: task.dealId });
   }
 
   return ok({ success: true });
