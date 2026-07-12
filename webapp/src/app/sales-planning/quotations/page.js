@@ -5,10 +5,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, Search, Printer } from "lucide-react";
+import { FileText, Pencil, Plus, Search, Printer, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
+import { isSuperuser } from "@/lib/permissions";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
@@ -32,6 +33,7 @@ export default function QuotationsPage() {
   const router = useRouter();
   const canEdit = useCan("salesplan:edit");
   const canView = useCan("salesplan:view");
+  const role = useRole();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -88,6 +90,20 @@ export default function QuotationsPage() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
+  };
+
+  // ลบ: กติกาเดียวกับ API — ฉบับร่างลบได้, ใบสถานะอื่นลบได้เฉพาะ superuser
+  // (ใบที่ส่ง/รับแล้ว = หลักฐานการค้า ปกติให้ cancel/revise แทน)
+  const deleteQuote = async (r) => {
+    const warn = r.status !== "draft" ? "\n\n⚠ ใบนี้ไม่ใช่ฉบับร่าง — ลบด้วยสิทธิ์ผู้ดูแลระบบ (ปกติควรยกเลิก/Revise แทน)" : "";
+    if (!window.confirm(`ลบใบเสนอราคา ${r.quoteNumber}?${warn}`)) return;
+    setError("");
+    const res = await fetch(`/api/sales-planning/quotations/${r.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setError((await res.json().catch(() => ({}))).error || "ลบใบเสนอราคาไม่สำเร็จ");
+      return;
+    }
+    load();
   };
 
   const filtered = useMemo(() => {
@@ -175,13 +191,27 @@ export default function QuotationsPage() {
                         </span>}
                     </td>
                     <td className="num">
-                      <button type="button" className="btn-icon" title="พิมพ์" aria-label={`พิมพ์ ${r.quoteNumber}`}
-                        onClick={async () => {
-                          const res = await fetch(`/api/sales-planning/quotations/${r.id}`);
-                          if (res.ok) openQuotePrintWindow(await res.json());
-                        }}>
-                        <Printer size={15} aria-hidden="true" />
-                      </button>
+                      <div style={{ display: "inline-flex", gap: 2 }}>
+                        <button type="button" className="btn-icon" title="พิมพ์" aria-label={`พิมพ์ ${r.quoteNumber}`}
+                          onClick={async () => {
+                            const res = await fetch(`/api/sales-planning/quotations/${r.id}`);
+                            if (res.ok) openQuotePrintWindow(await res.json());
+                          }}>
+                          <Printer size={15} aria-hidden="true" />
+                        </button>
+                        {/* แก้ได้เฉพาะสถานะที่ API เปิด (draft/sent/rejected) — ใบอื่นใช้ Revise ที่หน้าใบ */}
+                        {canEdit && ["draft", "sent", "rejected"].includes(r.status) && (
+                          <Link href={`/sa/quotations/${r.id}`} className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${r.quoteNumber}`}>
+                            <Pencil size={15} aria-hidden="true" />
+                          </Link>
+                        )}
+                        {canEdit && (r.status === "draft" || isSuperuser(role)) && (
+                          <button type="button" className="btn-icon danger" title={r.status === "draft" ? "ลบฉบับร่าง" : "ลบ (สิทธิ์ผู้ดูแลระบบ)"} aria-label={`ลบ ${r.quoteNumber}`}
+                            onClick={() => deleteQuote(r)}>
+                            <Trash2 size={15} aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
