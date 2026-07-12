@@ -585,7 +585,7 @@ export default function SalesPlanningOverviewPage() {
           <>
         <section className="kpi-grid mb-5" aria-busy={loading}>
           <KpiCard icon={<Target size={16} aria-hidden="true" />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
-          <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ · คาดการณ์ ${money(totals.weightedForecast)}`} />
+          <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ · ดีลทั้งหมด ${money(totals.fullForecast)}`} />
           <KpiCard icon={<LineChart size={16} aria-hidden="true" />} label="Won" value={money(totals.wonValue)} hint={`ส่วนต่าง ${money(totals.targetGap)}`} />
           <KpiCard icon={<Target size={16} aria-hidden="true" />} label="ความคืบหน้าต่อเป้า" value={<span style={{ color: covColor }}>{cov == null ? "-" : pctFmt(cov)}</span>} hint={`คาดการณ์ ${fcCov == null ? "-" : pctFmt(fcCov)} ของเป้า`} />
           {SALES_FEATURES.sahamitRisk && sahamitRisk?.enabled && (
