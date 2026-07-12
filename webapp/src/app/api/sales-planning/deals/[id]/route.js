@@ -47,7 +47,6 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
-  if (!isSuperuser(user.role)) return forbidden('การแก้ไขดีลสงวนไว้สำหรับแอดมิน');
 
   const { id } = await ctx.params;
   const before = await loadDeal(supabase, id);
@@ -183,7 +182,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
-  if (!isSuperuser(user.role)) return forbidden('การลบดีลสงวนไว้สำหรับแอดมิน');
 
   const { id } = await ctx.params;
   const before = await loadDeal(supabase, id);
