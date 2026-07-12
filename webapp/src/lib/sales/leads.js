@@ -68,9 +68,9 @@ export const LEAD_TRANSITIONS = {
   new: ['screen', 'disqualify'],
   screened: ['assign', 'bounce', 'disqualify'],
   assigned: ['contact', 'bounce', 'disqualify'],
-  contacted: ['meeting', 'qualify', 'bounce', 'disqualify'],
-  meeting: ['qualify', 'disqualify'],
-  qualified: [],
+  contacted: ['meeting', 'create_deal', 'bounce', 'disqualify'],
+  meeting: ['create_deal', 'disqualify'],
+  qualified: ['create_deal'],
   disqualified: [],
 };
 export const TRANSITION_TO_STATUS = {
@@ -78,7 +78,7 @@ export const TRANSITION_TO_STATUS = {
   assign: 'assigned',
   contact: 'contacted',
   meeting: 'meeting',
-  qualify: 'qualified',
+  create_deal: 'qualified',
   disqualify: 'disqualified',
   bounce: 'new', // ทีมไม่ตรง → กลับคิวคัดกรอง (ล้างทีม/ผู้รับ)
 };

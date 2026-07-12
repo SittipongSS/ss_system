@@ -77,13 +77,52 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     patch.meetingAt = body.eventAt || now;
     event.meetingMode = body.meetingMode || null;
     event.eventAt = body.eventAt || now;
-  } else if (action === 'qualify') {
+  } else if (action === 'create_deal') {
     if (!workScope) return forbidden();
-    if (!body.customerId) return badRequest('ต้องเปิดลูกค้าในฐานข้อมูลก่อน แล้วเลือกลูกค้าที่ผูกกับลีดนี้');
-    const { data: customer } = await supabase.from('customers').select('id, name').eq('id', body.customerId).maybeSingle();
-    if (!customer) return badRequest('ไม่พบลูกค้าที่เลือก');
-    patch.customerId = customer.id;
-    patch.closedAt = now;
+    if (!body.dealTitle?.trim()) return badRequest('ต้องระบุชื่อดีล');
+    if (!['SCENT', 'NPD', 'RE-ORDER'].includes(body.dealType)) return badRequest('ประเภทดีลไม่ถูกต้อง');
+    
+    let customer = null;
+    if (body.customerId) {
+      const { data } = await supabase.from('customers').select('id, name').eq('id', body.customerId).maybeSingle();
+      if (!data) return badRequest('ไม่พบลูกค้าที่เลือก');
+      customer = data;
+    }
+    
+    const dealId = genId('SDL');
+    const newDeal = {
+      id: dealId,
+      title: body.dealTitle.trim(),
+      dealType: body.dealType,
+      stage: 'lead',
+      leadId: lead.id,
+      customerId: customer?.id || null,
+      customerName: customer ? customer.name : `${lead.contactName}${lead.company ? ` (${lead.company})` : ''}`,
+      ownerId: lead.assigneeId || user.id,
+      ownerName: lead.assigneeName || user.name,
+      team: lead.team,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    const { error: dealErr } = await supabase.from('sales_deals').insert(newDeal);
+    if (dealErr) return fail('สร้างดีลไม่สำเร็จ: ' + dealErr.message, 500);
+
+    if (body.forecastAmount && body.forecastMonth) {
+      const { error: fcErr } = await supabase.from('sales_deal_forecasts').insert({
+        id: genId('SDF'),
+        dealId,
+        forecastMonth: body.forecastMonth,
+        forecastAmount: Number(body.forecastAmount) || 0,
+        createdBy: user.id,
+        createdByName: user.name,
+        createdAt: now
+      });
+      if (fcErr) console.error('Failed to create forecast:', fcErr.message); // Not blocking
+    }
+    
+    patch.customerId = customer?.id || lead.customerId;
+    patch.closedAt = lead.closedAt || now;
   } else if (action === 'disqualify') {
     if (!workScope) return forbidden();
     if (!body.reason?.trim()) return badRequest('ต้องระบุเหตุผลที่ไม่ไปต่อ');
@@ -99,7 +138,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     event.reason = body.reason.trim();
   }
 
-  patch.status = TRANSITION_TO_STATUS[action];
+  // If already qualified and doing create_deal, it stays qualified.
+  patch.status = lead.status === 'qualified' && action === 'create_deal' ? 'qualified' : TRANSITION_TO_STATUS[action];
 
   const { data, error } = await supabase.from('sales_leads').update(patch).eq('id', id).select().single();
   if (error) return fail(error.message, 500);
@@ -113,3 +153,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   return ok(data);
 });
+

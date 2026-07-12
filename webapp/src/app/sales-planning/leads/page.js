@@ -5,7 +5,7 @@
 // SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart } from "lucide-react";
+import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart, FolderKanban } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
@@ -60,6 +60,10 @@ export default function LeadsPage() {
   const [actMode, setActMode] = useState("online");
   const [actAt, setActAt] = useState("");
   const [actCustomer, setActCustomer] = useState("");
+  const [actDealTitle, setActDealTitle] = useState("");
+  const [actDealType, setActDealType] = useState("NPD");
+  const [actForecastAmount, setActForecastAmount] = useState("");
+  const [actForecastMonth, setActForecastMonth] = useState(thisMonth());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,7 +135,11 @@ export default function LeadsPage() {
     setActReason("");
     setActMode("online");
     setActAt(new Date().toISOString().slice(0, 16));
-    setActCustomer("");
+    setActCustomer(lead.customerId || "");
+    setActDealTitle(`[ลีด] ${lead.company || lead.contactName}`);
+    setActDealType(lead.serviceInterest === 'diffuser' ? 'SCENT' : 'NPD');
+    setActForecastAmount("");
+    setActForecastMonth(thisMonth());
   };
 
   const submitAction = async () => {
@@ -152,7 +160,11 @@ export default function LeadsPage() {
           reason: actReason || undefined,
           meetingMode: action === "meeting" ? actMode : undefined,
           eventAt: ["meeting", "contact"].includes(action) && actAt ? new Date(actAt).toISOString() : undefined,
-          customerId: action === "qualify" ? actCustomer : undefined,
+          customerId: action === "create_deal" ? actCustomer : undefined,
+          dealTitle: action === "create_deal" ? actDealTitle : undefined,
+          dealType: action === "create_deal" ? actDealType : undefined,
+          forecastAmount: action === "create_deal" ? actForecastAmount : undefined,
+          forecastMonth: action === "create_deal" ? actForecastMonth : undefined,
         }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
@@ -184,7 +196,7 @@ export default function LeadsPage() {
     if (allowed.includes("assign") && (superuser || inTeam)) btns.push({ a: "assign", label: "มอบหมาย", icon: UsersIcon, primary: true });
     if (allowed.includes("contact") && works) btns.push({ a: "contact", label: "ติดต่อแล้ว", icon: PhoneCall, primary: true });
     if (allowed.includes("meeting") && works) btns.push({ a: "meeting", label: "นัดประชุม", icon: CalendarClock });
-    if (allowed.includes("qualify") && works) btns.push({ a: "qualify", label: "เปิดลูกค้า", icon: CheckCircle2, primary: lead.status === "meeting" });
+    if (allowed.includes("create_deal") && works) btns.push({ a: "create_deal", label: lead.status === "qualified" ? "+ สร้างดีลเพิ่ม" : "แปลงเป็นดีล", icon: FolderKanban, primary: true });
     if (allowed.includes("bounce") && works) btns.push({ a: "bounce", label: "ตีกลับ", icon: Undo2 });
     if (allowed.includes("disqualify") && works) btns.push({ a: "disqualify", label: "ไม่ไปต่อ", icon: Ban });
     return btns;
@@ -376,7 +388,7 @@ export default function LeadsPage() {
 
       {/* โมดัล action ตาม transition */}
       <Modal open={!!actionModal} onClose={() => !busy && setActionModal(null)} size="sm"
-        title={actionModal ? ({ screen: "คัดกรอง — เลือกทีม", assign: "มอบหมาย AE", contact: "บันทึกติดต่อกลับ", meeting: "บันทึกนัดประชุม", qualify: "เปิดลูกค้า (ผูกฐานข้อมูล)", disqualify: "ไม่ไปต่อ", bounce: "ตีกลับ (ทีมไม่ตรง)" }[actionModal.action]) : ""}>
+        title={actionModal ? ({ screen: "คัดกรอง — เลือกทีม", assign: "มอบหมาย AE", contact: "บันทึกติดต่อกลับ", meeting: "บันทึกนัดประชุม", create_deal: actionModal.lead.status === "qualified" ? "สร้างดีลเพิ่ม" : "แปลงเป็นดีล", disqualify: "ไม่ไปต่อ", bounce: "ตีกลับ (ทีมไม่ตรง)" }[actionModal.action]) : ""}>
         {actionModal && (
           <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: 13, color: "var(--text-3)" }}>
@@ -416,17 +428,41 @@ export default function LeadsPage() {
                 </select>
               </label>
             )}
-            {actionModal.action === "qualify" && (
+            {actionModal.action === "create_deal" && (
               <>
                 <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                  ลูกค้าในฐานข้อมูล
-                  <select className="premium-select" value={actCustomer} onChange={(e) => setActCustomer(e.target.value)}>
-                    <option value="">— เลือกลูกค้า —</option>
-                    {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  ชื่อดีล *
+                  <input className="premium-input" value={actDealTitle} onChange={(e) => setActDealTitle(e.target.value)} />
                 </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    ประเภทดีล *
+                    <select className="premium-select" value={actDealType} onChange={(e) => setActDealType(e.target.value)}>
+                      <option value="SCENT">SCENT (ออกแบบกลิ่น)</option>
+                      <option value="NPD">NPD (สินค้าใหม่)</option>
+                      <option value="RE-ORDER">RE-ORDER (ผลิตซ้ำ)</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    ลูกค้าในฐานข้อมูล (ถ้ามี)
+                    <select className="premium-select" value={actCustomer} onChange={(e) => setActCustomer(e.target.value)}>
+                      <option value="">— ยังไม่ผูกตอนนี้ —</option>
+                      {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    ยอดคาดการณ์เบื้องต้น (บาท)
+                    <input type="number" className="premium-input mono" min="0" value={actForecastAmount} onChange={(e) => setActForecastAmount(e.target.value)} placeholder="0" />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    เดือนที่จะเก็บยอด (Forecast)
+                    <input type="month" className="premium-input mono" value={actForecastMonth} onChange={(e) => setActForecastMonth(e.target.value)} />
+                  </label>
+                </div>
                 <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                  ยังไม่มีในระบบ? <Link href="/database/customers" className="linklike" target="_blank">เปิดลูกค้าใหม่ที่ฐานข้อมูล</Link> แล้วกลับมาเลือก — จากนั้นไปเปิดโครงการ/ดีลต่อที่หน้า <Link href="/sa/deals" className="linklike">ดีล</Link>
+                  (ชื่อลูกค้าชั่วคราวบนกระดานดีลจะใช้ข้อมูลจากลีด การผูกลูกค้า/โครงการทำภายหลังได้ที่หน้า <Link href="/sa/deals" className="linklike">ดีล</Link>)
                 </div>
               </>
             )}
@@ -442,7 +478,7 @@ export default function LeadsPage() {
                 disabled={!!busy
                   || (actionModal.action === "screen" && !actTeam)
                   || (actionModal.action === "assign" && !actAssignee)
-                  || (actionModal.action === "qualify" && !actCustomer)
+                  || (actionModal.action === "create_deal" && !actDealTitle.trim())
                   || (["disqualify", "bounce"].includes(actionModal.action) && !actReason.trim())}>
                 {busy === "action" ? "กำลังบันทึก…" : "ยืนยัน"}
               </button>
