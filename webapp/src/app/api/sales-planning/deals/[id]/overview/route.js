@@ -59,7 +59,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       safe('project products', supabase.from('project_products').select('*, product:products(id, fgCode, productDescription, productDescriptionEn)').eq('projectId', deal.projectId), []),
       // เฟส B: หน้าดีลเห็นไทม์ไลน์เฉพาะ segment ของตัวเอง + งานกลางของโครงการ (dealId ว่าง —
       // ขั้นตอน custom/ข้อมูลก่อน backfill) — ไม่ปนงานของดีลพี่น้อง
-      safe('project tasks', supabase.from('project_tasks').select('id, name, status, stepOrder, dealId').eq('projectId', deal.projectId).or(`dealId.eq.${deal.id},dealId.is.null`).order('stepOrder', { ascending: true }), []),
+      // DL2: ส่งทั้งแถว — หน้าดีลโชว์ตาราง segment ของตัวเอง (แผนก/วัน/สถานะ) แก้สถานะได้
+      safe('project tasks', supabase.from('project_tasks').select('*').eq('projectId', deal.projectId).or(`dealId.eq.${deal.id},dealId.is.null`).order('stepOrder', { ascending: true }), []),
       safe('shipment prep', supabase.from('shipment_prep').select('*, lines:shipment_prep_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
       safe('excise registrations', supabase.from('excise_registrations').select('*').eq('projectId', deal.projectId), []),
       safe('sahamit po', supabase.from('sahamit_pos').select('*, lines:sahamit_po_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
