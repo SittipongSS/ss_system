@@ -61,7 +61,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // นับวันทำการไม่ตรงกัน (เช่น ปฏิทินวันหยุดฝั่ง client โหลดไม่ทัน) แล้วเกิดอาการ "ไม่ซิงค์".
   // แปลงเป็น durationDays ที่นี่ แล้วลบ finishDate ออก → ปล่อยให้ recalcForward กางใหม่
   // (ได้วันจบที่ snap เป็นวันทำการถูกต้อง + เลื่อน downstream ตามจริง).
-  if (updates.finishDate && project) {
+  if (updates.finishDate && (project || task.dealId)) {
     setHolidays([...(await holidaySet())]);
     const startForCalc = updates.startDate || task.startDate;
     if (startForCalc) {
@@ -107,17 +107,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // คำนวณ timeline ทั้งกราฟใหม่จากวันเริ่มโครงการตามสาย predecessor จริง แล้ว persist
   // เฉพาะแถวที่เปลี่ยน. ขั้นที่ไม่ผูกกับขั้นนี้จะไม่ขยับ (ต่างจาก slice แบบเดิมที่ลากทุกขั้นที่อยู่หลัง) ──
   const schedulingChanged = SCHEDULE_FIELDS.some((k) => k in updates) || 'startLocked' in updates;
-  if (schedulingChanged && project) {
+  if (schedulingChanged && (project || task.dealId)) {
     setHolidays([...(await holidaySet())]);
-    const { data: all } = await supabase
-      .from('project_tasks')
-      .select('*')
-      .eq('projectId', project.id)
-      .order('stepOrder', { ascending: true });
+    // ชุดที่ recalc: ทั้งโครงการ หรือชุดลอยของดีล (projectId ว่าง) — anchor ของชุดลอย
+    // = วันเริ่มเร็วสุดในชุด (ไม่มีวันเริ่มโครงการให้อิง)
+    let setQuery = supabase.from('project_tasks').select('*');
+    setQuery = project ? setQuery.eq('projectId', project.id) : setQuery.is('projectId', null).eq('dealId', task.dealId);
+    const { data: all } = await setQuery.order('stepOrder', { ascending: true });
 
     if (all && all.length) {
       const applied = all.map((t) => (t.id === id ? { ...t, ...updates } : t));
-      const recalced = recalculateGraph(applied, resolveSchedule(project).anchor);
+      const anchor = project
+        ? resolveSchedule(project).anchor
+        : (applied.map((t) => t.startDate).filter(Boolean).sort()[0] || todayStr());
+      const recalced = recalculateGraph(applied, anchor);
 
       const sameCells = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
       const changed = recalced.filter((r) => {
@@ -159,11 +162,11 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
   // ── recalc (dependency-driven): ลบขั้นตอนแล้วคำนวณ timeline ของขั้นที่เหลือใหม่ ──
   // 1) ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น
   // 2) recalculateGraph ทั้งกราฟ → ขั้นที่เคยรอขั้นที่ลบจะขยับมาเร็วขึ้นตามจริง (ไม่กระทบขั้นอิสระ)
-  if (project) {
+  if (project || task.dealId) {
     setHolidays([...(await holidaySet())]);
-    const { data: all } = await supabase
-      .from('project_tasks').select('*').eq('projectId', project.id)
-      .order('stepOrder', { ascending: true });
+    let setQuery = supabase.from('project_tasks').select('*');
+    setQuery = project ? setQuery.eq('projectId', project.id) : setQuery.is('projectId', null).eq('dealId', task.dealId);
+    const { data: all } = await setQuery.order('stepOrder', { ascending: true });
 
     if (all && all.length) {
       // ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น แล้วคำนวณทั้งกราฟใหม่
@@ -172,7 +175,10 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
           ? { ...t, predecessors: t.predecessors.filter((p) => p !== id) }
           : t
       );
-      const recalced = recalculateGraph(cleaned, resolveSchedule(project).anchor);
+      const anchor = project
+        ? resolveSchedule(project).anchor
+        : (cleaned.map((t) => t.startDate).filter(Boolean).sort()[0] || todayStr());
+      const recalced = recalculateGraph(cleaned, anchor);
 
       const sameJson = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
       const changed = recalced.filter((r) => {
@@ -194,10 +200,7 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
     }
 
     // ลบขั้นแล้ว → ขั้นถัดที่อ้างขั้นนี้อาจพร้อมทำงาน → คำนวณสถานะทั้งกราฟใหม่
-    await propagateAndPersist(supabase, project.id);
-  } else if (task.dealId) {
-    // task ลอยของดีล — propagate ภายในชุดของดีล
-    await propagateAndPersist(supabase, null, { dealId: task.dealId });
+    await propagateAndPersist(supabase, project?.id ?? null, { dealId: task.dealId });
   }
 
   return ok({ success: true });

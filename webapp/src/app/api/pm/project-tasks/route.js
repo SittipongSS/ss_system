@@ -58,23 +58,36 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 });
 
 // POST — add a task to a project (manual). stepOrder = max+1.
+// DL: หรือเพิ่มเข้าไทม์ไลน์ลอยของดีล (ส่ง dealId แทน projectId — mig 0094)
 export const POST = withUser(async ({ user, supabase, req }) => {
   const body = await req.json();
-  if (!body.projectId) return badRequest('ต้องระบุ projectId');
+  if (!body.projectId && !body.dealId) return badRequest('ต้องระบุ projectId หรือ dealId');
 
   // Row-level scope: a task may only be added to a project the user may edit
   // (own team / own record). Mirrors the checks on the other PM write routes.
-  const { data: project } = await supabase.from('projects').select('*').eq('id', body.projectId).maybeSingle();
-  if (!project) return notFound('ไม่พบโครงการ');
-  if (!inScope(pmEditScope(user?.role), user, project)) {
-    return forbidden();
+  let project = null;
+  if (body.projectId) {
+    ({ data: project } = await supabase.from('projects').select('*').eq('id', body.projectId).maybeSingle());
+    if (!project) return notFound('ไม่พบโครงการ');
+    if (!inScope(pmEditScope(user?.role), user, project)) {
+      return forbidden();
+    }
+  } else {
+    // ไทม์ไลน์ลอยของดีล — scope จากทีม/AE ของดีล (pseudo-project เหมือน PATCH task ลอย)
+    const { data: deal } = await supabase.from('sales_deals')
+      .select('id, team, ownerName, projectId').eq('id', body.dealId).maybeSingle();
+    if (!deal) return notFound('ไม่พบดีล');
+    if (deal.projectId) return badRequest('ดีลนี้ผูกโครงการแล้ว — เพิ่มขั้นตอนด้วย projectId');
+    if (!inScope(pmEditScope(user?.role), user, { team: deal.team, aeOwner: deal.ownerName })) {
+      return forbidden();
+    }
   }
 
-  const { data: allTasks } = await supabase
-    .from('project_tasks')
-    .select('*')
-    .eq('projectId', body.projectId)
-    .order('stepOrder', { ascending: true });
+  let taskQuery = supabase.from('project_tasks').select('*');
+  taskQuery = body.projectId
+    ? taskQuery.eq('projectId', body.projectId)
+    : taskQuery.is('projectId', null).eq('dealId', body.dealId);
+  const { data: allTasks } = await taskQuery.order('stepOrder', { ascending: true });
 
   // บั๊ก C: แทรกตรงตำแหน่ง — ถ้าระบุ afterTaskId ให้ stepOrder = ของตัวนั้น+1 แล้ว
   // ดัน stepOrder ของแถวที่อยู่หลังให้เลื่อนลง 1 (กันชน + คงลำดับเฟสติดกัน);
@@ -105,7 +118,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const row = {
     id: genId('PT'),
-    projectId: body.projectId,
+    projectId: body.projectId || null,
+    dealId: body.dealId || null,
     stepOrder,
     name: body.name || '',
     role: body.role || 'SA',
@@ -129,7 +143,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   setHolidays([...(await holidaySet())]);
   const tasksWithNew = [...(allTasks || []), row];
-  const recalced = recalculateGraph(tasksWithNew, resolveSchedule(project).anchor);
+  // anchor: โครงการใช้วันเริ่มโครงการ; ชุดลอยของดีลใช้วันเริ่มเร็วสุดของชุด (fallback วันนี้)
+  const anchor = project
+    ? resolveSchedule(project).anchor
+    : ((allTasks || []).map((t) => t.startDate).filter(Boolean).sort()[0] || new Date().toISOString().slice(0, 10));
+  const recalced = recalculateGraph(tasksWithNew, anchor);
   const finalRow = recalced.find(t => t.id === row.id);
 
   const { data, error } = await supabase.from('project_tasks').insert(finalRow).select().single();
@@ -137,7 +155,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   // ขั้นใหม่อาจทำให้กราฟเปลี่ยน (เช่นแทรกขั้นที่ไม่มี predecessor = พร้อมทำทันที,
   // หรือไปคั่นกลางทำให้ขั้นถัดไม่พร้อม) → คำนวณสถานะทั้งโครงการใหม่. client เรียก load() ต่อ.
-  await propagateAndPersist(supabase, body.projectId);
+  await propagateAndPersist(supabase, body.projectId || null, { dealId: body.dealId || null });
 
   return ok(data, 201);
 });
