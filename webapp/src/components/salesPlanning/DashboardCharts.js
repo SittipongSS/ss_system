@@ -239,31 +239,7 @@ export default function DashboardCharts({ rows, months, monthLabels, year, teamK
         </div>
       </div>
 
-      {/* Year total summary for the selected team */}
-      <section className="kpi-grid">
-        {SERIES.map((s) => (
-          <div key={s.key} className="glass-panel" style={{ padding: 16, minHeight: 100 }}>
-            <div className="flex items-center gap-2" style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 600 }}>
-              <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: s.color, display: "inline-block" }} />
-              {s.label} · รวมปี {year}
-            </div>
-            <div className="font-mono tabular-nums" style={{ marginTop: 10, fontSize: 22, fontWeight: 800, color: "var(--text)" }}>
-              {money(yearTotals[s.key])}
-            </div>
-          </div>
-        ))}
-        <div className="glass-panel" style={{ padding: 16, minHeight: 100 }}>
-          <div className="flex items-center gap-2" style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 600 }}>
-            <Target size={14} aria-hidden="true" /> ความคืบหน้าต่อเป้า
-          </div>
-          <div className="font-mono tabular-nums" style={{ marginTop: 10, fontSize: 22, fontWeight: 800, color: covColor }}>
-            {cov == null ? "-" : fmtPct2(cov)}
-          </div>
-          <div style={{ marginTop: 4, color: "var(--text-3)", fontSize: 12 }}>
-            คาดการณ์ {fcCov == null ? "-" : fmtPct2(fcCov)} ของเป้า
-          </div>
-        </div>
-      </section>
+
 
       <Panel
         icon={<BarChart3 size={17} aria-hidden="true" />}
