@@ -5,8 +5,9 @@
 // FC Total / Actual / FC คงเหลือ ต่อแถว (rollup จากดีล — ห้ามกรอกมูลค่าที่โครงการ)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList } from "lucide-react";
+import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPES, DEAL_TYPE_LABELS } from "@/lib/salesPlanning";
 import { dealTypeBadge, KpiCard } from "@/components/salesPlanning/ui";
@@ -15,7 +16,7 @@ import { fmtMoneyCompact, fmtName } from "@/lib/format";
 const money = (v) => fmtMoneyCompact(v);
 
 export default function ProjectsIndexPage() {
-  const canView = useCan("pm:view");
+  const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -23,13 +24,26 @@ export default function ProjectsIndexPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("active"); // active = ไม่รวม Done/Drop
 
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [customers, setCustomers] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [allProducts, setAllProducts] = useState([]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/pm/projects");
+      const [res, custRes, catRes, prodRes] = await Promise.all([
+        fetch("/api/pm/projects"),
+        fetch("/api/master/customers"),
+        fetch("/api/master/product-types"),
+        fetch("/api/products")
+      ]);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดโครงการไม่สำเร็จ");
       setRows(await res.json());
+      if (custRes.ok) setCustomers(await custRes.json());
+      if (catRes.ok) setCategories(await catRes.json());
+      if (prodRes.ok) setAllProducts(await prodRes.json());
     } catch (e) {
       setError(e.message || "โหลดโครงการไม่สำเร็จ");
     } finally {
@@ -85,9 +99,14 @@ export default function ProjectsIndexPage() {
       title="โครงการ"
       subtitle="ภาชนะรวมดีลของลูกค้าแต่ละงาน — มูลค่าโครงการ rollup จากดีลทุกใบ (FC Total · Actual · FC คงเหลือ)"
       headerRight={
-        <button type="button" className="btn ghost" onClick={load} disabled={loading}>
-          <RefreshCw size={15} aria-hidden="true" /> รีเฟรช
-        </button>
+        <div className="flex gap-2">
+          <button type="button" className="btn ghost" onClick={load} disabled={loading}>
+            <RefreshCw size={15} aria-hidden="true" /> รีเฟรช
+          </button>
+          <button type="button" className="btn primary" onClick={() => setShowCreateModal(true)}>
+            <Plus size={15} aria-hidden="true" /> สร้างโครงการ
+          </button>
+        </div>
       }
     >
       <div className="flex flex-col gap-5">
@@ -179,7 +198,17 @@ export default function ProjectsIndexPage() {
             </table>
           </div>
         </section>
-      </div>
+        </div>
+      <ProjectFormModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        editingId={null}
+        initialData={null}
+        onSuccess={() => { setShowCreateModal(false); load(); }}
+        customers={customers}
+        categories={categories}
+        allProducts={allProducts}
+      />
     </Workspace>
   );
 }

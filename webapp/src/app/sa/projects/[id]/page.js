@@ -166,7 +166,7 @@ const getVariance = (task) => {
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const hasEditCap = useCan("pm:edit");
+  const hasEditCap = useCan("salesplan:edit");
   const canCreateTaxRegistration = useCan("products:edit");
   const userRole = useRole();
   const [data, setData] = useState(null);
