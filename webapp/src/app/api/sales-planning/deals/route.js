@@ -150,5 +150,25 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     request: req,
   });
 
+  // ถ้าดีลนี้สร้างมาจากลีด ให้ทำการเปลี่ยนสถานะลีดเป็น qualified โดยอัตโนมัติ
+  if (data.metadata?.leadId && data.metadata?.source === 'lead') {
+    const leadId = data.metadata.leadId;
+    const { data: lead } = await supabase.from('sales_leads').select('id, status').eq('id', leadId).maybeSingle();
+    if (lead && lead.status !== 'qualified') {
+      const now = new Date().toISOString();
+      await supabase.from('sales_leads').update({ status: 'qualified', closedAt: now, updatedAt: now }).eq('id', leadId);
+      await supabase.from('lead_events').insert({
+        id: genId('LEV'),
+        leadId,
+        kind: 'create_deal',
+        fromStatus: lead.status,
+        toStatus: 'qualified',
+        createdBy: user.id || null,
+        createdByName: user.name || null,
+        eventAt: now,
+      });
+    }
+  }
+
   return ok(data, 201);
 });
