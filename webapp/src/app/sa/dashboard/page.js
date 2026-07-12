@@ -599,11 +599,6 @@ export default function SalesPlanningOverviewPage() {
             />
           )}
         </section>
-        
-          <div aria-busy={loading}>
-            <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} teamKey={teamFilter} onTeamKeyChange={handleChartTeamClick} />
-          </div>
-
         {!!byType?.length && (
           <section className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
@@ -644,6 +639,10 @@ export default function SalesPlanningOverviewPage() {
             </div>
           </section>
         )}
+
+          <div aria-busy={loading}>
+            <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} teamKey={teamFilter} onTeamKeyChange={handleChartTeamClick} />
+          </div>
 
         <YearGrid title={`ภาพรวมเดือน ${year}`} rows={rows.monthRows} months={months} onCellClick={handleCellClick} />
         
