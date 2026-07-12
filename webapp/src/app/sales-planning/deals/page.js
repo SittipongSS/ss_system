@@ -568,6 +568,7 @@ export default function SalesPlanningPipelinePage() {
                 <tr>
                   <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ดีล {sortArrow("name")}</span></th>
                   <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>สถานะ {sortArrow("status")}</span></th>
+                  <th style={{ textAlign: "center" }}>FC%</th>
                   <th style={{ textAlign: "center" }}>ประเภท</th>
                   <th>ผู้ดูแล (AE)</th>
                   <th className="num" onClick={() => handleSort("amount")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>มูลค่า {sortArrow("amount")}</span></th>
@@ -592,12 +593,11 @@ export default function SalesPlanningPipelinePage() {
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}{deal.metadata?.brand ? ` · ${deal.metadata.brand}` : ""}</span>
                       </Link>
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      {/* จัด alignment: badge สถานะ+FC อยู่ชิดกันบรรทัดเดียว ไม่กระจายเต็มช่อง */}
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        {stageBadge(deal.stage)}
-                        {!["won", "in_project", "lost"].includes(deal.stage) && forecastBadge(deal.probability)}
-                      </span>
+                    <td style={{ whiteSpace: "nowrap" }}>{stageBadge(deal.stage)}</td>
+                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                      {["won", "in_project", "lost"].includes(deal.stage)
+                        ? <span style={{ color: "var(--text-3)" }}>-</span>
+                        : forecastBadge(deal.probability)}
                     </td>
                     <td style={{ textAlign: "center" }}>
                       {dealTypeBadge(dealTypeOf(deal))}
@@ -671,7 +671,7 @@ export default function SalesPlanningPipelinePage() {
                 ))}
                 {!filteredDeals.length && (
                   <tr>
-                    <td colSpan={7 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={8 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีดีลในเดือนนี้ {canEdit ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>
