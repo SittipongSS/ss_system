@@ -17,6 +17,7 @@ import {
 } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import { fmtPhone, fmtDate } from "@/lib/format";
+import PhoneInput from "@/components/ui/PhoneInput";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
@@ -417,13 +418,11 @@ function UserFields({ form, setForm, requirePassword, edit }) {
       </div>
       <div className="form-group col-span-2">
         <label>เบอร์โทรศัพท์</label>
-        <input
-          type="tel"
+        <PhoneInput
           value={form.phone}
-          onChange={(e) => set("phone", e.target.value)}
-          onBlur={(e) => set("phone", fmtPhone(e.target.value))}
+          onChange={(value) => set("phone", value)}
           placeholder="เช่น 0812345678 (ระบบจะจัดรูปแบบให้อัตโนมัติ)"
-          className="premium-input w-full"
+          className="w-full"
         />
         <p className="text-[11px] text-[var(--text-3)] mt-1">ใช้แสดงในเอกสารของระบบ เช่น เบอร์มือถือของ AE ผู้ดูแลในเอกสาร ISO</p>
       </div>

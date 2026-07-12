@@ -166,11 +166,39 @@ export const fmtPhone = (raw) => {
   return String(raw);
 };
 
+export const formatPhoneInput = (raw) => {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  const landline = /^0[23457]/.test(digits);
+  const d = digits.slice(0, landline ? 9 : 10);
+  const groups = landline ? [2, 3, 4] : [3, 3, 4];
+  const parts = [];
+  let offset = 0;
+  for (const size of groups) {
+    if (offset >= d.length) break;
+    parts.push(d.slice(offset, offset + size));
+    offset += size;
+  }
+  return parts.join("-");
+};
+
 // เลขประจำตัวประชาชน/ผู้เสียภาษี 13 หลัก (§2.3) → x-xxxx-xxxxx-xx-x.
 export const fmtNationalId = (raw) => {
   const d = String(raw ?? "").replace(/\D/g, "");
   if (d.length !== 13) return raw ? String(raw) : "";
   return `${d[0]}-${d.slice(1, 5)}-${d.slice(5, 10)}-${d.slice(10, 12)}-${d[12]}`;
+};
+
+export const formatNationalIdInput = (raw) => {
+  const d = String(raw ?? "").replace(/\D/g, "").slice(0, 13);
+  const groups = [1, 4, 5, 2, 1];
+  const parts = [];
+  let offset = 0;
+  for (const size of groups) {
+    if (offset >= d.length) break;
+    parts.push(d.slice(offset, offset + size));
+    offset += size;
+  }
+  return parts.join("-");
 };
 
 // วันที่แบบตัวเลข (§2.4): กว้าง = DD/MM/YYYY, แคบ = DD/MM/YY (ปี ค.ศ.).

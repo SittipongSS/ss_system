@@ -10,6 +10,7 @@ import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import DateTimeInput from "@/components/ui/DateTimeInput";
+import PhoneInput from "@/components/ui/PhoneInput";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, DEAL_STAGES, STAGE_LABELS } from "@/lib/salesPlanning";
@@ -482,7 +483,7 @@ export default function LeadsPage() {
           </div>
           <label>
             เบอร์โทร
-            <input className="premium-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <PhoneInput value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
           </label>
 
           <hr style={{ gridColumn: "1 / -1", margin: "4px 0", borderColor: "var(--border)" }} />

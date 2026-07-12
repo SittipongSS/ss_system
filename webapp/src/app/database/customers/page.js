@@ -12,6 +12,8 @@ import ContactsEditor from "@/components/database/ContactsEditor";
 import BrandsEditor from "@/components/database/BrandsEditor";
 import { brandTh, brandEn, brandBothOf } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId } from "@/lib/format";
+import PhoneInput from "@/components/ui/PhoneInput";
+import NationalIdInput from "@/components/ui/NationalIdInput";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
@@ -427,13 +429,12 @@ export default function CustomerDirectory() {
                 <label>
                   เลขประจำตัวผู้เสียภาษี
                 </label>
-                <input
-                  type="text"
+                <NationalIdInput
                   name="taxId"
                   value={formData.taxId}
-                  onChange={handleChange}
+                  onChange={(value) => setFormData((current) => ({ ...current, taxId: value }))}
                   placeholder="เลข 13 หลัก (ถ้ามี)"
-                  className="premium-input w-full font-mono"
+                  className="w-full"
                 />
               </div>
               <div className="form-group">
@@ -450,13 +451,12 @@ export default function CustomerDirectory() {
               </div>
               <div className="form-group">
                 <label>เบอร์โทรบริษัท</label>
-                <input
-                  type="tel"
+                <PhoneInput
                   name="phone"
                   value={formData.phone}
-                  onChange={handleChange}
+                  onChange={(value) => setFormData((current) => ({ ...current, phone: value }))}
                   placeholder="เช่น 02-123-4567"
-                  className="premium-input w-full font-mono"
+                  className="w-full"
                 />
               </div>
               <div className="form-group col-span-2">

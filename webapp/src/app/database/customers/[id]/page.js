@@ -18,6 +18,8 @@ import ContactsEditor from "@/components/database/ContactsEditor";
 import BrandsEditor from "@/components/database/BrandsEditor";
 import { brandBothOf, brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
+import PhoneInput from "@/components/ui/PhoneInput";
+import NationalIdInput from "@/components/ui/NationalIdInput";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 
 export default function CustomerDetails() {
@@ -670,7 +672,7 @@ export default function CustomerDetails() {
             </div>
             <div className="form-group col-span-2 sm:col-span-1">
               <label>เลขประจำตัวผู้เสียภาษี</label>
-              <input type="text" name="taxId" value={formData.taxId} onChange={handleInputChange} placeholder="เลข 13 หลัก (ถ้ามี)" className="premium-input w-full font-mono text-xs" />
+              <NationalIdInput name="taxId" value={formData.taxId} onChange={(value) => setFormData((current) => ({ ...current, taxId: value }))} placeholder="เลข 13 หลัก (ถ้ามี)" className="w-full text-xs" />
             </div>
             <div className="form-group col-span-2 sm:col-span-1">
               <label>สาขา (Branch)</label>
@@ -679,7 +681,7 @@ export default function CustomerDetails() {
             </div>
             <div className="form-group col-span-2 sm:col-span-1">
               <label>เบอร์โทร</label>
-              <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} placeholder="เช่น 02-123-4567" className="premium-input w-full font-mono text-xs" />
+              <PhoneInput name="phone" value={formData.phone} onChange={(value) => setFormData((current) => ({ ...current, phone: value }))} placeholder="เช่น 02-123-4567" className="w-full text-xs" />
             </div>
             <div className="form-group col-span-2">
               <label>ผู้ติดต่อ (เพิ่มได้หลายคน — คนแรก = ผู้ติดต่อหลัก)</label>

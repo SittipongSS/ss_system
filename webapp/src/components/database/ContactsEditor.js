@@ -1,4 +1,5 @@
 "use client";
+import PhoneInput from "@/components/ui/PhoneInput";
 import { Plus, Trash2 } from "lucide-react";
 import Select from "@/components/ui/Select";
 
@@ -26,7 +27,7 @@ export default function ContactsEditor({ value = [], onChange }) {
             {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
           </Select>
           <input className="premium-input text-xs" style={{ flex: "1 1 130px", minWidth: "110px" }} placeholder="ชื่อผู้ติดต่อ" value={c.name || ""} onChange={(e) => update(i, { name: e.target.value })} />
-          <input className="premium-input text-xs font-mono" style={{ flex: "1 1 120px", minWidth: "100px" }} placeholder="เบอร์" value={c.phone || ""} onChange={(e) => update(i, { phone: e.target.value })} />
+          <PhoneInput className="text-xs" style={{ flex: "1 1 140px", minWidth: "120px" }} placeholder="เบอร์" value={c.phone || ""} onChange={(value) => update(i, { phone: value })} />
           <input className="premium-input text-xs" style={{ flex: "1 1 150px", minWidth: "120px" }} placeholder="อีเมล" value={c.email || ""} onChange={(e) => update(i, { email: e.target.value })} />
           <button type="button" className="btn-icon danger" onClick={() => remove(i)} title="ลบผู้ติดต่อ" style={{ marginTop: "2px" }}>
             <Trash2 size={14} />
