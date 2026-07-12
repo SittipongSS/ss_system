@@ -24,6 +24,16 @@ import {
 import { KpiCard, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName } from "@/lib/format";
 
+const ACTION_COLORS = {
+  screen: 'var(--blue)',
+  assign: 'var(--violet)',
+  contact: 'var(--teal)',
+  meeting: 'var(--teal)',
+  create_deal: 'var(--green)',
+  bounce: 'var(--amber)',
+  disqualify: 'var(--red)'
+};
+
 const initialForm = {
   id: null, channel: "chatcone_line", contactName: "", company: "", email: "",
   contactChannel: "", phone: "", serviceInterest: "diffuser", serviceDetail: "",
@@ -442,14 +452,14 @@ export default function LeadsPage() {
                               const primary = rowActions(lead).find(a => ["screen", "assign", "contact", "meeting", "create_deal"].includes(a.a));
                               if (primary) {
                                 return (
-                                  <button type="button" className="btn btn-primary sm" onClick={() => openAction(lead, primary.a)} disabled={!!busy} style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                  <button type="button" className="btn btn-status sm" onClick={() => openAction(lead, primary.a)} disabled={!!busy} style={{ '--btn-bg': ACTION_COLORS[primary.a], width: "100%", padding: "0 4px", justifyContent: "center" }}>
                                     <primary.icon size={13} aria-hidden="true" /> {primary.label}
                                   </button>
                                 );
                               }
                               if (lead.status === "qualified" && lead.customerId && canEditDeals) {
                                 return (
-                                  <button type="button" className="btn btn-primary sm" onClick={() => openDealModal(lead)} disabled={!!busy} title="เปิดดีลจากลีดนี้" style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                  <button type="button" className="btn btn-status sm" onClick={() => openDealModal(lead)} disabled={!!busy} title="เปิดดีลจากลีดนี้" style={{ '--btn-bg': 'var(--green)', width: "100%", padding: "0 4px", justifyContent: "center" }}>
                                     <Plus size={13} aria-hidden="true" /> สร้างดีล
                                   </button>
                                 );
@@ -464,7 +474,7 @@ export default function LeadsPage() {
                               const bounce = rowActions(lead).find(a => a.a === "bounce");
                               if (bounce) {
                                 return (
-                                  <button type="button" className="btn ghost sm" onClick={() => openAction(lead, bounce.a)} disabled={!!busy} style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                  <button type="button" className="btn btn-status-ghost sm" onClick={() => openAction(lead, bounce.a)} disabled={!!busy} style={{ '--btn-bg': ACTION_COLORS[bounce.a], width: "100%", padding: "0 4px", justifyContent: "center" }}>
                                     <bounce.icon size={13} aria-hidden="true" /> {bounce.label}
                                   </button>
                                 );
@@ -479,7 +489,7 @@ export default function LeadsPage() {
                               const dq = rowActions(lead).find(a => a.a === "disqualify");
                               if (dq) {
                                 return (
-                                  <button type="button" className="btn ghost sm" onClick={() => openAction(lead, dq.a)} disabled={!!busy} style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                  <button type="button" className="btn btn-status-ghost sm" onClick={() => openAction(lead, dq.a)} disabled={!!busy} style={{ '--btn-bg': ACTION_COLORS[dq.a], width: "100%", padding: "0 4px", justifyContent: "center" }}>
                                     <dq.icon size={13} aria-hidden="true" /> {dq.label}
                                   </button>
                                 );
