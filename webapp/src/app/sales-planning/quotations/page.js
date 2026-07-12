@@ -38,10 +38,11 @@ export default function QuotationsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // วิซาร์ดสร้าง: เลือกดีล → POST → ไป editor
+  // วิซาร์ดสร้าง: เลือกดีล (เฉพาะที่ผูกโครงการ — โครงการเป็นตัวเชื่อมลูกค้า) → POST → ไป editor
   const [createOpen, setCreateOpen] = useState(false);
   const [deals, setDeals] = useState([]);
   const [dealId, setDealId] = useState("");
+  const [seedFG, setSeedFG] = useState(false); // ดึง FG ของโครงการมาตั้งต้น (ค่าเริ่มต้น: ใส่รหัส FG เองใน editor)
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
@@ -63,10 +64,11 @@ export default function QuotationsPage() {
   const openCreate = async () => {
     setCreateOpen(true);
     setDealId("");
+    setSeedFG(false);
     const res = await fetch("/api/sales-planning/deals").catch(() => null);
     const all = res?.ok ? await res.json() : [];
-    // เสนอเฉพาะดีลที่ยังเปิดอยู่ (won/lost ออกใบใหม่ไม่ได้ตาม flow)
-    setDeals((all || []).filter((d) => !["won", "in_project", "lost"].includes(d.stage)));
+    // เฉพาะดีลเปิดที่ "ผูกโครงการแล้ว" — โครงการเชื่อมลูกค้าให้เอง (feedback ผู้ใช้)
+    setDeals((all || []).filter((d) => d.projectId && !["won", "in_project", "lost"].includes(d.stage)));
   };
 
   const createQuote = async () => {
@@ -77,7 +79,7 @@ export default function QuotationsPage() {
       const res = await fetch(`/api/sales-planning/deals/${dealId}/quotations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ seedFromProject: seedFG }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "สร้างใบเสนอราคาไม่สำเร็จ");
@@ -195,14 +197,18 @@ export default function QuotationsPage() {
       <Modal open={createOpen} onClose={() => !creating && setCreateOpen(false)} title="สร้างใบเสนอราคา — เลือกดีล" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
-            ใบเสนอราคาผูกกับดีลเสมอ — ระบบจะดึงลูกค้า/สินค้า (FG จากโครงการ) มาตั้งต้นให้ แล้วไปแก้รายละเอียดต่อ
+            เลือกดีลที่ผูกโครงการแล้ว — ลูกค้ามาจากโครงการอัตโนมัติ ส่วนรหัส FG ค่อยใส่ในหน้าแก้ไขใบ
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            ดีล (เฉพาะที่ยังเปิดอยู่)
+            ดีล (เฉพาะที่ผูกโครงการแล้ว)
             <select className="premium-select" value={dealId} onChange={(e) => setDealId(e.target.value)}>
-              <option value="">— เลือกดีล —</option>
+              <option value="">{deals.length ? "— เลือกดีล —" : "ยังไม่มีดีลที่ผูกโครงการ"}</option>
               {deals.map((d) => <option key={d.id} value={d.id}>{d.title} · {d.customerName || "ไม่มีลูกค้า"}</option>)}
             </select>
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <input type="checkbox" checked={seedFG} onChange={(e) => setSeedFG(e.target.checked)} />
+            ดึงรายการตั้งต้นจาก FG ของโครงการ (ไม่ติ้ก = ใบเปล่า ใส่รหัส FG เอง)
           </label>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <button type="button" className="btn ghost" onClick={() => setCreateOpen(false)} disabled={creating}>ยกเลิก</button>
