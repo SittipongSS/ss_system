@@ -16,7 +16,7 @@ import { fmtMoneyCompact, fmtName } from "@/lib/format";
 const money = (v) => fmtMoneyCompact(v);
 
 export default function ProjectsIndexPage() {
-  const canView = useCan("pm:view");
+  const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
