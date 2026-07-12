@@ -355,11 +355,9 @@ export default function LeadsPage() {
         )}
 
         {canSeeLeadKpi(role) && (
-            {canSeeLeadKpi(role) && (
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
               <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: 13, fontWeight: 500, color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
             </div>
-          )}
           )}
           <section className="kpi-grid" aria-busy={loading}>
             <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} hint={allMonths ? "ทั้งหมด" : `เดือน ${month}`} />
