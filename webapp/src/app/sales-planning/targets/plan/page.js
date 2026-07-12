@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useCan, useRole } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import {
@@ -15,7 +14,6 @@ import {
   distributeBySeasonal,
   normalizeToPercent,
 } from "@/lib/salesForecast";
-import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
 
 const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
 const thisYearNum = () => Number(thisMonth().slice(0, 4));
@@ -63,7 +61,6 @@ export default function SalesTargetPlanPage() {
 
   // Step 2 — chosen final target for the plan year.
   const [finalTarget, setFinalTarget] = useState(0);
-  const [confirmState, setConfirmState] = useState({ open: false, title: "", message: "", action: null, isDanger: false, confirmLabel: "ยืนยัน" });
   const [cap] = useState(DEFAULT_GROWTH_CAP);
 
   // Step 3 — target amount per team.
@@ -201,7 +198,7 @@ export default function SalesTargetPlanPage() {
   // Switching plan year restarts the wizard — history/projection/splits all change.
   const changeYear = (y) => {
     if (y === targetYear) return;
-    if (step > 1) { setConfirmState({ open: true, title: "เปลี่ยนปี?", message: "เปลี่ยนปีจะเริ่มขั้นตอนใหม่ตั้งแต่ต้น จะเปลี่ยนไหม?", action: () => { setConfirmState(p=>({...p, open:false})); setTargetYear(y); setStep(1); setError(""); setInfo(""); setFinalTarget(0); setTeamTargets({}); setPersonTargets({}); setMonthPct(Array(12).fill(100/12)); }, confirmLabel: "เปลี่ยนปี" }); return; }
+    if (step > 1 && !window.confirm("เปลี่ยนปีจะเริ่มขั้นตอนใหม่ตั้งแต่ต้น จะเปลี่ยนไหม?")) return;
     setTargetYear(y);
     setStep(1);
     setError("");
@@ -286,8 +283,7 @@ export default function SalesTargetPlanPage() {
         <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>
           เฉพาะ AE Supervisor / admin ใช้ตัวช่วยวางเป้าได้
         </div>
-        <ConfirmDialog {...confirmState} onClose={() => setConfirmState(p => ({ ...p, open: false }))} />
-    </Workspace>
+      </Workspace>
     );
   }
 
@@ -420,14 +416,15 @@ function StepNav({ step }) {
 
 function MoneyInput({ value, onChange, disabled, placeholder, align = "right" }) {
   return (
-    <FormattedNumberInput
-      min={0}
-      step={1000}
+    <input
+      type="number"
+      min="0"
+      step="1000"
       className="premium-input mono"
       value={value === 0 ? "" : value}
       placeholder={placeholder ?? "0"}
       disabled={disabled}
-      onChange={(val) => onChange(Math.max(0, val || 0))}
+      onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
       onFocus={(e) => e.target.select()}
       style={{ width: "100%", textAlign: align, padding: "6px 8px" }}
     />
@@ -686,9 +683,9 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
                 <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: 12 }}>%</td>
                 {monthPct.map((p, i) => (
                   <td key={i} className="num" style={{ padding: "3px 4px" }}>
-                    <FormattedNumberInput min={0} step={0.5} className="premium-input mono"
+                    <input type="number" min="0" step="0.5" className="premium-input mono"
                       value={Number(p.toFixed(1))}
-                      onChange={(v) => setMonth(i, v || 0)}
+                      onChange={(e) => setMonth(i, Number(e.target.value) || 0)}
                       onFocus={(e) => e.target.select()}
                       style={{ width: "100%", textAlign: "right", padding: "4px 4px", fontSize: 12 }} />
                   </td>

@@ -241,10 +241,10 @@ export default function AppLayout({ children }) {
 
   return (
     <div className="app-container">
-      {/* ── Top bar 1 ชั้น (Desktop) ── */}
+      {/* ── Top bar 2 ชั้น (ตรึงบนสุดทั้งระบบ) ── */}
       <header className="topnav">
-        <div className="topnav-inner">
-          {/* ส่วนซ้าย: โลโก้ และตัวสลับระบบ */}
+        {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
+        <div className="topnav-system">
           <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
             <img src="/brand-logo.png" alt="Scent &amp; Sense" className="topnav-brand-img" />
             <span className="topnav-brand-title">Scent &amp; Sense</span>
@@ -280,28 +280,6 @@ export default function AppLayout({ children }) {
             )}
           </div>
 
-          {/* ส่วนกลาง: เมนูของระบบปัจจุบัน (แสดงเฉพาะจอ Desktop) */}
-          <nav className="topnav-menu desktop-only" aria-label={`เมนู${systemSubtitle}`}>
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const active = item.match(pathname);
-              return (
-                <Link href={item.href} key={item.href} className={`topnav-item ${active ? 'active' : ''}`}>
-                  <Icon size={16} className="ico" />
-                  <span>{item.name}</span>
-                </Link>
-              );
-            })}
-            <Link
-              href="/database/holidays"
-              className={`topnav-item ${pathname.startsWith('/database/holidays') ? 'active' : ''}`}
-            >
-              <CalendarDays size={16} className="ico" />
-              <span>ปฏิทิน</span>
-            </Link>
-          </nav>
-
-          {/* ส่วนขวา: User actions */}
           <div className="topbar-actions">
             {/* Login User Info */}
             <div className="topbar-user-info">
@@ -347,21 +325,29 @@ export default function AppLayout({ children }) {
             </button>
           </div>
         </div>
-      </header>
 
-      {/* ── Bottom Navigation (Mobile Only) ── */}
-      <nav className="bottom-nav mobile-only" aria-label={`เมนู${systemSubtitle}`}>
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const active = item.match(pathname);
-          return (
-            <Link href={item.href} key={item.href} className={`bottom-nav-item ${active ? 'active' : ''}`}>
-              <Icon size={20} className="ico" />
-              <span>{item.name}</span>
-            </Link>
-          );
-        })}
-      </nav>
+        {/* ชั้นเมนูของระบบปัจจุบัน — จอแคบเลื่อนแนวนอนได้ (ไม่มี drawer แล้ว) */}
+        <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const active = item.match(pathname);
+            return (
+              <Link href={item.href} key={item.href} className={`topnav-item ${active ? 'active' : ''}`}>
+                <Icon size={16} className="ico" />
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+          <span className="topnav-menu-spacer" />
+          <Link
+            href="/database/holidays"
+            className={`topnav-item ${pathname.startsWith('/database/holidays') ? 'active' : ''}`}
+          >
+            <CalendarDays size={16} className="ico" />
+            <span>ปฏิทิน</span>
+          </Link>
+        </nav>
+      </header>
 
       {/* Main Content Area */}
       <main className="main-content">
