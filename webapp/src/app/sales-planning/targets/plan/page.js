@@ -62,6 +62,7 @@ export default function SalesTargetPlanPage() {
 
   // Step 2 — chosen final target for the plan year.
   const [finalTarget, setFinalTarget] = useState(0);
+  const [confirmState, setConfirmState] = useState({ open: false, title: "", message: "", action: null, isDanger: false, confirmLabel: "ยืนยัน" });
   const [cap] = useState(DEFAULT_GROWTH_CAP);
 
   // Step 3 — target amount per team.
@@ -199,7 +200,7 @@ export default function SalesTargetPlanPage() {
   // Switching plan year restarts the wizard — history/projection/splits all change.
   const changeYear = (y) => {
     if (y === targetYear) return;
-    if (step > 1 && !window.confirm("เปลี่ยนปีจะเริ่มขั้นตอนใหม่ตั้งแต่ต้น จะเปลี่ยนไหม?")) return;
+    if (step > 1) { setConfirmState({ open: true, title: "เปลี่ยนปี?", message: "เปลี่ยนปีจะเริ่มขั้นตอนใหม่ตั้งแต่ต้น จะเปลี่ยนไหม?", action: () => { setConfirmState(p=>({...p, open:false})); setTargetYear(y); setStep(1); setError(""); setInfo(""); setFinalTarget(0); setTeamTargets({}); setPersonTargets({}); setMonthPct(Array(12).fill(100/12)); }, confirmLabel: "เปลี่ยนปี" }); return; }
     setTargetYear(y);
     setStep(1);
     setError("");
@@ -284,7 +285,8 @@ export default function SalesTargetPlanPage() {
         <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>
           เฉพาะ AE Supervisor / admin ใช้ตัวช่วยวางเป้าได้
         </div>
-      </Workspace>
+        <ConfirmDialog {...confirmState} onClose={() => setConfirmState(p => ({ ...p, open: false }))} />
+    </Workspace>
     );
   }
 

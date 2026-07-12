@@ -909,7 +909,7 @@ export default function DealOverviewPage() {
                       {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
                     </select>
                     {feedKind === "next_step" && (
-                      <input type="date" className="premium-input" value={feedDue} onChange={(e) => setFeedDue(e.target.value)} style={{ width: 160 }} aria-label="กำหนดวันขั้นถัดไป" />
+                      <DatePicker value={feedDue} onChange={(v) => setFeedDue(v)} />
                     )}
                   </div>
                   <textarea
@@ -973,7 +973,7 @@ export default function DealOverviewPage() {
                               {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
                             </select>
                             {editKind === "next_step" && (
-                              <input type="date" className="premium-input" value={editDue} onChange={(e) => setEditDue(e.target.value)} style={{ width: 160 }} aria-label="กำหนดวัน" />
+                              <DatePicker value={editDue} onChange={(v) => setEditDue(v)} />
                             )}
                           </div>
                           <textarea className="premium-input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} style={{ resize: "vertical" }} />
