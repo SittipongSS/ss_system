@@ -222,7 +222,17 @@ export default function SalesPlanningTargetsPage() {
   };
 
   const guardPending = (proceed) => {
-    if (pendingCount && !window.confirm("มีการแก้ไขที่ยังไม่บันทึก จะทิ้งการแก้ไขไหม?")) return;
+    if (pendingCount) {
+      setConfirmState({
+        open: true,
+        title: "ละทิ้งการแก้ไข",
+        message: "มีการแก้ไขที่ยังไม่บันทึก จะทิ้งการแก้ไขไหม?",
+        action: () => { setPending({}); proceed(); setConfirmState(p=>({...p, open:false})); },
+        confirmLabel: "ทิ้งการแก้ไข",
+        isDanger: true
+      });
+      return;
+    }
     setPending({});
     proceed();
   };
@@ -480,6 +490,7 @@ export default function SalesPlanningTargetsPage() {
           </div>
         </div>
       )}
+      <ConfirmDialog {...confirmState} onClose={() => setConfirmState(p => ({ ...p, open: false }))} />
     </Workspace>
   );
 }

@@ -213,41 +213,43 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  const acceptQuotation = async (quote) => {
-    if (!window.confirm(`Accept quotation ${quote.quoteNumber}?`)) return;
-    setQuoteLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, { method: "POST" });
-      if (!res.ok) throw new Error((await res.json()).error || "accept quotation ไม่สำเร็จ");
-      await loadQuotations(quoteDeal);
-      await load();
-    } catch (e) {
-      setError(e.message || "accept quotation ไม่สำเร็จ");
-    } finally {
-      setQuoteLoading(false);
-    }
+  const acceptQuotation = (quote) => {
+    requestConfirm("รับใบเสนอราคา", `ยืนยันรับใบเสนอราคา ${quote.quoteNumber}?`, async () => {
+      setQuoteLoading(true);
+      setError("");
+      try {
+        const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, { method: "POST" });
+        if (!res.ok) throw new Error((await res.json()).error || "accept quotation ไม่สำเร็จ");
+        await loadQuotations(quoteDeal);
+        await load();
+      } catch (e) {
+        setError(e.message || "accept quotation ไม่สำเร็จ");
+      } finally {
+        setQuoteLoading(false);
+      }
+    });
   };
 
-  const changeQuotationApproval = async (quote, action) => {
-    const label = action === "approve" ? "Approve" : action === "reject" ? "Reject" : "Request approval for";
-    if (!window.confirm(`${label} quotation ${quote.quoteNumber}?`)) return;
-    setQuoteLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/quotations/${quote.id}/approval`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "update quotation approval failed");
-      await loadQuotations(quoteDeal);
-      await load();
-    } catch (e) {
-      setError(e.message || "update quotation approval failed");
-    } finally {
-      setQuoteLoading(false);
-    }
+  const changeQuotationApproval = (quote, action) => {
+    const label = action === "approve" ? "อนุมัติ" : action === "reject" ? "ตีกลับ" : "ขออนุมัติ";
+    requestConfirm(label, `ยืนยัน${label}ใบเสนอราคา ${quote.quoteNumber}?`, async () => {
+      setQuoteLoading(true);
+      setError("");
+      try {
+        const res = await fetch(`/api/sales-planning/quotations/${quote.id}/approval`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || "update quotation approval failed");
+        await loadQuotations(quoteDeal);
+        await load();
+      } catch (e) {
+        setError(e.message || "update quotation approval failed");
+      } finally {
+        setQuoteLoading(false);
+      }
+    });
   };
 
   // เปิดโมดัลสร้างโครงการ PM (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล — ปรับแก้ได้
@@ -274,25 +276,26 @@ export default function SalesPlanningPipelinePage() {
 
   // ส่งต่อคลัง: สร้างเอกสารเตรียมส่งของจากโครงการที่ผูกกับ Sales Planning (idempotent ฝั่ง PM)
   // แล้วเปิดหน้า PM shipment-prep เพื่อดู/พิมพ์ ส่งให้คลังดำเนินการ.
-  const createShipmentPrep = async (deal) => {
+  const createShipmentPrep = (deal) => {
     if (!deal.projectId) return;
-    if (!window.confirm(`สร้างเอกสารเตรียมส่งของจากโครงการ "${deal.title}"?`)) return;
-    setShippingDealId(deal.id);
-    setError("");
-    try {
-      const res = await fetch(`/api/pm/projects/${deal.projectId}/shipment-prep`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "สร้างเอกสารส่งของไม่สำเร็จ");
-      window.open(`/sa/projects/${deal.projectId}/shipment-prep`, "_blank", "noopener");
-    } catch (e) {
-      setError(e.message || "สร้างเอกสารส่งของไม่สำเร็จ");
-    } finally {
-      setShippingDealId(null);
-    }
+    requestConfirm("เตรียมส่งของ", `สร้างเอกสารเตรียมส่งของจากโครงการ "${deal.title}"?`, async () => {
+      setShippingDealId(deal.id);
+      setError("");
+      try {
+        const res = await fetch(`/api/pm/projects/${deal.projectId}/shipment-prep`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "สร้างเอกสารส่งของไม่สำเร็จ");
+        window.open(`/sa/projects/${deal.projectId}/shipment-prep`, "_blank", "noopener");
+      } catch (e) {
+        setError(e.message || "สร้างเอกสารส่งของไม่สำเร็จ");
+      } finally {
+        setShippingDealId(null);
+      }
+    });
   };
 
   // ปิดดีลเป็น Won — เปิดโมดัลรับ "มูลค่าปิดจริง" (prefill = คาดการณ์) ก่อนยืนยัน
@@ -385,19 +388,20 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  const deleteDocument = async (doc) => {
-    if (!window.confirm(`Delete "${doc.title}"?`)) return;
-    setDocLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/documents/${doc.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json()).error || "delete document failed");
-      await loadDocuments(docDeal);
-    } catch (e) {
-      setError(e.message || "delete document failed");
-    } finally {
-      setDocLoading(false);
-    }
+  const deleteDocument = (doc) => {
+    requestConfirm("ลบเอกสาร", `ยืนยันการลบเอกสาร "${doc.title}"?`, async () => {
+      setDocLoading(true);
+      setError("");
+      try {
+        const res = await fetch(`/api/sales-planning/documents/${doc.id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json()).error || "delete document failed");
+        await loadDocuments(docDeal);
+      } catch (e) {
+        setError(e.message || "delete document failed");
+      } finally {
+        setDocLoading(false);
+      }
+    }, "ลบเอกสาร", true);
   };
 
   const headerRight = (
@@ -674,14 +678,14 @@ export default function SalesPlanningPipelinePage() {
         </form>
       </SlidePanel>
 
-      <Modal open={!!winDeal} onClose={() => winningDealId ? null : setWinDeal(null)} title="ปิดการขาย (Won)" size="sm">
+      <SlidePanel isOpen={!!winDeal} onClose={() => winningDealId ? null : setWinDeal(null)} title="ปิดการขาย (Won)" width="max-w-md" footer={<><button type="button" className="btn ghost" onClick={() => setWinDeal(null)} disabled={!!winningDealId}>ยกเลิก</button><button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!winningDealId || !(Number(winValue) > 0)}><CheckCircle2 size={14} aria-hidden="true" /> {winningDealId ? "กำลังบันทึก..." : "ยืนยัน Won"}</button></>}>
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
             ปิดดีล <strong>{winDeal?.title}</strong> — ยืนยันว่าได้รับมัดจำ/ยืนยันแล้ว กรอก <strong>มูลค่าปิดจริง</strong> (นับเข้าเป้า)
           </div>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             มูลค่าปิดจริง (บาท)
-            <input type="number" min="0" step="0.01" className="premium-input mono" value={winValue} onChange={(e) => setWinValue(e.target.value)} autoFocus />
+            <FormattedNumberInput min={0} step={0.01} className="premium-input mono" value={winValue} onChange={(v) => setWinValue(v)} autoFocus />
           </label>
           {winDeal && Number(winDeal.projectValue) > 0 && Number(winValue) > 0 && Number(winValue) !== Number(winDeal.projectValue) && (
             <div style={{ fontSize: 12, color: "var(--amber)" }}>ต่างจากคาดการณ์ ({money(winDeal.projectValue)}) {money(Number(winDeal.projectValue) - Number(winValue))}</div>
@@ -692,16 +696,10 @@ export default function SalesPlanningPipelinePage() {
               <MonthPicker value={winMonth} onChange={setWinMonth} />
             </div>
           </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="btn ghost" onClick={() => setWinDeal(null)} disabled={!!winningDealId}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!winningDealId || !(Number(winValue) > 0)}>
-              <CheckCircle2 size={14} aria-hidden="true" /> {winningDealId ? "กำลังบันทึก..." : "ยืนยัน Won"}
-            </button>
-          </div>
         </div>
-      </Modal>
+      </SlidePanel>
 
-      <Modal open={quoteModal} onClose={() => setQuoteModal(false)} title={`Quotation${quoteDeal?.title ? ` · ${quoteDeal.title}` : ""}`} size="lg">
+      <SlidePanel isOpen={quoteModal} onClose={() => setQuoteModal(false)} title={`Quotation${quoteDeal?.title ? ` · ${quoteDeal.title}` : ""}`} width="max-w-4xl">
         <div style={{ padding: 18 }}>
           <div className="flex items-center gap-2 mb-3">
             <div style={{ color: "var(--text-3)", fontSize: 12 }}>
@@ -794,9 +792,9 @@ export default function SalesPlanningPipelinePage() {
             </table>
           </div>
         </div>
-      </Modal>
+      </SlidePanel>
 
-      <Modal open={docModal} onClose={() => setDocModal(false)} title={`Documents${docDeal?.title ? ` · ${docDeal.title}` : ""}`} size="lg">
+      <SlidePanel isOpen={docModal} onClose={() => setDocModal(false)} title={`Documents${docDeal?.title ? ` · ${docDeal.title}` : ""}`} width="max-w-4xl">
         <div style={{ padding: 18 }}>
           {docDeal?.canEdit && (
             <form onSubmit={createDocument} className="form-grid" aria-busy={docLoading} style={{ marginBottom: 16 }}>
@@ -817,7 +815,7 @@ export default function SalesPlanningPipelinePage() {
               </label>
               <label>
                 กำหนดส่ง
-                <input type="date" className="premium-input" value={docForm.dueDate} onChange={(e) => setDocForm({ ...docForm, dueDate: e.target.value })} />
+                <DatePicker value={docForm.dueDate} onChange={(v) => setDocForm({ ...docForm, dueDate: v })} />
               </label>
               <label>
                 สถานะ
@@ -892,7 +890,7 @@ export default function SalesPlanningPipelinePage() {
             </table>
           </div>
         </div>
-      </Modal>
+      </SlidePanel>
 
       {pmDeal && (
         <ProjectFormModal
