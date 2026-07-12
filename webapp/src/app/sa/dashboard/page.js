@@ -527,8 +527,6 @@ export default function SalesPlanningOverviewPage() {
   const headerRight = (
     <>
       <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
-      <Link className="btn" href="/sa/deals"><FolderKanban size={15} aria-hidden="true" /> โครงการ</Link>
-      {canTarget && <Link className="btn" href="/sa/targets"><Target size={15} aria-hidden="true" /> เป้าหมาย</Link>}
     </>
   );
 

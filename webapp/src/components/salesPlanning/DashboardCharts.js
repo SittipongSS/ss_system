@@ -225,20 +225,6 @@ export default function DashboardCharts({ rows, months, monthLabels, year, teamK
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-3" style={{ flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-3)" }}>เลือกทีม</span>
-        <div className="segmented" role="group" aria-label="เลือกทีม">
-          <button type="button" className={teamKey === "all" ? "active" : ""} aria-pressed={teamKey === "all"} onClick={() => onTeamKeyChange("all")}>
-            ทุกทีม
-          </button>
-          {SALES_TEAMS.map((t) => (
-            <button key={t} type="button" className={teamKey === t ? "active" : ""} aria-pressed={teamKey === t} onClick={() => onTeamKeyChange(t)}>
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
-
 
 
       <Panel
@@ -275,7 +261,6 @@ export default function DashboardCharts({ rows, months, monthLabels, year, teamK
         <GroupedBarChart 
           data={teamData} 
           height={300} 
-          onBarClick={(d) => d.label && onTeamKeyChange(d.label)}
           onMouseMove={handleMouseMove} 
           onMouseLeave={handleMouseLeave} 
         />
