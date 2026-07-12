@@ -16,7 +16,7 @@ import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectDealsHub, { ProjectActivityFeed } from "@/components/pm/ProjectDealsHub";
-import ProjectFormModal from "@/components/pm/ProjectFormModal";
+import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import Select from "@/components/ui/Select";
 import StatusSelect, { taskStatusColor } from "@/components/pm/StatusSelect";
@@ -31,6 +31,8 @@ import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/derived";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
+import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -180,14 +182,15 @@ export default function ProjectDetailPage() {
   const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" }); // list | table | document
   // เมนูครอบ (มติผู้ใช้): เปิดมาเจอ "ภาพรวม" (ศูนย์รวมดีล) ก่อน — กดเข้าไทม์ไลน์อีกชั้น
   // ถึงเห็นตารางขั้นตอน. sync กับ ?tab=timeline เพื่อให้ refresh/แชร์ลิงก์ค้างแท็บเดิม.
-  const [tab, setTab] = useState("overview"); // overview | timeline
+  const [tab, setTab] = useState("overview");
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "timeline") setTab("timeline");
+    setTab(detailTabFromSearch(window.location.search));
   }, []);
   const switchTab = (t) => {
     setTab(t);
+    if (t === "tasks") setView("table");
     const url = new URL(window.location.href);
-    if (t === "timeline") url.searchParams.set("tab", "timeline");
+    if (t !== "overview") url.searchParams.set("tab", t);
     else url.searchParams.delete("tab");
     window.history.replaceState(null, "", url);
   };
@@ -824,8 +827,7 @@ export default function ProjectDetailPage() {
 
   const p = data;
   // โครงการกำพร้า (ไม่มีดีล) ไม่มีอะไรให้ดูในภาพรวม — เข้าไทม์ไลน์ตรงเหมือนเดิม
-  const hasDeals = (p.deals || []).length > 0;
-  const showTimeline = !hasDeals || tab === "timeline";
+  const showTimeline = tab === "timeline" || tab === "tasks";
   const hasWriteAccess = hasEditCap && !!data.canEdit;
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
@@ -1045,8 +1047,8 @@ export default function ProjectDetailPage() {
         <div style={{ padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
           <div style={{ display: "flex", gap: "24px", fontSize: "12px", flexWrap: "wrap" }}>
             <div><span style={{ color: "var(--text-3)" }}>วันเริ่ม: </span>{p.startDate || "-"}</div>
-            <div><span style={{ color: "var(--text-3)" }}>เลขที่ใบเสนอราคา: </span>{p.metadata?.quotationNumber || "-"}</div>
-            <div><span style={{ color: "var(--text-3)" }}>เลขที่ PO: </span>{p.metadata?.poNumber || "-"}</div>
+            <div><span style={{ color: "var(--text-3)" }}>แบรนด์: </span>{p.metadata?.brand || "-"}</div>
+            <div><span style={{ color: "var(--text-3)" }}>ดีล: </span>{(p.deals || []).length}</div>
             <div><span style={{ color: "var(--text-3)" }}>หมวดสินค้า: </span>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1059,21 +1061,12 @@ export default function ProjectDetailPage() {
         </div>
 
       {/* เมนูครอบ: ภาพรวม (ศูนย์รวมดีล) ↔ ไทม์ไลน์ — โครงการกำพร้าไม่มีดีลข้ามไปไทม์ไลน์เลย */}
-      {hasDeals && (
-        <div className="segmented" role="tablist" aria-label="ส่วนของโครงการ" style={{ marginBottom: 20, width: "fit-content" }}>
-          <button type="button" role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "active" : ""} onClick={() => switchTab("overview")}>
-            ภาพรวม
-          </button>
-          <button type="button" role="tab" aria-selected={tab === "timeline"} className={tab === "timeline" ? "active" : ""} onClick={() => switchTab("timeline")}>
-            ไทม์ไลน์ ({(p.tasks || []).filter((t) => t.status === "Completed").length}/{(p.tasks || []).length})
-          </button>
-        </div>
-      )}
+      <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" />
 
       {/* ภาพรวม — ศูนย์รวมโครงการ: จิ๊กซอว์ครอบดีล (KPI rollup + การ์ดต่อดีล) */}
-      {!showTimeline && (
+      {tab === "overview" && (
         <>
-          <ProjectDealsHub project={p} />
+          <ProjectDealsHub project={p} onChanged={load} />
           {/* การ์ดเมนูไทม์ไลน์ — กดเข้าไปถึงเห็นตารางขั้นตอนเต็ม */}
           <div
             className="glass-panel"
@@ -1116,6 +1109,8 @@ export default function ProjectDetailPage() {
           </div>
         </>
       )}
+
+      {tab === "quotations" && <ProjectDealsHub project={p} onChanged={load} />}
 
       {p.status === "Dropped" && (
         <div style={{ marginBottom: "24px", padding: "18px 24px", background: "color-mix(in srgb, var(--red) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 40%, transparent)", borderRadius: "12px", borderLeft: "5px solid var(--red)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", zIndex: 10, position: "relative" }}>
@@ -1528,7 +1523,7 @@ export default function ProjectDetailPage() {
       )}
 
       {/* ฟีดความเคลื่อนไหวรวมทุกดีล — อยู่ท้ายแท็บภาพรวม */}
-      {!showTimeline && <ProjectActivityFeed project={p} />}
+      {tab === "activities" && <ProjectActivityFeed project={p} onChanged={load} />}
 
       {/* Add task modal */}
       <Modal open={showAddTask} onClose={() => setShowAddTask(false)} title="เพิ่มขั้นตอน" size="md">
@@ -1794,7 +1789,7 @@ export default function ProjectDetailPage() {
       </Modal>
 
       {showEditProject && (
-        <ProjectFormModal
+        <SalesProjectCreateModal
           open={showEditProject}
           onClose={() => setShowEditProject(false)}
           editingId={p.id}
@@ -1809,8 +1804,6 @@ export default function ProjectDetailPage() {
           }}
           customers={customers}
           categories={categories}
-          allProducts={allProducts}
-          users={users}
         />
       )}
 

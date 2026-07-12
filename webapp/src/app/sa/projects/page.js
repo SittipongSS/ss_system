@@ -7,9 +7,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import ProjectFormModal from "@/components/pm/ProjectFormModal";
+import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import { useCan } from "@/lib/roleContext";
-import { DEAL_TYPES, DEAL_TYPE_LABELS } from "@/lib/salesPlanning";
 import { dealTypeBadge, KpiCard } from "@/components/salesPlanning/ui";
 import { fmtMoneyCompact, fmtName } from "@/lib/format";
 
@@ -21,29 +20,25 @@ export default function ProjectsIndexPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("active"); // active = ไม่รวม Done/Drop
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [allProducts, setAllProducts] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [res, custRes, catRes, prodRes] = await Promise.all([
+      const [res, custRes, catRes] = await Promise.all([
         fetch("/api/pm/projects"),
         fetch("/api/master/customers"),
         fetch("/api/master/product-types"),
-        fetch("/api/products")
       ]);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดโครงการไม่สำเร็จ");
       setRows(await res.json());
       if (custRes.ok) setCustomers(await custRes.json());
       if (catRes.ok) setCategories(await catRes.json());
-      if (prodRes.ok) setAllProducts(await prodRes.json());
     } catch (e) {
       setError(e.message || "โหลดโครงการไม่สำเร็จ");
     } finally {
@@ -58,12 +53,11 @@ export default function ProjectsIndexPage() {
     return rows.filter((p) => {
       if (statusFilter === "active" && ["Done", "Drop"].includes(p.status)) return false;
       if (statusFilter !== "active" && statusFilter !== "all" && p.status !== statusFilter) return false;
-      if (typeFilter !== "all" && p.type !== typeFilter) return false;
       if (!q) return true;
       return [p.code, p.name, p.customerName, p.formulaName, ...(p.deals || []).map((d) => d.title)]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [rows, query, typeFilter, statusFilter]);
+  }, [rows, query, statusFilter]);
 
   // KPI รวมของโครงการที่กรองอยู่ — บวกจาก rollup ต่อโครงการ (นิยามเดียวกับต่อแถว)
   const totals = useMemo(() => {
@@ -129,10 +123,6 @@ export default function ProjectsIndexPage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / สูตร / ดีล" aria-label="ค้นหาโครงการ" />
             </div>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="premium-select" aria-label="กรองประเภท" style={{ width: 170 }}>
-              <option value="all">ทุกประเภท</option>
-              {DEAL_TYPES.map((t) => <option key={t} value={t}>{DEAL_TYPE_LABELS[t]}</option>)}
-            </select>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 170 }}>
               <option value="active">กำลังดำเนินการ</option>
               <option value="all">ทุกสถานะ</option>
@@ -199,16 +189,17 @@ export default function ProjectsIndexPage() {
           </div>
         </section>
         </div>
-      <ProjectFormModal
+      <SalesProjectCreateModal
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        editingId={null}
-        initialData={null}
-        onSuccess={() => { setShowCreateModal(false); load(); }}
+        onSuccess={(data) => {
+          setShowCreateModal(false);
+          const project = data?.project;
+          if (project?.code || project?.id) window.location.href = `/sa/projects/${project.code || project.id}`;
+          else load();
+        }}
         customers={customers}
         categories={categories}
-        allProducts={allProducts}
-        createEndpoint="/api/sa/projects"
       />
     </Workspace>
   );

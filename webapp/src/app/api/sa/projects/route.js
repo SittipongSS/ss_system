@@ -2,10 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, unauthorized, forbidden, badRequest, conflict } from '@/lib/http';
 import { can } from '@/lib/permissions';
-import { buildProjectTasks, todayStr } from '@/lib/pm/schedule';
-import { setHolidays } from '@/lib/pm/dateHelpers';
-import { holidaySet } from '@/lib/master/holidays';
-import { applyAutoStatuses } from '@/lib/pm/status';
+import { todayStr } from '@/lib/pm/schedule';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
 import { normalizeDealType } from '@/lib/salesPlanning';
 
@@ -83,18 +80,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
   if (error) return fail(error.message, 500);
 
-  setHolidays([...(await holidaySet())]);
-  const tasks = applyAutoStatuses(buildProjectTasks(project, project.id, null));
-  let insertedTasks = [];
-  if (tasks.length) {
-    const { data: taskRows, error: taskError } = await supabase
-      .from('project_tasks')
-      .insert(tasks)
-      .select();
-    if (taskError) return fail(`สร้างขั้นตอน PM ไม่สำเร็จ: ${taskError.message}`, 500);
-    insertedTasks = taskRows || [];
-  }
-
   let productWarning = null;
   if (Array.isArray(body.projectProducts) && body.projectProducts.length > 0) {
     const ppRows = body.projectProducts
@@ -116,5 +101,5 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     request: req,
   });
 
-  return ok({ project: { ...project, tasks: insertedTasks }, productWarning }, 201);
+  return ok({ project: { ...project, tasks: [] }, productWarning }, 201);
 });
