@@ -4735,7 +4735,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 .btn-status-ghost {
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--btn-bg) 30%, transparent);
+  border: 1px solid transparent;
   color: var(--btn-bg);
 }
 .btn-status-ghost:hover {
