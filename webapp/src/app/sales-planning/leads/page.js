@@ -31,7 +31,7 @@ const initialForm = {
 
 function statusBadge(status) {
   return (
-    <span className="ui-badge" style={{ color: LEAD_STATUS_COLORS[status] || "var(--text-3)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+    <span className="ui-badge" style={{ color: LEAD_STATUS_COLORS[status] || "var(--text-3)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)", minWidth: 90, justifyContent: "center" }}>
       {LEAD_STATUS_LABELS[status] || status}
     </span>
   );
