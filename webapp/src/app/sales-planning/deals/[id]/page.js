@@ -713,31 +713,25 @@ export default function DealOverviewPage() {
                 {nextPrimary()}
               </div>
             )}
+            {/* route actions (ทะเบียนสรรพสามิต/PO สหมิตร/ส่งของ) — ย้ายจากแถบเมนูที่ถูกตัดออก */}
+            {(lc?.routes || []).length > 0 && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                {lc.routes.map((route) => (
+                  <RouteMenuButton key={route.kind} route={route} onAction={onRouteAction} busy={!!actionBusy} canEdit={canEdit} />
+                ))}
+              </div>
+            )}
           </section>
 
-          {/* เมนูครอบ (แบบหน้าโครงการ): แท็บ ภาพรวม ↔ ไทม์ไลน์ + ทางลัดในภาพรวม + route actions */}
-          <nav className="glass-panel toolbar" aria-label="ส่วนต่าง ๆ ของดีล" style={{ padding: "8px 12px" }}>
-            <div className="segmented" role="tablist" aria-label="มุมมองดีล">
-              <button type="button" role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "active" : ""} onClick={() => switchTab("overview")}>
-                ภาพรวม
-              </button>
-              <button type="button" role="tab" aria-selected={tab === "timeline"} className={tab === "timeline" ? "active" : ""} onClick={() => switchTab("timeline")}>
-                ไทม์ไลน์{taskSummary.total ? ` (${taskSummary.done}/${taskSummary.total})` : ""}
-              </button>
-            </div>
-            {tab === "overview" && (
-              <>
-                <a className="btn ghost sm" href="#deal-tasks">งาน</a>
-                <a className="btn ghost sm" href="#deal-timeline">ความเคลื่อนไหว</a>
-              </>
-            )}
-            <span className="spacer" />
-            {lc?.routes?.map((route) => (
-              <RouteMenuButton key={route.kind} route={route} onAction={onRouteAction} busy={!!actionBusy} canEdit={canEdit} />
-            ))}
-            {!SALES_FEATURES.quotations && <span className="ui-badge" style={{ color: "var(--text-3)" }} title="อยู่ในแผนเฟสถัดไป">ใบเสนอราคา · เฟสถัดไป</span>}
-            {!SALES_FEATURES.shipment && <span className="ui-badge" style={{ color: "var(--text-3)" }} title="อยู่ในแผนเฟสถัดไป">การส่ง · เฟสถัดไป</span>}
-          </nav>
+          {/* เมนูครอบ (แบบหน้าโครงการ): แท็บ ภาพรวม ↔ ไทม์ไลน์ — ตัดแถบทางลัด/ป้ายเฟสถัดไปออก (มติผู้ใช้) */}
+          <div className="segmented" role="tablist" aria-label="มุมมองดีล" style={{ width: "fit-content" }}>
+            <button type="button" role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "active" : ""} onClick={() => switchTab("overview")}>
+              ภาพรวม
+            </button>
+            <button type="button" role="tab" aria-selected={tab === "timeline"} className={tab === "timeline" ? "active" : ""} onClick={() => switchTab("timeline")}>
+              ไทม์ไลน์{taskSummary.total ? ` (${taskSummary.done}/${taskSummary.total})` : ""}
+            </button>
+          </div>
 
           {!!data?.warnings?.length && (
             <div className="glass-panel" role="status" style={{ padding: "12px 14px", color: "var(--amber)", borderColor: "var(--amber)" }}>
