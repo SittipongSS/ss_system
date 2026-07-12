@@ -74,6 +74,8 @@ export default function SalesPlanningPipelinePage() {
   const [docModal, setDocModal] = useState(false);
   const [docDeal, setDocDeal] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [dashTotals, setDashTotals] = useState({});
+  const [dashTargetRows, setDashTargetRows] = useState(0);
   const [docLoading, setDocLoading] = useState(false);
   const [docForm, setDocForm] = useState({ kind: "customer_brief", title: "", status: "pending", dueDate: "", notes: "" });
   const [shippingDealId, setShippingDealId] = useState(null);
@@ -438,6 +440,9 @@ export default function SalesPlanningPipelinePage() {
       setDocLoading(false);
     }
   };
+
+  const money = (value) => fmtMoney(value);
+  const pctFmt = (value) => (value == null ? "–" : `${Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
 
   const headerRight = (
     <>
