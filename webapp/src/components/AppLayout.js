@@ -176,8 +176,7 @@ export default function AppLayout({ children }) {
       system: 'salesplan',
       home: '/sa',
       items: [
-        { href: '/sa', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sa' || p === '/sales-planning' },
-        { href: '/sa/my-dashboard', name: 'แดชบอร์ดของฉัน', icon: LayoutDashboard, cap: 'salesplan:lead', match: (p) => p === '/sa/my-dashboard' || p.startsWith('/sa/my-dashboard') },
+        { href: '/sa/dashboard', name: 'แดชบอร์ด', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sa/dashboard' || p === '/sa' || p === '/sales-planning' || p === '/sa/my-dashboard' || p === '/sa/kpi' },
         // เฟส C: คิวลีดของ Marketing/ฝ่ายขาย — role marketing เห็นเมนูนี้ตัวเดียว
         { href: '/sa/leads', name: 'ลีด', icon: Inbox, cap: 'salesplan:lead', match: (p) => p.startsWith('/sa/leads') || p.startsWith('/sales-planning/leads') },
         // "ดีล" = งานขายแต่ละก้อน (SCENT/NPD/RE-ORDER) — คำ "โครงการ" สงวนให้ตัว
@@ -189,8 +188,6 @@ export default function AppLayout({ children }) {
         { href: '/sa/quotations', name: 'ใบเสนอราคา', icon: FileText, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/quotations') || p.startsWith('/sales-planning/quotations') },
         { href: '/sa/targets', name: 'วางเป้าหมาย', icon: Target, cap: 'salesplan:target', match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'pm:view', match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
-        // เฟส C: KPI ลีด/SLA (เฟส G เติม FC accuracy + %Target)
-        { href: '/sa/kpi', name: 'KPI', icon: LineChart, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/kpi') || p.startsWith('/sales-planning/kpi') },
       ],
     },
     {

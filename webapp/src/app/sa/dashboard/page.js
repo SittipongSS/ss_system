@@ -12,11 +12,14 @@ import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
 import { DEAL_TYPES, SALES_FEATURES, teamRank } from "@/lib/salesPlanning";
 import { fmtDateTime, fmtMoney } from "@/lib/format";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
+import MyDashboardTab from "@/components/salesPlanning/dashboard/MyDashboardTab";
+import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
 
-const OVERVIEW_TABS = [
-  { key: "tables", label: "ตาราง" },
-  { key: "dashboard", label: "แดชบอร์ด" },
+const DASHBOARD_TABS = [
+  { key: "my", label: "แดชบอร์ดของฉัน" },
+  { key: "overview", label: "ภาพรวมระบบ" },
   { key: "task_kpi", label: "KPI งาน" },
+  { key: "lead_kpi", label: "KPI ลีด" },
 ];
 
 // ดูเต็มจอสำหรับ element เดียว (คืน ref + สถานะ + ปุ่ม toggle). ใช้ซ้ำได้ทุกตาราง.
@@ -394,7 +397,7 @@ export default function SalesPlanningOverviewPage() {
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
   const [allMonths, setAllMonths] = useState(false); // รวมทั้งปีในการ์ด KPI/FC
-  const [tab, setTab] = useState("tables");
+  const [tab, setTab] = useState("my");
   const year = month.slice(0, 4);
   const [yearDashboards, setYearDashboards] = useState([]);
   const [sahamitRisk, setSahamitRisk] = useState(null);
@@ -545,7 +548,11 @@ export default function SalesPlanningOverviewPage() {
         )}
 
         <div className="tabs-header" role="tablist" aria-label="มุมมองภาพรวม">
-          {OVERVIEW_TABS.filter((t) => t.key !== "task_kpi" || canSeeKpi).map((t) => (
+          {DASHBOARD_TABS.filter((t) => {
+            if (t.key === "overview" && !canReview && !canTarget) return false; // Basic filter for overview
+            if (t.key === "task_kpi" && !canSeeKpi) return false;
+            return true;
+          }).map((t) => (
             <button
               key={t.key}
               type="button"
@@ -559,10 +566,12 @@ export default function SalesPlanningOverviewPage() {
           ))}
         </div>
 
-        {tab === "dashboard" && (
-          <div aria-busy={loading}>
-            <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} teamKey={teamFilter} onTeamKeyChange={handleChartTeamClick} />
-          </div>
+        {tab === "my" && (
+          <MyDashboardTab month={month} />
+        )}
+
+        {tab === "lead_kpi" && (
+          <KpiLeadsTab month={month} />
         )}
 
         {tab === "task_kpi" && canSeeKpi && (
@@ -571,9 +580,13 @@ export default function SalesPlanningOverviewPage() {
           </div>
         )}
 
-        {tab === "tables" && (
-        <>
-        <section className="kpi-grid" aria-busy={loading}>
+        {tab === "overview" && (
+          <>
+          <div aria-busy={loading}>
+            <DashboardCharts rows={rows} months={months} monthLabels={MONTH_LABELS} year={year} teamKey={teamFilter} onTeamKeyChange={handleChartTeamClick} />
+          </div>
+
+        <section className="kpi-grid mt-5" aria-busy={loading}>
           <KpiCard icon={<Target size={16} aria-hidden="true" />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
           <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์" value={money(totals.weightedForecast)} hint="มูลค่าดีลเปิดที่คาดว่าจะปิดให้เป็น Won" />
           <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ`} />
