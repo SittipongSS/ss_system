@@ -15,16 +15,17 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewLeads(user)) return forbidden();
 
-  const month = monthKey(new URL(req.url).searchParams.get('month')) || monthKey(new Date().toISOString());
+  const param = new URL(req.url).searchParams.get('month');
+  const month = param === 'all' ? 'all' : (monthKey(param) || monthKey(new Date().toISOString()));
   const holidays = await holidaySet().catch(() => new Set());
 
   // ลีดของเดือนที่เลือก (ตามวันที่รับเข้า) — KPI เป็นภาพรวมทั้งฝ่าย (นโยบายเดียวกับ
   // dashboard ขาย: ภาพรวมโปร่งใส; การทำงานรายใบยัง scope ที่หน้า /sa/leads)
-  const { data: leads, error } = await supabase
-    .from('sales_leads')
-    .select('*')
-    .gte('createdAt', `${month}-01`)
-    .lt('createdAt', nextMonthStart(month));
+  let query = supabase.from('sales_leads').select('*');
+  if (month !== 'all') {
+    query = query.gte('createdAt', `${month}-01`).lt('createdAt', nextMonthStart(month));
+  }
+  const { data: leads, error } = await query;
   if (error) return fail(error.message, 500);
   const rows = leads || [];
 

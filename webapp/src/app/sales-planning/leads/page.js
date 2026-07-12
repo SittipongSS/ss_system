@@ -11,13 +11,14 @@ import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
-import { DEAL_TYPES, DEAL_TYPE_LABELS } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, DEAL_STAGES, STAGE_LABELS } from "@/lib/salesPlanning";
+import { brandThList } from "@/lib/master/brands";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
   MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS,
 } from "@/lib/sales/leads";
-import { KpiCard, MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
+import { KpiCard, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName } from "@/lib/format";
 
 const initialForm = {
@@ -50,6 +51,7 @@ export default function LeadsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("open"); // open = ยังไม่ปิด
   const [month, setMonth] = useState(thisMonth());
+  const [allMonths, setAllMonths] = useState(false);
   const [busy, setBusy] = useState("");
 
   // modals
@@ -73,7 +75,7 @@ export default function LeadsPage() {
     try {
       const [leadsRes, kpiRes] = await Promise.all([
         fetch("/api/sales-planning/leads"),
-        fetch(`/api/sales-planning/leads/kpi?month=${encodeURIComponent(month)}`),
+        fetch(`/api/sales-planning/leads/kpi?month=${allMonths ? "all" : encodeURIComponent(month)}`),
       ]);
       if (!leadsRes.ok) throw new Error((await leadsRes.json().catch(() => ({}))).error || "โหลดลีดไม่สำเร็จ");
       setLeads(await leadsRes.json());
@@ -83,7 +85,7 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, allMonths]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -183,45 +185,72 @@ export default function LeadsPage() {
   // ลดขั้นการกรอก (ลูกค้า/ทีม/ผู้ดูแล/มูลค่า ดึงจากลีดให้หมด)
   const canEditDeals = useCan("salesplan:edit");
   const [dealModal, setDealModal] = useState(null); // lead
-  const [dealTypesPick, setDealTypesPick] = useState({});
-  const [dealBaseTitle, setDealBaseTitle] = useState("");
-  const [dealValue, setDealValue] = useState("");
-  const [dealMonth, setDealMonth] = useState("");
+  const [dealsToCreate, setDealsToCreate] = useState([]);
+  
   const openDealModal = (lead) => {
     setDealModal(lead);
-    setDealTypesPick({ SCENT: false, NPD: true, "RE-ORDER": false });
-    setDealBaseTitle(lead.company || lead.contactName || "");
-    setDealValue(lead.budget ?? "");
-    setDealMonth(thisMonth());
+    setDealsToCreate([{
+      ...initialDealForm,
+      title: `${lead.company || lead.contactName} — SCENT`,
+      customerId: lead.customerId || "",
+      dealType: "SCENT",
+      stage: "qualified",
+      projectValue: lead.budget || "",
+      forecastMonth: thisMonth(),
+    }]);
   };
+  
+  const addDealToCreate = () => {
+    setDealsToCreate((prev) => [...prev, {
+      ...initialDealForm,
+      title: `${dealModal.company || dealModal.contactName} — NPD`,
+      customerId: dealModal.customerId || "",
+      dealType: "NPD",
+      stage: "qualified",
+      projectValue: "",
+      forecastMonth: thisMonth(),
+    }]);
+  };
+  
+  const updateDealToCreate = (index, field, value) => {
+    setDealsToCreate((prev) => prev.map((d, i) => (i === index ? { ...d, [field]: value } : d)));
+  };
+  
+  const removeDealToCreate = (index) => {
+    setDealsToCreate((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const submitDeals = async () => {
-    const lead = dealModal;
-    const picked = DEAL_TYPES.filter((t) => dealTypesPick[t]);
-    if (!lead || !picked.length) return;
+    if (!dealModal || !dealsToCreate.length) return;
     setBusy("deals");
     setError("");
     try {
       const created = [];
-      for (const t of picked) {
+      for (const d of dealsToCreate) {
+        if (!d.title) throw new Error("กรุณาระบุชื่อดีลให้ครบ");
         const res = await fetch("/api/sales-planning/deals", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: `${dealBaseTitle || lead.contactName} — ${DEAL_TYPE_LABELS[t]}`,
-            customerId: lead.customerId,
-            dealType: t,
-            stage: "qualified",
-            projectValue: dealValue || 0,
-            forecastMonth: dealMonth || undefined,
-            ownerId: lead.assigneeId || undefined,
-            ownerName: lead.assigneeName || undefined,
-            team: lead.team || undefined,
-            notes: [lead.serviceDetail, lead.details].filter(Boolean).join(" · ") || undefined,
-            metadata: { leadId: lead.id, source: "lead", leadChannel: lead.channel },
+            title: d.title,
+            customerId: d.customerId,
+            dealType: d.dealType,
+            formulaName: d.dealType === "SCENT" ? d.formulaName : undefined,
+            brand: d.brand || undefined,
+            stage: d.stage,
+            probability: Number(d.probability) || 50,
+            forecastMonth: d.forecastMonth || undefined,
+            projectValue: d.projectValue || 0,
+            expectedCloseDate: d.expectedCloseDate || undefined,
+            notes: d.notes || undefined,
+            ownerId: dealModal.assigneeId || undefined,
+            ownerName: dealModal.assigneeName || undefined,
+            team: dealModal.team || undefined,
+            metadata: { leadId: dealModal.id, source: "lead", leadChannel: dealModal.channel },
           }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `สร้างดีล ${t} ไม่สำเร็จ`);
+        if (!res.ok) throw new Error(data.error || `สร้างดีล ${d.title} ไม่สำเร็จ`);
         created.push(data);
       }
       setDealModal(null);
@@ -253,7 +282,7 @@ export default function LeadsPage() {
     if (allowed.includes("assign") && (superuser || inTeam)) btns.push({ a: "assign", label: "มอบหมาย", icon: UsersIcon, primary: true });
     if (allowed.includes("contact") && works) btns.push({ a: "contact", label: "ติดต่อแล้ว", icon: PhoneCall, primary: true });
     if (allowed.includes("meeting") && works) btns.push({ a: "meeting", label: "นัดประชุม", icon: CalendarClock });
-    if (allowed.includes("create_deal") && works) btns.push({ a: "create_deal", label: lead.status === "qualified" ? "+ สร้างดีลเพิ่ม" : "แปลงเป็นดีล", icon: FolderKanban, primary: true });
+    if (allowed.includes("create_deal") && works && lead.status !== "qualified") btns.push({ a: "create_deal", label: "แปลงเป็นดีล", icon: FolderKanban, primary: true });
     if (allowed.includes("bounce") && works) btns.push({ a: "bounce", label: "ตีกลับ", icon: Undo2 });
     if (allowed.includes("disqualify") && works) btns.push({ a: "disqualify", label: "ไม่ไปต่อ", icon: Ban });
     return btns;
@@ -284,7 +313,7 @@ export default function LeadsPage() {
       back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={
         <>
-          <MonthPicker value={month} onChange={setMonth} />
+          <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
           {canLead && (
             <button type="button" className="btn btn-primary" onClick={() => { setForm(initialForm); setFormOpen(true); }}>
               <Plus size={15} aria-hidden="true" /> รับลีดใหม่
@@ -299,7 +328,7 @@ export default function LeadsPage() {
         )}
 
         <section className="kpi-grid" aria-busy={loading}>
-          <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label={`ลีดเดือน ${month}`} value={kpi?.funnel?.total ?? "-"} hint={`เปิดลูกค้าแล้ว ${kpi?.funnel?.qualified ?? 0} · ไม่ไปต่อ ${kpi?.funnel?.disqualified ?? 0}`} />
+          <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label={allMonths ? "ลีดทั้งหมด" : `ลีดเดือน ${month}`} value={kpi?.funnel?.total ?? "-"} hint={`เปิดลูกค้าแล้ว ${kpi?.funnel?.qualified ?? 0} · ไม่ไปต่อ ${kpi?.funnel?.disqualified ?? 0}`} />
           <KpiCard icon={<Filter size={16} aria-hidden="true" />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} hint={`ตรวจ ${kpi?.sla?.screen?.checked ?? 0} ใบ · ค้างคิว ${kpi?.sla?.screen?.pending ?? 0}`} />
           <KpiCard icon={<PhoneCall size={16} aria-hidden="true" />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} hint={`ตรวจ ${kpi?.sla?.contact?.checked ?? 0} ใบ · ค้างติดต่อ ${kpi?.sla?.contact?.pending ?? 0}`} />
           <KpiCard icon={<CalendarClock size={16} aria-hidden="true" />} label="นัดประชุม / ตีกลับ" value={`${kpi?.funnel?.meeting ?? 0} / ${kpi?.funnel?.bounced ?? 0}`} hint={<Link href="/sa/kpi" className="linklike">ดู KPI เต็ม →</Link>} />
@@ -397,6 +426,40 @@ export default function LeadsPage() {
       {/* ฟอร์มรับ/แก้ลีด */}
       <Modal open={formOpen} onClose={() => setFormOpen(false)} title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"} size="lg">
         <form onSubmit={saveLead} className="form-grid" aria-busy={busy === "save"} style={{ padding: 18 }}>
+          
+          <div style={{ gridColumn: "1 / -1" }}>
+            <h4 style={{ fontSize: 13, color: "var(--text)", marginBottom: 8, fontWeight: 600 }}>ช่องทางที่รับลีด</h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, fontSize: 13 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <strong style={{ color: "var(--text-3)" }}>Online</strong>
+                {["chatcone_line", "chatcone_meta", "chatcone_tiktok", "chatcone_ig"].map(c => (
+                  <label key={c} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                    <input type="radio" name="leadChannel" checked={form.channel === c} onChange={() => setForm({ ...form, channel: c })} />
+                    {LEAD_CHANNEL_LABELS[c]}
+                  </label>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <strong style={{ color: "var(--text-3)" }}>Onsite</strong>
+                {["phone", "walkin"].map(c => (
+                  <label key={c} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                    <input type="radio" name="leadChannel" checked={form.channel === c} onChange={() => setForm({ ...form, channel: c })} />
+                    {LEAD_CHANNEL_LABELS[c]}
+                  </label>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <strong style={{ color: "var(--text-3)" }}>Website</strong>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                  <input type="radio" name="leadChannel" checked={form.channel === "website"} onChange={() => setForm({ ...form, channel: "website" })} />
+                  {LEAD_CHANNEL_LABELS["website"]}
+                </label>
+              </div>
+            </div>
+          </div>
+          
+          <hr style={{ gridColumn: "1 / -1", margin: "4px 0", borderColor: "var(--border)" }} />
+          
           <label>
             ชื่อลูกค้า/ผู้ติดต่อ *
             <input className="premium-input" value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} required />
@@ -405,42 +468,48 @@ export default function LeadsPage() {
             บริษัท/แบรนด์
             <input className="premium-input" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
           </label>
-          <label>
-            ช่องทางที่รับลีด *
-            <select className="premium-select" value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })}>
-              {LEAD_CHANNELS.map((c) => <option key={c} value={c}>{LEAD_CHANNEL_LABELS[c]}</option>)}
-            </select>
-          </label>
+          
+          <div style={{ display: "flex", gap: 8 }}>
+            <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+              อีเมล
+              <input type="email" className="premium-input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </label>
+            <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+              ช่องทางอื่น
+              <input className="premium-input" value={form.contactChannel} onChange={(e) => setForm({ ...form, contactChannel: e.target.value })} placeholder="LINE ID ฯลฯ" />
+            </label>
+          </div>
           <label>
             เบอร์โทร
             <input className="premium-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           </label>
+
+          <hr style={{ gridColumn: "1 / -1", margin: "4px 0", borderColor: "var(--border)" }} />
+          
           <label>
-            อีเมล
-            <input type="email" className="premium-input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          </label>
-          <label>
-            ช่องทางติดต่ออื่น (LINE ID ฯลฯ)
-            <input className="premium-input" value={form.contactChannel} onChange={(e) => setForm({ ...form, contactChannel: e.target.value })} />
-          </label>
-          <label>
-            บริการที่สนใจ *
+            ประเภทบริการที่สนใจ *
             <select className="premium-select" value={form.serviceInterest} onChange={(e) => setForm({ ...form, serviceInterest: e.target.value })}>
               {SERVICE_INTERESTS.map((s) => <option key={s} value={s}>{SERVICE_INTEREST_LABELS[s]}</option>)}
             </select>
           </label>
-          <label>
-            รายละเอียดบริการ{SERVICE_DETAIL_REQUIRED.has(form.serviceInterest) ? " *" : ""}
-            <input className="premium-input" value={form.serviceDetail} onChange={(e) => setForm({ ...form, serviceDetail: e.target.value })} required={SERVICE_DETAIL_REQUIRED.has(form.serviceInterest)} placeholder={form.serviceInterest === "product" ? "ระบุสินค้าที่สนใจ" : "ระบุ"} />
-          </label>
+          {SERVICE_DETAIL_REQUIRED.has(form.serviceInterest) ? (
+            <label>
+              รายละเอียดบริการ *
+              <input className="premium-input" value={form.serviceDetail} onChange={(e) => setForm({ ...form, serviceDetail: e.target.value })} required placeholder={form.serviceInterest === "product" ? "ระบุสินค้าที่สนใจ" : "ระบุ"} />
+            </label>
+          ) : <div />}
+
           <label>
             Budget (บาท)
             <MoneyInput value={form.budget} onChange={(value) => setForm({ ...form, budget: value ?? "" })} />
           </label>
+          <div />
+          
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียดเพิ่มเติม
             <textarea className="premium-input" rows={3} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
           </label>
+          
           <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <button type="button" className="btn ghost" onClick={() => setFormOpen(false)}>ยกเลิก</button>
             <button type="submit" className="btn btn-primary" disabled={busy === "save"}><Plus size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกลีด"}</button>
@@ -448,41 +517,103 @@ export default function LeadsPage() {
         </form>
       </Modal>
 
-      {/* สร้างดีลจากลีด — ติ้กประเภทได้หลายอัน ลดขั้นการกรอก */}
-      <Modal open={!!dealModal} onClose={() => !busy && setDealModal(null)} title="สร้างดีลจากลีด" size="sm">
+      {/* สร้างดีลจากลีด (ดึงฟอร์มเต็มมาให้กรอก สามารถสร้างหลายรายการพร้อมกันได้) */}
+      <Modal open={!!dealModal} onClose={() => !busy && setDealModal(null)} title="สร้างดีลจากลีด" size="lg">
         {dealModal && (
-          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16, maxHeight: "75vh", overflowY: "auto" }}>
+            <div style={{ fontSize: 13, color: "var(--text-3)", paddingBottom: 12, borderBottom: "1px solid var(--border)" }}>
               ลีด: <strong style={{ color: "var(--text)" }}>{dealModal.contactName}</strong>{dealModal.company ? ` · ${dealModal.company}` : ""}
               {dealModal.team ? ` · ทีม ${TEAM_LABELS[dealModal.team] || dealModal.team}` : ""}{dealModal.assigneeName ? ` · ${dealModal.assigneeName}` : ""}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13.5 }}>
-              <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 600 }}>เปิดดีลประเภท (ติ้กได้หลายอัน)</span>
-              {DEAL_TYPES.map((t) => (
-                <label key={t} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                  <input type="checkbox" checked={!!dealTypesPick[t]} onChange={(e) => setDealTypesPick({ ...dealTypesPick, [t]: e.target.checked })} />
-                  <strong>{t}</strong> · {DEAL_TYPE_LABELS[t]}
+            
+            {dealsToCreate.map((d, i) => (
+              <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 12, background: "var(--surface-50)", position: "relative" }}>
+                {dealsToCreate.length > 1 && (
+                  <button type="button" onClick={() => removeDealToCreate(i)} className="btn-icon danger" style={{ position: "absolute", top: 12, right: 12, background: "var(--surface)" }} title="ลบรายการนี้">
+                    <Trash2 size={16} />
+                  </button>
+                )}
+                
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                  ชื่อดีล *
+                  <input className="premium-input" value={d.title} onChange={(e) => updateDealToCreate(i, "title", e.target.value)} />
                 </label>
-              ))}
+                
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    ประเภทดีล *
+                    <select className="premium-select" value={d.dealType} onChange={(e) => updateDealToCreate(i, "dealType", e.target.value)}>
+                      {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    สถานะ
+                    <select className="premium-select" value={d.stage} onChange={(e) => updateDealToCreate(i, "stage", e.target.value)}>
+                      {DEAL_STAGES.filter(s => s !== "won").map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
+                    </select>
+                  </label>
+                </div>
+                
+                {d.dealType === "SCENT" && (
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    ชื่อสูตรกลิ่น
+                    <input className="premium-input" value={d.formulaName} onChange={(e) => updateDealToCreate(i, "formulaName", e.target.value)} placeholder="SS-FLORAL-..." />
+                  </label>
+                )}
+                
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                  แบรนด์
+                  <select className="premium-select" value={d.brand} onChange={(e) => updateDealToCreate(i, "brand", e.target.value)} disabled={!d.customerId}>
+                    <option value="">{d.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน"}</option>
+                    {(() => {
+                      const opts = brandThList((customers.find((c) => c.id === d.customerId)?.brands) || []);
+                      const withCur = d.brand && !opts.includes(d.brand) ? [d.brand, ...opts] : opts;
+                      return withCur.map((b) => <option key={b} value={b}>{b}</option>);
+                    })()}
+                  </select>
+                </label>
+                
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    เดือนพยากรณ์
+                    <input type="month" className="premium-input" value={d.forecastMonth} onChange={(e) => updateDealToCreate(i, "forecastMonth", e.target.value)} />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    มูลค่าคาดการณ์/ดีล (บาท)
+                    <MoneyInput value={d.projectValue} onChange={(value) => updateDealToCreate(i, "projectValue", value ?? "")} />
+                  </label>
+                </div>
+                
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    % โอกาส (ปรับตามสถานะอัตโนมัติ)
+                    <select className="premium-select" value={snapForecastLevel(d.probability)} onChange={(e) => updateDealToCreate(i, "probability", e.target.value)}>
+                      {[10, 25, 50, 75, 90, 100].map(v => <option key={v} value={v}>{v}%</option>)}
+                    </select>
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                    วันที่คาดว่าจะปิด
+                    <input type="date" className="premium-input" value={d.expectedCloseDate} onChange={(e) => updateDealToCreate(i, "expectedCloseDate", e.target.value)} />
+                  </label>
+                </div>
+                
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                  Note
+                  <textarea className="premium-input" rows={2} value={d.notes} onChange={(e) => updateDealToCreate(i, "notes", e.target.value)} />
+                </label>
+              </div>
+            ))}
+            
+            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
+              <button type="button" className="btn ghost" onClick={addDealToCreate}>
+                <Plus size={14} aria-hidden="true" /> เพิ่มดีลอีกรายการ
+              </button>
             </div>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-              ชื่องาน (ระบบต่อท้ายประเภทให้)
-              <input className="premium-input" value={dealBaseTitle} onChange={(e) => setDealBaseTitle(e.target.value)} />
-            </label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                มูลค่าคาดการณ์/ดีล (จาก budget)
-                <MoneyInput value={dealValue} onChange={(value) => setDealValue(value ?? "")} />
-              </label>
-              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                เดือนพยากรณ์
-                <input type="month" className="premium-input" value={dealMonth} onChange={(e) => setDealMonth(e.target.value)} />
-              </label>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
               <button type="button" className="btn ghost" onClick={() => setDealModal(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-primary" onClick={submitDeals} disabled={!!busy || !DEAL_TYPES.some((t) => dealTypesPick[t])}>
-                {busy === "deals" ? "กำลังสร้าง…" : `สร้าง ${DEAL_TYPES.filter((t) => dealTypesPick[t]).length} ดีล`}
+              <button type="button" className="btn btn-primary" onClick={submitDeals} disabled={!!busy || !dealsToCreate.length}>
+                {busy === "deals" ? "กำลังสร้าง…" : `สร้าง ${dealsToCreate.length} ดีล`}
               </button>
             </div>
           </div>
