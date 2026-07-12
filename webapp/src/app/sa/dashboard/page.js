@@ -211,6 +211,7 @@ function sumRows(rows) {
 }
 
 function YearGrid({ title, rows, months, grouped = false, showTotal = false, empty = "ยังไม่มีข้อมูล", onCellClick }) {
+  const currentMonth = new Date().toISOString().slice(0, 7);
   const { ref: fsRef, isFs, toggle } = useFullscreen();
   const [showFc, setShowFc] = useState(false); // ย่อ FC (default) = โชว์ FC Total; ขยาย = แตกราย %
   const [scale, setScale] = useState(1); // สเกลตาราง (ปุ่ม +/-) 0.6–1.4
@@ -289,7 +290,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
             <tr>
               <th className="fz-c1" style={{ width: 160, minWidth: 160 }}>รายการ</th>
               <th className="fz-c2" style={{ width: 96, minWidth: 96 }}>ค่า</th>
-              {months.map((month, i) => <th key={month} className="num">{MONTH_LABELS[i]}</th>)}
+              {months.map((month, i) => <th key={month} className={`num ${month === currentMonth ? "current-month-col" : ""}`}>{MONTH_LABELS[i]}</th>)}
               <th className="fz-cr num">รวมปี</th>
             </tr>
           </thead>
@@ -323,10 +324,11 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                           {monthMetrics.map((mm, ci) => {
                             const val = mm[m.key];
                             const interactive = onCellClick && m.key !== "target" && val > 0;
+                            const isCurrent = months[ci] === currentMonth;
                             return (
                               <td 
                                 key={months[ci]} 
-                                className={`num mono ${interactive ? "cell-interactive" : ""}`} 
+                                className={`num mono ${interactive ? "cell-interactive" : ""} ${isCurrent ? "current-month-col" : ""}`} 
                                 style={{ color: val ? m.color : "var(--text-3)" }}
                                 onClick={() => interactive && onCellClick(row, months[ci], m.key)}
                               >
@@ -604,7 +606,7 @@ export default function SalesPlanningOverviewPage() {
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>แยกตามประเภทดีล</h2>
               <span style={{ color: "var(--text-3)", fontSize: 12 }}>{periodLabel}</span>
             </div>
-            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
               {byType.map((b) => (
                 <div key={b.type} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
                   <div>{dealTypeBadge(b.type)}</div>
@@ -626,7 +628,7 @@ export default function SalesPlanningOverviewPage() {
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ดีลเปิด แยกตามโอกาสปิด (FC%)</h2>
               <span style={{ color: "var(--text-3)", fontSize: 12 }}>{periodLabel}</span>
             </div>
-            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
               {byForecast.map((b) => (
                 <div key={b.level} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
                   <div>{forecastBadge(b.level)}</div>
