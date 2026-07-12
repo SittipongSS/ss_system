@@ -16,6 +16,7 @@ import { FORECAST_LEVELS, KpiCard, MonthPicker, dealTypeBadge, forecastBadge, in
 import { fmtMoney, fmtName } from "@/lib/format";
 import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
+import DealFormFields from "@/components/salesPlanning/DealFormFields";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -683,94 +684,21 @@ export default function SalesPlanningPipelinePage() {
 
       <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไขดีล" : "เพิ่มดีล"} size="lg">
         <form onSubmit={saveDeal} className="form-grid" aria-busy={submitting} style={{ padding: 18 }}>
-          <label style={{ gridColumn: "1 / -1" }}>
-            ชื่อดีล
-            <input className="premium-input" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} required />
-          </label>
-          <label>
-            ลูกค้า (ไม่บังคับตอนแรก)
-            <select className="premium-select" value={dealForm.customerId} onChange={(e) => setDealForm({ ...dealForm, customerId: e.target.value, brand: "" })}>
-              <option value="">— ยังไม่ผูกลูกค้า —</option>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </label>
-          <label>
-            แบรนด์
-            <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <select className="premium-select" style={{ flex: 1, minWidth: 0 }} value={dealForm.brand} onChange={(e) => setDealForm({ ...dealForm, brand: e.target.value })} disabled={!dealForm.customerId}>
-                <option value="">{dealForm.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน"}</option>
-                {(() => {
-                  const opts = brandThList((customers.find((c) => c.id === dealForm.customerId)?.brands) || []);
-                  const withCur = dealForm.brand && !opts.includes(dealForm.brand) ? [dealForm.brand, ...opts] : opts;
-                  return withCur.map((b) => <option key={b} value={b}>{b}</option>);
-                })()}
-              </select>
-              <AddBrandButton
-                customerId={dealForm.customerId}
-                disabled={!dealForm.customerId}
-                onAdded={(b, updatedCustomer) => {
-                  setCustomers((prev) => prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c)));
-                  setDealForm((f) => ({ ...f, brand: b.th || b.en }));
-                }}
-              />
-            </span>
-          </label>
-          <label>
-            ประเภทดีล
-            <select className="premium-select" value={dealForm.dealType} onChange={(e) => setDealForm({ ...dealForm, dealType: e.target.value })}>
-              {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
-            </select>
-          </label>
-          <label>
-            หมวดสินค้า{dealForm.dealType !== "SCENT" ? " (บังคับ)" : " (ไม่บังคับ)"}
-            {/* NPD/RE-ORDER ต้องเลือกหมวด (มติผู้ใช้) — ใช้เลือก template ไทม์ไลน์ */}
-            <select className="premium-select" required={dealForm.dealType !== "SCENT"} value={dealForm.categoryCode} onChange={(e) => setDealForm({ ...dealForm, categoryCode: e.target.value })}>
-              <option value="">— เลือกหมวดสินค้า —</option>
-              {categories.map((c) => {
-                const code = `${c.mainCategoryCode}-${c.typeCode}`;
-                return <option key={code} value={code}>{code} · {c.nameTh || c.nameEn || ""}</option>;
-              })}
-            </select>
-          </label>
-          <label>
-            สถานะ
-            {/* ปิด Won ใช้ปุ่ม "Won" (กรอกมูลค่าจริง) — ไม่ให้เลือก won จาก dropdown เว้นแต่ดีลนี้ won อยู่แล้ว */}
-            <select className="premium-select" value={dealForm.stage} onChange={(e) => setDealForm({ ...dealForm, stage: e.target.value })}>
-              {PIPELINE_STAGES.filter((s) => s !== "won" || dealForm.stage === "won").map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
-            </select>
-          </label>
-          <label>
-            โอกาสที่จะปิดได้ (FC%)
-            <select className="premium-select" value={snapForecastLevel(dealForm.probability)} onChange={(e) => setDealForm({ ...dealForm, probability: e.target.value })}>
-              {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-            </select>
-          </label>
-          <label>
-            เดือนคาดการณ์
-            <input type="month" className="premium-input" value={dealForm.forecastMonth} onChange={(e) => setDealForm({ ...dealForm, forecastMonth: e.target.value })} />
-          </label>
-          <label>
-            มูลค่าคาดการณ์{dealForm.stage === "won" ? " (ล็อกหลังปิด Won)" : ""}
-            <MoneyInput value={dealForm.projectValue} disabled={dealForm.stage === "won"} onChange={(value) => setDealForm({ ...dealForm, projectValue: value ?? "" })} />
-          </label>
-          {dealForm.stage === "won" && (
-            <label>
-              มูลค่าปิดจริง (Won)
-              <MoneyInput value={dealForm.wonValue} onChange={(value) => setDealForm({ ...dealForm, wonValue: value ?? "" })} />
-            </label>
-          )}
-          <label>
-            วันที่เริ่ม
-            <DateInput value={dealForm.startDate} onChange={(value) => setDealForm({ ...dealForm, startDate: value })} />
-          </label>
-          <label>
-            วันที่สิ้นสุด
-            <DateInput value={dealForm.endDate} onChange={(value) => setDealForm({ ...dealForm, endDate: value })} />
-          </label>
-          <label style={{ gridColumn: "1 / -1" }}>
-            รายละเอียด
-            <textarea className="premium-input" rows={3} value={dealForm.notes} onChange={(e) => setDealForm({ ...dealForm, notes: e.target.value })} />
-          </label>
+          <DealFormFields
+            form={dealForm}
+            onPatch={(patch) => setDealForm((f) => ({ ...f, ...patch }))}
+            customers={customers}
+            categories={categories}
+            stages={PIPELINE_STAGES.filter((st) => st !== "won" || dealForm.stage === "won")}
+            alreadyWon={dealForm.stage === "won"}
+            onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
+            extra={dealForm.stage === "won" ? (
+              <label>
+                มูลค่าปิดจริง (Won)
+                <MoneyInput value={dealForm.wonValue} onChange={(value) => setDealForm({ ...dealForm, wonValue: value ?? "" })} />
+              </label>
+            ) : null}
+          />
           <div className="drawer-actions" style={{ gridColumn: "1 / -1" }}>
             <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>

@@ -16,6 +16,7 @@ import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, DEAL_STAGES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
+import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
@@ -260,6 +261,8 @@ export default function LeadsPage() {
             customerId: d.customerId,
             dealType: d.dealType,
             categoryCode: d.categoryCode || undefined,
+            startDate: d.startDate || undefined,
+            endDate: d.endDate || undefined,
             brand: d.brand || undefined,
             stage: d.stage,
             probability: Number(d.probability) || 50,
@@ -626,74 +629,16 @@ export default function LeadsPage() {
                   </button>
                 )}
                 
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                  ชื่อดีล *
-                  <input className="premium-input" value={d.title} onChange={(e) => updateDealToCreate(i, "title", e.target.value)} />
-                </label>
-                
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                    ประเภทดีล *
-                    <select className="premium-select" value={d.dealType} onChange={(e) => updateDealToCreate(i, "dealType", e.target.value)}>
-                      {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                    สถานะ
-                    <select className="premium-select" value={d.stage} onChange={(e) => updateDealToCreate(i, "stage", e.target.value)}>
-                      {DEAL_STAGES.filter(s => s !== "won").map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
-                    </select>
-                  </label>
+                <div className="form-grid">
+                  <DealFormFields
+                    form={d}
+                    onPatch={(patch) => setDealsToCreate((prev) => prev.map((x, xi) => (xi === i ? { ...x, ...patch } : x)))}
+                    customers={customers}
+                    categories={categories}
+                    stages={DEAL_STAGES.filter((st) => st !== "won")}
+                    onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
+                  />
                 </div>
-
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                  หมวดสินค้า{d.dealType !== "SCENT" ? " * (บังคับสำหรับ NPD/RE-ORDER)" : " (ไม่บังคับ)"}
-                  <select className="premium-select" required={d.dealType !== "SCENT"} value={d.categoryCode || ""} onChange={(e) => updateDealToCreate(i, "categoryCode", e.target.value)}>
-                    <option value="">— เลือกหมวดสินค้า —</option>
-                    {categories.map((c) => {
-                      const code = `${c.mainCategoryCode}-${c.typeCode}`;
-                      return <option key={code} value={code}>{code} · {c.nameTh || c.nameEn || ""}</option>;
-                    })}
-                  </select>
-                </label>
-
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                  แบรนด์
-                  <select className="premium-select" value={d.brand} onChange={(e) => updateDealToCreate(i, "brand", e.target.value)} disabled={!d.customerId}>
-                    <option value="">{d.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน"}</option>
-                    {(() => {
-                      const opts = brandThList((customers.find((c) => c.id === d.customerId)?.brands) || []);
-                      const withCur = d.brand && !opts.includes(d.brand) ? [d.brand, ...opts] : opts;
-                      return withCur.map((b) => <option key={b} value={b}>{b}</option>);
-                    })()}
-                  </select>
-                </label>
-                
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                    เดือนคาดการณ์
-                    <input type="month" className="premium-input" value={d.forecastMonth} onChange={(e) => updateDealToCreate(i, "forecastMonth", e.target.value)} />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                    มูลค่าคาดการณ์/ดีล (บาท)
-                    <MoneyInput value={d.projectValue} onChange={(value) => updateDealToCreate(i, "projectValue", value ?? "")} />
-                  </label>
-                </div>
-                
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                    % โอกาส (ปรับตามสถานะอัตโนมัติ)
-                    <select className="premium-select" value={snapForecastLevel(d.probability)} onChange={(e) => updateDealToCreate(i, "probability", e.target.value)}>
-                      {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-                    </select>
-                  </label>
-
-                </div>
-                
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                  Note
-                  <textarea className="premium-input" rows={2} value={d.notes} onChange={(e) => updateDealToCreate(i, "notes", e.target.value)} />
-                </label>
               </div>
             ))}
             
