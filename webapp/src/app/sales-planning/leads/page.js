@@ -5,7 +5,7 @@
 // SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart, FolderKanban } from "lucide-react";
+import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart, FolderKanban, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -51,7 +51,24 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("open"); // open = ยังไม่ปิด
+  const [statusFilter, setStatusFilter] = useState("open");
+  const [sortKey, setSortKey] = useState("created");
+  const [sortDir, setSortDir] = useState("desc");
+
+  const SORT_OPTIONS = [
+    { key: "created", label: "รับล่าสุด" },
+    { key: "name", label: "ชื่อลูกค้า" },
+    { key: "status", label: "สถานะ" },
+    { key: "budget", label: "Budget" },
+  ];
+
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("desc"); }
+  };
+  const sortArrow = (key) => sortKey === key
+    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />; // open = ยังไม่ปิด
   const [month, setMonth] = useState(thisMonth());
   const [allMonths, setAllMonths] = useState(false);
   const [busy, setBusy] = useState("");
@@ -100,13 +117,21 @@ export default function LeadsPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return leads.filter((l) => {
+    const result = leads.filter((l) => {
       if (statusFilter === "open" && ["qualified", "disqualified"].includes(l.status)) return false;
       if (statusFilter !== "open" && statusFilter !== "all" && l.status !== statusFilter) return false;
       if (!q) return true;
       return [l.contactName, l.company, l.phone, l.email, l.details, l.assigneeName].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [leads, query, statusFilter]);
+    
+    const mul = sortDir === "desc" ? -1 : 1;
+    return result.sort((a, b) => {
+      if (sortKey === "name") return (a.contactName || "").localeCompare(b.contactName || "", "th") * mul;
+      if (sortKey === "status") return ((LEAD_STATUSES.indexOf(a.status) || 99) - (LEAD_STATUSES.indexOf(b.status) || 99)) * mul;
+      if (sortKey === "budget") return ((a.budget || 0) - (b.budget || 0)) * mul;
+      return ((a.createdAt || "") < (b.createdAt || "") ? 1 : -1) * mul;
+    });
+  }, [leads, query, statusFilter, sortKey, sortDir]);
 
   const countBy = useMemo(() => {
     const c = {};
@@ -347,6 +372,15 @@ export default function LeadsPage() {
               {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABELS[s]} ({countBy[s] || 0})</option>)}
             </select>
             <div className="spacer" />
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: "var(--text-3)" }}><ArrowUpDown size={14} style={{ verticalAlign: "-2px" }}/> เรียง</span>
+              <select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ width: 120 }}>
+                {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+              <button type="button" className="btn-icon" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}>
+                {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+              </button>
+            </div>
             <span className="ui-badge">{filtered.length} ลีด</span>
           </div>
 
@@ -354,13 +388,13 @@ export default function LeadsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr>
-                  <th>ลูกค้า/ผู้ติดต่อ</th>
+                  <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ลูกค้า/ผู้ติดต่อ {sortArrow("name")}</span></th>
                   <th>ช่องทาง</th>
                   <th>บริการที่สนใจ</th>
-                  <th className="num">Budget</th>
+                  <th className="num" onClick={() => handleSort("budget")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>Budget {sortArrow("budget")}</span></th>
                   <th>ทีม / ผู้รับผิดชอบ</th>
-                  <th>สถานะ</th>
-                  <th>รับเมื่อ</th>
+                  <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>สถานะ {sortArrow("status")}</span></th>
+                  <th onClick={() => handleSort("created")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>รับเมื่อ {sortArrow("created")}</span></th>
                   <th></th>
                 </tr>
               </thead>
