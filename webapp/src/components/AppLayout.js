@@ -182,6 +182,7 @@ export default function AppLayout({ children }) {
       home: '/sa',
       items: [
         { href: '/sa', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sa' || p === '/sales-planning' },
+        { href: '/sa/my-dashboard', name: 'แดชบอร์ดของฉัน', icon: LayoutDashboard, cap: 'salesplan:lead', match: (p) => p === '/sa/my-dashboard' || p.startsWith('/sa/my-dashboard') },
         // เฟส C: คิวลีดของ Marketing/ฝ่ายขาย — role marketing เห็นเมนูนี้ตัวเดียว
         { href: '/sa/leads', name: 'ลีด', icon: Inbox, cap: 'salesplan:lead', match: (p) => p.startsWith('/sa/leads') || p.startsWith('/sales-planning/leads') },
         // "ดีล" = งานขายแต่ละก้อน (SCENT/NPD/RE-ORDER) — คำ "โครงการ" สงวนให้ตัว
