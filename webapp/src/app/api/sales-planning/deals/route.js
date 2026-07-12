@@ -16,6 +16,7 @@ import {
   toProbability,
 } from '@/lib/salesPlanning';
 import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
+import { isSuperuser } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
