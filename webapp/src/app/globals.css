@@ -246,8 +246,13 @@ button, select, input, textarea {
 .date-calendar-footer span { color: var(--text-3); font-size: 10.5px; }
 .date-calendar-footer button { min-height: 32px; padding: 0 10px; border-radius: 7px; color: var(--accent); font-weight: 600; }
 .date-calendar-footer button:hover { background: var(--accent-soft); }
+.date-calendar-footer button:disabled { opacity: 0.35; cursor: not-allowed; }
+.datetime-input { display: grid; grid-template-columns: minmax(150px, 1fr) 108px; gap: 8px; }
+.datetime-time { width: 108px; font-variant-numeric: tabular-nums lining-nums; }
 @media (max-width: 480px) {
   .date-calendar { position: fixed; left: 12px; right: 12px; top: 50%; width: auto; transform: translateY(-50%); }
+  .datetime-input { grid-template-columns: 1fr; }
+  .datetime-time { width: 100%; }
 }
 
 .save-status {

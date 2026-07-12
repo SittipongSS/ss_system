@@ -72,6 +72,7 @@ export default function DateInput({ value = "", onChange, className = "", style,
   };
 
   const choose = (iso) => {
+    if ((min && iso < min) || (max && iso > max)) return;
     onChange?.(iso);
     setText(isoDateToDisplay(iso));
     setOpen(false);
@@ -85,7 +86,7 @@ export default function DateInput({ value = "", onChange, className = "", style,
     if (!formatted) onChange?.("");
     else {
       const iso = displayDateToIso(formatted);
-      if (iso) onChange?.(iso);
+      if (iso && (!min || iso >= min) && (!max || iso <= max)) onChange?.(iso);
     }
   };
 
@@ -140,7 +141,11 @@ export default function DateInput({ value = "", onChange, className = "", style,
           </span>
           <span className="date-calendar-footer">
             <span>รูปแบบ DD/MM/YYYY</span>
-            <button type="button" onClick={() => choose(isoFromParts(today.getFullYear(), today.getMonth(), today.getDate()))}>วันนี้</button>
+            <button
+              type="button"
+              disabled={(min && isoFromParts(today.getFullYear(), today.getMonth(), today.getDate()) < min) || (max && isoFromParts(today.getFullYear(), today.getMonth(), today.getDate()) > max)}
+              onClick={() => choose(isoFromParts(today.getFullYear(), today.getMonth(), today.getDate()))}
+            >วันนี้</button>
           </span>
         </span>
       )}
