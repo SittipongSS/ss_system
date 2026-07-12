@@ -34,10 +34,12 @@ export function applyAutoStatuses(tasks) {
 
 // โหลด task ทั้งโครงการ คำนวณสถานะใหม่ แล้ว persist เฉพาะแถวที่เปลี่ยนจริง.
 // รับ supabase client เข้ามา (lib ไม่ผูกกับ supabaseAdmin โดยตรง).
-export async function propagateAndPersist(supabase, projectId) {
-  const { data: all } = await supabase
-    .from('project_tasks').select('*').eq('projectId', projectId)
-    .order('stepOrder', { ascending: true });
+// DL1: ไทม์ไลน์ลอยของดีล (ยังไม่ผูกโครงการ) — เรียกด้วย projectId=null + dealId
+export async function propagateAndPersist(supabase, projectId, { dealId = null } = {}) {
+  if (!projectId && !dealId) return;
+  let q = supabase.from('project_tasks').select('*');
+  q = projectId ? q.eq('projectId', projectId) : q.is('projectId', null).eq('dealId', dealId);
+  const { data: all } = await q.order('stepOrder', { ascending: true });
   if (!all || !all.length) return;
   const next = computeAutoStatuses(all);
   const changed = all.filter((t) => next.get(t.id) !== t.status);

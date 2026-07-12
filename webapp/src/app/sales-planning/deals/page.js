@@ -161,6 +161,7 @@ export default function SalesPlanningPipelinePage() {
       stage: deal.stage || "lead",
       dealType: dealTypeOf(deal),
       formulaName: deal.formulaName || "",
+      categoryCode: deal.categoryCode || "",
       brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
@@ -691,6 +692,16 @@ export default function SalesPlanningPipelinePage() {
             ประเภทดีล
             <select className="premium-select" value={dealForm.dealType} onChange={(e) => setDealForm({ ...dealForm, dealType: e.target.value })}>
               {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
+            </select>
+          </label>
+          <label>
+            หมวดสินค้า (เลือก template ไทม์ไลน์)
+            <select className="premium-select" value={dealForm.categoryCode} onChange={(e) => setDealForm({ ...dealForm, categoryCode: e.target.value })}>
+              <option value="">— ไม่ระบุ (template มาตรฐานของประเภทดีล) —</option>
+              {categories.map((c) => {
+                const code = `${c.mainCategoryCode}-${c.typeCode}`;
+                return <option key={code} value={code}>{code} · {c.nameTh || c.nameEn || ""}</option>;
+              })}
             </select>
           </label>
           {dealForm.dealType === "SCENT" && (

@@ -107,16 +107,29 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
 
   setHolidays([...(await holidaySet())]);
-  // เฟส B: task ชุดก่อตั้งติดป้ายดีลเจ้าของ (timeline segment ต่อดีล — mig 0090)
-  const tasks = applyAutoStatuses(buildProjectTasks(project, project.id, deal.id));
+  // DL1: ดีลมีไทม์ไลน์ลอยของตัวเองอยู่แล้ว → โครงการใหม่ "รับเลี้ยง" ชุดเดิม
+  // (เติม projectId — คงวัน/สถานะ/ความคืบหน้า) แทนการ gen ใหม่ทับ
+  const { data: floating } = await supabase
+    .from('project_tasks').select('id').eq('dealId', deal.id).is('projectId', null);
   let insertedTasks = [];
-  if (tasks.length) {
-    const { data: taskRows, error: taskError } = await supabase
-      .from('project_tasks')
-      .insert(tasks)
-      .select();
-    if (taskError) return fail(`สร้างขั้นตอน PM ไม่สำเร็จ: ${taskError.message}`, 500);
-    insertedTasks = taskRows || [];
+  let adopted = 0;
+  if ((floating || []).length) {
+    const { error: adoptErr } = await supabase.from('project_tasks')
+      .update({ projectId: project.id })
+      .in('id', floating.map((t) => t.id));
+    if (adoptErr) return fail(`ย้ายไทม์ไลน์ของดีลเข้าโครงการไม่สำเร็จ: ${adoptErr.message}`, 500);
+    adopted = floating.length;
+  } else {
+    // เฟส B: task ชุดก่อตั้งติดป้ายดีลเจ้าของ (timeline segment ต่อดีล — mig 0090)
+    const tasks = applyAutoStatuses(buildProjectTasks(project, project.id, deal.id));
+    if (tasks.length) {
+      const { data: taskRows, error: taskError } = await supabase
+        .from('project_tasks')
+        .insert(tasks)
+        .select();
+      if (taskError) return fail(`สร้างขั้นตอน PM ไม่สำเร็จ: ${taskError.message}`, 500);
+      insertedTasks = taskRows || [];
+    }
   }
 
   // ผูก FG ที่เลือกในโมดัล (ถ้ามี) — non-fatal เหมือนหน้า PM
@@ -152,6 +165,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .select()
     .single();
   if (linkError) {
+    // คืน task ที่รับเลี้ยงมาเป็นไทม์ไลน์ลอยของดีลก่อนลบโครงการ — ไม่งั้น FK cascade
+    // ของ projects จะพาไทม์ไลน์เดิมของดีลหายไปด้วย
+    if (adopted) {
+      await supabase.from('project_tasks').update({ projectId: null })
+        .in('id', (floating || []).map((t) => t.id));
+    }
     await supabase.from('projects').delete().eq('id', project.id);
     if (linkError.code === 'PGRST116') return conflict('ดีลนี้ผูกโครงการแล้ว');
     return fail(linkError.message, 500);

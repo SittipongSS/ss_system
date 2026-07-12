@@ -107,6 +107,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     dealType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
     // ชื่อสูตรกลิ่น (ดีล SCENT — จุดปลั๊กอิน RD ในอนาคต)
     formulaName: (body.formulaName || '').trim() || null,
+    // หมวดสินค้า (DL1 — mig 0094): ใช้เลือก timeline template ตามหมวด
+    categoryCode: (body.categoryCode || '').trim() || null,
     metadata: {
       ...(body.metadata || {}),
       projectType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),

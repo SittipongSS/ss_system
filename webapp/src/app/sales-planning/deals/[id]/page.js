@@ -384,6 +384,23 @@ export default function DealOverviewPage() {
     }
   }, [load]);
 
+  // DL1: ไทม์ไลน์ของดีลเอง (ยังไม่ผูกโครงการ) — gen จาก template ตามประเภท+หมวด,
+  // ลบเพื่อสร้างใหม่, และเปลี่ยนสถานะรายขั้น (auto-propagate ขั้นถัดไปที่ server)
+  const genOwnTimeline = () => runAction("gen-timeline", `/api/sales-planning/deals/${id}/timeline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const dropOwnTimeline = () => {
+    if (!window.confirm("ลบไทม์ไลน์ของดีลนี้ทั้งชุด (ความคืบหน้าหายด้วย) แล้วค่อยสร้างใหม่?")) return;
+    return runAction("drop-timeline", `/api/sales-planning/deals/${id}/timeline`, { method: "DELETE" });
+  };
+  const setOwnTaskStatus = (task, status) => runAction(`task-${task.id}`, `/api/pm/project-tasks/${task.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+
   // ปิด Won ต้องกรอกมูลค่าปิดจริง — เปิดโมดัลรับตัวเลข (prefill = มูลค่าคาดการณ์)
   const [winOpen, setWinOpen] = useState(false);
   const [winValue, setWinValue] = useState("");
@@ -467,6 +484,7 @@ export default function DealOverviewPage() {
       stage: deal.stage || "lead",
       dealType: dealTypeOf(deal),
       formulaName: deal.formulaName || "",
+      categoryCode: deal.categoryCode || "",
       brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
@@ -711,8 +729,8 @@ export default function DealOverviewPage() {
             />
             <Stat
               label="ไทม์ไลน์คืบหน้า"
-              value={deal.projectId && taskSummary.total ? `${taskSummary.done}/${taskSummary.total}` : "-"}
-              hint={!deal.projectId ? "ยังไม่ได้สร้างไทม์ไลน์" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.total && taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : "-"}
+              value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total}` : "-"}
+              hint={!taskSummary.total ? "ยังไม่ได้สร้างไทม์ไลน์" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : !deal.projectId ? "ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)" : "-"}
             />
             {SALES_FEATURES.quotations && (
               <Stat label="ใบเสนอที่รับแล้ว" value={acceptedQuote ? money(acceptedQuote.totalAmount) : "-"} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอที่รับ"} />
@@ -804,18 +822,84 @@ export default function DealOverviewPage() {
                 </div>
               )}
               </>
+            ) : (data.projectTasks || []).length ? (
+              <>
+                {/* DL1: ไทม์ไลน์ของดีลเอง (ยังไม่ผูกโครงการ) — task ลอย projectId ว่าง
+                    ผูกโครงการเมื่อไหร่ ชุดนี้ถูก "รับเลี้ยง" เข้าโครงการทั้งชุด ไม่ gen ใหม่ */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                  <span className="ui-badge" style={{ color: "var(--accent)" }}>ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)</span>
+                  <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+                    {taskSummary.done}/{taskSummary.total} ขั้นตอน{deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : ""}
+                  </span>
+                  <div className="spacer" />
+                  {canEdit && (
+                    <button type="button" className="btn-icon danger" title="ลบไทม์ไลน์ (ไว้สร้างใหม่)" aria-label="ลบไทม์ไลน์"
+                      disabled={!!actionBusy} onClick={dropOwnTimeline}>
+                      <Trash2 size={14} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+                <div className="premium-glass-table table-responsive">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr><th>#</th><th>ขั้นตอน</th><th>แผนก</th><th>เริ่ม</th><th>เสร็จ</th><th>สถานะ</th></tr>
+                    </thead>
+                    <tbody>
+                      {data.projectTasks.map((t, i) => (
+                        <tr key={t.id} className="premium-row">
+                          <td className="mono">{i + 1}</td>
+                          <td style={{ fontWeight: 600 }}>
+                            {t.name}
+                            {t.phase && <span style={{ display: "block", color: "var(--text-3)", fontSize: 11.5, fontWeight: 500 }}>{t.phase}</span>}
+                          </td>
+                          <td><span className="ui-badge" style={{ color: "var(--text-2)" }}>{t.role || "-"}</span></td>
+                          <td className="mono" style={{ whiteSpace: "nowrap" }}>{fmtDate(t.startDate)}</td>
+                          <td className="mono" style={{ whiteSpace: "nowrap" }}>{fmtDate(t.finishDate)}</td>
+                          <td>
+                            {canEdit ? (
+                              <select className="premium-select" value={t.status || "Pending"} disabled={!!actionBusy}
+                                onChange={(e) => setOwnTaskStatus(t, e.target.value)} aria-label={`สถานะ ${t.name}`} style={{ width: 140 }}>
+                                {Object.entries(TASK_STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                              </select>
+                            ) : <TaskStatusBadge status={t.status} />}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {canEdit && deal?.stage !== "lost" && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                    <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy} title="สร้างโครงการ — ไทม์ไลน์ชุดนี้จะย้ายเข้าโครงการทั้งชุด">
+                      <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
+                    </button>
+                    <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy || !deal?.customerId} title={deal?.customerId ? "ผูกดีลเข้าโครงการที่มีอยู่ — ไทม์ไลน์ชุดนี้ย้ายตามไป" : "ต้องผูกลูกค้าก่อน"}>
+                      <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <Empty>
                 <div style={{ marginBottom: 12 }}>ยังไม่ได้สร้างไทม์ไลน์</div>
-                {canEdit && deal?.stage !== "lost" && ['timeline_proposed', 'awaiting_confirm', 'deposit_pending', 'won', 'in_project'].includes(deal?.stage) && (
+                {canEdit && deal?.stage !== "lost" && (
                   <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                    <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy}>
-                      <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
+                    {/* DL1: ไทม์ไลน์ของดีลเอง — สร้างได้ตั้งแต่ยังไม่มีโครงการ (template ตามประเภท+หมวด) */}
+                    <button type="button" className="btn btn-primary" onClick={genOwnTimeline} disabled={!!actionBusy}
+                      title={`สร้างจาก template ${dealTypeOf(deal)}${deal.categoryCode ? ` หมวด ${deal.categoryCode}` : " (ยังไม่ระบุหมวด — แก้ที่ปุ่มแก้ไขดีล)"}`}>
+                      <Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์ของดีล
                     </button>
-                    {/* เฟส B: ผูกเข้าโครงการเดิมของลูกค้า (ต่อ segment ตามประเภทดีล) */}
-                    <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy || !deal?.customerId} title={deal?.customerId ? "ผูกดีลเข้าโครงการที่มีอยู่ของลูกค้ารายนี้" : "ต้องผูกลูกค้าก่อน"}>
-                      <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
-                    </button>
+                    {['timeline_proposed', 'awaiting_confirm', 'deposit_pending', 'won', 'in_project'].includes(deal?.stage) && (
+                      <>
+                        <button type="button" className="btn ghost" onClick={openCreatePM} disabled={!!actionBusy}>
+                          <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
+                        </button>
+                        {/* เฟส B: ผูกเข้าโครงการเดิมของลูกค้า (ต่อ segment ตามประเภทดีล) */}
+                        <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy || !deal?.customerId} title={deal?.customerId ? "ผูกดีลเข้าโครงการที่มีอยู่ของลูกค้ารายนี้" : "ต้องผูกลูกค้าก่อน"}>
+                          <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </Empty>
@@ -1121,6 +1205,16 @@ export default function DealOverviewPage() {
                 <input className="premium-input" value={dealForm.formulaName} onChange={(e) => setDealForm({ ...dealForm, formulaName: e.target.value })} placeholder="เช่น SS-FLORAL-0042 (เชื่อม RD ในอนาคต)" />
               </label>
             )}
+            <label>
+              หมวดสินค้า (เลือก template ไทม์ไลน์)
+              <select className="premium-select" value={dealForm.categoryCode || ""} onChange={(e) => setDealForm({ ...dealForm, categoryCode: e.target.value })}>
+                <option value="">— ไม่ระบุ (template มาตรฐานของประเภทดีล) —</option>
+                {categories.map((c) => {
+                  const code = `${c.mainCategoryCode}-${c.typeCode}`;
+                  return <option key={code} value={code}>{code} · {c.nameTh || c.nameEn || ""}</option>;
+                })}
+              </select>
+            </label>
             <label>
               แบรนด์
               <span style={{ display: "flex", gap: 6, alignItems: "center" }}>

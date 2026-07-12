@@ -41,7 +41,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   let project = { data: null, warning: null };
   let projectProducts = { data: [], warning: null };
+  // DL1: ยังไม่ผูกโครงการ → ไทม์ไลน์ลอยของดีลเอง (project_tasks ที่ projectId ว่าง)
   let projectTasks = { data: [], warning: null };
+  if (!deal.projectId) {
+    projectTasks = await safe('deal timeline', supabase
+      .from('project_tasks').select('*')
+      .eq('dealId', deal.id).is('projectId', null)
+      .order('stepOrder', { ascending: true }), []);
+  }
   let shipmentPrep = { data: null, warning: null };
   let exciseRegistrations = { data: [], warning: null };
   let sahamitPo = { data: null, warning: null };
