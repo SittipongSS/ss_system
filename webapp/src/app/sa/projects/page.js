@@ -208,6 +208,7 @@ export default function ProjectsIndexPage() {
         customers={customers}
         categories={categories}
         allProducts={allProducts}
+        createEndpoint="/api/sa/projects"
       />
     </Workspace>
   );
