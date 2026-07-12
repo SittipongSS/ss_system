@@ -17,7 +17,7 @@ import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, DEAL_STAGES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
 import {
-  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
+  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
   MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS,
 } from "@/lib/sales/leads";
@@ -418,7 +418,7 @@ export default function LeadsPage() {
                         {[lead.company, lead.phone, lead.email || lead.contactChannel].filter(Boolean).join(" · ") || "-"}
                       </span>
                     </td>
-                    <td><span className="ui-badge" style={{ color: "var(--text-2)" }}>{LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</span></td>
+                    <td><span className="ui-badge" style={{ color: CHANNEL_GROUP_COLORS[channelGroupOf(lead.channel)] || "var(--text-2)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>{LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</span></td>
                     <td>
                       {SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest}
                       {lead.serviceDetail && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{lead.serviceDetail}</span>}

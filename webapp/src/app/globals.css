@@ -1559,6 +1559,7 @@ h1, h2, h3, h4, h5, h6 {
   overflow-y: auto;
 }
 
+.drawer.xl { max-width: 1040px; }
 .drawer.lg { max-width: 820px; }
 .drawer.md { max-width: 600px; }
 
