@@ -1,4 +1,8 @@
-export const MOBILE_PRIMARY_LIMIT = 4;
+export const SYSTEM_ORDER = ['salesplan', 'tax', 'sahamit', 'master', 'mgmt'];
+
+export function sortSystems(groups) {
+  return [...groups].sort((a, b) => SYSTEM_ORDER.indexOf(a.system) - SYSTEM_ORDER.indexOf(b.system));
+}
 
 export function systemForPathname(pathname) {
   if (pathname.startsWith('/database')) return 'master';
@@ -8,11 +12,4 @@ export function systemForPathname(pathname) {
   if (pathname === '/users') return 'users';
   if (pathname === '/audit') return 'audit';
   return 'tax';
-}
-
-export function splitMobileNavigation(items, limit = MOBILE_PRIMARY_LIMIT) {
-  return {
-    primary: items.slice(0, limit),
-    more: items.slice(limit),
-  };
 }

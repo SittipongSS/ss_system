@@ -9,10 +9,18 @@ import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
-import { splitMobileNavigation, systemForPathname } from '@/config/navigation';
+import { sortSystems, systemForPathname } from '@/config/navigation';
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const SYSTEM_ICONS = {
+  salesplan: FolderKanban,
+  tax: ReceiptText,
+  sahamit: Boxes,
+  master: Building2,
+  mgmt: Users,
+};
 
 // Warm the data cache right after login so the first click on any menu is
 // instant (data is already fetched in the background).
@@ -41,6 +49,7 @@ export default function AppLayout({ children }) {
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const sysMenuRef = useRef(null);
+  const bottomNavRef = useRef(null);
 
   // Self-service password change (any signed-in user, their own account only).
   const [showPwd, setShowPwd] = useState(false);
@@ -125,6 +134,12 @@ export default function AppLayout({ children }) {
       document.removeEventListener('keydown', onKey);
     };
   }, [mobileMoreOpen]);
+
+  useEffect(() => {
+    const activeItem = bottomNavRef.current?.querySelector('[aria-current="page"]');
+    if (!activeItem) return;
+    requestAnimationFrame(() => activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }));
+  }, [pathname]);
 
   const toggleTheme = () => {
     if (isDark) {
@@ -234,18 +249,14 @@ export default function AppLayout({ children }) {
   // ระบบที่ผู้ใช้เข้าถึงได้ (ใช้ทั้ง dropdown สลับระบบ และกรองเมนูแถวล่าง).
   // canUser (not can) so a per-user grant — e.g. an SA granted mgmt:view to
   // help the secretary — surfaces that system too.
-  const accessibleGroups = allGroups
+  const accessibleGroups = sortSystems(allGroups
     .filter((g) => g.system !== 'sahamit' || canAccessSahamit(role, team))
     .map((g) => ({ ...g, items: g.items.filter((it) => canUser({ role, extraCaps }, it.cap)) }))
-    .filter((g) => g.items.length > 0);
+    .filter((g) => g.items.length > 0));
 
   const currentGroup = accessibleGroups.find((g) => g.system === activeSystem) || null;
   const menuItems = currentGroup?.items || [];
-  const { primary: mobilePrimaryItems, more: mobileMoreItems } = splitMobileNavigation(menuItems);
-  const mobileMoreActive = mobileMoreItems.some((item) => item.match(pathname))
-    || pathname.startsWith('/database/holidays')
-    || pathname === '/users'
-    || pathname === '/audit';
+  const ActiveSystemIcon = SYSTEM_ICONS[activeSystem] || LayoutDashboard;
 
   return (
     <div className="app-container">
@@ -266,6 +277,7 @@ export default function AppLayout({ children }) {
               aria-haspopup="menu"
               aria-expanded={sysMenuOpen}
             >
+              <ActiveSystemIcon size={15} aria-hidden="true" />
               {systemSubtitle}
               <ChevronDown size={14} strokeWidth={2.5} style={{ transform: sysMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
             </button>
@@ -274,19 +286,26 @@ export default function AppLayout({ children }) {
                 <Link href="/home" role="menuitem" className={`topnav-sys-item ${pathname === '/home' ? 'active' : ''}`}>
                   <Home size={15} className="ico" /> หน้าแรก
                 </Link>
-                {accessibleGroups.map((g) => (
-                  <Link
-                    key={g.system}
-                    href={g.home}
-                    role="menuitem"
-                    className={`topnav-sys-item ${g.system === activeSystem ? 'active' : ''}`}
-                  >
-                    <LayoutDashboard size={15} className="ico" /> {g.label}
-                  </Link>
-                ))}
+                {accessibleGroups.map((g) => {
+                  const SystemIcon = SYSTEM_ICONS[g.system] || LayoutDashboard;
+                  return (
+                    <Link
+                      key={g.system}
+                      href={g.home}
+                      role="menuitem"
+                      className={`topnav-sys-item ${g.system === activeSystem ? 'active' : ''}`}
+                    >
+                      <SystemIcon size={15} className="ico" /> {g.label}
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>
+
+          <button type="button" className="mobile-top-more" onClick={() => setMobileMoreOpen(true)} aria-label="เมนูเพิ่มเติม" aria-expanded={mobileMoreOpen}>
+            <MoreHorizontal size={21} aria-hidden="true" />
+          </button>
 
           <div className="topbar-actions">
             {/* Login User Info */}
@@ -368,8 +387,8 @@ export default function AppLayout({ children }) {
         </div>
       </main>
 
-      <nav className="mobile-bottom-nav" aria-label={`เมนู${systemSubtitle}`}>
-        {mobilePrimaryItems.map((item) => {
+      <nav ref={bottomNavRef} className="mobile-bottom-nav" aria-label={`เมนู${systemSubtitle}`}>
+        {menuItems.map((item) => {
           const Icon = item.icon;
           const active = item.match(pathname);
           return (
@@ -379,15 +398,11 @@ export default function AppLayout({ children }) {
             </Link>
           );
         })}
-        {!mobilePrimaryItems.length && (
+        {!menuItems.length && (
           <Link href="/home" className={`mobile-bottom-item${pathname === '/home' ? ' active' : ''}`}>
             <Home size={20} aria-hidden="true" /><span>หน้าหลัก</span>
           </Link>
         )}
-        <button type="button" className={`mobile-bottom-item${mobileMoreActive || mobileMoreOpen ? ' active' : ''}`} onClick={() => setMobileMoreOpen(true)} aria-expanded={mobileMoreOpen}>
-          <MoreHorizontal size={20} aria-hidden="true" />
-          <span>เพิ่มเติม</span>
-        </button>
       </nav>
 
       {mobileMoreOpen && (
@@ -401,26 +416,10 @@ export default function AppLayout({ children }) {
           </div>
 
           <section className="mobile-nav-section">
-            <h2>เมนูในระบบนี้</h2>
+            <h2>เครื่องมือ</h2>
             <div className="mobile-nav-grid">
-                {mobileMoreItems.map((item) => {
-                  const Icon = item.icon;
-                  const active = item.match(pathname);
-                  return <Link key={item.href} href={item.href} className={`mobile-nav-card${active ? ' active' : ''}`}><Icon size={20} /><span>{item.name}</span></Link>;
-                })}
-                <Link href="/database/holidays" className={`mobile-nav-card${pathname.startsWith('/database/holidays') ? ' active' : ''}`}><CalendarDays size={20} /><span>ปฏิทิน</span></Link>
-            </div>
-          </section>
-
-          <section className="mobile-nav-section">
-            <h2>เปลี่ยนระบบ</h2>
-            <div className="mobile-system-list">
-              <Link href="/home" className={pathname === '/home' ? 'active' : ''}><Home size={18} /><span>หน้าหลัก</span></Link>
-              {accessibleGroups.map((group) => (
-                <Link key={group.system} href={group.home} className={group.system === activeSystem ? 'active' : ''}>
-                  <LayoutDashboard size={18} /><span>{group.label}</span>
-                </Link>
-              ))}
+              <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
+              <Link href="/database/holidays" className={`mobile-nav-card${pathname.startsWith('/database/holidays') ? ' active' : ''}`}><CalendarDays size={20} /><span>ปฏิทิน</span></Link>
             </div>
           </section>
 
