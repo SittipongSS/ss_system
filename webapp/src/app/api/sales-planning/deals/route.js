@@ -111,6 +111,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       projectType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
       brand: (body.brand ?? body.metadata?.brand ?? '') || '',
     },
+    leadId: body.leadId || body.metadata?.leadId || null,
   };
 
   // The creator may only mint deals within its own edit scope: an AE cannot
