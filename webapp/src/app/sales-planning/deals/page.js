@@ -8,8 +8,9 @@ import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import Workspace from "@/components/ui/Workspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-import { useCan, useRole } from "@/lib/roleContext";
-import { isSuperuser } from "@/lib/permissions";
+import { useCan, useRole, useTeam } from "@/lib/roleContext";
+import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
+import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, KpiCard, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
@@ -39,6 +40,14 @@ export default function SalesPlanningPipelinePage() {
   const [typeFilter, setTypeFilter] = useState("all"); // กรองตามประเภทดีล SCENT/NPD/RE-ORDER
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("desc");
+  // มุมมอง KPI: ของฉัน/ทีม/ทั้งหมด — PR #275 ใช้ตัวแปรพวกนี้แต่ไม่ได้ประกาศ (หน้า crash)
+  const team = useTeam();
+  const [scope, setScope] = useState("mine");
+  const [meId, setMeId] = useState(null);
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
+  }, []);
+  const me = { id: meId, team };
 
   const SORT_OPTIONS = [
     { key: "created", label: "อัปเดตล่าสุด" },
