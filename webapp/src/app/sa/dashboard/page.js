@@ -533,6 +533,10 @@ export default function SalesPlanningOverviewPage() {
     </>
   );
 
+  const cov = (!totals.targetAmount || totals.targetAmount <= 0) ? null : Math.round((totals.wonValue / totals.targetAmount) * 10000) / 100;
+  const fcCov = (!totals.targetAmount || totals.targetAmount <= 0) ? null : Math.round((totals.weightedForecast / totals.targetAmount) * 10000) / 100;
+  const covColor = cov == null ? "var(--text-3)" : cov >= 100 ? "var(--green)" : cov >= 70 ? "var(--amber)" : "var(--red)";
+
   return (
     <Workspace
       icon={<LayoutDashboard size={22} />}
@@ -584,9 +588,9 @@ export default function SalesPlanningOverviewPage() {
           <>
         <section className="kpi-grid mb-5" aria-busy={loading}>
           <KpiCard icon={<Target size={16} aria-hidden="true" />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
-          <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์" value={money(totals.weightedForecast)} hint="มูลค่าดีลเปิดที่คาดว่าจะปิดให้เป็น Won" />
-          <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ`} />
+          <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ · คาดการณ์ ${money(totals.weightedForecast)}`} />
           <KpiCard icon={<LineChart size={16} aria-hidden="true" />} label="Won" value={money(totals.wonValue)} hint={`ส่วนต่าง ${money(totals.targetGap)}`} />
+          <KpiCard icon={<Target size={16} aria-hidden="true" />} label="ความคืบหน้าต่อเป้า" value={<span style={{ color: covColor }}>{cov == null ? "-" : pctFmt(cov)}</span>} hint={`คาดการณ์ ${fcCov == null ? "-" : pctFmt(fcCov)} ของเป้า`} />
           {SALES_FEATURES.sahamitRisk && sahamitRisk?.enabled && (
             <KpiCard
               icon={<AlertTriangle size={16} aria-hidden="true" />}
