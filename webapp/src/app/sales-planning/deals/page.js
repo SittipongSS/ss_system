@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -37,8 +37,24 @@ export default function SalesPlanningPipelinePage() {
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all"); // กรองตามประเภทดีล SCENT/NPD/RE-ORDER
-  const [sortKey, setSortKey] = useState("updated");
+  const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("desc");
+
+  const SORT_OPTIONS = [
+    { key: "created", label: "อัปเดตล่าสุด" },
+    { key: "name", label: "ชื่อดีล" },
+    { key: "status", label: "สถานะ" },
+    { key: "amount", label: "มูลค่า" },
+  ];
+
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("desc"); }
+  };
+  const sortArrow = (key) => sortKey === key
+    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
+
   const [dealModal, setDealModal] = useState(false);
   const [dealForm, setDealForm] = useState({ ...initialDealForm, forecastMonth: thisMonth() });
   const [submitting, setSubmitting] = useState(false);
@@ -86,25 +102,6 @@ export default function SalesPlanningPipelinePage() {
     fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
   }, []);
 
-  const comparator = useMemo(() => {
-    const mul = sortDir === "desc" ? -1 : 1;
-    return (a, b) => {
-      if (sortKey === "value") {
-        return ((a.projectValue || 0) - (b.projectValue || 0)) * mul;
-      }
-      if (sortKey === "stage") {
-        const idxA = DEAL_STAGES.indexOf(a.stage);
-        const idxB = DEAL_STAGES.indexOf(b.stage);
-        return (idxA - idxB) * mul;
-      }
-      if (sortKey === "name") {
-        return (a.title || "").localeCompare(b.title || "", "th") * mul;
-      }
-      // default: updated
-      return ((a.updatedAt || "") > (b.updatedAt || "") ? 1 : -1) * mul;
-    };
-  }, [sortKey, sortDir]);
-
   const filteredDeals = useMemo(() => {
     const q = query.trim().toLowerCase();
     const result = deals.filter((deal) => {
@@ -114,16 +111,19 @@ export default function SalesPlanningPipelinePage() {
       if (!q) return true;
       return [deal.title, deal.customerName, deal.ownerName, deal.notes, deal.formulaName].some((v) => (v || "").toLowerCase().includes(q));
     });
-    return result.sort(comparator);
-  }, [deals, query, stageFilter, typeFilter, reviewOnly, comparator]);
 
-  const handleSort = (key) => {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("desc"); }
-  };
-  const sortArrow = (key) => sortKey === key
-    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
-    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
+    const mul = sortDir === "desc" ? -1 : 1;
+    return result.sort((a, b) => {
+      if (sortKey === "name") return (a.title || "").localeCompare(b.title || "", "th") * mul;
+      if (sortKey === "status") return ((DEAL_STAGES.indexOf(a.stage) || 99) - (DEAL_STAGES.indexOf(b.stage) || 99)) * mul;
+      if (sortKey === "amount") {
+        const valA = ["won", "in_project"].includes(a.stage) ? (a.wonValue ?? a.projectValue ?? 0) : (a.projectValue ?? 0);
+        const valB = ["won", "in_project"].includes(b.stage) ? (b.wonValue ?? b.projectValue ?? 0) : (b.projectValue ?? 0);
+        return (valA - valB) * mul;
+      }
+      return ((a.updatedAt || a.createdAt || "") < (b.updatedAt || b.createdAt || "") ? 1 : -1) * mul;
+    });
+  }, [deals, query, stageFilter, typeFilter, reviewOnly, sortKey, sortDir]);
 
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
 
@@ -460,6 +460,15 @@ export default function SalesPlanningPipelinePage() {
             </select>
 
             <div className="spacer" />
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: "var(--text-3)" }}><ArrowUpDown size={14} style={{ verticalAlign: "-2px" }}/> เรียง</span>
+              <select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ width: 120 }}>
+                {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+              <button type="button" className="btn-icon" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}>
+                {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+              </button>
+            </div>
             <span className="ui-badge">{filteredDeals.length} ดีล</span>
           </div>
 
@@ -467,11 +476,11 @@ export default function SalesPlanningPipelinePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr>
-                  <th>ดีล</th>
-                  <th>สถานะ</th>
+                  <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ดีล {sortArrow("name")}</span></th>
+                  <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>สถานะ {sortArrow("status")}</span></th>
                   <th>ประเภท</th>
                   <th>ผู้ดูแล (AE)</th>
-                  <th className="num">มูลค่า</th>
+                  <th className="num" onClick={() => handleSort("amount")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>มูลค่า {sortArrow("amount")}</span></th>
                   <th>ไทม์ไลน์</th>
                   {SALES_FEATURES.quotations && <th>ใบเสนอ</th>}
                   {SALES_FEATURES.documents && <th>เอกสาร</th>}

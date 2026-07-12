@@ -54,13 +54,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   };
 
   if (action === 'screen') {
-    if (!superuser) return forbidden('คัดกรองลีดได้เฉพาะ AE Supervisor/แอดมิน');
+    if (role !== 'admin') return forbidden('คัดกรองลีดได้เฉพาะแอดมิน');
     if (!TEAMS.includes(body.team)) return badRequest('ต้องเลือกทีม (ODM/KA/SV)');
     patch.team = body.team;
     patch.screenedAt = lead.screenedAt || now; // SLA นับครั้งแรก — ตีกลับแล้วคัดใหม่ไม่รีเซ็ต
     event.team = body.team;
   } else if (action === 'assign') {
-    if (!(superuser || inTeam)) return forbidden('กระจายลีดได้เฉพาะ Senior AE ของทีม/หัวหน้า');
+    if (!(role === 'admin' || inTeam)) return forbidden('กระจายลีดได้เฉพาะ Senior AE ของทีม หรือแอดมิน');
     if (!body.assigneeId || !body.assigneeName) return badRequest('ต้องเลือก AE ผู้รับผิดชอบ');
     patch.assigneeId = body.assigneeId;
     patch.assigneeName = body.assigneeName;
