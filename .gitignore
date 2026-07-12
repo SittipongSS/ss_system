@@ -1,3 +1,4 @@
 .vercel
 .next/
-.claude/
+.claude/*
+!.claude/skills/
