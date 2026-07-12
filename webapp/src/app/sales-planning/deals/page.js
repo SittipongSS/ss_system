@@ -82,9 +82,20 @@ export default function SalesPlanningPipelinePage() {
         fetch((allMonths || reviewOnly) ? "/api/sales-planning/deals" : `/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
         fetch("/api/master/customers"),
       ]);
-      if (!dealsRes.ok) throw new Error((await dealsRes.json()).error || "โหลดดีลไม่สำเร็จ");
-      setDeals(await dealsRes.json());
-      setCustomers(customersRes.ok ? await customersRes.json() : []);
+      if (!dealsRes.ok) {
+        const txt = await dealsRes.text();
+        let errStr = "โหลดดีลไม่สำเร็จ";
+        try { if(txt) errStr = JSON.parse(txt).error || errStr; } catch(e){}
+        throw new Error(errStr);
+      }
+      const dTxt = await dealsRes.text();
+      try { setDeals(dTxt ? JSON.parse(dTxt) : []); } catch(e) { setDeals([]); }
+      let custData = [];
+      if (customersRes.ok) {
+        const txt = await customersRes.text();
+        try { if(txt) custData = JSON.parse(txt); } catch(e){}
+      }
+      setCustomers(custData);
     } catch (e) {
       setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
