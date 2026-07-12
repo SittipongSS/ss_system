@@ -507,7 +507,6 @@ export default function SalesPlanningOverviewPage() {
 
   const handleChartTeamClick = (t) => {
     setTeamFilter(t);
-    setTab("tables");
     setTimeout(() => {
       document.querySelector('.sales-overview-grid')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
