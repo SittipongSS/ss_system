@@ -60,6 +60,12 @@ export default function LeadsPage() {
   const [kpi, setKpi] = useState(null);
   const [users, setUsers] = useState([]);
   const [customers, setCustomers] = useState([]);
+  // หมวดสินค้า (product-types) — DealFormFields ในโมดัลสร้างดีลใช้ (hotfix: state ตัวนี้
+  // หลุดตอนแยกฟอร์มใน #287 ทำหน้า crash ตอนเปิดโมดัล)
+  const [categories, setCategories] = useState([]);
+  useEffect(() => {
+    fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
