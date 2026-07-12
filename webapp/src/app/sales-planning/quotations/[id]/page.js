@@ -9,10 +9,14 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FileText, Plus, Printer, Save, Send, Trash2, CheckCircle2, GitBranch, ClipboardList } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import FormActions from "@/components/ui/FormActions";
+import MoneyInput from "@/components/ui/MoneyInput";
+import SaveStatus from "@/components/ui/SaveStatus";
 import Modal from "@/components/Modal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { canReviewSalesForecast, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney } from "@/lib/format";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindow } from "@/lib/sales/quotePrint";
 
 const money = (v) => fmtMoney(v);
@@ -37,6 +41,8 @@ export default function QuotationEditorPage() {
   // เพิ่มรายการจากรหัส FG (feedback ผู้ใช้: ใส่รหัส FG ตอนทำใบ) — ราคา freeze จาก master ณ ตอนเพิ่ม
   const [products, setProducts] = useState([]);
   const [fgPick, setFgPick] = useState("");
+
+  useUnsavedChanges(dirty);
 
   const load = useCallback(async () => {
     setError("");
@@ -198,6 +204,7 @@ export default function QuotationEditorPage() {
       back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
       headerRight={quote && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {editable && <SaveStatus status={error ? "error" : busy === "save" ? "saving" : dirty ? "dirty" : "saved"} />}
           {editable && <button type="button" className="btn btn-primary" onClick={() => save()} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึก"}</button>}
           {editable && quote.status === "draft" && <button type="button" className="btn" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={14} aria-hidden="true" /> ส่งลูกค้า</button>}
           {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-success" onClick={doAccept} disabled={!!busy || quote.approvalStatus === "pending"} title={quote.approvalStatus === "pending" ? "รออนุมัติก่อนรับใบ" : "ลูกค้ารับใบนี้"}><CheckCircle2 size={14} aria-hidden="true" /> ลูกค้ารับ</button>}
@@ -286,7 +293,7 @@ export default function QuotationEditorPage() {
                         {l.fgCode && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{l.fgCode}</span>}
                       </td>
                       <td><input type="number" min="0" step="1" className="premium-input mono" value={l.qty} disabled={!editable} onChange={(e) => setLine(i, { qty: e.target.value })} /></td>
-                      <td><input type="number" min="0" step="0.01" className="premium-input mono" value={l.unitPrice} disabled={!editable} onChange={(e) => setLine(i, { unitPrice: e.target.value })} /></td>
+                      <td><MoneyInput min="0" value={l.unitPrice} disabled={!editable} onChange={(value) => setLine(i, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${i + 1}`} /></td>
                       <td>
                         <div style={{ display: "flex", gap: 4 }}>
                           <select className="premium-select" value={l.discountType || ""} disabled={!editable} onChange={(e) => setLine(i, { discountType: e.target.value || null, discountValue: e.target.value ? l.discountValue : 0 })} style={{ width: 74 }}>
@@ -294,7 +301,7 @@ export default function QuotationEditorPage() {
                             <option value="percent">%</option>
                             <option value="amount">บาท</option>
                           </select>
-                          <input type="number" min="0" step="0.01" className="premium-input mono" value={l.discountValue || ""} disabled={!editable || !l.discountType} onChange={(e) => setLine(i, { discountValue: e.target.value })} style={{ width: 84 }} />
+                          <MoneyInput min="0" value={l.discountValue || ""} disabled={!editable || !l.discountType} onChange={(value) => setLine(i, { discountValue: value ?? "" })} style={{ width: 104 }} aria-label={`ส่วนลด รายการ ${i + 1}`} />
                         </div>
                       </td>
                       <td className="num mono">{money(quoteLineNet(l).lineTotal)}</td>
@@ -319,7 +326,7 @@ export default function QuotationEditorPage() {
                       <option value="percent">%</option>
                       <option value="amount">บาท</option>
                     </select>
-                    <input type="number" min="0" step="0.01" className="premium-input mono" value={form.discountValue || ""} disabled={!editable || !form.discountType} onChange={(e) => setF({ discountValue: e.target.value })} style={{ width: 90, height: 30 }} />
+                    <MoneyInput min="0" value={form.discountValue || ""} disabled={!editable || !form.discountType} onChange={(value) => setF({ discountValue: value ?? "" })} style={{ width: 110, height: 30 }} aria-label="ส่วนลดท้ายใบ" />
                   </span>
                   <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-"}</strong>
                 </div>
@@ -343,6 +350,15 @@ export default function QuotationEditorPage() {
             </div>
             <textarea className="premium-input" rows={4} value={form.notes} disabled={!editable} placeholder="เงื่อนไข/หมายเหตุประกอบใบเสนอราคา" onChange={(e) => setF({ notes: e.target.value })} style={{ width: "100%" }} />
           </section>
+
+          {editable && (
+            <FormActions
+              dirty={dirty}
+              saving={busy === "save"}
+              error={!!error}
+              onSave={() => save()}
+            />
+          )}
         </div>
       )}
 

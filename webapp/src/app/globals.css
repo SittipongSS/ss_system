@@ -188,6 +188,50 @@ button, select, input, textarea {
   font-size: inherit;
 }
 
+.numeric-input,
+.num,
+.tabular-nums {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.numeric-input { text-align: right; }
+
+.save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.save-status-dirty { color: var(--amber); }
+.save-status-error { color: var(--red); }
+.save-status-saved { color: var(--green); }
+.save-status-spin { animation: save-status-spin 0.8s linear infinite; }
+@keyframes save-status-spin { to { transform: rotate(360deg); } }
+
+.form-actions {
+  position: sticky;
+  bottom: 12px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(16px);
+}
+.form-actions-buttons { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+@media (max-width: 700px) {
+  .form-actions { bottom: max(8px, env(safe-area-inset-bottom)); align-items: stretch; flex-direction: column; }
+  .form-actions-buttons { width: 100%; }
+  .form-actions-buttons .btn { min-height: 44px; flex: 1; }
+}
+
 /* App Container Layout — เฟส T: top bar ตรึงบน + เนื้อหาเต็มความกว้าง (ไม่มี sidebar) */
 .app-container {
   display: flex;
