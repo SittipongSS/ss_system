@@ -2,13 +2,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2 } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MoreHorizontal, X } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import { splitMobileNavigation, systemForPathname } from '@/config/navigation';
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -38,6 +39,7 @@ export default function AppLayout({ children }) {
   const [isDark, setIsDark] = useState(false);
   const [activeSystem, setActiveSystem] = useState('tax');
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const sysMenuRef = useRef(null);
 
   // Self-service password change (any signed-in user, their own account only).
@@ -95,20 +97,11 @@ export default function AppLayout({ children }) {
   }, [router]);
 
   useEffect(() => {
-    const sys =
-      pathname.startsWith('/database') ? 'master'
-      // PM รวมอยู่ใต้ระบบ "บริหารงานขาย" (Sales เป็นแม่) — /pm และ /sales-planning
-      // ใช้เมนูชุดเดียวกัน. '/sa' is bounded (=== '/sa' or '/sa/…') so it does NOT
-      // swallow '/sahamit', which is a separate system checked below.
-      : (pathname === '/sa' || pathname.startsWith('/sa/') || pathname.startsWith('/sales-planning') || pathname.startsWith('/pm')) ? 'salesplan'
-      : pathname.startsWith('/sahamit') ? 'sahamit'
-      : pathname.startsWith('/mgmt') ? 'mgmt'
-      : pathname === '/users' ? 'users'
-      : pathname === '/audit' ? 'audit'
-      : 'tax';
+    const sys = systemForPathname(pathname);
 
     if (sys) setActiveSystem(sys);
     setSysMenuOpen(false); // navigating closes the system dropdown
+    setMobileMoreOpen(false);
   }, [pathname]);
 
   // ปิด dropdown สลับระบบเมื่อคลิกนอกเมนู
@@ -120,6 +113,18 @@ export default function AppLayout({ children }) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [sysMenuOpen]);
+
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (event) => { if (event.key === 'Escape') setMobileMoreOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [mobileMoreOpen]);
 
   const toggleTheme = () => {
     if (isDark) {
@@ -238,6 +243,11 @@ export default function AppLayout({ children }) {
 
   const currentGroup = accessibleGroups.find((g) => g.system === activeSystem) || null;
   const menuItems = currentGroup?.items || [];
+  const { primary: mobilePrimaryItems, more: mobileMoreItems } = splitMobileNavigation(menuItems);
+  const mobileMoreActive = mobileMoreItems.some((item) => item.match(pathname))
+    || pathname.startsWith('/database/holidays')
+    || pathname === '/users'
+    || pathname === '/audit';
 
   return (
     <div className="app-container">
@@ -359,6 +369,73 @@ export default function AppLayout({ children }) {
           </RoleContext.Provider>
         </div>
       </main>
+
+      <nav className="mobile-bottom-nav" aria-label={`เมนู${systemSubtitle}`}>
+        {mobilePrimaryItems.map((item) => {
+          const Icon = item.icon;
+          const active = item.match(pathname);
+          return (
+            <Link href={item.href} key={item.href} className={`mobile-bottom-item${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined}>
+              <Icon size={20} aria-hidden="true" />
+              <span>{item.name}</span>
+            </Link>
+          );
+        })}
+        {!mobilePrimaryItems.length && (
+          <Link href="/home" className={`mobile-bottom-item${pathname === '/home' ? ' active' : ''}`}>
+            <Home size={20} aria-hidden="true" /><span>หน้าหลัก</span>
+          </Link>
+        )}
+        <button type="button" className={`mobile-bottom-item${mobileMoreActive || mobileMoreOpen ? ' active' : ''}`} onClick={() => setMobileMoreOpen(true)} aria-expanded={mobileMoreOpen}>
+          <MoreHorizontal size={20} aria-hidden="true" />
+          <span>เพิ่มเติม</span>
+        </button>
+      </nav>
+
+      {mobileMoreOpen && (
+        <div className="mobile-nav-sheet" role="dialog" aria-modal="true" aria-label="เมนูเพิ่มเติม">
+          <div className="mobile-nav-sheet-header">
+            <div>
+              <strong>{systemSubtitle}</strong>
+              <span>เมนูเพิ่มเติมและการตั้งค่า</span>
+            </div>
+            <button type="button" className="btn-icon" onClick={() => setMobileMoreOpen(false)} aria-label="ปิดเมนู"><X size={20} /></button>
+          </div>
+
+          <section className="mobile-nav-section">
+            <h2>เมนูในระบบนี้</h2>
+            <div className="mobile-nav-grid">
+                {mobileMoreItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = item.match(pathname);
+                  return <Link key={item.href} href={item.href} className={`mobile-nav-card${active ? ' active' : ''}`}><Icon size={20} /><span>{item.name}</span></Link>;
+                })}
+                <Link href="/database/holidays" className={`mobile-nav-card${pathname.startsWith('/database/holidays') ? ' active' : ''}`}><CalendarDays size={20} /><span>ปฏิทิน</span></Link>
+            </div>
+          </section>
+
+          <section className="mobile-nav-section">
+            <h2>เปลี่ยนระบบ</h2>
+            <div className="mobile-system-list">
+              <Link href="/home" className={pathname === '/home' ? 'active' : ''}><Home size={18} /><span>หน้าหลัก</span></Link>
+              {accessibleGroups.map((group) => (
+                <Link key={group.system} href={group.home} className={group.system === activeSystem ? 'active' : ''}>
+                  <LayoutDashboard size={18} /><span>{group.label}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className="mobile-nav-section mobile-account-actions">
+            <h2>บัญชีและการตั้งค่า</h2>
+            <button type="button" onClick={toggleTheme}>{isDark ? <Sun size={18} /> : <Moon size={18} />}<span>{isDark ? 'โหมดสว่าง' : 'โหมดมืด'}</span></button>
+            {canUser({ role, extraCaps }, 'audit:view') && <Link href="/audit"><History size={18} /><span>บันทึกการใช้งาน</span></Link>}
+            {(can(role, 'users:manage') || canUser({ role, extraCaps }, 'users:view')) && <Link href="/users"><Users size={18} /><span>ผู้ใช้งาน</span></Link>}
+            {SUPABASE_CONFIGURED && <button type="button" onClick={() => setShowPwd(true)}><KeyRound size={18} /><span>เปลี่ยนรหัสผ่าน</span></button>}
+            <button type="button" className="danger" onClick={handleLogout}><LogOut size={18} /><span>ออกจากระบบ</span></button>
+          </section>
+        </div>
+      )}
 
       {/* Self-service change-password modal (forced & non-dismissible on first login) */}
       <ChangePasswordModal
