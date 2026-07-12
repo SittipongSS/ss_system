@@ -54,7 +54,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   };
 
   if (action === 'screen') {
-    if (role !== 'admin') return forbidden('คัดกรองลีดได้เฉพาะแอดมิน');
+    if (!superuser) return forbidden('คัดกรองลีดได้เฉพาะแอดมินหรือ AE Supervisor');
     if (!TEAMS.includes(body.team)) return badRequest('ต้องเลือกทีม (ODM/KA/SV)');
     patch.team = body.team;
     patch.screenedAt = lead.screenedAt || now; // SLA นับครั้งแรก — ตีกลับแล้วคัดใหม่ไม่รีเซ็ต
