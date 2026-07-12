@@ -9,10 +9,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FileText, Plus, Printer, Save, Send, Trash2, CheckCircle2, GitBranch, ClipboardList } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import SlidePanel from "@/components/ui/SlidePanel";
-import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
-import DatePicker from "@/components/ui/DatePicker";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Modal from "@/components/Modal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { canReviewSalesForecast, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney } from "@/lib/format";
@@ -37,11 +34,6 @@ export default function QuotationEditorPage() {
   const [error, setError] = useState("");
   const [tplOpen, setTplOpen] = useState(false);
   const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
-  const [confirmState, setConfirmState] = useState({ open: false, title: "", description: "", action: null });
-
-  const confirmAction = (title, description, action) => {
-    setConfirmState({ open: true, title, description, action });
-  };
   // เพิ่มรายการจากรหัส FG (feedback ผู้ใช้: ใส่รหัส FG ตอนทำใบ) — ราคา freeze จาก master ณ ตอนเพิ่ม
   const [products, setProducts] = useState([]);
   const [fgPick, setFgPick] = useState("");
@@ -153,13 +145,8 @@ export default function QuotationEditorPage() {
   };
 
   const doAccept = async () => {
-    confirmAction(
-      "ลูกค้ารับใบเสนอราคา",
-      `ยืนยันว่าลูกค้ารับใบเสนอราคา ${quote.quoteNumber}? ยอด ${money(quote.totalAmount)} จะถูกตั้งเป็นมูลค่าดีล`,
-      async () => {
-        if (await act("accept", `/api/sales-planning/quotations/${id}/accept`)) await load();
-      }
-    );
+    if (!window.confirm(`ยืนยันว่าลูกค้ารับใบเสนอราคา ${quote.quoteNumber}? ยอด ${money(quote.totalAmount)} จะถูกตั้งเป็นมูลค่าดีล`)) return;
+    if (await act("accept", `/api/sales-planning/quotations/${id}/accept`)) await load();
   };
   const doRevise = async () => {
     if (dirty && !(await save())) return;
@@ -172,13 +159,8 @@ export default function QuotationEditorPage() {
     })) await load();
   };
   const doDelete = async () => {
-    confirmAction(
-      "ลบใบเสนอราคา",
-      `ลบใบเสนอราคา (ร่าง) ${quote.quoteNumber}?`,
-      async () => {
-        if (await act("delete", `/api/sales-planning/quotations/${id}`, { method: "DELETE" })) router.push("/sa/quotations");
-      }
-    );
+    if (!window.confirm(`ลบใบเสนอราคา (ร่าง) ${quote.quoteNumber}?`)) return;
+    if (await act("delete", `/api/sales-planning/quotations/${id}`, { method: "DELETE" })) router.push("/sa/quotations");
   };
   const doPrint = async () => {
     if (dirty && editable && !(await save())) return;
@@ -203,14 +185,9 @@ export default function QuotationEditorPage() {
     } else setError((await res.json().catch(() => ({}))).error || "บันทึก template ไม่สำเร็จ");
   };
   const deleteTemplate = async (tpl) => {
-    confirmAction(
-      "ลบ Template",
-      `ลบ template "${tpl.title}"?`,
-      async () => {
-        await fetch(`/api/sales-planning/quote-note-templates/${tpl.id}`, { method: "DELETE" });
-        setTemplates((prev) => prev.filter((t) => t.id !== tpl.id));
-      }
-    );
+    if (!window.confirm(`ลบ template "${tpl.title}"?`)) return;
+    await fetch(`/api/sales-planning/quote-note-templates/${tpl.id}`, { method: "DELETE" });
+    setTemplates((prev) => prev.filter((t) => t.id !== tpl.id));
   };
 
   return (
@@ -260,10 +237,10 @@ export default function QuotationEditorPage() {
           {/* หัวใบ */}
           <section className="glass-panel form-grid" style={{ padding: 16 }}>
             <label>วันที่ออกใบ
-              <DatePicker value={form.quoteDate} disabled={!editable} onChange={(v) => setF({ quoteDate: v })} />
+              <input type="date" className="premium-input" value={form.quoteDate} disabled={!editable} onChange={(e) => setF({ quoteDate: e.target.value })} />
             </label>
             <label>ยืนราคาถึง
-              <DatePicker value={form.validUntil || ""} disabled={!editable} onChange={(v) => setF({ validUntil: v })} />
+              <input type="date" className="premium-input" value={form.validUntil || ""} disabled={!editable} onChange={(e) => setF({ validUntil: e.target.value })} />
             </label>
             <label>ภาษีมูลค่าเพิ่ม
               <select className="premium-select" value={form.vatRate} disabled={!editable} onChange={(e) => setF({ vatRate: Number(e.target.value) })}>
@@ -308,8 +285,8 @@ export default function QuotationEditorPage() {
                         <input className="premium-input" value={l.description || ""} disabled={!editable} placeholder="รายละเอียด" onChange={(e) => setLine(i, { description: e.target.value })} style={{ width: "100%" }} />
                         {l.fgCode && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{l.fgCode}</span>}
                       </td>
-                      <td><FormattedNumberInput min={0} step={1} className="premium-input mono" value={l.qty} disabled={!editable} onChange={(v) => setLine(i, { qty: v })} /></td>
-                      <td><FormattedNumberInput min={0} step={0.01} className="premium-input mono" value={l.unitPrice} disabled={!editable} onChange={(v) => setLine(i, { unitPrice: v })} /></td>
+                      <td><input type="number" min="0" step="1" className="premium-input mono" value={l.qty} disabled={!editable} onChange={(e) => setLine(i, { qty: e.target.value })} /></td>
+                      <td><input type="number" min="0" step="0.01" className="premium-input mono" value={l.unitPrice} disabled={!editable} onChange={(e) => setLine(i, { unitPrice: e.target.value })} /></td>
                       <td>
                         <div style={{ display: "flex", gap: 4 }}>
                           <select className="premium-select" value={l.discountType || ""} disabled={!editable} onChange={(e) => setLine(i, { discountType: e.target.value || null, discountValue: e.target.value ? l.discountValue : 0 })} style={{ width: 74 }}>
@@ -317,7 +294,7 @@ export default function QuotationEditorPage() {
                             <option value="percent">%</option>
                             <option value="amount">บาท</option>
                           </select>
-                          <FormattedNumberInput min={0} step={0.01} className="premium-input mono" value={l.discountValue || ""} disabled={!editable || !l.discountType} onChange={(v) => setLine(i, { discountValue: v })} style={{ width: 84 }} />
+                          <input type="number" min="0" step="0.01" className="premium-input mono" value={l.discountValue || ""} disabled={!editable || !l.discountType} onChange={(e) => setLine(i, { discountValue: e.target.value })} style={{ width: 84 }} />
                         </div>
                       </td>
                       <td className="num mono">{money(quoteLineNet(l).lineTotal)}</td>
@@ -342,7 +319,7 @@ export default function QuotationEditorPage() {
                       <option value="percent">%</option>
                       <option value="amount">บาท</option>
                     </select>
-                    <FormattedNumberInput min={0} step={0.01} className="premium-input mono" value={form.discountValue || ""} disabled={!editable || !form.discountType} onChange={(v) => setF({ discountValue: v })} style={{ width: 90, height: 30 }} />
+                    <input type="number" min="0" step="0.01" className="premium-input mono" value={form.discountValue || ""} disabled={!editable || !form.discountType} onChange={(e) => setF({ discountValue: e.target.value })} style={{ width: 90, height: 30 }} />
                   </span>
                   <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-"}</strong>
                 </div>
@@ -370,8 +347,8 @@ export default function QuotationEditorPage() {
       )}
 
       {/* จัดการ template หมายเหตุ (supervisor) */}
-      <SlidePanel open={tplOpen} isOpen={tplOpen} onClose={() => setTplOpen(false)} title="Template หมายเหตุ (ต่อประเภทบริการ)" width="max-w-2xl">
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Modal open={tplOpen} onClose={() => setTplOpen(false)} title="Template หมายเหตุ (ต่อประเภทบริการ)" size="lg">
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="premium-glass-table table-responsive">
             <table className="w-full text-sm">
               <thead><tr><th>ประเภท</th><th>ชื่อ</th><th>เนื้อหา</th><th></th></tr></thead>
@@ -405,18 +382,7 @@ export default function QuotationEditorPage() {
             </div>
           </div>
         </div>
-      </SlidePanel>
-
-      <ConfirmDialog
-        open={confirmState.open}
-        title={confirmState.title}
-        description={confirmState.description}
-        onClose={() => setConfirmState((s) => ({ ...s, open: false }))}
-        onConfirm={async () => {
-          if (confirmState.action) await confirmState.action();
-          setConfirmState((s) => ({ ...s, open: false }));
-        }}
-      />
+      </Modal>
     </Workspace>
   );
 }

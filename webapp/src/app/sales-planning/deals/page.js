@@ -5,10 +5,6 @@ import Link from "next/link";
 import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import Workspace from "@/components/ui/Workspace";
-import SlidePanel from "@/components/ui/SlidePanel";
-import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
-import DatePicker from "@/components/ui/DatePicker";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -39,7 +35,6 @@ export default function SalesPlanningPipelinePage() {
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all"); // กรองตามประเภทดีล SCENT/NPD/RE-ORDER
-
   const [dealModal, setDealModal] = useState(false);
   const [dealForm, setDealForm] = useState({ ...initialDealForm, forecastMonth: thisMonth() });
   const [submitting, setSubmitting] = useState(false);
@@ -57,12 +52,6 @@ export default function SalesPlanningPipelinePage() {
   const [pmModalOpen, setPmModalOpen] = useState(false);
   const [pmDeal, setPmDeal] = useState(null);
   const [pmInitial, setPmInitial] = useState(null);
-  const [dealToDelete, setDealToDelete] = useState(null);
-  
-  const [confirmState, setConfirmState] = useState({ open: false, title: "", message: "", action: null, isDanger: false, confirmLabel: "ยืนยัน" });
-  const requestConfirm = (title, message, action, confirmLabel = "ยืนยัน", isDanger = false) => {
-    setConfirmState({ open: true, title, message, action, confirmLabel, isDanger });
-  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,21 +143,17 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  const confirmDelete = (deal) => {
-    setDealToDelete(deal);
-  };
-
-  const deleteDeal = async () => {
-    if (!dealToDelete) return;
+  const deleteDeal = async (deal) => {
+    // Sales เป็นแม่ — ลบดีลจะลบโครงการ PM ที่ผูกอยู่พ่วงไปด้วย
+    const withPm = deal.projectId ? "\n\nโครงการ (PM) ที่ผูกอยู่จะถูกลบพ่วงไปด้วย" : "";
+    if (!window.confirm(`ลบดีล "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${dealToDelete.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/sales-planning/deals/${deal.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบดีลไม่สำเร็จ");
-      setDealToDelete(null);
       await load();
     } catch (e) {
       setError(e.message || "ลบดีลไม่สำเร็จ");
-      setDealToDelete(null);
     }
   };
 
@@ -213,43 +198,41 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  const acceptQuotation = (quote) => {
-    requestConfirm("รับใบเสนอราคา", `ยืนยันรับใบเสนอราคา ${quote.quoteNumber}?`, async () => {
-      setQuoteLoading(true);
-      setError("");
-      try {
-        const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, { method: "POST" });
-        if (!res.ok) throw new Error((await res.json()).error || "accept quotation ไม่สำเร็จ");
-        await loadQuotations(quoteDeal);
-        await load();
-      } catch (e) {
-        setError(e.message || "accept quotation ไม่สำเร็จ");
-      } finally {
-        setQuoteLoading(false);
-      }
-    });
+  const acceptQuotation = async (quote) => {
+    if (!window.confirm(`Accept quotation ${quote.quoteNumber}?`)) return;
+    setQuoteLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error || "accept quotation ไม่สำเร็จ");
+      await loadQuotations(quoteDeal);
+      await load();
+    } catch (e) {
+      setError(e.message || "accept quotation ไม่สำเร็จ");
+    } finally {
+      setQuoteLoading(false);
+    }
   };
 
-  const changeQuotationApproval = (quote, action) => {
-    const label = action === "approve" ? "อนุมัติ" : action === "reject" ? "ตีกลับ" : "ขออนุมัติ";
-    requestConfirm(label, `ยืนยัน${label}ใบเสนอราคา ${quote.quoteNumber}?`, async () => {
-      setQuoteLoading(true);
-      setError("");
-      try {
-        const res = await fetch(`/api/sales-planning/quotations/${quote.id}/approval`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        });
-        if (!res.ok) throw new Error((await res.json()).error || "update quotation approval failed");
-        await loadQuotations(quoteDeal);
-        await load();
-      } catch (e) {
-        setError(e.message || "update quotation approval failed");
-      } finally {
-        setQuoteLoading(false);
-      }
-    });
+  const changeQuotationApproval = async (quote, action) => {
+    const label = action === "approve" ? "Approve" : action === "reject" ? "Reject" : "Request approval for";
+    if (!window.confirm(`${label} quotation ${quote.quoteNumber}?`)) return;
+    setQuoteLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/quotations/${quote.id}/approval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "update quotation approval failed");
+      await loadQuotations(quoteDeal);
+      await load();
+    } catch (e) {
+      setError(e.message || "update quotation approval failed");
+    } finally {
+      setQuoteLoading(false);
+    }
   };
 
   // เปิดโมดัลสร้างโครงการ PM (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล — ปรับแก้ได้
@@ -276,26 +259,25 @@ export default function SalesPlanningPipelinePage() {
 
   // ส่งต่อคลัง: สร้างเอกสารเตรียมส่งของจากโครงการที่ผูกกับ Sales Planning (idempotent ฝั่ง PM)
   // แล้วเปิดหน้า PM shipment-prep เพื่อดู/พิมพ์ ส่งให้คลังดำเนินการ.
-  const createShipmentPrep = (deal) => {
+  const createShipmentPrep = async (deal) => {
     if (!deal.projectId) return;
-    requestConfirm("เตรียมส่งของ", `สร้างเอกสารเตรียมส่งของจากโครงการ "${deal.title}"?`, async () => {
-      setShippingDealId(deal.id);
-      setError("");
-      try {
-        const res = await fetch(`/api/pm/projects/${deal.projectId}/shipment-prep`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "สร้างเอกสารส่งของไม่สำเร็จ");
-        window.open(`/sa/projects/${deal.projectId}/shipment-prep`, "_blank", "noopener");
-      } catch (e) {
-        setError(e.message || "สร้างเอกสารส่งของไม่สำเร็จ");
-      } finally {
-        setShippingDealId(null);
-      }
-    });
+    if (!window.confirm(`สร้างเอกสารเตรียมส่งของจากโครงการ "${deal.title}"?`)) return;
+    setShippingDealId(deal.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/pm/projects/${deal.projectId}/shipment-prep`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "สร้างเอกสารส่งของไม่สำเร็จ");
+      window.open(`/sa/projects/${deal.projectId}/shipment-prep`, "_blank", "noopener");
+    } catch (e) {
+      setError(e.message || "สร้างเอกสารส่งของไม่สำเร็จ");
+    } finally {
+      setShippingDealId(null);
+    }
   };
 
   // ปิดดีลเป็น Won — เปิดโมดัลรับ "มูลค่าปิดจริง" (prefill = คาดการณ์) ก่อนยืนยัน
@@ -388,20 +370,19 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  const deleteDocument = (doc) => {
-    requestConfirm("ลบเอกสาร", `ยืนยันการลบเอกสาร "${doc.title}"?`, async () => {
-      setDocLoading(true);
-      setError("");
-      try {
-        const res = await fetch(`/api/sales-planning/documents/${doc.id}`, { method: "DELETE" });
-        if (!res.ok) throw new Error((await res.json()).error || "delete document failed");
-        await loadDocuments(docDeal);
-      } catch (e) {
-        setError(e.message || "delete document failed");
-      } finally {
-        setDocLoading(false);
-      }
-    }, "ลบเอกสาร", true);
+  const deleteDocument = async (doc) => {
+    if (!window.confirm(`Delete "${doc.title}"?`)) return;
+    setDocLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/documents/${doc.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json()).error || "delete document failed");
+      await loadDocuments(docDeal);
+    } catch (e) {
+      setError(e.message || "delete document failed");
+    } finally {
+      setDocLoading(false);
+    }
   };
 
   const headerRight = (
@@ -548,7 +529,7 @@ export default function SalesPlanningPipelinePage() {
                           </button>
                         )}
                         {deal.canEdit && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId && (
-                          <button type="button" className="btn-icon danger" onClick={() => confirmDelete(deal)} aria-label={`ลบ ${deal.title}`} title="ลบดีล (ลบโครงการ PM ที่ผูกพ่วงด้วย)">
+                          <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบดีล (ลบโครงการ PM ที่ผูกพ่วงด้วย)">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>
                         )}
@@ -569,21 +550,8 @@ export default function SalesPlanningPipelinePage() {
         </section>
       </div>
 
-      <SlidePanel 
-        isOpen={dealModal} 
-        onClose={() => setDealModal(false)} 
-        title={dealForm.id ? "แก้ไขดีล" : "เพิ่มดีล"}
-        width="max-w-xl"
-        footer={
-          <>
-            <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={saveDeal} disabled={submitting}>
-              <Save size={15} aria-hidden="true" /> {submitting ? "กำลังบันทึก..." : "บันทึก"}
-            </button>
-          </>
-        }
-      >
-        <form onSubmit={saveDeal} className="form-grid" aria-busy={submitting}>
+      <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไขดีล" : "เพิ่มดีล"} size="lg">
+        <form onSubmit={saveDeal} className="form-grid" aria-busy={submitting} style={{ padding: 18 }}>
           <label>
             ชื่อดีล
             <input className="premium-input" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} required />
@@ -647,45 +615,39 @@ export default function SalesPlanningPipelinePage() {
           </label>
           <label>
             มูลค่าคาดการณ์{dealForm.stage === "won" ? " (ล็อกหลังปิด Won)" : ""}
-            <FormattedNumberInput 
-              value={dealForm.projectValue} 
-              disabled={dealForm.stage === "won"} 
-              onChange={(v) => setDealForm({ ...dealForm, projectValue: v })} 
-              className="premium-input"
-            />
+            <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} disabled={dealForm.stage === "won"} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
           </label>
           {dealForm.stage === "won" && (
             <label>
               มูลค่าปิดจริง (Won)
-              <FormattedNumberInput 
-                value={dealForm.wonValue} 
-                onChange={(v) => setDealForm({ ...dealForm, wonValue: v })} 
-                className="premium-input"
-              />
+              <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.wonValue} onChange={(e) => setDealForm({ ...dealForm, wonValue: e.target.value })} />
             </label>
           )}
           <label>
             คาดปิดได้ (วันที่)
-            <DatePicker 
-              value={dealForm.expectedCloseDate} 
-              onChange={(v) => setDealForm({ ...dealForm, expectedCloseDate: v })} 
-            />
+            <input type="date" className="premium-input" value={dealForm.expectedCloseDate} onChange={(e) => setDealForm({ ...dealForm, expectedCloseDate: e.target.value })} />
           </label>
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียด
             <textarea className="premium-input" rows={3} value={dealForm.notes} onChange={(e) => setDealForm({ ...dealForm, notes: e.target.value })} />
           </label>
+          <div className="drawer-actions" style={{ gridColumn: "1 / -1" }}>
+            <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
+              <Save size={15} aria-hidden="true" /> {submitting ? "กำลังบันทึก..." : "บันทึก"}
+            </button>
+          </div>
         </form>
-      </SlidePanel>
+      </Modal>
 
-      <SlidePanel isOpen={!!winDeal} onClose={() => winningDealId ? null : setWinDeal(null)} title="ปิดการขาย (Won)" width="max-w-md" footer={<><button type="button" className="btn ghost" onClick={() => setWinDeal(null)} disabled={!!winningDealId}>ยกเลิก</button><button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!winningDealId || !(Number(winValue) > 0)}><CheckCircle2 size={14} aria-hidden="true" /> {winningDealId ? "กำลังบันทึก..." : "ยืนยัน Won"}</button></>}>
+      <Modal open={!!winDeal} onClose={() => winningDealId ? null : setWinDeal(null)} title="ปิดการขาย (Won)" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
             ปิดดีล <strong>{winDeal?.title}</strong> — ยืนยันว่าได้รับมัดจำ/ยืนยันแล้ว กรอก <strong>มูลค่าปิดจริง</strong> (นับเข้าเป้า)
           </div>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             มูลค่าปิดจริง (บาท)
-            <FormattedNumberInput min={0} step={0.01} className="premium-input mono" value={winValue} onChange={(v) => setWinValue(v)} autoFocus />
+            <input type="number" min="0" step="0.01" className="premium-input mono" value={winValue} onChange={(e) => setWinValue(e.target.value)} autoFocus />
           </label>
           {winDeal && Number(winDeal.projectValue) > 0 && Number(winValue) > 0 && Number(winValue) !== Number(winDeal.projectValue) && (
             <div style={{ fontSize: 12, color: "var(--amber)" }}>ต่างจากคาดการณ์ ({money(winDeal.projectValue)}) {money(Number(winDeal.projectValue) - Number(winValue))}</div>
@@ -696,10 +658,16 @@ export default function SalesPlanningPipelinePage() {
               <MonthPicker value={winMonth} onChange={setWinMonth} />
             </div>
           </label>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="btn ghost" onClick={() => setWinDeal(null)} disabled={!!winningDealId}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!winningDealId || !(Number(winValue) > 0)}>
+              <CheckCircle2 size={14} aria-hidden="true" /> {winningDealId ? "กำลังบันทึก..." : "ยืนยัน Won"}
+            </button>
+          </div>
         </div>
-      </SlidePanel>
+      </Modal>
 
-      <SlidePanel isOpen={quoteModal} onClose={() => setQuoteModal(false)} title={`Quotation${quoteDeal?.title ? ` · ${quoteDeal.title}` : ""}`} width="max-w-4xl">
+      <Modal open={quoteModal} onClose={() => setQuoteModal(false)} title={`Quotation${quoteDeal?.title ? ` · ${quoteDeal.title}` : ""}`} size="lg">
         <div style={{ padding: 18 }}>
           <div className="flex items-center gap-2 mb-3">
             <div style={{ color: "var(--text-3)", fontSize: 12 }}>
@@ -792,9 +760,9 @@ export default function SalesPlanningPipelinePage() {
             </table>
           </div>
         </div>
-      </SlidePanel>
+      </Modal>
 
-      <SlidePanel isOpen={docModal} onClose={() => setDocModal(false)} title={`Documents${docDeal?.title ? ` · ${docDeal.title}` : ""}`} width="max-w-4xl">
+      <Modal open={docModal} onClose={() => setDocModal(false)} title={`Documents${docDeal?.title ? ` · ${docDeal.title}` : ""}`} size="lg">
         <div style={{ padding: 18 }}>
           {docDeal?.canEdit && (
             <form onSubmit={createDocument} className="form-grid" aria-busy={docLoading} style={{ marginBottom: 16 }}>
@@ -815,7 +783,7 @@ export default function SalesPlanningPipelinePage() {
               </label>
               <label>
                 กำหนดส่ง
-                <DatePicker value={docForm.dueDate} onChange={(v) => setDocForm({ ...docForm, dueDate: v })} />
+                <input type="date" className="premium-input" value={docForm.dueDate} onChange={(e) => setDocForm({ ...docForm, dueDate: e.target.value })} />
               </label>
               <label>
                 สถานะ
@@ -890,7 +858,7 @@ export default function SalesPlanningPipelinePage() {
             </table>
           </div>
         </div>
-      </SlidePanel>
+      </Modal>
 
       {pmDeal && (
         <ProjectFormModal
@@ -906,16 +874,6 @@ export default function SalesPlanningPipelinePage() {
           createLabel="จัดการโครงการ"
         />
       )}
-
-      <ConfirmDialog
-        isOpen={!!dealToDelete}
-        onClose={() => setDealToDelete(null)}
-        onConfirm={deleteDeal}
-        title="ลบดีล"
-        message={`คุณต้องการลบดีล "${dealToDelete?.title}" ใช่หรือไม่? ${dealToDelete?.projectId ? 'โครงการ (PM) ที่ผูกอยู่จะถูกลบพ่วงไปด้วย ' : ''}การลบนี้ไม่สามารถย้อนกลับได้`}
-        confirmLabel="ลบดีล"
-        isDanger={true}
-      />
     </Workspace>
   );
 }

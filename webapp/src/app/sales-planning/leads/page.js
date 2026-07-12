@@ -7,9 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import SlidePanel from "@/components/ui/SlidePanel";
-import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Modal from "@/components/Modal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS } from "@/lib/salesPlanning";
@@ -63,7 +61,6 @@ export default function LeadsPage() {
   const [actMode, setActMode] = useState("online");
   const [actAt, setActAt] = useState("");
   const [actCustomer, setActCustomer] = useState("");
-  const [leadToDelete, setLeadToDelete] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -224,16 +221,11 @@ export default function LeadsPage() {
     }
   };
 
-  const confirmDelete = (lead) => {
-    setLeadToDelete(lead);
-  };
-
-  const deleteLead = async () => {
-    if (!leadToDelete) return;
+  const deleteLead = async (lead) => {
+    if (!window.confirm(`ลบลีด "${lead.contactName}"? การลบย้อนกลับไม่ได้`)) return;
     setError("");
-    const res = await fetch(`/api/sales-planning/leads/${leadToDelete.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/sales-planning/leads/${lead.id}`, { method: "DELETE" });
     if (!res.ok) setError((await res.json().catch(() => ({}))).error || "ลบลีดไม่สำเร็จ");
-    setLeadToDelete(null);
     await load();
   };
 
@@ -371,9 +363,9 @@ export default function LeadsPage() {
                             <Pencil size={14} aria-hidden="true" />
                           </button>
                         )}
-                        {canEditRow(lead) && (
-                          <button type="button" className="btn-icon danger" onClick={() => confirmDelete(lead)} aria-label={`ลบ ${lead.contactName}`} title="ลบลีด">
-                            <Trash2 size={15} aria-hidden="true" />
+                        {superuser && (
+                          <button type="button" className="btn-icon danger" title="ลบลีด" aria-label={`ลบ ${lead.contactName}`} onClick={() => deleteLead(lead)}>
+                            <Trash2 size={14} aria-hidden="true" />
                           </button>
                         )}
                       </div>
@@ -390,21 +382,8 @@ export default function LeadsPage() {
       </div>
 
       {/* ฟอร์มรับ/แก้ลีด */}
-      <SlidePanel 
-        isOpen={formOpen} 
-        onClose={() => setFormOpen(false)} 
-        title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"}
-        width="max-w-xl"
-        footer={
-          <>
-            <button type="button" className="btn ghost" onClick={() => setFormOpen(false)}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={saveLead} disabled={busy === "save"}>
-              <Plus size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกลีด"}
-            </button>
-          </>
-        }
-      >
-        <form onSubmit={saveLead} className="form-grid" aria-busy={busy === "save"}>
+      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"} size="lg">
+        <form onSubmit={saveLead} className="form-grid" aria-busy={busy === "save"} style={{ padding: 18 }}>
           <label>
             ชื่อลูกค้า/ผู้ติดต่อ *
             <input className="premium-input" value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} required />
@@ -443,31 +422,23 @@ export default function LeadsPage() {
           </label>
           <label>
             Budget (บาท)
-            <FormattedNumberInput 
-              value={form.budget} 
-              onChange={(v) => setForm({ ...form, budget: v })} 
-              className="premium-input"
-            />
+            <input type="number" min="0" step="0.01" className="premium-input mono" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} />
           </label>
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียดเพิ่มเติม
             <textarea className="premium-input" rows={3} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
           </label>
+          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="btn ghost" onClick={() => setFormOpen(false)}>ยกเลิก</button>
+            <button type="submit" className="btn btn-primary" disabled={busy === "save"}><Plus size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกลีด"}</button>
+          </div>
         </form>
-      </SlidePanel>
+      </Modal>
 
       {/* สร้างดีลจากลีด — ติ้กประเภทได้หลายอัน ลดขั้นการกรอก */}
-      <SlidePanel open={!!dealModal} isOpen={!!dealModal} onClose={() => !busy && setDealModal(null)} width="max-w-md" title="สร้างดีลจากลีด"
-        footer={
-          <>
-            <button type="button" className="btn ghost" onClick={() => setDealModal(null)} disabled={!!busy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submitDeals} disabled={!!busy || !DEAL_TYPES.some((t) => dealTypesPick[t])}>
-              {busy === "deals" ? "กำลังสร้าง…" : `สร้าง ${DEAL_TYPES.filter((t) => dealTypesPick[t]).length} ดีล`}
-            </button>
-          </>
-        }>
+      <Modal open={!!dealModal} onClose={() => !busy && setDealModal(null)} title="สร้างดีลจากลีด" size="sm">
         {dealModal && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: 13, color: "var(--text-3)" }}>
               ลีด: <strong style={{ color: "var(--text)" }}>{dealModal.contactName}</strong>{dealModal.company ? ` · ${dealModal.company}` : ""}
               {dealModal.team ? ` · ทีม ${TEAM_LABELS[dealModal.team] || dealModal.team}` : ""}{dealModal.assigneeName ? ` · ${dealModal.assigneeName}` : ""}
@@ -488,106 +459,99 @@ export default function LeadsPage() {
             <div style={{ display: "flex", gap: 8 }}>
               <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                 มูลค่าคาดการณ์/ดีล (จาก budget)
-                <FormattedNumberInput value={dealValue} onChange={(v) => setDealValue(v)} className="premium-input mono" />
+                <input type="number" min="0" step="0.01" className="premium-input mono" value={dealValue} onChange={(e) => setDealValue(e.target.value)} />
               </label>
               <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                 เดือนพยากรณ์
                 <input type="month" className="premium-input" value={dealMonth} onChange={(e) => setDealMonth(e.target.value)} />
               </label>
             </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="btn ghost" onClick={() => setDealModal(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn btn-primary" onClick={submitDeals} disabled={!!busy || !DEAL_TYPES.some((t) => dealTypesPick[t])}>
+                {busy === "deals" ? "กำลังสร้าง…" : `สร้าง ${DEAL_TYPES.filter((t) => dealTypesPick[t]).length} ดีล`}
+              </button>
+            </div>
           </div>
         )}
-      </SlidePanel>
+      </Modal>
 
-      <SlidePanel open={!!actionModal} isOpen={!!actionModal} onClose={() => !busy && setActionModal(null)} width="max-w-md"
-        title={actionModal ? ({ screen: "คัดกรอง — เลือกทีม", assign: "มอบหมาย AE", contact: "บันทึกติดต่อกลับ", meeting: "บันทึกนัดประชุม", qualify: "เปิดลูกค้า (ผูกฐานข้อมูล)", disqualify: "ไม่ไปต่อ", bounce: "ตีกลับ (ทีมไม่ตรง)" }[actionModal.action]) : ""}
-        footer={
-          <>
-            <button type="button" className="btn ghost" onClick={() => setActionModal(null)} disabled={!!busy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submitAction}
-              disabled={!!busy
-                || (actionModal?.action === "screen" && !actTeam)
-                || (actionModal?.action === "assign" && !actAssignee)
-                || (actionModal?.action === "qualify" && !actCustomer)
-                || (["disqualify", "bounce"].includes(actionModal?.action) && !actReason.trim())}>
-              {busy === "action" ? "กำลังบันทึก…" : "ยืนยัน"}
-            </button>
-          </>
-        }>
+      {/* โมดัล action ตาม transition */}
+      <Modal open={!!actionModal} onClose={() => !busy && setActionModal(null)} size="sm"
+        title={actionModal ? ({ screen: "คัดกรอง — เลือกทีม", assign: "มอบหมาย AE", contact: "บันทึกติดต่อกลับ", meeting: "บันทึกนัดประชุม", qualify: "เปิดลูกค้า (ผูกฐานข้อมูล)", disqualify: "ไม่ไปต่อ", bounce: "ตีกลับ (ทีมไม่ตรง)" }[actionModal.action]) : ""}>
         {actionModal && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: 13, color: "var(--text-3)" }}>
               ลีด: <strong style={{ color: "var(--text)" }}>{actionModal.lead.contactName}</strong>{actionModal.lead.company ? ` · ${actionModal.lead.company}` : ""}
             </div>
-            <div className="form-grid">
-              {actionModal.action === "screen" && (
-                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                  ส่งให้ทีม
-                  <select className="premium-select" value={actTeam} onChange={(e) => setActTeam(e.target.value)}>
-                    <option value="">— เลือกทีม —</option>
-                    {TEAMS.map((t) => <option key={t} value={t}>{TEAM_LABELS[t]}</option>)}
+            {actionModal.action === "screen" && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                ส่งให้ทีม
+                <select className="premium-select" value={actTeam} onChange={(e) => setActTeam(e.target.value)}>
+                  <option value="">— เลือกทีม —</option>
+                  {TEAMS.map((t) => <option key={t} value={t}>{TEAM_LABELS[t]}</option>)}
+                </select>
+              </label>
+            )}
+            {actionModal.action === "assign" && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                AE ผู้รับผิดชอบ (ทีม {TEAM_LABELS[actionModal.lead.team] || actionModal.lead.team})
+                <select className="premium-select" value={actAssignee} onChange={(e) => setActAssignee(e.target.value)}>
+                  <option value="">— เลือก AE —</option>
+                  {users.filter((u) => ["ae", "senior_ae"].includes(u.role) && (!actionModal.lead.team || u.team === actionModal.lead.team)).map((u) => (
+                    <option key={u.id} value={u.id}>{fmtName(u)}{u.role === "senior_ae" ? " (Senior)" : ""}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {["contact", "meeting"].includes(actionModal.action) && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                วัน-เวลา{actionModal.action === "meeting" ? "นัด" : "ที่ติดต่อ"}
+                <input type="datetime-local" className="premium-input" value={actAt} onChange={(e) => setActAt(e.target.value)} />
+              </label>
+            )}
+            {actionModal.action === "meeting" && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                รูปแบบนัด
+                <select className="premium-select" value={actMode} onChange={(e) => setActMode(e.target.value)}>
+                  {MEETING_MODES.map((m) => <option key={m} value={m}>{MEETING_MODE_LABELS[m]}</option>)}
+                </select>
+              </label>
+            )}
+            {actionModal.action === "qualify" && (
+              <>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                  ลูกค้าในฐานข้อมูล
+                  <select className="premium-select" value={actCustomer} onChange={(e) => setActCustomer(e.target.value)}>
+                    <option value="">— เลือกลูกค้า —</option>
+                    {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </label>
-              )}
-              {actionModal.action === "assign" && (
-                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                  AE ผู้รับผิดชอบ (ทีม {TEAM_LABELS[actionModal.lead.team] || actionModal.lead.team})
-                  <select className="premium-select" value={actAssignee} onChange={(e) => setActAssignee(e.target.value)}>
-                    <option value="">— เลือก AE —</option>
-                    {users.filter((u) => ["ae", "senior_ae"].includes(u.role) && (!actionModal.lead.team || u.team === actionModal.lead.team)).map((u) => (
-                      <option key={u.id} value={u.id}>{fmtName(u)}{u.role === "senior_ae" ? " (Senior)" : ""}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {["contact", "meeting"].includes(actionModal.action) && (
-                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                  วัน-เวลา{actionModal.action === "meeting" ? "นัด" : "ที่ติดต่อ"}
-                  <input type="datetime-local" className="premium-input" value={actAt} onChange={(e) => setActAt(e.target.value)} />
-                </label>
-              )}
-              {actionModal.action === "meeting" && (
-                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                  รูปแบบนัด
-                  <select className="premium-select" value={actMode} onChange={(e) => setActMode(e.target.value)}>
-                    {MEETING_MODES.map((m) => <option key={m} value={m}>{MEETING_MODE_LABELS[m]}</option>)}
-                  </select>
-                </label>
-              )}
-              {actionModal.action === "qualify" && (
-                <>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                    ลูกค้าในฐานข้อมูล
-                    <select className="premium-select" value={actCustomer} onChange={(e) => setActCustomer(e.target.value)}>
-                      <option value="">— เลือกลูกค้า —</option>
-                      {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </label>
-                  <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                    ยังไม่มีในระบบ? <Link href="/database/customers" className="linklike" target="_blank">เปิดลูกค้าใหม่ที่ฐานข้อมูล</Link> แล้วกลับมาเลือก — จากนั้นไปเปิดโครงการ/ดีลต่อที่หน้า <Link href="/sa/deals" className="linklike">ดีล</Link>
-                  </div>
-                </>
-              )}
-              {["disqualify", "bounce"].includes(actionModal.action) && (
-                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                  เหตุผล *
-                  <textarea className="premium-input" rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder={actionModal.action === "bounce" ? "เช่น งานเป็นของทีม SV ไม่ใช่ ODM" : "เช่น งบไม่พอ / ติดต่อไม่ได้"} />
-                </label>
-              )}
+                <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                  ยังไม่มีในระบบ? <Link href="/database/customers" className="linklike" target="_blank">เปิดลูกค้าใหม่ที่ฐานข้อมูล</Link> แล้วกลับมาเลือก — จากนั้นไปเปิดโครงการ/ดีลต่อที่หน้า <Link href="/sa/deals" className="linklike">ดีล</Link>
+                </div>
+              </>
+            )}
+            {["disqualify", "bounce"].includes(actionModal.action) && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                เหตุผล *
+                <textarea className="premium-input" rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder={actionModal.action === "bounce" ? "เช่น งานเป็นของทีม SV ไม่ใช่ ODM" : "เช่น งบไม่พอ / ติดต่อไม่ได้"} />
+              </label>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="btn ghost" onClick={() => setActionModal(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn btn-primary" onClick={submitAction}
+                disabled={!!busy
+                  || (actionModal.action === "screen" && !actTeam)
+                  || (actionModal.action === "assign" && !actAssignee)
+                  || (actionModal.action === "qualify" && !actCustomer)
+                  || (["disqualify", "bounce"].includes(actionModal.action) && !actReason.trim())}>
+                {busy === "action" ? "กำลังบันทึก…" : "ยืนยัน"}
+              </button>
             </div>
           </div>
         )}
-      </SlidePanel>
-
-      <ConfirmDialog
-        isOpen={!!leadToDelete}
-        onClose={() => setLeadToDelete(null)}
-        onConfirm={deleteLead}
-        title="ลบลีด"
-        message={`คุณต้องการลบลีด "${leadToDelete?.contactName}" ใช่หรือไม่? การลบนี้ไม่สามารถย้อนกลับได้`}
-        confirmLabel="ลบลีด"
-        isDanger={true}
-      />
+      </Modal>
     </Workspace>
   );
 }
