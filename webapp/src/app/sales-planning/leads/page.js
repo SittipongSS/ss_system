@@ -510,7 +510,7 @@ export default function LeadsPage() {
 
                           {/* Slot 5: Delete */}
                           <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
-                            {superuser && !["contacted", "meeting", "qualified", "disqualified"].includes(lead.status) && (
+                            {(role === "admin" || (superuser && !["contacted", "meeting", "qualified", "disqualified"].includes(lead.status))) && (
                               <button type="button" className="btn-icon danger" title="ลบลีด" aria-label={`ลบ ${lead.contactName}`} onClick={() => deleteLead(lead)}>
                                 <Trash2 size={14} aria-hidden="true" />
                               </button>
