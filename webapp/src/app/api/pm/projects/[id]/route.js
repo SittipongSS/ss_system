@@ -54,12 +54,36 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // 1 เฟส เพื่อ backward compat กับ UI ที่ยังไม่ย้ายไปใช้ deals[] (ตัดในเฟสถัดไป).
   const { data: linkedDeals } = await supabase
     .from('sales_deals')
-    .select('id, title, stage, dealType, projectValue, wonValue, forecastMonth, formulaName, metadata, createdAt')
+    .select('id, title, stage, dealType, projectValue, wonValue, forecastMonth, formulaName, ownerName, team, probability, expectedCloseDate, depositPaid, metadata, createdAt')
     .eq('projectId', project.id)
     .order('createdAt', { ascending: true });
   const deals = linkedDeals || [];
   const foundingDeal = deals[0] || null;
   const dealsRollup = rollupDeals(deals);
+
+  // ศูนย์รวมโครงการ: โครงการ = จิ๊กซอว์ครอบดีล — ดึงของ "ใต้ดีล" (ใบเสนอราคา /
+  // ความเคลื่อนไหว / ประวัติสถานะ) ของทุกดีลมารวมระดับโครงการ (อ่านอย่างเดียว —
+  // เพิ่ม/แก้ทำที่หน้าดีลตามเดิม)
+  let quotations = [];
+  let dealActivities = [];
+  let dealStageHistory = [];
+  if (deals.length) {
+    const dealIds = deals.map((d) => d.id);
+    const [{ data: quotes }, { data: acts }, { data: hist }] = await Promise.all([
+      supabase.from('quotations')
+        .select('id, dealId, quoteNumber, status, approvalStatus, totalAmount, revisionNo, quoteDate, createdAt')
+        .in('dealId', dealIds).order('createdAt', { ascending: false }),
+      supabase.from('sales_deal_activities')
+        .select('id, dealId, kind, body, dueDate, activityAt, meetingMode, createdByName, createdAt')
+        .in('dealId', dealIds).order('createdAt', { ascending: false }).limit(60),
+      supabase.from('sales_deal_stage_history')
+        .select('id, dealId, fromStage, toStage, changedByName, changedAt')
+        .in('dealId', dealIds).order('changedAt', { ascending: false }).limit(40),
+    ]);
+    quotations = quotes || [];
+    dealActivities = acts || [];
+    dealStageHistory = hist || [];
+  }
 
   // Tell the client whether THIS user may edit THIS record (cap + row scope),
   // so the UI gates edit controls by ownership — not just the pm:edit cap.
@@ -92,7 +116,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt, maxRev, deals, dealsRollup, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt, maxRev, deals, dealsRollup, quotations, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]
