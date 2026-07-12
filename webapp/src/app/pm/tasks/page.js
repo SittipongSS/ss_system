@@ -1,4 +1,5 @@
 "use client";
+import DateInput from "@/components/ui/DateInput";
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -724,11 +725,11 @@ export default function TasksPage() {
             <div className="pm-form-grid gap-3">
               <div className="form-group">
                 <label>วันเริ่ม</label>
-                <input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className="premium-input w-full" />
+                <DateInput value={form.startDate} onChange={(value) => setForm((f) => ({ ...f, startDate: value }))} className="w-full" />
               </div>
               <div className="form-group">
                 <label>กำหนดเสร็จ</label>
-                <input type="date" value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} className="premium-input w-full" />
+                <DateInput value={form.dueDate} onChange={(value) => setForm((f) => ({ ...f, dueDate: value }))} className="w-full" />
               </div>
             </div>
 

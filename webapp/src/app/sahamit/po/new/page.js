@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Plus, X, AlertTriangle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { DestinationToggle } from "@/components/sahamit/destinations";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -124,15 +125,15 @@ export default function PoCreatePage() {
             </div>
             <div className="form-group">
               <label>วันที่เอกสาร</label>
-              <input type="date" className="premium-input" value={docDate} onChange={(e) => setDocDate(e.target.value)} />
+              <DateInput value={docDate} onChange={setDocDate} />
             </div>
             <div className="form-group">
               <label>วันที่รับ PO</label>
-              <input type="date" className="premium-input" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
+              <DateInput value={receivedDate} onChange={setReceivedDate} />
             </div>
             <div className="form-group">
               <label>กำหนดรับของ (ทั้ง PO)</label>
-              <input type="date" className="premium-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              <DateInput value={dueDate} onChange={setDueDate} />
             </div>
             <div className="form-group">
               <label>สถานที่ส่ง (ทั้ง PO)</label>

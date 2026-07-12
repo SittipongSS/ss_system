@@ -5,6 +5,7 @@ import { BarChart3, CalendarDays, ListTodo, RefreshCw, Trophy, Users, X } from "
 import { ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
+import DateInput from "@/components/ui/DateInput";
 
 import { KpiCard } from "@/components/salesPlanning/ui";
 
@@ -86,8 +87,8 @@ export default function SalesKpiDashboard() {
     <div>
       <div className="toolbar" style={{ marginBottom: 18 }}>
         <span className="toolbar-label"><CalendarDays size={14} /> ช่วงวันที่</span>
-        <input type="date" className="premium-input" value={from} onChange={(e) => setFrom(e.target.value)} style={{ width: 150 }} />
-        <input type="date" className="premium-input" value={to} onChange={(e) => setTo(e.target.value)} style={{ width: 150 }} />
+        <DateInput value={from} onChange={setFrom} style={{ width: 170 }} />
+        <DateInput value={to} onChange={setTo} style={{ width: 170 }} />
         {canPickTeam && (
           <Select compact value={team} onChange={(e) => setTeam(e.target.value)} title="กรองทีม">
             <option value="">ทุกทีม</option>

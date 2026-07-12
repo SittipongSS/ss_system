@@ -1,4 +1,5 @@
 "use client";
+import DateInput from "@/components/ui/DateInput";
 import { useState, useEffect, useCallback, useMemo, Fragment, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -604,11 +605,11 @@ export default function ProjectDetailPage() {
       <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันที่เริ่ม:</label>
-          <input type="date" className="premium-input" value={editForm.startDate || ""} onChange={(e) => syncSchedule({ startDate: e.target.value })} style={{ width: "150px" }} title="วันเริ่มของขั้นตอนนี้" />
+          <DateInput value={editForm.startDate || ""} onChange={(value) => syncSchedule({ startDate: value })} style={{ width: "170px" }} title="วันเริ่มของขั้นตอนนี้" />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันเสร็จ:</label>
-          <input type="date" className="premium-input" value={editForm.finishDate || ""} min={editForm.startDate || undefined} onChange={(e) => syncSchedule({ finishDate: e.target.value })} style={{ width: "150px" }} title="วันสิ้นสุด (ปรับแล้วระยะเวลาจะคำนวณให้อัตโนมัติ)" />
+          <DateInput value={editForm.finishDate || ""} min={editForm.startDate || undefined} onChange={(value) => syncSchedule({ finishDate: value })} style={{ width: "170px" }} title="วันสิ้นสุด (ปรับแล้วระยะเวลาจะคำนวณให้อัตโนมัติ)" />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ระยะเวลา (วัน):</label>
@@ -1554,11 +1555,11 @@ export default function ProjectDetailPage() {
             <div className="pm-form-grid gap-3">
               <div className="form-group">
                 <label>วันที่เริ่ม <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เว้นว่างเพื่ออิงตามงานที่รอ)</span></label>
-                <input type="date" value={taskForm.startDate} onChange={(e) => syncTaskSchedule({ startDate: e.target.value })} className="premium-input w-full" />
+                <DateInput value={taskForm.startDate} onChange={(value) => syncTaskSchedule({ startDate: value })} className="w-full" />
               </div>
               <div className="form-group">
                 <label>วันสิ้นสุด <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(กรอกแล้วจำนวนวันจะคำนวณให้)</span></label>
-                <input type="date" value={taskForm.finishDate || ""} min={taskForm.startDate || undefined} disabled={!taskForm.startDate} onChange={(e) => syncTaskSchedule({ finishDate: e.target.value })} className="premium-input w-full" title={taskForm.startDate ? "วันสิ้นสุดของขั้นตอน" : "กรอกวันที่เริ่มก่อน"} />
+                <DateInput value={taskForm.finishDate || ""} min={taskForm.startDate || undefined} disabled={!taskForm.startDate} onChange={(value) => syncTaskSchedule({ finishDate: value })} className="w-full" title={taskForm.startDate ? "วันสิ้นสุดของขั้นตอน" : "กรอกวันที่เริ่มก่อน"} />
               </div>
               <div className="form-group">
                 <label>จำนวนวันทำการ</label>
@@ -1635,11 +1636,11 @@ export default function ProjectDetailPage() {
               <div className="pm-form-grid gap-3">
                 <div className="form-group">
                   <label>วันที่เริ่ม <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เว้นว่างเพื่ออิงตามงานที่รอ)</span></label>
-                  <input type="date" value={editForm.startDate || ""} onChange={(e) => syncSchedule({ startDate: e.target.value })} className="premium-input w-full" />
+                  <DateInput value={editForm.startDate || ""} onChange={(value) => syncSchedule({ startDate: value })} className="w-full" />
                 </div>
                 <div className="form-group">
                   <label>วันสิ้นสุด <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(กรอกแล้วจำนวนวันจะคำนวณให้)</span></label>
-                  <input type="date" value={editForm.finishDate || ""} min={editForm.startDate || undefined} disabled={!editForm.startDate} onChange={(e) => syncSchedule({ finishDate: e.target.value })} className="premium-input w-full" title={editForm.startDate ? "วันสิ้นสุดของขั้นตอน" : "กรอกวันที่เริ่มก่อน"} />
+                  <DateInput value={editForm.finishDate || ""} min={editForm.startDate || undefined} disabled={!editForm.startDate} onChange={(value) => syncSchedule({ finishDate: value })} className="w-full" title={editForm.startDate ? "วันสิ้นสุดของขั้นตอน" : "กรอกวันที่เริ่มก่อน"} />
                 </div>
                 <div className="form-group">
                   <label>จำนวนวันทำการ</label>

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Modal from "@/components/Modal";
+import DateInput from "@/components/ui/DateInput";
 import { MEETING_FOLLOWUPS, MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
 
 export default function MeetingFormModal({ open, onClose, onSaved, meeting, departments = [], users = [] }) {
@@ -64,7 +65,7 @@ export default function MeetingFormModal({ open, onClose, onSaved, meeting, depa
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div className="form-group" style={{ margin: 0 }}>
             <label>วันที่ <span style={{ color: "var(--red)" }}>*</span></label>
-            <input type="date" className="premium-input w-full" value={form.meetingDate || ""} onChange={(e) => set("meetingDate", e.target.value)} />
+            <DateInput className="w-full" value={form.meetingDate || ""} onChange={(value) => set("meetingDate", value)} />
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>เวลา</label>

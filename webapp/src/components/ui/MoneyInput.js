@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatMoneyInput, parseNumberInput } from "@/lib/format";
+import { formatMoneyInput, formatMoneyInputWhileTyping, parseNumberInput } from "@/lib/format";
 
 export default function MoneyInput({ value, onChange, allowNegative = false, className = "", ...props }) {
   const [text, setText] = useState(() => formatMoneyInput(value));
@@ -14,9 +14,22 @@ export default function MoneyInput({ value, onChange, allowNegative = false, cla
   const handleChange = (event) => {
     const next = event.target.value;
     if (!/^-?[\d,]*(?:\.\d*)?$/.test(next) || (!allowNegative && next.includes("-"))) return;
-    setText(next);
-    const parsed = parseNumberInput(next);
-    onChange?.(parsed, next);
+    const cursor = event.target.selectionStart ?? next.length;
+    const significantBeforeCursor = next.slice(0, cursor).replace(/,/g, "").length;
+    const formatted = formatMoneyInputWhileTyping(next);
+    setText(formatted);
+    const parsed = parseNumberInput(formatted);
+    onChange?.(parsed, formatted);
+    requestAnimationFrame(() => {
+      const input = event.target;
+      let significant = 0;
+      let nextCursor = formatted.length;
+      for (let i = 0; i < formatted.length; i += 1) {
+        if (formatted[i] !== ",") significant += 1;
+        if (significant >= significantBeforeCursor) { nextCursor = i + 1; break; }
+      }
+      input.setSelectionRange(nextCursor, nextCursor);
+    });
   };
 
   return (
@@ -26,7 +39,7 @@ export default function MoneyInput({ value, onChange, allowNegative = false, cla
       inputMode="decimal"
       className={`premium-input numeric-input ${className}`.trim()}
       value={text}
-      onFocus={() => setFocused(true)}
+      onFocus={(event) => { setFocused(true); props.onFocus?.(event); }}
       onChange={handleChange}
       onBlur={(event) => {
         setFocused(false);

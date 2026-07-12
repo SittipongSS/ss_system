@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import StandardMoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import {
@@ -416,15 +417,12 @@ function StepNav({ step }) {
 
 function MoneyInput({ value, onChange, disabled, placeholder, align = "right" }) {
   return (
-    <input
-      type="number"
-      min="0"
-      step="1000"
-      className="premium-input mono"
+    <StandardMoneyInput
+      className="mono"
       value={value === 0 ? "" : value}
       placeholder={placeholder ?? "0"}
       disabled={disabled}
-      onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
+      onChange={(next) => onChange(Math.max(0, next || 0))}
       onFocus={(e) => e.target.select()}
       style={{ width: "100%", textAlign: align, padding: "6px 8px" }}
     />

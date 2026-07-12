@@ -11,6 +11,7 @@ import { FileText, Plus, Printer, Save, Send, Trash2, CheckCircle2, GitBranch, C
 import Workspace from "@/components/ui/Workspace";
 import FormActions from "@/components/ui/FormActions";
 import MoneyInput from "@/components/ui/MoneyInput";
+import DateInput from "@/components/ui/DateInput";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
@@ -291,10 +292,10 @@ export default function QuotationEditorPage() {
           {/* หัวใบ */}
           <section className="glass-panel form-grid" style={{ padding: 16 }}>
             <label>วันที่ออกใบ
-              <input type="date" className="premium-input" value={form.quoteDate} disabled={!editable} onChange={(e) => setF({ quoteDate: e.target.value })} />
+              <DateInput value={form.quoteDate} disabled={!editable} onChange={(value) => setF({ quoteDate: value })} />
             </label>
             <label>ยืนราคาถึง
-              <input type="date" className="premium-input" value={form.validUntil || ""} disabled={!editable} onChange={(e) => setF({ validUntil: e.target.value })} />
+              <DateInput value={form.validUntil || ""} disabled={!editable} onChange={(value) => setF({ validUntil: value })} />
             </label>
             <label>ภาษีมูลค่าเพิ่ม
               <select className="premium-select" value={form.vatRate} disabled={!editable} onChange={(e) => setF({ vatRate: Number(e.target.value) })}>

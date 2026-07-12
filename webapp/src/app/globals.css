@@ -195,6 +195,27 @@ button, select, input, textarea {
 }
 .numeric-input { text-align: right; }
 
+.date-input-wrap { position: relative; display: inline-flex; min-width: 150px; }
+.date-input-text { width: 100%; padding-right: 36px; font-variant-numeric: tabular-nums lining-nums; }
+.date-input-native { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.date-input-picker {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.date-input-picker:hover:not(:disabled) { color: var(--accent); background: var(--panel-2); }
+.date-input-picker:disabled { cursor: not-allowed; opacity: 0.5; }
+
 .save-status {
   display: inline-flex;
   align-items: center;

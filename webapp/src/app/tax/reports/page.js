@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, FileSpreadsheet, Printer, FolderArchive, CircleDot, Building2, ChevronDown, Check } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import DateInput from "@/components/ui/DateInput";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import DataList from "@/components/excise/DataList";
@@ -262,10 +263,10 @@ export default function ReportsPage() {
             ]}
           />
           <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
-            จาก <input type="date" className="premium-input" style={{ height: "var(--ctl-h)" }} value={from} onChange={(e) => setFrom(e.target.value)} />
+            จาก <DateInput style={{ height: "var(--ctl-h)" }} value={from} onChange={setFrom} />
           </label>
           <label className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: "var(--text-3)" }}>
-            ถึง <input type="date" className="premium-input" style={{ height: "var(--ctl-h)" }} value={to} onChange={(e) => setTo(e.target.value)} />
+            ถึง <DateInput style={{ height: "var(--ctl-h)" }} value={to} onChange={setTo} />
           </label>
         </div>
       }

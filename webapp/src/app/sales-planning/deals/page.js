@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
+import DateInput from "@/components/ui/DateInput";
+import MoneyInput from "@/components/ui/MoneyInput";
 import Workspace from "@/components/ui/Workspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -615,17 +617,17 @@ export default function SalesPlanningPipelinePage() {
           </label>
           <label>
             มูลค่าคาดการณ์{dealForm.stage === "won" ? " (ล็อกหลังปิด Won)" : ""}
-            <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} disabled={dealForm.stage === "won"} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
+            <MoneyInput value={dealForm.projectValue} disabled={dealForm.stage === "won"} onChange={(value) => setDealForm({ ...dealForm, projectValue: value ?? "" })} />
           </label>
           {dealForm.stage === "won" && (
             <label>
               มูลค่าปิดจริง (Won)
-              <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.wonValue} onChange={(e) => setDealForm({ ...dealForm, wonValue: e.target.value })} />
+              <MoneyInput value={dealForm.wonValue} onChange={(value) => setDealForm({ ...dealForm, wonValue: value ?? "" })} />
             </label>
           )}
           <label>
             คาดปิดได้ (วันที่)
-            <input type="date" className="premium-input" value={dealForm.expectedCloseDate} onChange={(e) => setDealForm({ ...dealForm, expectedCloseDate: e.target.value })} />
+            <DateInput value={dealForm.expectedCloseDate} onChange={(value) => setDealForm({ ...dealForm, expectedCloseDate: value })} />
           </label>
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียด
@@ -647,7 +649,7 @@ export default function SalesPlanningPipelinePage() {
           </div>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             มูลค่าปิดจริง (บาท)
-            <input type="number" min="0" step="0.01" className="premium-input mono" value={winValue} onChange={(e) => setWinValue(e.target.value)} autoFocus />
+            <MoneyInput value={winValue} onChange={(value) => setWinValue(value ?? "")} autoFocus />
           </label>
           {winDeal && Number(winDeal.projectValue) > 0 && Number(winValue) > 0 && Number(winValue) !== Number(winDeal.projectValue) && (
             <div style={{ fontSize: 12, color: "var(--amber)" }}>ต่างจากคาดการณ์ ({money(winDeal.projectValue)}) {money(Number(winDeal.projectValue) - Number(winValue))}</div>
@@ -783,7 +785,7 @@ export default function SalesPlanningPipelinePage() {
               </label>
               <label>
                 กำหนดส่ง
-                <input type="date" className="premium-input" value={docForm.dueDate} onChange={(e) => setDocForm({ ...docForm, dueDate: e.target.value })} />
+                <DateInput value={docForm.dueDate} onChange={(value) => setDocForm({ ...docForm, dueDate: value })} />
               </label>
               <label>
                 สถานะ

@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import DateInput from "@/components/ui/DateInput";
+import MoneyInput from "@/components/ui/MoneyInput";
 import { fmtMoney } from "@/lib/format";
 import { UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
@@ -118,11 +120,11 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
                   <label>ยอดชำระจริง (บาท)</label>
-                  <input type="number" step="0.01" className="premium-input w-full font-mono" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} />
+                  <MoneyInput className="w-full" value={paidAmount} onChange={(value) => setPaidAmount(value ?? "")} />
                 </div>
                 <div className="form-group">
                   <label>วันที่ชำระจริง</label>
-                  <input type="date" className="premium-input w-full" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+                  <DateInput className="w-full" value={paidDate} onChange={setPaidDate} />
                 </div>
                 <div className="form-group">
                   <label>เลขที่แบบ ภส.</label>
