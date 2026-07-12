@@ -1,3 +1,12 @@
 {
-  "regions": ["sin1"]
+  "regions": ["sin1"],
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "claude/*": false,
+      "feature/*": false,
+      "fix/*": false,
+      "feat/*": false
+    }
+  }
 }
