@@ -127,6 +127,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('categoryCode' in body) {
     patch.categoryCode = (body.categoryCode || '').trim() || null;
   }
+  // วันที่เริ่ม/สิ้นสุดของดีล (mig 0095)
+  if ('startDate' in body) patch.startDate = body.startDate || null;
+  if ('endDate' in body) patch.endDate = body.endDate || null;
+  // มติผู้ใช้: NPD/RE-ORDER ต้องมีหมวดสินค้า — เช็คค่าปลายทางเมื่อแตะ field ใดใน 2 ตัวนี้
+  if ('dealType' in body || 'projectType' in body || 'categoryCode' in body) {
+    const finalType = patch.dealType ?? before.dealType;
+    const finalCat = 'categoryCode' in body ? patch.categoryCode : before.categoryCode;
+    if (finalType !== 'SCENT' && !finalCat) {
+      return badRequest('ดีล NPD/RE-ORDER ต้องเลือกหมวดสินค้า');
+    }
+  }
   if ('brand' in body) {
     patch.metadata = { ...(patch.metadata || before.metadata || {}), brand: body.brand || '' };
   }

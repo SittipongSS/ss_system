@@ -167,7 +167,8 @@ export default function SalesPlanningPipelinePage() {
       wonValue: deal.wonValue ?? "",
       probability: snapForecastLevel(deal.probability),
       forecastMonth: deal.forecastMonth || month,
-      expectedCloseDate: deal.expectedCloseDate || "",
+      startDate: deal.startDate || "",
+      endDate: deal.endDate || "",
       depositPaid: !!deal.depositPaid,
       notes: deal.notes || "",
     });
@@ -677,39 +678,17 @@ export default function SalesPlanningPipelinePage() {
 
       <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไขดีล" : "เพิ่มดีล"} size="lg">
         <form onSubmit={saveDeal} className="form-grid" aria-busy={submitting} style={{ padding: 18 }}>
-          <label>
+          <label style={{ gridColumn: "1 / -1" }}>
             ชื่อดีล
             <input className="premium-input" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} required />
           </label>
           <label>
-            ลูกค้า
-            <select className="premium-select" value={dealForm.customerId} onChange={(e) => setDealForm({ ...dealForm, customerId: e.target.value })}>
-              <option value="">ไม่ผูกฐานข้อมูลลูกค้า</option>
+            ลูกค้า (ไม่บังคับตอนแรก)
+            <select className="premium-select" value={dealForm.customerId} onChange={(e) => setDealForm({ ...dealForm, customerId: e.target.value, brand: "" })}>
+              <option value="">— ยังไม่ผูกลูกค้า —</option>
               {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
-          <label>
-            ประเภทดีล
-            <select className="premium-select" value={dealForm.dealType} onChange={(e) => setDealForm({ ...dealForm, dealType: e.target.value })}>
-              {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
-            </select>
-          </label>
-          <label>
-            หมวดสินค้า (เลือก template ไทม์ไลน์)
-            <select className="premium-select" value={dealForm.categoryCode} onChange={(e) => setDealForm({ ...dealForm, categoryCode: e.target.value })}>
-              <option value="">— ไม่ระบุ (template มาตรฐานของประเภทดีล) —</option>
-              {categories.map((c) => {
-                const code = `${c.mainCategoryCode}-${c.typeCode}`;
-                return <option key={code} value={code}>{code} · {c.nameTh || c.nameEn || ""}</option>;
-              })}
-            </select>
-          </label>
-          {dealForm.dealType === "SCENT" && (
-            <label>
-              ชื่อสูตรกลิ่น
-              <input className="premium-input" value={dealForm.formulaName} onChange={(e) => setDealForm({ ...dealForm, formulaName: e.target.value })} placeholder="เช่น SS-FLORAL-0042 (เชื่อม RD ในอนาคต)" />
-            </label>
-          )}
           <label>
             แบรนด์
             <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -732,6 +711,23 @@ export default function SalesPlanningPipelinePage() {
             </span>
           </label>
           <label>
+            ประเภทดีล
+            <select className="premium-select" value={dealForm.dealType} onChange={(e) => setDealForm({ ...dealForm, dealType: e.target.value })}>
+              {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
+            </select>
+          </label>
+          <label>
+            หมวดสินค้า{dealForm.dealType !== "SCENT" ? " (บังคับ)" : " (ไม่บังคับ)"}
+            {/* NPD/RE-ORDER ต้องเลือกหมวด (มติผู้ใช้) — ใช้เลือก template ไทม์ไลน์ */}
+            <select className="premium-select" required={dealForm.dealType !== "SCENT"} value={dealForm.categoryCode} onChange={(e) => setDealForm({ ...dealForm, categoryCode: e.target.value })}>
+              <option value="">— เลือกหมวดสินค้า —</option>
+              {categories.map((c) => {
+                const code = `${c.mainCategoryCode}-${c.typeCode}`;
+                return <option key={code} value={code}>{code} · {c.nameTh || c.nameEn || ""}</option>;
+              })}
+            </select>
+          </label>
+          <label>
             สถานะ
             {/* ปิด Won ใช้ปุ่ม "Won" (กรอกมูลค่าจริง) — ไม่ให้เลือก won จาก dropdown เว้นแต่ดีลนี้ won อยู่แล้ว */}
             <select className="premium-select" value={dealForm.stage} onChange={(e) => setDealForm({ ...dealForm, stage: e.target.value })}>
@@ -745,7 +741,7 @@ export default function SalesPlanningPipelinePage() {
             </select>
           </label>
           <label>
-            เดือนพยากรณ์
+            เดือนคาดการณ์
             <input type="month" className="premium-input" value={dealForm.forecastMonth} onChange={(e) => setDealForm({ ...dealForm, forecastMonth: e.target.value })} />
           </label>
           <label>
@@ -759,8 +755,12 @@ export default function SalesPlanningPipelinePage() {
             </label>
           )}
           <label>
-            คาดปิดได้ (วันที่)
-            <DateInput value={dealForm.expectedCloseDate} onChange={(value) => setDealForm({ ...dealForm, expectedCloseDate: value })} />
+            วันที่เริ่ม
+            <DateInput value={dealForm.startDate} onChange={(value) => setDealForm({ ...dealForm, startDate: value })} />
+          </label>
+          <label>
+            วันที่สิ้นสุด
+            <DateInput value={dealForm.endDate} onChange={(value) => setDealForm({ ...dealForm, endDate: value })} />
           </label>
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียด
