@@ -3945,10 +3945,11 @@ button.empty-state { width: 100%; font: inherit; }
 .fz-table .fz-c2,
 .fz-table .fz-cr {
   background: var(--bg);
+  transform: translateZ(0);
 }
-.fz-table .fz-c1 { position: sticky; left: 0; z-index: 2; }
-.fz-table .fz-c2 { position: sticky; left: var(--fz-c1w, 150px); z-index: 2; }
-.fz-table .fz-cr { position: sticky; right: 0; z-index: 2; border-left: 1px solid var(--border); }
+.fz-table .fz-c1 { position: sticky; left: 0; z-index: 10; }
+.fz-table .fz-c2 { position: sticky; left: var(--fz-c1w, 150px); z-index: 10; }
+.fz-table .fz-cr { position: sticky; right: 0; z-index: 10; border-left: 1px solid var(--border); }
 /* corners: edge cells inside the frozen header/footer sit above both axes */
 .fz-table thead .fz-c1,
 .fz-table thead .fz-c2,
@@ -3956,7 +3957,7 @@ button.empty-state { width: 100%; font: inherit; }
 .fz-table tfoot .fz-c1,
 .fz-table tfoot .fz-c2,
 .fz-table tfoot .fz-cr {
-  z-index: 5;
+  z-index: 20;
   background: var(--bg);
 }
 /* the lift-on-hover transform breaks sticky positioning inside the scroll box */
