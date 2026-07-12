@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Flag, Pencil, Plus, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
+import PredecessorPicker from "@/components/pm/PredecessorPicker";
 import { fmtDate } from "@/lib/format";
 
 const STATUS_META = {
@@ -18,7 +19,7 @@ const STATUS_META = {
 };
 const ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
 
-const emptyForm = { name: "", role: "SA", phase: "", durationDays: 1, isMilestone: false, note: "" };
+const emptyForm = { name: "", role: "SA", phase: "", durationDays: 1, isMilestone: false, note: "", predecessors: [] };
 
 export default function DealTimelineTable({ tasks, canEdit, dealId, projectId, onChanged, onError }) {
   const [busyId, setBusyId] = useState("");
@@ -48,6 +49,11 @@ export default function DealTimelineTable({ tasks, canEdit, dealId, projectId, o
   }, [tasks]);
 
   const phases = useMemo(() => [...new Set(tasks.map((t) => t.phase).filter(Boolean))], [tasks]);
+  // PredecessorPicker แสดงเลขขั้นจาก displayNumber — เติมจาก map เลข 1.1/1.2 ของตารางนี้
+  const tasksWithNumbers = useMemo(
+    () => tasks.map((t) => ({ ...t, displayNumber: numberOf.get(t.id) })),
+    [tasks, numberOf],
+  );
 
   const call = async (label, url, opts) => {
     setBusyId(label);
@@ -74,7 +80,7 @@ export default function DealTimelineTable({ tasks, canEdit, dealId, projectId, o
 
   const openEdit = (t) => {
     setEditTask(t);
-    setForm({ name: t.name || "", role: t.role || "SA", phase: t.phase || "", durationDays: t.durationDays ?? 1, isMilestone: !!t.isMilestone, note: t.note || "" });
+    setForm({ name: t.name || "", role: t.role || "SA", phase: t.phase || "", durationDays: t.durationDays ?? 1, isMilestone: !!t.isMilestone, note: t.note || "", predecessors: t.predecessors || [] });
   };
   const saveEdit = async (e) => {
     e.preventDefault();
@@ -87,7 +93,8 @@ export default function DealTimelineTable({ tasks, canEdit, dealId, projectId, o
   const openAdd = (afterId) => {
     setAddAfterId(afterId);
     const after = tasks.find((t) => t.id === afterId);
-    setForm({ ...emptyForm, phase: after?.phase || phases[phases.length - 1] || "" });
+    // แทรกหลังขั้นไหน default ขึ้นกับขั้นนั้น (พฤติกรรมเดียวกับปุ่มแทรกของตารางโครงการ)
+    setForm({ ...emptyForm, phase: after?.phase || phases[phases.length - 1] || "", predecessors: afterId ? [afterId] : [] });
     setAddOpen(true);
   };
   const saveAdd = async (e) => {
@@ -162,6 +169,16 @@ export default function DealTimelineTable({ tasks, canEdit, dealId, projectId, o
           หมายเหตุ
           <textarea className="premium-input" rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} style={{ resize: "vertical" }} />
         </label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          งานที่ต้องรอให้เสร็จก่อน (ขึ้นกับ) <span style={{ fontSize: 11, color: "var(--text-3)" }}>เลือกได้หลายขั้น — server เลื่อนวันให้ตามสายอัตโนมัติ</span>
+          <PredecessorPicker
+            tasks={tasksWithNumbers}
+            selfId={editTask?.id || null}
+            value={form.predecessors || []}
+            onChange={(predecessors) => setForm({ ...form, predecessors })}
+            maxHeight={150}
+          />
+        </div>
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "0 18px 16px" }}>
         <button type="button" className="btn ghost" onClick={() => { setEditTask(null); setAddOpen(false); }} disabled={saving}>ยกเลิก</button>
