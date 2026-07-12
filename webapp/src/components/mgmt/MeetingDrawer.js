@@ -4,12 +4,9 @@ import Modal from "@/components/Modal";
 import DocsPanel from "@/components/mgmt/DocsPanel";
 import { Pencil, Trash2, Send, ListPlus } from "lucide-react";
 import { MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
+import { fmtDate as formatDate, fmtDateTime } from "@/lib/format";
 
-const fmtDate = (d) => {
-  if (!d) return "—";
-  const dt = new Date(d + "T00:00:00");
-  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("th-TH");
-};
+const fmtDate = (d) => formatDate(d);
 
 export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit, onChanged, onDeleted, onTaskCreated }) {
   const [updates, setUpdates] = useState([]);
@@ -130,7 +127,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
               {updates.map((u) => (
                 <div key={u.id} style={{ fontSize: 12.5, borderLeft: "2px solid var(--border)", paddingLeft: 10 }}>
                   <div style={{ color: "var(--text-2)" }}>{u.body}</div>
-                  <div style={{ color: "var(--text-3)", fontSize: 11, marginTop: 2 }}>{u.authorName || "ระบบ"} · {u.createdAt ? new Date(u.createdAt).toLocaleString("th-TH") : ""}</div>
+                  <div style={{ color: "var(--text-3)", fontSize: 11, marginTop: 2 }}>{u.authorName || "ระบบ"} · {u.createdAt ? fmtDateTime(u.createdAt) : ""}</div>
                 </div>
               ))}
             </div>

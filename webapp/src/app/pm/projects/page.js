@@ -84,7 +84,6 @@ export default function ProjectsIndexPage() {
       icon={<FolderKanban size={22} />}
       title="โครงการ"
       subtitle="ภาชนะรวมดีลของลูกค้าแต่ละงาน — มูลค่าโครงการ rollup จากดีลทุกใบ (FC Total · Actual · FC คงเหลือ)"
-      back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={
         <button type="button" className="btn ghost" onClick={load} disabled={loading}>
           <RefreshCw size={15} aria-hidden="true" /> รีเฟรช

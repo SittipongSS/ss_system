@@ -128,7 +128,6 @@ export default function QuotationsPage() {
       icon={<FileText size={22} />}
       title="บริหารงานขาย — ใบเสนอราคา"
       subtitle="FM-SA-01 · เลขที่ QT-YYMMXXXX-R ใช้ติดตาม ห้ามซ้ำ — ทุกใบผูกกับดีลเสมอ"
-      back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={canEdit && (
         <button type="button" className="btn btn-primary" onClick={openCreate}>
           <Plus size={15} aria-hidden="true" /> สร้างใบเสนอราคา

@@ -241,7 +241,6 @@ export default function ForecastPage() {
       icon={<LineChart size={22} />}
       title="Forecast"
       subtitle="รับ FC รายเดือนเป็นรอบ และเทียบรอบต่อรอบ (ลูกค้า AR-109)"
-      back={{ href: "/sahamit", label: "SAHAMIT" }}
       headerRight={
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn ghost" onClick={() => window.open(`/api/sahamit/export?view=forecast&roundNo=${selectedNo || ''}`, "_blank")}>

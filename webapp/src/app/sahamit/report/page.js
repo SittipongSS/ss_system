@@ -49,7 +49,6 @@ export default function ReportPage() {
       icon={<BarChart3 size={22} />}
       title="รายงานมูลค่า FC / PO"
       subtitle="มูลค่าตามแผนเทียบยอดสั่งจริง สถานะ และ PO ที่ยังแบ่งส่งได้ · ราคา = ราคาโรงงาน จากข้อมูลสินค้า (AR-109)"
-      back={{ href: "/sahamit", label: "งานสหมิตร" }}
     >
       {error && (
         <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>

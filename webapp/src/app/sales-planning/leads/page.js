@@ -9,6 +9,8 @@ import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, Cal
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
+import DateTimeInput from "@/components/ui/DateTimeInput";
+import PhoneInput from "@/components/ui/PhoneInput";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, DEAL_STAGES, STAGE_LABELS } from "@/lib/salesPlanning";
@@ -310,7 +312,6 @@ export default function LeadsPage() {
       icon={<Inbox size={22} />}
       title="บริหารงานขาย — ลีด"
       subtitle="Marketing กรอกลีดรายวัน → คัดกรองส่งทีมใน 1 วันทำการ → AE ติดต่อกลับใน 1 วันทำการ"
-      back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={
         <>
           <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
@@ -481,7 +482,7 @@ export default function LeadsPage() {
           </div>
           <label>
             เบอร์โทร
-            <input className="premium-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <PhoneInput value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
           </label>
 
           <hr style={{ gridColumn: "1 / -1", margin: "4px 0", borderColor: "var(--border)" }} />
@@ -651,7 +652,7 @@ export default function LeadsPage() {
             {["contact", "meeting"].includes(actionModal.action) && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                 วัน-เวลา{actionModal.action === "meeting" ? "นัด" : "ที่ติดต่อ"}
-                <input type="datetime-local" className="premium-input" value={actAt} onChange={(e) => setActAt(e.target.value)} />
+                <DateTimeInput value={actAt} onChange={setActAt} />
               </label>
             )}
             {actionModal.action === "meeting" && (

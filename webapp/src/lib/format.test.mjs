@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { displayDateToIso, fmtDateNumeric, fmtNumber, fmtPercent, formatMoneyInput, formatMoneyInputWhileTyping, isoDateToDisplay, parseNumberInput } from "./format.js";
+import { displayDateToIso, fmtDateNumeric, fmtNumber, fmtPercent, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, parseNumberInput } from "./format.js";
 
 test("money input accepts raw and grouped values", () => {
   assert.equal(parseNumberInput("1,000,000.50"), 1000000.5);
@@ -13,6 +13,14 @@ test("date input converts display format and ISO payload without timezone", () =
   assert.equal(isoDateToDisplay("2026-07-12"), "12/07/2026");
   assert.equal(displayDateToIso("12/07/2026"), "2026-07-12");
   assert.equal(displayDateToIso("31/02/2026"), null);
+});
+
+test("phone and national ID inputs format progressively", () => {
+  assert.equal(formatPhoneInput("0812345678"), "081-234-5678");
+  assert.equal(formatPhoneInput("021234567"), "02-123-4567");
+  assert.equal(formatPhoneInput("08123"), "081-23");
+  assert.equal(formatNationalIdInput("1234567890123"), "1-2345-67890-12-3");
+  assert.equal(formatNationalIdInput("123456"), "1-2345-6");
 });
 
 test("number input preserves valid zero and rejects incomplete input", () => {
