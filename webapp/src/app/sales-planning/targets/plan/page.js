@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useCan, useRole } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import {

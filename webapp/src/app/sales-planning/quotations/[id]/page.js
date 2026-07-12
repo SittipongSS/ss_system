@@ -42,6 +42,9 @@ export default function QuotationEditorPage() {
   const confirmAction = (title, description, action) => {
     setConfirmState({ open: true, title, description, action });
   };
+  // เพิ่มรายการจากรหัส FG (feedback ผู้ใช้: ใส่รหัส FG ตอนทำใบ) — ราคา freeze จาก master ณ ตอนเพิ่ม
+  const [products, setProducts] = useState([]);
+  const [fgPick, setFgPick] = useState("");
 
   const load = useCallback(async () => {
     setError("");
@@ -69,6 +72,7 @@ export default function QuotationEditorPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     fetch("/api/sales-planning/quote-note-templates").then((r) => (r.ok ? r.json() : [])).then((d) => setTemplates(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   const editable = !!quote && canEditCap && EDITABLE.has(quote.status);
@@ -84,6 +88,21 @@ export default function QuotationEditorPage() {
     setDirty(true);
   };
   const addLine = () => { setLines((prev) => [...prev, { description: "", qty: 1, unitPrice: 0, discountType: null, discountValue: 0 }]); setDirty(true); };
+  const addFgLine = () => {
+    const p = products.find((x) => x.id === fgPick);
+    if (!p) return;
+    setLines((prev) => [...prev, {
+      productId: p.id,
+      fgCode: p.fgCode || null,
+      description: p.productDescription || p.productDescriptionEn || p.fgCode || "สินค้า",
+      qty: 1,
+      unitPrice: Number(p.retailPriceIncVat || 0),
+      discountType: null,
+      discountValue: 0,
+    }]);
+    setFgPick("");
+    setDirty(true);
+  };
   const removeLine = (i) => { setLines((prev) => prev.filter((_, idx) => idx !== i)); setDirty(true); };
   const setF = (patch) => { setForm((f) => ({ ...f, ...patch })); setDirty(true); };
 
@@ -263,7 +282,18 @@ export default function QuotationEditorPage() {
               <ClipboardList size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>รายการสินค้า/บริการ</h2>
               <div className="spacer" />
-              {editable && <button type="button" className="btn ghost sm" onClick={addLine}><Plus size={13} aria-hidden="true" /> เพิ่มรายการ</button>}
+              {editable && (
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <select className="premium-select" value={fgPick} onChange={(e) => setFgPick(e.target.value)} style={{ width: 260 }} aria-label="เลือกสินค้า (FG)">
+                    <option value="">— เพิ่มจากรหัส FG —</option>
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>{p.fgCode ? `${p.fgCode} · ` : ""}{p.productDescription || p.productDescriptionEn || "-"}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn btn-primary sm" onClick={addFgLine} disabled={!fgPick}><Plus size={13} aria-hidden="true" /> เพิ่ม FG</button>
+                  <button type="button" className="btn ghost sm" onClick={addLine}><Plus size={13} aria-hidden="true" /> รายการเอง</button>
+                </div>
+              )}
             </div>
             <div className="premium-glass-table table-responsive">
               <table className="w-full text-sm">

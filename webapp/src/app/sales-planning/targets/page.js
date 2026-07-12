@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Save, Sparkles, Target, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
