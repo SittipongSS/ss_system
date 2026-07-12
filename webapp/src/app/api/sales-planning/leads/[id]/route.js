@@ -74,14 +74,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok(data);
 });
 
-// DELETE — เฉพาะ supervisor/admin (ลีดผิด/ซ้ำ) — ลีดที่เปิดลูกค้าแล้วห้ามลบ
+// DELETE — admin ลบได้ทุกสถานะ; supervisor/marketing ลบได้เฉพาะลีดที่ยังไม่เริ่มติดต่อ
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
-  if (!isSuperuser(user.role)) return forbidden('ลบลีดได้เฉพาะหัวหน้าฝ่ายขาย/แอดมิน');
+  if (!isSuperuser(user.role) && user.role !== 'marketing') {
+    return forbidden('ลบลีดได้เฉพาะ Marketing/หัวหน้าฝ่ายขาย/แอดมิน');
+  }
   const { id } = await ctx.params;
   const before = await loadLead(supabase, id);
   if (!before) return notFound('ไม่พบลีด');
-  if (['contacted', 'meeting', 'qualified', 'disqualified'].includes(before.status)) return badRequest('ลีดที่มีการติดต่อแล้วจะลบไม่ได้');
+  if (user.role !== 'admin' && ['contacted', 'meeting', 'qualified', 'disqualified'].includes(before.status)) {
+    return badRequest('ลีดที่มีการติดต่อแล้วลบได้เฉพาะแอดมิน');
+  }
   const { error } = await supabase.from('sales_leads').delete().eq('id', id);
   if (error) return fail(error.message, 500);
   await recordAudit({ user, action: 'delete', entityType: 'sales_lead', entityId: id, before, summary: `ลบลีด ${before.contactName}`, request: req });
