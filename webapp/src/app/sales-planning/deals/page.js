@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -37,6 +37,8 @@ export default function SalesPlanningPipelinePage() {
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all"); // กรองตามประเภทดีล SCENT/NPD/RE-ORDER
+  const [sortKey, setSortKey] = useState("updated");
+  const [sortDir, setSortDir] = useState("desc");
   const [dealModal, setDealModal] = useState(false);
   const [dealForm, setDealForm] = useState({ ...initialDealForm, forecastMonth: thisMonth() });
   const [submitting, setSubmitting] = useState(false);
@@ -84,16 +86,44 @@ export default function SalesPlanningPipelinePage() {
     fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
   }, []);
 
+  const comparator = useMemo(() => {
+    const mul = sortDir === "desc" ? -1 : 1;
+    return (a, b) => {
+      if (sortKey === "value") {
+        return ((a.projectValue || 0) - (b.projectValue || 0)) * mul;
+      }
+      if (sortKey === "stage") {
+        const idxA = DEAL_STAGES.indexOf(a.stage);
+        const idxB = DEAL_STAGES.indexOf(b.stage);
+        return (idxA - idxB) * mul;
+      }
+      if (sortKey === "name") {
+        return (a.title || "").localeCompare(b.title || "", "th") * mul;
+      }
+      // default: updated
+      return ((a.updatedAt || "") > (b.updatedAt || "") ? 1 : -1) * mul;
+    };
+  }, [sortKey, sortDir]);
+
   const filteredDeals = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return deals.filter((deal) => {
+    const result = deals.filter((deal) => {
       if (reviewOnly && !deal.metadata?.needsReview) return false;
       if (stageFilter !== "all" && deal.stage !== stageFilter) return false;
       if (typeFilter !== "all" && dealTypeOf(deal) !== typeFilter) return false;
       if (!q) return true;
       return [deal.title, deal.customerName, deal.ownerName, deal.notes, deal.formulaName].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [deals, query, stageFilter, typeFilter, reviewOnly]);
+    return result.sort(comparator);
+  }, [deals, query, stageFilter, typeFilter, reviewOnly, comparator]);
+
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("desc"); }
+  };
+  const sortArrow = (key) => sortKey === key
+    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
 
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
 
