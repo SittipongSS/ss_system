@@ -152,6 +152,14 @@ export const fmtNationalId = (raw) => {
 // วันที่แบบตัวเลข (§2.4): กว้าง = DD/MM/YYYY, แคบ = DD/MM/YY (ปี ค.ศ.).
 export const fmtDateNumeric = (value, { short = false } = {}) => {
   if (!value) return "-";
+  // Date-only strings represent a calendar date, not a moment in time. Parsing
+  // them with new Date("YYYY-MM-DD") applies UTC semantics and can render the
+  // previous day in negative timezones, so format their parts directly.
+  const dateOnly = String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  if (dateOnly) {
+    const [, yyyy, mm, dd] = dateOnly;
+    return short ? `${dd}/${mm}/${yyyy.slice(-2)}` : `${dd}/${mm}/${yyyy}`;
+  }
   const d = new Date(value);
   if (isNaN(d.getTime())) return String(value);
   const dd = String(d.getDate()).padStart(2, "0");

@@ -226,10 +226,37 @@ button, select, input, textarea {
   backdrop-filter: blur(16px);
 }
 .form-actions-buttons { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+.confirm-dialog {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 12px;
+  padding: 18px;
+}
+.confirm-dialog-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+.confirm-dialog-icon.danger { background: var(--red-soft); color: var(--red); }
+.confirm-dialog-copy p { margin: 0; color: var(--text); }
+.confirm-dialog-detail { margin-top: 6px !important; color: var(--text-3) !important; font-size: 12.5px; }
+.confirm-dialog-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
 @media (max-width: 700px) {
   .form-actions { bottom: max(8px, env(safe-area-inset-bottom)); align-items: stretch; flex-direction: column; }
   .form-actions-buttons { width: 100%; }
   .form-actions-buttons .btn { min-height: 44px; flex: 1; }
+  .confirm-dialog-actions .btn { min-height: 44px; flex: 1; }
 }
 
 /* App Container Layout — เฟส T: top bar ตรึงบน + เนื้อหาเต็มความกว้าง (ไม่มี sidebar) */

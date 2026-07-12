@@ -12,6 +12,7 @@ import Workspace from "@/components/ui/Workspace";
 import FormActions from "@/components/ui/FormActions";
 import MoneyInput from "@/components/ui/MoneyInput";
 import SaveStatus from "@/components/ui/SaveStatus";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { canReviewSalesForecast, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
@@ -37,6 +38,8 @@ export default function QuotationEditorPage() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [tplOpen, setTplOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
   // เพิ่มรายการจากรหัส FG (feedback ผู้ใช้: ใส่รหัส FG ตอนทำใบ) — ราคา freeze จาก master ณ ตอนเพิ่ม
   const [products, setProducts] = useState([]);
@@ -150,9 +153,30 @@ export default function QuotationEditorPage() {
     }
   };
 
-  const doAccept = async () => {
-    if (!window.confirm(`ยืนยันว่าลูกค้ารับใบเสนอราคา ${quote.quoteNumber}? ยอด ${money(quote.totalAmount)} จะถูกตั้งเป็นมูลค่าดีล`)) return;
-    if (await act("accept", `/api/sales-planning/quotations/${id}/accept`)) await load();
+  const runConfirmed = async () => {
+    const action = confirmState?.action;
+    if (!action) return;
+    setConfirmBusy(true);
+    try {
+      const completed = await action();
+      if (completed !== false) setConfirmState(null);
+    } finally {
+      setConfirmBusy(false);
+    }
+  };
+
+  const doAccept = () => {
+    setConfirmState({
+      title: "ยืนยันการรับใบเสนอราคา",
+      description: `ลูกค้ารับใบเสนอราคา ${quote.quoteNumber}`,
+      detail: `ยอด ${money(quote.totalAmount)} จะถูกตั้งเป็นมูลค่าดีล การดำเนินการนี้มีผลต่อยอดขายและสถานะดีล`,
+      confirmLabel: "ยืนยันว่าลูกค้ารับ",
+      action: async () => {
+        if (!(await act("accept", `/api/sales-planning/quotations/${id}/accept`))) return false;
+        await load();
+        return true;
+      },
+    });
   };
   const doRevise = async () => {
     if (dirty && !(await save())) return;
@@ -164,9 +188,19 @@ export default function QuotationEditorPage() {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
     })) await load();
   };
-  const doDelete = async () => {
-    if (!window.confirm(`ลบใบเสนอราคา (ร่าง) ${quote.quoteNumber}?`)) return;
-    if (await act("delete", `/api/sales-planning/quotations/${id}`, { method: "DELETE" })) router.push("/sa/quotations");
+  const doDelete = () => {
+    setConfirmState({
+      title: "ลบใบเสนอราคาฉบับร่าง",
+      description: `ต้องการลบ ${quote.quoteNumber} ใช่หรือไม่`,
+      detail: "ใบเสนอราคาฉบับนี้จะถูกลบและไม่สามารถเรียกคืนจากหน้าจอนี้ได้",
+      confirmLabel: "ลบฉบับร่าง",
+      tone: "danger",
+      action: async () => {
+        if (!(await act("delete", `/api/sales-planning/quotations/${id}`, { method: "DELETE" }))) return false;
+        router.push("/sa/quotations");
+        return true;
+      },
+    });
   };
   const doPrint = async () => {
     if (dirty && editable && !(await save())) return;
@@ -190,10 +224,23 @@ export default function QuotationEditorPage() {
       setTemplates(Array.isArray(d) ? d : []);
     } else setError((await res.json().catch(() => ({}))).error || "บันทึก template ไม่สำเร็จ");
   };
-  const deleteTemplate = async (tpl) => {
-    if (!window.confirm(`ลบ template "${tpl.title}"?`)) return;
-    await fetch(`/api/sales-planning/quote-note-templates/${tpl.id}`, { method: "DELETE" });
-    setTemplates((prev) => prev.filter((t) => t.id !== tpl.id));
+  const deleteTemplate = (tpl) => {
+    setConfirmState({
+      title: "ลบ Template หมายเหตุ",
+      description: `ต้องการลบ “${tpl.title}” ใช่หรือไม่`,
+      detail: "Template จะหายจากตัวเลือกของใบเสนอราคาทุกฉบับ แต่ข้อความที่นำไปใช้แล้วจะไม่ถูกลบ",
+      confirmLabel: "ลบ Template",
+      tone: "danger",
+      action: async () => {
+        const res = await fetch(`/api/sales-planning/quote-note-templates/${tpl.id}`, { method: "DELETE" });
+        if (!res.ok) {
+          setError((await res.json().catch(() => ({}))).error || "ลบ template ไม่สำเร็จ");
+          return false;
+        }
+        setTemplates((prev) => prev.filter((t) => t.id !== tpl.id));
+        return true;
+      },
+    });
   };
 
   return (
@@ -399,6 +446,17 @@ export default function QuotationEditorPage() {
           </div>
         </div>
       </Modal>
+      <ConfirmDialog
+        open={!!confirmState}
+        title={confirmState?.title}
+        description={confirmState?.description}
+        detail={confirmState?.detail}
+        confirmLabel={confirmState?.confirmLabel}
+        tone={confirmState?.tone}
+        busy={confirmBusy}
+        onClose={() => !confirmBusy && setConfirmState(null)}
+        onConfirm={runConfirmed}
+      />
     </Workspace>
   );
 }
