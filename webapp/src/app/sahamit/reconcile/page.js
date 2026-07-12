@@ -214,7 +214,6 @@ export default function ReconcilePage() {
       icon={<ClipboardCheck size={22} />}
       title="กระทบยอด (Reconciliation)"
       subtitle="สถานะ FC / PO รายสินค้า × เดือน (ลูกค้า AR-109)"
-      back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <div className="segmented">

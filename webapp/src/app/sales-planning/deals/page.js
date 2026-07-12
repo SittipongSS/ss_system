@@ -404,7 +404,6 @@ export default function SalesPlanningPipelinePage() {
       icon={<FolderKanban size={22} />}
       title="บริหารงานขาย — ดีล"
       subtitle="จัดการดีลขาย (พัฒนากลิ่น / พัฒนาสินค้า / สั่งผลิตซ้ำ) และส่งต่อโครงการ PM"
-      back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}
     >
       <div className="flex flex-col gap-5">

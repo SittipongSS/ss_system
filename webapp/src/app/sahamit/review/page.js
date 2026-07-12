@@ -87,7 +87,6 @@ export default function ReviewPage() {
       icon={<Flag size={22} />}
       title="ตรวจการเปลี่ยน FC"
       subtitle="เลื่อนจริงหรือแอบตัด — เคลียร์ + เก็บหลักฐาน (ลูกค้า AR-109)"
-      back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
         <div className="segmented">
           {TABS.map((t) => <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>)}

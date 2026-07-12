@@ -378,7 +378,6 @@ export default function SalesPlanningTargetsPage() {
       icon={<Target size={22} />}
       title="บริหารงานขาย — วางเป้าหมาย"
       subtitle="กรอกเป้าทั้งปีในคอลัมน์ขวาสุด ระบบเฉลี่ยลง 12 เดือนให้อัตโนมัติ แล้วกด “บันทึก” เพื่อยืนยัน"
-      back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={headerRight}
     >
       <div className="flex flex-col gap-4" style={{ paddingBottom: pendingCount ? 90 : 0 }}>

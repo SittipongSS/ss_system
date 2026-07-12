@@ -312,7 +312,6 @@ export default function LeadsPage() {
       icon={<Inbox size={22} />}
       title="บริหารงานขาย — ลีด"
       subtitle="Marketing กรอกลีดรายวัน → คัดกรองส่งทีมใน 1 วันทำการ → AE ติดต่อกลับใน 1 วันทำการ"
-      back={{ href: "/sa", label: "กลับไปภาพรวม" }}
       headerRight={
         <>
           <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />

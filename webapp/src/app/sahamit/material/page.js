@@ -180,7 +180,6 @@ export default function MaterialPage() {
       icon={<Boxes size={22} />}
       title="วัสดุ / Lead time"
       subtitle="PM สต็อกตาม FC · RM สั่งตาม PO · วันส่งแนะนำ = วันรับ + 60/90 วันทำการ"
-      back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
         <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=material", "_blank")}>
           <Download size={16} /> Excel

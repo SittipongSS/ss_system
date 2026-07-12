@@ -147,7 +147,6 @@ export default function PoPage() {
       icon={<FileText size={22} />}
       title="Purchase Orders"
       subtitle="ติดตาม PO รายใบ · ขยายดูรายการ + สถานะผลิต/ส่ง (แก้วัสดุที่เมนู วัสดุ/Lead time)"
-      back={{ href: "/sahamit", label: "งานสหมิตร" }}
       headerRight={
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn ghost" onClick={() => window.open("/api/sahamit/export?view=po", "_blank")}>
