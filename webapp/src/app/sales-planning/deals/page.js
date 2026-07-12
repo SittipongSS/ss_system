@@ -429,6 +429,28 @@ export default function SalesPlanningPipelinePage() {
     </>
   );
 
+    const allowedScopes = salesDealScopes(role);
+  const SCOPE_TH = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
+
+  // Set default scope correctly on mount
+  useEffect(() => {
+    if (!allowedScopes.includes(scope)) {
+      setScope(allowedScopes[0] || "mine");
+    }
+  }, [allowedScopes, scope]);
+
+  // Calculate KPIs
+  const kpiDeals = deals.filter(d => {
+    if (scope === "mine" && me?.id) return d.ownerId === me.id;
+    if (scope === "team" && me?.team) return d.team === me.team;
+    return true;
+  });
+  const totalDeals = kpiDeals.length;
+  const pipelineValue = kpiDeals.filter(d => !["won", "lost", "in_project"].includes(d.stage)).reduce((sum, d) => sum + (d.projectValue || 0), 0);
+  const wonDeals = kpiDeals.filter(d => ["won", "in_project"].includes(d.stage));
+  const wonValue = wonDeals.reduce((sum, d) => sum + (d.wonValue || d.projectValue || 0), 0);
+  const lostDeals = kpiDeals.filter(d => d.stage === "lost");
+
   return (
     <Workspace
       icon={<FolderKanban size={22} />}
@@ -438,12 +460,54 @@ export default function SalesPlanningPipelinePage() {
     >
       <div className="flex flex-col gap-5">
         {error && (
-          <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>
-            {error}
-          </div>
-        )}
+            <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>
+              {error}
+            </div>
+          )}
 
-        <section className="glass-panel" style={{ padding: 16 }}>
+          {canSeeDealKpi(role) && (
+            <>
+              {allowedScopes.length > 1 && (
+                <div className="segmented" style={{ marginBottom: "16px" }}>
+                  {allowedScopes.map((s) => (
+                    <button key={s} type="button" onClick={() => setScope(s)} className={scope === s ? "active" : ""}>
+                      {SCOPE_TH[s]}
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+                <KpiCard 
+                  icon={<FolderKanban size={20} />} 
+                  label="จำนวนดีลทั้งหมด" 
+                  value={totalDeals}
+                  color="var(--blue)"
+                />
+                <KpiCard 
+                  icon={<Trophy size={20} />} 
+                  label="ยอดไปป์ไลน์" 
+                  value={fmtMoney(pipelineValue)}
+                  color="var(--amber)"
+                />
+                <KpiCard 
+                  icon={<CheckCircle2 size={20} />} 
+                  label="ปิดสำเร็จ (Won)" 
+                  value={wonDeals.length}
+                  hint={wonValue > 0 ? fmtMoney(wonValue) : null}
+                  color="var(--green)"
+                />
+                <KpiCard 
+                  icon={<Ban size={20} />} 
+                  label="ไม่ไปต่อ (Lost)" 
+                  value={lostDeals.length}
+                  color="var(--red)"
+                />
+              </div>
+            </>
+          )}
+
+          <section className="glass-panel" style={{ padding: 16 }}>
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="search-glass" style={{ width: 280 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />

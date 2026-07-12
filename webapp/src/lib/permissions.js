@@ -647,3 +647,13 @@ export function validateIdentity(role, team, department) {
 export function landingFor(role) {
   return '/tax';
 }
+
+export function canSeeDealKpi(role) {
+  return isSuperuser(role) || role === 'senior_ae' || role === 'ae' || role === 'viewer';
+}
+
+export function salesDealScopes(role) {
+  if (isSuperuser(role) || role === 'viewer') return ['mine', 'team', 'all'];
+  if (role === 'senior_ae') return ['mine', 'team'];
+  return ['mine'];
+}
