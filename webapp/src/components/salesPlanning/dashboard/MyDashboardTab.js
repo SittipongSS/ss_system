@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Target, Activity, CalendarDays, Inbox, AlertTriangle, ArrowRight, FolderKanban, BarChart3 } from "lucide-react";
+import { Target, Activity, CalendarDays, Inbox, AlertTriangle, ArrowRight, FolderKanban } from "lucide-react";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import { forecastBadge, KpiCard } from "@/components/salesPlanning/ui";
 import { LEAD_STATUS_LABELS } from "@/lib/sales/leads";
@@ -81,15 +81,12 @@ export default function MyDashboardTab({ month }) {
             <div className="grid grid-cols-2 gap-3 mt-4">
               <KpiCard
                 label="ไปป์ไลน์ที่เปิดอยู่"
-                icon={<FolderKanban size={16} />}
                 value={fmtMoney(pipelineValue)}
                 hint={`จาก ${openDealsCount} ดีล`}
-                color="var(--violet)"
                 interactive={false}
               />
               <KpiCard
                 label="Weighted Forecast"
-                icon={<BarChart3 size={16} />}
                 value={fmtMoney(data?.weightedForecast || 0)}
                 color="var(--blue)"
                 interactive={false}
@@ -153,9 +150,7 @@ export default function MyDashboardTab({ month }) {
           {byForecast.map((b) => (
             <KpiCard
               key={b.level}
-              icon={<Activity size={16} />}
-              label={`FC ${b.level}%`}
-              color={b.level === 100 ? "var(--green)" : b.level === 80 ? "var(--teal)" : b.level === 50 ? "var(--amber)" : "var(--text-3)"}
+              badge={forecastBadge(b.level)}
               value={fmtMoney(b.value)}
               hint={`จำนวน ${b.count} ดีล`}
               interactive={false}

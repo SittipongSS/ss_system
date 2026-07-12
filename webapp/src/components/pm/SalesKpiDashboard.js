@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Trophy, ListTodo, BarChart3, ChevronDown, Check, FolderKanban, CheckCircle2, Award, RefreshCw, Users, X } from "lucide-react";
+import { BarChart3, CalendarDays, ListTodo, RefreshCw, Trophy, Users, X } from "lucide-react";
 import { ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -107,10 +107,10 @@ export default function SalesKpiDashboard() {
       {loading ? <SkeletonRows /> : (
         <div className="flex flex-col gap-5">
           <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-            <KpiCard interactive={false} icon={<ListTodo size={16} />} label="งานทั้งหมด" value={summary.total || 0} hint={`${summary.people || 0} คน`} color="var(--text)" />
-            <KpiCard interactive={false} icon={<CheckCircle2 size={16} />} label="เสร็จแล้ว" value={summary.completed || 0} hint={`อัตราเสร็จ ${fmtPct(summary.completionPct)}`} color="var(--green)" />
+            <KpiCard interactive={false} icon={<ListTodo size={16} />} label="งานทั้งหมด" value={summary.total || 0} hint={`${summary.people || 0} คน`} />
+            <KpiCard interactive={false} icon={<Trophy size={16} />} label="เสร็จแล้ว" value={summary.completed || 0} hint={`อัตราเสร็จ ${fmtPct(summary.completionPct)}`} color="var(--green)" />
             <KpiCard interactive={false} icon={<CalendarDays size={16} />} label="ตรงเวลา" value={fmtPct(summary.onTimePct)} hint={`${summary.completedOnTime || 0}/${summary.completedWithDue || 0} งานที่มีกำหนด`} color="var(--blue)" />
-            <KpiCard interactive={false} icon={<Award size={16} />} label="คะแนนรวม" value={<ScoreBadge value={summary.score} />} hint="40% เสร็จ + 40% ตรงเวลา + 20% ความยาก" color="var(--amber)" />
+            <KpiCard interactive={false} icon={<BarChart3 size={16} />} label="คะแนนรวม" value={<ScoreBadge value={summary.score} />} hint="40% เสร็จ + 40% ตรงเวลา + 20% ความยาก" color="var(--amber)" />
           </section>
 
           {teams.length > 1 && (

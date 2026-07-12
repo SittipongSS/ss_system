@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, Target, X, XCircle, Trophy, Activity, Layers } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, Target, X, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam, useRole } from "@/lib/roleContext";
 import { canSeeTaskKpi } from "@/lib/permissions";
@@ -587,17 +587,16 @@ export default function SalesPlanningOverviewPage() {
           </div>
 
         <section className="kpi-grid mt-5" aria-busy={loading}>
-          <KpiCard icon={<Target size={16} aria-hidden="true" />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} color="var(--text)" />
-          <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์" value={money(totals.weightedForecast)} hint="มูลค่าดีลเปิดที่คาดว่าจะปิดให้เป็น Won" color="var(--blue)" />
-          <KpiCard icon={<FolderKanban size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ`} color="var(--violet)" />
-          <KpiCard icon={<Trophy size={16} aria-hidden="true" />} label="Won" value={money(totals.wonValue)} hint={`ส่วนต่าง ${money(totals.targetGap)}`} color="var(--green)" />
+          <KpiCard icon={<Target size={16} aria-hidden="true" />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
+          <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="คาดการณ์" value={money(totals.weightedForecast)} hint="มูลค่าดีลเปิดที่คาดว่าจะปิดให้เป็น Won" />
+          <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ`} />
+          <KpiCard icon={<LineChart size={16} aria-hidden="true" />} label="Won" value={money(totals.wonValue)} hint={`ส่วนต่าง ${money(totals.targetGap)}`} />
           {SALES_FEATURES.sahamitRisk && sahamitRisk?.enabled && (
             <KpiCard
               icon={<AlertTriangle size={16} aria-hidden="true" />}
               label="ความเสี่ยง FC สหมิตร"
               value={sahamitRisk.summary?.risk || 0}
               hint={`ตรวจ ${sahamitRisk.summary?.total || 0} SKU-เดือน`}
-              color="var(--amber)"
             />
           )}
         </section>
@@ -613,10 +612,7 @@ export default function SalesPlanningOverviewPage() {
               {byType.map((b) => (
                 <KpiCard
                   key={b.type}
-                  icon={<Layers size={16} />}
-                  label={b.type}
                   badge={dealTypeBadge(b.type)}
-                  color={b.type === "SCENT" ? "var(--amber)" : b.type === "NPD" ? "var(--blue)" : "var(--teal)"}
                   value={money(b.fcTotal)}
                   hint={
                     <div className="flex flex-col gap-1">
@@ -642,9 +638,7 @@ export default function SalesPlanningOverviewPage() {
               {byForecast.map((b) => (
                 <KpiCard
                   key={b.level}
-                  icon={<Activity size={16} />}
-                  label={`FC ${b.level}%`}
-                  color={b.level === 100 ? "var(--green)" : b.level === 80 ? "var(--teal)" : b.level === 50 ? "var(--amber)" : "var(--text-3)"}
+                  badge={forecastBadge(b.level)}
                   value={money(b.value)}
                   hint={`${b.count} ดีล`}
                   interactive={false}

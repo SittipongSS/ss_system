@@ -1,23 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Inbox, Filter, PhoneCall, CalendarClock, UserPlus, CheckCircle2, XCircle, AlertTriangle, TrendingUp } from "lucide-react";
+import { Inbox, Filter, PhoneCall, CalendarClock } from "lucide-react";
 import { KpiCard } from "@/components/salesPlanning/ui";
 import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS } from "@/lib/sales/leads";
 import { fmtName } from "@/lib/format";
 
 const pct = (hit, total) => (total ? `${Math.round((hit / total) * 100)}%` : "-");
-
-const FUNNEL_ICONS = {
-  "เข้า": { icon: <Inbox size={15} />, color: "var(--blue)" },
-  "คัดกรองแล้ว": { icon: <Filter size={15} />, color: "var(--teal)" },
-  "มอบหมายแล้ว": { icon: <UserPlus size={15} />, color: "var(--violet)" },
-  "ติดต่อแล้ว": { icon: <PhoneCall size={15} />, color: "var(--amber)" },
-  "นัดประชุม": { icon: <CalendarClock size={15} />, color: "var(--amber)" },
-  "เปิดลูกค้า": { icon: <CheckCircle2 size={15} />, color: "var(--green)" },
-  "ไม่ไปต่อ": { icon: <XCircle size={15} />, color: "var(--text-3)" },
-  "ตีกลับ": { icon: <AlertTriangle size={15} />, color: "var(--red)" },
-};
 
 export default function KpiLeadsTab({ month }) {
   const [kpi, setKpi] = useState(null);
@@ -50,21 +39,19 @@ export default function KpiLeadsTab({ month }) {
       )}
 
       <section className="kpi-grid" aria-busy={loading}>
-        <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label="ลีดเข้า" value={f.total ?? "-"} hint={`เดือน ${kpi?.month || month}`} color="var(--blue)" />
-        <KpiCard icon={<Filter size={16} aria-hidden="true" />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} hint={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้างคิว ${sla.screen?.pending ?? 0}`} color="var(--teal)" />
-        <KpiCard icon={<PhoneCall size={16} aria-hidden="true" />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} hint={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้างติดต่อ ${sla.contact?.pending ?? 0}`} color="var(--amber)" />
-        <KpiCard icon={<TrendingUp size={16} aria-hidden="true" />} label="Conversion" value={pct(f.qualified, f.total)} hint={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} color="var(--green)" />
+        <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label="ลีดเข้า" value={f.total ?? "-"} hint={`เดือน ${kpi?.month || month}`} />
+        <KpiCard icon={<Filter size={16} aria-hidden="true" />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} hint={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้างคิว ${sla.screen?.pending ?? 0}`} />
+        <KpiCard icon={<PhoneCall size={16} aria-hidden="true" />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} hint={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้างติดต่อ ${sla.contact?.pending ?? 0}`} />
+        <KpiCard icon={<CalendarClock size={16} aria-hidden="true" />} label="Conversion" value={pct(f.qualified, f.total)} hint={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} />
       </section>
 
       {/* Funnel */}
       <section className="glass-panel" style={{ padding: 16 }}>
         <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>Funnel ลีด → ลูกค้า</h2>
-        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
           {[["เข้า", f.total], ["คัดกรองแล้ว", f.screened], ["มอบหมายแล้ว", f.assigned], ["ติดต่อแล้ว", f.contacted], ["นัดประชุม", f.meeting], ["เปิดลูกค้า", f.qualified], ["ไม่ไปต่อ", f.disqualified], ["ตีกลับ", f.bounced]].map(([label, v]) => (
             <KpiCard
               key={label}
-              icon={FUNNEL_ICONS[label]?.icon}
-              color={FUNNEL_ICONS[label]?.color}
               label={label}
               value={v ?? 0}
               interactive={false}
