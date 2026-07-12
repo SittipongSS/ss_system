@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Inbox, Filter, PhoneCall, CalendarClock, UserPlus, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Inbox, Filter, PhoneCall, CalendarClock, UserPlus, CheckCircle2, XCircle, AlertTriangle, TrendingUp } from "lucide-react";
 import { KpiCard } from "@/components/salesPlanning/ui";
 import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS } from "@/lib/sales/leads";
 import { fmtName } from "@/lib/format";
@@ -53,7 +53,7 @@ export default function KpiLeadsTab({ month }) {
         <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label="ลีดเข้า" value={f.total ?? "-"} hint={`เดือน ${kpi?.month || month}`} color="var(--blue)" />
         <KpiCard icon={<Filter size={16} aria-hidden="true" />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} hint={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้างคิว ${sla.screen?.pending ?? 0}`} color="var(--teal)" />
         <KpiCard icon={<PhoneCall size={16} aria-hidden="true" />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} hint={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้างติดต่อ ${sla.contact?.pending ?? 0}`} color="var(--amber)" />
-        <KpiCard icon={<CalendarClock size={16} aria-hidden="true" />} label="Conversion" value={pct(f.qualified, f.total)} hint={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} color="var(--green)" />
+        <KpiCard icon={<TrendingUp size={16} aria-hidden="true" />} label="Conversion" value={pct(f.qualified, f.total)} hint={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} color="var(--green)" />
       </section>
 
       {/* Funnel */}
