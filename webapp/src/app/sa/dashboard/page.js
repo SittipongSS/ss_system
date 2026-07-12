@@ -610,14 +610,18 @@ export default function SalesPlanningOverviewPage() {
             </div>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
               {byType.map((b) => (
-                <div key={b.type} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div>{dealTypeBadge(b.type)}</div>
-                  <div className="font-mono tabular-nums" style={{ fontSize: 18, fontWeight: 800 }}>{money(b.fcTotal)}</div>
-                  <div style={{ color: "var(--text-3)", fontSize: 12 }}>
-                    Actual {money(b.actual)} · FC คงเหลือ {money(b.fcRemaining)}
-                  </div>
-                  <div style={{ color: "var(--text-3)", fontSize: 12 }}>{b.wonCount} won · {b.openCount} เปิด</div>
-                </div>
+                <KpiCard
+                  key={b.type}
+                  badge={dealTypeBadge(b.type)}
+                  value={money(b.fcTotal)}
+                  hint={
+                    <div className="flex flex-col gap-1">
+                      <span>Actual {money(b.actual)} · FC คงเหลือ {money(b.fcRemaining)}</span>
+                      <span>{b.wonCount} won · {b.openCount} เปิด</span>
+                    </div>
+                  }
+                  interactive={false}
+                />
               ))}
             </div>
           </section>
@@ -632,11 +636,13 @@ export default function SalesPlanningOverviewPage() {
             </div>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
               {byForecast.map((b) => (
-                <div key={b.level} className="glass-panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div>{forecastBadge(b.level)}</div>
-                  <div className="font-mono tabular-nums" style={{ fontSize: 18, fontWeight: 800 }}>{money(b.value)}</div>
-                  <div style={{ color: "var(--text-3)", fontSize: 12 }}>{b.count} ดีล</div>
-                </div>
+                <KpiCard
+                  key={b.level}
+                  badge={forecastBadge(b.level)}
+                  value={money(b.value)}
+                  hint={`${b.count} ดีล`}
+                  interactive={false}
+                />
               ))}
             </div>
           </section>

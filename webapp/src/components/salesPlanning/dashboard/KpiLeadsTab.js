@@ -50,10 +50,12 @@ export default function KpiLeadsTab({ month }) {
         <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>Funnel ลีด → ลูกค้า</h2>
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
           {[["เข้า", f.total], ["คัดกรองแล้ว", f.screened], ["มอบหมายแล้ว", f.assigned], ["ติดต่อแล้ว", f.contacted], ["นัดประชุม", f.meeting], ["เปิดลูกค้า", f.qualified], ["ไม่ไปต่อ", f.disqualified], ["ตีกลับ", f.bounced]].map(([label, v]) => (
-            <div key={label} className="glass-panel" style={{ padding: "10px 14px" }}>
-              <div style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 600 }}>{label}</div>
-              <div className="font-mono tabular-nums" style={{ fontSize: 20, fontWeight: 800 }}>{v ?? 0}</div>
-            </div>
+            <KpiCard
+              key={label}
+              label={label}
+              value={v ?? 0}
+              interactive={false}
+            />
           ))}
         </div>
       </section>

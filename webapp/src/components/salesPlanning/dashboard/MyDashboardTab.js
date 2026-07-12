@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Target, Activity, CalendarDays, Inbox, AlertTriangle, ArrowRight, FolderKanban } from "lucide-react";
 import { fmtMoney, fmtDate } from "@/lib/format";
-import { forecastBadge } from "@/components/salesPlanning/ui";
+import { forecastBadge, KpiCard } from "@/components/salesPlanning/ui";
 import { LEAD_STATUS_LABELS } from "@/lib/sales/leads";
 
 function ProgressBar({ value, total, color = "var(--violet)" }) {
@@ -78,17 +78,19 @@ export default function MyDashboardTab({ month }) {
                 {pctTarget}% สำเร็จ
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 mt-2">
-              <div style={{ padding: 12, background: "var(--panel-2)", borderRadius: 8 }}>
-                <div style={{ fontSize: 12, color: "var(--text-3)" }}>ไปป์ไลน์ที่เปิดอยู่ (มูลค่า)</div>
-                <div className="font-mono mt-1" style={{ fontSize: 18, fontWeight: 700 }}>{fmtMoney(pipelineValue)}</div>
-                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>จาก {openDealsCount} ดีล</div>
-              </div>
-              <div style={{ padding: 12, background: "var(--panel-2)", borderRadius: 8 }}>
-                <div style={{ fontSize: 12, color: "var(--text-3)" }}>คาดการณ์ความเป็นไปได้</div>
-                <div className="font-mono mt-1" style={{ fontSize: 18, fontWeight: 700, color: "var(--blue)" }}>{fmtMoney(data?.weightedForecast || 0)}</div>
-                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Weighted Forecast</div>
-              </div>
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <KpiCard
+                label="ไปป์ไลน์ที่เปิดอยู่"
+                value={fmtMoney(pipelineValue)}
+                hint={`จาก ${openDealsCount} ดีล`}
+                interactive={false}
+              />
+              <KpiCard
+                label="Weighted Forecast"
+                value={fmtMoney(data?.weightedForecast || 0)}
+                color="var(--blue)"
+                interactive={false}
+              />
             </div>
           </div>
         </section>
@@ -146,11 +148,13 @@ export default function MyDashboardTab({ month }) {
         
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
           {byForecast.map((b) => (
-            <div key={b.level} className="flex flex-col gap-2 p-4 rounded-xl border border-[var(--border)]" style={{ background: "var(--panel-2)" }}>
-              <div>{forecastBadge(b.level)}</div>
-              <div className="font-mono mt-1" style={{ fontSize: 20, fontWeight: 800 }}>{fmtMoney(b.value)}</div>
-              <div style={{ color: "var(--text-3)", fontSize: 12 }}>จำนวน {b.count} ดีล</div>
-            </div>
+            <KpiCard
+              key={b.level}
+              badge={forecastBadge(b.level)}
+              value={fmtMoney(b.value)}
+              hint={`จำนวน ${b.count} ดีล`}
+              interactive={false}
+            />
           ))}
         </div>
         
