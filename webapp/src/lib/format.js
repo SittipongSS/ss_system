@@ -18,6 +18,33 @@ export const fmtMoney = (amount) =>
     maximumFractionDigits: 2,
   });
 
+// Plain numeric formats for tables and editable controls. Keep the currency
+// symbol in labels/headers when the field already makes the unit clear.
+export const fmtNumber = (amount, { minimumFractionDigits = 0, maximumFractionDigits = 2 } = {}) =>
+  (Number(amount) || 0).toLocaleString("th-TH", {
+    minimumFractionDigits,
+    maximumFractionDigits,
+  });
+
+export const fmtPercent = (amount, fractionDigits = 2) =>
+  `${fmtNumber(amount, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits })}%`;
+
+// Accept formatted user input without leaking presentation characters into API
+// payloads. A lone minus/dot is treated as an incomplete edit, not as zero.
+export const parseNumberInput = (value) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const normalized = String(value ?? "").replace(/,/g, "").trim();
+  if (!normalized || normalized === "-" || normalized === "." || normalized === "-.") return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const formatMoneyInput = (value) => {
+  const parsed = parseNumberInput(value);
+  if (parsed == null) return "";
+  return fmtNumber(parsed, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 // เงินแบบย่อ: ฿ + x.xxK (พัน) / x.xxM (ล้าน); ต่ำกว่าพันแสดงเต็ม 2 ทศนิยม.
 // ใช้ในที่แคบ เช่น KPI card / กราฟ / แดชบอร์ด ที่ตัวเลขยาวเกินไป.
 export const fmtMoneyCompact = (amount) => {
@@ -125,6 +152,14 @@ export const fmtNationalId = (raw) => {
 // วันที่แบบตัวเลข (§2.4): กว้าง = DD/MM/YYYY, แคบ = DD/MM/YY (ปี ค.ศ.).
 export const fmtDateNumeric = (value, { short = false } = {}) => {
   if (!value) return "-";
+  // Date-only strings represent a calendar date, not a moment in time. Parsing
+  // them with new Date("YYYY-MM-DD") applies UTC semantics and can render the
+  // previous day in negative timezones, so format their parts directly.
+  const dateOnly = String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  if (dateOnly) {
+    const [, yyyy, mm, dd] = dateOnly;
+    return short ? `${dd}/${mm}/${yyyy.slice(-2)}` : `${dd}/${mm}/${yyyy}`;
+  }
   const d = new Date(value);
   if (isNaN(d.getTime())) return String(value);
   const dd = String(d.getDate()).padStart(2, "0");
