@@ -149,21 +149,27 @@ export function stageBadge(stage) {
   );
 }
 
-export function KpiCard({ icon, label, badge, value, hint, color, interactive = true }) {
+export function KpiCard({ icon, label, badge, value, hint, color = "var(--text-3)", interactive = true }) {
   return (
-    <div className={`glass-panel flex flex-col justify-between ${interactive ? "interactive-card" : ""}`} style={{ padding: "16px", minHeight: 108, borderLeft: color ? `3px solid ${color}` : undefined }}>
-      <div className="flex items-center gap-2" style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 600 }}>
-        {badge ? badge : (
-          <>
-            {icon && icon}
-            {label && <span>{label}</span>}
-          </>
-        )}
+    <div 
+      className={`glass-panel flex flex-col justify-between ${interactive ? "interactive-card" : ""}`} 
+      style={{ padding: "16px", minHeight: 112, borderLeft: `3px solid ${color}` }}
+    >
+      <div className="flex items-start justify-between w-full">
+        <div className="flex items-center gap-2.5" style={{ color: "var(--text-2)", fontSize: 13, fontWeight: 600 }}>
+          {icon && (
+            <div className="flex items-center justify-center" style={{ width: 28, height: 28, borderRadius: 6, background: `color-mix(in srgb, ${color} 15%, transparent)`, color: color !== "var(--text-3)" ? color : "inherit" }}>
+              {icon}
+            </div>
+          )}
+          {label && <span>{label}</span>}
+        </div>
+        {badge && <div>{badge}</div>}
       </div>
-      <div className="font-mono tabular-nums" style={{ marginTop: 8, fontSize: 24, fontWeight: 800, color: "var(--text)" }}>
+      <div className="font-mono tabular-nums" style={{ marginTop: 12, fontSize: 26, fontWeight: 800, color: "var(--text)" }}>
         {value}
       </div>
-      {hint && <div style={{ marginTop: 4, color: "var(--text-3)", fontSize: 12 }}>{hint}</div>}
+      {hint && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: 12, lineHeight: 1.4 }}>{hint}</div>}
     </div>
   );
 }
