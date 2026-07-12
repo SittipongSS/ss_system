@@ -353,7 +353,10 @@ export default function LeadsPage() {
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
-        <section className="kpi-grid" aria-busy={loading}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+            <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: 13, fontWeight: 500, color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
+          </div>
+          <section className="kpi-grid" aria-busy={loading}>
             <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} hint={allMonths ? "ทั้งหมด" : `เดือน ${month}`} />
             <KpiCard icon={<Filter size={16} aria-hidden="true" />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} hint={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างคิว ${kpi?.sla?.screen?.pending ?? 0}`} />
             <KpiCard icon={<PhoneCall size={16} aria-hidden="true" />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} hint={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างติดต่อ ${kpi?.sla?.contact?.pending ?? 0}`} />
@@ -361,13 +364,7 @@ export default function LeadsPage() {
               icon={<CalendarClock size={16} aria-hidden="true" />} 
               label="Conversion" 
               value={kpi?.funnel?.total ? Math.round((kpi.funnel.qualified / kpi.funnel.total) * 100) + "%" : "-"} 
-              hint={
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                  <span>ลีด {kpi?.funnel?.total ?? 0} → นัด {kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า {kpi?.funnel?.qualified ?? 0}</span>
-                  <span style={{ opacity: 0.5 }}>·</span>
-                  <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center" }}>ดู KPI เต็ม →</Link>
-                </div>
-              } 
+              hint={`ลีด ${kpi?.funnel?.total ?? 0} → นัด ${kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`}
             />
           </section>
 

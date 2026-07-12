@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, Target, X, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam, useRole } from "@/lib/roleContext";
@@ -389,6 +390,16 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
 }
 
 export default function SalesPlanningOverviewPage() {
+    return (
+      <React.Suspense fallback={<div>Loading dashboard...</div>}>
+        <DashboardContent />
+      </React.Suspense>
+    );
+}
+
+function DashboardContent() {
+    const searchParams = useSearchParams();
+
   const canReview = useCan("salesplan:review");
   const canTarget = useCan("salesplan:target");
   const team = useTeam();
@@ -399,7 +410,8 @@ export default function SalesPlanningOverviewPage() {
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
   const [allMonths, setAllMonths] = useState(false); // รวมทั้งปีในการ์ด KPI/FC
-  const [tab, setTab] = useState("my");
+  const [tab, setTab] = useState(searchParams.get("tab") || "my");
+    useEffect(() => { const t = searchParams.get("tab"); if (t) setTab(t); }, [searchParams]);
   const year = month.slice(0, 4);
   const [yearDashboards, setYearDashboards] = useState([]);
   const [sahamitRisk, setSahamitRisk] = useState(null);
