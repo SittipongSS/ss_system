@@ -177,6 +177,19 @@ export default function ProjectDetailPage() {
   const [addingProduct, setAddingProduct] = useState("");
   // มุมมองสลับอัตโนมัติตามจอ: จอตั้ง → List, จอนอน → Table; Gantt (document) เลือกเองได้
   const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" }); // list | table | document
+  // เมนูครอบ (มติผู้ใช้): เปิดมาเจอ "ภาพรวม" (ศูนย์รวมดีล) ก่อน — กดเข้าไทม์ไลน์อีกชั้น
+  // ถึงเห็นตารางขั้นตอน. sync กับ ?tab=timeline เพื่อให้ refresh/แชร์ลิงก์ค้างแท็บเดิม.
+  const [tab, setTab] = useState("overview"); // overview | timeline
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "timeline") setTab("timeline");
+  }, []);
+  const switchTab = (t) => {
+    setTab(t);
+    const url = new URL(window.location.href);
+    if (t === "timeline") url.searchParams.set("tab", "timeline");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url);
+  };
   const [showAddTask, setShowAddTask] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
   const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" });
@@ -809,6 +822,9 @@ export default function ProjectDetailPage() {
   if (!data) return <EmptyState icon={FolderX}>ไม่พบโครงการ</EmptyState>;
 
   const p = data;
+  // โครงการกำพร้า (ไม่มีดีล) ไม่มีอะไรให้ดูในภาพรวม — เข้าไทม์ไลน์ตรงเหมือนเดิม
+  const hasDeals = (p.deals || []).length > 0;
+  const showTimeline = !hasDeals || tab === "timeline";
   const hasWriteAccess = hasEditCap && !!data.canEdit;
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
@@ -967,6 +983,12 @@ export default function ProjectDetailPage() {
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginLeft: "auto" }}>
+              {!showTimeline ? (
+                <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
+                  <GanttChart size={14} /> เปิดไทม์ไลน์
+                </button>
+              ) : (
+              <>
               <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
               <span
                 className="ui-badge"
@@ -1013,6 +1035,8 @@ export default function ProjectDetailPage() {
               >
                 <Printer size={14} /> พิมพ์เอกสาร
               </button>
+              </>
+              )}
             </div>
           </div>
         </div>
@@ -1033,9 +1057,64 @@ export default function ProjectDetailPage() {
 
         </div>
 
-      {/* ศูนย์รวมโครงการ — โครงการ = จิ๊กซอว์ครอบดีล: KPI rollup + การ์ดต่อดีล
-          (ใบเสนอราคา + segment ไทม์ไลน์ อยู่ใต้ดีล) + ฟีดความเคลื่อนไหวรวมทุกดีล */}
-      <ProjectDealsHub project={p} />
+      {/* เมนูครอบ: ภาพรวม (ศูนย์รวมดีล) ↔ ไทม์ไลน์ — โครงการกำพร้าไม่มีดีลข้ามไปไทม์ไลน์เลย */}
+      {hasDeals && (
+        <div className="segmented" role="tablist" aria-label="ส่วนของโครงการ" style={{ marginBottom: 20, width: "fit-content" }}>
+          <button type="button" role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "active" : ""} onClick={() => switchTab("overview")}>
+            ภาพรวม
+          </button>
+          <button type="button" role="tab" aria-selected={tab === "timeline"} className={tab === "timeline" ? "active" : ""} onClick={() => switchTab("timeline")}>
+            ไทม์ไลน์ ({(p.tasks || []).filter((t) => t.status === "Completed").length}/{(p.tasks || []).length})
+          </button>
+        </div>
+      )}
+
+      {/* ภาพรวม — ศูนย์รวมโครงการ: จิ๊กซอว์ครอบดีล (KPI rollup + การ์ดต่อดีล) */}
+      {!showTimeline && (
+        <>
+          <ProjectDealsHub project={p} />
+          {/* การ์ดเมนูไทม์ไลน์ — กดเข้าไปถึงเห็นตารางขั้นตอนเต็ม */}
+          <div
+            className="glass-panel"
+            role="button"
+            tabIndex={0}
+            onClick={() => switchTab("timeline")}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchTab("timeline"); } }}
+            style={{ padding: "16px 20px", marginBottom: 24, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
+            title="เปิดไทม์ไลน์โครงการ"
+          >
+            <span style={{ background: "var(--accent)", color: "#fff", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
+              <GanttChart size={18} />
+            </span>
+            <div style={{ minWidth: 160 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>ไทม์ไลน์โครงการ</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>
+                {(() => {
+                  const doing = (p.tasks || []).filter((t) => t.status === "In Progress").map((t) => t.name);
+                  return doing.length ? `กำลังทำ: ${doing.slice(0, 2).join(", ")}${doing.length > 2 ? ` +${doing.length - 2}` : ""}` : "ขั้นตอนทั้งหมดของทุกดีลรวมในผืนเดียว";
+                })()}
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 140, display: "flex", alignItems: "center", gap: 10 }}>
+              {(() => {
+                const total = (p.tasks || []).length;
+                const done = (p.tasks || []).filter((t) => t.status === "Completed").length;
+                return (
+                  <>
+                    <div className="progress" style={{ flex: 1 }} role="progressbar" aria-valuenow={done} aria-valuemax={total} aria-label="ความคืบหน้าไทม์ไลน์">
+                      <span className={total && done === total ? "done" : undefined} style={{ width: total ? `${Math.round((done / total) * 100)}%` : 0 }} />
+                    </div>
+                    <span className="mono tabular-nums" style={{ fontSize: 13, color: "var(--text-2)", whiteSpace: "nowrap" }}>{done}/{total} ขั้นตอน</span>
+                  </>
+                );
+              })()}
+            </div>
+            <span className="btn btn-primary" style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>
+              <GanttChart size={14} /> เปิดไทม์ไลน์
+            </span>
+          </div>
+        </>
+      )}
 
       {p.status === "Dropped" && (
         <div style={{ marginBottom: "24px", padding: "18px 24px", background: "color-mix(in srgb, var(--red) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 40%, transparent)", borderRadius: "12px", borderLeft: "5px solid var(--red)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", zIndex: 10, position: "relative" }}>
@@ -1055,6 +1134,8 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
+      {showTimeline && (
+      <>
       <div style={{ opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all 0.3s", pointerEvents: isLocked ? "none" : "auto" }}>
       {view === "document" ? (
         <div className="glass-panel" style={{ padding: "20px", marginBottom: "24px" }}>
@@ -1442,9 +1523,11 @@ export default function ProjectDetailPage() {
           )}
         </div>
       )}
+      </>
+      )}
 
-      {/* ฟีดความเคลื่อนไหวรวมทุกดีล (ท้ายหน้า — หลังไทม์ไลน์) */}
-      <ProjectActivityFeed project={p} />
+      {/* ฟีดความเคลื่อนไหวรวมทุกดีล — อยู่ท้ายแท็บภาพรวม */}
+      {!showTimeline && <ProjectActivityFeed project={p} />}
 
       {/* Add task modal */}
       <Modal open={showAddTask} onClose={() => setShowAddTask(false)} title="เพิ่มขั้นตอน" size="md">
