@@ -414,7 +414,7 @@ export default function LeadsPage() {
                   <th>บริการที่สนใจ</th>
                   <th className="num" onClick={() => handleSort("budget")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>Budget {sortArrow("budget")}</span></th>
                   <th>ทีม / ผู้รับผิดชอบ</th>
-                  <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>สถานะ {sortArrow("status")}</span></th>
+                  <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none", textAlign: "center" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "center" }}>สถานะ {sortArrow("status")}</span></th>
                   <th onClick={() => handleSort("created")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>รับเมื่อ {sortArrow("created")}</span></th>
                   <th></th>
                 </tr>
@@ -438,10 +438,9 @@ export default function LeadsPage() {
                       {lead.team ? `${TEAM_LABELS[lead.team] || lead.team}` : "-"}
                       {lead.assigneeName && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{lead.assigneeName}</span>}
                     </td>
-                    <td>
-                      {statusBadge(lead.status)}
-                      
-                    </td>
+                    <td style={{ textAlign: "center" }}>
+                        {statusBadge(lead.status)}
+                      </td>
                     <td style={{ whiteSpace: "nowrap", fontSize: 12.5, color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
                     <td className="num" style={{ verticalAlign: "middle" }}>
                         <div style={{ display: "grid", gridTemplateColumns: "100px 80px 85px 28px 28px", gap: 6, justifyContent: "flex-end", alignItems: "center", minWidth: 345 }}>
