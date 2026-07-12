@@ -178,6 +178,18 @@ export default function DealOverviewPage() {
   const id = params?.id;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // เมนูครอบ (แบบเดียวกับหน้าโครงการ): ภาพรวม (default) ↔ ไทม์ไลน์ — sync ?tab=timeline
+  const [tab, setTab] = useState("overview");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "timeline") setTab("timeline");
+  }, []);
+  const switchTab = (t) => {
+    setTab(t);
+    const url = new URL(window.location.href);
+    if (t === "timeline") url.searchParams.set("tab", "timeline");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url);
+  };
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -703,12 +715,22 @@ export default function DealOverviewPage() {
             )}
           </section>
 
-          {/* เมนูลิงก์ไปแต่ละส่วนของหน้า + ป้ายเฟสถัดไปของส่วนที่ยังไม่เปิดใช้ */}
+          {/* เมนูครอบ (แบบหน้าโครงการ): แท็บ ภาพรวม ↔ ไทม์ไลน์ + ทางลัดในภาพรวม + route actions */}
           <nav className="glass-panel toolbar" aria-label="ส่วนต่าง ๆ ของดีล" style={{ padding: "8px 12px" }}>
-            <a className="btn ghost sm" href="#deal-kpi">ภาพรวม</a>
-            <a className="btn ghost sm" href="#deal-tasks">งาน</a>
-            <a className="btn ghost sm" href="#deal-pm">ไทม์ไลน์</a>
-            <a className="btn ghost sm" href="#deal-timeline">ความเคลื่อนไหว</a>
+            <div className="segmented" role="tablist" aria-label="มุมมองดีล">
+              <button type="button" role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "active" : ""} onClick={() => switchTab("overview")}>
+                ภาพรวม
+              </button>
+              <button type="button" role="tab" aria-selected={tab === "timeline"} className={tab === "timeline" ? "active" : ""} onClick={() => switchTab("timeline")}>
+                ไทม์ไลน์{taskSummary.total ? ` (${taskSummary.done}/${taskSummary.total})` : ""}
+              </button>
+            </div>
+            {tab === "overview" && (
+              <>
+                <a className="btn ghost sm" href="#deal-tasks">งาน</a>
+                <a className="btn ghost sm" href="#deal-timeline">ความเคลื่อนไหว</a>
+              </>
+            )}
             <span className="spacer" />
             {lc?.routes?.map((route) => (
               <RouteMenuButton key={route.kind} route={route} onAction={onRouteAction} busy={!!actionBusy} canEdit={canEdit} />
@@ -740,6 +762,8 @@ export default function DealOverviewPage() {
             </div>
           )}
 
+          {tab === "overview" && (
+          <>
           <section id="deal-kpi" className="kpi-grid">
             {alreadyWon ? (
               <Stat
@@ -815,6 +839,8 @@ export default function DealOverviewPage() {
               <Empty>ยังไม่มีงานของดีลนี้ กด “เปิด” แล้วสร้างงานโดยเลือกผูกกับดีลนี้ได้</Empty>
             )}
           </section>
+          </>
+          )}
 
           <div style={{
             display: "grid",
@@ -823,6 +849,38 @@ export default function DealOverviewPage() {
             alignItems: "start",
           }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
+          {/* แท็บภาพรวม: การ์ดเมนูไทม์ไลน์ (กดเข้าแท็บไทม์ไลน์) — แบบเดียวกับหน้าโครงการ */}
+          {tab === "overview" && (
+            <div
+              className="glass-panel"
+              role="button"
+              tabIndex={0}
+              onClick={() => switchTab("timeline")}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchTab("timeline"); } }}
+              style={{ padding: 16, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
+              title="เปิดไทม์ไลน์ของดีล"
+            >
+              <span style={{ background: "var(--accent)", color: "#fff", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
+                <PackageCheck size={18} aria-hidden="true" />
+              </span>
+              <div style={{ minWidth: 150 }}>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>ไทม์ไลน์</div>
+                <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>
+                  {!taskSummary.total ? "ยังไม่ได้สร้าง — กดเพื่อเริ่ม" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : deal.projectId ? `ในโครงการ ${data.project?.code || ""}` : "ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)"}
+                </div>
+              </div>
+              {taskSummary.total > 0 && (
+                <div style={{ flex: 1, minWidth: 120, display: "flex", alignItems: "center", gap: 10 }}>
+                  <div className="progress" style={{ flex: 1 }} role="progressbar" aria-valuenow={taskSummary.done} aria-valuemax={taskSummary.total} aria-label="ความคืบหน้าไทม์ไลน์">
+                    <span className={taskSummary.done === taskSummary.total ? "done" : undefined} style={{ width: `${Math.round((taskSummary.done / taskSummary.total) * 100)}%` }} />
+                  </div>
+                  <span className="mono tabular-nums" style={{ fontSize: 13, color: "var(--text-2)", whiteSpace: "nowrap" }}>{taskSummary.done}/{taskSummary.total}</span>
+                </div>
+              )}
+              <span className="btn btn-primary" style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>เปิดไทม์ไลน์</span>
+            </div>
+          )}
+          {tab === "timeline" && (
           <section id="deal-pm" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <PackageCheck size={17} aria-hidden="true" />
@@ -919,8 +977,9 @@ export default function DealOverviewPage() {
               </Empty>
             )}
           </section>
+          )}
 
-          {(SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
+          {tab === "overview" && (SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
           <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
             {SALES_FEATURES.quotations && (
             <section className="glass-panel" style={{ padding: 16 }}>
@@ -982,6 +1041,7 @@ export default function DealOverviewPage() {
           )}
 
             </div>
+            {tab === "overview" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           {/* ไทม์ไลน์รวม: อัปเดตงาน + การเปลี่ยนสถานะ เรียงตามเวลาเดียวกัน — เห็นเรื่องราวของดีลในฟีดเดียว */}
           <section id="deal-timeline" className="glass-panel" style={{ padding: 16 }}>
@@ -1108,6 +1168,7 @@ export default function DealOverviewPage() {
               ) : <Empty>ยังไม่มีความเคลื่อนไหว{canEdit ? " — เริ่มโพสต์อัปเดตได้เลย" : ""}</Empty>}
           </section>
             </div>
+            )}
           </div>
         </div>
       )}
