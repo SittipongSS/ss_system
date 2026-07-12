@@ -149,14 +149,18 @@ export function stageBadge(stage) {
   );
 }
 
-export function KpiCard({ icon, label, value, hint }) {
+export function KpiCard({ icon, label, badge, value, hint, color, interactive = true }) {
   return (
-    <div className="glass-panel interactive-card" style={{ padding: "16px", minHeight: 108 }}>
+    <div className={`glass-panel flex flex-col justify-between ${interactive ? "interactive-card" : ""}`} style={{ padding: "16px", minHeight: 108, borderLeft: color ? `3px solid ${color}` : undefined }}>
       <div className="flex items-center gap-2" style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 600 }}>
-        {icon}
-        <span>{label}</span>
+        {badge ? badge : (
+          <>
+            {icon && icon}
+            {label && <span>{label}</span>}
+          </>
+        )}
       </div>
-      <div className="font-mono tabular-nums" style={{ marginTop: 10, fontSize: 22, fontWeight: 800, color: "var(--text)" }}>
+      <div className="font-mono tabular-nums" style={{ marginTop: 8, fontSize: 24, fontWeight: 800, color: "var(--text)" }}>
         {value}
       </div>
       {hint && <div style={{ marginTop: 4, color: "var(--text-3)", fontSize: 12 }}>{hint}</div>}
