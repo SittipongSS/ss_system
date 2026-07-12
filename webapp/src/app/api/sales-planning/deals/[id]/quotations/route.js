@@ -52,10 +52,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างใบเสนอราคาจากโครงการที่ Lost แล้ว');
 
+  // เงื่อนไขใหม่ (feedback ผู้ใช้): ดีลต้องผูกโครงการก่อน — โครงการเป็นตัวเชื่อมลูกค้า
+  // ส่วนรายการสินค้า (รหัส FG) ค่อยใส่ตอนแก้ใบ ไม่บังคับตอนสร้าง
+  if (!deal.projectId) return badRequest('ดีลนี้ยังไม่ผูกโครงการ — สร้าง/ผูกโครงการก่อน แล้วจึงออกใบเสนอราคา');
+
   const body = await req.json().catch(() => ({}));
   let lines = normalizeManualLines(body.lines || []);
-  if (!lines.length) lines = await seedLinesFromProject(supabase, deal);
-  if (!lines.length) return badRequest('ต้องมีอย่างน้อย 1 line หรือผูก PM project ที่มี FG ก่อน');
+  // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
+  if (!lines.length && body.seedFromProject) lines = await seedLinesFromProject(supabase, deal);
 
   // ส่วนลดท้ายใบ + VAT (เฟส D — FM-SA-01): default vatRate 0 = ราคารวม VAT แล้ว
   const discountType = ['percent', 'amount'].includes(body.discountType) ? body.discountType : null;
@@ -101,11 +105,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .single();
   if (error) return fail(error.code === '23505' ? `เลข quotation ซ้ำ: ${quoteNumber}` : error.message, error.code === '23505' ? 409 : 500);
 
-  const rows = lines.map((line) => ({ ...line, quotationId: quote.id }));
-  const { data: insertedLines, error: lineError } = await supabase.from('quotation_lines').insert(rows).select();
-  if (lineError) {
-    await supabase.from('quotations').delete().eq('id', quote.id);
-    return fail(lineError.message, 500);
+  let insertedLines = [];
+  if (lines.length) {
+    const rows = lines.map((line) => ({ ...line, quotationId: quote.id }));
+    const { data: lineRows, error: lineError } = await supabase.from('quotation_lines').insert(rows).select();
+    if (lineError) {
+      await supabase.from('quotations').delete().eq('id', quote.id);
+      return fail(lineError.message, 500);
+    }
+    insertedLines = lineRows || [];
   }
 
   const nextStage = deal.stage === 'lead' || deal.stage === 'qualified' ? 'quotation' : deal.stage;

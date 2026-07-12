@@ -7,12 +7,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import Modal from "@/components/Modal";
 import SlidePanel from "@/components/ui/SlidePanel";
 import FormattedNumberInput from "@/components/ui/FormattedNumberInput";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
+import { DEAL_TYPES, DEAL_TYPE_LABELS } from "@/lib/salesPlanning";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
@@ -169,6 +169,61 @@ export default function LeadsPage() {
     }
   };
 
+  // สร้างดีลจากลีด (feedback ผู้ใช้): ติ้กประเภทที่จะเปิดได้หลายอันในครั้งเดียว —
+  // ลดขั้นการกรอก (ลูกค้า/ทีม/ผู้ดูแล/มูลค่า ดึงจากลีดให้หมด)
+  const canEditDeals = useCan("salesplan:edit");
+  const [dealModal, setDealModal] = useState(null); // lead
+  const [dealTypesPick, setDealTypesPick] = useState({});
+  const [dealBaseTitle, setDealBaseTitle] = useState("");
+  const [dealValue, setDealValue] = useState("");
+  const [dealMonth, setDealMonth] = useState("");
+  const openDealModal = (lead) => {
+    setDealModal(lead);
+    setDealTypesPick({ SCENT: false, NPD: true, "RE-ORDER": false });
+    setDealBaseTitle(lead.company || lead.contactName || "");
+    setDealValue(lead.budget ?? "");
+    setDealMonth(thisMonth());
+  };
+  const submitDeals = async () => {
+    const lead = dealModal;
+    const picked = DEAL_TYPES.filter((t) => dealTypesPick[t]);
+    if (!lead || !picked.length) return;
+    setBusy("deals");
+    setError("");
+    try {
+      const created = [];
+      for (const t of picked) {
+        const res = await fetch("/api/sales-planning/deals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `${dealBaseTitle || lead.contactName} — ${DEAL_TYPE_LABELS[t]}`,
+            customerId: lead.customerId,
+            dealType: t,
+            stage: "qualified",
+            projectValue: dealValue || 0,
+            forecastMonth: dealMonth || undefined,
+            ownerId: lead.assigneeId || undefined,
+            ownerName: lead.assigneeName || undefined,
+            team: lead.team || undefined,
+            notes: [lead.serviceDetail, lead.details].filter(Boolean).join(" · ") || undefined,
+            metadata: { leadId: lead.id, source: "lead", leadChannel: lead.channel },
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `สร้างดีล ${t} ไม่สำเร็จ`);
+        created.push(data);
+      }
+      setDealModal(null);
+      setError("");
+      window.location.href = created.length === 1 ? `/sa/deals/${created[0].id}` : "/sa/deals";
+    } catch (e) {
+      setError(e.message || "สร้างดีลไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  };
+
   const confirmDelete = (lead) => {
     setLeadToDelete(lead);
   };
@@ -305,6 +360,11 @@ export default function LeadsPage() {
                             <Icon size={13} aria-hidden="true" /> {label}
                           </button>
                         ))}
+                        {lead.status === "qualified" && lead.customerId && canEditDeals && (
+                          <button type="button" className="btn btn-primary sm" onClick={() => openDealModal(lead)} disabled={!!busy} title="เปิดดีลจากลีดนี้ — ติ้กได้หลายประเภท">
+                            <Plus size={13} aria-hidden="true" /> สร้างดีล
+                          </button>
+                        )}
                         {canEditRow(lead) && (
                           <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไขลีด" aria-label={`แก้ไข ${lead.contactName}`}
                             onClick={() => { setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", details: lead.details || "" }); setFormOpen(true); }}>
@@ -394,6 +454,49 @@ export default function LeadsPage() {
             <textarea className="premium-input" rows={3} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
           </label>
         </form>
+      </SlidePanel>
+
+      {/* สร้างดีลจากลีด — ติ้กประเภทได้หลายอัน ลดขั้นการกรอก */}
+      <SlidePanel open={!!dealModal} isOpen={!!dealModal} onClose={() => !busy && setDealModal(null)} width="max-w-md" title="สร้างดีลจากลีด"
+        footer={
+          <>
+            <button type="button" className="btn ghost" onClick={() => setDealModal(null)} disabled={!!busy}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={submitDeals} disabled={!!busy || !DEAL_TYPES.some((t) => dealTypesPick[t])}>
+              {busy === "deals" ? "กำลังสร้าง…" : `สร้าง ${DEAL_TYPES.filter((t) => dealTypesPick[t]).length} ดีล`}
+            </button>
+          </>
+        }>
+        {dealModal && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+              ลีด: <strong style={{ color: "var(--text)" }}>{dealModal.contactName}</strong>{dealModal.company ? ` · ${dealModal.company}` : ""}
+              {dealModal.team ? ` · ทีม ${TEAM_LABELS[dealModal.team] || dealModal.team}` : ""}{dealModal.assigneeName ? ` · ${dealModal.assigneeName}` : ""}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13.5 }}>
+              <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 600 }}>เปิดดีลประเภท (ติ้กได้หลายอัน)</span>
+              {DEAL_TYPES.map((t) => (
+                <label key={t} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <input type="checkbox" checked={!!dealTypesPick[t]} onChange={(e) => setDealTypesPick({ ...dealTypesPick, [t]: e.target.checked })} />
+                  <strong>{t}</strong> · {DEAL_TYPE_LABELS[t]}
+                </label>
+              ))}
+            </div>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              ชื่องาน (ระบบต่อท้ายประเภทให้)
+              <input className="premium-input" value={dealBaseTitle} onChange={(e) => setDealBaseTitle(e.target.value)} />
+            </label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                มูลค่าคาดการณ์/ดีล (จาก budget)
+                <FormattedNumberInput value={dealValue} onChange={(v) => setDealValue(v)} className="premium-input mono" />
+              </label>
+              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                เดือนพยากรณ์
+                <input type="month" className="premium-input" value={dealMonth} onChange={(e) => setDealMonth(e.target.value)} />
+              </label>
+            </div>
+          </div>
+        )}
       </SlidePanel>
 
       <SlidePanel open={!!actionModal} isOpen={!!actionModal} onClose={() => !busy && setActionModal(null)} width="max-w-md"
