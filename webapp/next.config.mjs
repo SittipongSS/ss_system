@@ -18,11 +18,10 @@ const nextConfig = {
   // exposing the old system split in user-facing navigation.
   async rewrites() {
     return [
-      { source: '/sa', destination: '/sales-planning' },
+      { source: '/sa', destination: '/sa/dashboard' },
       // เฟส C: คิวลีด + KPI
       { source: '/sa/leads', destination: '/sales-planning/leads' },
       { source: '/sa/leads/:path*', destination: '/sales-planning/leads/:path*' },
-      { source: '/sa/kpi', destination: '/sales-planning/kpi' },
       // เฟส D: ใบเสนอราคา
       { source: '/sa/quotations', destination: '/sales-planning/quotations' },
       { source: '/sa/quotations/:path*', destination: '/sales-planning/quotations/:path*' },
@@ -39,7 +38,7 @@ const nextConfig = {
   },
   async redirects() {
     return [
-      { source: '/sales-planning', destination: '/sa', permanent: false },
+      { source: '/sales-planning', destination: '/sa/dashboard', permanent: false },
       { source: '/sales-planning/deals', destination: '/sa/deals', permanent: false },
       { source: '/sales-planning/deals/:path*', destination: '/sa/deals/:path*', permanent: false },
       { source: '/sales-planning/targets', destination: '/sa/targets', permanent: false },
