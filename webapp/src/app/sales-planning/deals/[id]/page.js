@@ -17,6 +17,7 @@ import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
 import { FORECAST_LEVELS, dealTypeBadge, forecastBadge, snapForecastLevel, MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
 import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
+import DealTimelineTable from "@/components/salesPlanning/DealTimelineTable";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
@@ -91,41 +92,6 @@ const TASK_STATUS_META = {
 function TaskStatusBadge({ status }) {
   const meta = TASK_STATUS_META[status] || { label: status || "-", color: "var(--text-3)" };
   return <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>;
-}
-
-// DL2: ตารางขั้นตอนไทม์ไลน์ของดีล — ใช้ทั้ง segment ในโครงการ และชุดลอยก่อนผูกโครงการ
-function SegmentTaskTable({ tasks, canEdit, busy, onStatus }) {
-  return (
-    <div className="premium-glass-table table-responsive">
-      <table className="w-full text-sm">
-        <thead>
-          <tr><th>#</th><th>ขั้นตอน</th><th>แผนก</th><th>เริ่ม</th><th>เสร็จ</th><th>สถานะ</th></tr>
-        </thead>
-        <tbody>
-          {tasks.map((t, i) => (
-            <tr key={t.id} className="premium-row">
-              <td className="mono">{i + 1}</td>
-              <td style={{ fontWeight: 600 }}>
-                {t.name}
-                {t.phase && <span style={{ display: "block", color: "var(--text-3)", fontSize: 11.5, fontWeight: 500 }}>{t.phase}</span>}
-              </td>
-              <td><span className="ui-badge" style={{ color: "var(--text-2)" }}>{t.role || "-"}</span></td>
-              <td className="mono" style={{ whiteSpace: "nowrap" }}>{fmtDate(t.startDate)}</td>
-              <td className="mono" style={{ whiteSpace: "nowrap" }}>{fmtDate(t.finishDate)}</td>
-              <td>
-                {canEdit ? (
-                  <select className="premium-select" value={t.status || "Pending"} disabled={busy}
-                    onChange={(e) => onStatus(t, e.target.value)} aria-label={`สถานะ ${t.name}`} style={{ width: 140 }}>
-                    {Object.entries(TASK_STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-                  </select>
-                ) : <TaskStatusBadge status={t.status} />}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
 }
 
 // แถบ lifecycle: ลีด → … → เข้าโครงการ (lost = แถบแดงแทน) — ฝังใน hero สถานะ
@@ -442,11 +408,6 @@ export default function DealOverviewPage() {
     if (!window.confirm("ลบไทม์ไลน์ของดีลนี้ทั้งชุด (ความคืบหน้าหายด้วย) แล้วค่อยสร้างใหม่?")) return;
     return runAction("drop-timeline", `/api/sales-planning/deals/${id}/timeline`, { method: "DELETE" });
   };
-  const setOwnTaskStatus = (task, status) => runAction(`task-${task.id}`, `/api/pm/project-tasks/${task.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
-  });
 
   // ปิด Won ต้องกรอกมูลค่าปิดจริง — เปิดโมดัลรับตัวเลข (prefill = มูลค่าคาดการณ์)
   const [winOpen, setWinOpen] = useState(false);
@@ -897,7 +858,7 @@ export default function DealOverviewPage() {
                   แก้สถานะจากหน้าดีลได้เลย ไม่ต้องเข้าโครงการ (PATCH ตัวเดียวกับฝั่ง PM) */}
               {(data.projectTasks || []).length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <SegmentTaskTable tasks={data.projectTasks} canEdit={canEdit} busy={!!actionBusy} onStatus={setOwnTaskStatus} />
+                  <DealTimelineTable tasks={data.projectTasks} canEdit={canEdit} dealId={deal.id} projectId={data.project?.id || null} onChanged={load} onError={setError} />
                 </div>
               )}
               {/* เฟส B: ดีลอื่นในโครงการเดียวกัน (SCENT→NPD→RE-ORDER…) — ลิงก์ข้าม */}
@@ -933,7 +894,7 @@ export default function DealOverviewPage() {
                     </button>
                   )}
                 </div>
-                <SegmentTaskTable tasks={data.projectTasks} canEdit={canEdit} busy={!!actionBusy} onStatus={setOwnTaskStatus} />
+                <DealTimelineTable tasks={data.projectTasks} canEdit={canEdit} dealId={deal.id} projectId={data.project?.id || null} onChanged={load} onError={setError} />
                 {canEdit && deal?.stage !== "lost" && (
                   <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                     <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy} title="สร้างโครงการ — ไทม์ไลน์ชุดนี้จะย้ายเข้าโครงการทั้งชุด">
