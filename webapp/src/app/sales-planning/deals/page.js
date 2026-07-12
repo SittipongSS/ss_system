@@ -473,6 +473,16 @@ export default function SalesPlanningPipelinePage() {
     if (scope === "team" && me?.team) return d.team === me.team;
     return true;
   });
+  const totalDeals = kpiDeals.length;
+  const pipelineValue = kpiDeals
+    .filter((d) => !["won", "lost", "in_project"].includes(d.stage))
+    .reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
+  const wonDeals = kpiDeals.filter((d) => ["won", "in_project"].includes(d.stage));
+  const wonValue = wonDeals.reduce(
+    (sum, d) => sum + Number(d.wonValue || d.projectValue || 0),
+    0,
+  );
+  const lostDeals = kpiDeals.filter((d) => d.stage === "lost");
 
   return (
     <Workspace
