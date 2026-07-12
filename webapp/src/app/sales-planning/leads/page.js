@@ -422,31 +422,82 @@ export default function LeadsPage() {
                       {lead.disqualifiedReason && <span style={{ display: "block", color: "var(--text-3)", fontSize: 11 }}>{lead.disqualifiedReason}</span>}
                     </td>
                     <td style={{ whiteSpace: "nowrap", fontSize: 12.5, color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
-                    <td className="num">
-                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center", minWidth: 280 }}>
-                        {rowActions(lead).map(({ a, label, icon: Icon, primary }) => (
-                          <button key={a} type="button" className={`btn sm ${primary ? "btn-primary" : "ghost"}`} onClick={() => openAction(lead, a)} disabled={!!busy} style={{ width: 90, padding: "0 8px", justifyContent: "center" }}>
-                            <Icon size={13} aria-hidden="true" /> {label}
-                          </button>
-                        ))}
-                        {lead.status === "qualified" && lead.customerId && canEditDeals && (
-                          <button type="button" className="btn btn-primary sm" onClick={() => openDealModal(lead)} disabled={!!busy} title="เปิดดีลจากลีดนี้ — ติ้กได้หลายประเภท">
-                            <Plus size={13} aria-hidden="true" /> สร้างดีล
-                          </button>
-                        )}
-                        {canEditRow(lead) && (
-                          <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไขลีด" aria-label={`แก้ไข ${lead.contactName}`}
-                            onClick={() => { setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", details: lead.details || "" }); setFormOpen(true); }}>
-                            <Pencil size={14} aria-hidden="true" />
-                          </button>
-                        )}
-                        {superuser && !["contacted", "meeting", "qualified", "disqualified"].includes(lead.status) && (
-                          <button type="button" className="btn-icon danger" title="ลบลีด" aria-label={`ลบ ${lead.contactName}`} onClick={() => deleteLead(lead)}>
-                            <Trash2 size={14} aria-hidden="true" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
+                    <td className="num" style={{ verticalAlign: "middle" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "100px 80px 85px 28px 28px", gap: 6, justifyContent: "flex-end", alignItems: "center", minWidth: 345 }}>
+                          
+                          {/* Slot 1: Primary Action */}
+                          <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+                            {(() => {
+                              const primary = rowActions(lead).find(a => ["screen", "assign", "contact", "meeting", "create_deal"].includes(a.a));
+                              if (primary) {
+                                return (
+                                  <button type="button" className="btn btn-primary sm" onClick={() => openAction(lead, primary.a)} disabled={!!busy} style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                    <primary.icon size={13} aria-hidden="true" /> {primary.label}
+                                  </button>
+                                );
+                              }
+                              if (lead.status === "qualified" && lead.customerId && canEditDeals) {
+                                return (
+                                  <button type="button" className="btn btn-primary sm" onClick={() => openDealModal(lead)} disabled={!!busy} title="เปิดดีลจากลีดนี้" style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                    <Plus size={13} aria-hidden="true" /> สร้างดีล
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+
+                          {/* Slot 2: Bounce */}
+                          <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+                            {(() => {
+                              const bounce = rowActions(lead).find(a => a.a === "bounce");
+                              if (bounce) {
+                                return (
+                                  <button type="button" className="btn ghost sm" onClick={() => openAction(lead, bounce.a)} disabled={!!busy} style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                    <bounce.icon size={13} aria-hidden="true" /> {bounce.label}
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+
+                          {/* Slot 3: Disqualify */}
+                          <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+                            {(() => {
+                              const dq = rowActions(lead).find(a => a.a === "disqualify");
+                              if (dq) {
+                                return (
+                                  <button type="button" className="btn ghost sm" onClick={() => openAction(lead, dq.a)} disabled={!!busy} style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                    <dq.icon size={13} aria-hidden="true" /> {dq.label}
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+
+                          {/* Slot 4: Edit */}
+                          <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
+                            {canEditRow(lead) && (
+                              <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไขลีด" aria-label={`แก้ไข ${lead.contactName}`}
+                                onClick={() => { setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", details: lead.details || "" }); setFormOpen(true); }}>
+                                <Pencil size={14} aria-hidden="true" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Slot 5: Delete */}
+                          <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
+                            {superuser && !["contacted", "meeting", "qualified", "disqualified"].includes(lead.status) && (
+                              <button type="button" className="btn-icon danger" title="ลบลีด" aria-label={`ลบ ${lead.contactName}`} onClick={() => deleteLead(lead)}>
+                                <Trash2 size={14} aria-hidden="true" />
+                              </button>
+                            )}
+                          </div>
+
+                        </div>
+                      </td>
                   </tr>
                 ))}
                 {!filtered.length && !loading && (
