@@ -45,7 +45,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json().catch(() => ({}));
   const categoryCode = (body.categoryCode ?? deal.categoryCode ?? '').trim() || null;
-  const startDate = body.startDate || todayStr();
+  // anchor: body > วันที่เริ่มของดีล (mig 0095) > วันนี้
+  const startDate = body.startDate || deal.startDate || todayStr();
   const now = new Date().toISOString();
 
   setHolidays([...(await holidaySet())]);

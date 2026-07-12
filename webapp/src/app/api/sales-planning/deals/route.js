@@ -109,6 +109,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     formulaName: (body.formulaName || '').trim() || null,
     // หมวดสินค้า (DL1 — mig 0094): ใช้เลือก timeline template ตามหมวด
     categoryCode: (body.categoryCode || '').trim() || null,
+    // วันที่เริ่ม/สิ้นสุดของดีล (mig 0095) — startDate ใช้เป็น anchor gen ไทม์ไลน์
+    startDate: body.startDate || null,
+    endDate: body.endDate || null,
     metadata: {
       ...(body.metadata || {}),
       projectType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
@@ -116,6 +119,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     },
     leadId: body.leadId || body.metadata?.leadId || null,
   };
+
+  // มติผู้ใช้: NPD/RE-ORDER ต้องระบุหมวดสินค้า (SCENT ไม่บังคับ — งานกลิ่นไม่มีหมวด)
+  if (row.dealType !== 'SCENT' && !row.categoryCode) {
+    return badRequest('ดีล NPD/RE-ORDER ต้องเลือกหมวดสินค้า');
+  }
 
   // The creator may only mint deals within its own edit scope: an AE cannot
   // hand ownership to another user, and team-scoped roles cannot create for
