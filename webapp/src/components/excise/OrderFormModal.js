@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import DateInput from "@/components/ui/DateInput";
 import { fmtMoney } from "@/lib/format";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
@@ -137,8 +138,8 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
             </div>
             <div className="form-group">
               <label>วันที่คาดว่าจะส่ง</label>
-              <input type="date" className="premium-input w-full" value={form.deliveryDate}
-                onChange={(e) => setForm((f) => ({ ...f, deliveryDate: e.target.value }))} />
+              <DateInput className="w-full" value={form.deliveryDate}
+                onChange={(value) => setForm((f) => ({ ...f, deliveryDate: value }))} />
             </div>
             <div className="form-group">
               <label>หมายเหตุ</label>

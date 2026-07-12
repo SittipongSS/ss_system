@@ -1,10 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fmtDateNumeric, fmtNumber, fmtPercent, formatMoneyInput, parseNumberInput } from "./format.js";
+import { displayDateToIso, fmtDateNumeric, fmtNumber, fmtPercent, formatMoneyInput, formatMoneyInputWhileTyping, isoDateToDisplay, parseNumberInput } from "./format.js";
 
 test("money input accepts raw and grouped values", () => {
   assert.equal(parseNumberInput("1,000,000.50"), 1000000.5);
   assert.equal(formatMoneyInput("1000000"), "1,000,000.00");
+  assert.equal(formatMoneyInputWhileTyping("1000000"), "1,000,000");
+  assert.equal(formatMoneyInputWhileTyping("1000000.5"), "1,000,000.5");
+});
+
+test("date input converts display format and ISO payload without timezone", () => {
+  assert.equal(isoDateToDisplay("2026-07-12"), "12/07/2026");
+  assert.equal(displayDateToIso("12/07/2026"), "2026-07-12");
+  assert.equal(displayDateToIso("31/02/2026"), null);
 });
 
 test("number input preserves valid zero and rejects incomplete input", () => {

@@ -45,6 +45,30 @@ export const formatMoneyInput = (value) => {
   return fmtNumber(parsed, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+export const formatMoneyInputWhileTyping = (value) => {
+  const raw = String(value ?? "").replace(/,/g, "");
+  if (!raw) return "";
+  const sign = raw.startsWith("-") ? "-" : "";
+  const unsigned = sign ? raw.slice(1) : raw;
+  const [integer = "", decimal] = unsigned.split(".");
+  const grouped = (integer || "0").replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${sign}${grouped}${decimal !== undefined ? `.${decimal.slice(0, 2)}` : ""}`;
+};
+
+export const isoDateToDisplay = (value) => {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+};
+
+export const displayDateToIso = (value) => {
+  const match = String(value || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  const [, dd, mm, yyyy] = match;
+  const date = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+  if (date.getUTCFullYear() !== Number(yyyy) || date.getUTCMonth() + 1 !== Number(mm) || date.getUTCDate() !== Number(dd)) return null;
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 // เงินแบบย่อ: ฿ + x.xxK (พัน) / x.xxM (ล้าน); ต่ำกว่าพันแสดงเต็ม 2 ทศนิยม.
 // ใช้ในที่แคบ เช่น KPI card / กราฟ / แดชบอร์ด ที่ตัวเลขยาวเกินไป.
 export const fmtMoneyCompact = (amount) => {

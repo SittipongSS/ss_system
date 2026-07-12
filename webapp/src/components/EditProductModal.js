@@ -1,4 +1,5 @@
 "use client";
+import MoneyInput from "@/components/ui/MoneyInput";
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Factory } from "lucide-react";
 import Modal from "@/components/Modal";
@@ -312,7 +313,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
             </div>
             <div className="form-group">
               <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
-              <input type="number" value={form.retailPriceIncVat ?? ""} onChange={(e) => set("retailPriceIncVat", e.target.value)} min="0" step="0.01" className="premium-input w-full font-mono" />
+              <MoneyInput value={form.retailPriceIncVat ?? ""} onChange={(value) => set("retailPriceIncVat", value ?? "")} className="w-full" />
             </div>
           </div>
 
@@ -366,14 +367,11 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
                 <div className="form-grid cols-2">
                   <div className="form-group">
                     <label htmlFor="factory-price-update">ราคาโรงงานใหม่ (บาท)</label>
-                    <input
+                    <MoneyInput
                       id="factory-price-update"
-                      type="number"
-                      min="0"
-                      step="0.01"
                       value={factoryPriceDraft}
-                      onChange={(e) => setFactoryPriceDraft(e.target.value)}
-                      className="premium-input w-full font-mono tabular-nums"
+                      onChange={(value) => setFactoryPriceDraft(value ?? "")}
+                      className="w-full"
                       aria-describedby="factory-price-help factory-price-error"
                       aria-invalid={!!priceError}
                     />

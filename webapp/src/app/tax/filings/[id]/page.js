@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ReceiptText, Pencil, Wallet, FileCheck, Printer } from "lucide-react";
 import { ActionBar, ActionButton } from "@/components/ui/ActionButtons";
 import Workspace from "@/components/ui/Workspace";
+import DateInput from "@/components/ui/DateInput";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -121,9 +122,9 @@ export default function FilingDetailPage() {
             {canApprove && o.status === "received" && (
               <div className="form-group" style={{ margin: "12px 0 0" }}>
                 <label>กำหนดยื่น (Due date)</label>
-                <input type="date" className="premium-input" style={{ maxWidth: 180 }}
+                <DateInput style={{ maxWidth: 180 }}
                   value={o.taxDueDate && /^\d{4}-\d{2}-\d{2}/.test(o.taxDueDate) ? o.taxDueDate.slice(0, 10) : ""}
-                  onChange={(e) => setDue(e.target.value)} />
+                  onChange={setDue} />
               </div>
             )}
           </div>

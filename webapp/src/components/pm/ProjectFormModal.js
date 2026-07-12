@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect, useRef } from "react";
 import Modal from "@/components/Modal";
+import DateInput from "@/components/ui/DateInput";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -243,11 +244,11 @@ export default function ProjectFormModal({
           </div>
           <div className="form-group">
             <label>วันที่เริ่มโครงการ <span className="text-[var(--red)]">*</span></label>
-            <input type="date" name="startDate" value={form.startDate} onChange={change} required className="premium-input w-full" title="วันเริ่มเป็นจุดอ้างอิงของ timeline — โครงการย้อนหลังให้ใส่วันจริงในอดีต" />
+            <DateInput name="startDate" value={form.startDate} onChange={(value) => setForm((current) => ({ ...current, startDate: value }))} required className="w-full" title="วันเริ่มเป็นจุดอ้างอิงของ timeline — โครงการย้อนหลังให้ใส่วันจริงในอดีต" />
           </div>
           <div className="form-group">
             <label>Due Date <span className="text-[var(--text-3)] font-normal">(กำหนดส่งลูกค้า)</span></label>
-            <input type="date" name="dueDate" value={form.dueDate} onChange={change} className="premium-input w-full" />
+            <DateInput name="dueDate" value={form.dueDate} onChange={(value) => setForm((current) => ({ ...current, dueDate: value }))} className="w-full" />
           </div>
           <div className="form-group">
             <label>เลขที่ใบเสนอราคา</label>

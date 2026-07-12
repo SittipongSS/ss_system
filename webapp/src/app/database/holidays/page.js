@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
+import DateInput from "@/components/ui/DateInput";
 import { useCan } from "@/lib/roleContext";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
@@ -201,7 +202,7 @@ export default function HolidaysPage() {
             <form onSubmit={submitForm} className="glass-panel" style={{ padding: "16px 18px", marginBottom: "20px", display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label>วันที่ <span className="text-[var(--red)]">*</span></label>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="premium-input" style={{ width: "180px" }} />
+                <DateInput value={date} onChange={setDate} style={{ width: "180px" }} />
               </div>
               <div className="form-group" style={{ margin: 0, flex: 1, minWidth: "200px" }}>
                 <label>ชื่อวันหยุด</label>

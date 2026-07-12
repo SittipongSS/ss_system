@@ -6,6 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
+import DateInput from "@/components/ui/DateInput";
+import MoneyInput from "@/components/ui/MoneyInput";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
@@ -898,7 +900,7 @@ export default function DealOverviewPage() {
                       {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
                     </select>
                     {feedKind === "next_step" && (
-                      <input type="date" className="premium-input" value={feedDue} onChange={(e) => setFeedDue(e.target.value)} style={{ width: 160 }} aria-label="กำหนดวันขั้นถัดไป" />
+                      <DateInput value={feedDue} onChange={setFeedDue} style={{ width: 180 }} ariaLabel="กำหนดวันขั้นถัดไป" />
                     )}
                   </div>
                   <textarea
@@ -962,7 +964,7 @@ export default function DealOverviewPage() {
                               {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
                             </select>
                             {editKind === "next_step" && (
-                              <input type="date" className="premium-input" value={editDue} onChange={(e) => setEditDue(e.target.value)} style={{ width: 160 }} aria-label="กำหนดวัน" />
+                              <DateInput value={editDue} onChange={setEditDue} style={{ width: 180 }} ariaLabel="กำหนดวัน" />
                             )}
                           </div>
                           <textarea className="premium-input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} style={{ resize: "vertical" }} />
@@ -1029,7 +1031,7 @@ export default function DealOverviewPage() {
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
             วันเริ่มงานช่วงนี้
-            <input type="date" className="premium-input" value={linkStartDate} onChange={(e) => setLinkStartDate(e.target.value)} />
+            <DateInput value={linkStartDate} onChange={setLinkStartDate} />
           </label>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <button type="button" className="btn ghost" onClick={() => setLinkOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
@@ -1047,12 +1049,7 @@ export default function DealOverviewPage() {
           </div>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             มูลค่าปิดจริง (บาท)
-            <input
-              type="number" min="0" step="0.01" className="premium-input mono"
-              value={winValue}
-              onChange={(e) => setWinValue(e.target.value)}
-              autoFocus
-            />
+            <MoneyInput value={winValue} onChange={(value) => setWinValue(value ?? "")} autoFocus />
           </label>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
             เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT และ FC จะย้ายมาเดือนนี้ แล้วล็อก</span>
@@ -1165,17 +1162,17 @@ export default function DealOverviewPage() {
             </label>
             <label>
               มูลค่าคาดการณ์{alreadyWon ? " (ล็อกหลังปิด Won)" : ""}
-              <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.projectValue} disabled={alreadyWon} onChange={(e) => setDealForm({ ...dealForm, projectValue: e.target.value })} />
+              <MoneyInput value={dealForm.projectValue} disabled={alreadyWon} onChange={(value) => setDealForm({ ...dealForm, projectValue: value ?? "" })} />
             </label>
             {alreadyWon && (
               <label>
                 มูลค่าปิดจริง (Won)
-                <input type="number" min="0" step="0.01" className="premium-input mono" value={dealForm.wonValue} onChange={(e) => setDealForm({ ...dealForm, wonValue: e.target.value })} />
+                <MoneyInput value={dealForm.wonValue} onChange={(value) => setDealForm({ ...dealForm, wonValue: value ?? "" })} />
               </label>
             )}
             <label>
               คาดปิดได้ (วันที่)
-              <input type="date" className="premium-input" value={dealForm.expectedCloseDate} onChange={(e) => setDealForm({ ...dealForm, expectedCloseDate: e.target.value })} />
+              <DateInput value={dealForm.expectedCloseDate} onChange={(value) => setDealForm({ ...dealForm, expectedCloseDate: value })} />
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <input type="checkbox" checked={dealForm.depositPaid} onChange={(e) => setDealForm({ ...dealForm, depositPaid: e.target.checked })} />

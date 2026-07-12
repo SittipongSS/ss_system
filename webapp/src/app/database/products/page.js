@@ -1,4 +1,5 @@
 "use client";
+import MoneyInput from "@/components/ui/MoneyInput";
 import { useState, useEffect, useMemo } from "react";
 import { Package, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
@@ -582,11 +583,11 @@ export default function ProductRegistry() {
               </div>
               <div className="form-group">
                 <label>ราคาโรงงาน (บาท)</label>
-                <input type="number" name="costPrice" value={formData.costPrice} onChange={handleChange} min="0" step="0.01" className="premium-input w-full font-mono" />
+                <MoneyInput name="costPrice" value={formData.costPrice} onChange={(value) => setFormData((current) => ({ ...current, costPrice: value ?? "" }))} className="w-full" />
               </div>
               <div className="form-group">
                 <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
-                <input type="number" name="retailPriceIncVat" value={formData.retailPriceIncVat} onChange={handleChange} min="0" step="0.01" className="premium-input w-full font-mono" />
+                <MoneyInput name="retailPriceIncVat" value={formData.retailPriceIncVat} onChange={(value) => setFormData((current) => ({ ...current, retailPriceIncVat: value ?? "" }))} className="w-full" />
               </div>
             </div>
           </div>

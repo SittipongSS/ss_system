@@ -1,4 +1,5 @@
 "use client";
+import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -149,11 +150,11 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
               </div>
               <div className="form-group" style={{ width: 150 }}>
                 <label>กำหนดส่ง</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.dueDate} onChange={(e) => setD({ ...d, dueDate: e.target.value })} />
+                <DateInput style={{ height: 30 }} value={d.dueDate} onChange={(value) => setD({ ...d, dueDate: value })} />
               </div>
               <div className="form-group" style={{ width: 150 }}>
                 <label>คาดการณ์ส่ง</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.expectedDate} onChange={(e) => setD({ ...d, expectedDate: e.target.value })} />
+                <DateInput style={{ height: 30 }} value={d.expectedDate} onChange={(value) => setD({ ...d, expectedDate: value })} />
               </div>
               <div className="form-group" style={{ flex: "1 1 160px", minWidth: 140 }}>
                 <label>เหตุผลที่เลื่อน (ถ้ามี)</label>
@@ -161,7 +162,7 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
               </div>
               <div className="form-group" style={{ width: 150 }}>
                 <label><Truck size={12} style={{ verticalAlign: -1 }} /> วันส่งจริง</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.actualDeliveredDate} onChange={(e) => setD({ ...d, actualDeliveredDate: e.target.value })} />
+                <DateInput style={{ height: 30 }} value={d.actualDeliveredDate} onChange={(value) => setD({ ...d, actualDeliveredDate: value })} />
               </div>
               <div className="form-group" style={{ width: 130 }}>
                 <label>สถานะ</label>
@@ -409,15 +410,15 @@ export default function PoDetailPage() {
               </div>
               <div className="form-group">
                 <label>วันที่เอกสาร</label>
-                <input type="date" className="premium-input" value={h.docDate || ""} onChange={(e) => setH({ ...h, docDate: e.target.value })} />
+                <DateInput value={h.docDate || ""} onChange={(value) => setH({ ...h, docDate: value })} />
               </div>
               <div className="form-group">
                 <label>วันที่รับ PO</label>
-                <input type="date" className="premium-input" value={h.receivedDate || ""} onChange={(e) => setH({ ...h, receivedDate: e.target.value })} />
+                <DateInput value={h.receivedDate || ""} onChange={(value) => setH({ ...h, receivedDate: value })} />
               </div>
               <div className="form-group">
                 <label>กำหนดส่ง (ทั้ง PO)</label>
-                <input type="date" className="premium-input" value={h.dueDate || ""} onChange={(e) => setH({ ...h, dueDate: e.target.value })} />
+                <DateInput value={h.dueDate || ""} onChange={(value) => setH({ ...h, dueDate: value })} />
               </div>
               <div className="form-group">
                 <label>สถานที่ส่ง (ทั้ง PO)</label>

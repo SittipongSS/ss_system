@@ -1,4 +1,5 @@
 "use client";
+import DateInput from "@/components/ui/DateInput";
 // ISO Timeline document view (ported from ss-cj ProjectDocumentView).
 // แกนเวลาเป็น "รายวันต่อเนื่อง" + บาร์ลากย้าย/ยืด-หดได้แบบ Monday/ClickUp.
 // การลากบนจอเป็นแค่ UI — commit ผ่าน onUpdateTask (server คำนวณ finishDate/เลื่อน
@@ -642,24 +643,22 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
             />
           </td>
           <td style={{ ...freezeTd(freezeLeft[4], { textAlign: "center", padding: "2px 4px" }) }}>
-            <input
+            <DateInput
               key={`s-${task.startDate || ""}`}
-              type="date"
-              defaultValue={task.startDate || ""}
+              value={task.startDate || ""}
               disabled={!canEdit}
-              onChange={(e) => { const v = e.target.value; if (v && v !== task.startDate) onCommitTask(task.id, { startDate: v }); }}
+              onChange={(value) => { if (value && value !== task.startDate) onCommitTask(task.id, { startDate: value }); }}
               title="เลือกวันเริ่ม"
               style={{ border: "none", background: "transparent", fontSize: "11px", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
             />
           </td>
           <td style={{ ...freezeTd(freezeLeft[5], { textAlign: "center", padding: "2px 4px" }) }}>
-            <input
+            <DateInput
               key={`f-${task.finishDate || ""}`}
-              type="date"
-              defaultValue={task.finishDate || ""}
+              value={task.finishDate || ""}
               disabled={!canEdit}
               min={task.startDate || undefined}
-              onChange={(e) => { const f = e.target.value; if (f && f !== task.finishDate) onCommitTask(task.id, { finishDate: f }); }}
+              onChange={(value) => { if (value && value !== task.finishDate) onCommitTask(task.id, { finishDate: value }); }}
               title="เลือกวันจบ"
               style={{ border: "none", background: "transparent", fontSize: "11px", width: "100%", textAlign: "center", color: "var(--text-2)", cursor: canEdit ? "pointer" : "default" }}
             />

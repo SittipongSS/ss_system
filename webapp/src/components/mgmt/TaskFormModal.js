@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Modal from "@/components/Modal";
+import DateInput from "@/components/ui/DateInput";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
 
 // สร้าง/แก้ไขงาน. task=null → สร้างใหม่. onSaved(row) เรียกหลังบันทึกสำเร็จ.
@@ -82,11 +83,11 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>วันเริ่ม</label>
-            <input type="date" className="premium-input w-full" value={form.startDate || ""} onChange={(e) => set("startDate", e.target.value)} />
+            <DateInput className="w-full" value={form.startDate || ""} onChange={(value) => set("startDate", value)} />
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>วันสิ้นสุด</label>
-            <input type="date" className="premium-input w-full" value={form.dueDate || ""} onChange={(e) => set("dueDate", e.target.value)} />
+            <DateInput className="w-full" value={form.dueDate || ""} onChange={(value) => set("dueDate", value)} />
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>สถานะ</label>

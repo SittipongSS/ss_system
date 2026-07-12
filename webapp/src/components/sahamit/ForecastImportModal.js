@@ -1,4 +1,5 @@
 "use client";
+import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { Upload, Download, AlertTriangle, Plus, X, Pencil } from "lucide-react";
 import Modal from "@/components/Modal";
@@ -201,7 +202,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
         <div className="form-grid cols-3">
           <div className="form-group">
             <label>วันที่รับ FC <span style={{ color: "var(--red)" }}>*</span></label>
-            <input type="date" className="premium-input" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
+            <DateInput value={receivedDate} onChange={setReceivedDate} />
           </div>
           <div className="form-group">
             <label>เดือนเริ่มต้น</label>

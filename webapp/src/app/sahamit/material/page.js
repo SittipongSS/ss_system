@@ -2,6 +2,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -95,14 +96,14 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end", padding: "6px 2px" }}>
               <div className="form-group" style={{ width: 160 }}>
                 <label>PM กำหนดถึง</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.pmDueDate} onChange={(e) => setD({ ...d, pmDueDate: e.target.value })} />
+                <DateInput style={{ height: 30 }} value={d.pmDueDate} onChange={(value) => setD({ ...d, pmDueDate: value })} />
               </div>
               <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
                 <input type="checkbox" checked={d.pmArrived} onChange={(e) => setD({ ...d, pmArrived: e.target.checked })} /> PM มาแล้ว
               </label>
               <div className="form-group" style={{ width: 160 }}>
                 <label>RM กำหนดถึง</label>
-                <input type="date" className="premium-input" style={{ height: 30 }} value={d.rmDueDate} onChange={(e) => setD({ ...d, rmDueDate: e.target.value })} />
+                <DateInput style={{ height: 30 }} value={d.rmDueDate} onChange={(value) => setD({ ...d, rmDueDate: value })} />
               </div>
               <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
                 <input type="checkbox" checked={d.rmArrived} onChange={(e) => setD({ ...d, rmArrived: e.target.checked })} /> RM มาแล้ว

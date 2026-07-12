@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart, FolderKanban } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
+import MoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS } from "@/lib/salesPlanning";
@@ -434,7 +435,7 @@ export default function LeadsPage() {
           </label>
           <label>
             Budget (บาท)
-            <input type="number" min="0" step="0.01" className="premium-input mono" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} />
+            <MoneyInput value={form.budget} onChange={(value) => setForm({ ...form, budget: value ?? "" })} />
           </label>
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียดเพิ่มเติม
@@ -471,7 +472,7 @@ export default function LeadsPage() {
             <div style={{ display: "flex", gap: 8 }}>
               <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                 มูลค่าคาดการณ์/ดีล (จาก budget)
-                <input type="number" min="0" step="0.01" className="premium-input mono" value={dealValue} onChange={(e) => setDealValue(e.target.value)} />
+                <MoneyInput value={dealValue} onChange={(value) => setDealValue(value ?? "")} />
               </label>
               <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                 เดือนพยากรณ์
@@ -556,7 +557,7 @@ export default function LeadsPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                     ยอดคาดการณ์เบื้องต้น (บาท)
-                    <input type="number" className="premium-input mono" min="0" value={actForecastAmount} onChange={(e) => setActForecastAmount(e.target.value)} placeholder="0" />
+                    <MoneyInput value={actForecastAmount} onChange={(value) => setActForecastAmount(value ?? "")} placeholder="0.00" />
                   </label>
                   <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                     เดือนที่จะเก็บยอด (Forecast)
