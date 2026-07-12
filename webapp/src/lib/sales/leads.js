@@ -10,10 +10,10 @@ export const LEAD_CHANNELS = [
   'phone', 'walkin', 'website',
 ];
 export const LEAD_CHANNEL_LABELS = {
-  chatcone_line: 'Chatcone · LINE',
-  chatcone_meta: 'Chatcone · Meta',
-  chatcone_tiktok: 'Chatcone · TikTok',
-  chatcone_ig: 'Chatcone · IG',
+  chatcone_line: 'LINE',
+  chatcone_meta: 'Meta',
+  chatcone_tiktok: 'TikTok',
+  chatcone_ig: 'IG',
   phone: 'โทรเข้า',
   walkin: 'Walk-in',
   website: 'เว็บไซต์',
