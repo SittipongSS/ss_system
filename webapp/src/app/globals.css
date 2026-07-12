@@ -4722,3 +4722,22 @@ button.empty-state { width: 100%; font: inherit; }
 .chart-group:hover .chart-bar:not(:hover) {
   opacity: 0.3;
 }
+
+.btn-status {
+  background: var(--btn-bg, var(--navy));
+  border: 1px solid var(--border-strong);
+  color: #fff;
+}
+.btn-status:hover {
+  background: color-mix(in oklab, var(--btn-bg, var(--navy)) 85%, #fff);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-status-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--btn-bg);
+}
+.btn-status-ghost:hover {
+  background: color-mix(in srgb, var(--btn-bg) 10%, transparent);
+}
