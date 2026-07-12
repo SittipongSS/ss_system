@@ -417,3 +417,5 @@ list ฝั่ง PM → ดรอป unique → link-project → `project_tasks
 - ตีกลับ 2 จุด: ทีมผิด (ลีด) + เอกสารไม่ครบ (won) — ตรวจ event/audit ครบ
 - KPI: สร้างข้อมูลคร่อมวันหยุด → SLA คิดวันทำการถูก; FC accuracy ตรงกับคำนวณมือ
 - สิทธิ์: MK เห็นแค่ลีด · AE เห็นของตัวเอง · Senior เห็นทีม · Supervisor เห็นหมด + อนุมัติได้คนเดียว
+
+<!-- deploy bump 2026-07-13 -->
