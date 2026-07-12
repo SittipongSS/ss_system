@@ -291,9 +291,9 @@ export default function LeadsPage() {
   };
 
   const canEditRow = (lead) => {
-    if (["qualified", "disqualified"].includes(lead.status)) return false;
     if (superuser) return true;
-    if (role === "marketing") return lead.createdBy != null; // ของตัวเอง — API บังคับซ้ำ
+    if (["contacted", "meeting", "qualified", "disqualified"].includes(lead.status)) return false;
+    if (role === "marketing") return lead.createdBy != null;
     return canLead;
   };
 
@@ -332,7 +332,7 @@ export default function LeadsPage() {
           <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label={allMonths ? "ลีดทั้งหมด" : `ลีดเดือน ${month}`} value={kpi?.funnel?.total ?? "-"} hint={`เปิดลูกค้าแล้ว ${kpi?.funnel?.qualified ?? 0} · ไม่ไปต่อ ${kpi?.funnel?.disqualified ?? 0}`} />
           <KpiCard icon={<Filter size={16} aria-hidden="true" />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} hint={`ตรวจ ${kpi?.sla?.screen?.checked ?? 0} ใบ · ค้างคิว ${kpi?.sla?.screen?.pending ?? 0}`} />
           <KpiCard icon={<PhoneCall size={16} aria-hidden="true" />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} hint={`ตรวจ ${kpi?.sla?.contact?.checked ?? 0} ใบ · ค้างติดต่อ ${kpi?.sla?.contact?.pending ?? 0}`} />
-          <KpiCard icon={<CalendarClock size={16} aria-hidden="true" />} label="นัดประชุม / ตีกลับ" value={`${kpi?.funnel?.meeting ?? 0} / ${kpi?.funnel?.bounced ?? 0}`} hint={<Link href="/sa/kpi" className="linklike">ดู KPI เต็ม →</Link>} />
+          <KpiCard icon={<CalendarClock size={16} aria-hidden="true" />} label="นัดประชุม / ตีกลับ" value={`${kpi?.funnel?.meeting ?? 0} / ${kpi?.funnel?.bounced ?? 0}`} hint={<Link href="/sa/dashboard?tab=lead_kpi" className="linklike">ดู KPI เต็ม →</Link>} />
         </section>
 
         <section className="glass-panel" style={{ padding: 16 }}>
@@ -389,9 +389,9 @@ export default function LeadsPage() {
                     </td>
                     <td style={{ whiteSpace: "nowrap", fontSize: 12.5, color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
                     <td className="num">
-                      <div className="flex items-center gap-1.5 justify-end" style={{ flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center", minWidth: 280 }}>
                         {rowActions(lead).map(({ a, label, icon: Icon, primary }) => (
-                          <button key={a} type="button" className={`btn sm ${primary ? "btn-primary" : "ghost"}`} onClick={() => openAction(lead, a)} disabled={!!busy}>
+                          <button key={a} type="button" className={`btn sm ${primary ? "btn-primary" : "ghost"}`} onClick={() => openAction(lead, a)} disabled={!!busy} style={{ width: 90, padding: "0 8px", justifyContent: "center" }}>
                             <Icon size={13} aria-hidden="true" /> {label}
                           </button>
                         ))}
@@ -406,7 +406,7 @@ export default function LeadsPage() {
                             <Pencil size={14} aria-hidden="true" />
                           </button>
                         )}
-                        {superuser && (
+                        {superuser && !["contacted", "meeting", "qualified", "disqualified"].includes(lead.status) && (
                           <button type="button" className="btn-icon danger" title="ลบลีด" aria-label={`ลบ ${lead.contactName}`} onClick={() => deleteLead(lead)}>
                             <Trash2 size={14} aria-hidden="true" />
                           </button>
@@ -425,7 +425,7 @@ export default function LeadsPage() {
       </div>
 
       {/* ฟอร์มรับ/แก้ลีด */}
-      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"} size="lg">
+      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"} size="xl">
         <form onSubmit={saveLead} className="form-grid" aria-busy={busy === "save"} style={{ padding: 18 }}>
           
           <div style={{ gridColumn: "1 / -1" }}>

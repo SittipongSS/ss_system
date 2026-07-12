@@ -17,7 +17,7 @@ async function loadLead(supabase, id) {
 function canEditLead(user, lead) {
   const role = user?.role;
   if (isSuperuser(role)) return true;
-  if (['qualified', 'disqualified'].includes(lead.status)) return false;
+  if (['contacted', 'meeting', 'qualified', 'disqualified'].includes(lead.status)) return false;
   if (role === 'marketing') return lead.createdBy === user.id;
   if (role === 'senior_ae' || role === 'ac') return !lead.team || lead.team === user.team;
   if (role === 'ae') return lead.assigneeId === user.id || lead.createdBy === user.id;
@@ -81,7 +81,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const before = await loadLead(supabase, id);
   if (!before) return notFound('ไม่พบลีด');
-  if (before.status === 'qualified') return badRequest('ลีดที่เปิดลูกค้าแล้วลบไม่ได้');
+  if (['contacted', 'meeting', 'qualified', 'disqualified'].includes(before.status)) return badRequest('ลีดที่มีการติดต่อแล้วจะลบไม่ได้');
   const { error } = await supabase.from('sales_leads').delete().eq('id', id);
   if (error) return fail(error.message, 500);
   await recordAudit({ user, action: 'delete', entityType: 'sales_lead', entityId: id, before, summary: `ลบลีด ${before.contactName}`, request: req });

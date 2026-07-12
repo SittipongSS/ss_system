@@ -49,7 +49,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const driftMap = await loadForecastDriftMap(supabase, data || []).catch(() => new Map());
   const rows = (data || []).filter((d) => inSalesViewScope(user, d)).map((d) => ({
     ...d,
-    canEdit: editor && inSalesEditScope(user, d),
+    canEdit: isSuperuser(user.role),
     forecastDrift: driftMap.get(d.id) || null,
   }));
   return ok(rows);
