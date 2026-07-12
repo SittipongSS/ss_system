@@ -419,3 +419,4 @@ list ฝั่ง PM → ดรอป unique → link-project → `project_tasks
 - สิทธิ์: MK เห็นแค่ลีด · AE เห็นของตัวเอง · Senior เห็นทีม · Supervisor เห็นหมด + อนุมัติได้คนเดียว
 
 <!-- deploy bump 2026-07-13 -->
+<!-- deploy bump 2 -->
