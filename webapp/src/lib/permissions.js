@@ -443,6 +443,10 @@ export function canSeeTaskKpi(role) {
   return isSuperuser(role) || role === 'senior_ae' || role === 'viewer';
 }
 
+export function canSeeLeadKpi(role) {
+  return isSuperuser(role) || role === 'marketing' || role === 'viewer';
+}
+
 export function pmTaskScopes(role) {
   if (isSuperuser(role)) return ['mine', 'team', 'all'];
   // viewer = whole-system read-only observer → sees every team's tasks. It has no

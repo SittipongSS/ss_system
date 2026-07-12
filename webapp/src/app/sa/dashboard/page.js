@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, Target, X, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam, useRole } from "@/lib/roleContext";
-import { canSeeTaskKpi } from "@/lib/permissions";
+import { canSeeTaskKpi, canSeeLeadKpi } from "@/lib/permissions";
 import { KpiCard, MONTH_LABELS, MonthPicker, dealTypeBadge, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
@@ -566,6 +566,7 @@ function DashboardContent() {
           {DASHBOARD_TABS.filter((t) => {
             if (t.key === "overview" && !canReview && !canTarget) return false; // Basic filter for overview
             if (t.key === "task_kpi" && !canSeeKpi) return false;
+              if (t.key === "lead_kpi" && !canSeeLeadKpi(role)) return false;
             return true;
           }).map((t) => (
             <button

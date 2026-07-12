@@ -11,17 +11,28 @@ import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import DateTimeInput from "@/components/ui/DateTimeInput";
 import PhoneInput from "@/components/ui/PhoneInput";
+import { canSeeLeadKpi } from "@/lib/permissions";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, DEAL_STAGES, STAGE_LABELS } from "@/lib/salesPlanning";
 import { brandThList } from "@/lib/master/brands";
 import {
-  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
+  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
   MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS,
 } from "@/lib/sales/leads";
 import { KpiCard, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName } from "@/lib/format";
+
+const ACTION_COLORS = {
+  screen: 'var(--blue)',
+  assign: 'var(--violet)',
+  contact: 'var(--teal)',
+  meeting: 'var(--teal)',
+  create_deal: 'var(--green)',
+  bounce: 'var(--amber)',
+  disqualify: 'var(--red)'
+};
 
 const initialForm = {
   id: null, channel: "chatcone_line", contactName: "", company: "", email: "",
@@ -353,9 +364,11 @@ export default function LeadsPage() {
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-            <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: 13, fontWeight: 500, color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
-          </div>
+        {canSeeLeadKpi(role) && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+              <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: 13, fontWeight: 500, color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
+            </div>
+          )}
           <section className="kpi-grid" aria-busy={loading}>
             <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} hint={allMonths ? "ทั้งหมด" : `เดือน ${month}`} />
             <KpiCard icon={<Filter size={16} aria-hidden="true" />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} hint={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างคิว ${kpi?.sla?.screen?.pending ?? 0}`} />
@@ -415,7 +428,7 @@ export default function LeadsPage() {
                         {[lead.company, lead.phone, lead.email || lead.contactChannel].filter(Boolean).join(" · ") || "-"}
                       </span>
                     </td>
-                    <td><span className="ui-badge" style={{ color: "var(--text-2)" }}>{LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</span></td>
+                    <td><span className="ui-badge" style={{ color: CHANNEL_GROUP_COLORS[channelGroupOf(lead.channel)] || "var(--text-2)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>{LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</span></td>
                     <td>
                       {SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest}
                       {lead.serviceDetail && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{lead.serviceDetail}</span>}
@@ -439,14 +452,14 @@ export default function LeadsPage() {
                               const primary = rowActions(lead).find(a => ["screen", "assign", "contact", "meeting", "create_deal"].includes(a.a));
                               if (primary) {
                                 return (
-                                  <button type="button" className="btn btn-primary sm" onClick={() => openAction(lead, primary.a)} disabled={!!busy} style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                  <button type="button" className="btn btn-status sm" onClick={() => openAction(lead, primary.a)} disabled={!!busy} style={{ '--btn-bg': ACTION_COLORS[primary.a], width: "100%", padding: "0 4px", justifyContent: "center" }}>
                                     <primary.icon size={13} aria-hidden="true" /> {primary.label}
                                   </button>
                                 );
                               }
                               if (lead.status === "qualified" && lead.customerId && canEditDeals) {
                                 return (
-                                  <button type="button" className="btn btn-primary sm" onClick={() => openDealModal(lead)} disabled={!!busy} title="เปิดดีลจากลีดนี้" style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                  <button type="button" className="btn btn-status sm" onClick={() => openDealModal(lead)} disabled={!!busy} title="เปิดดีลจากลีดนี้" style={{ '--btn-bg': 'var(--green)', width: "100%", padding: "0 4px", justifyContent: "center" }}>
                                     <Plus size={13} aria-hidden="true" /> สร้างดีล
                                   </button>
                                 );
@@ -461,7 +474,7 @@ export default function LeadsPage() {
                               const bounce = rowActions(lead).find(a => a.a === "bounce");
                               if (bounce) {
                                 return (
-                                  <button type="button" className="btn ghost sm" onClick={() => openAction(lead, bounce.a)} disabled={!!busy} style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                  <button type="button" className="btn btn-status-ghost sm" onClick={() => openAction(lead, bounce.a)} disabled={!!busy} style={{ '--btn-bg': ACTION_COLORS[bounce.a], width: "100%", padding: "0 4px", justifyContent: "center" }}>
                                     <bounce.icon size={13} aria-hidden="true" /> {bounce.label}
                                   </button>
                                 );
@@ -476,7 +489,7 @@ export default function LeadsPage() {
                               const dq = rowActions(lead).find(a => a.a === "disqualify");
                               if (dq) {
                                 return (
-                                  <button type="button" className="btn ghost sm" onClick={() => openAction(lead, dq.a)} disabled={!!busy} style={{ width: "100%", padding: "0 4px", justifyContent: "center" }}>
+                                  <button type="button" className="btn btn-status-ghost sm" onClick={() => openAction(lead, dq.a)} disabled={!!busy} style={{ '--btn-bg': ACTION_COLORS[dq.a], width: "100%", padding: "0 4px", justifyContent: "center" }}>
                                     <dq.icon size={13} aria-hidden="true" /> {dq.label}
                                   </button>
                                 );

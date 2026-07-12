@@ -25,6 +25,7 @@ export function channelGroupOf(channel) {
   return 'onsite'; // phone / walkin
 }
 export const CHANNEL_GROUP_LABELS = { online: 'Online', onsite: 'Onsite', website: 'Website' };
+export const CHANNEL_GROUP_COLORS = { online: 'var(--blue)', onsite: 'var(--amber)', website: 'var(--teal)' };
 
 export const LEAD_STATUSES = ['new', 'screened', 'assigned', 'contacted', 'meeting', 'qualified', 'disqualified'];
 export const LEAD_STATUS_LABELS = {
