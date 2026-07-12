@@ -568,14 +568,15 @@ export default function SalesPlanningPipelinePage() {
                 <tr>
                   <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ดีล {sortArrow("name")}</span></th>
                   <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>สถานะ {sortArrow("status")}</span></th>
-                  <th>ประเภท</th>
+                  <th style={{ textAlign: "center" }}>FC%</th>
+                  <th style={{ textAlign: "center" }}>ประเภท</th>
                   <th>ผู้ดูแล (AE)</th>
                   <th className="num" onClick={() => handleSort("amount")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>มูลค่า {sortArrow("amount")}</span></th>
-                  <th>ไทม์ไลน์</th>
-                  {SALES_FEATURES.quotations && <th>ใบเสนอ</th>}
-                  {SALES_FEATURES.documents && <th>เอกสาร</th>}
-                  {SALES_FEATURES.shipment && <th>ส่ง</th>}
-                  <th></th>
+                  <th style={{ textAlign: "center" }}>ไทม์ไลน์</th>
+                  {SALES_FEATURES.quotations && <th style={{ textAlign: "center" }}>ใบเสนอ</th>}
+                  {SALES_FEATURES.documents && <th style={{ textAlign: "center" }}>เอกสาร</th>}
+                  {SALES_FEATURES.shipment && <th style={{ textAlign: "center" }}>ส่ง</th>}
+                  <th style={{ textAlign: "right" }}>จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -592,26 +593,26 @@ export default function SalesPlanningPipelinePage() {
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}{deal.metadata?.brand ? ` · ${deal.metadata.brand}` : ""}</span>
                       </Link>
                     </td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        {stageBadge(deal.stage)}
-                        {!["won", "in_project", "lost"].includes(deal.stage) && forecastBadge(deal.probability)}
-                      </div>
+                    <td style={{ whiteSpace: "nowrap" }}>{stageBadge(deal.stage)}</td>
+                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                      {["won", "in_project", "lost"].includes(deal.stage)
+                        ? <span style={{ color: "var(--text-3)" }}>-</span>
+                        : forecastBadge(deal.probability)}
                     </td>
-                    <td>
+                    <td style={{ textAlign: "center" }}>
                       {dealTypeBadge(dealTypeOf(deal))}
                     </td>
-                    <td>{deal.ownerName ? fmtName(deal.ownerName) : (deal.team || "-")}</td>
-                    <td className="num mono" title={["won", "in_project"].includes(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
+                    <td style={{ whiteSpace: "nowrap" }}>{deal.ownerName ? fmtName(deal.ownerName) : (deal.team || "-")}</td>
+                    <td className="num mono" style={{ whiteSpace: "nowrap" }} title={["won", "in_project"].includes(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
                       {["won", "in_project"].includes(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
                     </td>
-                    <td>
+                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                       {deal.projectId ? (
-                        <a className="btn ghost" href={`/sa/projects/${deal.projectId}`} title="จัดการไทม์ไลน์" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <a className="btn ghost" href={`/sa/projects/${deal.projectId}`} title="จัดการไทม์ไลน์" style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 96, justifyContent: "center" }}>
                           <PackageCheck size={14} aria-hidden="true" /> จัดการ
                         </a>
                       ) : deal.canEdit && deal.stage !== "lost" ? (
-                        <button type="button" className="btn ghost" onClick={() => openCreatePM(deal)} title="สร้างไทม์ไลน์ (ยังไม่มี)">
+                        <button type="button" className="btn ghost" onClick={() => openCreatePM(deal)} title="สร้างไทม์ไลน์ (ยังไม่มี)" style={{ minWidth: 96, justifyContent: "center" }}>
                           <Plus size={14} aria-hidden="true" /> สร้าง
                         </button>
                       ) : (
@@ -619,21 +620,21 @@ export default function SalesPlanningPipelinePage() {
                       )}
                     </td>
                     {SALES_FEATURES.quotations && (
-                      <td>
-                        <button type="button" className="btn ghost" onClick={() => openQuotations(deal)}>
+                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                        <button type="button" className="btn ghost" onClick={() => openQuotations(deal)} style={{ minWidth: 96, justifyContent: "center" }}>
                           <FileText size={14} aria-hidden="true" /> ใบเสนอ
                         </button>
                       </td>
                     )}
                     {SALES_FEATURES.documents && (
-                      <td>
-                        <button type="button" className="btn ghost" onClick={() => openDocuments(deal)}>
+                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                        <button type="button" className="btn ghost" onClick={() => openDocuments(deal)} style={{ minWidth: 96, justifyContent: "center" }}>
                           <ClipboardList size={14} aria-hidden="true" /> เอกสาร
                         </button>
                       </td>
                     )}
                     {SALES_FEATURES.shipment && (
-                      <td>
+                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                         {deal.projectId ? (
                           deal.canEdit ? (
                             <button type="button" className="btn ghost" onClick={() => createShipmentPrep(deal)} disabled={shippingDealId === deal.id}>
@@ -647,7 +648,7 @@ export default function SalesPlanningPipelinePage() {
                         )}
                       </td>
                     )}
-                    <td className="num">
+                    <td className="num" style={{ whiteSpace: "nowrap" }}>
                       <div className="flex items-center gap-2 justify-end">
                         {deal.canEdit && !["won", "in_project", "lost"].includes(deal.stage) && (
                           <button type="button" className="btn btn-success sm" onClick={() => openWin(deal)} disabled={winningDealId === deal.id} title="ปิดดีลเป็น Won (นับยอด + ปิด forecast)">
@@ -670,7 +671,7 @@ export default function SalesPlanningPipelinePage() {
                 ))}
                 {!filteredDeals.length && (
                   <tr>
-                    <td colSpan={7 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={8 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีดีลในเดือนนี้ {canEdit ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>
