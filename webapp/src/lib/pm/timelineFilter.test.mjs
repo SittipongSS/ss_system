@@ -1,10 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  TIMELINE_ALL,
   TIMELINE_CENTRAL,
   filterTimelineTasks,
-  isDealTimelineSelection,
+  singleSelectedDeal,
 } from './timelineFilter.js';
 
 const tasks = [
@@ -15,15 +14,24 @@ const tasks = [
 ];
 
 test('all timeline keeps every deal segment and central task', () => {
-  assert.deepEqual(filterTimelineTasks(tasks, TIMELINE_ALL).map((task) => task.id), ['PT-1', 'PT-2', 'PT-3', 'PT-4']);
+  assert.deepEqual(filterTimelineTasks(tasks, []).map((task) => task.id), ['PT-1', 'PT-2', 'PT-3', 'PT-4']);
 });
 
 test('deal timeline shows only the selected deal segment', () => {
-  assert.deepEqual(filterTimelineTasks(tasks, 'DL-1').map((task) => task.id), ['PT-1', 'PT-4']);
-  assert.equal(isDealTimelineSelection('DL-1'), true);
+  assert.deepEqual(filterTimelineTasks(tasks, ['DL-1']).map((task) => task.id), ['PT-1', 'PT-4']);
+  assert.equal(singleSelectedDeal(['DL-1']), 'DL-1');
+});
+
+test('timeline can combine multiple selected deal segments', () => {
+  assert.deepEqual(filterTimelineTasks(tasks, ['DL-1', 'DL-2']).map((task) => task.id), ['PT-1', 'PT-3', 'PT-4']);
+  assert.equal(singleSelectedDeal(['DL-1', 'DL-2']), null);
 });
 
 test('central timeline shows only tasks without a deal', () => {
-  assert.deepEqual(filterTimelineTasks(tasks, TIMELINE_CENTRAL).map((task) => task.id), ['PT-2']);
-  assert.equal(isDealTimelineSelection(TIMELINE_CENTRAL), false);
+  assert.deepEqual(filterTimelineTasks(tasks, [TIMELINE_CENTRAL]).map((task) => task.id), ['PT-2']);
+  assert.equal(singleSelectedDeal([TIMELINE_CENTRAL]), null);
+});
+
+test('central tasks can be combined with selected deals', () => {
+  assert.deepEqual(filterTimelineTasks(tasks, ['DL-2', TIMELINE_CENTRAL]).map((task) => task.id), ['PT-2', 'PT-3']);
 });

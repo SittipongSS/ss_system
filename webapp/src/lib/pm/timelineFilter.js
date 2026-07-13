@@ -1,13 +1,16 @@
-export const TIMELINE_ALL = 'all';
 export const TIMELINE_CENTRAL = '__central__';
 
-export function filterTimelineTasks(tasks, selection = TIMELINE_ALL) {
+export function filterTimelineTasks(tasks, selections = []) {
   const rows = tasks || [];
-  if (selection === TIMELINE_ALL) return rows;
-  if (selection === TIMELINE_CENTRAL) return rows.filter((task) => !task.dealId);
-  return rows.filter((task) => task.dealId === selection);
+  if (!selections?.length) return rows;
+  const selected = new Set(selections);
+  return rows.filter((task) => (
+    task.dealId ? selected.has(task.dealId) : selected.has(TIMELINE_CENTRAL)
+  ));
 }
 
-export function isDealTimelineSelection(selection) {
-  return Boolean(selection && selection !== TIMELINE_ALL && selection !== TIMELINE_CENTRAL);
+export function singleSelectedDeal(selections = []) {
+  return selections.length === 1 && selections[0] !== TIMELINE_CENTRAL
+    ? selections[0]
+    : null;
 }
