@@ -18,7 +18,7 @@ import { FORECAST_LEVELS, dealTypeBadge, forecastBadge, snapForecastLevel, Month
 import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
-import DealTimelineTable from "@/components/salesPlanning/DealTimelineTable";
+import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
@@ -855,7 +855,22 @@ export default function DealOverviewPage() {
                   แก้สถานะจากหน้าดีลได้เลย ไม่ต้องเข้าโครงการ (PATCH ตัวเดียวกับฝั่ง PM) */}
               {(data.projectTasks || []).length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <DealTimelineTable tasks={data.projectTasks} canEdit={canEdit} dealId={deal.id} projectId={data.project?.id || null} onChanged={load} onError={setError} />
+                  <TimelineWorkspace
+                    tasks={data.projectTasks}
+                    canEdit={canEdit}
+                    dealId={deal.id}
+                    projectId={data.project?.id || null}
+                    timelineContext={{
+                      name: deal.title,
+                      customerName: deal.customerName,
+                      startDate: deal.startDate || data.project?.startDate,
+                      brand: deal.brand,
+                      status: data.project?.status || deal.stage,
+                      statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
+                    }}
+                    onChanged={load}
+                    onError={setError}
+                  />
                 </div>
               )}
               {/* เฟส B: ดีลอื่นในโครงการเดียวกัน (SCENT→NPD→RE-ORDER…) — ลิงก์ข้าม */}
@@ -891,7 +906,22 @@ export default function DealOverviewPage() {
                     </button>
                   )}
                 </div>
-                <DealTimelineTable tasks={data.projectTasks} canEdit={canEdit} dealId={deal.id} projectId={data.project?.id || null} onChanged={load} onError={setError} />
+                <TimelineWorkspace
+                  tasks={data.projectTasks}
+                  canEdit={canEdit}
+                  dealId={deal.id}
+                  projectId={data.project?.id || null}
+                  timelineContext={{
+                    name: deal.title,
+                    customerName: deal.customerName,
+                    startDate: deal.startDate,
+                    brand: deal.brand,
+                    status: deal.stage,
+                    statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
+                  }}
+                  onChanged={load}
+                  onError={setError}
+                />
                 {canEdit && deal?.stage !== "lost" && (
                   <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                     <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy} title="สร้างโครงการ — ไทม์ไลน์ชุดนี้จะย้ายเข้าโครงการทั้งชุด">

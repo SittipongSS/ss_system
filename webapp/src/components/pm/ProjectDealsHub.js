@@ -6,7 +6,7 @@
 // เพิ่ม/แก้ใบเสนอราคา/อัปเดตงาน ทำที่หน้าดีลตามเดิม.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, FileText, MessageSquare, PackageCheck, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, ExternalLink, FileText, MessageSquare, PackageCheck, Plus } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
@@ -59,13 +59,19 @@ function Kpi({ label, value, hint, color }) {
 }
 
 // การ์ดดีล 1 ใบ = จิ๊กซอว์ 1 ชิ้น: หัวดีล + segment ไทม์ไลน์ + ใบเสนอราคาใต้ดีล
-function DealCard({ deal, seg, quotes }) {
+function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, moving, onMoveUp, onMoveDown }) {
   const closed = ["won", "in_project"].includes(deal.stage);
   const value = closed ? (deal.wonValue ?? deal.projectValue) : deal.projectValue;
   const shown = quotes.slice(0, 3);
   return (
     <div className="glass-panel" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {canReorder && (
+          <span style={{ display: "inline-flex", gap: 2 }}>
+            <button type="button" className="btn-icon" onClick={onMoveUp} disabled={moving || !canMoveUp} aria-label={`เลื่อนดีล ${deal.title} ขึ้น`} title="เลื่อนดีลขึ้น"><ArrowUp size={13} /></button>
+            <button type="button" className="btn-icon" onClick={onMoveDown} disabled={moving || !canMoveDown} aria-label={`เลื่อนดีล ${deal.title} ลง`} title="เลื่อนดีลลง"><ArrowDown size={13} /></button>
+          </span>
+        )}
         {dealTypeBadge(dealTypeOf(deal))}
         <Link href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
           {deal.title}
@@ -233,6 +239,8 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
   const [startDate, setStartDate] = useState(localToday());
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState("");
+  const [reorderBusy, setReorderBusy] = useState(false);
+  const [reorderError, setReorderError] = useState("");
 
   useEffect(() => {
     if (!linkOpen) return;
@@ -264,6 +272,29 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
       setLinkError(error.message || "ผูกดีลไม่สำเร็จ");
     } finally {
       setLinking(false);
+    }
+  };
+
+  const moveDeal = async (index, direction) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= deals.length || reorderBusy) return;
+    const dealIds = deals.map((deal) => deal.id);
+    [dealIds[index], dealIds[targetIndex]] = [dealIds[targetIndex], dealIds[index]];
+    setReorderBusy(true);
+    setReorderError("");
+    try {
+      const res = await fetch(`/api/pm/projects/${p.id}/deal-order`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dealIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "จัดลำดับดีลไม่สำเร็จ");
+      await onChanged?.();
+    } catch (error) {
+      setReorderError(error.message || "จัดลำดับดีลไม่สำเร็จ");
+    } finally {
+      setReorderBusy(false);
     }
   };
 
@@ -331,10 +362,22 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
           )}
           <span style={{ fontSize: 12, color: "var(--text-3)" }}>ใบเสนอราคา/ไทม์ไลน์ แก้ไขที่หน้าดีลแต่ละใบ</span>
         </div>
+        {reorderError && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{reorderError}</div>}
         {deals.length ? (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 330px), 1fr))" }}>
-            {deals.map((d) => (
-            <DealCard key={d.id} deal={d} seg={segments.get(d.id) || { done: 0, total: 0, current: null }} quotes={quotesByDeal.get(d.id) || []} />
+            {deals.map((d, index) => (
+            <DealCard
+              key={d.id}
+              deal={d}
+              seg={segments.get(d.id) || { done: 0, total: 0, current: null }}
+              quotes={quotesByDeal.get(d.id) || []}
+              canReorder={canEdit && deals.length > 1}
+              canMoveUp={index > 0}
+              canMoveDown={index < deals.length - 1}
+              moving={reorderBusy}
+              onMoveUp={() => moveDeal(index, -1)}
+              onMoveDown={() => moveDeal(index, 1)}
+            />
             ))}
           </div>
         ) : (
