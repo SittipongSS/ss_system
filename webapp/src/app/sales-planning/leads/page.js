@@ -323,10 +323,17 @@ export default function LeadsPage() {
   };
 
   const canEditRow = (lead) => {
-    if (superuser) return true;
+    if (role === "admin") return true;
     if (["contacted", "meeting", "qualified", "disqualified"].includes(lead.status)) return false;
-    if (role === "marketing") return lead.createdBy != null;
+    if (superuser || role === "marketing") return true;
     return canLead;
+  };
+
+  const canDeleteRow = (lead) => {
+    if (role === "admin") return true;
+    if (["contacted", "meeting", "qualified", "disqualified"].includes(lead.status)) return false;
+    if (superuser || role === "marketing") return true;
+    return false;
   };
 
   const slaPct = (s) => (s && s.checked ? `${Math.round((s.hit / s.checked) * 100)}%` : "-");
