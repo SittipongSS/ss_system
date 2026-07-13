@@ -36,6 +36,7 @@ import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
+import { compactPersonName } from "@/lib/personName";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -88,7 +89,7 @@ function AssigneeField({ form, setForm, users }) {
         <option value="">— ไม่มอบหมาย —</option>
         {teams.map((tm) => (
           <optgroup key={tm} label={TEAM_LABELS[tm] || tm}>
-            {byTeam[tm].map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+            {byTeam[tm].map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name || u.email)}</option>)}
           </optgroup>
         ))}
       </Select>
@@ -1328,7 +1329,7 @@ export default function ProjectDetailPage() {
                             </td>
                             <td style={{ textAlign: "center" }}><span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}`, minWidth: 38, justifyContent: "center" }}>{task.role}</span></td>
                             <td style={{ fontSize: "12px", maxWidth: 150 }} title={assignee === "—" ? undefined : assignee}>
-                              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : assignee}</span>
+                              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : compactPersonName(assignee)}</span>
                             </td>
                             <td>
                               {canEdit ? (
@@ -1926,12 +1927,10 @@ export default function ProjectDetailPage() {
 
       {/* เฟส 1: แถบยืนยันการเปลี่ยนแปลงที่ค้างอยู่ — ลอยล่างจอ เห็นจากทุกวิว */}
       {dirtyCount > 0 && (
-        <div style={{ position: "fixed", left: "50%", bottom: "20px", transform: "translateX(-50%)", zIndex: 60, display: "flex", alignItems: "center", gap: "12px", background: "var(--panel)", border: "1px solid var(--accent)", borderRadius: "12px", padding: "10px 16px", boxShadow: "0 8px 28px rgba(0,0,0,0.20)" }}>
-          <span style={{ fontSize: "13px", color: "var(--text)" }}>
-            มีการแก้ไข <b style={{ color: "var(--amber)" }}>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก
-          </span>
-          <button className="btn" onClick={cancelEdits} style={{ fontSize: "13px" }}>ยกเลิก</button>
-          <button className="btn btn-primary" onClick={confirmEdits} style={{ fontSize: "13px" }} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึก</button>
+        <div className="timeline-save-bar" role="status">
+          <span className="timeline-save-message">มีการแก้ไข <b>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก</span>
+          <button className="btn" onClick={cancelEdits}>ยกเลิกการแก้ไข</button>
+          <button className="btn btn-primary timeline-save-button" onClick={confirmEdits} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึกการเปลี่ยนแปลง</button>
         </div>
       )}
     </div>
