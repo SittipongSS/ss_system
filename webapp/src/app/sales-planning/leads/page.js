@@ -55,6 +55,7 @@ export default function LeadsPage() {
   const role = useRole();
   const team = useTeam();
   const superuser = isSuperuser(role);
+  const canCreate = role === 'marketing' || role === 'admin';
   const [meId, setMeId] = useState(null);
 
   useEffect(() => {
@@ -330,18 +331,19 @@ export default function LeadsPage() {
   };
 
   const canEditRow = (lead) => {
-    if (superuser) return true;
+    if (role === "admin") return true;
     if (["contacted", "meeting", "qualified", "disqualified"].includes(lead.status)) return false;
+    if (superuser) return true;
     if (role === "marketing") return meId != null && lead.createdBy === meId;
     return canLead;
   };
 
-  const canDeleteRow = (lead) => (
-    role === "admin" || (
-      ["ae_supervisor", "marketing"].includes(role) &&
-      !["contacted", "meeting", "qualified", "disqualified"].includes(lead.status)
-    )
-  );
+  const canDeleteRow = (lead) => {
+    if (role === "admin") return true;
+    if (["contacted", "meeting", "qualified", "disqualified"].includes(lead.status)) return false;
+    if (superuser || role === "marketing") return true;
+    return false;
+  };
 
   const slaPct = (s) => (s && s.checked ? `${Math.round((s.hit / s.checked) * 100)}%` : "-");
 
@@ -361,7 +363,7 @@ export default function LeadsPage() {
       headerRight={
         <>
           <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
-          {canLead && (
+          {canCreate && (
             <button type="button" className="btn btn-primary" onClick={() => { setForm(initialForm); setFormOpen(true); }}>
               <Plus size={15} aria-hidden="true" /> รับลีดใหม่
             </button>
@@ -531,7 +533,7 @@ export default function LeadsPage() {
                   </tr>
                 ))}
                 {!filtered.length && !loading && (
-                  <tr><td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีลีดตามตัวกรองนี้ {canLead ? "— เริ่มจากปุ่มรับลีดใหม่" : ""}</td></tr>
+                  <tr><td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีลีดตามตัวกรองนี้ {canCreate ? "— เริ่มจากปุ่มรับลีดใหม่" : ""}</td></tr>
                 )}
               </tbody>
             </table>

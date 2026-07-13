@@ -16,8 +16,9 @@ async function loadLead(supabase, id) {
 // แก้ข้อมูลลีดได้เมื่อ: ผู้กรอกเอง (ก่อนปิด) / ผู้รับมอบ / senior ทีมนั้น / supervisor+
 function canEditLead(user, lead) {
   const role = user?.role;
-  if (isSuperuser(role)) return true;
+  if (role === 'admin') return true;
   if (['contacted', 'meeting', 'qualified', 'disqualified'].includes(lead.status)) return false;
+  if (isSuperuser(role)) return true;
   if (role === 'marketing') return lead.createdBy === user.id;
   if (role === 'senior_ae' || role === 'ac') return !lead.team || lead.team === user.team;
   if (role === 'ae') return lead.assigneeId === user.id || lead.createdBy === user.id;
@@ -77,15 +78,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 // DELETE — admin ลบได้ทุกสถานะ; supervisor/marketing ลบได้เฉพาะลีดที่ยังไม่เริ่มติดต่อ
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
-  if (!isSuperuser(user.role) && user.role !== 'marketing') {
-    return forbidden('ลบลีดได้เฉพาะ Marketing/หัวหน้าฝ่ายขาย/แอดมิน');
-  }
+  const role = user.role;
   const { id } = await ctx.params;
   const before = await loadLead(supabase, id);
   if (!before) return notFound('ไม่พบลีด');
-  if (user.role !== 'admin' && ['contacted', 'meeting', 'qualified', 'disqualified'].includes(before.status)) {
-    return badRequest('ลีดที่มีการติดต่อแล้วลบได้เฉพาะแอดมิน');
+
+  const canInitDelete = role === 'admin' || isSuperuser(role) || (role === 'marketing' && before.createdBy === user.id);
+  if (!canInitDelete) return forbidden('ไม่มีสิทธิลบลีดนี้');
+
+  if (['contacted', 'meeting', 'qualified', 'disqualified'].includes(before.status)) {
+    if (role !== 'admin') {
+      return badRequest('ลีดที่มีการติดต่อแล้วลบได้เฉพาะแอดมิน');
+    }
   }
+
   const { error } = await supabase.from('sales_leads').delete().eq('id', id);
   if (error) return fail(error.message, 500);
   await recordAudit({ user, action: 'delete', entityType: 'sales_lead', entityId: id, before, summary: `ลบลีด ${before.contactName}`, request: req });

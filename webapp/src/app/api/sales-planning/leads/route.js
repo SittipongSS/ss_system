@@ -14,9 +14,11 @@ export const dynamic = 'force-dynamic';
 //   ae → ที่ถูกมอบหมายให้ตัวเอง · marketing → ทุกใบ (ทีม intake เห็นคิวรวมเพื่อไม่กรอกซ้ำ)
 export function applyLeadScope(query, user) {
   const role = user?.role;
+  // supervisor sees all leads (to screen them)
   if (isSuperuser(role) || role === 'viewer' || role === 'marketing') return query;
   if (role === 'senior_ae' || role === 'ac') {
-    return query.or(`team.eq.${user?.team ?? ''},status.eq.new`);
+    // Senior/AC only see leads that have been screened to their team.
+    return query.eq('team', user?.team ?? '__no_team__');
   }
   if (role === 'ae') {
     return query.or(`assigneeId.eq.${user?.id ?? ''},createdBy.eq.${user?.id ?? ''}`);
@@ -26,6 +28,10 @@ export function applyLeadScope(query, user) {
 
 export function canViewLeads(user) {
   return !!user && (can(user.role, 'salesplan:lead') || can(user.role, 'salesplan:view'));
+}
+
+export function canCreateLead(role) {
+  return role === 'marketing' || role === 'admin';
 }
 
 export const GET = withUser(async ({ user, supabase, req }) => {
@@ -46,7 +52,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!can(user.role, 'salesplan:lead')) return forbidden();
+  if (!canCreateLead(user.role)) return forbidden('ลีดต้องเพิ่มโดยทีม Marketing เท่านั้น');
 
   const body = await req.json();
   if (!body.contactName?.trim()) return badRequest('ต้องระบุชื่อลูกค้า/ผู้ติดต่อ');
