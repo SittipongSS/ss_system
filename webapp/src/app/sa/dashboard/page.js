@@ -18,9 +18,9 @@ import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
 
 const DASHBOARD_TABS = [
   { key: "my", label: "แดชบอร์ดของฉัน" },
+  { key: "lead_kpi", label: "KPI ลีด" },
   { key: "overview", label: "KPI ดีล" },
   { key: "task_kpi", label: "KPI งาน" },
-  { key: "lead_kpi", label: "KPI ลีด" },
 ];
 
 // ดูเต็มจอสำหรับ element เดียว (คืน ref + สถานะ + ปุ่ม toggle). ใช้ซ้ำได้ทุกตาราง.
