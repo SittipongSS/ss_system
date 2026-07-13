@@ -87,6 +87,19 @@ ALTER TABLE public.quotations
 7. **แถบบันทึก** — "บันทึกร่าง (draft)" / "บันทึกและส่ง (sent)" → POST สร้างใบ →
    เด้งไป `/sa/quotations/[id]`
 
+### กฎ: ใช้ component กลางเท่านั้น (มติผู้ใช้)
+
+ทั้งหน้า `/new` และส่วนที่แก้ใน `/[id]` **ห้ามเขียน control เอง** — ใช้ของกลางที่มีอยู่:
+
+- `components/ui/`: `SearchableSelect` (ลูกค้า/โครงการ/ดีล/FG/ผู้ติดต่อ), `Select`,
+  `DateInput`, `MoneyInput`, `Workspace`, `EmptyState`, `Toast`, `FormActions`
+- คลาสกลางใน `globals.css`: `toolbar` / `segmented` (เต็มจำนวน|แบ่งงวด) / `btn` /
+  `ui-badge` / `chip` / `form-grid` / `premium-*`
+- ฟอร์แมตกลาง `lib/format.js` (เงิน/วันที่/เบอร์) + หัวพิมพ์ `lib/printHeader.js`
+- ตัว editor เองก็เป็น component กลาง: `QuotationEditorBody` ใช้ร่วมสองหน้า (ด้านล่าง)
+- ถ้าจำเป็นต้องมี control ใหม่ (เช่น ตารางงวดชำระ) → สร้างเป็น component กลางใน
+  `components/salesPlanning/` ให้หน้าอื่น reuse ได้ ไม่ฝัง inline ในหน้า
+
 ### Refactor ที่ต้องทำก่อน
 
 - ดึงเนื้อ editor (`[id]/page.js` ~ส่วนฟอร์ม+ตารางรายการ+ยอดรวม) ออกเป็น
