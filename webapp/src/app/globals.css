@@ -4205,6 +4205,47 @@ button.empty-state { width: 100%; font: inherit; }
 .timeline-task-table th,
 .timeline-task-table td { padding-left: 8px; padding-right: 8px; }
 .timeline-task-table .date-input-wrap { max-width: 116px; }
+.timeline-task-table thead th { height: 48px; vertical-align: middle; }
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td { height: 54px; vertical-align: middle; }
+.timeline-task-table thead th:nth-child(1),
+.timeline-task-table thead th:nth-child(3),
+.timeline-task-table thead th:nth-child(5),
+.timeline-task-table thead th:nth-child(6),
+.timeline-task-table thead th:nth-child(7),
+.timeline-task-table thead th:nth-child(8),
+.timeline-task-table thead th:nth-child(9),
+.timeline-task-table thead th:nth-child(10),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(1),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(3),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(5),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(6),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(7),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(8),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(9),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(10) { text-align: center; }
+.timeline-task-table .date-input-text { text-align: center; }
+.timeline-task-name {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.timeline-task-name > span {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.timeline-task-name > svg { margin-top: 2px; }
+.timeline-role-text {
+  display: inline-block;
+  min-width: 28px;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  text-align: center;
+}
 .timeline-save-bar {
   position: fixed;
   left: 50%;

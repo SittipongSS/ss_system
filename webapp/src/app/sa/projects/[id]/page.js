@@ -1300,7 +1300,7 @@ export default function ProjectDetailPage() {
                   {tableGroups.map((g) => (
                     <Fragment key={g.key}>
                       {g.phase && (
-                        <tr>
+                        <tr className="timeline-phase-row">
                           <td colSpan={canEdit ? 10 : 9} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13px" }}>
                               <span style={{ width: "9px", height: "9px", borderRadius: "3px", background: phaseColorMap[g.phase] || "var(--accent)" }} />
@@ -1322,12 +1322,12 @@ export default function ProjectDetailPage() {
                               </div>
                             </td>
                             <td style={{ fontWeight: 500 }}>
-                              <span onClick={() => canEdit && openEditModal(task)} title={canEdit ? "คลิกเพื่อแก้ไขขั้นตอน" : undefined} style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: canEdit ? "pointer" : "default" }}>
+                              <span className="timeline-task-name" onClick={() => canEdit && openEditModal(task)} title={canEdit ? `คลิกเพื่อแก้ไขขั้นตอน: ${task.name}` : task.name} style={{ cursor: canEdit ? "pointer" : "default" }}>
                                 {task.isMilestone && <Flag size={13} color="var(--amber)" strokeWidth={2.5} />}
-                                {task.name}
+                                <span>{task.name}</span>
                               </span>
                             </td>
-                            <td style={{ textAlign: "center" }}><span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}`, minWidth: 38, justifyContent: "center" }}>{task.role}</span></td>
+                            <td><span className="timeline-role-text" style={{ color: rs.color }}>{task.role}</span></td>
                             <td style={{ fontSize: "12px", maxWidth: 150 }} title={assignee === "—" ? undefined : assignee}>
                               <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : compactPersonName(assignee)}</span>
                             </td>
@@ -1528,7 +1528,7 @@ export default function ProjectDetailPage() {
                               </h4>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
                                 {(() => { const rs = roleStyle(task.role); return (
-                                  <span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span>
+                                  <span className="timeline-role-text" style={{ color: rs.color }}>{task.role}</span>
                                 ); })()}
                                 {canEdit ? (
                                   <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "11px" }}>●</span>}</>

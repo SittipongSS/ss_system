@@ -427,7 +427,7 @@ export default function TimelineWorkspace({
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                               <h4 style={{ margin: 0, fontSize: 15, color: complete ? "var(--green)" : "var(--text)", fontWeight: 600 }}>{numberOf.get(task.id)}. {task.name}</h4>
                               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                                <span className="ui-badge" style={{ color: role.color, background: role.bg }}>{task.role || "-"}</span>
+                                <span className="timeline-role-text" style={{ color: role.color }}>{task.role || "-"}</span>
                                 {canEdit ? <StatusSelect value={task.status || "Pending"} disabled={!!busyId} onChange={(status) => patch(task, { status })} /> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
                                 {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
                               </div>
@@ -489,7 +489,7 @@ export default function TimelineWorkspace({
           <tbody>
             {tableGroups.map((g, gi) => (
               <FragmentGroup key={`${g.phase}|${gi}`}>
-                <tr>
+                <tr className="timeline-phase-row">
                   <td colSpan={canEdit ? 10 : 9} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13 }}>
                       <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[gi % PHASE_COLORS.length] }} />
@@ -509,12 +509,13 @@ export default function TimelineWorkspace({
                       )}
                       {numberOf.get(t.id)}
                     </td>
-                    <td style={{ fontWeight: 600 }}>
-                      {t.isMilestone && <Flag size={12} aria-hidden="true" style={{ color: "var(--amber)", marginRight: 4 }} />}
-                      {t.name}
-                      {t.note && <span style={{ display: "block", color: "var(--text-3)", fontSize: 11.5, fontWeight: 500 }}>{t.note}</span>}
+                    <td style={{ fontWeight: 600 }} title={t.note ? `${t.name}\n${t.note}` : t.name}>
+                      <span className="timeline-task-name">
+                        {t.isMilestone && <Flag size={12} aria-hidden="true" style={{ color: "var(--amber)", flexShrink: 0 }} />}
+                        <span>{t.name}</span>
+                      </span>
                     </td>
-                    <td style={{ textAlign: "center" }}><span className="ui-badge" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)", background: ROLE_META[t.role]?.bg, minWidth: 38, justifyContent: "center" }}>{t.role || "-"}</span></td>
+                    <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{t.role || "-"}</span></td>
                     <td>
                       {canEdit ? (
                         <select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: 12 }}

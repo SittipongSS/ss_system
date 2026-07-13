@@ -635,7 +635,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
             )}
           </td>
           <td style={{ ...freezeTd(freezeLeft[2], { textAlign: "center" }) }}>
-            <span style={{ display: "inline-flex", minWidth: 32, justifyContent: "center", padding: "2px 5px", borderRadius: 6, fontSize: "10.5px", fontWeight: 700, color: roleColor(task.role), background: `color-mix(in srgb, ${roleColor(task.role)} 12%, transparent)`, border: `1px solid color-mix(in srgb, ${roleColor(task.role)} 32%, transparent)` }}>{task.role}</span>
+            <span className="timeline-role-text" style={{ color: roleColor(task.role) }}>{task.role}</span>
           </td>
           <td style={{ ...freezeTd(freezeLeft[3], { textAlign: "center" }) }}>
             <input
