@@ -33,6 +33,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
+import { TIMELINE_ALL, TIMELINE_CENTRAL, filterTimelineTasks, isDealTimelineSelection } from "@/lib/pm/timelineFilter";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -204,6 +205,7 @@ export default function ProjectDetailPage() {
   const [insertBeforeId, setInsertBeforeId] = useState(null); // แทรก "ก่อน" หัวแถวแรกของเฟส
   const [tableStatusFilter, setTableStatusFilter] = useState("all"); // Table view: all | pending | progress | completed
   const [tableSort, setTableSort] = useState("step"); // Table view: step | name | status | due
+  const [timelineDealFilter, setTimelineDealFilter] = useState(TIMELINE_ALL);
   const [editTask, setEditTask] = useState(null); // ขั้นตอนที่กำลังแก้ผ่าน modal (ใช้จาก Table view)
   const [showEditTask, setShowEditTask] = useState(false);
   const [depPopover, setDepPopover] = useState(null); // popover แก้ predecessors ในตาราง — { task, x, y }
@@ -543,6 +545,8 @@ export default function ProjectDetailPage() {
       body: JSON.stringify({
         // URL may be a project code; tasks FK the internal id, so use the loaded row's id.
         projectId: data?.id ?? id,
+        // เมื่อกำลังดู segment ของดีลใด ขั้นตอนใหม่ต้องอยู่ใต้ดีลนั้น ไม่ปนเป็นงานกลาง
+        dealId: isDealTimelineSelection(timelineDealFilter) ? timelineDealFilter : null,
         ...taskForm,
         afterTaskId: afterTaskId || undefined,
         beforeTaskId: insertBeforeId || undefined,
@@ -658,7 +662,9 @@ export default function ProjectDetailPage() {
 
   // ปุ่ม ▲▼ เลื่อนลำดับ — วางหน้า task ใช้ร่วมทุกวิว (List/Table/เอกสาร). disable ที่ขอบเฟส
   const moveButtons = (task) => {
-    if (!canEdit) return null;
+    // กรองเฉพาะดีลแล้วไม่ให้ reorder เพราะ API เรียงทั้งโครงการ; ป้องกัน segment
+    // ที่ซ่อนอยู่ถูกย้ายลำดับโดยผู้ใช้มองไม่เห็น
+    if (!canReorderTimeline) return null;
     const i = processedTasks.findIndex((t) => t.id === task.id);
     const canUp = i > 0 && processedTasks[i - 1].phase === task.phase;
     const canDown = i >= 0 && i < processedTasks.length - 1 && processedTasks[i + 1].phase === task.phase;
@@ -745,7 +751,11 @@ export default function ProjectDetailPage() {
     stageTaskEdit(task.id, { status: task.status === "Completed" ? "In Progress" : "Completed" });
   };
 
-  const tasks = data?.tasks || [];
+  const allTasks = useMemo(() => data?.tasks || [], [data?.tasks]);
+  const tasks = useMemo(
+    () => filterTimelineTasks(allTasks, timelineDealFilter),
+    [allTasks, timelineDealFilter],
+  );
   const phaseColorMap = useMemo(() => {
     const seen = [];
     tasks.forEach((t) => { if (t.phase && !seen.includes(t.phase)) seen.push(t.phase); });
@@ -831,6 +841,7 @@ export default function ProjectDetailPage() {
   const hasWriteAccess = hasEditCap && !!data.canEdit;
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
+  const canReorderTimeline = canEdit && timelineDealFilter === TIMELINE_ALL;
   const linkedIds = new Set((p.projectProducts || []).map((x) => x.productId));
   // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โครงการที่ไม่ได้มาจากดีล
   // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต 01-002 อย่างน้อยหนึ่งตัว — ไม่งั้นไม่ต้องมี
@@ -1025,7 +1036,7 @@ export default function ProjectDetailPage() {
                 <History size={14} /> ประวัติเวอร์ชัน
               </button>
               <button
-                onClick={() => openGanttPrintWindow({ ...p, categoryFallback,
+                onClick={() => openGanttPrintWindow({ ...p, tasks, categoryFallback,
                   ...resolveAe(p.aeOwner),
                   projectProducts: enrichProducts(p.projectProducts),
                   // ถ้า live ถูกแก้หลังออก Rev (revStale) อย่าปั๊มเลข Rev ทางการทับเนื้อหาที่ต่าง —
@@ -1062,6 +1073,26 @@ export default function ProjectDetailPage() {
 
       {/* เมนูครอบ: ภาพรวม (ศูนย์รวมดีล) ↔ ไทม์ไลน์ — โครงการกำพร้าไม่มีดีลข้ามไปไทม์ไลน์เลย */}
       <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" />
+
+      {showTimeline && (p.deals || []).length > 1 && (
+        <div className="glass-panel" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>ไทม์ไลน์ที่แสดง</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>เลือกดูทุกดีลหรือเฉพาะ segment ของดีลเดียว</div>
+          </div>
+          <Select value={timelineDealFilter} onChange={(event) => setTimelineDealFilter(event.target.value)} style={{ minWidth: "min(100%, 320px)", marginLeft: "auto" }} aria-label="เลือกดีลที่แสดงในไทม์ไลน์">
+            <option value={TIMELINE_ALL}>ทุกดีลและงานกลาง ({allTasks.length} ขั้นตอน)</option>
+            {(p.deals || []).map((deal) => {
+              const count = allTasks.filter((task) => task.dealId === deal.id).length;
+              return <option key={deal.id} value={deal.id}>{deal.title} ({count} ขั้นตอน)</option>;
+            })}
+            {allTasks.some((task) => !task.dealId) && <option value={TIMELINE_CENTRAL}>งานกลางโครงการ ({allTasks.filter((task) => !task.dealId).length} ขั้นตอน)</option>}
+          </Select>
+          {timelineDealFilter !== TIMELINE_ALL && (
+            <span className="ui-badge" style={{ color: "var(--accent)", whiteSpace: "nowrap" }}>กำลังแสดง {tasks.length} ขั้นตอน</span>
+          )}
+        </div>
+      )}
 
       {/* ภาพรวม — ศูนย์รวมโครงการ: จิ๊กซอว์ครอบดีล (KPI rollup + การ์ดต่อดีล) */}
       {tab === "overview" && (
@@ -1136,7 +1167,7 @@ export default function ProjectDetailPage() {
       {view === "document" ? (
         <div className="glass-panel" style={{ padding: "20px", marginBottom: "24px" }}>
           <ProjectDocumentView
-            project={p}
+            project={{ ...p, tasks }}
             canEdit={canEdit}
             onUpdateProject={updateProject}
             onUpdateTask={stageScheduleEdit}
@@ -1191,7 +1222,7 @@ export default function ProjectDetailPage() {
               <table className="premium-table">
                 <thead>
                   <tr>
-                    <th style={{ width: canEdit && tableSort === "step" ? "78px" : "44px", textAlign: "center" }}>#</th>
+                    <th style={{ width: canReorderTimeline && tableSort === "step" ? "78px" : "44px", textAlign: "center" }}>#</th>
                     <th>ขั้นตอน</th>
                     <th>แผนก</th>
                     <th>ผู้รับผิดชอบ</th>
@@ -1224,7 +1255,7 @@ export default function ProjectDetailPage() {
                           <tr key={task.id} className="premium-row">
                             <td style={{ color: "var(--text-3)" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "4px", justifyContent: "center" }}>
-                                {canEdit && tableSort === "step" && moveButtons(task)}
+                                {canReorderTimeline && tableSort === "step" && moveButtons(task)}
                                 <span style={{ fontWeight: 700 }}>{task.displayNumber}</span>
                               </div>
                             </td>

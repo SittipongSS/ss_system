@@ -8,6 +8,7 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
+import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,8 +33,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const project = await loadProject(supabase, body.projectId);
   if (!project) return notFound('ไม่พบโครงการ');
-  // มติ #5: ดีลกับโครงการต้องลูกค้าเดียวกัน — ไม่มี override
-  if (!deal.customerId || !project.customerId || deal.customerId !== project.customerId) {
+  // ดีลที่ยังไม่มีลูกค้ารับลูกค้าจากโครงการได้ แต่ห้ามย้ายดีลข้ามลูกค้า
+  // เพื่อป้องกันการเปลี่ยนเจ้าของข้อมูลเดิมโดยไม่ตั้งใจ
+  if (!hasCompatibleProjectCustomer(deal, project)) {
     return badRequest('ดีลกับโครงการต้องเป็นลูกค้าเดียวกัน');
   }
 
@@ -85,10 +87,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ผูกดีล (guard .is projectId null — กันยิงซ้ำ/แข่งกัน; แพ้ = ถอน task ที่เพิ่งต่อ)
   const stageIdx = (s) => DEAL_STAGES.indexOf(s);
   const nextStage = stageIdx(deal.stage) < stageIdx('timeline_proposed') ? 'timeline_proposed' : deal.stage;
+  const adoptedCustomer = !deal.customerId;
   const { data: updatedDeal, error: linkErr } = await supabase
     .from('sales_deals')
     .update({
       projectId: project.id,
+      customerId: project.customerId,
+      customerName: project.customerName || deal.customerName || null,
       stage: nextStage,
       updatedAt: now,
       metadata: { ...(deal.metadata || {}), linkedProjectCode: project.code, linkedProjectAt: now },
@@ -125,7 +130,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: deal.id,
     before: deal,
     after: updatedDeal,
-    summary: `ผูกดีล ${dealAuditLabel(deal)} เข้าโครงการเดิม ${project.code || project.id} (${adopted ? `รับเลี้ยงไทม์ไลน์เดิม ${adopted}` : `+${insertedTasks.length}`} ขั้นตอน segment ${dealTypeOf(deal)})`,
+    summary: `ผูกดีล ${dealAuditLabel(deal)} เข้าโครงการเดิม ${project.code || project.id}${adoptedCustomer ? ` และตั้งลูกค้าเป็น ${project.customerName || project.customerId}` : ''} (${adopted ? `รับเลี้ยงไทม์ไลน์เดิม ${adopted}` : `+${insertedTasks.length}`} ขั้นตอน segment ${dealTypeOf(deal)})`,
     request: req,
   });
 

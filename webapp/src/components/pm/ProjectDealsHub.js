@@ -14,6 +14,7 @@ import { useCan } from "@/lib/roleContext";
 import { STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtMoneyCompact, fmtDateTime } from "@/lib/format";
+import { isDealAvailableForProject } from "@/lib/sales/projectLink";
 
 const STAGE_COLORS = {
   lead: "var(--text-3)", qualified: "var(--blue)", quotation: "var(--amber)",
@@ -240,7 +241,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
     fetch("/api/sales-planning/deals")
       .then((res) => (res.ok ? res.json() : []))
       .then((rows) => setAvailableDeals((rows || []).filter((deal) => (
-        !deal.projectId && deal.stage !== "lost" && deal.customerId === p.customerId
+        isDealAvailableForProject(deal, { customerId: p.customerId })
       ))))
       .catch(() => setAvailableDeals([]));
   }, [linkOpen, p.customerId]);
@@ -349,12 +350,13 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
       <Modal open={linkOpen} onClose={() => !linking && setLinkOpen(false)} title="ผูกดีลเข้าโครงการ" size="sm">
         <div className="flex flex-col gap-4">
           <div className="form-group">
-            <label>ดีลของ {p.customerName || "ลูกค้ารายนี้"}</label>
+            <label>ดีลของ {p.customerName || "ลูกค้ารายนี้"} หรือดีลที่ยังไม่มีลูกค้า</label>
             <Select fullWidth value={dealId} onChange={(event) => setDealId(event.target.value)}>
               <option value="">— เลือกดีลที่ยังไม่ผูกโครงการ —</option>
-              {availableDeals.map((deal) => <option key={deal.id} value={deal.id}>{deal.title} · {dealTypeOf(deal)} · {STAGE_LABELS[deal.stage] || deal.stage}</option>)}
+              {availableDeals.map((deal) => <option key={deal.id} value={deal.id}>{deal.title} · {dealTypeOf(deal)} · {STAGE_LABELS[deal.stage] || deal.stage}{!deal.customerId ? " · ยังไม่มีลูกค้า" : ""}</option>)}
             </Select>
-            {!availableDeals.length && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: 12 }}>ไม่พบดีลที่ผูกได้สำหรับลูกค้ารายนี้</div>}
+            {!availableDeals.length && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: 12 }}>ไม่พบดีลที่ผูกได้สำหรับลูกค้ารายนี้หรือดีลที่ยังไม่มีลูกค้า</div>}
+            {availableDeals.some((deal) => !deal.customerId) && <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: 12 }}>เมื่อผูกดีลที่ยังไม่มีลูกค้า ระบบจะตั้งลูกค้าให้ตรงกับโครงการอัตโนมัติ</div>}
           </div>
           <div className="form-group"><label>วันที่เริ่ม segment</label><DateInput value={startDate} onChange={setStartDate} className="w-full" /></div>
           {linkError && <div style={{ color: "var(--red)", fontSize: 13 }}>{linkError}</div>}
