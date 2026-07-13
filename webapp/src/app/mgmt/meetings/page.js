@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Plus, Calendar, Clock3 } from "lucide-react";
@@ -67,9 +68,9 @@ export default function MgmtMeetingsPage() {
           <p>บันทึกการประชุม · สรุป · ติดตามผล · แนบไฟล์/เอกสาร Google</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
+          <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
-          </select>
+          </Select>
           {canEdit && <button className="btn btn-primary flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มการประชุม</button>}
         </div>
       </div>

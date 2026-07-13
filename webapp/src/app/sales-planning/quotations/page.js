@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 // หน้ารวมใบเสนอราคา (/sa/quotations — เฟส D, มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
 // ทุกใบยังผูก โครงการ›ดีล เสมอ — สร้างใหม่ต้องเลือกดีลก่อน แล้วไปแก้ต่อที่หน้า editor.
@@ -145,10 +146,10 @@ export default function QuotationsPage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข QT / ลูกค้า / ดีล" aria-label="ค้นหาใบเสนอราคา" />
             </div>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 190 }}>
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 190 }}>
               <option value="all">ทุกสถานะ</option>
               {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            </Select>
             <div className="spacer" />
             <span className="ui-badge">{filtered.length} ใบ</span>
           </div>
@@ -230,10 +231,10 @@ export default function QuotationsPage() {
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
             ดีล (เฉพาะที่ผูกโครงการแล้ว)
-            <select className="premium-select" value={dealId} onChange={(e) => setDealId(e.target.value)}>
+            <Select className="premium-select" value={dealId} onChange={(e) => setDealId(e.target.value)}>
               <option value="">{deals.length ? "— เลือกดีล —" : "ยังไม่มีดีลที่ผูกโครงการ"}</option>
               {deals.map((d) => <option key={d.id} value={d.id}>{d.title} · {d.customerName || "ไม่มีลูกค้า"}</option>)}
-            </select>
+            </Select>
           </label>
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
             <input type="checkbox" checked={seedFG} onChange={(e) => setSeedFG(e.target.checked)} />

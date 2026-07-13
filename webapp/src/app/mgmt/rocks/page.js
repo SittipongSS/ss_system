@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Target, Plus, Trash2, X, Check } from "lucide-react";
@@ -129,19 +130,19 @@ export default function MgmtRocksPage() {
           <p>เป้าหมายและสิ่งที่พัฒนาขึ้น แยกตามแผนก (รายปี)</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
+          <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
-          </select>
+          </Select>
         </div>
       </div>
 
       {canEdit && addable.length > 0 && (
         <div className="glass-panel" style={{ padding: "12px 14px", marginBottom: 16, display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 13, color: "var(--text-3)" }}>เพิ่มแผนก:</span>
-          <select className="premium-input" style={{ width: 180 }} value={addDept} onChange={(e) => setAddDept(e.target.value)}>
+          <Select className="premium-input" style={{ width: 180 }} value={addDept} onChange={(e) => setAddDept(e.target.value)}>
             <option value="">— เลือกแผนก —</option>
             {addable.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
-          </select>
+          </Select>
           <button className="btn btn-primary" onClick={addRow} disabled={!addDept}><Plus size={14} /> เพิ่ม</button>
         </div>
       )}

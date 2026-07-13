@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -179,7 +180,7 @@ export default function DatabaseOverview() {
           <div className="flex items-center gap-2" style={{ color: "var(--text-3)", fontSize: 13, fontWeight: 500 }}>
             <Filter size={16} /> ตัวกรองข้อมูล:
           </div>
-          <select 
+          <Select
             value={timeframe} 
             onChange={(e) => setTimeframe(e.target.value)}
             style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}
@@ -187,15 +188,15 @@ export default function DatabaseOverview() {
             <option value="all">เวลาทั้งหมด (All Time)</option>
             <option value="1y">ปีนี้ (This Year)</option>
             <option value="30d">30 วันล่าสุด (Last 30 Days)</option>
-          </select>
-          <select 
+          </Select>
+          <Select
             value={teamFilter} 
             onChange={(e) => setTeamFilter(e.target.value)}
             style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}
           >
             <option value="all">ทุกทีม (All Teams)</option>
             {allTeams.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+          </Select>
         </div>
 
         {/* KPIs Grid */}

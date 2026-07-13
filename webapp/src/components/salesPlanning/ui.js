@@ -1,8 +1,10 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 import { Trophy } from "lucide-react";
 import { DEAL_TYPE_LABELS, normalizeDealType, STAGE_LABELS } from "@/lib/salesPlanning";
 import { fmtMoneyCompact } from "@/lib/format";
+import UiKpiCard from "@/components/ui/KpiCard";
 
 // Shared presentational helpers for the Sales Planning pages (overview / deals /
 // targets). Kept in one place so the split pages render identical badges/cards.
@@ -84,8 +86,8 @@ export function monthsForYear(year) {
   return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
 }
 
-// Unified period picker for the Sales Planning toolbar: a year <select> + a Thai
-// month <select> so the "ระยะเวลา" control looks and behaves identically on every
+// Unified period picker for the Sales Planning toolbar: a year <Select> + a Thai
+// month <Select> so the "ระยะเวลา" control looks and behaves identically on every
 // page (instead of each page hand-rolling a native <input type="month">).
 // Pass `onAllMonths` to show the "ทุกเดือน" toggle (list/filter pages); omit it on
 // focus-month pages where a single month must always be selected (overview).
@@ -98,7 +100,7 @@ export function MonthPicker({ value, onChange, allMonths = false, onAllMonths })
   const dim = { opacity: disabled ? 0.5 : 1 };
   return (
     <>
-      <select
+      <Select
         className="premium-select"
         value={year}
         onChange={(e) => onChange(`${e.target.value}-${value.slice(5, 7)}`)}
@@ -106,8 +108,8 @@ export function MonthPicker({ value, onChange, allMonths = false, onAllMonths })
         style={{ width: 104 }}
       >
         {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
-      </select>
-      <select
+      </Select>
+      <Select
         className="premium-select"
         value={value}
         disabled={disabled}
@@ -116,7 +118,7 @@ export function MonthPicker({ value, onChange, allMonths = false, onAllMonths })
         style={{ width: 150, ...dim }}
       >
         {monthsForYear(year).map((m, i) => <option key={m} value={m}>{MONTH_LABELS[i]} {year}</option>)}
-      </select>
+      </Select>
       {onAllMonths && (
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
           <input type="checkbox" checked={allMonths} onChange={(e) => onAllMonths(e.target.checked)} /> ทุกเดือน
@@ -152,20 +154,5 @@ export function stageBadge(stage) {
 }
 
 export function KpiCard({ icon, label, badge, value, hint, color, interactive = true }) {
-  return (
-    <div className={`glass-panel flex flex-col justify-between ${interactive ? "interactive-card" : ""}`} style={{ padding: "16px", minHeight: 108, borderLeft: color ? `3px solid ${color}` : undefined }}>
-      <div className="flex items-center gap-2" style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 600 }}>
-        {badge ? badge : (
-          <>
-            {icon && icon}
-            {label && <span>{label}</span>}
-          </>
-        )}
-      </div>
-      <div className="font-mono tabular-nums" style={{ marginTop: 8, fontSize: 24, fontWeight: 800, color: "var(--text)" }}>
-        {value}
-      </div>
-      {hint && <div style={{ marginTop: 4, color: "var(--text-3)", fontSize: 12 }}>{hint}</div>}
-    </div>
-  );
+  return <UiKpiCard icon={icon} label={label} badge={badge} value={value} hint={hint} color={color} interactive={interactive} />;
 }

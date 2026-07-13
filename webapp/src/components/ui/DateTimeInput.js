@@ -1,6 +1,7 @@
 "use client";
 
 import DateInput from "@/components/ui/DateInput";
+import TimeInput from "@/components/ui/TimeInput";
 
 export default function DateTimeInput({ value = "", onChange, disabled, className = "", style, dateAriaLabel = "วันที่", timeAriaLabel = "เวลา" }) {
   const [date = "", time = ""] = String(value || "").split("T");
@@ -8,13 +9,11 @@ export default function DateTimeInput({ value = "", onChange, disabled, classNam
   return (
     <span className={`datetime-input ${className}`.trim()} style={style}>
       <DateInput value={date} onChange={(nextDate) => emit(nextDate, time)} disabled={disabled} ariaLabel={dateAriaLabel} />
-      <input
-        type="time"
-        className="premium-input datetime-time"
+      <TimeInput
         value={time.slice(0, 5)}
         disabled={disabled}
-        aria-label={timeAriaLabel}
-        onChange={(event) => emit(date, event.target.value)}
+        ariaLabel={timeAriaLabel}
+        onChange={(nextTime) => emit(date, nextTime)}
       />
     </span>
   );

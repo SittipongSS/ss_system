@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
@@ -102,7 +103,7 @@ export default function TaxDashboard() {
         <div className="flex items-center gap-3">
           <div className="bg-[var(--bg-panel)] border border-[var(--border)] rounded-md flex items-center p-1 shadow-sm">
             <Calendar size={14} className="mx-2 text-[var(--text-3)]" />
-            <select 
+            <Select
               value={timeRange} 
               onChange={(e) => setTimeRange(e.target.value)}
               className="bg-transparent text-sm border-none outline-none text-[var(--text-2)] font-medium pr-2 cursor-pointer"
@@ -110,7 +111,7 @@ export default function TaxDashboard() {
               <option value="all">ทั้งหมด (All Time)</option>
               <option value="month">เดือนนี้ (This Month)</option>
               <option value="quarter">ไตรมาสนี้ (This Quarter)</option>
-            </select>
+            </Select>
           </div>
           <Link href="/tax/reports" className="btn btn-secondary flex items-center gap-1.5"><BarChart3 size={16} /> รายงาน</Link>
         </div>

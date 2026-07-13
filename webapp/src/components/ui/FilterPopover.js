@@ -30,10 +30,10 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
   };
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
+    <div ref={ref} className="ui-filter-root" style={{ position: "relative" }}>
       <button
         type="button"
-        className="btn"
+        className={`btn ui-filter-trigger ${active ? "active" : ""}`.trim()}
         onClick={() => setOpen((v) => !v)}
         title="ตัวกรอง"
         style={{
@@ -52,7 +52,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
       </button>
 
       {open && (
-        <div className="glass-panel" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 40, width: "min(94vw, 420px)", padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div className="glass-panel ui-filter-popover" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 100, width: "min(94vw, 420px)", padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
             <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>{label}</span>
             {active && (
@@ -71,6 +71,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                 return (
                   <button
                     key={g.key}
+                    className={`ui-filter-group ${isActive ? "active" : ""}`.trim()}
                     type="button"
                     onClick={() => setActiveKey(g.key)}
                     style={{
@@ -101,6 +102,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                   return (
                     <button
                       key={opt.value}
+                      className={`ui-filter-option ${checked ? "selected" : ""}`.trim()}
                       type="button"
                       onClick={() => toggle(activeGroup, opt.value)}
                       style={{

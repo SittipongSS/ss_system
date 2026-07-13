@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -295,7 +296,7 @@ export default function SalesTargetPlanPage() {
       subtitle={`วางเป้าปี ${targetYear} — กรอกประวัติ → ระบบคาดการณ์ → แบ่งทีม → แบ่งคนและรายเดือน`}
       back={{ href: "/sa/targets", label: "ตารางเป้า" }}
       headerRight={
-        <select
+        <Select
           className="premium-select"
           value={targetYear}
           onChange={(e) => changeYear(Number(e.target.value))}
@@ -304,7 +305,7 @@ export default function SalesTargetPlanPage() {
           style={{ width: 150 }}
         >
           {targetYearOptions.map((y) => <option key={y} value={y}>วางเป้าปี {y}</option>)}
-        </select>
+        </Select>
       }
     >
       <div className="flex flex-col gap-4" style={{ paddingBottom: 20 }}>

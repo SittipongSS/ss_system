@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { displayDateToIso, fmtDateNumeric, fmtNumber, fmtPercent, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, parseNumberInput } from "./format.js";
+import { displayDateToIso, fmtDateNumeric, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, normalizeTime, parseNumberInput } from "./format.js";
 
 test("money input accepts raw and grouped values", () => {
   assert.equal(parseNumberInput("1,000,000.50"), 1000000.5);
@@ -38,4 +38,13 @@ test("date-only formatting preserves the calendar date without timezone parsing"
   assert.equal(fmtDateNumeric("2026-07-12"), "12/07/2026");
   assert.equal(fmtDateNumeric("2026-07-12", { short: true }), "12/07/26");
   assert.equal(fmtDateNumeric("2026-07-12T00:00:00.000Z"), "12/07/2026");
+});
+
+test("time helpers enforce the system-wide 24-hour HH:mm rule", () => {
+  assert.equal(normalizeTime("9"), "09:00");
+  assert.equal(normalizeTime("930"), "09:30");
+  assert.equal(normalizeTime("23:59"), "23:59");
+  assert.equal(normalizeTime("24:00"), null);
+  assert.equal(normalizeTime("09:60"), null);
+  assert.equal(fmtTime("7:05"), "07:05");
 });

@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -635,10 +636,10 @@ export default function CustomerDetails() {
           <div className="grid gap-[16px] grid-cols-2">
             <div className="form-group col-span-2">
               <label>ประเภทลูกค้า <span className="text-[var(--red)]">*</span></label>
-              <select name="customerType" value={formData.customerType} onChange={handleInputChange} className="premium-select w-full text-xs">
+              <Select name="customerType" value={formData.customerType} onChange={handleInputChange} className="premium-select w-full text-xs">
                 <option value="company">นิติบุคคล (บริษัท)</option>
                 <option value="individual">บุคคลธรรมดา</option>
-              </select>
+              </Select>
               <span className="text-[10px] text-[var(--text-3)] mt-1">เปลี่ยนประเภท = ชุดเอกสารแนบที่ต้องใช้เปลี่ยนตาม</span>
             </div>
             <div className="form-group col-span-2">

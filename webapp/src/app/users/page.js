@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useEffect, useState } from "react";
 import { Users, Plus, Pencil, Trash2, Lock, Unlock } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
@@ -466,7 +467,7 @@ function UserFields({ form, setForm, requirePassword, edit }) {
         <label>
           ฝ่าย (Department) <span className="text-[var(--red)]">*</span>
         </label>
-        <select
+        <Select
           value={form.department}
           onChange={(e) => setDepartment(e.target.value)}
           className="premium-input w-full"
@@ -476,13 +477,13 @@ function UserFields({ form, setForm, requirePassword, edit }) {
               {DEPARTMENT_LABELS[d]} — {DEPARTMENT_NAMES_TH[d]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="form-group">
         <label>
           ตำแหน่ง Role <span className="text-[var(--red)]">*</span>
         </label>
-        <select
+        <Select
           value={form.role}
           onChange={(e) => set("role", e.target.value)}
           className="premium-input w-full"
@@ -492,13 +493,13 @@ function UserFields({ form, setForm, requirePassword, edit }) {
               {ROLE_LABELS[r]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="form-group col-span-2">
         <label>
           ทีม {isTeamRole && <span className="text-[var(--red)]">*</span>}
         </label>
-        <select
+        <Select
           value={isTeamRole ? form.team : ""}
           onChange={(e) => set("team", e.target.value)}
           disabled={!isTeamRole}
@@ -513,7 +514,7 @@ function UserFields({ form, setForm, requirePassword, edit }) {
           ) : (
             <option value="">— ไม่ต้องระบุ —</option>
           )}
-        </select>
+        </Select>
       </div>
 
       {/* —— สิทธิ์เสริมรายคน (grants) —— */}

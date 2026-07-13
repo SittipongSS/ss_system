@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 // หน้ารวมโครงการ (/sa/projects — เฟส B, SALES_REVAMP_PLAN §5):
 // โครงการ = ภาชนะรวมดีล (SCENT→NPD→RE-ORDER…) — ตารางทุกโครงการพร้อม KPI
@@ -123,12 +124,12 @@ export default function ProjectsIndexPage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / สูตร / ดีล" aria-label="ค้นหาโครงการ" />
             </div>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 170 }}>
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 170 }}>
               <option value="active">กำลังดำเนินการ</option>
               <option value="all">ทุกสถานะ</option>
               <option value="Done">Done</option>
               <option value="Drop">Drop</option>
-            </select>
+            </Select>
             <div className="spacer" />
             <span className="ui-badge">{filtered.length} โครงการ</span>
           </div>

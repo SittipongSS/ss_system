@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -1036,9 +1037,9 @@ export default function DealOverviewPage() {
               {canEdit && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <select className="premium-select" value={feedKind} onChange={(e) => setFeedKind(e.target.value)} style={{ width: 140 }} aria-label="ประเภทอัปเดต">
+                    <Select className="premium-select" value={feedKind} onChange={(e) => setFeedKind(e.target.value)} style={{ width: 140 }} aria-label="ประเภทอัปเดต">
                       {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-                    </select>
+                    </Select>
                     {feedKind === "next_step" && (
                       <DateInput value={feedDue} onChange={setFeedDue} style={{ width: 180 }} ariaLabel="กำหนดวันขั้นถัดไป" />
                     )}
@@ -1100,9 +1101,9 @@ export default function DealOverviewPage() {
                       return (
                         <li key={act.id} style={{ borderLeft: `3px solid ${meta.color}`, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            <select className="premium-select" value={editKind} onChange={(e) => setEditKind(e.target.value)} style={{ width: 140 }} aria-label="ประเภทอัปเดต">
+                            <Select className="premium-select" value={editKind} onChange={(e) => setEditKind(e.target.value)} style={{ width: 140 }} aria-label="ประเภทอัปเดต">
                               {Object.entries(ACTIVITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-                            </select>
+                            </Select>
                             {editKind === "next_step" && (
                               <DateInput value={editDue} onChange={setEditDue} style={{ width: 180 }} ariaLabel="กำหนดวัน" />
                             )}
@@ -1163,12 +1164,12 @@ export default function DealOverviewPage() {
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
             โครงการของ {deal?.customerName || deal?.customer?.name || "ลูกค้า"}
-            <select className="premium-select" value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)} disabled={linkLoading}>
+            <Select className="premium-select" value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)} disabled={linkLoading}>
               <option value="">{linkLoading ? "กำลังโหลด…" : linkProjects.length ? "— เลือกโครงการ —" : "ลูกค้ารายนี้ยังไม่มีโครงการ"}</option>
               {linkProjects.map((p) => (
                 <option key={p.id} value={p.id}>{p.code || p.id} · {p.name}{p.type ? ` (${p.type})` : ""}</option>
               ))}
-            </select>
+            </Select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
             วันเริ่มงานช่วงนี้

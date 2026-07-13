@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 // ชุดช่องกรอกดีลมาตรฐาน (layout ตามมติ #283) — ใช้ร่วม 3 จุด: โมดัลหน้ารวมดีล /
 // โมดัลหน้าดีล / ฟอร์มสร้างดีลจากลีด เพื่อไม่ให้ฟอร์มเพี้ยนหากันอีก
@@ -31,22 +32,22 @@ export default function DealFormFields({
       </label>
       <label>
         ลูกค้า (ไม่บังคับตอนแรก)
-        <select className="premium-select" value={form.customerId || ""} onChange={(e) => onPatch({ customerId: e.target.value, brand: "" })}>
+        <Select className="premium-select" value={form.customerId || ""} onChange={(e) => onPatch({ customerId: e.target.value, brand: "" })}>
           <option value="">— ยังไม่ผูกลูกค้า —</option>
           {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        </Select>
       </label>
       <label>
         แบรนด์
         <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <select className="premium-select" style={{ flex: 1, minWidth: 0 }} value={form.brand || ""} onChange={(e) => set("brand")(e.target.value)} disabled={!form.customerId}>
+          <Select className="premium-select" style={{ flex: 1, minWidth: 0 }} value={form.brand || ""} onChange={(e) => set("brand")(e.target.value)} disabled={!form.customerId}>
             <option value="">{form.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน"}</option>
             {(() => {
               const opts = brandThList((customers.find((c) => c.id === form.customerId)?.brands) || []);
               const withCur = form.brand && !opts.includes(form.brand) ? [form.brand, ...opts] : opts;
               return withCur.map((b) => <option key={b} value={b}>{b}</option>);
             })()}
-          </select>
+          </Select>
           <AddBrandButton
             customerId={form.customerId}
             disabled={!form.customerId}
@@ -59,31 +60,31 @@ export default function DealFormFields({
       </label>
       <label>
         ประเภทดีล
-        <select className="premium-select" value={form.dealType} onChange={(e) => set("dealType")(e.target.value)}>
+        <Select className="premium-select" value={form.dealType} onChange={(e) => set("dealType")(e.target.value)}>
           {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
-        </select>
+        </Select>
       </label>
       <label>
         หมวดสินค้า{form.dealType !== "SCENT" ? " (บังคับ)" : " (ไม่บังคับ)"}
-        <select className="premium-select" required={form.dealType !== "SCENT"} value={form.categoryCode || ""} onChange={(e) => set("categoryCode")(e.target.value)}>
+        <Select className="premium-select" required={form.dealType !== "SCENT"} value={form.categoryCode || ""} onChange={(e) => set("categoryCode")(e.target.value)}>
           <option value="">— เลือกหมวดสินค้า —</option>
           {categories.map((c) => {
             const code = `${c.mainCategoryCode}-${c.typeCode}`;
             return <option key={code} value={code}>{code} · {c.nameTh || c.nameEn || ""}</option>;
           })}
-        </select>
+        </Select>
       </label>
       <label>
         สถานะ
-        <select className="premium-select" value={form.stage} onChange={(e) => set("stage")(e.target.value)}>
+        <Select className="premium-select" value={form.stage} onChange={(e) => set("stage")(e.target.value)}>
           {stages.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
-        </select>
+        </Select>
       </label>
       <label>
         โอกาสที่จะปิดได้ (FC%)
-        <select className="premium-select" value={snapForecastLevel(form.probability)} disabled={alreadyWon} onChange={(e) => set("probability")(e.target.value)}>
+        <Select className="premium-select" value={snapForecastLevel(form.probability)} disabled={alreadyWon} onChange={(e) => set("probability")(e.target.value)}>
           {FORECAST_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-        </select>
+        </Select>
       </label>
       <label>
         เดือนคาดการณ์{alreadyWon ? " (ล็อกหลังปิด Won)" : ""}
