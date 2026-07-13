@@ -19,8 +19,8 @@ export default function KpiLeadsTab({ month, teamFilter, refreshKey }) {
     try {
       const q = new URLSearchParams({ month });
       if (teamFilter && teamFilter !== "all") q.set("team", teamFilter);
-      const res = await fetch(`/api/sales-planning/lead-kpi?${q.toString()}`);
-      if (!res.ok) throw new Error((await res.json()).error || "โหลด KPI ลีดไม่สำเร็จ");
+      const res = await fetch(`/api/sales-planning/leads/kpi?${q.toString()}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลด KPI ลีดไม่สำเร็จ");
       setKpi(await res.json());
     } catch (e) {
       setError(e.message || "โหลด KPI ลีดไม่สำเร็จ");

@@ -437,7 +437,7 @@ function DashboardContent() {
       const [dashboards, sahamitRiskRes, reviewRes] = await Promise.all([
         Promise.all(months.map(async (m) => {
           const res = await fetch(`/api/sales-planning/dashboard?month=${encodeURIComponent(m)}`);
-          if (!res.ok) throw new Error((await res.json()).error || "โหลดภาพรวมไม่สำเร็จ");
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดภาพรวมไม่สำเร็จ");
           return res.json();
         })),
         SALES_FEATURES.sahamitRisk ? fetch(`/api/sales-planning/sahamit-risk?month=${encodeURIComponent(month)}`) : Promise.resolve(null),
@@ -504,7 +504,7 @@ function DashboardContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reviewMonth: month, team, status, notes: reviewNotes }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "save forecast review failed");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "save forecast review failed");
       await load();
     } catch (e) {
       setError(e.message || "save forecast review failed");
