@@ -6,7 +6,7 @@
 // (PATCH/POST/DELETE /api/pm/project-tasks) — สิทธิ์+คำนวณวัน+สถานะอัตโนมัติฝั่ง server.
 // แก้ dependency (ขึ้นกับ) ยังทำที่หน้าโครงการ (แสดงเป็นชิปอย่างเดียวที่นี่).
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, CheckCircle2, CircleDashed, Clock, Filter, Flag, Pencil, Plus, Trash2, TrendingUp } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, Filter, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import PredecessorPicker from "@/components/pm/PredecessorPicker";
@@ -21,6 +21,14 @@ const STATUS_META = {
   Completed: { label: "เสร็จแล้ว", color: "var(--green)" },
 };
 const ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
+const ROLE_META = {
+  SA: { color: "var(--blue)", bg: "color-mix(in srgb, var(--blue) 10%, transparent)" },
+  RD: { color: "var(--violet)", bg: "color-mix(in srgb, var(--violet) 10%, transparent)" },
+  PC: { color: "var(--teal)", bg: "color-mix(in srgb, var(--teal) 10%, transparent)" },
+  PD: { color: "var(--amber)", bg: "color-mix(in srgb, var(--amber) 10%, transparent)" },
+  QC: { color: "var(--green)", bg: "color-mix(in srgb, var(--green) 10%, transparent)" },
+};
+const PHASE_COLORS = ["var(--accent)", "var(--violet)", "var(--teal)", "var(--amber)", "var(--green)", "var(--blue)"];
 
 const emptyForm = { name: "", role: "SA", phase: "", durationDays: 1, startDate: "", assigneeId: "", assignee: "", isMilestone: false, note: "", predecessors: [] };
 
@@ -56,6 +64,7 @@ export default function TimelineWorkspace({
   const [saving, setSaving] = useState(false);
   const [tableStatusFilter, setTableStatusFilter] = useState("all");
   const [tableSort, setTableSort] = useState("step");
+  const [collapsedPhases, setCollapsedPhases] = useState(new Set());
 
   useEffect(() => {
     if (!canEdit) return;
@@ -186,6 +195,14 @@ export default function TimelineWorkspace({
   const done = tasks.filter((task) => task.status === "Completed").length;
   const inProgress = tasks.filter((task) => task.status === "In Progress").length;
   const progressPct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+  const milestones = tasks.filter((task) => task.isMilestone);
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = tasks.filter((task) => task.status !== "Completed" && task.finishDate && task.finishDate < today).length;
+  const togglePhase = (key) => setCollapsedPhases((current) => {
+    const next = new Set(current);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
   const documentProject = suppliedDocumentProject || {
     id: projectId || `deal-${dealId}`,
     name: timelineContext?.name || "ไทม์ไลน์ดีล",
@@ -214,6 +231,22 @@ export default function TimelineWorkspace({
             จำนวนวันทำการ
             <input type="number" min="1" className="premium-input" value={form.durationDays}
               onChange={(e) => setForm({ ...form, durationDays: Math.max(1, Number(e.target.value) || 1) })} />
+          </label>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+            ผู้รับผิดชอบ
+            <select className="premium-select" value={form.assigneeId} onChange={(e) => {
+              const selected = assigneeOptions.find((user) => user.id === e.target.value);
+              setForm({ ...form, assigneeId: e.target.value, assignee: selected?.name || "" });
+            }}>
+              <option value="">— ยังไม่ระบุ —</option>
+              {assigneeOptions.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+            </select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+            วันที่เริ่ม
+            <DateInput value={form.startDate} onChange={(startDate) => setForm({ ...form, startDate })} />
           </label>
         </div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
@@ -251,24 +284,8 @@ export default function TimelineWorkspace({
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>ไทม์ไลน์ดีล</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{suppliedDocumentProject ? "ไทม์ไลน์โครงการ" : "ไทม์ไลน์ดีล"}</div>
           <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>{done}/{tasks.length} ขั้นตอนเสร็จแล้ว</div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            ผู้รับผิดชอบ
-            <select className="premium-select" value={form.assigneeId} onChange={(e) => {
-              const selected = assigneeOptions.find((user) => user.id === e.target.value);
-              setForm({ ...form, assigneeId: e.target.value, assignee: selected?.name || "" });
-            }}>
-              <option value="">— ยังไม่ระบุ —</option>
-              {assigneeOptions.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-            </select>
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            วันที่เริ่ม
-            <DateInput value={form.startDate} onChange={(startDate) => setForm({ ...form, startDate })} />
-          </label>
         </div>
         {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
       </div>
@@ -288,53 +305,103 @@ export default function TimelineWorkspace({
       )}
 
       {view === "list" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div className="glass-panel" style={{ padding: "18px 20px", background: "var(--panel-2)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div>
-                <div className="mono tabular-nums" style={{ fontSize: 34, fontWeight: 800, color: "var(--accent)", lineHeight: 1 }}>{progressPct}%</div>
-                <div style={{ color: "var(--text-2)", fontSize: 12.5, marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}><TrendingUp size={14} /> เสร็จแล้ว {done} จาก {tasks.length} ขั้นตอน</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
+            {canAdd && <button type="button" className="btn btn-primary sm" onClick={() => openAdd(null)} disabled={!!busyId}><Plus size={14} /> เพิ่มขั้นตอน</button>}
+          </div>
+
+          <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                <span className="mono tabular-nums" style={{ fontSize: 36, fontWeight: 700, lineHeight: 1, color: "var(--accent)", letterSpacing: -1 }}>{progressPct}<span style={{ fontSize: 18 }}>%</span></span>
+                <span style={{ fontSize: 13, color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: 6 }}><TrendingUp size={15} color="var(--accent)" /> เสร็จแล้ว {done} จาก {tasks.length} ขั้นตอน</span>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <span className="ui-badge" style={{ color: "var(--text-3)" }}><CircleDashed size={12} /> รอ {tasks.length - done - inProgress}</span>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <span className="ui-badge" style={{ color: "var(--text-3)" }}><CircleDashed size={12} /> รอดำเนินการ {tasks.length - done - inProgress}</span>
                 <span className="ui-badge" style={{ color: "var(--accent)" }}><Clock size={12} /> กำลังทำ {inProgress}</span>
-                <span className="ui-badge" style={{ color: "var(--green)" }}><CheckCircle2 size={12} /> เสร็จ {done}</span>
+                <span className="ui-badge" style={{ color: "var(--green)" }}><CheckCircle2 size={12} /> เสร็จสิ้น {done}</span>
+                {overdue > 0 && <span className="ui-badge" style={{ color: "var(--red)" }}><AlertTriangle size={12} /> เลยกำหนด {overdue}</span>}
               </div>
             </div>
-            <div className="progress" style={{ height: 8, marginTop: 14 }}><span className={done === tasks.length && tasks.length ? "done" : undefined} style={{ width: `${progressPct}%` }} /></div>
-          </div>
-          {groups.map((group, groupIndex) => (
-            <section key={`${group.phase}|${groupIndex}`}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderLeft: "3px solid var(--accent)", background: "var(--panel-2)", borderRadius: 10, fontWeight: 700, fontSize: 13 }}>
-                {groupIndex + 1}. {group.phase || "ไม่ระบุเฟส"}
-                <span style={{ marginLeft: "auto", color: "var(--text-3)", fontSize: 11 }}>{group.tasks.filter((task) => task.status === "Completed").length}/{group.tasks.length}</span>
-              </div>
-              <div style={{ marginLeft: 14, borderLeft: "2px solid var(--border)", padding: "8px 0 2px 18px" }}>
-                {group.tasks.map((task) => (
-                  <div key={task.id} className="glass-panel" style={{ padding: 14, marginBottom: 9, display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 12, opacity: busyId === task.id ? 0.5 : 1 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 700 }}>
-                        <span className="mono" style={{ color: "var(--text-3)", fontSize: 12 }}>{numberOf.get(task.id)}</span>
-                        {task.isMilestone && <Flag size={13} color="var(--amber)" />}{task.name}
+            <div className="progress" style={{ height: 8, marginBottom: milestones.length ? 16 : 0 }}><span className={done === tasks.length && tasks.length ? "done" : undefined} style={{ width: `${progressPct}%` }} /></div>
+            {milestones.length > 0 && (
+              <div style={{ paddingTop: 16, borderTop: "1px dashed var(--border)", overflowX: "auto", paddingBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: "max-content" }}>
+                  {milestones.map((milestone, index) => {
+                    const complete = milestone.status === "Completed";
+                    const active = milestone.status === "In Progress";
+                    const color = complete ? "var(--green)" : active ? "var(--accent)" : "var(--border-strong)";
+                    return <FragmentGroup key={milestone.id}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, opacity: complete || active ? 1 : 0.62 }}>
+                        <div style={{ width: 24, height: 24, borderRadius: "50%", background: complete || active ? color : "var(--bg)", border: `2px solid ${color}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {complete ? <Check size={14} strokeWidth={3} color="#fff" /> : active ? <Clock size={13} color="#fff" /> : <span style={{ fontSize: 10, color: "var(--text-3)" }}>{numberOf.get(milestone.id)}</span>}
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>{milestone.name}</span>
                       </div>
-                      <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 6 }}>{task.role || "-"} · {task.assignee || "ยังไม่ระบุผู้รับผิดชอบ"} · {fmtDate(task.startDate)} → {fmtDate(task.finishDate)}</div>
-                      {task.note && <div style={{ color: "var(--text-2)", fontSize: 12, marginTop: 5 }}>{task.note}</div>}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      {canEdit ? (
-                        <select className="premium-select" value={task.status || "Pending"} disabled={!!busyId} onChange={(event) => patch(task, { status: event.target.value })}>
-                          {Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
-                        </select>
-                      ) : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
-                      {canEdit && <button type="button" className="btn-icon" onClick={() => openEdit(task)} aria-label={`แก้ไข ${task.name}`}><Pencil size={14} /></button>}
-                    </div>
-                  </div>
-                ))}
+                      {index < milestones.length - 1 && <div style={{ width: 30, height: 2, background: complete ? "var(--green)" : "var(--border)" }} />}
+                    </FragmentGroup>;
+                  })}
+                </div>
               </div>
-            </section>
-          ))}
-          {!tasks.length && <div className="glass-panel" style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีขั้นตอนในไทม์ไลน์นี้</div>}
-          {canAdd && <button type="button" className="btn btn-primary" onClick={() => openAdd(null)} disabled={!!busyId}><Plus size={14} /> เพิ่มขั้นตอน</button>}
+            )}
+          </div>
+
+          {!tasks.length && <div className="glass-panel" style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีขั้นตอนในไทม์ไลน์นี้</div>}
+          {groups.map((group, groupIndex) => {
+            const phaseKey = `${group.phase}|${groupIndex}`;
+            const collapsed = collapsedPhases.has(phaseKey);
+            const phaseDone = group.tasks.filter((task) => task.status === "Completed").length;
+            const phasePct = group.tasks.length ? Math.round((phaseDone / group.tasks.length) * 100) : 0;
+            const phaseActive = group.tasks.some((task) => task.status === "In Progress");
+            const phaseColor = PHASE_COLORS[groupIndex % PHASE_COLORS.length];
+            return (
+              <section key={phaseKey}>
+                <button type="button" onClick={() => togglePhase(phaseKey)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", marginBottom: collapsed ? 0 : 8, background: `color-mix(in srgb, ${phaseColor} 7%, var(--panel))`, border: "none", borderLeft: `3px solid ${phaseColor}`, borderRadius: 10, cursor: "pointer", textAlign: "left" }}>
+                  {collapsed ? <ChevronRight size={14} color={phaseColor} /> : <ChevronDown size={14} color={phaseColor} />}
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{groupIndex + 1}. {group.phase || "ไม่ระบุเฟส"}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: phaseDone === group.tasks.length ? "var(--green)" : phaseActive ? "var(--accent)" : "var(--text-3)" }}>{phaseDone}/{group.tasks.length}</span>
+                  {phaseDone === group.tasks.length ? <CheckCircle2 size={13} color="var(--green)" /> : <div style={{ width: 52, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${phasePct}%`, background: phaseActive ? "var(--accent)" : phaseColor }} /></div>}
+                </button>
+                {!collapsed && <div style={{ paddingLeft: 12 }}>
+                  {group.tasks.map((task, taskIndex) => {
+                    const complete = task.status === "Completed";
+                    const active = task.status === "In Progress";
+                    const role = ROLE_META[task.role] || { color: "var(--text-2)", bg: "var(--panel-2)" };
+                    return (
+                      <div key={task.id} style={{ display: "flex", alignItems: "stretch", opacity: busyId === task.id ? 0.5 : 1 }}>
+                        <div style={{ width: 28, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}</div>
+                        <div className="pm-task-card" style={{ position: "relative", flex: 1, marginBottom: 8, background: task.isMilestone ? "color-mix(in srgb, var(--amber) 8%, var(--panel))" : complete ? "color-mix(in srgb, var(--green) 5%, var(--panel))" : active ? "var(--panel-2)" : "var(--panel)", border: `1px solid ${complete ? "color-mix(in srgb, var(--green) 30%, transparent)" : active ? "var(--accent)" : task.isMilestone ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)"}`, boxShadow: active ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                          {taskIndex < group.tasks.length - 1 && <div className="pm-task-connector" style={{ background: complete ? "var(--green)" : "var(--border)" }} />}
+                          <button type="button" onClick={() => canEdit && task.status !== "Pending" && patch(task, { status: complete ? "In Progress" : "Completed" })} disabled={!canEdit || task.status === "Pending" || !!busyId} style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: complete ? "var(--green)" : active ? "var(--accent)" : "var(--bg)", border: `2px solid ${complete ? "var(--green)" : active ? "var(--accent)" : "var(--border)"}`, color: "#fff", padding: 0, cursor: canEdit && task.status !== "Pending" ? "pointer" : "default", boxShadow: active ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none" }}>
+                            {complete ? <Check size={16} strokeWidth={3} /> : active ? <Clock size={15} /> : <span style={{ fontSize: 10, color: "var(--text-3)", fontWeight: 700 }}>{numberOf.get(task.id)}</span>}
+                          </button>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                              <h4 style={{ margin: 0, fontSize: 15, color: complete ? "var(--green)" : "var(--text)", fontWeight: 600 }}>{numberOf.get(task.id)}. {task.name}</h4>
+                              <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                                <span className="ui-badge" style={{ color: role.color, background: role.bg }}>{task.role || "-"}</span>
+                                {canEdit ? <select className="premium-select" value={task.status || "Pending"} disabled={!!busyId} onChange={(event) => patch(task, { status: event.target.value })}>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}</select> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
+                                {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--text-3)", marginTop: 8, flexWrap: "wrap" }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Clock size={14} /> {task.durationDays || 1} วันทำการ</span>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={14} /> {fmtDate(task.startDate)} - {fmtDate(task.finishDate)}</span>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><User size={14} /> {task.assignee || "ยังไม่ระบุผู้รับผิดชอบ"}</span>
+                            </div>
+                            {task.note && <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 8, background: "var(--panel-2)", padding: "6px 8px", borderRadius: 6 }}><strong style={{ color: "var(--text-3)" }}>หมายเหตุ:</strong> {task.note}</div>}
+                          </div>
+                          {active && canEdit && <button type="button" className="btn btn-success sm" onClick={() => patch(task, { status: "Completed" })}>✔ ทำเสร็จแล้ว</button>}
+                        </div>
+                        {canReorder && <div style={{ width: 28, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}><button type="button" className="btn-icon" onClick={() => move(task, -1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ขึ้น`}>▴</button><button type="button" className="btn-icon" onClick={() => move(task, 1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ลง`}>▾</button></div>}
+                      </div>
+                    );
+                  })}
+                </div>}
+              </section>
+            );
+          })}
         </div>
       )}
 
@@ -358,7 +425,7 @@ export default function TimelineWorkspace({
         </div>
       </div>
       <div className="premium-glass-table table-responsive">
-        <table className="w-full text-sm">
+        <table className="premium-table">
           <thead>
             <tr>
               <th style={{ width: 56 }}>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
@@ -370,11 +437,12 @@ export default function TimelineWorkspace({
             {tableGroups.map((g, gi) => (
               <FragmentGroup key={`${g.phase}|${gi}`}>
                 <tr>
-                  <td colSpan={canEdit ? 10 : 9} style={{ background: "var(--panel-2)", fontWeight: 700, fontSize: 13 }}>
-                    {gi + 1}. {g.phase || "ไม่ระบุเฟส"}
-                    <span style={{ float: "right", color: "var(--text-3)", fontWeight: 500 }}>
-                      {g.tasks.filter((t) => t.status === "Completed").length}/{g.tasks.length}
-                    </span>
+                  <td colSpan={canEdit ? 10 : 9} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[gi % PHASE_COLORS.length] }} />
+                      {gi + 1}. {g.phase || "ไม่ระบุเฟส"}
+                      <span style={{ marginLeft: "auto", color: "var(--text-3)", fontWeight: 600, fontSize: 11 }}>{g.tasks.filter((t) => t.status === "Completed").length}/{g.tasks.length}</span>
+                    </div>
                   </td>
                 </tr>
                 {g.tasks.map((t) => (
