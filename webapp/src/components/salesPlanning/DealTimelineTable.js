@@ -12,8 +12,11 @@ import DateInput from "@/components/ui/DateInput";
 import PredecessorPicker from "@/components/pm/PredecessorPicker";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
+import StatusSelect from "@/components/pm/StatusSelect";
 import { fmtDate } from "@/lib/format";
 import { useResponsiveView } from "@/lib/useResponsiveView";
+import { compactPersonName } from "@/lib/personName";
+import { addBusinessDays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 
 const STATUS_META = {
   Pending: { label: "รอดำเนินการ", color: "var(--text-3)" },
@@ -32,8 +35,29 @@ const PHASE_COLORS = ["var(--accent)", "var(--violet)", "var(--teal)", "var(--am
 
 const emptyForm = { name: "", role: "SA", phase: "", durationDays: 1, startDate: "", assigneeId: "", assignee: "", isMilestone: false, note: "", predecessors: [] };
 
+function withOptimisticSchedule(task, body) {
+  const next = { ...body };
+  const startValue = "startDate" in body ? body.startDate : task.startDate;
+  if (!startValue) return next;
+  const start = new Date(startValue);
+  if (Number.isNaN(start.getTime())) return next;
+  while (!isBusinessDay(start)) start.setDate(start.getDate() + 1);
+  const startIso = toLocalISODate(start);
+  if ("startDate" in body) next.startDate = startIso;
+  if ("finishDate" in body && body.finishDate) {
+    const durationDays = Math.max(1, countBusinessDays(startIso, body.finishDate) + 1);
+    next.durationDays = durationDays;
+    next.finishDate = toLocalISODate(addBusinessDays(start, durationDays - 1));
+  } else if ("startDate" in body || "durationDays" in body) {
+    const durationDays = Math.max(1, Number("durationDays" in body ? body.durationDays : task.durationDays) || 1);
+    next.durationDays = durationDays;
+    next.finishDate = toLocalISODate(addBusinessDays(start, durationDays - 1));
+  }
+  return next;
+}
+
 export default function TimelineWorkspace({
-  tasks,
+  tasks: sourceTasks = [],
   canEdit,
   canAdd = canEdit,
   canReorder = canEdit,
@@ -65,6 +89,13 @@ export default function TimelineWorkspace({
   const [tableStatusFilter, setTableStatusFilter] = useState("all");
   const [tableSort, setTableSort] = useState("step");
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
+  const [drafts, setDrafts] = useState({});
+  const tasks = useMemo(
+    () => sourceTasks
+      .map((task) => (drafts[task.id] ? { ...task, ...drafts[task.id] } : task))
+      .sort((a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0)),
+    [sourceTasks, drafts],
+  );
 
   useEffect(() => {
     if (!canEdit) return;
@@ -122,12 +153,36 @@ export default function TimelineWorkspace({
     }
   };
 
-  const patch = (t, body) => call(t.id, `/api/pm/project-tasks/${t.id}`, {
-    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
+  const patch = (t, body) => {
+    const next = withOptimisticSchedule(t, body);
+    setDrafts((current) => ({ ...current, [t.id]: { ...current[t.id], ...next } }));
+    return Promise.resolve(true);
+  };
   const patchById = (taskId, body) => {
     const task = tasks.find((item) => item.id === taskId);
     return task ? patch(task, body) : Promise.resolve(false);
+  };
+  const dirtyCount = Object.keys(drafts).length;
+  const discardDrafts = () => setDrafts({});
+  const saveDrafts = async () => {
+    const entries = Object.entries(drafts);
+    if (!entries.length) return;
+    setSaving(true);
+    const failed = {};
+    for (const [taskId, body] of entries) {
+      try {
+        const res = await fetch(`/api/pm/project-tasks/${taskId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+        if (!res.ok) failed[taskId] = body;
+      } catch {
+        failed[taskId] = body;
+      }
+    }
+    setDrafts(failed);
+    if (Object.keys(failed).length) onError?.(`บันทึกไม่สำเร็จ ${Object.keys(failed).length} ขั้นตอน — รายการที่ยังไม่สำเร็จยังค้างไว้ให้ลองใหม่`);
+    await onChanged?.();
+    setSaving(false);
   };
   const removeTask = (t) => {
     if (!window.confirm(`ลบขั้นตอน "${t.name}"?`)) return;
@@ -172,23 +227,15 @@ export default function TimelineWorkspace({
   };
 
   // เลื่อนลำดับในเฟสเดียวกัน — สลับ stepOrder สองแถว (แบบปุ่มลูกศรของตารางโครงการ)
-  const move = async (t, dir) => {
+  const move = (t, dir) => {
     if (!canReorder) return;
     const flat = groups.flatMap((g) => g.tasks);
     const i = flat.findIndex((x) => x.id === t.id);
     const j = i + dir;
     if (j < 0 || j >= flat.length || flat[j].phase !== t.phase) return;
     const other = flat[j];
-    setBusyId(t.id);
-    try {
-      await Promise.all([
-        fetch(`/api/pm/project-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stepOrder: other.stepOrder }) }),
-        fetch(`/api/pm/project-tasks/${other.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stepOrder: t.stepOrder }) }),
-      ]);
-      await onChanged?.();
-    } finally {
-      setBusyId("");
-    }
+    patch(t, { stepOrder: other.stepOrder });
+    patch(other, { stepOrder: t.stepOrder });
   };
 
   const assigneeOptions = users.map((u) => ({ id: u.id, name: u.name }));
@@ -241,7 +288,7 @@ export default function TimelineWorkspace({
               setForm({ ...form, assigneeId: e.target.value, assignee: selected?.name || "" });
             }}>
               <option value="">— ยังไม่ระบุ —</option>
-              {assigneeOptions.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+              {assigneeOptions.map((user) => <option key={user.id} value={user.id}>{compactPersonName(user.name)}</option>)}
             </select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
@@ -381,14 +428,14 @@ export default function TimelineWorkspace({
                               <h4 style={{ margin: 0, fontSize: 15, color: complete ? "var(--green)" : "var(--text)", fontWeight: 600 }}>{numberOf.get(task.id)}. {task.name}</h4>
                               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                                 <span className="ui-badge" style={{ color: role.color, background: role.bg }}>{task.role || "-"}</span>
-                                {canEdit ? <select className="premium-select" value={task.status || "Pending"} disabled={!!busyId} onChange={(event) => patch(task, { status: event.target.value })}>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}</select> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
+                                {canEdit ? <StatusSelect value={task.status || "Pending"} disabled={!!busyId} onChange={(status) => patch(task, { status })} /> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
                                 {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
                               </div>
                             </div>
                             <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--text-3)", marginTop: 8, flexWrap: "wrap" }}>
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Clock size={14} /> {task.durationDays || 1} วันทำการ</span>
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={14} /> {fmtDate(task.startDate)} - {fmtDate(task.finishDate)}</span>
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><User size={14} /> {task.assignee || "ยังไม่ระบุผู้รับผิดชอบ"}</span>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }} title={task.assignee || undefined}><User size={14} /> {task.assignee ? compactPersonName(task.assignee) : "ยังไม่ระบุผู้รับผิดชอบ"}</span>
                             </div>
                             {task.note && <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 8, background: "var(--panel-2)", padding: "6px 8px", borderRadius: 6 }}><strong style={{ color: "var(--text-3)" }}>หมายเหตุ:</strong> {task.note}</div>}
                           </div>
@@ -425,7 +472,13 @@ export default function TimelineWorkspace({
         </div>
       </div>
       <div className="premium-glass-table table-responsive">
-        <table className="premium-table">
+        <table className="premium-table timeline-task-table">
+          <colgroup>
+            <col style={{ width: 56 }} /><col className="timeline-col-task" /><col style={{ width: 68 }} />
+            <col style={{ width: 150 }} /><col style={{ width: 126 }} /><col style={{ width: 124 }} />
+            <col style={{ width: 124 }} /><col style={{ width: 58 }} /><col style={{ width: 92 }} />
+            {canEdit && <col style={{ width: 92 }} />}
+          </colgroup>
           <thead>
             <tr>
               <th style={{ width: 56 }}>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
@@ -461,26 +514,23 @@ export default function TimelineWorkspace({
                       {t.name}
                       {t.note && <span style={{ display: "block", color: "var(--text-3)", fontSize: 11.5, fontWeight: 500 }}>{t.note}</span>}
                     </td>
-                    <td><span className="ui-badge" style={{ color: "var(--text-2)" }}>{t.role || "-"}</span></td>
+                    <td style={{ textAlign: "center" }}><span className="ui-badge" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)", background: ROLE_META[t.role]?.bg, minWidth: 38, justifyContent: "center" }}>{t.role || "-"}</span></td>
                     <td>
                       {canEdit ? (
-                        <select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ minWidth: 130 }}
+                        <select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: 12 }}
                           aria-label={`ผู้รับผิดชอบ ${t.name}`}
                           onChange={(e) => {
                             const u = assigneeOptions.find((x) => x.id === e.target.value);
                             patch(t, { assigneeId: e.target.value || null, assignee: u?.name || null });
                           }}>
-                          <option value="">{t.assignee || "— ไม่ระบุ —"}</option>
-                          {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          <option value="">{t.assignee ? compactPersonName(t.assignee) : "— ไม่ระบุ —"}</option>
+                          {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}</option>)}
                         </select>
-                      ) : (t.assignee || "-")}
+                      ) : <span title={t.assignee || undefined}>{t.assignee ? compactPersonName(t.assignee) : "-"}</span>}
                     </td>
                     <td>
                       {canEdit ? (
-                        <select className="premium-select" value={t.status || "Pending"} disabled={!!busyId} style={{ width: 132 }}
-                          aria-label={`สถานะ ${t.name}`} onChange={(e) => patch(t, { status: e.target.value })}>
-                          {Object.entries(STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-                        </select>
+                        <StatusSelect value={t.status || "Pending"} disabled={!!busyId} aria-label={`สถานะ ${t.name}`} onChange={(status) => patch(t, { status })} />
                       ) : (
                         <span className="ui-badge" style={{ color: STATUS_META[t.status]?.color || "var(--text-3)" }}>
                           {STATUS_META[t.status]?.label || t.status || "-"}
@@ -489,10 +539,14 @@ export default function TimelineWorkspace({
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       {canEdit ? (
-                        <DateInput value={t.startDate || ""} onChange={(v) => patch(t, { startDate: v || null })} aria-label={`วันเริ่ม ${t.name}`} />
+                        <DateInput compact value={t.startDate || ""} onChange={(v) => patch(t, { startDate: v || null })} ariaLabel={`วันเริ่ม ${t.name}`} style={{ width: 116 }} />
                       ) : fmtDate(t.startDate)}
                     </td>
-                    <td className="mono" style={{ whiteSpace: "nowrap" }}>{fmtDate(t.finishDate)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {canEdit ? (
+                        <DateInput compact value={t.finishDate || ""} min={t.startDate || undefined} disabled={!t.startDate || !!busyId} onChange={(v) => patch(t, { finishDate: v || null })} ariaLabel={`วันจบ ${t.name}`} style={{ width: 116 }} />
+                      ) : fmtDate(t.finishDate)}
+                    </td>
                     <td className="num">
                       {canEdit ? (
                         <input type="number" min="1" className="premium-input mono" defaultValue={t.durationDays ?? 1} style={{ width: 58, textAlign: "right" }}
@@ -532,8 +586,16 @@ export default function TimelineWorkspace({
       </>
       )}
 
+      {dirtyCount > 0 && (
+        <div className="timeline-save-bar" role="status">
+          <span className="timeline-save-message">มีการแก้ไข <b>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก</span>
+          <button type="button" className="btn" onClick={discardDrafts} disabled={saving}>ยกเลิกการแก้ไข</button>
+          <button type="button" className="btn btn-primary timeline-save-button" onClick={saveDrafts} disabled={saving}>{saving ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}</button>
+        </div>
+      )}
+
       <Modal open={!!editTask} onClose={() => !saving && setEditTask(null)} title="แก้ไขขั้นตอน" size="sm">
-        {editTask && taskForm(saveEdit, "แก้ไขขั้นตอน", "บันทึก")}
+        {editTask && taskForm(saveEdit, "แก้ไขขั้นตอน", "เก็บการแก้ไข")}
       </Modal>
       <Modal open={addOpen} onClose={() => !saving && setAddOpen(false)} title={addAfterId ? "แทรกขั้นตอน" : "เพิ่มขั้นตอน"} size="sm">
         {addOpen && taskForm(saveAdd, "เพิ่มขั้นตอน", "เพิ่มขั้นตอน")}

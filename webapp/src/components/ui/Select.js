@@ -15,9 +15,9 @@ const Select = forwardRef(function Select(
   const toneStyle = tone
     ? {
         color: tone,
-        borderColor: `color-mix(in srgb, ${tone} 45%, var(--border))`,
+        borderColor: `color-mix(in srgb, ${tone} 58%, var(--border))`,
         // ใช้ backgroundColor (ไม่ใช่ background) เพื่อไม่ลบลูกศร dropdown ที่มาจาก background-image ใน CSS
-        backgroundColor: `color-mix(in srgb, ${tone} 10%, var(--panel))`,
+        backgroundColor: `color-mix(in srgb, ${tone} 17%, var(--date-calendar-bg, var(--panel)))`,
       }
     : null;
   const cls = [

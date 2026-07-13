@@ -216,6 +216,9 @@ button, select, input, textarea {
 }
 .date-input-picker:hover:not(:disabled) { color: var(--accent); background: var(--panel-2); }
 .date-input-picker:disabled { cursor: not-allowed; opacity: 0.5; }
+.date-input-wrap.compact { min-width: 108px; }
+.date-input-wrap.compact .date-input-text { padding-left: 8px; padding-right: 29px; font-size: 12px; }
+.date-input-wrap.compact .date-input-picker { width: 28px; }
 .date-calendar {
   position: absolute;
   top: calc(100% + 6px);
@@ -4192,6 +4195,40 @@ button.empty-state { width: 100%; font: inherit; }
 
 .premium-glass-table.table-responsive {
   overflow-x: auto;
+}
+.timeline-task-table {
+  width: 100%;
+  min-width: 1050px;
+  table-layout: fixed;
+}
+.timeline-task-table .timeline-col-task { width: auto; min-width: 220px; }
+.timeline-task-table th,
+.timeline-task-table td { padding-left: 8px; padding-right: 8px; }
+.timeline-task-table .date-input-wrap { max-width: 116px; }
+.timeline-save-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 3000;
+  width: min(720px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  background: var(--date-calendar-bg, var(--panel));
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+}
+.timeline-save-message { flex: 1; min-width: 180px; font-size: 13px; color: var(--text); }
+.timeline-save-message b { color: var(--amber); }
+.timeline-save-button { min-width: 210px; min-height: 42px; font-size: 14px; font-weight: 700; }
+@media (max-width: 640px) {
+  .timeline-save-bar { flex-wrap: wrap; bottom: 10px; }
+  .timeline-save-message { flex-basis: 100%; }
+  .timeline-save-bar .btn { flex: 1; }
+  .timeline-save-button { min-width: 0; }
 }
 
 /* Cell padding / alignment for the glass table variant. Unlike .premium-table
