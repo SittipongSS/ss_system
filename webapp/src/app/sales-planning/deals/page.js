@@ -168,11 +168,13 @@ export default function SalesPlanningPipelinePage() {
       dealType: dealTypeOf(deal),
       formulaName: deal.formulaName || "",
       categoryCode: deal.categoryCode || "",
+      categoryMainCode: String(deal.categoryCode || "").split("-")[0] || "",
       brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
       probability: snapForecastLevel(deal.probability),
       forecastMonth: deal.forecastMonth || month,
+      expectedCloseDate: deal.expectedCloseDate || "",
       startDate: deal.startDate || "",
       endDate: deal.endDate || "",
       depositPaid: !!deal.depositPaid,
@@ -504,7 +506,7 @@ export default function SalesPlanningPipelinePage() {
           {canSeeDealKpi(role) && (
             <>
               {allowedScopes.length > 1 && (
-                <div className="segmented" style={{ marginBottom: "16px" }}>
+                <div className="segmented deal-scope-toggle" style={{ marginBottom: "16px" }}>
                   {allowedScopes.map((s) => (
                     <button key={s} type="button" onClick={() => setScope(s)} className={scope === s ? "active" : ""}>
                       {SCOPE_TH[s]}
@@ -615,23 +617,15 @@ export default function SalesPlanningPipelinePage() {
                       {["won", "in_project"].includes(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
                     </td>
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                      {deal.projectId ? (
-                        <a className="btn ghost" href={`/sa/projects/${deal.projectId}`} title="จัดการไทม์ไลน์" style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 96, justifyContent: "center" }}>
-                          <PackageCheck size={14} aria-hidden="true" /> จัดการ
-                        </a>
-                      ) : deal.canEdit && deal.stage !== "lost" ? (
-                        <button type="button" className="btn ghost" onClick={() => openCreatePM(deal)} title="สร้างไทม์ไลน์ (ยังไม่มี)" style={{ minWidth: 96, justifyContent: "center" }}>
-                          <Plus size={14} aria-hidden="true" /> สร้าง
-                        </button>
-                      ) : (
-                        <span style={{ color: "var(--text-3)" }}>-</span>
-                      )}
+                      <Link className="btn ghost" href={`/sa/deals/${deal.id}?tab=timeline`} title="เปิดไทม์ไลน์ของดีล" style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 96, justifyContent: "center" }}>
+                        <PackageCheck size={14} aria-hidden="true" /> ไทม์ไลน์
+                      </Link>
                     </td>
                     {SALES_FEATURES.quotations && (
                       <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                        <button type="button" className="btn ghost" onClick={() => openQuotations(deal)} style={{ minWidth: 96, justifyContent: "center" }}>
+                        <Link className="btn ghost" href={`/sa/deals/${deal.id}?tab=quotations`} title="เปิดใบเสนอราคาของดีล" style={{ minWidth: 96, justifyContent: "center" }}>
                           <FileText size={14} aria-hidden="true" /> ใบเสนอ
-                        </button>
+                        </Link>
                       </td>
                     )}
                     {SALES_FEATURES.documents && (
@@ -691,7 +685,7 @@ export default function SalesPlanningPipelinePage() {
       </div>
 
       <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไขดีล" : "เพิ่มดีล"} size="lg">
-        <form onSubmit={saveDeal} className="form-grid" aria-busy={submitting} style={{ padding: 18 }}>
+        <form onSubmit={saveDeal} className="form-grid cols-2" aria-busy={submitting} style={{ padding: 18 }}>
           <DealFormFields
             form={dealForm}
             onPatch={(patch) => setDealForm((f) => ({ ...f, ...patch }))}

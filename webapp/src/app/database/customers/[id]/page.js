@@ -22,6 +22,7 @@ import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/l
 import PhoneInput from "@/components/ui/PhoneInput";
 import NationalIdInput from "@/components/ui/NationalIdInput";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 export default function CustomerDetails() {
   const params = useParams();
@@ -348,7 +349,7 @@ export default function CustomerDetails() {
       {/* Profile Card (full width) */}
       <div className="glass-panel p-[20px] mb-[22px]">
         <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-          <Building2 size={16} className="text-[var(--accent)]" /> ข้อมูลบริษัท / ลูกค้า (Company Details)
+          <Building2 size={16} className="text-[var(--accent)]" /> ข้อมูลลูกค้า บริษัท/บุคคล (Customer Details)
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 text-xs">
           <Field label="ประเภทลูกค้า" value={customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล (บริษัท)"} />
@@ -668,7 +669,7 @@ export default function CustomerDetails() {
               <input type="text" name="arCode" value={formData.arCode} onChange={handleInputChange} required className="premium-input w-full font-mono text-xs" />
             </div>
             <div className="form-group col-span-2 sm:col-span-1">
-              <label>ชื่อบริษัท / ลูกค้า <span className="text-[var(--red)]">*</span></label>
+              <label>{CUSTOMER_NAME_LABEL} <span className="text-[var(--red)]">*</span></label>
               <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className="premium-input w-full text-xs" />
             </div>
             <div className="form-group col-span-2 sm:col-span-1">

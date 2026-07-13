@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback, useMemo, Fragment, useRef } from "rea
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft, Plus, PlusCircle, X, Flag, FileText, GanttChart,
+  ArrowLeft, ArrowRight, Plus, PlusCircle, X, Flag, FileText, GanttChart,
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
   TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed, Pause,
   Check, Printer, Table2, Filter, User, FolderX,
-  GitCommit, History, RotateCcw, ShieldCheck, PackageCheck, ExternalLink,
+  GitCommit, History, RotateCcw, ShieldCheck, PackageCheck, ExternalLink, MessageSquare,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
@@ -210,6 +210,7 @@ export default function ProjectDetailPage() {
   const [tableStatusFilter, setTableStatusFilter] = useState("all"); // Table view: all | pending | progress | completed
   const [tableSort, setTableSort] = useState("step"); // Table view: step | name | status | due
   const [timelineDealFilters, setTimelineDealFilters] = useState([]);
+  const [taskDealFilters, setTaskDealFilters] = useState([]);
   const [editTask, setEditTask] = useState(null); // ขั้นตอนที่กำลังแก้ผ่าน modal (ใช้จาก Table view)
   const [showEditTask, setShowEditTask] = useState(false);
   const [depPopover, setDepPopover] = useState(null); // popover แก้ predecessors ในตาราง — { task, x, y }
@@ -845,7 +846,7 @@ export default function ProjectDetailPage() {
 
   const p = data;
   // โครงการกำพร้า (ไม่มีดีล) ไม่มีอะไรให้ดูในภาพรวม — เข้าไทม์ไลน์ตรงเหมือนเดิม
-  const showTimeline = tab === "timeline" || tab === "tasks";
+  const showTimeline = tab === "timeline";
   const hasWriteAccess = hasEditCap && !!data.canEdit;
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
@@ -879,6 +880,16 @@ export default function ProjectDetailPage() {
       label: `งานกลางโครงการ (${allTasks.filter((task) => !task.dealId).length} ขั้นตอน)`,
     }] : []),
   ];
+  const projectPersonalTasks = p.personalTasks || [];
+  const shownPersonalTasks = taskDealFilters.length
+    ? projectPersonalTasks.filter((task) => taskDealFilters.includes(task.dealId))
+    : projectPersonalTasks;
+  const projectTaskFilterOptions = (p.deals || []).map((deal) => ({
+    value: deal.id,
+    label: `${deal.title} (${projectPersonalTasks.filter((task) => task.dealId === deal.id).length} งาน)`,
+  }));
+  const completedPersonalTasks = shownPersonalTasks.filter((task) => task.status === "Completed").length;
+  const projectActivityCount = (p.dealActivities || []).length + (p.dealStageHistory || []).length;
 
   const renderChip = (Icon, label, color) => (
     <span className="chip" style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)`, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}>
@@ -1001,19 +1012,19 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      {/* Header (ss-cj Timeline header style) */}
-      <div className="glass-panel" style={{ borderRadius: "16px", overflow: "hidden", marginBottom: "24px" }}>
-        <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--border)", background: "var(--panel-2)" }}>
+      {/* Header โครงการ — โครงเดียวกับ Deal detail */}
+      <div className="glass-panel detail-hero" style={{ overflow: "hidden", marginBottom: "24px" }}>
+        <div className="detail-hero-main">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", flexWrap: "wrap" }}>
             <div style={{ minWidth: 0 }}>
-              <h2 style={{ margin: 0, fontSize: "18px", display: "flex", alignItems: "center", gap: "10px", fontWeight: 600 }}>
-                <span style={{ background: "var(--accent)", color: "#fff", padding: "7px", borderRadius: "9px", display: "flex" }}>
+              <h1 style={{ margin: 0, fontSize: "20px", display: "flex", alignItems: "center", gap: "12px", fontWeight: 750 }}>
+                <span className="detail-hero-icon">
                   <GanttChart size={18} />
                 </span>
-                <span>ศูนย์รวมโครงการ {p.code}</span>
-              </h2>
-              <p style={{ margin: "5px 0 0 40px", fontSize: "12.5px", color: "var(--text-2)" }}>
-                {p.name} | ลูกค้า: {p.customerName || "-"} | AE: {p.aeOwner || "-"}
+                <span>{p.name || "โครงการ"}</span>
+              </h1>
+              <p style={{ margin: "5px 0 0 50px", fontSize: "12.5px", color: "var(--text-2)" }}>
+                {p.code} · ลูกค้า: {p.customerName || "-"} · AE: {p.aeOwner || "-"}
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginLeft: "auto" }}>
@@ -1075,12 +1086,13 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        <div style={{ padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-          <div style={{ display: "flex", gap: "24px", fontSize: "12px", flexWrap: "wrap" }}>
-            <div><span style={{ color: "var(--text-3)" }}>วันเริ่ม: </span>{p.startDate || "-"}</div>
-            <div><span style={{ color: "var(--text-3)" }}>แบรนด์: </span>{p.metadata?.brand || "-"}</div>
-            <div><span style={{ color: "var(--text-3)" }}>ดีล: </span>{(p.deals || []).length}</div>
-            <div><span style={{ color: "var(--text-3)" }}>หมวดสินค้า: </span>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</div>
+        <div style={{ padding: "13px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+          <div className="project-header-meta">
+            <div><span>วันเริ่ม</span><strong>{p.startDate || "-"}</strong></div>
+            <div><span>วันสิ้นสุด</span><strong>{p.dueDate || "-"}</strong></div>
+            <div><span>แบรนด์</span><strong>{p.metadata?.brand || "-"}</strong></div>
+            <div><span>ดีล</span><strong>{(p.deals || []).length}</strong></div>
+            <div><span>หมวดสินค้า</span><strong>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</strong></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span className={`status-pill dot ${statusPillClass(getComputedStatus(p))}`} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "8px", "--dot": statusDotColor(getComputedStatus(p)) }}>
@@ -1164,10 +1176,62 @@ export default function ProjectDetailPage() {
               <GanttChart size={14} /> เปิดไทม์ไลน์
             </button>
           </div>
+          <div className="detail-summary-grid" style={{ marginBottom: 24 }}>
+            <button type="button" className="glass-panel detail-summary-card" onClick={() => switchTab("quotations")}>
+              <span className="detail-summary-icon"><FileText size={18} /></span>
+              <span style={{ textAlign: "left", minWidth: 0 }}><span style={{ display: "block", color: "var(--text-3)", fontSize: 13 }}>ใบเสนอราคา</span><strong style={{ display: "block", marginTop: 3, fontSize: 18 }}>{(p.quotations || []).length} ใบ</strong><span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>รวมจากทุกดีลในโครงการ</span></span>
+              <ArrowRight size={16} style={{ marginLeft: "auto", color: "var(--text-3)" }} />
+            </button>
+            <button type="button" className="glass-panel detail-summary-card" onClick={() => switchTab("tasks")}>
+              <span className="detail-summary-icon"><ListTodo size={18} /></span>
+              <span style={{ textAlign: "left", minWidth: 0 }}><span style={{ display: "block", color: "var(--text-3)", fontSize: 13 }}>งาน</span><strong style={{ display: "block", marginTop: 3, fontSize: 18 }}>{projectPersonalTasks.filter((task) => task.status === "Completed").length}/{projectPersonalTasks.length} เสร็จ</strong><span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>ดึงจากงานของดีลทั้งหมด</span></span>
+              <ArrowRight size={16} style={{ marginLeft: "auto", color: "var(--text-3)" }} />
+            </button>
+            <button type="button" className="glass-panel detail-summary-card" onClick={() => switchTab("activities")}>
+              <span className="detail-summary-icon"><MessageSquare size={18} /></span>
+              <span style={{ textAlign: "left", minWidth: 0 }}><span style={{ display: "block", color: "var(--text-3)", fontSize: 13 }}>ความเคลื่อนไหว</span><strong style={{ display: "block", marginTop: 3, fontSize: 18 }}>{projectActivityCount} รายการ</strong><span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>รวมบันทึกและการเปลี่ยนสถานะ</span></span>
+              <ArrowRight size={16} style={{ marginLeft: "auto", color: "var(--text-3)" }} />
+            </button>
+          </div>
         </>
       )}
 
       {tab === "quotations" && <ProjectDealsHub project={p} onChanged={load} />}
+
+      {tab === "tasks" && (
+        <section className="glass-panel" style={{ padding: "16px 20px", marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            <ListTodo size={18} />
+            <div>
+              <h2 style={{ margin: 0, fontSize: 16 }}>งานของโครงการ</h2>
+              <div style={{ marginTop: 2, fontSize: 12, color: "var(--text-3)" }}>ดึงงานจาก /sa/tasks ตามดีลที่ผูกกับโครงการ</div>
+            </div>
+            <span className="ui-badge" style={{ color: "var(--text-2)" }}>{completedPersonalTasks}/{shownPersonalTasks.length} เสร็จ</span>
+            <div style={{ marginLeft: "auto" }}>
+              {projectTaskFilterOptions.length > 1 && <MultiSelectFilter label="ดีลที่แสดง" selected={taskDealFilters} onChange={setTaskDealFilters} options={projectTaskFilterOptions} />}
+            </div>
+            <Link className="btn ghost sm" href={taskDealFilters.length === 1 ? `/sa/tasks?dealId=${taskDealFilters[0]}` : "/sa/tasks"}><ExternalLink size={13} /> เปิดหน้างาน</Link>
+          </div>
+          {shownPersonalTasks.length ? (
+            <div className="premium-glass-table table-responsive">
+              <table className="premium-table">
+                <thead><tr><th>งาน</th><th>ดีล</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th></tr></thead>
+                <tbody>{shownPersonalTasks.map((task) => {
+                  const deal = (p.deals || []).find((item) => item.id === task.dealId);
+                  const assignee = users.find((user) => user.id === (task.assigneeId || task.ownerId));
+                  return <tr key={task.id} className="premium-row">
+                    <td style={{ fontWeight: 700 }}>{task.title}{task.note && <div style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 400, marginTop: 2 }}>{task.note}</div>}</td>
+                    <td>{deal ? <Link className="linklike" href={`/sa/deals/${deal.id}`}>{deal.title}</Link> : <span style={{ color: "var(--text-3)" }}>งานเดิมของโครงการ</span>}</td>
+                    <td><span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span></td>
+                    <td>{assignee?.name || task.assigneeName || task.ownerName || "-"}</td>
+                    <td>{task.dueDate || "-"}</td>
+                  </tr>;
+                })}</tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon={ListTodo}>ยังไม่มีงานจากดีลที่เลือก</EmptyState>}
+        </section>
+      )}
 
       {p.status === "Dropped" && (
         <div style={{ marginBottom: "24px", padding: "18px 24px", background: "color-mix(in srgb, var(--red) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 40%, transparent)", borderRadius: "12px", borderLeft: "5px solid var(--red)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", zIndex: 10, position: "relative" }}>

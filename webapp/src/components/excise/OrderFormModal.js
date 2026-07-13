@@ -5,6 +5,7 @@ import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DateInput from "@/components/ui/DateInput";
 import { fmtMoney } from "@/lib/format";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -114,7 +115,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
 
           <div className="grid grid-cols-2 gap-3">
             <div className="form-group col-span-2">
-              <label>ลูกค้า <span style={{ color: "var(--red)" }}>*</span></label>
+              <label>{CUSTOMER_NAME_LABEL} <span style={{ color: "var(--red)" }}>*</span></label>
               {editing ? (
                 <input className="premium-input w-full" value={order.customerName || "-"} disabled />
               ) : (

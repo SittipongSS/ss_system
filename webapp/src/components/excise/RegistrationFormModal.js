@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { fmtMoney } from "@/lib/format";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 // Create or edit an excise registration (master FG product × customer). The
 // customer is NOT picked freely: every FG already belongs to one customer via
@@ -96,7 +97,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
           </div>
 
           <div className="form-group">
-            <label>ลูกค้า (เจ้าของ FG) <span style={{ color: "var(--red)" }}>*</span></label>
+            <label>{CUSTOMER_NAME_LABEL} (เจ้าของ FG) <span style={{ color: "var(--red)" }}>*</span></label>
             {!selected ? (
               <div style={{ fontSize: 13 }} className="text-[var(--text-3)] bg-[var(--panel-2)] rounded p-2">
                 เลือก FG ก่อน — ลูกค้าจะถูกกำหนดตามเจ้าของสินค้าโดยอัตโนมัติ

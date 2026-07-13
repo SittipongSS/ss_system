@@ -11,7 +11,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
 import { useCan } from "@/lib/roleContext";
-import { STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
+import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtMoneyCompact, fmtDateTime } from "@/lib/format";
 import { isDealAvailableForProject } from "@/lib/sales/projectLink";
@@ -58,6 +58,12 @@ function Kpi({ label, value, hint, color }) {
   );
 }
 
+const displayText = (value, fallback = "-") => {
+  if (value == null || value === "") return fallback;
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  return value.name || value.label || value.title || fallback;
+};
+
 // การ์ดดีล 1 ใบ = จิ๊กซอว์ 1 ชิ้น: หัวดีล + segment ไทม์ไลน์ + ใบเสนอราคาใต้ดีล
 function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, moving, onMoveUp, onMoveDown }) {
   const closed = ["won", "in_project"].includes(deal.stage);
@@ -74,7 +80,7 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
         )}
         {dealTypeBadge(dealTypeOf(deal))}
         <Link href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-          {deal.title}
+          {displayText(deal.title)}
         </Link>
         {stageBadge(deal.stage)}
       </div>
@@ -86,8 +92,8 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
           </strong>
           {!closed && deal.forecastMonth ? <span style={{ color: "var(--text-3)" }}> · {deal.forecastMonth}</span> : null}
         </span>
-        <span><span style={{ color: "var(--text-3)" }}>AE </span>{deal.ownerName || "-"}{deal.team ? ` · ${deal.team}` : ""}</span>
-        {deal.formulaName && <span><span style={{ color: "var(--text-3)" }}>สูตร </span>{deal.formulaName}</span>}
+        <span><span style={{ color: "var(--text-3)" }}>AE </span>{displayText(deal.ownerName)}{deal.team ? ` · ${displayText(deal.team, "")}` : ""}</span>
+        {deal.formulaName && <span><span style={{ color: "var(--text-3)" }}>สูตร </span>{displayText(deal.formulaName)}</span>}
       </div>
 
       {/* segment ไทม์ไลน์ของดีลนี้ (งานใน Gantt ที่ tag dealId ตรงกัน) */}
@@ -336,11 +342,10 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
       {r && (
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
           <Kpi label="ดีลในโครงการ" value={deals.length}
-            hint={Object.entries(r.byType || {}).filter(([, n]) => n).map(([t, n]) => `${t} ${n}`).join(" · ") || null} />
-          <Kpi label="FC Total" value={fmtMoneyCompact(r.fcTotal)} hint="Σ FC ดีล won + เปิด" />
-          <Kpi label="Actual" value={fmtMoneyCompact(r.actual)} color="var(--green)" hint="Σ มูลค่าปิดจริง (Won)" />
-          <Kpi label="FC คงเหลือ" value={fmtMoneyCompact(r.fcRemaining)} color={r.fcRemaining > 0 ? "var(--amber)" : undefined} hint="Σ FC ดีลที่ยังเปิด" />
-          <Kpi label="มูลค่ารวม" value={fmtMoneyCompact(r.totalValue)} hint="Actual + FC คงเหลือ" />
+            hint={(r.byType || []).filter((item) => (item.openCount + item.wonCount + item.lostCount) > 0).map((item) => `${DEAL_TYPE_LABELS[item.type] || item.type} ${item.openCount + item.wonCount + item.lostCount}`).join(" · ") || null} />
+          <Kpi label="FC Total" value={fmtMoneyCompact(r.fcTotal)} />
+          <Kpi label="Actual" value={fmtMoneyCompact(r.actual)} color="var(--green)" />
+          <Kpi label="FC คงเหลือ" value={fmtMoneyCompact(r.fcRemaining)} color={r.fcRemaining > 0 ? "var(--amber)" : undefined} />
           <Kpi label="ใบเสนอที่รับแล้ว" value={fmtMoneyCompact(acceptedTotal)} hint={`ทั้งหมด ${(p.quotations || []).length} ใบ`} />
         </div>
       )}

@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import Select from "@/components/ui/Select";
 import AddBrandButton from "@/components/master/AddBrandButton";
-import { brandThList } from "@/lib/master/brands";
+import { brandSelectOptions } from "@/lib/master/brands";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 const today = () => {
   const now = new Date();
@@ -21,7 +23,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
   const [error, setError] = useState("");
   const [form, setForm] = useState({
     name: "", customerId: "", brand: "", mainCode: "", typeCode: "",
-    productMainCategory: "", productSubCategory: "", startDate: today(),
+    productMainCategory: "", productSubCategory: "", startDate: today(), dueDate: "",
     aeOwner: "", preparedBy: "", aeSupervisor: "",
   });
 
@@ -34,7 +36,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
     setForm({
       name: initialData?.name || "", customerId: initialData?.customerId || "", brand: initialData?.metadata?.brand || "",
       mainCode, typeCode, productMainCategory: categoryCode, productSubCategory: initialData?.productSubCategory || "",
-      startDate: initialData?.startDate || today(), aeOwner: initialData?.aeOwner || "",
+      startDate: initialData?.startDate || today(), dueDate: initialData?.dueDate || "", aeOwner: initialData?.aeOwner || "",
       preparedBy: initialData?.preparedBy || "", aeSupervisor: initialData?.aeSupervisor || "",
     });
     fetch("/api/pm/assignable-users")
@@ -45,21 +47,11 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
 
   const brandOptions = useMemo(() => {
     const customer = customers.find((row) => row.id === form.customerId);
-    return [...new Set([...brandThList(customer?.brands || []), ...extraBrands])];
-  }, [customers, form.customerId, extraBrands]);
-  const mainOptions = useMemo(() => {
-    const map = new Map();
-    for (const row of categories) {
-      if (row.mainCategoryCode && !map.has(row.mainCategoryCode)) {
-        map.set(row.mainCategoryCode, row.mainCategoryNameTh || row.mainCategoryNameEn || row.mainCategoryCode);
-      }
-    }
-    return [...map].map(([code, name]) => ({ code, name }));
-  }, [categories]);
-  const subOptions = useMemo(
-    () => categories.filter((row) => row.mainCategoryCode === form.mainCode && row.typeCode),
-    [categories, form.mainCode],
-  );
+    const merged = [...brandSelectOptions(customer?.brands || []), ...brandSelectOptions(extraBrands)];
+    const unique = [...new Map(merged.map((option) => [option.value, option])).values()];
+    if (form.brand && !unique.some((option) => option.value === form.brand)) unique.unshift({ value: form.brand, label: form.brand });
+    return unique;
+  }, [customers, form.customerId, extraBrands, form.brand]);
   const userName = (u) => (u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "").trim();
 
   const submit = async (event) => {
@@ -101,8 +93,8 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
             <label>ชื่อโครงการ <span style={{ color: "var(--red)" }}>*</span></label>
             <input className="premium-input w-full" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
           </div>
-          <div className="form-group col-span-2">
-            <label>บริษัทลูกค้า <span style={{ color: "var(--red)" }}>*</span></label>
+          <div className="form-group">
+            <label>{CUSTOMER_NAME_LABEL} <span style={{ color: "var(--red)" }}>*</span></label>
             <SearchableSelect
               entity="customer"
               value={form.customerId}
@@ -111,34 +103,27 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
               placeholder="ค้นหารหัส / ชื่อลูกค้า..."
             />
           </div>
-          <div className="form-group col-span-2">
-            <label>แบรนด์</label>
+          <div className="form-group">
+            <label>แบรนด์ (อังกฤษ · ไทย)</label>
             <div style={{ display: "flex", gap: 8 }}>
-              <div style={{ flex: 1 }}><SearchableSelect entity="brand" disabled={!form.customerId} value={form.brand} onChange={(brand) => setForm((f) => ({ ...f, brand }))} options={brandOptions.map((brand) => ({ value: brand, label: brand }))} placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"} /></div>
-              <AddBrandButton customerId={form.customerId} disabled={!form.customerId} onCreated={(brand) => { setExtraBrands((rows) => [...rows, brand]); setForm((f) => ({ ...f, brand })); }} />
+              <div style={{ flex: 1 }}><SearchableSelect entity="brand" disabled={!form.customerId} value={form.brand} onChange={(brand) => setForm((f) => ({ ...f, brand }))} options={brandOptions} placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"} /></div>
+              <AddBrandButton customerId={form.customerId} disabled={!form.customerId} onAdded={(brand) => { setExtraBrands((rows) => [...rows, brand]); setForm((f) => ({ ...f, brand: brand.th || brand.en })); }} />
             </div>
           </div>
+          <ProductCategorySelect
+            categories={categories}
+            value={form.productMainCategory}
+            mainValue={form.mainCode}
+            subValue={form.typeCode}
+            onChange={(productMainCategory, meta) => setForm((f) => ({ ...f, mainCode: meta.mainCode, typeCode: meta.typeCode, productMainCategory, productSubCategory: meta.category?.nameTh || meta.category?.nameEn || "" }))}
+          />
           <div className="form-group">
-            <label>หมวดหลัก</label>
-            <Select fullWidth value={form.mainCode} onChange={(e) => setForm((f) => ({ ...f, mainCode: e.target.value, typeCode: "", productMainCategory: "", productSubCategory: "" }))}>
-              <option value="">— ไม่ระบุ —</option>
-              {mainOptions.map((row) => <option key={row.code} value={row.code}>{row.code} {row.name}</option>)}
-            </Select>
-          </div>
-          <div className="form-group">
-            <label>หมวดรอง</label>
-            <Select fullWidth value={form.typeCode} disabled={!form.mainCode} onChange={(e) => {
-              const typeCode = e.target.value;
-              const row = categories.find((item) => item.mainCategoryCode === form.mainCode && item.typeCode === typeCode);
-              setForm((f) => ({ ...f, typeCode, productMainCategory: typeCode ? `${f.mainCode}-${typeCode}` : "", productSubCategory: row?.nameTh || row?.nameEn || "" }));
-            }}>
-              <option value="">— ไม่ระบุ —</option>
-              {subOptions.map((row) => <option key={row.id} value={row.typeCode}>{row.typeCode} {row.nameTh || row.nameEn || ""}</option>)}
-            </Select>
-          </div>
-          <div className="form-group col-span-2">
             <label>วันที่เริ่มโครงการ <span style={{ color: "var(--red)" }}>*</span></label>
             <DateInput value={form.startDate} onChange={(startDate) => setForm((f) => ({ ...f, startDate }))} className="w-full" />
+          </div>
+          <div className="form-group">
+            <label>วันที่สิ้นสุด</label>
+            <DateInput value={form.dueDate} onChange={(dueDate) => setForm((f) => ({ ...f, dueDate }))} className="w-full" />
           </div>
           <div className="form-group col-span-2"><label>ผู้รับผิดชอบ (AE)</label><Select fullWidth value={form.aeOwner} onChange={(e) => setForm((f) => ({ ...f, aeOwner: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => ["ae", "senior_ae", "ae_supervisor"].includes(u.role)).map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
           <div className="form-group"><label>Account Coordinator</label><Select fullWidth value={form.preparedBy} onChange={(e) => setForm((f) => ({ ...f, preparedBy: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => u.role === "ac").map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
