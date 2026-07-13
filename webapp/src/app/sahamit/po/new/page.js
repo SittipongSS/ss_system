@@ -156,6 +156,7 @@ export default function PoCreatePage() {
           <div style={{ display: "flex", gap: 6 }}>
             <div style={{ flex: 1 }}>
               <SearchableSelect
+                entity="product"
                 size="sm"
                 allowFreeText
                 options={products.map((p) => {

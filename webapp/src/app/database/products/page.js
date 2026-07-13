@@ -512,6 +512,7 @@ export default function ProductRegistry() {
               <div className="form-group">
                 <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
                 <SearchableSelect
+                  entity="customer"
                   value={formData.customerId}
                   onChange={(v) => handleChange({ target: { name: "customerId", value: v } })}
                   placeholder="ค้นหารหัส / ชื่อลูกค้า..."
@@ -529,6 +530,7 @@ export default function ProductRegistry() {
                 <div className="flex gap-1.5 items-center">
                   <div className="flex-1 min-w-0">
                     <SearchableSelect
+                      entity="brand"
                       disabled={!formData.customerId}
                       options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
                       value={formData.brandName || formData.brandNameEn}

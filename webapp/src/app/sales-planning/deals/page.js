@@ -18,6 +18,8 @@ import { fmtMoney, fmtName } from "@/lib/format";
 import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
+import SortControl from "@/components/ui/SortControl";
+import DetailRow from "@/components/ui/DetailRow";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -557,15 +559,14 @@ export default function SalesPlanningPipelinePage() {
             </Select>
 
             <div className="spacer" />
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontSize: 13, color: "var(--text-3)" }}><ArrowUpDown size={14} style={{ verticalAlign: "-2px" }}/> เรียง</span>
-              <Select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ width: 120 }}>
-                {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </Select>
-              <button type="button" className="btn-icon" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}>
-                {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-              </button>
-            </div>
+            <SortControl
+              value={sortKey}
+              onChange={(event) => { setSortKey(event.target.value); setSortDir("asc"); }}
+              options={SORT_OPTIONS}
+              direction={sortDir}
+              onDirectionChange={setSortDir}
+              selectStyle={{ width: 120 }}
+            />
             <span className="ui-badge">{filteredDeals.length} ดีล</span>
           </div>
 
@@ -588,7 +589,7 @@ export default function SalesPlanningPipelinePage() {
               </thead>
               <tbody>
                 {filteredDeals.map((deal) => (
-                  <tr key={deal.id} className="premium-row">
+                  <DetailRow key={deal.id} href={`/sa/deals/${deal.id}`} className="premium-row">
                     <td>
                       <Link href={`/sa/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดดีล">
                         <strong>
@@ -674,7 +675,7 @@ export default function SalesPlanningPipelinePage() {
                         )}
                       </div>
                     </td>
-                  </tr>
+                  </DetailRow>
                 ))}
                 {!filteredDeals.length && (
                   <tr>

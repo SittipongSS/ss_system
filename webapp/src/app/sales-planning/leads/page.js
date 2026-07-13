@@ -12,6 +12,7 @@ import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import DateTimeInput from "@/components/ui/DateTimeInput";
 import PhoneInput from "@/components/ui/PhoneInput";
+import SortControl from "@/components/ui/SortControl";
 import { canSeeLeadKpi } from "@/lib/permissions";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
@@ -406,15 +407,14 @@ export default function LeadsPage() {
               {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABELS[s]} ({countBy[s] || 0})</option>)}
             </Select>
             <div className="spacer" />
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontSize: 13, color: "var(--text-3)" }}><ArrowUpDown size={14} style={{ verticalAlign: "-2px" }}/> เรียง</span>
-              <Select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ width: 120 }}>
-                {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </Select>
-              <button type="button" className="btn-icon" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}>
-                {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-              </button>
-            </div>
+            <SortControl
+              value={sortKey}
+              onChange={(event) => { setSortKey(event.target.value); setSortDir("asc"); }}
+              options={SORT_OPTIONS}
+              direction={sortDir}
+              onDirectionChange={setSortDir}
+              selectStyle={{ width: 120 }}
+            />
             <span className="ui-badge">{filtered.length} ลีด</span>
           </div>
 

@@ -1,5 +1,6 @@
 "use client";
 import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 // ชุดช่องกรอกดีลมาตรฐาน (layout ตามมติ #283) — ใช้ร่วม 3 จุด: โมดัลหน้ารวมดีล /
 // โมดัลหน้าดีล / ฟอร์มสร้างดีลจากลีด เพื่อไม่ให้ฟอร์มเพี้ยนหากันอีก
@@ -32,10 +33,20 @@ export default function DealFormFields({
       </label>
       <label>
         ลูกค้า (ไม่บังคับตอนแรก)
-        <Select className="premium-select" value={form.customerId || ""} onChange={(e) => onPatch({ customerId: e.target.value, brand: "" })}>
-          <option value="">— ยังไม่ผูกลูกค้า —</option>
-          {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </Select>
+        <SearchableSelect
+          entity="customer"
+          value={form.customerId || ""}
+          onChange={(customerId) => onPatch({ customerId, brand: "" })}
+          placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+          options={[
+            { value: "", label: "— ยังไม่ผูกลูกค้า —" },
+            ...customers.map((customer) => ({
+              value: customer.id,
+              label: customer.arCode ? `${customer.arCode} — ${customer.name}` : customer.name,
+              search: `${customer.arCode || ""} ${customer.name || ""}`,
+            })),
+          ]}
+        />
       </label>
       <label>
         แบรนด์

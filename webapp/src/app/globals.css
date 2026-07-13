@@ -1794,6 +1794,11 @@ button.ui-kpi-card { cursor: pointer; }
 .ui-select-value.placeholder { color: var(--text-3); }
 .ui-select-chevron { flex: 0 0 auto; color: var(--text-3); transition: transform .15s; }
 .ui-select.open .ui-select-chevron { transform: rotate(180deg); }
+/* A migrated Select may still carry the legacy premium-select class. Its
+   background SVG (especially the higher-specificity dark-theme rule) must not
+   render beside the component's real chevron. */
+.ui-select.premium-select,
+[data-theme="dark"] .ui-select.premium-select { background-image: none; }
 .ui-select-menu {
   z-index: 10050;
   overflow-y: auto;
@@ -2157,6 +2162,21 @@ button.empty-state { width: 100%; font: inherit; }
 .toolbar .search-glass,
 .toolbar .btn { height: var(--ctl-h); }
 .toolbar .btn-icon { width: var(--ctl-h); height: var(--ctl-h); }
+
+.ui-sort-control {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: max-content;
+  white-space: nowrap;
+}
+.ui-sort-label { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 5px; color: var(--text-3); font-size: 13px; white-space: nowrap; }
+.ui-sort-direction { flex: 0 0 auto; }
+
+.detail-row { cursor: pointer; }
+.detail-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .ui-filter-trigger { background: var(--panel); color: var(--text-2); }
 .ui-filter-trigger.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }

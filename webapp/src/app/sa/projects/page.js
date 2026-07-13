@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import { useCan } from "@/lib/roleContext";
 import { dealTypeBadge, KpiCard } from "@/components/salesPlanning/ui";
@@ -152,7 +153,7 @@ export default function ProjectsIndexPage() {
                 {filtered.map((p) => {
                   const r = p.dealsRollup || {};
                   return (
-                    <tr key={p.id} className="premium-row">
+                    <DetailRow key={p.id} href={`/sa/projects/${p.code || p.id}`} className="premium-row">
                       <td>
                         <Link href={`/sa/projects/${p.code || p.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้าโครงการ">
                           <strong>{p.code || p.id}</strong>
@@ -175,7 +176,7 @@ export default function ProjectsIndexPage() {
                       <td className="num mono" style={{ color: (r.fcRemaining || 0) > 0 ? "var(--amber)" : "var(--text-3)" }}>{money(r.fcRemaining || 0)}</td>
                       <td>{taskProgress(p)}</td>
                       <td>{p.aeOwner ? fmtName({ name: p.aeOwner }) : (p.team || "-")}</td>
-                    </tr>
+                    </DetailRow>
                   );
                 })}
                 {!filtered.length && !loading && (

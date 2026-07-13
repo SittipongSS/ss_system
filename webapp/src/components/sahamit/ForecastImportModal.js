@@ -225,6 +225,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
             <div style={{ display: "flex", gap: "6px" }}>
               <div style={{ flex: 1 }}>
                 <SearchableSelect
+                  entity="product"
                   size="sm"
                   allowFreeText
                   options={products.map((p) => {

@@ -75,6 +75,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
           <div className="form-group">
             <label>สินค้า (Master FG) <span style={{ color: "var(--red)" }}>*</span></label>
             <SearchableSelect
+              entity="product"
               value={productId}
               onChange={handleProduct}
               placeholder="ค้นหา FG / ชื่อสินค้า / แบรนด์..."
@@ -103,6 +104,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
             ) : needsManualCustomer ? (
               <>
                 <SearchableSelect
+                  entity="customer"
                   value={customerId}
                   onChange={setCustomerId}
                   placeholder="ค้นหารหัส / ชื่อลูกค้า..."

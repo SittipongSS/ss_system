@@ -8,7 +8,7 @@ import {
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
   TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed, Pause,
-  Check, Printer, Table2, Filter, ArrowUpDown, User, FolderX,
+  Check, Printer, Table2, Filter, User, FolderX,
   GitCommit, History, RotateCcw, ShieldCheck, PackageCheck, ExternalLink,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -20,6 +20,7 @@ import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import Select from "@/components/ui/Select";
+import SortControl from "@/components/ui/SortControl";
 import StatusSelect, { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -949,6 +950,7 @@ export default function ProjectDetailPage() {
       {canEdit && (
         <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
           <SearchableSelect
+            entity="product"
             size="sm"
             options={allProducts.filter(pr => !linkedIds.has(pr.id)).map(pr => ({
               value: pr.id,
@@ -1247,15 +1249,12 @@ export default function ProjectDetailPage() {
                 </Select>
               </div>
               {/* เรียงลำดับ */}
-              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                <ArrowUpDown size={14} color="var(--text-3)" />
-                <Select compact value={tableSort} onChange={(e) => setTableSort(e.target.value)} title="เรียงลำดับ (ภายในแต่ละเฟส)">
-                  <option value="step">ลำดับขั้นตอน</option>
-                  <option value="due">วันเสร็จ</option>
-                  <option value="status">สถานะ</option>
-                  <option value="name">ชื่อขั้นตอน</option>
-                </Select>
-              </div>
+              <SortControl
+                value={tableSort}
+                onChange={(event) => setTableSort(event.target.value)}
+                options={[{ value: "step", label: "ลำดับขั้นตอน" }, { value: "due", label: "วันเสร็จ" }, { value: "status", label: "สถานะ" }, { value: "name", label: "ชื่อขั้นตอน" }]}
+                title="เรียงลำดับ (ภายในแต่ละเฟส)"
+              />
               {canAddTimelineTask && (
                 <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} className="btn btn-primary sm">
                   <Plus size={14} /> เพิ่มขั้นตอน
