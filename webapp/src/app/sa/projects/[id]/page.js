@@ -1210,7 +1210,7 @@ export default function ProjectDetailPage() {
           statusColor: statusDotColor(getComputedStatus(p)),
         }}
         onChanged={load}
-        onError={setError}
+        onError={(message) => setToast({ kind: "error", msg: message })}
       />
       {false && (<>
       {view === "document" ? (
