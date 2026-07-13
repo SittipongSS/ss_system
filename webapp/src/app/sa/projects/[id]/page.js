@@ -17,6 +17,7 @@ import Modal from "@/components/Modal";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectDealsHub, { ProjectActivityFeed } from "@/components/pm/ProjectDealsHub";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
+import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import Select from "@/components/ui/Select";
 import StatusSelect, { taskStatusColor } from "@/components/pm/StatusSelect";
@@ -1186,6 +1187,32 @@ export default function ProjectDetailPage() {
       {showTimeline && (
       <>
       <div style={{ opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all 0.3s", pointerEvents: isLocked ? "none" : "auto" }}>
+      <TimelineWorkspace
+        tasks={tasks}
+        canEdit={canEdit}
+        canAdd={canAddTimelineTask}
+        canReorder={canReorderTimeline}
+        dealId={singleSelectedDeal(timelineDealFilters)}
+        projectId={p.id}
+        view={view}
+        onViewChange={setView}
+        showViewSwitcher={false}
+        documentProject={{ ...p, tasks }}
+        canEditProjectFields={canEdit}
+        onUpdateProject={updateProject}
+        timelineContext={{
+          name: p.name,
+          customerName: p.customerName,
+          startDate: p.startDate,
+          brand: p.metadata?.brand,
+          status: getComputedStatus(p),
+          statusLabel: getComputedStatus(p),
+          statusColor: statusDotColor(getComputedStatus(p)),
+        }}
+        onChanged={load}
+        onError={setError}
+      />
+      {false && (<>
       {view === "document" ? (
         <div className="glass-panel" style={{ padding: "20px", marginBottom: "24px" }}>
           <ProjectDocumentView
@@ -1543,6 +1570,7 @@ export default function ProjectDetailPage() {
           })}
         </div>
       )}
+      </>)}
       </div>
 
       {/* Footer — ยกเลิกโครงการ (Drop) หรือ On Hold */}

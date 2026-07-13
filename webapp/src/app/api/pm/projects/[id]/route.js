@@ -8,6 +8,7 @@ import { genId } from '@/lib/id';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
 import { rollupDeals } from '@/lib/sales/projectRollup';
+import { sortDealsByOrder } from '@/lib/pm/dealOrder';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .select('id, title, stage, dealType, projectValue, wonValue, forecastMonth, formulaName, ownerName, team, probability, expectedCloseDate, depositPaid, metadata, createdAt')
     .eq('projectId', project.id)
     .order('createdAt', { ascending: true });
-  const deals = linkedDeals || [];
+  const deals = sortDealsByOrder(linkedDeals || [], project.metadata?.dealOrder || []);
   const foundingDeal = deals[0] || null;
   const dealsRollup = rollupDeals(deals);
 

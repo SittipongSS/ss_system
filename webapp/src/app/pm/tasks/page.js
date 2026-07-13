@@ -18,6 +18,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
 import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
+import { resolvePersonalTaskLink, taskLinkType } from "@/lib/pm/taskLink";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -275,7 +276,7 @@ export default function TasksPage() {
     setForm({
       title: t.title, note: t.note || "",
       startDate: t.startDate || "", dueDate: t.dueDate || "",
-      linkType: t.dealId ? "deal" : "none",
+      linkType: taskLinkType(t),
       projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
       category: t.category || "", important: !!t.important, urgent: !!t.urgent,
       difficulty: t.difficulty ?? 2,
@@ -285,11 +286,12 @@ export default function TasksPage() {
   const savePersonal = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) { setToast({ kind: "error", msg: "ต้องระบุชื่องาน" }); return; }
+    if (form.linkType === "project" && !form.projectId) { setToast({ kind: "error", msg: "กรุณาเลือกโครงการ" }); return; }
+    if (form.linkType === "deal" && !form.dealId) { setToast({ kind: "error", msg: "กรุณาเลือกดีล" }); return; }
     setSaving(true);
     try {
       const url = editingId ? `/api/pm/personal-tasks/${editingId}` : "/api/pm/personal-tasks";
-      const projectId = form.linkType === "project" ? (form.projectId || null) : null;
-      const dealId = form.linkType === "deal" ? (form.dealId || null) : null;
+      const { projectId, dealId } = resolvePersonalTaskLink(form, allDeals);
       const res = await fetch(url, {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -298,6 +300,7 @@ export default function TasksPage() {
           note: form.note,
           startDate: form.startDate || null,
           dueDate: form.dueDate || null,
+          projectId,
           dealId,
           assigneeId: form.assigneeId || null,
           category: form.category || null,
@@ -367,9 +370,13 @@ export default function TasksPage() {
   const linkChip = (t) => {
     const proj = t.projectId ? resolveProj(t.projectId) : null;
     const deal = t.dealId ? resolveDeal(t.dealId) : null;
-    if (proj) return <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }} className="font-mono" style={{ cursor: "pointer", fontSize: "10px", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }}>{proj.code}</span>;
-    if (deal) return <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: "4px", color: "var(--purple)" }}><Briefcase size={10} /> {deal.title}</span>;
-    return null;
+    if (!proj && !deal) return null;
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
+        {proj && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }} className="font-mono" style={{ cursor: "pointer", fontSize: "10px", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }}>{proj.code}</span>}
+        {deal && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: "4px", color: "var(--purple)" }}><Briefcase size={10} /> {deal.title}</span>}
+      </span>
+    );
   };
 
   // การ์ดย่อ — ใช้ในมุมมองบอร์ด (Kanban) และเมทริกซ์ (Eisenhower)
@@ -760,14 +767,23 @@ export default function TasksPage() {
             <div className="form-group">
               <label>เชื่อมกับ</label>
               <div className="segmented" style={{ marginBottom: "8px" }}>
-                {[["none", "ไม่ผูก"], ["deal", "โครงการ"]].map(([k, lbl]) => (
+                {[["none", "ไม่ผูก"], ["project", "โครงการ"], ["deal", "ดีล"]].map(([k, lbl]) => (
                   <button type="button" key={k} className={form.linkType === k ? "active" : ""} onClick={() => setForm((f) => ({ ...f, linkType: k }))}>{lbl}</button>
                 ))}
               </div>
+              {form.linkType === "project" && (
+                <Select fullWidth value={form.projectId} onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value }))}>
+                  <option value="">— เลือกโครงการ —</option>
+                  {allProjects.map((project) => <option key={project.id} value={project.id}>{project.code || project.id} · {project.name}{project.customerName ? ` — ${project.customerName}` : ""}</option>)}
+                </Select>
+              )}
               {form.linkType === "deal" && (
                 <Select fullWidth value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
-                  <option value="">— เลือกโครงการ —</option>
-                  {allDeals.map((d) => <option key={d.id} value={d.id}>{d.title}{d.customerName ? ` — ${d.customerName}` : ""}</option>)}
+                  <option value="">— เลือกดีล —</option>
+                  {allDeals.map((deal) => {
+                    const project = deal.projectId ? allProjects.find((row) => row.id === deal.projectId) : null;
+                    return <option key={deal.id} value={deal.id}>{project ? `${project.code || project.id} · ` : ""}{deal.title}{deal.customerName ? ` — ${deal.customerName}` : ""}{!project ? " · ยังไม่ผูกโครงการ" : ""}</option>;
+                  })}
                 </Select>
               )}
             </div>

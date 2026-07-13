@@ -117,14 +117,26 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
-  // อ้างอิงโครงการ/ดีลต้องมีจริง
-  if (updates.projectId) {
-    const { data: proj } = await supabase.from('projects').select('id').eq('id', updates.projectId).maybeSingle();
-    if (!proj) return badRequest('ไม่พบโครงการ');
-  }
-  if (updates.dealId) {
-    const { data: deal } = await supabase.from('sales_deals').select('id').eq('id', updates.dealId).maybeSingle();
-    if (!deal) return badRequest('ไม่พบดีล');
+  // อ้างอิงโครงการ/ดีลต้องมีจริงและต้องเป็นคู่เดียวกัน. ถ้าเลือกดีลที่อยู่ใน
+  // โครงการ ระบบ mirror projectId ให้เอง เพื่อให้งานขึ้นทั้งหน้าดีลและหน้าโครงการ.
+  if ('projectId' in updates || 'dealId' in updates) {
+    let nextProjectId = 'projectId' in updates ? updates.projectId : task.projectId;
+    const nextDealId = 'dealId' in updates ? updates.dealId : task.dealId;
+    if (nextDealId) {
+      const { data: deal } = await supabase.from('sales_deals').select('id, projectId').eq('id', nextDealId).maybeSingle();
+      if (!deal) return badRequest('ไม่พบดีล');
+      if (deal.projectId) {
+        if (nextProjectId && nextProjectId !== deal.projectId) return badRequest('ดีลไม่ได้อยู่ในโครงการที่ระบุ');
+        nextProjectId = deal.projectId;
+        updates.projectId = deal.projectId;
+      } else if (nextProjectId) {
+        return badRequest('ดีลนี้ยังไม่ผูกโครงการ จึงระบุโครงการร่วมกันไม่ได้');
+      }
+    }
+    if (nextProjectId) {
+      const { data: proj } = await supabase.from('projects').select('id').eq('id', nextProjectId).maybeSingle();
+      if (!proj) return badRequest('ไม่พบโครงการ');
+    }
   }
 
   // completedAt อัตโนมัติตามการเปลี่ยนสถานะ (เข้า Completed = วันนี้, ออก = ล้าง).

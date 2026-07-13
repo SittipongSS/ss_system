@@ -129,7 +129,7 @@ function ZoomControl({ px, onChange }) {
   );
 }
 
-export default function ProjectDocumentView({ project, canEdit, onUpdateProject, onUpdateTask, fgUI, statusLabel, statusColor }) {
+export default function ProjectDocumentView({ project, canEdit, canEditProjectFields = canEdit, onUpdateProject, onUpdateTask, fgUI, statusLabel, statusColor }) {
   const isPortrait = useIsPortrait(); // จอตั้ง/แคบ → ลดคอลัมน์ที่แช่แข็ง ไม่ให้บังเนื้อหา
   const [headerExpanded, setHeaderExpanded] = useState(false); // default: ย่อ เพื่อให้เห็น chart เต็ม
   const [nowMs] = useState(() => Date.now());
@@ -162,7 +162,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
   const onField = (field) => (v) => setDraft((d) => ({ ...d, [field]: v }));
   const commitField = (field) => (v) => {
     setDraft((d) => ({ ...d, [field]: v }));
-    if ((v ?? "") !== (project[field] || "")) onUpdateProject({ [field]: v });
+    if ((v ?? "") !== (project[field] || "")) onUpdateProject?.({ [field]: v });
   };
 
   // เบอร์มือถือ + อีเมลของ AE ผู้ดูแล — ดึงจากข้อมูลผู้ใช้ (assignable-users) โดย
@@ -292,7 +292,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
     NO_W + descW + TEAM_W + DAY_W + START_W,
   ], [descW, isPortrait]);
 
-  const disabled = !canEdit;
+  const disabled = !canEditProjectFields;
 
   // ── เส้นเชื่อม dependency (predecessor → ลูก) แบบ Monday ──
   // วัดตำแหน่งบาร์จริงจาก DOM (กันคลาดเคลื่อนจาก border ตาราง) แล้ววาดเป็น SVG overlay
