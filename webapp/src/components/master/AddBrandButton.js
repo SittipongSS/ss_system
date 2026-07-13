@@ -70,7 +70,7 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
           <input autoFocus className="premium-input text-xs w-full" placeholder="ชื่อแบรนด์ (ไทย)" value={th} onChange={(e) => setTh(e.target.value)} onKeyDown={onKey} />
           <input className="premium-input text-xs w-full" placeholder="ชื่อแบรนด์ (อังกฤษ)" value={en} onChange={(e) => setEn(e.target.value)} onKeyDown={onKey} />
           {error && <div style={{ fontSize: "11px", color: "var(--red)" }}>{error}</div>}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
+          <div className="form-action-inline">
             <button type="button" className="btn" style={{ fontSize: "12px" }} onClick={close}>ยกเลิก</button>
             <button type="button" className="btn btn-primary" style={{ fontSize: "12px" }} disabled={saving} onClick={save}>
               {saving ? "กำลังเพิ่ม..." : "เพิ่มแบรนด์"}

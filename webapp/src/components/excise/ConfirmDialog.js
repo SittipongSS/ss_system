@@ -48,7 +48,7 @@ export default function ConfirmDialog({
           <p style={{ color: "var(--red)", marginTop: 10, fontSize: 13 }}>{err}</p>
         )}
       </div>
-      <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+      <div className="form-action-bar">
         {!hideCancel && (
           <button className="btn" onClick={onClose} disabled={busy}>
             {cancelLabel}

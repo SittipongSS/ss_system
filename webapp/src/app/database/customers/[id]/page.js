@@ -711,7 +711,7 @@ export default function CustomerDetails() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+          <div className="form-action-bar page">
             <button type="button" onClick={() => setIsEditing(false)} className="btn">ยกเลิก</button>
             <button type="submit" disabled={isSubmitting} className="btn btn-primary px-6 text-xs font-semibold py-2">
               {isSubmitting ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}

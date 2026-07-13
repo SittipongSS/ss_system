@@ -595,7 +595,7 @@ export default function ProductRegistry() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+          <div className="form-action-bar">
             <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>
             <button type="submit" disabled={submitting} className="btn btn-primary px-8">
               {submitting ? "กำลังบันทึก..." : "บันทึกสินค้า"}

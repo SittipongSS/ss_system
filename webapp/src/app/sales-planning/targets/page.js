@@ -464,8 +464,8 @@ export default function SalesPlanningTargetsPage() {
 
       {/* Big confirm-save bar — appears only when there are unsaved edits. */}
       {canTarget && pendingCount > 0 && (
-        <div className="glass-panel" role="region" aria-label="ยืนยันการบันทึก"
-          style={{ position: "sticky", bottom: 12, marginTop: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderColor: "var(--amber)", boxShadow: "0 8px 28px rgba(0,0,0,.18)", zIndex: 20 }}>
+        <div className="glass-panel form-action-bar page" role="region" aria-label="ยืนยันการบันทึก"
+          style={{ borderColor: "var(--amber)" }}>
           <span style={{ fontWeight: 700 }}>
             มีการแก้ไข {pendingCount} รายการ ที่ยังไม่บันทึก
           </span>

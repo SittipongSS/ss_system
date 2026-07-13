@@ -298,6 +298,47 @@ button, select, input, textarea {
 }
 .form-actions-buttons { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 
+/* Save / cancel action placement — one rule for modal and full-page forms.
+   Order is always secondary action first, primary save/confirm last. */
+.form-action-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.form-action-bar .btn { min-width: 96px; min-height: 38px; justify-content: center; }
+.form-action-bar .btn.ghost { border-color: var(--border); background: var(--panel); box-shadow: var(--shadow-sm); }
+.form-action-bar .btn.ghost:hover { background: var(--panel-2); }
+.form-action-bar .btn-primary,
+.form-action-bar .btn-success,
+.form-action-bar .btn-danger { min-width: 116px; }
+.form-action-bar > :first-child:not(.btn):not(.form-actions-buttons) { margin-right: auto; }
+.form-action-inline { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.form-action-inline .btn { justify-content: center; }
+.drawer .form-action-bar {
+  position: sticky;
+  bottom: -24px;
+  z-index: 5;
+  margin-bottom: -24px;
+  padding-bottom: 18px;
+  background: var(--panel);
+}
+.form-action-bar.page {
+  position: sticky;
+  bottom: 12px;
+  z-index: 30;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+
 .confirm-dialog {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
@@ -327,6 +368,10 @@ button, select, input, textarea {
   .form-actions { bottom: max(8px, env(safe-area-inset-bottom)); align-items: stretch; flex-direction: column; }
   .form-actions-buttons { width: 100%; }
   .form-actions-buttons .btn { min-height: 44px; flex: 1; }
+  .form-action-bar { gap: 8px; flex-wrap: wrap; }
+  .form-action-bar .btn { min-width: 0; min-height: 44px; flex: 1; }
+  .form-action-bar > :first-child:not(.btn):not(.form-actions-buttons) { flex-basis: 100%; margin-right: 0; }
+  .drawer .form-action-bar { bottom: -18px; margin-bottom: -18px; }
   .confirm-dialog-actions .btn { min-height: 44px; flex: 1; }
 }
 
@@ -1923,7 +1968,7 @@ button.ui-kpi-card { cursor: pointer; }
 
 /* Give modals breathing room on tiny screens (default overlay padding is 24px). */
 @media (max-width: 480px) {
-  .overlay { padding: 12px; }
+  .overlay { padding: 12px 12px calc(var(--mobile-nav-h, 0px) + 12px + env(safe-area-inset-bottom)); }
   .drawer { padding: 18px; }
 }
 

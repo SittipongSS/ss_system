@@ -241,7 +241,7 @@ export default function QuotationsPage() {
             <input type="checkbox" checked={seedFG} onChange={(e) => setSeedFG(e.target.checked)} />
             ดึงรายการตั้งต้นจาก FG ของโครงการ (ไม่ติ้ก = ใบเปล่า ใส่รหัส FG เอง)
           </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div className="form-action-bar">
             <button type="button" className="btn ghost" onClick={() => setCreateOpen(false)} disabled={creating}>ยกเลิก</button>
             <button type="button" className="btn btn-primary" onClick={createQuote} disabled={creating || !dealId}>
               {creating ? "กำลังสร้าง…" : "สร้างและไปแก้ไข"}

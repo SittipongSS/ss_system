@@ -329,7 +329,7 @@ export default function UserManagement() {
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="เพิ่มผู้ใช้ใหม่" size="md">
         <form onSubmit={handleCreate}>
           <UserFields form={createForm} setForm={setCreateForm} requirePassword />
-          <div className="flex justify-end gap-2 mt-8 pt-6 border-t border-[var(--border)]">
+          <div className="form-action-bar">
             <button type="button" onClick={() => setShowCreate(false)} className="btn">
               ยกเลิก
             </button>
@@ -350,7 +350,7 @@ export default function UserManagement() {
         {editForm && (
           <form onSubmit={handleEdit}>
             <UserFields form={editForm} setForm={setEditForm} edit />
-            <div className="flex justify-end gap-2 mt-8 pt-6 border-t border-[var(--border)]">
+            <div className="form-action-bar">
               <button type="button" onClick={() => setEditUser(null)} className="btn">
                 ยกเลิก
               </button>

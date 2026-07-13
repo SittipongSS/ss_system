@@ -322,7 +322,7 @@ export default function TimelineWorkspace({
           />
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "0 18px 16px" }}>
+      <div className="form-action-bar" style={{ padding: "16px 18px" }}>
         <button type="button" className="btn ghost" onClick={() => { setEditTask(null); setAddOpen(false); }} disabled={saving}>ยกเลิก</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? "กำลังบันทึก…" : submitLabel}</button>
       </div>
@@ -590,7 +590,7 @@ export default function TimelineWorkspace({
       )}
 
       {dirtyCount > 0 && (
-        <div className="timeline-save-bar" role="status">
+        <div className="timeline-save-bar form-action-bar page" role="status">
           <span className="timeline-save-message">มีการแก้ไข <b>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก</span>
           <button type="button" className="btn" onClick={discardDrafts} disabled={saving}>ยกเลิกการแก้ไข</button>
           <button type="button" className="btn btn-primary timeline-save-button" onClick={saveDrafts} disabled={saving}>{saving ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}</button>

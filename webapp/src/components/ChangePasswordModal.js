@@ -138,7 +138,7 @@ export default function ChangePasswordModal({ open, forced = false, onClose, onC
             </div>
           </div>
           {error && <p className="text-[var(--red)] text-sm mt-3">{error}</p>}
-          <div className="flex justify-end gap-2 mt-8 pt-6 border-t border-[var(--border)]">
+          <div className="form-action-bar">
             {!forced && (
               <button type="button" onClick={close} className="btn">ยกเลิก</button>
             )}

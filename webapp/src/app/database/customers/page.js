@@ -535,7 +535,7 @@ export default function CustomerDirectory() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 mt-8 pt-6 border-t border-[var(--border)] ">
+          <div className="form-action-bar">
             <button
               type="button"
               onClick={() => setShowForm(false)}

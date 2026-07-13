@@ -430,7 +430,7 @@ export default function ProjectFormModal({
         {formError && (
           <p className="text-[13px] text-[var(--red)] mt-4">{formError}</p>
         )}
-        <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+        <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn">ยกเลิก</button>
           <button type="submit" disabled={submitting} className="btn btn-primary px-8">
             {submitting ? "กำลังบันทึก..." : editingId ? "บันทึกการแก้ไข" : createLabel}

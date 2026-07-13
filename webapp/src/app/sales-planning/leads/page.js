@@ -629,7 +629,7 @@ export default function LeadsPage() {
             <textarea className="premium-input" rows={3} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
           </label>
           
-          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div className="form-action-bar">
             <button type="button" className="btn ghost" onClick={() => setFormOpen(false)}>ยกเลิก</button>
             <button type="submit" className="btn btn-primary" disabled={busy === "save"}><Plus size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกลีด"}</button>
           </div>
@@ -672,7 +672,7 @@ export default function LeadsPage() {
               </button>
             </div>
             
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+            <div className="form-action-bar">
               <button type="button" className="btn ghost" onClick={() => setDealModal(null)} disabled={!!busy}>ยกเลิก</button>
               <button type="button" className="btn btn-primary" onClick={submitDeals} disabled={!!busy || !dealsToCreate.length}>
                 {busy === "deals" ? "กำลังสร้าง…" : `สร้าง ${dealsToCreate.length} ดีล`}
@@ -730,7 +730,7 @@ export default function LeadsPage() {
                 <textarea className="premium-input" rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder={actionModal.action === "bounce" ? "เช่น งานเป็นของทีม SV ไม่ใช่ ODM" : "เช่น งบไม่พอ / ติดต่อไม่ได้"} />
               </label>
             )}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <div className="form-action-bar">
               <button type="button" className="btn ghost" onClick={() => setActionModal(null)} disabled={!!busy}>ยกเลิก</button>
               <button type="button" className="btn btn-primary" onClick={submitAction}
                 disabled={!!busy

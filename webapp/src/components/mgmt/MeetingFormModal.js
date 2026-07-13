@@ -98,7 +98,7 @@ export default function MeetingFormModal({ open, onClose, onSaved, meeting, depa
           <textarea className="premium-input w-full" rows={4} value={form.summary || ""} onChange={(e) => set("summary", e.target.value)} />
         </div>
       </div>
-      <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+      <div className="form-action-bar">
         <button className="btn" onClick={onClose} disabled={saving}>ยกเลิก</button>
         <button className="btn btn-primary px-6" onClick={submit} disabled={saving}>{saving ? "กำลังบันทึก..." : "บันทึก"}</button>
       </div>

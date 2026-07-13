@@ -73,7 +73,7 @@ export function PredecessorPopover({ task, tasks, anchor, onSave, onClose }) {
           งานที่ต้องรอให้เสร็จก่อน · {task.name}
         </div>
         <PredecessorPicker tasks={tasks} selfId={task.id} value={draft} onChange={setDraft} maxHeight={200} />
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+        <div className="form-action-bar">
           <button className="btn btn-secondary sm" onClick={onClose}>ยกเลิก</button>
           <button className="btn btn-primary sm" disabled={!changed} onClick={() => onSave(draft)}>บันทึก</button>
         </div>

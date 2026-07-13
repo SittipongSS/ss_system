@@ -1575,7 +1575,7 @@ export default function ProjectDetailPage() {
                         {isEditing ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--panel)", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)" }}>
                             {renderStepEditFields(task.id)}
-                            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+                            <div className="form-action-inline">
                               <button className="btn btn-secondary sm" onClick={() => { setEditingTaskId(null); setEditForm(null); }}>ยกเลิก</button>
                               <button className="btn btn-primary sm" onClick={() => saveEditing(task.id)}><Check size={14} /> ตกลง</button>
                             </div>
@@ -1767,7 +1767,7 @@ export default function ProjectDetailPage() {
               />
             </div>
           </div>
-          <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+          <div className="form-action-bar">
             <button type="button" onClick={() => setShowAddTask(false)} className="btn">ยกเลิก</button>
             <button type="submit" className="btn btn-primary px-8">เพิ่ม</button>
           </div>
@@ -1849,7 +1849,7 @@ export default function ProjectDetailPage() {
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+            <div className="form-action-bar">
               <button type="button" onClick={closeEditModal} className="btn">ยกเลิก</button>
               <button type="submit" className="btn btn-primary px-8"><Check size={14} className="mr-1" /> ตกลง</button>
             </div>
@@ -1988,7 +1988,7 @@ export default function ProjectDetailPage() {
 
       {/* เฟส 1: แถบยืนยันการเปลี่ยนแปลงที่ค้างอยู่ — ลอยล่างจอ เห็นจากทุกวิว */}
       {dirtyCount > 0 && (
-        <div className="timeline-save-bar" role="status">
+        <div className="timeline-save-bar form-action-bar page" role="status">
           <span className="timeline-save-message">มีการแก้ไข <b>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก</span>
           <button className="btn" onClick={cancelEdits}>ยกเลิกการแก้ไข</button>
           <button className="btn btn-primary timeline-save-button" onClick={confirmEdits} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึกการเปลี่ยนแปลง</button>
