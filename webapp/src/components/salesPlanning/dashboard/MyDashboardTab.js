@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Target, Activity, CalendarDays, Inbox, AlertTriangle, ArrowRight, FolderKanban } from "lucide-react";
-import { fmtMoney, fmtDate } from "@/lib/format";
+import { fmtMoney, fmtDate, fmtPercent } from "@/lib/format";
 import { forecastBadge, KpiCard } from "@/components/salesPlanning/ui";
 import { LEAD_STATUS_LABELS } from "@/lib/sales/leads";
 
@@ -53,7 +53,7 @@ export default function MyDashboardTab({ month }) {
   const openDealsCount = data?.openDealsCount || 0;
   const byForecast = data?.byForecast || [];
 
-  const pctTarget = target > 0 ? Math.round((wonValue / target) * 100) : 0;
+  const pctTarget = target > 0 ? (wonValue / target) * 100 : 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -78,11 +78,11 @@ export default function MyDashboardTab({ month }) {
               </div>
               <div className="flex justify-between items-center text-[12px] text-[var(--text-3)] font-mono">
                 <span>Target: {fmtMoney(target)}</span>
-                <span>Gap: {targetGap > 0 ? fmtMoney(targetGap) : "0"}</span>
+                <span>Gap: {fmtMoney(targetGap)}</span>
               </div>
               <ProgressBar value={wonValue} total={target} color="var(--violet)" />
               <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: "var(--text-2)", textAlign: "right" }}>
-                {pctTarget}% สำเร็จ
+                {fmtPercent(pctTarget)} สำเร็จ
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 mt-4">

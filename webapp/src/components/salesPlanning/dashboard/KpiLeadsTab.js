@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Inbox, Filter, PhoneCall, CalendarClock } from "lucide-react";
 import { KpiCard } from "@/components/salesPlanning/ui";
 import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS } from "@/lib/sales/leads";
-import { fmtName } from "@/lib/format";
+import { fmtName, fmtPercent } from "@/lib/format";
 
-const pct = (hit, total) => (total ? `${Math.round((hit / total) * 100)}%` : "-");
+const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
 
 export default function KpiLeadsTab({ month, teamFilter }) {
   const [kpi, setKpi] = useState(null);

@@ -1,24 +1,31 @@
 // พิมพ์ใบเสนอราคา FM-SA-01 (เฟส D) — เปิดหน้าต่างพิมพ์ A4 (pattern เดียวกับ ganttPrint).
-// หัวเอกสารมีโลโก้บริษัทตามกฎแบรนด์ (public/brand-logo.png — SALES_REVAMP_PLAN §5.2).
+// หัวเอกสารใช้โลโก้กลางของระบบบริหารงานลูกค้า (documentBrand.js).
 import { fmtDate } from '@/lib/format';
+import {
+  DOCUMENT_FORMS,
+  SYSTEM_DOCUMENT_LOGO_URL,
+  documentFormLine,
+} from '@/lib/documentBrand';
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const money = (v) => Number(v || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // หัวเอกสารกลาง: โลโก้ + ชื่อบริษัท + ชื่อฟอร์ม + เลขที่ — ใช้ซ้ำกับเอกสารขายตัวถัดไป (SO/ใบส่งของ)
-export function printHeaderHtml({ formCode, title, docNumber, docDate }) {
+export function printHeaderHtml({ form, docNumber, docDate }) {
   return `
   <div class="doc-head">
     <div class="brand">
-      <img src="/brand-logo.png" alt="Scent & Sense" />
+      <div class="doc-logo"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
       <div>
         <div class="co">บริษัท เซ้นท์ แอนด์ เซนส์ จำกัด — Scent &amp; Sense Co., Ltd.</div>
-        <div class="form">${esc(title)} <span class="code">${esc(formCode)}</span></div>
+        <div class="form">เอกสารระบบบริหารงานลูกค้า</div>
       </div>
     </div>
     <div class="docmeta">
-      <div><span>เลขที่:</span> <strong>${esc(docNumber)}</strong></div>
-      <div><span>วันที่:</span> ${esc(docDate)}</div>
+      <div class="form-code">${esc(documentFormLine(form))}</div>
+      <div class="form-title">${esc(form.title)}</div>
+      <div class="form-number">${esc(docNumber)}</div>
+      <div class="form-date"><span>วันที่:</span> ${esc(docDate)}</div>
     </div>
   </div>`;
 }
@@ -53,12 +60,16 @@ export function openQuotePrintWindow(quote) {
     body { font-family: 'IBM Plex Sans Thai', 'Sarabun', system-ui, sans-serif; font-size: 13px; color: #1c1e26; margin: 0; padding: 24px 28px; }
     .doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 3px solid #21385e; padding-bottom: 12px; margin-bottom: 14px; }
     .brand { display: flex; gap: 12px; align-items: center; }
-    .brand img { height: 52px; width: auto; border-radius: 8px; }
+    .doc-logo { width: 168px; height: 64px; flex-shrink: 0; border-radius: 8px; overflow: hidden; position: relative; background: #18234f; }
+    .doc-logo img { position: absolute; width: 168px; height: 168px; max-width: none; left: 0; top: -57px; }
     .co { font-weight: 700; font-size: 14px; }
     .form { font-size: 13px; color: #444; margin-top: 2px; }
-    .form .code { color: #21385e; font-weight: 700; margin-left: 6px; }
     .docmeta { text-align: right; font-size: 13px; white-space: nowrap; }
     .docmeta span { color: #666; }
+    .form-code { color: #837868; font-size: 10px; font-weight: 700; letter-spacing: .4px; }
+    .form-title { color: #c17a52; font-size: 18px; font-weight: 800; letter-spacing: 2px; }
+    .form-number { color: #21385e; font-size: 11px; font-weight: 700; }
+    .form-date { color: #555; font-size: 11px; margin-top: 1px; }
     .cust { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
     .cust .box { border: 1px solid #ccc; border-radius: 8px; padding: 8px 12px; flex: 1; }
     .cust .lbl { font-size: 11px; color: #666; }
@@ -79,9 +90,10 @@ export function openQuotePrintWindow(quote) {
     .sign { text-align: center; width: 200px; }
     .sign .line { border-bottom: 1px dotted #888; height: 36px; margin-bottom: 6px; }
     .sign .who { font-size: 12px; color: #444; }
-    @media print { body { padding: 0; } }
+    @page { size: A4 portrait; margin: 10mm; }
+    @media print { body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style></head><body>
-  ${printHeaderHtml({ formCode: 'FM-SA-01', title: 'ใบเสนอราคา / QUOTATION', docNumber: quote.quoteNumber, docDate: fmtDate(quote.quoteDate) })}
+  ${printHeaderHtml({ form: DOCUMENT_FORMS.quotation, docNumber: quote.quoteNumber, docDate: fmtDate(quote.quoteDate) })}
   <div class="cust">
     <div class="box">
       <div class="lbl">ลูกค้า / CUSTOMER</div>

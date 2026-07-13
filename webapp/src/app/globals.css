@@ -9,6 +9,7 @@
   /* IBM Plex Sans Thai — loaded via next/font (--font-plex-sans / --font-plex-mono on <html>) */
   --font-sans: var(--font-plex-sans), "IBM Plex Sans Thai", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-numeric: var(--font-sans);
 
   /* UI density: keep in sync with the inline `zoom` on <body> in layout.js.
      Used to compensate full-viewport heights (100vh) that zoom would shrink.
@@ -4918,6 +4919,32 @@ button.empty-state { width: 100%; font: inherit; }
   padding-bottom: 18px;
 }
 
+.shipment-print-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.shipment-print-logo {
+  width: 168px;
+  height: 64px;
+  flex: 0 0 168px;
+  border-radius: 8px;
+  background-color: #18234f;
+  overflow: hidden;
+  position: relative;
+}
+
+.shipment-print-logo img {
+  position: absolute;
+  width: 168px;
+  height: 168px;
+  max-width: none;
+  left: 0;
+  top: -57px;
+}
+
 .shipment-print-kicker {
   font-size: 12px;
   font-weight: 700;
@@ -5033,8 +5060,70 @@ button.empty-state { width: 100%; font: inherit; }
 @media (max-width: 760px) {
   .shipment-print-sheet { padding: 18px; }
   .shipment-print-head { flex-direction: column; }
+  .shipment-print-brand { align-items: flex-start; flex-direction: column; }
   .shipment-print-meta { width: 100%; }
   .shipment-print-info { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
+
+/* System-wide numeric typography: financial figures use the same clean sans
+   face as the reference UI while retaining fixed-width digits for alignment. */
+.numeric-input,
+.tabular-nums,
+.premium-table .mono,
+.premium-glass-table .mono,
+.premium-table .num,
+.premium-glass-table .num,
+.metric-value,
+.ui-kpi-value,
+.stat-value,
+[data-numeric] {
+  font-family: var(--font-numeric) !important;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.01em;
+}
+
+.target-value-toggle {
+  min-height: 30px;
+}
+
+.target-value-toggle > button {
+  min-width: 62px;
+  white-space: nowrap;
+}
+
+.target-decimal-input {
+  position: relative;
+  width: 100%;
+}
+
+.target-decimal-input > span {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.target-team-table th,
+.target-team-table td {
+  vertical-align: middle;
+}
+
+.target-team-table th.num,
+.target-team-table td.num {
+  text-align: right;
+}
+
+.target-team-table td .numeric-input {
+  min-width: 150px;
 }
 
 @media print {

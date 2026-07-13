@@ -6,6 +6,7 @@ import { ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis, 
 import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
 import DateInput from "@/components/ui/DateInput";
+import { fmtPercent } from "@/lib/format";
 
 import { KpiCard } from "@/components/salesPlanning/ui";
 
@@ -15,7 +16,7 @@ const monthEndDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 const monthEnd = `${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth() + 1).padStart(2, "0")}-${String(monthEndDate.getDate()).padStart(2, "0")}`;
 
 function fmtPct(value) {
-  return `${Number(value || 0).toLocaleString("th-TH")}%`;
+  return fmtPercent(value);
 }
 
 function ScoreBadge({ value }) {

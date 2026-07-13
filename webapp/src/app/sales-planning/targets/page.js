@@ -8,10 +8,11 @@ import Workspace from "@/components/ui/Workspace";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+import { fmtNumber } from "@/lib/format";
 
 const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
 const thisYear = () => thisMonth().slice(0, 4);
-const compact = (n) => Number(n || 0).toLocaleString("th-TH", { maximumFractionDigits: 0 });
+const compact = (n) => fmtNumber(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const nodeKey = (n) => (n.level === "sa" ? "sa" : n.level === "team" ? `team:${n.team}` : `ae:${n.ownerId}`);
 const sum = (arr) => arr.reduce((s, v) => s + v, 0);
 
