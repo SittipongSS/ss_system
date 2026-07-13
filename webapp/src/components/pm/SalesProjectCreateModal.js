@@ -130,7 +130,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
           <div className="form-group"><label>AE Supervisor</label><Select fullWidth value={form.aeSupervisor} onChange={(e) => setForm((f) => ({ ...f, aeSupervisor: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => u.role === "ae_supervisor").map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
         </div>
         {error && <p style={{ color: "var(--red)", fontSize: 13 }}>{error}</p>}
-        <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+        <div className="form-action-bar">
           <button type="button" className="btn" onClick={onClose}>ยกเลิก</button>
           <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "กำลังบันทึก..." : editingId ? "บันทึกการแก้ไข" : "สร้างโครงการ"}</button>
         </div>

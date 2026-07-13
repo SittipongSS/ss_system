@@ -701,7 +701,7 @@ export default function SalesPlanningPipelinePage() {
               </label>
             ) : null}
           />
-          <div className="drawer-actions" style={{ gridColumn: "1 / -1" }}>
+          <div className="form-action-bar">
             <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
               <Save size={15} aria-hidden="true" /> {submitting ? "กำลังบันทึก..." : "บันทึก"}
@@ -728,7 +728,7 @@ export default function SalesPlanningPipelinePage() {
               <MonthPicker value={winMonth} onChange={setWinMonth} />
             </div>
           </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div className="form-action-bar">
             <button type="button" className="btn ghost" onClick={() => setWinDeal(null)} disabled={!!winningDealId}>ยกเลิก</button>
             <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!winningDealId || !(Number(winValue) > 0)}>
               <CheckCircle2 size={14} aria-hidden="true" /> {winningDealId ? "กำลังบันทึก..." : "ยืนยัน Won"}
@@ -867,7 +867,7 @@ export default function SalesPlanningPipelinePage() {
                 หมายเหตุ
                 <textarea className="premium-input" rows={2} value={docForm.notes} onChange={(e) => setDocForm({ ...docForm, notes: e.target.value })} />
               </label>
-              <div className="drawer-actions" style={{ gridColumn: "1 / -1" }}>
+              <div className="form-action-bar">
                 <button type="submit" className="btn btn-primary" disabled={docLoading}>
                   <Plus size={15} aria-hidden="true" /> เพิ่มเอกสาร
                 </button>

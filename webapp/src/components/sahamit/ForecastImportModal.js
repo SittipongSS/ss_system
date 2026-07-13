@@ -348,7 +348,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
         )}
 
         {/* Footer */}
-        <div className="flex justify-between items-center gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+        <div className="form-action-bar">
           <span className="text-[13px] text-[var(--text-3)]">
             {months.length ? `${months.length} เดือน` : "ช่วงเดือนไม่ถูกต้อง"}
             {hasGrid ? ` · ${rows.length} สินค้า · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : ""}

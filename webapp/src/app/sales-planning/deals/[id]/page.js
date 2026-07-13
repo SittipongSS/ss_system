@@ -1144,7 +1144,7 @@ export default function DealOverviewPage() {
                             )}
                           </div>
                           <textarea className="premium-input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} style={{ resize: "vertical" }} />
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                          <div className="form-action-inline">
                             <button type="button" className="btn ghost sm" onClick={cancelEditActivity} disabled={feedBusy}><X size={13} aria-hidden="true" /> ยกเลิก</button>
                             <button type="button" className="btn btn-primary sm" onClick={saveEditActivity} disabled={feedBusy || !editBody.trim()}><Save size={13} aria-hidden="true" /> บันทึก</button>
                           </div>
@@ -1210,7 +1210,7 @@ export default function DealOverviewPage() {
             วันเริ่มงานช่วงนี้
             <DateInput value={linkStartDate} onChange={setLinkStartDate} />
           </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div className="form-action-bar">
             <button type="button" className="btn ghost" onClick={() => setLinkOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
             <button type="button" className="btn btn-primary" onClick={submitLinkProject} disabled={!!actionBusy || !linkProjectId}>
               {actionBusy === "link-project" ? "กำลังผูก…" : "ผูกเข้าโครงการ"}
@@ -1242,7 +1242,7 @@ export default function DealOverviewPage() {
               )}
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div className="form-action-bar">
             <button type="button" className="btn ghost" onClick={() => setWinOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
             <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!actionBusy || !(Number(winValue) > 0)}>
               <Trophy size={14} aria-hidden="true" /> {actionBusy === "win" ? "กำลังบันทึก..." : "ยืนยัน Won"}
@@ -1263,7 +1263,7 @@ export default function DealOverviewPage() {
               style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text-1)", fontSize: 13, resize: "vertical" }}
             />
           </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div className="form-action-bar">
             <button type="button" className="btn ghost" onClick={() => setLostOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
             <button type="button" className="btn" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={doLost} disabled={!!actionBusy}>
               <Ban size={14} aria-hidden="true" /> {actionBusy === "lost" ? "กำลังบันทึก..." : "ยืนยัน Lost"}
@@ -1298,7 +1298,7 @@ export default function DealOverviewPage() {
                 </>
               )}
             />
-            <div className="drawer-actions" style={{ gridColumn: "1 / -1" }}>
+            <div className="form-action-bar">
               <button type="button" className="btn" onClick={() => setDealModalOpen(false)}>ยกเลิก</button>
               <button type="submit" className="btn btn-primary" disabled={savingDeal}>
                 <Save size={15} aria-hidden="true" /> {savingDeal ? "กำลังบันทึก..." : "บันทึก"}

@@ -235,7 +235,7 @@ export default function PoCreatePage() {
           </div>
         )}
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+        <div className="form-action-bar page">
           <span style={{ fontSize: 13, color: "var(--text-3)" }}>
             {rows.length ? `${rows.length} รายการ · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : "ยังไม่มีรายการ"}
           </span>

@@ -108,7 +108,7 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
           <textarea className="premium-input w-full" rows={3} value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} />
         </div>
       </div>
-      <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+      <div className="form-action-bar">
         <button className="btn" onClick={onClose} disabled={saving}>ยกเลิก</button>
         <button className="btn btn-primary px-6" onClick={submit} disabled={saving}>{saving ? "กำลังบันทึก..." : "บันทึก"}</button>
       </div>

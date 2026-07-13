@@ -408,7 +408,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
           </div>
           <div className="form-group"><label>วันที่เริ่ม segment</label><DateInput value={startDate} onChange={setStartDate} className="w-full" /></div>
           {linkError && <div style={{ color: "var(--red)", fontSize: 13 }}>{linkError}</div>}
-          <div className="flex justify-end gap-2"><button type="button" className="btn" onClick={() => setLinkOpen(false)} disabled={linking}>ยกเลิก</button><button type="button" className="btn btn-primary" onClick={linkDeal} disabled={linking || !dealId}>{linking ? "กำลังผูก..." : "ผูกเข้าโครงการ"}</button></div>
+          <div className="form-action-bar"><button type="button" className="btn" onClick={() => setLinkOpen(false)} disabled={linking}>ยกเลิก</button><button type="button" className="btn btn-primary" onClick={linkDeal} disabled={linking || !dealId}>{linking ? "กำลังผูก..." : "ผูกเข้าโครงการ"}</button></div>
         </div>
       </Modal>
     </div>

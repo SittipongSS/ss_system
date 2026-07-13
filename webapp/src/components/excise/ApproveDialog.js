@@ -82,7 +82,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration }) {
           {error && <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
         </div>
 
-        <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+        <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>
           <button type="submit" className="btn btn-primary px-6" disabled={busy || !approvalNumber.trim()}>
             {busy ? "กำลังบันทึก..." : "ยืนยันอนุมัติ"}

@@ -427,7 +427,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
 
         {error && <div className="text-xs text-[var(--red)] bg-[var(--red-soft)] rounded p-2 mb-4">{error}</div>}
 
-        <div className="flex justify-end gap-2 mt-6 pt-5 border-t border-[var(--border)]">
+        <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={submitting || priceSubmitting}>ยกเลิก</button>
           <button type="submit" disabled={submitting} className="btn btn-primary px-8">
             {submitting ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
