@@ -42,7 +42,7 @@ async function canManage(supabase, task, user) {
   return false;
 }
 
-// ทีมของ "ผู้รับผิดชอบ" งาน (assignee ถ้ามี ไม่งั้น owner) — ใช้เช็คสิทธิ์ดึงมาทำแทน.
+// ทีมของ "ผู้รับผิดชอบ" งาน (assignee ถ้ามี ไม่งั้น owner) — ใช้เช็คสิทธิ์ดึงงานมาเป็นผู้รับผิดชอบ.
 async function responsibleTeam(supabase, task) {
   return userTeam(supabase, task.assigneeId || task.ownerId);
 }
@@ -53,7 +53,8 @@ async function loadTask(supabase, id) {
 }
 
 // PATCH /api/pm/personal-tasks/[id]
-//   • proxyAction 'pull'/'release' — ดึงงานมาทำแทน / คืนงาน (เพื่อนร่วมทีม)
+//   • responsibilityAction 'take' — ยืนยันรับช่วงและย้ายผู้รับผิดชอบเป็นผู้กด
+//   • proxyAction 'release' — รองรับคืนงานทำแทนของข้อมูลเก่า
 //   • เปลี่ยน "สถานะ" อย่างเดียว — เจ้าของ/ผู้รับมอบ/ผู้ทำแทน (proxyBy)/หัวหน้า
 //   • แก้ฟิลด์อื่น (ชื่อ/กำหนด/มอบหมาย/ลบ) — full authority (canManage) เท่านั้น
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
@@ -64,18 +65,29 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json();
 
-  // ── ดึงมาทำแทน / คืนงาน (proxy work) ──
-  if (body.proxyAction === 'pull' || body.proxyAction === 'release') {
+  // ── รับช่วงงาน: ย้าย assignee จริงทันที (ไม่สร้าง proxyBy ใหม่) ──
+  // รองรับ proxyAction=pull จาก client รุ่นเก่า แต่ให้ผลแบบใหม่เหมือน take.
+  if (body.responsibilityAction === 'take' || body.proxyAction === 'pull') {
+    const respTeam = await responsibleTeam(supabase, task);
+    if (!canPullTask(user, task, respTeam)) return forbidden('ดึงงานนี้มาเป็นผู้รับผิดชอบไม่ได้');
+    const takeoverUpdate = {
+      assigneeId: user.id,
+      assignedBy: user.id,
+      proxyBy: null,
+      updatedBy: user.id,
+      updatedAt: new Date().toISOString(),
+    };
+    const { data, error } = await supabase.from('personal_tasks').update(takeoverUpdate).eq('id', id).select().single();
+    if (error) return fail(error.message, 500);
+    await recordAudit({ user, action: 'update', entityType: 'task', entityId: id, before: task, after: data, request: req });
+    return ok(data);
+  }
+
+  // ข้อมูลเก่าที่มี proxyBy ยังคืนงานได้จนกว่าจะถูกย้าย/ล้างหมด
+  if (body.proxyAction === 'release') {
     const manage = await canManage(supabase, task, user);
-    let proxyUpdate;
-    if (body.proxyAction === 'pull') {
-      const respTeam = await responsibleTeam(supabase, task);
-      if (!canPullTask(user, task, respTeam)) return forbidden('ดึงงานนี้มาทำแทนไม่ได้');
-      proxyUpdate = { proxyBy: user.id };
-    } else {
-      if (!canReleaseTask(user, task, manage)) return forbidden('คืนงานนี้ไม่ได้');
-      proxyUpdate = { proxyBy: null };
-    }
+    if (!canReleaseTask(user, task, manage)) return forbidden('คืนงานนี้ไม่ได้');
+    const proxyUpdate = { proxyBy: null };
     proxyUpdate.updatedBy = user.id;
     proxyUpdate.updatedAt = new Date().toISOString();
     const { data, error } = await supabase.from('personal_tasks').update(proxyUpdate).eq('id', id).select().single();

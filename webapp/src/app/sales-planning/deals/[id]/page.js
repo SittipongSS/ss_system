@@ -15,7 +15,7 @@ import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
-import { FORECAST_LEVELS, dealTypeBadge, forecastBadge, snapForecastLevel, MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, dealTypeBadge, snapForecastLevel, MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
@@ -113,7 +113,7 @@ function DealStepper({ steps, lost }) {
         <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{
             display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5,
-            fontWeight: s.state === "current" ? 700 : 500,
+            fontWeight: s.state === "current" ? 800 : 650,
             color: s.state === "done" ? "var(--green)" : s.state === "current" ? "var(--accent)" : "var(--text-3)",
           }}>
             {s.state === "done" ? <CheckCircle2 size={14} aria-hidden="true" /> : <Circle size={14} fill={s.state === "current" ? "currentColor" : "none"} aria-hidden="true" />}
@@ -672,23 +672,21 @@ export default function DealOverviewPage() {
                   <div style={{ marginTop: 7, color: "var(--text-2)", fontSize: 13, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
                     <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
                     {(dealBrand.en || dealBrand.th) && (
-                      <><span>·</span><span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? <> · <strong style={{ color: "var(--text)" }}>{dealBrand.th}</strong></> : null}</span></>
+                      <span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? <> · <strong style={{ color: "var(--text)" }}>{dealBrand.th}</strong></> : null}</span>
                     )}
                   </div>
                   <div style={{ marginTop: 5, color: "var(--text-2)", fontSize: 13, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <span>AE: {deal.ownerName || "-"}</span>
                     <span>·</span><span>ทีม {deal.team || "-"}</span>
                     <span>·</span><span>เดือน FC: {deal.forecastMonth || "-"}</span>
-                    {!alreadyWon && deal.stage !== "lost" && <><span>·</span>{forecastBadge(deal.probability)}</>}
+                    {!alreadyWon && deal.stage !== "lost" && <><span>·</span><strong style={{ color: "var(--amber)", fontWeight: 800 }}>FC {snapForecastLevel(deal.probability)}%</strong></>}
+                    <span>·</span><span style={{ fontWeight: 700 }}>{dealTypeOf(deal)}</span>
                   </div>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginLeft: "auto" }}>{headerRight}</div>
             </div>
             <div style={{ padding: "12px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              {dealTypeBadge(dealTypeOf(deal))}
-            </div>
             {lc && <DealStepper steps={lc.steps} lost={deal.stage === "lost"} />}
             {lc?.nextAction && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 12 }}>

@@ -195,28 +195,51 @@ export default function TasksPage() {
     return false;
   };
 
-  // ── ทำแทน (proxy work) — mirror ฝั่ง server (lib/permissions) ──
-  // ผู้รับผิดชอบ = assigneeId || ownerId; ทีมของเขาใช้เช็คสิทธิ์ดึงมาทำแทน.
+  // ── รับช่วงงาน — mirror ฝั่ง server (lib/permissions) ──
+  // ผู้รับผิดชอบ = assigneeId || ownerId; ทีมของเขาใช้เช็คสิทธิ์ดึงงานมาเป็นผู้รับผิดชอบ.
   const respTeamOf = (t) => userTeamOf(t.assigneeId || t.ownerId);
   const canPull = (t) => canPullTask(me, t, respTeamOf(t));
   const canRelease = (t) => canReleaseTask(me, t, canManageTask(t));
-  // ปรับสถานะได้: ผู้รับผิดชอบ/ผู้ทำแทน/หัวหน้า — เพื่อนร่วมทีมต้องดึงมาทำแทนก่อน.
+  // ปรับสถานะได้: ผู้รับผิดชอบ/ผู้ทำแทนเดิม/หัวหน้า — เพื่อนร่วมทีมต้องรับช่วงงานก่อน.
   const canSetStatus = (t) => canChangeTaskStatus(me, t, canManageTask(t));
 
-  const setProxy = async (t, action) => {
-    // optimistic: อัปเดต proxyBy ในเครื่องก่อน
-    const nextProxy = action === "pull" ? me?.id : null;
-    setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, proxyBy: nextProxy } : x));
+  const takeResponsibility = async (t) => {
+    const previousId = t.assigneeId || t.ownerId;
+    const previousName = usersMap[previousId] || "ผู้รับผิดชอบเดิม";
+    const confirmed = await askConfirm({
+      title: "ยืนยันดึงงาน",
+      message: `ย้ายผู้รับผิดชอบงาน “${t.title}” จาก ${previousName} มาเป็นคุณใช่หรือไม่? หลังยืนยัน งานและ KPI จะย้ายมาอยู่ที่คุณทันที`,
+      confirmLabel: "ยืนยันดึงงาน",
+      danger: false,
+    });
+    if (!confirmed) return;
+
+    setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, assigneeId: me?.id, assignedBy: me?.id, proxyBy: null } : x));
     try {
       const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proxyAction: action }),
+        body: JSON.stringify({ responsibilityAction: "take" }),
+      });
+      const updated = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(updated.error || "");
+      setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? updated : x));
+      setToast({ kind: "success", msg: "ย้ายผู้รับผิดชอบมาเป็นคุณแล้ว" });
+    } catch (e) {
+      setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? t : x));
+      setToast({ kind: "error", msg: e.message || "ดึงงานไม่สำเร็จ" });
+    }
+  };
+
+  const releaseLegacyProxy = async (t) => {
+    try {
+      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyAction: "release" }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "");
-      loadWork(scope);
+      setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, proxyBy: null } : x));
     } catch (e) {
-      setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, proxyBy: t.proxyBy } : x));
-      setToast({ kind: "error", msg: e.message || (action === "pull" ? "ดึงงานไม่สำเร็จ" : "คืนงานไม่สำเร็จ") });
+      setToast({ kind: "error", msg: e.message || "คืนงานไม่สำเร็จ" });
     }
   };
 
@@ -242,7 +265,8 @@ export default function TasksPage() {
     [personalTasks, q, assigneeFilter, categoryFilter]);
 
   const stats = useMemo(() => ({
-    all: pool.length,
+    // "งานทั้งหมด" = งานที่ยังต้องทำ; งานเสร็จเก็บไว้ดูย้อนหลังในการ์ด "เสร็จแล้ว"
+    all: pool.filter((t) => t.status !== "Completed").length,
     progress: pool.filter((t) => t.status === "In Progress").length,
     urgent: pool.filter(isUrgent).length,
     done: pool.filter((t) => t.status === "Completed").length,
@@ -250,7 +274,10 @@ export default function TasksPage() {
 
   const comparator = useMemo(() => makeComparator(sortKey, sortDir), [sortKey, sortDir]);
   const visible = useMemo(
-    () => pool.filter((t) => matchStatus(t, statusFilter)).sort(comparator),
+    () => pool
+      .filter((t) => statusFilter === "done" || t.status !== "Completed")
+      .filter((t) => matchStatus(t, statusFilter))
+      .sort(comparator),
     [pool, statusFilter, comparator],
   );
 
@@ -334,7 +361,7 @@ export default function TasksPage() {
     ? statusSelect(t)
     : <span className={`status-pill dot ${t.status === "Completed" ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }}>{TASK_STATUS_TH[t.status] || t.status}</span>;
 
-  // ป้าย "ทำแทนโดย X" — งานที่ถูกดึงไปทำแทน (KPI คิดให้ผู้ทำแทน)
+  // ป้ายสำหรับข้อมูลเก่าที่ยังมี proxyBy (งานใหม่จะย้าย assignee จริง)
   const proxyBadge = (t) => {
     if (!t.proxyBy) return null;
     const name = usersMap[t.proxyBy] || "ใครบางคน";
@@ -346,10 +373,10 @@ export default function TasksPage() {
     );
   };
 
-  // ปุ่ม "ดึงมาทำแทน" / "คืนงาน" — โผล่ตามสิทธิ์
+  // ปุ่มดึงงานจะถามยืนยันก่อน แล้วเปลี่ยนผู้รับผิดชอบจริงทันที
   const proxyActions = (t) => {
-    if (canPull(t)) return <button className="btn-icon" onClick={(e) => { e.stopPropagation(); setProxy(t, "pull"); }} title="ดึงมาทำแทน (รับงานนี้มาทำ — KPI จะคิดให้ฉัน)"><HandHelping size={14} /></button>;
-    if (t.proxyBy && canRelease(t)) return <button className="btn-icon" onClick={(e) => { e.stopPropagation(); setProxy(t, "release"); }} title="คืนงาน (ยกเลิกการทำแทน)"><Undo2 size={14} /></button>;
+    if (canPull(t)) return <button className="btn ghost sm" onClick={(e) => { e.stopPropagation(); takeResponsibility(t); }} title="ดึงงานและย้ายผู้รับผิดชอบมาเป็นฉัน"><HandHelping size={14} /> ดึงงาน</button>;
+    if (t.proxyBy && canRelease(t)) return <button className="btn-icon" onClick={(e) => { e.stopPropagation(); releaseLegacyProxy(t); }} title="คืนงานทำแทนเดิม"><Undo2 size={14} /></button>;
     return null;
   };
   const deletePersonal = async (t) => {
@@ -522,7 +549,7 @@ export default function TasksPage() {
       ) : view === "board" ? (
         /* ── Kanban board (ตามสถานะ) ── */
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", alignItems: "start" }}>
-          {BOARD_COLS.map((col) => {
+          {BOARD_COLS.filter((col) => col.key !== "Completed" || statusFilter === "done").map((col) => {
             const items = visible.filter((t) => t.status === col.key);
             return (
               <div key={col.key} className="glass-panel" style={{ padding: 0, overflow: "hidden" }}>
