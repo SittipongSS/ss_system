@@ -34,7 +34,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return badRequest('ต้องระบุชื่องาน');
   }
 
-  const projectId = body.projectId || null;
+  let projectId = body.projectId || null;
   const dealId = body.dealId || null;
 
   // ── มอบหมาย: ตรวจสิทธิ์ตามลำดับชั้น (ไม่ผูกกับโครงการ) ──
@@ -50,13 +50,19 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
 
   // อ้างอิงโครงการ/ดีลต้องมีจริง (logical link — เช็กกันข้อมูลเสีย).
+  if (dealId) {
+    const { data: deal } = await supabase.from('sales_deals').select('id, projectId').eq('id', dealId).maybeSingle();
+    if (!deal) return badRequest('ไม่พบดีล');
+    if (deal.projectId) {
+      if (projectId && projectId !== deal.projectId) return badRequest('ดีลไม่ได้อยู่ในโครงการที่ระบุ');
+      projectId = deal.projectId;
+    } else if (projectId) {
+      return badRequest('ดีลนี้ยังไม่ผูกโครงการ จึงระบุโครงการร่วมกันไม่ได้');
+    }
+  }
   if (projectId) {
     const { data: proj } = await supabase.from('projects').select('id').eq('id', projectId).maybeSingle();
     if (!proj) return badRequest('ไม่พบโครงการ');
-  }
-  if (dealId) {
-    const { data: deal } = await supabase.from('sales_deals').select('id').eq('id', dealId).maybeSingle();
-    if (!deal) return badRequest('ไม่พบดีล');
   }
 
   const status = body.status || 'Pending';
