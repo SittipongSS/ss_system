@@ -4,6 +4,7 @@ import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { fmtMoney } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { brandLabel } from "@/lib/master/brands";
 
 // Create or edit an excise registration (master FG product × customer). The
 // customer is NOT picked freely: every FG already belongs to one customer via
@@ -82,7 +83,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
               placeholder="ค้นหา FG / ชื่อสินค้า / แบรนด์..."
               options={products.map((p) => ({
                 value: p.id,
-                label: `${p.fgCode} | ${p.productDescriptionEn || p.productDescription || ""} (${p.brandNameEn || p.brandName || ""})`,
+                label: `${p.fgCode} | ${p.productDescriptionEn || p.productDescription || ""} (${brandLabel(p.brandName, p.brandNameEn) || "-"})`,
                 search: `${p.fgCode} ${p.productDescription || ""} ${p.productDescriptionEn || ""} ${p.brandName || ""} ${p.brandNameEn || ""}`,
               }))}
               emptyText="ไม่พบสินค้า — สร้างที่ฐานข้อมูลก่อน"

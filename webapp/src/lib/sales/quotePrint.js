@@ -60,8 +60,8 @@ export function openQuotePrintWindow(quote) {
     body { font-family: 'IBM Plex Sans Thai', 'Sarabun', system-ui, sans-serif; font-size: 13px; color: #1c1e26; margin: 0; padding: 24px 28px; }
     .doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 3px solid #21385e; padding-bottom: 12px; margin-bottom: 14px; }
     .brand { display: flex; gap: 12px; align-items: center; }
-    .doc-logo { width: 168px; height: 64px; flex-shrink: 0; border-radius: 8px; overflow: hidden; position: relative; background: #18234f; }
-    .doc-logo img { position: absolute; width: 168px; height: 168px; max-width: none; left: 0; top: -57px; }
+    .doc-logo { width: 168px; height: 76px; flex-shrink: 0; border-radius: 8px; overflow: hidden; position: relative; background: #18234f; }
+    .doc-logo img { position: absolute; width: 168px; height: 168px; max-width: none; left: 0; top: -50px; }
     .co { font-weight: 700; font-size: 14px; }
     .form { font-size: 13px; color: #444; margin-top: 2px; }
     .docmeta { text-align: right; font-size: 13px; white-space: nowrap; }
@@ -90,8 +90,11 @@ export function openQuotePrintWindow(quote) {
     .sign { text-align: center; width: 200px; }
     .sign .line { border-bottom: 1px dotted #888; height: 36px; margin-bottom: 6px; }
     .sign .who { font-size: 12px; color: #444; }
-    @page { size: A4 portrait; margin: 10mm; }
-    @media print { body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    @page { size: A4 portrait; margin: 36mm 10mm 10mm; }
+    @media print {
+      body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .doc-head { position: fixed; top: -29mm; left: 0; right: 0; height: 26mm; margin: 0; background: #fff; z-index: 20; }
+    }
   </style></head><body>
   ${printHeaderHtml({ form: DOCUMENT_FORMS.quotation, docNumber: quote.quoteNumber, docDate: fmtDate(quote.quoteDate) })}
   <div class="cust">

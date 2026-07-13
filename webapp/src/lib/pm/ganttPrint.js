@@ -5,10 +5,10 @@
 
 import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from './weekGrid';
 import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
+import { brandLabel } from '@/lib/master/brands';
 import {
   DOCUMENT_FORMS,
   SYSTEM_DOCUMENT_LOGO_URL,
-  documentFormLine,
 } from '@/lib/documentBrand';
 
 // ข้อมูลบริษัท (แสดงในหัวเอกสารใต้ชื่อบริษัท — CR §3.2).
@@ -129,7 +129,7 @@ export function buildGanttPrintHTML(project) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sales Order - ${esc(project.docNumber || project.code || '')}</title>
+<title>Project Timeline - ${esc(project.docNumber || project.code || '')}</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -151,8 +151,8 @@ export function buildGanttPrintHTML(project) {
   .doc-top { display: flex; justify-content: space-between; align-items: flex-start;
              border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px; }
   .brand { display: flex; align-items: center; gap: 10px; }
-  .logo-wrap { width: 150px; height: 60px; background: #18234f; border-radius: 8px; flex-shrink: 0; overflow: hidden; position: relative; }
-  .logo-wrap img { position: absolute; width: 150px; height: 150px; max-width: none; left: 0; top: -50px; }
+  .logo-wrap { width: 150px; height: 72px; background: #18234f; border-radius: 8px; flex-shrink: 0; overflow: hidden; position: relative; }
+  .logo-wrap img { position: absolute; width: 150px; height: 150px; max-width: none; left: 0; top: -44px; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
   .company-info { font-size: 8.5px; color: #837868; line-height: 1.4; margin-top: 3px; }
@@ -229,13 +229,14 @@ export function buildGanttPrintHTML(project) {
   .sw { width: 11px; height: 11px; border-radius: 2px; }
 
   @page {
-    size: A4 landscape; margin: 9mm 8mm 13mm;
+    size: A4 landscape; margin: 34mm 8mm 13mm;
     @bottom-right { content: "หน้า " counter(page) " / " counter(pages); font-size: 9px; color: #837868; }
   }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
     .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
+    .doc-top { position: fixed; top: -27mm; left: 0; right: 0; height: 24mm; margin: 0; background: #fff; z-index: 20; }
     thead { display: table-header-group; }
   }
 
@@ -253,7 +254,7 @@ export function buildGanttPrintHTML(project) {
 </head>
 <body>
   <div class="toolbar no-print">
-    <h1>เอกสาร Sales Order — ${esc(project.code || '')}</h1>
+    <h1>เอกสาร Project Timeline — ${esc(project.code || '')}</h1>
     <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
   </div>
 
@@ -263,7 +264,7 @@ export function buildGanttPrintHTML(project) {
         <div class="logo-wrap"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
         <div>
           <h2>บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด</h2>
-          <div class="doc-name">Sales Order · ใบยืนยันแผนงานและกำหนดส่ง</div>
+          <div class="doc-name">Project Timeline · ใบรายงานติดตามโครงการ</div>
           <div class="company-info">
             <div>${esc(COMPANY_ADDRESS)}</div>
             <div>โทร. ${COMPANY_OFFICE_TEL} · Line ${esc(COMPANY_LINE)}</div>
@@ -271,8 +272,8 @@ export function buildGanttPrintHTML(project) {
         </div>
       </div>
       <div class="doc-title">
-        <div class="formno">${esc(documentFormLine(DOCUMENT_FORMS.salesOrder))}</div>
-        <div class="big">${DOCUMENT_FORMS.salesOrder.title}</div>
+        <div class="formno">${DOCUMENT_FORMS.projectTimeline.code}</div>
+        <div class="big">${DOCUMENT_FORMS.projectTimeline.title}</div>
         <div class="sub">${esc(project.docNumber || project.code || '-')}</div>
       </div>
     </div>
@@ -298,7 +299,7 @@ export function buildGanttPrintHTML(project) {
             const prod = pp.product || {};
             const cat = pp.categoryLabel || '';
             return `<span class="fg-item">
-              <span class="fg-name">${esc(prod.fgCode || '')} — ${esc(prod.productDescriptionEn || prod.productDescription || prod.brandNameEn || prod.brandName || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</span>
+              <span class="fg-name">${esc(prod.fgCode || '')} — ${esc(prod.productDescriptionEn || prod.productDescription || brandLabel(prod.brandName, prod.brandNameEn) || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</span>
               ${cat ? `<span class="fg-cat">${esc(cat)}</span>` : ''}
               <span class="fg-qty">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</span>
             </span>`;

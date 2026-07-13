@@ -38,6 +38,7 @@ import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
 import { compactPersonName } from "@/lib/personName";
+import { brandDisplayFromList } from "@/lib/master/brands";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -1089,7 +1090,7 @@ export default function ProjectDetailPage() {
           <div className="project-header-meta">
             <div><span>วันเริ่ม</span><strong>{p.startDate || "-"}</strong></div>
             <div><span>วันสิ้นสุด</span><strong>{p.dueDate || "-"}</strong></div>
-            <div><span>แบรนด์</span><strong>{p.metadata?.brand || "-"}</strong></div>
+            <div><span>แบรนด์</span><strong>{brandDisplayFromList(customers.find((c) => c.id === p.customerId)?.brands, p.metadata?.brand) || "-"}</strong></div>
             <div><span>ดีล</span><strong>{(p.deals || []).length}</strong></div>
             <div><span>หมวดสินค้า</span><strong>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</strong></div>
           </div>

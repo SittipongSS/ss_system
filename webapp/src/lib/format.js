@@ -1,3 +1,5 @@
+import { brandLabel } from '@/lib/master/brands';
+
 // Shared formatting helpers — single source of truth for money/date display
 // so every page renders THB and dates identically.
 //
@@ -183,7 +185,7 @@ export const productNameBoth = (p) => {
 // different pack size / brand line) are easy to tell apart. Keeps volume 0
 // (a real size) — only null/undefined/"" is treated as missing.
 export const productMeta = (p) =>
-  [p?.brandName, p?.volume != null && p?.volume !== "" ? `${p.volume}${p?.volumeUnit || ""}` : null]
+  [brandLabel(p?.brandName, p?.brandNameEn), p?.volume != null && p?.volume !== "" ? `${p.volume}${p?.volumeUnit || ""}` : null]
     .filter(Boolean)
     .join(" · ");
 

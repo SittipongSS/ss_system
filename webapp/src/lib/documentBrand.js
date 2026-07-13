@@ -14,6 +14,10 @@ export const DOCUMENT_FORMS = Object.freeze({
     effectiveDate: '08/05/2568',
     title: 'SALES ORDER',
   }),
+  projectTimeline: Object.freeze({
+    code: 'FM-PD-05',
+    title: 'PROJECT TIMELINE',
+  }),
 });
 
 export const documentFormLine = (form) =>

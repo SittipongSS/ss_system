@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtMoney } from "@/lib/format";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
+import { brandLabel } from "@/lib/master/brands";
 
 // LG approval for an excise registration: approval number + taxability override.
 // PATCH contract unchanged from the old ApproveProductModal.
@@ -46,7 +47,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration }) {
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-4">
           <div style={{ fontSize: 13, background: "var(--panel-3)", borderRadius: 8, padding: 12 }} className="flex flex-col gap-1">
-            <span style={{ color: "var(--text-2)" }}>{registration.productName} ({registration.brandName})</span>
+            <span style={{ color: "var(--text-2)" }}>{registration.productName} ({brandLabel(registration.metadata?.brandNameTh, registration.metadata?.brandNameEn || registration.brandName) || "-"})</span>
             <span style={{ color: "var(--text-3)" }}>ลูกค้า: {registration.customerName || "-"}</span>
             <span style={{ color: "var(--text-3)" }}>
               ภาษี/ชิ้น (ปัจจุบัน): <span className="font-mono">{registration.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit)}</span>
