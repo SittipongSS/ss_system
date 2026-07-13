@@ -5,12 +5,16 @@
 
 import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from './weekGrid';
 import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
+import {
+  DOCUMENT_FORMS,
+  SYSTEM_DOCUMENT_LOGO_URL,
+  documentFormLine,
+} from '@/lib/documentBrand';
 
 // ข้อมูลบริษัท (แสดงในหัวเอกสารใต้ชื่อบริษัท — CR §3.2).
 const COMPANY_ADDRESS = '2/4 ซอย เพชรเกษม 35/1 แขวงบางหว้า เขตภาษีเจริญ กรุงเทพมหานคร 10160';
 const COMPANY_OFFICE_TEL = '02-000-7722';
 const COMPANY_LINE = '@perfumefactory';
-const LOGO_URL = 'https://static.wixstatic.com/media/279c93_8f08407580cc4842ad6fae8b398eec3e~mv2.png/v1/fill/w_166,h_166,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/marque.png';
 
 // วันที่: ใช้มาตรฐานการแสดงผลกลาง (§2). thai day-month-year = "25 ก.ค. 26",
 // คอลัมน์ Start/Finish ในตาราง = DD/MM/YY (พื้นที่แคบ).
@@ -115,13 +119,6 @@ export function buildGanttPrintHTML(project) {
   const quotationLine = quotationNo
     ? `${esc(quotationNo)}${poNo ? ` (${esc(poNo)})` : ''}`
     : (poNo ? `(${esc(poNo)})` : '');
-  // วันที่ออกเวอร์ชัน (Rev) = Document Date — โชว์เป็น DD.MM.YYYY ใต้เลขที่ Project.
-  const revDateStr = (() => {
-    if (!project.revDate) return '';
-    const d = new Date(project.revDate);
-    if (isNaN(d.getTime())) return '';
-    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
-  })();
   // ช่องลงชื่อผู้รับผิดชอบฝ่าย — ขึ้นครบทุกฝ่ายเสมอ (ไม่ว่ามีขั้นตอนฝ่ายนั้นในโครงการหรือไม่)
   const signDepts = ['PC', 'PD', 'RD'];
   // ยังไม่ผูก FG → โชว์ชื่อหมวด/หมวดรองแทนไปก่อน (categoryFallback resolve ชื่อหมวดหลักจากโค้ดมาแล้วฝั่ง page)
@@ -132,7 +129,7 @@ export function buildGanttPrintHTML(project) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Timeline Project - ${esc(project.docNumber || project.code || '')}</title>
+<title>Sales Order - ${esc(project.docNumber || project.code || '')}</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -154,9 +151,8 @@ export function buildGanttPrintHTML(project) {
   .doc-top { display: flex; justify-content: space-between; align-items: flex-start;
              border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px; }
   .brand { display: flex; align-items: center; gap: 10px; }
-  .logo-wrap { width: 58px; height: 58px; background: #21385e; border-radius: 10px;
-               display: flex; align-items: center; justify-content: center; padding: 6px; flex-shrink: 0; }
-  .logo-img { width: 100%; height: 100%; object-fit: contain; }
+  .logo-wrap { width: 150px; height: 60px; background: #18234f; border-radius: 8px; flex-shrink: 0; overflow: hidden; position: relative; }
+  .logo-wrap img { position: absolute; width: 150px; height: 150px; max-width: none; left: 0; top: -50px; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
   .company-info { font-size: 8.5px; color: #837868; line-height: 1.4; margin-top: 3px; }
@@ -257,17 +253,17 @@ export function buildGanttPrintHTML(project) {
 </head>
 <body>
   <div class="toolbar no-print">
-    <h1>เอกสาร Timeline Project — ${esc(project.code || '')}</h1>
+    <h1>เอกสาร Sales Order — ${esc(project.code || '')}</h1>
     <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
   </div>
 
   <div class="sheet">
     <div class="doc-top">
       <div class="brand">
-        <div class="logo-wrap"><img class="logo-img" src="${LOGO_URL}" alt="S&amp;S" /></div>
+        <div class="logo-wrap"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
         <div>
           <h2>บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด</h2>
-          <div class="doc-name">Project Timeline · ใบรายงานติดตามคำสั่งซื้อ</div>
+          <div class="doc-name">Sales Order · ใบยืนยันแผนงานและกำหนดส่ง</div>
           <div class="company-info">
             <div>${esc(COMPANY_ADDRESS)}</div>
             <div>โทร. ${COMPANY_OFFICE_TEL} · Line ${esc(COMPANY_LINE)}</div>
@@ -275,10 +271,9 @@ export function buildGanttPrintHTML(project) {
         </div>
       </div>
       <div class="doc-title">
-        <div class="formno">FM-PD-05</div>
-        <div class="big">TIMELINE PROJECT</div>
-        <div class="sub">${esc(project.code || '-')}${project.rev == null ? '' : ` Rev.${esc(project.rev)}`}</div>
-        ${revDateStr ? `<div class="sub">${revDateStr}</div>` : ''}
+        <div class="formno">${esc(documentFormLine(DOCUMENT_FORMS.salesOrder))}</div>
+        <div class="big">${DOCUMENT_FORMS.salesOrder.title}</div>
+        <div class="sub">${esc(project.docNumber || project.code || '-')}</div>
       </div>
     </div>
 

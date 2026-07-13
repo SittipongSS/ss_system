@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp }
 import Workspace from "@/components/ui/Workspace";
 import StandardMoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole } from "@/lib/roleContext";
+import { fmtNumber, fmtPercent } from "@/lib/format";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import {
   DEFAULT_GROWTH_CAP,
@@ -19,8 +20,8 @@ import {
 
 const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
 const thisYearNum = () => Number(thisMonth().slice(0, 4));
-const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { maximumFractionDigits: 0 });
-const pct = (n) => `${(Number(n || 0) * 100).toFixed(0)}%`;
+const fmt = (n) => fmtNumber(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (n) => fmtPercent(Number(n || 0) * 100);
 const sum = (arr) => arr.reduce((s, v) => s + Number(v || 0), 0);
 
 const STEPS = [
@@ -364,9 +365,11 @@ export default function SalesTargetPlanPage() {
 
         {/* Footer nav */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button type="button" className="btn" onClick={goBack} disabled={step === 1 || saving}>
-            <ArrowLeft size={16} aria-hidden="true" /> ย้อนกลับ
-          </button>
+          {step > 1 && (
+            <button type="button" className="btn" onClick={goBack} disabled={saving}>
+              <ArrowLeft size={16} aria-hidden="true" /> ย้อนกลับ
+            </button>
+          )}
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
             {step < 4 ? (
               <button type="button" className="btn btn-primary" onClick={goNext} disabled={loading || saving}
@@ -430,6 +433,31 @@ function MoneyInput({ value, onChange, disabled, placeholder, align = "right" })
   );
 }
 
+function TwoDecimalInput({ value, onChange, disabled, suffix, min = 0 }) {
+  return (
+    <div className="target-decimal-input">
+      <StandardMoneyInput
+        value={Number(value || 0)}
+        disabled={disabled}
+        onChange={(next) => onChange(Math.max(min, Number(next || 0)))}
+        onFocus={(e) => e.target.select()}
+        aria-label={suffix ? `ค่า ${suffix}` : "ค่า"}
+        style={{ width: "100%", textAlign: "right", padding: suffix ? "6px 28px 6px 8px" : "6px 8px" }}
+      />
+      {suffix && <span aria-hidden="true">{suffix}</span>}
+    </div>
+  );
+}
+
+function ValueModeToggle({ value, onChange, ariaLabel }) {
+  return (
+    <div className="segmented target-value-toggle" role="group" aria-label={ariaLabel}>
+      <button type="button" aria-pressed={value === "amount"} onClick={() => onChange("amount")}>มูลค่า</button>
+      <button type="button" aria-pressed={value === "percent"} onClick={() => onChange("percent")}>%</button>
+    </div>
+  );
+}
+
 function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHist, latestYear, systemActuals }) {
   const setC = (y, field, v) => setCompanyHist((h) => ({ ...h, [y]: { ...h[y], [field]: v, source: field === "actual" ? "mixed" : (h[y]?.source || "manual") } }));
   return (
@@ -454,7 +482,7 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
           <tbody>
             {years.map((y) => {
               const row = companyHist[y] || {};
-              const attain = row.target > 0 ? Math.round((Number(row.actual || 0) / Number(row.target)) * 100) : null;
+              const attain = row.target > 0 ? (Number(row.actual || 0) / Number(row.target)) * 100 : null;
               const hasSystem = Number(systemActuals?.[y]?.total || 0) > 0;
               return (
                 <tr key={y} className="premium-row">
@@ -462,7 +490,7 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
                   <td className="num"><MoneyInput value={Number(row.target || 0)} onChange={(v) => setC(y, "target", v)} /></td>
                   <td className="num"><MoneyInput value={Number(row.actual || 0)} onChange={(v) => setC(y, "actual", v)} /></td>
                   <td className="num mono" style={{ color: attain == null ? "var(--text-3)" : attain >= 100 ? "var(--green)" : "var(--amber)", fontWeight: 700 }}>
-                    {attain == null ? "–" : `${attain}%`}
+                    {attain == null ? "–" : fmtPercent(attain)}
                   </td>
                   <td style={{ textAlign: "center" }}>
                     <span className="ui-badge" style={{ color: hasSystem ? "var(--teal)" : "var(--text-3)" }}>
@@ -523,7 +551,7 @@ function Step2Projection({ projection, cap, finalTarget, setFinalTarget, targetY
         <h3 style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>2 · เป้าคาดการณ์ปี {targetYear}</h3>
         <p style={{ color: "var(--text-3)", fontSize: 13 }}>
           จากยอดขายจริงล่าสุด {fmt(projection.lastActual)} · โต YoY เฉลี่ย {pct(projection.rawGrowth)}
-          {projection.attainment != null && <> · ปีก่อนทำได้ {Math.round(projection.attainment * 100)}% ของเป้า</>}
+          {projection.attainment != null && <> · ปีก่อนทำได้ {fmtPercent(projection.attainment * 100)} ของเป้า</>}
         </p>
       </div>
 
@@ -569,7 +597,14 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
       </div>
 
       <div className="fz-box">
-        <table className="fz-table premium-glass-table w-full text-sm">
+        <table className="fz-table premium-glass-table target-team-table w-full text-sm">
+          <colgroup>
+            <col style={{ width: "27%" }} />
+            <col style={{ width: "18%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "18%" }} />
+            <col style={{ width: "24%" }} />
+          </colgroup>
           <thead>
             <tr>
               <th style={{ textAlign: "left", minWidth: 150 }}>ทีม</th>
@@ -599,7 +634,7 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
             <tr style={{ fontWeight: 800 }}>
               <td>รวม</td>
               <td className="num mono">{fmt(totalActual)}</td>
-              <td></td>
+              <td className="num mono">{fmtPercent(100)}</td>
               <td className="num mono">{fmt(finalTarget)}</td>
               <td className="num mono" style={{ color: remaining === 0 ? "var(--green)" : remaining < 0 ? "var(--red)" : "var(--amber)" }}>
                 {fmt(allocated)}
@@ -614,7 +649,11 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
 }
 
 function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets, setPersonTargets, monthPct, setMonthPct, seasonSumPct, reseedPeople, reseedSeason }) {
+  const [personMode, setPersonMode] = useState("amount");
+  const [seasonMode, setSeasonMode] = useState("percent");
   const setMonth = (i, v) => setMonthPct((arr) => arr.map((x, j) => (j === i ? Math.max(0, v) : x)));
+  const annualTarget = sum(SALES_TEAMS.map((t) => teamTargets[t]));
+  const monthlyValues = monthPct.map((p) => annualTarget * (Number(p || 0) / 100));
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -626,8 +665,9 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
 
       {/* Per-person split */}
       <div className="flex flex-col gap-3">
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h4 style={{ fontWeight: 800, fontSize: 14 }}>เป้ารายบุคคล</h4>
+          <ValueModeToggle value={personMode} onChange={setPersonMode} ariaLabel="รูปแบบกรอกเป้ารายบุคคล" />
           <button type="button" className="btn sm" onClick={reseedPeople} style={{ marginLeft: "auto" }}><RotateCcw size={14} aria-hidden="true" /> คำนวณสัดส่วนใหม่</button>
         </div>
         {SALES_TEAMS.map((t) => {
@@ -650,7 +690,17 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
                       <span style={{ fontSize: 13, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {m.name}{m.role === "senior_ae" && <span style={{ color: "var(--text-3)", fontSize: 11 }}> · หัวหน้า</span>}
                       </span>
-                      <div style={{ width: 120 }}><MoneyInput value={Number(personTargets[m.id] || 0)} onChange={(v) => setPersonTargets((h) => ({ ...h, [m.id]: v }))} /></div>
+                      <div style={{ width: 142 }}>
+                        {personMode === "amount" ? (
+                          <MoneyInput value={Number(personTargets[m.id] || 0)} onChange={(v) => setPersonTargets((h) => ({ ...h, [m.id]: v }))} />
+                        ) : (
+                          <TwoDecimalInput
+                            value={teamTot > 0 ? (Number(personTargets[m.id] || 0) / teamTot) * 100 : 0}
+                            suffix="%"
+                            onChange={(v) => setPersonTargets((h) => ({ ...h, [m.id]: Number((teamTot * v / 100).toFixed(2)) }))}
+                          />
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -662,10 +712,11 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
 
       {/* Seasonal distribution */}
       <div className="flex flex-col gap-3">
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h4 style={{ fontWeight: 800, fontSize: 14 }}>สัดส่วนรายเดือน (ฤดูกาล)</h4>
+          <ValueModeToggle value={seasonMode} onChange={setSeasonMode} ariaLabel="รูปแบบกรอกสัดส่วนรายเดือน" />
           <span style={{ fontSize: 12, color: Math.abs(seasonSumPct - 100) < 0.5 ? "var(--green)" : "var(--amber)", fontWeight: 700 }}>
-            รวม {seasonSumPct.toFixed(1)}%
+            รวม {seasonMode === "percent" ? fmtPercent(seasonSumPct) : fmt(annualTarget * seasonSumPct / 100)}
           </span>
           <button type="button" className="btn sm" onClick={reseedSeason} style={{ marginLeft: "auto" }}><RotateCcw size={14} aria-hidden="true" /> ใช้ฤดูกาลปีก่อน</button>
         </div>
@@ -679,14 +730,17 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
             </thead>
             <tbody>
               <tr className="premium-row">
-                <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: 12 }}>%</td>
+                <td style={{ fontWeight: 700, color: "var(--text-3)", fontSize: 12 }}>{seasonMode === "percent" ? "%" : "มูลค่า"}</td>
                 {monthPct.map((p, i) => (
                   <td key={i} className="num" style={{ padding: "3px 4px" }}>
-                    <input type="number" min="0" step="0.5" className="premium-input mono"
-                      value={Number(p.toFixed(1))}
-                      onChange={(e) => setMonth(i, Number(e.target.value) || 0)}
-                      onFocus={(e) => e.target.select()}
-                      style={{ width: "100%", textAlign: "right", padding: "4px 4px", fontSize: 12 }} />
+                    {seasonMode === "percent" ? (
+                      <TwoDecimalInput value={p} suffix="%" onChange={(v) => setMonth(i, v)} />
+                    ) : (
+                      <TwoDecimalInput
+                        value={monthlyValues[i]}
+                        onChange={(v) => setMonth(i, annualTarget > 0 ? (v / annualTarget) * 100 : 0)}
+                      />
+                    )}
                   </td>
                 ))}
               </tr>

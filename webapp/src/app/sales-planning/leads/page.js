@@ -25,7 +25,7 @@ import {
   MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS,
 } from "@/lib/sales/leads";
 import { FORECAST_LEVELS, KpiCard, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
-import { fmtDateTime, fmtMoney, fmtName } from "@/lib/format";
+import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 const ACTION_COLORS = {
@@ -349,7 +349,7 @@ export default function LeadsPage() {
     return false;
   };
 
-  const slaPct = (s) => (s && s.checked ? `${Math.round((s.hit / s.checked) * 100)}%` : "-");
+  const slaPct = (s) => (s && s.checked ? fmtPercent((s.hit / s.checked) * 100) : "-");
 
   if (!canLead && !canView) {
     return (
@@ -392,7 +392,7 @@ export default function LeadsPage() {
             <KpiCard 
               icon={<CalendarClock size={16} aria-hidden="true" />} 
               label="Conversion" 
-              value={kpi?.funnel?.total ? Math.round((kpi.funnel.qualified / kpi.funnel.total) * 100) + "%" : "-"} 
+              value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"}
               hint={`ลีด ${kpi?.funnel?.total ?? 0} → นัด ${kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`}
             />
           </section>

@@ -9,6 +9,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
+import { SYSTEM_DOCUMENT_LOGO_URL } from "@/lib/documentBrand";
 
 const num = (value) => Number(value || 0).toLocaleString("th-TH");
 
@@ -101,10 +102,19 @@ export default function ShipmentPrepPage() {
       ) : (
         <main className="shipment-print-sheet" aria-labelledby="shipment-title">
           <header className="shipment-print-head">
-            <div>
-              <div className="shipment-print-kicker">Shipment Preparation</div>
-              <h1 id="shipment-title">{title}</h1>
-              <p>{project.name || "-"} · ลูกค้า: {prep.customerName || project.customerName || "-"}</p>
+            <div className="shipment-print-brand">
+              <div
+                className="shipment-print-logo"
+              >
+                {/* Plain img is intentional: print CSS crops the approved square master artwork. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={SYSTEM_DOCUMENT_LOGO_URL} alt="Scent & Sense" />
+              </div>
+              <div>
+                <div className="shipment-print-kicker">Shipment Preparation</div>
+                <h1 id="shipment-title">{title}</h1>
+                <p>{project.name || "-"} · ลูกค้า: {prep.customerName || project.customerName || "-"}</p>
+              </div>
             </div>
             <div className="shipment-print-meta">
               <div><span>เลขที่</span><strong>{prep.prepNumber}</strong></div>
