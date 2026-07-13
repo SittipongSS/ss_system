@@ -32,8 +32,9 @@ import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/der
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
-import { TIMELINE_ALL, TIMELINE_CENTRAL, filterTimelineTasks, isDealTimelineSelection } from "@/lib/pm/timelineFilter";
+import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -205,7 +206,7 @@ export default function ProjectDetailPage() {
   const [insertBeforeId, setInsertBeforeId] = useState(null); // แทรก "ก่อน" หัวแถวแรกของเฟส
   const [tableStatusFilter, setTableStatusFilter] = useState("all"); // Table view: all | pending | progress | completed
   const [tableSort, setTableSort] = useState("step"); // Table view: step | name | status | due
-  const [timelineDealFilter, setTimelineDealFilter] = useState(TIMELINE_ALL);
+  const [timelineDealFilters, setTimelineDealFilters] = useState([]);
   const [editTask, setEditTask] = useState(null); // ขั้นตอนที่กำลังแก้ผ่าน modal (ใช้จาก Table view)
   const [showEditTask, setShowEditTask] = useState(false);
   const [depPopover, setDepPopover] = useState(null); // popover แก้ predecessors ในตาราง — { task, x, y }
@@ -540,13 +541,17 @@ export default function ProjectDetailPage() {
       const samePhase = tasks.filter((t) => t.phase === taskForm.phase);
       if (samePhase.length) afterTaskId = samePhase[samePhase.length - 1].id;
     }
+    const anchorTask = allTasks.find((task) => task.id === (afterTaskId || insertBeforeId));
+    const newTaskDealId = anchorTask
+      ? (anchorTask.dealId || null)
+      : singleSelectedDeal(timelineDealFilters);
     const res = await fetch("/api/pm/project-tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         // URL may be a project code; tasks FK the internal id, so use the loaded row's id.
         projectId: data?.id ?? id,
         // เมื่อกำลังดู segment ของดีลใด ขั้นตอนใหม่ต้องอยู่ใต้ดีลนั้น ไม่ปนเป็นงานกลาง
-        dealId: isDealTimelineSelection(timelineDealFilter) ? timelineDealFilter : null,
+        dealId: newTaskDealId,
         ...taskForm,
         afterTaskId: afterTaskId || undefined,
         beforeTaskId: insertBeforeId || undefined,
@@ -753,8 +758,8 @@ export default function ProjectDetailPage() {
 
   const allTasks = useMemo(() => data?.tasks || [], [data?.tasks]);
   const tasks = useMemo(
-    () => filterTimelineTasks(allTasks, timelineDealFilter),
-    [allTasks, timelineDealFilter],
+    () => filterTimelineTasks(allTasks, timelineDealFilters),
+    [allTasks, timelineDealFilters],
   );
   const phaseColorMap = useMemo(() => {
     const seen = [];
@@ -841,7 +846,8 @@ export default function ProjectDetailPage() {
   const hasWriteAccess = hasEditCap && !!data.canEdit;
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
-  const canReorderTimeline = canEdit && timelineDealFilter === TIMELINE_ALL;
+  const canReorderTimeline = canEdit && timelineDealFilters.length === 0;
+  const canAddTimelineTask = canEdit && timelineDealFilters.length <= 1;
   const linkedIds = new Set((p.projectProducts || []).map((x) => x.productId));
   // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โครงการที่ไม่ได้มาจากดีล
   // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต 01-002 อย่างน้อยหนึ่งตัว — ไม่งั้นไม่ต้องมี
@@ -860,6 +866,16 @@ export default function ProjectDetailPage() {
   const isDone = pct === 100;
   const accent = isDone ? "var(--green)" : "var(--accent)";
   const milestones = processedTasks.filter((t) => t.isMilestone);
+  const timelineFilterOptions = [
+    ...(p.deals || []).map((deal) => ({
+      value: deal.id,
+      label: `${deal.title} (${allTasks.filter((task) => task.dealId === deal.id).length} ขั้นตอน)`,
+    })),
+    ...(allTasks.some((task) => !task.dealId) ? [{
+      value: TIMELINE_CENTRAL,
+      label: `งานกลางโครงการ (${allTasks.filter((task) => !task.dealId).length} ขั้นตอน)`,
+    }] : []),
+  ];
 
   const renderChip = (Icon, label, color) => (
     <span className="chip" style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)`, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}>
@@ -1078,18 +1094,21 @@ export default function ProjectDetailPage() {
         <div className="glass-panel" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700 }}>ไทม์ไลน์ที่แสดง</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>เลือกดูทุกดีลหรือเฉพาะ segment ของดีลเดียว</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>เลือกได้หลายดีล · ไม่เลือก = แสดงทั้งหมด</div>
           </div>
-          <Select value={timelineDealFilter} onChange={(event) => setTimelineDealFilter(event.target.value)} style={{ minWidth: "min(100%, 320px)", marginLeft: "auto" }} aria-label="เลือกดีลที่แสดงในไทม์ไลน์">
-            <option value={TIMELINE_ALL}>ทุกดีลและงานกลาง ({allTasks.length} ขั้นตอน)</option>
-            {(p.deals || []).map((deal) => {
-              const count = allTasks.filter((task) => task.dealId === deal.id).length;
-              return <option key={deal.id} value={deal.id}>{deal.title} ({count} ขั้นตอน)</option>;
-            })}
-            {allTasks.some((task) => !task.dealId) && <option value={TIMELINE_CENTRAL}>งานกลางโครงการ ({allTasks.filter((task) => !task.dealId).length} ขั้นตอน)</option>}
-          </Select>
-          {timelineDealFilter !== TIMELINE_ALL && (
+          <div style={{ marginLeft: "auto" }}>
+            <MultiSelectFilter
+              label="ดีลที่แสดง"
+              selected={timelineDealFilters}
+              onChange={setTimelineDealFilters}
+              options={timelineFilterOptions}
+            />
+          </div>
+          {timelineDealFilters.length > 0 && (
             <span className="ui-badge" style={{ color: "var(--accent)", whiteSpace: "nowrap" }}>กำลังแสดง {tasks.length} ขั้นตอน</span>
+          )}
+          {timelineDealFilters.length > 1 && (
+            <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>
           )}
         </div>
       )}
@@ -1098,15 +1117,10 @@ export default function ProjectDetailPage() {
       {tab === "overview" && (
         <>
           <ProjectDealsHub project={p} onChanged={load} />
-          {/* การ์ดเมนูไทม์ไลน์ — กดเข้าไปถึงเห็นตารางขั้นตอนเต็ม */}
+          {/* การ์ดเมนูไทม์ไลน์ — เลือกหลายดีลจากภาพรวม แล้วเปิดเข้าไปด้วย filter ชุดเดิม */}
           <div
             className="glass-panel"
-            role="button"
-            tabIndex={0}
-            onClick={() => switchTab("timeline")}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchTab("timeline"); } }}
-            style={{ padding: "16px 20px", marginBottom: 24, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
-            title="เปิดไทม์ไลน์โครงการ"
+            style={{ padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
           >
             <span style={{ background: "var(--accent)", color: "#fff", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
               <GanttChart size={18} />
@@ -1115,15 +1129,23 @@ export default function ProjectDetailPage() {
               <div style={{ fontWeight: 700, fontSize: 15 }}>ไทม์ไลน์โครงการ</div>
               <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>
                 {(() => {
-                  const doing = (p.tasks || []).filter((t) => t.status === "In Progress").map((t) => t.name);
-                  return doing.length ? `กำลังทำ: ${doing.slice(0, 2).join(", ")}${doing.length > 2 ? ` +${doing.length - 2}` : ""}` : "ขั้นตอนทั้งหมดของทุกดีลรวมในผืนเดียว";
+                  const doing = tasks.filter((t) => t.status === "In Progress").map((t) => t.name);
+                  return doing.length ? `กำลังทำ: ${doing.slice(0, 2).join(", ")}${doing.length > 2 ? ` +${doing.length - 2}` : ""}` : (timelineDealFilters.length ? "ไม่มีขั้นตอนที่กำลังทำในดีลที่เลือก" : "ขั้นตอนทั้งหมดของทุกดีลรวมในผืนเดียว");
                 })()}
               </div>
             </div>
+            {(p.deals || []).length > 1 && (
+              <MultiSelectFilter
+                label="ดีลที่แสดง"
+                selected={timelineDealFilters}
+                onChange={setTimelineDealFilters}
+                options={timelineFilterOptions}
+              />
+            )}
             <div style={{ flex: 1, minWidth: 140, display: "flex", alignItems: "center", gap: 10 }}>
               {(() => {
-                const total = (p.tasks || []).length;
-                const done = (p.tasks || []).filter((t) => t.status === "Completed").length;
+                const total = tasks.length;
+                const done = tasks.filter((t) => t.status === "Completed").length;
                 return (
                   <>
                     <div className="progress" style={{ flex: 1 }} role="progressbar" aria-valuenow={done} aria-valuemax={total} aria-label="ความคืบหน้าไทม์ไลน์">
@@ -1134,9 +1156,9 @@ export default function ProjectDetailPage() {
                 );
               })()}
             </div>
-            <span className="btn btn-primary" style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>
+            <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
               <GanttChart size={14} /> เปิดไทม์ไลน์
-            </span>
+            </button>
           </div>
         </>
       )}
@@ -1206,7 +1228,7 @@ export default function ProjectDetailPage() {
                   <option value="name">ชื่อขั้นตอน</option>
                 </Select>
               </div>
-              {canEdit && (
+              {canAddTimelineTask && (
                 <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} className="btn btn-primary sm">
                   <Plus size={14} /> เพิ่มขั้นตอน
                 </button>
@@ -1321,7 +1343,7 @@ export default function ProjectDetailPage() {
           {/* title row */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
-            {canEdit && (
+            {canAddTimelineTask && (
               <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} className="btn btn-primary sm">
                 <Plus size={14} /> เพิ่มขั้นตอน
               </button>
