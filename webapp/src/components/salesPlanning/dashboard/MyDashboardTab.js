@@ -16,27 +16,34 @@ function ProgressBar({ value, total, color = "var(--violet)" }) {
   );
 }
 
-export default function MyDashboardTab({ month }) {
+export default function MyDashboardTab({ month, refreshKey }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await fetch(`/api/sales-planning/my-dashboard?month=${encodeURIComponent(month)}`);
-        if (!res.ok) throw new Error((await res.json()).error || "โหลดข้อมูลไม่สำเร็จ");
-        setData(await res.json());
-      } catch (e) {
-        setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [month]);
+    let active = true;
+    setLoading(true);
+    fetch(`/api/sales-planning/my-dashboard?month=${encodeURIComponent(month)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error("ไม่สามารถโหลดแดชบอร์ดส่วนตัวได้");
+        return r.json();
+      })
+      .then((d) => {
+        if (active) {
+          setData(d);
+          setError("");
+          setLoading(false);
+        }
+      })
+      .catch((e) => {
+        if (active) {
+          setError(e.message);
+          setLoading(false);
+        }
+      });
+    return () => { active = false; };
+  }, [month, refreshKey]);
 
   const target = data?.target || 0;
   const wonValue = data?.wonValue || 0;
