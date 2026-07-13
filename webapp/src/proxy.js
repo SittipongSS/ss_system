@@ -114,7 +114,7 @@ const OPEN_PAGES = ['/home', '/sa', '/pm', '/database', '/tax', '/sales-planning
 // products:edit to create (lands as 'pending'), Senior AE+ to approve; excise
 // registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
 // Holiday/product-type writes stay supervisor-only.
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt'];
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
@@ -171,6 +171,9 @@ function apiWriteAllowed(method, path, role, extraCaps) {
   // เปิดเขียนเฉพาะเส้นลีด; เส้น sales-planning อื่นยังต้อง salesplan:edit ตามเดิม.
   if (path.startsWith('/api/sales-planning/leads')) return can(role, 'salesplan:lead');
   if (path.startsWith('/api/sales-planning')) return can(role, 'salesplan:edit');
+  // Native /sa APIs are part of Sales Planning (for example, creating a
+  // project container before deals are linked). Keep the same write gate.
+  if (path.startsWith('/api/sa')) return can(role, 'salesplan:edit');
   // SAHAMIT module. Coarse cap gate here; team===KA + customer AR-109 scope is
   // enforced inside the handlers (canAccessSahamit), which the proxy can't see.
   if (path.startsWith('/api/sahamit')) return can(role, 'sahamit:edit');
