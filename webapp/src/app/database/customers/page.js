@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useEffect, useMemo, useState } from "react";
 import { Building2, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
@@ -206,17 +207,17 @@ export default function CustomerDirectory() {
       </div>
       <div className="spacer" />
       <span className="toolbar-label"><Filter size={14} /> กรอง</span>
-      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
+      <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
         <option value="all">ทุกสถานะ</option>
         <option value="pending">รออนุมัติ</option>
         <option value="approved">อนุมัติแล้ว</option>
         <option value="rejected">ไม่อนุมัติ</option>
-      </select>
+      </Select>
       {teams.length > 1 && (
-        <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
+        <Select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
           <option value="all">ทุกทีม</option>
           {teams.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
+        </Select>
       )}
       {counts.inactive > 0 && (
         <button type="button" onClick={() => setShowInactive((v) => !v)} className={`btn ${showInactive ? "btn-primary" : ""}`} title="แสดง/ซ่อนลูกค้าที่เลิกใช้">
@@ -386,7 +387,7 @@ export default function CustomerDirectory() {
             <div className="form-grid cols-2">
               <div className="form-group col-span-2">
                 <label>ประเภทลูกค้า <span className="text-[var(--red)]">*</span></label>
-                <select
+                <Select
                   name="customerType"
                   value={formData.customerType}
                   onChange={handleChange}
@@ -394,7 +395,7 @@ export default function CustomerDirectory() {
                 >
                   <option value="company">นิติบุคคล (บริษัท)</option>
                   <option value="individual">บุคคลธรรมดา</option>
-                </select>
+                </Select>
                 <span className="text-[11px] text-[var(--text-3)] mt-1">กำหนดชุดเอกสารแนบที่ต้องใช้ (แนบได้ที่หน้าลูกค้าหลังบันทึก)</span>
               </div>
               <div className="form-group">

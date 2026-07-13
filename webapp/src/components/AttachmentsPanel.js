@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 // เอกสารแนบหลายไฟล์แบบมีประเภท (migration 0028) — ใช้ซ้ำได้ทุก entity.
 // props:
 //   entityType  'customer' | 'product' | 'order'
@@ -295,7 +296,7 @@ export default function AttachmentsPanel({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="form-group">
                   <label className="text-[11px]">ประเภทเอกสาร</label>
-                  <select
+                  <Select
                     value={docType}
                     onChange={(e) => setDocType(e.target.value)}
                     className="premium-input w-full text-xs"
@@ -304,7 +305,7 @@ export default function AttachmentsPanel({
                     {types.map((t) => (
                       <option key={t.key} value={t.key}>{t.label}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 {metaFields.map((f) => (
                   <div key={f.key} className="form-group">

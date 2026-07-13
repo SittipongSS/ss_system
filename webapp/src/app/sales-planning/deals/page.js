@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -546,21 +547,21 @@ export default function SalesPlanningPipelinePage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
             </div>
-            <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="premium-select" aria-label="กรอง stage" style={{ width: 180 }}>
+            <Select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="premium-select" aria-label="กรอง stage" style={{ width: 180 }}>
               <option value="all">ทุก stage</option>
               {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
-            </select>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="premium-select" aria-label="กรองประเภทดีล" style={{ width: 170 }}>
+            </Select>
+            <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="premium-select" aria-label="กรองประเภทดีล" style={{ width: 170 }}>
               <option value="all">ทุกประเภท</option>
               {DEAL_TYPES.map((t) => <option key={t} value={t}>{DEAL_TYPE_LABELS[t]}</option>)}
-            </select>
+            </Select>
 
             <div className="spacer" />
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span style={{ fontSize: 13, color: "var(--text-3)" }}><ArrowUpDown size={14} style={{ verticalAlign: "-2px" }}/> เรียง</span>
-              <select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ width: 120 }}>
+              <Select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ width: 120 }}>
                 {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
+              </Select>
               <button type="button" className="btn-icon" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}>
                 {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
               </button>
@@ -842,14 +843,14 @@ export default function SalesPlanningPipelinePage() {
             <form onSubmit={createDocument} className="form-grid" aria-busy={docLoading} style={{ marginBottom: 16 }}>
               <label>
                 ประเภท
-                <select className="premium-select" value={docForm.kind} onChange={(e) => setDocForm({ ...docForm, kind: e.target.value })}>
+                <Select className="premium-select" value={docForm.kind} onChange={(e) => setDocForm({ ...docForm, kind: e.target.value })}>
                   <option value="customer_brief">บรีฟลูกค้า</option>
                   <option value="quotation">ใบเสนอราคา</option>
                   <option value="deposit_proof">หลักฐานมัดจำ</option>
                   <option value="po">ใบสั่งซื้อ (PO)</option>
                   <option value="tax_docs">เอกสารภาษี</option>
                   <option value="other">อื่นๆ</option>
-                </select>
+                </Select>
               </label>
               <label>
                 ชื่อเอกสาร
@@ -861,11 +862,11 @@ export default function SalesPlanningPipelinePage() {
               </label>
               <label>
                 สถานะ
-                <select className="premium-select" value={docForm.status} onChange={(e) => setDocForm({ ...docForm, status: e.target.value })}>
+                <Select className="premium-select" value={docForm.status} onChange={(e) => setDocForm({ ...docForm, status: e.target.value })}>
                   <option value="pending">รอดำเนินการ</option>
                   <option value="received">รับแล้ว</option>
                   <option value="waived">ยกเว้น</option>
-                </select>
+                </Select>
               </label>
               <label style={{ gridColumn: "1 / -1" }}>
                 หมายเหตุ

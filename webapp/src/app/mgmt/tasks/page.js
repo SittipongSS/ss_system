@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ListTodo, Plus, RotateCcw, Search } from "lucide-react";
@@ -84,9 +85,9 @@ export default function MgmtTasksPage() {
           <p>ติดตามงานบริหาร แยกตามแผนก · คลิกแถวเพื่อดูรายละเอียด/แนบไฟล์</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
+          <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
-          </select>
+          </Select>
           {canEdit && <button className="btn btn-primary flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มงาน</button>}
         </div>
       </div>
@@ -102,24 +103,24 @@ export default function MgmtTasksPage() {
         </div>
         <div className="form-group" style={{ margin: 0 }}>
           <label>แผนก</label>
-          <select className="premium-input" value={filters.deptCode} onChange={(e) => setFilters((f) => ({ ...f, deptCode: e.target.value }))}>
+          <Select className="premium-input" value={filters.deptCode} onChange={(e) => setFilters((f) => ({ ...f, deptCode: e.target.value }))}>
             <option value="">ทั้งหมด</option>
             {departments.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
-          </select>
+          </Select>
         </div>
         <div className="form-group" style={{ margin: 0 }}>
           <label>สถานะ</label>
-          <select className="premium-input" value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
+          <Select className="premium-input" value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
             <option value="">ทั้งหมด</option>
             {TASK_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>)}
-          </select>
+          </Select>
         </div>
         <div className="form-group" style={{ margin: 0 }}>
           <label>ลำดับ</label>
-          <select className="premium-input" value={filters.priority} onChange={(e) => setFilters((f) => ({ ...f, priority: e.target.value }))}>
+          <Select className="premium-input" value={filters.priority} onChange={(e) => setFilters((f) => ({ ...f, priority: e.target.value }))}>
             <option value="">ทั้งหมด</option>
             {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABELS[p]}</option>)}
-          </select>
+          </Select>
         </div>
         <button className="btn" onClick={() => setFilters({ q: "", deptCode: "", status: "", priority: "" })}><RotateCcw size={14} /> ล้าง</button>
       </div>

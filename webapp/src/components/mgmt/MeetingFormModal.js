@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useState, useEffect } from "react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
@@ -73,23 +74,23 @@ export default function MeetingFormModal({ open, onClose, onSaved, meeting, depa
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>แผนก</label>
-            <select className="premium-input w-full" value={form.deptCode || ""} onChange={(e) => set("deptCode", e.target.value)}>
+            <Select className="premium-input w-full" value={form.deptCode || ""} onChange={(e) => set("deptCode", e.target.value)}>
               <option value="">—</option>
               {departments.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
-            </select>
+            </Select>
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>ผู้รับผิดชอบ</label>
-            <select className="premium-input w-full" value={form.assigneeId || ""} onChange={(e) => onPickAssignee(e.target.value)}>
+            <Select className="premium-input w-full" value={form.assigneeId || ""} onChange={(e) => onPickAssignee(e.target.value)}>
               <option value="">—</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
+            </Select>
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>ติดตามผล</label>
-            <select className="premium-input w-full" value={form.followUp || "none"} onChange={(e) => set("followUp", e.target.value)}>
+            <Select className="premium-input w-full" value={form.followUp || "none"} onChange={(e) => set("followUp", e.target.value)}>
               {MEETING_FOLLOWUPS.map((f) => <option key={f} value={f}>{MEETING_FOLLOWUP_LABELS[f]}</option>)}
-            </select>
+            </Select>
           </div>
         </div>
         <div className="form-group" style={{ margin: 0 }}>

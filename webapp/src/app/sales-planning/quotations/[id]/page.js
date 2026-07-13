@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 // Editor ใบเสนอราคา FM-SA-01 (/sa/quotations/[id] — เฟส D):
 // แก้รายการ+ส่วนลดรายบรรทัด · ส่วนลดท้ายใบ · VAT · เงื่อนไขชำระ · หมายเหตุ (เลือกจาก
@@ -298,10 +299,10 @@ export default function QuotationEditorPage() {
               <DateInput value={form.validUntil || ""} disabled={!editable} onChange={(value) => setF({ validUntil: value })} />
             </label>
             <label>ภาษีมูลค่าเพิ่ม
-              <select className="premium-select" value={form.vatRate} disabled={!editable} onChange={(e) => setF({ vatRate: Number(e.target.value) })}>
+              <Select className="premium-select" value={form.vatRate} disabled={!editable} onChange={(e) => setF({ vatRate: Number(e.target.value) })}>
                 <option value={0}>ราคารวม VAT แล้ว (ไม่บวกเพิ่ม)</option>
                 <option value={7}>+ VAT 7% ท้ายใบ</option>
-              </select>
+              </Select>
             </label>
             <label style={{ gridColumn: "1 / -1" }}>เงื่อนไขการชำระเงิน
               <input className="premium-input" value={form.paymentTerms} disabled={!editable} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ · เครดิต 30 วัน" onChange={(e) => setF({ paymentTerms: e.target.value })} />
@@ -316,12 +317,12 @@ export default function QuotationEditorPage() {
               <div className="spacer" />
               {editable && (
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <select className="premium-select" value={fgPick} onChange={(e) => setFgPick(e.target.value)} style={{ width: 260 }} aria-label="เลือกสินค้า (FG)">
+                  <Select className="premium-select" value={fgPick} onChange={(e) => setFgPick(e.target.value)} style={{ width: 260 }} aria-label="เลือกสินค้า (FG)">
                     <option value="">— เพิ่มจากรหัส FG —</option>
                     {products.map((p) => (
                       <option key={p.id} value={p.id}>{p.fgCode ? `${p.fgCode} · ` : ""}{p.productDescription || p.productDescriptionEn || "-"}</option>
                     ))}
-                  </select>
+                  </Select>
                   <button type="button" className="btn btn-primary sm" onClick={addFgLine} disabled={!fgPick}><Plus size={13} aria-hidden="true" /> เพิ่ม FG</button>
                   <button type="button" className="btn ghost sm" onClick={addLine}><Plus size={13} aria-hidden="true" /> รายการเอง</button>
                 </div>
@@ -344,11 +345,11 @@ export default function QuotationEditorPage() {
                       <td><MoneyInput min="0" value={l.unitPrice} disabled={!editable} onChange={(value) => setLine(i, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${i + 1}`} /></td>
                       <td>
                         <div style={{ display: "flex", gap: 4 }}>
-                          <select className="premium-select" value={l.discountType || ""} disabled={!editable} onChange={(e) => setLine(i, { discountType: e.target.value || null, discountValue: e.target.value ? l.discountValue : 0 })} style={{ width: 74 }}>
+                          <Select className="premium-select" value={l.discountType || ""} disabled={!editable} onChange={(e) => setLine(i, { discountType: e.target.value || null, discountValue: e.target.value ? l.discountValue : 0 })} style={{ width: 74 }}>
                             <option value="">ไม่ลด</option>
                             <option value="percent">%</option>
                             <option value="amount">บาท</option>
-                          </select>
+                          </Select>
                           <MoneyInput min="0" value={l.discountValue || ""} disabled={!editable || !l.discountType} onChange={(value) => setLine(i, { discountValue: value ?? "" })} style={{ width: 104 }} aria-label={`ส่วนลด รายการ ${i + 1}`} />
                         </div>
                       </td>
@@ -369,11 +370,11 @@ export default function QuotationEditorPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     ส่วนลดท้ายใบ
-                    <select className="premium-select" value={form.discountType} disabled={!editable} onChange={(e) => setF({ discountType: e.target.value, discountValue: e.target.value ? form.discountValue : "" })} style={{ width: 74, height: 30 }}>
+                    <Select className="premium-select" value={form.discountType} disabled={!editable} onChange={(e) => setF({ discountType: e.target.value, discountValue: e.target.value ? form.discountValue : "" })} style={{ width: 74, height: 30 }}>
                       <option value="">ไม่ลด</option>
                       <option value="percent">%</option>
                       <option value="amount">บาท</option>
-                    </select>
+                    </Select>
                     <MoneyInput min="0" value={form.discountValue || ""} disabled={!editable || !form.discountType} onChange={(value) => setF({ discountValue: value ?? "" })} style={{ width: 110, height: 30 }} aria-label="ส่วนลดท้ายใบ" />
                   </span>
                   <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-"}</strong>
@@ -431,9 +432,9 @@ export default function QuotationEditorPage() {
           </div>
           <div className="form-grid" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
             <label>ประเภทบริการ
-              <select className="premium-select" value={tplForm.serviceType} onChange={(e) => setTplForm({ ...tplForm, serviceType: e.target.value })}>
+              <Select className="premium-select" value={tplForm.serviceType} onChange={(e) => setTplForm({ ...tplForm, serviceType: e.target.value })}>
                 {["general", "SCENT", "NPD", "RE-ORDER", "diffuser", "workshop"].map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              </Select>
             </label>
             <label>ชื่อ template
               <input className="premium-input" value={tplForm.title} onChange={(e) => setTplForm({ ...tplForm, title: e.target.value })} />

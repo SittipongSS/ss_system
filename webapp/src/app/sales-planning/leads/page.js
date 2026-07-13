@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 // หน้าลีด (/sa/leads — Sales Revamp เฟส C): คิวรับลีดของ Marketing →
 // คัดกรอง (Supervisor เลือกทีม) → กระจาย (Senior เลือก AE) → ติดต่อ/นัด → เปิดลูกค้า.
@@ -399,17 +400,17 @@ export default function LeadsPage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
             </div>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 210 }}>
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 210 }}>
               <option value="open">ที่ยังไม่ปิด (คิวงาน)</option>
               <option value="all">ทุกสถานะ</option>
               {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABELS[s]} ({countBy[s] || 0})</option>)}
-            </select>
+            </Select>
             <div className="spacer" />
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span style={{ fontSize: 13, color: "var(--text-3)" }}><ArrowUpDown size={14} style={{ verticalAlign: "-2px" }}/> เรียง</span>
-              <select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ width: 120 }}>
+              <Select value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} className="premium-select" style={{ width: 120 }}>
                 {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
+              </Select>
               <button type="button" className="btn-icon" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}>
                 {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
               </button>
@@ -606,9 +607,9 @@ export default function LeadsPage() {
           
           <label>
             ประเภทบริการที่สนใจ *
-            <select className="premium-select" value={form.serviceInterest} onChange={(e) => setForm({ ...form, serviceInterest: e.target.value })}>
+            <Select className="premium-select" value={form.serviceInterest} onChange={(e) => setForm({ ...form, serviceInterest: e.target.value })}>
               {SERVICE_INTERESTS.map((s) => <option key={s} value={s}>{SERVICE_INTEREST_LABELS[s]}</option>)}
-            </select>
+            </Select>
           </label>
           {SERVICE_DETAIL_REQUIRED.has(form.serviceInterest) ? (
             <label>
@@ -692,21 +693,21 @@ export default function LeadsPage() {
             {actionModal.action === "screen" && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                 ส่งให้ทีม
-                <select className="premium-select" value={actTeam} onChange={(e) => setActTeam(e.target.value)}>
+                <Select className="premium-select" value={actTeam} onChange={(e) => setActTeam(e.target.value)}>
                   <option value="">— เลือกทีม —</option>
                   {TEAMS.map((t) => <option key={t} value={t}>{TEAM_LABELS[t]}</option>)}
-                </select>
+                </Select>
               </label>
             )}
             {actionModal.action === "assign" && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                 AE ผู้รับผิดชอบ (ทีม {TEAM_LABELS[actionModal.lead.team] || actionModal.lead.team})
-                <select className="premium-select" value={actAssignee} onChange={(e) => setActAssignee(e.target.value)}>
+                <Select className="premium-select" value={actAssignee} onChange={(e) => setActAssignee(e.target.value)}>
                   <option value="">— เลือก AE —</option>
                   {users.filter((u) => ["ae", "senior_ae"].includes(u.role) && (!actionModal.lead.team || u.team === actionModal.lead.team)).map((u) => (
                     <option key={u.id} value={u.id}>{fmtName(u)}{u.role === "senior_ae" ? " (Senior)" : ""}</option>
                   ))}
-                </select>
+                </Select>
               </label>
             )}
             {["contact", "meeting"].includes(actionModal.action) && (
@@ -718,9 +719,9 @@ export default function LeadsPage() {
             {actionModal.action === "meeting" && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                 รูปแบบนัด
-                <select className="premium-select" value={actMode} onChange={(e) => setActMode(e.target.value)}>
+                <Select className="premium-select" value={actMode} onChange={(e) => setActMode(e.target.value)}>
                   {MEETING_MODES.map((m) => <option key={m} value={m}>{MEETING_MODE_LABELS[m]}</option>)}
-                </select>
+                </Select>
               </label>
             )}
             {["disqualify", "bounce"].includes(actionModal.action) && (

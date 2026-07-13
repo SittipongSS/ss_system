@@ -1,100 +1,134 @@
 "use client";
-import { useState, useMemo, useRef, useEffect } from "react";
-import { ChevronDown } from "lucide-react";
 
-// SearchableSelect กลางของระบบ — dropdown ที่พิมพ์ค้นหาได้ ใช้สไตล์เดียวกับ <Select>
-// (trigger = .premium-input + ลูกศร chevron, เมนูลอยใต้ช่อง). รวม pattern เดิม
-// (SearchableSelect ของ FG + SearchableTextSelect ของแบรนด์) ให้เป็นตัวเดียว
-//
-// options: [{ value, label, search?, render? }]
-//   value  : ค่าที่ส่งกลับผ่าน onChange เมื่อเลือก
-//   label  : ข้อความที่โชว์ในช่องเมื่อถูกเลือก (และ default ของ search/เมนู)
-//   search : ข้อความใช้กรอง (ไม่ใส่ = ใช้ label)
-//   render : JSX ที่จะแสดงในเมนู (ไม่ใส่ = ใช้ label)
-// allowFreeText: พิมพ์ค่าใหม่เองได้ (เช่น แบรนด์) — onChange ส่งข้อความที่พิมพ์ทันที
-// size: "md" (13px) | "sm" (12px, สูง 30px)
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Check, ChevronDown, Search } from "lucide-react";
+
 export default function SearchableSelect({
   value,
   onChange,
-  options,
+  options = [],
   placeholder,
   disabled,
   allowFreeText = false,
   emptyText,
   size = "md",
+  searchable = true,
+  className = "",
+  ariaLabel,
 }) {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
-  const boxRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState({});
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
 
-  useEffect(() => {
-    const onDoc = (e) => {
-      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
-
-  const selected = options.find((o) => o.value === value);
+  const selected = options.find((option) => String(option.value) === String(value ?? ""));
   const selectedLabel = selected ? selected.label : allowFreeText ? value || "" : "";
-
   const filtered = useMemo(() => {
-    const s = search.toLowerCase();
+    const needle = search.trim().toLocaleLowerCase("th");
     return options
-      .filter((o) => String(o.search ?? o.label ?? "").toLowerCase().includes(s))
-      .slice(0, 50);
+      .filter((option) => !needle || String(option.search ?? option.label ?? "").toLocaleLowerCase("th").includes(needle))
+      .slice(0, 100);
   }, [options, search]);
 
-  const fs = size === "sm" ? "12px" : "13px";
+  useEffect(() => {
+    if (!open) return undefined;
+    const place = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const roomBelow = window.innerHeight - rect.bottom;
+      const estimatedHeight = Math.min(320, Math.max(80, filtered.length * 38 + (searchable ? 48 : 0)));
+      const above = roomBelow < estimatedHeight + 12 && rect.top > roomBelow;
+      setMenuStyle({
+        position: "fixed",
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.max(rect.width, 220) - 8)),
+        top: above ? Math.max(8, rect.top - estimatedHeight - 6) : rect.bottom + 6,
+        width: Math.max(rect.width, 220),
+        maxHeight: above ? Math.max(140, rect.top - 16) : Math.max(140, roomBelow - 14),
+      });
+    };
+    const outside = (event) => {
+      if (!triggerRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false);
+    };
+    place();
+    document.addEventListener("mousedown", outside);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [filtered.length, open, searchable]);
+
+  const choose = (option) => {
+    onChange?.(option.value);
+    setSearch("");
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
 
   return (
-    <div ref={boxRef} style={{ position: "relative", width: "100%" }}>
-      <div style={{ position: "relative" }}>
-        <input
-          className="premium-input w-full"
-          value={open ? search : selectedLabel}
-          disabled={disabled}
-          placeholder={placeholder || "ค้นหา..."}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setOpen(true);
-            onChange(allowFreeText ? e.target.value : "");
-          }}
-          onFocus={() => {
-            setSearch(allowFreeText ? value || "" : "");
-            setOpen(true);
-          }}
-          style={{ paddingRight: "28px", fontSize: fs, ...(size === "sm" ? { height: "30px" } : {}) }}
-        />
-        <ChevronDown
-          size={16}
-          style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", pointerEvents: "none" }}
-        />
-      </div>
-      {open && !disabled && (
-        <div
-          style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius)", maxHeight: "220px", overflowY: "auto", zIndex: 50, marginTop: "4px", boxShadow: "0 8px 24px rgba(0,0,0,0.16)" }}
-        >
-          {filtered.length === 0 ? (
-            <div style={{ padding: "7px 10px", fontSize: fs, color: "var(--text-3)" }}>
-              {emptyText || (allowFreeText ? "ไม่พบรายการ (พิมพ์เพื่อเพิ่มใหม่)" : "ไม่พบรายการ")}
-            </div>
-          ) : (
-            filtered.map((o) => (
-              <div
-                key={o.value}
-                onMouseDown={(e) => e.preventDefault()} // กัน blur ก่อนคลิกติด
-                onClick={() => { onChange(o.value); setSearch(""); setOpen(false); }}
-                style={{ padding: "7px 10px", fontSize: fs, cursor: "pointer", borderBottom: "1px solid var(--border)", color: "var(--text)" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--panel-2)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                {o.render || o.label}
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`ui-select ui-searchable-select ${size === "sm" ? "compact" : ""} ${open ? "open" : ""} ${className}`.trim()}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className={`ui-select-value ${selectedLabel ? "" : "placeholder"}`.trim()}>{selectedLabel || placeholder || "— เลือก —"}</span>
+        <ChevronDown className="ui-select-chevron" size={16} aria-hidden="true" />
+      </button>
+      {open && !disabled && typeof document !== "undefined" ? createPortal(
+        <div ref={menuRef} className="ui-select-menu ui-searchable-menu" style={menuStyle} role="listbox" aria-label={ariaLabel}>
+          {searchable ? (
+            <label className="ui-select-search">
+              <Search size={15} aria-hidden="true" />
+              <input
+                autoFocus
+                value={search}
+                placeholder="ค้นหา..."
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  if (allowFreeText) onChange?.(event.target.value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && filtered.length) choose(filtered[0]);
+                  if (event.key === "Escape") setOpen(false);
+                }}
+              />
+            </label>
+          ) : null}
+          <div className="ui-select-options">
+            {filtered.length ? filtered.map((option) => {
+              const isSelected = String(option.value) === String(value ?? "");
+              return (
+                <button
+                  key={String(option.value)}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`ui-select-option ${isSelected ? "selected" : ""}`.trim()}
+                  onClick={() => choose(option)}
+                >
+                  <span>{option.render || option.label}</span>
+                  {isSelected ? <Check size={15} aria-hidden="true" /> : null}
+                </button>
+              );
+            }) : (
+              <div className="ui-select-empty">
+                {emptyText || (allowFreeText ? "ไม่พบรายการ — ใช้ข้อความที่พิมพ์ได้" : "ไม่พบรายการ")}
               </div>
-            ))
-          )}
-        </div>
-      )}
-    </div>
+            )}
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+    </>
   );
 }

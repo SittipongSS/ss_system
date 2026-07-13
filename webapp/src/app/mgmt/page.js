@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, ListTodo, CheckCircle2, Clock3, Circle, AlertTriangle } from "lucide-react";
@@ -65,9 +66,9 @@ export default function MgmtOverviewPage() {
           <p>ภาพรวมการติดตามงาน แยกตามแผนก และงานด่วนที่ต้องจัดการ</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
+          <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
-          </select>
+          </Select>
           <div className="pill ok">{percent}% เสร็จ</div>
         </div>
       </div>

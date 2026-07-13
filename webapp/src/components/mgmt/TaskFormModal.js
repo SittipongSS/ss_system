@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useState, useEffect } from "react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
@@ -69,17 +70,17 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div className="form-group" style={{ margin: 0 }}>
             <label>แผนก</label>
-            <select className="premium-input w-full" value={form.deptCode || ""} onChange={(e) => set("deptCode", e.target.value)}>
+            <Select className="premium-input w-full" value={form.deptCode || ""} onChange={(e) => set("deptCode", e.target.value)}>
               <option value="">—</option>
               {departments.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
-            </select>
+            </Select>
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>ผู้รับผิดชอบ</label>
-            <select className="premium-input w-full" value={form.assigneeId || ""} onChange={(e) => onPickAssignee(e.target.value)}>
+            <Select className="premium-input w-full" value={form.assigneeId || ""} onChange={(e) => onPickAssignee(e.target.value)}>
               <option value="">—</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
+            </Select>
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>วันเริ่ม</label>
@@ -91,15 +92,15 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>สถานะ</label>
-            <select className="premium-input w-full" value={form.status || "todo"} onChange={(e) => set("status", e.target.value)}>
+            <Select className="premium-input w-full" value={form.status || "todo"} onChange={(e) => set("status", e.target.value)}>
               {TASK_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>)}
-            </select>
+            </Select>
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label>ลำดับความสำคัญ</label>
-            <select className="premium-input w-full" value={form.priority || "normal"} onChange={(e) => set("priority", e.target.value)}>
+            <Select className="premium-input w-full" value={form.priority || "normal"} onChange={(e) => set("priority", e.target.value)}>
               {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABELS[p]}</option>)}
-            </select>
+            </Select>
           </div>
         </div>
         <div className="form-group" style={{ margin: 0 }}>

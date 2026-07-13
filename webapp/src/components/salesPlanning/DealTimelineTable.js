@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 // ตารางไทม์ไลน์ของดีล — ความสามารถเทียบตารางโครงการ (มติผู้ใช้: "แก้ที่ดีลซิงก์โครงการ
 // แก้ที่โครงการซิงก์ดีล") ซึ่งได้ฟรีเพราะเป็น project_tasks แถวเดียวกัน: ดีลเห็นเฉพาะ
@@ -270,9 +271,9 @@ export default function TimelineWorkspace({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
             แผนก
-            <select className="premium-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+            <Select className="premium-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+            </Select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
             จำนวนวันทำการ
@@ -283,13 +284,13 @@ export default function TimelineWorkspace({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
             ผู้รับผิดชอบ
-            <select className="premium-select" value={form.assigneeId} onChange={(e) => {
+            <Select className="premium-select" value={form.assigneeId} onChange={(e) => {
               const selected = assigneeOptions.find((user) => user.id === e.target.value);
               setForm({ ...form, assigneeId: e.target.value, assignee: selected?.name || "" });
             }}>
               <option value="">— ยังไม่ระบุ —</option>
               {assigneeOptions.map((user) => <option key={user.id} value={user.id}>{compactPersonName(user.name)}</option>)}
-            </select>
+            </Select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
             วันที่เริ่ม
@@ -459,15 +460,15 @@ export default function TimelineWorkspace({
         <div className="toolbar">
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Filter size={14} color="var(--text-3)" />
-            <select className="premium-select" value={tableStatusFilter} onChange={(event) => setTableStatusFilter(event.target.value)} aria-label="กรองสถานะไทม์ไลน์">
+            <Select className="premium-select" value={tableStatusFilter} onChange={(event) => setTableStatusFilter(event.target.value)} aria-label="กรองสถานะไทม์ไลน์">
               <option value="all">ทุกสถานะ</option><option value="pending">รอดำเนินการ</option><option value="progress">กำลังทำ</option><option value="completed">เสร็จแล้ว</option>
-            </select>
+            </Select>
           </div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <ArrowUpDown size={14} color="var(--text-3)" />
-            <select className="premium-select" value={tableSort} onChange={(event) => setTableSort(event.target.value)} aria-label="เรียงลำดับไทม์ไลน์">
+            <Select className="premium-select" value={tableSort} onChange={(event) => setTableSort(event.target.value)} aria-label="เรียงลำดับไทม์ไลน์">
               <option value="step">ลำดับขั้นตอน</option><option value="due">วันเสร็จ</option><option value="status">สถานะ</option><option value="name">ชื่อขั้นตอน</option>
-            </select>
+            </Select>
           </div>
         </div>
       </div>
@@ -518,7 +519,7 @@ export default function TimelineWorkspace({
                     <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{t.role || "-"}</span></td>
                     <td>
                       {canEdit ? (
-                        <select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: 12 }}
+                        <Select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: 12 }}
                           aria-label={`ผู้รับผิดชอบ ${t.name}`}
                           onChange={(e) => {
                             const u = assigneeOptions.find((x) => x.id === e.target.value);
@@ -526,7 +527,7 @@ export default function TimelineWorkspace({
                           }}>
                           <option value="">{t.assignee ? compactPersonName(t.assignee) : "— ไม่ระบุ —"}</option>
                           {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}</option>)}
-                        </select>
+                        </Select>
                       ) : <span title={t.assignee || undefined}>{t.assignee ? compactPersonName(t.assignee) : "-"}</span>}
                     </td>
                     <td>

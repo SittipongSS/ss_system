@@ -271,12 +271,12 @@ export default function ProductRegistry() {
       </div>
       <div className="spacer" />
       <span className="toolbar-label"><Filter size={14} /> กรอง</span>
-      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
+      <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
         <option value="all">ทุกสถานะ</option>
         <option value="pending">รออนุมัติ</option>
         <option value="approved">อนุมัติแล้ว</option>
         <option value="rejected">ไม่อนุมัติ</option>
-      </select>
+      </Select>
       {counts.inactive > 0 && (
         <button type="button" onClick={() => setShowInactive((v) => !v)} className={`btn ${showInactive ? "btn-primary" : ""}`} title="แสดง/ซ่อนสินค้าที่เลิกใช้">
           {showInactive ? "ซ่อนที่เลิกใช้" : `แสดงที่เลิกใช้ (${counts.inactive})`}

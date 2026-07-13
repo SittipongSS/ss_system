@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -166,9 +167,9 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
               </div>
               <div className="form-group" style={{ width: 130 }}>
                 <label>สถานะ</label>
-                <select className="premium-select" style={{ height: 30 }} value={d.status} onChange={(e) => setD({ ...d, status: e.target.value })}>
+                <Select className="premium-select" style={{ height: 30 }} value={d.status} onChange={(e) => setD({ ...d, status: e.target.value })}>
                   {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{PO_STATUS_LABEL[s]}</option>)}
-                </select>
+                </Select>
               </div>
               <div className="form-group">
                 <label>สถานที่ส่ง</label>
@@ -564,7 +565,7 @@ export default function PoDetailPage() {
                           {ln.settledDealId ? (
                             <a className="ui-badge" style={{ color: "var(--green)" }} href={`/sa/deals/${ln.settledDealId}`}>เชื่อมแล้ว (Won) →</a>
                           ) : (
-                            <select
+                            <Select
                               className="premium-select"
                               style={{ height: 32, minWidth: 230 }}
                               value={settleChoices[ln.poLineId] || "new"}
@@ -577,7 +578,7 @@ export default function PoDetailPage() {
                               ))}
                               <option value="new">— สร้างโครงการใหม่ (PO นอก forecast) —</option>
                               <option value="skip">— ข้าม (ไม่เชื่อม) —</option>
-                            </select>
+                            </Select>
                           )}
                         </td>
                       </tr>

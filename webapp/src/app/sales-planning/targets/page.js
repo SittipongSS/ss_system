@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -310,7 +311,7 @@ export default function SalesPlanningTargetsPage() {
           <Sparkles size={16} aria-hidden="true" /> วางแผนเป้าใหม่
         </Link>
       )}
-      <select
+      <Select
         className="premium-select"
         value={year}
         onChange={(e) => { const y = e.target.value; guardPending(() => setYear(y)); }}
@@ -318,7 +319,7 @@ export default function SalesPlanningTargetsPage() {
         style={{ width: 110 }}
       >
         {yearOptions.map((y) => <option key={y} value={y}>ปี {y}</option>)}
-      </select>
+      </Select>
     </>
   );
 

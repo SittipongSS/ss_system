@@ -94,6 +94,37 @@ export const fmtDateTime = (value) => {
   return `${fmtDateNumeric(d)} ${hh}:${mi}`;
 };
 
+// Time is always rendered as 24-hour HH:mm. This also normalizes editable
+// values such as "9", "930" and "9:30" without relying on browser locale.
+export const normalizeTime = (value) => {
+  const text = String(value || "").trim();
+  let hourText;
+  let minuteText;
+  if (text.includes(":")) {
+    const match = text.match(/^(\d{1,2}):(\d{1,2})$/);
+    if (!match) return null;
+    [, hourText, minuteText] = match;
+  } else if (/^\d{1,4}$/.test(text)) {
+    hourText = text.length <= 2 ? text : text.slice(0, -2);
+    minuteText = text.length <= 2 ? "0" : text.slice(-2);
+  } else {
+    return null;
+  }
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+};
+
+export const fmtTime = (value) => {
+  if (!value) return "-";
+  const direct = normalizeTime(String(value).slice(0, 5));
+  if (direct) return direct;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+};
+
 // ระดับเดือน → YYYY-MM (ค.ศ.). รับ Date / ISO / "YYYY-MM" / "YYYY-MM-DD".
 export const fmtYearMonth = (value) => {
   if (!value) return "-";

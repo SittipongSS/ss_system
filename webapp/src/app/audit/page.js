@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useEffect, useMemo, useState } from "react";
 import { History, Search, Eye } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
@@ -121,20 +122,20 @@ export default function AuditLogPage() {
             ))}
           </div>
 
-          <select className="premium-select" value={entityType} onChange={(e) => setEntityType(e.target.value)} style={{ width: "auto" }}>
+          <Select className="premium-select" value={entityType} onChange={(e) => setEntityType(e.target.value)} style={{ width: "auto" }}>
             <option value="">ทุกประเภทข้อมูล</option>
             {Object.entries(ENTITY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+          </Select>
 
-          <select className="premium-select" value={action} onChange={(e) => setAction(e.target.value)} style={{ width: "auto" }}>
+          <Select className="premium-select" value={action} onChange={(e) => setAction(e.target.value)} style={{ width: "auto" }}>
             <option value="">ทุกการกระทำ</option>
             {Object.entries(ACTION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+          </Select>
 
-          <select className="premium-select" value={actor} onChange={(e) => setActor(e.target.value)} style={{ width: "auto" }}>
+          <Select className="premium-select" value={actor} onChange={(e) => setActor(e.target.value)} style={{ width: "auto" }}>
             <option value="">ทุกคน</option>
             {actorOpts.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
+          </Select>
 
           <div className="search-bar" style={{ flex: 1, minWidth: 180 }}>
             <Search size={16} className="icon-l" strokeWidth={2} />

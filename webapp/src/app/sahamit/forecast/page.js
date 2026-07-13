@@ -1,4 +1,5 @@
 "use client";
+import Select from "@/components/ui/Select";
 import { useEffect, useMemo, useState } from "react";
 import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
@@ -341,11 +342,11 @@ export default function ForecastPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <label style={{ fontSize: 13, color: "var(--text-2)" }}>รอบ:</label>
-                <select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
+                <Select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
                   {[...rounds].reverse().map((r) => (
                     <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
                   ))}
-                </select>
+                </Select>
                 {canEdit && selectedRound && (
                   <button className="btn sm" onClick={() => openEdit(selectedRound)}><Pencil size={14} /> แก้รอบนี้</button>
                 )}
@@ -423,11 +424,11 @@ export default function ForecastPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <label style={{ fontSize: 13, color: "var(--text-2)" }}>รอบ:</label>
-                <select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
+                <Select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
                   {[...rounds].reverse().map((r) => (
                     <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
                   ))}
-                </select>
+                </Select>
                 {lineList.length > 0 && (
                   <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
                     ติ๊กเลือกรายการ (สินค้า×เดือน) เพื่อรวมเป็นโครงการเดียว
@@ -586,17 +587,17 @@ export default function ForecastPage() {
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
             ผู้ดูแล (AE)
-            <select className="premium-select" style={{ height: 36 }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
+            <Select className="premium-select" style={{ height: 36 }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
               {!aeList.length && <option value="">— ไม่มี AE —</option>}
               {aeList.map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
-            </select>
+            </Select>
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
             เดือนคาดได้รับ PO
-            <select className="premium-select" style={{ height: 36 }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
+            <Select className="premium-select" style={{ height: 36 }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
               {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            </Select>
           </label>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
