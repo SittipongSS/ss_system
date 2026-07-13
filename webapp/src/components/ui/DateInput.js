@@ -33,7 +33,7 @@ function formatTypedDate(value) {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
-export default function DateInput({ value = "", onChange, className = "", style, min, max, disabled, required, name, id, ariaLabel, title }) {
+export default function DateInput({ value = "", onChange, className = "", style, min, max, disabled, required, name, id, ariaLabel, title, compact = false }) {
   const [text, setText] = useState(() => isoDateToDisplay(value));
   const [focused, setFocused] = useState(false);
   const [open, setOpen] = useState(false);
@@ -162,7 +162,7 @@ export default function DateInput({ value = "", onChange, className = "", style,
   };
 
   return (
-    <span ref={rootRef} className={`date-input-wrap ${className}`.trim()} style={style}>
+    <span ref={rootRef} className={`date-input-wrap${compact ? " compact" : ""} ${className}`.trim()} style={style}>
       <input
         id={id}
         name={name}

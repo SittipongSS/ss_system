@@ -12,6 +12,7 @@ import DateInput from "@/components/ui/DateInput";
 import PredecessorPicker from "@/components/pm/PredecessorPicker";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
+import StatusSelect from "@/components/pm/StatusSelect";
 import { fmtDate } from "@/lib/format";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 
@@ -381,7 +382,7 @@ export default function TimelineWorkspace({
                               <h4 style={{ margin: 0, fontSize: 15, color: complete ? "var(--green)" : "var(--text)", fontWeight: 600 }}>{numberOf.get(task.id)}. {task.name}</h4>
                               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                                 <span className="ui-badge" style={{ color: role.color, background: role.bg }}>{task.role || "-"}</span>
-                                {canEdit ? <select className="premium-select" value={task.status || "Pending"} disabled={!!busyId} onChange={(event) => patch(task, { status: event.target.value })}>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}</select> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
+                                {canEdit ? <StatusSelect value={task.status || "Pending"} disabled={!!busyId} onChange={(status) => patch(task, { status })} /> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
                                 {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
                               </div>
                             </div>
@@ -425,7 +426,13 @@ export default function TimelineWorkspace({
         </div>
       </div>
       <div className="premium-glass-table table-responsive">
-        <table className="premium-table">
+        <table className="premium-table timeline-task-table">
+          <colgroup>
+            <col style={{ width: 56 }} /><col className="timeline-col-task" /><col style={{ width: 68 }} />
+            <col style={{ width: 150 }} /><col style={{ width: 126 }} /><col style={{ width: 124 }} />
+            <col style={{ width: 124 }} /><col style={{ width: 58 }} /><col style={{ width: 92 }} />
+            {canEdit && <col style={{ width: 92 }} />}
+          </colgroup>
           <thead>
             <tr>
               <th style={{ width: 56 }}>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
@@ -461,10 +468,10 @@ export default function TimelineWorkspace({
                       {t.name}
                       {t.note && <span style={{ display: "block", color: "var(--text-3)", fontSize: 11.5, fontWeight: 500 }}>{t.note}</span>}
                     </td>
-                    <td><span className="ui-badge" style={{ color: "var(--text-2)" }}>{t.role || "-"}</span></td>
+                    <td style={{ textAlign: "center" }}><span className="ui-badge" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)", background: ROLE_META[t.role]?.bg, minWidth: 38, justifyContent: "center" }}>{t.role || "-"}</span></td>
                     <td>
                       {canEdit ? (
-                        <select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ minWidth: 130 }}
+                        <select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: 12 }}
                           aria-label={`ผู้รับผิดชอบ ${t.name}`}
                           onChange={(e) => {
                             const u = assigneeOptions.find((x) => x.id === e.target.value);
@@ -477,10 +484,7 @@ export default function TimelineWorkspace({
                     </td>
                     <td>
                       {canEdit ? (
-                        <select className="premium-select" value={t.status || "Pending"} disabled={!!busyId} style={{ width: 132 }}
-                          aria-label={`สถานะ ${t.name}`} onChange={(e) => patch(t, { status: e.target.value })}>
-                          {Object.entries(STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-                        </select>
+                        <StatusSelect value={t.status || "Pending"} disabled={!!busyId} aria-label={`สถานะ ${t.name}`} onChange={(status) => patch(t, { status })} />
                       ) : (
                         <span className="ui-badge" style={{ color: STATUS_META[t.status]?.color || "var(--text-3)" }}>
                           {STATUS_META[t.status]?.label || t.status || "-"}
@@ -489,10 +493,14 @@ export default function TimelineWorkspace({
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       {canEdit ? (
-                        <DateInput value={t.startDate || ""} onChange={(v) => patch(t, { startDate: v || null })} aria-label={`วันเริ่ม ${t.name}`} />
+                        <DateInput compact value={t.startDate || ""} onChange={(v) => patch(t, { startDate: v || null })} ariaLabel={`วันเริ่ม ${t.name}`} style={{ width: 116 }} />
                       ) : fmtDate(t.startDate)}
                     </td>
-                    <td className="mono" style={{ whiteSpace: "nowrap" }}>{fmtDate(t.finishDate)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {canEdit ? (
+                        <DateInput compact value={t.finishDate || ""} min={t.startDate || undefined} disabled={!t.startDate || !!busyId} onChange={(v) => patch(t, { finishDate: v || null })} ariaLabel={`วันจบ ${t.name}`} style={{ width: 116 }} />
+                      ) : fmtDate(t.finishDate)}
+                    </td>
                     <td className="num">
                       {canEdit ? (
                         <input type="number" min="1" className="premium-input mono" defaultValue={t.durationDays ?? 1} style={{ width: 58, textAlign: "right" }}

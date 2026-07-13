@@ -20,7 +20,7 @@ import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import Select from "@/components/ui/Select";
-import StatusSelect, { taskStatusColor } from "@/components/pm/StatusSelect";
+import StatusSelect, { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import EmptyState from "@/components/ui/EmptyState";
@@ -1268,7 +1268,19 @@ export default function ProjectDetailPage() {
             <EmptyState icon={Filter}>ไม่มีขั้นตอนที่ตรงกับตัวกรอง</EmptyState>
           ) : (
             <div className="premium-glass-table table-responsive">
-              <table className="premium-table">
+              <table className="premium-table timeline-task-table">
+                <colgroup>
+                  <col style={{ width: canReorderTimeline && tableSort === "step" ? 78 : 52 }} />
+                  <col className="timeline-col-task" />
+                  <col style={{ width: 68 }} />
+                  <col style={{ width: 150 }} />
+                  <col style={{ width: 126 }} />
+                  <col style={{ width: 124 }} />
+                  <col style={{ width: 124 }} />
+                  <col style={{ width: 58 }} />
+                  <col style={{ width: 92 }} />
+                  {canEdit && <col style={{ width: 70 }} />}
+                </colgroup>
                 <thead>
                   <tr>
                     <th style={{ width: canReorderTimeline && tableSort === "step" ? "78px" : "44px", textAlign: "center" }}>#</th>
@@ -1314,17 +1326,23 @@ export default function ProjectDetailPage() {
                                 {task.name}
                               </span>
                             </td>
-                            <td><span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span></td>
-                            <td style={{ fontSize: "13px" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : assignee}</td>
+                            <td style={{ textAlign: "center" }}><span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}`, minWidth: 38, justifyContent: "center" }}>{task.role}</span></td>
+                            <td style={{ fontSize: "12px", maxWidth: 150 }} title={assignee === "—" ? undefined : assignee}>
+                              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : assignee}</span>
+                            </td>
                             <td>
                               {canEdit ? (
                                 <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "11px" }}>●</span>}</>
                               ) : (
-                                <span className="status-pill dot" style={{ "--dot": statusDotColor(task.status === "Completed" ? "Completed" : task.status === "In Progress" ? "In Progress" : "Pending") }}>{task.status}</span>
+                                <span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status), color: taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span>
                               )}
                             </td>
-                            <td style={{ fontSize: "12.5px", whiteSpace: "nowrap" }}>{formatDate(task.startDate)}</td>
-                            <td style={{ fontSize: "12.5px", whiteSpace: "nowrap" }}>{formatDate(task.finishDate)}</td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <DateInput compact value={task.startDate || ""} disabled={!canEdit} onChange={(value) => stageScheduleEdit(task.id, { startDate: value || null })} ariaLabel={`วันเริ่ม ${task.name}`} style={{ width: "116px" }} />
+                            </td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <DateInput compact value={task.finishDate || ""} min={task.startDate || undefined} disabled={!canEdit || !task.startDate} onChange={(value) => stageScheduleEdit(task.id, { finishDate: value || null })} ariaLabel={`วันจบ ${task.name}`} style={{ width: "116px" }} />
+                            </td>
                             <td style={{ textAlign: "center", fontSize: "12.5px" }}>{task.durationDays}</td>
                             <td onClick={(e) => e.stopPropagation()}>
                               {(() => {
@@ -1482,10 +1500,6 @@ export default function ProjectDetailPage() {
                           {moveButtons(task)}
                         </div>
                       )}
-                      {/* Milestone icon outside card */}
-                      <div style={{ width: "28px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}
-                      </div>
                     <div className="pm-task-card" style={{ background: task.isMilestone ? "color-mix(in srgb, var(--amber) 8%, transparent)" : (isCompleted ? "color-mix(in srgb, var(--green) 5%, transparent)" : (isInProgress ? "var(--panel-2)" : "var(--panel)")), border: `1px solid ${isCompleted ? "color-mix(in srgb, var(--green) 30%, transparent)" : (isInProgress ? "var(--accent)" : (task.isMilestone ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)"))}`, boxShadow: isInProgress ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none" }}>
                       {showConnector && <div className="pm-task-connector" style={{ background: isCompleted ? "var(--green)" : "var(--border)" }} />}
 
@@ -1508,14 +1522,17 @@ export default function ProjectDetailPage() {
                           <>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px", gap: "8px" }}>
                               <h4 onClick={() => { if (canEdit) startEditing(task); }} title={canEdit ? "คลิกเพื่อแก้ไขขั้นตอน" : undefined} style={{ margin: 0, fontSize: "15px", color: isCompleted ? "var(--green)" : "var(--text)", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", cursor: canEdit ? "pointer" : "default" }}>
+                                {task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} style={{ flexShrink: 0 }} />}
                                 <span style={{ borderBottom: "1px dashed transparent" }} onMouseEnter={(e) => { if (canEdit) e.currentTarget.style.borderBottomColor = "var(--text-3)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderBottomColor = "transparent"; }}>{task.displayNumber}. {task.name}</span>
                               </h4>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
                                 {(() => { const rs = roleStyle(task.role); return (
                                   <span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span>
                                 ); })()}
-                                {canEdit && (
+                                {canEdit ? (
                                   <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "11px" }}>●</span>}</>
+                                ) : (
+                                  <span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status), color: taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span>
                                 )}
                                 {canEdit && (
                                   <div style={{ display: "flex", gap: "4px" }}>
@@ -1527,7 +1544,16 @@ export default function ProjectDetailPage() {
                             </div>
                             <div style={{ display: "flex", gap: "16px", fontSize: "12px", color: "var(--text-3)", marginTop: "8px", flexWrap: "wrap" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Clock size={14} /> {task.durationDays} วันทำการ</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Calendar size={14} /> {formatDate(task.startDate)} - {formatDate(task.finishDate)}</div>
+                              {canEdit ? (
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+                                  <Calendar size={14} />
+                                  <DateInput compact value={task.startDate || ""} onChange={(value) => stageScheduleEdit(task.id, { startDate: value || null })} ariaLabel={`วันเริ่ม ${task.name}`} style={{ width: 116 }} />
+                                  <span>–</span>
+                                  <DateInput compact value={task.finishDate || ""} min={task.startDate || undefined} disabled={!task.startDate} onChange={(value) => stageScheduleEdit(task.id, { finishDate: value || null })} ariaLabel={`วันจบ ${task.name}`} style={{ width: 116 }} />
+                                </div>
+                              ) : (
+                                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Calendar size={14} /> {formatDate(task.startDate)} - {formatDate(task.finishDate)}</div>
+                              )}
                             </div>
                             {(() => {
                               const v = getVariance(task);

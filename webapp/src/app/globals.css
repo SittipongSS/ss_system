@@ -216,6 +216,9 @@ button, select, input, textarea {
 }
 .date-input-picker:hover:not(:disabled) { color: var(--accent); background: var(--panel-2); }
 .date-input-picker:disabled { cursor: not-allowed; opacity: 0.5; }
+.date-input-wrap.compact { min-width: 108px; }
+.date-input-wrap.compact .date-input-text { padding-left: 8px; padding-right: 29px; font-size: 12px; }
+.date-input-wrap.compact .date-input-picker { width: 28px; }
 .date-calendar {
   position: absolute;
   top: calc(100% + 6px);
@@ -4193,6 +4196,15 @@ button.empty-state { width: 100%; font: inherit; }
 .premium-glass-table.table-responsive {
   overflow-x: auto;
 }
+.timeline-task-table {
+  width: 100%;
+  min-width: 1050px;
+  table-layout: fixed;
+}
+.timeline-task-table .timeline-col-task { width: auto; min-width: 220px; }
+.timeline-task-table th,
+.timeline-task-table td { padding-left: 8px; padding-right: 8px; }
+.timeline-task-table .date-input-wrap { max-width: 116px; }
 
 /* Cell padding / alignment for the glass table variant. Unlike .premium-table
    this class only styled the shell, so cells inherited Tailwind preflight's zero
