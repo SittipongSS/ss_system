@@ -12,6 +12,7 @@ import EditProductModal from "@/components/EditProductModal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 
@@ -214,7 +215,7 @@ export default function ProductDetails() {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
               <div className="md:col-span-2">
-                <span className="text-[var(--text-3)] block mb-1">ลูกค้าเจ้าของสินค้า</span>
+                <span className="text-[var(--text-3)] block mb-1">{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า)</span>
                 {product.customerId ? (
                   <Link href={`/database/customers/${product.customerId}`} className="font-semibold text-[var(--accent)] text-sm hover:underline">
                     {product.customerName || product.customerId}

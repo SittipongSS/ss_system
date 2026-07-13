@@ -4,6 +4,8 @@ export const ENTITY_SELECT_RULES = Object.freeze({
   customer: Object.freeze({ searchable: true }),
   product: Object.freeze({ searchable: true }),
   brand: Object.freeze({ searchable: false }),
+  mainCategory: Object.freeze({ searchable: true }),
+  subCategory: Object.freeze({ searchable: true }),
 });
 
 export const searchableForEntity = (entity, fallback = true) =>
@@ -15,4 +17,3 @@ export const searchableForEntity = (entity, fallback = true) =>
 // Buttons, links and form controls inside the row retain their own action.
 export const isInteractiveTarget = (target) =>
   Boolean(target?.closest?.("a,button,input,select,textarea,[role='button'],[role='link'],[data-no-row-navigation]"));
-

@@ -83,6 +83,20 @@ function Stat({ label, value, hint }) {
   );
 }
 
+function OverviewNavCard({ icon, title, value, hint, onClick }) {
+  return (
+    <button type="button" className="glass-panel detail-summary-card" onClick={onClick}>
+      <span className="detail-summary-icon">{icon}</span>
+      <span style={{ minWidth: 0, textAlign: "left" }}>
+        <span style={{ display: "block", fontSize: 13, color: "var(--text-3)", fontWeight: 600 }}>{title}</span>
+        <strong style={{ display: "block", marginTop: 3, fontSize: 18 }}>{value}</strong>
+        <span style={{ display: "block", marginTop: 2, fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hint}</span>
+      </span>
+      <ArrowRight size={16} style={{ marginLeft: "auto", flexShrink: 0, color: "var(--text-3)" }} />
+    </button>
+  );
+}
+
 function Empty({ children }) {
   return <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>{children}</div>;
 }
@@ -497,11 +511,13 @@ export default function DealOverviewPage() {
       dealType: dealTypeOf(deal),
       formulaName: deal.formulaName || "",
       categoryCode: deal.categoryCode || "",
+      categoryMainCode: String(deal.categoryCode || "").split("-")[0] || "",
       brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
       probability: snapForecastLevel(deal.probability),
       forecastMonth: deal.forecastMonth || "",
+      expectedCloseDate: deal.expectedCloseDate || "",
       startDate: deal.startDate || "",
       endDate: deal.endDate || "",
       depositPaid: !!deal.depositPaid,
@@ -640,6 +656,7 @@ export default function DealOverviewPage() {
       back={{ href: "/sa/deals", label: "กลับหน้าดีล" }}
       backActions={backActions}
       headerRight={headerRight}
+      hideHeader
       loading={loading}
     >
       {error && (
@@ -650,8 +667,23 @@ export default function DealOverviewPage() {
 
       {deal && (
         <div className="flex flex-col gap-5">
-          {/* Hero สถานะ: สถานะปัจจุบัน + มัดจำ + ผู้ดูแล + stepper + ขั้นต่อไป ในผืนเดียว */}
-          <section className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Header เดียว: ชื่อดีล ข้อมูลหลัก สถานะ และลำดับขั้นตอน */}
+          <section className="glass-panel detail-hero" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <div className="detail-hero-main">
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, minWidth: 0 }}>
+                <span className="detail-hero-icon"><FolderKanban size={20} /></span>
+                <div style={{ minWidth: 0 }}>
+                  <h1 style={{ margin: 0, fontSize: 20, fontWeight: 750, overflowWrap: "anywhere" }}>{deal.title}</h1>
+                  <div style={{ marginTop: 5, color: "var(--text-2)", fontSize: 13, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
+                    <span>·</span><span>AE: {deal.ownerName || "-"}{deal.team ? ` · ทีม ${deal.team}` : ""}</span>
+                    <span>·</span><span>เดือน FC: {deal.forecastMonth || "-"}</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginLeft: "auto" }}>{headerRight}</div>
+            </div>
+            <div style={{ padding: "12px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 15 }}>{stageBadge(deal.stage)}</span>
               {dealTypeBadge(dealTypeOf(deal))}
@@ -660,12 +692,6 @@ export default function DealOverviewPage() {
               {!alreadyWon && deal.stage !== "lost" && forecastBadge(deal.probability)}
               <span className="ui-badge" style={{ color: deal.depositPaid ? "var(--green)" : "var(--amber)" }}>
                 {deal.depositPaid ? "ได้รับมัดจำแล้ว" : "ยังไม่ยืนยันมัดจำ"}
-              </span>
-              <span style={{ fontSize: 13, color: "var(--text-2)" }}>
-                ผู้ดูแล (AE): <strong>{deal.ownerName || "-"}</strong>{deal.team ? ` · ทีม ${deal.team}` : ""}
-              </span>
-              <span style={{ fontSize: 13, color: "var(--text-3)", marginLeft: "auto" }}>
-                ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}
               </span>
             </div>
             {lc && <DealStepper steps={lc.steps} lost={deal.stage === "lost"} />}
@@ -687,6 +713,7 @@ export default function DealOverviewPage() {
                 ))}
               </div>
             )}
+            </div>
           </section>
 
           {/* เมนูครอบ (แบบหน้าโครงการ): แท็บ ภาพรวม ↔ ไทม์ไลน์ — ตัดแถบทางลัด/ป้ายเฟสถัดไปออก (มติผู้ใช้) */}
@@ -752,6 +779,15 @@ export default function DealOverviewPage() {
             )}
           </section>
 
+          <div className="detail-summary-grid">
+            <OverviewNavCard icon={<FileText size={18} />} title="ใบเสนอราคา" value={`${(data.quotations || []).length} ใบ`} hint={acceptedQuote ? `รับแล้ว ${money(acceptedQuote.totalAmount)}` : "ยังไม่มีใบที่รับแล้ว"} onClick={() => switchTab("quotations")} />
+            <OverviewNavCard icon={<ClipboardList size={18} />} title="งาน" value={`${dealTaskSummary.done}/${dealTaskSummary.total} เสร็จ`} hint={(data.dealTasks || []).find((task) => task.status !== "Completed")?.title || "ไม่มีงานค้าง"} onClick={() => switchTab("tasks")} />
+            <OverviewNavCard icon={<MessageSquare size={18} />} title="ความเคลื่อนไหว" value={`${timeline.length} รายการ`} hint={timeline[0]?.body || "ยังไม่มีความเคลื่อนไหว"} onClick={() => switchTab("activities")} />
+          </div>
+          </>
+          )}
+
+          {tab === "tasks" && (
           <section id="deal-tasks" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <ClipboardList size={17} aria-hidden="true" />
@@ -792,7 +828,6 @@ export default function DealOverviewPage() {
               <Empty>ยังไม่มีงานของดีลนี้ กด “เปิด” แล้วสร้างงานโดยเลือกผูกกับดีลนี้ได้</Empty>
             )}
           </section>
-          </>
           )}
 
           <div style={{
@@ -833,7 +868,7 @@ export default function DealOverviewPage() {
               <span className="btn btn-primary" style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>เปิดไทม์ไลน์</span>
             </div>
           )}
-          {(tab === "timeline" || tab === "tasks") && (
+          {tab === "timeline" && (
           <section id="deal-pm" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <PackageCheck size={17} aria-hidden="true" />
@@ -1239,7 +1274,7 @@ export default function DealOverviewPage() {
 
       <Modal open={dealModalOpen} onClose={() => setDealModalOpen(false)} title="แก้ไขดีล" size="lg">
         {dealForm && (
-          <form onSubmit={saveDeal} className="form-grid" aria-busy={savingDeal} style={{ padding: 18 }}>
+          <form onSubmit={saveDeal} className="form-grid cols-2" aria-busy={savingDeal} style={{ padding: 18 }}>
             <DealFormFields
               form={dealForm}
               onPatch={(patch) => setDealForm((f) => ({ ...f, ...patch }))}
@@ -1256,7 +1291,7 @@ export default function DealOverviewPage() {
                       <MoneyInput value={dealForm.wonValue} onChange={(value) => setDealForm({ ...dealForm, wonValue: value ?? "" })} />
                     </label>
                   )}
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <label className="form-inline-check" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <input type="checkbox" checked={dealForm.depositPaid} onChange={(e) => setDealForm({ ...dealForm, depositPaid: e.target.checked })} />
                     ได้รับมัดจำแล้ว (จำเป็นสำหรับสถานะ Won)
                   </label>

@@ -287,7 +287,6 @@ export default function TasksPage() {
   const savePersonal = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) { setToast({ kind: "error", msg: "ต้องระบุชื่องาน" }); return; }
-    if (form.linkType === "project" && !form.projectId) { setToast({ kind: "error", msg: "กรุณาเลือกโครงการ" }); return; }
     if (form.linkType === "deal" && !form.dealId) { setToast({ kind: "error", msg: "กรุณาเลือกดีล" }); return; }
     setSaving(true);
     try {
@@ -768,16 +767,10 @@ export default function TasksPage() {
             <div className="form-group">
               <label>เชื่อมกับ</label>
               <div className="segmented" style={{ marginBottom: "8px" }}>
-                {[["none", "ไม่ผูก"], ["project", "โครงการ"], ["deal", "ดีล"]].map(([k, lbl]) => (
+                {[["none", "ไม่ผูก"], ["deal", "ดีล"]].map(([k, lbl]) => (
                   <button type="button" key={k} className={form.linkType === k ? "active" : ""} onClick={() => setForm((f) => ({ ...f, linkType: k }))}>{lbl}</button>
                 ))}
               </div>
-              {form.linkType === "project" && (
-                <Select fullWidth value={form.projectId} onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value }))}>
-                  <option value="">— เลือกโครงการ —</option>
-                  {allProjects.map((project) => <option key={project.id} value={project.id}>{project.code || project.id} · {project.name}{project.customerName ? ` — ${project.customerName}` : ""}</option>)}
-                </Select>
-              )}
               {form.linkType === "deal" && (
                 <Select fullWidth value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
                   <option value="">— เลือกดีล —</option>

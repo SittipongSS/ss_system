@@ -26,6 +26,7 @@ import {
 } from "@/lib/sales/leads";
 import { FORECAST_LEVELS, KpiCard, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName } from "@/lib/format";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 const ACTION_COLORS = {
   screen: 'var(--blue)',
@@ -86,7 +87,7 @@ export default function LeadsPage() {
 
   const SORT_OPTIONS = [
     { key: "created", label: "รับล่าสุด" },
-    { key: "name", label: "ชื่อลูกค้า" },
+    { key: "name", label: CUSTOMER_NAME_LABEL },
     { key: "status", label: "สถานะ" },
     { key: "budget", label: "Budget" },
   ];
@@ -284,6 +285,7 @@ export default function LeadsPage() {
             stage: d.stage,
             probability: Number(d.probability) || 50,
             forecastMonth: d.forecastMonth || undefined,
+            expectedCloseDate: d.expectedCloseDate || undefined,
             projectValue: d.projectValue || 0,
             notes: d.notes || undefined,
             ownerId: dealModal.assigneeId || undefined,
@@ -544,7 +546,7 @@ export default function LeadsPage() {
 
       {/* ฟอร์มรับ/แก้ลีด */}
       <Modal open={formOpen} onClose={() => setFormOpen(false)} title={form.id ? "แก้ไขลีด" : "รับลีดใหม่"} size="xl">
-        <form onSubmit={saveLead} className="form-grid" aria-busy={busy === "save"} style={{ padding: 18 }}>
+        <form onSubmit={saveLead} className="form-grid cols-2" aria-busy={busy === "save"} style={{ padding: 18 }}>
           
           <div style={{ gridColumn: "1 / -1" }}>
             <h4 style={{ fontSize: 13, color: "var(--text)", marginBottom: 8, fontWeight: 600 }}>ช่องทางที่รับลีด</h4>
@@ -580,7 +582,7 @@ export default function LeadsPage() {
           <hr style={{ gridColumn: "1 / -1", margin: "4px 0", borderColor: "var(--border)" }} />
           
           <label>
-            ชื่อลูกค้า/ผู้ติดต่อ *
+            {CUSTOMER_NAME_LABEL} *
             <input className="premium-input" value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} required />
           </label>
           <label>
@@ -611,18 +613,16 @@ export default function LeadsPage() {
               {SERVICE_INTERESTS.map((s) => <option key={s} value={s}>{SERVICE_INTEREST_LABELS[s]}</option>)}
             </Select>
           </label>
-          {SERVICE_DETAIL_REQUIRED.has(form.serviceInterest) ? (
-            <label>
-              รายละเอียดบริการ *
-              <input className="premium-input" value={form.serviceDetail} onChange={(e) => setForm({ ...form, serviceDetail: e.target.value })} required placeholder={form.serviceInterest === "product" ? "ระบุสินค้าที่สนใจ" : "ระบุ"} />
-            </label>
-          ) : <div />}
-
           <label>
             Budget (บาท)
             <MoneyInput value={form.budget} onChange={(value) => setForm({ ...form, budget: value ?? "" })} />
           </label>
-          <div />
+          {SERVICE_DETAIL_REQUIRED.has(form.serviceInterest) ? (
+            <label style={{ gridColumn: "1 / -1" }}>
+              รายละเอียดบริการ *
+              <input className="premium-input" value={form.serviceDetail} onChange={(e) => setForm({ ...form, serviceDetail: e.target.value })} required placeholder={form.serviceInterest === "product" ? "ระบุสินค้าที่สนใจ" : "ระบุ"} />
+            </label>
+          ) : null}
           
           <label style={{ gridColumn: "1 / -1" }}>
             รายละเอียดเพิ่มเติม
@@ -653,7 +653,7 @@ export default function LeadsPage() {
                   </button>
                 )}
                 
-                <div className="form-grid">
+                <div className="form-grid cols-2">
                   <DealFormFields
                     form={d}
                     onPatch={(patch) => setDealsToCreate((prev) => prev.map((x, xi) => (xi === i ? { ...x, ...patch } : x)))}

@@ -20,6 +20,7 @@ import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/A
 import { categoryOf, isExciseCategory, categoryInfo } from "@/lib/master/categoryOf";
 import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney } from "@/lib/format";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -510,7 +511,7 @@ export default function ProductRegistry() {
                 <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
               </div>
               <div className="form-group">
-                <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
+                <label>{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า) <span className="text-[var(--red)]">*</span></label>
                 <SearchableSelect
                   entity="customer"
                   value={formData.customerId}

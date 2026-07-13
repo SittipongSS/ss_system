@@ -5,8 +5,10 @@ import DateInput from "@/components/ui/DateInput";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import AddBrandButton from "@/components/master/AddBrandButton";
-import { brandThList } from "@/lib/master/brands";
+import { brandSelectOptions } from "@/lib/master/brands";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { X } from "lucide-react";
 
 export default function ProjectFormModal({
@@ -181,16 +183,6 @@ export default function ProjectFormModal({
     finally { setSubmitting(false); }
   };
 
-  const mainCatOptions = useMemo(() => {
-    const seen = new Map();
-    categories.forEach((c) => {
-      if (!c.mainCategoryCode) return; // ข้ามหมวดหลักที่ code ว่าง
-      if (!(c.mainCategoryName || "").trim()) return; // ข้ามหมวดที่มีแต่รหัส ไม่มีชื่อ
-      if (!seen.has(c.mainCategoryCode)) seen.set(c.mainCategoryCode, c.mainCategoryName);
-    });
-    return [...seen.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([code, name]) => ({ code, name }));
-  }, [categories]);
-
   // ตัวเลือกแบรนด์ = แบรนด์ที่ลูกค้า "เป็นเจ้าของ" (customers.brands[]) — master ของแบรนด์.
   // กรองตามลูกค้า "เสมอ": ยังไม่เลือกลูกค้า → ไม่มีแบรนด์ให้เลือก (กันโชว์แบรนด์ข้ามลูกค้า)
   // extraBrands = แบรนด์ที่เพิ่งเพิ่มผ่านปุ่ม "+" (customers prop ยังไม่รีเฟรช);
@@ -199,22 +191,11 @@ export default function ProjectFormModal({
   useEffect(() => { if (open) setExtraBrands([]); }, [open, form.customerId]);
   const brandOptions = useMemo(() => {
     const selected = customers.find((c) => c.id === form.customerId);
-    const base = selected ? brandThList(selected.brands || []) : [];
-    const merged = [...new Set([...base, ...extraBrands])];
-    return form.brand && !merged.includes(form.brand) ? [form.brand, ...merged] : merged;
+    const merged = [...brandSelectOptions(selected?.brands || []), ...brandSelectOptions(extraBrands)];
+    const unique = [...new Map(merged.map((option) => [option.value, option])).values()];
+    if (form.brand && !unique.some((option) => option.value === form.brand)) unique.unshift({ value: form.brand, label: form.brand });
+    return unique;
   }, [customers, form.customerId, extraBrands, form.brand]);
-
-  const subCatOptions = useMemo(
-    () => categories.filter((c) => c.mainCategoryCode === form.mainCode && c.typeCode && (c.nameTh || c.nameEn || "").trim()), // ข้ามหมวดรองที่ code ว่าง/มีแต่รหัส
-    [categories, form.mainCode],
-  );
-
-  const changeMain = (mainCode) => setForm((f) => ({ ...f, mainCode, typeCode: "", productMainCategory: "", productSubCategory: "" }));
-  const changeSub = (typeCode) => setForm((f) => {
-    const t = categories.find((c) => c.mainCategoryCode === f.mainCode && c.typeCode === typeCode);
-    return { ...f, typeCode, productMainCategory: typeCode ? `${f.mainCode}-${typeCode}` : "", productSubCategory: t ? (t.nameTh || t.nameEn || "") : "" };
-  });
-  const subLabel = (c) => `${c.typeCode} ${c.nameTh || c.nameEn || ""}`.trim();
 
   return (
     <Modal open={open} onClose={onClose} title={editingId ? "แก้ไขโครงการ" : "สร้างโครงการใหม่"} size="lg">
@@ -247,7 +228,7 @@ export default function ProjectFormModal({
             <DateInput name="startDate" value={form.startDate} onChange={(value) => setForm((current) => ({ ...current, startDate: value }))} required className="w-full" title="วันเริ่มเป็นจุดอ้างอิงของ timeline — โครงการย้อนหลังให้ใส่วันจริงในอดีต" />
           </div>
           <div className="form-group">
-            <label>Due Date <span className="text-[var(--text-3)] font-normal">(กำหนดส่งลูกค้า)</span></label>
+            <label>วันที่สิ้นสุด <span className="text-[var(--text-3)] font-normal">(กำหนดส่งลูกค้า)</span></label>
             <DateInput name="dueDate" value={form.dueDate} onChange={(value) => setForm((current) => ({ ...current, dueDate: value }))} className="w-full" />
           </div>
           <div className="form-group">
@@ -263,8 +244,8 @@ export default function ProjectFormModal({
             <span className="w-6 h-6 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[12px]">2</span> ข้อมูลลูกค้า (Customer Info)
           </div>
           
-          <div className="form-group col-span-2">
-            <label>บริษัทลูกค้า</label>
+          <div className="form-group">
+            <label>{CUSTOMER_NAME_LABEL}</label>
             <SearchableSelect
               entity="customer"
               value={form.customerId}
@@ -287,36 +268,34 @@ export default function ProjectFormModal({
               })()}
             />
           </div>
+          <div className="form-group">
+            <label>แบรนด์ (อังกฤษ · ไทย)</label>
+            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <SearchableSelect
+                  entity="brand"
+                  disabled={!form.customerId}
+                  value={form.brand}
+                  onChange={(v) => setForm((f) => ({ ...f, brand: v }))}
+                  options={brandOptions}
+                  placeholder={form.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
+                  emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — กด + เพื่อเพิ่ม"
+                />
+              </div>
+              <AddBrandButton
+                customerId={form.customerId}
+                disabled={!form.customerId}
+                onAdded={(brand) => {
+                  setExtraBrands((rows) => [...rows, brand]);
+                  setForm((f) => ({ ...f, brand: brand.th || brand.en }));
+                }}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="mt-6 mb-4 text-[15px] font-semibold text-[var(--text)] border-b border-[var(--border)] pb-2 flex items-center gap-2">
           <span className="w-6 h-6 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[12px]">3</span> ข้อมูลสินค้า (Product Info)
-        </div>
-
-        <div className="form-group" style={{ marginBottom: "18px" }}>
-          <label>แบรนด์ (Brand)</label>
-          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <SearchableSelect
-                entity="brand"
-                disabled={!form.customerId}
-                value={form.brand}
-                onChange={(v) => setForm((f) => ({ ...f, brand: v }))}
-                options={brandOptions.map((b) => ({ value: b, label: b }))}
-                placeholder={form.customerId ? "เลือกหรือค้นหาแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
-                emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — กด + เพื่อเพิ่ม"
-              />
-            </div>
-            <AddBrandButton
-              customerId={form.customerId}
-              disabled={!form.customerId}
-              onAdded={(b) => {
-                const name = b.th || b.en;
-                setExtraBrands((x) => [...x, name]);
-                setForm((f) => ({ ...f, brand: name }));
-              }}
-            />
-          </div>
         </div>
 
         <div style={{ border: "1px dashed var(--border)", borderRadius: "var(--radius)", padding: "14px 16px", background: "var(--panel)", marginBottom: "18px" }}>
@@ -378,26 +357,20 @@ export default function ProjectFormModal({
           <div style={{ fontSize: "12px", color: "var(--text-2)", fontWeight: 600, marginBottom: "12px" }}>
             หมวดสินค้า <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(หมวดหลัก → หมวดรอง — มีผลต่อขั้นตอนสรรพสามิต)</span>
           </div>
-          <div className="pm-form-grid gap-[14px]">
-            <div className="form-group">
-              <label>หมวดหลัก</label>
-              <Select fullWidth value={form.mainCode} onChange={(e) => changeMain(e.target.value)} disabled={fgCategoryLock}>
-                <option value="">— ไม่ระบุ —</option>
-                {mainCatOptions.map((o) => (
-                  <option key={o.code} value={o.code}>{o.code} {o.name}</option>
-                ))}
-              </Select>
-            </div>
-            <div className="form-group">
-              <label>หมวดรอง</label>
-              <Select fullWidth value={form.typeCode} onChange={(e) => changeSub(e.target.value)} disabled={fgCategoryLock || !form.mainCode}>
-                <option value="">{form.mainCode ? "— เลือกหมวดรอง —" : "เลือกหมวดหลักก่อน"}</option>
-                {subCatOptions.map((c) => (
-                  <option key={c.id} value={c.typeCode}>{subLabel(c)}</option>
-                ))}
-              </Select>
-            </div>
-          </div>
+          <ProductCategorySelect
+            categories={categories}
+            value={form.productMainCategory}
+            mainValue={form.mainCode}
+            subValue={form.typeCode}
+            onChange={(productMainCategory, meta) => setForm((f) => ({
+              ...f,
+              mainCode: meta.mainCode,
+              typeCode: meta.typeCode,
+              productMainCategory,
+              productSubCategory: meta.category ? (meta.category.nameTh || meta.category.nameEn || "") : "",
+            }))}
+            disabled={fgCategoryLock}
+          />
           {fgCategoryLock && (
             <div style={{ fontSize: "11px", color: "var(--blue)", marginTop: "8px", display: "flex", alignItems: "center", gap: "4px" }}>
               🔒 หมวดอิงตามสินค้า (FG) ที่ผูกไว้โดยอัตโนมัติ

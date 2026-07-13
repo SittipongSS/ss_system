@@ -22,7 +22,7 @@ import { ArrowLeft } from "lucide-react";
 //   toolbar     — ReactNode (search / filters) shown above the body
 //   loading     — when true, render a centred spinner instead of children
 //   children    — page body
-export default function Workspace({ icon, title, subtitle, headerRight, back, backActions, rail, toolbar, loading, children }) {
+export default function Workspace({ icon, title, subtitle, headerRight, back, backActions, rail, toolbar, loading, hideHeader = false, children }) {
   return (
     <>
       {(back || backActions) && (
@@ -38,7 +38,7 @@ export default function Workspace({ icon, title, subtitle, headerRight, back, ba
           {backActions && <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>{backActions}</div>}
         </div>
       )}
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {!hideHeader && <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="header-content">
           <h1>
             {icon && <span className="premium-header-icon">{icon}</span>} {title}
@@ -46,7 +46,7 @@ export default function Workspace({ icon, title, subtitle, headerRight, back, ba
           {subtitle && <p>{subtitle}</p>}
         </div>
         {headerRight && <div className="flex items-center gap-3">{headerRight}</div>}
-      </div>
+      </div>}
 
       {rail && <div className="flex flex-col gap-5 mb-6">{rail}</div>}
 

@@ -18,10 +18,12 @@ export const initialDealForm = {
   dealType: "NPD",  // SCENT | NPD | RE-ORDER — คอลัมน์จริง (mig 0088) ส่งต่อเป็น template ตอนสร้างโครงการ PM
   formulaName: "",  // ชื่อสูตรกลิ่น (SCENT — จุดปลั๊กอิน RD ในอนาคต)
   categoryCode: "", // หมวดสินค้า MM-TTT (DL1) — เลือก timeline template ตามหมวด
+  categoryMainCode: "", // draft หมวดหลักระหว่างรอเลือกหมวดรองในฟอร์มกลาง
   brand: "",        // ชื่อแบรนด์ (เลือกจากแบรนด์ของลูกค้า) — เก็บใน metadata.brand
   projectValue: "",
   probability: "50",
   forecastMonth: "",
+  expectedCloseDate: "",
   startDate: "",   // วันที่เริ่มดีล (mig 0095) — ใช้เป็น anchor gen ไทม์ไลน์
   endDate: "",
   depositPaid: false,
@@ -35,7 +37,7 @@ export function dealTypeBadge(type) {
   const t = normalizeDealType(type);
   return (
     <span className="ui-badge" style={{ color: DEAL_TYPE_COLORS[t], borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
-      {DEAL_TYPE_LABELS[t]}
+      {t}
     </span>
   );
 }

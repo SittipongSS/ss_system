@@ -20,6 +20,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 // Management view sees every status (pending/approved/rejected); the default
 // GET (used everywhere else) returns only approved rows.
@@ -314,7 +315,7 @@ export default function CustomerDirectory() {
               <thead>
                 <tr>
                   <SortTh label="รหัสลูกค้า" sortKey="arCode" sort={sort} />
-                  <SortTh label="ชื่อลูกค้า / บริษัท" sortKey="name" sort={sort} />
+                  <SortTh label={CUSTOMER_NAME_LABEL} sortKey="name" sort={sort} />
                   <SortTh label="แบรนด์ (EN/TH)" sortKey="brands" sort={sort} />
                   <SortTh label="ที่อยู่" sortKey="address" sort={sort} />
                   <th>สถานะ</th>
@@ -414,7 +415,7 @@ export default function CustomerDirectory() {
               </div>
               <div className="form-group">
                 <label>
-                  ชื่อบริษัท / ลูกค้า <span className="text-[var(--red)]">*</span>
+                  {CUSTOMER_NAME_LABEL} <span className="text-[var(--red)]">*</span>
                 </label>
                 <input
                   type="text"
@@ -422,7 +423,7 @@ export default function CustomerDirectory() {
                   value={formData.name}
                   onChange={handleChange}
                   required
-                  placeholder="ชื่อบริษัท..."
+                  placeholder="ชื่อลูกค้า บริษัท หรือบุคคล..."
                   className="premium-input w-full"
                 />
               </div>

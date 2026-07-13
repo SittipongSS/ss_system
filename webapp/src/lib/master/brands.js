@@ -71,6 +71,16 @@ export function brandBothOf(b) {
   return brandBoth(brandTh(b), brandEn(b));
 }
 
+// Dropdown options keep the legacy stored value (TH first, EN fallback) while
+// consistently showing both languages to the user.
+export function brandSelectOptions(brands) {
+  return normalizeBrands(brands).map((brand) => ({
+    value: brand.th || brand.en,
+    label: brandBothOf(brand),
+    search: `${brand.th} ${brand.en}`.trim(),
+  }));
+}
+
 // หา EN ที่คู่กับชื่อ TH หนึ่งๆ ใน brands ของลูกค้า (ใช้ auto-fill ตอนเลือกแบรนด์
 // ในฟอร์มสินค้า). ไม่พบ/ไม่มี EN → "".
 export function brandEnFor(brands, th) {

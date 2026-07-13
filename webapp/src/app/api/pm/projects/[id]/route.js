@@ -38,11 +38,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     return forbidden();
   }
 
-  const [{ data: tasks }, { data: links }, { data: personalTasks }] = await Promise.all([
+  const [{ data: tasks }, { data: links }] = await Promise.all([
     supabase.from('project_tasks').select('*').eq('projectId', project.id).order('stepOrder', { ascending: true }),
     supabase.from('project_products').select('*, product:products(*)').eq('projectId', project.id),
-    // "งานเพิ่มเติม" ที่ผูกโครงการนี้ — เห็นร่วมกันทั้งโครงการ (ไม่กรองเจ้าของ). ไม่เข้า Gantt.
-    supabase.from('personal_tasks').select('*').eq('projectId', project.id).order('createdAt', { ascending: false }),
   ]);
 
   const projectProducts = (links || []).map((l) => ({
@@ -61,6 +59,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const deals = sortDealsByOrder(linkedDeals || [], project.metadata?.dealOrder || []);
   const foundingDeal = deals[0] || null;
   const dealsRollup = rollupDeals(deals);
+
+  // งานในโครงการมาจาก /sa/tasks ที่ผูกกับดีล ไม่สร้างความสัมพันธ์กับโครงการโดยตรง
+  // อีกต่อไป แต่ยังรวม projectId เดิมไว้เพื่อรองรับข้อมูลเก่าและงานที่สร้างก่อนย้ายกฎ.
+  const dealIds = deals.map((deal) => deal.id);
+  let personalTasksQuery = supabase.from('personal_tasks').select('*');
+  personalTasksQuery = dealIds.length
+    ? personalTasksQuery.or(`projectId.eq.${project.id},dealId.in.(${dealIds.join(',')})`)
+    : personalTasksQuery.eq('projectId', project.id);
+  const { data: personalTasks } = await personalTasksQuery.order('createdAt', { ascending: false });
 
   // ศูนย์รวมโครงการ: โครงการ = จิ๊กซอว์ครอบดีล — ดึงของ "ใต้ดีล" (ใบเสนอราคา /
   // ความเคลื่อนไหว / ประวัติสถานะ) ของทุกดีลมารวมระดับโครงการ (อ่านอย่างเดียว —

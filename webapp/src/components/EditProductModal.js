@@ -9,6 +9,7 @@ import AddBrandButton from "@/components/master/AddBrandButton";
 import { categoryInfo } from "@/lib/master/categoryOf";
 import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { fmtMoney } from "@/lib/format";
+import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
 // (Excise APPROVAL still lives on the registration.) Layout/styling mirrors the
@@ -224,7 +225,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
             </div>
             <div className="form-group">
-              <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
+              <label>{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า) <span className="text-[var(--red)]">*</span></label>
               <SearchableSelect
                 entity="customer"
                 value={form.customerId ?? ""}
