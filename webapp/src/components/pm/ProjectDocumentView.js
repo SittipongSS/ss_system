@@ -270,13 +270,13 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
       // จอตั้ง: จำกัดความกว้างคอลัมน์ชื่องานให้แคบลง กันคอลัมน์แช่แข็งกินจอจนมองแกนเวลาไม่เห็น
       return isPortrait
         ? Math.min(200, Math.max(120, Math.ceil(maxPx) + 24))
-        : Math.min(300, Math.max(160, Math.ceil(maxPx) + 24));
+        : Math.min(380, Math.max(200, Math.ceil(maxPx) + 28));
     } catch { return isPortrait ? 150 : 220; }
   }, [tasks, isPortrait]);
 
   // Freeze left offsets คำนวณจาก descW จริง
   // จอตั้ง: แช่แข็งเฉพาะ "no. + ชื่องาน" (คอลัมน์อื่นเลื่อนไปกับแกนเวลาได้) เพื่อให้เหลือพื้นที่ดูเนื้อหา
-  const NO_W = 40, TEAM_W = 46, DAY_W = 58, START_W = 110, FINISH_W = 110;
+  const NO_W = 46, TEAM_W = 64, DAY_W = 72, START_W = 126, FINISH_W = 126;
   const freezeLeft = useMemo(() => isPortrait ? [
     0,
     NO_W,

@@ -4198,7 +4198,7 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .timeline-task-table {
   width: 100%;
-  min-width: 1050px;
+  min-width: 1250px;
   table-layout: fixed;
 }
 .timeline-task-table .timeline-col-task { width: auto; min-width: 220px; }
@@ -4208,21 +4208,34 @@ button.empty-state { width: 100%; font: inherit; }
 .timeline-task-table thead th { height: 48px; vertical-align: middle; }
 .timeline-task-table tbody tr:not(.timeline-phase-row) > td { height: 54px; vertical-align: middle; }
 .timeline-task-table thead th:nth-child(1),
-.timeline-task-table thead th:nth-child(3),
-.timeline-task-table thead th:nth-child(5),
+.timeline-task-table thead th:nth-child(2),
+.timeline-task-table thead th:nth-child(4),
 .timeline-task-table thead th:nth-child(6),
 .timeline-task-table thead th:nth-child(7),
 .timeline-task-table thead th:nth-child(8),
 .timeline-task-table thead th:nth-child(9),
 .timeline-task-table thead th:nth-child(10),
+.timeline-task-table thead th:nth-child(11),
 .timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(1),
-.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(3),
-.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(5),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(2),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(4),
 .timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(6),
 .timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(7),
 .timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(8),
 .timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(9),
-.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(10) { text-align: center; }
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(10),
+.timeline-task-table tbody tr:not(.timeline-phase-row) > td:nth-child(11) { text-align: center; }
+.timeline-move-head,
+.timeline-move-cell {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  background: var(--bg) !important;
+  border-right: 1px dashed var(--border) !important;
+}
+.timeline-move-cell > div,
+.timeline-move-cell > span { align-items: center; margin: 0 auto; }
+.timeline-move-cell .btn-icon { width: 24px !important; }
+.timeline-order-cell { font-weight: 700; white-space: nowrap; }
 .timeline-task-table .date-input-text { text-align: center; }
 .timeline-task-name {
   display: flex;
