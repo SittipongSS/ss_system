@@ -13,6 +13,7 @@ import { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import { fmtPhone, fmtDateNumeric as fmtDate } from "@/lib/format";
 import Select from "@/components/ui/Select";
+import { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
 
 const DAY_MS = 86400000;
 const ROW_H = 34;       // ความสูงแถวงาน (ให้บาร์ align กับช่องซ้าย)
@@ -52,10 +53,7 @@ const roleColor = (role) => ({
   QC: "var(--green)", LG: "var(--amber)", WH: "var(--text-2)", ALL: "var(--red)",
 }[role] || "var(--text-2)");
 
-const statusFill = (status) =>
-  status === "Completed" ? "var(--green)"
-    : status === "In Progress" ? "var(--accent)"
-      : "var(--text-3)";
+const statusFill = taskStatusColor;
 
 function EditField({ value, onInput, onCommit, placeholder, disabled, style }) {
   return (
@@ -129,7 +127,7 @@ function ZoomControl({ px, onChange }) {
   );
 }
 
-export default function ProjectDocumentView({ project, canEdit, onUpdateProject, onUpdateTask, fgUI, statusLabel, statusColor }) {
+export default function ProjectDocumentView({ project, canEdit, canEditProjectFields = canEdit, onUpdateProject, onUpdateTask, fgUI, statusLabel, statusColor }) {
   const isPortrait = useIsPortrait(); // จอตั้ง/แคบ → ลดคอลัมน์ที่แช่แข็ง ไม่ให้บังเนื้อหา
   const [headerExpanded, setHeaderExpanded] = useState(false); // default: ย่อ เพื่อให้เห็น chart เต็ม
   const [nowMs] = useState(() => Date.now());
@@ -162,7 +160,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
   const onField = (field) => (v) => setDraft((d) => ({ ...d, [field]: v }));
   const commitField = (field) => (v) => {
     setDraft((d) => ({ ...d, [field]: v }));
-    if ((v ?? "") !== (project[field] || "")) onUpdateProject({ [field]: v });
+    if ((v ?? "") !== (project[field] || "")) onUpdateProject?.({ [field]: v });
   };
 
   // เบอร์มือถือ + อีเมลของ AE ผู้ดูแล — ดึงจากข้อมูลผู้ใช้ (assignable-users) โดย
@@ -272,13 +270,13 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
       // จอตั้ง: จำกัดความกว้างคอลัมน์ชื่องานให้แคบลง กันคอลัมน์แช่แข็งกินจอจนมองแกนเวลาไม่เห็น
       return isPortrait
         ? Math.min(200, Math.max(120, Math.ceil(maxPx) + 24))
-        : Math.min(420, Math.max(160, Math.ceil(maxPx) + 24));
+        : Math.min(300, Math.max(160, Math.ceil(maxPx) + 24));
     } catch { return isPortrait ? 150 : 220; }
   }, [tasks, isPortrait]);
 
   // Freeze left offsets คำนวณจาก descW จริง
   // จอตั้ง: แช่แข็งเฉพาะ "no. + ชื่องาน" (คอลัมน์อื่นเลื่อนไปกับแกนเวลาได้) เพื่อให้เหลือพื้นที่ดูเนื้อหา
-  const NO_W = 40, TEAM_W = 46, DAY_W = 64, START_W = 96, FINISH_W = 96;
+  const NO_W = 40, TEAM_W = 46, DAY_W = 58, START_W = 110, FINISH_W = 110;
   const freezeLeft = useMemo(() => isPortrait ? [
     0,
     NO_W,
@@ -292,7 +290,7 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
     NO_W + descW + TEAM_W + DAY_W + START_W,
   ], [descW, isPortrait]);
 
-  const disabled = !canEdit;
+  const disabled = !canEditProjectFields;
 
   // ── เส้นเชื่อม dependency (predecessor → ลูก) แบบ Monday ──
   // วัดตำแหน่งบาร์จริงจาก DOM (กันคลาดเคลื่อนจาก border ตาราง) แล้ววาดเป็น SVG overlay
@@ -380,6 +378,16 @@ export default function ProjectDocumentView({ project, canEdit, onUpdateProject,
             </div>
           </div>
         )}
+      </div>
+
+      <div style={{ flexShrink: 0, display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", fontSize: "11px", color: "var(--text-2)" }}>
+        <span style={{ color: "var(--text-3)" }}>สถานะ:</span>
+        {Object.entries(TASK_STATUS_META).map(([status, meta]) => (
+          <span key={status} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: status === "Pending" ? "var(--panel-2)" : meta.color, border: `1.5px solid ${meta.color}` }} />
+            {meta.full}
+          </span>
+        ))}
       </div>
 
       {/* Legend: ที่มาของบาร์ */}
@@ -627,7 +635,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
             )}
           </td>
           <td style={{ ...freezeTd(freezeLeft[2], { textAlign: "center" }) }}>
-            <span style={{ fontSize: "11px", fontWeight: 600, color: roleColor(task.role) }}>{task.role}</span>
+            <span className="timeline-role-text" style={{ color: roleColor(task.role) }}>{task.role}</span>
           </td>
           <td style={{ ...freezeTd(freezeLeft[3], { textAlign: "center" }) }}>
             <input
@@ -644,6 +652,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
           </td>
           <td style={{ ...freezeTd(freezeLeft[4], { textAlign: "center", padding: "2px 4px" }) }}>
             <DateInput
+              compact
               key={`s-${task.startDate || ""}`}
               value={task.startDate || ""}
               disabled={!canEdit}
@@ -654,6 +663,7 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
           </td>
           <td style={{ ...freezeTd(freezeLeft[5], { textAlign: "center", padding: "2px 4px" }) }}>
             <DateInput
+              compact
               key={`f-${task.finishDate || ""}`}
               value={task.finishDate || ""}
               disabled={!canEdit}

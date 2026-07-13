@@ -56,6 +56,14 @@ export default function LeadsPage() {
   const team = useTeam();
   const superuser = isSuperuser(role);
   const canCreate = role === 'marketing' || role === 'admin';
+  const [meId, setMeId] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/users/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((me) => setMeId(me?.id || null))
+      .catch(() => setMeId(null));
+  }, []);
 
   const [leads, setLeads] = useState([]);
   const [kpi, setKpi] = useState(null);
@@ -309,11 +317,11 @@ export default function LeadsPage() {
   const rowActions = (lead) => {
     const allowed = LEAD_TRANSITIONS[lead.status] || [];
     const inTeam = (role === "senior_ae" || role === "ac") && lead.team === team;
-    const isAssignee = role === "ae" && lead.assigneeId != null;
+    const isAssignee = role === "ae" && meId != null && lead.assigneeId === meId;
     const works = superuser || inTeam || isAssignee;
     const btns = [];
     if (allowed.includes("screen") && superuser) btns.push({ a: "screen", label: "คัดกรอง", icon: Filter, primary: true });
-    if (allowed.includes("assign") && (superuser || inTeam)) btns.push({ a: "assign", label: "มอบหมาย", icon: UsersIcon, primary: true });
+    if (allowed.includes("assign") && (role === "admin" || inTeam)) btns.push({ a: "assign", label: "มอบหมาย", icon: UsersIcon, primary: true });
     if (allowed.includes("contact") && works) btns.push({ a: "contact", label: "ติดต่อแล้ว", icon: PhoneCall, primary: true });
     if (allowed.includes("meeting") && works) btns.push({ a: "meeting", label: "นัดประชุม", icon: CalendarClock });
     if (allowed.includes("create_deal") && works && lead.status !== "qualified") btns.push({ a: "create_deal", label: "สร้างดีล", icon: FolderKanban, primary: true });
@@ -325,7 +333,8 @@ export default function LeadsPage() {
   const canEditRow = (lead) => {
     if (role === "admin") return true;
     if (["contacted", "meeting", "qualified", "disqualified"].includes(lead.status)) return false;
-    if (superuser || role === "marketing") return true;
+    if (superuser) return true;
+    if (role === "marketing") return meId != null && lead.createdBy === meId;
     return canLead;
   };
 
@@ -512,7 +521,7 @@ export default function LeadsPage() {
 
                           {/* Slot 5: Delete */}
                           <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
-                            {(role === "admin" || (superuser && !["contacted", "meeting", "qualified", "disqualified"].includes(lead.status))) && (
+                            {canDeleteRow(lead) && (
                               <button type="button" className="btn-icon danger" title="ลบลีด" aria-label={`ลบ ${lead.contactName}`} onClick={() => deleteLead(lead)}>
                                 <Trash2 size={14} aria-hidden="true" />
                               </button>

@@ -16,10 +16,11 @@ import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectDealsHub, { ProjectActivityFeed } from "@/components/pm/ProjectDealsHub";
-import ProjectFormModal from "@/components/pm/ProjectFormModal";
+import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
+import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import Select from "@/components/ui/Select";
-import StatusSelect, { taskStatusColor } from "@/components/pm/StatusSelect";
+import StatusSelect, { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import EmptyState from "@/components/ui/EmptyState";
@@ -31,6 +32,11 @@ import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/derived";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
+import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
+import { detailTabFromSearch } from "@/lib/salesDetailTabs";
+import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
+import { compactPersonName } from "@/lib/personName";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -83,7 +89,7 @@ function AssigneeField({ form, setForm, users }) {
         <option value="">— ไม่มอบหมาย —</option>
         {teams.map((tm) => (
           <optgroup key={tm} label={TEAM_LABELS[tm] || tm}>
-            {byTeam[tm].map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+            {byTeam[tm].map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name || u.email)}</option>)}
           </optgroup>
         ))}
       </Select>
@@ -180,14 +186,15 @@ export default function ProjectDetailPage() {
   const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" }); // list | table | document
   // เมนูครอบ (มติผู้ใช้): เปิดมาเจอ "ภาพรวม" (ศูนย์รวมดีล) ก่อน — กดเข้าไทม์ไลน์อีกชั้น
   // ถึงเห็นตารางขั้นตอน. sync กับ ?tab=timeline เพื่อให้ refresh/แชร์ลิงก์ค้างแท็บเดิม.
-  const [tab, setTab] = useState("overview"); // overview | timeline
+  const [tab, setTab] = useState("overview");
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "timeline") setTab("timeline");
+    setTab(detailTabFromSearch(window.location.search));
   }, []);
   const switchTab = (t) => {
     setTab(t);
+    if (t === "tasks") setView("table");
     const url = new URL(window.location.href);
-    if (t === "timeline") url.searchParams.set("tab", "timeline");
+    if (t !== "overview") url.searchParams.set("tab", t);
     else url.searchParams.delete("tab");
     window.history.replaceState(null, "", url);
   };
@@ -201,6 +208,7 @@ export default function ProjectDetailPage() {
   const [insertBeforeId, setInsertBeforeId] = useState(null); // แทรก "ก่อน" หัวแถวแรกของเฟส
   const [tableStatusFilter, setTableStatusFilter] = useState("all"); // Table view: all | pending | progress | completed
   const [tableSort, setTableSort] = useState("step"); // Table view: step | name | status | due
+  const [timelineDealFilters, setTimelineDealFilters] = useState([]);
   const [editTask, setEditTask] = useState(null); // ขั้นตอนที่กำลังแก้ผ่าน modal (ใช้จาก Table view)
   const [showEditTask, setShowEditTask] = useState(false);
   const [depPopover, setDepPopover] = useState(null); // popover แก้ predecessors ในตาราง — { task, x, y }
@@ -535,11 +543,17 @@ export default function ProjectDetailPage() {
       const samePhase = tasks.filter((t) => t.phase === taskForm.phase);
       if (samePhase.length) afterTaskId = samePhase[samePhase.length - 1].id;
     }
+    const anchorTask = allTasks.find((task) => task.id === (afterTaskId || insertBeforeId));
+    const newTaskDealId = anchorTask
+      ? (anchorTask.dealId || null)
+      : singleSelectedDeal(timelineDealFilters);
     const res = await fetch("/api/pm/project-tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         // URL may be a project code; tasks FK the internal id, so use the loaded row's id.
         projectId: data?.id ?? id,
+        // เมื่อกำลังดู segment ของดีลใด ขั้นตอนใหม่ต้องอยู่ใต้ดีลนั้น ไม่ปนเป็นงานกลาง
+        dealId: newTaskDealId,
         ...taskForm,
         afterTaskId: afterTaskId || undefined,
         beforeTaskId: insertBeforeId || undefined,
@@ -655,7 +669,9 @@ export default function ProjectDetailPage() {
 
   // ปุ่ม ▲▼ เลื่อนลำดับ — วางหน้า task ใช้ร่วมทุกวิว (List/Table/เอกสาร). disable ที่ขอบเฟส
   const moveButtons = (task) => {
-    if (!canEdit) return null;
+    // กรองเฉพาะดีลแล้วไม่ให้ reorder เพราะ API เรียงทั้งโครงการ; ป้องกัน segment
+    // ที่ซ่อนอยู่ถูกย้ายลำดับโดยผู้ใช้มองไม่เห็น
+    if (!canReorderTimeline) return null;
     const i = processedTasks.findIndex((t) => t.id === task.id);
     const canUp = i > 0 && processedTasks[i - 1].phase === task.phase;
     const canDown = i >= 0 && i < processedTasks.length - 1 && processedTasks[i + 1].phase === task.phase;
@@ -742,7 +758,11 @@ export default function ProjectDetailPage() {
     stageTaskEdit(task.id, { status: task.status === "Completed" ? "In Progress" : "Completed" });
   };
 
-  const tasks = data?.tasks || [];
+  const allTasks = useMemo(() => data?.tasks || [], [data?.tasks]);
+  const tasks = useMemo(
+    () => filterTimelineTasks(allTasks, timelineDealFilters),
+    [allTasks, timelineDealFilters],
+  );
   const phaseColorMap = useMemo(() => {
     const seen = [];
     tasks.forEach((t) => { if (t.phase && !seen.includes(t.phase)) seen.push(t.phase); });
@@ -824,11 +844,12 @@ export default function ProjectDetailPage() {
 
   const p = data;
   // โครงการกำพร้า (ไม่มีดีล) ไม่มีอะไรให้ดูในภาพรวม — เข้าไทม์ไลน์ตรงเหมือนเดิม
-  const hasDeals = (p.deals || []).length > 0;
-  const showTimeline = !hasDeals || tab === "timeline";
+  const showTimeline = tab === "timeline" || tab === "tasks";
   const hasWriteAccess = hasEditCap && !!data.canEdit;
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
+  const canReorderTimeline = canEdit && timelineDealFilters.length === 0;
+  const canAddTimelineTask = canEdit && timelineDealFilters.length <= 1;
   const linkedIds = new Set((p.projectProducts || []).map((x) => x.productId));
   // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โครงการที่ไม่ได้มาจากดีล
   // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต 01-002 อย่างน้อยหนึ่งตัว — ไม่งั้นไม่ต้องมี
@@ -847,6 +868,16 @@ export default function ProjectDetailPage() {
   const isDone = pct === 100;
   const accent = isDone ? "var(--green)" : "var(--accent)";
   const milestones = processedTasks.filter((t) => t.isMilestone);
+  const timelineFilterOptions = [
+    ...(p.deals || []).map((deal) => ({
+      value: deal.id,
+      label: `${deal.title} (${allTasks.filter((task) => task.dealId === deal.id).length} ขั้นตอน)`,
+    })),
+    ...(allTasks.some((task) => !task.dealId) ? [{
+      value: TIMELINE_CENTRAL,
+      label: `งานกลางโครงการ (${allTasks.filter((task) => !task.dealId).length} ขั้นตอน)`,
+    }] : []),
+  ];
 
   const renderChip = (Icon, label, color) => (
     <span className="chip" style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)`, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}>
@@ -1023,7 +1054,7 @@ export default function ProjectDetailPage() {
                 <History size={14} /> ประวัติเวอร์ชัน
               </button>
               <button
-                onClick={() => openGanttPrintWindow({ ...p, categoryFallback,
+                onClick={() => openGanttPrintWindow({ ...p, tasks, categoryFallback,
                   ...resolveAe(p.aeOwner),
                   projectProducts: enrichProducts(p.projectProducts),
                   // ถ้า live ถูกแก้หลังออก Rev (revStale) อย่าปั๊มเลข Rev ทางการทับเนื้อหาที่ต่าง —
@@ -1045,8 +1076,8 @@ export default function ProjectDetailPage() {
         <div style={{ padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
           <div style={{ display: "flex", gap: "24px", fontSize: "12px", flexWrap: "wrap" }}>
             <div><span style={{ color: "var(--text-3)" }}>วันเริ่ม: </span>{p.startDate || "-"}</div>
-            <div><span style={{ color: "var(--text-3)" }}>เลขที่ใบเสนอราคา: </span>{p.metadata?.quotationNumber || "-"}</div>
-            <div><span style={{ color: "var(--text-3)" }}>เลขที่ PO: </span>{p.metadata?.poNumber || "-"}</div>
+            <div><span style={{ color: "var(--text-3)" }}>แบรนด์: </span>{p.metadata?.brand || "-"}</div>
+            <div><span style={{ color: "var(--text-3)" }}>ดีล: </span>{(p.deals || []).length}</div>
             <div><span style={{ color: "var(--text-3)" }}>หมวดสินค้า: </span>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1059,30 +1090,39 @@ export default function ProjectDetailPage() {
         </div>
 
       {/* เมนูครอบ: ภาพรวม (ศูนย์รวมดีล) ↔ ไทม์ไลน์ — โครงการกำพร้าไม่มีดีลข้ามไปไทม์ไลน์เลย */}
-      {hasDeals && (
-        <div className="segmented" role="tablist" aria-label="ส่วนของโครงการ" style={{ marginBottom: 20, width: "fit-content" }}>
-          <button type="button" role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "active" : ""} onClick={() => switchTab("overview")}>
-            ภาพรวม
-          </button>
-          <button type="button" role="tab" aria-selected={tab === "timeline"} className={tab === "timeline" ? "active" : ""} onClick={() => switchTab("timeline")}>
-            ไทม์ไลน์ ({(p.tasks || []).filter((t) => t.status === "Completed").length}/{(p.tasks || []).length})
-          </button>
+      <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" />
+
+      {showTimeline && (p.deals || []).length > 1 && (
+        <div className="glass-panel" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>ไทม์ไลน์ที่แสดง</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>เลือกได้หลายดีล · ไม่เลือก = แสดงทั้งหมด</div>
+          </div>
+          <div style={{ marginLeft: "auto" }}>
+            <MultiSelectFilter
+              label="ดีลที่แสดง"
+              selected={timelineDealFilters}
+              onChange={setTimelineDealFilters}
+              options={timelineFilterOptions}
+            />
+          </div>
+          {timelineDealFilters.length > 0 && (
+            <span className="ui-badge" style={{ color: "var(--accent)", whiteSpace: "nowrap" }}>กำลังแสดง {tasks.length} ขั้นตอน</span>
+          )}
+          {timelineDealFilters.length > 1 && (
+            <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>
+          )}
         </div>
       )}
 
       {/* ภาพรวม — ศูนย์รวมโครงการ: จิ๊กซอว์ครอบดีล (KPI rollup + การ์ดต่อดีล) */}
-      {!showTimeline && (
+      {tab === "overview" && (
         <>
-          <ProjectDealsHub project={p} />
-          {/* การ์ดเมนูไทม์ไลน์ — กดเข้าไปถึงเห็นตารางขั้นตอนเต็ม */}
+          <ProjectDealsHub project={p} onChanged={load} />
+          {/* การ์ดเมนูไทม์ไลน์ — เลือกหลายดีลจากภาพรวม แล้วเปิดเข้าไปด้วย filter ชุดเดิม */}
           <div
             className="glass-panel"
-            role="button"
-            tabIndex={0}
-            onClick={() => switchTab("timeline")}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchTab("timeline"); } }}
-            style={{ padding: "16px 20px", marginBottom: 24, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
-            title="เปิดไทม์ไลน์โครงการ"
+            style={{ padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
           >
             <span style={{ background: "var(--accent)", color: "#fff", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
               <GanttChart size={18} />
@@ -1091,15 +1131,23 @@ export default function ProjectDetailPage() {
               <div style={{ fontWeight: 700, fontSize: 15 }}>ไทม์ไลน์โครงการ</div>
               <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>
                 {(() => {
-                  const doing = (p.tasks || []).filter((t) => t.status === "In Progress").map((t) => t.name);
-                  return doing.length ? `กำลังทำ: ${doing.slice(0, 2).join(", ")}${doing.length > 2 ? ` +${doing.length - 2}` : ""}` : "ขั้นตอนทั้งหมดของทุกดีลรวมในผืนเดียว";
+                  const doing = tasks.filter((t) => t.status === "In Progress").map((t) => t.name);
+                  return doing.length ? `กำลังทำ: ${doing.slice(0, 2).join(", ")}${doing.length > 2 ? ` +${doing.length - 2}` : ""}` : (timelineDealFilters.length ? "ไม่มีขั้นตอนที่กำลังทำในดีลที่เลือก" : "ขั้นตอนทั้งหมดของทุกดีลรวมในผืนเดียว");
                 })()}
               </div>
             </div>
+            {(p.deals || []).length > 1 && (
+              <MultiSelectFilter
+                label="ดีลที่แสดง"
+                selected={timelineDealFilters}
+                onChange={setTimelineDealFilters}
+                options={timelineFilterOptions}
+              />
+            )}
             <div style={{ flex: 1, minWidth: 140, display: "flex", alignItems: "center", gap: 10 }}>
               {(() => {
-                const total = (p.tasks || []).length;
-                const done = (p.tasks || []).filter((t) => t.status === "Completed").length;
+                const total = tasks.length;
+                const done = tasks.filter((t) => t.status === "Completed").length;
                 return (
                   <>
                     <div className="progress" style={{ flex: 1 }} role="progressbar" aria-valuenow={done} aria-valuemax={total} aria-label="ความคืบหน้าไทม์ไลน์">
@@ -1110,12 +1158,14 @@ export default function ProjectDetailPage() {
                 );
               })()}
             </div>
-            <span className="btn btn-primary" style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>
+            <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
               <GanttChart size={14} /> เปิดไทม์ไลน์
-            </span>
+            </button>
           </div>
         </>
       )}
+
+      {tab === "quotations" && <ProjectDealsHub project={p} onChanged={load} />}
 
       {p.status === "Dropped" && (
         <div style={{ marginBottom: "24px", padding: "18px 24px", background: "color-mix(in srgb, var(--red) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 40%, transparent)", borderRadius: "12px", borderLeft: "5px solid var(--red)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", zIndex: 10, position: "relative" }}>
@@ -1138,10 +1188,36 @@ export default function ProjectDetailPage() {
       {showTimeline && (
       <>
       <div style={{ opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all 0.3s", pointerEvents: isLocked ? "none" : "auto" }}>
+      <TimelineWorkspace
+        tasks={tasks}
+        canEdit={canEdit}
+        canAdd={canAddTimelineTask}
+        canReorder={canReorderTimeline}
+        dealId={singleSelectedDeal(timelineDealFilters)}
+        projectId={p.id}
+        view={view}
+        onViewChange={setView}
+        showViewSwitcher={false}
+        documentProject={{ ...p, tasks }}
+        canEditProjectFields={canEdit}
+        onUpdateProject={updateProject}
+        timelineContext={{
+          name: p.name,
+          customerName: p.customerName,
+          startDate: p.startDate,
+          brand: p.metadata?.brand,
+          status: getComputedStatus(p),
+          statusLabel: getComputedStatus(p),
+          statusColor: statusDotColor(getComputedStatus(p)),
+        }}
+        onChanged={load}
+        onError={(message) => setToast({ kind: "error", msg: message })}
+      />
+      {false && (<>
       {view === "document" ? (
         <div className="glass-panel" style={{ padding: "20px", marginBottom: "24px" }}>
           <ProjectDocumentView
-            project={p}
+            project={{ ...p, tasks }}
             canEdit={canEdit}
             onUpdateProject={updateProject}
             onUpdateTask={stageScheduleEdit}
@@ -1180,7 +1256,7 @@ export default function ProjectDetailPage() {
                   <option value="name">ชื่อขั้นตอน</option>
                 </Select>
               </div>
-              {canEdit && (
+              {canAddTimelineTask && (
                 <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} className="btn btn-primary sm">
                   <Plus size={14} /> เพิ่มขั้นตอน
                 </button>
@@ -1193,10 +1269,22 @@ export default function ProjectDetailPage() {
             <EmptyState icon={Filter}>ไม่มีขั้นตอนที่ตรงกับตัวกรอง</EmptyState>
           ) : (
             <div className="premium-glass-table table-responsive">
-              <table className="premium-table">
+              <table className="premium-table timeline-task-table">
+                <colgroup>
+                  <col style={{ width: canReorderTimeline && tableSort === "step" ? 78 : 52 }} />
+                  <col className="timeline-col-task" />
+                  <col style={{ width: 68 }} />
+                  <col style={{ width: 150 }} />
+                  <col style={{ width: 126 }} />
+                  <col style={{ width: 124 }} />
+                  <col style={{ width: 124 }} />
+                  <col style={{ width: 58 }} />
+                  <col style={{ width: 92 }} />
+                  {canEdit && <col style={{ width: 70 }} />}
+                </colgroup>
                 <thead>
                   <tr>
-                    <th style={{ width: canEdit && tableSort === "step" ? "78px" : "44px", textAlign: "center" }}>#</th>
+                    <th style={{ width: canReorderTimeline && tableSort === "step" ? "78px" : "44px", textAlign: "center" }}>#</th>
                     <th>ขั้นตอน</th>
                     <th>แผนก</th>
                     <th>ผู้รับผิดชอบ</th>
@@ -1212,7 +1300,7 @@ export default function ProjectDetailPage() {
                   {tableGroups.map((g) => (
                     <Fragment key={g.key}>
                       {g.phase && (
-                        <tr>
+                        <tr className="timeline-phase-row">
                           <td colSpan={canEdit ? 10 : 9} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13px" }}>
                               <span style={{ width: "9px", height: "9px", borderRadius: "3px", background: phaseColorMap[g.phase] || "var(--accent)" }} />
@@ -1229,27 +1317,33 @@ export default function ProjectDetailPage() {
                           <tr key={task.id} className="premium-row">
                             <td style={{ color: "var(--text-3)" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "4px", justifyContent: "center" }}>
-                                {canEdit && tableSort === "step" && moveButtons(task)}
+                                {canReorderTimeline && tableSort === "step" && moveButtons(task)}
                                 <span style={{ fontWeight: 700 }}>{task.displayNumber}</span>
                               </div>
                             </td>
                             <td style={{ fontWeight: 500 }}>
-                              <span onClick={() => canEdit && openEditModal(task)} title={canEdit ? "คลิกเพื่อแก้ไขขั้นตอน" : undefined} style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: canEdit ? "pointer" : "default" }}>
+                              <span className="timeline-task-name" onClick={() => canEdit && openEditModal(task)} title={canEdit ? `คลิกเพื่อแก้ไขขั้นตอน: ${task.name}` : task.name} style={{ cursor: canEdit ? "pointer" : "default" }}>
                                 {task.isMilestone && <Flag size={13} color="var(--amber)" strokeWidth={2.5} />}
-                                {task.name}
+                                <span>{task.name}</span>
                               </span>
                             </td>
-                            <td><span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span></td>
-                            <td style={{ fontSize: "13px" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : assignee}</td>
+                            <td><span className="timeline-role-text" style={{ color: rs.color }}>{task.role}</span></td>
+                            <td style={{ fontSize: "12px", maxWidth: 150 }} title={assignee === "—" ? undefined : assignee}>
+                              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignee === "—" ? <span style={{ color: "var(--text-3)" }}>—</span> : compactPersonName(assignee)}</span>
+                            </td>
                             <td>
                               {canEdit ? (
                                 <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "11px" }}>●</span>}</>
                               ) : (
-                                <span className="status-pill dot" style={{ "--dot": statusDotColor(task.status === "Completed" ? "Completed" : task.status === "In Progress" ? "In Progress" : "Pending") }}>{task.status}</span>
+                                <span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status), color: taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span>
                               )}
                             </td>
-                            <td style={{ fontSize: "12.5px", whiteSpace: "nowrap" }}>{formatDate(task.startDate)}</td>
-                            <td style={{ fontSize: "12.5px", whiteSpace: "nowrap" }}>{formatDate(task.finishDate)}</td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <DateInput compact value={task.startDate || ""} disabled={!canEdit} onChange={(value) => stageScheduleEdit(task.id, { startDate: value || null })} ariaLabel={`วันเริ่ม ${task.name}`} style={{ width: "116px" }} />
+                            </td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <DateInput compact value={task.finishDate || ""} min={task.startDate || undefined} disabled={!canEdit || !task.startDate} onChange={(value) => stageScheduleEdit(task.id, { finishDate: value || null })} ariaLabel={`วันจบ ${task.name}`} style={{ width: "116px" }} />
+                            </td>
                             <td style={{ textAlign: "center", fontSize: "12.5px" }}>{task.durationDays}</td>
                             <td onClick={(e) => e.stopPropagation()}>
                               {(() => {
@@ -1295,7 +1389,7 @@ export default function ProjectDetailPage() {
           {/* title row */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
-            {canEdit && (
+            {canAddTimelineTask && (
               <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} className="btn btn-primary sm">
                 <Plus size={14} /> เพิ่มขั้นตอน
               </button>
@@ -1407,10 +1501,6 @@ export default function ProjectDetailPage() {
                           {moveButtons(task)}
                         </div>
                       )}
-                      {/* Milestone icon outside card */}
-                      <div style={{ width: "28px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}
-                      </div>
                     <div className="pm-task-card" style={{ background: task.isMilestone ? "color-mix(in srgb, var(--amber) 8%, transparent)" : (isCompleted ? "color-mix(in srgb, var(--green) 5%, transparent)" : (isInProgress ? "var(--panel-2)" : "var(--panel)")), border: `1px solid ${isCompleted ? "color-mix(in srgb, var(--green) 30%, transparent)" : (isInProgress ? "var(--accent)" : (task.isMilestone ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)"))}`, boxShadow: isInProgress ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none" }}>
                       {showConnector && <div className="pm-task-connector" style={{ background: isCompleted ? "var(--green)" : "var(--border)" }} />}
 
@@ -1433,14 +1523,17 @@ export default function ProjectDetailPage() {
                           <>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px", gap: "8px" }}>
                               <h4 onClick={() => { if (canEdit) startEditing(task); }} title={canEdit ? "คลิกเพื่อแก้ไขขั้นตอน" : undefined} style={{ margin: 0, fontSize: "15px", color: isCompleted ? "var(--green)" : "var(--text)", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", cursor: canEdit ? "pointer" : "default" }}>
+                                {task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} style={{ flexShrink: 0 }} />}
                                 <span style={{ borderBottom: "1px dashed transparent" }} onMouseEnter={(e) => { if (canEdit) e.currentTarget.style.borderBottomColor = "var(--text-3)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderBottomColor = "transparent"; }}>{task.displayNumber}. {task.name}</span>
                               </h4>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
                                 {(() => { const rs = roleStyle(task.role); return (
-                                  <span className="ui-badge" style={{ color: rs.color, background: rs.bg, border: `1px solid ${rs.border}` }}>{task.role}</span>
+                                  <span className="timeline-role-text" style={{ color: rs.color }}>{task.role}</span>
                                 ); })()}
-                                {canEdit && (
+                                {canEdit ? (
                                   <><StatusSelect value={task.status} onChange={(v) => stageTaskEdit(task.id, { status: v })} />{dirty[task.id] && <span title="ยังไม่บันทึก" style={{ marginLeft: "4px", color: "var(--amber)", fontSize: "11px" }}>●</span>}</>
+                                ) : (
+                                  <span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status), color: taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span>
                                 )}
                                 {canEdit && (
                                   <div style={{ display: "flex", gap: "4px" }}>
@@ -1452,7 +1545,16 @@ export default function ProjectDetailPage() {
                             </div>
                             <div style={{ display: "flex", gap: "16px", fontSize: "12px", color: "var(--text-3)", marginTop: "8px", flexWrap: "wrap" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Clock size={14} /> {task.durationDays} วันทำการ</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Calendar size={14} /> {formatDate(task.startDate)} - {formatDate(task.finishDate)}</div>
+                              {canEdit ? (
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+                                  <Calendar size={14} />
+                                  <DateInput compact value={task.startDate || ""} onChange={(value) => stageScheduleEdit(task.id, { startDate: value || null })} ariaLabel={`วันเริ่ม ${task.name}`} style={{ width: 116 }} />
+                                  <span>–</span>
+                                  <DateInput compact value={task.finishDate || ""} min={task.startDate || undefined} disabled={!task.startDate} onChange={(value) => stageScheduleEdit(task.id, { finishDate: value || null })} ariaLabel={`วันจบ ${task.name}`} style={{ width: 116 }} />
+                                </div>
+                              ) : (
+                                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><Calendar size={14} /> {formatDate(task.startDate)} - {formatDate(task.finishDate)}</div>
+                              )}
                             </div>
                             {(() => {
                               const v = getVariance(task);
@@ -1495,6 +1597,7 @@ export default function ProjectDetailPage() {
           })}
         </div>
       )}
+      </>)}
       </div>
 
       {/* Footer — ยกเลิกโครงการ (Drop) หรือ On Hold */}
@@ -1528,7 +1631,7 @@ export default function ProjectDetailPage() {
       )}
 
       {/* ฟีดความเคลื่อนไหวรวมทุกดีล — อยู่ท้ายแท็บภาพรวม */}
-      {!showTimeline && <ProjectActivityFeed project={p} />}
+      {tab === "activities" && <ProjectActivityFeed project={p} onChanged={load} />}
 
       {/* Add task modal */}
       <Modal open={showAddTask} onClose={() => setShowAddTask(false)} title="เพิ่มขั้นตอน" size="md">
@@ -1794,7 +1897,7 @@ export default function ProjectDetailPage() {
       </Modal>
 
       {showEditProject && (
-        <ProjectFormModal
+        <SalesProjectCreateModal
           open={showEditProject}
           onClose={() => setShowEditProject(false)}
           editingId={p.id}
@@ -1809,8 +1912,6 @@ export default function ProjectDetailPage() {
           }}
           customers={customers}
           categories={categories}
-          allProducts={allProducts}
-          users={users}
         />
       )}
 
@@ -1826,12 +1927,10 @@ export default function ProjectDetailPage() {
 
       {/* เฟส 1: แถบยืนยันการเปลี่ยนแปลงที่ค้างอยู่ — ลอยล่างจอ เห็นจากทุกวิว */}
       {dirtyCount > 0 && (
-        <div style={{ position: "fixed", left: "50%", bottom: "20px", transform: "translateX(-50%)", zIndex: 60, display: "flex", alignItems: "center", gap: "12px", background: "var(--panel)", border: "1px solid var(--accent)", borderRadius: "12px", padding: "10px 16px", boxShadow: "0 8px 28px rgba(0,0,0,0.20)" }}>
-          <span style={{ fontSize: "13px", color: "var(--text)" }}>
-            มีการแก้ไข <b style={{ color: "var(--amber)" }}>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก
-          </span>
-          <button className="btn" onClick={cancelEdits} style={{ fontSize: "13px" }}>ยกเลิก</button>
-          <button className="btn btn-primary" onClick={confirmEdits} style={{ fontSize: "13px" }} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึก</button>
+        <div className="timeline-save-bar" role="status">
+          <span className="timeline-save-message">มีการแก้ไข <b>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก</span>
+          <button className="btn" onClick={cancelEdits}>ยกเลิกการแก้ไข</button>
+          <button className="btn btn-primary timeline-save-button" onClick={confirmEdits} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึกการเปลี่ยนแปลง</button>
         </div>
       )}
     </div>

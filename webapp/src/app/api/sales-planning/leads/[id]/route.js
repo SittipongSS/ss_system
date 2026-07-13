@@ -75,7 +75,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok(data);
 });
 
-// DELETE — เฉพาะ supervisor/admin (ลีดผิด/ซ้ำ) — ลีดที่เปิดลูกค้าแล้วห้ามลบ
+// DELETE — admin ลบได้ทุกสถานะ; supervisor/marketing ลบได้เฉพาะลีดที่ยังไม่เริ่มติดต่อ
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const role = user.role;
@@ -88,7 +88,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (['contacted', 'meeting', 'qualified', 'disqualified'].includes(before.status)) {
     if (role !== 'admin') {
-      return badRequest('ลีดที่มีการติดต่อแล้วจะลบไม่ได้');
+      return badRequest('ลีดที่มีการติดต่อแล้วลบได้เฉพาะแอดมิน');
     }
   }
 
