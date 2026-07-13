@@ -480,12 +480,11 @@ export function canAssignTask(assigner, assignee) {
   return false;
 }
 
-// ── Proxy work ("ดึงงานมาทำแทน") ─────────────────────────────────────
-// A teammate may pull someone else's task to do it on their behalf WITHOUT the
-// owner reassigning it. The doer is recorded in `proxyBy` (mig 0087); KPI credit
-// then follows the doer, not the nominal assignee. These are pure predicates —
-// the caller resolves the responsible person's team (respTeam) via the auth
-// directory and passes it in.
+// ── Task takeover ("ดึงงาน") ─────────────────────────────────────────
+// A teammate may confirm taking responsibility for someone else's task. The API
+// then moves assigneeId to that teammate. `proxyBy` remains supported only for
+// legacy rows created by the previous temporary proxy-work flow. These are pure
+// predicates; the caller resolves the current responsible person's team.
 
 // The user a task's KPI credit belongs to: whoever is actually doing it (a proxy
 // who pulled it) → else the assignee → else the owner.
@@ -493,9 +492,8 @@ export function taskCreditId(task) {
   return task?.proxyBy || task?.assigneeId || task?.ownerId || null;
 }
 
-// May `user` PULL this task to do on behalf? A teammate (shares team with the
-// responsible person, or a superuser) who isn't already the responsible person,
-// when nobody else currently holds it. `respTeam` = team of assignee||owner.
+// May `user` TAKE this task? A teammate (shares team with the responsible person,
+// or a superuser) who isn't already responsible, when no legacy proxy holds it.
 export function canPullTask(user, task, respTeam) {
   if (!user?.id || !task) return false;
   const respId = task.assigneeId || task.ownerId;
