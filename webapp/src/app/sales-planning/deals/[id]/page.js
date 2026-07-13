@@ -16,7 +16,7 @@ import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
 import { FORECAST_LEVELS, dealTypeBadge, forecastBadge, snapForecastLevel, MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
-import { brandThList } from "@/lib/master/brands";
+import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
@@ -80,20 +80,6 @@ function Stat({ label, value, hint }) {
       <div className="mono tabular-nums" style={{ marginTop: 8, fontSize: 20, fontWeight: 800 }}>{value}</div>
       {hint && <div style={{ marginTop: 4, color: "var(--text-3)", fontSize: 12 }}>{hint}</div>}
     </div>
-  );
-}
-
-function OverviewNavCard({ icon, title, value, hint, onClick }) {
-  return (
-    <button type="button" className="glass-panel detail-summary-card" onClick={onClick}>
-      <span className="detail-summary-icon">{icon}</span>
-      <span style={{ minWidth: 0, textAlign: "left" }}>
-        <span style={{ display: "block", fontSize: 13, color: "var(--text-3)", fontWeight: 600 }}>{title}</span>
-        <strong style={{ display: "block", marginTop: 3, fontSize: 18 }}>{value}</strong>
-        <span style={{ display: "block", marginTop: 2, fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hint}</span>
-      </span>
-      <ArrowRight size={16} style={{ marginLeft: "auto", flexShrink: 0, color: "var(--text-3)" }} />
-    </button>
   );
 }
 
@@ -311,6 +297,15 @@ export default function DealOverviewPage() {
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
+  const dealBrand = useMemo(() => {
+    const value = String(deal?.metadata?.brand || deal?.brand || "").trim();
+    const customer = customers.find((item) => item.id === deal?.customerId);
+    const brands = normalizeBrands(customer?.brands || []);
+    const key = value.toLocaleLowerCase("th-TH");
+    const matched = brands.find((item) => item.th.toLocaleLowerCase("th-TH") === key || item.en.toLocaleLowerCase("en-US") === key);
+    if (matched) return matched;
+    return { th: value, en: "" };
+  }, [customers, deal?.brand, deal?.customerId, deal?.metadata?.brand]);
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const [dealForm, setDealForm] = useState(null);
   const [savingDeal, setSavingDeal] = useState(false);
@@ -674,10 +669,17 @@ export default function DealOverviewPage() {
                 <span className="detail-hero-icon"><FolderKanban size={20} /></span>
                 <div style={{ minWidth: 0 }}>
                   <h1 style={{ margin: 0, fontSize: 20, fontWeight: 750, overflowWrap: "anywhere" }}>{deal.title}</h1>
-                  <div style={{ marginTop: 5, color: "var(--text-2)", fontSize: 13, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ marginTop: 7, color: "var(--text-2)", fontSize: 13, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
                     <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
-                    <span>·</span><span>AE: {deal.ownerName || "-"}{deal.team ? ` · ทีม ${deal.team}` : ""}</span>
+                    {(dealBrand.en || dealBrand.th) && (
+                      <><span>·</span><span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? <> · <strong style={{ color: "var(--text)" }}>{dealBrand.th}</strong></> : null}</span></>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 5, color: "var(--text-2)", fontSize: 13, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span>AE: {deal.ownerName || "-"}</span>
+                    <span>·</span><span>ทีม {deal.team || "-"}</span>
                     <span>·</span><span>เดือน FC: {deal.forecastMonth || "-"}</span>
+                    {!alreadyWon && deal.stage !== "lost" && <><span>·</span>{forecastBadge(deal.probability)}</>}
                   </div>
                 </div>
               </div>
@@ -685,14 +687,7 @@ export default function DealOverviewPage() {
             </div>
             <div style={{ padding: "12px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 15 }}>{stageBadge(deal.stage)}</span>
               {dealTypeBadge(dealTypeOf(deal))}
-              {deal.formulaName && <span className="ui-badge" style={{ color: "var(--text-2)" }}>สูตร {deal.formulaName}</span>}
-              {deal.metadata?.brand && <span className="ui-badge" style={{ color: "var(--text-2)" }}>แบรนด์ {deal.metadata.brand}</span>}
-              {!alreadyWon && deal.stage !== "lost" && forecastBadge(deal.probability)}
-              <span className="ui-badge" style={{ color: deal.depositPaid ? "var(--green)" : "var(--amber)" }}>
-                {deal.depositPaid ? "ได้รับมัดจำแล้ว" : "ยังไม่ยืนยันมัดจำ"}
-              </span>
             </div>
             {lc && <DealStepper steps={lc.steps} lost={deal.stage === "lost"} />}
             {lc?.nextAction && (
@@ -779,15 +774,10 @@ export default function DealOverviewPage() {
             )}
           </section>
 
-          <div className="detail-summary-grid">
-            <OverviewNavCard icon={<FileText size={18} />} title="ใบเสนอราคา" value={`${(data.quotations || []).length} ใบ`} hint={acceptedQuote ? `รับแล้ว ${money(acceptedQuote.totalAmount)}` : "ยังไม่มีใบที่รับแล้ว"} onClick={() => switchTab("quotations")} />
-            <OverviewNavCard icon={<ClipboardList size={18} />} title="งาน" value={`${dealTaskSummary.done}/${dealTaskSummary.total} เสร็จ`} hint={(data.dealTasks || []).find((task) => task.status !== "Completed")?.title || "ไม่มีงานค้าง"} onClick={() => switchTab("tasks")} />
-            <OverviewNavCard icon={<MessageSquare size={18} />} title="ความเคลื่อนไหว" value={`${timeline.length} รายการ`} hint={timeline[0]?.body || "ยังไม่มีความเคลื่อนไหว"} onClick={() => switchTab("activities")} />
-          </div>
           </>
           )}
 
-          {tab === "tasks" && (
+          {(tab === "tasks" || tab === "overview") && (
           <section id="deal-tasks" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <ClipboardList size={17} aria-hidden="true" />
@@ -832,7 +822,7 @@ export default function DealOverviewPage() {
 
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 430px), 1fr))",
+            gridTemplateColumns: "1fr",
             gap: 20,
             alignItems: "start",
           }}>
@@ -997,7 +987,7 @@ export default function DealOverviewPage() {
           </section>
           )}
 
-          {tab === "quotations" && (SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
+          {(tab === "quotations" || tab === "overview") && (SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
           <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
             {SALES_FEATURES.quotations && (
             <section className="glass-panel" style={{ padding: 16 }}>
@@ -1029,7 +1019,7 @@ export default function DealOverviewPage() {
             </section>
             )}
 
-            {SALES_FEATURES.documents && (
+            {tab === "quotations" && SALES_FEATURES.documents && (
             <section className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
                 <ClipboardList size={17} aria-hidden="true" />
@@ -1059,7 +1049,7 @@ export default function DealOverviewPage() {
           )}
 
             </div>
-            {tab === "activities" && (
+            {(tab === "activities" || tab === "overview") && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           {/* ไทม์ไลน์รวม: อัปเดตงาน + การเปลี่ยนสถานะ เรียงตามเวลาเดียวกัน — เห็นเรื่องราวของดีลในฟีดเดียว */}
           <section id="deal-timeline" className="glass-panel" style={{ padding: 16 }}>

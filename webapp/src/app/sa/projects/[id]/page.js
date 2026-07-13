@@ -4,18 +4,18 @@ import { useState, useEffect, useCallback, useMemo, Fragment, useRef } from "rea
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft, ArrowRight, Plus, PlusCircle, X, Flag, FileText, GanttChart,
+  ArrowLeft, Plus, PlusCircle, X, Flag, FileText, GanttChart,
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
   TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
   Activity, CircleDashed, Pause,
   Check, Printer, Table2, Filter, User, FolderX,
-  GitCommit, History, RotateCcw, ShieldCheck, PackageCheck, ExternalLink, MessageSquare,
+  GitCommit, History, RotateCcw, ShieldCheck, PackageCheck, ExternalLink,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
-import ProjectDealsHub, { ProjectActivityFeed } from "@/components/pm/ProjectDealsHub";
+import ProjectDealsHub, { ProjectActivityFeed, ProjectQuotationsCard } from "@/components/pm/ProjectDealsHub";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
@@ -889,7 +889,6 @@ export default function ProjectDetailPage() {
     label: `${deal.title} (${projectPersonalTasks.filter((task) => task.dealId === deal.id).length} งาน)`,
   }));
   const completedPersonalTasks = shownPersonalTasks.filter((task) => task.status === "Completed").length;
-  const projectActivityCount = (p.dealActivities || []).length + (p.dealStageHistory || []).length;
 
   const renderChip = (Icon, label, color) => (
     <span className="chip" style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)`, borderColor: `color-mix(in srgb, ${color} 25%, transparent)` }}>
@@ -1176,29 +1175,12 @@ export default function ProjectDetailPage() {
               <GanttChart size={14} /> เปิดไทม์ไลน์
             </button>
           </div>
-          <div className="detail-summary-grid" style={{ marginBottom: 24 }}>
-            <button type="button" className="glass-panel detail-summary-card" onClick={() => switchTab("quotations")}>
-              <span className="detail-summary-icon"><FileText size={18} /></span>
-              <span style={{ textAlign: "left", minWidth: 0 }}><span style={{ display: "block", color: "var(--text-3)", fontSize: 13 }}>ใบเสนอราคา</span><strong style={{ display: "block", marginTop: 3, fontSize: 18 }}>{(p.quotations || []).length} ใบ</strong><span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>รวมจากทุกดีลในโครงการ</span></span>
-              <ArrowRight size={16} style={{ marginLeft: "auto", color: "var(--text-3)" }} />
-            </button>
-            <button type="button" className="glass-panel detail-summary-card" onClick={() => switchTab("tasks")}>
-              <span className="detail-summary-icon"><ListTodo size={18} /></span>
-              <span style={{ textAlign: "left", minWidth: 0 }}><span style={{ display: "block", color: "var(--text-3)", fontSize: 13 }}>งาน</span><strong style={{ display: "block", marginTop: 3, fontSize: 18 }}>{projectPersonalTasks.filter((task) => task.status === "Completed").length}/{projectPersonalTasks.length} เสร็จ</strong><span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>ดึงจากงานของดีลทั้งหมด</span></span>
-              <ArrowRight size={16} style={{ marginLeft: "auto", color: "var(--text-3)" }} />
-            </button>
-            <button type="button" className="glass-panel detail-summary-card" onClick={() => switchTab("activities")}>
-              <span className="detail-summary-icon"><MessageSquare size={18} /></span>
-              <span style={{ textAlign: "left", minWidth: 0 }}><span style={{ display: "block", color: "var(--text-3)", fontSize: 13 }}>ความเคลื่อนไหว</span><strong style={{ display: "block", marginTop: 3, fontSize: 18 }}>{projectActivityCount} รายการ</strong><span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>รวมบันทึกและการเปลี่ยนสถานะ</span></span>
-              <ArrowRight size={16} style={{ marginLeft: "auto", color: "var(--text-3)" }} />
-            </button>
-          </div>
         </>
       )}
 
-      {tab === "quotations" && <ProjectDealsHub project={p} onChanged={load} />}
+      {(tab === "overview" || tab === "quotations") && <ProjectQuotationsCard project={p} />}
 
-      {tab === "tasks" && (
+      {(tab === "overview" || tab === "tasks") && (
         <section className="glass-panel" style={{ padding: "16px 20px", marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
             <ListTodo size={18} />
@@ -1692,7 +1674,7 @@ export default function ProjectDetailPage() {
       )}
 
       {/* ฟีดความเคลื่อนไหวรวมทุกดีล — อยู่ท้ายแท็บภาพรวม */}
-      {tab === "activities" && <ProjectActivityFeed project={p} onChanged={load} />}
+      {(tab === "overview" || tab === "activities") && <ProjectActivityFeed project={p} onChanged={load} />}
 
       {/* Add task modal */}
       <Modal open={showAddTask} onClose={() => setShowAddTask(false)} title="เพิ่มขั้นตอน" size="md">

@@ -137,6 +137,44 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
   );
 }
 
+// ใบเสนอราคาจริงที่รวมจากทุกดีล ใช้ชุดเดียวกันทั้งแท็บและหน้า Overview
+export function ProjectQuotationsCard({ project: p }) {
+  const dealById = useMemo(() => new Map((p.deals || []).map((deal) => [deal.id, deal])), [p.deals]);
+  const quotes = p.quotations || [];
+  return (
+    <section className="glass-panel" style={{ padding: "16px 20px", marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <FileText size={18} aria-hidden="true" />
+        <h2 style={{ margin: 0, fontSize: 16 }}>ใบเสนอราคา</h2>
+        <span className="ui-badge" style={{ color: "var(--text-3)" }}>{quotes.length} ใบ</span>
+        <div className="spacer" />
+        <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>
+      </div>
+      {quotes.length ? (
+        <div className="premium-glass-table table-responsive">
+          <table className="premium-table">
+            <thead><tr><th>เลขที่</th><th>ดีล</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr></thead>
+            <tbody>{quotes.map((quote) => {
+              const deal = dealById.get(quote.dealId);
+              const status = QUOTE_STATUS[quote.status];
+              return (
+                <tr key={quote.id} className="premium-row">
+                  <td><Link href={`/sa/quotations/${quote.id}`} className="linklike mono">{quote.quoteNumber}</Link></td>
+                  <td>{deal ? <Link href={`/sa/deals/${deal.id}`} className="linklike">{deal.title}</Link> : "-"}</td>
+                  <td><span className="ui-badge" style={{ color: status?.color || "var(--text-3)" }}>{status?.label || quote.status || "-"}</span></td>
+                  <td className="num mono tabular-nums">{fmtMoney(quote.totalAmount)}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </div>
+      ) : (
+        <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีใบเสนอราคา — สร้างได้จากเมนู <Link href="/sa/quotations" className="linklike">ใบเสนอราคา</Link></div>
+      )}
+    </section>
+  );
+}
+
 // ฟีดความเคลื่อนไหวรวมทุกดีล + การเปลี่ยนสถานะ เรียงเวลาเดียวกัน — วางท้ายหน้า
 // โครงการ (หลังไทม์ไลน์) แยกจาก hub เพื่อไม่ดันไทม์ไลน์ให้จมลงล่าง
 export function ProjectActivityFeed({ project: p, onChanged }) {
