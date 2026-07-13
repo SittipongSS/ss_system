@@ -3,7 +3,7 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, Target, X, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, RefreshCw, Target, X, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam, useRole } from "@/lib/roleContext";
 import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi } from "@/lib/permissions";
@@ -18,9 +18,9 @@ import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
 
 const DASHBOARD_TABS = [
   { key: "my", label: "แดชบอร์ดของฉัน" },
+  { key: "lead_kpi", label: "KPI ลีด" },
   { key: "overview", label: "KPI ดีล" },
   { key: "task_kpi", label: "KPI งาน" },
-  { key: "lead_kpi", label: "KPI ลีด" },
 ];
 
 // ดูเต็มจอสำหรับ element เดียว (คืน ref + สถานะ + ปุ่ม toggle). ใช้ซ้ำได้ทุกตาราง.
@@ -422,6 +422,11 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshKey(k => k + 1);
+  }, []);
 
   const months = useMemo(() => monthsForYear(year), [year]);
 
@@ -448,7 +453,7 @@ function DashboardContent() {
     } finally {
       setLoading(false);
     }
-  }, [months, month]);
+  }, [months, month, refreshKey]);
 
   useEffect(() => {
     load();
@@ -562,24 +567,29 @@ function DashboardContent() {
           </div>
         )}
 
-        <div className="tabs-header" role="tablist" aria-label="มุมมองภาพรวม">
-          {DASHBOARD_TABS.filter((t) => {
-            if (t.key === "overview" && !canSeeDealKpi(role)) return false; // Basic filter for overview
-            if (t.key === "task_kpi" && !canSeeKpi) return false;
-              if (t.key === "lead_kpi" && !canSeeLeadKpi(role)) return false;
-            return true;
-          }).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              className={`tab-btn ${tab === t.key ? "active" : ""}`}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="tabs-header" role="tablist" aria-label="มุมมองภาพรวม" style={{ display: "flex", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 4, flex: 1, overflowX: "auto" }}>
+            {DASHBOARD_TABS.filter((t) => {
+              if (t.key === "overview" && !canSeeDealKpi(role)) return false; // Basic filter for overview
+              if (t.key === "task_kpi" && !canSeeKpi) return false;
+                if (t.key === "lead_kpi" && !canSeeLeadKpi(role)) return false;
+              return true;
+            }).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.key}
+                className={`tab-btn ${tab === t.key ? "active" : ""}`}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="btn" onClick={handleRefresh} style={{ marginLeft: 8, flexShrink: 0, gap: 6, padding: "6px 12px", background: "white", border: "1px solid var(--border)", borderRadius: "6px", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+            <RefreshCw size={14} aria-hidden="true" /> รีเฟรชข้อมูล
+          </button>
         </div>
 
         {tab === "my" && (
