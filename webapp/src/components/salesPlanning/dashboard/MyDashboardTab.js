@@ -16,7 +16,7 @@ function ProgressBar({ value, total, color = "var(--violet)" }) {
   );
 }
 
-export default function MyDashboardTab({ month, refreshKey }) {
+export default function MyDashboardTab({ month }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -43,7 +43,7 @@ export default function MyDashboardTab({ month, refreshKey }) {
         }
       });
     return () => { active = false; };
-  }, [month, refreshKey]);
+  }, [month]);
 
   const target = data?.target || 0;
   const wonValue = data?.wonValue || 0;

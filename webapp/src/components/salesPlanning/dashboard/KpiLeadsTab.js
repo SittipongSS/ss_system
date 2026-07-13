@@ -8,7 +8,7 @@ import { fmtName } from "@/lib/format";
 
 const pct = (hit, total) => (total ? `${Math.round((hit / total) * 100)}%` : "-");
 
-export default function KpiLeadsTab({ month, teamFilter, refreshKey }) {
+export default function KpiLeadsTab({ month, teamFilter }) {
   const [kpi, setKpi] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -29,7 +29,7 @@ export default function KpiLeadsTab({ month, teamFilter, refreshKey }) {
     }
   }, [month, teamFilter]);
 
-  useEffect(() => { load(); }, [load, refreshKey]);
+  useEffect(() => { load(); }, [load]);
 
   const f = kpi?.funnel || {};
   const sla = kpi?.sla || {};
