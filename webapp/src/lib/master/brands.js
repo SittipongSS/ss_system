@@ -48,10 +48,12 @@ export function brandThList(brandsArrays) {
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
 }
 
-// ป้ายชื่อแบรนด์สำหรับ "แสดงผล" ระบบทั่วไป (tax/pm/sahamit/เอกสาร):
-// โชว์อังกฤษก่อน ถ้าไม่มีค่อยไทย (en || th) — ค่าเดียว.
+// กฎแสดงผลแบรนด์ทั้งระบบ: EN · TH. ถ้ามีภาษาเดียวจะแสดงเฉพาะภาษาที่มี.
 export function brandLabel(th, en) {
-  return (en || "").trim() || (th || "").trim();
+  const t = (th || "").trim();
+  const e = (en || "").trim();
+  if (t && e) return `${e} · ${t}`;
+  return e || t;
 }
 
 // เวอร์ชันรับสมาชิก brand ตัวเดียว (string หรือ {th,en}).
@@ -62,10 +64,7 @@ export function brandLabelOf(b) {
 // ป้ายชื่อแบรนด์สำหรับ "หน้า /database" โดยเฉพาะ: โชว์ทั้งสองภาษา EN · TH
 // (มีทั้งคู่ → "EN · TH", มีอย่างเดียว → อันนั้น).
 export function brandBoth(th, en) {
-  const t = (th || "").trim();
-  const e = (en || "").trim();
-  if (t && e) return `${e} · ${t}`;
-  return e || t;
+  return brandLabel(th, en);
 }
 export function brandBothOf(b) {
   return brandBoth(brandTh(b), brandEn(b));
@@ -79,6 +78,20 @@ export function brandSelectOptions(brands) {
     label: brandBothOf(brand),
     search: `${brand.th} ${brand.en}`.trim(),
   }));
+}
+
+// Resolve a legacy stored value (often TH-only) against a customer's brand
+// master before displaying it, so old deals/projects also render EN · TH.
+export function brandDisplayFromList(brands, value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const key = text.toLocaleLowerCase("th-TH");
+  const match = normalizeBrands(brands).find((brand) =>
+    brand.th.toLocaleLowerCase("th-TH") === key
+    || brand.en.toLocaleLowerCase("en-US") === key
+    || brandBothOf(brand).toLocaleLowerCase("th-TH") === key
+  );
+  return match ? brandBothOf(match) : text;
 }
 
 // หา EN ที่คู่กับชื่อ TH หนึ่งๆ ใน brands ของลูกค้า (ใช้ auto-fill ตอนเลือกแบรนด์

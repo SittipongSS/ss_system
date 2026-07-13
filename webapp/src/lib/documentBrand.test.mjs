@@ -22,4 +22,6 @@ test('quotation and sales order headers match the approved form metadata', () =>
     documentFormLine(DOCUMENT_FORMS.salesOrder),
     'FM-SA-03: Rev. No.00. 08/05/2568',
   );
+  assert.equal(DOCUMENT_FORMS.projectTimeline.code, 'FM-PD-05');
+  assert.equal(DOCUMENT_FORMS.projectTimeline.title, 'PROJECT TIMELINE');
 });

@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canAccessSahamit } from '@/lib/permissions';
 import { categoryOf } from '@/lib/master/categoryOf';
+import { brandLabel } from '@/lib/master/brands';
 
 // ── SAHAMIT server-side scope guard ───────────────────────────────────
 // The proxy only gates by role (coarse). EVERY /api/sahamit handler must call
@@ -84,7 +85,9 @@ export async function loadSahamitProducts(supabase, customerId) {
         id: p.id,
         fgCode: p.fgCode,
         name: p.productDescriptionEn || p.productDescription || p.fgCode,
-        brandName: p.brandNameEn || p.brandName || null,
+        brandName: brandLabel(p.brandName, p.brandNameEn) || null,
+        brandNameTh: p.brandName || null,
+        brandNameEn: p.brandNameEn || null,
         volume: p.volume ?? null,
         volumeUnit: p.volumeUnit ?? null,
         piecesPerCase: p.piecesPerCase ?? null, // ชิ้นต่อลัง — ตัวแปลง ลัง↔ชิ้น (0075)

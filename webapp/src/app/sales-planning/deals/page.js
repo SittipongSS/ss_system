@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, KpiCard, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
-import { brandThList } from "@/lib/master/brands";
+import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
@@ -600,7 +600,9 @@ export default function SalesPlanningPipelinePage() {
                             <AlertTriangle size={13} aria-label="FC ล่าสุดเปลี่ยนจากตอน map" title={`FC รอบ #${deal.forecastDrift.latestRoundNo} เปลี่ยนจากตอนสร้างโครงการ`} style={{ color: "var(--amber)", marginLeft: 6, verticalAlign: "-1px" }} />
                           )}
                         </strong>
-                        <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{deal.customerName || "-"}{deal.metadata?.brand ? ` · ${deal.metadata.brand}` : ""}</span>
+                        <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>
+                          {deal.customerName || "-"}{deal.metadata?.brand ? ` · ${brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, deal.metadata.brand)}` : ""}
+                        </span>
                       </Link>
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{stageBadge(deal.stage)}</td>

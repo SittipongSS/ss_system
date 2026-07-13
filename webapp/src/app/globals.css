@@ -4928,7 +4928,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 .shipment-print-logo {
   width: 168px;
-  height: 64px;
+  height: 76px;
   flex: 0 0 168px;
   border-radius: 8px;
   background-color: #18234f;
@@ -4942,7 +4942,7 @@ button.empty-state { width: 100%; font: inherit; }
   height: 168px;
   max-width: none;
   left: 0;
-  top: -57px;
+  top: -50px;
 }
 
 .shipment-print-kicker {
@@ -5067,7 +5067,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 @page {
   size: A4 portrait;
-  margin: 10mm;
+  margin: 36mm 10mm 10mm;
 }
 
 /* System-wide numeric typography: financial figures use the same clean sans
@@ -5142,6 +5142,16 @@ button.empty-state { width: 100%; font: inherit; }
     border-radius: 0;
     box-shadow: none;
     padding: 0;
+  }
+  .shipment-print-head {
+    position: fixed;
+    top: -29mm;
+    left: 0;
+    right: 0;
+    height: 26mm;
+    margin: 0;
+    background: #fff;
+    z-index: 20;
   }
 }
 /* Interactive Cards */

@@ -77,8 +77,8 @@ export function buildReportPrintHTML(report, meta = {}) {
   .sheet { width: 297mm; min-height: 210mm; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); }
   .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 12px; }
   .brand { display: flex; align-items: center; gap: 10px; }
-  .logo-wrap { width: 150px; height: 60px; background: #18234f; border-radius: 8px; flex-shrink: 0; overflow: hidden; position: relative; }
-  .logo-wrap img { position: absolute; width: 150px; height: 150px; max-width: none; left: 0; top: -50px; }
+  .logo-wrap { width: 150px; height: 72px; background: #18234f; border-radius: 8px; flex-shrink: 0; overflow: hidden; position: relative; }
+  .logo-wrap img { position: absolute; width: 150px; height: 150px; max-width: none; left: 0; top: -44px; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
   .doc-title .big { font-size: 16px; font-weight: 800; color: #c17a52; text-align: right; }
@@ -91,11 +91,12 @@ export function buildReportPrintHTML(report, meta = {}) {
   td .sub { font-size: 8.5px; color: #837868; }
   tr.sum td { font-weight: 700; background: #f0ebe0; border-top: 2px solid #c17a52; }
   .gen { margin-top: 14px; font-size: 9px; color: #837868; text-align: right; }
-  @page { size: A4 landscape; margin: 10mm; }
+  @page { size: A4 landscape; margin: 34mm 10mm 10mm; }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
     .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
+    .doc-top { position: fixed; top: -27mm; left: 0; right: 0; height: 24mm; margin: 0; background: #fff; z-index: 20; }
     thead { display: table-header-group; }
   }
 </style></head><body>
