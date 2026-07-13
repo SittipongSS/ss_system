@@ -29,9 +29,8 @@ const nextConfig = {
       { source: '/sa/deals/:path*', destination: '/sales-planning/deals/:path*' },
       { source: '/sa/targets', destination: '/sales-planning/targets' },
       { source: '/sa/targets/:path*', destination: '/sales-planning/targets/:path*' },
-      // เฟส B: /sa/projects (ไม่มี path) = หน้ารวมโครงการใหม่ (เดิม redirect ไป /sa/deals)
-      { source: '/sa/projects', destination: '/pm/projects' },
-      { source: '/sa/projects/:path*', destination: '/pm/projects/:path*' },
+      // /sa/projects is now a native App Router route. Do not rewrite it back
+      // to the removed /pm/projects pages; legacy /pm URLs redirect below.
       { source: '/sa/tasks', destination: '/pm/tasks' },
       { source: '/sa/tasks/:path*', destination: '/pm/tasks/:path*' },
     ];

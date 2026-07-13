@@ -19,6 +19,8 @@ import { brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import DealTimelineTable from "@/components/salesPlanning/DealTimelineTable";
+import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
@@ -148,12 +150,12 @@ export default function DealOverviewPage() {
   // เมนูครอบ (แบบเดียวกับหน้าโครงการ): ภาพรวม (default) ↔ ไทม์ไลน์ — sync ?tab=timeline
   const [tab, setTab] = useState("overview");
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "timeline") setTab("timeline");
+    setTab(detailTabFromSearch(window.location.search));
   }, []);
   const switchTab = (t) => {
     setTab(t);
     const url = new URL(window.location.href);
-    if (t === "timeline") url.searchParams.set("tab", "timeline");
+    if (t !== "overview") url.searchParams.set("tab", t);
     else url.searchParams.delete("tab");
     window.history.replaceState(null, "", url);
   };
@@ -687,14 +689,7 @@ export default function DealOverviewPage() {
           </section>
 
           {/* เมนูครอบ (แบบหน้าโครงการ): แท็บ ภาพรวม ↔ ไทม์ไลน์ — ตัดแถบทางลัด/ป้ายเฟสถัดไปออก (มติผู้ใช้) */}
-          <div className="segmented" role="tablist" aria-label="มุมมองดีล" style={{ width: "fit-content" }}>
-            <button type="button" role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "active" : ""} onClick={() => switchTab("overview")}>
-              ภาพรวม
-            </button>
-            <button type="button" role="tab" aria-selected={tab === "timeline"} className={tab === "timeline" ? "active" : ""} onClick={() => switchTab("timeline")}>
-              ไทม์ไลน์{taskSummary.total ? ` (${taskSummary.done}/${taskSummary.total})` : ""}
-            </button>
-          </div>
+          <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของดีล" />
 
           {!!data?.warnings?.length && (
             <div className="glass-panel" role="status" style={{ padding: "12px 14px", color: "var(--amber)", borderColor: "var(--amber)" }}>
@@ -837,7 +832,7 @@ export default function DealOverviewPage() {
               <span className="btn btn-primary" style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>เปิดไทม์ไลน์</span>
             </div>
           )}
-          {tab === "timeline" && (
+          {(tab === "timeline" || tab === "tasks") && (
           <section id="deal-pm" className="glass-panel" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <PackageCheck size={17} aria-hidden="true" />
@@ -936,7 +931,7 @@ export default function DealOverviewPage() {
           </section>
           )}
 
-          {tab === "overview" && (SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
+          {tab === "quotations" && (SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
           <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
             {SALES_FEATURES.quotations && (
             <section className="glass-panel" style={{ padding: 16 }}>
@@ -998,7 +993,7 @@ export default function DealOverviewPage() {
           )}
 
             </div>
-            {tab === "overview" && (
+            {tab === "activities" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
           {/* ไทม์ไลน์รวม: อัปเดตงาน + การเปลี่ยนสถานะ เรียงตามเวลาเดียวกัน — เห็นเรื่องราวของดีลในฟีดเดียว */}
           <section id="deal-timeline" className="glass-panel" style={{ padding: 16 }}>
