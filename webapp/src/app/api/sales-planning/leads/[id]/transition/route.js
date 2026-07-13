@@ -60,13 +60,19 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     patch.screenedAt = lead.screenedAt || now; // SLA นับครั้งแรก — ตีกลับแล้วคัดใหม่ไม่รีเซ็ต
     event.team = body.team;
   } else if (action === 'assign') {
-    if (!(role === 'admin' || inTeam)) return forbidden('กระจายลีดได้เฉพาะ Senior AE ของทีม หรือแอดมิน');
+    const canPull = (role === 'senior_ae' || role === 'ac') && lead.status === 'new' && !!user.team;
+    if (!(role === 'admin' || inTeam || canPull)) return forbidden('กระจายลีดได้เฉพาะ Senior AE ของทีม หรือแอดมิน');
     if (!body.assigneeId || !body.assigneeName) return badRequest('ต้องเลือก AE ผู้รับผิดชอบ');
     patch.assigneeId = body.assigneeId;
     patch.assigneeName = body.assigneeName;
     patch.assignedAt = now; // จุดเริ่ม SLA ติดต่อกลับ — มอบใหม่นับใหม่ (เจ้าของใหม่)
     event.assigneeId = body.assigneeId;
     event.assigneeName = body.assigneeName;
+    if (canPull && lead.status === 'new') {
+      patch.team = user.team;
+      event.team = user.team;
+      patch.screenedAt = lead.screenedAt || now;
+    }
   } else if (action === 'contact') {
     if (!workScope) return forbidden();
     patch.firstContactAt = lead.firstContactAt || now;

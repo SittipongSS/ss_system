@@ -308,11 +308,12 @@ export default function LeadsPage() {
   const rowActions = (lead) => {
     const allowed = LEAD_TRANSITIONS[lead.status] || [];
     const inTeam = (role === "senior_ae" || role === "ac") && lead.team === team;
+    const canPullNew = (role === "senior_ae" || role === "ac") && lead.status === "new" && !!team;
     const isAssignee = role === "ae" && lead.assigneeId != null;
-    const works = superuser || inTeam || isAssignee;
+    const works = superuser || inTeam || isAssignee || canPullNew;
     const btns = [];
     if (allowed.includes("screen") && superuser) btns.push({ a: "screen", label: "คัดกรอง", icon: Filter, primary: true });
-    if (allowed.includes("assign") && (superuser || inTeam)) btns.push({ a: "assign", label: "มอบหมาย", icon: UsersIcon, primary: true });
+    if (allowed.includes("assign") && (superuser || inTeam || canPullNew)) btns.push({ a: "assign", label: "มอบหมาย", icon: UsersIcon, primary: true });
     if (allowed.includes("contact") && works) btns.push({ a: "contact", label: "ติดต่อแล้ว", icon: PhoneCall, primary: true });
     if (allowed.includes("meeting") && works) btns.push({ a: "meeting", label: "นัดประชุม", icon: CalendarClock });
     if (allowed.includes("create_deal") && works && lead.status !== "qualified") btns.push({ a: "create_deal", label: "สร้างดีล", icon: FolderKanban, primary: true });
@@ -683,10 +684,10 @@ export default function LeadsPage() {
             )}
             {actionModal.action === "assign" && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                AE ผู้รับผิดชอบ (ทีม {TEAM_LABELS[actionModal.lead.team] || actionModal.lead.team})
+                AE ผู้รับผิดชอบ (ทีม {TEAM_LABELS[actionModal.lead.team || team] || (actionModal.lead.team || team)})
                 <select className="premium-select" value={actAssignee} onChange={(e) => setActAssignee(e.target.value)}>
                   <option value="">— เลือก AE —</option>
-                  {users.filter((u) => ["ae", "senior_ae"].includes(u.role) && (!actionModal.lead.team || u.team === actionModal.lead.team)).map((u) => (
+                  {users.filter((u) => ["ae", "senior_ae"].includes(u.role) && (!(actionModal.lead.team || team) || u.team === (actionModal.lead.team || team))).map((u) => (
                     <option key={u.id} value={u.id}>{fmtName(u)}{u.role === "senior_ae" ? " (Senior)" : ""}</option>
                   ))}
                 </select>

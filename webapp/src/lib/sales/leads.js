@@ -66,7 +66,7 @@ export const MEETING_MODE_LABELS = {
 
 // transition ที่ทำได้จากแต่ละสถานะ (กติกา flow — role บังคับเพิ่มใน handler)
 export const LEAD_TRANSITIONS = {
-  new: ['screen', 'disqualify'],
+  new: ['screen', 'assign', 'disqualify'],
   screened: ['assign', 'bounce', 'disqualify'],
   assigned: ['contact', 'bounce', 'disqualify'],
   contacted: ['meeting', 'create_deal', 'bounce', 'disqualify'],
