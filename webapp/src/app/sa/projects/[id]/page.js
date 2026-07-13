@@ -1271,7 +1271,8 @@ export default function ProjectDetailPage() {
             <div className="premium-glass-table table-responsive">
               <table className="premium-table timeline-task-table">
                 <colgroup>
-                  <col style={{ width: canReorderTimeline && tableSort === "step" ? 78 : 52 }} />
+                  <col style={{ width: 32 }} />
+                  <col style={{ width: 52 }} />
                   <col className="timeline-col-task" />
                   <col style={{ width: 68 }} />
                   <col style={{ width: 150 }} />
@@ -1279,12 +1280,13 @@ export default function ProjectDetailPage() {
                   <col style={{ width: 124 }} />
                   <col style={{ width: 124 }} />
                   <col style={{ width: 58 }} />
-                  <col style={{ width: 92 }} />
-                  {canEdit && <col style={{ width: 70 }} />}
+                  <col style={{ width: 120 }} />
+                  {canEdit && <col style={{ width: 120 }} />}
                 </colgroup>
                 <thead>
                   <tr>
-                    <th style={{ width: canReorderTimeline && tableSort === "step" ? "78px" : "44px", textAlign: "center" }}>#</th>
+                    <th className="timeline-move-head" aria-label="เลื่อนลำดับ"></th>
+                    <th>#</th>
                     <th>ขั้นตอน</th>
                     <th>แผนก</th>
                     <th>ผู้รับผิดชอบ</th>
@@ -1293,7 +1295,7 @@ export default function ProjectDetailPage() {
                     <th style={{ whiteSpace: "nowrap" }}>เสร็จ</th>
                     <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>วัน</th>
                     <th style={{ whiteSpace: "nowrap" }}>ขึ้นกับ</th>
-                    {canEdit && <th style={{ width: "70px", textAlign: "center" }}>จัดการ</th>}
+                    {canEdit && <th>จัดการ</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1301,7 +1303,7 @@ export default function ProjectDetailPage() {
                     <Fragment key={g.key}>
                       {g.phase && (
                         <tr className="timeline-phase-row">
-                          <td colSpan={canEdit ? 10 : 9} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
+                          <td colSpan={canEdit ? 11 : 10} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13px" }}>
                               <span style={{ width: "9px", height: "9px", borderRadius: "3px", background: phaseColorMap[g.phase] || "var(--accent)" }} />
                               {g.num ? `${g.num}. ` : ""}{g.phase}
@@ -1315,12 +1317,8 @@ export default function ProjectDetailPage() {
                         const assignee = resolveAssigneeName(task, users);
                         return (
                           <tr key={task.id} className="premium-row">
-                            <td style={{ color: "var(--text-3)" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "4px", justifyContent: "center" }}>
-                                {canReorderTimeline && tableSort === "step" && moveButtons(task)}
-                                <span style={{ fontWeight: 700 }}>{task.displayNumber}</span>
-                              </div>
-                            </td>
+                            <td className="timeline-move-cell">{canReorderTimeline && tableSort === "step" && moveButtons(task)}</td>
+                            <td className="timeline-order-cell" style={{ color: "var(--text-3)", fontWeight: 700 }}>{task.displayNumber}</td>
                             <td style={{ fontWeight: 500 }}>
                               <span className="timeline-task-name" onClick={() => canEdit && openEditModal(task)} title={canEdit ? `คลิกเพื่อแก้ไขขั้นตอน: ${task.name}` : task.name} style={{ cursor: canEdit ? "pointer" : "default" }}>
                                 {task.isMilestone && <Flag size={13} color="var(--amber)" strokeWidth={2.5} />}

@@ -474,23 +474,23 @@ export default function TimelineWorkspace({
       <div className="premium-glass-table table-responsive">
         <table className="premium-table timeline-task-table">
           <colgroup>
-            <col style={{ width: 56 }} /><col className="timeline-col-task" /><col style={{ width: 68 }} />
-            <col style={{ width: 150 }} /><col style={{ width: 126 }} /><col style={{ width: 124 }} />
-            <col style={{ width: 124 }} /><col style={{ width: 58 }} /><col style={{ width: 92 }} />
-            {canEdit && <col style={{ width: 92 }} />}
+            <col style={{ width: 32 }} /><col style={{ width: 52 }} /><col className="timeline-col-task" />
+            <col style={{ width: 68 }} /><col style={{ width: 150 }} /><col style={{ width: 126 }} />
+            <col style={{ width: 124 }} /><col style={{ width: 124 }} /><col style={{ width: 58 }} />
+            <col style={{ width: 120 }} />{canEdit && <col style={{ width: 120 }} />}
           </colgroup>
           <thead>
             <tr>
-              <th style={{ width: 56 }}>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
+              <th className="timeline-move-head" aria-label="เลื่อนลำดับ"></th><th>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
               <th>สถานะ</th><th>เริ่ม</th><th>เสร็จ</th><th className="num">วัน</th><th>ขึ้นกับ</th>
-              {canEdit && <th style={{ width: 118 }}>จัดการ</th>}
+              {canEdit && <th>จัดการ</th>}
             </tr>
           </thead>
           <tbody>
             {tableGroups.map((g, gi) => (
               <FragmentGroup key={`${g.phase}|${gi}`}>
                 <tr className="timeline-phase-row">
-                  <td colSpan={canEdit ? 10 : 9} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
+                  <td colSpan={canEdit ? 11 : 10} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13 }}>
                       <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[gi % PHASE_COLORS.length] }} />
                       {gi + 1}. {g.phase || "ไม่ระบุเฟส"}
@@ -500,15 +500,15 @@ export default function TimelineWorkspace({
                 </tr>
                 {g.tasks.map((t) => (
                   <tr key={t.id} className="premium-row" style={{ opacity: busyId === t.id ? 0.5 : 1 }}>
-                    <td className="mono">
+                    <td className="timeline-move-cell">
                       {canReorder && tableSort === "step" && (
-                        <span style={{ display: "inline-flex", flexDirection: "column", marginRight: 4, verticalAlign: "middle" }}>
+                        <span style={{ display: "inline-flex", flexDirection: "column" }}>
                           <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนขึ้น" onClick={() => move(t, -1)} disabled={!!busyId}>▴</button>
                           <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนลง" onClick={() => move(t, 1)} disabled={!!busyId}>▾</button>
                         </span>
                       )}
-                      {numberOf.get(t.id)}
                     </td>
+                    <td className="mono timeline-order-cell">{numberOf.get(t.id)}</td>
                     <td style={{ fontWeight: 600 }} title={t.note ? `${t.name}\n${t.note}` : t.name}>
                       <span className="timeline-task-name">
                         {t.isMilestone && <Flag size={12} aria-hidden="true" style={{ color: "var(--amber)", flexShrink: 0 }} />}
