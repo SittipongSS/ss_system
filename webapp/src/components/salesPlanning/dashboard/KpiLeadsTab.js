@@ -8,7 +8,7 @@ import { fmtName } from "@/lib/format";
 
 const pct = (hit, total) => (total ? `${Math.round((hit / total) * 100)}%` : "-");
 
-export default function KpiLeadsTab({ month, teamFilter, refreshKey }) {
+export default function KpiLeadsTab({ month, teamFilter }) {
   const [kpi, setKpi] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -19,8 +19,8 @@ export default function KpiLeadsTab({ month, teamFilter, refreshKey }) {
     try {
       const q = new URLSearchParams({ month });
       if (teamFilter && teamFilter !== "all") q.set("team", teamFilter);
-      const res = await fetch(`/api/sales-planning/lead-kpi?${q.toString()}`);
-      if (!res.ok) throw new Error((await res.json()).error || "โหลด KPI ลีดไม่สำเร็จ");
+      const res = await fetch(`/api/sales-planning/leads/kpi?${q.toString()}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลด KPI ลีดไม่สำเร็จ");
       setKpi(await res.json());
     } catch (e) {
       setError(e.message || "โหลด KPI ลีดไม่สำเร็จ");
@@ -29,7 +29,7 @@ export default function KpiLeadsTab({ month, teamFilter, refreshKey }) {
     }
   }, [month, teamFilter]);
 
-  useEffect(() => { load(); }, [load, refreshKey]);
+  useEffect(() => { load(); }, [load]);
 
   const f = kpi?.funnel || {};
   const sla = kpi?.sla || {};

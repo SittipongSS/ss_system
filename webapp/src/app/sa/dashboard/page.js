@@ -422,11 +422,6 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const handleRefresh = useCallback(() => {
-    setRefreshKey(k => k + 1);
-  }, []);
 
   const months = useMemo(() => monthsForYear(year), [year]);
 
@@ -437,7 +432,7 @@ function DashboardContent() {
       const [dashboards, sahamitRiskRes, reviewRes] = await Promise.all([
         Promise.all(months.map(async (m) => {
           const res = await fetch(`/api/sales-planning/dashboard?month=${encodeURIComponent(m)}`);
-          if (!res.ok) throw new Error((await res.json()).error || "โหลดภาพรวมไม่สำเร็จ");
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดภาพรวมไม่สำเร็จ");
           return res.json();
         })),
         SALES_FEATURES.sahamitRisk ? fetch(`/api/sales-planning/sahamit-risk?month=${encodeURIComponent(month)}`) : Promise.resolve(null),
@@ -453,7 +448,7 @@ function DashboardContent() {
     } finally {
       setLoading(false);
     }
-  }, [months, month, refreshKey]);
+  }, [months, month]);
 
   useEffect(() => {
     load();
@@ -504,7 +499,7 @@ function DashboardContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reviewMonth: month, team, status, notes: reviewNotes }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "save forecast review failed");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "save forecast review failed");
       await load();
     } catch (e) {
       setError(e.message || "save forecast review failed");
@@ -567,29 +562,24 @@ function DashboardContent() {
           </div>
         )}
 
-        <div className="tabs-header" role="tablist" aria-label="มุมมองภาพรวม" style={{ display: "flex", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 4, flex: 1, overflowX: "auto" }}>
-            {DASHBOARD_TABS.filter((t) => {
-              if (t.key === "overview" && !canSeeDealKpi(role)) return false; // Basic filter for overview
-              if (t.key === "task_kpi" && !canSeeKpi) return false;
-                if (t.key === "lead_kpi" && !canSeeLeadKpi(role)) return false;
-              return true;
-            }).map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                role="tab"
-                aria-selected={tab === t.key}
-                className={`tab-btn ${tab === t.key ? "active" : ""}`}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <button type="button" className="btn" onClick={handleRefresh} style={{ marginLeft: 8, flexShrink: 0, gap: 6, padding: "6px 12px", background: "white", border: "1px solid var(--border)", borderRadius: "6px", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
-            <RefreshCw size={14} aria-hidden="true" /> รีเฟรชข้อมูล
-          </button>
+        <div className="tabs-header" role="tablist" aria-label="มุมมองภาพรวม">
+          {DASHBOARD_TABS.filter((t) => {
+            if (t.key === "overview" && !canSeeDealKpi(role)) return false; // Basic filter for overview
+            if (t.key === "task_kpi" && !canSeeKpi) return false;
+              if (t.key === "lead_kpi" && !canSeeLeadKpi(role)) return false;
+            return true;
+          }).map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              className={`tab-btn ${tab === t.key ? "active" : ""}`}
+              onClick={() => setTab(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         {tab === "my" && (
