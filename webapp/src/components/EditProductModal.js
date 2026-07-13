@@ -226,6 +226,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
             <div className="form-group">
               <label>ลูกค้าเจ้าของสินค้า <span className="text-[var(--red)]">*</span></label>
               <SearchableSelect
+                entity="customer"
                 value={form.customerId ?? ""}
                 onChange={handleCustomerChange}
                 placeholder="ค้นหารหัส / ชื่อลูกค้า..."
@@ -251,6 +252,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               <div className="flex gap-1.5 items-center">
                 <div className="flex-1 min-w-0">
                   <SearchableSelect
+                    entity="brand"
                     disabled={!form.customerId}
                     options={brandOptionList.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
                     value={form.brandName || form.brandNameEn || ""}

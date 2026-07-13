@@ -1,5 +1,6 @@
 "use client";
 import Select from "@/components/ui/Select";
+import SortControl from "@/components/ui/SortControl";
 
 // ตารางไทม์ไลน์ของดีล — ความสามารถเทียบตารางโครงการ (มติผู้ใช้: "แก้ที่ดีลซิงก์โครงการ
 // แก้ที่โครงการซิงก์ดีล") ซึ่งได้ฟรีเพราะเป็น project_tasks แถวเดียวกัน: ดีลเห็นเฉพาะ
@@ -7,7 +8,7 @@ import Select from "@/components/ui/Select";
 // (PATCH/POST/DELETE /api/pm/project-tasks) — สิทธิ์+คำนวณวัน+สถานะอัตโนมัติฝั่ง server.
 // แก้ dependency (ขึ้นกับ) ยังทำที่หน้าโครงการ (แสดงเป็นชิปอย่างเดียวที่นี่).
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpDown, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, Filter, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
+import { AlertTriangle, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, Filter, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import PredecessorPicker from "@/components/pm/PredecessorPicker";
@@ -464,12 +465,12 @@ export default function TimelineWorkspace({
               <option value="all">ทุกสถานะ</option><option value="pending">รอดำเนินการ</option><option value="progress">กำลังทำ</option><option value="completed">เสร็จแล้ว</option>
             </Select>
           </div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <ArrowUpDown size={14} color="var(--text-3)" />
-            <Select className="premium-select" value={tableSort} onChange={(event) => setTableSort(event.target.value)} aria-label="เรียงลำดับไทม์ไลน์">
-              <option value="step">ลำดับขั้นตอน</option><option value="due">วันเสร็จ</option><option value="status">สถานะ</option><option value="name">ชื่อขั้นตอน</option>
-            </Select>
-          </div>
+          <SortControl
+            value={tableSort}
+            onChange={(event) => setTableSort(event.target.value)}
+            options={[{ value: "step", label: "ลำดับขั้นตอน" }, { value: "due", label: "วันเสร็จ" }, { value: "status", label: "สถานะ" }, { value: "name", label: "ชื่อขั้นตอน" }]}
+            title="เรียงลำดับไทม์ไลน์"
+          />
         </div>
       </div>
       <div className="premium-glass-table table-responsive">

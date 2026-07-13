@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, Undo2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
+import SortControl from "@/components/ui/SortControl";
 import StatusSelect from "@/components/pm/StatusSelect";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import EmptyState from "@/components/ui/EmptyState";
@@ -506,14 +507,14 @@ export default function TasksPage() {
             {assigneeOptions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </Select>
         )}
-        <div className="spacer toolbar" style={{ gap: "8px" }}>
-          <span className="toolbar-label"><ArrowUpDown size={14} /> เรียง</span>
-          <Select compact value={sortKey} onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); }} title="เรียงลำดับตาม">
-            {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-          </Select>
-          <button className="btn-icon" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}>
-            {sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-          </button>
+        <div className="spacer">
+          <SortControl
+            value={sortKey}
+            onChange={(event) => { setSortKey(event.target.value); setSortDir("asc"); }}
+            options={SORT_OPTIONS}
+            direction={sortDir}
+            onDirectionChange={setSortDir}
+          />
         </div>
         </div>
 

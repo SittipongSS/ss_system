@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText, Pencil, Plus, Search, Printer, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import DetailRow from "@/components/ui/DetailRow";
 import Modal from "@/components/Modal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -169,7 +170,7 @@ export default function QuotationsPage() {
               </thead>
               <tbody>
                 {filtered.map((r) => (
-                  <tr key={r.id} className="premium-row">
+                  <DetailRow key={r.id} href={`/sa/quotations/${r.id}`} className="premium-row">
                     <td>
                       <Link href={`/sa/quotations/${r.id}`} className="linklike"><strong className="mono">{r.quoteNumber}</strong></Link>
                       {r.revisionNo > 0 && <span style={{ display: "block", color: "var(--amber)", fontSize: 11 }}>ฉบับแก้ไข R{r.revisionNo}</span>}
@@ -213,7 +214,7 @@ export default function QuotationsPage() {
                         )}
                       </div>
                     </td>
-                  </tr>
+                  </DetailRow>
                 ))}
                 {!filtered.length && !loading && (
                   <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>

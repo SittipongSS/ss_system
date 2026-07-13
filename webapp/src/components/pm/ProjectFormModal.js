@@ -266,6 +266,7 @@ export default function ProjectFormModal({
           <div className="form-group col-span-2">
             <label>บริษัทลูกค้า</label>
             <SearchableSelect
+              entity="customer"
               value={form.customerId}
               // เปลี่ยนลูกค้า → ล้างแบรนด์ (ลิสต์แบรนด์ผูกกับลูกค้า)
               onChange={(v) => setForm((f) => ({ ...f, customerId: v, brand: v === f.customerId ? f.brand : "" }))}
@@ -297,6 +298,7 @@ export default function ProjectFormModal({
           <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <SearchableSelect
+                entity="brand"
                 disabled={!form.customerId}
                 value={form.brand}
                 onChange={(v) => setForm((f) => ({ ...f, brand: v }))}

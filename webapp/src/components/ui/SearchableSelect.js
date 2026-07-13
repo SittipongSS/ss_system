@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
+import { searchableForEntity } from "@/lib/uiRules";
 
 export default function SearchableSelect({
   value,
@@ -14,9 +15,11 @@ export default function SearchableSelect({
   emptyText,
   size = "md",
   searchable = true,
+  entity,
   className = "",
   ariaLabel,
 }) {
+  const searchEnabled = searchableForEntity(entity, searchable);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState({});
@@ -38,7 +41,7 @@ export default function SearchableSelect({
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const roomBelow = window.innerHeight - rect.bottom;
-      const estimatedHeight = Math.min(320, Math.max(80, filtered.length * 38 + (searchable ? 48 : 0)));
+      const estimatedHeight = Math.min(320, Math.max(80, filtered.length * 38 + (searchEnabled ? 48 : 0)));
       const above = roomBelow < estimatedHeight + 12 && rect.top > roomBelow;
       setMenuStyle({
         position: "fixed",
@@ -60,7 +63,7 @@ export default function SearchableSelect({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [filtered.length, open, searchable]);
+  }, [filtered.length, open, searchEnabled]);
 
   const choose = (option) => {
     onChange?.(option.value);
@@ -86,7 +89,7 @@ export default function SearchableSelect({
       </button>
       {open && !disabled && typeof document !== "undefined" ? createPortal(
         <div ref={menuRef} className="ui-select-menu ui-searchable-menu" style={menuStyle} role="listbox" aria-label={ariaLabel}>
-          {searchable ? (
+          {searchEnabled ? (
             <label className="ui-select-search">
               <Search size={15} aria-hidden="true" />
               <input

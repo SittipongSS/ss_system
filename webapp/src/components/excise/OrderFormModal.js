@@ -119,6 +119,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
                 <input className="premium-input w-full" value={order.customerName || "-"} disabled />
               ) : (
                 <SearchableSelect
+                  entity="customer"
                   value={customerId}
                   onChange={(v) => { setCustomerId(v); setItems([blankItem()]); }}
                   placeholder="ค้นหารหัส / ชื่อลูกค้า..."
@@ -163,6 +164,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
                     <div className="flex gap-2 items-start">
                       <div style={{ flex: 1 }}>
                         <SearchableSelect
+                          entity="product"
                           value={it.registrationId}
                           onChange={(v) => setItem(idx, { registrationId: v })}
                           placeholder={customerId ? "เลือกสินค้า (อนุมัติแล้ว)" : "เลือกลูกค้าก่อน"}

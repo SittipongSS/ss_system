@@ -1,5 +1,6 @@
 "use client";
 import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 // Editor ใบเสนอราคา FM-SA-01 (/sa/quotations/[id] — เฟส D):
 // แก้รายการ+ส่วนลดรายบรรทัด · ส่วนลดท้ายใบ · VAT · เงื่อนไขชำระ · หมายเหตุ (เลือกจาก
@@ -317,12 +318,20 @@ export default function QuotationEditorPage() {
               <div className="spacer" />
               {editable && (
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <Select className="premium-select" value={fgPick} onChange={(e) => setFgPick(e.target.value)} style={{ width: 260 }} aria-label="เลือกสินค้า (FG)">
-                    <option value="">— เพิ่มจากรหัส FG —</option>
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>{p.fgCode ? `${p.fgCode} · ` : ""}{p.productDescription || p.productDescriptionEn || "-"}</option>
-                    ))}
-                  </Select>
+                  <div style={{ width: 260 }}>
+                    <SearchableSelect
+                      entity="product"
+                      value={fgPick}
+                      onChange={setFgPick}
+                      ariaLabel="เลือกสินค้า (FG)"
+                      placeholder="ค้นหา FG / ชื่อสินค้า..."
+                      options={products.map((product) => ({
+                        value: product.id,
+                        label: `${product.fgCode ? `${product.fgCode} · ` : ""}${product.productDescription || product.productDescriptionEn || "-"}`,
+                        search: `${product.fgCode || ""} ${product.productDescription || ""} ${product.productDescriptionEn || ""} ${product.brandName || ""}`,
+                      }))}
+                    />
+                  </div>
                   <button type="button" className="btn btn-primary sm" onClick={addFgLine} disabled={!fgPick}><Plus size={13} aria-hidden="true" /> เพิ่ม FG</button>
                   <button type="button" className="btn ghost sm" onClick={addLine}><Plus size={13} aria-hidden="true" /> รายการเอง</button>
                 </div>

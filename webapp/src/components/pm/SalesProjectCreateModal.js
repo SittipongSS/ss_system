@@ -104,6 +104,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
           <div className="form-group col-span-2">
             <label>บริษัทลูกค้า <span style={{ color: "var(--red)" }}>*</span></label>
             <SearchableSelect
+              entity="customer"
               value={form.customerId}
               onChange={(customerId) => setForm((f) => ({ ...f, customerId, brand: "" }))}
               options={customers.map((c) => ({ value: c.id, label: c.arCode ? `${c.arCode} — ${c.name}` : c.name, search: `${c.arCode || ""} ${c.name}` }))}
@@ -113,7 +114,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
           <div className="form-group col-span-2">
             <label>แบรนด์</label>
             <div style={{ display: "flex", gap: 8 }}>
-              <div style={{ flex: 1 }}><SearchableSelect disabled={!form.customerId} value={form.brand} onChange={(brand) => setForm((f) => ({ ...f, brand }))} options={brandOptions.map((brand) => ({ value: brand, label: brand }))} placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"} /></div>
+              <div style={{ flex: 1 }}><SearchableSelect entity="brand" disabled={!form.customerId} value={form.brand} onChange={(brand) => setForm((f) => ({ ...f, brand }))} options={brandOptions.map((brand) => ({ value: brand, label: brand }))} placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"} /></div>
               <AddBrandButton customerId={form.customerId} disabled={!form.customerId} onCreated={(brand) => { setExtraBrands((rows) => [...rows, brand]); setForm((f) => ({ ...f, brand })); }} />
             </div>
           </div>
