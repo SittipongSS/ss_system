@@ -2,6 +2,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canReviewSalesForecast, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { quoteApprovalRequirement } from '@/lib/quotationApproval';
+import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       approvedAt: null,
       approvedBy: null,
       approvedByName: null,
+      approvalFingerprint: null,
       approvalNotes: body.notes || null,
       metadata: {
         ...(quote.metadata || {}),
@@ -70,6 +72,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       approvedAt: now,
       approvedBy: user.id || null,
       approvedByName: user.name || null,
+      approvalFingerprint: action === 'approve' ? quotationApprovalFingerprint(quote) : null,
       approvalNotes: body.notes || null,
     };
   }
