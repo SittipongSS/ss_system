@@ -16,9 +16,9 @@ import DateInput from "@/components/ui/DateInput";
 import { useCan } from "@/lib/roleContext";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { QUOTE_APPROVAL_AMOUNT_THRESHOLD } from "@/lib/quotationApproval";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtMoney } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
-import { addValidityDays } from "@/lib/sales/quoteValidity";
+import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 
 const EXCLUDE_STAGES = ["won", "in_project", "lost"];
 
@@ -45,6 +45,7 @@ function NewQuotationInner() {
   const [lines, setLines] = useState([]);
   const [quoteDate, setQuoteDate] = useState(() => businessDate());
   const [validityDays, setValidityDays] = useState(30);
+  const [validUntil, setValidUntil] = useState(() => addValidityDays(businessDate(), 30));
   const [discountType, setDiscountType] = useState("");
   const [discountValue, setDiscountValue] = useState(0);
   const [vatRate, setVatRate] = useState(7);
@@ -167,7 +168,6 @@ function NewQuotationInner() {
     vatRate,
   }), [lines, discountType, discountValue, vatRate]);
   const requiresApproval = totals.totalAmount >= QUOTE_APPROVAL_AMOUNT_THRESHOLD;
-  const validUntil = useMemo(() => addValidityDays(quoteDate, validityDays), [quoteDate, validityDays]);
 
   const addProductLine = () => {
     const product = products.find((item) => item.id === productPick);
@@ -294,11 +294,13 @@ function NewQuotationInner() {
                   placeholder={!projectId ? "เลือกโครงการก่อน" : "ค้นหาดีล…"} options={dealOptions} />
               </label>
               <label>วันที่ใบเสนอราคา
-                <DateInput value={quoteDate} onChange={setQuoteDate} required className="w-full" />
+                <DateInput value={quoteDate} onChange={(value) => { setQuoteDate(value); setValidUntil(addValidityDays(value, validityDays)); }} required className="w-full" />
               </label>
-              <label>กำหนดยืนราคา (วัน)
-                <input type="number" min="1" step="1" className="premium-input w-full" value={validityDays} onChange={(event) => setValidityDays(event.target.value)} />
-                <small style={{ color: "var(--text-3)", marginTop: 4 }}>ยืนราคาถึง {validUntil ? fmtDate(validUntil) : "-"}</small>
+              <label>ยืนราคาถึง
+                <DateInput value={validUntil} onChange={(value) => { setValidUntil(value); setValidityDays(validityDaysBetween(quoteDate, value)); }} min={quoteDate || undefined} className="w-full" />
+              </label>
+              <label>กำหนดยืนราคา (จำนวนวัน)
+                <input type="number" min="1" step="1" className="premium-input w-full" value={validityDays} onChange={(event) => { const days = event.target.value; setValidityDays(days); setValidUntil(addValidityDays(quoteDate, days)); }} />
               </label>
             </div>
             {(selectedProject || selectedDeal) && (

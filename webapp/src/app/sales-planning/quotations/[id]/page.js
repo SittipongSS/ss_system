@@ -19,7 +19,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
-import { canReviewSalesForecast, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
+import { canReviewSalesForecast, DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindow } from "@/lib/sales/quotePrint";
@@ -351,7 +351,12 @@ export default function QuotationEditorPage() {
               <div>
                 <span className={styles.eyebrow}>FM-SA-01 · QUOTATION</span>
                 <h2>{quote.customerName || "ไม่ระบุลูกค้า"}</h2>
-                <p>{quote.deal?.title || "ไม่ระบุดีล"}{quote.revisionNo > 0 ? ` · Revision ${quote.revisionNo}` : ""}</p>
+                <p>
+                  <span>โครงการ: {quote.deal?.project?.name || quote.deal?.project?.code || "ไม่ระบุ"}</span>
+                  <span>ดีล: {quote.deal?.title || "ไม่ระบุ"}</span>
+                  <span>ประเภทดีล: {dealType} · {DEAL_TYPE_LABELS[dealType]}</span>
+                  {quote.revisionNo > 0 && <span>Revision {quote.revisionNo}</span>}
+                </p>
               </div>
               <div className={styles.badgeRow}>
                 <span className={styles.stateBadge} style={{ "--state-color": statusMeta.color }}>{statusMeta.label}</span>
@@ -393,12 +398,14 @@ export default function QuotationEditorPage() {
             <label>วันที่ออกใบ
               <DateInput className={styles.documentDateInput} value={form.quoteDate} disabled={!editable} onChange={(value) => setF({ quoteDate: value, validUntil: addValidityDays(value, form.validityDays) })} />
             </label>
-            <label>กำหนดยืนราคา (วัน)
+            <label>ยืนราคาถึง
+              <DateInput className={styles.documentDateInput} value={form.validUntil || ""} min={form.quoteDate || undefined} disabled={!editable} onChange={(value) => setF({ validUntil: value, validityDays: validityDaysBetween(form.quoteDate, value) })} />
+            </label>
+            <label>กำหนดยืนราคา (จำนวนวัน)
               <input type="number" min="1" step="1" className={`premium-input ${styles.documentDateInput}`} value={form.validityDays} disabled={!editable} onChange={(event) => {
                 const validityDays = event.target.value;
                 setF({ validityDays, validUntil: addValidityDays(form.quoteDate, validityDays) });
               }} />
-              <small className={styles.validUntilHint}>ยืนราคาถึง {form.validUntil ? fmtDate(form.validUntil) : "-"}</small>
             </label>
           </section>
 

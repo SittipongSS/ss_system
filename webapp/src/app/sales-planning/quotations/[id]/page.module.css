@@ -67,6 +67,11 @@
   font-size: 13px;
 }
 
+.overviewHeading p span + span::before {
+  content: " · ";
+  color: var(--text-3);
+}
+
 .badgeRow {
   display: flex;
   justify-content: flex-end;
@@ -160,7 +165,7 @@
 
 .documentMeta {
   display: grid;
-  grid-template-columns: repeat(2, minmax(230px, 320px));
+  grid-template-columns: repeat(3, minmax(190px, 280px));
   align-items: end;
   justify-content: start;
   gap: 18px;
@@ -209,13 +214,6 @@
   margin-top: 32px;
   padding-top: 20px;
   border-top: 1px solid var(--border);
-}
-
-.validUntilHint {
-  display: block;
-  margin-top: 5px;
-  color: var(--text-3);
-  font-size: 11.5px;
 }
 
 .totalsPanel {
