@@ -91,12 +91,12 @@ export function buildReportPrintHTML(report, meta = {}) {
   td .sub { font-size: 8.5px; color: #837868; }
   tr.sum td { font-weight: 700; background: #f0ebe0; border-top: 2px solid #c17a52; }
   .gen { margin-top: 14px; font-size: 9px; color: #837868; text-align: right; }
-  @page { size: A4 landscape; margin: 34mm 10mm 10mm; }
+  @page { size: A4 landscape; margin: 31mm 10mm 10mm; }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
     .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
-    .doc-top { position: fixed; top: -27mm; left: 0; right: 0; height: 24mm; margin: 0; background: #fff; z-index: 20; }
+    .doc-top { position: fixed; top: -29mm; left: 0; right: 0; height: 25mm; margin: 0; background: #fff; z-index: 20; }
     thead { display: table-header-group; }
   }
 </style></head><body>
