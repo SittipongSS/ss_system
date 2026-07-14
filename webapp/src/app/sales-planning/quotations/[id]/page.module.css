@@ -293,8 +293,7 @@
 }
 
 .sidebar {
-  position: sticky;
-  top: calc(var(--topnav-h) + 16px);
+  align-self: start;
 }
 
 .summaryCard {
