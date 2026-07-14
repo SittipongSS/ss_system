@@ -6,10 +6,11 @@ import Select from "@/components/ui/Select";
 // FC Total / Actual / FC คงเหลือ ต่อแถว (rollup จากดีล — ห้ามกรอกมูลค่าที่โครงการ)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus } from "lucide-react";
+import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus, Pencil, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
+import ConfirmModal from "@/components/tax/ConfirmModal";
 import { useCan } from "@/lib/roleContext";
 import { dealTypeBadge, KpiCard } from "@/components/salesPlanning/ui";
 import { fmtMoneyCompact, fmtName } from "@/lib/format";
@@ -19,6 +20,7 @@ const money = (v) => fmtMoneyCompact(v);
 
 export default function ProjectsIndexPage() {
   const canView = useCan("salesplan:view");
+  const canEdit = useCan("salesplan:edit");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -26,6 +28,8 @@ export default function ProjectsIndexPage() {
   const [statusFilter, setStatusFilter] = useState("active"); // active = ไม่รวม Done/Drop
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
 
@@ -50,6 +54,18 @@ export default function ProjectsIndexPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const deleteProject = async () => {
+    if (!deleteTarget) return;
+    const res = await fetch(`/api/pm/projects/${deleteTarget.id}`, { method: "DELETE" });
+    const payload = await res.json().catch(() => ({}));
+    setDeleteTarget(null);
+    if (!res.ok) {
+      setError(payload.error || "ลบโครงการไม่สำเร็จ");
+      return;
+    }
+    await load();
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -149,6 +165,7 @@ export default function ProjectsIndexPage() {
                   <th className="num">FC คงเหลือ</th>
                   <th>ขั้นตอน</th>
                   <th>ผู้ดูแล (AE)</th>
+                  <th style={{ textAlign: "right" }}>จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -156,6 +173,8 @@ export default function ProjectsIndexPage() {
                   const r = p.dealsRollup || {};
                   const projectBrand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand);
                   const firstDeal = (p.deals || [])[0];
+                  const canEditProject = canEdit && p.canEdit && !["On Hold", "Dropped", "Completed"].includes(p.status);
+                  const canDeleteProject = !!p.canDelete;
                   return (
                     <DetailRow key={p.id} href={`/sa/projects/${p.code || p.id}`} className="premium-row">
                       <td>
@@ -186,12 +205,27 @@ export default function ProjectsIndexPage() {
                       <td className="num mono" style={{ color: (r.fcRemaining || 0) > 0 ? "var(--amber)" : "var(--text-3)" }}>{money(r.fcRemaining || 0)}</td>
                       <td>{taskProgress(p)}</td>
                       <td>{p.aeOwner ? fmtName({ name: p.aeOwner }) : (p.team || "-")}</td>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        <div className="flex items-center gap-2 justify-end">
+                          {canEditProject && (
+                            <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => setEditingProject(p)} aria-label={`แก้ไข ${p.name || p.code}`} title="แก้ไขโครงการ">
+                              <Pencil size={15} aria-hidden="true" />
+                            </button>
+                          )}
+                          {canDeleteProject && (
+                            <button type="button" className="btn-icon danger" onClick={() => setDeleteTarget(p)} aria-label={`ลบ ${p.name || p.code}`} title="ลบโครงการ">
+                              <Trash2 size={15} aria-hidden="true" />
+                            </button>
+                          )}
+                          {!canEditProject && !canDeleteProject && <span style={{ color: "var(--text-3)" }}>-</span>}
+                        </div>
+                      </td>
                     </DetailRow>
                   );
                 })}
                 {!filtered.length && !loading && (
                   <tr>
-                    <td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={9} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีโครงการตามตัวกรองนี้
                     </td>
                   </tr>
@@ -202,9 +236,16 @@ export default function ProjectsIndexPage() {
         </section>
         </div>
       <SalesProjectCreateModal
-        open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        open={showCreateModal || !!editingProject}
+        onClose={() => { setShowCreateModal(false); setEditingProject(null); }}
+        editingId={editingProject?.id || null}
+        initialData={editingProject}
         onSuccess={(data) => {
+          if (editingProject) {
+            setEditingProject(null);
+            load();
+            return;
+          }
           setShowCreateModal(false);
           const project = data?.project;
           if (project?.code || project?.id) window.location.href = `/sa/projects/${project.code || project.id}`;
@@ -212,6 +253,14 @@ export default function ProjectsIndexPage() {
         }}
         customers={customers}
         categories={categories}
+      />
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={deleteProject}
+        title="ลบโครงการ"
+        message={deleteTarget ? `ต้องการลบโครงการ “${deleteTarget.code || deleteTarget.id} — ${deleteTarget.name || "-"}” และขั้นตอนทั้งหมดใช่หรือไม่?${(deleteTarget.deals || []).length ? " หากโครงการยังผูกกับดีล ระบบจะไม่อนุญาตให้ลบจากหน้านี้" : ""}` : ""}
+        confirmLabel="ลบ"
       />
     </Workspace>
   );

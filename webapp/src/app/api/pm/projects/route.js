@@ -1,4 +1,4 @@
-import { viewScope, can } from '@/lib/permissions';
+import { viewScope, can, canDeleteRecord, inPmProjectScope } from '@/lib/permissions';
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
 import { rollupDeals } from '@/lib/sales/projectRollup';
 
@@ -50,6 +50,13 @@ export const GET = withUser(async ({ user, supabase }) => {
       p.deals = dealsByProject[p.id] || [];
       p.dealsRollup = rollupDeals(p.deals);
     }
+  }
+
+  // Expose row-level actions from the same permission rules used by the detail
+  // and mutation endpoints, so the project table never guesses from role names.
+  for (const project of data || []) {
+    project.canEdit = inPmProjectScope(user, project);
+    project.canDelete = canDeleteRecord(user, 'projects', project);
   }
 
   return ok(data);
