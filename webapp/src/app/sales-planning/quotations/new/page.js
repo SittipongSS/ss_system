@@ -17,6 +17,7 @@ import { useCan } from "@/lib/roleContext";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { QUOTE_APPROVAL_AMOUNT_THRESHOLD } from "@/lib/quotationApproval";
 import { fmtMoney } from "@/lib/format";
+import { businessDate } from "@/lib/businessDate";
 
 const EXCLUDE_STAGES = ["won", "in_project", "lost"];
 
@@ -41,7 +42,7 @@ function NewQuotationInner() {
   const [products, setProducts] = useState([]);
   const [productPick, setProductPick] = useState("");
   const [lines, setLines] = useState([]);
-  const [quoteDate, setQuoteDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [quoteDate, setQuoteDate] = useState(() => businessDate());
   const [validUntil, setValidUntil] = useState("");
   const [discountType, setDiscountType] = useState("");
   const [discountValue, setDiscountValue] = useState(0);

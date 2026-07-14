@@ -2,6 +2,8 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
+import { quoteApprovalRequirement } from '@/lib/quotationApproval';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +38,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   const nextRev = (maxRow?.revisionNo ?? quote.revisionNo ?? 0) + 1;
   const now = new Date().toISOString();
+  const approval = quoteApprovalRequirement(quote, quote.metadata || {});
 
   const newId = genId('QT');
   // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน
@@ -53,7 +56,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       revisionNo: nextRev,
       revisedFromId: quote.id,
       status: 'draft',
-      quoteDate: new Date().toISOString().slice(0, 10),
+      quoteDate: businessDate(),
       validUntil: quote.validUntil,
       customerId: quote.customerId,
       customerName: quote.customerName,
@@ -73,9 +76,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       discountAmount: quote.discountAmount,
       vatRate: quote.vatRate,
       paymentTerms: quote.paymentTerms,
-      // ยอดเท่าเดิมตอน clone — เงื่อนไขอนุมัติคงเดิม; แก้ยอดใน draft ใหม่จะประเมินซ้ำที่ PATCH
-      approvalStatus: quote.approvalStatus === 'approved' ? 'approved' : quote.approvalStatus,
-      approvalReason: quote.approvalReason,
+      // A revision is new commercial content and must never inherit approval.
+      approvalStatus: approval.required ? 'pending' : 'not_required',
+      approvalReason: approval.reason,
+      approvalRequestedAt: approval.required ? now : null,
+      approvalRequestedBy: approval.required ? user.id || null : null,
+      approvalRequestedByName: approval.required ? user.name || null : null,
+      approvalFingerprint: null,
+      approvedAt: null,
+      approvedBy: null,
+      approvedByName: null,
       notes: quote.notes,
       metadata: { ...(quote.metadata || {}), revisedFrom: quote.quoteNumber },
       createdBy: user.id || null,

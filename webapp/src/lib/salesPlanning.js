@@ -1,4 +1,5 @@
 import { can, inScope, isSuperuser } from '@/lib/permissions';
+import { businessMonthKey } from '@/lib/businessDate';
 
 export const DEAL_STAGES = [
   'lead',
@@ -197,7 +198,7 @@ export function dealAuditLabel(deal) {
 // ต่อเดือน — มติ #3 · R = revision เริ่ม 0). เลขรันออกจาก DB แบบ atomic
 // (RPC next_quote_number — mig 0092) กันเลขซ้ำเมื่อสร้างพร้อมกัน.
 export async function generateQuoteNumber(supabase, now = new Date()) {
-  const month = `${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+  const month = businessMonthKey(now);
   const { data, error } = await supabase.rpc('next_quote_number', { p_month: month });
   if (error) throw new Error(`ออกเลขใบเสนอราคาไม่สำเร็จ: ${error.message}`);
   const base = `QT-${month}${String(data).padStart(4, '0')}`;

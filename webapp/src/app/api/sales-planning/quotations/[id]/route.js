@@ -1,6 +1,5 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { isSuperuser } from '@/lib/permissions';
 import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
   quoteTotals, toMoney,
@@ -8,6 +7,8 @@ import {
 import { quoteApprovalRequirement } from '@/lib/quotationApproval';
 import { normalizeManualLines } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
+import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
+import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,18 +78,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const vatRate = toMoney('vatRate' in body ? body.vatRate : before.vatRate, 0);
     const totals = quoteTotals(newLines, { discountType, discountValue, vatRate });
     Object.assign(patch, totals, { discountType, discountValue, vatRate });
-    // ยอดเปลี่ยน → เงื่อนไขอนุมัติประเมินใหม่ (เพดาน server-side — ห้ามหลุดผ่านการแก้ยอด)
-    const approval = quoteApprovalRequirement(totals, before.metadata || {});
-    if (approval.required && before.approvalStatus !== 'approved') {
-      patch.approvalStatus = 'pending';
-      patch.approvalReason = approval.reason;
-      patch.approvalRequestedAt = now;
-      patch.approvalRequestedBy = user.id || null;
-      patch.approvalRequestedByName = user.name || null;
-    } else if (!approval.required && before.approvalStatus === 'pending') {
-      patch.approvalStatus = 'not_required';
-      patch.approvalReason = null;
-    }
   }
 
   // งวดชำระ — recompute ยอดงวดจากยอดรวมล่าสุด (patch.totalAmount ถ้ายอดเปลี่ยน, ไม่งั้น before)
@@ -106,15 +95,50 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!('paymentTerms' in body)) patch.paymentTerms = paymentPlanSummary(plan, patch.totalAmount);
   }
 
-  const { data, error } = await supabase.from('quotations').update(patch).eq('id', id).select().single();
-  if (error) return fail(error.message, 500);
-
-  if (newLines && 'lines' in body) {
-    await supabase.from('quotation_lines').delete().eq('quotationId', id);
-    const rows = newLines.map((l) => ({ ...l, quotationId: id }));
-    const { error: lineErr } = await supabase.from('quotation_lines').insert(rows);
-    if (lineErr) return fail(`บันทึกรายการไม่สำเร็จ: ${lineErr.message}`, 500);
+  // Any commercial-content edit invalidates the approval that was bound to the
+  // previous fingerprint. This includes payment terms, not only the grand total.
+  const approvalContentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
+    || 'notes' in body || 'quoteDate' in body || 'validUntil' in body;
+  const finalLines = newLines || before.lines || [];
+  let finalQuote = { ...before, ...patch, lines: finalLines };
+  if (approvalContentChanged) {
+    const approval = quoteApprovalRequirement(finalQuote, before.metadata || {});
+    Object.assign(patch, {
+      // Editing document content after it was sent creates a new draft state.
+      ...(before.status === 'sent' && body.status !== 'sent' ? { status: 'draft' } : {}),
+      approvalStatus: approval.required ? 'pending' : 'not_required',
+      approvalReason: approval.reason,
+      approvalRequestedAt: approval.required ? now : null,
+      approvalRequestedBy: approval.required ? user.id || null : null,
+      approvalRequestedByName: approval.required ? user.name || null : null,
+      approvalFingerprint: null,
+      approvedAt: null,
+      approvedBy: null,
+      approvedByName: null,
+    });
+    finalQuote = { ...before, ...patch, lines: finalLines };
   }
+
+  if ('status' in body && body.status === 'sent') {
+    const readiness = validateDocumentReadiness({
+      action: 'send',
+      status: before.status,
+      lineCount: finalLines.length,
+      totalAmount: finalQuote.totalAmount,
+      approvalStatus: patch.approvalStatus || before.approvalStatus,
+      approvalFingerprint: patch.approvalFingerprint ?? before.approvalFingerprint,
+      currentFingerprint: quotationApprovalFingerprint(finalQuote, finalLines),
+    });
+    if (!readiness.ok) return badRequest(readiness.error);
+  }
+
+  const rows = newLines && 'lines' in body ? newLines : null;
+  const { error } = await supabase.rpc('save_quotation_content', {
+    p_quote_id: id,
+    p_content: patch,
+    p_lines: rows,
+  });
+  if (error) return fail(error.message, 500);
 
   const after = await loadQuote(supabase, id);
   await recordAudit({ user, action: 'update', entityType: 'quotation', entityId: id, before, after, summary: `แก้ไขใบเสนอราคา ${before.quoteNumber}`, request: req });
@@ -129,7 +153,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const before = await loadQuote(supabase, id);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
   if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
-  if (before.status !== 'draft' && !isSuperuser(user.role)) {
+  if (before.status !== 'draft') {
     return badRequest('ลบได้เฉพาะฉบับร่าง — ใบที่ส่งแล้วให้ยกเลิก (cancel) หรือออก Revise แทน');
   }
   const { error } = await supabase.from('quotations').delete().eq('id', id);

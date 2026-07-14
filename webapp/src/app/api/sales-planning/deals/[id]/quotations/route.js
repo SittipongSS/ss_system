@@ -14,6 +14,8 @@ import {
 import { quoteApprovalRequirement } from '@/lib/quotationApproval';
 import { normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
+import { businessDate } from '@/lib/businessDate';
+import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,11 +94,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // งวดชำระ: เติมยอดจาก % ของยอดรวม + สรุปเป็นข้อความ paymentTerms (แก้ทับได้)
   const paymentPlan = normalizePaymentPlan(body.paymentPlan, totals.totalAmount);
   const approval = quoteApprovalRequirement(totals, body.metadata || {});
-  if (body.status === 'sent' && !(totals.totalAmount > 0)) {
-    return badRequest('ยอดรวมต้องมากกว่า 0 ก่อนส่งลูกค้า');
-  }
-  if (body.status === 'sent' && approval.required) {
-    return badRequest('ยอดนี้ต้องบันทึกร่างและรออนุมัติก่อนส่งลูกค้า');
+  if (body.status === 'sent') {
+    const readiness = validateDocumentReadiness({
+      action: 'send',
+      status: 'draft',
+      lineCount: lines.length,
+      totalAmount: totals.totalAmount,
+      approvalStatus: approval.required ? 'pending' : 'not_required',
+    });
+    if (!readiness.ok) return badRequest(readiness.error);
   }
   // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
   const { base, quoteNumber } = await generateQuoteNumber(supabase);
@@ -110,7 +116,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       baseNumber: base,
       revisionNo: 0,
       status: body.status === 'sent' ? 'sent' : 'draft',
-      quoteDate: body.quoteDate || new Date().toISOString().slice(0, 10),
+      quoteDate: body.quoteDate || businessDate(),
       validUntil: body.validUntil || null,
       customerId: deal.customerId || null,
       customerName: deal.customerName || null,

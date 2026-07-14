@@ -1,9 +1,10 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, inSalesEditScope } from '@/lib/salesPlanning';
-import { markWon } from '@/lib/salesPlanningWin';
+import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
 import { quoteCanBeAccepted } from '@/lib/quotationApproval';
+import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
+import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,86 +32,35 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (deal.stage === 'lost') return badRequest('ดีลนี้ปิดเป็น Lost แล้ว ไม่สามารถรับใบเสนอราคาได้');
   if (['won', 'in_project'].includes(deal.stage)) return badRequest('ดีลนี้ปิดการขาย (Won) แล้ว');
 
-  // กันรับใบที่สองทับใบแรก — ดีลหนึ่งรับได้ใบเดียว (ยกเลิกใบเดิมก่อน)
-  const { data: priorAccepted } = await supabase
-    .from('quotations')
-    .select('id, quoteNumber')
-    .eq('dealId', deal.id)
-    .eq('status', 'accepted')
-    .neq('id', quote.id)
-    .limit(1);
-  if (priorAccepted?.length) return conflict(`ดีลนี้รับใบเสนอราคา ${priorAccepted[0].quoteNumber || ''} ไปแล้ว — ยกเลิกใบเดิมก่อน`);
+  const currentFingerprint = quotationApprovalFingerprint(quote);
+  const readiness = validateDocumentReadiness({
+    action: 'accept',
+    status: quote.status,
+    lineCount: quote.lines?.length || 0,
+    totalAmount: quote.totalAmount,
+    approvalStatus: quote.approvalStatus,
+    approvalFingerprint: quote.approvalFingerprint,
+    currentFingerprint,
+  });
+  if (!readiness.ok) return badRequest(readiness.error);
 
-  const now = new Date().toISOString();
-  const { data: accepted, error: acceptError } = await supabase
-    .from('quotations')
-    .update({
-      status: 'accepted',
-      acceptedAt: now,
-      acceptedBy: user.name || user.id || null,
-      updatedAt: now,
-    })
-    .eq('id', quote.id)
-    .select('*, lines:quotation_lines(*)')
-    .single();
-  if (acceptError) return fail(acceptError.message, 500);
-
-  let updatedDeal;
-  const acceptedMetadata = {
-    acceptedQuotationId: quote.id,
-    acceptedQuoteNumber: quote.quoteNumber,
-    acceptedQuoteAt: now,
-  };
-
-  if (deal.depositPaid) {
-    try {
-      updatedDeal = await markWon({
-        supabase,
-        user,
-        deal,
-        source: 'quotation',
-        projectValue: quote.totalAmount,
-        metadata: acceptedMetadata,
-        request: req,
-        auditSummary: `update deal from accepted quotation ${quote.quoteNumber}`,
-      });
-    } catch (dealError) {
-      return fail(dealError.message, 500);
+  const { data: result, error: acceptError } = await supabase.rpc('accept_quotation_atomic', {
+    p_quote_id: quote.id,
+    p_current_fingerprint: currentFingerprint,
+    p_actor_id: user.id || null,
+    p_actor_name: user.name || null,
+    p_history_id: genId('DSH'),
+    p_forecast_id: genId('DFC'),
+  });
+  if (acceptError) {
+    if (acceptError.code === '23505' || acceptError.message?.includes('already_has_accepted')) {
+      return conflict('ดีลนี้มีใบเสนอราคาที่รับแล้ว');
     }
-  } else {
-    // อย่าดึง stage ถอยหลัง: เลื่อนเป็น awaiting_confirm เฉพาะเมื่อยังอยู่ก่อนหน้านั้น
-    // (ดีลที่ deposit_pending อยู่แล้วต้องไม่ถูกลากกลับ)
-    const nextStage = DEAL_STAGES.indexOf(deal.stage) < DEAL_STAGES.indexOf('awaiting_confirm')
-      ? 'awaiting_confirm'
-      : deal.stage;
-    const { data: nextDeal, error: dealError } = await supabase
-      .from('sales_deals')
-      .update({
-        stage: nextStage,
-        projectValue: quote.totalAmount,
-        updatedAt: now,
-        metadata: {
-          ...(deal.metadata || {}),
-          ...acceptedMetadata,
-        },
-      })
-      .eq('id', deal.id)
-      .select()
-      .single();
-    if (dealError) return fail(dealError.message, 500);
-    updatedDeal = nextDeal;
-
-    if (deal.stage !== updatedDeal.stage) {
-      await supabase.from('sales_deal_stage_history').insert({
-        id: genId('DSH'),
-        dealId: deal.id,
-        fromStage: deal.stage,
-        toStage: updatedDeal.stage,
-        changedBy: user.id || null,
-        changedByName: user.name || null,
-      });
-    }
+    const clientError = /quotation_|deal_closed|deal_not_found/.test(acceptError.message || '');
+    return fail(acceptError.message, clientError ? 400 : 500);
   }
+  const accepted = { ...(result?.quotation || {}), lines: quote.lines || [] };
+  const updatedDeal = result?.deal;
 
   await recordAudit({
     user,
@@ -123,18 +73,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
 
-  if (!deal.depositPaid) {
-    await recordAudit({
-      user,
-      action: 'update',
-      entityType: 'sales_deal',
-      entityId: deal.id,
-      before: deal,
-      after: updatedDeal,
-      summary: `update deal from accepted quotation ${quote.quoteNumber}`,
-      request: req,
-    });
-  }
+  await recordAudit({
+    user,
+    action: 'update',
+    entityType: 'sales_deal',
+    entityId: deal.id,
+    before: deal,
+    after: updatedDeal,
+    summary: `update deal from accepted quotation ${quote.quoteNumber}`,
+    request: req,
+  });
 
   return ok({ quotation: accepted, deal: updatedDeal });
 });
