@@ -8,8 +8,8 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 // หน้านี้พรีวิวด้วยสูตรเดียวกัน (quoteTotals จาก lib กลาง).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileText, GitBranch, MapPin, Plus, Printer, Save, Send, Trash2, UserRound } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileText, GitBranch, MapPin, Pencil, Plus, Printer, Save, Send, Trash2, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import FormActions from "@/components/ui/FormActions";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -18,6 +18,7 @@ import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
 import { useCan, useRole } from "@/lib/roleContext";
+import { isSuperuser } from "@/lib/permissions";
 import { canReviewSalesForecast, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -31,6 +32,8 @@ const EDITABLE = new Set(["draft", "sent", "rejected"]);
 export default function QuotationEditorPage() {
   const { id } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editMode = searchParams.get("edit") === "1";
   const canEditCap = useCan("salesplan:edit");
   const role = useRole();
   const isReviewer = canReviewSalesForecast({ role });
@@ -46,9 +49,7 @@ export default function QuotationEditorPage() {
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
-  // เพิ่มรายการจากรหัส FG (feedback ผู้ใช้: ใส่รหัส FG ตอนทำใบ) — ราคา freeze จาก master ณ ตอนเพิ่ม
   const [products, setProducts] = useState([]);
-  const [fgPick, setFgPick] = useState("");
   // งวดชำระ (Q3): full / installment. installments = [{label, percent, note}] — ยอดคิดจาก % ของยอดรวม
   const [paymentType, setPaymentType] = useState("full");
   const [installments, setInstallments] = useState([]);
@@ -62,7 +63,10 @@ export default function QuotationEditorPage() {
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดใบเสนอราคาไม่สำเร็จ");
       const q = await res.json();
       setQuote(q);
-      setLines((q.lines || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
+      setLines((q.lines || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((line) => ({
+        ...line,
+        _lineKind: line.productId || line.fgCode ? "product" : "manual",
+      })));
       setForm({
         quoteDate: q.quoteDate || "",
         validUntil: q.validUntil || "",
@@ -92,7 +96,15 @@ export default function QuotationEditorPage() {
     fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
-  const editable = !!quote && canEditCap && EDITABLE.has(quote.status);
+  const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status);
+  const canDeleteDocument = !!quote && canEditCap && (quote.status === "draft" || isSuperuser(role));
+  const editable = canEditDocument && editMode;
+
+  const productOptions = useMemo(() => products.map((product) => ({
+    value: product.id,
+    label: `${product.fgCode ? `${product.fgCode} · ` : ""}${product.productDescription || product.productDescriptionEn || "-"}`,
+    search: `${product.fgCode || ""} ${product.productDescription || ""} ${product.productDescriptionEn || ""} ${product.brandName || ""}`,
+  })), [products]);
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: form.discountType || null,
@@ -104,21 +116,20 @@ export default function QuotationEditorPage() {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
     setDirty(true);
   };
-  const addLine = () => { setLines((prev) => [...prev, { description: "", qty: 1, unitPrice: 0, discountType: null, discountValue: 0 }]); setDirty(true); };
-  const addFgLine = () => {
-    const p = products.find((x) => x.id === fgPick);
+  const addLine = () => { setLines((prev) => [...prev, { _lineKind: "manual", description: "", qty: 1, unitPrice: 0, discountType: null, discountValue: 0 }]); setDirty(true); };
+  const addProductLine = () => {
+    setLines((prev) => [...prev, { _lineKind: "product", productId: null, fgCode: null, description: "", qty: 1, unitPrice: 0, discountType: null, discountValue: 0 }]);
+    setDirty(true);
+  };
+  const selectLineProduct = (i, productId) => {
+    const p = products.find((x) => x.id === productId);
     if (!p) return;
-    setLines((prev) => [...prev, {
+    setLine(i, {
       productId: p.id,
       fgCode: p.fgCode || null,
       description: p.productDescription || p.productDescriptionEn || p.fgCode || "สินค้า",
-      qty: 1,
       unitPrice: Number(p.retailPriceIncVat || 0),
-      discountType: null,
-      discountValue: 0,
-    }]);
-    setFgPick("");
-    setDirty(true);
+    });
   };
   const removeLine = (i) => { setLines((prev) => prev.filter((_, idx) => idx !== i)); setDirty(true); };
   const setF = (patch) => { setForm((f) => ({ ...f, ...patch })); setDirty(true); };
@@ -155,7 +166,11 @@ export default function QuotationEditorPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          lines,
+          lines: lines.map((line) => {
+            const payloadLine = { ...line };
+            delete payloadLine._lineKind;
+            return payloadLine;
+          }),
           quoteDate: form.quoteDate,
           validUntil: form.validUntil || null,
           paymentTerms: form.paymentTerms,
@@ -230,11 +245,12 @@ export default function QuotationEditorPage() {
     })) await load();
   };
   const doDelete = () => {
+    const elevatedDelete = quote.status !== "draft";
     setConfirmState({
-      title: "ลบใบเสนอราคาฉบับร่าง",
+      title: elevatedDelete ? "ลบใบเสนอราคา (สิทธิ์ผู้ดูแลระบบ)" : "ลบใบเสนอราคาฉบับร่าง",
       description: `ต้องการลบ ${quote.quoteNumber} ใช่หรือไม่`,
-      detail: "ใบเสนอราคาฉบับนี้จะถูกลบและไม่สามารถเรียกคืนจากหน้าจอนี้ได้",
-      confirmLabel: "ลบฉบับร่าง",
+      detail: elevatedDelete ? "ใบนี้ไม่ใช่ฉบับร่าง การลบด้วยสิทธิ์ผู้ดูแลระบบจะลบหลักฐานการค้าและไม่สามารถเรียกคืนจากหน้าจอนี้ได้" : "ใบเสนอราคาฉบับนี้จะถูกลบและไม่สามารถเรียกคืนจากหน้าจอนี้ได้",
+      confirmLabel: elevatedDelete ? "ยืนยันลบใบเสนอราคา" : "ลบฉบับร่าง",
       tone: "danger",
       action: async () => {
         if (!(await act("delete", `/api/sales-planning/quotations/${id}`, { method: "DELETE" }))) return false;
@@ -247,6 +263,11 @@ export default function QuotationEditorPage() {
     if (dirty && editable && !(await save())) return;
     const res = await fetch(`/api/sales-planning/quotations/${id}`);
     if (res.ok) openQuotePrintWindow(await res.json());
+  };
+  const leaveEditMode = () => {
+    if (dirty && !window.confirm("ยกเลิกการแก้ไขและทิ้งข้อมูลที่ยังไม่ได้บันทึก?")) return;
+    if (dirty) load();
+    router.replace(`/sa/quotations/${id}`);
   };
 
   // template หมายเหตุ: กรองตามประเภทดีล + general
@@ -308,6 +329,8 @@ export default function QuotationEditorPage() {
         <div className={styles.headerActions}>
           {editable && <SaveStatus status={error ? "error" : busy === "save" ? "saving" : dirty ? "dirty" : "saved"} />}
           <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={14} aria-hidden="true" /> พิมพ์</button>
+          {canEditDocument && !editMode && <Link href={`/sa/quotations/${id}?edit=1`} className="btn btn-primary"><Pencil size={14} aria-hidden="true" /> แก้ไข</Link>}
+          {editable && <button type="button" className="btn ghost" onClick={leaveEditMode} disabled={!!busy}>ยกเลิกแก้ไข</button>}
           {editable && <button type="button" className="btn btn-primary" onClick={() => save()} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึก"}</button>}
         </div>
       )}
@@ -365,16 +388,10 @@ export default function QuotationEditorPage() {
           {/* หัวใบ */}
           <section className={`${styles.card} ${styles.documentMeta}`}>
             <label>วันที่ออกใบ
-              <DateInput value={form.quoteDate} disabled={!editable} onChange={(value) => setF({ quoteDate: value })} />
+              <DateInput className={styles.documentDateInput} value={form.quoteDate} disabled={!editable} onChange={(value) => setF({ quoteDate: value })} />
             </label>
             <label>ยืนราคาถึง
-              <DateInput value={form.validUntil || ""} disabled={!editable} onChange={(value) => setF({ validUntil: value })} />
-            </label>
-            <label>ภาษีมูลค่าเพิ่ม
-              <Select className="premium-select" value={form.vatRate} disabled={!editable} onChange={(e) => setF({ vatRate: Number(e.target.value) })}>
-                <option value={0}>ราคารวม VAT แล้ว (ไม่บวกเพิ่ม)</option>
-                <option value={7}>+ VAT 7% ท้ายใบ</option>
-              </Select>
+              <DateInput className={styles.documentDateInput} value={form.validUntil || ""} disabled={!editable} onChange={(value) => setF({ validUntil: value })} />
             </label>
           </section>
 
@@ -385,23 +402,9 @@ export default function QuotationEditorPage() {
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>รายการสินค้า/บริการ</h2>
               <div className="spacer" />
               {editable && (
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <div style={{ width: 260 }}>
-                    <SearchableSelect
-                      entity="product"
-                      value={fgPick}
-                      onChange={setFgPick}
-                      ariaLabel="เลือกสินค้า (FG)"
-                      placeholder="ค้นหา FG / ชื่อสินค้า..."
-                      options={products.map((product) => ({
-                        value: product.id,
-                        label: `${product.fgCode ? `${product.fgCode} · ` : ""}${product.productDescription || product.productDescriptionEn || "-"}`,
-                        search: `${product.fgCode || ""} ${product.productDescription || ""} ${product.productDescriptionEn || ""} ${product.brandName || ""}`,
-                      }))}
-                    />
-                  </div>
-                  <button type="button" className="btn btn-primary sm" onClick={addFgLine} disabled={!fgPick}><Plus size={13} aria-hidden="true" /> เพิ่ม FG</button>
-                  <button type="button" className="btn ghost sm" onClick={addLine}><Plus size={13} aria-hidden="true" /> รายการเอง</button>
+                <div className={styles.lineActions}>
+                  <button type="button" className="btn btn-primary sm" onClick={addProductLine}><Plus size={13} aria-hidden="true" /> เพิ่มสินค้า</button>
+                  <button type="button" className="btn ghost sm" onClick={addLine}><Plus size={13} aria-hidden="true" /> เพิ่มรายการเอง</button>
                 </div>
               )}
             </div>
@@ -415,8 +418,21 @@ export default function QuotationEditorPage() {
                     <tr key={l.id || i} className="premium-row">
                       <td style={{ textAlign: "center", color: "var(--text-3)" }}>{i + 1}</td>
                       <td>
-                        <input className="premium-input" value={l.description || ""} disabled={!editable} placeholder="รายละเอียด" onChange={(e) => setLine(i, { description: e.target.value })} style={{ width: "100%" }} />
-                        {l.fgCode && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{l.fgCode}</span>}
+                        <div className={styles.lineDescriptionCell}>
+                          {editable && l._lineKind === "product" && (
+                            <SearchableSelect
+                              entity="product"
+                              size="sm"
+                              value={l.productId || ""}
+                              onChange={(productId) => selectLineProduct(i, productId)}
+                              ariaLabel={`เลือกสินค้า รายการ ${i + 1}`}
+                              placeholder="เลือก FG / สินค้า..."
+                              options={productOptions}
+                            />
+                          )}
+                          <input className="premium-input" value={l.description || ""} disabled={!editable} placeholder={l._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"} onChange={(e) => setLine(i, { description: e.target.value })} style={{ width: "100%" }} />
+                          {l.fgCode && <span className={styles.fgCode}>FG: {l.fgCode}</span>}
+                        </div>
                       </td>
                       <td><input type="number" min="0" step="1" className="premium-input mono" value={l.qty} disabled={!editable} onChange={(e) => setLine(i, { qty: e.target.value })} /></td>
                       <td><MoneyInput min="0" value={l.unitPrice} disabled={!editable} onChange={(value) => setLine(i, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${i + 1}`} /></td>
@@ -440,24 +456,33 @@ export default function QuotationEditorPage() {
               </table>
             </div>
 
-            {/* สรุปยอด + ส่วนลดท้ายใบ */}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-              <div style={{ width: 340, display: "flex", flexDirection: "column", gap: 8, fontSize: 13.5 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><span>รวมเป็นเงิน</span><strong className="mono">{money(totals.subtotal)}</strong></div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {/* ข้อมูลท้ายใบ: ยอด ส่วนลด VAT */}
+            <div className={styles.totalsWrap}>
+              <div className={styles.totalsPanel}>
+                <div className={styles.totalLine}><span>รวมเป็นเงิน</span><strong className="mono">{money(totals.subtotal)}</strong></div>
+                <div className={styles.totalLine}>
+                  <span className={styles.totalControls}>
                     ส่วนลดท้ายใบ
-                    <Select className="premium-select" value={form.discountType} disabled={!editable} onChange={(e) => setF({ discountType: e.target.value, discountValue: e.target.value ? form.discountValue : "" })} style={{ width: 74, height: 30 }}>
+                    <Select className="premium-select" value={form.discountType} disabled={!editable} onChange={(e) => setF({ discountType: e.target.value, discountValue: e.target.value ? form.discountValue : "" })} style={{ width: 82, height: 32 }}>
                       <option value="">ไม่ลด</option>
                       <option value="percent">%</option>
                       <option value="amount">บาท</option>
                     </Select>
-                    <MoneyInput min="0" value={form.discountValue || ""} disabled={!editable || !form.discountType} onChange={(value) => setF({ discountValue: value ?? "" })} style={{ width: 110, height: 30 }} aria-label="ส่วนลดท้ายใบ" />
+                    <MoneyInput min="0" value={form.discountValue || ""} disabled={!editable || !form.discountType} onChange={(value) => setF({ discountValue: value ?? "" })} style={{ width: 128, height: 32 }} aria-label="ส่วนลดท้ายใบ" />
                   </span>
                   <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-"}</strong>
                 </div>
-                {form.vatRate > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>VAT {form.vatRate}%</span><strong className="mono">{money(totals.vatAmount)}</strong></div>}
-                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "2px solid var(--border)", paddingTop: 8, fontSize: 16 }}>
+                <div className={styles.totalLine}>
+                  <span className={styles.totalControls}>
+                    ภาษีมูลค่าเพิ่ม
+                    <Select className="premium-select" value={form.vatRate} disabled={!editable} onChange={(e) => setF({ vatRate: Number(e.target.value) })} style={{ width: 190, height: 32 }}>
+                      <option value={0}>รวม VAT แล้ว</option>
+                      <option value={7}>+ VAT 7% ท้ายใบ</option>
+                    </Select>
+                  </span>
+                  <strong className="mono">{form.vatRate > 0 ? money(totals.vatAmount) : "-"}</strong>
+                </div>
+                <div className={styles.totalGrand}>
                   <strong>ยอดรวมทั้งสิ้น</strong><strong className="mono">{money(totals.totalAmount)}</strong>
                 </div>
               </div>
@@ -572,7 +597,7 @@ export default function QuotationEditorPage() {
 
               {quote.deal && <Link href={`/sa/deals/${quote.deal.id}`} className={styles.relatedLink}>เปิดดีลที่เกี่ยวข้อง <span>→</span></Link>}
               {!editable && <p className={styles.lockedNote}>ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่</p>}
-              {quote.status === "draft" && canEditCap && <button type="button" className={styles.deleteAction} onClick={doDelete} disabled={!!busy}><Trash2 size={14} aria-hidden="true" /> ลบฉบับร่าง</button>}
+              {canDeleteDocument && <button type="button" className={styles.deleteAction} onClick={doDelete} disabled={!!busy}><Trash2 size={14} aria-hidden="true" /> {quote.status === "draft" ? "ลบฉบับร่าง" : "ลบใบเสนอราคา"}</button>}
             </section>
           </aside>
         </div>
