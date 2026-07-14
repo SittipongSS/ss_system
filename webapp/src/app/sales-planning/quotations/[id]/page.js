@@ -341,7 +341,6 @@ export default function QuotationEditorPage() {
       back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
       backActions={quote && (
         <div className={styles.headerActions}>
-          <span className={styles.headerQuoteNumber}>ใบเสนอราคา <strong>{quote.quoteNumber}</strong></span>
           {editable && <SaveStatus status={error ? "error" : ["save", "revise"].includes(busy) ? "saving" : dirty ? "dirty" : "saved"} />}
           {canEditDocument && !editMode && (
             <Link href={`/sa/quotations/${id}?edit=1`} className="btn-icon" aria-label="แก้ไขใบเสนอราคา" title="แก้ไข">
@@ -370,7 +369,10 @@ export default function QuotationEditorPage() {
           <section className={`${styles.card} ${styles.overviewCard}`}>
             <div className={styles.overviewHeading}>
               <div>
-                <span className={styles.eyebrow}>FM-SA-01 · QUOTATION</span>
+                <div className={styles.overviewEyebrowRow}>
+                  <span className={styles.eyebrow}>FM-SA-01 · QUOTATION</span>
+                  <span className={styles.cardQuoteNumber}>เลขที่ใบเสนอราคา <strong>{quote.quoteNumber}</strong></span>
+                </div>
                 <h2>{quote.customerName || "ไม่ระบุลูกค้า"}</h2>
                 <p>
                   <span>โครงการ: {quote.deal?.project?.name || quote.deal?.project?.code || "ไม่ระบุ"}</span>
