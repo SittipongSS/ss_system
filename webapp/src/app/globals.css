@@ -2323,8 +2323,28 @@ button.empty-state { width: 100%; font: inherit; }
 .project-header-meta > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .project-header-meta span { color: var(--text-3); }
 .project-header-meta strong { color: var(--text); font-weight: 650; overflow-wrap: anywhere; }
+.project-detail-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  margin-left: auto;
+  text-align: right;
+}
+.project-timeline-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
 @media (max-width: 900px) { .detail-summary-grid { grid-template-columns: 1fr; } }
-@media (max-width: 900px) { .project-header-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; } }
+@media (max-width: 900px) {
+  .project-header-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .project-detail-actions,
+  .project-timeline-card-actions { width: 100%; }
+}
 
 /* Pill badge — type / role / category tags. Color via inline style or modifier. */
 .ui-badge {
