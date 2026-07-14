@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { searchableForEntity } from "@/lib/uiRules";
@@ -35,41 +35,42 @@ export default function SearchableSelect({
       .slice(0, 100);
   }, [options, search]);
 
+  const placeMenu = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const roomBelow = window.innerHeight - rect.bottom;
+    const estimatedHeight = Math.min(320, Math.max(80, filtered.length * 38 + (searchEnabled ? 48 : 0)));
+    const above = roomBelow < estimatedHeight + 12 && rect.top > roomBelow;
+    setMenuStyle({
+      position: "fixed",
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.max(rect.width, 220) - 8)),
+      top: above ? Math.max(8, rect.top - estimatedHeight - 6) : rect.bottom + 6,
+      width: Math.max(rect.width, 220),
+      maxHeight: above ? Math.max(140, rect.top - 16) : Math.max(140, roomBelow - 14),
+    });
+  }, [filtered.length, searchEnabled]);
+
   useEffect(() => {
     if (!open) return undefined;
-    const place = () => {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const roomBelow = window.innerHeight - rect.bottom;
-      const estimatedHeight = Math.min(320, Math.max(80, filtered.length * 38 + (searchEnabled ? 48 : 0)));
-      const above = roomBelow < estimatedHeight + 12 && rect.top > roomBelow;
-      setMenuStyle({
-        position: "fixed",
-        left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.max(rect.width, 220) - 8)),
-        top: above ? Math.max(8, rect.top - estimatedHeight - 6) : rect.bottom + 6,
-        width: Math.max(rect.width, 220),
-        maxHeight: above ? Math.max(140, rect.top - 16) : Math.max(140, roomBelow - 14),
-      });
-    };
     const outside = (event) => {
       if (!triggerRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false);
     };
-    place();
+    placeMenu();
     document.addEventListener("mousedown", outside);
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", placeMenu);
+    window.addEventListener("scroll", placeMenu, true);
     return () => {
       document.removeEventListener("mousedown", outside);
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", placeMenu);
+      window.removeEventListener("scroll", placeMenu, true);
     };
-  }, [filtered.length, open, searchEnabled]);
+  }, [open, placeMenu]);
 
   const choose = (option) => {
     onChange?.(option.value);
     setSearch("");
     setOpen(false);
-    triggerRef.current?.focus();
+    triggerRef.current?.focus({ preventScroll: true });
   };
 
   return (
@@ -82,7 +83,10 @@ export default function SearchableSelect({
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (!open) placeMenu();
+          setOpen((current) => !current);
+        }}
       >
         <span className={`ui-select-value ${selectedLabel ? "" : "placeholder"}`.trim()}>{selectedLabel || placeholder || "— เลือก —"}</span>
         <ChevronDown className="ui-select-chevron" size={16} aria-hidden="true" />
@@ -117,10 +121,6 @@ export default function SearchableSelect({
                   role="option"
                   aria-selected={isSelected}
                   className={`ui-select-option ${isSelected ? "selected" : ""}`.trim()}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    choose(option);
-                  }}
                   onClick={() => choose(option)}
                 >
                   <span>{option.render || option.label}</span>
