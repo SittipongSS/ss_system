@@ -879,14 +879,15 @@ export default function DealOverviewPage() {
             <div className="timeline-header-row mb-3">
               <PackageCheck size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ไทม์ไลน์</h2>
-              <div className="spacer" />
-              {(data.projectTasks || []).length > 0 && (
-                <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF (ไม่ออกเลข Rev / ไม่เก็บประวัติ)">
-                  <Printer size={14} aria-hidden="true" /> พิมพ์เอกสาร
-                </button>
-              )}
-              {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
-              {(data.projectTasks || []).length > 0 && <ViewSwitcher value={timelineView} onChange={setTimelineView} modes={["list", "table", "document"]} />}
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                {(data.projectTasks || []).length > 0 && (
+                  <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF (ไม่ออกเลข Rev / ไม่เก็บประวัติ)">
+                    <Printer size={14} aria-hidden="true" /> พิมพ์เอกสาร
+                  </button>
+                )}
+                {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
+                {(data.projectTasks || []).length > 0 && <ViewSwitcher value={timelineView} onChange={setTimelineView} modes={["list", "table", "document"]} />}
+              </div>
             </div>
             {data.project ? (
               <>
