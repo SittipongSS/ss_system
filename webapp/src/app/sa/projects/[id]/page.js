@@ -35,6 +35,7 @@ import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/der
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
@@ -1015,8 +1016,27 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      {/* Header โครงการ — โครงเดียวกับ Deal detail */}
-      <div className="glass-panel detail-hero" style={{ overflow: "hidden", marginBottom: "24px" }}>
+      <SalesDetailOverview
+        eyebrow="รายละเอียดโครงการ"
+        title={projectTitle}
+        description={<>
+          <span className="mono" style={{ fontWeight: 700, color: "var(--text)" }}>{entityCodeDisplay(p.code, p.currentRev)}</span>
+          <span>ลูกค้า: {p.customerName || "-"}</span>
+          <span>แบรนด์: {projectBrand}</span>
+          {p.productMainCategory ? <span>หมวดสินค้า: {`${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}`}</span> : null}
+        </>}
+        badges={<SalesStateBadge label={getComputedStatus(p)} color={statusDotColor(getComputedStatus(p))} />}
+        actions={!showTimeline ? <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")}><GanttChart size={14} /> เปิดไทม์ไลน์</button> : null}
+        facts={[
+          { icon: Calendar, label: "วันเริ่ม", value: p.startDate || "-" },
+          { icon: Clock, label: "วันสิ้นสุด", value: p.dueDate || "-" },
+          { icon: User, label: "AE / ทีม", value: `${p.aeOwner || "-"} · ${p.team || "-"}` },
+          { icon: GanttChart, label: "จำนวนดีล", value: `${(p.deals || []).length} ดีล` },
+        ]}
+      />
+
+      {/* เครื่องมือเอกสารขั้นสูง แสดงเมื่อเปิดส่วนไทม์ไลน์ */}
+      <div className="glass-panel detail-hero" style={{ overflow: "hidden", margin: "16px 0 24px", display: showTimeline ? "block" : "none" }}>
         <div className="detail-hero-main">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", flexWrap: "wrap" }}>
             <div style={{ minWidth: 0 }}>
@@ -1024,11 +1044,10 @@ export default function ProjectDetailPage() {
                 <span className="detail-hero-icon">
                   <GanttChart size={18} />
                 </span>
-                <span>{projectTitle}</span>
+                <span>เครื่องมือโครงการและเอกสาร</span>
               </h1>
               <div style={{ margin: "6px 0 0 50px", display: "flex", flexDirection: "column", gap: 3, fontSize: "12.5px", color: "var(--text-2)" }}>
-                <div><span className="mono" style={{ fontWeight: 700, color: "var(--text)" }}>{entityCodeDisplay(p.code, p.currentRev)}</span> · ลูกค้า: {p.customerName || "-"} · แบรนด์: {projectBrand}</div>
-                <div>AE: {p.aeOwner || "-"} · ทีม: {p.team || "-"}</div>
+                <div>จัดการ revision, รูปแบบการแสดงผล และเอกสารสำหรับพิมพ์</div>
               </div>
             </div>
             <div className="project-detail-actions">
@@ -1094,7 +1113,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        <div style={{ padding: "13px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+        <div style={{ padding: "13px 24px", display: "none", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
           <div className="project-header-meta">
             <div><span>วันเริ่ม</span><strong>{p.startDate || "-"}</strong></div>
             <div><span>วันสิ้นสุด</span><strong>{p.dueDate || "-"}</strong></div>

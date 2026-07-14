@@ -1,0 +1,37 @@
+.overviewCard {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%), var(--panel);
+  box-shadow: var(--glass-shadow);
+}
+.overviewHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 20px 22px 18px; }
+.titleBlock { min-width: 0; }
+.eyebrow { display: block; margin-bottom: 6px; color: var(--accent); font-size: 10.5px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.overviewHeading h1 { margin: 0; color: var(--text); font-size: clamp(20px, 2vw, 27px); font-weight: 750; line-height: 1.2; overflow-wrap: anywhere; }
+.description { display: flex; gap: 7px; margin-top: 7px; color: var(--text-3); font-size: 13px; flex-wrap: wrap; }
+.headingActions { display: flex; align-items: flex-end; flex: 0 0 auto; flex-direction: column; gap: 9px; }
+.badgeRow, .actionRow { display: flex; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
+.stateBadge { display: inline-flex; align-items: center; min-height: 28px; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--state-color) 28%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--state-color) 10%, transparent); color: var(--state-color); font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.stateBadge::before { width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; content: ""; }
+.quickFacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel-2) 68%, transparent); }
+.quickFacts > div { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 13px 16px; border-right: 1px solid var(--border); color: var(--text-2); font-size: 12.5px; }
+.quickFacts > div:last-child { border-right: 0; }
+.quickFacts svg { flex: 0 0 auto; color: var(--accent); }
+.quickFacts span { min-width: 0; }
+.quickFacts small { display: block; margin-bottom: 2px; color: var(--text-3); font-size: 10.5px; }
+.quickFacts strong { display: block; overflow: hidden; color: var(--text-2); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.extra { padding: 14px 20px; border-top: 1px solid var(--border); }
+@media (max-width: 900px) {
+  .quickFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quickFacts > div:nth-child(2n) { border-right: 0; }
+  .quickFacts > div:nth-child(n + 3) { border-top: 1px solid var(--border); }
+}
+@media (max-width: 680px) {
+  .overviewHeading { flex-direction: column; padding: 18px; }
+  .headingActions { width: 100%; align-items: flex-start; }
+  .badgeRow, .actionRow { justify-content: flex-start; }
+  .quickFacts { grid-template-columns: minmax(0, 1fr); }
+  .quickFacts > div { border-right: 0; border-top: 1px solid var(--border); }
+  .quickFacts > div:first-child { border-top: 0; }
+}

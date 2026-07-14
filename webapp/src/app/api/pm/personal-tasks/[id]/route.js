@@ -1,9 +1,9 @@
-import { canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee } from '@/lib/permissions';
+import { can, canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
-import { canManagePersonalTask, personalTaskResponsibleTeam } from '@/lib/pm/personalTaskAccess';
+import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleTeam } from '@/lib/pm/personalTaskAccess';
 import { purgeAttachments } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +19,43 @@ async function loadTask(supabase, id) {
   const { data } = await supabase.from('personal_tasks').select('*').eq('id', id).maybeSingle();
   return data || null;
 }
+
+// GET /api/pm/personal-tasks/[id] — แหล่งข้อมูลกลางของหน้า Detail งาน
+export const GET = withUser(async ({ user, supabase, ctx }) => {
+  if (!user || !can(user.role, 'pm:view')) return forbidden();
+  const { id } = await ctx.params;
+  const task = await loadTask(supabase, id);
+  if (!task) return notFound('ไม่พบงาน');
+
+  const manage = await canManagePersonalTask(supabase, task, user);
+  if (!(await canViewPersonalTask(supabase, task, user))) return forbidden();
+  let linkedProject = null;
+  let linkedDeal = null;
+  if (task.projectId) {
+    const { data } = await supabase.from('projects').select('id, code, name, customerName, team, aeOwner').eq('id', task.projectId).maybeSingle();
+    linkedProject = data || null;
+  }
+  if (task.dealId) {
+    const { data } = await supabase.from('sales_deals').select('id, title, customerName, team, ownerName, projectId').eq('id', task.dealId).maybeSingle();
+    linkedDeal = data || null;
+  }
+  const userIds = [...new Set([task.ownerId, task.assigneeId, task.proxyBy, task.assignedBy].filter(Boolean))];
+  const people = {};
+  await Promise.all(userIds.map(async (userId) => {
+    const { data } = await supabase.auth.admin.getUserById(userId);
+    const meta = data?.user?.user_metadata || {};
+    people[userId] = meta.name || data?.user?.email || userId;
+  }));
+
+  return ok({
+    ...task,
+    project: linkedProject,
+    deal: linkedDeal,
+    people,
+    canManage: !!manage,
+    canChangeStatus: canChangeTaskStatus(user, task, manage),
+  });
+});
 
 // PATCH /api/pm/personal-tasks/[id]
 //   • responsibilityAction 'take' — ยืนยันรับช่วงและย้ายผู้รับผิดชอบเป็นผู้กด
