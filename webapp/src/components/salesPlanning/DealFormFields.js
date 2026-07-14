@@ -94,7 +94,6 @@ export default function DealFormFields({
         value={form.categoryCode || ""}
         mainValue={form.categoryMainCode ?? String(form.categoryCode || "").split("-")[0] ?? ""}
         onChange={(categoryCode, meta) => onPatch({ categoryCode, categoryMainCode: meta.mainCode })}
-        required={form.dealType !== "SCENT"}
       />
       <label className="deal-field">
         โอกาสที่จะปิดได้ (FC%)

@@ -124,11 +124,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     leadId: body.leadId || body.metadata?.leadId || null,
   };
 
-  // มติผู้ใช้: NPD/RE-ORDER ต้องระบุหมวดสินค้า (SCENT ไม่บังคับ — งานกลิ่นไม่มีหมวด)
-  if (row.dealType !== 'SCENT' && !row.categoryCode) {
-    return badRequest('ดีล NPD/RE-ORDER ต้องเลือกหมวดสินค้า');
-  }
-
   // The creator may only mint deals within its own edit scope: an AE cannot
   // hand ownership to another user, and team-scoped roles cannot create for
   // another team. Superusers (scope 'all') are unrestricted.
