@@ -102,7 +102,8 @@ function NewQuotationInner() {
     eligible.filter((d) => d.customerId === customerId).forEach((d) => {
       if (!seen.has(d.projectId)) {
         const p = projectsById[d.projectId];
-        seen.set(d.projectId, p?.code || p?.name || d.projectId);
+        const label = [p?.code, p?.name].filter(Boolean).join(" · ") || d.projectId;
+        seen.set(d.projectId, label);
       }
     });
     return [...seen].map(([value, label]) => ({ value, label, search: label }));
@@ -297,9 +298,9 @@ function NewQuotationInner() {
           <section className={styles.card}>
             <div className={styles.sectionHeading}><Building2 size={17} /><h2>ที่มาของใบเสนอราคา</h2><span>เลือกตามลำดับ ลูกค้า → โครงการ → ดีล</span></div>
             <div className={styles.sourceGrid}>
-              <label>ลูกค้า *<SearchableSelect entity="customer" value={customerId} onChange={onCustomer} ariaLabel="เลือกลูกค้า" placeholder={loading ? "กำลังโหลด…" : "ค้นหาลูกค้า…"} options={customerOptions} /></label>
-              <label>โครงการ *<SearchableSelect entity="project" value={projectId} onChange={onProject} disabled={!customerId} ariaLabel="เลือกโครงการ" placeholder={!customerId ? "เลือกลูกค้าก่อน" : "ค้นหาโครงการ…"} options={projectOptions} /></label>
-              <label>ดีล *<SearchableSelect entity="deal" value={dealId} onChange={setDealId} disabled={!projectId} ariaLabel="เลือกดีล" placeholder={!projectId ? "เลือกโครงการก่อน" : "ค้นหาดีล…"} options={dealOptions} /></label>
+              <label className={styles.customerSource}>ชื่อลูกค้า *<SearchableSelect className={styles.sourceSelect} entity="customer" value={customerId} onChange={onCustomer} ariaLabel="เลือกชื่อลูกค้า" placeholder={loading ? "กำลังโหลด…" : "ค้นหาชื่อลูกค้า…"} options={customerOptions} /></label>
+              <label>โครงการ *<SearchableSelect className={styles.sourceSelect} entity="project" value={projectId} onChange={onProject} disabled={!customerId} ariaLabel="เลือกโครงการ" placeholder={!customerId ? "เลือกชื่อลูกค้าก่อน" : "ค้นหารหัสหรือชื่อโครงการ…"} options={projectOptions} /></label>
+              <label>ดีล *<SearchableSelect className={styles.sourceSelect} entity="deal" value={dealId} onChange={setDealId} disabled={!projectId} ariaLabel="เลือกดีล" placeholder={!projectId ? "เลือกโครงการก่อน" : "ค้นหาดีล…"} options={dealOptions} /></label>
             </div>
           </section>
 
