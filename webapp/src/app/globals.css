@@ -4716,7 +4716,9 @@ button.empty-state { width: 100%; font: inherit; }
   position: sticky;
   top: 0;
   z-index: 3;
-  background: var(--panel-2);
+  /* วาง panel-2 (โปร่ง 0.96) ทับพื้นทึบ --bg ให้หัวตารางทึบสนิท
+     กันตัวเลขแถวที่เลื่อนผ่านลอดขึ้นมาให้เห็นราง ๆ */
+  background: linear-gradient(var(--panel-2), var(--panel-2)) var(--bg);
 }
 /* Sticky footer is opt-in via .fz-foot (used where the footer is a single or
    fixed-height set of rows). bottom offset is set inline per row so stacked
@@ -4734,9 +4736,13 @@ button.empty-state { width: 100%; font: inherit; }
 .fz-table .fz-cr {
   background: var(--bg);
 }
-.fz-table .fz-c1 { position: sticky; left: 0; z-index: 10; }
-.fz-table .fz-c2 { position: sticky; left: var(--fz-c1w, 150px); z-index: 10; }
-.fz-table .fz-cr { position: sticky; right: 0; z-index: 10; border-left: 1px solid var(--border); }
+/* stacking order (bottom→top): body cells (auto) < frozen columns (2)
+   < frozen header row (3) / frozen footer group (4) < corner cells (5).
+   Frozen columns MUST stay below the header/footer, or body rows that
+   scroll past drag their pinned label cells over them. */
+.fz-table .fz-c1 { position: sticky; left: 0; z-index: 2; }
+.fz-table .fz-c2 { position: sticky; left: var(--fz-c1w, 150px); z-index: 2; }
+.fz-table .fz-cr { position: sticky; right: 0; z-index: 2; border-left: 1px solid var(--border); }
 /* corners: edge cells inside the frozen header/footer sit above both axes */
 .fz-table thead .fz-c1,
 .fz-table thead .fz-c2,
@@ -4744,7 +4750,7 @@ button.empty-state { width: 100%; font: inherit; }
 .fz-table tfoot .fz-c1,
 .fz-table tfoot .fz-c2,
 .fz-table tfoot .fz-cr {
-  z-index: 20;
+  z-index: 5;
   background: var(--bg);
 }
 /* the lift-on-hover transform breaks sticky positioning inside the scroll box */
@@ -4779,7 +4785,8 @@ button.empty-state { width: 100%; font: inherit; }
   z-index: 4;
 }
 .sales-overview-grid tfoot td {
-  background: var(--panel-2);
+  /* พื้นทึบสนิทเช่นเดียวกับหัวตาราง — กันแถวที่เลื่อนผ่านลอดให้เห็น */
+  background: linear-gradient(var(--panel-2), var(--panel-2)) var(--bg);
   border-top: 1px solid var(--border);
   box-shadow: 0 -8px 18px rgba(0, 0, 0, 0.04);
 }
