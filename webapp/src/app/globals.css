@@ -4734,7 +4734,18 @@ button.empty-state { width: 100%; font: inherit; }
 .fz-table .fz-c1,
 .fz-table .fz-c2,
 .fz-table .fz-cr {
-  background: var(--bg);
+  /* พื้นผิวเดียวกับตัวตาราง (--panel ทับ --bg ให้ทึบสนิท) — ถ้าใช้ --bg ตรง ๆ
+     จะกลายเป็นสีเดียวกับฉากหลังเพจ ดูเหมือนตารางโปร่งเป็นช่อง */
+  background: linear-gradient(var(--panel), var(--panel)) var(--bg);
+}
+/* เงาขอบฝั่งที่เนื้อหาเลื่อนลอด — บอกชัดว่าคอลัมน์ freeze ลอยทับอยู่
+   (c1 มีเงาด้วยเผื่อตารางที่ไม่มี c2; ในตารางที่มี c2 เงาของ c1 ถูก c2 บังเอง) */
+.fz-table .fz-c1,
+.fz-table .fz-c2 {
+  box-shadow: 6px 0 10px -6px rgba(0, 0, 0, 0.22);
+}
+.fz-table .fz-cr {
+  box-shadow: -6px 0 10px -6px rgba(0, 0, 0, 0.22);
 }
 /* stacking order (bottom→top): body cells (auto) < frozen columns (2)
    < frozen header row (3) / frozen footer group (4) < corner cells (5).
@@ -4743,7 +4754,8 @@ button.empty-state { width: 100%; font: inherit; }
 .fz-table .fz-c1 { position: sticky; left: 0; z-index: 2; }
 .fz-table .fz-c2 { position: sticky; left: var(--fz-c1w, 150px); z-index: 2; }
 .fz-table .fz-cr { position: sticky; right: 0; z-index: 2; border-left: 1px solid var(--border); }
-/* corners: edge cells inside the frozen header/footer sit above both axes */
+/* corners: edge cells inside the frozen header/footer sit above both axes
+   — ใช้พื้นผิวเดียวกับหัว/ท้ายตาราง (panel-2 ทับ --bg) ให้กลืนกันและทึบสนิท */
 .fz-table thead .fz-c1,
 .fz-table thead .fz-c2,
 .fz-table thead .fz-cr,
@@ -4751,7 +4763,7 @@ button.empty-state { width: 100%; font: inherit; }
 .fz-table tfoot .fz-c2,
 .fz-table tfoot .fz-cr {
   z-index: 5;
-  background: var(--bg);
+  background: linear-gradient(var(--panel-2), var(--panel-2)) var(--bg);
 }
 /* the lift-on-hover transform breaks sticky positioning inside the scroll box */
 .fz-table .premium-row:hover {
@@ -4793,7 +4805,7 @@ button.empty-state { width: 100%; font: inherit; }
 .sales-overview-grid tfoot .fz-c1,
 .sales-overview-grid tfoot .fz-c2,
 .sales-overview-grid tfoot .fz-cr {
-  background: var(--bg);
+  background: linear-gradient(var(--panel-2), var(--panel-2)) var(--bg);
   z-index: 6;
 }
 
