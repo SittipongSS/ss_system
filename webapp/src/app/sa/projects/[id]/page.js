@@ -1038,7 +1038,7 @@ export default function ProjectDetailPage() {
                 </button>
               ) : (
               <>
-              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div className="project-detail-action-row">
               <span
                 className="ui-badge"
                 title={p.currentRev == null
@@ -1070,9 +1070,6 @@ export default function ProjectDetailPage() {
               <button onClick={openRevisions} className="btn" style={{ whiteSpace: "nowrap" }} title="ดู/พิมพ์เวอร์ชันเอกสารที่เคยออก">
                 <History size={14} /> ประวัติเวอร์ชัน
               </button>
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
               <button
                 onClick={() => openGanttPrintWindow({ ...p, tasks, categoryFallback,
                   ...resolveAe(p.aeOwner),
@@ -1082,11 +1079,14 @@ export default function ProjectDetailPage() {
                   rev: p.revStale ? null : p.currentRev,
                   revDate: p.revStale ? null : p.revisedAt })}
                 className="btn btn-primary"
-                style={{ whiteSpace: "nowrap", marginLeft: "auto" }}
+                style={{ whiteSpace: "nowrap" }}
                 title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF"
               >
                 <Printer size={14} /> พิมพ์เอกสาร
               </button>
+              </div>
+              <div className="project-detail-action-row">
+                <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
               </div>
               </>
               )}

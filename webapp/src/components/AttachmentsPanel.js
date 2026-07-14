@@ -262,13 +262,13 @@ export default function AttachmentsPanel({
 
     return (
       <div className="mt-1">
-        <div className="flex min-h-8 items-center gap-2">
+        <div className="flex min-h-8 items-center justify-end gap-2">
           {canEdit && (
             <button
               type="button"
               onClick={() => pickForType(inlineType)}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-xs font-semibold text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="แนบไฟล์"
               title={busy ? "กำลังอัปโหลด..." : "แนบไฟล์"}
             >
@@ -278,7 +278,7 @@ export default function AttachmentsPanel({
                   style={{ width: 13, height: 13, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }}
                 />
               ) : (
-                <Paperclip size={14} />
+                <Paperclip size={13} />
               )}
               <span>{busy ? "กำลังแนบ..." : "แนบไฟล์"}</span>
             </button>

@@ -903,14 +903,14 @@ export default function TasksPage() {
                   inlineUpload
                 />
               ) : (
-                <div className="mt-1">
+                <div className="mt-1 flex flex-col items-end">
                   <button
                     type="button"
                     onClick={() => pendingFileRef.current?.click()}
                     disabled={saving}
-                    className="inline-flex items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-xs font-semibold text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Paperclip size={14} />
+                    <Paperclip size={13} />
                     <span>แนบไฟล์</span>
                   </button>
                   <input
@@ -922,7 +922,7 @@ export default function TasksPage() {
                     className="hidden"
                   />
                   {pendingFiles.length > 0 && (
-                    <div className="mt-1 divide-y divide-[var(--border)]">
+                    <div className="mt-1 w-full divide-y divide-[var(--border)]">
                       {pendingFiles.map((file) => {
                         const key = `${file.name}:${file.size}:${file.lastModified}`;
                         return (
