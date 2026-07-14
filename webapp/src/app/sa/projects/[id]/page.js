@@ -31,7 +31,7 @@ import ConfirmModal from "@/components/tax/ConfirmModal";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
-import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/derived";
+import { getComputedStatus, statusDotColor } from "@/lib/pm/derived";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
@@ -1035,9 +1035,11 @@ export default function ProjectDetailPage() {
         ]}
       />
 
+      <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" />
+
       {/* เครื่องมือเอกสารขั้นสูง แสดงเมื่อเปิดส่วนไทม์ไลน์ */}
-      <div className="glass-panel detail-hero" style={{ overflow: "hidden", margin: "16px 0 24px", display: showTimeline ? "block" : "none" }}>
-        <div className="detail-hero-main">
+      <div className="glass-panel" style={{ padding: 16, margin: "16px 0 24px", display: showTimeline ? "block" : "none" }}>
+        <div>
           <div className="timeline-header-row">
             <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
               <GanttChart size={17} aria-hidden="true" />
@@ -1104,48 +1106,21 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        <div style={{ padding: "13px 24px", display: "none", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
-          <div className="project-header-meta">
-            <div><span>วันเริ่ม</span><strong>{p.startDate || "-"}</strong></div>
-            <div><span>วันสิ้นสุด</span><strong>{p.dueDate || "-"}</strong></div>
-            <div><span>แบรนด์</span><strong>{projectBrand}</strong></div>
-            <div><span>ดีล</span><strong>{(p.deals || []).length}</strong></div>
-            <div><span>หมวดสินค้า</span><strong>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</strong></div>
+        {(p.deals || []).length > 1 && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>ไทม์ไลน์ที่แสดง</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>เลือกได้หลายดีล · ไม่เลือก = แสดงทั้งหมด</div>
+            </div>
+            <div style={{ marginLeft: "auto" }}>
+              <MultiSelectFilter label="ดีลที่แสดง" selected={timelineDealFilters} onChange={setTimelineDealFilters} options={timelineFilterOptions} />
+            </div>
+            {timelineDealFilters.length > 0 && <span className="ui-badge" style={{ color: "var(--accent)", whiteSpace: "nowrap" }}>กำลังแสดง {tasks.length} ขั้นตอน</span>}
+            {timelineDealFilters.length > 1 && <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span className={`status-pill dot ${statusPillClass(getComputedStatus(p))}`} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "8px", "--dot": statusDotColor(getComputedStatus(p)) }}>
-              {getComputedStatus(p)}
-            </span>
-          </div>
-        </div>
+        )}
 
         </div>
-
-      {/* เมนูครอบ: ภาพรวม (ศูนย์รวมดีล) ↔ ไทม์ไลน์ — โครงการกำพร้าไม่มีดีลข้ามไปไทม์ไลน์เลย */}
-      <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" />
-
-      {showTimeline && (p.deals || []).length > 1 && (
-        <div className="glass-panel" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>ไทม์ไลน์ที่แสดง</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>เลือกได้หลายดีล · ไม่เลือก = แสดงทั้งหมด</div>
-          </div>
-          <div style={{ marginLeft: "auto" }}>
-            <MultiSelectFilter
-              label="ดีลที่แสดง"
-              selected={timelineDealFilters}
-              onChange={setTimelineDealFilters}
-              options={timelineFilterOptions}
-            />
-          </div>
-          {timelineDealFilters.length > 0 && (
-            <span className="ui-badge" style={{ color: "var(--accent)", whiteSpace: "nowrap" }}>กำลังแสดง {tasks.length} ขั้นตอน</span>
-          )}
-          {timelineDealFilters.length > 1 && (
-            <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>
-          )}
-        </div>
-      )}
 
       {/* ภาพรวม — ศูนย์รวมโครงการ: จิ๊กซอว์ครอบดีล (KPI rollup + การ์ดต่อดีล) */}
       {tab === "overview" && (
@@ -1266,6 +1241,7 @@ export default function ProjectDetailPage() {
         projectId={p.id}
         view={view}
         onViewChange={setView}
+        showHeading={false}
         showViewSwitcher={false}
         documentProject={{ ...p, tasks }}
         canEditProjectFields={canEdit}
