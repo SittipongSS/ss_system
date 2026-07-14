@@ -20,12 +20,14 @@ import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
+import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
+import { useResponsiveView } from "@/lib/useResponsiveView";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -153,6 +155,7 @@ export default function DealOverviewPage() {
   const [loading, setLoading] = useState(true);
   // เมนูครอบ (แบบเดียวกับหน้าโครงการ): ภาพรวม (default) ↔ ไทม์ไลน์ — sync ?tab=timeline
   const [tab, setTab] = useState("overview");
+  const [timelineView, setTimelineView] = useResponsiveView({ portrait: "list", landscape: "table" });
   useEffect(() => {
     setTab(detailTabFromSearch(window.location.search));
   }, []);
@@ -883,6 +886,7 @@ export default function DealOverviewPage() {
                 </button>
               )}
               {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
+              {(data.projectTasks || []).length > 0 && <ViewSwitcher value={timelineView} onChange={setTimelineView} modes={["list", "table", "document"]} />}
             </div>
             {data.project ? (
               <>
@@ -904,6 +908,10 @@ export default function DealOverviewPage() {
                     canEdit={canEdit}
                     dealId={deal.id}
                     projectId={data.project?.id || null}
+                    view={timelineView}
+                    onViewChange={setTimelineView}
+                    showHeading={false}
+                    showViewSwitcher={false}
                     timelineContext={{
                       name: deal.title,
                       customerName: deal.customerName,
@@ -955,6 +963,10 @@ export default function DealOverviewPage() {
                   canEdit={canEdit}
                   dealId={deal.id}
                   projectId={data.project?.id || null}
+                  view={timelineView}
+                  onViewChange={setTimelineView}
+                  showHeading={false}
+                  showViewSwitcher={false}
                   timelineContext={{
                     name: deal.title,
                     customerName: deal.customerName,
