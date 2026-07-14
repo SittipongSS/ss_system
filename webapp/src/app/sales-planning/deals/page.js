@@ -6,7 +6,6 @@ import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
-import MoneyInput from "@/components/ui/MoneyInput";
 import Workspace from "@/components/ui/Workspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
@@ -20,6 +19,7 @@ import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
 import DetailRow from "@/components/ui/DetailRow";
+import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -34,6 +34,7 @@ export default function SalesPlanningPipelinePage() {
   const [allMonths, setAllMonths] = useState(true);
   const [deals, setDeals] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [categories, setCategories] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +83,6 @@ export default function SalesPlanningPipelinePage() {
   const [docLoading, setDocLoading] = useState(false);
   const [docForm, setDocForm] = useState({ kind: "customer_brief", title: "", status: "pending", dueDate: "", notes: "" });
   const [shippingDealId, setShippingDealId] = useState(null);
-  const [winningDealId, setWinningDealId] = useState(null);
   const [pmModalOpen, setPmModalOpen] = useState(false);
   const [pmDeal, setPmDeal] = useState(null);
   const [pmInitial, setPmInitial] = useState(null);
@@ -91,10 +91,11 @@ export default function SalesPlanningPipelinePage() {
     setLoading(true);
     setError("");
     try {
-      const [dealsRes, customersRes] = await Promise.all([
+      const [dealsRes, customersRes, projectsRes] = await Promise.all([
         // ตัวกรอง "รอเติมข้อมูล" ต้องดึงทุกเดือน (deal backfill มี forecastMonth=null)
         fetch((allMonths || reviewOnly) ? "/api/sales-planning/deals" : `/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
         fetch("/api/master/customers"),
+        fetch("/api/pm/projects"),
       ]);
       if (!dealsRes.ok) {
         const txt = await dealsRes.text();
@@ -110,6 +111,7 @@ export default function SalesPlanningPipelinePage() {
         try { if(txt) custData = JSON.parse(txt); } catch(e){}
       }
       setCustomers(custData);
+      setProjects(projectsRes.ok ? await projectsRes.json() : []);
     } catch (e) {
       setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
@@ -178,6 +180,8 @@ export default function SalesPlanningPipelinePage() {
       endDate: deal.endDate || "",
       depositPaid: !!deal.depositPaid,
       notes: deal.notes || "",
+      projectId: deal.projectId || "",
+      lockedProjectId: deal.projectId || "",
     });
     setDealModal(true);
   };
@@ -194,7 +198,16 @@ export default function SalesPlanningPipelinePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "บันทึกดีลไม่สำเร็จ");
+      const savedDeal = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(savedDeal.error || "บันทึกดีลไม่สำเร็จ");
+      if (dealForm.projectId && !dealForm.lockedProjectId) {
+        const linkRes = await fetch(`/api/sales-planning/deals/${savedDeal.id || dealForm.id}/link-project`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: dealForm.projectId, startDate: dealForm.startDate || undefined }),
+        });
+        if (!linkRes.ok) throw new Error((await linkRes.json().catch(() => ({}))).error || "บันทึกดีลแล้ว แต่เชื่อมโครงการไม่สำเร็จ");
+      }
       setDealModal(false);
       await load();
     } catch (e2) {
@@ -260,7 +273,7 @@ export default function SalesPlanningPipelinePage() {
   };
 
   const acceptQuotation = async (quote) => {
-    if (!window.confirm(`Accept quotation ${quote.quoteNumber}?`)) return;
+    if (!window.confirm(`ยืนยัน Won ด้วยใบเสนอราคา ${quote.quoteNumber}?\nยอดก่อน VAT ${money(quotationWonAmount(quote))}`)) return;
     setQuoteLoading(true);
     setError("");
     try {
@@ -317,35 +330,6 @@ export default function SalesPlanningPipelinePage() {
       setError(e.message || "สร้างเอกสารส่งของไม่สำเร็จ");
     } finally {
       setShippingDealId(null);
-    }
-  };
-
-  // ปิดดีลเป็น Won — เปิดโมดัลรับ "มูลค่าปิดจริง" (prefill = คาดการณ์) ก่อนยืนยัน
-  const [winDeal, setWinDeal] = useState(null);
-  const [winValue, setWinValue] = useState("");
-  const [winMonth, setWinMonth] = useState(thisMonth());
-  // เดือนที่ปิด (Won) เริ่มที่เดือนพยากรณ์ของดีล — ปรับได้ถ้าปิดคนละเดือน. เดือนนี้จะย้าย
-  // ทั้ง FC และ AT มาอยู่ด้วยกัน (แล้วล็อก) เพื่อเทียบ TG/FC/AT ในเดือนเดียวกัน
-  const openWin = (deal) => { setWinDeal(deal); setWinValue(deal.projectValue ?? ""); setWinMonth(deal.forecastMonth || thisMonth()); };
-  const submitWin = async () => {
-    if (!winDeal) return;
-    const v = Number(winValue);
-    if (!Number.isFinite(v) || v <= 0) { setError("ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0"); return; }
-    setWinningDealId(winDeal.id);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/deals/${winDeal.id}/win`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wonValue: v, wonMonth: winMonth }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "ปิดดีลไม่สำเร็จ");
-      setWinDeal(null);
-      await load();
-    } catch (e) {
-      setError(e.message || "ปิดดีลไม่สำเร็จ");
-    } finally {
-      setWinningDealId(null);
     }
   };
 
@@ -632,11 +616,15 @@ export default function SalesPlanningPipelinePage() {
                     )}
                     <td className="num" style={{ whiteSpace: "nowrap" }}>
                       <div className="flex items-center gap-2 justify-end">
-                        {deal.canEdit && !["won", "in_project", "lost"].includes(deal.stage) && (
-                          <button type="button" className="btn btn-success sm" onClick={() => openWin(deal)} disabled={winningDealId === deal.id} title="ปิดดีลเป็น Won (นับยอด + ปิด forecast)">
-                            <Trophy size={14} aria-hidden="true" /> {winningDealId === deal.id ? "..." : "Won"}
+                        {deal.projectId ? (
+                          <Link href={`/sa/projects/${deal.projectId}`} className="btn ghost sm" title="เปิดโครงการที่เชื่อมแล้ว">
+                            <FolderKanban size={14} aria-hidden="true" /> ไปโครงการ
+                          </Link>
+                        ) : deal.canEdit ? (
+                          <button type="button" className="btn ghost sm" onClick={() => openEditDeal(deal)} title="แนะนำให้เชื่อมโครงการก่อนออกใบเสนอราคา">
+                            <FolderKanban size={14} aria-hidden="true" /> เชื่อมโครงการ
                           </button>
-                        )}
+                        ) : null}
                         {deal.canEdit && (
                           <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => openEditDeal(deal)} aria-label={`แก้ไข ${deal.title}`} title="แก้ไขดีล">
                             <Pencil size={15} aria-hidden="true" />
@@ -670,16 +658,12 @@ export default function SalesPlanningPipelinePage() {
             form={dealForm}
             onPatch={(patch) => setDealForm((f) => ({ ...f, ...patch }))}
             customers={customers}
+            projects={projects}
+            showProject
             categories={categories}
             stages={PIPELINE_STAGES.filter((st) => st !== "won" || dealForm.stage === "won")}
             alreadyWon={dealForm.stage === "won"}
             onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
-            extra={dealForm.stage === "won" ? (
-              <label>
-                มูลค่าปิดจริง (Won)
-                <MoneyInput value={dealForm.wonValue} onChange={(value) => setDealForm({ ...dealForm, wonValue: value ?? "" })} />
-              </label>
-            ) : null}
           />
           <div className="form-action-bar">
             <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
@@ -688,33 +672,6 @@ export default function SalesPlanningPipelinePage() {
             </button>
           </div>
         </form>
-      </Modal>
-
-      <Modal open={!!winDeal} onClose={() => winningDealId ? null : setWinDeal(null)} title="ปิดการขาย (Won)" size="sm">
-        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 13, color: "var(--text-3)" }}>
-            ปิดดีล <strong>{winDeal?.title}</strong> — ยืนยันว่าได้รับมัดจำ/ยืนยันแล้ว กรอก <strong>มูลค่าปิดจริง</strong> (นับเข้าเป้า)
-          </div>
-          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-            มูลค่าปิดจริง (บาท)
-            <MoneyInput value={winValue} onChange={(value) => setWinValue(value ?? "")} autoFocus />
-          </label>
-          {winDeal && Number(winDeal.projectValue) > 0 && Number(winValue) > 0 && Number(winValue) !== Number(winDeal.projectValue) && (
-            <div style={{ fontSize: 12, color: "var(--amber)" }}>ต่างจากคาดการณ์ ({money(winDeal.projectValue)}) {money(Number(winDeal.projectValue) - Number(winValue))}</div>
-          )}
-          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-            เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT และ FC จะย้ายมาเดือนนี้ แล้วล็อก</span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <MonthPicker value={winMonth} onChange={setWinMonth} />
-            </div>
-          </label>
-          <div className="form-action-bar">
-            <button type="button" className="btn ghost" onClick={() => setWinDeal(null)} disabled={!!winningDealId}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!winningDealId || !(Number(winValue) > 0)}>
-              <CheckCircle2 size={14} aria-hidden="true" /> {winningDealId ? "กำลังบันทึก..." : "ยืนยัน Won"}
-            </button>
-          </div>
-        </div>
       </Modal>
 
       <Modal open={quoteModal} onClose={() => setQuoteModal(false)} title={`Quotation${quoteDeal?.title ? ` · ${quoteDeal.title}` : ""}`} size="lg">
@@ -761,7 +718,7 @@ export default function SalesPlanningPipelinePage() {
                       ) : "-"}
                     </td>
                     <td className="num">
-                      {quote.status !== "accepted" && (
+                      {["draft", "sent"].includes(quote.status) && (
                         <div className="flex items-center gap-2 justify-end">
                           {quoteDeal?.canEdit && (
                             <button
@@ -770,7 +727,7 @@ export default function SalesPlanningPipelinePage() {
                               onClick={() => acceptQuotation(quote)}
                               disabled={quoteLoading}
                             >
-                              รับใบเสนอ
+                              Won
                             </button>
                           )}
                         </div>

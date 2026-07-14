@@ -14,6 +14,7 @@ export const initialDealForm = {
   title: "",
   customerId: "",
   customerName: "",
+  projectId: "",
   stage: "lead",
   dealType: "NPD",  // SCENT | NPD | RE-ORDER — คอลัมน์จริง (mig 0088) ส่งต่อเป็น template ตอนสร้างโครงการ PM
   formulaName: "",  // ชื่อสูตรกลิ่น (SCENT — จุดปลั๊กอิน RD ในอนาคต)

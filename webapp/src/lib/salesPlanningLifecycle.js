@@ -45,13 +45,13 @@ function nextActionFor(stage, hasProject) {
         ? { kind: 'quote', label: 'ทำใบเสนอราคา', hint: 'สร้างใบเสนอราคาส่งลูกค้า' }
         : { kind: 'propose', label: 'เสนอไทม์ไลน์ / ปิด Won', hint: 'เสนอกำหนดงานหรือปิดการขายเมื่อได้ยืนยัน' };
     case 'quotation':
-      return { kind: 'accept', label: 'รอรับใบเสนอราคา', hint: 'เมื่อลูกค้ารับ → เลื่อนเป็น "รอยืนยัน"' };
+      return { kind: 'accept', label: 'รอปิด Won ผ่านใบเสนอราคา', hint: 'เมื่อลูกค้ายืนยัน ให้กด Won ที่ใบเสนอราคา' };
     case 'timeline_proposed':
       return { kind: 'await', label: 'รอลูกค้ายืนยัน', hint: 'ติดตามการยืนยันไทม์ไลน์' };
     case 'awaiting_confirm':
       return { kind: 'deposit', label: 'รอมัดจำ', hint: 'เมื่อรับมัดจำ → ปิด Won ได้' };
     case 'deposit_pending':
-      return { kind: 'win', label: 'ปิดการขาย (Won)', hint: 'ได้มัดจำแล้ว — กดปิด Won' };
+      return { kind: 'quote', label: 'ปิด Won ผ่านใบเสนอราคา', hint: 'เปิดใบเสนอราคาฉบับล่าสุดแล้วกด Won' };
     case 'won':
       return hasProject
         ? { kind: 'open_project', label: 'ติดตามงานผลิต', hint: 'เปิดโครงการ PM เพื่อดำเนินงาน' }
@@ -186,7 +186,7 @@ export function dealLifecycle(deal, related = {}) {
   return {
     steps: buildSteps(deal.stage),
     nextAction: nextActionFor(deal.stage, hasProject),
-    canGo: open, // ปิด Won ได้จากทุกสถานะที่ยังเปิด (markWon กัน idempotent)
+    canGo: false, // Won ทำได้จากใบเสนอราคาเท่านั้น
     canNoGo: open, // Lost ได้จากทุกสถานะที่ยังเปิด
     routes: buildRoutes(deal, related),
   };

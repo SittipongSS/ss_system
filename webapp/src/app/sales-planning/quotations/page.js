@@ -16,7 +16,7 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 
 const STATUS_LABELS = {
-  draft: "ฉบับร่าง", sent: "ส่งลูกค้าแล้ว", accepted: "ลูกค้ารับแล้ว",
+  draft: "ฉบับร่าง", sent: "ส่งลูกค้าแล้ว", accepted: "Won",
   rejected: "ถูกปฏิเสธ", cancelled: "ยกเลิก", revised: "ถูกแก้ไข (มีฉบับใหม่)",
 };
 const STATUS_COLORS = {

@@ -79,11 +79,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // ถ้า client ยังส่งค่าเก่ามา ให้ถือเป็น won.
   if (stage === 'in_project') stage = 'won';
   // ปิด Won ตอนสร้างดีลต้องผ่านเงื่อนไขเดียวกับ win-flow: มัดจำ + มูลค่าปิดจริง>0 (M5)
-  const bodyWonValue = toMoney(body.wonValue, null);
-  if (stage === 'won') {
-    if (!body.depositPaid) return badRequest('Won ต้องยืนยันว่าได้รับมัดจำแล้ว');
-    if (bodyWonValue == null || bodyWonValue <= 0) return badRequest('ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0');
-  }
+  if (stage === 'won') return badRequest('สร้างดีลเป็น Won โดยตรงไม่ได้ ต้องปิด Won ผ่านใบเสนอราคา');
   // รหัสดีลฐาน DL-YYMMXXXX (atomic ต่อเดือน — mig 0096). แสดง DL-YYMMXXXX-0 ที่ UI/เอกสาร.
   const dealCode = await generateEntityCode(supabase, 'DL');
   const row = {
@@ -94,12 +90,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     title: body.title.trim(),
     stage,
     projectValue: toMoney(body.projectValue),
-    wonValue: stage === 'won' ? bodyWonValue : null,
+    wonValue: null,
     probability: toProbability(body.probability, stage),
     forecastMonth: monthKey(body.forecastMonth || body.expectedCloseDate),
     expectedCloseDate: body.expectedCloseDate || null,
     depositPaid: !!body.depositPaid,
-    confirmedAt: stage === 'won' ? (body.confirmedAt || new Date().toISOString()) : null,
+    confirmedAt: null,
     lostReason: stage === 'lost' ? (body.lostReason || null) : null,
     notes: body.notes || null,
     ownerId: body.ownerId || user.id || null,
