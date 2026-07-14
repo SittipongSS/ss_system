@@ -21,6 +21,7 @@ import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
+import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
@@ -695,6 +696,7 @@ export default function DealOverviewPage() {
                 <div style={{ minWidth: 0 }}>
                   <h1 style={{ margin: 0, fontSize: 20, fontWeight: 750, overflowWrap: "anywhere" }}>{deal.title}</h1>
                   <div style={{ marginTop: 7, color: "var(--text-2)", fontSize: 13, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
+                    {deal.code && <span className="mono" style={{ fontWeight: 700, color: "var(--text)" }}>{entityCodeDisplay(deal.code, 0)}</span>}
                     <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
                     {(dealBrand.en || dealBrand.th) && (
                       <span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? <> · <strong style={{ color: "var(--text)" }}>{dealBrand.th}</strong></> : null}</span>

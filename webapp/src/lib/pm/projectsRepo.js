@@ -1,6 +1,7 @@
 // Data-access helpers for PM projects — mirrors the lib/master/* repo pattern.
 // Routes should load projects / team scope / next code through here instead of
 // re-querying Supabase inline (which had drifted into 3 divergent copies).
+import { generateEntityCode } from '@/lib/entityCode';
 
 // Resolve a URL segment to a project. Internal ids ('PRJ-######') and human
 // project codes ('PJ-YYMMNNN') never collide, so accept either: try id first,
@@ -55,18 +56,9 @@ export async function deleteProjectDeep(supabase, projectId) {
   return { personalTasks: taskCount || 0, docRevisions: revCount || 0 };
 }
 
-// Next sequential project code PJ-YYMMNNN (per-month running number).
-// NOT atomic (read-max + 1) — callers that insert should retry on unique(code)
-// collision and call this again. `now` is injectable for testing/determinism.
+// รหัสโครงการฐาน PJ-YYMMXXXX (เลขรัน 4 หลัก atomic ต่อเดือน — mig 0096).
+// แสดงเป็น PJ-YYMMXXXX-R ที่ฝั่ง UI/เอกสาร (R = currentRev ผ่าน entityCodeDisplay).
+// atomic แล้ว (RPC) จึงไม่ชนกัน แต่ callers เดิมยัง retry on unique(code) ได้ (ไม่เสียหาย).
 export async function generateProjectCode(supabase, now = new Date()) {
-  const prefix = `PJ-${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-  const { data: latest } = await supabase
-    .from('projects').select('code').ilike('code', `${prefix}%`)
-    .order('code', { ascending: false }).limit(1);
-  let nextNum = 1;
-  if (latest?.[0]?.code) {
-    const lastNum = parseInt(latest[0].code.slice(prefix.length), 10);
-    if (!isNaN(lastNum)) nextNum = lastNum + 1;
-  }
-  return `${prefix}${nextNum.toString().padStart(3, '0')}`;
+  return generateEntityCode(supabase, 'PJ', now);
 }

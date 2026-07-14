@@ -30,6 +30,7 @@ import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
+import { entityCodeDisplay } from "@/lib/entityCode";
 import { getComputedStatus, statusDotColor, statusPillClass } from "@/lib/pm/derived";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
@@ -1026,7 +1027,7 @@ export default function ProjectDetailPage() {
                 <span>{projectTitle}</span>
               </h1>
               <div style={{ margin: "6px 0 0 50px", display: "flex", flexDirection: "column", gap: 3, fontSize: "12.5px", color: "var(--text-2)" }}>
-                <div>{p.code || "-"} · ลูกค้า: {p.customerName || "-"} · แบรนด์: {projectBrand}</div>
+                <div><span className="mono" style={{ fontWeight: 700, color: "var(--text)" }}>{entityCodeDisplay(p.code, p.currentRev)}</span> · ลูกค้า: {p.customerName || "-"} · แบรนด์: {projectBrand}</div>
                 <div>AE: {p.aeOwner || "-"} · ทีม: {p.team || "-"}</div>
               </div>
             </div>
