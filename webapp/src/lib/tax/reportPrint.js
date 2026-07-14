@@ -80,7 +80,6 @@ export function buildReportPrintHTML(report, meta = {}) {
   .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
   .logo-wrap img { height: 46px; width: auto; max-width: 300px; display: block; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
-  .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
   .doc-title .big { font-size: 16px; font-weight: 800; color: #c17a52; text-align: right; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; margin-top: 2px; }
   table { width: 100%; border-collapse: collapse; }
@@ -110,11 +109,11 @@ export function buildReportPrintHTML(report, meta = {}) {
         <div class="logo-wrap"><img src="${LOGO_URL}" alt="S&amp;S"/></div>
         <div>
           <h2>${esc(COMPANY)}</h2>
-          <div class="doc-name">${esc(report.title)}</div>
         </div>
       </div>
       <div class="doc-title">
         <div class="big">REPORT</div>
+        <div class="sub">${esc(report.title)}</div>
         ${filterLine ? `<div class="sub">${filterLine}</div>` : ""}
       </div>
     </div>

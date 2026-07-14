@@ -18,7 +18,6 @@ export function printHeaderHtml({ form, docNumber, docDate }) {
       <div class="doc-logo"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
       <div>
         <div class="co">บริษัท เซ้นท์ แอนด์ เซนส์ จำกัด — Scent &amp; Sense Co., Ltd.</div>
-        <div class="form">เอกสารระบบบริหารงานลูกค้า</div>
       </div>
     </div>
     <div class="docmeta">
@@ -70,7 +69,6 @@ export function openQuotePrintWindow(quote) {
     .doc-logo { height: 48px; flex-shrink: 0; display: flex; align-items: center; }
     .doc-logo img { height: 48px; width: auto; max-width: 320px; display: block; }
     .co { font-weight: 700; font-size: 14px; }
-    .form { font-size: 13px; color: #444; margin-top: 2px; }
     .docmeta { text-align: right; font-size: 13px; white-space: nowrap; }
     .docmeta span { color: #666; }
     .form-code { color: #837868; font-size: 10px; font-weight: 700; letter-spacing: .4px; }
