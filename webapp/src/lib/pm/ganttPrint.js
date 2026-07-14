@@ -236,14 +236,16 @@ export function buildGanttPrintHTML(project) {
   .sw { width: 11px; height: 11px; border-radius: 2px; }
 
   @page {
-    size: A4 landscape; margin: 31mm 8mm 13mm;
+    size: A4 landscape; margin: 9mm 8mm 13mm;
     @bottom-right { content: "หน้า " counter(page) " / " counter(pages); font-size: 9px; color: #837868; }
   }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
     .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
-    .doc-top { position: fixed; top: -29mm; left: 0; right: 0; height: 25mm; margin: 0; background: #fff; z-index: 20; }
+    /* NB: อย่าใช้ position:fixed ทำ running header — Chromium (print) รองรับไม่ได้
+       มันดัน .doc-top ไปอยู่ล่างสุดหน้าแรก + เว้นบนโล่งทุกหน้า. ให้หัวเอกสารอยู่
+       in-flow บนสุดหน้าแรกตามปกติ. หัวคอลัมน์ตารางซ้ำทุกหน้าด้วย thead อยู่แล้ว. */
     thead { display: table-header-group; }
   }
 
