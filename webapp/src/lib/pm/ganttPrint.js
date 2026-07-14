@@ -8,14 +8,13 @@ import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
 import { brandLabel } from '@/lib/master/brands';
 import { entityCodeDisplay } from '@/lib/entityCode';
 import {
+  COMPANY_ADDRESS,
+  COMPANY_LEGAL_NAME,
+  COMPANY_LINE,
+  COMPANY_OFFICE_TEL,
   DOCUMENT_FORMS,
   SYSTEM_DOCUMENT_LOGO_URL,
 } from '@/lib/documentBrand';
-
-// ข้อมูลบริษัท (แสดงในหัวเอกสารใต้ชื่อบริษัท — CR §3.2).
-const COMPANY_ADDRESS = '2/4 ซอย เพชรเกษม 35/1 แขวงบางหว้า เขตภาษีเจริญ กรุงเทพมหานคร 10160';
-const COMPANY_OFFICE_TEL = '02-000-7722';
-const COMPANY_LINE = '@perfumefactory';
 
 // วันที่: ใช้มาตรฐานการแสดงผลกลาง (§2). thai day-month-year = "25 ก.ค. 26",
 // คอลัมน์ Start/Finish ในตาราง = DD/MM/YY (พื้นที่แคบ).
@@ -278,7 +277,7 @@ export function buildGanttPrintHTML(project) {
       <div class="brand">
         <div class="logo-wrap"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
         <div>
-          <h2>บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด</h2>
+          <h2>${esc(COMPANY_LEGAL_NAME)}</h2>
           <div class="company-info">
             <div>${esc(COMPANY_ADDRESS)}</div>
             <div>โทร. ${COMPANY_OFFICE_TEL} · Line ${esc(COMPANY_LINE)}</div>
