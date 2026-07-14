@@ -338,18 +338,25 @@ export default function QuotationEditorPage() {
 
   return (
     <Workspace
-      icon={<FileText size={22} />}
-      title={quote ? `ใบเสนอราคา ${quote.quoteNumber}` : "ใบเสนอราคา"}
-      subtitle={quote ? `${quote.customerName || "-"}${quote.deal ? ` · ดีล: ${quote.deal.title}` : ""}${quote.revisionNo > 0 ? ` · ฉบับแก้ไข R${quote.revisionNo}` : ""}` : ""}
       back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
-      headerRight={quote && (
+      backActions={quote && (
         <div className={styles.headerActions}>
           {editable && <SaveStatus status={error ? "error" : ["save", "revise"].includes(busy) ? "saving" : dirty ? "dirty" : "saved"} />}
-          {canEditDocument && !editMode && <Link href={`/sa/quotations/${id}?edit=1`} className="btn btn-primary"><Pencil size={14} aria-hidden="true" /> แก้ไข</Link>}
+          {canEditDocument && !editMode && (
+            <Link href={`/sa/quotations/${id}?edit=1`} className="btn-icon" aria-label="แก้ไขใบเสนอราคา" title="แก้ไข">
+              <Pencil size={16} aria-hidden="true" />
+            </Link>
+          )}
+          {canDeleteDocument && !editMode && (
+            <button type="button" className="btn-icon danger" onClick={doDelete} disabled={!!busy} aria-label="ลบใบเสนอราคา" title="ลบ">
+              <Trash2 size={16} aria-hidden="true" />
+            </button>
+          )}
           {editable && <button type="button" className="btn ghost" onClick={leaveEditMode} disabled={!!busy}>ยกเลิกแก้ไข</button>}
           {editable && <button type="button" className="btn btn-primary" onClick={() => setSaveChoiceOpen(true)} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {["save", "revise"].includes(busy) ? "กำลังบันทึก…" : "บันทึก"}</button>}
         </div>
       )}
+      hideHeader
     >
       {error && (
         <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>{error}</div>
@@ -567,7 +574,6 @@ export default function QuotationEditorPage() {
 
               {quote.deal && <Link href={`/sa/deals/${quote.deal.id}`} className={styles.relatedLink}>เปิดดีลที่เกี่ยวข้อง <span>→</span></Link>}
               {!editable && <p className={styles.lockedNote}>ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่</p>}
-              {canDeleteDocument && <button type="button" className={styles.deleteAction} onClick={doDelete} disabled={!!busy}><Trash2 size={14} aria-hidden="true" /> {quote.status === "draft" ? "ลบฉบับร่าง" : "ลบใบเสนอราคา"}</button>}
             </section>
             {quote.revisionHistory?.length > 1 && (
               <section className={styles.card}>

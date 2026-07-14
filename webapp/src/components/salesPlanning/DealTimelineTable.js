@@ -71,6 +71,7 @@ export default function TimelineWorkspace({
   onUpdateProject,
   view: controlledView,
   onViewChange,
+  showHeading = true,
   showViewSwitcher = true,
   onChanged,
   onError,
@@ -331,13 +332,17 @@ export default function TimelineWorkspace({
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>{suppliedDocumentProject ? "ไทม์ไลน์โครงการ" : "ไทม์ไลน์ดีล"}</div>
-          <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>{done}/{tasks.length} ขั้นตอนเสร็จแล้ว</div>
+      {(showHeading || showViewSwitcher) && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          {showHeading && (
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>{suppliedDocumentProject ? "ไทม์ไลน์โครงการ" : "ไทม์ไลน์ดีล"}</div>
+              <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>{done}/{tasks.length} ขั้นตอนเสร็จแล้ว</div>
+            </div>
+          )}
+          {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
         </div>
-        {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
-      </div>
+      )}
 
       {view === "document" && (
         <div className="glass-panel" style={{ padding: 16 }}>
