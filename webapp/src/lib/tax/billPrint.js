@@ -80,7 +80,7 @@ export function buildBillPrintHTML(order, customer = {}) {
   .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 7px; cursor: pointer; }
   .sheet { width: 210mm; min-height: 297mm; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); }
 
-  .doc-top { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 10px; }
+  .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 10px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
   .logo-img { height: 46px; width: auto; max-width: 300px; display: block; }

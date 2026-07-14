@@ -64,7 +64,7 @@ export function openQuotePrintWindow(quote) {
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'IBM Plex Sans Thai', 'Sarabun', system-ui, sans-serif; font-size: 13px; color: #1c1e26; margin: 0; padding: 24px 28px; }
-    .doc-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 3px solid #21385e; padding-bottom: 12px; margin-bottom: 14px; }
+    .doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 3px solid #21385e; padding-bottom: 12px; margin-bottom: 14px; }
     .brand { display: flex; gap: 12px; align-items: center; }
     .doc-logo { height: 48px; flex-shrink: 0; display: flex; align-items: center; }
     .doc-logo img { height: 48px; width: auto; max-width: 320px; display: block; }
