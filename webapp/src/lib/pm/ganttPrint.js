@@ -153,7 +153,7 @@ export function buildGanttPrintHTML(project) {
   .sheet { width: 297mm; min-height: 210mm; margin: 16px auto; background: #fff;
            box-shadow: 0 8px 32px rgba(40,33,24,.12); padding: 8mm 9mm; }
 
-  .doc-top { display: flex; justify-content: space-between; align-items: flex-start;
+  .doc-top { display: flex; justify-content: space-between; align-items: center;
              border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px;
              page-break-after: avoid; break-after: avoid; }
   .brand { display: flex; align-items: center; gap: 10px; }
