@@ -1,6 +1,6 @@
 # แผนเชื่อม Google Chat + ประโยชน์จาก Google Workspace
 
-สถานะ: **เฟส 1+2 ใช้งานจริงแล้ว** · **เฟส 3 โค้ดเสร็จ** (cron daily-digest 08:30 จ-ศ — ⚠ ต้องตั้ง env `CRON_SECRET` บน Vercel) · อัปเดต 2026-07-15
+สถานะ: **เฟส 1+2+3 ใช้งานจริงแล้ว** · **เฟส 4 (SSO) ทำแล้วแต่ผู้ใช้ตัดสินใจถอดออก** (PR #380 → revert, 2026-07-16 — ใช้รหัสผ่านอย่างเดียว) · อัปเดต 2026-07-16
 เจ้าของการตัดสินใจ: ผู้ใช้ (supervisor) · จอง migration: **0099** (ตาราง `chat_webhooks`, ใช้ในเฟส 2)
 
 **จุดประสงค์:** บริษัทใช้ Google Workspace อยู่แล้ว → ใช้ Google Chat เป็นช่องแจ้งเตือน
@@ -100,13 +100,15 @@ chatCard({ title, subtitle, rows, linkPath, linkLabel })
   - ~~FC สหมิตรเสี่ยงช้า~~ — ผู้ใช้ตัดออก (2026-07-15) ดูใน dashboard พอ
 - ไม่มีเหตุการณ์ = ไม่ส่ง (อย่าส่งการ์ดว่าง)
 
-## เฟส 4 — Google SSO (แทร็กแยก อิสระจาก Chat)
+## เฟส 4 — Google SSO (ทำแล้ว → ถอดออกตามมติผู้ใช้ 2026-07-16)
 
-- เปิด Google provider ใน Supabase Auth + จำกัดโดเมน `scentandsense.co.th` (ตรวจ `hd` claim)
-- ปุ่ม "เข้าสู่ระบบด้วย Google" ในหน้า login — **role ยังอ่านจาก DB ทุก request ตามเดิม**
-  (auth-session-model ไม่เปลี่ยน) แค่เปลี่ยนวิธีพิสูจน์ตัวตน
-- ต้องตัดสินใจ: บังคับ SSO อย่างเดียว หรือให้ใช้รหัสผ่านคู่กันช่วงเปลี่ยนผ่าน
-- ผูกบัญชีเดิม: match ด้วยอีเมล (อีเมลพนักงานเป็น @scentandsense.co.th อยู่แล้ว)
+ทำจริงใน PR #380 (ปุ่ม Google + /auth/callback ตรวจโดเมนฝั่ง server + proxy เปิดทาง)
+และตั้งค่า Google Cloud OAuth (Internal) + Supabase provider จนใช้งานได้ แต่ผู้ใช้
+ตัดสินใจ**ถอดออก** (revert #380) — ระบบใช้รหัสผ่านอย่างเดียวเหมือนเดิม
+
+ถ้าอนาคตอยากเปิดใหม่: โค้ดอยู่ในประวัติ PR #380 (revert กลับมาได้), ฝั่ง Google Cloud
+OAuth client + Supabase provider config ยังอยู่ (แค่ปิดสวิตช์ provider ไว้), และบทเรียน
+สำคัญ: โดเมนจริงคือ ss-team.vercel.app — Site URL/Redirect URLs ต้องชี้ที่นั่น
 
 ## เฟส 5 — Chat App โต้ตอบได้ (อนาคต)
 
