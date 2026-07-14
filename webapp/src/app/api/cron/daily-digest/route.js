@@ -3,8 +3,6 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { chatCard, sendChatNow } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
-import { buildSahamitReverseRiskRows } from '@/lib/salesPlanningReverse';
-import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -13,10 +11,10 @@ export const maxDuration = 60;
 // เรียกโดย Vercel Cron (08:30 ไทย จ-ศ, ดู vercel.json) ด้วย Authorization: Bearer CRON_SECRET
 // หรือ admin เปิดเองจากเบราว์เซอร์เพื่อทดสอบ. ไม่มีเหตุการณ์ = ไม่ส่งการ์ด (ไม่สแปม space)
 //
-// เนื้อหา 3 การ์ด (reuse ตรรกะเดิม ไม่มีกติกาใหม่):
+// เนื้อหา 2 การ์ด (reuse ตรรกะเดิม ไม่มีกติกาใหม่):
 //   1. งานค้างอนุมัติ (ลูกค้า/สินค้า/ใบเสนอราคา pending) → space ผู้อนุมัติ
 //   2. งานโครงการเลยกำหนด/ครบใน 3 วัน (นิยาม isUrgent ใน lib/pm/derived.js) → space โครงการ
-//   3. FC สหมิตรเสี่ยงช้า (buildSahamitReverseRiskRows เดียวกับแดชบอร์ด) → space ทีมขาย
+// (FC สหมิตรเสี่ยง เคยอยู่ในแผนแต่ผู้ใช้ตัดออก — ดูใน dashboard เองพอ)
 
 const fmtShortDate = (iso) => {
   if (!iso) return '';
@@ -96,39 +94,6 @@ async function pmDigest(supabase) {
   });
 }
 
-async function sahamitDigest(supabase) {
-  const { data: customer } = await supabase
-    .from('customers').select('id').eq('arCode', SAHAMIT_AR_CODE).maybeSingle();
-  if (!customer) return null;
-
-  const { data: rounds } = await supabase
-    .from('sahamit_forecast_rounds').select('*').eq('customerId', customer.id);
-  if (!rounds?.length) return null;
-
-  const { data: lines } = await supabase
-    .from('sahamit_forecast_lines').select('*').in('roundId', rounds.map((r) => r.id));
-  const { data: hol } = await supabase.from('holidays').select('date');
-  const holidays = new Set((hol || []).map((h) => h.date));
-  const roundsWithLines = rounds.map((round) => ({
-    ...round,
-    lines: (lines || []).filter((line) => line.roundId === round.id),
-  }));
-
-  const risk = buildSahamitReverseRiskRows(roundsWithLines, holidays, 90).filter((row) => row.risk);
-  if (!risk.length) return null;
-
-  return chatCard({
-    title: '⚠️ FC สหมิตรเสี่ยงช้า',
-    subtitle: `${risk.length} SKU-เดือน ต้องรีบ confirm`,
-    rows: risk.slice(0, 5).map((row) => ({
-      label: row.fgCode,
-      value: `ต้องใช้ ${row.warehouseNeedMonth} · ควร confirm ภายใน ${row.requiredConfirmMonth || '-'} · FC ล่าสุด ${row.latestFcReceivedMonth || 'ยังไม่มี'}`,
-    })),
-    linkPath: '/sahamit',
-    linkLabel: 'เปิดระบบสหมิตร',
-  });
-}
-
 export async function GET(request) {
   // ผ่านได้ 2 ทาง: Vercel Cron (Bearer CRON_SECRET) หรือ admin กดทดสอบเองจากเบราว์เซอร์
   const auth = request.headers.get('authorization');
@@ -147,7 +112,6 @@ export async function GET(request) {
   const jobs = [
     ['approvals', 'approvals', approvalsDigest],
     ['pm', 'pm', pmDigest],
-    ['sahamit', 'sales', sahamitDigest],
   ];
   for (const [name, spaceKey, build] of jobs) {
     try {

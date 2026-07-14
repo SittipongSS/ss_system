@@ -63,7 +63,7 @@ chatCard({ title, subtitle, rows, linkPath, linkLabel })
 | ลูกค้า/สินค้าถูกอนุมัติ/ตีกลับ | งานขาย | `api/customers/[id]/route.js`, `api/products/[id]/route.js` (PATCH approvalStatus) |
 | ใบเสนอราคารออนุมัติ / อนุมัติ / ตีกลับ | อนุมัติ + งานขาย | `api/sales-planning/quotations/[id]/approval/route.js` |
 | ดีลชนะ (Won) | งานขาย | `api/sales-planning/deals/[id]/win/route.js` (จุดเดียว ใช้ `buildWinPatch`) |
-| Forecast review อนุมัติ/ตีกลับ | งานขาย | `api/sales-planning/forecast-reviews/route.js` |
+| ~~Forecast review อนุมัติ/ตีกลับ~~ | — | ผู้ใช้ตัดออก (2026-07-15) ดูในระบบพอ |
 | เอกสาร workflow เปลี่ยนสถานะ | อนุมัติ | จุดกลางของ mig 0098 (`document_workflow_core`) — ผูกทีเดียวได้ทุกเอกสาร |
 
 กติกา: ใส่ `sendChat(...)` **หลัง** DB write สำเร็จเท่านั้น และไม่ await แบบ blocking
@@ -97,7 +97,7 @@ chatCard({ title, subtitle, rows, linkPath, linkLabel })
 - เนื้อหา digest (ใช้ query เดิมที่มีอยู่แล้ว ไม่เขียน logic ใหม่):
   - งานรออนุมัติค้าง (master pending + QT รออนุมัติ) → space อนุมัติ
   - task PM ใกล้ครบกำหนด 3 วัน / เลยกำหนด (ใช้ `lib/pm/derived.js` urgency) → space PM
-  - FC สหมิตรเสี่ยงช้า (logic เดิมจาก sahamit-risk) → space งานขาย
+  - ~~FC สหมิตรเสี่ยงช้า~~ — ผู้ใช้ตัดออก (2026-07-15) ดูใน dashboard พอ
 - ไม่มีเหตุการณ์ = ไม่ส่ง (อย่าส่งการ์ดว่าง)
 
 ## เฟส 4 — Google SSO (แทร็กแยก อิสระจาก Chat)
