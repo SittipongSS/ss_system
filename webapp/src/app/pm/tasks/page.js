@@ -22,6 +22,7 @@ import { daysToDue, isUrgent } from "@/lib/pm/derived";
 import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink, taskLinkType } from "@/lib/pm/taskLink";
 import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm/taskViews";
+import { compactPersonName } from "@/lib/personName";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
@@ -213,7 +214,7 @@ export default function TasksPage() {
   useEffect(() => {
     fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((u) => {
       setUsers(u || []);
-      setUsersMap(Object.fromEntries((u || []).map((x) => [x.id, x.name])));
+      setUsersMap(Object.fromEntries((u || []).map((x) => [x.id, compactPersonName(x.name)])));
     }).catch(() => {});
     fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((p) => setAllProjects(p || [])).catch(() => {});
     fetch("/api/sales-planning/deals").then((r) => (r.ok ? r.json() : [])).then((d) => setAllDeals(d || [])).catch(() => {});
@@ -1006,7 +1007,7 @@ export default function TasksPage() {
               <label><UserPlus size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>
               <Select fullWidth value={form.assigneeId} onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}>
                 <option value="">— ตัวฉันเอง —</option>
-                {assignableUsers.filter((u) => u.id !== me?.id).map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
+                {assignableUsers.filter((u) => u.id !== me?.id).map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}{u.team ? ` (${u.team})` : ""}</option>)}
               </Select>
               {me && !isSuperuser(me.role) && !TEAM_ROLES.includes(me.role) && (
                 <div className="text-[11px] text-[var(--text-3)] mt-1">ตำแหน่งของคุณมอบหมายงานให้คนอื่นไม่ได้ — สร้างเป็นงานของตัวเองเท่านั้น</div>
