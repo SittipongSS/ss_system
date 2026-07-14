@@ -14,6 +14,11 @@ import {
 import { quoteApprovalRequirement } from '@/lib/quotationApproval';
 import { normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
+import {
+  ACTIVE_QUOTATION_STATUSES,
+  activeQuotationConflictMessage,
+  isConcurrentQuotationCreate,
+} from '@/lib/sales/quotationCreateGuard';
 import { businessDate } from '@/lib/businessDate';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 
@@ -60,6 +65,19 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!deal.projectId) return badRequest('ดีลนี้ยังไม่ผูกโครงการ — สร้าง/ผูกโครงการก่อน แล้วจึงออกใบเสนอราคา');
   // cascade: ใบเสนอราคาต้องมีลูกค้า (มติผู้ใช้ — เลือกลูกค้าที่ดีลก่อน)
   if (!deal.customerId) return badRequest('ดีลนี้ยังไม่ระบุลูกค้า — เลือกลูกค้าที่ดีลก่อน แล้วจึงออกใบเสนอราคา');
+
+  // เช็กเร็วเพื่อไม่เสียเลขรันโดยไม่จำเป็น ส่วน unique index ใน migration 0099
+  // เป็นตัวกันขั้นสุดท้ายเมื่อสอง request ผ่านจุดนี้พร้อมกันจริง ๆ
+  const { data: activeQuote, error: activeQuoteError } = await supabase
+    .from('quotations')
+    .select('id, quoteNumber, status')
+    .eq('dealId', deal.id)
+    .in('status', ACTIVE_QUOTATION_STATUSES)
+    .order('createdAt', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (activeQuoteError) return fail(activeQuoteError.message, 500);
+  if (activeQuote) return conflict(activeQuotationConflictMessage(activeQuote));
 
   const body = await req.json().catch(() => ({}));
   let lines = normalizeManualLines(body.lines || []);
@@ -148,7 +166,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     })
     .select()
     .single();
-  if (error) return fail(error.code === '23505' ? `เลข quotation ซ้ำ: ${quoteNumber}` : error.message, error.code === '23505' ? 409 : 500);
+  if (error) {
+    if (isConcurrentQuotationCreate(error)) return conflict(activeQuotationConflictMessage());
+    return fail(error.code === '23505' ? `เลข quotation ซ้ำ: ${quoteNumber}` : error.message, error.code === '23505' ? 409 : 500);
+  }
 
   let insertedLines = [];
   if (lines.length) {

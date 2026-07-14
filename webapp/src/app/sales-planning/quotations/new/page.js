@@ -13,12 +13,15 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import MoneyInput from "@/components/ui/MoneyInput";
 import DateInput from "@/components/ui/DateInput";
+import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { QUOTE_APPROVAL_AMOUNT_THRESHOLD } from "@/lib/quotationApproval";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
+import { ACTIVE_QUOTATION_STATUSES } from "@/lib/sales/quotationCreateGuard";
+import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import styles from "./page.module.css";
 
 const EXCLUDE_STAGES = ["won", "in_project", "lost"];
@@ -29,6 +32,7 @@ function NewQuotationInner() {
   const canEdit = useCan("salesplan:edit");
 
   const [deals, setDeals] = useState([]);
+  const [activeQuoteDealIds, setActiveQuoteDealIds] = useState(() => new Set());
   const [projectsById, setProjectsById] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,8 +53,7 @@ function NewQuotationInner() {
   const [discountType, setDiscountType] = useState("");
   const [discountValue, setDiscountValue] = useState(0);
   const [vatRate, setVatRate] = useState(7);
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [paymentTerms, setPaymentTerms] = useState("");
+  const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
   const [notes, setNotes] = useState("");
 
   // โหลดดีล + โครงการ (ดึงรหัสโครงการมาโชว์ในตัวเลือก)
@@ -59,20 +62,28 @@ function NewQuotationInner() {
     (async () => {
       setLoading(true);
       try {
-        const [dRes, pRes, productRes] = await Promise.all([
+        const [dRes, pRes, productRes, quoteRes] = await Promise.all([
           fetch("/api/sales-planning/deals").catch(() => null),
           fetch("/api/pm/projects").catch(() => null),
           fetch("/api/products").catch(() => null),
+          fetch("/api/sales-planning/quotations").catch(() => null),
         ]);
         const dealsData = dRes?.ok ? await dRes.json() : [];
         const projData = pRes?.ok ? await pRes.json() : [];
         const productData = productRes?.ok ? await productRes.json() : [];
+        const quoteData = quoteRes?.ok ? await quoteRes.json() : [];
         if (!alive) return;
         setDeals(Array.isArray(dealsData) ? dealsData : []);
         const map = {};
         (Array.isArray(projData) ? projData : []).forEach((p) => { map[p.id] = p; });
         setProjectsById(map);
         setProducts(Array.isArray(productData) ? productData : []);
+        setActiveQuoteDealIds(new Set(
+          (Array.isArray(quoteData) ? quoteData : [])
+            .filter((quote) => ACTIVE_QUOTATION_STATUSES.includes(quote.status))
+            .map((quote) => quote.dealId)
+            .filter(Boolean),
+        ));
       } catch (e) {
         if (alive) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
       } finally {
@@ -86,8 +97,8 @@ function NewQuotationInner() {
   // ต้องเป็นดีลที่ "แก้ไขได้" (canEdit จาก API — edit-scope) ไม่ใช่แค่ view-scope;
   // ไม่งั้นเลือกดีลทีมอื่นแล้ว POST คืน forbidden (server เช็ค inSalesEditScope).
   const eligible = useMemo(
-    () => deals.filter((d) => d.projectId && d.customerId && d.canEdit && !EXCLUDE_STAGES.includes(d.stage)),
-    [deals],
+    () => deals.filter((d) => d.projectId && d.customerId && d.canEdit && !EXCLUDE_STAGES.includes(d.stage) && !activeQuoteDealIds.has(d.id)),
+    [activeQuoteDealIds, deals],
   );
 
   const customerOptions = useMemo(() => {
@@ -204,8 +215,17 @@ function NewQuotationInner() {
   };
   const removeLine = (index) => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index));
 
+  const paymentPlan = useMemo(() => (payment.type === "installment"
+    ? { type: "installment", paymentMethod: payment.paymentMethod.trim() || null, installments: payment.installments.map((row) => ({ label: row.label, percent: Number(row.percent) || 0, note: row.note })) }
+    : { type: "full", paymentMethod: payment.paymentMethod.trim() || null }), [payment]);
+
   const create = useCallback(async (status) => {
     if (!dealId) return;
+    const paymentValidation = validatePaymentPlan(paymentPlan);
+    if (!paymentValidation.ok) {
+      setError(paymentValidation.error);
+      return;
+    }
     if (status === "sent" && !lines.length) {
       setError("ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า");
       return;
@@ -233,9 +253,9 @@ function NewQuotationInner() {
           discountType: discountType || null,
           discountValue,
           vatRate,
-          paymentTerms,
+          paymentTerms: payment.paymentTerms,
           notes,
-          paymentPlan: { type: "full", paymentMethod },
+          paymentPlan,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -250,7 +270,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, paymentMethod, paymentTerms, notes, totals.totalAmount, requiresApproval, router]);
+  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, totals.totalAmount, requiresApproval, router]);
 
   if (!canEdit) {
     return (
@@ -269,7 +289,7 @@ function NewQuotationInner() {
     >
       {error && <div className={styles.errorPanel} role="alert">{error}</div>}
       {!loading && !eligible.length && (
-        <div className={styles.emptyPanel}>ยังไม่มีดีลที่พร้อมออกใบเสนอราคา — ดีลต้องผูกโครงการและมีลูกค้าก่อน <Link href="/sa/deals" className="btn ghost sm"><ExternalLink size={13} /> ไปหน้าดีล</Link></div>
+        <div className={styles.emptyPanel}>ยังไม่มีดีลที่พร้อมออกใบเสนอราคา — ดีลต้องผูกโครงการ มีลูกค้า และยังไม่มีใบเสนอราคาที่ใช้งานอยู่ <Link href="/sa/deals" className="btn ghost sm"><ExternalLink size={13} /> ไปหน้าดีล</Link></div>
       )}
 
       <div className={styles.detailLayout}>
@@ -350,8 +370,7 @@ function NewQuotationInner() {
           </section>
 
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><CircleDollarSign size={17} /><h2>เงื่อนไขการชำระเงิน</h2></div>
-            <div className={styles.termsGrid}><label>วิธีการชำระเงิน<input className="premium-input" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด" /></label><label>ข้อความเงื่อนไขชำระ<textarea className="premium-input" rows={3} value={paymentTerms} onChange={(event) => setPaymentTerms(event.target.value)} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ" /></label></div>
+            <QuotationPaymentTerms value={payment} onChange={setPayment} totalAmount={totals.totalAmount} />
           </section>
 
           <section className={styles.card}><div className={styles.sectionHeading}><FileText size={17} /><h2>หมายเหตุ</h2></div><textarea className="premium-input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="หมายเหตุที่ต้องการแสดงในใบเสนอราคา" /></section>
