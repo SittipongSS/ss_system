@@ -1025,6 +1025,9 @@ export default function DealOverviewPage() {
                 <FileText size={17} aria-hidden="true" />
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ใบเสนอราคา</h2>
                 <div className="spacer" />
+                {canEdit && deal.projectId && deal.customerId && !["lost"].includes(deal.stage) && (
+                  <Link href={`/sa/quotations/new?dealId=${deal.id}`} className="btn btn-primary sm"><Plus size={13} aria-hidden="true" /> สร้างใบเสนอราคา</Link>
+                )}
                 <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>
               </div>
               {(data.quotations || []).length ? (
