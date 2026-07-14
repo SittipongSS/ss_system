@@ -27,7 +27,7 @@ function fakePrintWindow() {
   };
 }
 
-test('prepareQuotePrintWindow opens synchronously without noopener and keeps a writable reference', () => {
+test('prepareQuotePrintWindow opens a writable preview tab synchronously', () => {
   const target = fakePrintWindow();
   let openArgs;
   globalThis.window = {
@@ -40,7 +40,7 @@ test('prepareQuotePrintWindow opens synchronously without noopener and keeps a w
   assert.equal(target.opener, null);
   assert.equal(openArgs[0], '');
   assert.equal(openArgs[1], '_blank');
-  assert.doesNotMatch(openArgs[2], /noopener/);
+  assert.equal(openArgs.length, 2);
   assert.match(target.writes.join(''), /กำลังเตรียมเอกสาร/);
 });
 

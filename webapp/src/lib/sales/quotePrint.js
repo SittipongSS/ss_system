@@ -22,7 +22,8 @@ const printDate = (v) => (v ? fmtDate(v).replaceAll('/', '.') : '-');
 // ต้องเปิด window ภายใน call stack ของ click โดยตรง มิฉะนั้น Chromium จะบล็อก popup
 // เมื่อมี fetch/save ที่ await ก่อน window.open.
 export function prepareQuotePrintWindow() {
-  const printWindow = window.open('', '_blank', 'width=900,height=1100');
+  // ไม่ระบุ window features เพื่อให้ browser เปิดพรีวิวเป็นแท็บใหม่แทน popup window.
+  const printWindow = window.open('', '_blank');
   if (!printWindow) {
     window.alert('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้');
     return null;
