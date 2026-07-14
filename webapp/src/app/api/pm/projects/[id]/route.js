@@ -9,6 +9,7 @@ import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
 import { rollupDeals } from '@/lib/sales/projectRollup';
 import { sortDealsByOrder } from '@/lib/pm/dealOrder';
+import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,7 +89,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
         .select('id, dealId, fromStage, toStage, changedByName, changedAt')
         .in('dealId', dealIds).order('changedAt', { ascending: false }).limit(40),
     ]);
-    quotations = quotes || [];
+    quotations = latestQuotationRevisions(quotes || []);
     dealActivities = acts || [];
     dealStageHistory = hist || [];
   }

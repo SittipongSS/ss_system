@@ -9,7 +9,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileText, MapPin, Pencil, Plus, Printer, Save, Send, Trash2, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, FileText, MapPin, Pencil, Plus, Printer, Save, Send, Trash2, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import FormActions from "@/components/ui/FormActions";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -567,6 +567,34 @@ export default function QuotationEditorPage() {
               {!editable && <p className={styles.lockedNote}>ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่</p>}
               {canDeleteDocument && <button type="button" className={styles.deleteAction} onClick={doDelete} disabled={!!busy}><Trash2 size={14} aria-hidden="true" /> {quote.status === "draft" ? "ลบฉบับร่าง" : "ลบใบเสนอราคา"}</button>}
             </section>
+            {quote.revisionHistory?.length > 1 && (
+              <section className={styles.card}>
+                <div className={styles.sectionHeading}>
+                  <FileClock size={17} aria-hidden="true" />
+                  <h2>ประวัติ Revision</h2>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {quote.revisionHistory.map((revision) => (
+                    <Link
+                      key={revision.id}
+                      href={`/sa/quotations/${revision.id}`}
+                      className={styles.relatedLink}
+                      aria-current={revision.id === quote.id ? "page" : undefined}
+                      style={revision.id === quote.id ? { color: "var(--blue)", fontWeight: 700 } : undefined}
+                    >
+                      <span>
+                        {revision.quoteNumber}
+                        {revision.id === quote.id ? " · ฉบับนี้" : ""}
+                        <small style={{ display: "block", color: "var(--text-3)", fontWeight: 400 }}>
+                          {fmtDate(revision.quoteDate)} · {revision.status === "revised" ? "ฉบับเก่า" : "ฉบับล่าสุด"}
+                        </small>
+                      </span>
+                      <span>→</span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
           </aside>
         </div>
       )}

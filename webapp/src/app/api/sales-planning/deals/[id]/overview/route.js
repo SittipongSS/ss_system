@@ -2,6 +2,7 @@ import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/htt
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 import { loadUserDirectory } from '@/lib/usersRepo';
+import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,7 +99,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     deal,
     canEdit,
     forecastDrift,
-    quotations: quotations.data,
+    quotations: latestQuotationRevisions(quotations.data),
     documents: documents.data,
     activities: activities.data,
     dealTasks: enrichedDealTasks,
