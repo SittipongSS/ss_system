@@ -326,7 +326,6 @@ export default function QuotationEditorPage() {
       headerRight={quote && (
         <div className={styles.headerActions}>
           {editable && <SaveStatus status={error ? "error" : busy === "save" ? "saving" : dirty ? "dirty" : "saved"} />}
-          <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={14} aria-hidden="true" /> พิมพ์</button>
           {canEditDocument && !editMode && <Link href={`/sa/quotations/${id}?edit=1`} className="btn btn-primary"><Pencil size={14} aria-hidden="true" /> แก้ไข</Link>}
           {editable && <button type="button" className="btn ghost" onClick={leaveEditMode} disabled={!!busy}>ยกเลิกแก้ไข</button>}
           {editable && <button type="button" className="btn btn-primary" onClick={() => save()} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึก"}</button>}
