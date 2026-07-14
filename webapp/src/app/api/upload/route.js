@@ -49,7 +49,7 @@ export async function POST(request) {
     const extOk = ACCEPTED_UPLOAD_EXT.includes(ext);
     if (!mimeOk && !extOk) {
       return Response.json(
-        { error: 'ชนิดไฟล์ไม่รองรับ (รับเฉพาะ PDF, PNG, JPG, WEBP)' },
+        { error: 'ชนิดไฟล์ไม่รองรับ (PDF, Word, Excel, PowerPoint, CSV, TXT และรูปภาพ)' },
         { status: 415 },
       );
     }
@@ -59,7 +59,10 @@ export async function POST(request) {
     // ── Google Drive backend (STORAGE_BACKEND=drive) ──────────────────
     // dynamic import: โหลด googleapis เฉพาะตอนใช้ Drive — โหมด supabase (default)
     // ไม่แตะ จึงไม่ต้องลง deps ก็รัน flow เดิมได้ และ flag กั้น prod ไว้.
-    if ((process.env.STORAGE_BACKEND || 'supabase') === 'drive') {
+    // Task files are required to live on Google Drive regardless of the legacy
+    // default used by other entities. Other uploads continue to follow the env.
+    const useDrive = entityType === 'personal_task' || (process.env.STORAGE_BACKEND || 'supabase') === 'drive';
+    if (useDrive) {
       try {
         const { resolveFolderForEntity, uploadFile, ensureUnsortedFolder } = await import('@/lib/drive');
         // มี entity context → โฟลเดอร์ลูกค้า/สินค้า; ไม่มี → _unsorted (ไม่ทิ้งไว้ที่ root).
@@ -121,8 +124,6 @@ export async function POST(request) {
 export async function DELETE(request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
-  if ((process.env.STORAGE_BACKEND || 'supabase') !== 'drive') return Response.json({ ok: true });
-
   let driveFileId = null;
   try { ({ driveFileId } = await request.json()); } catch { /* no body */ }
   if (!driveFileId) return Response.json({ ok: true });

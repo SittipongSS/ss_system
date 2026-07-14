@@ -3,10 +3,11 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
+import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 
 export const dynamic = 'force-dynamic';
 
-const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders', registration: 'excise_registrations' };
+const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'orders', registration: 'excise_registrations', personal_task: 'personal_tasks' };
 const RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 // โมดูล "งานบริหาร": สิทธิ์ลบ = mgmt:edit (admin+เลขา) — ไม่มี parent customer/product.
 const isMgmt = (entityType) => entityType === 'mgmt_task' || entityType === 'mgmt_meeting';
@@ -30,7 +31,10 @@ export async function DELETE(request, { params }) {
   let parent = null;
   if (table) {
     ({ data: parent } = await supabase.from(table).select('*').eq('id', att.entityId).maybeSingle());
-    if (parent && !canEditRecord(user, RESOURCE[att.entityType], parent)) {
+    const canEditParent = att.entityType === 'personal_task'
+      ? await canAttachToPersonalTask(supabase, parent, user)
+      : canEditRecord(user, RESOURCE[att.entityType], parent);
+    if (parent && !canEditParent) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }
     // Registration lock (stricter): can't remove docs from an APPROVED reg unless

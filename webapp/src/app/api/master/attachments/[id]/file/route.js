@@ -8,6 +8,8 @@ import { Readable } from 'node:stream';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord } from '@/lib/permissions';
 import { getAttachment, loadAttachmentParent, ATTACHMENT_RESOURCE } from '@/lib/master/attachments';
+import { canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,7 +23,10 @@ export async function GET(request, { params }) {
 
   // สิทธิ์ดูไฟล์ = สิทธิ์ดู entity แม่ (team/role scope เดิม).
   const parent = await loadAttachmentParent(att);
-  if (!parent || !canViewRecord(user, ATTACHMENT_RESOURCE[att.entityType], parent)) {
+  const allowed = att.entityType === 'personal_task'
+    ? await canViewPersonalTask(getSupabaseAdmin(), parent, user)
+    : canViewRecord(user, ATTACHMENT_RESOURCE[att.entityType], parent);
+  if (!parent || !allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

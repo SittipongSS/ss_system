@@ -13,6 +13,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { isSuperuser, TEAM_ROLES, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -822,6 +823,17 @@ export default function TasksPage() {
                 <div className="text-[11px] text-[var(--text-3)] mt-1">ตำแหน่งของคุณมอบหมายงานให้คนอื่นไม่ได้ — สร้างเป็นงานของตัวเองเท่านั้น</div>
               )}
             </div>
+
+            {editingId && (
+              <AttachmentsPanel
+                entityType="personal_task"
+                entityId={editingId}
+                canEdit={canManageTask(personalTasks.find((task) => task.id === editingId))}
+                title="ไฟล์แนบงาน"
+                note="ไฟล์จัดเก็บบน Google Drive และเปิดผ่านสิทธิ์ของงานนี้"
+                cardColumns={1}
+              />
+            )}
           </div>
           <div className="form-action-bar">
             <button type="button" onClick={() => setShowModal(false)} className="btn">ยกเลิก</button>
