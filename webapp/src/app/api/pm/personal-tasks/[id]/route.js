@@ -1,4 +1,4 @@
-import { isSuperuser, canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus } from '@/lib/permissions';
+import { isSuperuser, canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
@@ -118,6 +118,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // เปลี่ยนผู้รับมอบ → ตรวจสิทธิ์มอบหมายตามลำดับชั้น (canAssignTask) + เซ็ต assignedBy.
   if ('assigneeId' in updates) {
     const next = updates.assigneeId || null;
+    if (!canChangeTaskAssignee(task, next)) {
+      return badRequest('งานที่เสร็จแล้วไม่สามารถเปลี่ยนผู้รับผิดชอบได้ กรุณาเปิดงานอีกครั้งก่อน');
+    }
     if (next && next !== user.id) {
       const { data: au } = await supabase.auth.admin.getUserById(next);
       if (!au?.user) return badRequest('ไม่พบผู้รับมอบหมาย');
@@ -127,6 +130,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     } else {
       updates.assignedBy = null; // ถอนการมอบหมาย / มอบให้ตัวเอง
     }
+    // A real reassignment supersedes the old temporary-proxy workflow. Without
+    // clearing this, UI/KPI would still treat the legacy proxy as responsible.
+    if (next !== (task.assigneeId || null)) updates.proxyBy = null;
   }
 
   // อ้างอิงโครงการ/ดีลต้องมีจริงและต้องเป็นคู่เดียวกัน. ถ้าเลือกดีลที่อยู่ใน

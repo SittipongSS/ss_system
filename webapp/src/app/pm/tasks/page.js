@@ -346,11 +346,14 @@ export default function TasksPage() {
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
     try {
       const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error || "");
+      }
       loadWork(scope);
-    } catch {
+    } catch (error) {
       setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status: t.status } : x));
-      setToast({ kind: "error", msg: "อัปเดตสถานะไม่สำเร็จ" });
+      setToast({ kind: "error", msg: error.message || "อัปเดตสถานะไม่สำเร็จ" });
     }
   };
   const statusSelect = (t) => (

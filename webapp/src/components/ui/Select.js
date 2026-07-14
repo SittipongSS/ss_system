@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
+import { createSelectChangeEvent } from "@/lib/ui/selectChangeEvent";
 
 function flattenOptions(children, groupLabel = "") {
   const rows = [];
@@ -34,11 +35,6 @@ function flattenOptions(children, groupLabel = "") {
     });
   });
   return rows;
-}
-
-function eventFor(value, name) {
-  const target = { value, name: name || "" };
-  return { target, currentTarget: target };
 }
 
 const Select = forwardRef(function Select(
@@ -128,7 +124,7 @@ const Select = forwardRef(function Select(
 
   const choose = (row) => {
     if (!row || row.disabled) return;
-    onChange?.(eventFor(row.value, name));
+    onChange?.(createSelectChangeEvent(row.value, name));
     setOpen(false);
     triggerRef.current?.focus();
   };
