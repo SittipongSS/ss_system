@@ -1,5 +1,6 @@
 import { withUser, ok, fail, unauthorized } from '@/lib/http';
 import { monthKey, forecastAmount } from '@/lib/salesPlanning';
+import { summarizeOpenTasks } from '@/lib/pm/taskSummary';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const month = monthKey(new URL(req.url).searchParams.get('month')) || monthKey(new Date().toISOString());
 
   // 1. My Target & Won
-  const [targetRes, dealsRes, leadsRes] = await Promise.all([
+  const [targetRes, dealsRes, leadsRes, tasksByOwner, tasksByAssignee, tasksByProxy] = await Promise.all([
     supabase
       .from('sales_targets')
       .select('targetAmount')
@@ -25,12 +26,25 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .select('*')
       .eq('assigneeId', user.id)
       .in('status', ['new', 'screened', 'assigned', 'contacted', 'meeting'])
-      .order('createdAt', { ascending: false })
+      .order('createdAt', { ascending: false }),
+    supabase.from('personal_tasks').select('id, status, dueDate, urgent').eq('ownerId', user.id),
+    supabase.from('personal_tasks').select('id, status, dueDate, urgent').eq('assigneeId', user.id),
+    supabase.from('personal_tasks').select('id, status, dueDate, urgent').eq('proxyBy', user.id),
   ]);
 
   const target = targetRes.data?.targetAmount || 0;
   const myDeals = dealsRes.data || [];
   const activeLeads = leadsRes.data || [];
+  const seenTaskIds = new Set();
+  const myTasks = [
+    ...(tasksByOwner.data || []),
+    ...(tasksByAssignee.data || []),
+    ...(tasksByProxy.data || []),
+  ].filter((task) => (seenTaskIds.has(task.id) ? false : seenTaskIds.add(task.id)));
+  const todayBangkok = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  const taskSummary = summarizeOpenTasks(myTasks, todayBangkok);
 
   const isWon = (d) => ['won', 'in_project'].includes(d.stage);
   const isOpen = (d) => !['won', 'in_project', 'lost'].includes(d.stage);
@@ -84,6 +98,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     openDealsCount: openDeals.length,
     byForecast,
     activeLeads,
-    actionLeads
+    actionLeads,
+    taskSummary,
   });
 });

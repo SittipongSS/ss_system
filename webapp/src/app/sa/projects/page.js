@@ -13,6 +13,7 @@ import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import { useCan } from "@/lib/roleContext";
 import { dealTypeBadge, KpiCard } from "@/components/salesPlanning/ui";
 import { fmtMoneyCompact, fmtName } from "@/lib/format";
+import { brandDisplayFromList } from "@/lib/master/brands";
 
 const money = (v) => fmtMoneyCompact(v);
 
@@ -56,10 +57,11 @@ export default function ProjectsIndexPage() {
       if (statusFilter === "active" && ["Done", "Drop"].includes(p.status)) return false;
       if (statusFilter !== "active" && statusFilter !== "all" && p.status !== statusFilter) return false;
       if (!q) return true;
-      return [p.code, p.name, p.customerName, p.formulaName, ...(p.deals || []).map((d) => d.title)]
+      const brand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand);
+      return [p.code, p.name, p.customerName, brand, p.formulaName, ...(p.deals || []).map((d) => d.title)]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [rows, query, statusFilter]);
+  }, [rows, query, statusFilter, customers]);
 
   // KPI รวมของโครงการที่กรองอยู่ — บวกจาก rollup ต่อโครงการ (นิยามเดียวกับต่อแถว)
   const totals = useMemo(() => {
@@ -152,23 +154,31 @@ export default function ProjectsIndexPage() {
               <tbody>
                 {filtered.map((p) => {
                   const r = p.dealsRollup || {};
+                  const projectBrand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand);
+                  const firstDeal = (p.deals || [])[0];
                   return (
                     <DetailRow key={p.id} href={`/sa/projects/${p.code || p.id}`} className="premium-row">
                       <td>
                         <Link href={`/sa/projects/${p.code || p.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้าโครงการ">
-                          <strong>{p.code || p.id}</strong>
+                          <strong>{p.name || "-"}</strong>
                           <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>
-                            {p.name}{p.formulaName ? ` · สูตร ${p.formulaName}` : ""}
+                            {p.code || p.id}{p.formulaName ? ` · สูตร ${p.formulaName}` : ""}
                           </span>
                         </Link>
                       </td>
-                      <td>{p.customerName || "-"}</td>
                       <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          {(p.deals || []).length
-                            ? p.deals.map((d) => <span key={d.id} title={d.title}>{dealTypeBadge(d.dealType || d.metadata?.projectType)}</span>)
-                            : <span style={{ color: "var(--text-3)" }}>-</span>}
-                          {(p.deals || []).length > 0 && <span style={{ color: "var(--text-3)", fontSize: 12 }}>{p.deals.length} ดีล</span>}
+                        <strong style={{ display: "block", fontWeight: 650 }}>{p.customerName || "-"}</strong>
+                        <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: 12 }}>{projectBrand || "-"}</span>
+                      </td>
+                      <td>
+                        <div style={{ minWidth: 150 }}>
+                          {firstDeal ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                              {dealTypeBadge(firstDeal.dealType || firstDeal.metadata?.projectType)}
+                              <Link href={`/sa/deals/${firstDeal.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firstDeal.title || "-"}</Link>
+                            </div>
+                          ) : <span style={{ color: "var(--text-3)" }}>-</span>}
+                          <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: 12 }}>{(p.deals || []).length} ดีล</span>
                         </div>
                       </td>
                       <td className="num mono">{money(r.fcTotal || 0)}</td>

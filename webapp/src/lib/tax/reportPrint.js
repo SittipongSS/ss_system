@@ -78,7 +78,7 @@ export function buildReportPrintHTML(report, meta = {}) {
   .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 12px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-wrap { width: 150px; height: 72px; background: #18234f; border-radius: 8px; flex-shrink: 0; overflow: hidden; position: relative; }
-  .logo-wrap img { position: absolute; width: 150px; height: 150px; max-width: none; left: 0; top: -44px; }
+  .logo-wrap img { position: absolute; width: 150px; height: 150px; max-width: none; left: 0; top: -40px; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
   .doc-title .big { font-size: 16px; font-weight: 800; color: #c17a52; text-align: right; }

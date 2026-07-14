@@ -6,7 +6,7 @@
 // เพิ่ม/แก้ใบเสนอราคา/อัปเดตงาน ทำที่หน้าดีลตามเดิม.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ExternalLink, FileText, MessageSquare, PackageCheck, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, ExternalLink, FileText, MessageSquare, PackageCheck, Plus, Pencil, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
@@ -184,6 +184,8 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
   const [kind, setKind] = useState("note");
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [activityBusy, setActivityBusy] = useState("");
   const [error, setError] = useState("");
   const deals = useMemo(() => p.deals || [], [p.deals]);
 
@@ -192,6 +194,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
     return [
       ...(p.dealActivities || []).map((a) => ({
         id: `act-${a.id}`, at: a.activityAt || a.createdAt, deal: dealById.get(a.dealId),
+        activityId: a.id, editable: true, kindKey: a.kind || "note",
         kind: ACTIVITY_KIND[a.kind] || ACTIVITY_KIND.note, body: a.body, by: a.createdByName,
       })),
       ...(p.dealStageHistory || []).map((h) => ({
@@ -226,6 +229,44 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
     }
   };
 
+  const updateActivity = async (event) => {
+    event.preventDefault();
+    if (!editing?.body?.trim()) return;
+    setActivityBusy(editing.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/activities/${editing.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: editing.kind, body: editing.body.trim() }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "แก้ไขความเคลื่อนไหวไม่สำเร็จ");
+      setEditing(null);
+      await onChanged?.();
+    } catch (err) {
+      setError(err.message || "แก้ไขความเคลื่อนไหวไม่สำเร็จ");
+    } finally {
+      setActivityBusy("");
+    }
+  };
+
+  const deleteActivity = async (item) => {
+    if (!window.confirm("ลบความเคลื่อนไหวรายการนี้?")) return;
+    setActivityBusy(item.activityId);
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/activities/${item.activityId}`, { method: "DELETE" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "ลบความเคลื่อนไหวไม่สำเร็จ");
+      await onChanged?.();
+    } catch (err) {
+      setError(err.message || "ลบความเคลื่อนไหวไม่สำเร็จ");
+    } finally {
+      setActivityBusy("");
+    }
+  };
+
   return (
     <div className="glass-panel" style={{ padding: "16px 20px", marginTop: 24 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -240,7 +281,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
           <div className="form-group"><label>ดีล</label><Select fullWidth value={dealId} onChange={(event) => setDealId(event.target.value)}><option value="">— เลือกดีล —</option>{deals.map((deal) => <option key={deal.id} value={deal.id}>{deal.title}</option>)}</Select></div>
           <div className="form-group"><label>ประเภท</label><Select fullWidth value={kind} onChange={(event) => setKind(event.target.value)}>{Object.entries(ACTIVITY_KIND).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</Select></div>
           <div className="form-group"><label>รายละเอียด</label><input className="premium-input w-full" value={body} onChange={(event) => setBody(event.target.value)} placeholder="บันทึก โทร ประชุม หรือขั้นถัดไป..." /></div>
-          <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? "กำลังเพิ่ม..." : "เพิ่ม"}</button>
+          <button type="submit" className="btn btn-primary" disabled={saving} style={{ minHeight: 40, alignSelf: "end" }}>{saving ? "กำลังเพิ่ม..." : "เพิ่ม"}</button>
         </form>
       )}
       {error && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 8 }}>{error}</div>}
@@ -260,6 +301,12 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
                 <span>{fmtDateTime(it.at)}</span>
               </div>
             </div>
+            {canEdit && it.editable && (
+              <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                <button type="button" className="btn-icon" disabled={activityBusy === it.activityId} onClick={() => setEditing({ id: it.activityId, kind: it.kindKey, body: it.body || "" })} aria-label="แก้ไขความเคลื่อนไหว" title="แก้ไข"><Pencil size={14} /></button>
+                <button type="button" className="btn-icon danger" disabled={activityBusy === it.activityId} onClick={() => deleteActivity(it)} aria-label="ลบความเคลื่อนไหว" title="ลบ"><Trash2 size={14} /></button>
+              </div>
+            )}
           </div>
         ))}
       </div> : <div style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>{deals.length ? "ยังไม่มีความเคลื่อนไหว" : "ผูกดีลก่อนเพื่อเริ่มบันทึกความเคลื่อนไหว"}</div>}
@@ -268,6 +315,18 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
           {showAllFeed ? "ย่อ" : `ดูทั้งหมด (${feed.length})`}
         </button>
       )}
+      <Modal open={!!editing} onClose={() => !activityBusy && setEditing(null)} title="แก้ไขความเคลื่อนไหว" size="sm">
+        {editing && (
+          <form onSubmit={updateActivity} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="form-group"><label>ประเภท</label><Select fullWidth value={editing.kind} onChange={(event) => setEditing((current) => ({ ...current, kind: event.target.value }))}>{Object.entries(ACTIVITY_KIND).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</Select></div>
+            <div className="form-group"><label>รายละเอียด</label><textarea className="premium-input w-full" rows={4} value={editing.body} onChange={(event) => setEditing((current) => ({ ...current, body: event.target.value }))} /></div>
+            <div className="form-action-bar">
+              <button type="button" className="btn ghost" onClick={() => setEditing(null)} disabled={!!activityBusy}>ยกเลิก</button>
+              <button type="submit" className="btn btn-primary" disabled={!!activityBusy || !editing.body.trim()}>{activityBusy ? "กำลังบันทึก..." : "บันทึก"}</button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 }

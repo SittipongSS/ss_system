@@ -4588,11 +4588,11 @@ button.empty-state { width: 100%; font: inherit; }
   text-align: center;
 }
 .timeline-save-bar {
-  position: fixed;
+  position: fixed !important;
   left: 50%;
-  bottom: 20px;
+  bottom: 30px !important;
   transform: translateX(-50%);
-  z-index: 3000;
+  z-index: 9000 !important;
   width: min(720px, calc(100vw - 32px));
   display: flex;
   align-items: center;
@@ -4601,13 +4601,13 @@ button.empty-state { width: 100%; font: inherit; }
   border: 1px solid var(--accent);
   border-radius: 14px;
   background: var(--date-calendar-bg, var(--panel));
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3), 0 0 0 4px color-mix(in srgb, var(--accent) 9%, transparent);
 }
 .timeline-save-message { flex: 1; min-width: 180px; font-size: 13px; color: var(--text); }
 .timeline-save-message b { color: var(--amber); }
 .timeline-save-button { min-width: 210px; min-height: 42px; font-size: 14px; font-weight: 700; }
 @media (max-width: 640px) {
-  .timeline-save-bar { flex-wrap: wrap; bottom: 10px; }
+  .timeline-save-bar { flex-wrap: wrap; bottom: 14px !important; }
   .timeline-save-message { flex-basis: 100%; }
   .timeline-save-bar .btn { flex: 1; }
   .timeline-save-button { min-width: 0; }
