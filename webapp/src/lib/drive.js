@@ -100,6 +100,18 @@ async function resolveMgmtFolder(entityType, entityId) {
   return ensureFolder(label, parent);
 }
 
+async function resolvePersonalTaskFolder(entityId) {
+  const root = await ensureFolder('งานขาย', storageRootId());
+  const parent = await ensureFolder('งาน', root);
+  const { data } = await getSupabaseAdmin()
+    .from('personal_tasks')
+    .select('id, title')
+    .eq('id', entityId)
+    .maybeSingle();
+  if (!data) throw new Error('ไม่พบงาน');
+  return ensureFolder(`${data.title} (${data.id})`, parent);
+}
+
 // โฟลเดอร์ลูกค้า (cache id ลง customers.driveFolderId). ชื่อ "<ชื่อ> (<id>)".
 export async function ensureCustomerFolder(customer) {
   if (customer.driveFolderId) return customer.driveFolderId;
@@ -125,6 +137,9 @@ export async function ensureProductFolder(product, customer) {
 //   order        → โฟลเดอร์ลูกค้า (1 ออเดอร์ครอบหลายสินค้าของลูกค้าเดียว)
 export async function resolveFolderForEntity(entityType, entityId) {
   const supabase = getSupabaseAdmin();
+  if (entityType === 'personal_task') {
+    return resolvePersonalTaskFolder(entityId);
+  }
   if (entityType === 'mgmt_task' || entityType === 'mgmt_meeting') {
     return resolveMgmtFolder(entityType, entityId);
   }

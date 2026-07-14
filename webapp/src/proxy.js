@@ -205,6 +205,7 @@ function apiWriteAllowed(method, path, role, extraCaps) {
       can(role, 'products:edit') ||
       can(role, 'sales:act') ||
       can(role, 'legal:approve') ||
+      can(role, 'pm:edit') ||
       canUser(mgmtUser, 'mgmt:edit')
     );
   }

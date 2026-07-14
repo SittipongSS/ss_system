@@ -86,6 +86,9 @@ export const ATTACHMENT_TYPES = {
   mgmt_meeting: [
     { key: "other", label: "ไฟล์แนบ", required: false },
   ],
+  personal_task: [
+    { key: "other", label: "ไฟล์แนบงาน", required: false },
+  ],
 };
 
 // ฟิลด์รายละเอียด (แท็ค) เพิ่มเติมต่อเอกสาร เก็บใน attachments.metadata (jsonb).
@@ -116,9 +119,18 @@ export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 // ที่ระบุ PDF/PNG/JPG/WEBP อยู่แล้ว).
 export const ACCEPTED_IMAGE_MIME = ["image/png", "image/jpeg", "image/webp"];
 export const ACCEPTED_IMAGE_EXT = ["png", "jpg", "jpeg", "webp"];
-export const ACCEPTED_UPLOAD_MIME = ["application/pdf", ...ACCEPTED_IMAGE_MIME];
-export const ACCEPTED_UPLOAD_EXT = ["pdf", ...ACCEPTED_IMAGE_EXT];
-export const UPLOAD_ACCEPT_ATTR = "application/pdf,.pdf,image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
+export const ACCEPTED_DOCUMENT_MIME = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/csv",
+  "text/plain",
+];
+export const ACCEPTED_DOCUMENT_EXT = ["pdf", "docx", "xlsx", "pptx", "csv", "txt"];
+export const ACCEPTED_UPLOAD_MIME = [...ACCEPTED_DOCUMENT_MIME, ...ACCEPTED_IMAGE_MIME];
+export const ACCEPTED_UPLOAD_EXT = [...ACCEPTED_DOCUMENT_EXT, ...ACCEPTED_IMAGE_EXT];
+export const UPLOAD_ACCEPT_ATTR = ".pdf,.docx,.xlsx,.pptx,.csv,.txt,.png,.jpg,.jpeg,.webp";
 // accept สำหรับที่รับเฉพาะรูป (เช่น composer ความเคลื่อนไหวงานขาย).
 export const IMAGE_ACCEPT_ATTR = "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
 
