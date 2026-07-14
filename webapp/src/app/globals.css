@@ -2352,6 +2352,7 @@ button.empty-state { width: 100%; font: inherit; }
   .project-header-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .project-detail-actions,
   .project-timeline-card-actions { width: 100%; }
+  .quotation-create-footer { grid-template-columns: 1fr !important; }
 }
 
 /* Pill badge — type / role / category tags. Color via inline style or modifier. */

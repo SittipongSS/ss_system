@@ -63,6 +63,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   let lines = normalizeManualLines(body.lines || []);
   // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
   if (!lines.length && body.seedFromProject) lines = await seedLinesFromProject(supabase, deal);
+  if (body.status === 'sent' && !lines.length) {
+    return badRequest('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');
+  }
 
   // งวดชำระ — validate ก่อน (client อาจส่งมาไม่ครบ 100%)
   const pv = validatePaymentPlan(body.paymentPlan);
@@ -89,6 +92,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // งวดชำระ: เติมยอดจาก % ของยอดรวม + สรุปเป็นข้อความ paymentTerms (แก้ทับได้)
   const paymentPlan = normalizePaymentPlan(body.paymentPlan, totals.totalAmount);
   const approval = quoteApprovalRequirement(totals, body.metadata || {});
+  if (body.status === 'sent' && !(totals.totalAmount > 0)) {
+    return badRequest('ยอดรวมต้องมากกว่า 0 ก่อนส่งลูกค้า');
+  }
+  if (body.status === 'sent' && approval.required) {
+    return badRequest('ยอดนี้ต้องบันทึกร่างและรออนุมัติก่อนส่งลูกค้า');
+  }
   // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
   const { base, quoteNumber } = await generateQuoteNumber(supabase);
   const quoteId = genId('QT');
