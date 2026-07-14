@@ -13,7 +13,7 @@ import { isSuperuser } from "@/lib/permissions";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import { openQuotePrintWindow } from "@/lib/sales/quotePrint";
+import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 
 const STATUS_LABELS = {
   draft: "ฉบับร่าง", sent: "ส่งลูกค้าแล้ว", accepted: "ลูกค้ารับแล้ว",
@@ -157,8 +157,16 @@ export default function QuotationsPage() {
                       <div style={{ display: "inline-flex", gap: 2 }}>
                         <button type="button" className="btn-icon" title="พิมพ์" aria-label={`พิมพ์ ${r.quoteNumber}`}
                           onClick={async () => {
-                            const res = await fetch(`/api/sales-planning/quotations/${r.id}`);
-                            if (res.ok) openQuotePrintWindow(await res.json());
+                            const printWindow = prepareQuotePrintWindow();
+                            if (!printWindow) return;
+                            try {
+                              const res = await fetch(`/api/sales-planning/quotations/${r.id}`);
+                              const data = await res.json().catch(() => ({}));
+                              if (!res.ok) throw new Error(data?.error || "ไม่สามารถโหลดข้อมูลใบเสนอราคาได้");
+                              openQuotePrintWindow(data, printWindow);
+                            } catch (error) {
+                              showQuotePrintError(printWindow, error.message);
+                            }
                           }}>
                           <Printer size={15} aria-hidden="true" />
                         </button>
