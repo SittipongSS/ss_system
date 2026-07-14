@@ -1,5 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
+import { chatCard, sendChat } from '@/lib/chat';
+import { fmtMoney } from '@/lib/format';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
   canReviewSalesForecast,
@@ -135,6 +137,21 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     summary: `${status} sales forecast review ${reviewMonth}${team ? ` ${team}` : ''}`.trim(),
     request: req,
   });
+
+  // แจ้งทีมขายเมื่อหัวหน้าตัดสิน forecast (draft = แค่บันทึกโน้ต ไม่ต้องแจ้ง)
+  if (status !== 'draft') {
+    sendChat('sales', chatCard({
+      title: status === 'approved' ? '✅ Forecast ได้รับอนุมัติ' : '⛔ Forecast ถูกตีกลับ',
+      subtitle: `เดือน ${reviewMonth}${team ? ` · ทีม ${team}` : ''}`,
+      rows: [
+        { label: 'มูลค่ารวม', value: fmtMoney(summary.summaryAmount) },
+        { label: 'จำนวนดีล', value: `${summary.dealCount} ดีล` },
+        { label: 'ผู้ทบทวน', value: user.name },
+        { label: 'หมายเหตุ', value: body.notes },
+      ],
+      linkPath: '/sa/dashboard?tab=overview',
+    }));
+  }
 
   return ok(result.data, before ? 200 : 201);
 });

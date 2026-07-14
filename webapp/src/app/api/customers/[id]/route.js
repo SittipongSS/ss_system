@@ -8,6 +8,7 @@ import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { recordAudit } from '@/lib/audit';
+import { chatCard, sendChat } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
 
@@ -148,6 +149,20 @@ export async function PATCH(request, { params }) {
       summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}ลูกค้า ${decided.name || id}`,
       request,
     });
+    // แจ้งทีมขายเมื่อมีคำตัดสิน (reset เป็น pending = งานภายใน ไม่ต้องแจ้ง)
+    if (body.approvalStatus !== 'pending') {
+      const approvedNow = body.approvalStatus === 'approved';
+      sendChat('sales', chatCard({
+        title: approvedNow ? '✅ ลูกค้าได้รับอนุมัติ' : '⛔ ลูกค้าถูกปฏิเสธ',
+        subtitle: decided.name,
+        rows: [
+          { label: 'รหัสลูกค้า (AR)', value: decided.arCode },
+          { label: approvedNow ? 'ผู้อนุมัติ' : 'ผู้ปฏิเสธ', value: user?.name },
+          { label: 'เหตุผล', value: decided.rejectionReason },
+        ],
+        linkPath: '/database/customers',
+      }));
+    }
     return Response.json(decided);
   }
 

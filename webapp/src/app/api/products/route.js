@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { viewScope, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
 import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
 import { recordAudit } from '@/lib/audit';
+import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 
 export const dynamic = 'force-dynamic';
@@ -158,5 +159,21 @@ export async function POST(request) {
     metadata: { fgCode: data.fgCode, customerId: data.customerId },
   });
   await recordAudit({ user, action: 'create', entityType: 'product', entityId: data.id, after: data, request });
+
+  // แจ้งผู้อนุมัติเมื่อมีสินค้าใหม่ค้างรออนุมัติ (Senior AE+ สร้างเอง = approved ไม่ต้องแจ้ง)
+  if (data.approvalStatus === 'pending') {
+    sendChat('approvals', chatCard({
+      title: '📦 สินค้าใหม่รออนุมัติ',
+      subtitle: data.productDescriptionEn || data.productDescription || data.fgCode,
+      rows: [
+        { label: 'FG Code', value: data.fgCode },
+        { label: 'ลูกค้า', value: data.customerName },
+        { label: 'ทีม', value: data.team },
+        { label: 'ผู้เพิ่ม', value: data.submittedByName },
+      ],
+      linkPath: '/database/products',
+    }));
+  }
+
   return Response.json(data, { status: 201 });
 }
