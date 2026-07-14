@@ -117,6 +117,10 @@ export default function SearchableSelect({
                   role="option"
                   aria-selected={isSelected}
                   className={`ui-select-option ${isSelected ? "selected" : ""}`.trim()}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    choose(option);
+                  }}
                   onClick={() => choose(option)}
                 >
                   <span>{option.render || option.label}</span>
