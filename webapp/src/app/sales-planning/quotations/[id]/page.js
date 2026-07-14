@@ -24,6 +24,7 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindow } from "@/lib/sales/quotePrint";
 import { evenPercents, computeInstallments, paymentPlanSummary } from "@/lib/sales/paymentPlan";
+import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
@@ -40,7 +41,7 @@ export default function QuotationEditorPage() {
 
   const [quote, setQuote] = useState(null);
   const [lines, setLines] = useState([]);
-  const [form, setForm] = useState({ quoteDate: "", validUntil: "", paymentTerms: "", notes: "", discountType: "", discountValue: "", vatRate: 0 });
+  const [form, setForm] = useState({ quoteDate: "", validUntil: "", validityDays: "", paymentMethod: "", paymentTerms: "", notes: "", discountType: "", discountValue: "", vatRate: 0 });
   const [templates, setTemplates] = useState([]);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState("");
@@ -70,6 +71,8 @@ export default function QuotationEditorPage() {
       setForm({
         quoteDate: q.quoteDate || "",
         validUntil: q.validUntil || "",
+        validityDays: validityDaysBetween(q.quoteDate, q.validUntil),
+        paymentMethod: q.paymentPlan?.paymentMethod || "",
         paymentTerms: q.paymentTerms || "",
         notes: q.notes || "",
         discountType: q.discountType || "",
@@ -150,8 +153,8 @@ export default function QuotationEditorPage() {
   const recalcEven = () => { setInstallments((prev) => { const ps = evenPercents(prev.length); return prev.map((r, idx) => ({ ...r, percent: ps[idx] })); }); setDirty(true); };
   const fillTermsFromPlan = () => setF({ paymentTerms: paymentPlanSummary({ type: "installment", installments }, totals.totalAmount) });
   const paymentPlanPayload = () => (paymentType === "installment"
-    ? { type: "installment", installments: installments.map((r) => ({ label: r.label, percent: Number(r.percent) || 0, note: r.note })) }
-    : { type: "full" });
+    ? { type: "installment", paymentMethod: form.paymentMethod.trim() || null, installments: installments.map((r) => ({ label: r.label, percent: Number(r.percent) || 0, note: r.note })) }
+    : { type: "full", paymentMethod: form.paymentMethod.trim() || null });
 
   const save = async (extra = {}) => {
     // Q4 guard: กันบันทึกเมื่อแบ่งงวดแล้วเปอร์เซ็นต์รวม ≠ 100% (server ก็ validate แต่กันไว้ก่อนให้ชัด)
@@ -388,10 +391,14 @@ export default function QuotationEditorPage() {
           {/* หัวใบ */}
           <section className={`${styles.card} ${styles.documentMeta}`}>
             <label>วันที่ออกใบ
-              <DateInput className={styles.documentDateInput} value={form.quoteDate} disabled={!editable} onChange={(value) => setF({ quoteDate: value })} />
+              <DateInput className={styles.documentDateInput} value={form.quoteDate} disabled={!editable} onChange={(value) => setF({ quoteDate: value, validUntil: addValidityDays(value, form.validityDays) })} />
             </label>
-            <label>ยืนราคาถึง
-              <DateInput className={styles.documentDateInput} value={form.validUntil || ""} disabled={!editable} onChange={(value) => setF({ validUntil: value })} />
+            <label>กำหนดยืนราคา (วัน)
+              <input type="number" min="1" step="1" className={`premium-input ${styles.documentDateInput}`} value={form.validityDays} disabled={!editable} onChange={(event) => {
+                const validityDays = event.target.value;
+                setF({ validityDays, validUntil: addValidityDays(form.quoteDate, validityDays) });
+              }} />
+              <small className={styles.validUntilHint}>ยืนราคาถึง {form.validUntil ? fmtDate(form.validUntil) : "-"}</small>
             </label>
           </section>
 
@@ -530,6 +537,9 @@ export default function QuotationEditorPage() {
               </>
             )}
 
+            <label style={{ display: "block", marginTop: 12 }}>วิธีการชำระเงิน
+              <input className="premium-input" value={form.paymentMethod} disabled={!editable} placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด" onChange={(e) => setF({ paymentMethod: e.target.value })} style={{ width: "100%" }} />
+            </label>
             <label style={{ display: "block", marginTop: 12 }}>ข้อความเงื่อนไขชำระ (พิมพ์บนเอกสาร)
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <input className="premium-input" value={form.paymentTerms} disabled={!editable} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ · เครดิต 30 วัน" onChange={(e) => setF({ paymentTerms: e.target.value })} style={{ flex: 1 }} />

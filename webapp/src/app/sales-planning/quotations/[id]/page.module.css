@@ -206,7 +206,16 @@
 .totalsWrap {
   display: flex;
   justify-content: flex-end;
-  margin-top: 16px;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.validUntilHint {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-3);
+  font-size: 11.5px;
 }
 
 .totalsPanel {

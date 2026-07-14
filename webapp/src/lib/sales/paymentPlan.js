@@ -60,7 +60,8 @@ export function validatePaymentPlan(plan) {
 
 // sanitize แผนจาก body ให้พร้อมเก็บ DB (คืน null ถ้าไม่ระบุ/เต็มจำนวน)
 export function normalizePaymentPlan(raw, total) {
-  if (!raw || raw.type === 'full') return { type: 'full' };
+  const paymentMethod = String(raw?.paymentMethod || '').trim() || null;
+  if (!raw || raw.type === 'full') return { type: 'full', ...(paymentMethod ? { paymentMethod } : {}) };
   if (raw.type !== 'installment') return { type: 'full' };
   const installments = computeInstallments(total, raw.installments).map((r) => ({
     no: r.no,
@@ -69,7 +70,7 @@ export function normalizePaymentPlan(raw, total) {
     amount: r.amount,
     note: r.note.trim() || null,
   }));
-  return { type: 'installment', installments };
+  return { type: 'installment', ...(paymentMethod ? { paymentMethod } : {}), installments };
 }
 
 // สรุปเป็นข้อความไทยสำหรับช่อง paymentTerms (พิมพ์บนเอกสาร) — แก้ทับได้

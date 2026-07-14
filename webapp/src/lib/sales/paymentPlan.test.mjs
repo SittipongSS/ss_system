@@ -43,6 +43,16 @@ test('normalizePaymentPlan: เติมยอด+label default, full → {type:
   assert.equal(p.installments[1].label, 'งวดที่ 2'); // default label
 });
 
+test('normalizePaymentPlan: preserves a trimmed payment method', () => {
+  assert.deepEqual(normalizePaymentPlan({ type: 'full', paymentMethod: ' โอนเงิน ' }), { type: 'full', paymentMethod: 'โอนเงิน' });
+  const plan = normalizePaymentPlan({
+    type: 'installment',
+    paymentMethod: 'เช็ค',
+    installments: [{ percent: 50 }, { percent: 50 }],
+  }, 1000);
+  assert.equal(plan.paymentMethod, 'เช็ค');
+});
+
 test('paymentPlanSummary: ข้อความไทยสำหรับ paymentTerms', () => {
   assert.equal(paymentPlanSummary({ type: 'full' }), 'ชำระเต็มจำนวน');
   const s = paymentPlanSummary({ type: 'installment', installments: [{ percent: 50, label: 'มัดจำ', note: 'ก่อนเริ่มงาน' }, { percent: 50, label: 'งวดสุดท้าย' }] }, 1000);
