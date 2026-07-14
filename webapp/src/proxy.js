@@ -50,7 +50,9 @@ export async function proxy(request) {
 
   const path = request.nextUrl.pathname;
   const isApi = path.startsWith('/api');
-  const isLogin = path === '/'; // login page is public
+  // public: หน้า login + ปลายทาง OAuth callback (มาถึงพร้อม code ยังไม่มี session —
+  // ถ้าไม่เปิดทางไว้ proxy จะเด้งกลับหน้า login ก่อนได้แลก code เป็น session)
+  const isLogin = path === '/' || path.startsWith('/auth/callback');
 
   // getUser() may have rotated the access/refresh token and queued the new
   // cookies onto `response` (via setAll above). Any time we return a DIFFERENT

@@ -1,6 +1,6 @@
 # แผนเชื่อม Google Chat + ประโยชน์จาก Google Workspace
 
-สถานะ: **เฟส 1+2 ใช้งานจริงแล้ว** · **เฟส 3 โค้ดเสร็จ** (cron daily-digest 08:30 จ-ศ — ⚠ ต้องตั้ง env `CRON_SECRET` บน Vercel) · อัปเดต 2026-07-15
+สถานะ: **เฟส 1+2+3 ใช้งานจริงแล้ว** · **เฟส 4 (Google SSO) โค้ดเสร็จ** — รอตั้งค่า Google Cloud OAuth + Supabase provider ตาม §เฟส 4 · อัปเดต 2026-07-15
 เจ้าของการตัดสินใจ: ผู้ใช้ (supervisor) · จอง migration: **0099** (ตาราง `chat_webhooks`, ใช้ในเฟส 2)
 
 **จุดประสงค์:** บริษัทใช้ Google Workspace อยู่แล้ว → ใช้ Google Chat เป็นช่องแจ้งเตือน
@@ -100,13 +100,34 @@ chatCard({ title, subtitle, rows, linkPath, linkLabel })
   - ~~FC สหมิตรเสี่ยงช้า~~ — ผู้ใช้ตัดออก (2026-07-15) ดูใน dashboard พอ
 - ไม่มีเหตุการณ์ = ไม่ส่ง (อย่าส่งการ์ดว่าง)
 
-## เฟส 4 — Google SSO (แทร็กแยก อิสระจาก Chat)
+## เฟส 4 — Google SSO (โค้ดเสร็จ 2026-07-15)
 
-- เปิด Google provider ใน Supabase Auth + จำกัดโดเมน `scentandsense.co.th` (ตรวจ `hd` claim)
-- ปุ่ม "เข้าสู่ระบบด้วย Google" ในหน้า login — **role ยังอ่านจาก DB ทุก request ตามเดิม**
-  (auth-session-model ไม่เปลี่ยน) แค่เปลี่ยนวิธีพิสูจน์ตัวตน
-- ต้องตัดสินใจ: บังคับ SSO อย่างเดียว หรือให้ใช้รหัสผ่านคู่กันช่วงเปลี่ยนผ่าน
-- ผูกบัญชีเดิม: match ด้วยอีเมล (อีเมลพนักงานเป็น @scentandsense.co.th อยู่แล้ว)
+โค้ดที่ลงไป: ปุ่ม "เข้าสู่ระบบด้วย Google" ในหน้า login (คู่กับรหัสผ่านเดิม — ยังไม่บังคับ SSO),
+route `/auth/callback` แลก code เป็น session + **ตรวจโดเมนฝั่งเซิร์ฟเวอร์** (@scentandsense.co.th
+เท่านั้น นอกโดเมนถูก sign out ทันที — `hd` เป็นแค่ตัวกรอง UI เชื่อไม่ได้), proxy เปิดทาง callback.
+role/team ยังอ่านจาก app_metadata ตามเดิม — Supabase ผูกบัญชี Google เข้ากับบัญชีเดิม
+อัตโนมัติเมื่ออีเมลตรงกันและยืนยันแล้ว (auto-linking) ทำให้สิทธิ์ทุกอย่างคงเดิม
+
+### การตั้งค่า (ครั้งเดียว — ผู้ใช้/แอดมินทำ)
+
+1. **Google Cloud Console** ([console.cloud.google.com](https://console.cloud.google.com)) —
+   ล็อกอินบัญชีบริษัท → สร้าง/เลือกโปรเจกต์ (ใช้ ss-system-storage เดิมของ Drive ได้):
+   - APIs & Services → **OAuth consent screen**: User type = **Internal** (เฉพาะคนในองค์กร —
+     ได้ตัวกรองโดเมนอีกชั้นฟรี), ใส่ชื่อแอป "SS System"
+   - APIs & Services → **Credentials** → Create Credentials → **OAuth client ID** →
+     Application type = Web application:
+     - Authorized redirect URI: `https://<PROJECT_REF>.supabase.co/auth/v1/callback`
+       (ดูค่าจริงได้ในหน้า Supabase ข้อ 2 — มีให้ก็อป)
+   - ได้ **Client ID + Client Secret** มา
+2. **Supabase Dashboard** → Authentication → Sign In / Providers → **Google**:
+   เปิดใช้ + วาง Client ID / Client Secret → Save
+3. **Supabase Dashboard** → Authentication → Sign In / Providers (หัวข้อ Auth settings):
+   ปิด **"Allow new users to sign up"** — สำคัญ: กันบัญชี Google แปลกหน้าสมัครเอง
+   (บัญชีที่แอดมินสร้างไว้แล้ว login ได้ปกติ เพราะเป็นการ link ไม่ใช่ signup)
+4. ทดสอบ: หน้า login → ปุ่ม Google → เลือกบัญชีบริษัท → เข้า /home ด้วยสิทธิ์เดิม
+
+หมายเหตุ: หลังทีมใช้ SSO ครบทุกคนแล้ว ค่อยตัดสินใจปิดฟอร์มรหัสผ่าน (บังคับ SSO)
+เป็นงานแยกทีหลัง
 
 ## เฟส 5 — Chat App โต้ตอบได้ (อนาคต)
 
