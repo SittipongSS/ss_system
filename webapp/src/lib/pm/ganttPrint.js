@@ -152,7 +152,8 @@ export function buildGanttPrintHTML(project) {
            box-shadow: 0 8px 32px rgba(40,33,24,.12); padding: 8mm 9mm; }
 
   .doc-top { display: flex; justify-content: space-between; align-items: flex-start;
-             border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px; }
+             border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px;
+             page-break-after: avoid; break-after: avoid; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-wrap { width: 58px; height: 58px; background: #21385e; border-radius: 10px;
                display: flex; align-items: center; justify-content: center; padding: 6px; flex-shrink: 0; }
@@ -166,7 +167,9 @@ export function buildGanttPrintHTML(project) {
   .c-desc .note { font-size: 8px; color: #000; font-style: italic; line-height: 1.2; margin-top: 1px; white-space: pre-wrap; }
 
   .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
-                 border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; margin-bottom: 7px; }
+                 border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; margin-bottom: 7px;
+                 page-break-inside: avoid; break-inside: avoid;
+                 page-break-after: avoid; break-after: avoid; }
   .hcol { padding: 6px 12px; }
   .hcol.left { border-right: 1px solid #dcd8d0; background: #f7f3ec; }
   .hrow { display: flex; gap: 6px; font-size: 10px; line-height: 1.55; }
@@ -196,8 +199,12 @@ export function buildGanttPrintHTML(project) {
   thead th.wk[colspan] { font-size: 8px; }
   .dia { color: #21385e; font-size: 8px; }
   .ms  { color: #c17a52; }
-  tbody tr { page-break-inside: avoid; }
-  tbody.pg { break-inside: avoid; page-break-inside: avoid; }
+  /* หน้าพิมพ์: ห้ามฉีก "แถวเดียว" กลางหน้า แต่ "เฟส" ยาว ๆ ให้ไหลข้ามหน้าต่อได้
+     (เดิม avoid ทั้ง tbody ทำให้ทั้งเฟสกระโดดข้ามหน้าเป็นก้อน เหลือช่องว่างท้ายหน้า
+     + หัวตารางไปโผล่หน้าใหม่ = "header ตกลงข้างล่าง"). thead ซ้ำหัวตารางทุกหน้าอยู่แล้ว. */
+  tbody tr { page-break-inside: avoid; break-inside: avoid; }
+  tbody.pg { break-inside: auto; page-break-inside: auto; }
+  .phase-row { page-break-after: avoid; break-after: avoid; } /* ป้ายเฟสไม่ค้างท้ายหน้าเดียว */
   .phase-row td { background: #f0ebe0; }
   .phase-label { text-align: left; font-weight: 700; font-size: 10px; padding: 2px 8px; color: #000; }
   td.c-no { font-weight: 700; }
