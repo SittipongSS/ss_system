@@ -1,6 +1,6 @@
 # แผนเชื่อม Google Chat + ประโยชน์จาก Google Workspace
 
-สถานะ: **เฟส 1 ใช้งานจริงแล้ว** (Space 3 อัน + env ครบ) · **เฟส 2 โค้ดเสร็จ** (ตาราง chat_webhooks + หน้า /database/chat-webhooks — ⚠ ต้องรัน migration 0099 บน Supabase ก่อน merge) · อัปเดต 2026-07-15
+สถานะ: **เฟส 1+2 ใช้งานจริงแล้ว** · **เฟส 3 โค้ดเสร็จ** (cron daily-digest 08:30 จ-ศ — ⚠ ต้องตั้ง env `CRON_SECRET` บน Vercel) · อัปเดต 2026-07-15
 เจ้าของการตัดสินใจ: ผู้ใช้ (supervisor) · จอง migration: **0099** (ตาราง `chat_webhooks`, ใช้ในเฟส 2)
 
 **จุดประสงค์:** บริษัทใช้ Google Workspace อยู่แล้ว → ใช้ Google Chat เป็นช่องแจ้งเตือน
