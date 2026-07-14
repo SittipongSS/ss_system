@@ -61,12 +61,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // (ไม่มอบหมาย + ไม่ผูกโครงการ เช่นผูกแค่ดีลหรือไม่ผูกเลย) หลุดจากสายตา admin — แก้แล้ว.
   // งานของฉัน = เป็นเจ้าของ, ถูกมอบหมายให้, หรือ "ดึงมาทำแทน" (proxyBy) — งานที่ดึง
   // มาทำต้องอยู่ในรายการของฉันด้วย เพราะฉันเป็นคนทำจริง (และได้เครดิต KPI).
-  const [{ data: byOwner }, { data: byAssignee }, { data: byProxy }] = await Promise.all([
+  const [{ data: byOwner }, { data: byAssignee }, { data: byProxy }, { data: byAssigner }] = await Promise.all([
     supabase.from('personal_tasks').select('*').eq('ownerId', user.id).order('createdAt', { ascending: false }),
     supabase.from('personal_tasks').select('*').eq('assigneeId', user.id).order('createdAt', { ascending: false }),
     supabase.from('personal_tasks').select('*').eq('proxyBy', user.id).order('createdAt', { ascending: false }),
+    supabase.from('personal_tasks').select('*').eq('assignedBy', user.id).order('createdAt', { ascending: false }),
   ]);
-  const minePersonal = [...(byOwner || []), ...(byAssignee || []), ...(byProxy || [])];
+  const minePersonal = [...(byOwner || []), ...(byAssignee || []), ...(byProxy || []), ...(byAssigner || [])];
 
   let extraPersonal = [];
   if (scope === 'all') {
@@ -91,7 +92,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     extraPersonal = results.flatMap((r) => r.data || []);
   }
   const seenP = new Set();
-  const personalTasks = [...(minePersonal || []), ...extraPersonal]
+  const scopedPersonal = scope === 'mine' ? minePersonal : extraPersonal;
+  const personalTasks = (scopedPersonal || [])
     .filter((t) => (seenP.has(t.id) ? false : seenP.add(t.id)));
 
   // ── projects map สำหรับแสดงรหัส/ชื่อ (รวมโครงการที่งานเพิ่มเติมผูกไว้ด้วย) ──
