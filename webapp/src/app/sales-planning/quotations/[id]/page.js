@@ -341,6 +341,7 @@ export default function QuotationEditorPage() {
       back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
       backActions={quote && (
         <div className={styles.headerActions}>
+          <span className={styles.headerQuoteNumber}>ใบเสนอราคา <strong>{quote.quoteNumber}</strong></span>
           {editable && <SaveStatus status={error ? "error" : ["save", "revise"].includes(busy) ? "saving" : dirty ? "dirty" : "saved"} />}
           {canEditDocument && !editMode && (
             <Link href={`/sa/quotations/${id}?edit=1`} className="btn-icon" aria-label="แก้ไขใบเสนอราคา" title="แก้ไข">
