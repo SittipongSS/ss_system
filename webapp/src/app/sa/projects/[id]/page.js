@@ -1031,7 +1031,7 @@ export default function ProjectDetailPage() {
                 <div>AE: {p.aeOwner || "-"} · ทีม: {p.team || "-"}</div>
               </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px", marginLeft: "auto" }}>
+            <div className="project-detail-actions">
               {!showTimeline ? (
                 <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
                   <GanttChart size={14} /> เปิดไทม์ไลน์
@@ -1158,14 +1158,6 @@ export default function ProjectDetailPage() {
                 })()}
               </div>
             </div>
-            {(p.deals || []).length > 1 && (
-              <MultiSelectFilter
-                label="ดีลที่แสดง"
-                selected={timelineDealFilters}
-                onChange={setTimelineDealFilters}
-                options={timelineFilterOptions}
-              />
-            )}
             <div style={{ flex: 1, minWidth: 140, display: "flex", alignItems: "center", gap: 10 }}>
               {(() => {
                 const total = tasks.length;
@@ -1180,9 +1172,19 @@ export default function ProjectDetailPage() {
                 );
               })()}
             </div>
-            <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
-              <GanttChart size={14} /> เปิดไทม์ไลน์
-            </button>
+            <div className="project-timeline-card-actions">
+              {(p.deals || []).length > 1 && (
+                <MultiSelectFilter
+                  label="ดีลที่แสดง"
+                  selected={timelineDealFilters}
+                  onChange={setTimelineDealFilters}
+                  options={timelineFilterOptions}
+                />
+              )}
+              <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
+                <GanttChart size={14} /> เปิดไทม์ไลน์
+              </button>
+            </div>
           </div>
         </>
       )}
