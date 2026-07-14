@@ -4,7 +4,7 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Save, Send, Trash2, Trophy, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
@@ -20,6 +20,7 @@ import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
+import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
@@ -213,6 +214,30 @@ export default function DealOverviewPage() {
       active: tasks.filter((t) => t.status !== "Completed").length,
     };
   }, [data]);
+
+  // พิมพ์เอกสารไทม์ไลน์ของดีล — ใช้ตัว gen เดียวกับหน้าโครงการ (openGanttPrintWindow)
+  // แต่ไม่ออกเลข Rev / ไม่เก็บประวัติ (rev+revDate = null) ตามมติผู้ใช้.
+  const printDealTimeline = () => {
+    if (!deal) return;
+    openGanttPrintWindow({
+      code: deal.code || "",
+      docNumber: deal.code || "",
+      name: deal.title || "",
+      productName: deal.title || "",
+      customerName: deal.customerName || deal.customer?.name || "",
+      aeOwner: deal.ownerName || "",
+      aeSupervisor: "",
+      preparedBy: deal.ownerName || "",
+      startDate: deal.startDate || data?.project?.startDate || "",
+      dueDate: deal.endDate || deal.expectedCloseDate || data?.project?.dueDate || "",
+      metadata: { brand: deal.metadata?.brand || deal.brand || "" },
+      categoryFallback: deal.categoryCode || "",
+      projectProducts: data?.projectProducts || [],
+      tasks: data?.projectTasks || [],
+      rev: null,     // ไม่ออกเลข Rev
+      revDate: null, // ไม่มีวันที่ Rev / ไม่เก็บประวัติ
+    });
+  };
 
   // เวลาปัจจุบันจับใน effect (กฎ react-hooks/purity ห้าม Date.now() ระหว่าง render)
   const [nowMs, setNowMs] = useState(null);
@@ -862,6 +887,11 @@ export default function DealOverviewPage() {
               <PackageCheck size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ไทม์ไลน์</h2>
               <div className="spacer" />
+              {(data.projectTasks || []).length > 0 && (
+                <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF (ไม่ออกเลข Rev / ไม่เก็บประวัติ)">
+                  <Printer size={14} aria-hidden="true" /> พิมพ์เอกสาร
+                </button>
+              )}
               {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
             </div>
             {data.project ? (
