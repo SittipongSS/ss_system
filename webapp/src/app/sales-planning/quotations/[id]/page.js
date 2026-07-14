@@ -366,16 +366,17 @@ export default function QuotationEditorPage() {
             <div className={styles.quickFacts}>
               <div><CalendarDays size={16} /><span><small>วันที่ออกใบ</small>{form.quoteDate ? fmtDate(form.quoteDate) : "-"}</span></div>
               <div><CalendarDays size={16} /><span><small>ยืนราคาถึง</small>{form.validUntil ? fmtDate(form.validUntil) : "ไม่ระบุ"}</span></div>
-              <div><Building2 size={16} /><span><small>สาขา</small>{quote.branchCode || "สำนักงานใหญ่"}</span></div>
-              <div><CircleDollarSign size={16} /><span><small>ภาษี</small>{form.vatRate > 0 ? `VAT ${form.vatRate}%` : "รวม VAT แล้ว"}</span></div>
+              <div><CircleDollarSign size={16} /><span><small>ภาษี</small>{form.vatRate > 0 ? `+ VAT ${form.vatRate}%` : "รวม VAT แล้ว"}</span></div>
+              <div><ClipboardList size={16} /><span><small>รายการ</small>{lines.length} รายการ</span></div>
             </div>
           </section>
 
           {/* ข้อมูลลูกค้าที่แช่แข็งบนใบ (Q3) — อ่านอย่างเดียว แก้ที่ฐานข้อมูลลูกค้า */}
           {(quote.billingAddress || quote.contactName || quote.shippingAddress) && (
             <section className={`${styles.card} ${styles.customerCard}`}>
-              <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
-                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>ข้อมูลลูกค้า (บนใบ)</h2>
+              <div className={styles.sectionHeading}>
+                <UserRound size={17} aria-hidden="true" />
+                <h2>ข้อมูลลูกค้าในเอกสาร</h2>
                 <span className="ui-badge" style={{ color: "var(--text-3)" }}>อ่านอย่างเดียว</span>
                 <div className="spacer" />
                 {quote.customerId && (
@@ -411,10 +412,9 @@ export default function QuotationEditorPage() {
 
           {/* รายการ */}
           <section className={styles.card}>
-            <div className="flex items-center gap-2 mb-3">
+            <div className={styles.sectionHeading}>
               <ClipboardList size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>รายการสินค้า/บริการ</h2>
-              <div className="spacer" />
+              <h2>รายการสินค้า/บริการ</h2>
               {editable && (
                 <div className={styles.lineActions}>
                   <button type="button" className="btn btn-primary sm" onClick={addProductLine}><Plus size={13} aria-hidden="true" /> เพิ่มสินค้า</button>
@@ -430,7 +430,7 @@ export default function QuotationEditorPage() {
                 <tbody>
                   {lines.map((l, i) => (
                     <tr key={l.id || i} className="premium-row">
-                      <td style={{ textAlign: "center", color: "var(--text-3)" }}>{i + 1}</td>
+                      <td className={styles.rowNumber}>{i + 1}</td>
                       <td>
                         <div className={styles.lineDescriptionCell}>
                           {editable && l._lineKind === "product" && (
@@ -448,16 +448,16 @@ export default function QuotationEditorPage() {
                           {l.fgCode && <span className={styles.fgCode}>FG: {l.fgCode}</span>}
                         </div>
                       </td>
-                      <td><input type="number" min="0" step="1" className="premium-input mono" value={l.qty} disabled={!editable} onChange={(e) => setLine(i, { qty: e.target.value })} /></td>
+                      <td><MoneyInput min="0" value={l.qty} disabled={!editable} onChange={(value) => setLine(i, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${i + 1}`} /></td>
                       <td><MoneyInput min="0" value={l.unitPrice} disabled={!editable} onChange={(value) => setLine(i, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${i + 1}`} /></td>
                       <td>
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <Select className="premium-select" value={l.discountType || ""} disabled={!editable} onChange={(e) => setLine(i, { discountType: e.target.value || null, discountValue: e.target.value ? l.discountValue : 0 })} style={{ width: 74 }}>
+                        <div className={styles.discountControls}>
+                          <Select className="premium-select" value={l.discountType || ""} disabled={!editable} onChange={(e) => setLine(i, { discountType: e.target.value || null, discountValue: e.target.value ? l.discountValue : 0 })}>
                             <option value="">ไม่ลด</option>
                             <option value="percent">%</option>
                             <option value="amount">บาท</option>
                           </Select>
-                          <MoneyInput min="0" value={l.discountValue || ""} disabled={!editable || !l.discountType} onChange={(value) => setLine(i, { discountValue: value ?? "" })} style={{ width: 104 }} aria-label={`ส่วนลด รายการ ${i + 1}`} />
+                          <MoneyInput min="0" value={l.discountValue || ""} disabled={!editable || !l.discountType} onChange={(value) => setLine(i, { discountValue: value ?? "" })} aria-label={`ส่วนลด รายการ ${i + 1}`} />
                         </div>
                       </td>
                       <td className="num mono">{money(quoteLineNet(l).lineTotal)}</td>
@@ -466,6 +466,7 @@ export default function QuotationEditorPage() {
                       )}
                     </tr>
                   ))}
+                  {!lines.length && <tr><td colSpan={editable ? 7 : 6} className={styles.emptyRows}>ยังไม่มีรายการ — กด “เพิ่มสินค้า” หรือ “เพิ่มรายการเอง”</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -477,19 +478,19 @@ export default function QuotationEditorPage() {
                 <div className={styles.totalLine}>
                   <span className={styles.totalControls}>
                     ส่วนลดท้ายใบ
-                    <Select className="premium-select" value={form.discountType} disabled={!editable} onChange={(e) => setF({ discountType: e.target.value, discountValue: e.target.value ? form.discountValue : "" })} style={{ width: 82, height: 32 }}>
+                    <Select className="premium-select" value={form.discountType} disabled={!editable} onChange={(e) => setF({ discountType: e.target.value, discountValue: e.target.value ? form.discountValue : "" })}>
                       <option value="">ไม่ลด</option>
                       <option value="percent">%</option>
                       <option value="amount">บาท</option>
                     </Select>
-                    <MoneyInput min="0" value={form.discountValue || ""} disabled={!editable || !form.discountType} onChange={(value) => setF({ discountValue: value ?? "" })} style={{ width: 128, height: 32 }} aria-label="ส่วนลดท้ายใบ" />
+                    <MoneyInput min="0" value={form.discountValue || ""} disabled={!editable || !form.discountType} onChange={(value) => setF({ discountValue: value ?? "" })} aria-label="ส่วนลดท้ายใบ" />
                   </span>
                   <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-"}</strong>
                 </div>
                 <div className={styles.totalLine}>
                   <span className={styles.totalControls}>
                     ภาษีมูลค่าเพิ่ม
-                    <Select className="premium-select" value={form.vatRate} disabled={!editable} onChange={(e) => setF({ vatRate: Number(e.target.value) })} style={{ width: 190, height: 32 }}>
+                    <Select className="premium-select" value={form.vatRate} disabled={!editable} onChange={(e) => setF({ vatRate: Number(e.target.value) })}>
                       <option value={0}>รวม VAT แล้ว</option>
                       <option value={7}>+ VAT 7% ท้ายใบ</option>
                     </Select>
@@ -503,19 +504,39 @@ export default function QuotationEditorPage() {
             </div>
           </section>
 
-          {/* เงื่อนไขการชำระเงิน (Q3) — เต็มจำนวน / แบ่งงวด + ปุ่มคำนวณ */}
+          {/* เงื่อนไขการชำระเงิน — รูปแบบเดียวกับหน้าสร้าง + เปิด/ปิดแบ่งชำระ */}
           <section className={styles.card}>
-            <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>เงื่อนไขการชำระเงิน</h2>
-              <div className="spacer" />
-              <div className="segmented" role="tablist" aria-label="รูปแบบการชำระ">
-                <button type="button" role="tab" aria-selected={paymentType === "full"} className={paymentType === "full" ? "active" : ""} disabled={!editable} onClick={() => switchPayType("full")}>เต็มจำนวน</button>
-                <button type="button" role="tab" aria-selected={paymentType === "installment"} className={paymentType === "installment" ? "active" : ""} disabled={!editable} onClick={() => switchPayType("installment")}>แบ่งงวด</button>
+            <div className={styles.paymentHeading}>
+              <div className={styles.paymentTitle}>
+                <CircleDollarSign size={17} aria-hidden="true" />
+                <h2>เงื่อนไขการชำระเงิน</h2>
               </div>
+              <div className="spacer" />
+              <button
+                type="button"
+                role="switch"
+                aria-checked={paymentType === "installment"}
+                className={`${styles.installmentToggle} ${paymentType === "installment" ? styles.installmentOn : ""}`.trim()}
+                disabled={!editable}
+                onClick={() => switchPayType(paymentType === "installment" ? "full" : "installment")}
+              >
+                <span className={styles.toggleTrack}><span /></span>
+                <span><strong>แบ่งชำระเป็นงวด</strong><small>{paymentType === "installment" ? "เปิดใช้งาน" : "ชำระเต็มจำนวน"}</small></span>
+              </button>
+            </div>
+
+            <div className={styles.paymentTermsGrid}>
+              <label>วิธีการชำระเงิน
+                <input className="premium-input" value={form.paymentMethod} disabled={!editable} placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด" onChange={(e) => setF({ paymentMethod: e.target.value })} />
+              </label>
+              <label>ข้อความเงื่อนไขชำระ
+                <textarea className="premium-input" rows={3} value={form.paymentTerms} disabled={!editable} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ" onChange={(e) => setF({ paymentTerms: e.target.value })} />
+                {editable && paymentType === "installment" && <button type="button" className={styles.fillTermsButton} onClick={fillTermsFromPlan}>สร้างข้อความจากงวด</button>}
+              </label>
             </div>
 
             {paymentType === "installment" && (
-              <>
+              <div className={styles.installmentPanel}>
                 <div className="toolbar" style={{ marginBottom: 10, gap: 8 }}>
                   {editable && <button type="button" className="btn ghost sm" disabled={installments.length >= 6} onClick={addInstallment}><Plus size={13} aria-hidden="true" /> เพิ่มงวด</button>}
                   {editable && <button type="button" className="btn ghost sm" onClick={recalcEven}>เกลี่ย % เท่ากัน</button>}
@@ -541,31 +562,22 @@ export default function QuotationEditorPage() {
                     </tbody>
                   </table>
                 </div>
-              </>
-            )}
-
-            <label style={{ display: "block", marginTop: 12 }}>วิธีการชำระเงิน
-              <input className="premium-input" value={form.paymentMethod} disabled={!editable} placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด" onChange={(e) => setF({ paymentMethod: e.target.value })} style={{ width: "100%" }} />
-            </label>
-            <label style={{ display: "block", marginTop: 12 }}>ข้อความเงื่อนไขชำระ (พิมพ์บนเอกสาร)
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input className="premium-input" value={form.paymentTerms} disabled={!editable} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ · เครดิต 30 วัน" onChange={(e) => setF({ paymentTerms: e.target.value })} style={{ flex: 1 }} />
-                {editable && paymentType === "installment" && <button type="button" className="btn ghost sm" style={{ whiteSpace: "nowrap" }} onClick={fillTermsFromPlan}>สร้างจากงวด</button>}
               </div>
-            </label>
+            )}
           </section>
 
           {/* หมายเหตุ + template */}
           <section className={styles.card}>
-            <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>หมายเหตุ</h2>
+            <div className={styles.sectionHeading}>
+              <FileText size={17} aria-hidden="true" />
+              <h2>หมายเหตุ</h2>
               <div className="spacer" />
               {editable && visibleTemplates.map((t) => (
                 <button key={t.id} type="button" className="btn ghost sm" onClick={() => applyTemplate(t)} title={t.body}>+ {t.title}</button>
               ))}
               {isReviewer && <button type="button" className="btn ghost sm" onClick={() => setTplOpen(true)}>จัดการ template</button>}
             </div>
-            <textarea className="premium-input" rows={4} value={form.notes} disabled={!editable} placeholder="เงื่อนไข/หมายเหตุประกอบใบเสนอราคา" onChange={(e) => setF({ notes: e.target.value })} style={{ width: "100%" }} />
+            <textarea className="premium-input" rows={4} value={form.notes} disabled={!editable} placeholder="หมายเหตุที่ต้องการแสดงในใบเสนอราคา" onChange={(e) => setF({ notes: e.target.value })} style={{ width: "100%" }} />
           </section>
 
           {editable && (

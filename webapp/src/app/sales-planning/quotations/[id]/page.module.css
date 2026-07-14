@@ -163,6 +163,27 @@
   line-height: 1.5;
 }
 
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: var(--text-2);
+  flex-wrap: wrap;
+}
+
+.sectionHeading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.sectionHeading > span {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
 .documentMeta {
   display: grid;
   grid-template-columns: repeat(3, minmax(190px, 280px));
@@ -189,9 +210,8 @@
 
 .lineActions {
   display: flex;
-  align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 8px;
   margin-left: auto;
   flex-wrap: wrap;
 }
@@ -203,9 +223,30 @@
   gap: 6px;
 }
 
+.lineDescriptionCell > input {
+  width: 100%;
+}
+
 .fgCode {
   color: var(--text-3);
   font-size: 10.5px;
+}
+
+.rowNumber {
+  color: var(--text-3);
+  text-align: center;
+}
+
+.discountControls {
+  display: grid;
+  grid-template-columns: 74px 104px;
+  gap: 4px;
+}
+
+.emptyRows {
+  padding: 32px !important;
+  color: var(--text-3);
+  text-align: center;
 }
 
 .totalsWrap {
@@ -233,10 +274,15 @@
 }
 
 .totalControls {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 116px 128px;
   min-width: 0;
   align-items: center;
   gap: 7px;
+}
+
+.totalControls > :last-child:nth-child(2) {
+  grid-column: 2 / 4;
 }
 
 .totalGrand {
@@ -244,6 +290,111 @@
   padding-top: 10px;
   border-top: 2px solid var(--border);
   font-size: 17px;
+}
+
+.paymentHeading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.paymentTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+}
+
+.paymentTitle h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.installmentToggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.installmentToggle:disabled { cursor: default; opacity: .75; }
+.installmentToggle > span:last-child { display: flex; flex-direction: column; line-height: 1.2; }
+.installmentToggle strong { font-size: 11.5px; }
+.installmentToggle small { margin-top: 2px; color: var(--text-3); font-size: 9.5px; }
+
+.toggleTrack {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: background .18s ease;
+}
+
+.toggleTrack > span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  transition: transform .18s ease;
+}
+
+.installmentOn { border-color: color-mix(in srgb, var(--accent) 32%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.installmentOn .toggleTrack { background: var(--accent); }
+.installmentOn .toggleTrack > span { transform: translateX(14px); }
+
+.paymentTermsGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, .7fr) minmax(280px, 1.3fr);
+  gap: 16px;
+}
+
+.paymentTermsGrid label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.paymentTermsGrid label > * { margin-top: 6px; }
+.paymentTermsGrid input,
+.paymentTermsGrid textarea { width: 100%; }
+
+.fillTermsButton {
+  align-self: flex-end;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.fillTermsButton:hover { text-decoration: underline; }
+
+.installmentPanel {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
 }
 
 .sidebar {
@@ -474,8 +625,17 @@
   .quickFacts,
   .customerGrid,
   .documentMeta,
+  .paymentTermsGrid,
   .summaryCard {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .paymentHeading {
+    align-items: flex-start;
+  }
+
+  .installmentToggle {
+    width: 100%;
   }
 
   .quickFacts > div {
@@ -499,6 +659,14 @@
 
   .totalControls {
     align-items: flex-start;
-    flex-wrap: wrap;
+    grid-template-columns: 1fr;
+  }
+
+  .totalControls > :last-child:nth-child(2) {
+    grid-column: auto;
+  }
+
+  .lineActions {
+    width: 100%;
   }
 }
