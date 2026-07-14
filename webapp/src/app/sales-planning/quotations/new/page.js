@@ -170,6 +170,15 @@ function NewQuotationInner() {
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
+        {!loading && !eligible.length && (
+          <div className="glass-panel" style={{ padding: 16, color: "var(--text-2)", fontSize: 13.5 }}>
+            ยังไม่มีดีลที่พร้อมออกใบเสนอราคา — ดีลต้อง<strong> ผูกโครงการ </strong>และ<strong> มีลูกค้า </strong>ก่อน แล้วจึงออกใบได้
+            <div style={{ marginTop: 8 }}>
+              <Link href="/sa/deals" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> ไปหน้าดีล</Link>
+            </div>
+          </div>
+        )}
+
         {/* 1) เลือกที่มา — cascade บังคับสามขั้น */}
         <section className="glass-panel form-grid" style={{ padding: 16 }}>
           <label style={{ gridColumn: "1 / -1" }}>
