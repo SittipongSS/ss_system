@@ -1035,7 +1035,9 @@ export default function ProjectDetailPage() {
         ]}
       />
 
-      <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" />
+      <div style={{ marginTop: 20 }}>
+        <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" />
+      </div>
 
       {/* เครื่องมือเอกสารขั้นสูง แสดงเมื่อเปิดส่วนไทม์ไลน์ */}
       <div className="glass-panel" style={{ padding: 16, margin: "16px 0 24px", display: showTimeline ? "block" : "none" }}>
@@ -1119,6 +1121,35 @@ export default function ProjectDetailPage() {
             {timelineDealFilters.length > 1 && <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>}
           </div>
         )}
+
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all 0.3s", pointerEvents: isLocked ? "none" : "auto" }}>
+          <TimelineWorkspace
+            tasks={tasks}
+            canEdit={canEdit}
+            canAdd={canAddTimelineTask}
+            canReorder={canReorderTimeline}
+            dealId={singleSelectedDeal(timelineDealFilters)}
+            projectId={p.id}
+            view={view}
+            onViewChange={setView}
+            showHeading={false}
+            showViewSwitcher={false}
+            documentProject={{ ...p, tasks }}
+            canEditProjectFields={canEdit}
+            onUpdateProject={updateProject}
+            timelineContext={{
+              name: p.name,
+              customerName: p.customerName,
+              startDate: p.startDate,
+              brand: p.metadata?.brand,
+              status: getComputedStatus(p),
+              statusLabel: getComputedStatus(p),
+              statusColor: statusDotColor(getComputedStatus(p)),
+            }}
+            onChanged={load}
+            onError={(message) => setToast({ kind: "error", msg: message })}
+          />
+        </div>
 
         </div>
 
@@ -1232,32 +1263,6 @@ export default function ProjectDetailPage() {
       {showTimeline && (
       <>
       <div style={{ opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all 0.3s", pointerEvents: isLocked ? "none" : "auto" }}>
-      <TimelineWorkspace
-        tasks={tasks}
-        canEdit={canEdit}
-        canAdd={canAddTimelineTask}
-        canReorder={canReorderTimeline}
-        dealId={singleSelectedDeal(timelineDealFilters)}
-        projectId={p.id}
-        view={view}
-        onViewChange={setView}
-        showHeading={false}
-        showViewSwitcher={false}
-        documentProject={{ ...p, tasks }}
-        canEditProjectFields={canEdit}
-        onUpdateProject={updateProject}
-        timelineContext={{
-          name: p.name,
-          customerName: p.customerName,
-          startDate: p.startDate,
-          brand: p.metadata?.brand,
-          status: getComputedStatus(p),
-          statusLabel: getComputedStatus(p),
-          statusColor: statusDotColor(getComputedStatus(p)),
-        }}
-        onChanged={load}
-        onError={(message) => setToast({ kind: "error", msg: message })}
-      />
       {false && (<>
       {view === "document" ? (
         <div className="glass-panel" style={{ padding: "20px", marginBottom: "24px" }}>
