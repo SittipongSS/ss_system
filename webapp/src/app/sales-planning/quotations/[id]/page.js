@@ -9,7 +9,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { FileText, Plus, Printer, Save, Send, Trash2, CheckCircle2, GitBranch, ClipboardList, ExternalLink } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileText, GitBranch, MapPin, Plus, Printer, Save, Send, Trash2, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import FormActions from "@/components/ui/FormActions";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -19,10 +19,11 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { canReviewSalesForecast, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
-import { fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindow } from "@/lib/sales/quotePrint";
 import { evenPercents, computeInstallments, paymentPlanSummary } from "@/lib/sales/paymentPlan";
+import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
 const EDITABLE = new Set(["draft", "sent", "rejected"]);
@@ -253,6 +254,20 @@ export default function QuotationEditorPage() {
   const visibleTemplates = templates.filter((t) => t.active && (t.serviceType === "general" || !dealType || t.serviceType === dealType));
   const applyTemplate = (tpl) => setF({ notes: form.notes ? `${form.notes}\n${tpl.body}` : tpl.body });
 
+  const statusMeta = {
+    draft: { label: "ฉบับร่าง", color: "var(--text-3)" },
+    sent: { label: "ส่งลูกค้าแล้ว", color: "var(--blue)" },
+    accepted: { label: "ลูกค้ารับแล้ว", color: "var(--green)" },
+    rejected: { label: "ถูกปฏิเสธ", color: "var(--red)" },
+    cancelled: { label: "ยกเลิก", color: "var(--red)" },
+    revised: { label: "มีฉบับแก้ไขใหม่", color: "var(--amber)" },
+  }[quote?.status] || { label: quote?.status || "-", color: "var(--text-3)" };
+  const approvalMeta = {
+    pending: { label: `รออนุมัติ (${quote?.approvalReason || "เกินเงื่อนไข"})`, color: "var(--amber)" },
+    approved: { label: "อนุมัติแล้ว", color: "var(--green)" },
+    rejected: { label: "ไม่อนุมัติ", color: "var(--red)" },
+  }[quote?.approvalStatus];
+
   const saveTemplate = async () => {
     if (!tplForm.title.trim() || !tplForm.body.trim()) return;
     const res = await fetch("/api/sales-planning/quote-note-templates", {
@@ -290,14 +305,10 @@ export default function QuotationEditorPage() {
       subtitle={quote ? `${quote.customerName || "-"}${quote.deal ? ` · ดีล: ${quote.deal.title}` : ""}${quote.revisionNo > 0 ? ` · ฉบับแก้ไข R${quote.revisionNo}` : ""}` : ""}
       back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
       headerRight={quote && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className={styles.headerActions}>
           {editable && <SaveStatus status={error ? "error" : busy === "save" ? "saving" : dirty ? "dirty" : "saved"} />}
-          {editable && <button type="button" className="btn btn-primary" onClick={() => save()} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึก"}</button>}
-          {editable && quote.status === "draft" && <button type="button" className="btn" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={14} aria-hidden="true" /> ส่งลูกค้า</button>}
-          {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-success" onClick={doAccept} disabled={!!busy || quote.approvalStatus === "pending"} title={quote.approvalStatus === "pending" ? "รออนุมัติก่อนรับใบ" : "ลูกค้ารับใบนี้"}><CheckCircle2 size={14} aria-hidden="true" /> ลูกค้ารับ</button>}
-          {EDITABLE.has(quote.status) && canEditCap && <button type="button" className="btn ghost" onClick={doRevise} disabled={!!busy}><GitBranch size={14} aria-hidden="true" /> Revise</button>}
           <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={14} aria-hidden="true" /> พิมพ์</button>
-          {quote.status === "draft" && canEditCap && <button type="button" className="btn-icon danger" onClick={doDelete} title="ลบฉบับร่าง" aria-label="ลบฉบับร่าง"><Trash2 size={15} aria-hidden="true" /></button>}
+          {editable && <button type="button" className="btn btn-primary" onClick={() => save()} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึก"}</button>}
         </div>
       )}
     >
@@ -306,31 +317,32 @@ export default function QuotationEditorPage() {
       )}
 
       {quote && (
-        <div className="flex flex-col gap-5">
+        <div className={styles.detailLayout}>
+          <div className={styles.documentColumn}>
           {/* สถานะ + อนุมัติ */}
-          <section className="glass-panel" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span className="ui-badge" style={{ color: { draft: "var(--text-3)", sent: "var(--blue)", accepted: "var(--green)", rejected: "var(--red)", cancelled: "var(--red)", revised: "var(--amber)" }[quote.status] }}>
-              {{ draft: "ฉบับร่าง", sent: "ส่งลูกค้าแล้ว", accepted: "ลูกค้ารับแล้ว", rejected: "ถูกปฏิเสธ", cancelled: "ยกเลิก", revised: "ถูกแก้ไข (มีฉบับใหม่)" }[quote.status] || quote.status}
-            </span>
-            {quote.approvalStatus !== "not_required" && (
-              <span className="ui-badge" style={{ color: quote.approvalStatus === "approved" ? "var(--green)" : quote.approvalStatus === "rejected" ? "var(--red)" : "var(--amber)" }}>
-                {{ pending: `รออนุมัติ (${quote.approvalReason || "เกินเงื่อนไข"})`, approved: "อนุมัติแล้ว", rejected: "ไม่อนุมัติ" }[quote.approvalStatus]}
-              </span>
-            )}
-            {quote.approvalStatus === "pending" && isReviewer && (
-              <>
-                <button type="button" className="btn btn-success sm" onClick={() => doApproval("approve")} disabled={!!busy}>อนุมัติ</button>
-                <button type="button" className="btn sm" onClick={() => doApproval("reject")} disabled={!!busy}>ไม่อนุมัติ</button>
-              </>
-            )}
-            <div className="spacer" style={{ flex: 1 }} />
-            {quote.deal && <Link href={`/sa/deals/${quote.deal.id}`} className="linklike" style={{ fontSize: 13 }}>เปิดดีล →</Link>}
-            {!editable && <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>ใบนี้แก้ไขไม่ได้ — ใช้ Revise เพื่อออกฉบับใหม่</span>}
+          <section className={`${styles.card} ${styles.overviewCard}`}>
+            <div className={styles.overviewHeading}>
+              <div>
+                <span className={styles.eyebrow}>FM-SA-01 · QUOTATION</span>
+                <h2>{quote.customerName || "ไม่ระบุลูกค้า"}</h2>
+                <p>{quote.deal?.title || "ไม่ระบุดีล"}{quote.revisionNo > 0 ? ` · Revision ${quote.revisionNo}` : ""}</p>
+              </div>
+              <div className={styles.badgeRow}>
+                <span className={styles.stateBadge} style={{ "--state-color": statusMeta.color }}>{statusMeta.label}</span>
+                {approvalMeta && <span className={styles.stateBadge} style={{ "--state-color": approvalMeta.color }}>{approvalMeta.label}</span>}
+              </div>
+            </div>
+            <div className={styles.quickFacts}>
+              <div><CalendarDays size={16} /><span><small>วันที่ออกใบ</small>{form.quoteDate ? fmtDate(form.quoteDate) : "-"}</span></div>
+              <div><CalendarDays size={16} /><span><small>ยืนราคาถึง</small>{form.validUntil ? fmtDate(form.validUntil) : "ไม่ระบุ"}</span></div>
+              <div><Building2 size={16} /><span><small>สาขา</small>{quote.branchCode || "สำนักงานใหญ่"}</span></div>
+              <div><CircleDollarSign size={16} /><span><small>ภาษี</small>{form.vatRate > 0 ? `VAT ${form.vatRate}%` : "รวม VAT แล้ว"}</span></div>
+            </div>
           </section>
 
           {/* ข้อมูลลูกค้าที่แช่แข็งบนใบ (Q3) — อ่านอย่างเดียว แก้ที่ฐานข้อมูลลูกค้า */}
           {(quote.billingAddress || quote.contactName || quote.shippingAddress) && (
-            <section className="glass-panel" style={{ padding: 16 }}>
+            <section className={`${styles.card} ${styles.customerCard}`}>
               <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
                 <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>ข้อมูลลูกค้า (บนใบ)</h2>
                 <span className="ui-badge" style={{ color: "var(--text-3)" }}>อ่านอย่างเดียว</span>
@@ -341,17 +353,17 @@ export default function QuotationEditorPage() {
                   </Link>
                 )}
               </div>
-              <div className="form-grid" style={{ fontSize: 13 }}>
-                <div><div style={{ color: "var(--text-3)", fontSize: 11 }}>ลูกค้า</div>{quote.customerName || "-"}{quote.branchCode ? ` · สาขา ${quote.branchCode}` : ""}</div>
-                <div><div style={{ color: "var(--text-3)", fontSize: 11 }}>ผู้ติดต่อ</div>{[quote.contactName, quote.contactPhone].filter(Boolean).join(" · ") || "-"}</div>
-                <div style={{ gridColumn: "1 / -1" }}><div style={{ color: "var(--text-3)", fontSize: 11 }}>ที่อยู่ออกบิล</div>{quote.billingAddress || "-"}</div>
-                <div style={{ gridColumn: "1 / -1" }}><div style={{ color: "var(--text-3)", fontSize: 11 }}>ที่อยู่จัดส่ง</div>{quote.shippingAddress || quote.billingAddress || "-"}</div>
+              <div className={styles.customerGrid}>
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{quote.customerName || "-"}{quote.branchCode ? ` · สาขา ${quote.branchCode}` : ""}</span></div>
+                <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{[quote.contactName, quote.contactPhone].filter(Boolean).join(" · ") || "-"}</span></div>
+                <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่ออกบิล</small>{quote.billingAddress || "-"}</span></div>
+                <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่จัดส่ง</small>{quote.shippingAddress || quote.billingAddress || "-"}</span></div>
               </div>
             </section>
           )}
 
           {/* หัวใบ */}
-          <section className="glass-panel form-grid" style={{ padding: 16 }}>
+          <section className={`${styles.card} ${styles.documentMeta}`}>
             <label>วันที่ออกใบ
               <DateInput value={form.quoteDate} disabled={!editable} onChange={(value) => setF({ quoteDate: value })} />
             </label>
@@ -367,7 +379,7 @@ export default function QuotationEditorPage() {
           </section>
 
           {/* รายการ */}
-          <section className="glass-panel" style={{ padding: 16 }}>
+          <section className={styles.card}>
             <div className="flex items-center gap-2 mb-3">
               <ClipboardList size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>รายการสินค้า/บริการ</h2>
@@ -453,7 +465,7 @@ export default function QuotationEditorPage() {
           </section>
 
           {/* เงื่อนไขการชำระเงิน (Q3) — เต็มจำนวน / แบ่งงวด + ปุ่มคำนวณ */}
-          <section className="glass-panel" style={{ padding: 16 }}>
+          <section className={styles.card}>
             <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>เงื่อนไขการชำระเงิน</h2>
               <div className="spacer" />
@@ -502,7 +514,7 @@ export default function QuotationEditorPage() {
           </section>
 
           {/* หมายเหตุ + template */}
-          <section className="glass-panel" style={{ padding: 16 }}>
+          <section className={styles.card}>
             <div className="flex items-center gap-2 mb-3" style={{ flexWrap: "wrap" }}>
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>หมายเหตุ</h2>
               <div className="spacer" />
@@ -522,6 +534,47 @@ export default function QuotationEditorPage() {
               onSave={() => save()}
             />
           )}
+          </div>
+
+          <aside className={styles.sidebar} aria-label="สรุปและคำสั่งใบเสนอราคา">
+            <section className={`${styles.card} ${styles.summaryCard}`}>
+              <div className={styles.summaryLabel}>ยอดสุทธิใบเสนอราคา</div>
+              <div className={styles.totalAmount}>{money(totals.totalAmount)}</div>
+              <div className={styles.totalRows}>
+                <div><span>รวมรายการ</span><strong>{money(totals.subtotal)}</strong></div>
+                <div><span>ส่วนลด</span><strong>{totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-"}</strong></div>
+                {form.vatRate > 0 && <div><span>VAT {form.vatRate}%</span><strong>{money(totals.vatAmount)}</strong></div>}
+              </div>
+
+              <div className={styles.workflowStatus}>
+                <span className={styles.statusDot} style={{ "--state-color": statusMeta.color }} />
+                <div><small>สถานะเอกสาร</small><strong>{statusMeta.label}</strong></div>
+              </div>
+              {approvalMeta && (
+                <div className={styles.workflowStatus}>
+                  <span className={styles.statusDot} style={{ "--state-color": approvalMeta.color }} />
+                  <div><small>การอนุมัติ</small><strong>{approvalMeta.label}</strong></div>
+                </div>
+              )}
+
+              <div className={styles.workflowActions}>
+                {editable && quote.status === "draft" && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}
+                {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-success" onClick={doAccept} disabled={!!busy || quote.approvalStatus === "pending"} title={quote.approvalStatus === "pending" ? "รออนุมัติก่อนรับใบ" : "ลูกค้ารับใบนี้"}><CheckCircle2 size={15} aria-hidden="true" /> ลูกค้าตอบรับ</button>}
+                {quote.approvalStatus === "pending" && isReviewer && (
+                  <div className={styles.approvalActions}>
+                    <button type="button" className="btn btn-success" onClick={() => doApproval("approve")} disabled={!!busy}>อนุมัติ</button>
+                    <button type="button" className="btn" onClick={() => doApproval("reject")} disabled={!!busy}>ไม่อนุมัติ</button>
+                  </div>
+                )}
+                {EDITABLE.has(quote.status) && canEditCap && <button type="button" className="btn ghost" onClick={doRevise} disabled={!!busy}><GitBranch size={15} aria-hidden="true" /> สร้างฉบับแก้ไข</button>}
+                <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={15} aria-hidden="true" /> พิมพ์ / PDF</button>
+              </div>
+
+              {quote.deal && <Link href={`/sa/deals/${quote.deal.id}`} className={styles.relatedLink}>เปิดดีลที่เกี่ยวข้อง <span>→</span></Link>}
+              {!editable && <p className={styles.lockedNote}>ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่</p>}
+              {quote.status === "draft" && canEditCap && <button type="button" className={styles.deleteAction} onClick={doDelete} disabled={!!busy}><Trash2 size={14} aria-hidden="true" /> ลบฉบับร่าง</button>}
+            </section>
+          </aside>
         </div>
       )}
 
