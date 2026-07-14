@@ -2325,18 +2325,25 @@ button.empty-state { width: 100%; font: inherit; }
 .project-header-meta strong { color: var(--text); font-weight: 650; overflow-wrap: anywhere; }
 .project-detail-actions {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
   margin-left: auto;
   text-align: right;
 }
 .project-detail-action-row {
   display: flex;
-  width: 100%;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
+}
+.timeline-header-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
 }
 .project-timeline-card-actions {

@@ -280,7 +280,17 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
         <form onSubmit={addActivity} style={{ display: "grid", gridTemplateColumns: "minmax(180px, 1fr) 150px minmax(240px, 2fr) auto", gap: 8, marginBottom: 14, alignItems: "end" }}>
           <div className="form-group"><label>ดีล</label><Select fullWidth value={dealId} onChange={(event) => setDealId(event.target.value)}><option value="">— เลือกดีล —</option>{deals.map((deal) => <option key={deal.id} value={deal.id}>{deal.title}</option>)}</Select></div>
           <div className="form-group"><label>ประเภท</label><Select fullWidth value={kind} onChange={(event) => setKind(event.target.value)}>{Object.entries(ACTIVITY_KIND).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</Select></div>
-          <div className="form-group"><label>รายละเอียด</label><input className="premium-input w-full" value={body} onChange={(event) => setBody(event.target.value)} placeholder="บันทึก โทร ประชุม หรือขั้นถัดไป..." /></div>
+          <div className="form-group">
+            <label>รายละเอียด</label>
+            <textarea
+              className="premium-input w-full"
+              rows={2}
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              placeholder="พิมพ์อัปเดตงาน เช่น โทรคุยลูกค้าแล้ว รอส่งใบเสนอราคา..."
+              style={{ resize: "vertical" }}
+            />
+          </div>
           <button type="submit" className="btn btn-primary" disabled={saving} style={{ minHeight: 40, alignSelf: "end" }}>{saving ? "กำลังเพิ่ม..." : "เพิ่ม"}</button>
         </form>
       )}
@@ -466,7 +476,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
         </div>
         {reorderError && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{reorderError}</div>}
         {deals.length ? (
-          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 330px), 1fr))" }}>
+          <div className="grid gap-3" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
             {deals.map((d, index) => (
             <DealCard
               key={d.id}
