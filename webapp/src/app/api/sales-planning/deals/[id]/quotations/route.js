@@ -20,6 +20,7 @@ import {
 } from '@/lib/sales/quotationCreateGuard';
 import { businessDate } from '@/lib/businessDate';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
+import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .eq('dealId', deal.id)
     .order('createdAt', { ascending: false });
   if (error) return fail(error.message, 500);
-  return ok(data || []);
+  return ok(latestQuotationRevisions(data || []));
 });
 
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {

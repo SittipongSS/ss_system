@@ -37,7 +37,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const quote = await loadQuote(supabase, id);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal || !inSalesViewScope(user, quote.deal)) return forbidden();
-  return ok(quote);
+  const baseNumber = quote.baseNumber || quote.quoteNumber;
+  const { data: revisionHistory, error: revisionError } = await supabase
+    .from('quotations')
+    .select('id, quoteNumber, revisionNo, status, quoteDate, createdAt, totalAmount')
+    .eq('baseNumber', baseNumber)
+    .order('revisionNo', { ascending: false });
+  if (revisionError) return fail(revisionError.message, 500);
+  return ok({ ...quote, revisionHistory: revisionHistory || [] });
 });
 
 // PATCH — แก้เนื้อหาใบ (lines/ส่วนลด/VAT/เงื่อนไขชำระ/หมายเหตุ/วันหมดอายุ/สถานะ draft↔sent)
