@@ -160,8 +160,10 @@
 
 .documentMeta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(230px, 320px));
+  align-items: end;
+  justify-content: start;
+  gap: 18px;
 }
 
 .documentMeta label {
@@ -173,6 +175,68 @@
 
 .documentMeta label > * {
   margin-top: 6px;
+}
+
+.documentDateInput {
+  width: 100%;
+  min-width: 0;
+}
+
+.lineActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.lineDescriptionCell {
+  display: flex;
+  min-width: 260px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fgCode {
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.totalsWrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.totalsPanel {
+  display: flex;
+  width: min(100%, 470px);
+  flex-direction: column;
+  gap: 9px;
+  font-size: 13.5px;
+}
+
+.totalLine,
+.totalGrand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.totalControls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.totalGrand {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 2px solid var(--border);
+  font-size: 17px;
 }
 
 .sidebar {
@@ -420,5 +484,14 @@
   .workflowActions {
     grid-column: 1;
     grid-row: auto;
+  }
+
+  .totalLine {
+    align-items: flex-start;
+  }
+
+  .totalControls {
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
 }
