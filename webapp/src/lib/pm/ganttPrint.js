@@ -160,6 +160,7 @@ export function buildGanttPrintHTML(project) {
   .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
   .logo-wrap img { height: 46px; width: auto; max-width: 300px; display: block; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
+  .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
   .company-info { font-size: 8.5px; color: #837868; line-height: 1.4; margin-top: 3px; }
   .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
   .doc-title .big { font-size: 17px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
@@ -279,6 +280,7 @@ export function buildGanttPrintHTML(project) {
         <div class="logo-wrap"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
         <div>
           <h2>บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด</h2>
+          <div class="doc-name">Project Timeline · ใบรายงานติดตามโครงการ</div>
           <div class="company-info">
             <div>${esc(COMPANY_ADDRESS)}</div>
             <div>โทร. ${COMPANY_OFFICE_TEL} · Line ${esc(COMPANY_LINE)}</div>

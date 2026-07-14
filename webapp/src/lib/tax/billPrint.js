@@ -85,6 +85,7 @@ export function buildBillPrintHTML(order, customer = {}) {
   .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
   .logo-img { height: 46px; width: auto; max-width: 300px; display: block; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
+  .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
   .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
   .doc-title .big { font-size: 17px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
@@ -150,6 +151,7 @@ export function buildBillPrintHTML(order, customer = {}) {
         <div class="logo-wrap"><img class="logo-img" src="${LOGO_URL}" alt="S&amp;S"/></div>
         <div>
           <h2>${esc(COMPANY)}</h2>
+          <div class="doc-name">ใบวางบิลค่าภาษีสรรพสามิต · Excise Tax Billing</div>
         </div>
       </div>
       <div class="doc-title">
