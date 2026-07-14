@@ -312,12 +312,16 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                     <Fragment key={row.id}>
                       {metrics.map((m, mi) => (
                         <tr key={`${row.id}-${m.key}`} className="premium-row" style={mi === 0 ? { borderTop: "2px solid var(--border)" } : undefined}>
-                          {mi === 0 && (
-                            <td className="fz-c1" rowSpan={metrics.length} style={{ verticalAlign: "top", width: 160, minWidth: 160 }}>
-                              <strong>{row.label}</strong>
-                              {row.sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{row.sublabel}</span>}
-                            </td>
-                          )}
+                          {/* ห้ามใช้ rowSpan กับเซลล์ sticky — Chrome วาดเพี้ยน (ghost/ซ้อน)
+                              จึงใส่เซลล์แยกทุกแถวแล้วโชว์ชื่อเฉพาะแถวแรกแทน */}
+                          <td className="fz-c1" style={{ verticalAlign: "top", width: 160, minWidth: 160, borderBottom: mi === metrics.length - 1 ? undefined : "none" }}>
+                            {mi === 0 && (
+                              <>
+                                <strong>{row.label}</strong>
+                                {row.sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{row.sublabel}</span>}
+                              </>
+                            )}
+                          </td>
                           <td className="fz-c2" style={{ whiteSpace: "nowrap", color: "var(--text-2)" }}>
                             <span aria-hidden="true" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: m.color, marginRight: 6, verticalAlign: "middle" }} />
                             {m.label}
@@ -360,12 +364,15 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
               <tfoot>
                 {metrics.map((m, mi) => (
                   <tr key={`grand-${m.key}`} className="fz-total-row" style={{ background: "var(--panel-2)", borderTop: mi === 0 ? "2px solid var(--border)" : undefined }}>
-                    {mi === 0 && (
-                      <td className="fz-c1" rowSpan={metrics.length} style={{ verticalAlign: "top", fontWeight: 800, width: 160, minWidth: 160 }}>
-                        รวมทั้งหมด
-                        <span style={{ display: "block", color: "var(--text-3)", fontSize: 12, fontWeight: 400 }}>ทุกรายการ</span>
-                      </td>
-                    )}
+                    {/* เซลล์แยกทุกแถวแทน rowSpan — เหตุผลเดียวกับ tbody ด้านบน */}
+                    <td className="fz-c1" style={{ verticalAlign: "top", fontWeight: 800, width: 160, minWidth: 160, borderBottom: mi === metrics.length - 1 ? undefined : "none" }}>
+                      {mi === 0 && (
+                        <>
+                          รวมทั้งหมด
+                          <span style={{ display: "block", color: "var(--text-3)", fontSize: 12, fontWeight: 400 }}>ทุกรายการ</span>
+                        </>
+                      )}
+                    </td>
                     <td className="fz-c2" style={{ whiteSpace: "nowrap", color: "var(--text-2)" }}>
                       <span aria-hidden="true" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: m.color, marginRight: 6, verticalAlign: "middle" }} />
                       {m.label}
