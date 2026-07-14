@@ -3,7 +3,7 @@ import DateInput from "@/components/ui/DateInput";
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, Undo2 } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, Undo2, Paperclip, FileText, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SortControl from "@/components/ui/SortControl";
@@ -21,6 +21,7 @@ import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
 import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink, taskLinkType } from "@/lib/pm/taskLink";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -72,6 +73,46 @@ const PERSONAL_BLANK = {
   linkType: "none", projectId: "", dealId: "", assigneeId: "",
   category: "", important: false, urgent: false, difficulty: 2,
 };
+
+async function uploadNewTaskAttachment(taskId, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("customerName", `personal_task-${taskId}`);
+  fd.append("entityType", "personal_task");
+  fd.append("entityId", taskId);
+
+  const uploadRes = await fetch("/api/upload", { method: "POST", body: fd });
+  const uploadData = await uploadRes.json().catch(() => ({}));
+  if (!uploadRes.ok) throw new Error(uploadData.error || `อัปโหลด ${file.name} ไม่สำเร็จ`);
+
+  const attachmentRes = await fetch("/api/master/attachments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      entityType: "personal_task",
+      entityId: taskId,
+      docType: "other",
+      fileUrl: uploadData.url,
+      driveFileId: uploadData.driveFileId,
+      fileName: file.name,
+      mimeType: file.type || null,
+      sizeBytes: file.size,
+      metadata: {},
+    }),
+  });
+
+  if (!attachmentRes.ok) {
+    if (uploadData.driveFileId) {
+      fetch("/api/upload", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driveFileId: uploadData.driveFileId }),
+      }).catch(() => {});
+    }
+    const payload = await attachmentRes.json().catch(() => ({}));
+    throw new Error(payload.error || `บันทึก ${file.name} ไม่สำเร็จ`);
+  }
+}
 
 const SORT_OPTIONS = [
   { key: "created", label: "สร้างล่าสุด" },
@@ -138,6 +179,8 @@ export default function TasksPage() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(PERSONAL_BLANK);
   const [saving, setSaving] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const pendingFileRef = useRef(null);
 
   // กันผลลัพธ์ที่มาช้า/สลับลำดับเมื่อสลับ scope เร็ว ๆ
   const loadSeq = useRef(0);
@@ -291,17 +334,19 @@ export default function TasksPage() {
     : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
 
   // ── CRUD ──
-  const openAdd = () => { setEditingId(null); setForm(PERSONAL_BLANK); setShowModal(true); };
+  const openAdd = () => { setEditingId(null); setForm(PERSONAL_BLANK); setPendingFiles([]); setShowModal(true); };
   useEffect(() => {
     const dealId = new URLSearchParams(window.location.search).get("dealId");
     if (!dealId || deepLinkHandled.current) return;
     deepLinkHandled.current = true;
     setEditingId(null);
     setForm({ ...PERSONAL_BLANK, linkType: "deal", dealId });
+    setPendingFiles([]);
     setShowModal(true);
   }, []);
   const openEdit = (t) => {
     setEditingId(t.id);
+    setPendingFiles([]);
     setForm({
       title: t.title, note: t.note || "",
       startDate: t.startDate || "", dueDate: t.dueDate || "",
@@ -311,6 +356,19 @@ export default function TasksPage() {
       difficulty: t.difficulty ?? 2,
     });
     setShowModal(true);
+  };
+  const selectPendingFiles = (event) => {
+    const selected = Array.from(event.target.files || []);
+    event.target.value = "";
+    const oversized = selected.filter((file) => file.size > MAX_UPLOAD_BYTES);
+    if (oversized.length > 0) {
+      setToast({ kind: "error", msg: `ไฟล์ต้องมีขนาดไม่เกิน ${MAX_UPLOAD_MB} MB: ${oversized.map((file) => file.name).join(", ")}` });
+    }
+    const valid = selected.filter((file) => file.size <= MAX_UPLOAD_BYTES);
+    setPendingFiles((current) => {
+      const known = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
+      return [...current, ...valid.filter((file) => !known.has(`${file.name}:${file.size}:${file.lastModified}`))];
+    });
   };
   const savePersonal = async (e) => {
     e.preventDefault();
@@ -337,8 +395,26 @@ export default function TasksPage() {
           difficulty: form.difficulty,
         }),
       });
-      if (res.ok) { setShowModal(false); loadWork(scope); }
-      else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ" });
+      if (res.ok) {
+        const savedTask = await res.json();
+        const failedFiles = [];
+        if (!editingId && pendingFiles.length > 0) {
+          for (const file of pendingFiles) {
+            try {
+              await uploadNewTaskAttachment(savedTask.id, file);
+            } catch (error) {
+              console.error(error);
+              failedFiles.push(file.name);
+            }
+          }
+        }
+        setShowModal(false);
+        setPendingFiles([]);
+        loadWork(scope);
+        if (failedFiles.length > 0) {
+          setToast({ kind: "error", msg: `สร้างงานแล้ว แต่แนบไฟล์ไม่สำเร็จ: ${failedFiles.join(", ")} — เปิดแก้ไขงานเพื่อแนบอีกครั้ง` });
+        }
+      } else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ" });
     } catch { setToast({ kind: "error", msg: "เกิดข้อผิดพลาด" }); }
     finally { setSaving(false); }
   };
@@ -758,6 +834,59 @@ export default function TasksPage() {
             <div className="form-group">
               <label>รายละเอียด</label>
               <textarea value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" rows={2} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
+              {editingId ? (
+                <AttachmentsPanel
+                  entityType="personal_task"
+                  entityId={editingId}
+                  canEdit={canManageTask(personalTasks.find((task) => task.id === editingId))}
+                  inlineUpload
+                />
+              ) : (
+                <div className="mt-1">
+                  <button
+                    type="button"
+                    onClick={() => pendingFileRef.current?.click()}
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-xs font-semibold text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Paperclip size={14} />
+                    <span>แนบไฟล์</span>
+                  </button>
+                  <input
+                    ref={pendingFileRef}
+                    type="file"
+                    accept={UPLOAD_ACCEPT_ATTR}
+                    multiple
+                    onChange={selectPendingFiles}
+                    className="hidden"
+                  />
+                  {pendingFiles.length > 0 && (
+                    <div className="mt-1 divide-y divide-[var(--border)]">
+                      {pendingFiles.map((file) => {
+                        const key = `${file.name}:${file.size}:${file.lastModified}`;
+                        return (
+                          <div key={key} className="flex items-center justify-between gap-2 py-1 text-xs">
+                            <span className="flex min-w-0 items-center gap-1.5 text-[var(--text-2)]">
+                              <FileText size={14} className="shrink-0" />
+                              <span className="truncate">{file.name}</span>
+                              <span className="shrink-0 text-[10px] text-[var(--text-3)]">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setPendingFiles((current) => current.filter((item) => `${item.name}:${item.size}:${item.lastModified}` !== key))}
+                              className="btn-icon danger shrink-0"
+                              aria-label={`นำ ${file.name} ออกจากรายการแนบ`}
+                              title="นำออก"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="pm-form-grid gap-3">
@@ -824,17 +953,6 @@ export default function TasksPage() {
               )}
             </div>
 
-            {editingId && (
-              <AttachmentsPanel
-                entityType="personal_task"
-                entityId={editingId}
-                canEdit={canManageTask(personalTasks.find((task) => task.id === editingId))}
-                title="ไฟล์แนบงาน"
-                note="ไฟล์จัดเก็บบน Google Drive และเปิดผ่านสิทธิ์ของงานนี้"
-                cardColumns={1}
-                compactUploadButton
-              />
-            )}
           </div>
           <div className="form-action-bar">
             <button type="button" onClick={() => setShowModal(false)} className="btn">ยกเลิก</button>

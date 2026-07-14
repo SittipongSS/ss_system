@@ -56,7 +56,7 @@ export default function AttachmentsPanel({
   docTypes, // override การ์ดที่แสดง (เช่น เอกสารลูกค้าตามประเภท) — default = ตาม entityType
   onItemsChange, // (items) => void — แจ้งรายการเอกสารปัจจุบัน (ใช้บังคับแนบก่อนยื่น)
   cardColumns = 2, // การ์ดเอกสารจำเป็น: จำนวนคอลัมน์สูงสุด (1 = แถวละใบ เห็นชื่อเต็ม)
-  compactUploadButton = false, // ใช้ปุ่ม ghost ไอคอนคลิป + ข้อความแทนปุ่มเพิ่มไฟล์มาตรฐาน
+  inlineUpload = false, // แสดง action แนบไฟล์และรายการไฟล์แบบไม่มีการ์ด
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -256,6 +256,57 @@ export default function AttachmentsPanel({
     </div>
   );
 
+  if (inlineUpload) {
+    const inlineType = types[0]?.key || "other";
+    const busy = uploadingType === inlineType;
+
+    return (
+      <div className="mt-1">
+        <div className="flex min-h-8 items-center gap-2">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => pickForType(inlineType)}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-xs font-semibold text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="แนบไฟล์"
+              title={busy ? "กำลังอัปโหลด..." : "แนบไฟล์"}
+            >
+              {busy ? (
+                <span
+                  aria-hidden
+                  style={{ width: 13, height: 13, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }}
+                />
+              ) : (
+                <Paperclip size={14} />
+              )}
+              <span>{busy ? "กำลังแนบ..." : "แนบไฟล์"}</span>
+            </button>
+          )}
+          {!loading && items.length > 0 && (
+            <span className="text-[11px] text-[var(--text-3)]">{items.length} ไฟล์</span>
+          )}
+        </div>
+
+        {!loading && items.length > 0 && (
+          <div className="mt-1 divide-y divide-[var(--border)]">
+            {items.map((it) => (<FileRow key={it.id} it={it} compact />))}
+          </div>
+        )}
+
+        {canEdit && (
+          <input
+            ref={cardFileRef}
+            type="file"
+            accept={UPLOAD_ACCEPT_ATTR}
+            onChange={handleCardFile}
+            className="hidden"
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="glass-panel p-[20px]">
       <div className="flex items-center justify-between border-b border-[var(--border)] pb-3 mb-4 gap-3 flex-wrap">
@@ -445,23 +496,16 @@ export default function AttachmentsPanel({
                           type="button"
                           onClick={() => pickForType(t.key)}
                           disabled={busy}
-                          className={compactUploadButton
-                            ? "inline-flex items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-xs font-semibold text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
-                            : "btn-icon"}
+                          className="btn-icon"
                           aria-label={has ? `เพิ่มไฟล์ ${t.label}` : `แนบไฟล์ ${t.label}`}
                           title={busy ? "กำลังอัปโหลด..." : has ? "เพิ่มไฟล์" : "แนบไฟล์"}
-                          style={busy && !compactUploadButton ? { opacity: 0.5 } : undefined}
+                          style={busy ? { opacity: 0.5 } : undefined}
                         >
                           {busy ? (
                             <span
                               aria-hidden
                               style={{ width: 13, height: 13, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }}
                             />
-                          ) : compactUploadButton ? (
-                            <>
-                              <Paperclip size={14} />
-                              <span>แนบไฟล์</span>
-                            </>
                           ) : (
                             <Plus size={15} />
                           )}
