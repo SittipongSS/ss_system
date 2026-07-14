@@ -5,18 +5,6 @@
   flex-wrap: wrap;
 }
 
-.headerQuoteNumber {
-  color: var(--text-2);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.headerQuoteNumber strong {
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-weight: 750;
-}
-
 .detailLayout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -63,6 +51,32 @@
   font-size: 10.5px;
   font-weight: 750;
   letter-spacing: 0.08em;
+}
+
+.overviewEyebrowRow {
+  display: flex;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 7px;
+  flex-wrap: wrap;
+}
+
+.overviewEyebrowRow .eyebrow {
+  margin-bottom: 0;
+}
+
+.cardQuoteNumber {
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.cardQuoteNumber strong {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-weight: 750;
 }
 
 .overviewHeading h2 {
@@ -305,13 +319,16 @@
 }
 
 .sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
   align-self: start;
 }
 
 .summaryCard {
   position: relative;
   overflow: hidden;
-  padding: 20px;
+  padding: 24px;
 }
 
 .summaryCard::before {
@@ -329,7 +346,7 @@
 }
 
 .totalAmount {
-  margin: 3px 0 16px;
+  margin: 6px 0 20px;
   color: var(--text);
   font-family: var(--font-mono);
   font-size: clamp(25px, 3vw, 34px);
@@ -341,8 +358,8 @@
 .totalRows {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding: 12px 0 15px;
+  gap: 10px;
+  padding: 16px 0 18px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   font-size: 12px;
@@ -367,7 +384,7 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 18px;
 }
 
 .statusDot {
@@ -399,7 +416,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 22px;
 }
 
 .workflowActions :global(.btn) {
@@ -411,8 +428,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 16px;
-  padding-top: 14px;
+  margin-top: 20px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
   color: var(--text-2);
   font-size: 12px;
@@ -425,8 +442,8 @@
 }
 
 .lockedNote {
-  margin: 14px 0 0;
-  padding: 10px 11px;
+  margin: 18px 0 0;
+  padding: 12px 13px;
   border-radius: var(--radius);
   background: var(--panel-2);
   color: var(--text-3);
@@ -459,7 +476,7 @@
 
   .sidebar {
     position: static;
-    order: -1;
+    order: 1;
   }
 
   .summaryCard {
@@ -488,9 +505,18 @@
     padding: 15px;
   }
 
+  .summaryCard {
+    padding: 22px 20px;
+  }
+
   .overviewHeading {
     flex-direction: column;
     padding: 18px;
+  }
+
+  .cardQuoteNumber {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .badgeRow {
