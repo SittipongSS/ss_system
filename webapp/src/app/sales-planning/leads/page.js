@@ -6,6 +6,7 @@ import Select from "@/components/ui/Select";
 // SLA 1 วันทำการ (คัดกรอง + ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ — โชว์บน KPI strip.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart, FolderKanban, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
@@ -53,6 +54,7 @@ function statusBadge(status) {
 }
 
 export default function LeadsPage() {
+  const router = useRouter();
   const canLead = useCan("salesplan:lead");
   const canView = useCan("salesplan:view");
   const role = useRole();
@@ -435,7 +437,7 @@ export default function LeadsPage() {
               </thead>
               <tbody>
                 {filtered.map((lead) => (
-                  <tr key={lead.id} className="premium-row">
+                  <tr key={lead.id} className="premium-row" onClick={() => router.push(`/sa/leads/${lead.id}`)} style={{ cursor: "pointer" }}>
                     <td>
                       <strong>{lead.contactName}</strong>
                       <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>
@@ -456,7 +458,7 @@ export default function LeadsPage() {
                         {statusBadge(lead.status)}
                       </td>
                     <td style={{ whiteSpace: "nowrap", fontSize: 12.5, color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
-                    <td className="num" style={{ verticalAlign: "middle" }}>
+                    <td className="num" style={{ verticalAlign: "middle" }} onClick={(event) => event.stopPropagation()}>
                         <div style={{ display: "grid", gridTemplateColumns: "100px 80px 85px 28px 28px", gap: 6, justifyContent: "flex-end", alignItems: "center", minWidth: 345 }}>
                           
                           {/* Slot 1: Primary Action */}

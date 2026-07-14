@@ -538,7 +538,7 @@ export default function TasksPage() {
     const proxyAction = proxyActions(t);
     const showFooter = manage || canSetStatus(t) || proxyAction;
     return (
-      <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={manage ? "คลิกเพื่อแก้ไขงาน" : undefined} className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: manage ? "pointer" : "default" }}>
+      <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
         <div style={{ fontSize: "13px", fontWeight: 600, textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
           {t.important && <Star size={12} color="var(--amber)" fill="var(--amber)" />}
           {t.urgent && <Flame size={12} color="var(--red)" />}
@@ -749,7 +749,7 @@ export default function TasksPage() {
                       const u = getUrgencyInfo(t);
                       const manage = canManageTask(t);
                       return (
-                        <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={`${t.title}${scope === "mine" && me?.id ? ` · ${taskRelationship(t, me.id, (id) => usersMap[id] || "").label}` : ""}`} style={{ fontSize: "10px", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: manage ? "pointer" : "default", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
+                        <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title={`${t.title}${scope === "mine" && me?.id ? ` · ${taskRelationship(t, me.id, (id) => usersMap[id] || "").label}` : ""}`} style={{ fontSize: "10px", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
                           {t.status === "Completed" ? <CheckCircle2 size={9} /> : t.important ? <Star size={9} /> : null}
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
                         </div>
@@ -795,7 +795,7 @@ export default function TasksPage() {
                 const u = getUrgencyInfo(t);
                 const manage = canManageTask(t);
                 return (
-                  <tr key={t.id} className="premium-row" onClick={manage ? () => openEdit(t) : undefined} title={manage ? "คลิกเพื่อแก้ไขงาน" : undefined} style={{ cursor: manage ? "pointer" : "default" }}>
+                  <tr key={t.id} className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
                     <td onClick={(e) => e.stopPropagation()}>{statusCell(t)}</td>
                     <td style={{ fontWeight: 500, minWidth: "220px" }}>
                       <div style={{ whiteSpace: "normal", wordBreak: "break-word", maxWidth: "450px", lineHeight: 1.4 }}>
@@ -847,7 +847,7 @@ export default function TasksPage() {
             const manage = canManageTask(t);
             const assigneeName = t.assigneeId ? (usersMap[t.assigneeId] || "—") : null;
             return (
-              <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={manage ? "คลิกเพื่อแก้ไขงาน" : undefined} className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: manage ? "pointer" : "default" }}>
+              <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                   <span title={TASK_STATUS_TH[t.status]} style={{ padding: "2px", flexShrink: 0, color: statusDot(t.status), display: "flex" }}>{statusIcon(t.status)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>

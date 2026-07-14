@@ -23,6 +23,7 @@ import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
 
@@ -689,31 +690,24 @@ export default function DealOverviewPage() {
       {deal && (
         <div className="flex flex-col gap-5">
           {/* Header เดียว: ชื่อดีล ข้อมูลหลัก สถานะ และลำดับขั้นตอน */}
-          <section className="glass-panel detail-hero" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            <div className="detail-hero-main">
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, minWidth: 0 }}>
-                <span className="detail-hero-icon"><FolderKanban size={20} /></span>
-                <div style={{ minWidth: 0 }}>
-                  <h1 style={{ margin: 0, fontSize: 20, fontWeight: 750, overflowWrap: "anywhere" }}>{deal.title}</h1>
-                  <div style={{ marginTop: 7, color: "var(--text-2)", fontSize: 13, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
-                    {deal.code && <span className="mono" style={{ fontWeight: 700, color: "var(--text)" }}>{entityCodeDisplay(deal.code, 0)}</span>}
-                    <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
-                    {(dealBrand.en || dealBrand.th) && (
-                      <span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? <> · <strong style={{ color: "var(--text)" }}>{dealBrand.th}</strong></> : null}</span>
-                    )}
-                  </div>
-                  <div style={{ marginTop: 5, color: "var(--text-2)", fontSize: 13, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <span>AE: {deal.ownerName || "-"}</span>
-                    <span>·</span><span>ทีม {deal.team || "-"}</span>
-                    <span>·</span><span>เดือน FC: {deal.forecastMonth || "-"}</span>
-                    {!alreadyWon && deal.stage !== "lost" && <><span>·</span><strong style={{ color: "var(--amber)", fontWeight: 800 }}>FC {snapForecastLevel(deal.probability)}%</strong></>}
-                    <span>·</span><span style={{ fontWeight: 700 }}>{dealTypeOf(deal)}</span>
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginLeft: "auto" }}>{headerRight}</div>
-            </div>
-            <div style={{ padding: "12px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <SalesDetailOverview
+            eyebrow="รายละเอียดดีล"
+            title={deal.title}
+            description={<>
+              {deal.code && <span className="mono" style={{ fontWeight: 700, color: "var(--text)" }}>{entityCodeDisplay(deal.code, 0)}</span>}
+              <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
+              {(dealBrand.en || dealBrand.th) && <span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? ` · ${dealBrand.th}` : ""}</span>}
+            </>}
+            badges={<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} />}
+            actions={headerRight}
+            facts={[
+              { icon: FolderKanban, label: "ผู้รับผิดชอบ", value: deal.ownerName || "-" },
+              { icon: ClipboardList, label: "ทีม", value: deal.team || "-" },
+              { icon: Circle, label: "เดือน Forecast", value: deal.forecastMonth || "-" },
+              { icon: Trophy, label: "ประเภท / โอกาส", value: `${dealTypeOf(deal)}${!alreadyWon && deal.stage !== "lost" ? ` · FC ${snapForecastLevel(deal.probability)}%` : ""}` },
+            ]}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {lc && <DealStepper steps={lc.steps} lost={deal.stage === "lost"} />}
             {lc?.nextAction && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 12 }}>
@@ -734,7 +728,7 @@ export default function DealOverviewPage() {
               </div>
             )}
             </div>
-          </section>
+          </SalesDetailOverview>
 
           {/* เมนูครอบ (แบบหน้าโครงการ): แท็บ ภาพรวม ↔ ไทม์ไลน์ — ตัดแถบทางลัด/ป้ายเฟสถัดไปออก (มติผู้ใช้) */}
           <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของดีล" />

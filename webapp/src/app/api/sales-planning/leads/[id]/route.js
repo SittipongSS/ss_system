@@ -33,7 +33,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!lead) return notFound('ไม่พบลีด');
   const { data: events } = await supabase
     .from('lead_events').select('*').eq('leadId', id).order('createdAt', { ascending: false });
-  return ok({ ...lead, events: events || [] });
+  return ok({ ...lead, events: events || [], canEdit: canEditLead(user, lead) });
 });
 
 // PATCH — แก้ข้อมูลติดต่อ/บริการ/งบ (ไม่ใช่ transition — สถานะเปลี่ยนผ่าน /transition)
