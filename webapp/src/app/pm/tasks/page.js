@@ -21,6 +21,7 @@ import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
 import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink, taskLinkType } from "@/lib/pm/taskLink";
+import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm/taskViews";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
@@ -29,6 +30,11 @@ import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/maste
 
 const TASK_STATUS_TH = { Pending: "รอ", "In Progress": "ทำอยู่", Completed: "เสร็จ" };
 const SCOPE_TH = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
+const MINE_VIEW_TH = {
+  [MINE_TASK_VIEWS.RESPONSIBLE]: "ต้องทำ",
+  [MINE_TASK_VIEWS.DELEGATED]: "มอบหมายโดยฉัน",
+  [MINE_TASK_VIEWS.ALL]: "ทั้งหมดของฉัน",
+};
 
 const getUrgencyInfo = (task) => {
   if (task.status === "Completed") return { color: "var(--green)", label: "เสร็จแล้ว", icon: <CheckCircle2 size={12} /> };
@@ -154,6 +160,7 @@ export default function TasksPage() {
   const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
 
   const [scope, setScope] = useState("mine");
+  const [mineView, setMineView] = useState(MINE_TASK_VIEWS.RESPONSIBLE);
   const [allowedScopes, setAllowedScopes] = useState(["mine"]);
   const [personalTasks, setPersonalTasks] = useState([]);
   const [projectsMap, setProjectsMap] = useState({});
@@ -301,12 +308,28 @@ export default function TasksPage() {
     [personalTasks],
   );
 
+  const mineViewCounts = useMemo(() => {
+    const openTasks = personalTasks.filter((task) => task.status !== "Completed");
+    return {
+      [MINE_TASK_VIEWS.RESPONSIBLE]: openTasks.filter((task) => matchesMineTaskView(task, me?.id, MINE_TASK_VIEWS.RESPONSIBLE)).length,
+      [MINE_TASK_VIEWS.DELEGATED]: openTasks.filter((task) => matchesMineTaskView(task, me?.id, MINE_TASK_VIEWS.DELEGATED)).length,
+      [MINE_TASK_VIEWS.ALL]: openTasks.length,
+    };
+  }, [personalTasks, me?.id]);
+
+  const roleFilteredTasks = useMemo(
+    () => scope === "mine"
+      ? personalTasks.filter((task) => matchesMineTaskView(task, me?.id, mineView))
+      : personalTasks,
+    [personalTasks, scope, me?.id, mineView],
+  );
+
   // งานหลังกรอง ค้นหา/ผู้รับ/หมวด (ยังไม่กรองสถานะ — ใช้คำนวณการ์ดสรุป)
-  const pool = useMemo(() => personalTasks
+  const pool = useMemo(() => roleFilteredTasks
     .filter((t) => !q || [t.title, t.note, t.category].some((v) => (v || "").toLowerCase().includes(q)))
     .filter((t) => assigneeFilter === "all" || (t.assigneeId || t.ownerId) === assigneeFilter)
     .filter((t) => categoryFilter === "all" || t.category === categoryFilter),
-    [personalTasks, q, assigneeFilter, categoryFilter]);
+    [roleFilteredTasks, q, assigneeFilter, categoryFilter]);
 
   const stats = useMemo(() => ({
     // "งานทั้งหมด" = งานที่ยังต้องทำ; งานเสร็จเก็บไว้ดูย้อนหลังในการ์ด "เสร็จแล้ว"
@@ -486,6 +509,24 @@ export default function TasksPage() {
     );
   };
 
+  const relationshipBadge = (task, compact = false) => {
+    if (scope !== "mine" || !me?.id) return null;
+    const relationship = taskRelationship(task, me.id, (id) => usersMap[id] || "");
+    const palette = relationship.kind === "incoming"
+      ? { color: "var(--blue)", background: "color-mix(in srgb, var(--blue) 12%, transparent)" }
+      : relationship.kind === "outgoing"
+        ? { color: "var(--amber)", background: "color-mix(in srgb, var(--amber) 12%, transparent)" }
+        : { color: "var(--text-2)", background: "var(--panel-2)" };
+    return (
+      <span
+        title={relationship.label}
+        style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: compact ? "1px 5px" : "2px 7px", borderRadius: 9, color: palette.color, background: palette.background, fontSize: compact ? 9 : 10, fontWeight: 600 }}
+      >
+        <UserPlus size={compact ? 9 : 10} /> {compact ? relationship.compactLabel : relationship.label}
+      </span>
+    );
+  };
+
   // การ์ดย่อ — ใช้ในมุมมองบอร์ด (Kanban) และเมทริกซ์ (Eisenhower)
   const miniCard = (t) => {
     const u = getUrgencyInfo(t);
@@ -504,6 +545,7 @@ export default function TasksPage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "10px" }}>
           {t.category && <span style={{ background: "var(--panel-2)", padding: "1px 6px", borderRadius: "9px", color: "var(--text-2)" }}>{t.category}</span>}
+          {relationshipBadge(t, true)}
           {(scope !== "mine" || (activeAssignee && activeAssignee !== me?.id)) && assigneeName && (
             <span style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "1px 6px", borderRadius: "9px", color: "var(--accent)" }}><User size={9} style={{ display: "inline", verticalAlign: "-1px" }} /> {assigneeName}</span>
           )}
@@ -569,7 +611,22 @@ export default function TasksPage() {
       {allowedScopes.length > 1 && (
         <div className="segmented" style={{ marginBottom: "16px" }}>
           {allowedScopes.map((s) => (
-            <button key={s} onClick={() => setScope(s)} className={scope === s ? "active" : ""}>{SCOPE_TH[s]}</button>
+            <button key={s} onClick={() => { setScope(s); setAssigneeFilter("all"); }} className={scope === s ? "active" : ""}>{SCOPE_TH[s]}</button>
+          ))}
+        </div>
+      )}
+
+      {scope === "mine" && (
+        <div className="segmented" style={{ marginBottom: "16px" }} aria-label="บทบาทของฉันในงาน">
+          {Object.values(MINE_TASK_VIEWS).map((taskView) => (
+            <button
+              key={taskView}
+              type="button"
+              onClick={() => setMineView(taskView)}
+              className={mineView === taskView ? "active" : ""}
+            >
+              {MINE_VIEW_TH[taskView]} <span style={{ opacity: 0.72 }}>({mineViewCounts[taskView] || 0})</span>
+            </button>
           ))}
         </div>
       )}
@@ -691,7 +748,7 @@ export default function TasksPage() {
                       const u = getUrgencyInfo(t);
                       const manage = canManageTask(t);
                       return (
-                        <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={t.title} style={{ fontSize: "10px", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: manage ? "pointer" : "default", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
+                        <div key={t.id} onClick={manage ? () => openEdit(t) : undefined} title={`${t.title}${scope === "mine" && me?.id ? ` · ${taskRelationship(t, me.id, (id) => usersMap[id] || "").label}` : ""}`} style={{ fontSize: "10px", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: manage ? "pointer" : "default", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
                           {t.status === "Completed" ? <CheckCircle2 size={9} /> : t.important ? <Star size={9} /> : null}
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
                         </div>
@@ -723,6 +780,7 @@ export default function TasksPage() {
               <tr>
                 <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>สถานะ {sortArrow("status")}</span></th>
                 <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>ชื่องาน {sortArrow("name")}</span></th>
+                {scope === "mine" && <th>บทบาทของฉัน</th>}
                 <th>หมวด</th>
                 {scope !== "mine" && <th>ผู้รับมอบหมาย</th>}
                 <th>ความยาก</th>
@@ -748,6 +806,7 @@ export default function TasksPage() {
                         {t.note && <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px" }}>{t.note}</div>}
                       </div>
                     </td>
+                    {scope === "mine" && <td>{relationshipBadge(t)}</td>}
                     <td>{t.category ? <span style={{ fontSize: "11px", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>
                     {scope !== "mine" && <td style={{ fontSize: "13px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -806,6 +865,7 @@ export default function TasksPage() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "10px" }}>
                   {t.category && <span style={{ background: "var(--panel-2)", padding: "2px 7px", borderRadius: "10px", color: "var(--text-2)" }}><Tag size={10} style={{ display: "inline", verticalAlign: "-1px" }} /> {t.category}</span>}
+                  {relationshipBadge(t)}
                   {t.difficulty === 3 && <span style={{ background: "color-mix(in srgb, var(--red) 12%, transparent)", padding: "2px 7px", borderRadius: "10px", color: "var(--red)" }}>ยาก</span>}
                   {(scope !== "mine" || (t.assigneeId && t.assigneeId !== me?.id)) && assigneeName && (
                     <span style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "2px 7px", borderRadius: "10px", color: "var(--accent)" }}><User size={10} style={{ display: "inline", verticalAlign: "-1px" }} /> {assigneeName}</span>
