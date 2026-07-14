@@ -133,6 +133,7 @@ export function openQuotePrintWindow(quote) {
   <div class="bottom">
     <div style="flex:1">
       <div class="notes"><div class="lbl">หมายเหตุ / REMARKS</div>${esc(quote.notes || '-')}</div>
+      <div class="terms"><div class="lbl">วิธีการชำระเงิน / PAYMENT METHOD</div>${esc(quote.paymentPlan?.paymentMethod || '-')}</div>
       <div class="terms"><div class="lbl">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>${esc(quote.paymentTerms || '-')}${installmentTable}</div>
     </div>
     <table class="totals"><tbody>${totals}</tbody></table>

@@ -16,8 +16,9 @@ import DateInput from "@/components/ui/DateInput";
 import { useCan } from "@/lib/roleContext";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { QUOTE_APPROVAL_AMOUNT_THRESHOLD } from "@/lib/quotationApproval";
-import { fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
+import { addValidityDays } from "@/lib/sales/quoteValidity";
 
 const EXCLUDE_STAGES = ["won", "in_project", "lost"];
 
@@ -43,10 +44,11 @@ function NewQuotationInner() {
   const [productPick, setProductPick] = useState("");
   const [lines, setLines] = useState([]);
   const [quoteDate, setQuoteDate] = useState(() => businessDate());
-  const [validUntil, setValidUntil] = useState("");
+  const [validityDays, setValidityDays] = useState(30);
   const [discountType, setDiscountType] = useState("");
   const [discountValue, setDiscountValue] = useState(0);
-  const [vatRate, setVatRate] = useState(0);
+  const [vatRate, setVatRate] = useState(7);
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -165,6 +167,7 @@ function NewQuotationInner() {
     vatRate,
   }), [lines, discountType, discountValue, vatRate]);
   const requiresApproval = totals.totalAmount >= QUOTE_APPROVAL_AMOUNT_THRESHOLD;
+  const validUntil = useMemo(() => addValidityDays(quoteDate, validityDays), [quoteDate, validityDays]);
 
   const addProductLine = () => {
     const product = products.find((item) => item.id === productPick);
@@ -222,7 +225,7 @@ function NewQuotationInner() {
           vatRate,
           paymentTerms,
           notes,
-          paymentPlan: { type: "full" },
+          paymentPlan: { type: "full", paymentMethod },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -237,7 +240,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, paymentTerms, notes, totals.totalAmount, requiresApproval, router]);
+  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, paymentMethod, paymentTerms, notes, totals.totalAmount, requiresApproval, router]);
 
   if (!canEdit) {
     return (
@@ -293,8 +296,9 @@ function NewQuotationInner() {
               <label>วันที่ใบเสนอราคา
                 <DateInput value={quoteDate} onChange={setQuoteDate} required className="w-full" />
               </label>
-              <label>ยืนราคาถึง
-                <DateInput value={validUntil} onChange={setValidUntil} min={quoteDate || undefined} className="w-full" />
+              <label>กำหนดยืนราคา (วัน)
+                <input type="number" min="1" step="1" className="premium-input w-full" value={validityDays} onChange={(event) => setValidityDays(event.target.value)} />
+                <small style={{ color: "var(--text-3)", marginTop: 4 }}>ยืนราคาถึง {validUntil ? fmtDate(validUntil) : "-"}</small>
               </label>
             </div>
             {(selectedProject || selectedDeal) && (
@@ -374,10 +378,11 @@ function NewQuotationInner() {
         </section>
 
         {/* Footer — เงื่อนไข หมายเหตุ ส่วนลดท้ายใบ และยอดรวม */}
-        <section className="glass-panel" style={{ padding: 18 }}>
+        <section className="glass-panel" style={{ padding: 18, marginTop: 12 }}>
           <h2 style={{ margin: "0 0 14px", fontSize: 17, fontWeight: 750 }}>เงื่อนไขและสรุปยอด</h2>
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 420px)", gap: 24, alignItems: "start" }} className="quotation-create-footer">
             <div className="flex flex-col gap-4">
+              <label>วิธีการชำระเงิน<input className="premium-input w-full" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด" /></label>
               <label>เงื่อนไขการชำระเงิน<textarea className="premium-input w-full" rows={3} value={paymentTerms} onChange={(event) => setPaymentTerms(event.target.value)} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ" /></label>
               <label>หมายเหตุ<textarea className="premium-input w-full" rows={5} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="หมายเหตุที่ต้องการแสดงในใบเสนอราคา" /></label>
             </div>
@@ -394,7 +399,7 @@ function NewQuotationInner() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 112px", gap: 6, alignItems: "center" }}>
                 <span>ภาษีมูลค่าเพิ่ม</span>
                 <Select className="premium-select" value={String(vatRate)} onChange={(event) => setVatRate(Number(event.target.value))}>
-                  <option value="0">รวม VAT แล้ว</option><option value="7">บวก VAT 7%</option>
+                  <option value="0">รวม VAT แล้ว</option><option value="7">+ VAT 7% ท้ายใบ</option>
                 </Select>
               </div>
               {Number(vatRate) > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>VAT {vatRate}%</span><strong className="mono">{fmtMoney(totals.vatAmount)}</strong></div>}
