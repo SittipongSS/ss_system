@@ -461,7 +461,7 @@ export default function TimelineWorkspace({
         <div className="toolbar">
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Filter size={14} color="var(--text-3)" />
-            <Select className="premium-select" value={tableStatusFilter} onChange={(event) => setTableStatusFilter(event.target.value)} aria-label="กรองสถานะไทม์ไลน์">
+            <Select className="premium-select" value={tableStatusFilter} onChange={(event) => setTableStatusFilter(event.target.value)} aria-label="กรองสถานะไทม์ไลน์" style={{ minWidth: 148 }}>
               <option value="all">ทุกสถานะ</option><option value="pending">รอดำเนินการ</option><option value="progress">กำลังทำ</option><option value="completed">เสร็จแล้ว</option>
             </Select>
           </div>
@@ -477,7 +477,7 @@ export default function TimelineWorkspace({
         <table className="premium-table timeline-task-table">
           <colgroup>
             <col style={{ width: 32 }} /><col style={{ width: 52 }} /><col className="timeline-col-task" />
-            <col style={{ width: 68 }} /><col style={{ width: 150 }} /><col style={{ width: 126 }} />
+            <col style={{ width: 68 }} /><col style={{ width: 150 }} /><col style={{ width: 156 }} />
             <col style={{ width: 124 }} /><col style={{ width: 124 }} /><col style={{ width: 58 }} />
             <col style={{ width: 120 }} />{canEdit && <col style={{ width: 120 }} />}
           </colgroup>

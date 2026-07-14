@@ -16,7 +16,7 @@ export const taskStatusColor = (s) => TASK_STATUS_META[s]?.color || "var(--text-
 
 // dropdown เลือกสถานะ — onChange ส่งค่าสถานะใหม่ (string) ตรง ๆ
 // variant: "full" = "○ รอดำเนินการ" (หน้า timeline) · "short" = "รอ" (My Work)
-export default function StatusSelect({ value, onChange, variant = "full", ...rest }) {
+export default function StatusSelect({ value, onChange, variant = "full", style, ...rest }) {
   const options = ORDER.map((k) => {
     const m = TASK_STATUS_META[k];
     return { value: k, label: variant === "short" ? m.short : `${m.glyph} ${m.full}` };
@@ -26,6 +26,7 @@ export default function StatusSelect({ value, onChange, variant = "full", ...res
       value={value}
       tone={taskStatusColor(value)}
       options={options}
+      style={{ minWidth: variant === "full" ? 148 : undefined, ...style }}
       onChange={(e) => { e.stopPropagation(); onChange(e.target.value); }}
       {...rest}
     />

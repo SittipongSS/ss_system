@@ -1038,17 +1038,10 @@ export default function ProjectDetailPage() {
       {/* เครื่องมือเอกสารขั้นสูง แสดงเมื่อเปิดส่วนไทม์ไลน์ */}
       <div className="glass-panel detail-hero" style={{ overflow: "hidden", margin: "16px 0 24px", display: showTimeline ? "block" : "none" }}>
         <div className="detail-hero-main">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", flexWrap: "wrap" }}>
-            <div style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0, fontSize: "20px", display: "flex", alignItems: "center", gap: "12px", fontWeight: 750 }}>
-                <span className="detail-hero-icon">
-                  <GanttChart size={18} />
-                </span>
-                <span>เครื่องมือโครงการและเอกสาร</span>
-              </h1>
-              <div style={{ margin: "6px 0 0 50px", display: "flex", flexDirection: "column", gap: 3, fontSize: "12.5px", color: "var(--text-2)" }}>
-                <div>จัดการ revision, รูปแบบการแสดงผล และเอกสารสำหรับพิมพ์</div>
-              </div>
+          <div className="timeline-header-row">
+            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+              <GanttChart size={17} aria-hidden="true" />
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ไทม์ไลน์</h2>
             </div>
             <div className="project-detail-actions">
               {!showTimeline ? (
@@ -1104,9 +1097,7 @@ export default function ProjectDetailPage() {
                 <Printer size={14} /> พิมพ์เอกสาร
               </button>
               </div>
-              <div className="project-detail-action-row">
-                <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
-              </div>
+              <div className="project-detail-action-row"><ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} /></div>
               </>
               )}
             </div>

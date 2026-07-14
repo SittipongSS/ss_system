@@ -873,7 +873,7 @@ export default function DealOverviewPage() {
           )}
           {tab === "timeline" && (
           <section id="deal-pm" className="glass-panel" style={{ padding: 16 }}>
-            <div className="flex items-center gap-2 mb-3">
+            <div className="timeline-header-row mb-3">
               <PackageCheck size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ไทม์ไลน์</h2>
               <div className="spacer" />
