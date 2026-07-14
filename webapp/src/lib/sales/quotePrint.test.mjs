@@ -67,6 +67,8 @@ test('quotation print uses the Project Timeline document design system', () => {
   assert.match(html, /class="doc-top"/);
   assert.match(html, /class="header-grid"/);
   assert.match(html, /บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด/);
+  assert.match(html, /QT-001<\/span><span>15\.07\.2026/);
+  assert.doesNotMatch(html, /<span>วันที่ 15\.07\.2026/);
   assert.match(html, /background: #e8e2d9/);
   assert.match(html, /size: A4 portrait/);
 });

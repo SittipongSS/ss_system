@@ -17,6 +17,7 @@ const money = (v) => Number(v || 0).toLocaleString('th-TH', {
   maximumFractionDigits: 2,
 });
 const value = (v) => (v === null || v === undefined || v === '' ? '-' : esc(v));
+const printDate = (v) => (v ? fmtDate(v).replaceAll('/', '.') : '-');
 
 // ต้องเปิด window ภายใน call stack ของ click โดยตรง มิฉะนั้น Chromium จะบล็อก popup
 // เมื่อมี fetch/save ที่ await ก่อน window.open.
@@ -56,8 +57,7 @@ export function printHeaderHtml({ form, docNumber, docDate }) {
       <div class="doc-title">
         <div class="formno">${esc(documentFormLine(form))}</div>
         <div class="big">${esc(form.title)}</div>
-        <div class="sub strong">${value(docNumber)}</div>
-        <div class="sub">วันที่ ${value(docDate)}</div>
+        <div class="sub strong doc-number-line"><span>${value(docNumber)}</span><span>${value(docDate)}</span></div>
       </div>
     </div>`;
 }
@@ -132,6 +132,8 @@ export function buildQuotePrintHTML(quote) {
   .doc-title .big { font-size: 17px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
   .doc-title .strong { color: #21385e; font-weight: 700; }
+  .doc-number-line { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; white-space: nowrap; }
+  .doc-number-line span + span { color: #837868; font-weight: 500; }
   .header-grid { display: grid; grid-template-columns: 1.25fr 1fr; border: 1px solid #dcd8d0;
                  border-radius: 6px; overflow: hidden; margin-bottom: 7px; page-break-inside: avoid; break-inside: avoid; }
   .hcol { padding: 7px 10px; min-width: 0; }
@@ -195,7 +197,7 @@ export function buildQuotePrintHTML(quote) {
     <button class="btn-print" type="button" onclick="window.print()">พิมพ์เอกสาร</button>
   </div>
   <main class="sheet">
-    ${printHeaderHtml({ form: DOCUMENT_FORMS.quotation, docNumber: quote.quoteNumber, docDate: fmtDate(quote.quoteDate) })}
+    ${printHeaderHtml({ form: DOCUMENT_FORMS.quotation, docNumber: quote.quoteNumber, docDate: printDate(quote.quoteDate) })}
     <section class="header-grid">
       <div class="hcol left">
         <div class="hrow"><span class="k">ลูกค้า</span><span class="v">${value(quote.customerName)}</span></div>
