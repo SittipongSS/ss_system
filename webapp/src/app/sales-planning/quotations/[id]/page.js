@@ -23,7 +23,7 @@ import { isSuperuser } from "@/lib/permissions";
 import { canReviewSalesForecast, DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { openQuotePrintWindow } from "@/lib/sales/quotePrint";
+import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import styles from "./page.module.css";
@@ -247,9 +247,20 @@ export default function QuotationEditorPage() {
     });
   };
   const doPrint = async () => {
-    if (dirty && editable && !(await save())) return;
-    const res = await fetch(`/api/sales-planning/quotations/${id}`);
-    if (res.ok) openQuotePrintWindow(await res.json());
+    const printWindow = prepareQuotePrintWindow();
+    if (!printWindow) return;
+    try {
+      if (dirty && editable && !(await save())) {
+        printWindow.close();
+        return;
+      }
+      const res = await fetch(`/api/sales-planning/quotations/${id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "ไม่สามารถโหลดข้อมูลใบเสนอราคาได้");
+      openQuotePrintWindow(data, printWindow);
+    } catch (error) {
+      showQuotePrintError(printWindow, error.message);
+    }
   };
   const leaveEditMode = () => {
     if (dirty && !window.confirm("ยกเลิกการแก้ไขและทิ้งข้อมูลที่ยังไม่ได้บันทึก?")) return;

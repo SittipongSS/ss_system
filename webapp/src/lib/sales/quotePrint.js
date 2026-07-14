@@ -10,6 +10,28 @@ import {
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const money = (v) => Number(v || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// ต้องเปิด window ภายใน call stack ของ click โดยตรง มิฉะนั้น Chromium จะมอง
+// fetch/save ที่ await ก่อน window.open ว่าเป็น popup และบล็อกหน้าพิมพ์.
+export function prepareQuotePrintWindow() {
+  const printWindow = window.open('', '_blank', 'width=900,height=1100');
+  if (!printWindow) {
+    window.alert('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้');
+    return null;
+  }
+  // ตัดสิทธิ์หน้าต่างลูกกลับมายังหน้าระบบ โดยยังเก็บ reference ไว้เขียนเอกสารต่อได้.
+  try { printWindow.opener = null; } catch { /* browser บางรุ่นไม่อนุญาตให้แก้ opener */ }
+  printWindow.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>กำลังเตรียมใบเสนอราคา…</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:80vh;color:#555}p{padding:20px}</style></head><body><p>กำลังเตรียมเอกสารสำหรับพิมพ์…</p></body></html>`);
+  printWindow.document.close();
+  return printWindow;
+}
+
+export function showQuotePrintError(printWindow, message = 'ไม่สามารถโหลดข้อมูลใบเสนอราคาได้') {
+  if (!printWindow || printWindow.closed) return;
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ไม่สามารถพิมพ์ใบเสนอราคา</title><style>body{font-family:system-ui,sans-serif;padding:32px;color:#8b2f2f}button{padding:8px 14px}</style></head><body><h2>ไม่สามารถพิมพ์ใบเสนอราคา</h2><p>${esc(message)}</p><button onclick="window.close()">ปิดหน้าต่าง</button></body></html>`);
+  printWindow.document.close();
+}
+
 // หัวเอกสารกลาง: โลโก้ + ชื่อบริษัท + ชื่อฟอร์ม + เลขที่ — ใช้ซ้ำกับเอกสารขายตัวถัดไป (SO/ใบส่งของ)
 export function printHeaderHtml({ form, docNumber, docDate }) {
   return `
@@ -29,7 +51,7 @@ export function printHeaderHtml({ form, docNumber, docDate }) {
   </div>`;
 }
 
-export function openQuotePrintWindow(quote) {
+export function openQuotePrintWindow(quote, preparedWindow = null) {
   const lines = quote.lines || [];
   const hasLineDiscount = lines.some((l) => Number(l.discountAmount) > 0);
   const rows = lines
@@ -144,8 +166,10 @@ export function openQuotePrintWindow(quote) {
   <script>window.addEventListener('load', () => setTimeout(() => window.print(), 250));</script>
   </body></html>`;
 
-  const win = window.open('', '_blank', 'noopener,width=900,height=1100');
+  const win = preparedWindow || prepareQuotePrintWindow();
   if (!win) return;
+  win.document.open();
   win.document.write(html);
   win.document.close();
+  return win;
 }
