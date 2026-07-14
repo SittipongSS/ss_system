@@ -142,6 +142,11 @@ export default function QuotationEditorPage() {
     : { type: "full" });
 
   const save = async (extra = {}) => {
+    // Q4 guard: กันบันทึกเมื่อแบ่งงวดแล้วเปอร์เซ็นต์รวม ≠ 100% (server ก็ validate แต่กันไว้ก่อนให้ชัด)
+    if (paymentType === "installment" && Math.abs(pctSum - 100) > 0.01) {
+      setError(`เปอร์เซ็นต์งวดชำระรวมต้องเท่ากับ 100% (ตอนนี้ ${pctSum}%)`);
+      return false;
+    }
     setBusy("save");
     setError("");
     try {

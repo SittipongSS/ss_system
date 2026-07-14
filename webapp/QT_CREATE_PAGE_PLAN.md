@@ -1,6 +1,7 @@
 # แผน: หน้าสร้างใบเสนอราคาเต็มหน้า (QT Create Page)
 
-> สถานะ: แผน — ยังไม่ลงมือโค้ด · เขียน 2026-07-14 (ปรับตามมติรอบ 2 วันเดียวกัน)
+> สถานะ: **ทำครบ Q1–Q4 แล้ว** (2026-07-14) — PR #336(Q1,mig 0097) · #338(Q2) · #341(Q3) · Q4 รวมใน #341
+> mig 0097 = billing/shippingAddress+branchCode+contact+paymentPlan; รหัสใช้ mig 0097 (0096 = entity-codes)
 > มติผู้ใช้: กด "สร้าง" ต้องเด้งไปหน้าสร้างเลย **ไม่มี modal** — เลือกตามลำดับ
 > **ลูกค้า → โครงการ → ดีล (บังคับทั้งสามขั้น)** แล้วดึงข้อมูลลูกค้ามาแสดง
 > (**แก้ในใบไม่ได้ — ต้องแก้ที่ฐานข้อมูลลูกค้า**), เพิ่มรายการจากฐานสินค้า,
@@ -120,10 +121,10 @@ ALTER TABLE public.quotations
 
 | เฟส | เนื้อหา | Migration |
 | --- | --- | --- |
-| **Q1** | mig 0096 + lib paymentPlan + tests + API (snapshot ฝั่ง server + guard ลูกค้า) | 0096 |
-| **Q2** | refactor QuotationEditorBody + หน้า `/new` (cascade+autofill+snapshot) + เปลี่ยนปุ่มสร้างทุกจุด | — |
-| **Q3** | UI งวดชำระ + ปุ่มคำนวณ + สรุปข้อความ + quotePrint | — |
-| **Q4** | เก็บตก: validation รวม, empty states, ทดสอบ revise สืบทอด snapshot/paymentPlan | — |
+| **Q1** ✅ | mig 0097 + lib paymentPlan + tests + API (snapshot ฝั่ง server + guard ลูกค้า + revise refresh snapshot) | 0097 |
+| **Q2** ✅ | หน้า `/new` เต็มหน้า (cascade ลูกค้า→โครงการ→ดีล + snapshot read-only) + เปลี่ยนปุ่มสร้าง (/sa/quotations + หน้าดีล) → /new; landing บน editor เดิม (ไม่ refactor QuotationEditorBody — reuse editor ตรง ๆ ลดความเสี่ยง) | — |
+| **Q3** ✅ | UI งวดชำระบน editor (segmented+ตาราง+เกลี่ย%+คิดยอด) + snapshot บน editor + quotePrint (ที่อยู่/ผู้ติดต่อ/ตารางงวด) + fix position:fixed header | — |
+| **Q4** ✅ | guard client กันบันทึกงวด≠100% + empty state /new + อัปเดตเอกสาร | — |
 
 ## 5) มติผู้ใช้ (รอบ 2 — 2026-07-14)
 
