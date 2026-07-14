@@ -61,7 +61,7 @@ export function openQuotePrintWindow(quote) {
     .doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 3px solid #21385e; padding-bottom: 12px; margin-bottom: 14px; }
     .brand { display: flex; gap: 12px; align-items: center; }
     .doc-logo { width: 168px; height: 76px; flex-shrink: 0; border-radius: 8px; overflow: hidden; position: relative; background: #18234f; }
-    .doc-logo img { position: absolute; width: 168px; height: 168px; max-width: none; left: 0; top: -50px; }
+    .doc-logo img { position: absolute; width: 168px; height: 168px; max-width: none; left: 0; top: -46px; }
     .co { font-weight: 700; font-size: 14px; }
     .form { font-size: 13px; color: #444; margin-top: 2px; }
     .docmeta { text-align: right; font-size: 13px; white-space: nowrap; }

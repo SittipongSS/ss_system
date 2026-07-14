@@ -152,7 +152,7 @@ export function buildGanttPrintHTML(project) {
              border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-wrap { width: 150px; height: 72px; background: #18234f; border-radius: 8px; flex-shrink: 0; overflow: hidden; position: relative; }
-  .logo-wrap img { position: absolute; width: 150px; height: 150px; max-width: none; left: 0; top: -44px; }
+  .logo-wrap img { position: absolute; width: 150px; height: 150px; max-width: none; left: 0; top: -40px; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
   .brand .doc-name { font-size: 10px; color: #837868; margin-top: 2px; }
   .company-info { font-size: 8.5px; color: #837868; line-height: 1.4; margin-top: 3px; }

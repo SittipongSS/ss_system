@@ -848,6 +848,8 @@ export default function ProjectDetailPage() {
   const p = data;
   // โครงการกำพร้า (ไม่มีดีล) ไม่มีอะไรให้ดูในภาพรวม — เข้าไทม์ไลน์ตรงเหมือนเดิม
   const showTimeline = tab === "timeline";
+  const projectBrand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand) || "-";
+  const projectTitle = p.name && projectBrand !== "-" && !p.name.includes("/") ? `${p.name} / ${projectBrand}` : (p.name || "โครงการ");
   const hasWriteAccess = hasEditCap && !!data.canEdit;
   const isLocked = p.status === "On Hold" || p.status === "Dropped" || p.status === "Completed";
   const canEdit = hasWriteAccess && !isLocked;
@@ -1021,20 +1023,21 @@ export default function ProjectDetailPage() {
                 <span className="detail-hero-icon">
                   <GanttChart size={18} />
                 </span>
-                <span>{p.name || "โครงการ"}</span>
+                <span>{projectTitle}</span>
               </h1>
-              <p style={{ margin: "5px 0 0 50px", fontSize: "12.5px", color: "var(--text-2)" }}>
-                {p.code} · ลูกค้า: {p.customerName || "-"} · AE: {p.aeOwner || "-"}
-              </p>
+              <div style={{ margin: "6px 0 0 50px", display: "flex", flexDirection: "column", gap: 3, fontSize: "12.5px", color: "var(--text-2)" }}>
+                <div>{p.code || "-"} · ลูกค้า: {p.customerName || "-"} · แบรนด์: {projectBrand}</div>
+                <div>AE: {p.aeOwner || "-"} · ทีม: {p.team || "-"}</div>
+              </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginLeft: "auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px", marginLeft: "auto" }}>
               {!showTimeline ? (
                 <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
                   <GanttChart size={14} /> เปิดไทม์ไลน์
                 </button>
               ) : (
               <>
-              <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
+              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span
                 className="ui-badge"
                 title={p.currentRev == null
@@ -1066,6 +1069,9 @@ export default function ProjectDetailPage() {
               <button onClick={openRevisions} className="btn" style={{ whiteSpace: "nowrap" }} title="ดู/พิมพ์เวอร์ชันเอกสารที่เคยออก">
                 <History size={14} /> ประวัติเวอร์ชัน
               </button>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
               <button
                 onClick={() => openGanttPrintWindow({ ...p, tasks, categoryFallback,
                   ...resolveAe(p.aeOwner),
@@ -1080,6 +1086,7 @@ export default function ProjectDetailPage() {
               >
                 <Printer size={14} /> พิมพ์เอกสาร
               </button>
+              </div>
               </>
               )}
             </div>
@@ -1090,7 +1097,7 @@ export default function ProjectDetailPage() {
           <div className="project-header-meta">
             <div><span>วันเริ่ม</span><strong>{p.startDate || "-"}</strong></div>
             <div><span>วันสิ้นสุด</span><strong>{p.dueDate || "-"}</strong></div>
-            <div><span>แบรนด์</span><strong>{brandDisplayFromList(customers.find((c) => c.id === p.customerId)?.brands, p.metadata?.brand) || "-"}</strong></div>
+            <div><span>แบรนด์</span><strong>{projectBrand}</strong></div>
             <div><span>ดีล</span><strong>{(p.deals || []).length}</strong></div>
             <div><span>หมวดสินค้า</span><strong>{p.productMainCategory ? `${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ''}` : "-"}</strong></div>
           </div>
