@@ -17,13 +17,14 @@ import DateInput from "@/components/ui/DateInput";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
+import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { canReviewSalesForecast, DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindow } from "@/lib/sales/quotePrint";
-import { evenPercents, computeInstallments, paymentPlanSummary } from "@/lib/sales/paymentPlan";
+import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import styles from "./page.module.css";
 
@@ -41,7 +42,7 @@ export default function QuotationEditorPage() {
 
   const [quote, setQuote] = useState(null);
   const [lines, setLines] = useState([]);
-  const [form, setForm] = useState({ quoteDate: "", validUntil: "", validityDays: "", paymentMethod: "", paymentTerms: "", notes: "", discountType: "", discountValue: "", vatRate: 0 });
+  const [form, setForm] = useState({ quoteDate: "", validUntil: "", validityDays: "", notes: "", discountType: "", discountValue: "", vatRate: 0 });
   const [templates, setTemplates] = useState([]);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState("");
@@ -51,9 +52,7 @@ export default function QuotationEditorPage() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
   const [products, setProducts] = useState([]);
-  // งวดชำระ (Q3): full / installment. installments = [{label, percent, note}] — ยอดคิดจาก % ของยอดรวม
-  const [paymentType, setPaymentType] = useState("full");
-  const [installments, setInstallments] = useState([]);
+  const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
 
   useUnsavedChanges(dirty);
 
@@ -72,21 +71,20 @@ export default function QuotationEditorPage() {
         quoteDate: q.quoteDate || "",
         validUntil: q.validUntil || "",
         validityDays: validityDaysBetween(q.quoteDate, q.validUntil),
-        paymentMethod: q.paymentPlan?.paymentMethod || "",
-        paymentTerms: q.paymentTerms || "",
         notes: q.notes || "",
         discountType: q.discountType || "",
         discountValue: q.discountValue ?? "",
         vatRate: Number(q.vatRate || 0),
       });
       const pp = q.paymentPlan;
-      if (pp?.type === "installment" && Array.isArray(pp.installments) && pp.installments.length) {
-        setPaymentType("installment");
-        setInstallments(pp.installments.map((r) => ({ label: r.label || "", percent: r.percent ?? 0, note: r.note || "" })));
-      } else {
-        setPaymentType("full");
-        setInstallments([]);
-      }
+      setPayment({
+        type: pp?.type === "installment" ? "installment" : "full",
+        paymentMethod: pp?.paymentMethod || "",
+        paymentTerms: q.paymentTerms || "",
+        installments: pp?.type === "installment" && Array.isArray(pp.installments)
+          ? pp.installments.map((r) => ({ label: r.label || "", percent: r.percent ?? 0, note: r.note || "" }))
+          : [],
+      });
       setDirty(false);
     } catch (e) {
       setError(e.message || "โหลดใบเสนอราคาไม่สำเร็จ");
@@ -137,29 +135,15 @@ export default function QuotationEditorPage() {
   const removeLine = (i) => { setLines((prev) => prev.filter((_, idx) => idx !== i)); setDirty(true); };
   const setF = (patch) => { setForm((f) => ({ ...f, ...patch })); setDirty(true); };
 
-  // งวดชำระ (Q3)
-  const pctSum = useMemo(() => Math.round(installments.reduce((s, it) => s + (Number(it.percent) || 0), 0) * 100) / 100, [installments]);
-  const instAmounts = useMemo(() => computeInstallments(totals.totalAmount, installments), [totals.totalAmount, installments]);
-  const switchPayType = (t) => {
-    setPaymentType(t);
-    if (t === "installment" && installments.length < 2) {
-      setInstallments(evenPercents(2).map((p, i) => ({ label: i === 0 ? "มัดจำ" : "งวดสุดท้าย", percent: p, note: "" })));
-    }
-    setDirty(true);
-  };
-  const setInstallment = (i, patch) => { setInstallments((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); setDirty(true); };
-  const addInstallment = () => { setInstallments((prev) => (prev.length >= 6 ? prev : [...prev, { label: "", percent: 0, note: "" }])); setDirty(true); };
-  const removeInstallment = (i) => { setInstallments((prev) => (prev.length <= 2 ? prev : prev.filter((_, idx) => idx !== i))); setDirty(true); };
-  const recalcEven = () => { setInstallments((prev) => { const ps = evenPercents(prev.length); return prev.map((r, idx) => ({ ...r, percent: ps[idx] })); }); setDirty(true); };
-  const fillTermsFromPlan = () => setF({ paymentTerms: paymentPlanSummary({ type: "installment", installments }, totals.totalAmount) });
-  const paymentPlanPayload = () => (paymentType === "installment"
-    ? { type: "installment", paymentMethod: form.paymentMethod.trim() || null, installments: installments.map((r) => ({ label: r.label, percent: Number(r.percent) || 0, note: r.note })) }
-    : { type: "full", paymentMethod: form.paymentMethod.trim() || null });
+  const paymentPlanPayload = () => (payment.type === "installment"
+    ? { type: "installment", paymentMethod: payment.paymentMethod.trim() || null, installments: payment.installments.map((row) => ({ label: row.label, percent: Number(row.percent) || 0, note: row.note })) }
+    : { type: "full", paymentMethod: payment.paymentMethod.trim() || null });
+  const updatePayment = (nextPayment) => { setPayment(nextPayment); setDirty(true); };
 
   const save = async (extra = {}) => {
-    // Q4 guard: กันบันทึกเมื่อแบ่งงวดแล้วเปอร์เซ็นต์รวม ≠ 100% (server ก็ validate แต่กันไว้ก่อนให้ชัด)
-    if (paymentType === "installment" && Math.abs(pctSum - 100) > 0.01) {
-      setError(`เปอร์เซ็นต์งวดชำระรวมต้องเท่ากับ 100% (ตอนนี้ ${pctSum}%)`);
+    const paymentValidation = validatePaymentPlan(paymentPlanPayload());
+    if (!paymentValidation.ok) {
+      setError(paymentValidation.error);
       return false;
     }
     setBusy("save");
@@ -176,7 +160,7 @@ export default function QuotationEditorPage() {
           }),
           quoteDate: form.quoteDate,
           validUntil: form.validUntil || null,
-          paymentTerms: form.paymentTerms,
+          paymentTerms: payment.paymentTerms,
           notes: form.notes,
           discountType: form.discountType || null,
           discountValue: form.discountValue || 0,
@@ -506,64 +490,7 @@ export default function QuotationEditorPage() {
 
           {/* เงื่อนไขการชำระเงิน — รูปแบบเดียวกับหน้าสร้าง + เปิด/ปิดแบ่งชำระ */}
           <section className={styles.card}>
-            <div className={styles.paymentHeading}>
-              <div className={styles.paymentTitle}>
-                <CircleDollarSign size={17} aria-hidden="true" />
-                <h2>เงื่อนไขการชำระเงิน</h2>
-              </div>
-              <div className="spacer" />
-              <button
-                type="button"
-                role="switch"
-                aria-checked={paymentType === "installment"}
-                className={`${styles.installmentToggle} ${paymentType === "installment" ? styles.installmentOn : ""}`.trim()}
-                disabled={!editable}
-                onClick={() => switchPayType(paymentType === "installment" ? "full" : "installment")}
-              >
-                <span className={styles.toggleTrack}><span /></span>
-                <span><strong>แบ่งชำระเป็นงวด</strong><small>{paymentType === "installment" ? "เปิดใช้งาน" : "ชำระเต็มจำนวน"}</small></span>
-              </button>
-            </div>
-
-            <div className={styles.paymentTermsGrid}>
-              <label>วิธีการชำระเงิน
-                <input className="premium-input" value={form.paymentMethod} disabled={!editable} placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด" onChange={(e) => setF({ paymentMethod: e.target.value })} />
-              </label>
-              <label>ข้อความเงื่อนไขชำระ
-                <textarea className="premium-input" rows={3} value={form.paymentTerms} disabled={!editable} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ" onChange={(e) => setF({ paymentTerms: e.target.value })} />
-                {editable && paymentType === "installment" && <button type="button" className={styles.fillTermsButton} onClick={fillTermsFromPlan}>สร้างข้อความจากงวด</button>}
-              </label>
-            </div>
-
-            {paymentType === "installment" && (
-              <div className={styles.installmentPanel}>
-                <div className="toolbar" style={{ marginBottom: 10, gap: 8 }}>
-                  {editable && <button type="button" className="btn ghost sm" disabled={installments.length >= 6} onClick={addInstallment}><Plus size={13} aria-hidden="true" /> เพิ่มงวด</button>}
-                  {editable && <button type="button" className="btn ghost sm" onClick={recalcEven}>เกลี่ย % เท่ากัน</button>}
-                  <div className="spacer" />
-                  <span className="ui-badge" style={{ color: Math.abs(pctSum - 100) < 0.01 ? "var(--green)" : "var(--red)" }}>รวม {pctSum}%{Math.abs(pctSum - 100) < 0.01 ? "" : " (ต้อง 100%)"}</span>
-                </div>
-                <div className="premium-glass-table table-responsive">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr><th style={{ width: 40 }}>งวด</th><th>รายละเอียด</th><th style={{ width: 90 }}>%</th><th className="num" style={{ width: 120 }}>จำนวนเงิน</th><th>หมายเหตุ</th>{editable && <th style={{ width: 40 }}></th>}</tr>
-                    </thead>
-                    <tbody>
-                      {installments.map((it, i) => (
-                        <tr key={i} className="premium-row">
-                          <td style={{ textAlign: "center", color: "var(--text-3)" }}>{i + 1}</td>
-                          <td><input className="premium-input" value={it.label} disabled={!editable} placeholder={`งวดที่ ${i + 1}`} onChange={(e) => setInstallment(i, { label: e.target.value })} style={{ width: "100%" }} /></td>
-                          <td><input type="number" min="0" max="100" step="0.01" className="premium-input mono" value={it.percent} disabled={!editable} onChange={(e) => setInstallment(i, { percent: e.target.value })} /></td>
-                          <td className="num mono">{money(instAmounts[i]?.amount || 0)}</td>
-                          <td><input className="premium-input" value={it.note} disabled={!editable} placeholder="เช่น ก่อนเริ่มงาน" onChange={(e) => setInstallment(i, { note: e.target.value })} style={{ width: "100%" }} /></td>
-                          {editable && <td><button type="button" className="btn-icon danger" disabled={installments.length <= 2} onClick={() => removeInstallment(i)} aria-label={`ลบงวด ${i + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            <QuotationPaymentTerms value={payment} onChange={updatePayment} totalAmount={totals.totalAmount} disabled={!editable} />
           </section>
 
           {/* หมายเหตุ + template */}
