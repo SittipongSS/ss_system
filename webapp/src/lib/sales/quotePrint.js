@@ -153,8 +153,10 @@ export function buildQuotePrintHTML(quote) {
   .description { word-break: break-word; }
   .fg, .muted { color: #837868; font-size: 8.5px; }
   .empty-row td { height: 32px; color: #837868; text-align: center; vertical-align: middle; }
-  .commercial { display: grid; grid-template-columns: minmax(0, 1fr) 72mm; gap: 9px; align-items: start;
+  .commercial { display: flex; flex-direction: column; gap: 9px;
                 page-break-inside: avoid; break-inside: avoid; }
+  .totals-wrap { display: flex; justify-content: flex-end; }
+  .totals-wrap table { width: 72mm; }
   .commercial-info { border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; }
   .info-block { padding: 6px 9px; min-height: 40px; color: #000; white-space: pre-wrap; }
   .info-block + .info-block { border-top: 1px solid #dcd8d0; }
@@ -181,7 +183,8 @@ export function buildQuotePrintHTML(quote) {
     .doc-top { flex-direction: column; }
     .doc-title { width: 100%; }
     .doc-title .formno, .doc-title .big, .doc-title .sub { text-align: left; }
-    .header-grid, .commercial { grid-template-columns: 1fr; }
+    .header-grid { grid-template-columns: 1fr; }
+    .totals-wrap table { width: 100%; }
     .hcol.left { border-right: 0; border-bottom: 1px solid #dcd8d0; }
   }
   @media print {
@@ -222,12 +225,12 @@ export function buildQuotePrintHTML(quote) {
       <tbody>${rows}</tbody>
     </table>
     <section class="commercial">
+      <div class="totals-wrap"><table class="totals"><tbody>${totals}</tbody></table></div>
       <div class="commercial-info">
         <div class="info-block"><div class="lbl">หมายเหตุ / REMARKS</div>${value(quote.notes)}</div>
         <div class="info-block"><div class="lbl">วิธีการชำระเงิน / PAYMENT METHOD</div>${value(paymentPlan?.paymentMethod)}</div>
         <div class="info-block"><div class="lbl">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>${value(quote.paymentTerms)}${installmentTable}</div>
       </div>
-      <table class="totals"><tbody>${totals}</tbody></table>
     </section>
     <section class="signs">
       <div class="sign"><div class="line"></div><div class="who">${value(quote.createdByName)}</div><div class="role">ผู้เสนอราคา</div></div>
