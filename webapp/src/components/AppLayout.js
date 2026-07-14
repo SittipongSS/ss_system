@@ -2,7 +2,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MoreHorizontal, X, BellRing } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MoreHorizontal, X, Settings as SettingsIcon } from 'lucide-react';
+
+// เส้นทางทั้งหมดที่ถือว่าอยู่ใต้เมนู "ตั้งค่า" (ให้ปุ่มติด active ตอนอยู่หน้าลูก)
+const SETTINGS_PATHS = ['/settings', '/database/holidays', '/database/chat-webhooks', '/users', '/audit'];
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
@@ -323,19 +326,7 @@ export default function AppLayout({ children }) {
               {isDark ? <Sun size={16} strokeWidth={2} /> : <Moon size={16} strokeWidth={2} />}
             </button>
 
-            {/* Audit log — admins, or a per-user audit:view grant (read-only) */}
-            {canUser({ role, extraCaps }, 'audit:view') && (
-              <Link href="/audit" className="btn ghost icon-only" title="บันทึกการใช้งาน">
-                <History size={16} strokeWidth={2} />
-              </Link>
-            )}
-
-            {/* User list — admins (manage), or a per-user users:view grant (read-only) */}
-            {(can(role, 'users:manage') || canUser({ role, extraCaps }, 'users:view')) && (
-              <Link href="/users" className="btn ghost icon-only" title={can(role, 'users:manage') ? 'จัดการผู้ใช้' : 'รายชื่อผู้ใช้'}>
-                <Users size={16} strokeWidth={2} />
-              </Link>
-            )}
+            {/* บันทึกการใช้งาน + ผู้ใช้ ย้ายไปรวมในหน้า /settings (เมนู "ตั้งค่า") */}
 
             {/* Change own password */}
             {SUPABASE_CONFIGURED && (
@@ -374,22 +365,14 @@ export default function AppLayout({ children }) {
               <span>วางเป้า</span>
             </Link>
           )}
+          {/* เมนูระบบรวมจุดเดียว: ปฏิทิน/แจ้งเตือน/ผู้ใช้/audit ย้ายเข้า /settings ทั้งหมด */}
           <Link
-            href="/database/holidays"
-            className={`topnav-item topnav-utility-item ${pathname.startsWith('/database/holidays') ? 'active' : ''}`}
+            href="/settings"
+            className={`topnav-item topnav-utility-item ${SETTINGS_PATHS.some((p) => pathname.startsWith(p)) ? 'active' : ''}`}
           >
-            <CalendarDays size={16} className="ico" />
-            <span>ปฏิทิน</span>
+            <SettingsIcon size={16} className="ico" />
+            <span>ตั้งค่า</span>
           </Link>
-          {can(role, 'master:manage') && (
-            <Link
-              href="/database/chat-webhooks"
-              className={`topnav-item topnav-utility-item ${pathname.startsWith('/database/chat-webhooks') ? 'active' : ''}`}
-            >
-              <BellRing size={16} className="ico" />
-              <span>แจ้งเตือน</span>
-            </Link>
-          )}
         </nav>
       </header>
 
@@ -437,16 +420,13 @@ export default function AppLayout({ children }) {
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
               {canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
-              <Link href="/database/holidays" className={`mobile-nav-card${pathname.startsWith('/database/holidays') ? ' active' : ''}`}><CalendarDays size={20} /><span>ปฏิทิน</span></Link>
-              {can(role, 'master:manage') && <Link href="/database/chat-webhooks" className={`mobile-nav-card${pathname.startsWith('/database/chat-webhooks') ? ' active' : ''}`}><BellRing size={20} /><span>แจ้งเตือน</span></Link>}
+              <Link href="/settings" className={`mobile-nav-card${SETTINGS_PATHS.some((p) => pathname.startsWith(p)) ? ' active' : ''}`}><SettingsIcon size={20} /><span>ตั้งค่า</span></Link>
             </div>
           </section>
 
           <section className="mobile-nav-section mobile-account-actions">
             <h2>บัญชีและการตั้งค่า</h2>
             <button type="button" onClick={toggleTheme}>{isDark ? <Sun size={18} /> : <Moon size={18} />}<span>{isDark ? 'โหมดสว่าง' : 'โหมดมืด'}</span></button>
-            {canUser({ role, extraCaps }, 'audit:view') && <Link href="/audit"><History size={18} /><span>บันทึกการใช้งาน</span></Link>}
-            {(can(role, 'users:manage') || canUser({ role, extraCaps }, 'users:view')) && <Link href="/users"><Users size={18} /><span>ผู้ใช้งาน</span></Link>}
             {SUPABASE_CONFIGURED && <button type="button" onClick={() => setShowPwd(true)}><KeyRound size={18} /><span>เปลี่ยนรหัสผ่าน</span></button>}
             <button type="button" className="danger" onClick={handleLogout}><LogOut size={18} /><span>ออกจากระบบ</span></button>
           </section>
