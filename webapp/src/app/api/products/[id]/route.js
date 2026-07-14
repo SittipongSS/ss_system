@@ -6,6 +6,7 @@ import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { recordAudit } from '@/lib/audit';
+import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 
 export const dynamic = 'force-dynamic';
@@ -84,6 +85,20 @@ export async function PATCH(request, { params }) {
       summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${decided.productDescriptionEn || decided.productDescription || id}`,
       request,
     });
+    // แจ้งทีมขายเมื่อมีคำตัดสิน (reset เป็น pending = งานภายใน ไม่ต้องแจ้ง)
+    if (body.approvalStatus !== 'pending') {
+      const approvedNow = body.approvalStatus === 'approved';
+      sendChat('sales', chatCard({
+        title: approvedNow ? '✅ สินค้าได้รับอนุมัติ' : '⛔ สินค้าถูกปฏิเสธ',
+        subtitle: decided.productDescriptionEn || decided.productDescription || decided.fgCode,
+        rows: [
+          { label: 'FG Code', value: decided.fgCode },
+          { label: approvedNow ? 'ผู้อนุมัติ' : 'ผู้ปฏิเสธ', value: user?.name },
+          { label: 'เหตุผล', value: decided.rejectionReason },
+        ],
+        linkPath: '/database/products',
+      }));
+    }
     return Response.json(decided);
   }
 

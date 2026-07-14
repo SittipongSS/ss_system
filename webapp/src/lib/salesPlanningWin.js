@@ -1,4 +1,6 @@
 import { recordAudit } from '@/lib/audit';
+import { chatCard, sendChat } from '@/lib/chat';
+import { fmtMoney } from '@/lib/format';
 import { genId } from '@/lib/id';
 import { dealAuditLabel, forecastAmount, monthKey, toMoney } from '@/lib/salesPlanning';
 
@@ -88,6 +90,18 @@ export async function insertWinSideEffects({
     summary: auditSummary || `${auditAction} won sales deal ${dealAuditLabel(deal)}`,
     request,
   });
+
+  // แจ้งทีมขายว่าดีลชนะ — จุดนี้เป็น funnel เดียวของทุกทาง Won (manual/QT accept/PO/stub)
+  sendChat('sales', chatCard({
+    title: '🏆 ดีลชนะ (Won)',
+    subtitle: dealAuditLabel(deal),
+    rows: [
+      { label: 'ลูกค้า', value: deal.customerName },
+      { label: 'มูลค่าปิดจริง', value: fmtMoney(deal.wonValue) },
+      { label: 'ทีม · ผู้ดูแล', value: [deal.team, deal.ownerName].filter(Boolean).join(' · ') },
+    ],
+    linkPath: `/sales-planning/deals/${deal.id}`,
+  }));
 }
 
 export async function markWon({ supabase, user, deal, source = 'manual', now = new Date().toISOString(), wonValue, projectValue, projectId, wonMonth, metadata = {}, request, auditSummary }) {

@@ -1,4 +1,6 @@
 import { recordAudit } from '@/lib/audit';
+import { chatCard, sendChat } from '@/lib/chat';
+import { fmtMoney } from '@/lib/format';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canReviewSalesForecast, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { quoteApprovalRequirement } from '@/lib/quotationApproval';
@@ -95,6 +97,34 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `${action} quotation approval ${quote.quoteNumber}`,
     request: req,
   });
+
+  // แจ้ง Chat: ขออนุมัติ → space ผู้อนุมัติ / ผลอนุมัติ → space ทีมขาย
+  if (action === 'request') {
+    sendChat('approvals', chatCard({
+      title: '📄 ใบเสนอราคารออนุมัติ',
+      subtitle: data.quoteNumber,
+      rows: [
+        { label: 'ลูกค้า', value: data.customerName || deal.customerName },
+        { label: 'มูลค่ารวม', value: fmtMoney(data.totalAmount) },
+        { label: 'ผู้ขออนุมัติ', value: user.name },
+        { label: 'เหตุผล', value: data.approvalReason },
+      ],
+      linkPath: `/sales-planning/quotations/${data.id}`,
+    }));
+  } else {
+    const approvedFlag = action === 'approve';
+    sendChat('sales', chatCard({
+      title: approvedFlag ? '✅ ใบเสนอราคาได้รับอนุมัติ' : '⛔ ใบเสนอราคาถูกตีกลับ',
+      subtitle: data.quoteNumber,
+      rows: [
+        { label: 'ลูกค้า', value: data.customerName || deal.customerName },
+        { label: 'มูลค่ารวม', value: fmtMoney(data.totalAmount) },
+        { label: approvedFlag ? 'ผู้อนุมัติ' : 'ผู้ตีกลับ', value: user.name },
+        { label: 'หมายเหตุ', value: data.approvalNotes },
+      ],
+      linkPath: `/sales-planning/quotations/${data.id}`,
+    }));
+  }
 
   return ok(data);
 });
