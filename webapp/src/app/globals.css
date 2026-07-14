@@ -417,6 +417,7 @@ button, select, input, textarea {
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: 0 5px 20px rgba(17, 28, 55, 0.08);
 }
 
 .topnav-system {
@@ -425,8 +426,8 @@ button, select, input, textarea {
   color: #fff;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 0 20px;
+  gap: 16px;
+  padding: 0 clamp(14px, 2.2vw, 32px);
 }
 
 .topnav-brand {
@@ -436,6 +437,8 @@ button, select, input, textarea {
   text-decoration: none;
   color: #fff;
   flex-shrink: 0;
+  padding-right: 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.16);
 }
 .topnav-brand-img {
   height: 34px;
@@ -515,8 +518,8 @@ button, select, input, textarea {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: stretch;
-  gap: 2px;
-  padding: 0 12px;
+  gap: 4px;
+  padding: 0 clamp(10px, 2vw, 28px);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -526,21 +529,29 @@ button, select, input, textarea {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-height: 36px;
+  margin: 4px 0;
   padding: 0 13px;
   color: var(--text-2);
   text-decoration: none;
   font-size: 13.5px;
   white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  transition: color 0.12s, border-color 0.12s, background 0.12s, transform 0.12s;
 }
-.topnav-item:hover { color: var(--text); background: var(--panel-2); }
+.topnav-item:hover { color: var(--text); background: var(--panel-2); transform: translateY(-1px); }
 .topnav-item.active {
   color: var(--accent);
   font-weight: 600;
-  border-bottom-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: var(--accent-soft);
 }
 .topnav-item.active svg { color: var(--accent); }
+.topnav-utility-item {
+  background: color-mix(in srgb, var(--panel-2) 72%, transparent);
+  border-color: var(--border);
+}
 
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
 .btn.ghost:hover { background: var(--panel-2); }
@@ -4942,7 +4953,7 @@ button.empty-state { width: 100%; font: inherit; }
   height: 168px;
   max-width: none;
   left: 0;
-  top: -50px;
+  top: -46px;
 }
 
 .shipment-print-kicker {
@@ -5067,7 +5078,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 @page {
   size: A4 portrait;
-  margin: 36mm 10mm 10mm;
+  margin: 31mm 10mm 10mm;
 }
 
 /* System-wide numeric typography: financial figures use the same clean sans
@@ -5148,7 +5159,7 @@ button.empty-state { width: 100%; font: inherit; }
     top: -29mm;
     left: 0;
     right: 0;
-    height: 26mm;
+    height: 25mm;
     margin: 0;
     background: #fff;
     z-index: 20;

@@ -229,14 +229,14 @@ export function buildGanttPrintHTML(project) {
   .sw { width: 11px; height: 11px; border-radius: 2px; }
 
   @page {
-    size: A4 landscape; margin: 34mm 8mm 13mm;
+    size: A4 landscape; margin: 31mm 8mm 13mm;
     @bottom-right { content: "หน้า " counter(page) " / " counter(pages); font-size: 9px; color: #837868; }
   }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
     .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
-    .doc-top { position: fixed; top: -27mm; left: 0; right: 0; height: 24mm; margin: 0; background: #fff; z-index: 20; }
+    .doc-top { position: fixed; top: -29mm; left: 0; right: 0; height: 25mm; margin: 0; background: #fff; z-index: 20; }
     thead { display: table-header-group; }
   }
 

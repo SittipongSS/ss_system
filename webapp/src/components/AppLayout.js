@@ -206,7 +206,6 @@ export default function AppLayout({ children }) {
         { href: '/sa/projects', name: 'โครงการ', icon: Boxes, cap: 'salesplan:view', match: (p) => p === '/sa/projects' || p.startsWith('/sa/projects/') || p.startsWith('/pm/projects') },
         // เฟส D: ใบเสนอราคา FM-SA-01 (มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
         { href: '/sa/quotations', name: 'ใบเสนอราคา', icon: FileText, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/quotations') || p.startsWith('/sales-planning/quotations') },
-        { href: '/sa/targets', name: 'วางเป้าหมาย', icon: Target, cap: 'salesplan:target', match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'salesplan:view', match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },
@@ -366,9 +365,18 @@ export default function AppLayout({ children }) {
             );
           })}
           <span className="topnav-menu-spacer" />
+          {canUser({ role, extraCaps }, 'salesplan:target') && (
+            <Link
+              href="/sa/targets"
+              className={`topnav-item topnav-utility-item ${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? 'active' : ''}`}
+            >
+              <Target size={16} className="ico" />
+              <span>วางเป้า</span>
+            </Link>
+          )}
           <Link
             href="/database/holidays"
-            className={`topnav-item ${pathname.startsWith('/database/holidays') ? 'active' : ''}`}
+            className={`topnav-item topnav-utility-item ${pathname.startsWith('/database/holidays') ? 'active' : ''}`}
           >
             <CalendarDays size={16} className="ico" />
             <span>ปฏิทิน</span>
@@ -419,6 +427,7 @@ export default function AppLayout({ children }) {
             <h2>เครื่องมือ</h2>
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
+              {canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
               <Link href="/database/holidays" className={`mobile-nav-card${pathname.startsWith('/database/holidays') ? ' active' : ''}`}><CalendarDays size={20} /><span>ปฏิทิน</span></Link>
             </div>
           </section>

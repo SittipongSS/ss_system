@@ -123,12 +123,12 @@ export function buildBillPrintHTML(order, customer = {}) {
 
   .foot { margin-top: 16px; font-size: 9px; color: #837868; text-align: right; }
 
-  @page { size: A4 portrait; margin: 34mm 10mm 10mm; }
+  @page { size: A4 portrait; margin: 31mm 10mm 10mm; }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
     .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
-    .doc-top { position: fixed; top: -27mm; left: 0; right: 0; height: 24mm; margin: 0; background: #fff; z-index: 20; }
+    .doc-top { position: fixed; top: -29mm; left: 0; right: 0; height: 25mm; margin: 0; background: #fff; z-index: 20; }
     thead { display: table-header-group; }
   }
   @media screen and (max-width: 560px) {

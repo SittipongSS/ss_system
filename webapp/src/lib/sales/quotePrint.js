@@ -90,10 +90,10 @@ export function openQuotePrintWindow(quote) {
     .sign { text-align: center; width: 200px; }
     .sign .line { border-bottom: 1px dotted #888; height: 36px; margin-bottom: 6px; }
     .sign .who { font-size: 12px; color: #444; }
-    @page { size: A4 portrait; margin: 36mm 10mm 10mm; }
+    @page { size: A4 portrait; margin: 31mm 10mm 10mm; }
     @media print {
       body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .doc-head { position: fixed; top: -29mm; left: 0; right: 0; height: 26mm; margin: 0; background: #fff; z-index: 20; }
+      .doc-head { position: fixed; top: -29mm; left: 0; right: 0; height: 25mm; margin: 0; background: #fff; z-index: 20; }
     }
   </style></head><body>
   ${printHeaderHtml({ form: DOCUMENT_FORMS.quotation, docNumber: quote.quoteNumber, docDate: fmtDate(quote.quoteDate) })}
