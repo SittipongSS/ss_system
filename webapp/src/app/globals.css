@@ -4727,11 +4727,12 @@ button.empty-state { width: 100%; font: inherit; }
   background: var(--panel-2);
   box-sizing: border-box;
 }
+/* no transform here: promoting sticky cells to their own compositor layer
+   (translateZ(0)) makes Chrome paint stale/ghost copies while scrolling */
 .fz-table .fz-c1,
 .fz-table .fz-c2,
 .fz-table .fz-cr {
   background: var(--bg);
-  transform: translateZ(0);
 }
 .fz-table .fz-c1 { position: sticky; left: 0; z-index: 10; }
 .fz-table .fz-c2 { position: sticky; left: var(--fz-c1w, 150px); z-index: 10; }
