@@ -5,11 +5,9 @@ import Select from "@/components/ui/Select";
 // ทุกใบยังผูก โครงการ›ดีล เสมอ — สร้างใหม่ต้องเลือกดีลก่อน แล้วไปแก้ต่อที่หน้า editor.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FileText, Pencil, Plus, Search, Printer, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
-import Modal from "@/components/Modal";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
@@ -32,7 +30,6 @@ const statusBadge = (s) => (
 );
 
 export default function QuotationsPage() {
-  const router = useRouter();
   const canEdit = useCan("salesplan:edit");
   const canView = useCan("salesplan:view");
   const role = useRole();
@@ -42,13 +39,7 @@ export default function QuotationsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // วิซาร์ดสร้าง: เลือกดีล (เฉพาะที่ผูกโครงการ — โครงการเป็นตัวเชื่อมลูกค้า) → POST → ไป editor
-  const [createOpen, setCreateOpen] = useState(false);
-  const [deals, setDeals] = useState([]);
-  const [dealId, setDealId] = useState("");
-  const [seedFG, setSeedFG] = useState(false); // ดึง FG ของโครงการมาตั้งต้น (ค่าเริ่มต้น: ใส่รหัส FG เองใน editor)
-  const [creating, setCreating] = useState(false);
-
+  // สร้างใบใหม่ = ไปหน้าเต็ม /sa/quotations/new (cascade ลูกค้า→โครงการ→ดีล) — ไม่มี modal
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -64,35 +55,6 @@ export default function QuotationsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  const openCreate = async () => {
-    setCreateOpen(true);
-    setDealId("");
-    setSeedFG(false);
-    const res = await fetch("/api/sales-planning/deals").catch(() => null);
-    const all = res?.ok ? await res.json() : [];
-    // เฉพาะดีลเปิดที่ "ผูกโครงการแล้ว" — โครงการเชื่อมลูกค้าให้เอง (feedback ผู้ใช้)
-    setDeals((all || []).filter((d) => d.projectId && !["won", "in_project", "lost"].includes(d.stage)));
-  };
-
-  const createQuote = async () => {
-    if (!dealId) return;
-    setCreating(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/deals/${dealId}/quotations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seedFromProject: seedFG }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "สร้างใบเสนอราคาไม่สำเร็จ");
-      router.push(`/sa/quotations/${data.id}`);
-    } catch (e) {
-      setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
-      setCreating(false);
-    }
-  };
 
   // ลบ: กติกาเดียวกับ API — ฉบับร่างลบได้, ใบสถานะอื่นลบได้เฉพาะ superuser
   // (ใบที่ส่ง/รับแล้ว = หลักฐานการค้า ปกติให้ cancel/revise แทน)
@@ -131,9 +93,9 @@ export default function QuotationsPage() {
       title="บริหารงานขาย — ใบเสนอราคา"
       subtitle="FM-SA-01 · เลขที่ QT-YYMMXXXX-R ใช้ติดตาม ห้ามซ้ำ — ทุกใบผูกกับดีลเสมอ"
       headerRight={canEdit && (
-        <button type="button" className="btn btn-primary" onClick={openCreate}>
+        <Link href="/sa/quotations/new" className="btn btn-primary">
           <Plus size={15} aria-hidden="true" /> สร้างใบเสนอราคา
-        </button>
+        </Link>
       )}
     >
       <div className="flex flex-col gap-5">
@@ -225,30 +187,6 @@ export default function QuotationsPage() {
         </section>
       </div>
 
-      <Modal open={createOpen} onClose={() => !creating && setCreateOpen(false)} title="สร้างใบเสนอราคา — เลือกดีล" size="sm">
-        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 13, color: "var(--text-3)" }}>
-            เลือกดีลที่ผูกโครงการแล้ว — ลูกค้ามาจากโครงการอัตโนมัติ ส่วนรหัส FG ค่อยใส่ในหน้าแก้ไขใบ
-          </div>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            ดีล (เฉพาะที่ผูกโครงการแล้ว)
-            <Select className="premium-select" value={dealId} onChange={(e) => setDealId(e.target.value)}>
-              <option value="">{deals.length ? "— เลือกดีล —" : "ยังไม่มีดีลที่ผูกโครงการ"}</option>
-              {deals.map((d) => <option key={d.id} value={d.id}>{d.title} · {d.customerName || "ไม่มีลูกค้า"}</option>)}
-            </Select>
-          </label>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-            <input type="checkbox" checked={seedFG} onChange={(e) => setSeedFG(e.target.checked)} />
-            ดึงรายการตั้งต้นจาก FG ของโครงการ (ไม่ติ้ก = ใบเปล่า ใส่รหัส FG เอง)
-          </label>
-          <div className="form-action-bar">
-            <button type="button" className="btn ghost" onClick={() => setCreateOpen(false)} disabled={creating}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={createQuote} disabled={creating || !dealId}>
-              {creating ? "กำลังสร้าง…" : "สร้างและไปแก้ไข"}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </Workspace>
   );
 }
