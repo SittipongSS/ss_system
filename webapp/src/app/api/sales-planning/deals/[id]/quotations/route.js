@@ -13,6 +13,7 @@ import {
 } from '@/lib/salesPlanning';
 import { quoteApprovalRequirement } from '@/lib/quotationApproval';
 import { normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
+import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,17 +56,38 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // เงื่อนไขใหม่ (feedback ผู้ใช้): ดีลต้องผูกโครงการก่อน — โครงการเป็นตัวเชื่อมลูกค้า
   // ส่วนรายการสินค้า (รหัส FG) ค่อยใส่ตอนแก้ใบ ไม่บังคับตอนสร้าง
   if (!deal.projectId) return badRequest('ดีลนี้ยังไม่ผูกโครงการ — สร้าง/ผูกโครงการก่อน แล้วจึงออกใบเสนอราคา');
+  // cascade: ใบเสนอราคาต้องมีลูกค้า (มติผู้ใช้ — เลือกลูกค้าที่ดีลก่อน)
+  if (!deal.customerId) return badRequest('ดีลนี้ยังไม่ระบุลูกค้า — เลือกลูกค้าที่ดีลก่อน แล้วจึงออกใบเสนอราคา');
 
   const body = await req.json().catch(() => ({}));
   let lines = normalizeManualLines(body.lines || []);
   // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
   if (!lines.length && body.seedFromProject) lines = await seedLinesFromProject(supabase, deal);
 
+  // งวดชำระ — validate ก่อน (client อาจส่งมาไม่ครบ 100%)
+  const pv = validatePaymentPlan(body.paymentPlan);
+  if (!pv.ok) return badRequest(pv.error);
+
+  // snapshot ข้อมูลลูกค้า ณ วันออกใบ — server เติมเอง (ในใบ read-only, มติผู้ใช้:
+  // แก้ข้อมูลลูกค้าต้องไปแก้ที่ฐานข้อมูลลูกค้า). เลือก "คน" ผู้ติดต่อได้ผ่าน contactIndex.
+  const { data: customer } = await supabase
+    .from('customers')
+    .select('address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
+    .eq('id', deal.customerId)
+    .maybeSingle();
+  const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
+  const ci = Number.isInteger(body.contactIndex) ? body.contactIndex : 0;
+  const contact = contacts[ci] || contacts[0] || {
+    name: customer?.contactPerson || '', phone: customer?.contactPhone || '', email: '',
+  };
+
   // ส่วนลดท้ายใบ + VAT (เฟส D — FM-SA-01): default vatRate 0 = ราคารวม VAT แล้ว
   const discountType = ['percent', 'amount'].includes(body.discountType) ? body.discountType : null;
   const discountValue = discountType ? toMoney(body.discountValue) : 0;
   const vatRate = toMoney(body.vatRate, 0);
   const totals = quoteTotals(lines, { discountType, discountValue, vatRate });
+  // งวดชำระ: เติมยอดจาก % ของยอดรวม + สรุปเป็นข้อความ paymentTerms (แก้ทับได้)
+  const paymentPlan = normalizePaymentPlan(body.paymentPlan, totals.totalAmount);
   const approval = quoteApprovalRequirement(totals, body.metadata || {});
   // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
   const { base, quoteNumber } = await generateQuoteNumber(supabase);
@@ -83,11 +105,19 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       validUntil: body.validUntil || null,
       customerId: deal.customerId || null,
       customerName: deal.customerName || null,
+      // snapshot ลูกค้า (read-only ในใบ)
+      billingAddress: customer?.address || null,
+      shippingAddress: customer?.shippingAddress || customer?.address || null,
+      branchCode: customer?.branchCode || null,
+      contactName: contact.name || null,
+      contactPhone: contact.phone || null,
+      contactEmail: contact.email || null,
       ...totals,
       discountType,
       discountValue,
       vatRate,
-      paymentTerms: (body.paymentTerms || '').trim() || null,
+      paymentPlan,
+      paymentTerms: (body.paymentTerms || '').trim() || paymentPlanSummary(paymentPlan, totals.totalAmount),
       approvalStatus: approval.required ? 'pending' : 'not_required',
       approvalReason: approval.reason,
       approvalRequestedAt: approval.required ? new Date().toISOString() : null,
