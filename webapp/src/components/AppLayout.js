@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MoreHorizontal, X } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, History, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, CalendarDays, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MoreHorizontal, X, BellRing } from 'lucide-react';
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
@@ -381,6 +381,15 @@ export default function AppLayout({ children }) {
             <CalendarDays size={16} className="ico" />
             <span>ปฏิทิน</span>
           </Link>
+          {can(role, 'master:manage') && (
+            <Link
+              href="/database/chat-webhooks"
+              className={`topnav-item topnav-utility-item ${pathname.startsWith('/database/chat-webhooks') ? 'active' : ''}`}
+            >
+              <BellRing size={16} className="ico" />
+              <span>แจ้งเตือน</span>
+            </Link>
+          )}
         </nav>
       </header>
 
@@ -429,6 +438,7 @@ export default function AppLayout({ children }) {
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
               {canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
               <Link href="/database/holidays" className={`mobile-nav-card${pathname.startsWith('/database/holidays') ? ' active' : ''}`}><CalendarDays size={20} /><span>ปฏิทิน</span></Link>
+              {can(role, 'master:manage') && <Link href="/database/chat-webhooks" className={`mobile-nav-card${pathname.startsWith('/database/chat-webhooks') ? ' active' : ''}`}><BellRing size={20} /><span>แจ้งเตือน</span></Link>}
             </div>
           </section>
 
