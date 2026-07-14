@@ -5,6 +5,18 @@
   flex-wrap: wrap;
 }
 
+.headerQuoteNumber {
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.headerQuoteNumber strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-weight: 750;
+}
+
 .detailLayout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;

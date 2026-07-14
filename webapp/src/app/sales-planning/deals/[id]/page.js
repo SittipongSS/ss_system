@@ -755,7 +755,7 @@ export default function DealOverviewPage() {
 
           {tab === "overview" && (
           <>
-          <section id="deal-kpi" className="kpi-grid">
+          <section id="deal-kpi" className="kpi-grid" style={{ gridTemplateColumns: "none", gridAutoFlow: "column", gridAutoColumns: "minmax(180px, 1fr)", overflowX: "auto" }}>
             {alreadyWon ? (
               <Stat
                 label="มูลค่าปิดจริง (Won)"

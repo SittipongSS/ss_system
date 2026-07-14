@@ -609,28 +609,30 @@ export default function TasksPage() {
       </div>
 
       {/* scope tabs */}
-      {allowedScopes.length > 1 && (
-        <div className="segmented" style={{ marginBottom: "16px" }}>
-          {allowedScopes.map((s) => (
-            <button key={s} onClick={() => { setScope(s); setAssigneeFilter("all"); }} className={scope === s ? "active" : ""}>{SCOPE_TH[s]}</button>
-          ))}
-        </div>
-      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+        {allowedScopes.length > 1 && (
+          <div className="segmented deal-scope-toggle">
+            {allowedScopes.map((s) => (
+              <button key={s} onClick={() => { setScope(s); setAssigneeFilter("all"); }} className={scope === s ? "active" : ""}>{SCOPE_TH[s]}</button>
+            ))}
+          </div>
+        )}
 
-      {scope === "mine" && (
-        <div className="segmented" style={{ marginBottom: "16px" }} aria-label="บทบาทของฉันในงาน">
-          {Object.values(MINE_TASK_VIEWS).map((taskView) => (
-            <button
-              key={taskView}
-              type="button"
-              onClick={() => setMineView(taskView)}
-              className={mineView === taskView ? "active" : ""}
-            >
-              {MINE_VIEW_TH[taskView]} <span style={{ opacity: 0.72 }}>({mineViewCounts[taskView] || 0})</span>
-            </button>
-          ))}
-        </div>
-      )}
+        {scope === "mine" && (
+          <div className="segmented deal-scope-toggle" aria-label="บทบาทของฉันในงาน">
+            {Object.values(MINE_TASK_VIEWS).map((taskView) => (
+              <button
+                key={taskView}
+                type="button"
+                onClick={() => setMineView(taskView)}
+                className={mineView === taskView ? "active" : ""}
+              >
+                {MINE_VIEW_TH[taskView]} <span style={{ opacity: 0.72 }}>({mineViewCounts[taskView] || 0})</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ── สรุปภาพรวม (คลิกเพื่อกรอง) ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", marginBottom: "18px" }}>
