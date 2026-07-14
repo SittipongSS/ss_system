@@ -20,6 +20,8 @@ export default function DealFormFields({
   form,
   onPatch,               // (patchObject) => void
   customers = [],
+  projects = [],
+  showProject = false,
   categories = [],
   stages = [],           // ตัวเลือกสถานะ (caller กรอง won เอง)
   alreadyWon = false,    // ล็อก FC%/เดือน/มูลค่า หลังปิด Won
@@ -38,7 +40,7 @@ export default function DealFormFields({
         <SearchableSelect
           entity="customer"
           value={form.customerId || ""}
-          onChange={(customerId) => onPatch({ customerId, brand: "" })}
+          onChange={(customerId) => onPatch({ customerId, brand: "", ...(!form.lockedProjectId ? { projectId: "" } : {}) })}
           placeholder="ค้นหารหัส / ชื่อลูกค้า..."
           options={[
             { value: "", label: "— ยังไม่ผูกลูกค้า —" },
@@ -50,6 +52,35 @@ export default function DealFormFields({
           ]}
         />
       </label>
+      {showProject && <label className="deal-field">
+        โครงการ
+        <SearchableSelect
+          entity="project"
+          value={form.projectId || ""}
+          onChange={(projectId) => {
+            const project = projects.find((item) => item.id === projectId);
+            onPatch({
+              projectId,
+              ...(!form.customerId && project?.customerId
+                ? { customerId: project.customerId, customerName: project.customerName || "" }
+                : {}),
+            });
+          }}
+          disabled={!!form.lockedProjectId || alreadyWon}
+          placeholder="ค้นหารหัส / ชื่อโครงการ..."
+          options={[
+            { value: "", label: "— ยังไม่เชื่อมโครงการ —" },
+            ...projects
+              .filter((project) => !form.customerId || !project.customerId || project.customerId === form.customerId || project.id === form.projectId)
+              .map((project) => ({
+                value: project.id,
+                label: [project.code, project.name].filter(Boolean).join(" — ") || project.id,
+                search: `${project.code || ""} ${project.name || ""} ${project.customerName || ""}`,
+              })),
+          ]}
+        />
+        {form.lockedProjectId && <small style={{ color: "var(--text-3)" }}>เชื่อมแล้ว หากต้องการเปลี่ยนโครงการให้จัดการจากหน้าโครงการ</small>}
+      </label>}
       <label className="deal-field">
         แบรนด์
         <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -85,7 +116,7 @@ export default function DealFormFields({
       </label>
       <label className="deal-field">
         สถานะ
-        <Select className="premium-select" value={form.stage} onChange={(e) => set("stage")(e.target.value)}>
+        <Select className="premium-select" value={form.stage} disabled={alreadyWon} onChange={(e) => set("stage")(e.target.value)}>
           {stages.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
         </Select>
       </label>

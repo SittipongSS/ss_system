@@ -16,7 +16,6 @@ import {
   toMoney,
   toProbability,
 } from '@/lib/salesPlanning';
-import { buildWinPatch } from '@/lib/salesPlanningWin';
 import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 
 export const dynamic = 'force-dynamic';
@@ -58,15 +57,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const alreadyWon = ['won', 'in_project'].includes(before.stage);
   const nextStage = 'stage' in body ? normalizeStage(body.stage) : before.stage;
-  const nextDepositPaid = 'depositPaid' in body ? !!body.depositPaid : !!before.depositPaid;
-  if (nextStage === 'won' && !nextDepositPaid) return badRequest('Won ต้องยืนยันว่าได้รับมัดจำแล้ว');
-
-  // ปิด Won ผ่าน PATCH ก็ต้องมีมูลค่าปิดจริง (wonValue) เหมือนปุ่มปิด Won
   const transitioningToWon = nextStage === 'won' && !alreadyWon;
-  const bodyWonValue = 'wonValue' in body ? toMoney(body.wonValue, null) : undefined;
-  if (transitioningToWon && (bodyWonValue == null || bodyWonValue <= 0)) {
-    return badRequest('ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0');
-  }
+  if (transitioningToWon) return badRequest('ปิด Won ผ่านใบเสนอราคาเท่านั้น');
+  if (alreadyWon && nextStage !== before.stage) return badRequest('ดีล Won แล้ว ไม่สามารถเปลี่ยนสถานะจากฟอร์มดีลได้');
 
   const patch = {
     updatedAt: new Date().toISOString(),
@@ -78,25 +71,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('stage' in body) patch.stage = nextStage;
   // projectValue = มูลค่าคาดการณ์ — freeze เมื่อปิด Won แล้ว (แก้ไม่ได้อีก); ก่อน Won แก้ได้
   if ('projectValue' in body && !alreadyWon) patch.projectValue = toMoney(body.projectValue);
-  // wonValue = มูลค่าปิดจริง — แก้ได้เมื่อ Won แล้ว (แก้ตัวเลขจริงย้อนหลัง)
-  if (bodyWonValue != null && alreadyWon) patch.wonValue = bodyWonValue;
   if ('probability' in body || 'stage' in body) patch.probability = toProbability(body.probability ?? before.probability, nextStage);
   // เดือนพยากรณ์ (FC): ย้ายได้เฉพาะก่อนปิด Won — หลัง Won ล็อก (เดือนถูกตรึงตอนปิด
   // เพื่อวัดความแม่นยำ FC vs AT). การปิด Won จะตั้ง forecastMonth ผ่าน buildWinPatch เอง.
   if (('forecastMonth' in body || 'expectedCloseDate' in body) && !alreadyWon) {
     patch.forecastMonth = monthKey(body.forecastMonth || body.expectedCloseDate) || null;
-  }
-  if (nextStage === 'won') {
-    Object.assign(patch, buildWinPatch({
-      deal: before,
-      source: 'manual',
-      now: patch.updatedAt,
-      // ปิด Won ใหม่ → ใช้ wonValue ที่กรอก; ที่ Won อยู่แล้ว → คงค่าเดิม (buildWinPatch fallback)
-      wonValue: transitioningToWon ? bodyWonValue : (bodyWonValue ?? before.wonValue),
-      projectId: before.projectId,
-      metadata: 'metadata' in body ? body.metadata : {},
-    }));
-    if (body.confirmedAt) patch.confirmedAt = body.confirmedAt;
   }
   if (nextStage !== 'won' && 'stage' in body) patch.confirmedAt = null;
   if (nextStage !== 'lost' && 'stage' in body) patch.lostReason = null;

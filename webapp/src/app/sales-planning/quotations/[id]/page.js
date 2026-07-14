@@ -26,6 +26,7 @@ import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
+import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
 import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
@@ -212,11 +213,12 @@ export default function QuotationEditorPage() {
   };
 
   const doAccept = () => {
+    const wonAmount = quotationWonAmount(quote);
     setConfirmState({
-      title: "ยืนยันการรับใบเสนอราคา",
-      description: `ลูกค้ารับใบเสนอราคา ${quote.quoteNumber}`,
-      detail: `ยอด ${money(quote.totalAmount)} จะถูกตั้งเป็นมูลค่าดีล การดำเนินการนี้มีผลต่อยอดขายและสถานะดีล`,
-      confirmLabel: "ยืนยันว่าลูกค้ารับ",
+      title: "ยืนยัน Won จากใบเสนอราคา",
+      description: `ปิดดีลเป็น Won ด้วยใบเสนอราคา ${quote.quoteNumber}`,
+      detail: `ยอดก่อน VAT ${money(wonAmount)} จะถูกบันทึกเป็นยอด Won โดยยอดรวมเอกสารคือ ${money(quote.totalAmount)}`,
+      confirmLabel: "ยืนยัน Won",
       action: async () => {
         if (!(await act("accept", `/api/sales-planning/quotations/${id}/accept`))) return false;
         await load();
@@ -299,7 +301,7 @@ export default function QuotationEditorPage() {
   const statusMeta = {
     draft: { label: "ฉบับร่าง", color: "var(--text-3)" },
     sent: { label: "ส่งลูกค้าแล้ว", color: "var(--blue)" },
-    accepted: { label: "ลูกค้ารับแล้ว", color: "var(--green)" },
+    accepted: { label: "Won", color: "var(--green)" },
     rejected: { label: "ถูกปฏิเสธ", color: "var(--red)" },
     cancelled: { label: "ยกเลิก", color: "var(--red)" },
     revised: { label: "มีฉบับแก้ไขใหม่", color: "var(--amber)" },
@@ -559,7 +561,7 @@ export default function QuotationEditorPage() {
               </div>
               <div className={styles.workflowActions}>
                 {editable && quote.status === "draft" && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}
-                {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-success" onClick={doAccept} disabled={!!busy} title="ลูกค้ารับใบนี้"><CheckCircle2 size={15} aria-hidden="true" /> ลูกค้าตอบรับ</button>}
+                {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-success" onClick={doAccept} disabled={!!busy} title="ปิด Won ผ่านใบเสนอราคานี้"><CheckCircle2 size={15} aria-hidden="true" /> Won</button>}
                 <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={15} aria-hidden="true" /> พิมพ์ / PDF</button>
               </div>
 

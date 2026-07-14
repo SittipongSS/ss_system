@@ -15,7 +15,7 @@ import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
-import { FORECAST_LEVELS, dealTypeBadge, snapForecastLevel, MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, dealTypeBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
@@ -71,7 +71,7 @@ function stageBadge(stage) {
   }[stage] || "var(--text-3)";
   return (
     <span className="ui-badge" style={{ color, borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
-      {STAGE_LABELS[stage] || stage || "-"}
+      {stage === "accepted" ? "Won" : STAGE_LABELS[stage] || stage || "-"}
     </span>
   );
 }
@@ -189,6 +189,7 @@ export default function DealOverviewPage() {
     fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
     fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
     fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
+    fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(d || [])).catch(() => {});
   }, []);
 
   const acceptedQuote = useMemo(() => (data?.quotations || []).find((quote) => quote.status === "accepted"), [data]);
@@ -324,6 +325,7 @@ export default function DealOverviewPage() {
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
+  const [projects, setProjects] = useState([]);
   const dealBrand = useMemo(() => {
     const value = String(deal?.metadata?.brand || deal?.brand || "").trim();
     const customer = customers.find((item) => item.id === deal?.customerId);
@@ -449,24 +451,6 @@ export default function DealOverviewPage() {
     return runAction("drop-timeline", `/api/sales-planning/deals/${id}/timeline`, { method: "DELETE" });
   };
 
-  // ปิด Won ต้องกรอกมูลค่าปิดจริง — เปิดโมดัลรับตัวเลข (prefill = มูลค่าคาดการณ์)
-  const [winOpen, setWinOpen] = useState(false);
-  const [winValue, setWinValue] = useState("");
-  const [winMonth, setWinMonth] = useState(thisMonth());
-  // ค่าเริ่มต้นเดือนที่ปิด = เดือนพยากรณ์ของดีล (ที่อาจโยกไว้แล้ว) ไม่งั้นเดือนปัจจุบัน —
-  // กดผ่านเลยจะทำให้ FC กับ AT ตรงเดือนกัน; ผู้ใช้ปรับได้ถ้าปิดย้อนหลังเดือนอื่น
-  const doWin = () => { setWinValue(deal?.projectValue ?? ""); setWinMonth(deal?.forecastMonth || thisMonth()); setWinOpen(true); };
-  const submitWin = async () => {
-    const v = Number(winValue);
-    if (!Number.isFinite(v) || v <= 0) { setError("ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0"); return; }
-    const okDone = await runAction("win", `/api/sales-planning/deals/${id}/win`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wonValue: v, wonMonth: winMonth }),
-    });
-    if (okDone) setWinOpen(false);
-  };
-
   // เฟส B: ผูกดีลเข้า "โครงการเดิม" ของลูกค้า (หลายดีลต่อโครงการ) — โหลดโครงการ
   // ของลูกค้ารายนี้มาให้เลือก แล้วต่อ task ชุดตามประเภทดีลเป็น segment ใหม่
   const [linkOpen, setLinkOpen] = useState(false);
@@ -475,7 +459,6 @@ export default function DealOverviewPage() {
   const [linkStartDate, setLinkStartDate] = useState("");
   const [linkLoading, setLinkLoading] = useState(false);
   const openLinkProject = async () => {
-    if (!deal?.customerId) return;
     setLinkOpen(true);
     setLinkLoading(true);
     setLinkProjects([]);
@@ -484,7 +467,7 @@ export default function DealOverviewPage() {
     try {
       const res = await fetch("/api/pm/projects");
       const rows = res.ok ? await res.json() : [];
-      const mine = (Array.isArray(rows) ? rows : []).filter((p) => p.customerId === deal.customerId);
+      const mine = (Array.isArray(rows) ? rows : []).filter((p) => !deal.customerId || !p.customerId || p.customerId === deal.customerId);
       setLinkProjects(mine);
       if (mine.length === 1) setLinkProjectId(mine[0].id);
     } catch {
@@ -544,6 +527,8 @@ export default function DealOverviewPage() {
       endDate: deal.endDate || "",
       depositPaid: !!deal.depositPaid,
       notes: deal.notes || "",
+      projectId: deal.projectId || "",
+      lockedProjectId: deal.projectId || "",
     });
     setDealModalOpen(true);
   };
@@ -562,6 +547,14 @@ export default function DealOverviewPage() {
         body: JSON.stringify({ ...dealForm, customerName }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
+      if (dealForm.projectId && !deal.projectId) {
+        const linkRes = await fetch(`/api/sales-planning/deals/${id}/link-project`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: dealForm.projectId, startDate: dealForm.startDate || undefined }),
+        });
+        if (!linkRes.ok) throw new Error((await linkRes.json().catch(() => ({}))).error || "บันทึกดีลแล้ว แต่เชื่อมโครงการไม่สำเร็จ");
+      }
       setDealModalOpen(false);
       await load();
     } catch (e2) {
@@ -636,18 +629,19 @@ export default function DealOverviewPage() {
 
   // ปุ่มหลักของการ์ด "ขั้นต่อไป" ตาม nextAction.kind
   const nextPrimary = () => {
-    if (!canEdit || !lc?.nextAction) return null;
-    const k = lc.nextAction.kind;
-    if (k === "win") return <button type="button" className="btn btn-success" onClick={doWin} disabled={!!actionBusy}><Trophy size={14} aria-hidden="true" /> Won</button>;
     return null;
   };
   const headerRight = (
     <>
-      {canEdit && lc?.canGo && (
-        <button type="button" className="btn btn-success" onClick={doWin} disabled={!!actionBusy}>
-          <Trophy size={15} aria-hidden="true" /> Won
+      {deal?.projectId ? (
+        <Link href={`/sa/projects/${deal.projectId}`} className="btn btn-primary">
+          <FolderKanban size={15} aria-hidden="true" /> ไปโครงการ
+        </Link>
+      ) : canEdit ? (
+        <button type="button" className="btn btn-primary" onClick={openLinkProject} disabled={!!actionBusy} title="แนะนำให้เชื่อมโครงการก่อนออกใบเสนอราคา">
+          <FolderKanban size={15} aria-hidden="true" /> เชื่อมโครงการ
         </button>
-      )}
+      ) : null}
       {canEdit && lc?.canNoGo && (
         <button type="button" className="btn ghost" onClick={() => setLostOpen(true)} disabled={!!actionBusy}>
           <Ban size={15} aria-hidden="true" /> ไม่ไปต่อ
@@ -786,7 +780,7 @@ export default function DealOverviewPage() {
               hint={!taskSummary.total ? "ยังไม่ได้สร้างไทม์ไลน์" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : !deal.projectId ? "ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)" : "-"}
             />
             {SALES_FEATURES.quotations && (
-              <Stat label="ใบเสนอที่รับแล้ว" value={acceptedQuote ? money(acceptedQuote.totalAmount) : "-"} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอที่รับ"} />
+              <Stat label="ใบเสนอราคา Won" value={acceptedQuote ? money(Number(acceptedQuote.totalAmount || 0) - Number(acceptedQuote.vatAmount || 0)) : "-"} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอราคา Won"} />
             )}
             {SALES_FEATURES.documents && (
               <Stat label="เอกสารค้าง" value={pendingDocs.length} hint={`${data.documents?.length || 0} รายการ`} />
@@ -999,7 +993,7 @@ export default function DealOverviewPage() {
                           <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
                         </button>
                         {/* เฟส B: ผูกเข้าโครงการเดิมของลูกค้า (ต่อ segment ตามประเภทดีล) */}
-                        <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy || !deal?.customerId} title={deal?.customerId ? "ผูกดีลเข้าโครงการที่มีอยู่ของลูกค้ารายนี้" : "ต้องผูกลูกค้าก่อน"}>
+                        <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy} title="ผูกดีลเข้าโครงการที่มีอยู่">
                           <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
                         </button>
                       </>
@@ -1235,38 +1229,6 @@ export default function DealOverviewPage() {
         </div>
       </Modal>
 
-      <Modal open={winOpen} onClose={() => !actionBusy && setWinOpen(false)} title="ปิดการขาย (Won)" size="sm">
-        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 13, color: "var(--text-3)" }}>
-            ยืนยันว่าได้รับมัดจำ/ยืนยันจากลูกค้าแล้ว — กรอก <strong>มูลค่าปิดจริง</strong> (ยอดขายที่จะนับเข้าเป้า)
-          </div>
-          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-            มูลค่าปิดจริง (บาท)
-            <MoneyInput value={winValue} onChange={(value) => setWinValue(value ?? "")} autoFocus />
-          </label>
-          <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-            เดือนที่ปิด (Won) <span style={{ fontSize: 11, color: "var(--text-3)" }}>— ยอด AT และ FC จะย้ายมาเดือนนี้ แล้วล็อก</span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <MonthPicker value={winMonth} onChange={setWinMonth} />
-            </div>
-          </label>
-          {deal && Number(deal.projectValue) > 0 && (
-            <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-              มูลค่าคาดการณ์เดิม: {money(deal.projectValue)}
-              {Number(winValue) > 0 && Number(winValue) !== Number(deal.projectValue) && (
-                <span style={{ color: "var(--amber)" }}> · ต่างจากคาด {money(Number(deal.projectValue) - Number(winValue))}</span>
-              )}
-            </div>
-          )}
-          <div className="form-action-bar">
-            <button type="button" className="btn ghost" onClick={() => setWinOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submitWin} disabled={!!actionBusy || !(Number(winValue) > 0)}>
-              <Trophy size={14} aria-hidden="true" /> {actionBusy === "win" ? "กำลังบันทึก..." : "ยืนยัน Won"}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
       <Modal open={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดดีลแบบไม่สำเร็จ (Lost)" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <label style={{ fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1295,21 +1257,17 @@ export default function DealOverviewPage() {
               form={dealForm}
               onPatch={(patch) => setDealForm((f) => ({ ...f, ...patch }))}
               customers={customers}
+              projects={projects}
+              showProject
               categories={categories}
               stages={PIPELINE_STAGES.filter((st) => st !== "won" || alreadyWon)}
               alreadyWon={alreadyWon}
               onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
               extra={(
                 <>
-                  {alreadyWon && (
-                    <label>
-                      มูลค่าปิดจริง (Won)
-                      <MoneyInput value={dealForm.wonValue} onChange={(value) => setDealForm({ ...dealForm, wonValue: value ?? "" })} />
-                    </label>
-                  )}
                   <label className="form-inline-check" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <input type="checkbox" checked={dealForm.depositPaid} onChange={(e) => setDealForm({ ...dealForm, depositPaid: e.target.checked })} />
-                    ได้รับมัดจำแล้ว (จำเป็นสำหรับสถานะ Won)
+                    ได้รับมัดจำแล้ว
                   </label>
                 </>
               )}
