@@ -17,6 +17,14 @@ const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, st
 async function loadQuote(supabase, id) {
   const { data, error } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
   if (error) throw error;
+  if (data?.deal?.projectId) {
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, code, name')
+      .eq('id', data.deal.projectId)
+      .maybeSingle();
+    data.deal.project = project || null;
+  }
   return data;
 }
 
