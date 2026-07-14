@@ -4,7 +4,6 @@ import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
   quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
-import { quoteApprovalRequirement } from '@/lib/quotationApproval';
 import { normalizeManualLines } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
@@ -56,7 +55,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json().catch(() => ({}));
   const now = new Date().toISOString();
-  const patch = { updatedAt: now };
+  const patch = {
+    updatedAt: now,
+    approvalStatus: 'not_required',
+    approvalReason: null,
+    approvalRequestedAt: null,
+    approvalRequestedBy: null,
+    approvalRequestedByName: null,
+    approvalFingerprint: null,
+    approvalNotes: null,
+    approvedAt: null,
+    approvedBy: null,
+    approvedByName: null,
+  };
 
   // เนื้อหาใบ
   if ('quoteDate' in body) patch.quoteDate = body.quoteDate || before.quoteDate;
@@ -103,27 +114,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!('paymentTerms' in body)) patch.paymentTerms = paymentPlanSummary(plan, patch.totalAmount);
   }
 
-  // Any commercial-content edit invalidates the approval that was bound to the
-  // previous fingerprint. This includes payment terms, not only the grand total.
-  const approvalContentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
+  // Editing document content after it was sent creates a new draft state.
+  const contentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
     || 'notes' in body || 'quoteDate' in body || 'validUntil' in body;
   const finalLines = newLines || before.lines || [];
   let finalQuote = { ...before, ...patch, lines: finalLines };
-  if (approvalContentChanged) {
-    const approval = quoteApprovalRequirement(finalQuote, before.metadata || {});
-    Object.assign(patch, {
-      // Editing document content after it was sent creates a new draft state.
-      ...(before.status === 'sent' && body.status !== 'sent' ? { status: 'draft' } : {}),
-      approvalStatus: approval.required ? 'pending' : 'not_required',
-      approvalReason: approval.reason,
-      approvalRequestedAt: approval.required ? now : null,
-      approvalRequestedBy: approval.required ? user.id || null : null,
-      approvalRequestedByName: approval.required ? user.name || null : null,
-      approvalFingerprint: null,
-      approvedAt: null,
-      approvedBy: null,
-      approvedByName: null,
-    });
+  if (contentChanged) {
+    Object.assign(patch, before.status === 'sent' && body.status !== 'sent' ? { status: 'draft' } : {});
     finalQuote = { ...before, ...patch, lines: finalLines };
   }
 
@@ -133,8 +130,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       status: before.status,
       lineCount: finalLines.length,
       totalAmount: finalQuote.totalAmount,
-      approvalStatus: patch.approvalStatus || before.approvalStatus,
-      approvalFingerprint: patch.approvalFingerprint ?? before.approvalFingerprint,
+      approvalStatus: 'not_required',
+      approvalFingerprint: null,
       currentFingerprint: quotationApprovalFingerprint(finalQuote, finalLines),
     });
     if (!readiness.ok) return badRequest(readiness.error);

@@ -4,12 +4,12 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 
 // Editor ใบเสนอราคา FM-SA-01 (/sa/quotations/[id] — เฟส D):
 // แก้รายการ+ส่วนลดรายบรรทัด · ส่วนลดท้ายใบ · VAT · เงื่อนไขชำระ · หมายเหตุ (เลือกจาก
-// template ต่อบริการ) · ส่ง/รับ/Revise/พิมพ์/ขออนุมัติ. ยอดเงินคิดจริงที่ server —
+// template ต่อบริการ) · ส่ง/รับ/Revise/พิมพ์. ยอดเงินคิดจริงที่ server —
 // หน้านี้พรีวิวด้วยสูตรเดียวกัน (quoteTotals จาก lib กลาง).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileText, GitBranch, MapPin, Pencil, Plus, Printer, Save, Send, Trash2, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileText, MapPin, Pencil, Plus, Printer, Save, Send, Trash2, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import FormActions from "@/components/ui/FormActions";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -48,6 +48,7 @@ export default function QuotationEditorPage() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [tplOpen, setTplOpen] = useState(false);
+  const [saveChoiceOpen, setSaveChoiceOpen] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
@@ -140,6 +141,23 @@ export default function QuotationEditorPage() {
     : { type: "full", paymentMethod: payment.paymentMethod.trim() || null });
   const updatePayment = (nextPayment) => { setPayment(nextPayment); setDirty(true); };
 
+  const quotationPayload = (extra = {}) => ({
+    lines: lines.map((line) => {
+      const payloadLine = { ...line };
+      delete payloadLine._lineKind;
+      return payloadLine;
+    }),
+    quoteDate: form.quoteDate,
+    validUntil: form.validUntil || null,
+    paymentTerms: payment.paymentTerms,
+    notes: form.notes,
+    discountType: form.discountType || null,
+    discountValue: form.discountValue || 0,
+    vatRate: form.vatRate,
+    paymentPlan: paymentPlanPayload(),
+    ...extra,
+  });
+
   const save = async (extra = {}) => {
     const paymentValidation = validatePaymentPlan(paymentPlanPayload());
     if (!paymentValidation.ok) {
@@ -152,22 +170,7 @@ export default function QuotationEditorPage() {
       const res = await fetch(`/api/sales-planning/quotations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lines: lines.map((line) => {
-            const payloadLine = { ...line };
-            delete payloadLine._lineKind;
-            return payloadLine;
-          }),
-          quoteDate: form.quoteDate,
-          validUntil: form.validUntil || null,
-          paymentTerms: payment.paymentTerms,
-          notes: form.notes,
-          discountType: form.discountType || null,
-          discountValue: form.discountValue || 0,
-          vatRate: form.vatRate,
-          paymentPlan: paymentPlanPayload(),
-          ...extra,
-        }),
+        body: JSON.stringify(quotationPayload(extra)),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
       await load();
@@ -221,16 +224,6 @@ export default function QuotationEditorPage() {
       },
     });
   };
-  const doRevise = async () => {
-    if (dirty && !(await save())) return;
-    const data = await act("revise", `/api/sales-planning/quotations/${id}/revise`);
-    if (data?.id) router.push(`/sa/quotations/${data.id}`);
-  };
-  const doApproval = async (action) => {
-    if (await act(action, `/api/sales-planning/quotations/${id}/approval`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
-    })) await load();
-  };
   const doDelete = () => {
     const elevatedDelete = quote.status !== "draft";
     setConfirmState({
@@ -246,12 +239,42 @@ export default function QuotationEditorPage() {
       },
     });
   };
+
+  const saveAsRevision = async () => {
+    const paymentValidation = validatePaymentPlan(paymentPlanPayload());
+    if (!paymentValidation.ok) {
+      setError(paymentValidation.error);
+      return false;
+    }
+    setBusy("revise");
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/quotations/${id}/revise`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(quotationPayload()),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "ออก Revision ไม่สำเร็จ");
+      setDirty(false);
+      setSaveChoiceOpen(false);
+      router.push(`/sa/quotations/${data.id}`);
+      return true;
+    } catch (e) {
+      setError(e.message || "ออก Revision ไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  };
   const doPrint = async () => {
     const printWindow = prepareQuotePrintWindow();
     if (!printWindow) return;
     try {
-      if (dirty && editable && !(await save())) {
+      if (dirty && editable) {
         printWindow.close();
+        setError("กรุณาเลือกบันทึกฉบับเดิมหรือออก Revision ใหม่ก่อนพิมพ์");
+        setSaveChoiceOpen(true);
         return;
       }
       const res = await fetch(`/api/sales-planning/quotations/${id}`);
@@ -281,12 +304,6 @@ export default function QuotationEditorPage() {
     cancelled: { label: "ยกเลิก", color: "var(--red)" },
     revised: { label: "มีฉบับแก้ไขใหม่", color: "var(--amber)" },
   }[quote?.status] || { label: quote?.status || "-", color: "var(--text-3)" };
-  const approvalMeta = {
-    pending: { label: `รออนุมัติ (${quote?.approvalReason || "เกินเงื่อนไข"})`, color: "var(--amber)" },
-    approved: { label: "อนุมัติแล้ว", color: "var(--green)" },
-    rejected: { label: "ไม่อนุมัติ", color: "var(--red)" },
-  }[quote?.approvalStatus];
-
   const saveTemplate = async () => {
     if (!tplForm.title.trim() || !tplForm.body.trim()) return;
     const res = await fetch("/api/sales-planning/quote-note-templates", {
@@ -325,10 +342,10 @@ export default function QuotationEditorPage() {
       back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
       headerRight={quote && (
         <div className={styles.headerActions}>
-          {editable && <SaveStatus status={error ? "error" : busy === "save" ? "saving" : dirty ? "dirty" : "saved"} />}
+          {editable && <SaveStatus status={error ? "error" : ["save", "revise"].includes(busy) ? "saving" : dirty ? "dirty" : "saved"} />}
           {canEditDocument && !editMode && <Link href={`/sa/quotations/${id}?edit=1`} className="btn btn-primary"><Pencil size={14} aria-hidden="true" /> แก้ไข</Link>}
           {editable && <button type="button" className="btn ghost" onClick={leaveEditMode} disabled={!!busy}>ยกเลิกแก้ไข</button>}
-          {editable && <button type="button" className="btn btn-primary" onClick={() => save()} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {busy === "save" ? "กำลังบันทึก…" : "บันทึก"}</button>}
+          {editable && <button type="button" className="btn btn-primary" onClick={() => setSaveChoiceOpen(true)} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {["save", "revise"].includes(busy) ? "กำลังบันทึก…" : "บันทึก"}</button>}
         </div>
       )}
     >
@@ -354,7 +371,6 @@ export default function QuotationEditorPage() {
               </div>
               <div className={styles.badgeRow}>
                 <span className={styles.stateBadge} style={{ "--state-color": statusMeta.color }}>{statusMeta.label}</span>
-                {approvalMeta && <span className={styles.stateBadge} style={{ "--state-color": approvalMeta.color }}>{approvalMeta.label}</span>}
               </div>
             </div>
             <div className={styles.quickFacts}>
@@ -520,9 +536,9 @@ export default function QuotationEditorPage() {
           {editable && (
             <FormActions
               dirty={dirty}
-              saving={busy === "save"}
+              saving={["save", "revise"].includes(busy)}
               error={!!error}
-              onSave={() => save()}
+              onSave={() => setSaveChoiceOpen(true)}
             />
           )}
           </div>
@@ -541,23 +557,9 @@ export default function QuotationEditorPage() {
                 <span className={styles.statusDot} style={{ "--state-color": statusMeta.color }} />
                 <div><small>สถานะเอกสาร</small><strong>{statusMeta.label}</strong></div>
               </div>
-              {approvalMeta && (
-                <div className={styles.workflowStatus}>
-                  <span className={styles.statusDot} style={{ "--state-color": approvalMeta.color }} />
-                  <div><small>การอนุมัติ</small><strong>{approvalMeta.label}</strong></div>
-                </div>
-              )}
-
               <div className={styles.workflowActions}>
                 {editable && quote.status === "draft" && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}
-                {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-success" onClick={doAccept} disabled={!!busy || quote.approvalStatus === "pending"} title={quote.approvalStatus === "pending" ? "รออนุมัติก่อนรับใบ" : "ลูกค้ารับใบนี้"}><CheckCircle2 size={15} aria-hidden="true" /> ลูกค้าตอบรับ</button>}
-                {quote.approvalStatus === "pending" && isReviewer && (
-                  <div className={styles.approvalActions}>
-                    <button type="button" className="btn btn-success" onClick={() => doApproval("approve")} disabled={!!busy}>อนุมัติ</button>
-                    <button type="button" className="btn" onClick={() => doApproval("reject")} disabled={!!busy}>ไม่อนุมัติ</button>
-                  </div>
-                )}
-                {EDITABLE.has(quote.status) && canEditCap && <button type="button" className="btn ghost" onClick={doRevise} disabled={!!busy}><GitBranch size={15} aria-hidden="true" /> สร้างฉบับแก้ไข</button>}
+                {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-success" onClick={doAccept} disabled={!!busy} title="ลูกค้ารับใบนี้"><CheckCircle2 size={15} aria-hidden="true" /> ลูกค้าตอบรับ</button>}
                 <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={15} aria-hidden="true" /> พิมพ์ / PDF</button>
               </div>
 
@@ -568,6 +570,23 @@ export default function QuotationEditorPage() {
           </aside>
         </div>
       )}
+
+      <Modal open={saveChoiceOpen} onClose={() => !busy && setSaveChoiceOpen(false)} title="เลือกวิธีบันทึกใบเสนอราคา" size="sm">
+        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ margin: 0, color: "var(--text-2)", lineHeight: 1.6 }}>
+            บันทึกฉบับเดิมเพื่อแก้ข้อมูลในเลขที่ปัจจุบัน หรือออก Revision ใหม่เพื่อเก็บฉบับเดิมไว้เป็นประวัติ
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            <button type="button" className="btn ghost" onClick={() => setSaveChoiceOpen(false)} disabled={!!busy}>ยกเลิก</button>
+            <button type="button" className="btn" onClick={async () => { if (await save()) setSaveChoiceOpen(false); }} disabled={!!busy}>
+              บันทึกฉบับเดิม
+            </button>
+            <button type="button" className="btn btn-primary" onClick={saveAsRevision} disabled={!!busy}>
+              ออก Revision ใหม่
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* จัดการ template หมายเหตุ (supervisor) */}
       <Modal open={tplOpen} onClose={() => setTplOpen(false)} title="Template หมายเหตุ (ต่อประเภทบริการ)" size="lg">

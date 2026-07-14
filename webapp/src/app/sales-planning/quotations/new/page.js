@@ -16,7 +16,6 @@ import DateInput from "@/components/ui/DateInput";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
-import { QUOTE_APPROVAL_AMOUNT_THRESHOLD } from "@/lib/quotationApproval";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
@@ -180,7 +179,6 @@ function NewQuotationInner() {
     discountValue,
     vatRate,
   }), [lines, discountType, discountValue, vatRate]);
-  const requiresApproval = totals.totalAmount >= QUOTE_APPROVAL_AMOUNT_THRESHOLD;
 
   const addProductLine = () => {
     setLines((current) => [...current, {
@@ -234,10 +232,6 @@ function NewQuotationInner() {
       setError("ยอดรวมต้องมากกว่า 0 ก่อนส่งลูกค้า");
       return;
     }
-    if (status === "sent" && requiresApproval) {
-      setError("ยอดนี้ต้องบันทึกร่างและรออนุมัติก่อนส่งลูกค้า");
-      return;
-    }
     setCreating(true);
     setError("");
     try {
@@ -270,7 +264,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, totals.totalAmount, requiresApproval, router]);
+  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, totals.totalAmount, router]);
 
   if (!canEdit) {
     return (
@@ -381,8 +375,7 @@ function NewQuotationInner() {
             <div className={styles.summaryLabel}>ยอดสุทธิใบเสนอราคา</div><div className={styles.totalAmount}>{fmtMoney(totals.totalAmount)}</div>
             <div className={styles.totalRows}><div><span>รวมรายการ</span><strong>{fmtMoney(totals.subtotal)}</strong></div><div><span>ส่วนลด</span><strong>{totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : "-"}</strong></div>{vatRate > 0 && <div><span>VAT {vatRate}%</span><strong>{fmtMoney(totals.vatAmount)}</strong></div>}</div>
             <div className={styles.readiness}><div className={dealId ? styles.ready : ""}><span />เลือกดีล</div><div className={lines.length ? styles.ready : ""}><span />เพิ่มรายการสินค้า/บริการ</div><div className={totals.totalAmount > 0 ? styles.ready : ""}><span />ยอดรวมมากกว่า 0</div></div>
-            {requiresApproval && <div className={styles.approvalNote}>ยอดนี้ต้องบันทึกร่างและรออนุมัติก่อนส่งลูกค้า</div>}
-            <div className={styles.workflowActions}><button type="button" className="btn" onClick={() => create("draft")} disabled={!dealId || creating}><Save size={14} /> {creating ? "กำลังบันทึก…" : "บันทึกร่าง"}</button><button type="button" className="btn btn-primary" onClick={() => create("sent")} disabled={!dealId || !lines.length || !(totals.totalAmount > 0) || requiresApproval || creating}><Save size={14} /> {creating ? "กำลังบันทึก…" : "บันทึกและส่งลูกค้า"}</button><Link href="/sa/quotations" className="btn ghost">ยกเลิก</Link></div>
+            <div className={styles.workflowActions}><button type="button" className="btn" onClick={() => create("draft")} disabled={!dealId || creating}><Save size={14} /> {creating ? "กำลังบันทึก…" : "บันทึกร่าง"}</button><button type="button" className="btn btn-primary" onClick={() => create("sent")} disabled={!dealId || !lines.length || !(totals.totalAmount > 0) || creating}><Save size={14} /> {creating ? "กำลังบันทึก…" : "บันทึกและส่งลูกค้า"}</button><Link href="/sa/quotations" className="btn ghost">ยกเลิก</Link></div>
             <p className={styles.autoNumberNote}>เลขที่ใบเสนอราคาจะสร้างอัตโนมัติเมื่อบันทึก</p>
           </section>
         </aside>

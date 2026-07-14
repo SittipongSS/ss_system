@@ -27,7 +27,6 @@ const PIPELINE_STAGES = DEAL_STAGES.filter((s) => s !== "in_project");
 
 export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
-  const canReview = useCan("salesplan:review");
   const role = useRole();
   const superuser = isSuperuser(role);
   const [reviewOnly, setReviewOnly] = useState(false); // ตัวกรอง "รอเติมข้อมูล (backfill)"
@@ -271,27 +270,6 @@ export default function SalesPlanningPipelinePage() {
       await load();
     } catch (e) {
       setError(e.message || "accept quotation ไม่สำเร็จ");
-    } finally {
-      setQuoteLoading(false);
-    }
-  };
-
-  const changeQuotationApproval = async (quote, action) => {
-    const label = action === "approve" ? "Approve" : action === "reject" ? "Reject" : "Request approval for";
-    if (!window.confirm(`${label} quotation ${quote.quoteNumber}?`)) return;
-    setQuoteLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/quotations/${quote.id}/approval`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "update quotation approval failed");
-      await loadQuotations(quoteDeal);
-      await load();
-    } catch (e) {
-      setError(e.message || "update quotation approval failed");
     } finally {
       setQuoteLoading(false);
     }
@@ -760,7 +738,6 @@ export default function SalesPlanningPipelinePage() {
                   <th>สถานะ</th>
                   <th>วันที่</th>
                   <th className="num">ยอดรวม</th>
-                  <th>การอนุมัติ</th>
                   <th>รายการ</th>
                   <th></th>
                 </tr>
@@ -772,10 +749,6 @@ export default function SalesPlanningPipelinePage() {
                     <td>{stageBadge(quote.status === "accepted" ? "won" : "quotation")}</td>
                     <td>{quote.quoteDate || "-"}</td>
                     <td className="num mono">{money(quote.totalAmount)}</td>
-                    <td>
-                      {stageBadge(quote.approvalStatus || "not_required")}
-                      {quote.approvalReason && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{quote.approvalReason}</span>}
-                    </td>
                     <td>
                       {(quote.lines || []).length ? (
                         <ul style={{ margin: 0, paddingLeft: 18 }}>
@@ -790,28 +763,12 @@ export default function SalesPlanningPipelinePage() {
                     <td className="num">
                       {quote.status !== "accepted" && (
                         <div className="flex items-center gap-2 justify-end">
-                          {quoteDeal?.canEdit && (quote.approvalStatus || "not_required") === "not_required" && (
-                            <button type="button" className="btn ghost" onClick={() => changeQuotationApproval(quote, "request")} disabled={quoteLoading}>
-                              ขออนุมัติ
-                            </button>
-                          )}
-                          {canReview && quote.approvalStatus === "pending" && (
-                            <>
-                              <button type="button" className="btn ghost" onClick={() => changeQuotationApproval(quote, "reject")} disabled={quoteLoading}>
-                                ตีกลับ
-                              </button>
-                              <button type="button" className="btn ghost" onClick={() => changeQuotationApproval(quote, "approve")} disabled={quoteLoading}>
-                                อนุมัติ
-                              </button>
-                            </>
-                          )}
                           {quoteDeal?.canEdit && (
                             <button
                               type="button"
                               className="btn"
                               onClick={() => acceptQuotation(quote)}
-                              disabled={quoteLoading || ["pending", "rejected"].includes(quote.approvalStatus || "not_required")}
-                              title={["pending", "rejected"].includes(quote.approvalStatus || "not_required") ? "ต้องอนุมัติก่อนจึงรับใบเสนอได้" : undefined}
+                              disabled={quoteLoading}
                             >
                               รับใบเสนอ
                             </button>
@@ -823,7 +780,7 @@ export default function SalesPlanningPipelinePage() {
                 ))}
                 {!quotations.length && (
                   <tr>
-                    <td colSpan={7} style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>
+                    <td colSpan={6} style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>
                       ยังไม่มีใบเสนอราคาสำหรับดีลนี้
                     </td>
                   </tr>

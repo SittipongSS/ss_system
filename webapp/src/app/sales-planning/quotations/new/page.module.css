@@ -130,7 +130,6 @@
 .readiness span { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); }
 .readiness .ready { color: var(--text-2); }
 .readiness .ready span { background: var(--green); }
-.approvalNote { margin-bottom: 14px; padding: 9px 10px; border-radius: 8px; background: color-mix(in srgb, var(--amber) 10%, transparent); color: var(--amber); font-size: 11.5px; line-height: 1.45; }
 .workflowActions { display: flex; flex-direction: column; gap: 8px; }
 .workflowActions > * { width: 100%; justify-content: center; }
 .autoNumberNote { margin: 14px 0 0; color: var(--text-3); font-size: 10.5px; line-height: 1.45; text-align: center; }

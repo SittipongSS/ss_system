@@ -126,7 +126,6 @@ export default function QuotationsPage() {
                   <th>วันที่</th>
                   <th className="num">ยอดรวม</th>
                   <th>สถานะ</th>
-                  <th>อนุมัติ</th>
                   <th></th>
                 </tr>
               </thead>
@@ -147,12 +146,6 @@ export default function QuotationsPage() {
                     <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.quoteDate)}</td>
                     <td className="num mono">{fmtMoney(r.totalAmount)}</td>
                     <td>{statusBadge(r.status)}</td>
-                    <td>
-                      {r.approvalStatus === "not_required" ? <span style={{ color: "var(--text-3)", fontSize: 12 }}>-</span>
-                        : <span className="ui-badge" style={{ color: r.approvalStatus === "approved" ? "var(--green)" : r.approvalStatus === "rejected" ? "var(--red)" : "var(--amber)" }}>
-                          {{ pending: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ไม่อนุมัติ" }[r.approvalStatus] || r.approvalStatus}
-                        </span>}
-                    </td>
                     <td className="num">
                       <div style={{ display: "inline-flex", gap: 2 }}>
                         <button type="button" className="btn-icon" title="พิมพ์" aria-label={`พิมพ์ ${r.quoteNumber}`}
@@ -187,7 +180,7 @@ export default function QuotationsPage() {
                   </DetailRow>
                 ))}
                 {!filtered.length && !loading && (
-                  <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>
+                  <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>
                 )}
               </tbody>
             </table>

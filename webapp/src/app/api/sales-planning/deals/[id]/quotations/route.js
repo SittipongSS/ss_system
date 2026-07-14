@@ -11,7 +11,6 @@ import {
   quoteTotals,
   toMoney,
 } from '@/lib/salesPlanning';
-import { quoteApprovalRequirement } from '@/lib/quotationApproval';
 import { normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import {
@@ -111,14 +110,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const totals = quoteTotals(lines, { discountType, discountValue, vatRate });
   // งวดชำระ: เติมยอดจาก % ของยอดรวม + สรุปเป็นข้อความ paymentTerms (แก้ทับได้)
   const paymentPlan = normalizePaymentPlan(body.paymentPlan, totals.totalAmount);
-  const approval = quoteApprovalRequirement(totals, body.metadata || {});
   if (body.status === 'sent') {
     const readiness = validateDocumentReadiness({
       action: 'send',
       status: 'draft',
       lineCount: lines.length,
       totalAmount: totals.totalAmount,
-      approvalStatus: approval.required ? 'pending' : 'not_required',
+      approvalStatus: 'not_required',
     });
     if (!readiness.ok) return badRequest(readiness.error);
   }
@@ -151,16 +149,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       vatRate,
       paymentPlan,
       paymentTerms: (body.paymentTerms || '').trim() || paymentPlanSummary(paymentPlan, totals.totalAmount),
-      approvalStatus: approval.required ? 'pending' : 'not_required',
-      approvalReason: approval.reason,
-      approvalRequestedAt: approval.required ? new Date().toISOString() : null,
-      approvalRequestedBy: approval.required ? user.id || null : null,
-      approvalRequestedByName: approval.required ? user.name || null : null,
+      approvalStatus: 'not_required',
+      approvalReason: null,
+      approvalRequestedAt: null,
+      approvalRequestedBy: null,
+      approvalRequestedByName: null,
       notes: body.notes || null,
-      metadata: {
-        ...(body.metadata || {}),
-        approvalThreshold: approval.threshold,
-      },
+      metadata: body.metadata || {},
       createdBy: user.id || null,
       createdByName: user.name || null,
     })
