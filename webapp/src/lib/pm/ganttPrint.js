@@ -199,7 +199,9 @@ export function buildGanttPrintHTML(project) {
      (เดิม avoid ทั้ง tbody ทำให้ทั้งเฟสกระโดดข้ามหน้าเป็นก้อน เหลือช่องว่างท้ายหน้า
      + หัวตารางไปโผล่หน้าใหม่ = "header ตกลงข้างล่าง"). thead ซ้ำหัวตารางทุกหน้าอยู่แล้ว. */
   tbody tr { page-break-inside: avoid; break-inside: avoid; }
-  tbody.pg { break-inside: auto; page-break-inside: auto; }
+  /* ไม่ให้เฟสโดนตัดกลางหน้า: ทั้งเฟสอยู่ครบในหน้าเดียว ถ้าไม่พอท้ายหน้าให้ยกทั้ง
+     เฟสไปหน้าใหม่ (มติผู้ใช้). thead ซ้ำหัวคอลัมน์ทุกหน้าอยู่แล้ว. */
+  tbody.pg { break-inside: avoid; page-break-inside: avoid; }
   .phase-row { page-break-after: avoid; break-after: avoid; } /* ป้ายเฟสไม่ค้างท้ายหน้าเดียว */
   .phase-row td { background: #f0ebe0; }
   .phase-label { text-align: left; font-weight: 700; font-size: 10px; padding: 2px 8px; color: #000; }
