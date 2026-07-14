@@ -7,6 +7,7 @@ import {
 } from '@/lib/salesPlanning';
 import { quoteApprovalRequirement } from '@/lib/quotationApproval';
 import { normalizeManualLines } from '@/lib/sales/quoteLines';
+import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,6 +89,21 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       patch.approvalStatus = 'not_required';
       patch.approvalReason = null;
     }
+  }
+
+  // งวดชำระ — recompute ยอดงวดจากยอดรวมล่าสุด (patch.totalAmount ถ้ายอดเปลี่ยน, ไม่งั้น before)
+  if ('paymentPlan' in body) {
+    const pv = validatePaymentPlan(body.paymentPlan);
+    if (!pv.ok) return badRequest(pv.error);
+    const grand = 'totalAmount' in patch ? patch.totalAmount : before.totalAmount;
+    const plan = normalizePaymentPlan(body.paymentPlan, grand);
+    patch.paymentPlan = plan;
+    if (!('paymentTerms' in body)) patch.paymentTerms = paymentPlanSummary(plan, grand);
+  } else if ('totalAmount' in patch && before.paymentPlan?.type === 'installment') {
+    // ยอดเปลี่ยนแต่ไม่ได้ส่งแผนมา → คิดยอดงวดใหม่ตามสัดส่วน % เดิม
+    const plan = normalizePaymentPlan(before.paymentPlan, patch.totalAmount);
+    patch.paymentPlan = plan;
+    if (!('paymentTerms' in body)) patch.paymentTerms = paymentPlanSummary(plan, patch.totalAmount);
   }
 
   const { data, error } = await supabase.from('quotations').update(patch).eq('id', id).select().single();

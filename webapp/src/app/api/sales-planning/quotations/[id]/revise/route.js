@@ -38,6 +38,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const now = new Date().toISOString();
 
   const newId = genId('QT');
+  // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน
+  // จะได้ค่าใหม่ ใบเก่าคงเดิม; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม.
+  const { data: cust } = quote.customerId
+    ? await supabase.from('customers').select('address, shippingAddress, branchCode').eq('id', quote.customerId).maybeSingle()
+    : { data: null };
   const { data: revised, error: insertErr } = await supabase
     .from('quotations')
     .insert({
@@ -52,6 +57,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       validUntil: quote.validUntil,
       customerId: quote.customerId,
       customerName: quote.customerName,
+      // snapshot: ที่อยู่ refresh สดจาก master; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม
+      billingAddress: cust?.address ?? quote.billingAddress ?? null,
+      shippingAddress: cust?.shippingAddress || cust?.address || quote.shippingAddress || null,
+      branchCode: cust?.branchCode ?? quote.branchCode ?? null,
+      contactName: quote.contactName,
+      contactPhone: quote.contactPhone,
+      contactEmail: quote.contactEmail,
+      paymentPlan: quote.paymentPlan,
       subtotal: quote.subtotal,
       vatAmount: quote.vatAmount,
       totalAmount: quote.totalAmount,
