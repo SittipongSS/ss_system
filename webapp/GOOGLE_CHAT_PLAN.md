@@ -61,7 +61,7 @@ chatCard({ title, subtitle, rows, linkPath, linkLabel })
 |-----------|-------|------------------|
 | ลูกค้า/สินค้าใหม่รออนุมัติ | อนุมัติ | `api/customers/route.js`, `api/products/route.js` (POST → pending) |
 | ลูกค้า/สินค้าถูกอนุมัติ/ตีกลับ | งานขาย | `api/customers/[id]/route.js`, `api/products/[id]/route.js` (PATCH approvalStatus) |
-| ใบเสนอราคารออนุมัติ / อนุมัติ / ตีกลับ | อนุมัติ + งานขาย | `api/sales-planning/quotations/[id]/approval/route.js` |
+| ~~ใบเสนอราคารออนุมัติ / อนุมัติ / ตีกลับ~~ | — | ผู้ใช้ตัดออก (2026-07-15): flow จริงไม่มีขั้นขออนุมัติ QT |
 | ดีลชนะ (Won) | งานขาย | `api/sales-planning/deals/[id]/win/route.js` (จุดเดียว ใช้ `buildWinPatch`) |
 | ~~Forecast review อนุมัติ/ตีกลับ~~ | — | ผู้ใช้ตัดออก (2026-07-15) ดูในระบบพอ |
 | เอกสาร workflow เปลี่ยนสถานะ | อนุมัติ | จุดกลางของ mig 0098 (`document_workflow_core`) — ผูกทีเดียวได้ทุกเอกสาร |

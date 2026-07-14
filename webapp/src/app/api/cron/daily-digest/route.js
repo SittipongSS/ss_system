@@ -2,7 +2,6 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { chatCard, sendChatNow } from '@/lib/chat';
-import { fmtMoney } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -24,16 +23,14 @@ const fmtShortDate = (iso) => {
 };
 
 async function approvalsDigest(supabase) {
-  const [customers, products, quotes] = await Promise.all([
+  // เฉพาะ master data (ลูกค้า/สินค้า) — ใบเสนอราคาไม่นับ เพราะ flow จริงไม่มีขั้นขออนุมัติ
+  const [customers, products] = await Promise.all([
     supabase.from('customers').select('name').eq('approvalStatus', 'pending').limit(50),
     supabase.from('products').select('fgCode, productDescription, productDescriptionEn').eq('approvalStatus', 'pending').limit(50),
-    supabase.from('quotations').select('quoteNumber, customerName, totalAmount').eq('approvalStatus', 'pending')
-      .not('status', 'in', '(cancelled,rejected)').limit(50),
   ]);
   const c = customers.data || [];
   const p = products.data || [];
-  const q = quotes.data || [];
-  const total = c.length + p.length + q.length;
+  const total = c.length + p.length;
   if (!total) return null;
 
   const sample = (arr, render) => arr.slice(0, 3).map(render).join(', ') + (arr.length > 3 ? ` และอีก ${arr.length - 3}` : '');
@@ -43,7 +40,6 @@ async function approvalsDigest(supabase) {
     rows: [
       c.length ? { label: `ลูกค้ารออนุมัติ (${c.length})`, value: sample(c, (x) => x.name) } : null,
       p.length ? { label: `สินค้ารออนุมัติ (${p.length})`, value: sample(p, (x) => x.productDescriptionEn || x.productDescription || x.fgCode) } : null,
-      q.length ? { label: `ใบเสนอราคารออนุมัติ (${q.length})`, value: sample(q, (x) => `${x.quoteNumber} (${fmtMoney(x.totalAmount)})`) } : null,
     ].filter(Boolean),
     linkPath: '/home',
     linkLabel: 'เข้าระบบ',
