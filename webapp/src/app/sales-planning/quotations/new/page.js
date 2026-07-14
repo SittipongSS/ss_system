@@ -62,8 +62,10 @@ function NewQuotationInner() {
   }, []);
 
   // ดีลที่ออกใบได้: ผูกโครงการ + มีลูกค้า + สถานะยังเปิด
+  // ต้องเป็นดีลที่ "แก้ไขได้" (canEdit จาก API — edit-scope) ไม่ใช่แค่ view-scope;
+  // ไม่งั้นเลือกดีลทีมอื่นแล้ว POST คืน forbidden (server เช็ค inSalesEditScope).
   const eligible = useMemo(
-    () => deals.filter((d) => d.projectId && d.customerId && !EXCLUDE_STAGES.includes(d.stage)),
+    () => deals.filter((d) => d.projectId && d.customerId && d.canEdit && !EXCLUDE_STAGES.includes(d.stage)),
     [deals],
   );
 
@@ -142,7 +144,12 @@ function NewQuotationInner() {
         body: JSON.stringify({ seedFromProject: seedFG, contactIndex, status }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "สร้างใบเสนอราคาไม่สำเร็จ");
+      if (!res.ok) {
+        const msg = data.error === "forbidden"
+          ? "ดีลนี้ไม่อยู่ในสิทธิ์แก้ไขของคุณ (เจ้าของ/ทีมอื่น) — ออกใบได้เฉพาะดีลที่คุณดูแล"
+          : (data.error || "สร้างใบเสนอราคาไม่สำเร็จ");
+        throw new Error(msg);
+      }
       router.push(`/sa/quotations/${data.id}`);
     } catch (e) {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
