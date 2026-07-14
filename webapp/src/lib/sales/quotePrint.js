@@ -47,6 +47,13 @@ export function openQuotePrintWindow(quote) {
       </tr>`)
     .join('');
 
+  const pp = quote.paymentPlan;
+  const installmentTable = pp && pp.type === 'installment' && Array.isArray(pp.installments) && pp.installments.length
+    ? `<table class="pay"><thead><tr><th style="width:36px">งวด</th><th>รายละเอียด</th><th class="n" style="width:56px">%</th><th class="n" style="width:100px">จำนวนเงิน</th></tr></thead><tbody>${
+        pp.installments.map((r, i) => `<tr><td class="c">${i + 1}</td><td>${esc(r.label || `งวดที่ ${i + 1}`)}${r.note ? ` <span style="color:#777">(${esc(r.note)})</span>` : ''}</td><td class="n">${Number(r.percent || 0)}%</td><td class="n">${money(r.amount)}</td></tr>`).join('')
+      }</tbody></table>`
+    : '';
+
   const totals = `
     <tr><td>รวมเป็นเงิน</td><td class="n">${money(quote.subtotal)}</td></tr>
     ${Number(quote.discountAmount) > 0 ? `<tr><td>ส่วนลด${quote.discountType === 'percent' ? ` ${Number(quote.discountValue)}%` : ''}</td><td class="n">-${money(quote.discountAmount)}</td></tr>` : ''}
@@ -90,18 +97,25 @@ export function openQuotePrintWindow(quote) {
     .sign { text-align: center; width: 200px; }
     .sign .line { border-bottom: 1px dotted #888; height: 36px; margin-bottom: 6px; }
     .sign .who { font-size: 12px; color: #444; }
-    @page { size: A4 portrait; margin: 31mm 10mm 10mm; }
+    @page { size: A4 portrait; margin: 10mm 10mm 10mm; }
+    /* NB: อย่าใช้ position:fixed ทำ running header — Chromium (print) รองรับไม่ได้
+       มันดันหัวเอกสารไปอยู่ล่างสุดหน้าแรก. ให้หัวอยู่ in-flow บนสุดตามปกติ. */
     @media print {
       body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .doc-head { position: fixed; top: -29mm; left: 0; right: 0; height: 25mm; margin: 0; background: #fff; z-index: 20; }
     }
+    table.pay { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    table.pay th { background: #eef1f6; color: #21385e; padding: 4px 8px; font-size: 11px; border: 1px solid #ccc; }
+    table.pay td { border: 1px solid #ccc; padding: 4px 8px; font-size: 11px; }
   </style></head><body>
   ${printHeaderHtml({ form: DOCUMENT_FORMS.quotation, docNumber: quote.quoteNumber, docDate: fmtDate(quote.quoteDate) })}
   <div class="cust">
     <div class="box">
       <div class="lbl">ลูกค้า / CUSTOMER</div>
-      <strong>${esc(quote.customerName || '-')}</strong>
-      ${quote.deal?.title ? `<div style="font-size:12px;color:#555">งาน: ${esc(quote.deal.title)}</div>` : ''}
+      <strong>${esc(quote.customerName || '-')}</strong>${quote.branchCode ? ` <span style="font-size:11px;color:#666">(สาขา ${esc(quote.branchCode)})</span>` : ''}
+      ${quote.billingAddress ? `<div style="font-size:11px;color:#555;margin-top:2px">${esc(quote.billingAddress)}</div>` : ''}
+      ${quote.contactName ? `<div style="font-size:11px;color:#555;margin-top:2px">ผู้ติดต่อ: ${esc(quote.contactName)}${quote.contactPhone ? ` · ${esc(quote.contactPhone)}` : ''}</div>` : ''}
+      ${quote.shippingAddress && quote.shippingAddress !== quote.billingAddress ? `<div style="font-size:11px;color:#555;margin-top:2px">จัดส่ง: ${esc(quote.shippingAddress)}</div>` : ''}
+      ${quote.deal?.title ? `<div style="font-size:12px;color:#555;margin-top:2px">งาน: ${esc(quote.deal.title)}</div>` : ''}
     </div>
     <div class="box" style="max-width:240px">
       <div class="lbl">ยืนราคาถึง / VALID UNTIL</div>
@@ -119,7 +133,7 @@ export function openQuotePrintWindow(quote) {
   <div class="bottom">
     <div style="flex:1">
       <div class="notes"><div class="lbl">หมายเหตุ / REMARKS</div>${esc(quote.notes || '-')}</div>
-      <div class="terms"><div class="lbl">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>${esc(quote.paymentTerms || '-')}</div>
+      <div class="terms"><div class="lbl">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>${esc(quote.paymentTerms || '-')}${installmentTable}</div>
     </div>
     <table class="totals"><tbody>${totals}</tbody></table>
   </div>
