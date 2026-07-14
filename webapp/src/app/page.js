@@ -83,7 +83,6 @@ export default function LoginPage() {
             style={{ width: "56px", height: "56px", margin: "0 auto 16px", borderRadius: "var(--radius-lg)", objectFit: "contain", display: "block" }}
           />
           <h1 style={{ fontSize: "22px", fontWeight: 600, letterSpacing: "-0.01em" }}>Scent &amp; Sense</h1>
-          <p style={{ color: "var(--text-3)", fontSize: "13px", marginTop: "4px" }}>Excise Tax Manager</p>
         </div>
 
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
