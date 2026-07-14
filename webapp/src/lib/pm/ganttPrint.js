@@ -6,6 +6,7 @@
 import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from './weekGrid';
 import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
 import { brandLabel } from '@/lib/master/brands';
+import { entityCodeDisplay } from '@/lib/entityCode';
 import {
   DOCUMENT_FORMS,
   SYSTEM_DOCUMENT_LOGO_URL,
@@ -123,13 +124,17 @@ export function buildGanttPrintHTML(project) {
   const signDepts = ['PC', 'PD', 'RD'];
   // ยังไม่ผูก FG → โชว์ชื่อหมวด/หมวดรองแทนไปก่อน (categoryFallback resolve ชื่อหมวดหลักจากโค้ดมาแล้วฝั่ง page)
   const categoryFallback = project.categoryFallback || project.productSubCategory || '';
+  // รหัสเต็มบนเอกสาร = ฐาน + '-' + revision (mig 0096). ดีลส่ง rev=null → -0.
+  const displayCode = project.code
+    ? entityCodeDisplay(project.code, project.rev)
+    : (project.docNumber || '-');
 
   return `<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Project Timeline - ${esc(project.docNumber || project.code || '')}</title>
+<title>Project Timeline - ${esc(displayCode)}</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -265,7 +270,7 @@ export function buildGanttPrintHTML(project) {
 </head>
 <body>
   <div class="toolbar no-print">
-    <h1>เอกสาร Project Timeline — ${esc(project.code || '')}</h1>
+    <h1>เอกสาร Project Timeline — ${esc(displayCode)}</h1>
     <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
   </div>
 
@@ -285,7 +290,7 @@ export function buildGanttPrintHTML(project) {
       <div class="doc-title">
         <div class="formno">${DOCUMENT_FORMS.projectTimeline.code}</div>
         <div class="big">${DOCUMENT_FORMS.projectTimeline.title}</div>
-        <div class="sub">${esc(project.docNumber || project.code || '-')}</div>
+        <div class="sub">${esc(displayCode)}</div>
       </div>
     </div>
 

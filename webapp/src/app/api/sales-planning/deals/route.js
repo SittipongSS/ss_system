@@ -1,4 +1,5 @@
 import { genId } from '@/lib/id';
+import { generateEntityCode } from '@/lib/entityCode';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
@@ -83,8 +84,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (!body.depositPaid) return badRequest('Won ต้องยืนยันว่าได้รับมัดจำแล้ว');
     if (bodyWonValue == null || bodyWonValue <= 0) return badRequest('ต้องระบุมูลค่าปิดจริง (Won) มากกว่า 0');
   }
+  // รหัสดีลฐาน DL-YYMMXXXX (atomic ต่อเดือน — mig 0096). แสดง DL-YYMMXXXX-0 ที่ UI/เอกสาร.
+  const dealCode = await generateEntityCode(supabase, 'DL');
   const row = {
     id: genId('DEAL'),
+    code: dealCode,
     customerId: body.customerId || null,
     customerName,
     title: body.title.trim(),

@@ -8,7 +8,7 @@ import {
 } from './documentBrand.js';
 
 test('uses the supplied logo as the system document logo', () => {
-  assert.equal(SYSTEM_DOCUMENT_LOGO_URL, '/crm-document-logo.jpg');
+  assert.equal(SYSTEM_DOCUMENT_LOGO_URL, '/scent-sense-logo.png');
 });
 
 test('quotation and sales order headers match the approved form metadata', () => {
