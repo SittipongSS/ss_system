@@ -1028,14 +1028,13 @@ export default function DealOverviewPage() {
                 <div className="premium-glass-table table-responsive">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr><th>เลขที่</th><th>สถานะ</th><th>อนุมัติ</th><th className="num">ยอดรวม</th></tr>
+                      <tr><th>เลขที่</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr>
                     </thead>
                     <tbody>
                       {data.quotations.map((quote) => (
                         <tr key={quote.id} className="premium-row">
                           <td className="mono"><Link href={`/sa/quotations/${quote.id}`} className="linklike">{quote.quoteNumber}</Link></td>
                           <td>{stageBadge(quote.status)}</td>
-                          <td>{stageBadge(quote.approvalStatus || "not_required")}</td>
                           <td className="num mono">{money(quote.totalAmount)}</td>
                         </tr>
                       ))}

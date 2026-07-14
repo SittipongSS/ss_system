@@ -2,7 +2,6 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
-import { quoteCanBeAccepted } from '@/lib/quotationApproval';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 
@@ -22,7 +21,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!quote) return notFound('quotation not found');
   if (quote.status === 'accepted') return badRequest('ใบเสนอราคานี้ถูกรับแล้ว');
   if (['cancelled', 'rejected'].includes(quote.status)) return badRequest('quotation cannot be accepted');
-  if (!quoteCanBeAccepted(quote)) return badRequest('quotation approval is required before accept');
   // ยอดต้อง > 0 ไม่งั้นการรับจะไปล้าง projectValue ของดีลเป็น 0 (N3)
   if (!(Number(quote.totalAmount) > 0)) return badRequest('ใบเสนอราคายอดรวมต้องมากกว่า 0');
 
@@ -38,8 +36,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     status: quote.status,
     lineCount: quote.lines?.length || 0,
     totalAmount: quote.totalAmount,
-    approvalStatus: quote.approvalStatus,
-    approvalFingerprint: quote.approvalFingerprint,
+    approvalStatus: 'not_required',
+    approvalFingerprint: null,
     currentFingerprint,
   });
   if (!readiness.ok) return badRequest(readiness.error);
