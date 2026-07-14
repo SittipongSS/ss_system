@@ -1,5 +1,5 @@
 // Single source of truth for documents issued by the system.
-export const SYSTEM_DOCUMENT_LOGO_URL = '/crm-document-logo.jpg';
+export const SYSTEM_DOCUMENT_LOGO_URL = '/scent-sense-logo.png';
 
 export const DOCUMENT_FORMS = Object.freeze({
   quotation: Object.freeze({
