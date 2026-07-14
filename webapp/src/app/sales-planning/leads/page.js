@@ -270,7 +270,6 @@ export default function LeadsPage() {
       const created = [];
       for (const d of dealsToCreate) {
         if (!d.title) throw new Error("กรุณาระบุชื่อดีลให้ครบ");
-        if (d.dealType !== "SCENT" && !d.categoryCode) throw new Error(`ดีล ${d.dealType} ต้องเลือกหมวดสินค้า`);
         const res = await fetch("/api/sales-planning/deals", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
