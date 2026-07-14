@@ -56,6 +56,7 @@ export default function AttachmentsPanel({
   docTypes, // override การ์ดที่แสดง (เช่น เอกสารลูกค้าตามประเภท) — default = ตาม entityType
   onItemsChange, // (items) => void — แจ้งรายการเอกสารปัจจุบัน (ใช้บังคับแนบก่อนยื่น)
   cardColumns = 2, // การ์ดเอกสารจำเป็น: จำนวนคอลัมน์สูงสุด (1 = แถวละใบ เห็นชื่อเต็ม)
+  compactUploadButton = false, // ใช้ไอคอนคลิปขนาดเล็กแทนปุ่มเพิ่มไฟล์มาตรฐาน
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -447,13 +448,17 @@ export default function AttachmentsPanel({
                           className="btn-icon"
                           aria-label={has ? `เพิ่มไฟล์ ${t.label}` : `แนบไฟล์ ${t.label}`}
                           title={busy ? "กำลังอัปโหลด..." : has ? "เพิ่มไฟล์" : "แนบไฟล์"}
-                          style={busy ? { opacity: 0.5 } : undefined}
+                          style={compactUploadButton
+                            ? { width: 22, height: 22, opacity: busy ? 0.5 : undefined }
+                            : busy ? { opacity: 0.5 } : undefined}
                         >
                           {busy ? (
                             <span
                               aria-hidden
                               style={{ width: 13, height: 13, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }}
                             />
+                          ) : compactUploadButton ? (
+                            <Paperclip size={13} />
                           ) : (
                             <Plus size={15} />
                           )}

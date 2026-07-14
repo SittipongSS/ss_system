@@ -832,6 +832,7 @@ export default function TasksPage() {
                 title="ไฟล์แนบงาน"
                 note="ไฟล์จัดเก็บบน Google Drive และเปิดผ่านสิทธิ์ของงานนี้"
                 cardColumns={1}
+                compactUploadButton
               />
             )}
           </div>
