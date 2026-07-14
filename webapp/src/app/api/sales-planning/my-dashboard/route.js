@@ -1,6 +1,7 @@
 import { withUser, ok, fail, unauthorized } from '@/lib/http';
 import { monthKey, forecastAmount } from '@/lib/salesPlanning';
 import { summarizeOpenTasks } from '@/lib/pm/taskSummary';
+import { taskCreditId } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,9 +28,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .eq('assigneeId', user.id)
       .in('status', ['new', 'screened', 'assigned', 'contacted', 'meeting'])
       .order('createdAt', { ascending: false }),
-    supabase.from('personal_tasks').select('id, status, dueDate, urgent').eq('ownerId', user.id),
-    supabase.from('personal_tasks').select('id, status, dueDate, urgent').eq('assigneeId', user.id),
-    supabase.from('personal_tasks').select('id, status, dueDate, urgent').eq('proxyBy', user.id),
+    supabase.from('personal_tasks').select('id, status, dueDate, urgent, ownerId, assigneeId, proxyBy').eq('ownerId', user.id),
+    supabase.from('personal_tasks').select('id, status, dueDate, urgent, ownerId, assigneeId, proxyBy').eq('assigneeId', user.id),
+    supabase.from('personal_tasks').select('id, status, dueDate, urgent, ownerId, assigneeId, proxyBy').eq('proxyBy', user.id),
   ]);
 
   const target = targetRes.data?.targetAmount || 0;
@@ -40,7 +41,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     ...(tasksByOwner.data || []),
     ...(tasksByAssignee.data || []),
     ...(tasksByProxy.data || []),
-  ].filter((task) => (seenTaskIds.has(task.id) ? false : seenTaskIds.add(task.id)));
+  ]
+    .filter((task) => taskCreditId(task) === user.id)
+    .filter((task) => (seenTaskIds.has(task.id) ? false : seenTaskIds.add(task.id)));
   const todayBangkok = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());

@@ -492,10 +492,21 @@ export function taskCreditId(task) {
   return task?.proxyBy || task?.assigneeId || task?.ownerId || null;
 }
 
+// Completed work has already earned KPI credit, so its responsible person must
+// stay frozen. Saving an unchanged assignee is still allowed (for editing other
+// fields in the same form); changing responsibility requires reopening first.
+export function canChangeTaskAssignee(task, nextAssigneeId) {
+  if (!task) return false;
+  const current = task.assigneeId || null;
+  const next = nextAssigneeId || null;
+  return current === next || task.status !== 'Completed';
+}
+
 // May `user` TAKE this task? A teammate (shares team with the responsible person,
 // or a superuser) who isn't already responsible, when no legacy proxy holds it.
 export function canPullTask(user, task, respTeam) {
   if (!user?.id || !task) return false;
+  if (task.status === 'Completed') return false;
   const respId = task.assigneeId || task.ownerId;
   if (respId === user.id) return false;                        // already yours
   if (task.proxyBy && task.proxyBy !== user.id) return false;  // held by someone else

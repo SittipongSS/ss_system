@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS } from './permissions';
 
 test('canAssignTask: teammates assign to each other; sup/admin to anyone', () => {
   const ae = { id: 'u1', role: 'ae', team: 'KA' };
@@ -44,6 +44,14 @@ test('taskCreditId: proxy worker → assignee → owner', () => {
   assert.equal(taskCreditId({}), null);
 });
 
+test('completed task freezes its responsible person and KPI credit', () => {
+  const completed = { status: 'Completed', ownerId: 'o', assigneeId: 'a' };
+  assert.equal(canChangeTaskAssignee(completed, 'a'), true);
+  assert.equal(canChangeTaskAssignee(completed, 'b'), false);
+  assert.equal(canChangeTaskAssignee(completed, null), false);
+  assert.equal(canChangeTaskAssignee({ ...completed, status: 'In Progress' }, 'b'), true);
+});
+
 test('canPullTask: a teammate may pull a task nobody else holds', () => {
   const me = { id: 'u2', role: 'ae', team: 'KA' };
   const task = { ownerId: 'u1', assigneeId: 'u1', proxyBy: null };
@@ -52,6 +60,7 @@ test('canPullTask: a teammate may pull a task nobody else holds', () => {
   assert.equal(canPullTask(me, { ...task, ownerId: 'u2', assigneeId: 'u2' }, 'KA'), false); // already mine
   assert.equal(canPullTask(me, { ...task, proxyBy: 'u9' }, 'KA'), false);  // held by someone else
   assert.equal(canPullTask(me, { ...task, proxyBy: 'u2' }, 'KA'), true);   // already mine → idempotent
+  assert.equal(canPullTask(me, { ...task, status: 'Completed' }, 'KA'), false); // KPI history is frozen
   // superuser may pull across teams
   assert.equal(canPullTask({ id: 's', role: 'admin', team: null }, task, 'ODM'), true);
   // read-only / non-sales roles cannot pull even in the same team
