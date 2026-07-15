@@ -226,7 +226,9 @@ export function buildQuotePrintHTML(quote) {
 
   /* ขอบซ้าย 18mm เว้นไว้เข้าเล่ม (มติผู้ใช้ 2026-07-15) — เนื้อหากว้างเต็มพื้นที่พิมพ์ที่เหลือ */
   @page { size: A4 portrait; margin: 9mm 8mm 12mm 18mm; }
-  @media (max-width: 820px) {
+  /* จอแคบเท่านั้น (scope "screen" สำคัญ — ตอนพิมพ์ viewport กว้าง ~184mm ≈ 700px
+     ถ้าไม่ scope กฎชุดนี้จะไปทับ layout หน้าพิมพ์: header เรียงตั้ง + ลงชื่อ 1 คอลัมน์) */
+  @media screen and (max-width: 820px) {
     .toolbar { width: 100%; }
     .sheet { width: 100%; min-height: auto; margin: 12px 0; padding: 18px 14px; box-shadow: none; }
     .doc-top { flex-direction: column; }
