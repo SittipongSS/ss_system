@@ -5,6 +5,7 @@ import { recordAudit } from '@/lib/audit';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleIdentity } from '@/lib/pm/personalTaskAccess';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -156,8 +157,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     let nextProjectId = 'projectId' in updates ? updates.projectId : task.projectId;
     const nextDealId = 'dealId' in updates ? updates.dealId : task.dealId;
     if (nextDealId) {
-      const { data: deal } = await supabase.from('sales_deals').select('id, projectId').eq('id', nextDealId).maybeSingle();
+      const { data: deal } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', nextDealId).maybeSingle();
       if (!deal) return badRequest('ไม่พบดีล');
+      if (nextDealId !== task.dealId && !canLinkTaskToDeal(user, deal)) return forbidden('ผูกงานได้เฉพาะดีลของทีมตัวเอง');
       if (deal.projectId) {
         if (nextProjectId && nextProjectId !== deal.projectId) return badRequest('ดีลไม่ได้อยู่ในโครงการที่ระบุ');
         nextProjectId = deal.projectId;
