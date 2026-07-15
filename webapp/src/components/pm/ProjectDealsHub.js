@@ -142,8 +142,10 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
 export function ProjectQuotationsCard({ project: p }) {
   const dealById = useMemo(() => new Map((p.deals || []).map((deal) => [deal.id, deal])), [p.deals]);
   const quotes = p.quotations || [];
+  const salesOrders = p.salesOrders || [];
   return (
-    <section className="glass-panel" style={{ padding: "16px 20px", marginBottom: 24 }}>
+    <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", marginBottom: 24 }}>
+    <section className="glass-panel" style={{ padding: "16px 20px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
         <FileText size={18} aria-hidden="true" />
         <h2 style={{ margin: 0, fontSize: 16 }}>ใบเสนอราคา</h2>
@@ -173,6 +175,32 @@ export function ProjectQuotationsCard({ project: p }) {
         <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีใบเสนอราคา — สร้างได้จากเมนู <Link href="/sa/quotations" className="linklike">ใบเสนอราคา</Link></div>
       )}
     </section>
+    <section className="glass-panel" style={{ padding: "16px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <FileText size={18} aria-hidden="true" />
+        <h2 style={{ margin: 0, fontSize: 16 }}>Sale Order</h2>
+        <span className="ui-badge" style={{ color: "var(--text-3)" }}>{salesOrders.length} ใบ</span>
+        <div className="spacer" />
+        <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู Sale Order</Link>
+      </div>
+      {salesOrders.length ? (
+        <div className="premium-glass-table table-responsive">
+          <table className="premium-table">
+            <thead><tr><th>เลขที่ SO</th><th>ดีล</th><th>สถานะ</th><th className="num">Actual</th></tr></thead>
+            <tbody>{salesOrders.map((order) => {
+              const deal = dealById.get(order.dealId);
+              return <tr key={order.id} className="premium-row">
+                <td><Link prefetch={false} href={`/sa/sales-orders/${order.id}`} className="linklike mono">{order.orderNumber}</Link></td>
+                <td>{deal ? <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike">{deal.title}</Link> : "-"}</td>
+                <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[order.status] || order.status}</span></td>
+                <td className="num mono tabular-nums">{fmtMoney(order.status === "approved" ? order.actualAmount : 0)}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+      ) : <div style={{ padding: 18, color: "var(--text-3)", fontSize: 13 }}>ยังไม่มี Sale Order — ผู้ขายสร้างร่างได้จาก QT ที่ Won</div>}
+    </section>
+    </div>
   );
 }
 

@@ -436,7 +436,7 @@ export default function SalesPlanningPipelinePage() {
     .reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const wonDeals = kpiDeals.filter((d) => ["won", "in_project"].includes(d.stage));
   const wonValue = wonDeals.reduce(
-    (sum, d) => sum + Number(d.wonValue || d.projectValue || 0),
+    (sum, d) => sum + Number(d.wonValue ?? d.projectValue ?? 0),
     0,
   );
   const lostDeals = kpiDeals.filter((d) => d.stage === "lost");

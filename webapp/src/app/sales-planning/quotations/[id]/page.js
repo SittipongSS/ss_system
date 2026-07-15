@@ -237,6 +237,23 @@ export default function QuotationEditorPage() {
 
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบไฟล์ + วันที่เอกสาร — validate ใน dialog/route/RPC)
   const doAccept = () => setWonOpen(true);
+  const createSalesOrder = async () => {
+    setBusy("sales-order");
+    setError("");
+    try {
+      const res = await fetch("/api/sales-planning/sales-orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ quotationId: quote.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "สร้าง Sale Order ไม่สำเร็จ");
+      router.push(`/sa/sales-orders/${data.id}`);
+    } catch (err) {
+      setError(err.message || "สร้าง Sale Order ไม่สำเร็จ");
+      setBusy("");
+    }
+  };
   const doDelete = () => {
     const elevatedDelete = quote.status !== "draft";
     setConfirmState({
@@ -639,6 +656,29 @@ export default function QuotationEditorPage() {
                     ))}
                   </div>
                 </div>
+              </section>
+            )}
+
+            {quote.salesOrder && (
+              <section className={styles.card}>
+                <div className={styles.sectionHeading}>
+                  <ClipboardList size={17} aria-hidden="true" />
+                  <h2>Sale Order</h2>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="linklike mono" style={{ fontWeight: 700 }}>{quote.salesOrder.orderNumber}</Link>
+                  <span className="ui-badge" style={{ color: quote.salesOrder.status === "approved" ? "var(--green)" : quote.salesOrder.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[quote.salesOrder.status] || quote.salesOrder.status}</span>
+                  <span style={{ color: "var(--text-2)" }}>Actual ก่อน VAT {fmtMoney(quote.salesOrder.status === "approved" ? quote.salesOrder.actualAmount : 0)}</span>
+                  <Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด SO</Link>
+                </div>
+              </section>
+            )}
+
+            {quote.status === "accepted" && !quote.salesOrder && canEditCap && (
+              <section className={styles.card}>
+                <div className={styles.sectionHeading}><ClipboardList size={17} aria-hidden="true" /><h2>Sale Order</h2></div>
+                <p style={{ color: "var(--text-2)", marginTop: 0 }}>สร้างร่าง SO จาก QT ใบนี้เพื่อตรวจสอบข้อมูลและยื่นให้ AE Supervisor อนุมัติ</p>
+                <button type="button" className="btn btn-primary" onClick={createSalesOrder} disabled={!!busy}><Plus size={14} /> {busy === "sales-order" ? "กำลังสร้าง…" : "สร้างร่าง Sale Order"}</button>
               </section>
             )}
             {quote.revisionHistory?.length > 1 && (

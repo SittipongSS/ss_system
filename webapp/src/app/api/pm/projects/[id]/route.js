@@ -74,15 +74,19 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // ความเคลื่อนไหว / ประวัติสถานะ) ของทุกดีลมารวมระดับโครงการ (อ่านอย่างเดียว —
   // เพิ่ม/แก้ทำที่หน้าดีลตามเดิม)
   let quotations = [];
+  let salesOrders = [];
   let dealActivities = [];
   let dealStageHistory = [];
   let inquiries = [];
   if (deals.length) {
     const dealIds = deals.map((d) => d.id);
-    const [{ data: quotes }, { data: acts }, { data: hist }, { data: inquiryRows }] = await Promise.all([
+    const [{ data: quotes }, { data: orderRows }, { data: acts }, { data: hist }, { data: inquiryRows }] = await Promise.all([
       supabase.from('quotations')
         .select('id, dealId, quoteNumber, status, approvalStatus, totalAmount, revisionNo, quoteDate, createdAt')
         .in('dealId', dealIds).order('createdAt', { ascending: false }),
+      supabase.from('sales_orders')
+        .select('id, dealId, quotationId, orderNumber, status, orderDate, actualAmount, totalAmount')
+        .in('dealId', dealIds).order('orderDate', { ascending: false }),
       supabase.from('sales_deal_activities')
         .select('id, dealId, kind, body, dueDate, activityAt, meetingMode, createdByName, createdAt')
         .in('dealId', dealIds).order('createdAt', { ascending: false }).limit(60),
@@ -92,6 +96,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       supabase.from('inquiries').select('*').or(`projectId.eq.${project.id},dealId.in.(${dealIds.join(',')})`).order('createdAt', { ascending: false }),
     ]);
     quotations = latestQuotationRevisions(quotes || []);
+    salesOrders = orderRows || [];
     dealActivities = acts || [];
     dealStageHistory = hist || [];
     inquiries = inquiryRows || [];
@@ -131,7 +136,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, canEdit, me, revisedAt, maxRev, deals, dealsRollup, quotations, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, canEdit, me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]
