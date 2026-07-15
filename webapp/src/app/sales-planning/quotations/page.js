@@ -159,8 +159,8 @@ export default function QuotationsPage() {
                             <Pencil size={15} aria-hidden="true" />
                           </Link>
                         )}
-                        {/* closed = ล็อกถาวร (ดีลจบด้วยใบอื่น) — ห้ามลบแม้ superuser */}
-                        {canEdit && r.status !== "closed" && (r.status === "draft" || isSuperuser(role)) && (
+                        {/* ลบ: draft ทุกคนที่แก้ได้ / แอดมินลบได้ทุกสถานะ */}
+                        {canEdit && (r.status === "draft" || isSuperuser(role)) && (
                           <button type="button" className="btn-icon danger" title={r.status === "draft" ? "ลบฉบับร่าง" : "ลบ (สิทธิ์ผู้ดูแลระบบ)"} aria-label={`ลบ ${r.quoteNumber}`}
                             onClick={() => deleteQuote(r)}>
                             <Trash2 size={15} aria-hidden="true" />

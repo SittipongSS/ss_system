@@ -673,7 +673,8 @@ export default function SalesPlanningPipelinePage() {
               {quoteDeal?.projectId ? "สร้าง line จาก FG ใน PM project และ freeze ราคาขาย ณ วันที่สร้าง" : "ต้องสร้าง/ผูก PM project และ FG ก่อนจึง seed quotation อัตโนมัติได้"}
             </div>
             <div className="spacer" />
-            {quoteDeal?.canEdit && (
+            {/* ดีลปิด Won/Lost = ใบเสนอราคาถูกล็อกทั้งชุด — ซ่อนปุ่มสร้าง */}
+            {quoteDeal?.canEdit && !["won", "in_project", "lost"].includes(quoteDeal?.stage) && (
               <button type="button" className="btn btn-primary" onClick={createQuotation} disabled={quoteLoading || !quoteDeal?.projectId}>
                 <Plus size={15} aria-hidden="true" /> สร้างใบเสนอราคา
               </button>

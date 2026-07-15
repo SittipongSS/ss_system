@@ -1,4 +1,5 @@
 import { recordAudit } from '@/lib/audit';
+import { isSuperuser } from '@/lib/permissions';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
@@ -168,7 +169,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok(after);
 });
 
-// DELETE — เฉพาะ draft (ใบที่ส่ง/รับแล้ว = หลักฐาน ห้ามลบ ใช้ cancel/revise)
+// DELETE — คนทั่วไปลบได้เฉพาะ draft (ใบที่ส่ง/รับ/ปิดแล้ว = หลักฐาน ใช้ cancel/revise);
+// แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15 — สิทธิ์ลบทุกประการ)
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
@@ -176,14 +178,23 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const before = await loadQuote(supabase, id);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
   if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
-  if (before.status === 'closed') {
-    return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ลบไม่ได้');
-  }
-  if (before.status !== 'draft') {
-    return badRequest('ลบได้เฉพาะฉบับร่าง — ใบที่ส่งแล้วให้ยกเลิก (cancel) หรือออก Revise แทน');
+  const elevated = isSuperuser(user.role);
+  if (!elevated) {
+    if (before.status === 'closed') {
+      return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ลบไม่ได้');
+    }
+    if (before.status !== 'draft') {
+      return badRequest('ลบได้เฉพาะฉบับร่าง — ใบที่ส่งแล้วให้ยกเลิก (cancel) หรือออก Revise แทน');
+    }
   }
   const { error } = await supabase.from('quotations').delete().eq('id', id);
   if (error) return fail(error.message, 500);
-  await recordAudit({ user, action: 'delete', entityType: 'quotation', entityId: id, before, summary: `ลบใบเสนอราคา (ร่าง) ${before.quoteNumber}`, request: req });
+  await recordAudit({
+    user, action: 'delete', entityType: 'quotation', entityId: id, before,
+    summary: elevated && before.status !== 'draft'
+      ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — สิทธิ์ผู้ดูแลระบบ)`
+      : `ลบใบเสนอราคา (ร่าง) ${before.quoteNumber}`,
+    request: req,
+  });
   return ok({ ok: true });
 });

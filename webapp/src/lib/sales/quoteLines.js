@@ -53,10 +53,12 @@ export async function seedLinesFromProject(supabase, deal) {
 
 // ข้อมูลบรรทัด FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี
 // productId ถูกทับทั้ง "ราคา" (retailPriceIncVat) และ "คำอธิบาย" (แบรนด์ · ชื่อสินค้า ·
-// ปริมาตร) + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ — client แก้เองไม่ได้ ต้องแก้ที่
-// ฐานข้อมูลสินค้า; ใบเดิมที่บันทึกไว้ก่อนกติกานี้จะถูก refresh ตอนบันทึก/Revise ครั้งถัดไป.
-// สินค้าที่หายจาก master (ถูกลบ) → คงราคา/คำอธิบายเดิมที่บันทึกไว้ในใบ
-// (fallback ต่อ productId จาก previousLines) เพื่อไม่ให้เอกสารเดิมพัง.
+// ปริมาตร) + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ — **ห้ามกำหนดราคาจากใบเสนอราคา
+// ทุกกรณี** flow คือไปตั้งราคาที่ฐานข้อมูลสินค้าแล้วกลับมาบันทึกใบ.
+// - master ยังไม่ตั้งราคาขาย (0/ว่าง) = ไม่มีข้อมูล ไม่ใช่ราคา 0 → คงราคาที่บันทึกไว้เดิม
+//   ในใบ (previousLines); บรรทัดใหม่ = 0 จนกว่าจะตั้งราคาใน master (ส่ง/Won มี guard
+//   ยอด > 0 กันอยู่แล้ว) — ค่าที่ client ส่งมาไม่ถูกใช้เด็ดขาด
+// - สินค้าหายจาก master (ถูกลบ) → คงราคา/คำอธิบายเดิมที่บันทึกไว้ในใบ
 export async function enforceMasterPrices(supabase, lines = [], previousLines = []) {
   const ids = [...new Set(lines.filter((l) => l.productId).map((l) => l.productId))];
   if (!ids.length) return lines;
@@ -73,7 +75,10 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
     if (!line.productId) return line;
     const master = productById.get(line.productId);
     const prev = prevById.get(line.productId);
-    const unitPrice = master ? toMoney(master.retailPriceIncVat) : toMoney(prev?.unitPrice ?? line.unitPrice);
+    const masterPrice = master ? toMoney(master.retailPriceIncVat) : 0;
+    const unitPrice = masterPrice > 0
+      ? masterPrice
+      : toMoney(prev?.unitPrice ?? (master ? 0 : line.unitPrice));
     const description = master ? fgLineDescription(master) : (prev?.description || line.description);
     const fgCode = master ? (master.fgCode || null) : (prev?.fgCode ?? line.fgCode);
     if (unitPrice === line.unitPrice && description === line.description && fgCode === line.fgCode) return line;
