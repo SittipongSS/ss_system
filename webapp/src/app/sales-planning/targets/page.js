@@ -9,6 +9,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtNumber } from "@/lib/format";
+import { cachedFetchJson } from "@/lib/apiCache";
 
 const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
 const thisYear = () => thisMonth().slice(0, 4);
@@ -41,13 +42,13 @@ export default function SalesPlanningTargetsPage() {
     setLoading(true);
     setError("");
     try {
-      const [targetsRes, usersRes] = await Promise.all([
+      const [targetsRes, users] = await Promise.all([
         fetch(`/api/sales-planning/targets?year=${encodeURIComponent(year)}`),
-        fetch("/api/pm/assignable-users"),
+        cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       ]);
       if (!targetsRes.ok) throw new Error((await targetsRes.json()).error || "โหลด target ไม่สำเร็จ");
       setTargets(await targetsRes.json());
-      setUsers(usersRes.ok ? await usersRes.json() : []);
+      setUsers(users || []);
     } catch (e) {
       setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {

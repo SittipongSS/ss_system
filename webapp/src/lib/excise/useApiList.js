@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { apiCache } from "@/lib/apiCache";
+import { apiCache, primeCache } from "@/lib/apiCache";
 
 // Cache-first list fetch (stale-while-revalidate): paints instantly from
 // apiCache, then refreshes in the background. `reload()` forces a refetch and is
@@ -17,7 +17,7 @@ export function useApiList(url) {
       if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || `โหลดข้อมูลไม่สำเร็จ (${r.status})`);
       const json = await r.json();
       const arr = Array.isArray(json) ? json : [];
-      apiCache.set(url, arr);
+      primeCache(url, arr); // อัปเดต timestamp ให้ cachedFetchJson นับว่าสด
       setData(arr);
       setError(null);
       return arr;

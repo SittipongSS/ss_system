@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, Users, ListTodo } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
+import { cachedFetchJson } from "@/lib/apiCache";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -23,7 +24,7 @@ export default function MgmtCalendarPage() {
 
   // holidays (ทั้งหมด) โหลดครั้งเดียว
   useEffect(() => {
-    fetch("/api/holidays").then((r) => (r.ok ? r.json() : [])).then((d) => setHolidays(Array.isArray(d) ? d : [])).catch(() => {});
+    cachedFetchJson("/api/holidays").then((d) => setHolidays(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   // tasks + meetings ตามปีของ cursor

@@ -24,6 +24,7 @@ import { resolvePersonalTaskLink, taskLinkType } from "@/lib/pm/taskLink";
 import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm/taskViews";
 import { compactPersonName } from "@/lib/personName";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import { cachedFetchJson } from "@/lib/apiCache";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -212,7 +213,7 @@ export default function TasksPage() {
 
   useEffect(() => { loadWork(scope); }, [scope]);
   useEffect(() => {
-    fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((u) => {
+    cachedFetchJson("/api/pm/assignable-users").then((u) => {
       setUsers(u || []);
       setUsersMap(Object.fromEntries((u || []).map((x) => [x.id, compactPersonName(x.name)])));
     }).catch(() => {});

@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, sanitizeExtraCaps } from '@/lib/permissions';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
+import { invalidateCache } from '@/lib/serverCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,7 @@ export async function POST(request) {
     app_metadata: { role, department, must_change_password: true, ...(team ? { team } : {}), ...(extraCaps.length ? { extraCaps } : {}) },
   });
   if (error) return Response.json({ error: error.message }, { status: 400 });
+  invalidateCache('assignable-users'); // dropdown ผู้รับผิดชอบเห็นคนใหม่ทันที
   await recordAudit({
     user: me, action: 'create', entityType: 'user', entityId: data.user.id,
     after: userAuditSnapshot(data.user), summary: `สร้างผู้ใช้ ${email} (${role})`, request,

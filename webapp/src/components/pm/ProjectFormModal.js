@@ -10,6 +10,7 @@ import AddBrandButton from "@/components/master/AddBrandButton";
 import { productOptionDisplay } from "@/components/master/productOption";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { cachedFetchJson } from "@/lib/apiCache";
 import { X } from "lucide-react";
 
 export default function ProjectFormModal({
@@ -43,8 +44,7 @@ export default function ProjectFormModal({
 
   useEffect(() => {
     if (!open) return;
-    fetch("/api/pm/assignable-users")
-      .then((r) => (r.ok ? r.json() : []))
+    cachedFetchJson("/api/pm/assignable-users")
       .then((d) => setUsers(d || []))
       .catch(() => {});
   }, [open]);

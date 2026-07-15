@@ -7,7 +7,7 @@ import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, Inbox,
 // เส้นทางทั้งหมดที่ถือว่าอยู่ใต้เมนู "ตั้งค่า" (ให้ปุ่มติด active ตอนอยู่หน้าลูก)
 const SETTINGS_PATHS = ['/settings', '/database/holidays', '/database/chat-webhooks', '/users', '/audit'];
 import { createClient } from '@/lib/supabaseBrowser';
-import { apiCache } from '@/lib/apiCache';
+import { apiCache, cachedFetchJson } from '@/lib/apiCache';
 import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
@@ -29,10 +29,9 @@ const SYSTEM_ICONS = {
 // instant (data is already fetched in the background).
 function prefetchData() {
   for (const url of ['/api/products', '/api/customers', '/api/orders', '/api/excise-registrations']) {
-    fetch(url)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) apiCache.set(url, d); })
-      .catch(() => {});
+    // ผ่าน cachedFetchJson: ได้ timestamp ความสด — หน้าที่เปิดตามมาใน 2 นาที
+    // ใช้ของที่อุ่นไว้เลย ไม่ยิงซ้ำ (ลด invocation + ภาระ DB)
+    cachedFetchJson(url).catch(() => {});
   }
 }
 

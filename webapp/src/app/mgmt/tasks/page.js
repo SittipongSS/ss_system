@@ -7,6 +7,7 @@ import { useRole, useCan } from "@/lib/roleContext";
 import TaskFormModal from "@/components/mgmt/TaskFormModal";
 import TaskDrawer from "@/components/mgmt/TaskDrawer";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
+import { cachedFetchJson } from "@/lib/apiCache";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -38,7 +39,7 @@ export default function MgmtTasksPage() {
 
   useEffect(() => {
     fetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
+    cachedFetchJson("/api/pm/assignable-users").then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   const loadTasks = useCallback(async () => {

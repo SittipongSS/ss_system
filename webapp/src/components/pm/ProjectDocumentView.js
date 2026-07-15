@@ -14,6 +14,7 @@ import { useIsPortrait } from "@/lib/useResponsiveView";
 import { fmtPhone, fmtDateNumeric as fmtDate } from "@/lib/format";
 import Select from "@/components/ui/Select";
 import { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
+import { cachedFetchJson } from "@/lib/apiCache";
 
 const DAY_MS = 86400000;
 const ROW_H = 34;       // ความสูงแถวงาน (ให้บาร์ align กับช่องซ้าย)
@@ -150,7 +151,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
   }, [tasks]);
 
   useEffect(() => {
-    fetch("/api/pm/assignable-users").then(r => r.ok ? r.json() : []).then(d => setUsers(d || [])).catch(() => {});
+    cachedFetchJson("/api/pm/assignable-users").then(d => setUsers(d || [])).catch(() => {});
   }, []);
 
   // draft overlay สำหรับฟิลด์หัว/ท้ายเอกสาร — พิมพ์ลื่น + ปุ่มพิมพ์ใช้ค่าล่าสุดทันที

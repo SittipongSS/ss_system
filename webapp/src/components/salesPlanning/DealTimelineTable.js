@@ -20,6 +20,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { compactPersonName } from "@/lib/personName";
 import { addBusinessDays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { recalculateGraph } from "@/lib/pm/schedule";
+import { cachedFetchJson } from "@/lib/apiCache";
 
 const STATUS_META = {
   Pending: { label: "รอดำเนินการ", color: "var(--text-3)" },
@@ -119,7 +120,7 @@ export default function TimelineWorkspace({
 
   useEffect(() => {
     if (!canEdit) return;
-    fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(d || [])).catch(() => {});
+    cachedFetchJson("/api/pm/assignable-users").then((d) => setUsers(d || [])).catch(() => {});
   }, [canEdit]);
 
   // เลขขั้น 1.1/1.2 ตามกลุ่มเฟส (แบบเดียวกับตารางโครงการ) + map ไว้แปลชิป "ขึ้นกับ"

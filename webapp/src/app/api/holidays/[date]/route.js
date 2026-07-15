@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
+import { invalidateCache } from '@/lib/serverCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,7 @@ export async function PATCH(request, { params }) {
     .select()
     .single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  invalidateCache('holidays');
   return Response.json(data);
 }
 
@@ -34,5 +36,6 @@ export async function DELETE(request, { params }) {
   const { data, error } = await supabase.from('holidays').delete().eq('date', date).select('date');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) return Response.json({ error: 'ไม่พบวันหยุดนี้' }, { status: 404 });
+  invalidateCache('holidays');
   return Response.json({ success: true });
 }

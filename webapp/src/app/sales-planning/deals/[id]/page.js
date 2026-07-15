@@ -12,6 +12,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
+import { cachedFetchJson } from "@/lib/apiCache";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
@@ -190,8 +191,8 @@ export default function DealOverviewPage() {
   // ข้อมูลสำหรับโมดัลแก้ดีล + สร้างโครงการ PM — โหลดครั้งเดียว
   useEffect(() => {
     fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
-    fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
-    fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
+    cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
+    cachedFetchJson("/api/products").then((d) => setAllProducts(d || [])).catch(() => {});
     fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(d || [])).catch(() => {});
   }, []);
 
