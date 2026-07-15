@@ -26,6 +26,7 @@ import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import InquiryCreateModal from "@/components/salesPlanning/InquiryCreateModal";
+import InquiryListCard from "@/components/salesPlanning/InquiryListCard";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
@@ -846,6 +847,10 @@ export default function DealOverviewPage() {
               <Empty>ยังไม่มีงานของดีลนี้ กด “เปิด” แล้วสร้างงานโดยเลือกผูกกับดีลนี้ได้</Empty>
             )}
           </section>
+          )}
+
+          {(tab === "inquiries" || tab === "overview") && (
+            <InquiryListCard inquiries={data.inquiries || []} onCreate={canEdit ? () => setInquiryOpen(true) : null} />
           )}
 
           <div style={{

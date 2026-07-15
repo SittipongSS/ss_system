@@ -34,6 +34,19 @@ export function canRespondInquiry(user, inquiry) {
     && normalizeDepartment(user.department) === inquiry.targetDept;
 }
 
+export function isInquiryAdmin(user) {
+  return user?.role === 'admin';
+}
+
+// The take button is an RD operational action. Admin retains edit/delete
+// override authority but does not appear as an RD assignee in the normal UI.
+export function canTakeInquiry(user, inquiry) {
+  if (!user || !inquiry || inquiry.status === 'closed') return false;
+  return user.role === 'rd'
+    && canUser(user, 'inquiries:respond')
+    && normalizeDepartment(user.department) === inquiry.targetDept;
+}
+
 // ผู้ถาม/ทีมผู้ถาม: ใช้ scope แก้ไขงานขายเดิม (AE = ดีลตัวเอง, AC/Senior = ทีม,
 // superuser = ทั้งหมด) บน record ตัวแทน {team, ownerId=requesterId}
 export function inInquiryRequesterScope(user, inquiry) {
@@ -52,6 +65,47 @@ export function canViewInquiry(user, inquiry) {
 // ปิด/แก้หัวเรื่อง: ผู้ถามหรือทีมของผู้ถาม (คนถามเป็นคนตัดสินว่าคำตอบใช้ได้จริง)
 export function canCloseInquiry(user, inquiry) {
   return inInquiryRequesterScope(user, inquiry);
+}
+
+
+export function inquirySide(user, inquiry) {
+  if (!user || !inquiry) return null;
+  if (canTakeInquiry(user, inquiry) && inquiry.acceptedAt && inquiry.assigneeId === user.id) return 'responder';
+  if (inInquiryRequesterScope(user, inquiry)) return 'requester';
+  return null;
+}
+
+export function canEditInquiryRequest(user, inquiry) {
+  if (isInquiryAdmin(user)) return true;
+  return inquiry?.status !== 'closed' && !inquiry?.acceptedAt
+    && inInquiryRequesterScope(user, inquiry);
+}
+
+export function canDeleteInquiry(user, inquiry) {
+  if (isInquiryAdmin(user)) return true;
+  return !inquiry?.acceptedAt && inInquiryRequesterScope(user, inquiry);
+}
+
+export function canEditInquiryResponse(user, inquiry) {
+  if (isInquiryAdmin(user)) return true;
+  return inquiry?.status !== 'closed' && !!inquiry?.acceptedAt
+    && inquiry?.assigneeId === user?.id && canTakeInquiry(user, inquiry);
+}
+
+export function canMutateInquiryMessage(user, inquiry, message) {
+  if (!user || !inquiry || !message || message.kind !== 'comment' || message.deletedAt) return false;
+  if (isInquiryAdmin(user)) return true;
+  return inquiry.status !== 'closed' && message.authorId === user.id && !message.acknowledgedAt;
+}
+
+export function canAcknowledgeInquiryMessage(user, inquiry, message) {
+  if (!user || !inquiry || !message || message.kind !== 'comment' || message.deletedAt || message.acknowledgedAt) return false;
+  if (isInquiryAdmin(user)) return true;
+  if (message.authorId === user.id) return false;
+  const side = inquirySide(user, inquiry);
+  if (!side) return false;
+  const fromResponder = normalizeDepartment(message.authorDept) === inquiry.targetDept;
+  return (side === 'requester' && fromResponder) || (side === 'responder' && !fromResponder);
 }
 
 // ── เลขที่เรื่อง: IQ-YYMMXXXX (เลขรัน atomic ต่อเดือน — RPC เดิม mig 0096) ──

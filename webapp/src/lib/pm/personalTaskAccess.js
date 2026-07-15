@@ -46,6 +46,11 @@ export async function canViewPersonalTask(supabase, task, user) {
   if (!task || !user || !can(user.role, 'pm:view')) return false;
   if (isSuperuser(user.role) || user.role === 'viewer') return true;
   if (task.ownerId === user.id || task.assigneeId === user.id || task.proxyBy === user.id) return true;
+  if (user.role === 'rd') {
+    const responsible = await personalTaskResponsibleIdentity(supabase, task);
+    return !!normalizeDepartment(user.department)
+      && normalizeDepartment(user.department) === normalizeDepartment(responsible.department);
+  }
   if (user.role !== 'senior_ae' || !user.team) return false;
 
   const responsibleTeam = await personalTaskResponsibleTeam(supabase, task);

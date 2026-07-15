@@ -7,6 +7,7 @@ import {
 } from '@/lib/pm/taskKpi';
 import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,7 +55,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   } catch (error) {
     return fail(error.message, 500);
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDate();
   const peopleSet = new Set(peopleIds);
   for (const task of tasks.filter((t) => inPeriod(t, period.from, period.to))) {
     const rid = taskCreditId(task);
@@ -76,7 +77,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const createdDay = ymd(q.createdAt);
     if (createdDay && createdDay >= period.from && createdDay <= period.to) createdInPeriod += 1;
 
-    const personRow = q.assigneeId ? rowsByUser.get(q.assigneeId) : null;
+    const responderId = q.answeredById || q.assigneeId;
+    const personRow = responderId ? rowsByUser.get(responderId) : null;
     const buckets = personRow ? [personRow.inquiries, deptInquiries] : [deptInquiries];
 
     const answeredDay = ymd(q.answeredAt);
@@ -107,7 +109,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // คิวเรื่องค้าง (สำหรับ action queue บนแดชบอร์ด) — เรียงใกล้ครบกำหนดก่อน
   const openQueue = (inquiries || [])
-    .filter((q) => q.status !== 'closed')
+    .filter((q) => q.status === 'open')
     .sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')))
     .slice(0, 12);
 

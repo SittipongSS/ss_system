@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft, CheckCircle2, ClipboardList, Hand, MessageCircleQuestion,
-  Paperclip, Plus, RotateCcw, Send, X,
+  CalendarDays, Edit2, Paperclip, Plus, RotateCcw, Save, Send, Trash2, X,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
@@ -29,6 +29,9 @@ export default function InquiryThreadPage() {
   const [busy, setBusy] = useState("");
   const [reply, setReply] = useState("");
   const [files, setFiles] = useState([]);
+  const [requestEdit, setRequestEdit] = useState(null);
+  const [responderDetail, setResponderDetail] = useState("");
+  const [committedDueDate, setCommittedDueDate] = useState("");
   const [todayISO, setTodayISO] = useState(null);
   useEffect(() => {
     const d = new Date();
@@ -43,6 +46,8 @@ export default function InquiryThreadPage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "โหลดเรื่องสอบถามไม่สำเร็จ");
       setData(payload);
+      setResponderDetail(payload.responderDetail || "");
+      setCommittedDueDate(payload.committedDueDate || "");
     } catch (e) {
       setError(e.message || "โหลดเรื่องสอบถามไม่สำเร็จ");
     } finally {
@@ -53,6 +58,8 @@ export default function InquiryThreadPage() {
 
   const due = useMemo(() => inquiryDueTone(data, todayISO), [data, todayISO]);
   const closed = data?.status === "closed";
+  const canCompose = data?.isAdmin || data?.side === "requester"
+    || (data?.side === "responder" && data?.assigneeId === data?.meId);
 
   const runAction = async (key, body, confirmText) => {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -117,20 +124,21 @@ export default function InquiryThreadPage() {
   };
 
   // ฝ่ายผู้ตอบ: แตกคำถามเป็นงานของตัวเอง (personal_tasks + inquiryId ย้อนกลับ)
-  const createTask = async () => {
-    if (!window.confirm("สร้างงานจากคำถามนี้ (มอบหมายให้ตัวเอง)?")) return;
-    setBusy("task");
+  const createTask = async (message = null) => {
+    if (!window.confirm(`สร้างงานจาก${message ? "ข้อความนี้" : "คำถามนี้"} (มอบหมายให้ตัวเอง)?`)) return;
+    setBusy(`task:${message?.id || "inquiry"}`);
     setError("");
     try {
       const res = await fetch("/api/pm/personal-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: `[${data.code || "IQ"}] ${data.title}`,
-          note: `งานจากเรื่องสอบถาม ${data.code || data.id}`,
-          dueDate: data.dueDate || null,
+          title: `[${data.code || "IQ"}] ${message?.body?.slice(0, 120) || data.title}`,
+          note: `งานจาก${message ? "ข้อความใน" : ""}เรื่องสอบถาม ${data.code || data.id}`,
+          dueDate: data.committedDueDate || data.requestedDueDate || data.dueDate || null,
           dealId: data.dealId || null,
           inquiryId: data.id,
+          inquiryMessageId: message?.id || null,
           urgent: !!data.urgent,
         }),
       });
@@ -142,6 +150,37 @@ export default function InquiryThreadPage() {
     } finally {
       setBusy("");
     }
+  };
+
+  const messageAction = async (message, action, body = {}) => {
+    setBusy(`${action}:${message.id}`);
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/inquiries/${id}/messages/${message.id}`, {
+        method: action === "delete" ? "DELETE" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: action === "delete" ? undefined : JSON.stringify({ action, ...body }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "ทำรายการข้อความไม่สำเร็จ");
+      await load();
+    } catch (e) { setError(e.message || "ทำรายการข้อความไม่สำเร็จ"); }
+    finally { setBusy(""); }
+  };
+
+  const editMessage = (message) => {
+    const next = window.prompt("แก้ไขข้อความ", message.body || "");
+    if (next == null || next.trim() === (message.body || "").trim()) return;
+    messageAction(message, "edit", { body: next.trim() });
+  };
+
+  const deleteInquiry = async () => {
+    if (!window.confirm("ลบเรื่องสอบถามนี้? รายการนี้ย้อนกลับไม่ได้")) return;
+    setBusy("delete-inquiry");
+    const res = await fetch(`/api/sales-planning/inquiries/${id}`, { method: "DELETE" });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) { setError(payload.error || "ลบเรื่องไม่สำเร็จ"); setBusy(""); return; }
+    window.location.href = "/sa/inquiries";
   };
 
   if (loading) return <Workspace icon={<MessageCircleQuestion size={22} />} title="สอบถาม RD"><div style={{ padding: 24, color: "var(--text-3)" }}>กำลังโหลด...</div></Workspace>;
@@ -180,10 +219,17 @@ export default function InquiryThreadPage() {
               ผู้รับเรื่อง: {data.assigneeName || "ยังไม่มีผู้รับ"}
             </span>
           </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
+            <span>SA คาดหวัง: <strong className="mono">{data.requestedDueDate ? fmtDate(data.requestedDueDate) : "-"}</strong></span>
+            <span>SLA ระบบ: <strong className="mono">{data.dueDate ? fmtDate(data.dueDate) : "-"}</strong></span>
+            <span>RD จะตอบ: <strong className="mono">{data.committedDueDate ? fmtDate(data.committedDueDate) : "ยังไม่ระบุ"}</strong>
+              {data.committedDueAcknowledgedAt && <span className="ui-badge" style={{ color: "var(--green)", marginLeft: 6 }}>SA รับทราบแล้ว</span>}
+            </span>
+          </div>
           {(data.deal || data.project) && (
             <div style={{ fontSize: 13, display: "flex", gap: 14, flexWrap: "wrap" }}>
               {data.deal && (
-                <span>ดีล: <Link href={`/sa/deals/${data.deal.id}`} className="linklike">{data.deal.code ? `${data.deal.code} · ` : ""}{data.deal.title}</Link>{data.deal.customerName ? ` — ${data.deal.customerName}` : ""}</span>
+                <span>ดีล: <Link href={`/sales-planning/deals/${data.deal.id}`} className="linklike">{data.deal.code ? `${data.deal.code} · ` : ""}{data.deal.title}</Link>{data.deal.customerName ? ` — ${data.deal.customerName}` : ""}</span>
               )}
               {data.project && (
                 <span>โครงการ: <Link href={`/sa/projects/${data.project.id}`} className="linklike">{data.project.code ? `${data.project.code} · ` : ""}{data.project.name}</Link></span>
@@ -191,28 +237,66 @@ export default function InquiryThreadPage() {
             </div>
           )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {data.canRespond && !closed && data.assigneeId !== data.meId && (
+            {data.canTake && !closed && (
               <button type="button" className="btn sm" onClick={() => runAction("take", { action: "take" })} disabled={!!busy}>
-                <Hand size={13} aria-hidden="true" /> {data.assigneeId ? "ดึงเรื่องมาเป็นผู้รับ" : "รับเรื่องนี้"}
+                <Hand size={13} aria-hidden="true" /> รับเรื่องนี้
               </button>
             )}
-            {data.canRespond && (
-              <button type="button" className="btn sm" onClick={createTask} disabled={!!busy}>
+            {data.canRespond && data.assigneeId === data.meId && (
+              <button type="button" className="btn sm" onClick={() => createTask()} disabled={!!busy}>
                 <Plus size={13} aria-hidden="true" /> สร้างงานจากคำถาม
               </button>
             )}
-            {data.canClose && !closed && (
-              <button type="button" className="btn btn-primary sm" onClick={() => runAction("close", { action: "close" }, "ปิดเรื่องสอบถามนี้? (ได้คำตอบครบแล้ว)")} disabled={!!busy}>
-                <CheckCircle2 size={13} aria-hidden="true" /> ปิดเรื่อง
+            {data.canEditRequest && (
+              <button type="button" className="btn sm" onClick={() => setRequestEdit({ title: data.title, urgent: !!data.urgent, requestedDueDate: data.requestedDueDate || "" })} disabled={!!busy}>
+                <Edit2 size={13} aria-hidden="true" /> แก้ไขคำถาม
               </button>
             )}
-            {data.canClose && closed && (
+            {data.canDelete && (
+              <button type="button" className="btn danger sm" onClick={deleteInquiry} disabled={!!busy}>
+                <Trash2 size={13} aria-hidden="true" /> ลบเรื่อง
+              </button>
+            )}
+            {data.side && !closed && (
+              <button type="button" className="btn btn-primary sm" onClick={() => runAction("confirm-close", { action: "confirm-close" }, "ยืนยันปิดในส่วนของคุณ?")} disabled={!!busy || (data.side === "requester" ? !!data.requesterCloseConfirmedAt : !!data.responderCloseConfirmedAt)}>
+                <CheckCircle2 size={13} aria-hidden="true" /> {data.side === "requester" ? (data.requesterCloseConfirmedAt ? "SA ยืนยันแล้ว" : "SA ยืนยันปิด") : (data.responderCloseConfirmedAt ? "RD ยืนยันแล้ว" : "RD ยืนยันปิด")}
+              </button>
+            )}
+            {(data.side || data.isAdmin) && closed && (
               <button type="button" className="btn sm" onClick={() => runAction("reopen", { action: "reopen" })} disabled={!!busy}>
                 <RotateCcw size={13} aria-hidden="true" /> เปิดเรื่องอีกครั้ง
               </button>
             )}
           </div>
+          {!closed && (data.requesterCloseConfirmedAt || data.responderCloseConfirmedAt) && (
+            <div style={{ fontSize: 12.5, color: "var(--amber)" }}>
+              รอยืนยันอีกฝ่าย · SA {data.requesterCloseConfirmedAt ? "✓" : "–"} · RD {data.responderCloseConfirmedAt ? "✓" : "–"}
+            </div>
+          )}
         </section>
+
+        {requestEdit && (
+          <section className="glass-panel" style={{ padding: 14, display: "grid", gap: 10 }}>
+            <strong style={{ fontSize: 14 }}>แก้ไขคำถามก่อน RD รับเรื่อง</strong>
+            <input className="premium-input" value={requestEdit.title} onChange={(e) => setRequestEdit((v) => ({ ...v, title: e.target.value }))} />
+            <label style={{ fontSize: 13 }}>วันที่ SA คาดหวัง <input className="premium-input" type="date" value={requestEdit.requestedDueDate} onChange={(e) => setRequestEdit((v) => ({ ...v, requestedDueDate: e.target.value }))} /></label>
+            <label style={{ fontSize: 13 }}><input type="checkbox" checked={requestEdit.urgent} onChange={(e) => setRequestEdit((v) => ({ ...v, urgent: e.target.checked }))} /> เร่งด่วน</label>
+            <div className="form-action-inline"><button className="btn ghost sm" onClick={() => setRequestEdit(null)}>ยกเลิก</button><button className="btn btn-primary sm" onClick={async () => { await runAction("edit-request", { action: "edit-request", ...requestEdit }); setRequestEdit(null); }}><Save size={13} /> บันทึก</button></div>
+          </section>
+        )}
+
+        {(data.acceptedAt || data.isAdmin) && (
+          <section className="glass-panel" style={{ padding: 14, display: "grid", gap: 10 }}>
+            <strong style={{ fontSize: 14 }}>รายละเอียดและกำหนดตอบจาก RD</strong>
+            <textarea className="premium-input" rows={3} value={responderDetail} onChange={(e) => setResponderDetail(e.target.value)} disabled={!data.canEditResponse} placeholder="รายละเอียดทางเทคนิค / ข้อมูลที่ RD ต้องการเพิ่มเติม" />
+            {data.canEditResponse && <button className="btn sm" style={{ justifySelf: "start" }} onClick={() => runAction("edit-response", { action: "edit-response", responderDetail })}><Save size={13} /> บันทึกรายละเอียด RD</button>}
+            <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
+              <label style={{ fontSize: 13 }}>วันที่ RD จะตอบ<input className="premium-input" type="date" value={committedDueDate} onChange={(e) => setCommittedDueDate(e.target.value)} disabled={!data.canEditCommitment} /></label>
+              {data.canEditCommitment && <button className="btn sm" onClick={() => runAction("set-commitment", { action: "set-commitment", committedDueDate })} disabled={!committedDueDate}><CalendarDays size={13} /> แจ้งวันที่ตอบ</button>}
+              {data.canAcknowledgeCommitment && <button className="btn btn-primary sm" onClick={() => runAction("ack-date", { action: "ack-commitment" })}><CheckCircle2 size={13} /> SA รับทราบวันที่</button>}
+            </div>
+          </section>
+        )}
 
         {/* งานที่แตกจากคำถามนี้ (ฝั่ง RD) */}
         {!!(data.tasks || []).length && (
@@ -258,8 +342,11 @@ export default function InquiryThreadPage() {
                     <strong style={{ fontSize: 13 }}>{m.authorName || "-"}</strong>
                     {deptLabel && <span className="ui-badge" style={{ color: isTarget ? "var(--green)" : "var(--blue)" }}>{deptLabel}</span>}
                     <span style={{ color: "var(--text-3)", fontSize: 12 }}>{fmtDateTime(m.createdAt)}</span>
+                    {m.editedAt && <span style={{ color: "var(--text-3)", fontSize: 11 }}>แก้ไขแล้ว</span>}
+                    {m.acknowledgedAt && <span className="ui-badge" style={{ color: "var(--green)" }}>รับทราบแล้ว</span>}
                   </div>
-                  {m.body && <div style={{ margin: "4px 0 2px", fontSize: 13.5, whiteSpace: "pre-wrap" }}>{m.body}</div>}
+                  {m.deletedAt ? <div style={{ margin: "4px 0", color: "var(--text-3)", fontStyle: "italic", fontSize: 13 }}>ข้อความถูกลบ</div>
+                    : m.body && <div style={{ margin: "4px 0 2px", fontSize: 13.5, whiteSpace: "pre-wrap" }}>{m.body}</div>}
                   {!!(m.attachments || []).length && (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                       {m.attachments.map((att, i) => (
@@ -269,13 +356,22 @@ export default function InquiryThreadPage() {
                       ))}
                     </div>
                   )}
+                  {!m.deletedAt && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                      {m.canAcknowledge && <button className="btn ghost sm" onClick={() => messageAction(m, "acknowledge")} disabled={!!busy}><CheckCircle2 size={12} /> รับทราบ</button>}
+                      {m.canEdit && <button className="btn ghost sm" onClick={() => editMessage(m)} disabled={!!busy}><Edit2 size={12} /> แก้ไข</button>}
+                      {m.canDelete && <button className="btn ghost sm danger" onClick={() => window.confirm("ลบข้อความนี้?") && messageAction(m, "delete")} disabled={!!busy}><Trash2 size={12} /> ลบ</button>}
+                      {canCompose && !closed && <button className="btn ghost sm" onClick={() => createTask(m)} disabled={!!busy}><Plus size={12} /> สร้างงาน</button>}
+                      {(data.tasks || []).filter((t) => t.inquiryMessageId === m.id).map((t) => <Link key={t.id} href={`/sa/tasks/${t.id}`} className="ui-badge">งาน: {t.title}</Link>)}
+                    </div>
+                  )}
                 </li>
               );
             })}
           </ul>
 
           {/* composer — ปิดเรื่องแล้วต้องเปิดใหม่ก่อนจึงคุยต่อได้ */}
-          {!closed ? (
+          {!closed && canCompose ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
               <textarea
                 className="premium-input"
@@ -310,7 +406,7 @@ export default function InquiryThreadPage() {
             </div>
           ) : (
             <div style={{ marginTop: 14, color: "var(--text-3)", fontSize: 13, textAlign: "center" }}>
-              เรื่องนี้ปิดแล้ว {data.closedAt ? `· ${fmtDateTime(data.closedAt)}` : ""} — เปิดเรื่องอีกครั้งเพื่อคุยต่อ
+              {closed ? `เรื่องนี้ปิดแล้ว ${data.closedAt ? `· ${fmtDateTime(data.closedAt)}` : ""} — เปิดเรื่องอีกครั้งเพื่อคุยต่อ` : "เฉพาะผู้รับเรื่องหรือฝ่ายขายที่เกี่ยวข้องเท่านั้นที่ส่งข้อความได้"}
             </div>
           )}
         </section>

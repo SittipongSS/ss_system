@@ -59,6 +59,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const attachments = sanitizeInquiryAttachments(body.attachments);
   if (!firstMessage && !attachments.length) return badRequest('ต้องระบุรายละเอียดคำถามหรือแนบไฟล์');
   const targetDept = INQUIRY_TARGET_DEPTS.includes(body.targetDept) ? body.targetDept : 'RD';
+  const requestedDueDate = body.requestedDueDate || null;
+  if (requestedDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDueDate)) {
+    return badRequest('วันที่คาดหวังคำตอบไม่ถูกต้อง');
+  }
 
   // บริบทจากดีล (ถ้าผูก): ต้องมีจริง + ผู้ถามต้องมีสิทธิ์ทำงานกับดีลนั้น
   let dealId = body.dealId || null;
@@ -99,6 +103,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     requesterName: user.name || null,
     team,
     dueDate,
+    requestedDueDate,
   };
   const { data, error } = await supabase.from('inquiries').insert(row).select().single();
   if (error) return fail(error.message, 500);

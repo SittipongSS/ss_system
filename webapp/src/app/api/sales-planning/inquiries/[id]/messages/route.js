@@ -26,6 +26,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!isResponder && !inInquiryRequesterScope(user, inquiry) && !canRespondInquiry(user, inquiry)) {
     return forbidden('เฉพาะผู้ถาม/ทีมผู้ถาม หรือฝ่ายผู้ตอบ ที่คุยในเธรดนี้ได้');
   }
+  if (isResponder && !inquiry.acceptedAt) return badRequest('กรุณากดรับเรื่องก่อนตอบ');
+  if (isResponder && inquiry.assigneeId && inquiry.assigneeId !== user.id) {
+    return forbidden('เฉพาะ RD ผู้รับเรื่องที่ตอบได้');
+  }
 
   const body = await req.json();
   const text = (body.body || '').trim();
@@ -46,10 +50,19 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // ผลข้างเคียงต่อสถานะเรื่อง (สลับฝั่ง "รอใครตอบ")
   const updates = { updatedAt: new Date().toISOString() };
+  if (inquiry.requesterCloseConfirmedAt || inquiry.responderCloseConfirmedAt) {
+    Object.assign(updates, {
+      requesterCloseConfirmedBy: null, requesterCloseConfirmedAt: null,
+      responderCloseConfirmedBy: null, responderCloseConfirmedAt: null,
+    });
+  }
   if (isResponder) {
     if (inquiry.status === 'open') updates.status = 'answered';
-    if (!inquiry.answeredAt) updates.answeredAt = new Date().toISOString();
-    if (!inquiry.assigneeId) { updates.assigneeId = user.id; updates.assigneeName = user.name || null; }
+    if (!inquiry.answeredAt) {
+      updates.answeredAt = new Date().toISOString();
+      updates.answeredById = user.id;
+      updates.answeredByName = user.name || null;
+    }
   } else if (inquiry.status === 'answered') {
     updates.status = 'open'; // ผู้ถามถามต่อ → กลับไปรอฝ่ายผู้ตอบ
   }

@@ -267,8 +267,8 @@ test('rd: reads deals/projects everywhere, works its own queue, never edits sale
   assert.equal(pmEditScope('rd'), 'none');
   assert.equal(deleteScope('rd', 'orders'), 'none');
 
-  // My Work: sees only its own queue; assigns only to itself; cannot pull others' tasks.
-  assert.deepEqual(pmTaskScopes('rd'), ['mine']);
+  // RD can switch between its own queue and the whole RD department queue.
+  assert.deepEqual(pmTaskScopes('rd'), ['mine', 'team']);
   const rd = { id: 'r1', role: 'rd', team: null, department: 'RD' };
   assert.equal(canAssignTask(rd, { id: 'r1', team: null }), true);
   assert.equal(canAssignTask(rd, { id: 'x2', team: 'KA' }), false);
