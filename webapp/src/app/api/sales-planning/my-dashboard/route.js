@@ -29,9 +29,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .eq('assigneeId', user.id)
       .in('status', ['new', 'screened', 'assigned', 'contacted', 'meeting'])
       .order('createdAt', { ascending: false }),
-    supabase.from('personal_tasks').select('id, status, dueDate, urgent, ownerId, assigneeId, proxyBy').eq('ownerId', user.id),
-    supabase.from('personal_tasks').select('id, status, dueDate, urgent, ownerId, assigneeId, proxyBy').eq('assigneeId', user.id),
-    supabase.from('personal_tasks').select('id, status, dueDate, urgent, ownerId, assigneeId, proxyBy').eq('proxyBy', user.id),
+    supabase.from('personal_tasks').select('*').eq('ownerId', user.id),
+    supabase.from('personal_tasks').select('*').eq('assigneeId', user.id),
+    supabase.from('personal_tasks').select('*').eq('proxyBy', user.id),
   ]);
 
   const target = targetRes.data?.targetAmount || 0;
@@ -90,8 +90,65 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     (l.status === 'meeting' && l.meetingAt && String(l.meetingAt).slice(0, 10) >= todayStr)
   );
 
+  // Feed ส่วนตัว: รวมความเคลื่อนไหวของดีลที่ผู้ใช้ดูแลกับงานที่ผู้ใช้รับผิดชอบ
+  // ใช้ข้อมูลดิบคนละตารางแล้ว normalize ก่อนส่ง เพื่อให้ UI เรียงรวมแบบเดียวกับ RD feed.
+  const dealMap = new Map(myDeals.map((deal) => [deal.id, deal]));
+  let dealActivityFeed = [];
+  if (dealMap.size) {
+    const { data: activities, error: activityError } = await supabase
+      .from('sales_deal_activities')
+      .select('*')
+      .in('dealId', Array.from(dealMap.keys()))
+      .order('createdAt', { ascending: false })
+      .limit(50);
+    if (activityError) return fail(activityError.message, 500);
+    dealActivityFeed = (activities || []).map((activity) => {
+      const deal = dealMap.get(activity.dealId);
+      return {
+        id: activity.id,
+        dealId: activity.dealId,
+        dealCode: deal?.code || null,
+        dealTitle: deal?.title || 'ดีล',
+        customerName: deal?.customerName || null,
+        kind: activity.kind,
+        body: activity.body,
+        dueDate: activity.dueDate || null,
+        createdByName: activity.createdByName || user.name || 'ฝ่ายขาย',
+        createdAt: activity.createdAt,
+        updatedAt: activity.updatedAt || null,
+        urgent: !!(activity.dueDate && activity.dueDate <= todayBangkok),
+      };
+    });
+  }
+
+  const taskFeed = [...myTasks]
+    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+    .slice(0, 50)
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      note: task.note || null,
+      status: task.status,
+      category: task.category || null,
+      urgent: !!task.urgent,
+      important: !!task.important,
+      dueDate: task.dueDate || null,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      assigneeName: task.assigneeName || task.ownerName || user.name || 'ฉัน',
+      assignedByName: task.assignedByName || null,
+      dealId: task.dealId || null,
+      projectId: task.projectId || null,
+    }));
+
+  const [year, monthNumber] = month.split('-').map(Number);
+  const periodFrom = `${month}-01`;
+  const periodTo = `${month}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
+
   return ok({
     month,
+    periodFrom,
+    periodTo,
     userId: user.id,
     target,
     wonValue,
@@ -103,5 +160,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     activeLeads,
     actionLeads,
     taskSummary,
+    taskFeed,
+    dealActivityFeed,
   });
 });
