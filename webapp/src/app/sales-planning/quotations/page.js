@@ -5,8 +5,8 @@ import Select from "@/components/ui/Select";
 // ทุกใบยังผูก โครงการ›ดีล เสมอ — สร้างใหม่ต้องเลือกดีลก่อน แล้วไปแก้ต่อที่หน้า editor.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, Pencil, Plus, Search, Printer, Trash2 } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import { BadgeCheck, CircleDollarSign, Clock3, FileText, Pencil, Plus, Search, Printer, Trash2 } from "lucide-react";
+import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import DetailRow from "@/components/ui/DetailRow";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -67,17 +67,23 @@ export default function QuotationsPage() {
       return [r.quoteNumber, r.customerName, r.deal?.title, r.deal?.ownerName].some((v) => (v || "").toLowerCase().includes(q));
     });
   }, [rows, query, statusFilter]);
+  const summary = useMemo(() => ({
+    total: rows.length,
+    active: rows.filter((row) => ["draft", "sent", "pending_approval"].includes(row.status)).length,
+    accepted: rows.filter((row) => ["accepted", "won"].includes(row.status)).length,
+    value: rows.reduce((sum, row) => sum + (Number(row.totalAmount) || 0), 0),
+  }), [rows]);
 
   if (!canView) {
     return (
-      <Workspace icon={<FileText size={22} />} title="ใบเสนอราคา">
+      <SaWorkspace icon={<FileText size={22} />} title="ใบเสนอราคา">
         <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
-      </Workspace>
+      </SaWorkspace>
     );
   }
 
   return (
-    <Workspace
+    <SaWorkspace
       icon={<FileText size={22} />}
       title="บริหารงานขาย — ใบเสนอราคา"
       subtitle="FM-SA-01 · เลขที่ QT-YYMMXXXX-R ใช้ติดตาม ห้ามซ้ำ — ทุกใบผูกกับดีลเสมอ"
@@ -87,12 +93,19 @@ export default function QuotationsPage() {
         </Link>
       )}
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         {error && (
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
-        <section className="glass-panel" style={{ padding: 16 }}>
+        <SaMetricStrip>
+          <SaMetric icon={<FileText />} label="ทั้งหมด" value={summary.total} note="ใบเสนอราคาในขอบเขตที่มองเห็น" />
+          <SaMetric icon={<Clock3 />} label="กำลังดำเนินการ" value={summary.active} note="ฉบับร่าง ส่งแล้ว หรือรออนุมัติ" tone={summary.active ? "warning" : "good"} />
+          <SaMetric icon={<BadgeCheck />} label="ปิดสำเร็จ" value={summary.accepted} note="ใบที่ลูกค้ายอมรับหรือ Won" tone="good" />
+          <SaMetric icon={<CircleDollarSign />} label="มูลค่ารวม" value={fmtMoney(summary.value)} note="รวมยอดใบเสนอราคาที่มองเห็น" />
+        </SaMetricStrip>
+
+        <SaSection icon={<FileText size={17} />} title="ทะเบียนใบเสนอราคา" subtitle="ค้นหา กรอง และเปิดเอกสารเพื่อดำเนินการต่อ" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="search-glass" style={{ width: 300 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
@@ -103,7 +116,6 @@ export default function QuotationsPage() {
               {Object.entries(QUOTE_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
             <div className="spacer" />
-            <span className="ui-badge">{filtered.length} ใบ</span>
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
@@ -176,9 +188,9 @@ export default function QuotationsPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </SaSection>
       </div>
 
-    </Workspace>
+    </SaWorkspace>
   );
 }

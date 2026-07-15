@@ -19,13 +19,13 @@ export function SaSection({ icon, title, subtitle, actions, children, bodyClassN
   </section>;
 }
 
-export function SaMetricStrip({ children }) {
-  return <section className={styles.metricStrip}>{children}</section>;
+export function SaMetricStrip({ children, className = "", ...props }) {
+  return <section className={`${styles.metricStrip} ${className}`.trim()} {...props}>{children}</section>;
 }
 
-export function SaMetric({ icon, label, value, note, tone }) {
-  return <div className={`${styles.metric} ${tone ? styles[tone] : ""}`}>
+export function SaMetric({ as: Element = "div", icon, label, value, note, tone, active = false, className = "", ...props }) {
+  return <Element className={`${styles.metric} ${tone ? styles[tone] : ""} ${active ? styles.metricActive : ""} ${className}`.trim()} {...props}>
     <span className={styles.metricIcon}>{icon}</span>
     <span><small>{label}</small><strong>{value ?? "-"}</strong>{note && <em>{note}</em>}</span>
-  </div>;
+  </Element>;
 }

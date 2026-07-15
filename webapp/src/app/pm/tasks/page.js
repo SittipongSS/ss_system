@@ -14,6 +14,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import { isSuperuser, TEAM_ROLES, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -644,17 +645,18 @@ export default function TasksPage() {
   });
 
   return (
-    <div>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><ListTodo size={22} /></span> งาน (Tasks)</h1>
-          <p>มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้{me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}</p>
-        </div>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+    <SaWorkspace
+      icon={<ListTodo size={22} />}
+      title="งาน (Tasks)"
+      subtitle={`มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้${me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}`}
+      headerRight={
+        <div className="flex gap-3 items-center flex-wrap">
           <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
           {(canEdit || role === "rd") && <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>}
         </div>
-      </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
 
       {/* scope tabs */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
@@ -684,13 +686,7 @@ export default function TasksPage() {
 
       {/* ── ข้อสอบถามค้างของฝ่าย (role rd) — คิวเดียวกับงาน: ตอบในเธรด ── */}
       {inquiries.length > 0 && (
-        <section className="glass-panel" style={{ padding: 14, marginBottom: 18 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <MessageCircleQuestion size={16} aria-hidden="true" style={{ color: "var(--violet)" }} />
-            <h2 style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>ข้อสอบถามจากฝ่ายขาย</h2>
-            <span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => q.status === "open").length} รอตอบ</span>
-            <Link href="/sa/inquiries" className="linklike" style={{ marginLeft: "auto", fontSize: 12.5 }}>ดูทั้งหมด</Link>
-          </div>
+        <SaSection icon={<MessageCircleQuestion size={17} />} title="ข้อสอบถามจากฝ่ายขาย" subtitle="เรื่องที่ฝ่ายของคุณต้องตอบหรือติดตาม" actions={<><span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => q.status === "open").length} รอตอบ</span><Link href="/sa/inquiries" className="linklike">ดูทั้งหมด</Link></>}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
             {inquiries.slice(0, 8).map((q) => {
               const due = inquiryDueTone(q, todayISO);
@@ -711,26 +707,21 @@ export default function TasksPage() {
               );
             })}
           </ul>
-        </section>
+        </SaSection>
       )}
 
       {/* ── สรุปภาพรวม (คลิกเพื่อกรอง) ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", marginBottom: "18px" }}>
+      <SaMetricStrip>
         {STAT_CARDS.map((c) => {
           const active = statusFilter === c.key;
           return (
-            <button key={c.key} onClick={() => setStatusFilter(active && c.key !== "all" ? "all" : c.key)} className={`glass-panel stat-card${active ? " active" : ""}`} style={{ "--stat": c.color }}>
-              <span className="stat-icon">{c.icon}</span>
-              <div style={{ minWidth: 0 }}>
-                <div className="stat-num">{c.count}</div>
-                <div className="stat-label">{c.label}</div>
-              </div>
-            </button>
+            <SaMetric key={c.key} as="button" type="button" onClick={() => setStatusFilter(active && c.key !== "all" ? "all" : c.key)} active={active} icon={c.icon} label={c.label} value={c.count} note={active ? "กำลังใช้ตัวกรองนี้" : "กดเพื่อกรองรายการ"} tone={c.key === "done" ? "good" : c.key === "overdue" ? "danger" : c.key === "pending" ? "warning" : undefined} aria-pressed={active} />
           );
         })}
-      </div>
+      </SaMetricStrip>
 
       {/* ── แถบเครื่องมือ ── */}
+      <SaSection icon={<ListTodo size={17} />} title="รายการงาน" subtitle="ค้นหา กรอง และสลับมุมมองเพื่อติดตามงาน" actions={<span className="ui-badge">{visible.length} งาน</span>}>
       <div className="toolbar" style={{ marginBottom: "20px" }}>
         <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
           <Search size={18} color="var(--text-3)" />
@@ -965,6 +956,7 @@ export default function TasksPage() {
           })}
         </div>
       )}
+      </SaSection>
 
       {/* task modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editingId ? "แก้ไขงาน" : "เพิ่มงาน"} size="md">
@@ -1123,6 +1115,7 @@ export default function TasksPage() {
         confirmLabel={confirmState?.confirmLabel || "ยืนยัน"}
         danger={confirmState?.danger ?? true}
       />
-    </div>
+      </div>
+    </SaWorkspace>
   );
 }
