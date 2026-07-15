@@ -81,15 +81,19 @@ test('quotation print shows the selected document people with legacy fallback', 
     metadata: { aeOwner: 'สมชาย ดูแล', preparedBy: 'สมหญิง จัดทำ', aeSupervisor: 'สมศักดิ์ ตรวจสอบ' },
   });
   assert.match(html, /ผู้ดูแล \(AE\)<\/span><span class="v">สมชาย ดูแล/);
-  assert.match(html, /สมหญิง จัดทำ<\/div><div class="role">ผู้จัดทำ \/ ผู้เสนอราคา/);
-  assert.match(html, /สมศักดิ์ ตรวจสอบ<\/div><div class="role">ผู้ตรวจสอบ \/ ผู้อนุมัติ/);
+  // ช่องลงชื่อตีกรอบ 3 ช่อง: ผู้จัดทำ / ผู้ตรวจสอบ / ผู้ยืนยันสั่งซื้อ (ลูกค้า)
+  assert.match(html, /sb-head">ผู้จัดทำ[\s\S]*?\(สมหญิง จัดทำ\)/);
+  assert.match(html, /sb-head">ผู้ตรวจสอบ[\s\S]*?\(สมศักดิ์ ตรวจสอบ\)/);
+  assert.match(html, /sb-head">ผู้ยืนยันสั่งซื้อ[\s\S]*?ชื่อ-นามสกุล ตัวบรรจง/);
+  // หัวเอกสารอยู่ใน thead ของตารางชั้นนอก → พิมพ์ซ้ำทุกหน้า
+  assert.match(html, /<table class="page-table">\s*<thead><tr><td>[\s\S]*?class="doc-top"/);
 
   // ใบเก่าไม่มี metadata: ผู้จัดทำ fallback เป็นผู้สร้างใบ, ไม่มีบรรทัดผู้ดูแล
   const legacy = buildQuotePrintHTML({
     quoteNumber: 'QT-003', lines: [], subtotal: 0, totalAmount: 0, vatRate: 0,
     createdByName: 'ผู้สร้างใบ',
   });
-  assert.match(legacy, /ผู้สร้างใบ<\/div><div class="role">ผู้จัดทำ \/ ผู้เสนอราคา/);
+  assert.match(legacy, /sb-head">ผู้จัดทำ[\s\S]*?\(ผู้สร้างใบ\)/);
   assert.doesNotMatch(legacy, /ผู้ดูแล \(AE\)/);
 });
 

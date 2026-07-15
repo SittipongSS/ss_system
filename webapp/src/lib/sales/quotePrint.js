@@ -19,6 +19,18 @@ const money = (v) => Number(v || 0).toLocaleString('th-TH', {
   maximumFractionDigits: 2,
 });
 const value = (v) => (v === null || v === undefined || v === '' ? '-' : esc(v));
+
+// ช่องลงชื่อตีกรอบ — โครงเดียวกับเอกสารไทม์ไลน์ (lib/pm/ganttPrint.js):
+// หัวช่อง (ตำแหน่ง) / พื้นที่เซ็น / ชื่อ (เติมมาให้ หรือเว้นให้เขียน) / วันที่
+const signBox = ({ label, role, name }) => `
+      <div class="sign-box">
+        <div class="sb-head">${esc(label)}${role ? ` <span class="sb-role">· ${esc(role)}</span>` : ''}</div>
+        <div class="sb-body">
+          <div class="sb-sig"><span class="sb-hint">ลงชื่อ</span></div>
+          <div class="sb-name">${name ? `(${esc(name)})` : '<span class="sb-hint">(ชื่อ-นามสกุล ตัวบรรจง)</span>'}</div>
+          <div class="sb-date">วันที่ <span class="dline"></span></div>
+        </div>
+      </div>`;
 const printDate = (v) => (v ? fmtDate(v).replaceAll('/', '.') : '-');
 
 // ต้องเปิด window ภายใน call stack ของ click โดยตรง มิฉะนั้น Chromium จะบล็อก popup
@@ -187,13 +199,33 @@ export function buildQuotePrintHTML(quote) {
                             border-top: 2px solid #c17a52; border-bottom: 2px solid #c17a52; }
   table.pay { margin-top: 5px; }
   table.pay th, table.pay td { font-size: 8.5px; padding: 3px 5px; color: #000; }
-  .signs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 25mm;
-           page-break-inside: avoid; break-inside: avoid; }
-  .sign { text-align: center; color: #21385e; }
-  .sign .line { border-bottom: 1px dotted #837868; height: 10mm; margin: 0 8px 5px; }
-  .sign .who { font-size: 9.5px; font-weight: 600; line-height: 1.4; }
-  .sign .role { color: #837868; font-size: 8.5px; font-weight: 400; }
-  @page { size: A4 portrait; margin: 9mm 8mm 12mm; }
+  /* ตารางชั้นนอกพา doc-top ไปซ้ำทุกหน้า (เทคนิคเดียวกับเอกสารไทม์ไลน์ — ห้าม
+     position:fixed, Chromium ดันหัวตกล่าง PR #328) ล้าง border/padding ที่กฎ
+     th,td ใส่ให้ + อนุญาตแถวเนื้อหาแตกข้ามหน้า (กฎ tbody tr สั่ง avoid สำหรับตารางใน) */
+  .page-table { width: 100%; border-collapse: collapse; }
+  .page-table > thead > tr > td, .page-table > tbody > tr > td { border: none; padding: 0; }
+  .page-table > tbody > tr, .page-table > tbody { page-break-inside: auto !important; break-inside: auto !important; }
+  /* เนื้อหาใต้หัวเอกสารเป็น flex คอลัมน์ min-height เกือบเต็มหน้า → ช่องลงชื่อ
+     (margin-top:auto) ถูกดันชิดล่างสุดของหน้า; เอกสารยาวหลายหน้า จะไหลต่อท้ายเนื้อหา */
+  .doc-body { display: flex; flex-direction: column; min-height: 238mm; }
+
+  /* ช่องลงชื่อตีกรอบ 3 ช่อง (ผู้จัดทำ/ผู้ตรวจสอบ/ลูกค้า) — โครงเดียวกับเอกสารไทม์ไลน์ */
+  .sign-sec { margin-top: auto; padding-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr);
+              gap: 8px; page-break-inside: avoid; break-inside: avoid; }
+  .sign-box { border: 1px solid #b8b0a4; border-radius: 6px; overflow: hidden; background: #fff; }
+  .sb-head { background: #f0ebe0; border-bottom: 1px solid #dcd8d0; text-align: center;
+             padding: 3px 6px; font-size: 9.5px; font-weight: 700; color: #21385e; }
+  .sb-role { font-weight: 400; font-size: 8px; color: #837868; }
+  .sb-body { padding: 4px 12px 8px; text-align: center; }
+  .sb-sig { height: 44px; border-bottom: 1px dotted #6b7a90; position: relative; }
+  .sb-sig .sb-hint { position: absolute; left: 0; bottom: 2px; font-size: 8.5px; color: #837868; }
+  .sb-name { font-size: 9.5px; font-weight: 600; color: #000; margin-top: 4px; min-height: 13px; }
+  .sb-name .sb-hint { font-weight: 400; font-size: 8.5px; color: #837868; }
+  .sb-date { font-size: 8.5px; color: #837868; margin-top: 4px; }
+  .sb-date .dline { display: inline-block; border-bottom: 1px dotted #6b7a90; min-width: 84px; height: 0.9em; vertical-align: middle; }
+
+  /* ขอบซ้าย 18mm เว้นไว้เข้าเล่ม (มติผู้ใช้ 2026-07-15) — เนื้อหากว้างเต็มพื้นที่พิมพ์ที่เหลือ */
+  @page { size: A4 portrait; margin: 9mm 8mm 12mm 18mm; }
   @media (max-width: 820px) {
     .toolbar { width: 100%; }
     .sheet { width: 100%; min-height: auto; margin: 12px 0; padding: 18px 14px; box-shadow: none; }
@@ -203,6 +235,8 @@ export function buildQuotePrintHTML(quote) {
     .header-grid { grid-template-columns: 1fr; }
     .totals-wrap table { width: 100%; }
     .hcol.left { border-right: 0; border-bottom: 1px solid #dcd8d0; }
+    .doc-body { min-height: 0; }
+    .sign-sec { grid-template-columns: 1fr; }
   }
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -218,7 +252,12 @@ export function buildQuotePrintHTML(quote) {
     <button class="btn-print" type="button" onclick="window.print()">พิมพ์เอกสาร</button>
   </div>
   <main class="sheet">
+    <table class="page-table">
+      <thead><tr><td>
     ${printHeaderHtml({ form: DOCUMENT_FORMS.quotation, docNumber: quote.quoteNumber, docDate: printDate(quote.quoteDate) })}
+      </td></tr></thead>
+      <tbody><tr><td>
+    <div class="doc-body">
     <section class="header-grid">
       <div class="hcol left">
         <div class="hrow"><span class="k">ลูกค้า</span><span class="v">${value(quote.customerName)}</span></div>
@@ -250,11 +289,14 @@ export function buildQuotePrintHTML(quote) {
         <div class="info-block"><div class="lbl">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>${value(quote.paymentTerms)}${installmentTable}</div>
       </div>
     </section>
-    <section class="signs">
-      <div class="sign"><div class="line"></div><div class="who">${value(preparedBy)}</div><div class="role">ผู้จัดทำ / ผู้เสนอราคา</div></div>
-      <div class="sign"><div class="line"></div><div class="who">${reviewer ? esc(reviewer) : 'ผู้อนุมัติ'}</div><div class="role">ผู้ตรวจสอบ / ผู้อนุมัติ · Scent &amp; Sense</div></div>
-      <div class="sign"><div class="line"></div><div class="who">ผู้ยืนยันสั่งซื้อ</div><div class="role">ลูกค้า · วันที่ ____/____/______</div></div>
+    <section class="sign-sec">
+      ${signBox({ label: 'ผู้จัดทำ', role: 'Scent & Sense', name: preparedBy })}
+      ${signBox({ label: 'ผู้ตรวจสอบ', role: 'Scent & Sense', name: reviewer })}
+      ${signBox({ label: 'ผู้ยืนยันสั่งซื้อ', role: 'ลูกค้า', name: '' })}
     </section>
+    </div>
+      </td></tr></tbody>
+    </table>
   </main>
 </body>
 </html>`;
