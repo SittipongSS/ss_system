@@ -30,7 +30,7 @@
 5. ไปที่ **Storage** → **New bucket** ตั้งชื่อ `uploads` → ติ๊ก **Public bucket** → Create
    (ใช้กับไฟล์ public เช่นแผนที่/รูป master data)
 
-   > Production ที่เก็บเอกสารการค้า/หลักฐาน Won แนะนำให้ตั้ง `STORAGE_BACKEND=drive` เพื่อเก็บเป็น private file ใน Shared Drive; Supabase fallback ปัจจุบันใช้ public URL
+   Migration `0104` จะสร้าง bucket `sales-evidence` แบบ **private** สำหรับหลักฐาน Won โดยเฉพาะ ห้ามเปลี่ยน bucket นี้เป็น public; ระบบดาวน์โหลดผ่าน API ที่ตรวจสิทธิ์ของดีล
 
 ## 2) เอา keys มาใส่ env
 
@@ -51,6 +51,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...        # anon public
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...            # service_role secret
+SUPABASE_PRIVATE_STORAGE_BUCKET=sales-evidence
 ```
 
 ## 3) ย้ายข้อมูลเดิม (data.json → Supabase)
@@ -127,7 +128,7 @@ Login เปลี่ยนจากรหัส `1234` เป็น **Supabase 
 ## เช็กลิสต์ก่อนส่งให้ทีม
 - [ ] รัน `npm run check:migrations`
 - [ ] Project ใหม่: สร้างและรัน `supabase/bootstrap.generated.sql`; ฐานเดิม: รันเฉพาะ migration ใหม่ครบ
-- [ ] สร้าง bucket `uploads` และตั้ง `STORAGE_BACKEND` ให้เหมาะกับความลับของไฟล์
+- [ ] สร้าง bucket public `uploads`; ตรวจว่า migration `0104` สร้าง bucket private `sales-evidence` แล้ว
 - [ ] `.env.local` ครบ 4 ค่า; รัน `node scripts/migrate-to-supabase.mjs` เฉพาะกรณีนำเข้าข้อมูลเก่าจาก `data.json`
 - [ ] สร้างบัญชีทีมใน Supabase + ใส่ `role` ใน user metadata
 - [ ] ทดสอบ `npm test`, `npm run lint`, `npm run build`

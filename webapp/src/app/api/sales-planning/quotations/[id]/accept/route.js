@@ -5,7 +5,11 @@ import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/sa
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
-import { validateWonEvidence, WON_DOC_TYPE_LABELS } from '@/lib/sales/quotationWonEvidence';
+import {
+  DEFAULT_WON_EVIDENCE_BUCKET,
+  validateWonEvidence,
+  WON_DOC_TYPE_LABELS,
+} from '@/lib/sales/quotationWonEvidence';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,10 +20,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // หลักฐานบังคับ (feedback ผู้ใช้ 2026-07-15): ไฟล์แนบ + ประเภท + วันที่เอกสาร
   // (+กำหนดชำระเมื่อไม่ใช่เอกสารการชำระ) — validate ที่นี่ก่อน แล้ว RPC ตรวจซ้ำชั้น DB
   const body = await req.json().catch(() => ({}));
-  const evidenceCheck = validateWonEvidence(body);
-  if (!evidenceCheck.ok) return badRequest(evidenceCheck.error);
-  const evidence = evidenceCheck.evidence;
-
   const { id } = await ctx.params;
   const { data: quote, error } = await supabase
     .from('quotations')
@@ -40,6 +40,29 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!deal.projectId) return badRequest('ต้องเชื่อมโครงการกับดีลก่อนปิด Won ผ่านใบเสนอราคา');
   if (deal.stage === 'lost') return badRequest('ดีลนี้ปิดเป็น Lost แล้ว ไม่สามารถปิด Won ผ่านใบเสนอราคาได้');
   if (['won', 'in_project'].includes(deal.stage)) return badRequest('ดีลนี้ปิดการขาย (Won) แล้ว');
+
+  // Private evidence refs must point only to this quotation's folder in the
+  // dedicated bucket. Legacy public URLs / Drive refs remain valid.
+  const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_WON_EVIDENCE_BUCKET;
+  const safeQuoteId = String(quote.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
+  const evidenceCheck = validateWonEvidence(body, {
+    allowedStorageBucket: privateBucket,
+    allowedStoragePathPrefix: `quotations/${safeQuoteId}/won/`,
+  });
+  if (!evidenceCheck.ok) return badRequest(evidenceCheck.error);
+  const evidence = evidenceCheck.evidence;
+
+  // Do not let a forged/nonexistent object path become permanent Won evidence.
+  for (const att of evidence.attachments.filter((item) => item.storagePath)) {
+    const slash = att.storagePath.lastIndexOf('/');
+    const folder = att.storagePath.slice(0, slash);
+    const name = att.storagePath.slice(slash + 1);
+    const { data: stored, error: storageError } = await supabase.storage
+      .from(privateBucket).list(folder, { search: name, limit: 10 });
+    if (storageError || !stored?.some((item) => item.name === name)) {
+      return badRequest(`ไม่พบไฟล์หลักฐาน ${att.fileName || name} ในพื้นที่จัดเก็บ private`);
+    }
+  }
 
   const currentFingerprint = quotationApprovalFingerprint(quote);
   const readiness = validateDocumentReadiness({

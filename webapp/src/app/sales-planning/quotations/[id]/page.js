@@ -106,7 +106,8 @@ export default function QuotationEditorPage() {
 
   const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status);
   // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
-  const canDeleteDocument = !!quote && canEditCap && (quote.status === "draft" || isSuperuser(role));
+  const canDeleteDocument = !!quote && canEditCap && quote.status !== "accepted"
+    && (quote.status === "draft" || isSuperuser(role));
   const editable = canEditDocument && editMode;
 
   // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส (ตัวหนา) · แบรนด์ · ชื่อสินค้า · ปริมาตร

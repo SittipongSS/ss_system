@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   validateWonEvidence, sanitizeWonAttachments, isPaymentDocType, MAX_WON_ATTACHMENTS,
+  DEFAULT_WON_EVIDENCE_BUCKET,
 } from './quotationWonEvidence.js';
 
 const file = { fileUrl: 'https://drive.example/f1', driveFileId: 'd1', fileName: 'slip.pdf', mimeType: 'application/pdf', sizeBytes: 1024 };
@@ -53,6 +54,36 @@ test('sanitizeWonAttachments strips unknown fields and caps the list', () => {
   assert.equal('evil' in clean[0], false);
   assert.equal(clean[0].fileName.length, 200);
   assert.equal(clean[0].sizeBytes, null);
+});
+
+test('private evidence refs are accepted only for the configured bucket and quotation path', () => {
+  const privateFile = {
+    storageBucket: DEFAULT_WON_EVIDENCE_BUCKET,
+    storagePath: 'quotations/QT-1/won/receipt.pdf',
+    fileName: 'receipt.pdf',
+  };
+  const options = {
+    allowedStorageBucket: DEFAULT_WON_EVIDENCE_BUCKET,
+    allowedStoragePathPrefix: 'quotations/QT-1/won/',
+  };
+  const accepted = validateWonEvidence({
+    docType: 'payment_slip', docDate: '2026-07-15', attachments: [privateFile],
+  }, options);
+  assert.equal(accepted.ok, true);
+  assert.equal(accepted.evidence.attachments[0].fileUrl, null);
+  assert.equal(accepted.evidence.attachments[0].storagePath, privateFile.storagePath);
+
+  const wrongBucket = validateWonEvidence({
+    docType: 'payment_slip', docDate: '2026-07-15',
+    attachments: [{ ...privateFile, storageBucket: 'other-private-data' }],
+  }, options);
+  assert.equal(wrongBucket.ok, false);
+
+  const wrongQuote = validateWonEvidence({
+    docType: 'payment_slip', docDate: '2026-07-15',
+    attachments: [{ ...privateFile, storagePath: 'quotations/QT-2/won/receipt.pdf' }],
+  }, options);
+  assert.equal(wrongQuote.ok, false);
 });
 
 test('isPaymentDocType', () => {
