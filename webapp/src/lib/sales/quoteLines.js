@@ -7,6 +7,16 @@ export function productLabel(product) {
   return product?.productDescription || product?.productDescriptionEn || product?.fgCode || 'สินค้า';
 }
 
+// คำอธิบายบรรทัด FG มาตรฐานเดียวทั้งระบบ (มติผู้ใช้ 2026-07-15): แบรนด์ · ชื่อสินค้า ·
+// ปริมาตร — ส่วน "รหัส" แสดงแยกเป็นป้าย FG นำหน้าทั้งในโปรแกรมและเอกสารพิมพ์
+// (ไม่ฝังรหัสใน description กันซ้ำซ้อน). ใช้ตอน seed จากโครงการ + ตอนเลือกสินค้าใน editor.
+export function fgLineDescription(product) {
+  const brand = product?.brandName || product?.brandNameEn || '';
+  const name = product?.productDescription || product?.productDescriptionEn || '';
+  const volume = product?.volume ? `${product.volume} ${product.volumeUnit || 'ml'}` : '';
+  return [brand, name, volume].filter(Boolean).join(' · ') || productLabel(product);
+}
+
 function qtyFromProjectProduct(row) {
   const raw = row?.orderQty || row?.productionQty || 1;
   const n = Number(String(raw).replace(/,/g, ''));
@@ -18,7 +28,7 @@ export async function seedLinesFromProject(supabase, deal) {
   if (!deal.projectId) return [];
   const { data } = await supabase
     .from('project_products')
-    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, retailPriceIncVat)')
+    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, retailPriceIncVat)')
     .eq('projectId', deal.projectId);
   return (data || []).map((row, index) => {
     const qty = qtyFromProjectProduct(row);
@@ -27,7 +37,7 @@ export async function seedLinesFromProject(supabase, deal) {
       id: genId('QTL'),
       productId: row.productId || row.product?.id || null,
       fgCode: row.product?.fgCode || null,
-      description: productLabel(row.product),
+      description: fgLineDescription(row.product),
       qty,
       unitPrice,
       discountType: null,

@@ -28,6 +28,7 @@ import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
+import { fgLineDescription } from "@/lib/sales/quoteLines";
 import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
@@ -142,7 +143,8 @@ export default function QuotationEditorPage() {
     setLine(i, {
       productId: p.id,
       fgCode: p.fgCode || null,
-      description: p.productDescription || p.productDescriptionEn || p.fgCode || "สินค้า",
+      // คำอธิบายมาตรฐาน แบรนด์ · ชื่อสินค้า · ปริมาตร (รหัสแสดงเป็นป้าย FG แยก)
+      description: fgLineDescription(p),
       unitPrice: Number(p.retailPriceIncVat || 0),
     });
   };
@@ -467,8 +469,9 @@ export default function QuotationEditorPage() {
                               options={productOptions}
                             />
                           )}
-                          <input className="premium-input" value={l.description || ""} disabled={!editable} placeholder={l._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"} onChange={(e) => setLine(i, { description: e.target.value })} style={{ width: "100%" }} />
+                          {/* รหัสนำหน้า → คำอธิบาย แบรนด์ · ชื่อสินค้า · ปริมาตร (มติผู้ใช้) */}
                           {l.fgCode && <span className={styles.fgCode}>FG: {l.fgCode}</span>}
+                          <input className="premium-input" value={l.description || ""} disabled={!editable} placeholder={l._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"} onChange={(e) => setLine(i, { description: e.target.value })} style={{ width: "100%" }} />
                         </div>
                       </td>
                       <td><MoneyInput min="0" value={l.qty} disabled={!editable} onChange={(value) => setLine(i, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${i + 1}`} /></td>

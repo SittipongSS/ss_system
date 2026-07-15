@@ -72,7 +72,7 @@ export function buildQuotePrintHTML(quote) {
     .map((line, index) => `
       <tr>
         <td class="c">${index + 1}</td>
-        <td class="description">${value(line.description)}${line.fgCode ? `<div class="fg">FG: ${esc(line.fgCode)}</div>` : ''}</td>
+        <td class="description">${line.fgCode ? `<span class="fg-code">${esc(line.fgCode)}</span> · ` : ''}${value(line.description)}</td>
         <td class="n">${Number(line.qty || 0).toLocaleString('th-TH')}</td>
         <td class="n">${money(line.unitPrice)}</td>
         ${hasLineDiscount ? `<td class="n">${Number(line.discountAmount) > 0 ? money(line.discountAmount) : '-'}</td>` : ''}
@@ -152,6 +152,8 @@ export function buildQuotePrintHTML(quote) {
   .n { text-align: right; font-variant-numeric: tabular-nums; }
   .description { word-break: break-word; }
   .fg, .muted { color: #837868; font-size: 8.5px; }
+  /* รหัส FG นำหน้าคำอธิบายบรรทัด (รหัส · แบรนด์ · ชื่อสินค้า · ปริมาตร) */
+  .fg-code { font-weight: 600; }
   .empty-row td { height: 32px; color: #837868; text-align: center; vertical-align: middle; }
   .commercial { display: flex; flex-direction: column; gap: 9px;
                 page-break-inside: avoid; break-inside: avoid; }
