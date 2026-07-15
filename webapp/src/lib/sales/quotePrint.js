@@ -151,12 +151,12 @@ export function buildQuotePrintHTML(quote) {
   .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
   .logo-wrap img { height: 46px; width: auto; max-width: 240px; display: block; }
-  .brand h2 { color: #21385e; font-size: 13px; font-weight: 700; line-height: 1.25; }
-  .company-info { font-size: 8.5px; color: #837868; line-height: 1.4; margin-top: 3px; }
+  .brand h2 { color: #21385e; font-size: 14.5px; font-weight: 700; line-height: 1.25; }
+  .company-info { font-size: 9.5px; color: #837868; line-height: 1.4; margin-top: 3px; }
   .doc-title { flex-shrink: 0; }
-  .doc-title .formno { font-size: 9px; font-weight: 700; color: #837868; letter-spacing: .5px; text-align: right; }
-  .doc-title .big { font-size: 17px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
-  .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
+  .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: .5px; text-align: right; }
+  .doc-title .big { font-size: 19px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
+  .doc-title .sub { font-size: 11px; color: #837868; text-align: right; }
   .doc-title .strong { color: #21385e; font-weight: 700; }
   .doc-number-line { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; white-space: nowrap; }
   .doc-number-line span + span { color: #837868; font-weight: 500; }
@@ -164,19 +164,19 @@ export function buildQuotePrintHTML(quote) {
                  border-radius: 6px; overflow: hidden; margin-bottom: 7px; page-break-inside: avoid; break-inside: avoid; }
   .hcol { padding: 7px 10px; min-width: 0; }
   .hcol.left { border-right: 1px solid #dcd8d0; background: #f7f3ec; }
-  .hrow { display: flex; gap: 6px; font-size: 9.5px; line-height: 1.5; }
-  .hrow .k { color: #000; min-width: 76px; flex-shrink: 0; }
+  .hrow { display: flex; gap: 6px; font-size: 11px; line-height: 1.5; }
+  .hrow .k { color: #000; min-width: 84px; flex-shrink: 0; }
   .hrow .v { color: #000; font-weight: 600; min-width: 0; word-break: break-word; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { border: 1px solid #cfc9bf; }
-  thead th { background: #e8e2d9; color: #000; font-size: 9px; font-weight: 700; padding: 4px 5px; text-align: center; line-height: 1.2; }
+  thead th { background: #e8e2d9; color: #000; font-size: 10.5px; font-weight: 700; padding: 4px 5px; text-align: center; line-height: 1.2; }
   tbody tr { page-break-inside: avoid; break-inside: avoid; }
   table.items { margin-bottom: 9px; }
-  table.items td { color: #000; font-size: 9.5px; padding: 4px 6px; vertical-align: top; line-height: 1.35; }
+  table.items td { color: #000; font-size: 11px; padding: 4px 6px; vertical-align: top; line-height: 1.35; }
   .c { text-align: center; }
   .n { text-align: right; font-variant-numeric: tabular-nums; }
   .description { word-break: break-word; }
-  .fg, .muted { color: #837868; font-size: 8.5px; }
+  .fg, .muted { color: #837868; font-size: 9.5px; }
   /* รหัส FG นำหน้าคำอธิบายบรรทัด (รหัส · แบรนด์ · ชื่อสินค้า · ปริมาตร) */
   .fg-code { font-weight: 600; }
   .empty-row td { height: 32px; color: #837868; text-align: center; vertical-align: middle; }
@@ -187,18 +187,18 @@ export function buildQuotePrintHTML(quote) {
   .commercial-info { border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; }
   .info-block { padding: 6px 9px; min-height: 40px; color: #000; white-space: pre-wrap; }
   .info-block + .info-block { border-top: 1px solid #dcd8d0; }
-  .info-block .lbl { color: #837868; font-size: 8.5px; font-weight: 600; margin-bottom: 2px; }
-  table.totals td { border: 0; border-bottom: 1px solid #dcd8d0; color: #000; padding: 5px 8px; font-size: 10px; }
+  .info-block .lbl { color: #837868; font-size: 9.5px; font-weight: 600; margin-bottom: 2px; }
+  table.totals td { border: 0; border-bottom: 1px solid #dcd8d0; color: #000; padding: 5px 8px; font-size: 11.5px; }
   table.totals tr:first-child td { border-top: 1px solid #dcd8d0; }
   table.totals td:first-child { border-left: 1px solid #dcd8d0; }
   table.totals td:last-child { border-right: 1px solid #dcd8d0; }
   table.totals .discount { color: #b0483b; }
   /* ยอดหลังหักส่วนลด — เส้นคั่นบน + ตัวหนา (โครงท้ายใบตามมติผู้ใช้ 2026-07-15) */
   table.totals tr.after-discount td { border-top: 1.5px solid #b8b0a4; font-weight: 700; }
-  table.totals tr.grand td { background: #f7f3ec; color: #21385e; font-size: 12px; font-weight: 800;
+  table.totals tr.grand td { background: #f7f3ec; color: #21385e; font-size: 13.5px; font-weight: 800;
                             border-top: 2px solid #c17a52; border-bottom: 2px solid #c17a52; }
   table.pay { margin-top: 5px; }
-  table.pay th, table.pay td { font-size: 8.5px; padding: 3px 5px; color: #000; }
+  table.pay th, table.pay td { font-size: 9.5px; padding: 3px 5px; color: #000; }
   /* ตารางชั้นนอกพา doc-top ไปซ้ำทุกหน้า (เทคนิคเดียวกับเอกสารไทม์ไลน์ — ห้าม
      position:fixed, Chromium ดันหัวตกล่าง PR #328) ล้าง border/padding ที่กฎ
      th,td ใส่ให้ + อนุญาตแถวเนื้อหาแตกข้ามหน้า (กฎ tbody tr สั่ง avoid สำหรับตารางใน) */
@@ -214,14 +214,14 @@ export function buildQuotePrintHTML(quote) {
               gap: 8px; page-break-inside: avoid; break-inside: avoid; }
   .sign-box { border: 1px solid #b8b0a4; border-radius: 6px; overflow: hidden; background: #fff; }
   .sb-head { background: #f0ebe0; border-bottom: 1px solid #dcd8d0; text-align: center;
-             padding: 3px 6px; font-size: 9.5px; font-weight: 700; color: #21385e; }
-  .sb-role { font-weight: 400; font-size: 8px; color: #837868; }
+             padding: 4px 6px; font-size: 11px; font-weight: 700; color: #21385e; }
+  .sb-role { font-weight: 400; font-size: 9px; color: #837868; }
   .sb-body { padding: 4px 12px 8px; text-align: center; }
   .sb-sig { height: 44px; border-bottom: 1px dotted #6b7a90; position: relative; }
-  .sb-sig .sb-hint { position: absolute; left: 0; bottom: 2px; font-size: 8.5px; color: #837868; }
-  .sb-name { font-size: 9.5px; font-weight: 600; color: #000; margin-top: 4px; min-height: 13px; }
-  .sb-name .sb-hint { font-weight: 400; font-size: 8.5px; color: #837868; }
-  .sb-date { font-size: 8.5px; color: #837868; margin-top: 4px; }
+  .sb-sig .sb-hint { position: absolute; left: 0; bottom: 2px; font-size: 9.5px; color: #837868; }
+  .sb-name { font-size: 11px; font-weight: 600; color: #000; margin-top: 4px; min-height: 15px; }
+  .sb-name .sb-hint { font-weight: 400; font-size: 9.5px; color: #837868; }
+  .sb-date { font-size: 9.5px; color: #837868; margin-top: 4px; }
   .sb-date .dline { display: inline-block; border-bottom: 1px dotted #6b7a90; min-width: 84px; height: 0.9em; vertical-align: middle; }
 
   /* ขอบซ้าย 18mm เว้นไว้เข้าเล่ม (มติผู้ใช้ 2026-07-15) — เนื้อหากว้างเต็มพื้นที่พิมพ์ที่เหลือ */
