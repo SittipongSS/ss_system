@@ -8,7 +8,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import DateInput from "@/components/ui/DateInput";
 import { fmtPercent } from "@/lib/format";
 
-import { KpiCard } from "@/components/salesPlanning/ui";
+import { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 
 const today = new Date();
 const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
@@ -85,8 +85,9 @@ export default function SalesKpiDashboard() {
   };
 
   return (
-    <div>
-      <div className="toolbar" style={{ marginBottom: 18 }}>
+    <div className="flex flex-col gap-4">
+      <SaSection icon={<CalendarDays size={17} />} title="ตัวกรอง KPI งาน" subtitle="เลือกช่วงวันที่และทีมที่ต้องการวิเคราะห์">
+      <div className="toolbar">
         <span className="toolbar-label"><CalendarDays size={14} /> ช่วงวันที่</span>
         <DateInput value={from} onChange={setFrom} style={{ width: 170 }} />
         <DateInput value={to} onChange={setTo} style={{ width: 170 }} />
@@ -99,6 +100,7 @@ export default function SalesKpiDashboard() {
         <div className="spacer" />
         <button type="button" className="btn btn-secondary sm" onClick={load} disabled={loading}><RefreshCw size={14} /> รีเฟรชข้อมูล</button>
       </div>
+      </SaSection>
 
       {error && (
         <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>
@@ -107,28 +109,21 @@ export default function SalesKpiDashboard() {
       )}
 
       {loading ? <SkeletonRows /> : (
-        <div className="flex flex-col gap-5">
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-            <KpiCard interactive={false} icon={<ListTodo size={16} />} label="งานทั้งหมด" value={summary.total || 0} hint={`${summary.people || 0} คน`} />
-            <KpiCard interactive={false} icon={<Trophy size={16} />} label="เสร็จแล้ว" value={summary.completed || 0} hint={`อัตราเสร็จ ${fmtPct(summary.completionPct)}`} color="var(--green)" />
-            <KpiCard interactive={false} icon={<CalendarDays size={16} />} label="ตรงเวลา" value={fmtPct(summary.onTimePct)} hint={`${summary.completedOnTime || 0}/${summary.completedWithDue || 0} งานที่มีกำหนด`} color="var(--blue)" />
-            <KpiCard interactive={false} icon={<BarChart3 size={16} />} label="คะแนนรวม" value={<ScoreBadge value={summary.score} />} hint="40% เสร็จ + 40% ตรงเวลา + 20% ความยาก" color="var(--amber)" />
-          </section>
+        <div className="flex flex-col gap-4">
+          <SaMetricStrip>
+            <SaMetric icon={<ListTodo />} label="งานทั้งหมด" value={summary.total || 0} note={`${summary.people || 0} คน`} />
+            <SaMetric icon={<Trophy />} label="เสร็จแล้ว" value={summary.completed || 0} note={`อัตราเสร็จ ${fmtPct(summary.completionPct)}`} tone="good" />
+            <SaMetric icon={<CalendarDays />} label="ตรงเวลา" value={fmtPct(summary.onTimePct)} note={`${summary.completedOnTime || 0}/${summary.completedWithDue || 0} งานที่มีกำหนด`} />
+            <SaMetric icon={<BarChart3 />} label="คะแนนรวม" value={<ScoreBadge value={summary.score} />} note="40% เสร็จ + 40% ตรงเวลา + 20% ความยาก" tone="warning" />
+          </SaMetricStrip>
 
           {teams.length > 1 && (
-            <section className="glass-panel" style={{ padding: 16 }}>
-              <div className="flex items-center gap-2 mb-3">
-                <Users size={17} aria-hidden="true" />
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>สรุปรายทีม</h2>
-                {chartTeamFilter && (
+            <SaSection icon={<Users size={17} />} title="สรุปรายทีม" subtitle="คลิกกราฟหรือแถวเพื่อกรองรายบุคคล" actions={chartTeamFilter && (
                   <span className="ui-badge flex items-center gap-1" style={{ background: "var(--accent)", color: "white" }}>
                     กำลังกรอง: {chartTeamFilter}
                     <X size={12} style={{ cursor: "pointer" }} onClick={() => setChartTeamFilter("")} />
                   </span>
-                )}
-                <div className="spacer" />
-                <span style={{ fontSize: 12, color: "var(--text-3)" }}>คลิกที่กราฟเพื่อกรองดูรายบุคคล</span>
-              </div>
+                )}>
               
               <div style={{ height: 320, width: "100%", marginBottom: 24, marginTop: 12 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -167,15 +162,10 @@ export default function SalesKpiDashboard() {
                   </tbody>
                 </table>
               </div>
-            </section>
+            </SaSection>
           )}
 
-          <section id="individual-kpi-section" className="glass-panel" style={{ padding: 16 }}>
-            <div className="flex items-center gap-2 mb-3">
-              <Users size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>รายบุคคล (Top 10)</h2>
-              {chartTeamFilter && <span style={{ fontSize: 12, color: "var(--accent)" }}>ทีม: {chartTeamFilter}</span>}
-            </div>
+          <SaSection icon={<Users size={17} />} title="รายบุคคล (Top 10)" subtitle="อันดับและรายละเอียด KPI รายบุคคล" actions={chartTeamFilter && <span className="ui-badge">ทีม: {chartTeamFilter}</span>}>
 
             {top10Rows.length > 0 && (
               <div style={{ height: 280, width: "100%", marginBottom: 24, marginTop: 12 }}>
@@ -223,7 +213,7 @@ export default function SalesKpiDashboard() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </SaSection>
         </div>
       )}
     </div>

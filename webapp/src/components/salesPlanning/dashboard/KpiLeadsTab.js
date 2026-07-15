@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Inbox, Filter, PhoneCall, CalendarClock } from "lucide-react";
-import { KpiCard } from "@/components/salesPlanning/ui";
+import { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import { CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS } from "@/lib/sales/leads";
 import { fmtName, fmtPercent } from "@/lib/format";
 
@@ -35,37 +35,35 @@ export default function KpiLeadsTab({ month, teamFilter }) {
   const sla = kpi?.sla || {};
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       {error && (
         <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
       )}
 
-      <section className="kpi-grid" aria-busy={loading}>
-        <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label="ลีดเข้า" value={f.total ?? "-"} hint={`เดือน ${kpi?.month || month}`} />
-        <KpiCard icon={<Filter size={16} aria-hidden="true" />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} hint={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้างคิว ${sla.screen?.pending ?? 0}`} />
-        <KpiCard icon={<PhoneCall size={16} aria-hidden="true" />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} hint={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้างติดต่อ ${sla.contact?.pending ?? 0}`} />
-        <KpiCard icon={<CalendarClock size={16} aria-hidden="true" />} label="Conversion" value={pct(f.qualified, f.total)} hint={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} />
-      </section>
+      <SaMetricStrip aria-busy={loading}>
+        <SaMetric icon={<Inbox />} label="ลีดเข้า" value={f.total ?? "-"} note={`เดือน ${kpi?.month || month}`} />
+        <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={pct(sla.screen?.hit, sla.screen?.checked)} note={`ทัน ${sla.screen?.hit ?? 0}/${sla.screen?.checked ?? 0} · ค้าง ${sla.screen?.pending ?? 0}`} tone={(sla.screen?.pending ?? 0) ? "warning" : "good"} />
+        <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={pct(sla.contact?.hit, sla.contact?.checked)} note={`ทัน ${sla.contact?.hit ?? 0}/${sla.contact?.checked ?? 0} · ค้าง ${sla.contact?.pending ?? 0}`} tone={(sla.contact?.pending ?? 0) ? "warning" : "good"} />
+        <SaMetric icon={<CalendarClock />} label="Conversion" value={pct(f.qualified, f.total)} note={`ลีด ${f.total ?? 0} → นัด ${f.meeting ?? 0} → เปิดลูกค้า ${f.qualified ?? 0}`} />
+      </SaMetricStrip>
 
       {/* Funnel */}
-      <section className="glass-panel" style={{ padding: 16 }}>
-        <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>Funnel ลีด → ลูกค้า</h2>
+      <SaSection icon={<Filter size={17} />} title="Funnel ลีด → ลูกค้า" subtitle="ติดตามการเปลี่ยนผ่านของลีดในแต่ละขั้น">
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
           {[["เข้า", f.total], ["คัดกรองแล้ว", f.screened], ["มอบหมายแล้ว", f.assigned], ["ติดต่อแล้ว", f.contacted], ["นัดประชุม", f.meeting], ["เปิดลูกค้า", f.qualified], ["ไม่ไปต่อ", f.disqualified], ["ตีกลับ", f.bounced]].map(([label, v]) => (
-            <KpiCard
+            <SaMetric
               key={label}
               label={label}
               value={v ?? 0}
-              interactive={false}
+              note="จำนวนลีด"
             />
           ))}
         </div>
-      </section>
+      </SaSection>
 
       <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
         {/* Marketing: กรอกรายวัน */}
-        <section className="glass-panel" style={{ padding: 16 }}>
-          <h2 style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 700 }}>การกรอกลีด (Marketing KPI)</h2>
+        <SaSection icon={<Inbox size={17} />} title="การกรอกลีด (Marketing KPI)" subtitle="ปริมาณลีดแยกตามผู้กรอก">
           <div className="premium-glass-table table-responsive">
             <table className="w-full text-sm">
               <thead><tr><th>ผู้กรอก</th><th className="num">ลีด</th><th className="num">วันที่กรอก</th><th className="num">เฉลี่ย/วัน</th></tr></thead>
@@ -82,11 +80,10 @@ export default function KpiLeadsTab({ month, teamFilter }) {
               </tbody>
             </table>
           </div>
-        </section>
+        </SaSection>
 
         {/* ช่องทาง */}
-        <section className="glass-panel" style={{ padding: 16 }}>
-          <h2 style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 700 }}>แยกตามช่องทาง</h2>
+        <SaSection icon={<CalendarClock size={17} />} title="แยกตามช่องทาง" subtitle="ผลลัพธ์ของลีดจากแต่ละช่องทาง">
           <div className="premium-glass-table table-responsive">
             <table className="w-full text-sm">
               <thead><tr><th>ช่องทาง</th><th>กลุ่ม</th><th className="num">ลีด</th><th className="num">เปิดลูกค้า</th></tr></thead>
@@ -103,12 +100,11 @@ export default function KpiLeadsTab({ month, teamFilter }) {
               </tbody>
             </table>
           </div>
-        </section>
+        </SaSection>
       </div>
 
       {/* AE: SLA ติดต่อ + ผลต่อคน */}
-      <section className="glass-panel" style={{ padding: 16 }}>
-        <h2 style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 700 }}>รายผู้รับผิดชอบ (AE KPI)</h2>
+      <SaSection icon={<PhoneCall size={17} />} title="รายผู้รับผิดชอบ (AE KPI)" subtitle="SLA และผลลัพธ์แยกตาม AE">
         <div className="premium-glass-table table-responsive">
           <table className="w-full text-sm">
             <thead><tr><th>AE</th><th>ทีม</th><th className="num">รับมอบ</th><th className="num">ติดต่อแล้ว</th><th className="num">SLA ทัน</th><th className="num">นัด</th><th className="num">เปิดลูกค้า</th></tr></thead>
@@ -128,7 +124,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
             </tbody>
           </table>
         </div>
-      </section>
+      </SaSection>
     </div>
   );
 }

@@ -417,16 +417,22 @@ button, select, input, textarea {
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 5px 20px rgba(17, 28, 55, 0.08);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .topnav-system {
   height: var(--topbar-h);
-  background: var(--navy);
+  background:
+    radial-gradient(circle at 28% -80%, color-mix(in srgb, var(--accent) 42%, transparent), transparent 48%),
+    linear-gradient(110deg, color-mix(in srgb, var(--navy) 94%, #000), var(--navy));
   color: #fff;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   padding: 0 clamp(14px, 2.2vw, 32px);
 }
 
@@ -437,17 +443,21 @@ button, select, input, textarea {
   text-decoration: none;
   color: #fff;
   flex-shrink: 0;
-  padding-right: 16px;
+  padding-right: 14px;
   border-right: 1px solid rgba(255, 255, 255, 0.16);
 }
 .topnav-brand-img {
-  height: 34px;
+  height: 36px;
   width: auto;
   object-fit: contain;
-  border-radius: 6px;
-  transition: transform 0.2s ease;
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4px 14px rgba(5, 11, 26, 0.2);
+  transition: transform 0.2s ease, box-shadow .2s ease;
 }
-.topnav-brand:hover .topnav-brand-img { transform: scale(1.05); }
+.topnav-brand:hover .topnav-brand-img { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(5, 11, 26, 0.28); }
 .topnav-brand-title {
   font-size: 14px;
   font-weight: 700;
@@ -461,10 +471,10 @@ button, select, input, textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  height: 36px;
+  padding: 0 13px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.22);
   color: #fff;
   font-family: inherit;
@@ -474,7 +484,7 @@ button, select, input, textarea {
   white-space: nowrap;
   transition: background 0.15s;
 }
-.topnav-sys-btn:hover { background: rgba(255, 255, 255, 0.18); }
+.topnav-sys-btn:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.36); }
 .topnav-sys-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -482,9 +492,9 @@ button, select, input, textarea {
   min-width: 220px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-lg);
-  padding: 6px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow), var(--shadow-lg);
+  padding: 8px;
   z-index: 120;
   display: flex;
   flex-direction: column;
@@ -494,8 +504,8 @@ button, select, input, textarea {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border-radius: 7px;
+  padding: 9px 11px;
+  border-radius: 9px;
   color: var(--text-2);
   text-decoration: none;
   font-size: 13.5px;
@@ -512,13 +522,13 @@ button, select, input, textarea {
 /* ชั้นเมนูของระบบปัจจุบัน */
 .topnav-menu {
   height: var(--topnav-menu-h);
-  background: var(--panel);
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  gap: 6px;
   padding: 0 clamp(10px, 2vw, 28px);
   overflow-x: auto;
   overflow-y: hidden;
@@ -529,27 +539,28 @@ button, select, input, textarea {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 36px;
-  margin: 4px 0;
-  padding: 0 13px;
+  min-height: 34px;
+  margin: 5px 0;
+  padding: 0 12px;
   color: var(--text-2);
   text-decoration: none;
   font-size: 13.5px;
   white-space: nowrap;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 10px;
   transition: color 0.12s, border-color 0.12s, background 0.12s, transform 0.12s;
 }
-.topnav-item:hover { color: var(--text); background: var(--panel-2); transform: translateY(-1px); }
+.topnav-item:hover { color: var(--text); border-color: var(--border); background: var(--panel-2); transform: translateY(-1px); }
 .topnav-item.active {
   color: var(--accent);
   font-weight: 600;
   border-color: color-mix(in srgb, var(--accent) 18%, transparent);
   background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .topnav-item.active svg { color: var(--accent); }
 .topnav-utility-item {
-  background: color-mix(in srgb, var(--panel-2) 72%, transparent);
+  background: color-mix(in srgb, var(--panel-2) 58%, transparent);
   border-color: var(--border);
 }
 
@@ -571,7 +582,7 @@ button, select, input, textarea {
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   margin-left: auto;
   flex-shrink: 0;
 }
@@ -580,6 +591,11 @@ button, select, input, textarea {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 38px;
+  padding: 3px 9px 3px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Responsive application navigation: desktop/tablet use the contextual top
