@@ -15,6 +15,7 @@ import { fmtDateTime, fmtMoney } from "@/lib/format";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
 import MyDashboardTab from "@/components/salesPlanning/dashboard/MyDashboardTab";
 import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
+import { cachedFetchJson } from "@/lib/apiCache";
 
 const DASHBOARD_TABS = [
   { key: "my", label: "แดชบอร์ดของฉัน" },
@@ -319,6 +320,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                               <>
                                 <strong>{row.label}</strong>
                                 {row.sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{row.sublabel}</span>}
+                                {row.ghost && <span style={{ display: "block", color: "var(--amber)", fontSize: 11.5 }}>{row.ghost}</span>}
                               </>
                             )}
                           </td>
@@ -520,11 +522,26 @@ function DashboardContent() {
   const byForecast = allMonths ? yearAggregate.byForecast : selectedDashboard?.byForecast;
   const byType = allMonths ? yearAggregate.byType : selectedDashboard?.byType;
 
+  // รายชื่อคนที่ยัง active (assignable-users ตัดคนถูกระงับออกแล้ว) — ใช้ติดป้าย
+  // "ออกจากระบบแล้ว" บนแถวรายบุคคลของคนที่ลาออกแต่ยังมีเป้า/ดีลในปีที่ดู
+  // (นโยบายเดียวกับหน้าวางเป้า: ประวัติไม่โยก แต่ต้องบอกให้รู้ว่าใครออกแล้ว)
+  const [activeUserIds, setActiveUserIds] = useState(null);
+  useEffect(() => {
+    cachedFetchJson("/api/pm/assignable-users")
+      .then((d) => setActiveUserIds(new Set((d || []).map((u) => u.id))))
+      .catch(() => setActiveUserIds(null)); // โหลดไม่ได้ = ไม่ติดป้าย (อย่าเดา)
+  }, []);
+
   const filteredOwnerRows = useMemo(() => {
     if (!rows.ownerRows) return [];
-    if (teamFilter === "all") return rows.ownerRows;
-    return rows.ownerRows.filter(r => r.team === teamFilter);
-  }, [rows.ownerRows, teamFilter]);
+    const scoped = teamFilter === "all" ? rows.ownerRows : rows.ownerRows.filter(r => r.team === teamFilter);
+    if (!activeUserIds) return scoped;
+    // id ของแถวรายบุคคลเป็น ownerId จริง (uuid); คีย์สำรอง `${team}:${name}` (ไม่มี
+    // ownerId) เทียบกับรายชื่อไม่ได้ — ข้ามไม่ติดป้าย
+    return scoped.map((r) => (
+      r.id && !r.id.includes(":") && !activeUserIds.has(r.id) ? { ...r, ghost: "ออกจากระบบแล้ว" } : r
+    ));
+  }, [rows.ownerRows, teamFilter, activeUserIds]);
 
   const handleChartTeamClick = (t) => {
     setTeamFilter(t);
