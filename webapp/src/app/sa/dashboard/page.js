@@ -4,7 +4,7 @@ import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } fr
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, RefreshCw, Target, X, XCircle } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import SaWorkspace from "@/components/salesPlanning/SaWorkspace";
 import { useCan, useTeam, useRole } from "@/lib/roleContext";
 import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi, canSeeRdKpi } from "@/lib/permissions";
 import { KpiCard, MONTH_LABELS, MonthPicker, dealTypeBadge, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
@@ -580,7 +580,7 @@ function DashboardContent() {
   const covColor = cov == null ? "var(--text-3)" : cov >= 100 ? "var(--green)" : cov >= 70 ? "var(--amber)" : "var(--red)";
 
   return (
-    <Workspace
+    <SaWorkspace
       icon={<LayoutDashboard size={22} />}
       title="บริหารงานขาย — ภาพรวม"
       subtitle="คาดการณ์มูลค่าดีล เพื่อผลักไปสู่ Won — โครงการ PM อาจเกิดก่อนหรือหลัง Won ได้"
@@ -812,6 +812,6 @@ function DashboardContent() {
           onClose={() => setDrillDownFilter(null)} 
         />
       )}
-    </Workspace>
+    </SaWorkspace>
   );
 }

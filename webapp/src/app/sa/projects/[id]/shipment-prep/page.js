@@ -10,6 +10,7 @@ import Toast from "@/components/ui/Toast";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { SYSTEM_DOCUMENT_LOGO_URL } from "@/lib/documentBrand";
+import { SaPageShell } from "@/components/salesPlanning/SaWorkspace";
 
 const num = (value) => Number(value || 0).toLocaleString("th-TH");
 const paginateShipmentLines = (lines = []) => {
@@ -75,7 +76,8 @@ export default function ShipmentPrepPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+    <SaPageShell className="shipment-prep-page">
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
@@ -179,6 +181,7 @@ export default function ShipmentPrepPage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </SaPageShell>
   );
 }

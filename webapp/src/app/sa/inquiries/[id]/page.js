@@ -9,7 +9,7 @@ import {
   BriefcaseBusiness, CalendarDays, CalendarClock, Edit2, FolderKanban, Paperclip,
   Plus, RotateCcw, Save, Send, Trash2, UserRound, X,
 } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import SaWorkspace from "@/components/salesPlanning/SaWorkspace";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
@@ -174,15 +174,15 @@ export default function InquiryThreadPage() {
     window.location.href = "/sa/inquiries";
   };
 
-  if (loading) return <Workspace icon={<MessageCircleQuestion size={22} />} title="สอบถาม RD"><div style={{ padding: 24, color: "var(--text-3)" }}>กำลังโหลด...</div></Workspace>;
+  if (loading) return <SaWorkspace icon={<MessageCircleQuestion size={22} />} title="สอบถาม RD"><div style={{ padding: 24, color: "var(--text-3)" }}>กำลังโหลด...</div></SaWorkspace>;
   if (!data) return (
-    <Workspace icon={<MessageCircleQuestion size={22} />} title="สอบถาม RD">
+    <SaWorkspace icon={<MessageCircleQuestion size={22} />} title="สอบถาม RD">
       <div className="glass-panel" role="alert" style={{ padding: 16, color: "var(--red)" }}>{error || "ไม่พบเรื่องสอบถาม"}</div>
-    </Workspace>
+    </SaWorkspace>
   );
 
   return (
-    <Workspace
+    <SaWorkspace
       icon={<MessageCircleQuestion size={22} />}
       title={`${data.code || "สอบถาม RD"} — ${data.title}`}
       subtitle={`ถามโดย ${data.requesterName || "-"} · ${fmtDateTime(data.createdAt)}`}
@@ -252,7 +252,7 @@ export default function InquiryThreadPage() {
                 return (
                   <li key={t.id}>
                     <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>
-                    <Link href={`/sa/tasks?task=${t.id}`} className="linklike">{t.title}</Link>
+                    <Link href={`/pm/tasks/${t.id}`} className="linklike">{t.title}</Link>
                     {t.dueDate && <span className="mono" style={{ color: "var(--text-3)", fontSize: 12 }}>กำหนด {fmtDate(t.dueDate)}</span>}
                   </li>
                 );
@@ -301,7 +301,7 @@ export default function InquiryThreadPage() {
                       {m.canEdit && <button className="btn ghost sm" onClick={() => editMessage(m)} disabled={!!busy}><Edit2 size={12} /> แก้ไข</button>}
                       {m.canDelete && <button className="btn ghost sm danger" onClick={() => window.confirm("ลบข้อความนี้?") && messageAction(m, "delete")} disabled={!!busy}><Trash2 size={12} /> ลบ</button>}
                       {canCompose && !closed && <button className="btn ghost sm" onClick={() => createTask(m)} disabled={!!busy}><Plus size={12} /> สร้างงาน</button>}
-                      {(data.tasks || []).filter((t) => t.inquiryMessageId === m.id).map((t) => <Link key={t.id} href={`/sa/tasks/${t.id}`} className="ui-badge">งาน: {t.title}</Link>)}
+                      {(data.tasks || []).filter((t) => t.inquiryMessageId === m.id).map((t) => <Link key={t.id} href={`/pm/tasks/${t.id}`} className="ui-badge">งาน: {t.title}</Link>)}
                     </div>
                   )}
                 </li>
@@ -351,7 +351,7 @@ export default function InquiryThreadPage() {
         </section>
         </DetailPageLayout>
       </div>
-    </Workspace>
+    </SaWorkspace>
   );
 }
 
