@@ -105,8 +105,8 @@ export default function QuotationEditorPage() {
   }, []);
 
   const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status);
-  // closed = ล็อกถาวร (ดีลจบด้วยใบอื่น) — ห้ามลบแม้ superuser
-  const canDeleteDocument = !!quote && canEditCap && quote.status !== "closed" && (quote.status === "draft" || isSuperuser(role));
+  // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
+  const canDeleteDocument = !!quote && canEditCap && (quote.status === "draft" || isSuperuser(role));
   const editable = canEditDocument && editMode;
 
   // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส (ตัวหนา) · แบรนด์ · ชื่อสินค้า · ปริมาตร
@@ -132,6 +132,12 @@ export default function QuotationEditorPage() {
   const fgDescriptionFor = (productId) => {
     const p = products.find((x) => x.id === productId);
     return p ? fgLineDescription(p) : null;
+  };
+  // ราคาขายจาก master — 0/ว่าง = ยังไม่ตั้งราคา (โชว์ป้ายเตือนให้ไปตั้งที่ฐานข้อมูล
+  // — ห้ามกรอกราคาจากใบเสนอราคาทุกกรณี ราคามาจากฐานข้อมูลทางเดียว)
+  const masterPriceFor = (productId) => {
+    const p = products.find((x) => x.id === productId);
+    return Number(p?.retailPriceIncVat || 0);
   };
 
   const selectLineProduct = (i, productId) => {
@@ -474,13 +480,18 @@ export default function QuotationEditorPage() {
                       </td>
                       <td><MoneyInput min="0" value={l.qty} disabled={!editable} onChange={(value) => setLine(i, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${i + 1}`} /></td>
                       <td>
-                        {/* ราคาบรรทัด FG ล็อกตามฐานข้อมูลสินค้า (server enforce ซ้ำตอนบันทึก) */}
+                        {/* ราคาบรรทัด FG ล็อกตามฐานข้อมูลสินค้าเสมอ (server enforce ซ้ำตอนบันทึก) —
+                            master ยังไม่ตั้งราคา → ป้ายส้มพาไปตั้งที่ฐานข้อมูล (ห้ามกรอกในใบ) */}
                         <MoneyInput min="0" value={l.unitPrice} disabled={!editable || !!(l.productId || l.fgCode)} title={(l.productId || l.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(i, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${i + 1}`} />
-                        {editable && !!(l.productId || l.fgCode) && (
-                          <Link href={l.productId ? `/database/products/${l.productId}` : "/database/products"} target="_blank" className={styles.fgCode} style={{ color: "var(--blue)" }}>
+                        {editable && !!(l.productId || l.fgCode) && (l.productId && !(masterPriceFor(l.productId) > 0) ? (
+                          <Link prefetch={false} href={`/database/products/${l.productId}`} target="_blank" className={styles.fgCode} style={{ color: "var(--amber)" }}>
+                            ยังไม่ตั้งราคาในฐานข้อมูล — ไปตั้งราคา →
+                          </Link>
+                        ) : (
+                          <Link prefetch={false} href={l.productId ? `/database/products/${l.productId}` : "/database/products"} target="_blank" className={styles.fgCode} style={{ color: "var(--blue)" }}>
                             ราคาจากฐานข้อมูล →
                           </Link>
-                        )}
+                        ))}
                       </td>
                       <td>
                         <div className={styles.discountControls}>

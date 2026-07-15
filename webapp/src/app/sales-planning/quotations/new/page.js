@@ -19,7 +19,6 @@ import { DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/s
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
-import { ACTIVE_QUOTATION_STATUSES } from "@/lib/sales/quotationCreateGuard";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { productSelectOptions } from "@/components/master/productOption";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -33,7 +32,6 @@ function NewQuotationInner() {
   const canEdit = useCan("salesplan:edit");
 
   const [deals, setDeals] = useState([]);
-  const [activeQuoteDealIds, setActiveQuoteDealIds] = useState(() => new Set());
   const [projectsById, setProjectsById] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -63,27 +61,19 @@ function NewQuotationInner() {
     (async () => {
       setLoading(true);
       try {
-        const [dRes, pRes, productData, quoteRes] = await Promise.all([
+        const [dRes, pRes, productData] = await Promise.all([
           fetch("/api/sales-planning/deals").catch(() => null),
           fetch("/api/pm/projects").catch(() => null),
           cachedFetchJson("/api/products").catch(() => []),
-          fetch("/api/sales-planning/quotations").catch(() => null),
         ]);
         const dealsData = dRes?.ok ? await dRes.json() : [];
         const projData = pRes?.ok ? await pRes.json() : [];
-        const quoteData = quoteRes?.ok ? await quoteRes.json() : [];
         if (!alive) return;
         setDeals(Array.isArray(dealsData) ? dealsData : []);
         const map = {};
         (Array.isArray(projData) ? projData : []).forEach((p) => { map[p.id] = p; });
         setProjectsById(map);
         setProducts(Array.isArray(productData) ? productData : []);
-        setActiveQuoteDealIds(new Set(
-          (Array.isArray(quoteData) ? quoteData : [])
-            .filter((quote) => ACTIVE_QUOTATION_STATUSES.includes(quote.status))
-            .map((quote) => quote.dealId)
-            .filter(Boolean),
-        ));
       } catch (e) {
         if (alive) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
       } finally {
@@ -93,12 +83,13 @@ function NewQuotationInner() {
     return () => { alive = false; };
   }, []);
 
-  // ดีลที่ออกใบได้: ผูกโครงการ + มีลูกค้า + สถานะยังเปิด
+  // ดีลที่ออกใบได้: ผูกโครงการ + มีลูกค้า + สถานะยังเปิด (won/lost = ล็อก)
+  // มติผู้ใช้ 2026-07-15: 1 ดีลมีใบเสนอราคาได้หลายใบจนกว่าจะ Won — ไม่กรองดีลที่มีใบแล้ว
   // ต้องเป็นดีลที่ "แก้ไขได้" (canEdit จาก API — edit-scope) ไม่ใช่แค่ view-scope;
   // ไม่งั้นเลือกดีลทีมอื่นแล้ว POST คืน forbidden (server เช็ค inSalesEditScope).
   const eligible = useMemo(
-    () => deals.filter((d) => d.projectId && d.customerId && d.canEdit && !EXCLUDE_STAGES.includes(d.stage) && !activeQuoteDealIds.has(d.id)),
-    [activeQuoteDealIds, deals],
+    () => deals.filter((d) => d.projectId && d.customerId && d.canEdit && !EXCLUDE_STAGES.includes(d.stage)),
+    [deals],
   );
 
   const customerOptions = useMemo(() => {

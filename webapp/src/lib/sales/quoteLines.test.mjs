@@ -52,6 +52,25 @@ test('FG line description/code are refreshed from master (brand · name · volum
   assert.equal(lines[0].fgCode, 'FG-001');
 });
 
+test('master with no retail price keeps previously saved price — never zeroes the quote', async () => {
+  // บั๊กจริง 2026-07-15: master ยังไม่ตั้งราคาขาย → ราคาในใบโดนทับเป็น 0 →
+  // ยอดใบเป็น 0 → กด Won ติด "ยอดก่อน VAT ต้องมากกว่า 0"
+  for (const retailPriceIncVat of [0, null, undefined]) {
+    const master = [{ id: 'P1', fgCode: 'FG-001', productDescription: 'น้ำหอมส้ม', retailPriceIncVat }];
+    const prev = [{ productId: 'P1', unitPrice: 150 }];
+    const lines = await enforceMasterPrices(fakeSupabase(master), [fgLine()], prev);
+    assert.equal(lines[0].unitPrice, 150, `retail ${retailPriceIncVat} must keep saved price`);
+    assert.equal(lines[0].lineTotal, 300);
+    assert.equal(lines[0].description, 'น้ำหอมส้ม'); // คำอธิบายยัง refresh จาก master
+  }
+});
+
+test('master with no retail price and no saved price → 0 (client can never set FG prices)', async () => {
+  const master = [{ id: 'P1', fgCode: 'FG-001', productDescription: 'น้ำหอมส้ม', retailPriceIncVat: 0 }];
+  const lines = await enforceMasterPrices(fakeSupabase(master), [fgLine()]); // client ส่ง 999 มา
+  assert.equal(lines[0].unitPrice, 0); // ห้ามใช้ค่าจาก client — ต้องไปตั้งราคาที่ฐานข้อมูล
+});
+
 test('product missing from master falls back to previously saved price/description', async () => {
   const prev = [{ productId: 'P1', unitPrice: 120, description: 'คำอธิบายเดิม', fgCode: 'FG-OLD' }];
   const lines = await enforceMasterPrices(fakeSupabase([]), [fgLine()], prev);

@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canEditSalesPlanning,
   canViewSalesPlanning,
@@ -13,11 +13,6 @@ import {
 } from '@/lib/salesPlanning';
 import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
-import {
-  ACTIVE_QUOTATION_STATUSES,
-  activeQuotationConflictMessage,
-  isConcurrentQuotationCreate,
-} from '@/lib/sales/quotationCreateGuard';
 import { businessDate } from '@/lib/businessDate';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
@@ -60,6 +55,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างใบเสนอราคาจากโครงการที่ Lost แล้ว');
+  // ดีลปิด Won แล้ว = ใบเสนอราคาถูกล็อกทั้งชุด (เพิ่ม/แก้/ลบไม่ได้ — มติผู้ใช้ 2026-07-15)
+  if (['won', 'in_project'].includes(deal.stage)) {
+    return badRequest('ดีลนี้ปิด Won แล้ว — ใบเสนอราคาถูกล็อก เพิ่มใบใหม่ไม่ได้');
+  }
 
   // เงื่อนไขใหม่ (feedback ผู้ใช้): ดีลต้องผูกโครงการก่อน — โครงการเป็นตัวเชื่อมลูกค้า
   // ส่วนรายการสินค้า (รหัส FG) ค่อยใส่ตอนแก้ใบ ไม่บังคับตอนสร้าง
@@ -67,19 +66,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // cascade: ใบเสนอราคาต้องมีลูกค้า (มติผู้ใช้ — เลือกลูกค้าที่ดีลก่อน)
   if (!deal.customerId) return badRequest('ดีลนี้ยังไม่ระบุลูกค้า — เลือกลูกค้าที่ดีลก่อน แล้วจึงออกใบเสนอราคา');
 
-  // เช็กเร็วเพื่อไม่เสียเลขรันโดยไม่จำเป็น ส่วน unique index ใน migration 0099
-  // เป็นตัวกันขั้นสุดท้ายเมื่อสอง request ผ่านจุดนี้พร้อมกันจริง ๆ
-  const { data: activeQuote, error: activeQuoteError } = await supabase
-    .from('quotations')
-    .select('id, quoteNumber, status')
-    .eq('dealId', deal.id)
-    .in('status', ACTIVE_QUOTATION_STATUSES)
-    .order('createdAt', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (activeQuoteError) return fail(activeQuoteError.message, 500);
-  if (activeQuote) return conflict(activeQuotationConflictMessage(activeQuote));
-
+  // มติผู้ใช้ 2026-07-15: 1 ดีลมีใบเสนอราคาได้หลายใบจนกว่าจะ Won — guard "1 ใบ active
+  // ต่อดีล" (0099) ถูกยกเลิก (mig 0103 ดรอป unique index); ตอน Won ใบอื่นถูกปิด+ล็อกใน RPC
   const body = await req.json().catch(() => ({}));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
   let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []));
@@ -165,7 +153,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .select()
     .single();
   if (error) {
-    if (isConcurrentQuotationCreate(error)) return conflict(activeQuotationConflictMessage());
     return fail(error.code === '23505' ? `เลข quotation ซ้ำ: ${quoteNumber}` : error.message, error.code === '23505' ? 409 : 500);
   }
 
