@@ -21,6 +21,12 @@
 //   ac            — Account Coordinate (back-office). Edits whole team, no delete.
 //   ae            — Account Executive (front-office). Edits only own records.
 //   legal         — Legal dept. Views all teams; approves / files tax. No edits.
+//   rd            — ฝ่ายวิจัยและพัฒนา (RD). Sales' primary technical counterpart:
+//                   READS every team's deals/projects/quotations (salesplan:view at
+//                   'all' scope — full context to answer Sales' inquiries) and works
+//                   its own queue in My Work (personal tasks + the 'workflow' edit
+//                   tier on project steps assigned to the RD department, same as
+//                   staff). Never edits deals or project plans; no cost margin.
 //   viewer        — Read-only observer of the WHOLE system. Holds every :view
 //                   capability across all modules (all teams' data, via viewScope
 //                   'all') but cannot add / edit / delete anywhere. Confidential
@@ -91,7 +97,9 @@ const DEPARTMENT_ROLES = {
   MK: ['marketing'],
   LG: ['legal'],
   Viewer: ['viewer'],
-  PC: ['staff'], PD: ['staff'], WH: ['staff'], RD: ['staff'], QC: ['staff'],
+  // RD ได้ role เฉพาะ (rd) — คู่คิดหลักของฝ่ายขาย เห็นดีล/โครงการทุกทีมเพื่อตอบ
+  // ข้อสอบถาม; ยังอนุญาต staff ไว้สำหรับข้อมูลเก่า/คนที่ไม่ต้องเข้าระบบขาย.
+  PC: ['staff'], PD: ['staff'], WH: ['staff'], RD: ['rd', 'staff'], QC: ['staff'],
 };
 
 // A role's home/default department — used to display legacy users whose
@@ -103,6 +111,7 @@ const ROLE_DEFAULT_DEPARTMENT = {
   ae_supervisor: 'SA', senior_ae: 'SA', ac: 'SA', ae: 'SA',
   marketing: 'MK',
   legal: 'LG', viewer: 'Viewer',
+  rd: 'RD',
 };
 
 export function departmentFor(role) {
@@ -118,7 +127,7 @@ export const TEAMS = ['ODM', 'KA', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'legal', 'viewer', 'staff'];
+export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'legal', 'rd', 'viewer', 'staff'];
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',
@@ -128,6 +137,7 @@ export const ROLE_LABELS = {
   ae: 'Account Executive',
   marketing: 'การตลาด (Marketing)',
   legal: 'ฝ่ายกฎหมาย',
+  rd: 'วิจัยและพัฒนา (RD)',
   viewer: 'ผู้ดูข้อมูล (Viewer)',
   staff: 'พนักงาน (Staff)',
 };
@@ -216,6 +226,12 @@ const ROLE_CAPS = {
     'sales:view', 'legal:view', 'history:view',
     'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
   ],
+  // rd: ฝ่ายวิจัยและพัฒนา — คู่คิดหลักของฝ่ายขาย. อ่านดีล/โครงการ/ใบเสนอราคา
+  // ทุกทีม (salesplan:view — scope 'all' ผ่าน salesPlanningViewScope) เพื่อเห็น
+  // บริบทเต็มเวลาฝ่ายขายส่งข้อสอบถาม + ใช้ระบบงานของฉัน (workflow tier แบบ staff).
+  // ไม่มีสิทธิ์แก้ดีล/แผนโครงการ (ไม่มี salesplan:edit / pm:edit / sales:act) และ
+  // ไม่เห็นต้นทุน/มาร์จิ้น (ไม่มี products:margin — grant รายคนได้ถ้าจำเป็น).
+  rd: ['pm:view', 'products:view', 'customers:view', 'salesplan:view'],
   // staff: a member of a non-sales department (PC/PD/WH/RD/QC). Logs in to see
   // PM + the tasks assigned to them, and may READ the shared master data
   // (products/customers) — but never the cost margin (no products:margin).
@@ -330,7 +346,7 @@ export function canAccessMgmt(user) {
 // 'none' = may not write at all
 
 export function viewScope(role) {
-  if (isSuperuser(role) || role === 'legal' || role === 'viewer' || role === 'staff') return 'all';
+  if (isSuperuser(role) || role === 'legal' || role === 'viewer' || role === 'staff' || role === 'rd') return 'all';
   return 'team'; // senior_ae, ac, ae, and unknown viewer
 }
 
@@ -545,7 +561,10 @@ export function pmTaskEditTier(user, task, project) {
   // viewer is a pure read-only observer — never edits, even a task assigned to it.
   if (user?.role === 'viewer') return 'none';
   const ownsTask = !!user?.id && task?.assigneeId === user.id;
-  const sameDept = user?.role === 'staff' && !!user?.department
+  // staff + rd: ขั้นตอนที่มอบให้ "ฝ่าย" ของเขา (task.role === department) นับเป็น
+  // งานของเขา — rd คือ staff ฝ่าย RD ที่ได้สิทธิ์อ่านระบบขายเพิ่ม จึงได้ tier เดียวกัน
+  const workflowRole = user?.role === 'staff' || user?.role === 'rd';
+  const sameDept = workflowRole && !!user?.department
     && normalizeDepartment(user.department) === task?.role;
   if (can(user?.role, 'pm:view') && (ownsTask || sameDept)) return 'workflow';
   return 'none';
