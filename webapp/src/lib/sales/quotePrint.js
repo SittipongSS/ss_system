@@ -228,8 +228,12 @@ export function buildQuotePrintHTML(quote) {
   .sb-date { font-size: 9.5px; color: #837868; margin-top: 4px; }
   .sb-date .dline { display: inline-block; border-bottom: 1px dotted #6b7a90; min-width: 84px; height: 0.9em; vertical-align: middle; }
 
-  /* ขอบซ้าย 18mm เว้นไว้เข้าเล่ม (มติผู้ใช้ 2026-07-15) — เนื้อหากว้างเต็มพื้นที่พิมพ์ที่เหลือ */
-  @page { size: A4 portrait; margin: 9mm 8mm 12mm 18mm; }
+  /* ขอบซ้าย 18mm เว้นไว้เข้าเล่ม (มติผู้ใช้ 2026-07-15) — เนื้อหากว้างเต็มพื้นที่พิมพ์ที่เหลือ.
+     เลขหน้ามุมล่างขวา แบบเดียวกับเอกสารไทม์ไลน์ (ganttPrint) */
+  @page {
+    size: A4 portrait; margin: 9mm 8mm 12mm 18mm;
+    @bottom-right { content: "หน้า " counter(page) " / " counter(pages); font-size: 9px; color: #837868; }
+  }
   /* จอแคบเท่านั้น (scope "screen" สำคัญ — ตอนพิมพ์ viewport กว้าง ~184mm ≈ 700px
      ถ้าไม่ scope กฎชุดนี้จะไปทับ layout หน้าพิมพ์: header เรียงตั้ง + ลงชื่อ 1 คอลัมน์) */
   @media screen and (max-width: 820px) {
