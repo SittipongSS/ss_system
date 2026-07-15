@@ -106,11 +106,20 @@ export default function QuotationEditorPage() {
   const canDeleteDocument = !!quote && canEditCap && quote.status !== "closed" && (quote.status === "draft" || isSuperuser(role));
   const editable = canEditDocument && editMode;
 
-  const productOptions = useMemo(() => products.map((product) => ({
-    value: product.id,
-    label: `${product.fgCode ? `${product.fgCode} · ` : ""}${product.productDescription || product.productDescriptionEn || "-"}`,
-    search: `${product.fgCode || ""} ${product.productDescription || ""} ${product.productDescriptionEn || ""} ${product.brandName || ""}`,
-  })), [products]);
+  // ผลค้นหาสินค้า: รหัส · แบรนด์ · ชื่อสินค้า · ปริมาตร (มติผู้ใช้ 2026-07-15) เรียงตามรหัส FG
+  const productOptions = useMemo(() => products
+    .map((product) => {
+      const brand = product.brandName || product.brandNameEn || "";
+      const volume = product.volume ? `${product.volume} ${product.volumeUnit || "ml"}` : "";
+      const name = product.productDescription || product.productDescriptionEn || "-";
+      return {
+        value: product.id,
+        fgCode: product.fgCode || "",
+        label: [product.fgCode, brand, name, volume].filter(Boolean).join(" · "),
+        search: `${product.fgCode || ""} ${brand} ${product.brandName || ""} ${product.brandNameEn || ""} ${product.productDescription || ""} ${product.productDescriptionEn || ""} ${volume}`,
+      };
+    })
+    .sort((a, b) => (a.fgCode || "￿").localeCompare(b.fgCode || "￿", "en") || a.label.localeCompare(b.label, "th")), [products]);
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: form.discountType || null,
