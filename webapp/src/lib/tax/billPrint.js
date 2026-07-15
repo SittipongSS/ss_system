@@ -1,4 +1,12 @@
-import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
+import {
+  COMPANY_ADDRESS,
+  COMPANY_LEGAL_NAME,
+  COMPANY_LINE,
+  COMPANY_OFFICE_TEL,
+  COMPANY_TAX_ID,
+  COMPANY_WEBSITE,
+  SYSTEM_DOCUMENT_LOGO_URL,
+} from '@/lib/documentBrand';
 
 // Print-ready A4 (portrait) excise-tax BILLING document for a customer, built
 // from a filing order (+ the customer record). Bills the EXCISE TAX ONLY
@@ -6,7 +14,7 @@ import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 // price — plus VAT 7% on the billed tax. Visual format mirrors the Project
 // Timeline document (lib/pm/ganttPrint.js): same fonts, colours, logo, layout.
 
-export const COMPANY = "บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด";
+export const COMPANY = COMPANY_LEGAL_NAME;
 // Brand logo embedded as a data URI (from public/brand-logo.png) so it always
 // renders inside the about:blank print window — an external/public URL does not.
 const LOGO_URL = SYSTEM_DOCUMENT_LOGO_URL;
@@ -85,6 +93,7 @@ export function buildBillPrintHTML(order, customer = {}) {
   .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
   .logo-img { height: 46px; width: auto; max-width: 300px; display: block; }
   .brand h2 { font-size: 14px; font-weight: 700; line-height: 1.25; }
+  .company-info { font-size: 8.5px; color: #837868; line-height: 1.4; margin-top: 2px; }
   .doc-title .formno { font-size: 10px; font-weight: 700; color: #837868; letter-spacing: 1px; text-align: right; }
   .doc-title .big { font-size: 17px; font-weight: 800; color: #c17a52; letter-spacing: 2px; text-align: right; white-space: nowrap; }
   .doc-title .sub { font-size: 9.5px; color: #837868; text-align: right; }
@@ -150,6 +159,11 @@ export function buildBillPrintHTML(order, customer = {}) {
         <div class="logo-wrap"><img class="logo-img" src="${LOGO_URL}" alt="S&amp;S"/></div>
         <div>
           <h2>${esc(COMPANY)}</h2>
+          <div class="company-info">
+            <div>${esc(COMPANY_ADDRESS)}</div>
+            <div>เลขประจำตัวผู้เสียภาษี ${esc(COMPANY_TAX_ID)}</div>
+            <div>โทร ${esc(COMPANY_OFFICE_TEL)} · Line ${esc(COMPANY_LINE)} · ${esc(COMPANY_WEBSITE)}</div>
+          </div>
         </div>
       </div>
       <div class="doc-title">
