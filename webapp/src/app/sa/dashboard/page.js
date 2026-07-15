@@ -4,7 +4,7 @@ import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } fr
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, RefreshCw, Target, X, XCircle } from "lucide-react";
-import SaWorkspace from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import { useCan, useTeam, useRole } from "@/lib/roleContext";
 import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi, canSeeRdKpi } from "@/lib/permissions";
 import { KpiCard, MONTH_LABELS, MonthPicker, dealTypeBadge, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
@@ -586,7 +586,7 @@ function DashboardContent() {
       subtitle="คาดการณ์มูลค่าดีล เพื่อผลักไปสู่ Won — โครงการ PM อาจเกิดก่อนหรือหลัง Won ได้"
       headerRight={headerRight}
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         {error && (
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>
             {error}
@@ -628,34 +628,19 @@ function DashboardContent() {
         )}
 
         {tab === "task_kpi" && canSeeKpi && (
-          <div style={{ marginTop: "16px" }}>
-            <SalesKpiDashboard />
-          </div>
+          <SalesKpiDashboard />
         )}
 
         {tab === "overview" && (
           <>
-        <section className="kpi-grid mb-5" aria-busy={loading}>
-          <KpiCard icon={<Target size={16} aria-hidden="true" />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} hint={`${targetRows} รายการ`} />
-          <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} hint={`ดีลเปิด ${totals.openDeals || 0} รายการ · ดีลทั้งหมด ${money(totals.fullForecast)}`} />
-          <KpiCard icon={<LineChart size={16} aria-hidden="true" />} label="Won" value={money(totals.wonValue)} hint={`ส่วนต่าง ${money(totals.targetGap)}`} />
-          <KpiCard icon={<Target size={16} aria-hidden="true" />} label="ความคืบหน้าต่อเป้า" value={<span style={{ color: covColor }}>{cov == null ? "-" : pctFmt(cov)}</span>} hint={`คาดการณ์ ${fcCov == null ? "-" : pctFmt(fcCov)} ของเป้า`} />
-          {SALES_FEATURES.sahamitRisk && sahamitRisk?.enabled && (
-            <KpiCard
-              icon={<AlertTriangle size={16} aria-hidden="true" />}
-              label="ความเสี่ยง FC สหมิตร"
-              value={sahamitRisk.summary?.risk || 0}
-              hint={`ตรวจ ${sahamitRisk.summary?.total || 0} SKU-เดือน`}
-            />
-          )}
-        </section>
+        <SaMetricStrip aria-busy={loading}>
+          <SaMetric icon={<Target />} label={allMonths ? "เป้าทั้งปี" : "เป้าเดือนที่เลือก"} value={money(totals.targetAmount)} note={`${targetRows} รายการ`} />
+          <SaMetric icon={<ClipboardList />} label="มูลค่าดีลเปิด" value={money(totals.pipelineValue)} note={`ดีลเปิด ${totals.openDeals || 0} · รวม ${money(totals.fullForecast)}`} tone="warning" />
+          <SaMetric icon={<LineChart />} label="Won" value={money(totals.wonValue)} note={`ส่วนต่าง ${money(totals.targetGap)}`} tone="good" />
+          <SaMetric icon={<Target />} label="ความคืบหน้าต่อเป้า" value={<span style={{ color: covColor }}>{cov == null ? "-" : pctFmt(cov)}</span>} note={`คาดการณ์ ${fcCov == null ? "-" : pctFmt(fcCov)} ของเป้า`} />
+        </SaMetricStrip>
         {!!byType?.length && (
-          <section className="glass-panel" style={{ padding: 16 }}>
-            <div className="flex items-center gap-2 mb-3">
-              <BarChart3 size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>แยกตามประเภทดีล</h2>
-              <span style={{ color: "var(--text-3)", fontSize: 12 }}>{periodLabel}</span>
-            </div>
+          <SaSection icon={<BarChart3 size={17} />} title="แยกตามประเภทดีล" subtitle={periodLabel}>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
               {byType.map((b) => (
                 <KpiCard
@@ -672,16 +657,11 @@ function DashboardContent() {
                 />
               ))}
             </div>
-          </section>
+          </SaSection>
         )}
 
         {!!byForecast?.length && (
-          <section className="glass-panel" style={{ padding: 16 }}>
-            <div className="flex items-center gap-2 mb-3">
-              <BarChart3 size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ดีลเปิด แยกตามโอกาสปิด (FC%)</h2>
-              <span style={{ color: "var(--text-3)", fontSize: 12 }}>{periodLabel}</span>
-            </div>
+          <SaSection icon={<BarChart3 size={17} />} title="ดีลเปิด แยกตามโอกาสปิด (FC%)" subtitle={periodLabel}>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
               {byForecast.map((b) => (
                 <KpiCard
@@ -693,7 +673,7 @@ function DashboardContent() {
                 />
               ))}
             </div>
-          </section>
+          </SaSection>
         )}
 
           <div aria-busy={loading}>
