@@ -169,8 +169,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok(after);
 });
 
-// DELETE — คนทั่วไปลบได้เฉพาะ draft (ใบที่ส่ง/รับ/ปิดแล้ว = หลักฐาน ใช้ cancel/revise);
-// แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15 — สิทธิ์ลบทุกประการ)
+// DELETE — คนทั่วไปลบได้เฉพาะ draft. Superuser ลบสถานะอื่นได้ ยกเว้น accepted:
+// accepted quotation เป็น canonical Actual source จึงห้าม hard-delete จนกว่าจะมี
+// explicit reversal flow ที่ย้อน deal/forecast/audit และหลักฐานพร้อมกัน.
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
@@ -178,6 +179,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const before = await loadQuote(supabase, id);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
   if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
+  if (before.status === 'accepted') {
+    return badRequest('ใบเสนอราคานี้เป็นแหล่งยอด Actual ของดีล — ลบไม่ได้ ต้องใช้กระบวนการยกเลิก/ย้อนรายการ');
+  }
   const elevated = isSuperuser(user.role);
   if (!elevated) {
     if (before.status === 'closed') {

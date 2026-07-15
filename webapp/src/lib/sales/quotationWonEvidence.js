@@ -17,17 +17,29 @@ export function isPaymentDocType(docType) {
 }
 
 export const MAX_WON_ATTACHMENTS = 8;
+export const DEFAULT_WON_EVIDENCE_BUCKET = 'sales-evidence';
 
 // รับเฉพาะ ref ไฟล์ที่อัปผ่าน /api/upload แล้ว — เก็บฟิลด์ที่จำเป็นเท่านั้น
 // (pattern เดียวกับ sales_deal_activities.attachments)
-export function sanitizeWonAttachments(input) {
+export function sanitizeWonAttachments(input, { allowedStorageBucket = null, allowedStoragePathPrefix = null } = {}) {
   if (!Array.isArray(input)) return [];
   return input
-    .filter((a) => a && typeof a === 'object' && typeof a.fileUrl === 'string' && a.fileUrl)
+    .filter((a) => {
+      if (!a || typeof a !== 'object') return false;
+      const legacyRef = typeof a.fileUrl === 'string' && a.fileUrl;
+      const privateRef = typeof a.storageBucket === 'string' && a.storageBucket
+        && typeof a.storagePath === 'string' && a.storagePath;
+      if (!legacyRef && !privateRef) return false;
+      if (privateRef && allowedStorageBucket && a.storageBucket !== allowedStorageBucket) return false;
+      if (privateRef && allowedStoragePathPrefix && !a.storagePath.startsWith(allowedStoragePathPrefix)) return false;
+      return true;
+    })
     .slice(0, MAX_WON_ATTACHMENTS)
     .map((a) => ({
-      fileUrl: String(a.fileUrl),
+      fileUrl: a.fileUrl ? String(a.fileUrl) : null,
       driveFileId: a.driveFileId ? String(a.driveFileId) : null,
+      storageBucket: a.storageBucket ? String(a.storageBucket).slice(0, 100) : null,
+      storagePath: a.storagePath ? String(a.storagePath).slice(0, 1000) : null,
       fileName: a.fileName ? String(a.fileName).slice(0, 200) : null,
       mimeType: a.mimeType ? String(a.mimeType).slice(0, 100) : null,
       sizeBytes: Number.isFinite(a.sizeBytes) ? Number(a.sizeBytes) : null,
@@ -39,12 +51,15 @@ const isDate = (v) => typeof v === 'string' && DATE_RE.test(v) && !Number.isNaN(
 
 // ตรวจครบชุดก่อนยิง accept — คืน { ok:true, evidence } (attachments ผ่าน sanitize แล้ว)
 // หรือ { ok:false, error } ข้อความไทยพร้อมโชว์ผู้ใช้
-export function validateWonEvidence({ docType, docDate, paymentDueDate, attachments } = {}) {
+export function validateWonEvidence(
+  { docType, docDate, paymentDueDate, attachments } = {},
+  attachmentOptions = {},
+) {
   if (!WON_DOC_TYPES.some((t) => t.value === docType)) {
     return { ok: false, error: 'เลือกประเภทเอกสารหลักฐาน (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)' };
   }
   if (!isDate(docDate)) return { ok: false, error: 'ระบุวันที่เอกสารหลักฐาน' };
-  const files = sanitizeWonAttachments(attachments);
+  const files = sanitizeWonAttachments(attachments, attachmentOptions);
   if (!files.length) return { ok: false, error: 'ต้องแนบไฟล์หลักฐานอย่างน้อย 1 ไฟล์ (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)' };
   const due = paymentDueDate || null;
   if (!isPaymentDocType(docType)) {

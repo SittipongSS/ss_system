@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "check:migrations": "node scripts/check-migrations.mjs",
+    "db:bootstrap": "npm run check:migrations && node scripts/build-db-bootstrap.mjs",
     "test": "node --import ./scripts/test-loader.mjs --test \"src/**/*.test.mjs\""
   },
   "dependencies": {

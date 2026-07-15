@@ -1,5 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
+import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
+import { DEFAULT_WON_EVIDENCE_BUCKET } from '@/lib/sales/quotationWonEvidence';
 import {
   MAX_UPLOAD_BYTES, MAX_UPLOAD_MB,
   ACCEPTED_UPLOAD_MIME, ACCEPTED_UPLOAD_EXT,
@@ -9,6 +11,7 @@ import {
 export const runtime = 'nodejs';
 
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'uploads';
+const PRIVATE_EVIDENCE_BUCKET = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_WON_EVIDENCE_BUCKET;
 
 // ขนาดสูงสุดต่อไฟล์ — ค่ากลางจาก attachmentTypes (env override ได้).
 const MAX_BYTES = Number(process.env.SUPABASE_MAX_UPLOAD_MB) > 0
@@ -29,6 +32,7 @@ export async function POST(request) {
     // entity context (Drive backend ใช้ resolve โฟลเดอร์ลูกค้า/สินค้า).
     const entityType = formData.get('entityType');
     const entityId = formData.get('entityId');
+    const isWonEvidence = entityType === 'quotation_won_evidence';
 
     if (!file) {
       return Response.json({ error: 'No file received.' }, { status: 400 });
@@ -55,6 +59,48 @@ export async function POST(request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // ── Won evidence: private Supabase bucket, regardless of the global backend ──
+    // Validate the quotation/deal scope before storing bytes. The returned ref has
+    // no public URL; clients download through the scoped quotation file proxy.
+    if (isWonEvidence) {
+      if (!entityId || !canEditSalesPlanning(user)) {
+        return Response.json({ error: 'forbidden' }, { status: 403 });
+      }
+      const supabase = getSupabaseAdmin();
+      const { data: quote } = await supabase
+        .from('quotations').select('id, dealId, status').eq('id', entityId).maybeSingle();
+      if (!quote) return Response.json({ error: 'ไม่พบใบเสนอราคา' }, { status: 404 });
+      if (!['draft', 'sent'].includes(quote.status)) {
+        return Response.json({ error: 'ใบเสนอราคานี้ไม่อยู่ในสถานะที่แนบหลักฐาน Won ได้' }, { status: 409 });
+      }
+      const { data: deal } = await supabase
+        .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+      if (!deal || !inSalesEditScope(user, deal)) {
+        return Response.json({ error: 'forbidden' }, { status: 403 });
+      }
+
+      const safeQuoteId = String(quote.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
+      const safeName = (file.name || 'file')
+        .replace(/[^a-zA-Z0-9.\-_]+/g, '_')
+        .replace(/^_+/, '') || 'file';
+      const objectPath = `quotations/${safeQuoteId}/won/${Date.now()}_${crypto.randomUUID()}_${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from(PRIVATE_EVIDENCE_BUCKET)
+        .upload(objectPath, buffer, {
+          contentType: file.type || 'application/octet-stream',
+          upsert: false,
+        });
+      if (uploadError) {
+        console.error('[upload] private Won evidence failed:', uploadError);
+        return Response.json({ error: 'อัปโหลดหลักฐาน Won ไม่สำเร็จ' }, { status: 500 });
+      }
+      return Response.json({
+        url: null,
+        storageBucket: PRIVATE_EVIDENCE_BUCKET,
+        storagePath: objectPath,
+      });
+    }
 
     // ── Google Drive backend (STORAGE_BACKEND=drive) ──────────────────
     // dynamic import: โหลด googleapis เฉพาะตอนใช้ Drive — โหมด supabase (default)
@@ -124,8 +170,36 @@ export async function POST(request) {
 export async function DELETE(request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
-  let driveFileId = null;
-  try { ({ driveFileId } = await request.json()); } catch { /* no body */ }
+  let body = {};
+  try { body = await request.json(); } catch { /* no body */ }
+  const { driveFileId, storageBucket, storagePath, entityType, entityId } = body;
+
+  // Roll back a private Won-evidence upload only while the quotation is still
+  // open. After accept, the quote becomes the Actual source and its evidence is
+  // immutable through this endpoint.
+  if (storagePath) {
+    if (entityType !== 'quotation_won_evidence' || !entityId || storageBucket !== PRIVATE_EVIDENCE_BUCKET) {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+    const safeQuoteId = String(entityId).replace(/[^a-zA-Z0-9_-]+/g, '_');
+    if (!String(storagePath).startsWith(`quotations/${safeQuoteId}/won/`)) {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+    const supabase = getSupabaseAdmin();
+    const { data: quote } = await supabase
+      .from('quotations').select('id, dealId, status').eq('id', entityId).maybeSingle();
+    if (!quote || !['draft', 'sent'].includes(quote.status) || !canEditSalesPlanning(user)) {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+    const { data: deal } = await supabase
+      .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+    if (!deal || !inSalesEditScope(user, deal)) {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+    await supabase.storage.from(PRIVATE_EVIDENCE_BUCKET).remove([storagePath]);
+    return Response.json({ ok: true });
+  }
+
   if (!driveFileId) return Response.json({ ok: true });
 
   try {

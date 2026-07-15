@@ -13,9 +13,9 @@ import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/maste
 
 // ฟอร์มยืนยัน Won จากใบเสนอราคา (บังคับหลักฐาน — feedback ผู้ใช้ 2026-07-15):
 // แนบไฟล์ สลิป/PO/เอกสารยืนยันการสั่งซื้อ ≥1 + วันที่เอกสาร; ถ้าไม่ใช่เอกสาร
-// การชำระเงิน ต้องกรอกกำหนดชำระ. อัปไฟล์ผ่าน /api/upload (Drive/Supabase)
+// การชำระเงิน ต้องกรอกกำหนดชำระ. อัปไฟล์ผ่าน /api/upload ไป private Supabase bucket
 // แล้วส่ง ref ไปกับ POST /quotations/[id]/accept — ใช้ร่วมหน้า editor + หน้าดีล.
-export default function QuotationWonDialog({ open, onClose, quote, customerId, customerName, onDone }) {
+export default function QuotationWonDialog({ open, onClose, quote, customerName, onDone }) {
   const today = new Date().toISOString().slice(0, 10);
   const [docType, setDocType] = useState("payment_slip");
   const [docDate, setDocDate] = useState(today);
@@ -57,12 +57,21 @@ export default function QuotationWonDialog({ open, onClose, quote, customerId, c
   const uploadOne = async (file) => {
     const fd = new FormData();
     fd.append("file", file);
-    if (customerId) { fd.append("entityType", "customer"); fd.append("entityId", customerId); }
+    fd.append("entityType", "quotation_won_evidence");
+    fd.append("entityId", quote.id);
     if (customerName) fd.append("customerName", customerName);
     const res = await fetch("/api/upload", { method: "POST", body: fd });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(payload.error || `อัปโหลด ${file.name} ไม่สำเร็จ`);
-    return { fileUrl: payload.url, driveFileId: payload.driveFileId || null, fileName: file.name, mimeType: file.type, sizeBytes: file.size };
+    return {
+      fileUrl: payload.url || null,
+      driveFileId: payload.driveFileId || null,
+      storageBucket: payload.storageBucket || null,
+      storagePath: payload.storagePath || null,
+      fileName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
   };
 
   const submit = async () => {
@@ -74,8 +83,8 @@ export default function QuotationWonDialog({ open, onClose, quote, customerId, c
     if (!preview.ok) { setError(preview.error); return; }
     setBusy(true);
     setError("");
+    const attachments = [];
     try {
-      const attachments = [];
       for (const f of files) attachments.push(await uploadOne(f));
       const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, {
         method: "POST",
@@ -87,6 +96,15 @@ export default function QuotationWonDialog({ open, onClose, quote, customerId, c
       reset();
       await onDone?.(data);
     } catch (e) {
+      await Promise.allSettled(attachments.map((att) => fetch("/api/upload", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...att,
+          entityType: "quotation_won_evidence",
+          entityId: quote.id,
+        }),
+      })));
       setError(e.message || "ปิด Won ไม่สำเร็จ");
     } finally {
       setBusy(false);

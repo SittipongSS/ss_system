@@ -29,6 +29,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+/.npm-cache/
 # throwaway local debug scripts (may touch the service-role key — never commit)
 /temp.js
 /scratch.js
@@ -46,5 +47,6 @@ next-env.d.ts
 
 # obsolete local uploads (now using Supabase Storage)
 /public/uploads/
+/supabase/bootstrap.generated.sql
 
 .vercel
