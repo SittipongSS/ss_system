@@ -495,8 +495,9 @@ export default function DealOverviewPage() {
     setPmInitial({
       name: deal.title || "",
       customerId: deal.customerId || "",
-      startDate: new Date().toISOString().slice(0, 10),
-      dueDate: deal.expectedCloseDate || "",
+      // ซิงค์วันที่กับดีล: ใช้วันเริ่ม/สิ้นสุดของดีลเป็นค่าตั้งต้น (ไม่มีค่อยตกเป็นวันนี้)
+      startDate: deal.startDate || new Date().toISOString().slice(0, 10),
+      dueDate: deal.endDate || deal.expectedCloseDate || "",
       type: dealTypeOf(deal),
       aeOwner: deal.ownerName || "",
       metadata: { brand: deal.metadata?.brand || "" },

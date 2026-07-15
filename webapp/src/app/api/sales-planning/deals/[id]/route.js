@@ -17,6 +17,9 @@ import {
   toProbability,
 } from '@/lib/salesPlanning';
 import { loadForecastDrift } from '@/lib/salesPlanningForecast';
+import { recalculateGraph, todayStr } from '@/lib/pm/schedule';
+import { setHolidays } from '@/lib/pm/dateHelpers';
+import { holidaySet } from '@/lib/master/holidays';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,6 +123,28 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     .select(selectDeal)
     .single();
   if (error) return fail(error.message, 500);
+
+  // วันที่เริ่มดีลเปลี่ยน → เลื่อนไทม์ไลน์ลอยของดีลตาม (sync แบบเดียวกับฝั่งโครงการ
+  // ที่ PATCH startDate แล้ว recalculateGraph ทุกขั้นตอน). เฉพาะดีลที่ยังไม่ผูกโครงการ —
+  // ผูกแล้ว segment อยู่ใต้ anchor ของโครงการ จัดการที่หน้าโครงการตามกติกาเดิม.
+  if ('startDate' in body && (data.startDate || null) !== (before.startDate || null) && !data.projectId) {
+    const { data: floating } = await supabase
+      .from('project_tasks').select('*')
+      .eq('dealId', id).is('projectId', null)
+      .order('stepOrder', { ascending: true });
+    if (floating?.length) {
+      setHolidays([...(await holidaySet())]);
+      // เกณฑ์ anchor เดียวกับตอน gen ไทม์ไลน์ดีล: ไม่ระบุวันเริ่ม = วันนี้
+      const recalced = recalculateGraph(floating, data.startDate || todayStr());
+      await Promise.all(
+        recalced
+          .filter((r, i) => r.startDate !== floating[i].startDate || r.finishDate !== floating[i].finishDate)
+          .map((r) => supabase.from('project_tasks').update({
+            startDate: r.startDate, finishDate: r.finishDate, cellsOverride: r.cellsOverride ?? null,
+          }).eq('id', r.id)),
+      );
+    }
+  }
 
   // เฟส B: เลิก sync ชื่อดีล→ชื่อโครงการ — โครงการมีได้หลายดีล ชื่อไม่ผูกกันอีกต่อไป
   // (ฝั่งโครงการ→ดีล ตัดคู่กันใน api/pm/projects/[id]/route.js)
