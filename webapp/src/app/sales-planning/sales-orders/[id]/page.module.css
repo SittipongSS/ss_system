@@ -1,0 +1,52 @@
+.page { display: flex; flex-direction: column; gap: 18px; }
+.statusDescription { margin: 0; color: var(--text-3); font-size: 12.5px; }
+.alertError, .alertSuccess { padding: 12px 14px; border: 1px solid; border-radius: var(--radius-md); font-size: 13px; }
+.alertError { border-color: color-mix(in srgb, var(--red) 40%, var(--border)); background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--red); }
+.alertSuccess { border-color: color-mix(in srgb, var(--green) 40%, var(--border)); background: color-mix(in srgb, var(--green) 8%, transparent); color: var(--green); }
+.rejection { display: flex; gap: 10px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--red) 7%, var(--panel)); color: var(--red); }
+.rejection p { margin: 4px 0 0; color: var(--text-2); font-size: 13px; }
+.workflowCard { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--glass-shadow); }
+.workflowHeader { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 18px; border-bottom: 1px solid var(--border); }
+.workflowHeader small { color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .08em; }
+.workflowHeader h2 { margin: 3px 0 0; font-size: 16px; }
+.workflowHeader > span { color: var(--text-3); font-size: 12px; }
+.workflowRail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.workflowStep { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 15px 16px; border-right: 1px solid var(--border); }
+.workflowStep:last-child { border-right: 0; }
+.workflowStep::after { position: absolute; right: -5px; z-index: 1; width: 9px; height: 9px; border-top: 1px solid var(--border); border-right: 1px solid var(--border); background: var(--panel); content: ""; transform: rotate(45deg); }
+.workflowStep:last-child::after { display: none; }
+.stepMarker { display: grid; flex: 0 0 auto; width: 29px; height: 29px; place-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--text-3); font-size: 11px; font-weight: 800; }
+.workflowStep div { min-width: 0; }
+.workflowStep strong, .workflowStep small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflowStep strong { font-size: 12.5px; }
+.workflowStep small { margin-top: 2px; color: var(--text-3); font-size: 10.5px; }
+.workflowStep.done .stepMarker { border-color: color-mix(in srgb, var(--green) 40%, transparent); background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); }
+.workflowStep.current { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.workflowStep.current .stepMarker { border-color: var(--accent); background: var(--accent); color: white; }
+.workflowStep.cancelled { opacity: .55; }
+.formStack, .actionStack { display: flex; flex-direction: column; gap: 12px; }
+.formStack label > span { display: block; margin-bottom: 5px; color: var(--text-3); font-size: 11.5px; font-weight: 650; }
+.formStack input, .formStack textarea { width: 100%; }
+.formStack textarea { resize: vertical; }
+.actionStack :global(.btn) { justify-content: center; width: 100%; }
+.auditList { display: grid; gap: 9px; margin: 0; }
+.auditList > div { display: flex; justify-content: space-between; gap: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.auditList > div:last-child { padding-bottom: 0; border-bottom: 0; }
+.auditList dt { color: var(--text-3); font-size: 11.5px; }
+.auditList dd { margin: 0; color: var(--text-2); font-size: 12px; font-weight: 650; text-align: right; }
+.tableWrap { overflow-x: auto; }
+.linesTable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.linesTable th { padding: 10px 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--panel-2) 70%, transparent); color: var(--text-3); font-size: 10.5px; letter-spacing: .02em; text-align: left; white-space: nowrap; }
+.linesTable td { padding: 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.linesTable tbody tr:last-child td { border-bottom: 0; }
+.num { text-align: right !important; white-space: nowrap; }
+.lineDescription { display: flex; min-width: 240px; flex-direction: column; gap: 3px; }
+.lineDescription small { color: var(--accent); font-family: var(--font-mono); font-size: 10.5px; }
+.lineDescription strong { color: var(--text-2); font-size: 12.5px; font-weight: 650; }
+.totals { width: min(100%, 390px); margin: 18px 0 0 auto; padding-top: 14px; border-top: 1px solid var(--border); }
+.totals > div { display: flex; justify-content: space-between; gap: 20px; padding: 5px 2px; color: var(--text-2); font-size: 12.5px; }
+.totals strong { font-family: var(--font-mono); }
+.grandTotal { margin-top: 6px; padding-top: 11px !important; border-top: 1px solid var(--border); color: var(--text) !important; font-size: 14px !important; }
+.actualTotal { margin-top: 6px; padding: 10px 12px !important; border-radius: var(--radius-md); background: color-mix(in srgb, var(--green) 9%, transparent); color: var(--green) !important; font-size: 14px !important; }
+@media (max-width: 900px) { .workflowRail { grid-template-columns: 1fr 1fr; } .workflowStep:nth-child(2) { border-right: 0; } .workflowStep:nth-child(2)::after { display: none; } }
+@media (max-width: 560px) { .workflowRail { grid-template-columns: 1fr; } .workflowStep { border-right: 0; border-bottom: 1px solid var(--border); } .workflowStep::after { display: none; } .workflowStep:last-child { border-bottom: 0; } }

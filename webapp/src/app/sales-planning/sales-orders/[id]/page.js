@@ -1,19 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, ClipboardList, ExternalLink, RotateCcw, Save, Send, Trash2, Undo2, XCircle } from "lucide-react";
+import {
+  BadgeCheck, Building2, CalendarDays, CheckCircle2, CircleDollarSign,
+  ClipboardList, ExternalLink, FileCheck2, FileText, FolderKanban,
+  RotateCcw, Save, Send, Trash2, Undo2, UserRound, XCircle,
+} from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import SaveStatus from "@/components/ui/SaveStatus";
+import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { useCan, useRole } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import styles from "./page.module.css";
 
 const STATUS = {
-  draft: { label: "ฉบับร่าง", color: "var(--text-3)" },
-  pending_approval: { label: "รอ AE Supervisor อนุมัติ", color: "var(--amber)" },
-  approved: { label: "อนุมัติแล้ว", color: "var(--green)" },
-  rejected: { label: "ตีกลับให้แก้ไข", color: "var(--red)" },
-  cancelled: { label: "ยกเลิก", color: "var(--red)" },
+  draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
+  pending_approval: { label: "รอ AE Supervisor อนุมัติ", color: "var(--amber)", description: "เอกสารถูกล็อกระหว่างรอตรวจ" },
+  approved: { label: "อนุมัติแล้ว", color: "var(--green)", description: "ยอดถูกนับเป็น Actual แล้ว" },
+  rejected: { label: "ตีกลับให้แก้ไข", color: "var(--red)", description: "แก้ไขตามเหตุผลแล้วส่งอนุมัติใหม่" },
+  cancelled: { label: "ยกเลิก", color: "var(--red)", description: "เอกสารนี้ไม่ถูกนับเป็น Actual" },
+};
+
+const ACTION_MESSAGE = {
+  save: "บันทึกร่างเรียบร้อยแล้ว",
+  submit: "ยื่นอนุมัติเรียบร้อยแล้ว",
+  approve: "อนุมัติ SO และอัปเดต Actual แล้ว",
+  reject: "ตีกลับให้ผู้จัดทำแก้ไขแล้ว",
+  cancel: "ยกเลิก SO และคำนวณ Actual ใหม่แล้ว",
+  restore: "คืน SO เป็นฉบับร่างแล้ว",
 };
 
 export default function SalesOrderDetailPage() {
@@ -25,34 +43,63 @@ export default function SalesOrderDetailPage() {
   const [order, setOrder] = useState(null);
   const [form, setForm] = useState({ orderDate: "", paymentDueDate: "", notes: "" });
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [saveState, setSaveState] = useState("idle");
+  useUnsavedChanges(dirty);
 
   const load = useCallback(async () => {
     setError("");
     const res = await fetch(`/api/sales-planning/sales-orders/${id}`);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return setError(data.error || "โหลด Sale Order ไม่สำเร็จ");
+    if (!res.ok) {
+      setError(data.error || "โหลด Sale Order ไม่สำเร็จ");
+      setSaveState("error");
+      return false;
+    }
     setOrder(data);
     setForm({ orderDate: data.orderDate || "", paymentDueDate: data.paymentDueDate || "", notes: data.notes || "" });
+    setDirty(false);
+    return true;
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
+  function updateField(key, value) {
+    setForm((current) => ({ ...current, [key]: value }));
+    setDirty(true);
+    setSaveState("dirty");
+    setNotice("");
+  }
+
   async function requestAction(action, payload = {}) {
-    setBusy(action); setError("");
+    setBusy(action);
+    setError("");
+    setNotice("");
+    if (action === "save") setSaveState("saving");
     const res = await fetch(`/api/sales-planning/sales-orders/${id}`, {
-      method: "PATCH", headers: { "content-type": "application/json" },
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ action, ...payload }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) { setBusy(""); setError(data.error || "อัปเดต Sale Order ไม่สำเร็จ"); return false; }
+    if (!res.ok) {
+      setBusy("");
+      setError(data.error || "อัปเดต Sale Order ไม่สำเร็จ");
+      if (action === "save") setSaveState("error");
+      return false;
+    }
     await load();
     setBusy("");
+    setNotice(ACTION_MESSAGE[action] || "อัปเดตเรียบร้อยแล้ว");
+    if (action === "save") setSaveState("saved");
     return true;
   }
 
   async function save(submitAfter = false) {
     const saved = await requestAction("save", form);
-    if (saved && submitAfter && window.confirm("ยืนยันยื่น SO ให้ AE Supervisor ตรวจอนุมัติ? หลังยื่นแล้วผู้จัดทำจะแก้ไขไม่ได้จนกว่าจะถูกตีกลับ")) {
+    if (!saved || !submitAfter) return;
+    if (window.confirm("ยืนยันยื่น SO ให้ AE Supervisor ตรวจอนุมัติ? หลังยื่นแล้วจะแก้ไขไม่ได้จนกว่าจะถูกตีกลับ")) {
       await requestAction("submit");
     }
   }
@@ -76,70 +123,119 @@ export default function SalesOrderDetailPage() {
 
   async function remove() {
     if (!window.confirm("ลบ SO ถาวร? ยอด Actual จะถูกคำนวณใหม่และไม่สามารถย้อนกลับได้")) return;
-    setBusy("delete"); setError("");
+    setBusy("delete");
+    setError("");
     const res = await fetch(`/api/sales-planning/sales-orders/${id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) { setBusy(""); return setError(data.error || "ลบ Sale Order ไม่สำเร็จ"); }
+    if (!res.ok) { setBusy(""); setError(data.error || "ลบ Sale Order ไม่สำเร็จ"); return; }
     router.push("/sa/sales-orders");
   }
 
-  if (!order) return <Workspace icon={<ClipboardList size={22} />} title="Sale Order" back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} loading={!error}>{error && <div className="glass-panel" style={{ padding: 14, color: "var(--red)" }}>{error}</div>}</Workspace>;
+  const sortedLines = useMemo(
+    () => (order?.lines || []).slice().sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)),
+    [order?.lines],
+  );
+
+  if (!order) {
+    return <Workspace icon={<ClipboardList size={22} />} title="Sale Order" back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} loading={!error}>{error && <div className="glass-panel" style={{ padding: 14, color: "var(--red)" }}>{error}</div>}</Workspace>;
+  }
+
   const approved = order.status === "approved";
   const editable = canEdit && ["draft", "rejected"].includes(order.status);
-  const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)" };
+  const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
+  const workflowIndex = order.status === "approved" ? 3 : order.status === "pending_approval" ? 1 : 0;
+  const workflow = [
+    { label: "จัดทำร่าง", hint: order.createdByName || "ผู้จัดทำ" },
+    { label: "ยื่นอนุมัติ", hint: order.submittedAt ? fmtDate(order.submittedAt) : "รอผู้จัดทำ" },
+    { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName || "รอตรวจ" },
+    { label: "นับ Actual", hint: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
+  ];
 
   return (
-    <Workspace
-      icon={<ClipboardList size={22} />} title={order.orderNumber}
-      subtitle={`${order.customerName || "-"} · ${order.deal?.title || "-"}`}
-      back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }}
-      headerRight={<span className="ui-badge" style={{ color: status.color }}>{status.label}</span>}
-    >
-      <div className="flex flex-col gap-5">
-        {error && <div className="glass-panel" role="alert" style={{ padding: 14, color: "var(--red)", borderColor: "var(--red)" }}>{error}</div>}
-        {order.rejectionReason && <div className="glass-panel" style={{ padding: 14, borderColor: "var(--red)" }}><strong style={{ color: "var(--red)" }}>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><div style={{ marginTop: 5 }}>{order.rejectionReason}</div></div>}
-        <div className="detail-kpi-grid">
-          <section className="glass-panel" style={{ padding: 16 }}><div style={{ color: "var(--text-3)", fontSize: 12 }}>Actual ที่นับในระบบ</div><strong className="mono" style={{ fontSize: 24, color: approved ? "var(--green)" : "var(--text-3)" }}>{fmtMoney(approved ? order.actualAmount : 0)}</strong><div style={{ color: "var(--text-3)", fontSize: 11, marginTop: 3 }}>{approved ? "อนุมัติแล้ว" : "ยังไม่นับจนกว่าจะอนุมัติ"}</div></section>
-          <section className="glass-panel" style={{ padding: 16 }}><div style={{ color: "var(--text-3)", fontSize: 12 }}>ยอดรวม VAT</div><strong className="mono" style={{ fontSize: 24 }}>{fmtMoney(order.totalAmount)}</strong></section>
-          <section className="glass-panel" style={{ padding: 16 }}><div style={{ color: "var(--text-3)", fontSize: 12 }}>วันที่ SO</div><strong style={{ fontSize: 18 }}>{fmtDate(order.orderDate)}</strong></section>
-        </div>
+    <Workspace hideHeader back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} backActions={<SaveStatus status={saveState} />}>
+      <div className={styles.page}>
+        <SalesDetailOverview
+          eyebrow="SALE ORDER · COMMERCIAL APPROVAL"
+          title={order.orderNumber}
+          description={`${order.customerName || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
+          badges={<SalesStateBadge label={status.label} color={status.color} />}
+          facts={[
+            { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
+            { icon: FileText, label: "อ้างอิง QT", value: order.quotation?.quoteNumber || "-" },
+            { icon: CircleDollarSign, label: "ยอดก่อน VAT", value: fmtMoney(order.actualAmount) },
+            { icon: BadgeCheck, label: "Actual ในระบบ", value: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
+          ]}
+        >
+          <p className={styles.statusDescription}>{status.description}</p>
+        </SalesDetailOverview>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-5">
-          <section className="glass-panel" style={{ padding: 18 }}>
-            <h2 style={{ margin: "0 0 14px", fontSize: 16 }}>ตรวจสอบรายการสินค้า</h2>
-            <div className="premium-glass-table table-responsive"><table className="w-full text-sm"><thead><tr><th>#</th><th>รหัส / รายละเอียด</th><th className="num">จำนวน</th><th className="num">ราคาต่อหน่วย</th><th className="num">ส่วนลด</th><th className="num">รวม</th></tr></thead><tbody>
-              {(order.lines || []).slice().sort((a, b) => a.sortOrder - b.sortOrder).map((line, index) => <tr key={line.id}><td>{index + 1}</td><td>{line.fgCode && <strong className="mono">{line.fgCode} · </strong>}{line.description || "-"}</td><td className="num mono">{line.qty}</td><td className="num mono">{fmtMoney(line.unitPrice)}</td><td className="num mono">{fmtMoney(line.discountAmount)}</td><td className="num mono">{fmtMoney(line.lineTotal)}</td></tr>)}
-            </tbody></table></div>
-            <div style={{ marginTop: 16, marginLeft: "auto", width: "min(100%, 360px)", display: "grid", gridTemplateColumns: "1fr auto", gap: "7px 18px", fontSize: 13 }}>
-              <span>ยอดก่อนส่วนลด</span><strong className="mono">{fmtMoney(order.subtotal)}</strong><span>ส่วนลดท้ายใบ</span><strong className="mono">{fmtMoney(order.discountAmount)}</strong><span>VAT</span><strong className="mono">{fmtMoney(order.vatAmount)}</strong><span>ยอดรวม</span><strong className="mono">{fmtMoney(order.totalAmount)}</strong><span style={{ color: "var(--green)" }}>Actual ก่อน VAT</span><strong className="mono" style={{ color: "var(--green)" }}>{fmtMoney(order.actualAmount)}</strong>
+        {error && <div className={styles.alertError} role="alert">{error}</div>}
+        {notice && <div className={styles.alertSuccess} role="status">{notice}</div>}
+        {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><p>{order.rejectionReason}</p></div></div>}
+
+        <section className={styles.workflowCard} aria-label="สถานะการอนุมัติ Sale Order">
+          <div className={styles.workflowHeader}><div><small>APPROVAL WORKFLOW</small><h2>เส้นทางเอกสาร</h2></div><span>{status.label}</span></div>
+          <div className={styles.workflowRail}>
+            {workflow.map((step, index) => {
+              const state = order.status === "cancelled" ? "cancelled" : index < workflowIndex ? "done" : index === workflowIndex ? "current" : "pending";
+              return <div key={step.label} className={`${styles.workflowStep} ${styles[state]}`}><span className={styles.stepMarker}>{state === "done" ? <CheckCircle2 size={16} /> : index + 1}</span><div><strong>{step.label}</strong><small>{step.hint}</small></div></div>;
+            })}
+          </div>
+        </section>
+
+        <ContextGrid>
+          <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={order.customerName || "-"} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "สถานะ SO", value: status.label }]} />
+          <ContextCard icon={FolderKanban} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={order.deal?.title || "-"} subtitle={`${order.deal?.team || "-"} · ${order.deal?.ownerName || "-"}`} facts={[{ label: "Stage", value: order.deal?.stage || "-" }]} />
+          <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={order.quotation?.quoteNumber || "-"} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
+          <ContextCard icon={Building2} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || order.project?.code || "-"} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
+        </ContextGrid>
+
+        <DetailPageLayout
+          aside={<>
+            <DetailCard icon={FileCheck2} eyebrow="DOCUMENT CONTROL" title="ตรวจข้อมูลเอกสาร" meta={editable ? "แก้ไขได้ก่อนยื่นอนุมัติ" : "เอกสารถูกล็อกตามสถานะ"}>
+              <div className={styles.formStack}>
+                <label><span>วันที่ SO</span><input className="premium-input" type="date" value={form.orderDate} disabled={!editable} onChange={(event) => updateField("orderDate", event.target.value)} /></label>
+                <label><span>กำหนดชำระ</span><input className="premium-input" type="date" value={form.paymentDueDate} disabled={!editable} onChange={(event) => updateField("paymentDueDate", event.target.value)} /></label>
+                <label><span>หมายเหตุ</span><textarea className="premium-input" rows={4} value={form.notes} disabled={!editable} onChange={(event) => updateField("notes", event.target.value)} /></label>
+              </div>
+            </DetailCard>
+
+            {(canEdit || reviewer) && <DetailCard icon={UserRound} eyebrow="ACTIONS" title="จัดการเอกสาร" meta="สิทธิ์เปลี่ยนตามสถานะและบทบาท">
+              <div className={styles.actionStack}>
+                {editable && <><button type="button" className="btn" disabled={!!busy} onClick={() => save(false)}><Save size={15} /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกร่าง"}</button><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => save(true)}><Send size={15} /> บันทึกและยื่นอนุมัติ</button></>}
+                {reviewer && order.status === "pending_approval" && <><button type="button" className="btn btn-success" disabled={!!busy} onClick={() => review("approve")}><CheckCircle2 size={15} /> อนุมัติและนับ Actual</button><button type="button" className="btn danger" disabled={!!busy} onClick={() => review("reject")}><Undo2 size={15} /> ตีกลับให้แก้ไข</button></>}
+                {approved && canEdit && <button type="button" className="btn danger" disabled={!!busy} onClick={cancel}><XCircle size={15} /> ยกเลิก SO</button>}
+                {order.status === "cancelled" && role === "admin" && <button type="button" className="btn" disabled={!!busy} onClick={() => requestAction("restore")}><RotateCcw size={15} /> คืนเป็นฉบับร่าง</button>}
+                {role === "admin" && <button type="button" className="btn danger" disabled={!!busy} onClick={remove}><Trash2 size={15} /> ลบถาวร</button>}
+              </div>
+            </DetailCard>}
+
+            <DetailCard icon={ClipboardList} eyebrow="DOCUMENT INFO" title="ข้อมูลควบคุม">
+              <dl className={styles.auditList}>
+                <div><dt>ผู้จัดทำ</dt><dd>{order.createdByName || "-"}</dd></div>
+                <div><dt>ผู้ยื่น</dt><dd>{order.submittedByName || "-"}</dd></div>
+                <div><dt>ผู้อนุมัติ</dt><dd>{order.approvedByName || "-"}</dd></div>
+                <div><dt>กำหนดชำระ</dt><dd>{fmtDate(order.paymentDueDate)}</dd></div>
+              </dl>
+            </DetailCard>
+          </>}
+        >
+          <DetailCard icon={ClipboardList} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
+            <div className={styles.tableWrap}>
+              <table className={styles.linesTable}>
+                <thead><tr><th>#</th><th>รหัส / รายละเอียด</th><th className={styles.num}>จำนวน</th><th className={styles.num}>ราคาต่อหน่วย</th><th className={styles.num}>ส่วนลด</th><th className={styles.num}>รวม</th></tr></thead>
+                <tbody>{sortedLines.map((line, index) => <tr key={line.id}><td>{index + 1}</td><td><div className={styles.lineDescription}>{line.fgCode ? <small>{line.fgCode}</small> : null}<strong>{line.description || "-"}</strong></div></td><td className={`${styles.num} mono`}>{line.qty}</td><td className={`${styles.num} mono`}>{fmtMoney(line.unitPrice)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.discountAmount)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.lineTotal)}</td></tr>)}</tbody>
+              </table>
             </div>
-          </section>
-
-          <aside className="flex flex-col gap-4">
-            <section className="glass-panel" style={{ padding: 16 }}><h2 style={{ margin: "0 0 12px", fontSize: 15 }}>ตรวจสอบข้อมูลเอกสาร</h2><div className="flex flex-col gap-3">
-              <label><span style={{ display: "block", color: "var(--text-3)", fontSize: 12, marginBottom: 4 }}>วันที่ SO</span><input className="premium-input" type="date" value={form.orderDate} disabled={!editable} onChange={(e) => setForm((current) => ({ ...current, orderDate: e.target.value }))} /></label>
-              <label><span style={{ display: "block", color: "var(--text-3)", fontSize: 12, marginBottom: 4 }}>กำหนดชำระ</span><input className="premium-input" type="date" value={form.paymentDueDate} disabled={!editable} onChange={(e) => setForm((current) => ({ ...current, paymentDueDate: e.target.value }))} /></label>
-              <label><span style={{ display: "block", color: "var(--text-3)", fontSize: 12, marginBottom: 4 }}>หมายเหตุ</span><textarea className="premium-input" rows={3} value={form.notes} disabled={!editable} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} /></label>
-            </div></section>
-
-            <section className="glass-panel" style={{ padding: 16 }}><h2 style={{ margin: "0 0 12px", fontSize: 15 }}>เอกสารอ้างอิง</h2><div className="flex flex-col gap-3">
-              <Link href={`/sa/quotations/${order.quotationId}`} className="linklike"><ExternalLink size={14} /> {order.quotation?.quoteNumber || "ใบเสนอราคา"}</Link>
-              <Link href={`/sa/deals/${order.dealId}`} className="linklike"><Building2 size={14} /> {order.deal?.title || "ดีล"}</Link>
-              {order.projectId && <Link href={`/sa/projects/${order.projectId}`} className="linklike"><ExternalLink size={14} /> {order.project?.name || order.project?.code || "โครงการ"}</Link>}
-              <span style={{ color: "var(--text-2)", fontSize: 13 }}><CalendarDays size={14} style={{ display: "inline", marginRight: 6 }} />QT Won วันที่ {fmtDate(order.quotation?.wonDocDate)}</span>
-            </div></section>
-
-            {order.cancelReason && <section className="glass-panel" style={{ padding: 16, borderColor: "var(--red)" }}><strong style={{ color: "var(--red)" }}>เหตุผลที่ยกเลิก</strong><p style={{ marginBottom: 0 }}>{order.cancelReason}</p></section>}
-
-            {(canEdit || reviewer) && <section className="glass-panel" style={{ padding: 16 }}><div className="flex flex-col gap-2">
-              {editable && <><button className="btn" disabled={!!busy} onClick={() => save(false)}><Save size={15} /> บันทึกร่าง</button><button className="btn btn-primary" disabled={!!busy} onClick={() => save(true)}><Send size={15} /> ยื่นอนุมัติ</button></>}
-              {reviewer && order.status === "pending_approval" && <><button className="btn btn-success" disabled={!!busy} onClick={() => review("approve")}><CheckCircle2 size={15} /> อนุมัติและนับ Actual</button><button className="btn danger" disabled={!!busy} onClick={() => review("reject")}><Undo2 size={15} /> ตีกลับให้แก้ไข</button></>}
-              {approved && canEdit && <button className="btn danger" disabled={!!busy} onClick={cancel}><XCircle size={15} /> ยกเลิก SO</button>}
-              {order.status === "cancelled" && role === "admin" && <button className="btn" disabled={!!busy} onClick={() => requestAction("restore")}><RotateCcw size={15} /> คืนเป็นฉบับร่าง</button>}
-              {role === "admin" && <button className="btn danger" disabled={!!busy} onClick={remove}><Trash2 size={15} /> ลบถาวร</button>}
-            </div></section>}
-          </aside>
-        </div>
+            <div className={styles.totals}>
+              <div><span>ยอดก่อนส่วนลด</span><strong>{fmtMoney(order.subtotal)}</strong></div>
+              <div><span>ส่วนลดท้ายใบ</span><strong>{fmtMoney(order.discountAmount)}</strong></div>
+              <div><span>VAT</span><strong>{fmtMoney(order.vatAmount)}</strong></div>
+              <div className={styles.grandTotal}><span>ยอดรวมทั้งสิ้น</span><strong>{fmtMoney(order.totalAmount)}</strong></div>
+              <div className={styles.actualTotal}><span>Actual ก่อน VAT</span><strong>{fmtMoney(order.actualAmount)}</strong></div>
+            </div>
+          </DetailCard>
+        </DetailPageLayout>
       </div>
     </Workspace>
   );

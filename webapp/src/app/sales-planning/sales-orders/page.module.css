@@ -1,0 +1,19 @@
+.page { display: flex; flex-direction: column; gap: 18px; }
+.summaryGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.summaryCard { display: flex; min-width: 0; gap: 12px; padding: 15px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--glass-shadow); }
+.summaryIcon { display: grid; flex: 0 0 auto; width: 36px; height: 36px; place-items: center; border-radius: 11px; background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
+.summaryIcon.pending { background: color-mix(in srgb, var(--amber) 11%, transparent); color: var(--amber); }
+.summaryIcon.approved, .summaryIcon.actual { background: color-mix(in srgb, var(--green) 11%, transparent); color: var(--green); }
+.summaryCard div { min-width: 0; }
+.summaryCard small { display: block; color: var(--text-3); font-size: 9.5px; font-weight: 750; letter-spacing: .06em; }
+.summaryCard strong { display: block; overflow: hidden; margin-top: 3px; font-size: 19px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.summaryCard p { overflow: hidden; margin: 3px 0 0; color: var(--text-3); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.listCard { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--glass-shadow); }
+.listHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.listHeader small { color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .08em; }
+.listHeader h2 { margin: 3px 0 0; font-size: 16px; }
+.listHeader p { margin: 3px 0 0; color: var(--text-3); font-size: 11.5px; }
+.listCard :global(.toolbar) { padding: 14px 16px 0; }
+.listCard :global(.premium-glass-table) { border-right: 0; border-bottom: 0; border-left: 0; border-radius: 0; }
+@media (max-width: 1050px) { .summaryGrid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 620px) { .summaryGrid { grid-template-columns: 1fr; } .listHeader { align-items: center; } .listHeader p { display: none; } }
