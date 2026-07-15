@@ -7,6 +7,7 @@ import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import AddBrandButton from "@/components/master/AddBrandButton";
+import { productOptionDisplay } from "@/components/master/productOption";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { X } from "lucide-react";
@@ -346,7 +347,7 @@ export default function ProjectFormModal({
                   .filter(pr => !form.brand || pr.brandName === form.brand || pr.brandNameEn === form.brand)
                   // ผูกได้หลายหมวด (ไม่กรองตามหมวด) — หมวดของโครงการจะ derive จาก FG เอง
                   .map(pr => (
-                  <option key={pr.id} value={pr.id}>{pr.fgCode} — {pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""} {pr.volume ? `(${pr.volume} ml)` : ""}</option>
+                  <option key={pr.id} value={pr.id}>{productOptionDisplay(pr).text}</option>
                 ))}
               </Select>
             </div>

@@ -9,6 +9,7 @@ import { DestinationToggle } from "@/components/sahamit/destinations";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMeta } from "@/lib/format";
+import { productSelectOptions } from "@/components/master/productOption";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { useCan } from "@/lib/roleContext";
 
@@ -159,15 +160,7 @@ export default function PoCreatePage() {
                 entity="product"
                 size="sm"
                 allowFreeText
-                options={products.map((p) => {
-                  const meta = productMeta(p);
-                  return {
-                    value: p.fgCode,
-                    label: `${p.fgCode} — ${p.name || ""}${meta ? ` (${meta})` : ""}`,
-                    search: `${p.fgCode || ""} ${p.name || ""} ${p.brandName || ""}`,
-                    render: (<span><strong>{p.fgCode}</strong> — {p.name || ""}{meta && <span style={{ color: "var(--text-3)" }}> ({meta})</span>}</span>),
-                  };
-                })}
+                options={productSelectOptions(products, (p) => p.fgCode)}
                 value={pick}
                 onChange={setPick}
                 placeholder="ค้นหารหัส / ชื่อสินค้า แล้วกดเพิ่ม"
