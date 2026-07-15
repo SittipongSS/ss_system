@@ -6,10 +6,13 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, CheckCircle2, ClipboardList, Hand, MessageCircleQuestion,
-  CalendarDays, Edit2, Paperclip, Plus, RotateCcw, Save, Send, Trash2, X,
+  BriefcaseBusiness, CalendarDays, CalendarClock, Edit2, FolderKanban, Paperclip,
+  Plus, RotateCcw, Save, Send, Trash2, UserRound, X,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { DEPARTMENT_NAMES_TH } from "@/lib/permissions";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
@@ -20,6 +23,14 @@ const TASK_STATUS_META = {
   "In Progress": { label: "กำลังทำ", color: "var(--accent)" },
   Completed: { label: "เสร็จแล้ว", color: "var(--green)" },
 };
+
+const INQUIRY_STATUS_META = {
+  open: { label: "รอคำตอบ", color: "var(--amber)" },
+  answered: { label: "ตอบแล้ว", color: "var(--blue)" },
+  closed: { label: "ปิดเรื่อง", color: "var(--green)" },
+};
+
+const money = (value) => Number(value || 0).toLocaleString("th-TH", { maximumFractionDigits: 2 });
 
 export default function InquiryThreadPage() {
   const params = useParams();
@@ -184,120 +195,62 @@ export default function InquiryThreadPage() {
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
-        {/* สถานะ + บริบท + ปุ่มตามบทบาท */}
-        <section className={`glass-panel ${styles.overview}`} style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <InquiryStatusBadge status={data.status} />
-            {data.urgent && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
-            {data.dueDate && (
-              <span style={{ fontSize: 13 }}>
-                กำหนดตอบ <strong className="mono">{fmtDate(data.dueDate)}</strong>
-                {due && <span className="ui-badge" style={{ color: due.color, marginLeft: 6 }}>{due.label}</span>}
-              </span>
-            )}
-            <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--text-3)" }}>
-              ผู้รับเรื่อง: {data.assigneeName || "ยังไม่มีผู้รับ"}
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
-            <span>SA คาดหวัง: <strong className="mono">{data.requestedDueDate ? fmtDate(data.requestedDueDate) : "-"}</strong></span>
-            <span>SLA ระบบ: <strong className="mono">{data.dueDate ? fmtDate(data.dueDate) : "-"}</strong></span>
-            <span>RD จะตอบ: <strong className="mono">{data.committedDueDate ? fmtDate(data.committedDueDate) : "ยังไม่ระบุ"}</strong>
-              {data.committedDueAcknowledgedAt && <span className="ui-badge" style={{ color: "var(--green)", marginLeft: 6 }}>SA รับทราบแล้ว</span>}
-            </span>
-          </div>
-          {(data.deal || data.project) && (
-            <div className={styles.contextGrid}>
-              {data.deal && (
-                <Link href={`/sales-planning/deals/${data.deal.id}`} className={styles.contextCard}>
-                  <small>ดีลที่เกี่ยวข้อง</small><strong>{data.deal.code ? `${data.deal.code} · ` : ""}{data.deal.title}</strong>
-                  <span>{data.deal.customerName || "ไม่ระบุลูกค้า"}</span>
-                  <div>{data.deal.dealType && <b>{data.deal.dealType}</b>}{data.deal.stage && <b>{data.deal.stage}</b>}{data.deal.expectedCloseDate && <b>คาดปิด {fmtDate(data.deal.expectedCloseDate)}</b>}</div>
-                </Link>
-              )}
-              {data.project && (
-                <Link href={`/sa/projects/${data.project.id}`} className={styles.contextCard}>
-                  <small>โครงการที่เกี่ยวข้อง</small><strong>{data.project.code ? `${data.project.code} · ` : ""}{data.project.name}</strong>
-                  <span>{data.project.customerName || data.project.productName || "ไม่ระบุลูกค้า"}</span>
-                  <div>{data.project.status && <b>{data.project.status}</b>}{data.project.aeOwner && <b>AE {data.project.aeOwner}</b>}{data.project.dueDate && <b>ครบ {fmtDate(data.project.dueDate)}</b>}</div>
-                </Link>
-              )}
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {data.canTake && !closed && (
-              <button type="button" className="btn sm" onClick={() => runAction("take", { action: "take" })} disabled={!!busy}>
-                <Hand size={13} aria-hidden="true" /> รับเรื่องนี้
-              </button>
-            )}
-            {data.canRespond && data.assigneeId === data.meId && (
-              <button type="button" className="btn sm" onClick={() => createTask()} disabled={!!busy}>
-                <Plus size={13} aria-hidden="true" /> สร้างงานจากคำถาม
-              </button>
-            )}
-            {data.canEditRequest && (
-              <button type="button" className="btn sm" onClick={() => setRequestEdit({ title: data.title, urgent: !!data.urgent, requestedDueDate: data.requestedDueDate || "" })} disabled={!!busy}>
-                <Edit2 size={13} aria-hidden="true" /> แก้ไขคำถาม
-              </button>
-            )}
-            {data.canDelete && (
-              <button type="button" className="btn danger sm" onClick={deleteInquiry} disabled={!!busy}>
-                <Trash2 size={13} aria-hidden="true" /> ลบเรื่อง
-              </button>
-            )}
-            {data.side && !closed && (
-              <button type="button" className="btn btn-primary sm" onClick={() => runAction("confirm-close", { action: "confirm-close" }, "ยืนยันปิดในส่วนของคุณ?")} disabled={!!busy || (data.side === "requester" ? !!data.requesterCloseConfirmedAt : !!data.responderCloseConfirmedAt)}>
-                <CheckCircle2 size={13} aria-hidden="true" /> {data.side === "requester" ? (data.requesterCloseConfirmedAt ? "SA ยืนยันแล้ว" : "SA ยืนยันปิด") : (data.responderCloseConfirmedAt ? "RD ยืนยันแล้ว" : "RD ยืนยันปิด")}
-              </button>
-            )}
-            {(data.side || data.isAdmin) && closed && (
-              <button type="button" className="btn sm" onClick={() => runAction("reopen", { action: "reopen" })} disabled={!!busy}>
-                <RotateCcw size={13} aria-hidden="true" /> เปิดเรื่องอีกครั้ง
-              </button>
-            )}
-          </div>
-          {!closed && (data.requesterCloseConfirmedAt || data.responderCloseConfirmedAt) && (
-            <div style={{ fontSize: 12.5, color: "var(--amber)" }}>
-              รอยืนยันอีกฝ่าย · SA {data.requesterCloseConfirmedAt ? "✓" : "–"} · RD {data.responderCloseConfirmedAt ? "✓" : "–"}
-            </div>
-          )}
-        </section>
+        <SalesDetailOverview
+          eyebrow={`RD INQUIRY · ${data.code || "ไม่ระบุเลขที่"}`}
+          title={data.title}
+          description={<><span>ถามโดย {data.requesterName || "-"}</span><span>สร้างเมื่อ {fmtDateTime(data.createdAt)}</span>{data.targetDept && <span>ส่งถึง {DEPARTMENT_NAMES_TH[data.targetDept] || data.targetDept}</span>}</>}
+          badges={<><SalesStateBadge {...(INQUIRY_STATUS_META[data.status] || { label: data.status, color: "var(--text-3)" })} />{data.urgent && <SalesStateBadge label="ด่วน" color="var(--red)" />}</>}
+          actions={<>
+            {data.canTake && !closed && <button type="button" className="btn sm" onClick={() => runAction("take", { action: "take" })} disabled={!!busy}><Hand size={13} /> รับเรื่องนี้</button>}
+            {data.canRespond && data.assigneeId === data.meId && <button type="button" className="btn sm" onClick={() => createTask()} disabled={!!busy}><Plus size={13} /> สร้างงาน</button>}
+            {data.canEditRequest && <button type="button" className="btn sm" onClick={() => setRequestEdit({ title: data.title, urgent: !!data.urgent, requestedDueDate: data.requestedDueDate || "" })} disabled={!!busy}><Edit2 size={13} /> แก้ไข</button>}
+            {data.canDelete && <button type="button" className="btn danger sm" onClick={deleteInquiry} disabled={!!busy}><Trash2 size={13} /> ลบ</button>}
+            {data.side && !closed && <button type="button" className="btn btn-primary sm" onClick={() => runAction("confirm-close", { action: "confirm-close" }, "ยืนยันปิดในส่วนของคุณ?")} disabled={!!busy || (data.side === "requester" ? !!data.requesterCloseConfirmedAt : !!data.responderCloseConfirmedAt)}><CheckCircle2 size={13} /> {data.side === "requester" ? (data.requesterCloseConfirmedAt ? "SA ยืนยันแล้ว" : "SA ยืนยันปิด") : (data.responderCloseConfirmedAt ? "RD ยืนยันแล้ว" : "RD ยืนยันปิด")}</button>}
+            {(data.side || data.isAdmin) && closed && <button type="button" className="btn sm" onClick={() => runAction("reopen", { action: "reopen" })} disabled={!!busy}><RotateCcw size={13} /> เปิดเรื่องอีกครั้ง</button>}
+          </>}
+          facts={[
+            { key: "owner", icon: UserRound, label: "ผู้รับเรื่อง", value: data.assigneeName || "ยังไม่มีผู้รับ" },
+            { key: "requested", icon: CalendarDays, label: "SA คาดหวัง", value: data.requestedDueDate ? fmtDate(data.requestedDueDate) : "-" },
+            { key: "sla", icon: CalendarClock, label: "SLA ระบบ", value: data.dueDate ? `${fmtDate(data.dueDate)}${due ? ` · ${due.label}` : ""}` : "-" },
+            { key: "commit", icon: CheckCircle2, label: "RD จะตอบ", value: data.committedDueDate ? `${fmtDate(data.committedDueDate)}${data.committedDueAcknowledgedAt ? " · SA รับทราบ" : ""}` : "ยังไม่ระบุ" },
+          ]}
+        />
+
+        <DetailPageLayout aside={<InquiryContext data={data} closed={closed} />}>
 
         {requestEdit && (
-          <section className="glass-panel" style={{ padding: 14, display: "grid", gap: 10 }}>
-            <strong style={{ fontSize: 14 }}>แก้ไขคำถามก่อน RD รับเรื่อง</strong>
+          <DetailCard icon={Edit2} eyebrow="Request editor" title="แก้ไขคำถามก่อน RD รับเรื่อง">
+            <div className={styles.formStack}>
             <input className="premium-input" value={requestEdit.title} onChange={(e) => setRequestEdit((v) => ({ ...v, title: e.target.value }))} />
             <label style={{ fontSize: 13 }}>วันที่ SA คาดหวัง <input className="premium-input" type="date" value={requestEdit.requestedDueDate} onChange={(e) => setRequestEdit((v) => ({ ...v, requestedDueDate: e.target.value }))} /></label>
             <label style={{ fontSize: 13 }}><input type="checkbox" checked={requestEdit.urgent} onChange={(e) => setRequestEdit((v) => ({ ...v, urgent: e.target.checked }))} /> เร่งด่วน</label>
             <div className="form-action-inline"><button className="btn ghost sm" onClick={() => setRequestEdit(null)}>ยกเลิก</button><button className="btn btn-primary sm" onClick={async () => { await runAction("edit-request", { action: "edit-request", ...requestEdit }); setRequestEdit(null); }}><Save size={13} /> บันทึก</button></div>
-          </section>
+            </div>
+          </DetailCard>
         )}
 
         {(data.acceptedAt || data.isAdmin) && (
-          <section className="glass-panel" style={{ padding: 14, display: "grid", gap: 10 }}>
-            <strong style={{ fontSize: 14 }}>รายละเอียดและกำหนดตอบจาก RD</strong>
+          <DetailCard icon={CalendarClock} eyebrow="RD response plan" title="รายละเอียดและกำหนดตอบจาก RD">
+            <div className={styles.formStack}>
             <textarea className="premium-input" rows={3} value={responderDetail} onChange={(e) => setResponderDetail(e.target.value)} disabled={!data.canEditResponse} placeholder="รายละเอียดทางเทคนิค / ข้อมูลที่ RD ต้องการเพิ่มเติม" />
             {data.canEditResponse && <button className="btn sm" style={{ justifySelf: "start" }} onClick={() => runAction("edit-response", { action: "edit-response", responderDetail })}><Save size={13} /> บันทึกรายละเอียด RD</button>}
-            <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
+            <div className={styles.responseActions}>
               <label style={{ fontSize: 13 }}>วันที่ RD จะตอบ<input className="premium-input" type="date" value={committedDueDate} onChange={(e) => setCommittedDueDate(e.target.value)} disabled={!data.canEditCommitment} /></label>
               {data.canEditCommitment && <button className="btn sm" onClick={() => runAction("set-commitment", { action: "set-commitment", committedDueDate })} disabled={!committedDueDate}><CalendarDays size={13} /> แจ้งวันที่ตอบ</button>}
               {data.canAcknowledgeCommitment && <button className="btn btn-primary sm" onClick={() => runAction("ack-date", { action: "ack-commitment" })}><CheckCircle2 size={13} /> SA รับทราบวันที่</button>}
             </div>
-          </section>
+            </div>
+          </DetailCard>
         )}
 
         {/* งานที่แตกจากคำถามนี้ (ฝั่ง RD) */}
         {!!(data.tasks || []).length && (
-          <section className="glass-panel" style={{ padding: 14 }}>
-            <div className="flex items-center gap-2 mb-2">
-              <ClipboardList size={15} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>งานที่แตกจากคำถามนี้</h2>
-            </div>
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          <DetailCard icon={ClipboardList} eyebrow="Linked tasks" title="งานที่แตกจากคำถามนี้" meta={`${data.tasks.length} งาน`}>
+            <ul className={styles.taskList}>
               {data.tasks.map((t) => {
                 const meta = TASK_STATUS_META[t.status] || { label: t.status, color: "var(--text-3)" };
                 return (
-                  <li key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <li key={t.id}>
                     <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>
                     <Link href={`/sa/tasks?task=${t.id}`} className="linklike">{t.title}</Link>
                     {t.dueDate && <span className="mono" style={{ color: "var(--text-3)", fontSize: 12 }}>กำหนด {fmtDate(t.dueDate)}</span>}
@@ -305,7 +258,7 @@ export default function InquiryThreadPage() {
                 );
               })}
             </ul>
-          </section>
+          </DetailCard>
         )}
 
         {/* เธรดข้อความ */}
@@ -396,7 +349,50 @@ export default function InquiryThreadPage() {
             </div>
           )}
         </section>
+        </DetailPageLayout>
       </div>
     </Workspace>
   );
+}
+
+function InquiryContext({ data, closed }) {
+  return <>
+    {data.deal && <ContextCard
+      icon={BriefcaseBusiness}
+      href={`/sales-planning/deals/${data.deal.id}`}
+      eyebrow="ดีลที่เกี่ยวข้อง"
+      title={`${data.deal.code ? `${data.deal.code} · ` : ""}${data.deal.title}`}
+      subtitle={data.deal.customerName || "ไม่ระบุลูกค้า"}
+      badges={<>{data.deal.dealType && <span className="ui-badge">{data.deal.dealType}</span>}{data.deal.stage && <span className="ui-badge" style={{ color: "var(--accent)" }}>{data.deal.stage}</span>}</>}
+      facts={[
+        { label: "มูลค่าดีล", value: `${money(data.deal.stage === "won" ? (data.deal.wonValue ?? data.deal.projectValue) : data.deal.projectValue)} บาท` },
+        { label: "โอกาส", value: data.deal.probability == null ? "-" : `${data.deal.probability}%` },
+        { label: "คาดปิด", value: data.deal.expectedCloseDate ? fmtDate(data.deal.expectedCloseDate) : "-" },
+        { label: "เจ้าของดีล", value: data.deal.ownerName || data.deal.team || "-" },
+        { label: "สูตร/ผลิตภัณฑ์", value: data.deal.formulaName || "-" },
+        { label: "Forecast", value: data.deal.forecastMonth || "-" },
+      ]}
+    />}
+    {data.project && <ContextCard
+      icon={FolderKanban}
+      href={`/sa/projects/${data.project.id}`}
+      eyebrow="โครงการที่เกี่ยวข้อง"
+      title={`${data.project.code ? `${data.project.code} · ` : ""}${data.project.name}`}
+      subtitle={data.project.customerName || data.project.productName || "ไม่ระบุลูกค้า"}
+      badges={<>{data.project.type && <span className="ui-badge">{data.project.type}</span>}{data.project.status && <span className="ui-badge" style={{ color: "var(--green)" }}>{data.project.status}</span>}{data.project.urgency && <span className="ui-badge" style={{ color: data.project.urgency === "Do Now" ? "var(--red)" : "var(--text-3)" }}>{data.project.urgency}</span>}</>}
+      facts={[
+        { label: "เริ่มโครงการ", value: data.project.startDate ? fmtDate(data.project.startDate) : "-" },
+        { label: "กำหนดเสร็จ", value: data.project.dueDate ? fmtDate(data.project.dueDate) : "-" },
+        { label: "ผู้ดูแล AE", value: data.project.aeOwner || "-" },
+        { label: "ทีม", value: data.project.team || "-" },
+        { label: "สินค้า", value: data.project.productName || "-" },
+        { label: "หมวด", value: [data.project.productMainCategory, data.project.productSubCategory].filter(Boolean).join(" · ") || "-" },
+      ]}
+    />}
+    {!data.deal && !data.project && <ContextCard icon={FolderKanban} eyebrow="บริบทงาน" title="ยังไม่ได้ผูกดีลหรือโครงการ" subtitle="ผูกจากหน้าดีลหรือโครงการเพื่อให้ RD เห็นข้อมูลประกอบคำถาม" />}
+    <DetailCard icon={CheckCircle2} eyebrow="Bilateral close" title="การยืนยันปิดเรื่อง">
+      <div className={styles.closeState}><p><span>SA</span><strong>{data.requesterCloseConfirmedAt ? "ยืนยันแล้ว" : "รอยืนยัน"}</strong></p><p><span>RD</span><strong>{data.responderCloseConfirmedAt ? "ยืนยันแล้ว" : "รอยืนยัน"}</strong></p></div>
+      <div className={styles.closeHint}>{closed ? `ปิดเรื่องแล้ว${data.closedAt ? ` · ${fmtDateTime(data.closedAt)}` : ""}` : "เรื่องจะปิดจริงเมื่อทั้ง SA และ RD ยืนยันครบ"}</div>
+    </DetailCard>
+  </>;
 }
