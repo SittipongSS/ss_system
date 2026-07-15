@@ -46,6 +46,43 @@ const signBox = ({ label, role, name }) => `
         </div>
       </div>`;
 
+export function paginateTimelineGroups(groups = [], firstPageCapacity = 14, continuationCapacity = 22) {
+  if (!Array.isArray(groups) || groups.length === 0) return [[]];
+  const queue = groups.map((group) => ({ ...group, tasks: [...group.tasks] }));
+  const pages = [];
+  let current = [];
+  let used = 0;
+
+  while (queue.length > 0) {
+    const capacity = pages.length === 0 ? firstPageCapacity : continuationCapacity;
+    const group = queue[0];
+    const available = capacity - used;
+    const units = 1 + group.tasks.length;
+
+    if (units <= available) {
+      current.push(queue.shift());
+      used += units;
+      continue;
+    }
+    if (current.length > 0) {
+      pages.push(current);
+      current = [];
+      used = 0;
+      continue;
+    }
+
+    const taskCapacity = Math.max(1, capacity - 1);
+    current.push({ ...group, tasks: group.tasks.slice(0, taskCapacity) });
+    group.tasks = group.tasks.slice(taskCapacity);
+    pages.push(current);
+    current = [];
+    used = 0;
+    if (group.tasks.length === 0) queue.shift();
+  }
+  if (current.length > 0) pages.push(current);
+  return pages.length > 0 ? pages : [[]];
+}
+
 export function buildGanttPrintHTML(project) {
   const tasks = Array.isArray(project.tasks) ? project.tasks : [];
 
@@ -62,7 +99,7 @@ export function buildGanttPrintHTML(project) {
   tasks.forEach(t => { const p = t.phase || '—'; if (!order.includes(p)) order.push(p); });
   const groups = order.map((phase, i) => ({
     phase, phaseNum: i + 1,
-    tasks: tasks.filter(t => (t.phase || '—') === phase),
+    tasks: tasks.filter(t => (t.phase || '—') === phase).map((task, taskIndex) => ({ task, taskIndex })),
   }));
 
   const fixedCols = 6;
@@ -84,13 +121,13 @@ export function buildGanttPrintHTML(project) {
   ).join('');
   const weekHeadCells = columns.map(c => `<th class="wk wkn">W${c.week}</th>`).join('');
 
-  const bodyTbodies = groups.map(g => {
+  const bodyForGroups = (pageGroups) => pageGroups.map(g => {
     const phaseRow = `
       <tr class="phase-row">
         <td class="c-no">${g.phaseNum}</td>
         <td colspan="${totalCols - 1}" class="phase-label">${esc(g.phase)}</td>
       </tr>`;
-    const taskRows = g.tasks.map((t, ti) => {
+    const taskRows = g.tasks.map(({ task: t, taskIndex: ti }) => {
       const filled = autoCellsForTask(t);
       const fill = fillOf(t);
       const sd = t.startDate ? new Date(t.startDate) : null;
@@ -115,6 +152,7 @@ export function buildGanttPrintHTML(project) {
     }).join('');
     return `<tbody class="pg">${phaseRow}${taskRows}</tbody>`;
   }).join('');
+  const timelinePages = paginateTimelineGroups(groups);
 
   const productName = project.productName || project.name || '';
   const customerName = project.customerName || project.customer || '';
@@ -141,6 +179,98 @@ export function buildGanttPrintHTML(project) {
   const displayCode = project.code
     ? entityCodeDisplay(project.code, project.rev)
     : (project.docNumber || '-');
+  const documentHeader = `
+    <div class="doc-top">
+      <div class="brand">
+        <div class="logo-wrap"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
+        <div>
+          <h2>${esc(COMPANY_LEGAL_NAME)}</h2>
+          <div class="company-info">
+            <div>${esc(COMPANY_ADDRESS)}</div>
+            <div>เลขประจำตัวผู้เสียภาษี ${esc(COMPANY_TAX_ID)}</div>
+            <div>โทร. ${COMPANY_OFFICE_TEL} · Line ${esc(COMPANY_LINE)} · ${esc(COMPANY_WEBSITE)}</div>
+          </div>
+        </div>
+      </div>
+      <div class="doc-title">
+        <div class="formno">${DOCUMENT_FORMS.projectTimeline.code}</div>
+        <div class="big">${DOCUMENT_FORMS.projectTimeline.title}</div>
+        <div class="sub">${esc(displayCode)}</div>
+      </div>
+    </div>`;
+  const projectHeader = `
+    <div class="header-grid">
+      <div class="hcol left">
+        <div class="hrow"><span class="k">Customer Name</span><span class="v">${esc(customerName)}</span></div>
+        <div class="hrow"><span class="k">Brand</span><span class="v">${esc(project.metadata?.brand || '')}</span></div>
+        <div class="hrow spacer"></div>
+        <div class="hrow"><span class="k">ผู้ตรวจสอบ</span><span class="v">${esc(reviewerName)}</span></div>
+        <div class="hrow"><span class="k">ผู้ดูแล (AE)</span><span class="v">${esc(project.aeOwner || '')}</span></div>
+        <div class="hrow"><span class="k">เบอร์มือถือ</span><span class="v">${esc(aeMobile)}</span></div>
+        <div class="hrow"><span class="k">Email</span><span class="v">${esc(aeEmail)}</span></div>
+      </div>
+      <div class="hcol">
+        <div class="hrow"><span class="k">Project Name</span><span class="v">${esc(productName)}</span></div>
+        <div class="hrow"><span class="k">ใบเสนอราคา</span><span class="v">${quotationLine}</span></div>
+        <div class="hrow"><span class="k">วันที่</span><span class="v">${esc(fmtThai(project.startDate))}</span></div>
+        <div class="hrow" style="align-items: flex-start;">
+          <span class="k">รายการสินค้า (FG)</span>
+          <span class="v" style="font-weight: 400; flex: 1;">
+          ${(project.projectProducts || []).length > 0 ? `<span class="fg-list">${(project.projectProducts || []).map(pp => {
+            const prod = pp.product || {};
+            const cat = pp.categoryLabel || '';
+            return `<span class="fg-item">
+              <span class="fg-name">${esc(prod.fgCode || '')} — ${esc(prod.productDescriptionEn || prod.productDescription || brandLabel(prod.brandName, prod.brandNameEn) || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</span>
+              ${cat ? `<span class="fg-cat">${esc(cat)}</span>` : ''}
+              <span class="fg-qty">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</span>
+            </span>`;
+          }).join('')}</span>` : (categoryFallback
+            ? `<span class="fg-list"><span class="fg-item empty"><span class="fg-name">${esc(categoryFallback)}</span><span class="fg-note">หมวดสินค้า (ยังไม่ผูก FG)</span></span></span>`
+            : `-`)}
+          </span>
+        </div>
+      </div>
+    </div>`;
+  const timelineTable = (pageGroups) => `
+    <table>
+      ${colgroup}
+      <thead>
+        <tr><th rowspan="2">no.</th><th rowspan="2">Work Description</th><th rowspan="2">Team</th><th rowspan="2">Duration<br/>(Day)</th><th rowspan="2">Start</th><th rowspan="2">Finish</th>${monthHeadCells || '<th rowspan="2">Timeline</th>'}</tr>
+        <tr>${weekHeadCells}</tr>
+      </thead>
+      ${bodyForGroups(pageGroups) || `<tbody><tr><td colspan="${totalCols}" style="text-align:center;padding:20px;color:#837868">ยังไม่มีขั้นตอนในโครงการนี้</td></tr></tbody>`}
+    </table>`;
+  const legend = `
+    <div class="legend">
+      <div class="leg"><span class="sw" style="background:${STATUS_FILL.Completed}"></span>เสร็จสิ้น</div>
+      <div class="leg"><span class="sw" style="background:${STATUS_FILL['In Progress']}"></span>กำลังดำเนินการ</div>
+      <div class="leg"><span class="sw" style="background:${STATUS_FILL.Pending}"></span>รอดำเนินการ</div>
+      <div class="leg"><span class="dia">◆</span> จุดสำคัญ (Milestone)</div>
+    </div>`;
+  const signatures = `
+    <div class="sign-sec">
+      <div class="sign-row two">
+        ${signBox({ label: 'ผู้จัดทำ', role: 'ACCOUNT COORDINATOR', name: preparerName })}
+        ${signBox({ label: 'ผู้ตรวจสอบ', role: 'AE SUPERVISOR', name: reviewerName })}
+      </div>
+      ${signDepts.length ? `<div class="sign-row three">${signDepts.map((dep) => signBox({ label: `ผู้รับผิดชอบ ฝ่าย ${dep}` })).join('')}</div>` : ''}
+    </div>`;
+  const pageCount = timelinePages.length + 1;
+  const contentPages = timelinePages.map((pageGroups, pageIndex) => `
+  <main class="sheet explicit-page">
+    ${documentHeader}
+    ${pageIndex === 0 ? projectHeader : ''}
+    ${timelineTable(pageGroups)}
+    <div class="page-number">หน้า ${pageIndex + 1} / ${pageCount}</div>
+  </main>`).join('');
+  const approvalPage = `
+  <main class="sheet explicit-page approval-page">
+    ${documentHeader}
+    <div class="approval-title">การรับรองเอกสาร Project Timeline</div>
+    ${legend}
+    ${signatures}
+    <div class="page-number">หน้า ${pageCount} / ${pageCount}</div>
+  </main>`;
 
   return `<!DOCTYPE html>
 <html lang="th">
@@ -163,8 +293,11 @@ export function buildGanttPrintHTML(project) {
                padding: 8px 18px; border-radius: 8px; cursor: pointer; }
   .btn-print:hover { background: #2e2620; }
 
-  .sheet { width: 297mm; min-height: 210mm; margin: 16px auto; background: #fff;
-           box-shadow: 0 8px 32px rgba(40,33,24,.12); padding: 8mm 9mm; }
+  .sheet { width: 297mm; height: 210mm; overflow: hidden; margin: 16px auto; background: #fff;
+           box-shadow: 0 8px 32px rgba(40,33,24,.12); padding: 8mm 9mm; position: relative; }
+  .explicit-page:not(:last-child) { break-after: page; page-break-after: always; }
+  .page-number { position: absolute; right: 9mm; bottom: 5mm; color: #837868; font-size: 9px; }
+  .approval-title { margin: 12px 0 4px; color: #21385e; font-size: 15px; font-weight: 700; }
 
   .doc-top { display: flex; justify-content: space-between; align-items: flex-start;
              border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px;
@@ -260,7 +393,8 @@ export function buildGanttPrintHTML(project) {
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
-    .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
+    .sheet { margin: 0; box-shadow: none; width: 281mm; height: 188mm; padding: 0; }
+    .page-number { right: 0; bottom: 0; }
     /* NB: อย่าใช้ position:fixed ทำ running header — Chromium (print) รองรับไม่ได้
        มันดัน .doc-top ไปอยู่ล่างสุดหน้าแรก + เว้นบนโล่งทุกหน้า. ให้หัวเอกสารอยู่
        in-flow บนสุดหน้าแรกตามปกติ. หัวคอลัมน์ตารางซ้ำทุกหน้าด้วย thead อยู่แล้ว. */
@@ -284,104 +418,8 @@ export function buildGanttPrintHTML(project) {
     <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
   </div>
 
-  <div class="sheet">
-    <!-- ตารางชั้นนอก: doc-top อยู่ใน thead เพื่อให้หัวเอกสารพิมพ์ซ้ำทุกหน้า
-         (Chromium ซ้ำ table-header-group ทุกหน้า; ห้ามใช้ position:fixed — ดูคอมเมนต์ @media print) -->
-    <table class="page-table">
-      <thead><tr><td>
-    <div class="doc-top">
-      <div class="brand">
-        <div class="logo-wrap"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
-        <div>
-          <h2>${esc(COMPANY_LEGAL_NAME)}</h2>
-          <div class="company-info">
-            <div>${esc(COMPANY_ADDRESS)}</div>
-            <div>เลขประจำตัวผู้เสียภาษี ${esc(COMPANY_TAX_ID)}</div>
-            <div>โทร. ${COMPANY_OFFICE_TEL} · Line ${esc(COMPANY_LINE)} · ${esc(COMPANY_WEBSITE)}</div>
-          </div>
-        </div>
-      </div>
-      <div class="doc-title">
-        <div class="formno">${DOCUMENT_FORMS.projectTimeline.code}</div>
-        <div class="big">${DOCUMENT_FORMS.projectTimeline.title}</div>
-        <div class="sub">${esc(displayCode)}</div>
-      </div>
-    </div>
-      </td></tr></thead>
-      <tbody><tr><td>
-
-    <div class="header-grid">
-      <div class="hcol left">
-        <div class="hrow"><span class="k">Customer Name</span><span class="v">${esc(customerName)}</span></div>
-        <div class="hrow"><span class="k">Brand</span><span class="v">${esc(project.metadata?.brand || '')}</span></div>
-        <div class="hrow spacer"></div>
-        <div class="hrow"><span class="k">ผู้ตรวจสอบ</span><span class="v">${esc(reviewerName)}</span></div>
-        <div class="hrow"><span class="k">ผู้ดูแล (AE)</span><span class="v">${esc(project.aeOwner || '')}</span></div>
-        <div class="hrow"><span class="k">เบอร์มือถือ</span><span class="v">${esc(aeMobile)}</span></div>
-        <div class="hrow"><span class="k">Email</span><span class="v">${esc(aeEmail)}</span></div>
-      </div>
-      <div class="hcol">
-        <div class="hrow"><span class="k">Project Name</span><span class="v">${esc(productName)}</span></div>
-        <div class="hrow"><span class="k">ใบเสนอราคา</span><span class="v">${quotationLine}</span></div>
-        <div class="hrow"><span class="k">วันที่</span><span class="v">${esc(fmtThai(project.startDate))}</span></div>
-        <div class="hrow" style="align-items: flex-start;">
-          <span class="k">รายการสินค้า (FG)</span>
-          <span class="v" style="font-weight: 400; flex: 1;">
-          ${(project.projectProducts || []).length > 0 ? `<span class="fg-list">${(project.projectProducts || []).map(pp => {
-            const prod = pp.product || {};
-            const cat = pp.categoryLabel || '';
-            return `<span class="fg-item">
-              <span class="fg-name">${esc(prod.fgCode || '')} — ${esc(prod.productDescriptionEn || prod.productDescription || brandLabel(prod.brandName, prod.brandNameEn) || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</span>
-              ${cat ? `<span class="fg-cat">${esc(cat)}</span>` : ''}
-              <span class="fg-qty">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</span>
-            </span>`;
-          }).join('')}</span>` : (categoryFallback
-            ? `<span class="fg-list"><span class="fg-item empty">
-                 <span class="fg-name">${esc(categoryFallback)}</span>
-                 <span class="fg-note">หมวดสินค้า (ยังไม่ผูก FG)</span>
-               </span></span>`
-            : `-`)}
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <table>
-      ${colgroup}
-      <thead>
-        <tr>
-          <th rowspan="2">no.</th>
-          <th rowspan="2">Work Description</th>
-          <th rowspan="2">Team</th>
-          <th rowspan="2">Duration<br/>(Day)</th>
-          <th rowspan="2">Start</th>
-          <th rowspan="2">Finish</th>
-          ${monthHeadCells || '<th rowspan="2">Timeline</th>'}
-        </tr>
-        <tr>${weekHeadCells}</tr>
-      </thead>
-      ${bodyTbodies || `<tbody><tr><td colspan="${totalCols}" style="text-align:center;padding:20px;color:#837868">ยังไม่มีขั้นตอนในโครงการนี้</td></tr></tbody>`}
-    </table>
-
-    <div class="legend">
-      <div class="leg"><span class="sw" style="background:${STATUS_FILL.Completed}"></span>เสร็จสิ้น</div>
-      <div class="leg"><span class="sw" style="background:${STATUS_FILL['In Progress']}"></span>กำลังดำเนินการ</div>
-      <div class="leg"><span class="sw" style="background:${STATUS_FILL.Pending}"></span>รอดำเนินการ</div>
-      <div class="leg"><span class="dia">◆</span> จุดสำคัญ (Milestone)</div>
-    </div>
-
-    <div class="sign-sec">
-      <div class="sign-row two">
-        ${signBox({ label: 'ผู้จัดทำ', role: 'ACCOUNT COORDINATOR', name: preparerName })}
-        ${signBox({ label: 'ผู้ตรวจสอบ', role: 'AE SUPERVISOR', name: reviewerName })}
-      </div>
-      ${signDepts.length ? `<div class="sign-row three">
-        ${signDepts.map((dep) => signBox({ label: `ผู้รับผิดชอบ ฝ่าย ${dep}` })).join('')}
-      </div>` : ''}
-    </div>
-      </td></tr></tbody>
-    </table>
-  </div>
+  ${contentPages}
+  ${approvalPage}
 </body>
 </html>`;
 }

@@ -33,9 +33,47 @@ const signBox = ({ label, role, name }) => `
       </div>`;
 const printDate = (v) => (v ? fmtDate(v).replaceAll('/', '.') : '-');
 
+const linePageUnits = (line) => {
+  const description = `${line?.fgCode || ''} ${line?.description || ''}`.trim();
+  return Math.max(1, Math.ceil(description.length / 72));
+};
+
+// Explicit pages make the browser preview match the printed A4 pages. The final
+// page reserves room for totals, payment terms and signatures; preceding pages
+// can use the space for more item rows.
+export function paginateCommercialLines(lines = []) {
+  if (!Array.isArray(lines) || lines.length === 0) return [[]];
+
+  const finalPageCapacity = 8;
+  const firstPageCapacity = 18;
+  const continuationCapacity = 24;
+  const pages = [];
+  let remaining = lines.slice();
+
+  const totalUnits = () => remaining.reduce((sum, line) => sum + linePageUnits(line), 0);
+  while (totalUnits() > finalPageCapacity) {
+    const capacity = pages.length === 0 ? firstPageCapacity : continuationCapacity;
+    const targetUnits = Math.min(capacity, totalUnits() - finalPageCapacity);
+    const page = [];
+    let usedUnits = 0;
+
+    while (remaining.length > 0) {
+      const units = linePageUnits(remaining[0]);
+      if (page.length > 0 && usedUnits + units > targetUnits) break;
+      page.push(remaining.shift());
+      usedUnits += units;
+      if (usedUnits >= targetUnits) break;
+    }
+    pages.push(page);
+  }
+
+  pages.push(remaining);
+  return pages;
+}
+
 // ต้องเปิด window ภายใน call stack ของ click โดยตรง มิฉะนั้น Chromium จะบล็อก popup
 // เมื่อมี fetch/save ที่ await ก่อน window.open.
-export function prepareQuotePrintWindow() {
+export function prepareQuotePrintWindow(documentLabel = 'ใบเสนอราคา') {
   // ไม่ระบุ window features เพื่อให้ browser เปิดพรีวิวเป็นแท็บใหม่แทน popup window.
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
@@ -43,15 +81,15 @@ export function prepareQuotePrintWindow() {
     return null;
   }
   try { printWindow.opener = null; } catch { /* browser บางรุ่นไม่อนุญาตให้แก้ opener */ }
-  printWindow.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>กำลังเตรียมใบเสนอราคา…</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:80vh;color:#555}p{padding:20px}</style></head><body><p>กำลังเตรียมเอกสารสำหรับพิมพ์…</p></body></html>`);
+  printWindow.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>กำลังเตรียม${esc(documentLabel)}…</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:80vh;color:#555}p{padding:20px}</style></head><body><p>กำลังเตรียมเอกสารสำหรับพิมพ์…</p></body></html>`);
   printWindow.document.close();
   return printWindow;
 }
 
-export function showQuotePrintError(printWindow, message = 'ไม่สามารถโหลดข้อมูลใบเสนอราคาได้') {
+export function showQuotePrintError(printWindow, message = 'ไม่สามารถโหลดข้อมูลใบเสนอราคาได้', documentLabel = 'ใบเสนอราคา') {
   if (!printWindow || printWindow.closed) return;
   printWindow.document.open();
-  printWindow.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ไม่สามารถพิมพ์ใบเสนอราคา</title><style>body{font-family:system-ui,sans-serif;padding:32px;color:#8b2f2f}button{padding:8px 14px}</style></head><body><h2>ไม่สามารถพิมพ์ใบเสนอราคา</h2><p>${esc(message)}</p><button onclick="window.close()">ปิดหน้าต่าง</button></body></html>`);
+  printWindow.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ไม่สามารถพิมพ์${esc(documentLabel)}</title><style>body{font-family:system-ui,sans-serif;padding:32px;color:#8b2f2f}button{padding:8px 14px}</style></head><body><h2>ไม่สามารถพิมพ์${esc(documentLabel)}</h2><p>${esc(message)}</p><button onclick="window.close()">ปิดหน้าต่าง</button></body></html>`);
   printWindow.document.close();
 }
 
@@ -78,15 +116,25 @@ export function printHeaderHtml({ form, docNumber, docDate }) {
     </div>`;
 }
 
-export function buildQuotePrintHTML(quote) {
+export function buildQuotePrintHTML(quote, options = {}) {
+  const form = options.form || DOCUMENT_FORMS.quotation;
+  const documentLabel = options.documentLabel || 'ใบเสนอราคา';
+  const documentNumber = options.documentNumber || quote.quoteNumber;
+  const documentDate = options.documentDate || quote.quoteDate;
+  const documentDateLabel = options.documentDateLabel || 'วันที่ออกใบ';
+  const secondaryDateLabel = options.secondaryDateLabel || 'ยืนราคาถึง';
+  const secondaryDateValue = options.secondaryDateValue ?? quote.validUntil;
+  const watermark = options.watermark || '';
+  const paginatedPreview = options.paginatedPreview !== false;
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
   const hasLineDiscount = lines.some((line) => Number(line.discountAmount) > 0);
-  const rows = lines
+  const sortedLines = lines
     .slice()
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const rowsForLines = (pageLines, startIndex = 0) => pageLines
     .map((line, index) => `
       <tr>
-        <td class="c">${index + 1}</td>
+        <td class="c">${startIndex + index + 1}</td>
         <td class="description">${line.fgCode ? `<span class="fg-code">${esc(line.fgCode)}</span> · ` : ''}${value(line.description)}</td>
         <td class="n">${Number(line.qty || 0).toLocaleString('th-TH')}</td>
         <td class="n">${money(line.unitPrice)}</td>
@@ -94,6 +142,7 @@ export function buildQuotePrintHTML(quote) {
         <td class="n">${money(line.lineTotal)}</td>
       </tr>`)
     .join('') || `<tr class="empty-row"><td colspan="${hasLineDiscount ? 6 : 5}">ไม่มีรายการสินค้า</td></tr>`;
+  const rows = rowsForLines(sortedLines);
 
   const paymentPlan = quote.paymentPlan;
   const installmentTable = paymentPlan?.type === 'installment'
@@ -125,13 +174,82 @@ export function buildQuotePrintHTML(quote) {
   const aeOwner = quote.metadata?.aeOwner || '';
   const preparedBy = quote.metadata?.preparedBy || quote.createdByName || '';
   const reviewer = quote.metadata?.aeSupervisor || '';
+  const signers = options.signers || [
+    { label: 'ผู้จัดทำ', role: 'Scent & Sense', name: preparedBy },
+    { label: 'ผู้ตรวจสอบ', role: 'Scent & Sense', name: reviewer },
+    { label: 'ผู้ยืนยันสั่งซื้อ', role: 'ลูกค้า', name: '' },
+  ];
+
+  const headerGrid = `
+    <section class="header-grid">
+      <div class="hcol left">
+        <div class="hrow"><span class="k">ลูกค้า</span><span class="v">${value(quote.customerName)}</span></div>
+        <div class="hrow"><span class="k">สาขา</span><span class="v">${esc(branch)}</span></div>
+        <div class="hrow"><span class="k">ที่อยู่ออกบิล</span><span class="v">${value(quote.billingAddress)}</span></div>
+        ${quote.shippingAddress && quote.shippingAddress !== quote.billingAddress ? `<div class="hrow"><span class="k">ที่อยู่จัดส่ง</span><span class="v">${esc(quote.shippingAddress)}</span></div>` : ''}
+        <div class="hrow"><span class="k">ผู้ติดต่อ</span><span class="v">${value(quote.contactName)}${quote.contactPhone ? ` · ${esc(quote.contactPhone)}` : ''}</span></div>
+      </div>
+      <div class="hcol">
+        <div class="hrow"><span class="k">เลขที่</span><span class="v">${value(documentNumber)}</span></div>
+        <div class="hrow"><span class="k">${esc(documentDateLabel)}</span><span class="v">${documentDate ? value(fmtDate(documentDate)) : '-'}</span></div>
+        <div class="hrow"><span class="k">${esc(secondaryDateLabel)}</span><span class="v">${secondaryDateValue ? value(fmtDate(secondaryDateValue)) : '-'}</span></div>
+        ${options.referenceValue ? `<div class="hrow"><span class="k">${esc(options.referenceLabel || 'อ้างอิง')}</span><span class="v">${value(options.referenceValue)}</span></div>` : ''}
+        ${options.statusLabel ? `<div class="hrow"><span class="k">สถานะเอกสาร</span><span class="v">${value(options.statusLabel)}</span></div>` : ''}
+        <div class="hrow"><span class="k">โครงการ</span><span class="v">${value(projectTitle)}</span></div>
+        <div class="hrow"><span class="k">ดีล</span><span class="v">${value(dealTitle)}</span></div>
+        ${aeOwner ? `<div class="hrow"><span class="k">ผู้ดูแล (AE)</span><span class="v">${esc(aeOwner)}</span></div>` : ''}
+        ${Number(quote.revisionNo) > 0 ? `<div class="hrow"><span class="k">ฉบับแก้ไข</span><span class="v">R${Number(quote.revisionNo)}</span></div>` : ''}
+      </div>
+    </section>`;
+  const itemsTable = (pageRows) => `
+    <table class="items">
+      <colgroup><col style="width:8mm"><col><col style="width:14mm"><col style="width:36mm">${hasLineDiscount ? '<col style="width:22mm">' : ''}<col style="width:36mm"></colgroup>
+      <thead><tr><th>ลำดับ</th><th>รายการ</th><th>จำนวน</th><th>ราคา/หน่วย</th>${hasLineDiscount ? '<th>ส่วนลด</th>' : ''}<th>จำนวนเงิน</th></tr></thead>
+      <tbody>${pageRows}</tbody>
+    </table>`;
+  const commercialSection = `
+    <section class="commercial">
+      <div class="totals-wrap"><table class="totals" style="width:${hasLineDiscount ? '108mm' : '86mm'}"><colgroup><col><col style="width:36mm"></colgroup><tbody>${totals}</tbody></table></div>
+      <div class="commercial-info">
+        <div class="info-block"><div class="lbl">หมายเหตุ / REMARKS</div>${value(quote.notes)}</div>
+        <div class="info-block"><div class="lbl">วิธีการชำระเงิน / PAYMENT METHOD</div>${value(paymentPlan?.paymentMethod)}</div>
+        <div class="info-block"><div class="lbl">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>${value(quote.paymentTerms)}${installmentTable}</div>
+      </div>
+    </section>`;
+  const signatureSection = `<section class="sign-sec">${signers.map(signBox).join('')}</section>`;
+  const classicDocument = `
+    <main class="sheet">
+      ${watermark ? `<div class="watermark">${esc(watermark)}</div>` : ''}
+      <table class="page-table">
+        <thead><tr><td>${printHeaderHtml({ form, docNumber: documentNumber, docDate: printDate(documentDate) })}</td></tr></thead>
+        <tbody><tr><td><div class="doc-body">${headerGrid}${itemsTable(rows)}${commercialSection}${signatureSection}</div></td></tr></tbody>
+      </table>
+    </main>`;
+  const explicitPages = paginatedPreview
+    ? paginateCommercialLines(sortedLines).map((pageLines, pageIndex, pages) => {
+      const startIndex = pages.slice(0, pageIndex).reduce((sum, page) => sum + page.length, 0);
+      const isFirstPage = pageIndex === 0;
+      const isLastPage = pageIndex === pages.length - 1;
+      return `
+    <main class="sheet explicit-page">
+      ${watermark ? `<div class="watermark">${esc(watermark)}</div>` : ''}
+      ${printHeaderHtml({ form, docNumber: documentNumber, docDate: printDate(documentDate) })}
+      <div class="page-number">หน้า ${pageIndex + 1} / ${pages.length}</div>
+      <div class="doc-body">
+        ${isFirstPage ? headerGrid : ''}
+        ${itemsTable(rowsForLines(pageLines, startIndex))}
+        ${isLastPage ? `${commercialSection}${signatureSection}` : ''}
+      </div>
+    </main>`;
+    }).join('')
+    : classicDocument;
 
   return `<!doctype html>
 <html lang="th">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${value(quote.quoteNumber)} — ใบเสนอราคา</title>
+<title>${value(documentNumber)} — ${esc(documentLabel)}</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -144,7 +262,14 @@ export function buildQuotePrintHTML(quote) {
                padding: 8px 18px; border-radius: 8px; cursor: pointer; }
   .btn-print:hover { background: #2e2620; }
   .sheet { width: 210mm; min-height: 297mm; margin: 16px auto; background: #fff;
-           box-shadow: 0 8px 32px rgba(40,33,24,.12); padding: 9mm 10mm; }
+           box-shadow: 0 8px 32px rgba(40,33,24,.12); padding: 9mm 10mm; position: relative; }
+  .watermark { position: absolute; top: 46%; left: 50%; z-index: 0; color: rgba(176,72,59,.10);
+               font-size: 44px; font-weight: 800; letter-spacing: 3px; white-space: nowrap;
+               transform: translate(-50%,-50%) rotate(-28deg); pointer-events: none; }
+  .explicit-page { height: 297mm; overflow: hidden; }
+  .explicit-page:not(:last-child) { break-after: page; page-break-after: always; }
+  .page-number { position: absolute; right: 10mm; bottom: 5mm; color: #837868; font-size: 9px; z-index: 2; }
+  .page-table { position: relative; z-index: 1; }
   .doc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
              border-bottom: 2px solid #c17a52; padding-bottom: 7px; margin-bottom: 7px;
              page-break-after: avoid; break-after: avoid; }
@@ -252,62 +377,18 @@ export function buildQuotePrintHTML(quote) {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .no-print { display: none !important; }
     .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+    .explicit-page { width: 184mm; height: 276mm; position: relative; }
+    .explicit-page .page-number { right: 0; bottom: 0; }
     thead { display: table-header-group; }
   }
 </style>
 </head>
 <body>
   <div class="toolbar no-print">
-    <h1>ใบเสนอราคา ${value(quote.quoteNumber)}</h1>
+    <h1>${esc(documentLabel)} ${value(documentNumber)}</h1>
     <button class="btn-print" type="button" onclick="window.print()">พิมพ์เอกสาร</button>
   </div>
-  <main class="sheet">
-    <table class="page-table">
-      <thead><tr><td>
-    ${printHeaderHtml({ form: DOCUMENT_FORMS.quotation, docNumber: quote.quoteNumber, docDate: printDate(quote.quoteDate) })}
-      </td></tr></thead>
-      <tbody><tr><td>
-    <div class="doc-body">
-    <section class="header-grid">
-      <div class="hcol left">
-        <div class="hrow"><span class="k">ลูกค้า</span><span class="v">${value(quote.customerName)}</span></div>
-        <div class="hrow"><span class="k">สาขา</span><span class="v">${esc(branch)}</span></div>
-        <div class="hrow"><span class="k">ที่อยู่ออกบิล</span><span class="v">${value(quote.billingAddress)}</span></div>
-        ${quote.shippingAddress && quote.shippingAddress !== quote.billingAddress ? `<div class="hrow"><span class="k">ที่อยู่จัดส่ง</span><span class="v">${esc(quote.shippingAddress)}</span></div>` : ''}
-        <div class="hrow"><span class="k">ผู้ติดต่อ</span><span class="v">${value(quote.contactName)}${quote.contactPhone ? ` · ${esc(quote.contactPhone)}` : ''}</span></div>
-      </div>
-      <div class="hcol">
-        <div class="hrow"><span class="k">เลขที่</span><span class="v">${value(quote.quoteNumber)}</span></div>
-        <div class="hrow"><span class="k">วันที่ออกใบ</span><span class="v">${value(fmtDate(quote.quoteDate))}</span></div>
-        <div class="hrow"><span class="k">ยืนราคาถึง</span><span class="v">${quote.validUntil ? value(fmtDate(quote.validUntil)) : '-'}</span></div>
-        <div class="hrow"><span class="k">โครงการ</span><span class="v">${value(projectTitle)}</span></div>
-        <div class="hrow"><span class="k">ดีล</span><span class="v">${value(dealTitle)}</span></div>
-        ${aeOwner ? `<div class="hrow"><span class="k">ผู้ดูแล (AE)</span><span class="v">${esc(aeOwner)}</span></div>` : ''}
-        ${Number(quote.revisionNo) > 0 ? `<div class="hrow"><span class="k">ฉบับแก้ไข</span><span class="v">R${Number(quote.revisionNo)}</span></div>` : ''}
-      </div>
-    </section>
-    <table class="items">
-      <colgroup><col style="width:8mm"><col><col style="width:14mm"><col style="width:36mm">${hasLineDiscount ? '<col style="width:22mm">' : ''}<col style="width:36mm"></colgroup>
-      <thead><tr><th>ลำดับ</th><th>รายการ</th><th>จำนวน</th><th>ราคา/หน่วย</th>${hasLineDiscount ? '<th>ส่วนลด</th>' : ''}<th>จำนวนเงิน</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <section class="commercial">
-      <div class="totals-wrap"><table class="totals" style="width:${hasLineDiscount ? '108mm' : '86mm'}"><colgroup><col><col style="width:36mm"></colgroup><tbody>${totals}</tbody></table></div>
-      <div class="commercial-info">
-        <div class="info-block"><div class="lbl">หมายเหตุ / REMARKS</div>${value(quote.notes)}</div>
-        <div class="info-block"><div class="lbl">วิธีการชำระเงิน / PAYMENT METHOD</div>${value(paymentPlan?.paymentMethod)}</div>
-        <div class="info-block"><div class="lbl">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>${value(quote.paymentTerms)}${installmentTable}</div>
-      </div>
-    </section>
-    <section class="sign-sec">
-      ${signBox({ label: 'ผู้จัดทำ', role: 'Scent & Sense', name: preparedBy })}
-      ${signBox({ label: 'ผู้ตรวจสอบ', role: 'Scent & Sense', name: reviewer })}
-      ${signBox({ label: 'ผู้ยืนยันสั่งซื้อ', role: 'ลูกค้า', name: '' })}
-    </section>
-    </div>
-      </td></tr></tbody>
-    </table>
-  </main>
+  ${explicitPages}
 </body>
 </html>`;
 }

@@ -2,14 +2,15 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesTarget, canViewSalesPlanning, monthKey, toMoney, yearKey } from '@/lib/salesPlanning';
+import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
 export const dynamic = 'force-dynamic';
 
 // Sum won deals into a { [year]: { total, byTeam, byOwner, byMonth } } shape so
 // the wizard can pre-fill historical actuals for years the system already knows.
 function aggregateWonDeals(deals) {
-  const wonAmt = (d) => Number(d.wonValue ?? d.projectValue ?? 0);
-  const wonMonth = (d) => monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
+  const wonAmt = dealActualFromSalesOrders;
+  const wonMonth = (d) => monthKey(d.metadata?.wonMonth) || monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
   const isWon = (d) => ['won', 'in_project'].includes(d.stage);
   const years = {};
   for (const d of deals || []) {

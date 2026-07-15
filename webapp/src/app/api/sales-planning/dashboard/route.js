@@ -1,6 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 import { cachedJson } from '@/lib/serverCache';
+import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,9 +38,9 @@ async function buildDashboard(supabase, month) {
 
   const isWon = (d) => ['won', 'in_project'].includes(d.stage);
   const isOpen = (d) => !['won', 'in_project', 'lost'].includes(d.stage);
-  // ยอดปิดจริง = wonValue (มูลค่าปิดจริงที่กรอกตอน Won); fallback projectValue สำหรับ
-  // ดีลเก่าก่อน migration 0081. ค่าคาดการณ์ของดีล won = projectValue (ใช้คิด variance).
-  const wonAmt = (d) => Number(d.wonValue ?? d.projectValue ?? 0);
+  // Actual อ่านผ่าน cache wonValue เฉพาะเมื่อ DB ยืนยันว่า cache มาจาก Approved SO.
+  // projectValue ยังคงเป็นค่าคาดการณ์ของดีลและใช้คิด variance เท่านั้น.
+  const wonAmt = dealActualFromSalesOrders;
   const forecastAmt = (d) => Number(d.projectValue ?? 0);
   // เดือนที่นับยอด Won: ใช้เดือนที่ผู้ใช้เลือกตอนกด Won ก่อน (metadata.wonMonth),
   // ไม่งั้นเดือนของ confirmedAt / วันรับ PO / forecastMonth ตามลำดับ (ดีลเก่า).

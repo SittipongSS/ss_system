@@ -12,6 +12,14 @@ import { fmtDate } from "@/lib/format";
 import { SYSTEM_DOCUMENT_LOGO_URL } from "@/lib/documentBrand";
 
 const num = (value) => Number(value || 0).toLocaleString("th-TH");
+const paginateShipmentLines = (lines = []) => {
+  if (!Array.isArray(lines) || lines.length === 0) return [[]];
+  const pages = [];
+  let remaining = lines.slice();
+  while (remaining.length > 8) pages.push(remaining.splice(0, Math.min(12, remaining.length - 8)));
+  pages.push(remaining);
+  return pages;
+};
 
 export default function ShipmentPrepPage() {
   const { id } = useParams();
@@ -58,6 +66,7 @@ export default function ShipmentPrepPage() {
     if (!prep) return "เอกสารเตรียมส่งของ";
     return `${prep.prepNumber} · ${project?.code || prep.projectCode || ""}`.trim();
   }, [prep, project]);
+  const shipmentPages = useMemo(() => paginateShipmentLines(prep?.lines || []), [prep?.lines]);
 
   if (loading) return <SkeletonRows />;
 
@@ -100,7 +109,9 @@ export default function ShipmentPrepPage() {
           )}
         </div>
       ) : (
-        <main className="shipment-print-sheet" aria-labelledby="shipment-title">
+        <div className="shipment-print-document">
+          {shipmentPages.map((pageLines, pageIndex) => (
+          <main className="shipment-print-sheet" aria-labelledby={pageIndex === 0 ? "shipment-title" : undefined} key={pageIndex}>
           <header className="shipment-print-head">
             <div className="shipment-print-brand">
               <div
@@ -112,7 +123,7 @@ export default function ShipmentPrepPage() {
               </div>
               <div>
                 <div className="shipment-print-kicker">Shipment Preparation</div>
-                <h1 id="shipment-title">{title}</h1>
+                <h1 id={pageIndex === 0 ? "shipment-title" : undefined}>{title}</h1>
                 <p>{project.name || "-"} · ลูกค้า: {prep.customerName || project.customerName || "-"}</p>
               </div>
             </div>
@@ -123,12 +134,12 @@ export default function ShipmentPrepPage() {
             </div>
           </header>
 
-          <section className="shipment-print-info" aria-label="ข้อมูลโครงการ">
+          {pageIndex === 0 && <section className="shipment-print-info" aria-label="ข้อมูลโครงการ">
             <div><span>Project</span><strong>{project.code || project.id}</strong></div>
             <div><span>AE</span><strong>{project.aeOwner || "-"}</strong></div>
             <div><span>PO</span><strong>{project.metadata?.poNumber || prep.metadata?.poNumber || "-"}</strong></div>
             <div><span>Quotation</span><strong>{project.metadata?.quotationNumber || prep.metadata?.quotationNumber || "-"}</strong></div>
-          </section>
+          </section>}
 
           <section>
             <table className="shipment-print-table">
@@ -142,7 +153,9 @@ export default function ShipmentPrepPage() {
                 </tr>
               </thead>
               <tbody>
-                {(prep.lines || []).map((line, index) => (
+                {pageLines.map((line, lineIndex) => {
+                  const index = shipmentPages.slice(0, pageIndex).reduce((sum, page) => sum + page.length, 0) + lineIndex;
+                  return (
                   <tr key={line.id}>
                     <td>{index + 1}</td>
                     <td className="shipment-mono">{line.fgCode || "-"}</td>
@@ -150,17 +163,21 @@ export default function ShipmentPrepPage() {
                     <td className="shipment-num">{num(line.qty)}</td>
                     <td>{line.note || ""}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </section>
 
-          <footer className="shipment-signatures">
+          {pageIndex === shipmentPages.length - 1 && <footer className="shipment-signatures">
             <div><span>ผู้เตรียมเอกสาร</span></div>
             <div><span>คลังรับเรื่อง</span></div>
             <div><span>ผู้อนุมัติส่งมอบ</span></div>
-          </footer>
+          </footer>}
+          <div className="shipment-page-number">หน้า {pageIndex + 1} / {shipmentPages.length}</div>
         </main>
+          ))}
+        </div>
       )}
     </div>
   );

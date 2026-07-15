@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   BadgeCheck, Building2, CalendarDays, CheckCircle2, CircleDollarSign,
   ClipboardList, ExternalLink, FileCheck2, FileText, FolderKanban,
-  RotateCcw, Save, Send, Trash2, Undo2, UserRound, XCircle,
+  Printer, RotateCcw, Save, Send, Trash2, Undo2, UserRound, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -15,6 +15,7 @@ import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning
 import { useCan, useRole } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { openSalesOrderPrintWindow, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
 import styles from "./page.module.css";
 
 const STATUS = {
@@ -131,6 +132,24 @@ export default function SalesOrderDetailPage() {
     router.push("/sa/sales-orders");
   }
 
+  async function printDocument() {
+    const printWindow = prepareSalesOrderPrintWindow();
+    if (!printWindow) return;
+    if (dirty) {
+      printWindow.close();
+      setError("กรุณาบันทึกข้อมูลล่าสุดก่อนออกเอกสาร");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/sales-planning/sales-orders/${id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "ไม่สามารถโหลดข้อมูลใบสั่งขายได้");
+      openSalesOrderPrintWindow(data, printWindow);
+    } catch (printError) {
+      showSalesOrderPrintError(printWindow, printError.message);
+    }
+  }
+
   const sortedLines = useMemo(
     () => (order?.lines || []).slice().sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)),
     [order?.lines],
@@ -152,7 +171,7 @@ export default function SalesOrderDetailPage() {
   ];
 
   return (
-    <Workspace hideHeader back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} backActions={<SaveStatus status={saveState} />}>
+    <Workspace hideHeader back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} backActions={<><SaveStatus status={saveState} /><button type="button" className="btn btn-primary" onClick={printDocument}><Printer size={14} /> ออกเอกสาร</button></>}>
       <div className={styles.page}>
         <SalesDetailOverview
           eyebrow="SALE ORDER · COMMERCIAL APPROVAL"

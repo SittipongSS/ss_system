@@ -8,10 +8,10 @@
 // variance (วัดความแม่น FC). นิยามตรงกับ dashboard เดิม (fullForecast/remainingForecast).
 // ห้ามกรอกมูลค่าที่ตัวโครงการ — rollup จากดีลเสมอ (กัน double-count).
 import { DEAL_TYPES, dealTypeOf } from '@/lib/salesPlanning';
+import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
-// ยอดปิดจริงของดีล won — นิยามเดียวกับ dashboard (fallback projectValue สำหรับ
-// ดีลเก่าก่อน migration 0081).
-export const wonAmt = (d) => Number(d?.wonValue ?? d?.projectValue ?? 0);
+// Actual ของดีล — อ่าน cache ที่ DB คำนวณจาก Approved SO เท่านั้น.
+export const wonAmt = dealActualFromSalesOrders;
 export const forecastAmt = (d) => Number(d?.projectValue ?? 0);
 // 'in_project' = สถานะเก่าก่อน mig 0082 (ยุบเป็น won) — ข้อมูลเก่าอาจยังมี
 export const isWonDeal = (d) => ['won', 'in_project'].includes(d?.stage);

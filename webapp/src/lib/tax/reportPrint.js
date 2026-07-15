@@ -40,12 +40,21 @@ const cellHtml = (c, val) => {
 };
 const align = (c) => (c.money || c.num ? "right" : "left");
 
+export function paginateReportRows(rows = [], rowsPerPage = 18) {
+  if (!Array.isArray(rows) || rows.length === 0) return [[]];
+  const pages = [];
+  for (let index = 0; index < rows.length; index += rowsPerPage) {
+    pages.push(rows.slice(index, index + rowsPerPage));
+  }
+  return pages;
+}
+
 export function buildReportPrintHTML(report, meta = {}) {
   const cols = report.columns || [];
   const head = cols.map((c) => `<th style="text-align:${align(c)}">${esc(c.label)}</th>`).join("");
-  const body = (report.rows || []).length
-    ? (report.rows || []).map((row) =>
-        `<tr>${cols.map((c) => `<td class="${c.multiline ? "ml" : ""}" style="text-align:${align(c)}">${cellHtml(c, row[c.key])}</td>`).join("")}</tr>`).join("")
+  const bodyForRows = (rows) => rows.length
+    ? rows.map((row) =>
+      `<tr>${cols.map((c) => `<td class="${c.multiline ? "ml" : ""}" style="text-align:${align(c)}">${cellHtml(c, row[c.key])}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${cols.length}" style="text-align:center;color:#837868;padding:14px">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`;
 
   const s = report.summary;
@@ -62,6 +71,28 @@ export function buildReportPrintHTML(report, meta = {}) {
     meta.from || meta.to ? `ช่วงวันที่: ${meta.from || "..."} – ${meta.to || "..."}` : "",
     meta.customerName ? `ลูกค้า: ${esc(meta.customerName)}` : "",
   ].filter(Boolean).join("  ·  ");
+  const pages = paginateReportRows(report.rows || []);
+  const printedAt = genAt();
+  const documentPages = pages.map((rows, pageIndex) => `
+  <main class="sheet explicit-page">
+    <div class="doc-top">
+      <div class="brand">
+        <div class="logo-wrap"><img src="${LOGO_URL}" alt="S&amp;S"/></div>
+        <div><h2>${esc(COMPANY)}</h2></div>
+      </div>
+      <div class="doc-title">
+        <div class="big">REPORT</div>
+        <div class="sub">${esc(report.title)}</div>
+        ${filterLine ? `<div class="sub">${filterLine}</div>` : ""}
+      </div>
+    </div>
+    <table>
+      <thead><tr>${head}</tr></thead>
+      <tbody>${bodyForRows(rows)}${pageIndex === pages.length - 1 ? summaryRow : ""}</tbody>
+    </table>
+    <div class="gen">พิมพ์เมื่อ ${printedAt} · ${esc(COMPANY)}</div>
+    <div class="page-number">หน้า ${pageIndex + 1} / ${pages.length}</div>
+  </main>`).join("");
 
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"/>
 <title>${esc(report.title)}</title>
@@ -74,7 +105,9 @@ export function buildReportPrintHTML(report, meta = {}) {
   .toolbar { max-width: 297mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
   .toolbar h1 { font-size: 15px; font-weight: 600; }
   .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 7px; cursor: pointer; }
-  .sheet { width: 297mm; min-height: 210mm; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); }
+  .sheet { width: 297mm; height: 210mm; overflow: hidden; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); position: relative; }
+  .explicit-page:not(:last-child) { break-after: page; page-break-after: always; }
+  .page-number { position: absolute; right: 12mm; bottom: 7mm; color: #837868; font-size: 9px; }
   .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 12px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-wrap { height: 46px; flex-shrink: 0; display: flex; align-items: center; }
@@ -90,12 +123,12 @@ export function buildReportPrintHTML(report, meta = {}) {
   td .sub { font-size: 8.5px; color: #837868; }
   tr.sum td { font-weight: 700; background: #f0ebe0; border-top: 2px solid #c17a52; }
   .gen { margin-top: 14px; font-size: 9px; color: #837868; text-align: right; }
-  @page { size: A4 landscape; margin: 31mm 10mm 10mm; }
+  @page { size: A4 landscape; margin: 10mm; }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
-    .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
-    .doc-top { position: fixed; top: -29mm; left: 0; right: 0; height: 25mm; margin: 0; background: #fff; z-index: 20; }
+    .sheet { margin: 0; box-shadow: none; width: 277mm; height: 190mm; padding: 0; }
+    .page-number { right: 0; bottom: 0; }
     thead { display: table-header-group; }
   }
 </style></head><body>
@@ -103,26 +136,7 @@ export function buildReportPrintHTML(report, meta = {}) {
     <h1>${esc(report.title)}</h1>
     <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
   </div>
-  <div class="sheet">
-    <div class="doc-top">
-      <div class="brand">
-        <div class="logo-wrap"><img src="${LOGO_URL}" alt="S&amp;S"/></div>
-        <div>
-          <h2>${esc(COMPANY)}</h2>
-        </div>
-      </div>
-      <div class="doc-title">
-        <div class="big">REPORT</div>
-        <div class="sub">${esc(report.title)}</div>
-        ${filterLine ? `<div class="sub">${filterLine}</div>` : ""}
-      </div>
-    </div>
-    <table>
-      <thead><tr>${head}</tr></thead>
-      <tbody>${body}${summaryRow}</tbody>
-    </table>
-    <div class="gen">พิมพ์เมื่อ ${genAt()} · ${esc(COMPANY)}</div>
-  </div>
+  ${documentPages}
 </body></html>`;
 }
 
