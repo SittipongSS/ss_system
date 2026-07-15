@@ -559,10 +559,16 @@ function DashboardContent() {
 
   const handleCellClick = (row, m, metricKey) => {
     if (metricKey === "target") return;
+    // แถวรายบุคคล = แถวที่ไม่ใช่สรุปรวม/แถวทีม — ส่งชื่อ+ทีมให้ modal จับคู่แบบเดียวกับ
+    // byOwner (รวมคนด้วย name+team); ช่อง "รวมปี" (m=null) ส่งปีไปให้กรองตามปีด้วย
+    const summaryRow = row.id === "grand-total" || row.id === "year-summary";
+    const isOwnerRow = !summaryRow && row.sublabel !== "ทีม";
     setDrillDownFilter({
       month: m,
-      ownerId: row.id.includes(":") || row.id === "grand-total" ? null : row.id,
-      team: row.team,
+      year,
+      ownerId: isOwnerRow && !row.id.includes(":") ? row.id : null,
+      ownerName: isOwnerRow ? row.label : null,
+      team: summaryRow || row.team === "ไม่ระบุทีม" ? null : row.team,
       metric: metricKey,
       label: row.label
     });
