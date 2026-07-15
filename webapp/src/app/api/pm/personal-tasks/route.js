@@ -4,6 +4,7 @@ import { recordAudit } from '@/lib/audit';
 import { can, canAssignTask } from '@/lib/permissions';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canAcknowledgeInquiryMessage, canViewInquiry } from '@/lib/inquiries';
+import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,8 +79,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   // อ้างอิงโครงการ/ดีลต้องมีจริง (logical link — เช็กกันข้อมูลเสีย).
   if (dealId) {
-    const { data: deal } = await supabase.from('sales_deals').select('id, projectId').eq('id', dealId).maybeSingle();
+    const { data: deal } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', dealId).maybeSingle();
     if (!deal) return badRequest('ไม่พบดีล');
+    // งานจาก Inquiry ใช้ดีลต้นทางตามสิทธิ์ของเรื่องนั้น ส่วนการเลือกดีลเองต้องอยู่ทีมเดียวกัน.
+    if (!inquiryRecord && !canLinkTaskToDeal(user, deal)) return forbidden('ผูกงานได้เฉพาะดีลของทีมตัวเอง');
     if (deal.projectId) {
       if (projectId && projectId !== deal.projectId) return badRequest('ดีลไม่ได้อยู่ในโครงการที่ระบุ');
       projectId = deal.projectId;

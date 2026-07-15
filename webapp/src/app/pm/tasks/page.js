@@ -228,7 +228,7 @@ export default function TasksPage() {
       setUsersMap(Object.fromEntries((u || []).map((x) => [x.id, compactPersonName(x.name)])));
     }).catch(() => {});
     fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((p) => setAllProjects(p || [])).catch(() => {});
-    fetch("/api/sales-planning/deals").then((r) => (r.ok ? r.json() : [])).then((d) => setAllDeals(d || [])).catch(() => {});
+    fetch("/api/pm/task-deals").then((r) => (r.ok ? r.json() : [])).then((d) => setAllDeals(d || [])).catch(() => {});
   }, []);
 
   // ผู้ใช้ที่ "ฉันมอบหมายงานให้ได้" (สะท้อน canAssignTask ฝั่ง server)
@@ -1081,13 +1081,16 @@ export default function TasksPage() {
                 ))}
               </div>
               {form.linkType === "deal" && (
-                <Select fullWidth disabled={!!inquirySource} value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
-                  <option value="">— เลือกดีล —</option>
-                  {allDeals.map((deal) => {
-                    const project = deal.projectId ? allProjects.find((row) => row.id === deal.projectId) : null;
-                    return <option key={deal.id} value={deal.id}>{project ? `${project.code || project.id} · ` : ""}{deal.title}{deal.customerName ? ` — ${deal.customerName}` : ""}{!project ? " · ยังไม่ผูกโครงการ" : ""}</option>;
-                  })}
-                </Select>
+                <>
+                  <Select fullWidth disabled={!!inquirySource} value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
+                    <option value="">— เลือกดีลของทีม {me?.team || "ตัวเอง"} —</option>
+                    {allDeals.map((deal) => {
+                      const project = deal.projectId ? allProjects.find((row) => row.id === deal.projectId) : null;
+                      return <option key={deal.id} value={deal.id}>{project ? `${project.code || project.id} · ` : ""}{deal.title}{deal.customerName ? ` — ${deal.customerName}` : ""}{!project ? " · ยังไม่ผูกโครงการ" : ""}</option>;
+                    })}
+                  </Select>
+                  {!allDeals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
+                </>
               )}
             </div>
 
