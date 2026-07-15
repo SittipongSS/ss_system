@@ -5,6 +5,10 @@ export function DetailPageLayout({ children, aside, className = "" }) {
   return <div className={`${styles.layout} ${className}`.trim()}><main className={styles.main}>{children}</main>{aside ? <aside className={styles.aside}>{aside}</aside> : null}</div>;
 }
 
+export function ContextGrid({ children, className = "" }) {
+  return <div className={`${styles.contextGrid} ${className}`.trim()}>{children}</div>;
+}
+
 export function DetailCard({ icon: Icon, eyebrow, title, meta, actions, children, className = "" }) {
   return <section className={`${styles.card} ${className}`.trim()}>
     {(title || eyebrow || actions) ? <header className={styles.cardHeader}>

@@ -1,1 +1,193 @@
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;align-items:start;gap:18px}.main{min-width:0;display:flex;flex-direction:column;gap:16px}.aside{position:sticky;top:12px;display:flex;min-width:0;flex-direction:column;gap:14px}.card{min-width:0;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);box-shadow:var(--glass-shadow)}.cardHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border)}.heading{display:flex;align-items:flex-start;gap:9px;min-width:0;color:var(--accent)}.heading>div{min-width:0}.heading small{display:block;margin-bottom:2px;color:var(--accent);font-size:9.5px;font-weight:750;letter-spacing:.08em;text-transform:uppercase}.heading h2{margin:0;color:var(--text);font-size:15px}.heading p{margin:3px 0 0;color:var(--text-3);font-size:11.5px}.actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.cardBody{padding:16px 18px}.contextCard{display:block;padding:15px 16px;border:1px solid var(--border);border-radius:var(--radius-lg);background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--accent) 9%,transparent),transparent 50%),var(--panel);box-shadow:var(--glass-shadow);color:inherit;text-decoration:none}.contextCard:hover{border-color:color-mix(in srgb,var(--accent) 42%,var(--border))}.contextTop{display:flex;align-items:flex-start;gap:9px}.contextTop>span:last-child{min-width:0}.contextTop small{display:block;margin-bottom:3px;color:var(--accent);font-size:9.5px;font-weight:750;letter-spacing:.08em;text-transform:uppercase}.contextTop strong{display:block;overflow-wrap:anywhere;font-size:13.5px;line-height:1.35}.contextIcon{display:grid;flex:0 0 auto;width:30px;height:30px;place-items:center;border-radius:9px;background:color-mix(in srgb,var(--accent) 11%,transparent);color:var(--accent)}.contextSubtitle{margin:8px 0 0;color:var(--text-3);font-size:11.5px}.contextBadges{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}.contextFacts{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:13px 0 0;padding-top:12px;border-top:1px solid var(--border)}.contextFacts div{min-width:0}.contextFacts dt{color:var(--text-3);font-size:9.5px}.contextFacts dd{overflow:hidden;margin:2px 0 0;color:var(--text-2);font-size:11.5px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}@media(max-width:1050px){.layout{grid-template-columns:1fr}.aside{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.aside{grid-template-columns:1fr}.cardHeader{align-items:stretch;flex-direction:column}.actions{justify-content:flex-start}.contextFacts{grid-template-columns:1fr 1fr}}
+.contextGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  align-items: start;
+  gap: 18px;
+}
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.aside {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+.card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--glass-shadow);
+}
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  color: var(--accent);
+}
+.heading > div {
+  min-width: 0;
+}
+.heading small {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+}
+.heading p {
+  margin: 3px 0 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.cardBody {
+  padding: 16px 18px;
+}
+.contextCard {
+  display: block;
+  padding: 15px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(
+      circle at 100% 0,
+      color-mix(in srgb, var(--accent) 9%, transparent),
+      transparent 50%
+    ),
+    var(--panel);
+  box-shadow: var(--glass-shadow);
+  color: inherit;
+  text-decoration: none;
+}
+.contextCard:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+.contextTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+.contextTop > span:last-child {
+  min-width: 0;
+}
+.contextTop small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.contextTop strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+.contextIcon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  color: var(--accent);
+}
+.contextSubtitle {
+  margin: 8px 0 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.contextBadges {
+  display: flex;
+  gap: 5px;
+  margin-top: 9px;
+  flex-wrap: wrap;
+}
+.contextFacts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin: 13px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.contextFacts div {
+  min-width: 0;
+}
+.contextFacts dt {
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+.contextFacts dd {
+  overflow: hidden;
+  margin: 2px 0 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 1050px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .aside {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 680px) {
+  .aside {
+    grid-template-columns: 1fr;
+  }
+  .cardHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .actions {
+    justify-content: flex-start;
+  }
+  .contextFacts {
+    grid-template-columns: 1fr 1fr;
+  }
+}
