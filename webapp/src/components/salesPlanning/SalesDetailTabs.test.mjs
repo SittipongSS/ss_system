@@ -5,7 +5,7 @@ import { detailTabFromSearch, SALES_DETAIL_TABS } from "../../lib/salesDetailTab
 test("project and deal detail tabs share the agreed order", () => {
   assert.deepEqual(
     SALES_DETAIL_TABS.map((tab) => tab.key),
-    ["overview", "timeline", "quotations", "tasks", "activities"],
+    ["overview", "timeline", "quotations", "tasks", "inquiries", "activities"],
   );
 });
 

@@ -76,9 +76,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   let quotations = [];
   let dealActivities = [];
   let dealStageHistory = [];
+  let inquiries = [];
   if (deals.length) {
     const dealIds = deals.map((d) => d.id);
-    const [{ data: quotes }, { data: acts }, { data: hist }] = await Promise.all([
+    const [{ data: quotes }, { data: acts }, { data: hist }, { data: inquiryRows }] = await Promise.all([
       supabase.from('quotations')
         .select('id, dealId, quoteNumber, status, approvalStatus, totalAmount, revisionNo, quoteDate, createdAt')
         .in('dealId', dealIds).order('createdAt', { ascending: false }),
@@ -88,10 +89,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       supabase.from('sales_deal_stage_history')
         .select('id, dealId, fromStage, toStage, changedByName, changedAt')
         .in('dealId', dealIds).order('changedAt', { ascending: false }).limit(40),
+      supabase.from('inquiries').select('*').or(`projectId.eq.${project.id},dealId.in.(${dealIds.join(',')})`).order('createdAt', { ascending: false }),
     ]);
     quotations = latestQuotationRevisions(quotes || []);
     dealActivities = acts || [];
     dealStageHistory = hist || [];
+    inquiries = inquiryRows || [];
+  } else {
+    const { data } = await supabase.from('inquiries').select('*').eq('projectId', project.id).order('createdAt', { ascending: false });
+    inquiries = data || [];
   }
 
   // Tell the client whether THIS user may edit THIS record (cap + row scope),
@@ -125,7 +131,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], canEdit, me, revisedAt, maxRev, deals, dealsRollup, quotations, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, canEdit, me, revisedAt, maxRev, deals, dealsRollup, quotations, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]

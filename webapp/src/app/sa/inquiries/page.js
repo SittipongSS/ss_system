@@ -89,7 +89,7 @@ export default function InquiriesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <th>เลขที่</th><th>เรื่อง</th><th>ดีล / ลูกค้า</th><th>ผู้ถาม</th><th>ผู้รับเรื่อง</th><th>กำหนดตอบ</th><th>สถานะ</th>
+                <th>เลขที่</th><th>เรื่อง</th><th>ดีล / ลูกค้า</th><th>ผู้ถาม</th><th>ผู้รับเรื่อง</th><th>วันที่ตอบ</th><th>สถานะ</th>
               </tr>
             </thead>
             <tbody>
@@ -105,12 +105,14 @@ export default function InquiriesPage() {
                       {row.urgent && <span className="ui-badge" style={{ color: "var(--red)", marginLeft: 6 }}>ด่วน</span>}
                     </td>
                     <td style={{ fontSize: 12.5 }}>
-                      {row.dealId ? <Link href={`/sa/deals/${row.dealId}`} className="linklike">เปิดดีล</Link> : <span style={{ color: "var(--text-3)" }}>-</span>}
+                      {row.dealId ? <Link href={`/sales-planning/deals/${row.dealId}`} className="linklike">เปิดดีล</Link> : <span style={{ color: "var(--text-3)" }}>-</span>}
                     </td>
                     <td>{row.requesterName || "-"}</td>
                     <td>{row.assigneeName || <span style={{ color: "var(--text-3)" }}>ยังไม่มีผู้รับ</span>}</td>
                     <td className="mono">
-                      {row.dueDate ? fmtDate(row.dueDate) : "-"}
+                      <div>SA: {row.requestedDueDate ? fmtDate(row.requestedDueDate) : "-"}</div>
+                      <div>RD: {row.committedDueDate ? fmtDate(row.committedDueDate) : "-"}</div>
+                      <div style={{ color: "var(--text-3)", fontSize: 11 }}>SLA: {row.dueDate ? fmtDate(row.dueDate) : "-"}</div>
                       {due && <span className="ui-badge" style={{ color: due.color, marginLeft: 6 }}>{due.label}</span>}
                     </td>
                     <td><InquiryStatusBadge status={row.status} /></td>

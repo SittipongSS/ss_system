@@ -625,7 +625,7 @@ export default function TasksPage() {
         {allowedScopes.length > 1 && (
           <div className="segmented deal-scope-toggle">
             {allowedScopes.map((s) => (
-              <button key={s} onClick={() => { setScope(s); setAssigneeFilter("all"); }} className={scope === s ? "active" : ""}>{SCOPE_TH[s]}</button>
+              <button key={s} onClick={() => { setScope(s); setAssigneeFilter("all"); }} className={scope === s ? "active" : ""}>{role === "rd" && s === "team" ? "ทีม RD" : SCOPE_TH[s]}</button>
             ))}
           </div>
         )}

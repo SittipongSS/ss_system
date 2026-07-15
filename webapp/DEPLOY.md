@@ -30,7 +30,8 @@
 5. ไปที่ **Storage** → **New bucket** ตั้งชื่อ `uploads` → ติ๊ก **Public bucket** → Create
    (ใช้กับไฟล์ public เช่นแผนที่/รูป master data)
 
-   Migration `0104` จะสร้าง bucket `sales-evidence` แบบ **private** สำหรับหลักฐาน Won โดยเฉพาะ ห้ามเปลี่ยน bucket นี้เป็น public; ระบบดาวน์โหลดผ่าน API ที่ตรวจสิทธิ์ของดีล
+   Migration `0105` จะสร้าง bucket `sales-evidence` แบบ **private** สำหรับหลักฐาน Won โดยเฉพาะ ห้ามเปลี่ยน bucket นี้เป็น public; ระบบดาวน์โหลดผ่าน API ที่ตรวจสิทธิ์ของดีล
+   Migration `0106` เพิ่ม workflow สอบถาม SA ↔ RD แบบรับทราบ/ล็อกข้อความและปิดสองฝ่าย
 
 ## 2) เอา keys มาใส่ env
 
@@ -128,7 +129,7 @@ Login เปลี่ยนจากรหัส `1234` เป็น **Supabase 
 ## เช็กลิสต์ก่อนส่งให้ทีม
 - [ ] รัน `npm run check:migrations`
 - [ ] Project ใหม่: สร้างและรัน `supabase/bootstrap.generated.sql`; ฐานเดิม: รันเฉพาะ migration ใหม่ครบ
-- [ ] สร้าง bucket public `uploads`; ตรวจว่า migration `0104` สร้าง bucket private `sales-evidence` แล้ว
+- [ ] สร้าง bucket public `uploads`; ตรวจว่า migration `0105` สร้าง bucket private `sales-evidence` แล้ว และรัน `0106` ก่อน deploy Inquiry workflow
 - [ ] `.env.local` ครบ 4 ค่า; รัน `node scripts/migrate-to-supabase.mjs` เฉพาะกรณีนำเข้าข้อมูลเก่าจาก `data.json`
 - [ ] สร้างบัญชีทีมใน Supabase + ใส่ `role` ใน user metadata
 - [ ] ทดสอบ `npm test`, `npm run lint`, `npm run build`

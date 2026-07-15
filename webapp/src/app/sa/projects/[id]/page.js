@@ -37,6 +37,7 @@ import { getComputedStatus, statusDotColor } from "@/lib/pm/derived";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import InquiryListCard from "@/components/salesPlanning/InquiryListCard";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
@@ -1203,6 +1204,8 @@ export default function ProjectDetailPage() {
       )}
 
       {(tab === "overview" || tab === "quotations") && <ProjectQuotationsCard project={p} />}
+
+      {(tab === "overview" || tab === "inquiries") && <InquiryListCard inquiries={p.inquiries || []} title="สอบถาม RD ของโครงการและดีล" />}
 
       {(tab === "overview" || tab === "tasks") && (
         <section className="glass-panel" style={{ padding: "16px 20px", marginBottom: 24 }}>

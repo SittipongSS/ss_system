@@ -32,3 +32,9 @@ export async function teamUserIds(supabase, team) {
   const dir = await loadUserDirectory(supabase);
   return [...dir.values()].filter((u) => u.team === team).map((u) => u.id);
 }
+
+export async function departmentUserIds(supabase, department) {
+  if (!department) return [];
+  const dir = await loadUserDirectory(supabase);
+  return [...dir.values()].filter((u) => u.department === department).map((u) => u.id);
+}

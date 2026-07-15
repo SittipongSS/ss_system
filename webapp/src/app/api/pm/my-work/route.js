@@ -1,7 +1,7 @@
 import { normalizeDepartment, pmTaskScopes, can } from '@/lib/permissions';
 import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
-import { teamUserIds } from '@/lib/usersRepo';
+import { departmentUserIds, teamUserIds } from '@/lib/usersRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,12 +40,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const seen = new Set();
     projectTasks = [...(a || []), ...(b || []), ...(c || [])].filter((t) => (seen.has(t.id) ? false : seen.add(t.id)));
   } else if (scope === 'team') {
-    const ids = await teamProjectIds(supabase, user.team);
-    if (ids.length) {
+    const dept = normalizeDepartment(user.department);
+    if (user.role === 'rd' && dept) {
+      const { data } = await supabase.from('project_tasks').select('*').eq('role', dept).order('stepOrder', { ascending: true });
+      projectTasks = data || [];
+    } else {
+      const ids = await teamProjectIds(supabase, user.team);
+      if (ids.length) {
       const { data } = await supabase
         .from('project_tasks').select('*').in('projectId', ids)
         .order('stepOrder', { ascending: true });
       projectTasks = data || [];
+      }
     }
   } else { // all
     const { data } = await supabase
@@ -74,6 +80,17 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const { data } = await supabase.from('personal_tasks').select('*').order('createdAt', { ascending: false });
     extraPersonal = data || [];
   } else if (scope === 'team') {
+    const dept = normalizeDepartment(user.department);
+    if (user.role === 'rd' && dept) {
+      const deptIds = await departmentUserIds(supabase, dept);
+      const queries = deptIds.length ? [
+        supabase.from('personal_tasks').select('*').in('ownerId', deptIds),
+        supabase.from('personal_tasks').select('*').in('assigneeId', deptIds),
+        supabase.from('personal_tasks').select('*').in('proxyBy', deptIds),
+      ] : [];
+      const results = await Promise.all(queries.map((q) => q.order('createdAt', { ascending: false })));
+      extraPersonal = results.flatMap((r) => r.data || []);
+    } else {
     const [teamProjIds, teamIds, { data: teamDeals }] = await Promise.all([
       teamProjectIds(supabase, user.team),
       teamUserIds(supabase, user.team),
@@ -90,6 +107,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     }
     const results = await Promise.all(queries.map((q) => q.order('createdAt', { ascending: false })));
     extraPersonal = results.flatMap((r) => r.data || []);
+    }
   }
   const seenP = new Set();
   const scopedPersonal = scope === 'mine' ? minePersonal : extraPersonal;
@@ -103,10 +121,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   {
     const myDept = normalizeDepartment(user.department);
     if (can(user.role, 'inquiries:respond') && myDept) {
-      const { data } = await supabase
+      let inquiryQuery = supabase
         .from('inquiries').select('*')
-        .eq('targetDept', myDept).neq('status', 'closed')
-        .order('dueDate', { ascending: true });
+        .eq('targetDept', myDept).neq('status', 'closed');
+      if (scope === 'mine') inquiryQuery = inquiryQuery.or(`assigneeId.eq.${user.id},assigneeId.is.null`);
+      const { data } = await inquiryQuery.order('dueDate', { ascending: true });
       inquiries = data || [];
     }
   }

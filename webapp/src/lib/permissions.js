@@ -477,6 +477,7 @@ export function pmTaskScopes(role) {
   // tasks of its own and no team, so 'all' is the only meaningful scope (giving
   // just this also keeps the My Work scope tabs clean — no empty 'mine'/'team').
   if (role === 'viewer') return ['all'];
+  if (role === 'rd') return ['mine', 'team'];
   // AE manages the whole team's projects in PM (see pmEditScope) → may also
   // browse the team's tasks in My Work, alongside Senior AE / AC.
   if (role === 'senior_ae' || role === 'ac' || role === 'ae') return ['mine', 'team'];

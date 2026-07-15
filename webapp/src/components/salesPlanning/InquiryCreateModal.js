@@ -12,12 +12,13 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [urgent, setUrgent] = useState(false);
+  const [requestedDueDate, setRequestedDueDate] = useState("");
   const [files, setFiles] = useState([]); // File[] ที่เลือกไว้ (อัปตอนส่ง)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const reset = () => {
-    setTitle(""); setBody(""); setUrgent(false); setFiles([]); setError("");
+    setTitle(""); setBody(""); setUrgent(false); setRequestedDueDate(""); setFiles([]); setError("");
   };
 
   const onPickFiles = (e) => {
@@ -56,6 +57,7 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
           title: title.trim(),
           body: body.trim(),
           urgent,
+          requestedDueDate: requestedDueDate || null,
           dealId: deal?.id || null,
           attachments,
         }),
@@ -95,6 +97,10 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
         </label>
         <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
           <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> เร่งด่วน
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          วันที่ SA คาดหวังคำตอบ
+          <input className="premium-input" type="date" value={requestedDueDate} onChange={(e) => setRequestedDueDate(e.target.value)} />
         </label>
         {!!files.length && (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>

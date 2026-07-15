@@ -3,6 +3,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { canAssignTask } from '@/lib/permissions';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
+import { canAcknowledgeInquiryMessage, canViewInquiry } from '@/lib/inquiries';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,10 +39,22 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const dealId = body.dealId || null;
   // ลิงก์ย้อนกลับไปเรื่องสอบถามต้นทาง (ปุ่ม "สร้างงานจากคำถาม" — mig 0104)
   let inquiryId = null;
+  let inquiryMessageId = null;
+  let inquiryRecord = null;
+  let inquiryMessage = null;
   if (body.inquiryId) {
-    const { data: inq } = await supabase.from('inquiries').select('id').eq('id', body.inquiryId).maybeSingle();
+    const { data: inq } = await supabase.from('inquiries').select('*').eq('id', body.inquiryId).maybeSingle();
     if (!inq) return badRequest('ไม่พบเรื่องสอบถามต้นทาง');
+    if (!canViewInquiry(user, inq)) return forbidden('ไม่มีสิทธิ์ใช้เรื่องสอบถามนี้สร้างงาน');
+    inquiryRecord = inq;
     inquiryId = inq.id;
+    if (body.inquiryMessageId) {
+      const { data: message } = await supabase.from('inquiry_messages').select('*')
+        .eq('id', body.inquiryMessageId).eq('inquiryId', inquiryId).is('deletedAt', null).maybeSingle();
+      if (!message) return badRequest('ไม่พบข้อความต้นทาง');
+      inquiryMessageId = message.id;
+      inquiryMessage = message;
+    }
   }
 
   // ── มอบหมาย: ตรวจสิทธิ์ตามลำดับชั้น (ไม่ผูกกับโครงการ) ──
@@ -92,12 +105,16 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     projectId,
     dealId,
     inquiryId,
+    inquiryMessageId,
     completedAt: status === 'Completed' ? today() : null,
   };
   if (assigneeId) { row.assigneeId = assigneeId; row.assignedBy = assignedBy; }
 
   const { data, error } = await supabase.from('personal_tasks').insert(row).select().single();
   if (error) return fail(error.message, 500);
+  if (inquiryMessageId && canAcknowledgeInquiryMessage(user, inquiryRecord, inquiryMessage)) {
+    await supabase.from('inquiry_messages').update({ acknowledgedBy: user.id, acknowledgedAt: new Date().toISOString() }).eq('id', inquiryMessageId);
+  }
   await recordAudit({ user, action: 'create', entityType: 'task', entityId: data.id, after: data, request: req });
   return ok(data, 201);
 });
