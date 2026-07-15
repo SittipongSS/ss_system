@@ -42,6 +42,9 @@ test('Project Timeline preview has explicit work pages and a final approval page
     code: 'PJ-001',
     name: 'โครงการทดสอบ',
     customerName: 'ลูกค้าทดสอบ',
+    aeOwner: 'ผู้ดูแลทดสอบ',
+    preparedBy: 'ผู้จัดทำทดสอบ',
+    aeSupervisor: 'ผู้ตรวจสอบทดสอบ',
     tasks: Array.from({ length: 30 }, (_, index) => ({
       id: index + 1,
       phase: 'งานหลัก',
@@ -55,4 +58,7 @@ test('Project Timeline preview has explicit work pages and a final approval page
   assert.equal((html.match(/class="sheet explicit-page/g) || []).length, 3);
   assert.match(html, /หน้า 3 \/ 3/);
   assert.equal((html.match(/การรับรองเอกสาร Project Timeline/g) || []).length, 1);
+  assert.match(html, /ผู้ดูแล \(AE\).*ผู้ดูแลทดสอบ/s);
+  assert.match(html, /ผู้จัดทำ \(AC\).*ผู้จัดทำทดสอบ/s);
+  assert.match(html, /ผู้ตรวจสอบ.*ผู้ตรวจสอบทดสอบ/s);
 });

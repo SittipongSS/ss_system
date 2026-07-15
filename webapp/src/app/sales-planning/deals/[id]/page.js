@@ -32,6 +32,7 @@ import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
 import { useResponsiveView } from "@/lib/useResponsiveView";
+import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -237,24 +238,7 @@ export default function DealOverviewPage() {
   // แต่ไม่ออกเลข Rev / ไม่เก็บประวัติ (rev+revDate = null) ตามมติผู้ใช้.
   const printDealTimeline = () => {
     if (!deal) return;
-    openGanttPrintWindow({
-      code: deal.code || "",
-      docNumber: deal.code || "",
-      name: deal.title || "",
-      productName: deal.title || "",
-      customerName: deal.customerName || deal.customer?.name || "",
-      aeOwner: deal.ownerName || "",
-      aeSupervisor: "",
-      preparedBy: deal.ownerName || "",
-      startDate: deal.startDate || data?.project?.startDate || "",
-      dueDate: deal.endDate || deal.expectedCloseDate || data?.project?.dueDate || "",
-      metadata: { brand: deal.metadata?.brand || deal.brand || "" },
-      categoryFallback: deal.categoryCode || "",
-      projectProducts: data?.projectProducts || [],
-      tasks: data?.projectTasks || [],
-      rev: null,     // ไม่ออกเลข Rev
-      revDate: null, // ไม่มีวันที่ Rev / ไม่เก็บประวัติ
-    });
+    openGanttPrintWindow(dealDocumentProject);
   };
 
   // เวลาปัจจุบันจับใน effect (กฎ react-hooks/purity ห้าม Date.now() ระหว่าง render)
@@ -279,6 +263,7 @@ export default function DealOverviewPage() {
   }, [data, nowMs]);
 
   const deal = data?.deal;
+  const dealDocumentProject = dealTimelineDocument(deal, data || {});
   const canEdit = !!data?.canEdit;
   const role = useRole();
   const team = useTeam();
@@ -918,11 +903,9 @@ export default function DealOverviewPage() {
               <PackageCheck size={17} aria-hidden="true" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ไทม์ไลน์</h2>
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-                {(data.projectTasks || []).length > 0 && (
-                  <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF (ไม่ออกเลข Rev / ไม่เก็บประวัติ)">
-                    <Printer size={14} aria-hidden="true" /> พิมพ์เอกสาร
-                  </button>
-                )}
+                <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF (ไม่ออกเลข Rev / ไม่เก็บประวัติ)">
+                  <Printer size={14} aria-hidden="true" /> พิมพ์เอกสาร
+                </button>
                 {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
                 {(data.projectTasks || []).length > 0 && <ViewSwitcher value={timelineView} onChange={setTimelineView} modes={["list", "table", "document"]} />}
               </div>
@@ -947,6 +930,7 @@ export default function DealOverviewPage() {
                     canEdit={canEdit}
                     dealId={deal.id}
                     projectId={data.project?.id || null}
+                    documentProject={dealDocumentProject}
                     view={timelineView}
                     onViewChange={setTimelineView}
                     showHeading={false}
@@ -1002,6 +986,7 @@ export default function DealOverviewPage() {
                   canEdit={canEdit}
                   dealId={deal.id}
                   projectId={data.project?.id || null}
+                  documentProject={dealDocumentProject}
                   view={timelineView}
                   onViewChange={setTimelineView}
                   showHeading={false}
