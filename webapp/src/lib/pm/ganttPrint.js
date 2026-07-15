@@ -187,6 +187,11 @@ export function buildGanttPrintHTML(project) {
 
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { border: 1px solid #cfc9bf; overflow: hidden; }
+  /* ตารางชั้นนอกที่พาหัวเอกสาร (doc-top) ไปซ้ำทุกหน้า — ต้องล้าง border/padding
+     ที่กฎ th,td ด้านบนใส่ให้ และอนุญาตให้แถวเนื้อหาแตกข้ามหน้า (กฎ tbody tr
+     ด้านล่างสั่ง avoid ไว้สำหรับตารางงานชั้นใน) */
+  .page-table > thead > tr > td, .page-table > tbody > tr > td { border: none; padding: 0; overflow: visible; }
+  .page-table > tbody > tr, .page-table > tbody { page-break-inside: auto !important; break-inside: auto !important; }
   thead th { background: #e8e2d9; color: #000; font-size: 9px; font-weight: 700; padding: 2px 2px; text-align: center; line-height: 1.15; }
   .c-no   { text-align: center; font-size: 8.5px; color: #000; }
   .c-desc { text-align: left;   font-size: 9.5px; line-height: 1.2; word-break: break-word; color: #000; }
@@ -275,6 +280,10 @@ export function buildGanttPrintHTML(project) {
   </div>
 
   <div class="sheet">
+    <!-- ตารางชั้นนอก: doc-top อยู่ใน thead เพื่อให้หัวเอกสารพิมพ์ซ้ำทุกหน้า
+         (Chromium ซ้ำ table-header-group ทุกหน้า; ห้ามใช้ position:fixed — ดูคอมเมนต์ @media print) -->
+    <table class="page-table">
+      <thead><tr><td>
     <div class="doc-top">
       <div class="brand">
         <div class="logo-wrap"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
@@ -293,6 +302,8 @@ export function buildGanttPrintHTML(project) {
         <div class="sub">${esc(displayCode)}</div>
       </div>
     </div>
+      </td></tr></thead>
+      <tbody><tr><td>
 
     <div class="header-grid">
       <div class="hcol left">
@@ -386,6 +397,8 @@ export function buildGanttPrintHTML(project) {
         <div class="date">วันที่ <span class="dline"></span></div>
       </div>`).join('')}
     </div>` : ''}
+      </td></tr></tbody>
+    </table>
   </div>
 </body>
 </html>`;
