@@ -1,7 +1,8 @@
 "use client";
 import Select from "@/components/ui/Select";
 import { useEffect, useState } from "react";
-import { Users, Plus, Pencil, Trash2, Lock, Unlock } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft } from "lucide-react";
+import { nextMonthKey } from "@/lib/usersTransfer";
 import { useCan } from "@/lib/roleContext";
 import {
   ROLE_LABELS,
@@ -36,6 +37,11 @@ export default function UserManagement() {
 
   const [editUser, setEditUser] = useState(null); // the user being edited
   const [editForm, setEditForm] = useState(null);
+
+  // โอนงานพนักงาน (offboarding): ดีลเปิด + เป้าเดือนอนาคต → คนรับ ในคลิกเดียว
+  const [transferUser, setTransferUser] = useState(null); // คนต้นทาง
+  const [transferForm, setTransferForm] = useState({ toUserId: "", transferDeals: true, transferTargets: true, fromPeriod: "" });
+  const [transferResult, setTransferResult] = useState(null);
 
   const sort = useSortableTable(users, {
     firstName: (u) => u.firstName || "",
@@ -178,6 +184,30 @@ export default function UserManagement() {
     }
   };
 
+  // โอนงาน: ยิง API แล้วโชว์สรุปผลในโมดัลเดิม (ไม่ปิดทันที ให้เห็นว่าย้ายอะไรไปเท่าไหร่)
+  const handleTransfer = async (e) => {
+    e.preventDefault();
+    if (!transferForm.toUserId) { alert("กรุณาเลือกผู้รับโอน"); return; }
+    const to = users.find((x) => x.id === transferForm.toUserId);
+    const toLabel = to ? `${to.firstName || ""} ${to.lastName || ""}`.trim() || to.email : "";
+    if (!confirm(`โอนงานของ ${transferUser.email} → ${toLabel}?\n(ดีลที่ปิด Won แล้วจะไม่ถูกย้าย — ประวัติคงเดิม)`)) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/users/${transferUser.id}/transfer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(transferForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "โอนงานไม่สำเร็จ");
+      setTransferResult(data);
+    } catch (err) {
+      alert(err.message || "โอนงานไม่สำเร็จ");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (!canManage) {
     return (
       <div className="glass-panel p-12 text-center text-[var(--text-3)]">
@@ -290,6 +320,17 @@ export default function UserManagement() {
                               <Pencil size={16} />
                             </button>
                             <button
+                              onClick={() => {
+                                setTransferResult(null);
+                                setTransferForm({ toUserId: "", transferDeals: true, transferTargets: true, fromPeriod: nextMonthKey() });
+                                setTransferUser(u);
+                              }}
+                              className="text-[var(--text-2)] hover:opacity-70"
+                              title="โอนงาน (ดีลเปิด + เป้าเดือนอนาคต) ให้คนอื่น"
+                            >
+                              <ArrowRightLeft size={16} />
+                            </button>
+                            <button
                               onClick={() => handleToggleDisabled(u)}
                               className={`hover:opacity-70 ${u.disabled ? "text-[var(--green,green)]" : "text-[var(--text-3)]"}`}
                               title={u.disabled ? "เปิดใช้บัญชี" : "ปิดบัญชี (บังคับออกจากระบบ)"}
@@ -356,6 +397,69 @@ export default function UserManagement() {
               </button>
               <button type="submit" disabled={submitting} className="btn btn-primary px-8">
                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* โอนงานพนักงาน (offboarding): ดีลเปิด + เป้าเดือนอนาคต → คนรับ */}
+      <Modal
+        open={!!transferUser}
+        onClose={() => setTransferUser(null)}
+        title={`โอนงานของ: ${transferUser?.email || ""}`}
+        size="md"
+      >
+        {transferResult ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="status-pill success" style={{ height: "auto", padding: "10px 12px", width: "100%", fontSize: 13 }}>
+              โอนงานให้ {transferResult.toName} เรียบร้อย
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
+              <li>ดีลเปิดที่ย้ายผู้ดูแล: <b>{transferResult.deals}</b> ใบ (FC ย้ายตามทันที)</li>
+              <li>เป้าที่โยก: <b>{transferResult.targetMonths}</b> เดือน รวม <b>{Number(transferResult.targetAmount || 0).toLocaleString("th-TH")}</b> บาท (ตั้งแต่ {transferResult.fromPeriod})</li>
+              <li>ดีลที่ปิด Won/Lost แล้ว และเป้าเดือนที่ผ่านมา: ไม่ถูกแตะ (ประวัติคงเดิม)</li>
+            </ul>
+            <div className="form-action-bar">
+              <button type="button" className="btn btn-primary" onClick={() => setTransferUser(null)}>ปิด</button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleTransfer} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>โอนให้ (ผู้รับ) <span className="text-[var(--red)]">*</span></label>
+              <Select
+                value={transferForm.toUserId}
+                onChange={(e) => setTransferForm((f) => ({ ...f, toUserId: e.target.value }))}
+                options={users
+                  .filter((x) => !x.disabled && x.role && x.role !== "user" && x.id !== transferUser?.id)
+                  .map((x) => ({ value: x.id, label: `${`${x.firstName || ""} ${x.lastName || ""}`.trim() || x.email}${x.team ? ` · ${TEAM_LABELS[x.team] || x.team}` : ""}` }))}
+                placeholder="เลือกพนักงานที่รับช่วงต่อ"
+              />
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
+              <input type="checkbox" checked={transferForm.transferDeals} onChange={(e) => setTransferForm((f) => ({ ...f, transferDeals: e.target.checked }))} />
+              โอนดีลที่ยังเปิดทั้งหมด (Forecast ย้ายตามผู้ดูแลใหม่)
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, flexWrap: "wrap" }}>
+              <input type="checkbox" checked={transferForm.transferTargets} onChange={(e) => setTransferForm((f) => ({ ...f, transferTargets: e.target.checked }))} />
+              โยกเป้า (Target) ตั้งแต่เดือน
+              <input
+                type="month"
+                className="premium-input"
+                style={{ width: 150 }}
+                value={transferForm.fromPeriod}
+                onChange={(e) => setTransferForm((f) => ({ ...f, fromPeriod: e.target.value }))}
+                disabled={!transferForm.transferTargets}
+              />
+            </label>
+            <div style={{ fontSize: 12, color: "var(--text-3)", background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
+              เดือนที่ผ่านมาแล้วและดีลที่ปิด Won จะไม่ถูกย้าย — Target/Actual ย้อนหลังคงใต้ชื่อเดิมเสมอ (ค่าเริ่มต้น = เดือนถัดไป; เดือนปัจจุบันแนะนำวัดที่ระดับทีม)
+            </div>
+            <div className="form-action-bar">
+              <button type="button" onClick={() => setTransferUser(null)} className="btn">ยกเลิก</button>
+              <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+                {submitting ? "กำลังโอน..." : "โอนงาน"}
               </button>
             </div>
           </form>
