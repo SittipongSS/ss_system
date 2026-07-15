@@ -52,6 +52,19 @@ test('FG line description/code are refreshed from master (brand · name · volum
   assert.equal(lines[0].fgCode, 'FG-001');
 });
 
+test('master with no retail price (0/null) keeps the line price — never zeroes the quote', async () => {
+  // บั๊กจริง 2026-07-15: สินค้าใน master ยังไม่ตั้งราคาขาย → ราคาโดนทับเป็น 0
+  // → ยอดใบเป็น 0 → กด Won ติด "ยอดก่อน VAT ต้องมากกว่า 0"
+  for (const retailPriceIncVat of [0, null, undefined]) {
+    const master = [{ id: 'P1', fgCode: 'FG-001', productDescription: 'น้ำหอมส้ม', retailPriceIncVat }];
+    const lines = await enforceMasterPrices(fakeSupabase(master), [fgLine()]);
+    assert.equal(lines[0].unitPrice, 999, `retail ${retailPriceIncVat} must keep line price`);
+    assert.equal(lines[0].lineTotal, 1998);
+    // คำอธิบาย/รหัสยัง refresh จาก master ตามปกติ
+    assert.equal(lines[0].description, 'น้ำหอมส้ม');
+  }
+});
+
 test('product missing from master falls back to previously saved price/description', async () => {
   const prev = [{ productId: 'P1', unitPrice: 120, description: 'คำอธิบายเดิม', fgCode: 'FG-OLD' }];
   const lines = await enforceMasterPrices(fakeSupabase([]), [fgLine()], prev);

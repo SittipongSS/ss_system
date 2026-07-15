@@ -55,6 +55,9 @@ export async function seedLinesFromProject(supabase, deal) {
 // productId ถูกทับทั้ง "ราคา" (retailPriceIncVat) และ "คำอธิบาย" (แบรนด์ · ชื่อสินค้า ·
 // ปริมาตร) + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ — client แก้เองไม่ได้ ต้องแก้ที่
 // ฐานข้อมูลสินค้า; ใบเดิมที่บันทึกไว้ก่อนกติกานี้จะถูก refresh ตอนบันทึก/Revise ครั้งถัดไป.
+// ข้อยกเว้น (บั๊กที่เจอ 2026-07-15): master ที่ "ยังไม่ตั้งราคาขาย" (0/ว่าง) = ไม่มีข้อมูล
+// ไม่ใช่ราคา 0 — ห้ามทับราคาในใบเป็น 0 (เคยทำยอดใบเป็น 0 แล้วกด Won ไม่ได้:
+// "ยอดก่อน VAT ต้องมากกว่า 0") → คงราคาในใบ และ UI เปิดให้กรอกราคาเองได้.
 // สินค้าที่หายจาก master (ถูกลบ) → คงราคา/คำอธิบายเดิมที่บันทึกไว้ในใบ
 // (fallback ต่อ productId จาก previousLines) เพื่อไม่ให้เอกสารเดิมพัง.
 export async function enforceMasterPrices(supabase, lines = [], previousLines = []) {
@@ -73,7 +76,10 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
     if (!line.productId) return line;
     const master = productById.get(line.productId);
     const prev = prevById.get(line.productId);
-    const unitPrice = master ? toMoney(master.retailPriceIncVat) : toMoney(prev?.unitPrice ?? line.unitPrice);
+    const masterPrice = master ? toMoney(master.retailPriceIncVat) : 0;
+    const unitPrice = masterPrice > 0
+      ? masterPrice
+      : (master ? toMoney(line.unitPrice) : toMoney(prev?.unitPrice ?? line.unitPrice));
     const description = master ? fgLineDescription(master) : (prev?.description || line.description);
     const fgCode = master ? (master.fgCode || null) : (prev?.fgCode ?? line.fgCode);
     if (unitPrice === line.unitPrice && description === line.description && fgCode === line.fgCode) return line;

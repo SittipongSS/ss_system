@@ -133,6 +133,11 @@ export default function QuotationEditorPage() {
     const p = products.find((x) => x.id === productId);
     return p ? fgLineDescription(p) : null;
   };
+  // ราคาขายจาก master (0 = ยังไม่ตั้งราคา → ช่องราคาเปิดให้กรอกเอง, server ไม่ทับ)
+  const masterPriceFor = (productId) => {
+    const p = products.find((x) => x.id === productId);
+    return Number(p?.retailPriceIncVat || 0);
+  };
 
   const selectLineProduct = (i, productId) => {
     const p = products.find((x) => x.id === productId);
@@ -474,13 +479,21 @@ export default function QuotationEditorPage() {
                       </td>
                       <td><MoneyInput min="0" value={l.qty} disabled={!editable} onChange={(value) => setLine(i, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${i + 1}`} /></td>
                       <td>
-                        {/* ราคาบรรทัด FG ล็อกตามฐานข้อมูลสินค้า (server enforce ซ้ำตอนบันทึก) */}
-                        <MoneyInput min="0" value={l.unitPrice} disabled={!editable || !!(l.productId || l.fgCode)} title={(l.productId || l.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(i, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${i + 1}`} />
-                        {editable && !!(l.productId || l.fgCode) && (
-                          <Link href={l.productId ? `/database/products/${l.productId}` : "/database/products"} target="_blank" className={styles.fgCode} style={{ color: "var(--blue)" }}>
-                            ราคาจากฐานข้อมูล →
-                          </Link>
-                        )}
+                        {/* ราคาบรรทัด FG ล็อกตามฐานข้อมูลสินค้า (server enforce ซ้ำตอนบันทึก) —
+                            ยกเว้น master ยังไม่ตั้งราคาขาย (0/ว่าง) → เปิดให้กรอกเอง กันใบยอด 0 */}
+                        {(() => {
+                          const priceLocked = !!(l.productId || l.fgCode) && masterPriceFor(l.productId) > 0;
+                          return (
+                            <>
+                              <MoneyInput min="0" value={l.unitPrice} disabled={!editable || priceLocked} title={priceLocked ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(i, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${i + 1}`} />
+                              {editable && !!(l.productId || l.fgCode) && (
+                                <Link prefetch={false} href={l.productId ? `/database/products/${l.productId}` : "/database/products"} target="_blank" className={styles.fgCode} style={{ color: priceLocked ? "var(--blue)" : "var(--amber)" }}>
+                                  {priceLocked ? "ราคาจากฐานข้อมูล →" : "ยังไม่ตั้งราคาในฐานข้อมูล — กรอกเองได้ →"}
+                                </Link>
+                              )}
+                            </>
+                          );
+                        })()}
                       </td>
                       <td>
                         <div className={styles.discountControls}>
