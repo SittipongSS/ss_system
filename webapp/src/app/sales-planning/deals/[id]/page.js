@@ -1091,6 +1091,29 @@ export default function DealOverviewPage() {
             </section>
             )}
 
+            {(data.salesOrders || []).length > 0 && (
+            <section className="glass-panel" style={{ padding: 16 }}>
+              <div className="flex items-center gap-2 mb-3">
+                <ClipboardList size={17} aria-hidden="true" />
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Sale Order</h2>
+                <div className="spacer" />
+                <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู Sale Order</Link>
+              </div>
+              <div className="premium-glass-table table-responsive">
+                <table className="w-full text-sm">
+                  <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">Actual ก่อน VAT</th></tr></thead>
+                  <tbody>{data.salesOrders.map((order) => (
+                    <tr key={order.id} className="premium-row">
+                      <td className="mono"><Link href={`/sa/sales-orders/${order.id}`} className="linklike">{order.orderNumber}</Link></td>
+                      <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[order.status] || order.status}</span></td>
+                      <td className="num mono">{money(order.status === "approved" ? order.actualAmount : 0)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </section>
+            )}
+
             {tab === "quotations" && SALES_FEATURES.documents && (
             <section className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">

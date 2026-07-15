@@ -25,6 +25,14 @@ async function loadQuote(supabase, id) {
       .maybeSingle();
     data.deal.project = project || null;
   }
+  if (data?.status === 'accepted') {
+    const { data: salesOrder } = await supabase
+      .from('sales_orders')
+      .select('id, orderNumber, status, orderDate, actualAmount')
+      .eq('quotationId', data.id)
+      .maybeSingle();
+    data.salesOrder = salesOrder || null;
+  }
   return data;
 }
 

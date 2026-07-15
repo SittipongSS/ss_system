@@ -25,6 +25,8 @@ const nextConfig = {
       // เฟส D: ใบเสนอราคา
       { source: '/sa/quotations', destination: '/sales-planning/quotations' },
       { source: '/sa/quotations/:path*', destination: '/sales-planning/quotations/:path*' },
+      { source: '/sa/sales-orders', destination: '/sales-planning/sales-orders' },
+      { source: '/sa/sales-orders/:path*', destination: '/sales-planning/sales-orders/:path*' },
       { source: '/sa/deals', destination: '/sales-planning/deals' },
       { source: '/sa/deals/:path*', destination: '/sales-planning/deals/:path*' },
       { source: '/sa/targets', destination: '/sales-planning/targets' },
