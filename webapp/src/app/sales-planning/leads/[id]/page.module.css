@@ -26,3 +26,4 @@
 .empty { padding: 22px; color: var(--text-3); text-align: center; }
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .sidebar { position: static; order: -1; } }
 @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } .card { padding: 15px; } }
+.page { display: flex; max-width: 1380px; flex-direction: column; gap: 16px; }

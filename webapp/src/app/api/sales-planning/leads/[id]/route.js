@@ -31,9 +31,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   const lead = await loadLead(supabase, id);
   if (!lead) return notFound('ไม่พบลีด');
-  const { data: events } = await supabase
-    .from('lead_events').select('*').eq('leadId', id).order('createdAt', { ascending: false });
-  return ok({ ...lead, events: events || [], canEdit: canEditLead(user, lead) });
+  const [{ data: events }, { data: relatedDeals }] = await Promise.all([
+    supabase.from('lead_events').select('*').eq('leadId', id).order('createdAt', { ascending: false }),
+    supabase.from('sales_deals').select('id, code, title, customerName, stage, dealType, projectValue, wonValue, probability, forecastMonth, projectId').eq('leadId', id).order('createdAt', { ascending: false }),
+  ]);
+  return ok({ ...lead, events: events || [], relatedDeals: relatedDeals || [], canEdit: canEditLead(user, lead) });
 });
 
 // PATCH — แก้ข้อมูลติดต่อ/บริการ/งบ (ไม่ใช่ transition — สถานะเปลี่ยนผ่าน /transition)

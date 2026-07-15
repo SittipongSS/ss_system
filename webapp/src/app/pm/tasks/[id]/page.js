@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertTriangle, Briefcase, Calendar, CheckCircle2, CircleDashed, Clock, FolderKanban, ListTodo, MessageCircleQuestion, Pencil, Save, Tag, User, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm/tasks";
 import { fmtDateNumeric, fmtDateTime } from "@/lib/format";
 import styles from "./page.module.css";
@@ -53,8 +53,7 @@ export default function TaskDetailPage() {
 
   return <Workspace icon={<ListTodo size={22} />} title={task?.title || "รายละเอียดงาน"} subtitle="กำหนดการ ผู้รับผิดชอบ และงานที่เชื่อมโยง" back={{ href: "/sa/tasks", label: "กลับหน้ารายการงาน" }} hideHeader loading={loading}>
     {error && <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>{error}</div>}
-    {task && <div className={styles.layout}>
-      <main className={styles.main}>
+    {task && <div className={styles.page}>
         <SalesDetailOverview
           eyebrow="รายละเอียดงาน"
           title={task.title}
@@ -69,8 +68,9 @@ export default function TaskDetailPage() {
           ]}
         />
 
-        <section className={styles.card}>
-          <div className={styles.heading}><h2>ข้อมูลงาน</h2>{!task.canManage && <span className="ui-badge">แก้ได้เฉพาะสถานะ</span>}</div>
+        <DetailPageLayout aside={<TaskPeople task={task} person={person} />}>
+
+        <DetailCard icon={ListTodo} eyebrow="Task information" title="ข้อมูลงาน" actions={!task.canManage ? <span className="ui-badge">แก้ได้เฉพาะสถานะ</span> : null}>
           {editing ? <div className={styles.grid}>
             <div className={`${styles.field} ${styles.wide}`}><label>ชื่องาน</label><input value={form.title || ""} onChange={change("title")} disabled={!task.canManage} /></div>
             <div className={styles.field}><label>สถานะ</label><Select value={form.status || "Pending"} onChange={change("status")} disabled={!task.canChangeStatus}><option value="Pending">รอดำเนินการ</option><option value="In Progress">กำลังทำ</option><option value="Completed">เสร็จแล้ว</option></Select></div>
@@ -84,22 +84,24 @@ export default function TaskDetailPage() {
             <div className={styles.field}><span className={styles.label}>ความยาก</span><div className={styles.value}>{DIFFICULTY_LABELS[task.difficulty] || task.difficulty || "-"}</div></div>
             <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>รายละเอียด / โน้ต</span><div className={styles.value}>{task.note || "ไม่มีรายละเอียดเพิ่มเติม"}</div></div>
           </div>}
-        </section>
+        </DetailCard>
 
-        {(task.project || task.deal || task.inquiry) && <section className={styles.card}><div className={styles.heading}><h2>งานที่เชื่อมโยง</h2></div><div className={styles.links}>
-          {task.project && <Link className={styles.linkCard} href={`/sa/projects/${task.project.id}`}><FolderKanban size={18} /><span><strong>{task.project.name}</strong><small>{[task.project.code, task.project.customerName].filter(Boolean).join(" · ")}</small></span></Link>}
-          {task.deal && <Link className={styles.linkCard} href={`/sales-planning/deals/${task.deal.id}`}><Briefcase size={18} /><span><strong>{task.deal.title}</strong><small>{task.deal.customerName || "รายละเอียดดีล"}</small></span></Link>}
-          {task.inquiry && <Link className={styles.linkCard} href={`/sa/inquiries/${task.inquiry.id}`}><MessageCircleQuestion size={18} /><span><strong>{task.inquiry.code || "สอบถาม RD"} · {task.inquiry.title}</strong><small>เปิดข้อความต้นทาง</small></span></Link>}
-        </div></section>}
-      </main>
-
-      <aside className={styles.sidebar}><section className={styles.card}><div className={styles.heading}><h2>ผู้เกี่ยวข้อง</h2></div>
-        <div className={styles.summaryRow}><span>เจ้าของงาน</span><strong>{person(task.ownerId)}</strong></div>
-        <div className={styles.summaryRow}><span>ผู้รับมอบหมาย</span><strong>{person(task.assigneeId)}</strong></div>
-        <div className={styles.summaryRow}><span>มอบหมายโดย</span><strong>{person(task.assignedBy)}</strong></div>
-        <div className={styles.summaryRow}><span>สร้างเมื่อ</span><strong>{fmtDateTime(task.createdAt)}</strong></div>
-        <div className={styles.summaryRow}><span>แก้ไขล่าสุด</span><strong>{fmtDateTime(task.updatedAt)}</strong></div>
-      </section></aside>
+        {(task.project || task.deal || task.inquiry) && <DetailCard icon={FolderKanban} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
+          {task.project && <ContextCard icon={FolderKanban} href={`/sa/projects/${task.project.id}`} eyebrow="โครงการ" title={`${task.project.code ? `${task.project.code} · ` : ""}${task.project.name}`} subtitle={task.project.customerName || "รายละเอียดโครงการ"} facts={[{ label: "ทีม", value: task.project.team || "-" }, { label: "AE", value: task.project.aeOwner || "-" }]} />}
+          {task.deal && <ContextCard icon={Briefcase} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: task.deal.team || "-" }, { label: "เจ้าของดีล", value: task.deal.ownerName || "-" }]} />}
+          {task.inquiry && <ContextCard icon={MessageCircleQuestion} href={`/sa/inquiries/${task.inquiry.id}`} eyebrow="ข้อความต้นทาง" title={`${task.inquiry.code || "สอบถาม RD"} · ${task.inquiry.title}`} subtitle="เปิดการสนทนาและข้อมูลประกอบ" badges={<span className="ui-badge">{task.inquiry.status}</span>} />}
+        </ContextGrid></DetailCard>}
+        </DetailPageLayout>
     </div>}
   </Workspace>;
+}
+
+function TaskPeople({ task, person }) {
+  return <DetailCard icon={User} eyebrow="Responsibility" title="ผู้เกี่ยวข้อง">
+    <div className={styles.summaryRow}><span>เจ้าของงาน</span><strong>{person(task.ownerId)}</strong></div>
+    <div className={styles.summaryRow}><span>ผู้รับมอบหมาย</span><strong>{person(task.assigneeId)}</strong></div>
+    <div className={styles.summaryRow}><span>มอบหมายโดย</span><strong>{person(task.assignedBy)}</strong></div>
+    <div className={styles.summaryRow}><span>สร้างเมื่อ</span><strong>{fmtDateTime(task.createdAt)}</strong></div>
+    <div className={styles.summaryRow}><span>แก้ไขล่าสุด</span><strong>{fmtDateTime(task.updatedAt)}</strong></div>
+  </DetailCard>;
 }
