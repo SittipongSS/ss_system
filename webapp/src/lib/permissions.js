@@ -464,6 +464,13 @@ export function canSeeLeadKpi(role) {
   return isSuperuser(role) || role === 'marketing' || role === 'viewer';
 }
 
+// แดชบอร์ด/KPI ของฝ่าย RD (SLA ตอบข้อสอบถาม + งานฝ่าย) — วัดแยกจาก KPI ฝ่ายขาย
+// (มติผู้ใช้ 2026-07-15). rd เห็นของฝ่ายตัวเอง; ผู้บริหาร (superuser) + viewer
+// เห็นเพื่อกำกับดูแล; ฝ่ายขายทั่วไปไม่เห็น (คนละเส้นวัด).
+export function canSeeRdKpi(role) {
+  return isSuperuser(role) || role === 'viewer' || role === 'rd';
+}
+
 export function pmTaskScopes(role) {
   if (isSuperuser(role)) return ['mine', 'team', 'all'];
   // viewer = whole-system read-only observer → sees every team's tasks. It has no

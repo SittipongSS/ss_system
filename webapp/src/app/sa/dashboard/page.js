@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, LineChart, Maximize2, Minimize2, Minus, Plus, RefreshCw, Target, X, XCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useTeam, useRole } from "@/lib/roleContext";
-import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi } from "@/lib/permissions";
+import { canSeeTaskKpi, canSeeLeadKpi, canSeeDealKpi, canSeeRdKpi } from "@/lib/permissions";
 import { KpiCard, MONTH_LABELS, MonthPicker, dealTypeBadge, forecastBadge, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import DashboardCharts from "@/components/salesPlanning/DashboardCharts";
 import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
@@ -15,10 +15,12 @@ import { fmtDateTime, fmtMoney } from "@/lib/format";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
 import MyDashboardTab from "@/components/salesPlanning/dashboard/MyDashboardTab";
 import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
+import RdDashboardTab from "@/components/salesPlanning/dashboard/RdDashboardTab";
 import { cachedFetchJson } from "@/lib/apiCache";
 
 const DASHBOARD_TABS = [
   { key: "my", label: "แดชบอร์ดของฉัน" },
+  { key: "rd_kpi", label: "แดชบอร์ด RD" },
   { key: "lead_kpi", label: "KPI ลีด" },
   { key: "overview", label: "KPI ดีล" },
   { key: "task_kpi", label: "KPI งาน" },
@@ -421,6 +423,11 @@ function DashboardContent() {
   const [allMonths, setAllMonths] = useState(false); // รวมทั้งปีในการ์ด KPI/FC
   const [tab, setTab] = useState(searchParams.get("tab") || "my");
     useEffect(() => { const t = searchParams.get("tab"); if (t) setTab(t); }, [searchParams]);
+  // role rd: "แดชบอร์ดของฉัน" ฝั่งขายไม่มีความหมาย (ไม่มีดีลของตัวเอง) —
+  // เด้งไปแท็บ RD เป็นค่าเริ่มต้น (ยังเปิดแท็บอื่นที่มีสิทธิ์ได้ตามปกติ)
+  useEffect(() => {
+    if (role === "rd" && tab === "my" && !searchParams.get("tab")) setTab("rd_kpi");
+  }, [role, tab, searchParams]);
   const year = month.slice(0, 4);
   const [yearDashboards, setYearDashboards] = useState([]);
   const [sahamitRisk, setSahamitRisk] = useState(null);
@@ -591,6 +598,8 @@ function DashboardContent() {
             if (t.key === "overview" && !canSeeDealKpi(role)) return false; // Basic filter for overview
             if (t.key === "task_kpi" && !canSeeKpi) return false;
               if (t.key === "lead_kpi" && !canSeeLeadKpi(role)) return false;
+            if (t.key === "rd_kpi" && !canSeeRdKpi(role)) return false; // แดชบอร์ด/KPI ฝ่าย RD — วัดแยกจากฝ่ายขาย
+            if (t.key === "my" && role === "rd") return false; // rd ไม่มีดีลของตัวเอง — ใช้แท็บ RD แทน
             return true;
           }).map((t) => (
             <button
@@ -608,6 +617,10 @@ function DashboardContent() {
 
         {tab === "my" && (
           <MyDashboardTab month={month} />
+        )}
+
+        {tab === "rd_kpi" && canSeeRdKpi(role) && (
+          <RdDashboardTab month={month} />
         )}
 
         {tab === "lead_kpi" && (
