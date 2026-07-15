@@ -146,7 +146,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       approvalRequestedBy: null,
       approvalRequestedByName: null,
       notes: body.notes || null,
-      metadata: body.metadata || {},
+      // ผู้จัดทำล็อกจากบัญชีผู้สร้างใบเสมอ (มติผู้ใช้ 2026-07-15) — client ส่งมาก็ทับ
+      metadata: { ...(body.metadata || {}), preparedBy: user.name || null },
       createdBy: user.id || null,
       createdByName: user.name || null,
     })
