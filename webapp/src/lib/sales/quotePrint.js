@@ -283,12 +283,12 @@ export function buildQuotePrintHTML(quote) {
       </div>
     </section>
     <table class="items">
-      <colgroup><col style="width:8mm"><col><col style="width:14mm"><col style="width:28mm">${hasLineDiscount ? '<col style="width:22mm">' : ''}<col style="width:36mm"></colgroup>
+      <colgroup><col style="width:8mm"><col><col style="width:14mm"><col style="width:36mm">${hasLineDiscount ? '<col style="width:22mm">' : ''}<col style="width:36mm"></colgroup>
       <thead><tr><th>ลำดับ</th><th>รายการ</th><th>จำนวน</th><th>ราคา/หน่วย</th>${hasLineDiscount ? '<th>ส่วนลด</th>' : ''}<th>จำนวนเงิน</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <section class="commercial">
-      <div class="totals-wrap"><table class="totals" style="width:${hasLineDiscount ? '100mm' : '78mm'}"><colgroup><col><col style="width:36mm"></colgroup><tbody>${totals}</tbody></table></div>
+      <div class="totals-wrap"><table class="totals" style="width:${hasLineDiscount ? '108mm' : '86mm'}"><colgroup><col><col style="width:36mm"></colgroup><tbody>${totals}</tbody></table></div>
       <div class="commercial-info">
         <div class="info-block"><div class="lbl">หมายเหตุ / REMARKS</div>${value(quote.notes)}</div>
         <div class="info-block"><div class="lbl">วิธีการชำระเงิน / PAYMENT METHOD</div>${value(paymentPlan?.paymentMethod)}</div>
