@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS } from './permissions';
 
 test('canAssignTask: teammates assign to each other; sup/admin to anyone', () => {
   const ae = { id: 'u1', role: 'ae', team: 'KA' };
@@ -282,6 +282,14 @@ test('rd: reads deals/projects everywhere, works its own queue, never edits sale
 
   // Sales KPI dashboards stay Sales' own (RD is measured separately).
   assert.equal(canSeeTaskKpi('rd'), false);
+  // ...and the RD dashboard/KPI is its own surface: rd + oversight only.
+  assert.equal(canSeeRdKpi('rd'), true);
+  assert.equal(canSeeRdKpi('admin'), true);
+  assert.equal(canSeeRdKpi('ae_supervisor'), true);
+  assert.equal(canSeeRdKpi('viewer'), true);
+  assert.equal(canSeeRdKpi('ae'), false);
+  assert.equal(canSeeRdKpi('senior_ae'), false);
+  assert.equal(canSeeRdKpi('staff'), false);
 });
 
 test('rd: assigns and pulls tasks within its own department only', () => {
