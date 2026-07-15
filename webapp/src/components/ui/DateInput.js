@@ -6,14 +6,15 @@ import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { displayDateToIso, isoDateToDisplay } from "@/lib/format";
 
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
-const DAYS_TH = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
+// สัปดาห์เริ่มวันอาทิตย์ (อา-ส) — มติผู้ใช้ 2026-07-15 ให้ตรงกับปฏิทินหน้าวันหยุด/mgmt
+const DAYS_TH = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 
 const isoFromParts = (year, monthIndex, day) => `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
 function calendarCells(year, monthIndex) {
   const firstDay = new Date(Date.UTC(year, monthIndex, 1));
-  const mondayOffset = (firstDay.getUTCDay() + 6) % 7;
-  const start = new Date(Date.UTC(year, monthIndex, 1 - mondayOffset));
+  const sundayOffset = firstDay.getUTCDay(); // 0=อาทิตย์ ตรงคอลัมน์แรกพอดี
+  const start = new Date(Date.UTC(year, monthIndex, 1 - sundayOffset));
   return Array.from({ length: 42 }, (_, index) => {
     const date = new Date(start);
     date.setUTCDate(start.getUTCDate() + index);
