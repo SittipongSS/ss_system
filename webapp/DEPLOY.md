@@ -1,4 +1,4 @@
-# Deploy: Excise Tax Manager → Vercel + Supabase
+# Deploy: SS System → Vercel + Supabase
 
 หลังบ้านย้ายจากไฟล์ `data.json` ไปเป็น **Supabase Postgres** และไฟล์อัปโหลดไป **Supabase Storage**
 แล้ว Deploy หน้าบ้าน (Next.js) ขึ้น **Vercel**
@@ -8,10 +8,29 @@
 ## 1) สร้าง Supabase project + ตาราง
 
 1. ไปที่ https://supabase.com → New project (จดรหัส database ไว้)
-2. เปิด **SQL Editor** → วางเนื้อหาไฟล์ [`supabase/schema.sql`](supabase/schema.sql) ทั้งหมด → **Run**
-   (สร้างตาราง customers / products / orders + เปิด RLS)
-3. ไปที่ **Storage** → **New bucket** ตั้งชื่อ `uploads` → ติ๊ก **Public bucket** → Create
-   (ใช้เก็บไฟล์แผนที่/เอกสาร ที่อัปโหลดผ่านหน้า SA/ลูกค้า)
+2. สำหรับ **project ใหม่เท่านั้น** สร้าง SQL bootstrap ที่รวม base schema และ migration ทั้งหมด:
+
+   ```bash
+   npm install
+   npm run db:bootstrap
+   ```
+
+   จากนั้นเปิด **SQL Editor** → วางไฟล์ `supabase/bootstrap.generated.sql` → **Run**
+
+   > ห้ามรัน bootstrap บนฐานเดิม เพราะมีคำสั่งสร้างตารางและ backfill ทั้งประวัติ
+
+3. สำหรับ **ฐานเดิม** ให้รันเฉพาะ migration ใหม่ใน `supabase/migrations/` ตามลำดับชื่อไฟล์ และบันทึกเลขไฟล์ล่าสุดที่รันแล้วก่อน deploy web
+4. ก่อน commit/deploy migration ทุกครั้งให้รัน:
+
+   ```bash
+   npm run check:migrations
+   ```
+
+   เลข `0076`, `0087`, `0099` ซ้ำจากประวัติเก่าและถูก allowlist ไว้แล้ว ห้ามนำเลขเหล่านี้กลับมาใช้ซ้ำอีก
+5. ไปที่ **Storage** → **New bucket** ตั้งชื่อ `uploads` → ติ๊ก **Public bucket** → Create
+   (ใช้กับไฟล์ public เช่นแผนที่/รูป master data)
+
+   > Production ที่เก็บเอกสารการค้า/หลักฐาน Won แนะนำให้ตั้ง `STORAGE_BACKEND=drive` เพื่อเก็บเป็น private file ใน Shared Drive; Supabase fallback ปัจจุบันใช้ public URL
 
 ## 2) เอา keys มาใส่ env
 
@@ -89,21 +108,28 @@ Login เปลี่ยนจากรหัส `1234` เป็น **Supabase 
    ```json
    { "role": "legal", "name": "นิติกร" }
    ```
-   - `role` ใช้ค่า: `sa` | `legal` | `sales` | `admin`
+   - `role` ใช้ค่าใดค่าหนึ่ง:
+     `admin` | `secretary` | `ae_supervisor` | `senior_ae` | `ac` | `ae` | `marketing` | `legal` | `viewer` | `staff`
+   - `senior_ae`, `ac`, `ae` ต้องมี `team`: `ODM` | `KA` | `SV`
+   - `staff` ต้องมี `department`: `PC` | `PD` | `WH` | `RD` | `QC`
    - หลังล็อกอิน ระบบพาไปหน้าตาม role อัตโนมัติ
 
 > 🔒 อยากจำกัดเฉพาะอีเมลบริษัท: Authentication → URL/Email settings หรือเพิ่ม
 > นโยบาย/disable public signup (โดยปกติเราสร้าง user เองอยู่แล้ว ไม่เปิดให้สมัครเอง)
 
 ### หมายเหตุ dev ในเครื่อง
-ถ้ายังไม่ตั้งค่า Supabase (`.env.local` ว่าง) แอปจะรันแบบ **ไม่มี auth** (เข้าได้เลย)
-เพื่อให้ dev ต่อได้ — พอใส่ env ครบ ระบบ login จะทำงานทันที
+ถ้ายังไม่ตั้งค่า Supabase (`.env.local` ว่าง) proxy จะปล่อยหน้าเว็บผ่านเพื่อให้พัฒนา UI ได้ แต่ API ที่ต้องยืนยันตัวตนจะใช้งานไม่ได้
+
+> Production ต้องมี `NEXT_PUBLIC_SUPABASE_URL` และ `NEXT_PUBLIC_SUPABASE_ANON_KEY` ครบเสมอ มิฉะนั้น proxy จะไม่สามารถบังคับ login ได้ ตรวจ log `[proxy] ... auth is DISABLED` และถือว่า deploy ไม่ผ่าน
 
 ---
 
 ## เช็กลิสต์ก่อนส่งให้ทีม
-- [ ] รัน `schema.sql` + สร้าง bucket `uploads` (public)
-- [ ] `.env.local` ครบ 4 ค่า + `node scripts/migrate-to-supabase.mjs`
+- [ ] รัน `npm run check:migrations`
+- [ ] Project ใหม่: สร้างและรัน `supabase/bootstrap.generated.sql`; ฐานเดิม: รันเฉพาะ migration ใหม่ครบ
+- [ ] สร้าง bucket `uploads` และตั้ง `STORAGE_BACKEND` ให้เหมาะกับความลับของไฟล์
+- [ ] `.env.local` ครบ 4 ค่า; รัน `node scripts/migrate-to-supabase.mjs` เฉพาะกรณีนำเข้าข้อมูลเก่าจาก `data.json`
 - [ ] สร้างบัญชีทีมใน Supabase + ใส่ `role` ใน user metadata
-- [ ] ทดสอบ `npm run dev`: login → เข้าได้, logout → เด้งออก, ข้อมูล persist
+- [ ] ทดสอบ `npm test`, `npm run lint`, `npm run build`
+- [ ] Smoke test: login → Lead → Deal → Quotation → Won พร้อมหลักฐาน → Project/PM
 - [ ] Vercel: Root = `webapp` + env 4 ตัว → Deploy
