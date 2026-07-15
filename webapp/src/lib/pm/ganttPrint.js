@@ -34,6 +34,18 @@ const STATUS_FILL = {
 };
 const fillOf = (t) => STATUS_FILL[t.status] || STATUS_FILL.Pending;
 
+// ช่องลงชื่อแบบตีกรอบ — โครงเดียวกันทุกช่อง: หัวช่อง (ตำแหน่ง) / พื้นที่เซ็น /
+// ชื่อ (เติมมาให้ หรือเว้นให้เขียน) / วันที่
+const signBox = ({ label, role, name }) => `
+      <div class="sign-box">
+        <div class="sb-head">${esc(label)}${role ? ` <span class="sb-role">· ${esc(role)}</span>` : ''}</div>
+        <div class="sb-body">
+          <div class="sb-sig"><span class="sb-hint">ลงชื่อ</span></div>
+          <div class="sb-name">${name ? `(${esc(name)})` : '<span class="sb-hint">(ชื่อ-นามสกุล ตัวบรรจง)</span>'}</div>
+          <div class="sb-date">วันที่ <span class="dline"></span></div>
+        </div>
+      </div>`;
+
 export function buildGanttPrintHTML(project) {
   const tasks = Array.isArray(project.tasks) ? project.tasks : [];
 
@@ -218,30 +230,24 @@ export function buildGanttPrintHTML(project) {
   td.c-no { font-weight: 700; }
   .phase-row .c-no { color: #21385e; }
 
-  .signs { display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
-           margin-top: 34px; padding: 0 30px; page-break-inside: avoid; }
-  .sign { text-align: center; }
-  .sign .sig-space { height: 40px; }   /* พื้นที่เซ็นจริง — เพิ่มให้เซ็นได้สบาย */
-  .sign .nm { font-weight: 400; font-size: 11px; padding-bottom: 2px; }
-  .sign .nm-name { font-weight: 600; font-size: 11px; margin-top: 2px; min-height: 16px; }
-  .sign .lbl { font-size: 11px; font-weight: 700; color: #21385e; margin-top: 4px; }
-  .sign .role { font-size: 10px; color: #837868; }
-  .sign .date { font-size: 10px; color: #837868; margin-top: 6px; }
-  .date .dline { display: inline-block; border-bottom: 1px dotted #6b7a90; min-width: 180px; height: 0.9em; vertical-align: middle; }
-
-  /* แถวลงชื่อฝ่าย PC / PD / RD (เฉพาะหน้าพิมพ์) — ขึ้นครบทุกฝ่ายเสมอ.
-     ช่องลายเซ็นและช่องชื่อกว้างเท่ากันทุกตำแหน่ง + กว้างขึ้นให้เซ็น/เขียนชื่อได้ชัด (CR §3.5) */
-  .signs-dept { display: flex; flex-wrap: wrap; justify-content: space-around; gap: 24px;
-                margin-top: 48px; padding: 0 8px; page-break-inside: avoid; }
-  .sign-sm { text-align: center; width: 220px; }
-  .sign-sm .sig-space { height: 46px; }
-  .sign-sm .line, .sign-sm .name-line { border-top: 1px dotted #6b7a90; width: 100%; margin: 0 auto 3px; }
-  .sign-sm .name-line { margin-top: 14px; }
-  .sign-sm .hint { font-size: 9px; color: #837868; }
-  .sign-sm .lbl { font-size: 9.5px; font-weight: 700; color: #21385e; margin-top: 4px; }
-  .sign-sm .role { font-size: 9px; color: #837868; }
-  .sign-sm .date { font-size: 8.5px; color: #837868; margin-top: 6px; }
-  .sign-sm .date .dline { min-width: 130px; }
+  /* ช่องลงชื่อแบบตีกรอบ (มติผู้ใช้: จำกัดพื้นที่เขียน) — แถวบน 2 ช่อง
+     (ผู้จัดทำ/ผู้ตรวจสอบ) แถวล่าง 3 ช่อง (ฝ่าย PC/PD/RD) กว้างเท่ากันในแถว */
+  .sign-sec { margin-top: 16px; display: flex; flex-direction: column; gap: 8px;
+              page-break-inside: avoid; break-inside: avoid; }
+  .sign-row { display: grid; gap: 8px; }
+  .sign-row.two { grid-template-columns: repeat(2, 1fr); }
+  .sign-row.three { grid-template-columns: repeat(3, 1fr); }
+  .sign-box { border: 1px solid #b8b0a4; border-radius: 6px; overflow: hidden; background: #fff; }
+  .sb-head { background: #f0ebe0; border-bottom: 1px solid #dcd8d0; text-align: center;
+             padding: 3px 6px; font-size: 10px; font-weight: 700; color: #21385e; }
+  .sb-role { font-weight: 400; font-size: 8.5px; color: #837868; }
+  .sb-body { padding: 4px 14px 8px; text-align: center; }
+  .sb-sig { height: 46px; border-bottom: 1px dotted #6b7a90; position: relative; }
+  .sb-sig .sb-hint { position: absolute; left: 0; bottom: 2px; font-size: 8.5px; color: #837868; }
+  .sb-name { font-size: 10px; font-weight: 600; color: #000; margin-top: 4px; min-height: 14px; }
+  .sb-name .sb-hint { font-weight: 400; font-size: 8.5px; color: #837868; }
+  .sb-date { font-size: 9px; color: #837868; margin-top: 4px; }
+  .sb-date .dline { display: inline-block; border-bottom: 1px dotted #6b7a90; min-width: 110px; height: 0.9em; vertical-align: middle; }
 
   .legend { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; page-break-inside: avoid; }
   .leg { display: flex; align-items: center; gap: 4px; font-size: 9.5px; color: #3c577d; }
@@ -268,8 +274,7 @@ export function buildGanttPrintHTML(project) {
     .sheet { width: 100%; min-width: 0; margin: 10px auto; padding: 5mm; }
     .header-grid { grid-template-columns: 1fr; }
     .hcol.left { border-right: none; border-bottom: 1px solid #dcd8d0; }
-    .signs { gap: 24px; padding: 0 8px; }
-    .signs-dept { gap: 10px; }
+    .sign-row.two, .sign-row.three { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -365,38 +370,15 @@ export function buildGanttPrintHTML(project) {
       <div class="leg"><span class="dia">◆</span> จุดสำคัญ (Milestone)</div>
     </div>
 
-    <div class="signs">
-      <div class="sign">
-        <div class="sig-space"></div>
-        <div class="nm">ลงชื่อ _____________________________________</div>
-        <div class="nm-name">(${esc(preparerName || '...................................................')})</div>
-        <div class="lbl">ผู้จัดทำ</div>
-        <div class="role">ตำแหน่ง ACCOUNT COORDINATOR</div>
-        <div class="date">วันที่ <span class="dline"></span></div>
+    <div class="sign-sec">
+      <div class="sign-row two">
+        ${signBox({ label: 'ผู้จัดทำ', role: 'ACCOUNT COORDINATOR', name: preparerName })}
+        ${signBox({ label: 'ผู้ตรวจสอบ', role: 'AE SUPERVISOR', name: reviewerName })}
       </div>
-      <div class="sign">
-        <div class="sig-space"></div>
-        <div class="nm">ลงชื่อ _____________________________________</div>
-        <div class="nm-name">(${esc(reviewerName || '...................................................')})</div>
-        <div class="lbl">ผู้ตรวจสอบ</div>
-        <div class="role">ตำแหน่ง AE SUPERVISOR</div>
-        <div class="date">วันที่ <span class="dline"></span></div>
-      </div>
+      ${signDepts.length ? `<div class="sign-row three">
+        ${signDepts.map((dep) => signBox({ label: `ผู้รับผิดชอบ ฝ่าย ${dep}` })).join('')}
+      </div>` : ''}
     </div>
-
-    ${signDepts.length ? `<div class="signs-dept">
-      ${signDepts.map((dep) => `
-      <div class="sign-sm">
-        <div class="sig-space"></div>
-        <div class="line"></div>
-        <div class="hint">ลงชื่อ</div>
-        <div class="name-line"></div>
-        <div class="hint">(ชื่อ-นามสกุล)</div>
-        <div class="lbl">ผู้รับผิดชอบ</div>
-        <div class="role">ฝ่าย ${dep}</div>
-        <div class="date">วันที่ <span class="dline"></span></div>
-      </div>`).join('')}
-    </div>` : ''}
       </td></tr></tbody>
     </table>
   </div>
