@@ -29,6 +29,9 @@ async function loadAssignableUsers(supabase) {
         role,
         team: u.app_metadata?.team || null,
         department: normalizeDepartment(u.app_metadata?.department) || departmentFor(role) || null,
+        // ระงับอยู่ = banned_until เป็นวันอนาคต (เกณฑ์เดียวกับ /api/users) —
+        // เก็บลง cache ครบทุกคนแล้วค่อยกรองตอนตอบ (cache เดียวใช้ได้ทั้งสองแบบ)
+        disabled: !!u.banned_until && new Date(u.banned_until) > new Date(),
       });
     }
     page++;
@@ -40,11 +43,19 @@ async function loadAssignableUsers(supabase) {
 // GET /api/pm/assignable-users — รายชื่อผู้ใช้ที่ "มอบหมายงานได้" (ย่อ: id/name/role/team).
 // ต่างจาก /api/users (admin-only, ข้อมูลเต็ม) — อันนี้ผู้ใช้ PM ทุกคนเรียกได้ เพื่อ
 // เติม dropdown ผู้รับผิดชอบ. คืนเฉพาะ user ที่มี role (กรอง account ที่ยังไม่ตั้ง role).
-export const GET = withUser(async ({ user, supabase }) => {
+//
+// พนักงานที่ถูกระงับ (ลาออก — ปุ่มปิดใน /users) ถูกตัดออกโดย default: ไม่งั้นโผล่ใน
+// dropdown มอบหมายงาน/วางเป้าตลอดไป รายชื่อรกขึ้นทุกปีที่มีคนออก. ประวัติย้อนหลัง
+// ไม่หาย — หน้าวางเป้ามีแถว ghost ("ออกจากระบบแล้ว") สำหรับเป้าค้างของคนออกอยู่แล้ว
+// และแดชบอร์ดรายบุคคลสร้างจากดีลจริงต่อปี. ?includeDisabled=1 = ขอรวมคนถูกระงับ
+// (พร้อม flag disabled) สำหรับหน้าที่ต้องอ้างอิงข้อมูลย้อนหลัง.
+export const GET = withUser(async ({ user, supabase, req }) => {
   // PM ใช้เติม dropdown ผู้รับผิดชอบ; โมดูล "งานบริหาร" (mgmt) ก็ reuse รายชื่อนี้.
   if (!can(user?.role, 'pm:view') && !canUser(user, 'mgmt:view')) return forbidden();
+  const includeDisabled = new URL(req.url).searchParams.get('includeDisabled') === '1';
   try {
-    return ok(await cachedJson('assignable-users', CACHE_TTL_MS, () => loadAssignableUsers(supabase)));
+    const rows = await cachedJson('assignable-users', CACHE_TTL_MS, () => loadAssignableUsers(supabase));
+    return ok(includeDisabled ? rows : rows.filter((r) => !r.disabled));
   } catch (e) {
     return fail(e.message, 500);
   }

@@ -151,7 +151,8 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
   }, [tasks]);
 
   useEffect(() => {
-    cachedFetchJson("/api/pm/assignable-users").then(d => setUsers(d || [])).catch(() => {});
+    // includeDisabled: เอกสารโครงการเก่าต้องเติมเบอร์/อีเมลของ AE ที่ลาออกไปแล้วได้
+    cachedFetchJson("/api/pm/assignable-users?includeDisabled=1").then(d => setUsers(d || [])).catch(() => {});
   }, []);
 
   // draft overlay สำหรับฟิลด์หัว/ท้ายเอกสาร — พิมพ์ลื่น + ปุ่มพิมพ์ใช้ค่าล่าสุดทันที
