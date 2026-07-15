@@ -145,10 +145,11 @@ const MATRIX_QUADS = [
   { key: "drop", sub: "ไม่สำคัญ ไม่ด่วน", color: "var(--text-3)" },
 ];
 
-const WEEKDAYS_TH = ["จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส.", "อา."];
+// สัปดาห์เริ่มวันอาทิตย์ (อา-ส) — มติผู้ใช้ 2026-07-15 ให้ตรงกับปฏิทินหน้าวันหยุด/mgmt
+const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
-// index ของวัน (0=อา..6=ส.) → คอลัมน์ที่ขึ้นต้นวันจันทร์ (จ.=0 .. อา.=6)
-const mondayIndex = (jsDay) => (jsDay + 6) % 7;
+// index ของวัน (0=อา..6=ส.) ตรงคอลัมน์ปฏิทินที่ขึ้นต้นวันอาทิตย์อยู่แล้ว
+const sundayIndex = (jsDay) => jsDay;
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export default function TasksPage() {
@@ -593,7 +594,7 @@ export default function TasksPage() {
   const calCells = useMemo(() => {
     const first = new Date(calRef.y, calRef.m, 1);
     const daysInMonth = new Date(calRef.y, calRef.m + 1, 0).getDate();
-    const lead = mondayIndex(first.getDay());
+    const lead = sundayIndex(first.getDay());
     const cells = [];
     for (let i = 0; i < lead; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(calRef.y, calRef.m, d));
