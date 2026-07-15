@@ -6,13 +6,13 @@ import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CheckCircle2, ClipboardList, ExternalLink, FileText, FolderKanban, PackageCheck, Pencil, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
-import Workspace from "@/components/ui/Workspace";
+import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, KpiCard, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
@@ -442,13 +442,13 @@ export default function SalesPlanningPipelinePage() {
   const lostDeals = kpiDeals.filter((d) => d.stage === "lost");
 
   return (
-    <Workspace
+    <SaWorkspace
       icon={<FolderKanban size={22} />}
       title="บริหารงานขาย — ดีล"
       subtitle="จัดการดีลขาย (พัฒนากลิ่น / พัฒนาสินค้า / สั่งผลิตซ้ำ) และส่งต่อโครงการ PM"
       headerRight={headerRight}
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         {error && (
             <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>
               {error}
@@ -467,37 +467,16 @@ export default function SalesPlanningPipelinePage() {
                 </div>
               )}
               
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-                <KpiCard 
-                  icon={<FolderKanban size={20} />} 
-                  label="จำนวนดีลทั้งหมด" 
-                  value={totalDeals}
-                  color="var(--blue)"
-                />
-                <KpiCard 
-                  icon={<Trophy size={20} />} 
-                  label="ยอดไปป์ไลน์" 
-                  value={fmtMoney(pipelineValue)}
-                  color="var(--amber)"
-                />
-                <KpiCard 
-                  icon={<CheckCircle2 size={20} />} 
-                  label="ปิดสำเร็จ (Won)" 
-                  value={wonDeals.length}
-                  hint={wonValue > 0 ? fmtMoney(wonValue) : null}
-                  color="var(--green)"
-                />
-                <KpiCard 
-                  icon={<Ban size={20} />} 
-                  label="ไม่ไปต่อ (Lost)" 
-                  value={lostDeals.length}
-                  color="var(--red)"
-                />
-              </div>
+              <SaMetricStrip>
+                <SaMetric icon={<FolderKanban />} label="จำนวนดีลทั้งหมด" value={totalDeals} note="ตามขอบเขตและเดือนที่เลือก" />
+                <SaMetric icon={<Trophy />} label="ยอดไปป์ไลน์" value={fmtMoney(pipelineValue)} note="มูลค่าดีลที่กำลังดำเนินการ" tone="warning" />
+                <SaMetric icon={<CheckCircle2 />} label="ปิดสำเร็จ (Won)" value={wonDeals.length} note={wonValue > 0 ? fmtMoney(wonValue) : "ยังไม่มียอด Won"} tone="good" />
+                <SaMetric icon={<Ban />} label="ไม่ไปต่อ (Lost)" value={lostDeals.length} note="ดีลที่ปิดโดยไม่เกิดยอดขาย" tone={lostDeals.length ? "danger" : undefined} />
+              </SaMetricStrip>
             </>
           )}
 
-          <section className="glass-panel" style={{ padding: 16 }}>
+          <SaSection icon={<FolderKanban size={17} />} title="ไปป์ไลน์ดีล" subtitle="ค้นหา กรอง และติดตามทุกดีลในกระบวนการขาย" actions={<span className="ui-badge">{filteredDeals.length} ดีล</span>}>
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="search-glass" style={{ width: 280 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
@@ -521,7 +500,6 @@ export default function SalesPlanningPipelinePage() {
               onDirectionChange={setSortDir}
               selectStyle={{ width: 120 }}
             />
-            <span className="ui-badge">{filteredDeals.length} ดีล</span>
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
@@ -641,7 +619,7 @@ export default function SalesPlanningPipelinePage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </SaSection>
       </div>
 
       <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไขดีล" : "เพิ่มดีล"} size="lg">
@@ -866,6 +844,6 @@ export default function SalesPlanningPipelinePage() {
           createLabel="จัดการโครงการ"
         />
       )}
-    </Workspace>
+    </SaWorkspace>
   );
 }

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Inbox, Plus, Search, Pencil, Trash2, PhoneCall, Users as UsersIcon, CalendarClock, CheckCircle2, Ban, Undo2, Filter, LineChart, FolderKanban, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import DateTimeInput from "@/components/ui/DateTimeInput";
@@ -25,7 +25,7 @@ import {
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
   MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS,
 } from "@/lib/sales/leads";
-import { FORECAST_LEVELS, KpiCard, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
@@ -355,14 +355,14 @@ export default function LeadsPage() {
 
   if (!canLead && !canView) {
     return (
-      <Workspace icon={<Inbox size={22} />} title="ลีด">
+      <SaWorkspace icon={<Inbox size={22} />} title="ลีด">
         <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
-      </Workspace>
+      </SaWorkspace>
     );
   }
 
   return (
-    <Workspace
+    <SaWorkspace
       icon={<Inbox size={22} />}
       title="บริหารงานขาย — ลีด"
       subtitle="Marketing กรอกลีดรายวัน → คัดกรองส่งทีมใน 1 วันทำการ → AE ติดต่อกลับใน 1 วันทำการ"
@@ -377,7 +377,7 @@ export default function LeadsPage() {
         </>
       }
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         {error && (
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
@@ -387,19 +387,14 @@ export default function LeadsPage() {
               <Link href="/sa/dashboard?tab=lead_kpi" className="linklike" style={{ display: "inline-flex", alignItems: "center", fontSize: 13, fontWeight: 500, color: "var(--blue)" }}>ดู KPI เต็ม →</Link>
             </div>
           )}
-          <section className="kpi-grid" aria-busy={loading}>
-            <KpiCard icon={<Inbox size={16} aria-hidden="true" />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} hint={allMonths ? "ทั้งหมด" : `เดือน ${month}`} />
-            <KpiCard icon={<Filter size={16} aria-hidden="true" />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} hint={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้างคิว ${kpi?.sla?.screen?.pending ?? 0}`} />
-            <KpiCard icon={<PhoneCall size={16} aria-hidden="true" />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} hint={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้างติดต่อ ${kpi?.sla?.contact?.pending ?? 0}`} />
-            <KpiCard 
-              icon={<CalendarClock size={16} aria-hidden="true" />} 
-              label="Conversion" 
-              value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"}
-              hint={`ลีด ${kpi?.funnel?.total ?? 0} → นัด ${kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`}
-            />
-          </section>
+          <SaMetricStrip aria-busy={loading}>
+            <SaMetric icon={<Inbox />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} note={allMonths ? "ทั้งหมด" : `เดือน ${month}`} />
+            <SaMetric icon={<Filter />} label="SLA คัดกรอง ≤1 วันทำการ" value={slaPct(kpi?.sla?.screen)} note={`ทัน ${kpi?.sla?.screen?.hit ?? 0}/${kpi?.sla?.screen?.checked ?? 0} · ค้าง ${kpi?.sla?.screen?.pending ?? 0}`} tone={(kpi?.sla?.screen?.pending ?? 0) ? "warning" : "good"} />
+            <SaMetric icon={<PhoneCall />} label="SLA ติดต่อกลับ ≤1 วันทำการ" value={slaPct(kpi?.sla?.contact)} note={`ทัน ${kpi?.sla?.contact?.hit ?? 0}/${kpi?.sla?.contact?.checked ?? 0} · ค้าง ${kpi?.sla?.contact?.pending ?? 0}`} tone={(kpi?.sla?.contact?.pending ?? 0) ? "warning" : "good"} />
+            <SaMetric icon={<CalendarClock />} label="Conversion" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`ลีด ${kpi?.funnel?.total ?? 0} → นัด ${kpi?.funnel?.meeting ?? 0} → เปิดลูกค้า ${kpi?.funnel?.qualified ?? 0}`} />
+          </SaMetricStrip>
 
-        <section className="glass-panel" style={{ padding: 16 }}>
+        <SaSection icon={<Inbox size={17} />} title="คิวลีด" subtitle="ค้นหา คัดกรอง และติดตามลีดจนพร้อมส่งต่อเป็นดีล" actions={<span className="ui-badge">{filtered.length} ลีด</span>}>
           <div className="toolbar" style={{ marginBottom: 14, flexWrap: "wrap" }}>
             <div className="search-glass" style={{ width: 260 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
@@ -419,7 +414,6 @@ export default function LeadsPage() {
               onDirectionChange={setSortDir}
               selectStyle={{ width: 120 }}
             />
-            <span className="ui-badge">{filtered.length} ลีด</span>
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
@@ -543,7 +537,7 @@ export default function LeadsPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </SaSection>
       </div>
 
       {/* ฟอร์มรับ/แก้ลีด */}
@@ -745,6 +739,6 @@ export default function LeadsPage() {
           </div>
         )}
       </Modal>
-    </Workspace>
+    </SaWorkspace>
   );
 }

@@ -105,6 +105,9 @@
   padding: 14px 16px;
   border-right: 1px solid var(--border);
 }
+button.metric { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; appearance: none; }
+button.metric:hover, .metricActive { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+button.metric:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
 .metric:last-child { border-right: 0; }
 .metricIcon { display: grid; flex: 0 0 auto; width: 32px; height: 32px; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
 .metricIcon svg { width: 16px; }

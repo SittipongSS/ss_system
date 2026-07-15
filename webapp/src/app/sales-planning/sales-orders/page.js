@@ -3,12 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Search } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Select from "@/components/ui/Select";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import styles from "./page.module.css";
 
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
 function statusBadge(status) {
@@ -56,22 +55,21 @@ export default function SalesOrdersPage() {
     actual: rows.reduce((sum, row) => sum + (row.status === "approved" ? Number(row.actualAmount) || 0 : 0), 0),
   }), [rows]);
 
-  if (!canView) return <Workspace icon={<ClipboardList size={22} />} title="Sale Order"><div className="glass-panel" style={{ padding: 16 }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div></Workspace>;
+  if (!canView) return <SaWorkspace icon={<ClipboardList size={22} />} title="Sale Order"><div className="glass-panel" style={{ padding: 16 }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div></SaWorkspace>;
 
   return (
-    <Workspace icon={<ClipboardList size={22} />} title="Sale Order" subtitle="สร้างจาก QT Won ตรวจสอบเอกสาร และนับ Actual หลัง AE Supervisor อนุมัติเท่านั้น">
-      <div className={styles.page}>
+    <SaWorkspace icon={<ClipboardList size={22} />} title="Sale Order" subtitle="สร้างจาก QT Won ตรวจสอบเอกสาร และนับ Actual หลัง AE Supervisor อนุมัติเท่านั้น">
+      <div className="flex flex-col gap-4">
         {error && <div className="glass-panel" role="alert" style={{ padding: 14, color: "var(--red)", borderColor: "var(--red)" }}>{error}</div>}
 
-        <section className={styles.summaryGrid} aria-label="ภาพรวม Sale Order">
-          <article className={styles.summaryCard}><span className={styles.summaryIcon}><ClipboardList size={18} /></span><div><small>SALE ORDER ทั้งหมด</small><strong>{summary.total}</strong><p>เอกสารในขอบเขตที่คุณดูได้</p></div></article>
-          <article className={styles.summaryCard}><span className={`${styles.summaryIcon} ${styles.pending}`}><ClipboardCheck size={18} /></span><div><small>รอตรวจอนุมัติ</small><strong>{summary.pending}</strong><p>รอ AE Supervisor ดำเนินการ</p></div></article>
-          <article className={styles.summaryCard}><span className={`${styles.summaryIcon} ${styles.approved}`}><BadgeCheck size={18} /></span><div><small>อนุมัติแล้ว</small><strong>{summary.approved}</strong><p>เอกสารที่ถูกนับเป็น Actual</p></div></article>
-          <article className={styles.summaryCard}><span className={`${styles.summaryIcon} ${styles.actual}`}><CircleDollarSign size={18} /></span><div><small>ACTUAL ก่อน VAT</small><strong className="mono">{fmtMoney(summary.actual)}</strong><p>รวมเฉพาะ SO ที่อนุมัติแล้ว</p></div></article>
-        </section>
+        <SaMetricStrip>
+          <SaMetric icon={<ClipboardList />} label="Sale Order ทั้งหมด" value={summary.total} note="เอกสารในขอบเขตที่คุณดูได้" />
+          <SaMetric icon={<ClipboardCheck />} label="รอตรวจอนุมัติ" value={summary.pending} note="รอ AE Supervisor ดำเนินการ" tone={summary.pending ? "warning" : "good"} />
+          <SaMetric icon={<BadgeCheck />} label="อนุมัติแล้ว" value={summary.approved} note="เอกสารที่ถูกนับเป็น Actual" tone="good" />
+          <SaMetric icon={<CircleDollarSign />} label="Actual ก่อน VAT" value={fmtMoney(summary.actual)} note="รวมเฉพาะ SO ที่อนุมัติแล้ว" tone="good" />
+        </SaMetricStrip>
 
-        <section className={styles.listCard}>
-          <div className={styles.listHeader}><div><small>COMMERCIAL DOCUMENTS</small><h2>รายการ Sale Order</h2><p>ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว</p></div><span className="ui-badge">{filtered.length} ใบ</span></div>
+        <SaSection icon={<ClipboardList size={17} />} title="รายการ Sale Order" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล" /></div>
             <Select value={status} onChange={(e) => setStatus(e.target.value)} className="premium-select" style={{ width: 170 }}>
@@ -95,8 +93,8 @@ export default function SalesOrdersPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </SaSection>
       </div>
-    </Workspace>
+    </SaWorkspace>
   );
 }
