@@ -3,7 +3,7 @@ import DateInput from "@/components/ui/DateInput";
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, Undo2, Paperclip, FileText, X } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, Paperclip, FileText, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SortControl from "@/components/ui/SortControl";
@@ -25,6 +25,7 @@ import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm
 import { compactPersonName } from "@/lib/personName";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -165,6 +166,12 @@ export default function TasksPage() {
   const [mineView, setMineView] = useState(MINE_TASK_VIEWS.RESPONSIBLE);
   const [allowedScopes, setAllowedScopes] = useState(["mine"]);
   const [personalTasks, setPersonalTasks] = useState([]);
+  const [inquiries, setInquiries] = useState([]); // ข้อสอบถามค้างของฝ่าย (role rd)
+  const [todayISO, setTodayISO] = useState(null); // วันนี้ (client) — ป้ายเลยกำหนด SLA
+  useEffect(() => {
+    const d = new Date();
+    setTodayISO(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }, []);
   const [projectsMap, setProjectsMap] = useState({});
   const [dealsMap, setDealsMap] = useState({});
   const [me, setMe] = useState(null);
@@ -202,6 +209,7 @@ export default function TasksPage() {
       const d = res.ok ? await res.json() : {};
       if (seq !== loadSeq.current) return;
       setPersonalTasks(d.personalTasks || []);
+      setInquiries(d.inquiries || []);
       setProjectsMap(d.projects || {});
       setDealsMap(d.deals || {});
       if (d.me) setMe(d.me);
@@ -226,6 +234,8 @@ export default function TasksPage() {
     if (!me) return [];
     if (isSuperuser(me.role)) return users;
     if (TEAM_ROLES.includes(me.role) && me.team) return users.filter((u) => u.team === me.team);
+    // rd: มอบหมาย/สลับงานกันเองภายในฝ่ายเดียวกัน (RD 2 คน ไม่มีหัวหน้าฝ่ายในระบบ)
+    if (me.role === "rd" && me.department) return users.filter((u) => u.department === me.department);
     return users.filter((u) => u.id === me.id);
   }, [me, users]);
 
@@ -634,6 +644,38 @@ export default function TasksPage() {
           </div>
         )}
       </div>
+
+      {/* ── ข้อสอบถามค้างของฝ่าย (role rd) — คิวเดียวกับงาน: ตอบในเธรด ── */}
+      {inquiries.length > 0 && (
+        <section className="glass-panel" style={{ padding: 14, marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <MessageCircleQuestion size={16} aria-hidden="true" style={{ color: "var(--violet)" }} />
+            <h2 style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>ข้อสอบถามจากฝ่ายขาย</h2>
+            <span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => q.status === "open").length} รอตอบ</span>
+            <Link href="/sa/inquiries" className="linklike" style={{ marginLeft: "auto", fontSize: 12.5 }}>ดูทั้งหมด</Link>
+          </div>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+            {inquiries.slice(0, 8).map((q) => {
+              const due = inquiryDueTone(q, todayISO);
+              return (
+                <li key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
+                  <InquiryStatusBadge status={q.status} />
+                  {q.urgent && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
+                  <Link href={`/sa/inquiries/${q.id}`} className="linklike" style={{ fontWeight: 600 }}>
+                    {q.code ? `${q.code} · ` : ""}{q.title}
+                  </Link>
+                  <span style={{ color: "var(--text-3)", fontSize: 12 }}>โดย {q.requesterName || "-"}</span>
+                  {q.dueDate && (
+                    <span className="mono" style={{ marginLeft: "auto", fontSize: 12, color: due?.color || "var(--text-3)" }}>
+                      กำหนดตอบ {fmtDate(q.dueDate)}{due ? ` · ${due.label}` : ""}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {/* ── สรุปภาพรวม (คลิกเพื่อกรอง) ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", marginBottom: "18px" }}>

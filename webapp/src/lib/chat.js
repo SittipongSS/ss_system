@@ -14,13 +14,15 @@ const SPACE_ENV = {
   approvals: 'CHAT_WEBHOOK_APPROVALS', // space หัวหน้า/ผู้อนุมัติ (Senior AE+)
   sales: 'CHAT_WEBHOOK_SALES', // space ทีมขาย
   pm: 'CHAT_WEBHOOK_PM', // space โครงการ (ใช้ในเฟส 3 daily digest)
+  rd: 'CHAT_WEBHOOK_RD', // space ฝ่าย RD (ข้อสอบถามใหม่จากฝ่ายขาย)
 };
 
 // รายการ space มาตรฐาน — ใช้ร่วมกันทั้ง validation ฝั่ง API และหน้า UI ตั้งค่า
 export const CHAT_SPACES = [
   { key: 'approvals', label: 'ผู้อนุมัติ', hint: 'ของรออนุมัติ (ลูกค้า/สินค้า/ใบเสนอราคา) — คนใน space ควรเป็น Senior AE ขึ้นไป' },
-  { key: 'sales', label: 'ทีมขาย', hint: 'ผลอนุมัติ, ดีลชนะ (Won), forecast review' },
+  { key: 'sales', label: 'ทีมขาย', hint: 'ผลอนุมัติ, ดีลชนะ (Won), forecast review, คำตอบข้อสอบถามจาก RD' },
   { key: 'pm', label: 'โครงการ (PM)', hint: 'สรุปงานใกล้ครบกำหนดประจำวัน (เริ่มใช้เฟส daily digest)' },
+  { key: 'rd', label: 'ฝ่าย RD', hint: 'ข้อสอบถามใหม่/ถามต่อจากฝ่ายขาย — คนใน space คือฝ่าย RD' },
 ];
 
 // cache รายการ webhook จากตาราง ~60 วิ — event ถี่ ๆ ไม่ต้อง query ทุกครั้ง

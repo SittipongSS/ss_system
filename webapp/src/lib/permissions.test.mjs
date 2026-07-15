@@ -284,6 +284,20 @@ test('rd: reads deals/projects everywhere, works its own queue, never edits sale
   assert.equal(canSeeTaskKpi('rd'), false);
 });
 
+test('rd: assigns and pulls tasks within its own department only', () => {
+  const rd = { id: 'r1', role: 'rd', team: null, department: 'RD' };
+  // มอบหมายให้เพื่อนร่วมฝ่าย RD ได้ (2 คนสลับ/แบ่งงานกันเอง)
+  assert.equal(canAssignTask(rd, { id: 'r2', team: null, department: 'RD' }), true);
+  // ข้ามฝ่าย/ไปหาฝ่ายขายไม่ได้ — ฝ่ายขายก็มอบตรงให้ RD ไม่ได้ (ต้องผ่าน inquiry)
+  assert.equal(canAssignTask(rd, { id: 'p1', team: null, department: 'PC' }), false);
+  assert.equal(canAssignTask({ id: 'a1', role: 'ae', team: 'KA' }, { id: 'r1', team: null, department: 'RD' }), false);
+  // ดึงงาน: เฉพาะงานของคนฝ่ายเดียวกัน
+  const openTask = { assigneeId: 'r2', status: 'Pending' };
+  assert.equal(canPullTask(rd, openTask, null, 'RD'), true);
+  assert.equal(canPullTask(rd, openTask, null, 'PC'), false);
+  assert.equal(canPullTask(rd, openTask, 'KA', null), false);
+});
+
 test('pmTaskEditTier: none for outsiders', () => {
   // senior_ae on another team's project, not the assignee
   assert.equal(pmTaskEditTier({ role: 'senior_ae', team: 'ODM', id: 's' }, { assigneeId: 'x', role: 'SA' }, { team: 'KA', ownerId: 'o' }), 'none');

@@ -96,6 +96,21 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const personalTasks = (scopedPersonal || [])
     .filter((t) => (seenP.has(t.id) ? false : seenP.add(t.id)));
 
+  // ── ข้อสอบถามค้างของฝ่าย (role rd — cap inquiries:respond): คิวเดียวกับงาน ──
+  // "เก็บแยก โชว์รวม": เรื่องที่ยังไม่ปิดของฝ่ายฉันขึ้นในงานของฉัน จะได้เปิดหน้าเดียว
+  // เห็นทุกอย่างที่ต้องทำ (ตอบในเธรด /sa/inquiries/[id])
+  let inquiries = [];
+  {
+    const myDept = normalizeDepartment(user.department);
+    if (can(user.role, 'inquiries:respond') && myDept) {
+      const { data } = await supabase
+        .from('inquiries').select('*')
+        .eq('targetDept', myDept).neq('status', 'closed')
+        .order('dueDate', { ascending: true });
+      inquiries = data || [];
+    }
+  }
+
   // ── projects map สำหรับแสดงรหัส/ชื่อ (รวมโครงการที่งานเพิ่มเติมผูกไว้ด้วย) ──
   const projIds = [...new Set([
     ...projectTasks.map((t) => t.projectId),
@@ -126,6 +141,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     me: { id: user.id, name: user.name, role: user.role, team: user.team ?? null, department: normalizeDepartment(user.department) },
     projectTasks,
     personalTasks: personalTasks || [],
+    inquiries,
     projects,
     deals,
   });

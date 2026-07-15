@@ -1,9 +1,10 @@
-import { can, isSuperuser } from '@/lib/permissions';
+import { can, isSuperuser, normalizeDepartment } from '@/lib/permissions';
 
-async function userTeam(supabase, id) {
-  if (!id) return null;
+async function userIdentity(supabase, id) {
+  if (!id) return { team: null, department: null };
   const { data } = await supabase.auth.admin.getUserById(id);
-  return data?.user?.app_metadata?.team ?? null;
+  const meta = data?.user?.app_metadata || {};
+  return { team: meta.team ?? null, department: normalizeDepartment(meta.department) || null };
 }
 
 async function taskProjectTeam(supabase, task) {
@@ -17,12 +18,22 @@ async function taskProjectTeam(supabase, task) {
 }
 
 export async function personalTaskResponsibleTeam(supabase, task) {
-  return userTeam(supabase, task?.assigneeId || task?.ownerId);
+  return (await userIdentity(supabase, task?.assigneeId || task?.ownerId)).team;
+}
+
+// ทีม + ฝ่ายของผู้รับผิดชอบงาน — ใช้คู่กับ canPullTask (rd ดึงงานภายในฝ่ายตัวเอง)
+export async function personalTaskResponsibleIdentity(supabase, task) {
+  return userIdentity(supabase, task?.assigneeId || task?.ownerId);
 }
 
 export async function canManagePersonalTask(supabase, task, user) {
-  if (!task || !user || !can(user.role, 'pm:edit')) return false;
+  if (!task || !user) return false;
+  // เจ้าของ/ผู้รับมอบจัดการงานของตัวเองได้เสมอ — ต้องมีแค่ pm:view (staff/rd ใช้
+  // "งานของฉัน" ได้จริง); viewer เป็น observer อ่านอย่างเดียว ไม่มีงานของตัวเอง.
+  if (!can(user.role, 'pm:view') || user.role === 'viewer') return false;
   if (task.ownerId === user.id || task.assigneeId === user.id) return true;
+  // จัดการงานของ "คนอื่น" ยังสงวนให้สายบังคับบัญชาฝ่ายขาย (pm:edit) เหมือนเดิม
+  if (!can(user.role, 'pm:edit')) return false;
   if (isSuperuser(user.role)) return true;
   if (user.role !== 'senior_ae' || !user.team) return false;
 
