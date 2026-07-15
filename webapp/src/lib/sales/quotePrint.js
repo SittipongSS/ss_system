@@ -211,7 +211,7 @@ export function buildQuotePrintHTML(quote) {
   .page-table > tbody > tr, .page-table > tbody { page-break-inside: auto !important; break-inside: auto !important; }
   /* เนื้อหาใต้หัวเอกสารเป็น flex คอลัมน์ min-height เกือบเต็มหน้า → ช่องลงชื่อ
      (margin-top:auto) ถูกดันชิดล่างสุดของหน้า; เอกสารยาวหลายหน้า จะไหลต่อท้ายเนื้อหา */
-  .doc-body { display: flex; flex-direction: column; min-height: 238mm; }
+  .doc-body { display: flex; flex-direction: column; min-height: 250mm; }
 
   /* ช่องลงชื่อตีกรอบ 3 ช่อง (ผู้จัดทำ/ผู้ตรวจสอบ/ลูกค้า) — โครงเดียวกับเอกสารไทม์ไลน์ */
   .sign-sec { margin-top: auto; padding-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr);
