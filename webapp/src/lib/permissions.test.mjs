@@ -247,6 +247,43 @@ test('admin read surfaces (audit/users) are grantable per-user — read only, no
   assert.equal(canUser({ role: 'viewer' }, 'users:view'), false);
 });
 
+test('rd: reads deals/projects everywhere, works its own queue, never edits sales data', () => {
+  // Reads the sales spine + master data + PM...
+  for (const cap of ['salesplan:view', 'pm:view', 'customers:view', 'products:view']) {
+    assert.equal(can('rd', cap), true, `rd should hold ${cap}`);
+  }
+  // ...at 'all'-team view scope (full context to answer Sales' inquiries)...
+  assert.equal(viewScope('rd'), 'all');
+  // ...but never writes deals/plans and never sees cost margin or tax/sahamit/mgmt.
+  for (const cap of [
+    'salesplan:edit', 'salesplan:lead', 'salesplan:target', 'pm:edit',
+    'customers:edit', 'products:edit', 'products:margin', 'sales:view', 'sales:act',
+    'legal:view', 'legal:approve', 'history:view', 'sahamit:view', 'mgmt:view',
+    'users:manage', 'master:manage', 'audit:view',
+  ]) {
+    assert.equal(can('rd', cap), false, `rd must NOT hold ${cap}`);
+  }
+  assert.equal(editScope('rd'), 'none');
+  assert.equal(pmEditScope('rd'), 'none');
+  assert.equal(deleteScope('rd', 'orders'), 'none');
+
+  // My Work: sees only its own queue; assigns only to itself; cannot pull others' tasks.
+  assert.deepEqual(pmTaskScopes('rd'), ['mine']);
+  const rd = { id: 'r1', role: 'rd', team: null, department: 'RD' };
+  assert.equal(canAssignTask(rd, { id: 'r1', team: null }), true);
+  assert.equal(canAssignTask(rd, { id: 'x2', team: 'KA' }), false);
+  assert.equal(canPullTask(rd, { assigneeId: 'x2', status: 'Pending' }, 'KA'), false);
+
+  // Workflow tier: a project step assigned to the RD department (or to them
+  // personally) is theirs to update — same rule as staff.
+  assert.equal(pmTaskEditTier(rd, { assigneeId: null, role: 'RD' }, { ownerId: 'u2' }), 'workflow');
+  assert.equal(pmTaskEditTier(rd, { assigneeId: 'r1', role: 'SA' }, { ownerId: 'u2' }), 'workflow');
+  assert.equal(pmTaskEditTier(rd, { assigneeId: null, role: 'PC' }, { ownerId: 'u2' }), 'none');
+
+  // Sales KPI dashboards stay Sales' own (RD is measured separately).
+  assert.equal(canSeeTaskKpi('rd'), false);
+});
+
 test('pmTaskEditTier: none for outsiders', () => {
   // senior_ae on another team's project, not the assignee
   assert.equal(pmTaskEditTier({ role: 'senior_ae', team: 'ODM', id: 's' }, { assigneeId: 'x', role: 'SA' }, { team: 'KA', ownerId: 'o' }), 'none');

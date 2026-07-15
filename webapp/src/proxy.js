@@ -166,7 +166,18 @@ function apiWriteAllowed(method, path, role, extraCaps) {
     return can(role, 'sales:act'); // create
   }
   // Project management (SALES only). Row-level team scope enforced in handlers.
-  if (path.startsWith('/api/pm')) return can(role, 'pm:edit');
+  if (path.startsWith('/api/pm')) {
+    if (can(role, 'pm:edit')) return true;
+    // staff/rd (ฝ่ายที่ไม่ใช่ sales) ต้องใช้ "งานของฉัน" ได้จริง — เปิดเฉพาะสอง
+    // เส้นที่ handler บังคับสิทธิ์รายแถวเองครบ: งานส่วนตัว (canAssignTask — มอบได้
+    // เฉพาะตัวเอง) + อัปเดตขั้นตอนรายตัว (pmTaskEditTier 'workflow' — เฉพาะงานที่
+    // มอบให้เขา/ฝ่ายเขา แก้ได้แค่สถานะ/โน้ต). viewer คงอ่านอย่างเดียวทุกเส้น.
+    if (can(role, 'pm:view') && role !== 'viewer') {
+      if (path.startsWith('/api/pm/personal-tasks')) return true;
+      if (method === 'PATCH' && /^\/api\/pm\/project-tasks\/[^/]+$/.test(path)) return true;
+    }
+    return false;
+  }
   // ลีด (เฟส C): role marketing มีแค่ salesplan:lead (ไม่มี salesplan:edit) —
   // เปิดเขียนเฉพาะเส้นลีด; เส้น sales-planning อื่นยังต้อง salesplan:edit ตามเดิม.
   if (path.startsWith('/api/sales-planning/leads')) return can(role, 'salesplan:lead');

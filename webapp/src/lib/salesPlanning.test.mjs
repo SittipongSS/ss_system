@@ -67,6 +67,9 @@ test('sales plan project auth scopes by sales role', () => {
   // viewer = read-only observer: sees every team's deals ('all') but edits none.
   assert.equal(salesPlanningViewScope('viewer'), 'all');
   assert.equal(salesPlanningEditScope('viewer'), 'none');
+  // rd = ฝ่ายวิจัยและพัฒนา: sees every team's deals for inquiry context, edits none.
+  assert.equal(salesPlanningViewScope('rd'), 'all');
+  assert.equal(salesPlanningEditScope('rd'), 'none');
 });
 
 test('AE sees only own sales plan projects, including PM backfill by owner name', () => {

@@ -30,10 +30,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const byName = user.name
       ? supabase.from('project_tasks').select('*').eq('assignee', user.name).order('stepOrder', { ascending: true })
       : Promise.resolve({ data: [] });
-    // staff (ฝ่ายจัดซื้อ/ผลิต/คลัง/วิจัย/QC) ไม่ได้ถูก assign รายคนเสมอ — รวมงานที่
+    // staff/rd (ฝ่ายจัดซื้อ/ผลิต/คลัง/วิจัย/QC) ไม่ได้ถูก assign รายคนเสมอ — รวมงานที่
     // "assign ให้ฝ่าย" คือขั้นตอนที่ role === ฝ่ายของเขา เข้ามาในงานของฉันด้วย.
     const dept = normalizeDepartment(user.department);
-    const byDept = (user.role === 'staff' && dept)
+    const byDept = ((user.role === 'staff' || user.role === 'rd') && dept)
       ? supabase.from('project_tasks').select('*').eq('role', dept).order('stepOrder', { ascending: true })
       : Promise.resolve({ data: [] });
     const [{ data: a }, { data: b }, { data: c }] = await Promise.all([byId, byName, byDept]);

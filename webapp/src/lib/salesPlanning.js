@@ -53,6 +53,9 @@ export function salesPlanningViewScope(role) {
   // viewer = whole-system read-only observer → sees every team's deals/pipeline,
   // exactly like a superuser's view (edit stays 'none' via salesPlanningEditScope).
   if (role === 'viewer') return 'all';
+  // rd (ฝ่ายวิจัยและพัฒนา) ต้องเห็นดีล/โครงการทุกทีมเพื่อมีบริบทเต็มตอนตอบ
+  // ข้อสอบถามจากฝ่ายขาย — อ่านอย่างเดียวเหมือน viewer (edit ยัง 'none').
+  if (role === 'rd') return 'all';
   if (role === 'senior_ae' || role === 'ac') return 'team';
   if (role === 'ae') return 'own';
   return 'none';
