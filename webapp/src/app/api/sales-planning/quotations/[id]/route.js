@@ -4,7 +4,7 @@ import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
   quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
-import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
+import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
@@ -37,6 +37,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const quote = await loadQuote(supabase, id);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal || !inSalesViewScope(user, quote.deal)) return forbidden();
+  // บรรทัด FG โชว์คำอธิบายสดจาก master (แบรนด์ · ชื่อสินค้า · ปริมาตร) เฉพาะใบที่ยัง
+  // แก้ได้ — ใบเก่าที่ snapshot แค่ชื่อจะแสดง/พิมพ์ครบโดยไม่ต้องบันทึกใหม่
+  await refreshFgLinesForDisplay(supabase, [quote]);
   const baseNumber = quote.baseNumber || quote.quoteNumber;
   const { data: revisionHistory, error: revisionError } = await supabase
     .from('quotations')
