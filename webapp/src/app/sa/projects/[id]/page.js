@@ -7,7 +7,7 @@ import {
   ArrowLeft, Plus, PlusCircle, X, Flag, FileText, GanttChart,
   ListTodo, AlertTriangle, CheckCircle2, Clock, Calendar,
   TrendingUp, Edit2, Trash2, ChevronDown, ChevronRight, ChevronUp,
-  Activity, CircleDashed, Pause,
+  Activity, BriefcaseBusiness, Building2, CircleDashed, Pause,
   Check, Printer, Table2, Filter, User, FolderX,
   GitCommit, History, RotateCcw, ShieldCheck, PackageCheck, ExternalLink,
 } from "lucide-react";
@@ -39,6 +39,7 @@ import { fmtDateTime } from "@/lib/format";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import InquiryListCard from "@/components/salesPlanning/InquiryListCard";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import { ContextCard, ContextGrid } from "@/components/ui/DetailPage";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
@@ -1032,6 +1033,35 @@ export default function ProjectDetailPage() {
           { icon: GanttChart, label: "จำนวนดีล", value: `${(p.deals || []).length} ดีล` },
         ]}
       />
+
+      {tab === "overview" && <div style={{ marginTop: 16 }}><ContextGrid>
+        <ContextCard
+          icon={Building2}
+          href={p.customerId ? `/database/customers/${p.customerId}` : undefined}
+          eyebrow="ลูกค้าของโครงการ"
+          title={p.customerName || "ยังไม่ผูกลูกค้า"}
+          subtitle={projectBrand ? `แบรนด์ ${projectBrand}` : "ยังไม่ระบุแบรนด์"}
+          badges={<>{p.team && <span className="ui-badge">ทีม {p.team}</span>}{p.aeOwner && <span className="ui-badge" style={{ color: "var(--accent)" }}>AE {p.aeOwner}</span>}</>}
+          facts={[
+            { label: "ประเภทโครงการ", value: p.type || "-" },
+            { label: "กำหนดเสร็จ", value: p.dueDate || "-" },
+          ]}
+        />
+        {(p.deals || []).slice(0, 3).map((deal) => <ContextCard
+          key={deal.id}
+          icon={BriefcaseBusiness}
+          href={`/sales-planning/deals/${deal.id}`}
+          eyebrow="ดีลในโครงการ"
+          title={deal.title}
+          subtitle={deal.formulaName || deal.dealType || "เปิดดูรายละเอียดดีล"}
+          badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}{deal.stage && <span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span>}</>}
+          facts={[
+            { label: "เดือน Forecast", value: deal.forecastMonth || "-" },
+            { label: "มูลค่า", value: Number(deal.wonValue ?? deal.projectValue ?? 0).toLocaleString("th-TH") },
+          ]}
+        />)}
+        {!(p.deals || []).length && <ContextCard icon={BriefcaseBusiness} eyebrow="ดีลในโครงการ" title="ยังไม่มีดีลที่เชื่อมอยู่" subtitle="เชื่อมดีลจากหน้าบริหารงานขายเพื่อรวมข้อมูลการขายและการส่งมอบ" />}
+      </ContextGrid></div>}
 
       <div style={{ marginTop: 20 }}>
         <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" />

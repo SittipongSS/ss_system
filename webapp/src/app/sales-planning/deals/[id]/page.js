@@ -4,7 +4,7 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
@@ -28,6 +28,7 @@ import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import InquiryCreateModal from "@/components/salesPlanning/InquiryCreateModal";
 import InquiryListCard from "@/components/salesPlanning/InquiryListCard";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -740,6 +741,33 @@ export default function DealOverviewPage() {
             </div>
           </SalesDetailOverview>
 
+          {tab === "overview" && <ContextGrid>
+            <ContextCard
+              icon={Building2}
+              href={deal.customerId ? `/database/customers/${deal.customerId}` : undefined}
+              eyebrow="ลูกค้าและเจ้าของดีล"
+              title={deal.customerName || deal.customer?.name || "ยังไม่ผูกลูกค้า"}
+              subtitle={(dealBrand.en || dealBrand.th) ? `แบรนด์ ${dealBrand.en || dealBrand.th}` : "ยังไม่ระบุแบรนด์"}
+              badges={<>{deal.team && <span className="ui-badge">ทีม {deal.team}</span>}{deal.ownerName && <span className="ui-badge" style={{ color: "var(--accent)" }}>{deal.ownerName}</span>}</>}
+              facts={[
+                { label: "ประเภทดีล", value: DEAL_TYPE_LABELS[dealTypeOf(deal)] || dealTypeOf(deal) },
+                { label: "Forecast", value: deal.forecastMonth || "-" },
+              ]}
+            />
+            <ContextCard
+              icon={FolderKanban}
+              href={deal.projectId ? `/sa/projects/${deal.projectId}` : undefined}
+              eyebrow="โครงการที่เชื่อมอยู่"
+              title={data.project ? `${data.project.code ? `${data.project.code} · ` : ""}${data.project.name}` : "ยังไม่ได้เชื่อมโครงการ"}
+              subtitle={data.project ? "เปิดเพื่อดูไทม์ไลน์ งาน และเอกสารโครงการ" : "เชื่อมโครงการเพื่อส่งต่องานหลังการขาย"}
+              badges={data.project?.status ? <span className="ui-badge" style={{ color: "var(--green)" }}>{data.project.status}</span> : null}
+              facts={data.project ? [
+                { label: "วันเริ่ม", value: data.project.startDate ? fmtDate(data.project.startDate) : "-" },
+                { label: "กำหนดเสร็จ", value: data.project.dueDate ? fmtDate(data.project.dueDate) : "-" },
+              ] : []}
+            />
+          </ContextGrid>}
+
           {/* เมนูครอบ (แบบหน้าโครงการ): แท็บ ภาพรวม ↔ ไทม์ไลน์ — ตัดแถบทางลัด/ป้ายเฟสถัดไปออก (มติผู้ใช้) */}
           <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของดีล" />
 
@@ -807,14 +835,7 @@ export default function DealOverviewPage() {
           )}
 
           {(tab === "tasks" || tab === "overview") && (
-          <section id="deal-tasks" className="glass-panel" style={{ padding: 16 }}>
-            <div className="flex items-center gap-2 mb-3">
-              <ClipboardList size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>งานของดีล</h2>
-              <span className="ui-badge" style={{ color: "var(--text-2)" }}>{dealTaskSummary.done}/{dealTaskSummary.total} เสร็จ</span>
-              <div className="spacer" />
-              <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>
-            </div>
+          <DetailCard icon={ClipboardList} eyebrow="Linked tasks" title="งานของดีล" meta={`${dealTaskSummary.done}/${dealTaskSummary.total} เสร็จ`} actions={<a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}>
             {(data.dealTasks || []).length ? (
               <div className="premium-glass-table table-responsive">
                 <table className="premium-table">
@@ -846,7 +867,7 @@ export default function DealOverviewPage() {
             ) : (
               <Empty>ยังไม่มีงานของดีลนี้ กด “เปิด” แล้วสร้างงานโดยเลือกผูกกับดีลนี้ได้</Empty>
             )}
-          </section>
+          </DetailCard>
           )}
 
           {(tab === "inquiries" || tab === "overview") && (
