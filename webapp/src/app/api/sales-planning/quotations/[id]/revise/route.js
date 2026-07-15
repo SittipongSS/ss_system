@@ -4,6 +4,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { businessDate } from '@/lib/businessDate';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
+import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   const body = await req.json().catch(() => ({}));
+  // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — enforce ก่อนคิดยอดฉบับใหม่
+  body.lines = await enforceMasterPrices(
+    supabase,
+    normalizeManualLines('lines' in body ? body.lines || [] : quote.lines || []),
+    quote.lines || [],
+  );
   const revision = buildQuotationRevisionContent(quote, body);
   if (!revision.ok) return badRequest(revision.error);
   const {

@@ -41,6 +41,32 @@ export async function seedLinesFromProject(supabase, deal) {
   });
 }
 
+// ราคา FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี productId
+// ถูกทับราคาด้วย retailPriceIncVat ปัจจุบันเสมอ — client แก้ราคาเองไม่ได้ ต้องแก้ที่
+// ฐานข้อมูลสินค้า. สินค้าที่หายจาก master (ถูกลบ) → คงราคาเดิมที่บันทึกไว้ในใบ
+// (fallback ต่อ productId จาก previousLines) เพื่อไม่ให้ยอดเอกสารเดิมพัง.
+export async function enforceMasterPrices(supabase, lines = [], previousLines = []) {
+  const ids = [...new Set(lines.filter((l) => l.productId).map((l) => l.productId))];
+  if (!ids.length) return lines;
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, retailPriceIncVat')
+    .in('id', ids);
+  if (error) throw error;
+  const priceById = new Map((data || []).map((p) => [p.id, toMoney(p.retailPriceIncVat)]));
+  const prevById = new Map(
+    previousLines.filter((l) => l?.productId).map((l) => [l.productId, toMoney(l.unitPrice)]),
+  );
+  return lines.map((line) => {
+    if (!line.productId) return line;
+    const master = priceById.get(line.productId);
+    const unitPrice = master !== undefined ? master : (prevById.get(line.productId) ?? line.unitPrice);
+    if (unitPrice === line.unitPrice) return line;
+    const net = quoteLineNet({ qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue });
+    return { ...line, unitPrice, discountAmount: net.discountAmount, lineTotal: net.lineTotal };
+  });
+}
+
 // normalize บรรทัดจาก client (สร้าง/แก้): คิดส่วนลดรายบรรทัด + ยอดสุทธิที่ server เสมอ
 export function normalizeManualLines(lines = []) {
   return lines

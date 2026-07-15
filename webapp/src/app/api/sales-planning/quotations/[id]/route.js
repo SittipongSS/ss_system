@@ -4,7 +4,7 @@ import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
   quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
-import { normalizeManualLines } from '@/lib/sales/quoteLines';
+import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
@@ -96,6 +96,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     newLines = 'lines' in body
       ? normalizeManualLines(body.lines || [])
       : (before.lines || []).map((l) => ({ ...l }));
+    // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — แก้ราคาต้องแก้ที่
+    // ฐานข้อมูลสินค้า; สินค้าที่หายจาก master คงราคาเดิมของใบ (fallback before.lines)
+    newLines = await enforceMasterPrices(supabase, newLines, before.lines || []);
     // ใบว่าง (0 รายการ) เก็บเป็นร่างได้ — ใส่รหัส FG ทีหลัง; การส่ง/รับใบมี guard ยอด>0 อยู่แล้ว
     if (!newLines.length && (body.status === 'sent' || before.status === 'sent')) {
       return badRequest('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');
@@ -147,7 +150,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!readiness.ok) return badRequest(readiness.error);
   }
 
-  const rows = newLines && 'lines' in body ? newLines : null;
+  // เขียน lines ทุกครั้งที่ยอดเปลี่ยน (ไม่เฉพาะตอน client ส่ง lines) — enforceMasterPrices
+  // อาจปรับราคา FG ตาม master แม้ client แก้แค่ VAT/ส่วนลด ให้แถวกับยอดตรงกันเสมอ
+  const rows = newLines || null;
   const { error } = await supabase.rpc('save_quotation_content', {
     p_quote_id: id,
     p_content: patch,
