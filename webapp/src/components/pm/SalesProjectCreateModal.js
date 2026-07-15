@@ -9,6 +9,7 @@ import Select from "@/components/ui/Select";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { cachedFetchJson } from "@/lib/apiCache";
 
 const today = () => {
   const now = new Date();
@@ -39,8 +40,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
       startDate: initialData?.startDate || today(), dueDate: initialData?.dueDate || "", aeOwner: initialData?.aeOwner || "",
       preparedBy: initialData?.preparedBy || "", aeSupervisor: initialData?.aeSupervisor || "",
     });
-    fetch("/api/pm/assignable-users")
-      .then((r) => (r.ok ? r.json() : []))
+    cachedFetchJson("/api/pm/assignable-users")
       .then((rows) => setUsers(rows || []))
       .catch(() => setUsers([]));
   }, [open, initialData]);

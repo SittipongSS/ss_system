@@ -22,6 +22,7 @@ import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity"
 import { ACTIVE_QUOTATION_STATUSES } from "@/lib/sales/quotationCreateGuard";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { productSelectOptions } from "@/components/master/productOption";
+import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
 const EXCLUDE_STAGES = ["won", "in_project", "lost"];
@@ -62,15 +63,14 @@ function NewQuotationInner() {
     (async () => {
       setLoading(true);
       try {
-        const [dRes, pRes, productRes, quoteRes] = await Promise.all([
+        const [dRes, pRes, productData, quoteRes] = await Promise.all([
           fetch("/api/sales-planning/deals").catch(() => null),
           fetch("/api/pm/projects").catch(() => null),
-          fetch("/api/products").catch(() => null),
+          cachedFetchJson("/api/products").catch(() => []),
           fetch("/api/sales-planning/quotations").catch(() => null),
         ]);
         const dealsData = dRes?.ok ? await dRes.json() : [];
         const projData = pRes?.ok ? await pRes.json() : [];
-        const productData = productRes?.ok ? await productRes.json() : [];
         const quoteData = quoteRes?.ok ? await quoteRes.json() : [];
         if (!alive) return;
         setDeals(Array.isArray(dealsData) ? dealsData : []);

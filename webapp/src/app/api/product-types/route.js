@@ -2,14 +2,19 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { listProductTypes } from '@/lib/master/productTypes';
+import { cachedJson, invalidateCache } from '@/lib/serverCache';
 
 export const dynamic = 'force-dynamic';
+
+// taxonomy เหมือนกันทุกผู้ใช้และเปลี่ยนนาน ๆ ครั้ง — cache 5 นาที ลดภาระ DB
+// (write handler ด้านล่างเรียก invalidateCache ให้ instance นี้เห็นของใหม่ทันที)
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 // GET — category taxonomy. Readable by any signed-in user (used for the
 // product-form dropdown and PM templates). The proxy already blocks anon.
 export async function GET() {
   try {
-    const data = await listProductTypes();
+    const data = await cachedJson('product-types', CACHE_TTL_MS, () => listProductTypes());
     return Response.json(data);
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
@@ -52,5 +57,6 @@ export async function POST(request) {
     }
     return Response.json({ error: error.message }, { status: 500 });
   }
+  invalidateCache('product-types');
   return Response.json(data, { status: 201 });
 }

@@ -9,6 +9,7 @@ import StandardMoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole } from "@/lib/roleContext";
 import { fmtNumber, fmtPercent } from "@/lib/format";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+import { cachedFetchJson } from "@/lib/apiCache";
 import {
   DEFAULT_GROWTH_CAP,
   projectTarget,
@@ -79,14 +80,14 @@ export default function SalesTargetPlanPage() {
     setLoading(true);
     setError("");
     try {
-      const [histRes, usersRes] = await Promise.all([
+      const [histRes, users] = await Promise.all([
         fetch(`/api/sales-planning/history?years=${historyYears.join(",")}`),
-        fetch("/api/pm/assignable-users"),
+        cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       ]);
       if (!histRes.ok) throw new Error((await histRes.json()).error || "โหลดประวัติไม่สำเร็จ");
       const { rows, systemActuals: sys } = await histRes.json();
       setSystemActuals(sys || {});
-      setUsers(usersRes.ok ? await usersRes.json() : []);
+      setUsers(users || []);
 
       // Seed company + team history from saved rows, falling back to won-deal actuals.
       const company = {};

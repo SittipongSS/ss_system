@@ -27,6 +27,7 @@ import {
 } from "@/lib/sales/leads";
 import { FORECAST_LEVELS, KpiCard, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
+import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 const ACTION_COLORS = {
@@ -78,7 +79,7 @@ export default function LeadsPage() {
   // หลุดตอนแยกฟอร์มใน #287 ทำหน้า crash ตอนเปิดโมดัล)
   const [categories, setCategories] = useState([]);
   useEffect(() => {
-    fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
+    cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
   }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

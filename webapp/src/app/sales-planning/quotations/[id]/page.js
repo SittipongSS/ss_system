@@ -30,6 +30,7 @@ import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { fgLineDescription } from "@/lib/sales/quoteLines";
 import { productSelectOptions } from "@/components/master/productOption";
+import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
@@ -100,7 +101,7 @@ export default function QuotationEditorPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     fetch("/api/sales-planning/quote-note-templates").then((r) => (r.ok ? r.json() : [])).then((d) => setTemplates(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
+    cachedFetchJson("/api/products").then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status);

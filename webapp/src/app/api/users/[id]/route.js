@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps } from '@/lib/permissions';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
+import { invalidateCache } from '@/lib/serverCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +95,7 @@ export async function PATCH(request, { params }) {
 
   const { error } = await supabase.auth.admin.updateUserById(id, updates);
   if (error) return Response.json({ error: error.message }, { status: 400 });
+  invalidateCache('assignable-users'); // ชื่อ/บทบาท/ทีมเปลี่ยน — dropdown เห็นทันที
 
   // Snapshot หลังอัปเดต (re-fetch ให้ค่า role/team/disabled ตรงจริง). password
   // ไม่ถูกบันทึก — แค่หมายเหตุว่ามีการรีเซ็ตใน summary.
@@ -123,6 +125,7 @@ export async function DELETE(request, { params }) {
   const { data: existing } = await supabase.auth.admin.getUserById(id);
   const { error } = await supabase.auth.admin.deleteUser(id);
   if (error) return Response.json({ error: error.message }, { status: 400 });
+  invalidateCache('assignable-users');
   await recordAudit({
     user: me, action: 'delete', entityType: 'user', entityId: id,
     before: userAuditSnapshot(existing?.user),

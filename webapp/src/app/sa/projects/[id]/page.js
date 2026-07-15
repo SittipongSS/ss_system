@@ -25,6 +25,7 @@ import StatusSelect, { TASK_STATUS_META, taskStatusColor } from "@/components/pm
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { productSelectOptions } from "@/components/master/productOption";
+import { cachedFetchJson } from "@/lib/apiCache";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -252,11 +253,11 @@ export default function ProjectDetailPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    fetch("/api/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
-    fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
-    fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(d || [])).catch(() => {});
+    cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
+    cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
+    cachedFetchJson("/api/pm/assignable-users").then((d) => setUsers(d || [])).catch(() => {});
     // โหลดปฏิทินวันหยุดจริงให้ฝั่ง client (Gantt/Document view นับวันทำการถูกต้อง)
-    fetch("/api/holidays").then((r) => (r.ok ? r.json() : [])).then((d) => {
+    cachedFetchJson("/api/holidays").then((d) => {
       if (Array.isArray(d) && d.length) setHolidays(d.map((h) => h.date));
     }).catch(() => {});
   }, []);

@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, KpiCard, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
+import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
@@ -126,8 +127,8 @@ export default function SalesPlanningPipelinePage() {
 
   // ข้อมูลสำหรับโมดัลสร้างโครงการ PM (หมวดสินค้า + FG) — โหลดครั้งเดียว
   useEffect(() => {
-    fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).then((d) => setCategories(d || [])).catch(() => {});
-    fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
+    cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
+    cachedFetchJson("/api/products").then((d) => setAllProducts(d || [])).catch(() => {});
   }, []);
 
   const filteredDeals = useMemo(() => {

@@ -2,13 +2,17 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { listHolidays } from '@/lib/master/holidays';
+import { cachedJson, invalidateCache } from '@/lib/serverCache';
 
 export const dynamic = 'force-dynamic';
+
+// ปฏิทินวันหยุดเหมือนกันทุกผู้ใช้และเปลี่ยนนาน ๆ ครั้ง — cache 5 นาที ลดภาระ DB
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 // GET /api/holidays — full calendar (any signed-in user; PM/UI reads it).
 export async function GET() {
   try {
-    const data = await listHolidays();
+    const data = await cachedJson('holidays', CACHE_TTL_MS, () => listHolidays());
     return Response.json(data);
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
@@ -39,5 +43,6 @@ export async function POST(request) {
     if (error.code === '23505') return Response.json({ error: 'วันหยุดนี้มีอยู่แล้ว' }, { status: 409 });
     return Response.json({ error: error.message }, { status: 500 });
   }
+  invalidateCache('holidays');
   return Response.json(data, { status: 201 });
 }
