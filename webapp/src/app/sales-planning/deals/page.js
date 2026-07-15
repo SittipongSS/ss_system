@@ -545,7 +545,9 @@ export default function SalesPlanningPipelinePage() {
                 {filteredDeals.map((deal) => (
                   <DetailRow key={deal.id} href={`/sa/deals/${deal.id}`} className="premium-row">
                     <td>
-                      <Link href={`/sa/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดดีล">
+                      {/* prefetch={false} ทั้งลิงก์ในแถว: ลิสต์ยาว ๆ เคยยิง RSC prefetch
+                          ของ /sa/deals/[id] เป็นพันครั้ง/วัน (แถวละ 3 ลิงก์ × ทุกแถวที่เห็น) */}
+                      <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดดีล">
                         <strong>
                           {deal.title}
                           {deal.forecastDrift?.hasDrift && (
@@ -571,13 +573,13 @@ export default function SalesPlanningPipelinePage() {
                       {["won", "in_project"].includes(deal.stage) ? fmtMoney(deal.wonValue ?? deal.projectValue) : fmtMoney(deal.projectValue)}
                     </td>
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                      <Link className="btn ghost" href={`/sa/deals/${deal.id}?tab=timeline`} title="เปิดไทม์ไลน์ของดีล" style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 96, justifyContent: "center" }}>
+                      <Link prefetch={false} className="btn ghost" href={`/sa/deals/${deal.id}?tab=timeline`} title="เปิดไทม์ไลน์ของดีล" style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 96, justifyContent: "center" }}>
                         <PackageCheck size={14} aria-hidden="true" /> ไทม์ไลน์
                       </Link>
                     </td>
                     {SALES_FEATURES.quotations && (
                       <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                        <Link className="btn ghost" href={`/sa/deals/${deal.id}?tab=quotations`} title="เปิดใบเสนอราคาของดีล" style={{ minWidth: 96, justifyContent: "center" }}>
+                        <Link prefetch={false} className="btn ghost" href={`/sa/deals/${deal.id}?tab=quotations`} title="เปิดใบเสนอราคาของดีล" style={{ minWidth: 96, justifyContent: "center" }}>
                           <FileText size={14} aria-hidden="true" /> ใบเสนอ
                         </Link>
                       </td>

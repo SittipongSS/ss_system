@@ -80,7 +80,7 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
           </span>
         )}
         {dealTypeBadge(dealTypeOf(deal))}
-        <Link href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike" style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
           {displayText(deal.title)}
         </Link>
         {stageBadge(deal.stage)}
@@ -121,7 +121,7 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
         </div>
         {shown.length ? shown.map((q) => (
           <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, minWidth: 0 }}>
-            <Link href={`/sa/quotations/${q.id}`} className="linklike mono" style={{ whiteSpace: "nowrap" }}>{q.quoteNumber}</Link>
+            <Link prefetch={false} href={`/sa/quotations/${q.id}`} className="linklike mono" style={{ whiteSpace: "nowrap" }}>{q.quoteNumber}</Link>
             <span className="ui-badge" style={{ color: QUOTE_STATUS[q.status]?.color || "var(--text-3)" }}>{QUOTE_STATUS[q.status]?.label || q.status}</span>
             <span className="mono tabular-nums" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{fmtMoney(q.totalAmount)}</span>
           </div>
@@ -132,7 +132,7 @@ function DealCard({ deal, seg, quotes, canReorder, canMoveUp, canMoveDown, movin
       </div>
 
       <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end" }}>
-        <Link href={`/sa/deals/${deal.id}`} className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เปิดดีล</Link>
+        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เปิดดีล</Link>
       </div>
     </div>
   );
@@ -160,8 +160,8 @@ export function ProjectQuotationsCard({ project: p }) {
               const status = QUOTE_STATUS[quote.status];
               return (
                 <tr key={quote.id} className="premium-row">
-                  <td><Link href={`/sa/quotations/${quote.id}`} className="linklike mono">{quote.quoteNumber}</Link></td>
-                  <td>{deal ? <Link href={`/sa/deals/${deal.id}`} className="linklike">{deal.title}</Link> : "-"}</td>
+                  <td><Link prefetch={false} href={`/sa/quotations/${quote.id}`} className="linklike mono">{quote.quoteNumber}</Link></td>
+                  <td>{deal ? <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike">{deal.title}</Link> : "-"}</td>
                   <td><span className="ui-badge" style={{ color: status?.color || "var(--text-3)" }}>{status?.label || quote.status || "-"}</span></td>
                   <td className="num mono tabular-nums">{fmtMoney(quote.totalAmount)}</td>
                 </tr>
@@ -304,7 +304,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
               <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{it.body}</div>
               <div style={{ marginTop: 2, fontSize: 11.5, color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 {it.deal && (
-                  <Link href={`/sa/deals/${it.deal.id}`} className="linklike" style={{ display: "inline-flex", gap: 4, alignItems: "center", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <Link prefetch={false} href={`/sa/deals/${it.deal.id}`} className="linklike" style={{ display: "inline-flex", gap: 4, alignItems: "center", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {dealTypeBadge(dealTypeOf(it.deal))} {it.deal.title}
                   </Link>
                 )}

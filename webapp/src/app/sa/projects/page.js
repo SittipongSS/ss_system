@@ -178,7 +178,8 @@ export default function ProjectsIndexPage() {
                   return (
                     <DetailRow key={p.id} href={`/sa/projects/${p.code || p.id}`} className="premium-row">
                       <td>
-                        <Link href={`/sa/projects/${p.code || p.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้าโครงการ">
+                        {/* prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
+                        <Link prefetch={false} href={`/sa/projects/${p.code || p.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้าโครงการ">
                           <strong>{p.name || "-"}</strong>
                           <span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>
                             {p.code || p.id}{p.formulaName ? ` · สูตร ${p.formulaName}` : ""}
@@ -194,7 +195,7 @@ export default function ProjectsIndexPage() {
                           {firstDeal ? (
                             <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                               {dealTypeBadge(firstDeal.dealType || firstDeal.metadata?.projectType)}
-                              <Link href={`/sa/deals/${firstDeal.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firstDeal.title || "-"}</Link>
+                              <Link prefetch={false} href={`/sa/deals/${firstDeal.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firstDeal.title || "-"}</Link>
                             </div>
                           ) : <span style={{ color: "var(--text-3)" }}>-</span>}
                           <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: 12 }}>{(p.deals || []).length} ดีล</span>

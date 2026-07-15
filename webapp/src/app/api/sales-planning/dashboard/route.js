@@ -1,26 +1,39 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
+import { cachedJson } from '@/lib/serverCache';
 
 export const dynamic = 'force-dynamic';
+
+// ภาพรวมเป็นข้อมูลระดับ "ทั้งฝ่าย" เหมือนกันทุกผู้ใช้ (ไม่ scope ตามทีม/คน) →
+// cache ต่อเดือน 30 วิ — endpoint นี้กิน Active CPU สูงสุดของระบบ (สแกน sales_deals
+// ทั้งตาราง + aggregate ทุกครั้งที่เปิดหน้าภาพรวม); ความสดช้าสุด 30 วิ ยอมรับได้กับ KPI
+const DASHBOARD_TTL_MS = 30 * 1000;
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
 
   const month = monthKey(new URL(req.url).searchParams.get('month')) || monthKey(new Date().toISOString());
+  try {
+    return ok(await cachedJson(`sales-dashboard:${month}`, DASHBOARD_TTL_MS, () => buildDashboard(supabase, month)));
+  } catch (e) {
+    return fail(e.message, 500);
+  }
+});
 
+async function buildDashboard(supabase, month) {
   // ภาพรวมเป็นระดับ "ทั้งฝ่าย" — เปิดให้ทุก sales role เห็นทุกทีม (นโยบาย: overview
   // โปร่งใสทั้งบริษัท). การจำกัด scope ตามทีม/เจ้าของ ยังบังคับที่หน้า pipeline
   // (deals) และหน้าวางเป้า (targets) ตามเดิม — เฉพาะภาพรวมนี้ที่เห็นครบ.
   const { data: deals, error: dealsError } = await supabase.from('sales_deals').select('*');
-  if (dealsError) return fail(dealsError.message, 500);
+  if (dealsError) throw new Error(dealsError.message);
   const visibleDeals = deals || [];
 
   const { data: targets, error: targetsError } = await supabase
     .from('sales_targets')
     .select('*')
     .eq('targetMonth', month);
-  if (targetsError) return fail(targetsError.message, 500);
+  if (targetsError) throw new Error(targetsError.message);
 
   const isWon = (d) => ['won', 'in_project'].includes(d.stage);
   const isOpen = (d) => !['won', 'in_project', 'lost'].includes(d.stage);
@@ -163,7 +176,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const teamTargetSum = byTeam.reduce((sum, b) => sum + Number(b.target || 0), 0);
   const targetAmount = saWideTarget > 0 ? saWideTarget : teamTargetSum;
 
-  return ok({
+  return {
     month,
     totals: {
       deals: monthDeals.length,
@@ -186,5 +199,5 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     byOwner,
     byTeam,
     targets: targets || [],
-  });
-});
+  };
+}

@@ -122,14 +122,15 @@ export default function QuotationsPage() {
                 {filtered.map((r) => (
                   <DetailRow key={r.id} href={`/sa/quotations/${r.id}`} className="premium-row">
                     <td>
-                      <Link href={`/sa/quotations/${r.id}`} className="linklike"><strong className="mono">{r.quoteNumber}</strong></Link>
+                      {/* prefetch={false} ลิงก์ในแถว — กัน RSC prefetch ต่อแถวของลิสต์ยาว */}
+                      <Link prefetch={false} href={`/sa/quotations/${r.id}`} className="linklike"><strong className="mono">{r.quoteNumber}</strong></Link>
                       {r.revisionNo > 0 && <span style={{ display: "block", color: "var(--amber)", fontSize: 11 }}>ฉบับแก้ไข R{r.revisionNo}</span>}
                     </td>
                     <td>
                       {r.customerName || "-"}
                       <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: 12 }}>
                         {r.deal && dealTypeBadge(dealTypeOf(r.deal))}
-                        <Link href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{r.deal?.title || "-"}</Link>
+                        <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{r.deal?.title || "-"}</Link>
                       </span>
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.quoteDate)}</td>
@@ -154,7 +155,7 @@ export default function QuotationsPage() {
                         </button>
                         {/* แก้ได้เฉพาะสถานะที่ API เปิด (draft/sent/rejected) — ใบอื่นใช้ Revise ที่หน้าใบ */}
                         {canEdit && ["draft", "sent", "rejected"].includes(r.status) && (
-                          <Link href={`/sa/quotations/${r.id}?edit=1`} className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${r.quoteNumber}`}>
+                          <Link prefetch={false} href={`/sa/quotations/${r.id}?edit=1`} className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${r.quoteNumber}`}>
                             <Pencil size={15} aria-hidden="true" />
                           </Link>
                         )}
