@@ -183,7 +183,10 @@ export function buildQuotePrintHTML(quote) {
   .commercial { display: flex; flex-direction: column; gap: 9px;
                 page-break-inside: avoid; break-inside: avoid; }
   .totals-wrap { display: flex; justify-content: flex-end; }
-  .totals-wrap table { width: 72mm; }
+  /* กล่องท้ายใบจัดเส้นให้ตรงกับตารางรายการ (มติผู้ใช้: เส้นต้องตรง):
+     ชิดขวาเหมือนกัน + ความกว้าง = ผลรวมคอลัมน์ตั้งแต่ "จำนวน" ไปขวาสุด
+     (กำหนด inline ตามมี/ไม่มีคอลัมน์ส่วนลด) → ขอบซ้ายกล่องตรงเส้นคอลัมน์จำนวน
+     และคอลัมน์เงิน 32mm ตรงเส้นคอลัมน์ "จำนวนเงิน" พอดี */
   .commercial-info { border: 1px solid #dcd8d0; border-radius: 6px; overflow: hidden; }
   .info-block { padding: 6px 9px; min-height: 40px; color: #000; white-space: pre-wrap; }
   .info-block + .info-block { border-top: 1px solid #dcd8d0; }
@@ -191,7 +194,8 @@ export function buildQuotePrintHTML(quote) {
   table.totals td { border: 0; border-bottom: 1px solid #dcd8d0; color: #000; padding: 5px 8px; font-size: 11.5px; }
   table.totals tr:first-child td { border-top: 1px solid #dcd8d0; }
   table.totals td:first-child { border-left: 1px solid #dcd8d0; }
-  table.totals td:last-child { border-right: 1px solid #dcd8d0; }
+  /* เส้นแบ่งช่องเงินในกล่องท้ายใบ — ตรงกับเส้นคอลัมน์ "จำนวนเงิน" ของตารางรายการ */
+  table.totals td:last-child { border-right: 1px solid #dcd8d0; border-left: 1px solid #dcd8d0; }
   table.totals .discount { color: #b0483b; }
   /* ยอดหลังหักส่วนลด — เส้นคั่นบน + ตัวหนา (โครงท้ายใบตามมติผู้ใช้ 2026-07-15) */
   table.totals tr.after-discount td { border-top: 1.5px solid #b8b0a4; font-weight: 700; }
@@ -279,12 +283,12 @@ export function buildQuotePrintHTML(quote) {
       </div>
     </section>
     <table class="items">
-      <colgroup><col style="width:8mm"><col><col style="width:17mm"><col style="width:25mm">${hasLineDiscount ? '<col style="width:22mm">' : ''}<col style="width:27mm"></colgroup>
+      <colgroup><col style="width:8mm"><col><col style="width:14mm"><col style="width:28mm">${hasLineDiscount ? '<col style="width:22mm">' : ''}<col style="width:36mm"></colgroup>
       <thead><tr><th>ลำดับ</th><th>รายการ</th><th>จำนวน</th><th>ราคา/หน่วย</th>${hasLineDiscount ? '<th>ส่วนลด</th>' : ''}<th>จำนวนเงิน</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <section class="commercial">
-      <div class="totals-wrap"><table class="totals"><tbody>${totals}</tbody></table></div>
+      <div class="totals-wrap"><table class="totals" style="width:${hasLineDiscount ? '100mm' : '78mm'}"><colgroup><col><col style="width:36mm"></colgroup><tbody>${totals}</tbody></table></div>
       <div class="commercial-info">
         <div class="info-block"><div class="lbl">หมายเหตุ / REMARKS</div>${value(quote.notes)}</div>
         <div class="info-block"><div class="lbl">วิธีการชำระเงิน / PAYMENT METHOD</div>${value(paymentPlan?.paymentMethod)}</div>
