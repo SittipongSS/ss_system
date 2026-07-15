@@ -31,6 +31,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!(await canViewPersonalTask(supabase, task, user))) return forbidden();
   let linkedProject = null;
   let linkedDeal = null;
+  let linkedInquiry = null;
   if (task.projectId) {
     const { data } = await supabase.from('projects').select('id, code, name, customerName, team, aeOwner').eq('id', task.projectId).maybeSingle();
     linkedProject = data || null;
@@ -38,6 +39,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (task.dealId) {
     const { data } = await supabase.from('sales_deals').select('id, title, customerName, team, ownerName, projectId').eq('id', task.dealId).maybeSingle();
     linkedDeal = data || null;
+  }
+  if (task.inquiryId) {
+    const { data } = await supabase.from('inquiries').select('id, code, title, status').eq('id', task.inquiryId).maybeSingle();
+    linkedInquiry = data || null;
   }
   const userIds = [...new Set([task.ownerId, task.assigneeId, task.proxyBy, task.assignedBy].filter(Boolean))];
   const people = {};
@@ -51,6 +56,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     ...task,
     project: linkedProject,
     deal: linkedDeal,
+    inquiry: linkedInquiry,
     people,
     canManage: !!manage,
     canChangeStatus: canChangeTaskStatus(user, task, manage),

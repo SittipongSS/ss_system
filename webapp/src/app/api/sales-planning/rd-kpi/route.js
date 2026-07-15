@@ -106,12 +106,53 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .map((row) => { finalize(row); finalizeInquiryStats(row.inquiries); return row; })
     .sort((a, b) => b.score - a.score || b.inquiries.answered - a.inquiries.answered || a.name.localeCompare(b.name, 'th'));
   const taskSummary = aggregateGroup(DEPT, rows);
+  const userName = (id) => directory.get(id)?.name || directory.get(id)?.email || null;
+  const taskFeed = [...tasks]
+    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+    .slice(0, 40)
+    .map((task) => ({
+      id: task.id, title: task.title, note: task.note || null, status: task.status,
+      category: task.category || null, urgent: !!task.urgent, important: !!task.important,
+      dueDate: task.dueDate || null, createdAt: task.createdAt, updatedAt: task.updatedAt,
+      completedAt: task.completedAt || null,
+      assigneeName: userName(taskCreditId(task)) || userName(task.assigneeId) || userName(task.ownerId) || 'ทีม RD',
+      assignedByName: userName(task.assignedBy) || userName(task.ownerId),
+      inquiryId: task.inquiryId || null, dealId: task.dealId || null, projectId: task.projectId || null,
+    }));
 
   // คิวเรื่องค้าง (สำหรับ action queue บนแดชบอร์ด) — เรียงใกล้ครบกำหนดก่อน
   const openQueue = (inquiries || [])
     .filter((q) => q.status === 'open')
     .sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')))
     .slice(0, 12);
+
+  const inquiryMap = new Map((inquiries || []).map((q) => [q.id, q]));
+  let activityFeed = [];
+  if (inquiryMap.size) {
+    const { data: feedRows, error: feedError } = await supabase
+      .from('inquiry_messages')
+      .select('id, inquiryId, kind, body, authorName, authorDept, createdAt, editedAt, acknowledgedAt, deletedAt')
+      .in('inquiryId', Array.from(inquiryMap.keys()))
+      .order('createdAt', { ascending: false })
+      .limit(40);
+    if (feedError) return fail(feedError.message, 500);
+    activityFeed = (feedRows || []).map((message) => {
+      const inquiry = inquiryMap.get(message.inquiryId);
+      return {
+        ...message,
+        body: message.deletedAt ? null : message.body,
+        inquiryCode: inquiry?.code || null,
+        inquiryTitle: inquiry?.title || 'เรื่องสอบถาม RD',
+        inquiryStatus: inquiry?.status || 'open',
+        urgent: !!inquiry?.urgent,
+        requesterName: inquiry?.requesterName || null,
+        assigneeName: inquiry?.assigneeName || null,
+        dueDate: inquiry?.committedDueDate || inquiry?.requestedDueDate || inquiry?.dueDate || null,
+        dealId: inquiry?.dealId || null,
+        projectId: inquiry?.projectId || null,
+      };
+    });
+  }
 
   return ok({
     from: period.from,
@@ -121,5 +162,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     taskSummary,
     inquirySummary: { ...finalizeInquiryStats(deptInquiries), createdInPeriod, unassignedOpen },
     openQueue,
+    activityFeed,
+    taskFeed,
   });
 });
