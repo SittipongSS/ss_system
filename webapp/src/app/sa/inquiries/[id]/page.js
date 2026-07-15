@@ -3,7 +3,7 @@
 // ปิดเรื่องโดยฝั่งผู้ถามเสมอ (คนถามคือคนตัดสินว่าคำตอบใช้ได้จริง)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, CheckCircle2, ClipboardList, Hand, MessageCircleQuestion,
   CalendarDays, Edit2, Paperclip, Plus, RotateCcw, Save, Send, Trash2, X,
@@ -22,6 +22,7 @@ const TASK_STATUS_META = {
 
 export default function InquiryThreadPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params?.id;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -124,32 +125,10 @@ export default function InquiryThreadPage() {
   };
 
   // ฝ่ายผู้ตอบ: แตกคำถามเป็นงานของตัวเอง (personal_tasks + inquiryId ย้อนกลับ)
-  const createTask = async (message = null) => {
-    if (!window.confirm(`สร้างงานจาก${message ? "ข้อความนี้" : "คำถามนี้"} (มอบหมายให้ตัวเอง)?`)) return;
-    setBusy(`task:${message?.id || "inquiry"}`);
-    setError("");
-    try {
-      const res = await fetch("/api/pm/personal-tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: `[${data.code || "IQ"}] ${message?.body?.slice(0, 120) || data.title}`,
-          note: `งานจาก${message ? "ข้อความใน" : ""}เรื่องสอบถาม ${data.code || data.id}`,
-          dueDate: data.committedDueDate || data.requestedDueDate || data.dueDate || null,
-          dealId: data.dealId || null,
-          inquiryId: data.id,
-          inquiryMessageId: message?.id || null,
-          urgent: !!data.urgent,
-        }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || "สร้างงานไม่สำเร็จ");
-      await load();
-    } catch (e) {
-      setError(e.message || "สร้างงานไม่สำเร็จ");
-    } finally {
-      setBusy("");
-    }
+  const createTask = (message = null) => {
+    const query = new URLSearchParams({ inquiryId: data.id, returnTo: `/sa/inquiries/${data.id}` });
+    if (message?.id) query.set("messageId", message.id);
+    router.push(`/sa/tasks?${query.toString()}`);
   };
 
   const messageAction = async (message, action, body = {}) => {

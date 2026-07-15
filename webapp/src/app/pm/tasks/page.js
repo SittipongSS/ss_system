@@ -196,6 +196,7 @@ export default function TasksPage() {
   const [form, setForm] = useState(PERSONAL_BLANK);
   const [saving, setSaving] = useState(false);
   const [pendingFiles, setPendingFiles] = useState([]);
+  const [inquirySource, setInquirySource] = useState(null);
   const pendingFileRef = useRef(null);
 
   // กันผลลัพธ์ที่มาช้า/สลับลำดับเมื่อสลับ scope เร็ว ๆ
@@ -247,7 +248,7 @@ export default function TasksPage() {
   // ใครจัดการงานได้ (mirror server canManage): เจ้าของ/ผู้รับมอบ/superuser/หัวหน้าทีม
   const canManageTask = (t) => {
     if (!me) return false;
-    if (!canEdit) return false; // read-only role (viewer/staff) — never manages tasks
+    if (!canEdit && me.role !== "rd") return false; // rd manages its own operational tasks
     if (t.ownerId === me.id || t.assigneeId === me.id) return true;
     if (isSuperuser(me.role)) return true;
     if (me.role === "senior_ae" && me.team) {
@@ -261,7 +262,8 @@ export default function TasksPage() {
   // ── รับช่วงงาน — mirror ฝั่ง server (lib/permissions) ──
   // ผู้รับผิดชอบ = assigneeId || ownerId; ทีมของเขาใช้เช็คสิทธิ์ดึงงานมาเป็นผู้รับผิดชอบ.
   const respTeamOf = (t) => userTeamOf(t.assigneeId || t.ownerId);
-  const canPull = (t) => canPullTask(me, t, respTeamOf(t));
+  const respDeptOf = (t) => users.find((u) => u.id === (t.assigneeId || t.ownerId))?.department || null;
+  const canPull = (t) => canPullTask(me, t, respTeamOf(t), respDeptOf(t));
   const canRelease = (t) => canReleaseTask(me, t, canManageTask(t));
   // ปรับสถานะได้: ผู้รับผิดชอบ/ผู้ทำแทนเดิม/หัวหน้า — เพื่อนร่วมทีมต้องรับช่วงงานก่อน.
   const canSetStatus = (t) => canChangeTaskStatus(me, t, canManageTask(t));
@@ -369,18 +371,50 @@ export default function TasksPage() {
     : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
 
   // ── CRUD ──
-  const openAdd = () => { setEditingId(null); setForm(PERSONAL_BLANK); setPendingFiles([]); setShowModal(true); };
+  const openAdd = () => { setEditingId(null); setInquirySource(null); setForm(PERSONAL_BLANK); setPendingFiles([]); setShowModal(true); };
   useEffect(() => {
-    const dealId = new URLSearchParams(window.location.search).get("dealId");
-    if (!dealId || deepLinkHandled.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const inquiryId = params.get("inquiryId");
+    const messageId = params.get("messageId");
+    const dealId = params.get("dealId");
+    if (deepLinkHandled.current || (!inquiryId && !dealId)) return;
     deepLinkHandled.current = true;
+    if (inquiryId) {
+      fetch(`/api/sales-planning/inquiries/${inquiryId}`).then(async (res) => {
+        const inquiry = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(inquiry.error || "โหลดข้อความต้นทางไม่สำเร็จ");
+        const message = messageId ? (inquiry.messages || []).find((item) => item.id === messageId && !item.deletedAt) : null;
+        if (messageId && !message) throw new Error("ไม่พบข้อความต้นทาง");
+        const sourceText = message?.body?.trim() || inquiry.title || "งานจากเรื่องสอบถาม";
+        const returnToRaw = params.get("returnTo") || `/sa/inquiries/${inquiryId}`;
+        const returnTo = returnToRaw.startsWith("/") && !returnToRaw.startsWith("//") ? returnToRaw : `/sa/inquiries/${inquiryId}`;
+        setEditingId(null);
+        setInquirySource({ inquiryId, messageId: message?.id || null, code: inquiry.code || inquiry.id, returnTo });
+        setForm({
+          ...PERSONAL_BLANK,
+          title: `[${inquiry.code || "IQ"}] ${sourceText.slice(0, 120)}`,
+          note: sourceText,
+          dueDate: inquiry.committedDueDate || inquiry.requestedDueDate || inquiry.dueDate || "",
+          linkType: inquiry.dealId ? "deal" : "none",
+          dealId: inquiry.dealId || "",
+          category: "ประสานงานภายใน",
+          important: !!inquiry.urgent,
+          urgent: !!inquiry.urgent,
+        });
+        setPendingFiles([]);
+        setShowModal(true);
+      }).catch((error) => setToast({ kind: "error", msg: error.message || "เปิดฟอร์มสร้างงานไม่สำเร็จ" }));
+      return;
+    }
     setEditingId(null);
+    setInquirySource(null);
     setForm({ ...PERSONAL_BLANK, linkType: "deal", dealId });
     setPendingFiles([]);
     setShowModal(true);
   }, []);
   const openEdit = (t) => {
     setEditingId(t.id);
+    setInquirySource(null);
     setPendingFiles([]);
     setForm({
       title: t.title, note: t.note || "",
@@ -428,6 +462,8 @@ export default function TasksPage() {
           important: !!form.important,
           urgent: !!form.urgent,
           difficulty: form.difficulty,
+          inquiryId: inquirySource?.inquiryId || null,
+          inquiryMessageId: inquirySource?.messageId || null,
         }),
       });
       if (res.ok) {
@@ -448,7 +484,7 @@ export default function TasksPage() {
         loadWork(scope);
         if (failedFiles.length > 0) {
           setToast({ kind: "error", msg: `สร้างงานแล้ว แต่แนบไฟล์ไม่สำเร็จ: ${failedFiles.join(", ")} — เปิดแก้ไขงานเพื่อแนบอีกครั้ง` });
-        }
+        } else if (inquirySource?.returnTo) router.push(inquirySource.returnTo);
       } else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ" });
     } catch { setToast({ kind: "error", msg: "เกิดข้อผิดพลาด" }); }
     finally { setSaving(false); }
@@ -615,7 +651,7 @@ export default function TasksPage() {
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
-          {canEdit && <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>}
+          {(canEdit || role === "rd") && <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>}
         </div>
       </div>
 
@@ -933,6 +969,12 @@ export default function TasksPage() {
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editingId ? "แก้ไขงาน" : "เพิ่มงาน"} size="md">
         <form onSubmit={savePersonal}>
           <div className="grid gap-[14px]">
+            {inquirySource && (
+              <div className="glass-panel" style={{ padding: "10px 12px", fontSize: 12.5, color: "var(--text-2)" }}>
+                สร้างจากเรื่องสอบถาม <strong>{inquirySource.code}</strong>{inquirySource.messageId ? " · ผูกกับข้อความต้นทาง" : ""}
+                <div style={{ marginTop: 3, color: "var(--text-3)" }}>ระบบจะล็อกข้อความฝั่งตรงข้ามเมื่อบันทึกงานสำเร็จ</div>
+              </div>
+            )}
             <div className="form-group">
               <label>ชื่องาน <span className="text-[var(--red)]">*</span></label>
               <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required className="premium-input w-full" placeholder="เช่น โทรตามลูกค้า, เตรียมเอกสาร" />
@@ -1034,11 +1076,11 @@ export default function TasksPage() {
               <label>เชื่อมกับ</label>
               <div className="segmented" style={{ marginBottom: "8px" }}>
                 {[["none", "ไม่ผูก"], ["deal", "ดีล"]].map(([k, lbl]) => (
-                  <button type="button" key={k} className={form.linkType === k ? "active" : ""} onClick={() => setForm((f) => ({ ...f, linkType: k }))}>{lbl}</button>
+                  <button type="button" key={k} disabled={!!inquirySource} className={form.linkType === k ? "active" : ""} onClick={() => setForm((f) => ({ ...f, linkType: k }))}>{lbl}</button>
                 ))}
               </div>
               {form.linkType === "deal" && (
-                <Select fullWidth value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
+                <Select fullWidth disabled={!!inquirySource} value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
                   <option value="">— เลือกดีล —</option>
                   {allDeals.map((deal) => {
                     const project = deal.projectId ? allProjects.find((row) => row.id === deal.projectId) : null;

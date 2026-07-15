@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AlertTriangle, Briefcase, Calendar, CheckCircle2, CircleDashed, Clock, FolderKanban, ListTodo, Pencil, Save, Tag, User, X } from "lucide-react";
+import { AlertTriangle, Briefcase, Calendar, CheckCircle2, CircleDashed, Clock, FolderKanban, ListTodo, MessageCircleQuestion, Pencil, Save, Tag, User, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
@@ -86,9 +86,10 @@ export default function TaskDetailPage() {
           </div>}
         </section>
 
-        {(task.project || task.deal) && <section className={styles.card}><div className={styles.heading}><h2>งานที่เชื่อมโยง</h2></div><div className={styles.links}>
+        {(task.project || task.deal || task.inquiry) && <section className={styles.card}><div className={styles.heading}><h2>งานที่เชื่อมโยง</h2></div><div className={styles.links}>
           {task.project && <Link className={styles.linkCard} href={`/sa/projects/${task.project.id}`}><FolderKanban size={18} /><span><strong>{task.project.name}</strong><small>{[task.project.code, task.project.customerName].filter(Boolean).join(" · ")}</small></span></Link>}
-          {task.deal && <Link className={styles.linkCard} href={`/sa/deals/${task.deal.id}`}><Briefcase size={18} /><span><strong>{task.deal.title}</strong><small>{task.deal.customerName || "รายละเอียดดีล"}</small></span></Link>}
+          {task.deal && <Link className={styles.linkCard} href={`/sales-planning/deals/${task.deal.id}`}><Briefcase size={18} /><span><strong>{task.deal.title}</strong><small>{task.deal.customerName || "รายละเอียดดีล"}</small></span></Link>}
+          {task.inquiry && <Link className={styles.linkCard} href={`/sa/inquiries/${task.inquiry.id}`}><MessageCircleQuestion size={18} /><span><strong>{task.inquiry.code || "สอบถาม RD"} · {task.inquiry.title}</strong><small>เปิดข้อความต้นทาง</small></span></Link>}
         </div></section>}
       </main>
 

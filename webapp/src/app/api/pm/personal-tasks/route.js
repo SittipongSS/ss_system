@@ -1,7 +1,7 @@
 import { withUser, ok, fail, unauthorized, badRequest, forbidden } from '@/lib/http';
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { canAssignTask } from '@/lib/permissions';
+import { can, canAssignTask } from '@/lib/permissions';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canAcknowledgeInquiryMessage, canViewInquiry } from '@/lib/inquiries';
 
@@ -29,6 +29,7 @@ export const GET = withUser(async ({ user, supabase }) => {
 //  - ผูกได้ทั้งดีล (dealId) และ/หรือโครงการ (projectId) — nullable ทั้งคู่.
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
+  if (!can(user.role, 'pm:view') || user.role === 'viewer') return forbidden();
 
   const body = await req.json();
   if (!body.title || !body.title.trim()) {
@@ -36,7 +37,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
 
   let projectId = body.projectId || null;
-  const dealId = body.dealId || null;
+  let dealId = body.dealId || null;
   // ลิงก์ย้อนกลับไปเรื่องสอบถามต้นทาง (ปุ่ม "สร้างงานจากคำถาม" — mig 0104)
   let inquiryId = null;
   let inquiryMessageId = null;
@@ -47,6 +48,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (!inq) return badRequest('ไม่พบเรื่องสอบถามต้นทาง');
     if (!canViewInquiry(user, inq)) return forbidden('ไม่มีสิทธิ์ใช้เรื่องสอบถามนี้สร้างงาน');
     inquiryRecord = inq;
+    dealId = inq.dealId || null;
+    projectId = inq.projectId || null;
     inquiryId = inq.id;
     if (body.inquiryMessageId) {
       const { data: message } = await supabase.from('inquiry_messages').select('*')
