@@ -2,7 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can } from '@/lib/permissions';
-import { buildProjectTasks, todayStr } from '@/lib/pm/schedule';
+import { buildProjectTasks, recalculateGraph, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
@@ -29,8 +29,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (deal.projectId) return conflict('ดีลนี้ผูกโครงการแล้ว');
 
   const body = await req.json().catch(() => ({}));
-  const startDate = body.startDate || todayStr();
-  const dueDate = body.dueDate || deal.expectedCloseDate || null;
+  // วันที่ต้องซิงค์กับดีล: โมดัลไม่ระบุ → ใช้วันเริ่ม/สิ้นสุดของดีล (mig 0095) ก่อนตกไปวันนี้
+  const startDate = body.startDate || deal.startDate || todayStr();
+  const dueDate = body.dueDate || deal.endDate || deal.expectedCloseDate || null;
 
   // อีเมลลูกค้าดึงจากทะเบียนลูกค้าอัตโนมัติ (ไม่ให้กรอกในโมดัลแล้ว — R1) เพื่อไม่ให้
   // ข้อมูลแตกจากแหล่งเดียว; body.customerEmail คงรับไว้เผื่อ caller เก่า.
@@ -108,9 +109,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   setHolidays([...(await holidaySet())]);
   // DL1: ดีลมีไทม์ไลน์ลอยของตัวเองอยู่แล้ว → โครงการใหม่ "รับเลี้ยง" ชุดเดิม
-  // (เติม projectId — คงวัน/สถานะ/ความคืบหน้า) แทนการ gen ใหม่ทับ
+  // (เติม projectId — คงขั้นตอน/จำนวนวัน/สถานะ/ความคืบหน้า) แทนการ gen ใหม่ทับ
   const { data: floating } = await supabase
-    .from('project_tasks').select('id').eq('dealId', deal.id).is('projectId', null);
+    .from('project_tasks').select('*').eq('dealId', deal.id).is('projectId', null)
+    .order('stepOrder', { ascending: true });
   let insertedTasks = [];
   let adopted = 0;
   if ((floating || []).length) {
@@ -119,6 +121,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       .in('id', floating.map((t) => t.id));
     if (adoptErr) return fail(`ย้ายไทม์ไลน์ของดีลเข้าโครงการไม่สำเร็จ: ${adoptErr.message}`, 500);
     adopted = floating.length;
+    // ซิงค์วันที่: เลื่อนขั้นตอนที่รับเลี้ยงมาให้เกาะวันเริ่มของโครงการ (anchor เดียว
+    // กับหัวโครงการ/Gantt) — recalculateGraph คงจำนวนวัน+ลำดับ+predecessors ไว้
+    // ถ้าวันเริ่มโครงการตรงกับ anchor เดิมอยู่แล้ว ผลลัพธ์ไม่ต่าง = ไม่มีการ update
+    const recalced = recalculateGraph(floating, startDate);
+    await Promise.all(
+      recalced
+        .filter((r, i) => r.startDate !== floating[i].startDate || r.finishDate !== floating[i].finishDate)
+        .map((r) => supabase.from('project_tasks').update({
+          startDate: r.startDate, finishDate: r.finishDate, cellsOverride: r.cellsOverride ?? null,
+        }).eq('id', r.id)),
+    );
   } else {
     // เฟส B: task ชุดก่อตั้งติดป้ายดีลเจ้าของ (timeline segment ต่อดีล — mig 0090)
     const tasks = applyAutoStatuses(buildProjectTasks(project, project.id, deal.id));
