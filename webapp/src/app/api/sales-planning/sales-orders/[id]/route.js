@@ -28,7 +28,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
   const { id } = await ctx.params;
-  const order = await loadOrder(supabase, id).catch(() => null);
+  let order;
+  try { order = await loadOrder(supabase, id); }
+  catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!order) return notFound('ไม่พบ Sale Order');
   if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
   return ok(order);
@@ -38,7 +40,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
   const { id } = await ctx.params;
-  const before = await loadOrder(supabase, id).catch(() => null);
+  let before;
+  try { before = await loadOrder(supabase, id); }
+  catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!before) return notFound('ไม่พบ Sale Order');
   if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
 
@@ -48,14 +52,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (action === 'save') {
     if (!['draft', 'rejected'].includes(before.status)) return badRequest('แก้ไขได้เฉพาะ SO ร่างหรือรายการที่ถูกตีกลับ');
+    const orderDate = String(body.orderDate || '').trim();
+    const paymentDueDate = String(body.paymentDueDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return badRequest('วันที่ SO ไม่ถูกต้อง');
+    if (paymentDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(paymentDueDate)) return badRequest('วันที่กำหนดชำระไม่ถูกต้อง');
     const patch = {
-      orderDate: body.orderDate || before.orderDate,
-      paymentDueDate: body.paymentDueDate || null,
+      orderDate,
+      paymentDueDate: paymentDueDate || null,
       notes: String(body.notes || '').trim() || null,
       updatedAt: new Date().toISOString(),
     };
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
-    if (error) return fail(error.message, 500);
+    if (error) return fail(`บันทึก Sale Order ไม่สำเร็จ: ${error.message}`, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `edit ${before.orderNumber}`, request: req });
     return ok(data);
@@ -137,7 +145,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (user.role !== 'admin') return forbidden('เฉพาะผู้ดูแลระบบที่ลบ Sale Order ได้');
   const { id } = await ctx.params;
-  const before = await loadOrder(supabase, id).catch(() => null);
+  let before;
+  try { before = await loadOrder(supabase, id); }
+  catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!before) return notFound('ไม่พบ Sale Order');
   const { error } = await supabase.from('sales_orders').delete().eq('id', id);
   if (error) return fail(error.message, 500);
