@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enforceMasterPrices, normalizeManualLines } from './quoteLines.js';
+import { enforceMasterPrices, fgLineDescription, normalizeManualLines } from './quoteLines.js';
 
 // stub supabase: คืนราคา master ตาม map ที่กำหนด
 const fakeSupabase = (products) => ({
@@ -58,4 +58,19 @@ test('no FG lines → no products query needed', async () => {
   const manual = normalizeManualLines([{ description: 'ค่าออกแบบ', qty: 1, unitPrice: 1000 }]);
   const lines = await enforceMasterPrices(neverCalled, manual);
   assert.equal(lines[0].unitPrice, 1000);
+});
+
+test('fgLineDescription composes brand · name · volume', () => {
+  assert.equal(
+    fgLineDescription({ brandName: 'แบรนด์เอ', productDescription: 'น้ำหอมส้ม', volume: 50, volumeUnit: 'ml' }),
+    'แบรนด์เอ · น้ำหอมส้ม · 50 ml',
+  );
+  // แบรนด์ EN-only + ไม่มีปริมาตร
+  assert.equal(
+    fgLineDescription({ brandNameEn: 'Brand B', productDescriptionEn: 'Citrus' }),
+    'Brand B · Citrus',
+  );
+  // ไม่มีข้อมูลเลย → fallback productLabel (fgCode/สินค้า)
+  assert.equal(fgLineDescription({ fgCode: 'FG-9' }), 'FG-9');
+  assert.equal(fgLineDescription({}), 'สินค้า');
 });

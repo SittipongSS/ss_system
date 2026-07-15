@@ -700,7 +700,7 @@ export default function SalesPlanningPipelinePage() {
                         <ul style={{ margin: 0, paddingLeft: 18 }}>
                           {(quote.lines || []).slice(0, 3).map((line) => (
                             <li key={line.id}>
-                              {line.description} · <span className="mono">{line.qty}</span> x <span className="mono">{money(line.unitPrice)}</span>
+                              {line.fgCode ? <span className="mono">{line.fgCode} · </span> : null}{line.description} · <span className="mono">{line.qty}</span> x <span className="mono">{money(line.unitPrice)}</span>
                             </li>
                           ))}
                         </ul>
