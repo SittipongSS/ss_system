@@ -11,7 +11,7 @@ import {
   quoteTotals,
   toMoney,
 } from '@/lib/salesPlanning';
-import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
+import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import {
   ACTIVE_QUOTATION_STATUSES,
@@ -47,7 +47,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .eq('dealId', deal.id)
     .order('createdAt', { ascending: false });
   if (error) return fail(error.message, 500);
-  return ok(latestQuotationRevisions(data || []));
+  // บรรทัด FG โชว์คำอธิบายสดจาก master เฉพาะใบที่ยังแก้ได้ (แสดงผลเท่านั้น ไม่บันทึก)
+  return ok(await refreshFgLinesForDisplay(supabase, latestQuotationRevisions(data || [])));
 });
 
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {

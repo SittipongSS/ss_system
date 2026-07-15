@@ -137,6 +137,13 @@ export default function QuotationEditorPage() {
     setLines((prev) => [...prev, { _lineKind: "product", productId: null, fgCode: null, description: "", qty: 1, unitPrice: 0, discountType: null, discountValue: 0 }]);
     setDirty(true);
   };
+  // คำอธิบายสดจากฐานข้อมูลสินค้า (แบรนด์ · ชื่อสินค้า · ปริมาตร) สำหรับบรรทัด FG —
+  // ใบเก่าที่ snapshot ไว้แค่ชื่อจะเห็นข้อมูลครบทันทีโดยไม่ต้องเลือกสินค้าใหม่
+  const fgDescriptionFor = (productId) => {
+    const p = products.find((x) => x.id === productId);
+    return p ? fgLineDescription(p) : null;
+  };
+
   const selectLineProduct = (i, productId) => {
     const p = products.find((x) => x.id === productId);
     if (!p) return;
@@ -469,9 +476,10 @@ export default function QuotationEditorPage() {
                               options={productOptions}
                             />
                           )}
-                          {/* รหัสนำหน้า → คำอธิบาย แบรนด์ · ชื่อสินค้า · ปริมาตร (มติผู้ใช้) */}
+                          {/* รหัสนำหน้า → คำอธิบาย แบรนด์ · ชื่อสินค้า · ปริมาตร (มติผู้ใช้) —
+                              บรรทัด FG โชว์ค่าสดจากฐานข้อมูล + ล็อกแก้ (server ทับซ้ำตอนบันทึก) */}
                           {l.fgCode && <span className={styles.fgCode}>FG: {l.fgCode}</span>}
-                          <input className="premium-input" value={l.description || ""} disabled={!editable} placeholder={l._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"} onChange={(e) => setLine(i, { description: e.target.value })} style={{ width: "100%" }} />
+                          <input className="premium-input" value={(l.productId && fgDescriptionFor(l.productId)) || l.description || ""} disabled={!editable || !!l.productId} title={l.productId ? "คำอธิบายจากฐานข้อมูลสินค้า (แบรนด์ · ชื่อสินค้า · ปริมาตร) — แก้ที่ฐานข้อมูล" : undefined} placeholder={l._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"} onChange={(e) => setLine(i, { description: e.target.value })} style={{ width: "100%" }} />
                         </div>
                       </td>
                       <td><MoneyInput min="0" value={l.qty} disabled={!editable} onChange={(value) => setLine(i, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${i + 1}`} /></td>

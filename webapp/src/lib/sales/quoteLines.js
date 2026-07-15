@@ -51,30 +51,59 @@ export async function seedLinesFromProject(supabase, deal) {
   });
 }
 
-// ราคา FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี productId
-// ถูกทับราคาด้วย retailPriceIncVat ปัจจุบันเสมอ — client แก้ราคาเองไม่ได้ ต้องแก้ที่
-// ฐานข้อมูลสินค้า. สินค้าที่หายจาก master (ถูกลบ) → คงราคาเดิมที่บันทึกไว้ในใบ
-// (fallback ต่อ productId จาก previousLines) เพื่อไม่ให้ยอดเอกสารเดิมพัง.
+// ข้อมูลบรรทัด FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี
+// productId ถูกทับทั้ง "ราคา" (retailPriceIncVat) และ "คำอธิบาย" (แบรนด์ · ชื่อสินค้า ·
+// ปริมาตร) + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ — client แก้เองไม่ได้ ต้องแก้ที่
+// ฐานข้อมูลสินค้า; ใบเดิมที่บันทึกไว้ก่อนกติกานี้จะถูก refresh ตอนบันทึก/Revise ครั้งถัดไป.
+// สินค้าที่หายจาก master (ถูกลบ) → คงราคา/คำอธิบายเดิมที่บันทึกไว้ในใบ
+// (fallback ต่อ productId จาก previousLines) เพื่อไม่ให้เอกสารเดิมพัง.
 export async function enforceMasterPrices(supabase, lines = [], previousLines = []) {
   const ids = [...new Set(lines.filter((l) => l.productId).map((l) => l.productId))];
   if (!ids.length) return lines;
   const { data, error } = await supabase
     .from('products')
-    .select('id, retailPriceIncVat')
+    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, retailPriceIncVat')
     .in('id', ids);
   if (error) throw error;
-  const priceById = new Map((data || []).map((p) => [p.id, toMoney(p.retailPriceIncVat)]));
+  const productById = new Map((data || []).map((p) => [p.id, p]));
   const prevById = new Map(
-    previousLines.filter((l) => l?.productId).map((l) => [l.productId, toMoney(l.unitPrice)]),
+    previousLines.filter((l) => l?.productId).map((l) => [l.productId, l]),
   );
   return lines.map((line) => {
     if (!line.productId) return line;
-    const master = priceById.get(line.productId);
-    const unitPrice = master !== undefined ? master : (prevById.get(line.productId) ?? line.unitPrice);
-    if (unitPrice === line.unitPrice) return line;
+    const master = productById.get(line.productId);
+    const prev = prevById.get(line.productId);
+    const unitPrice = master ? toMoney(master.retailPriceIncVat) : toMoney(prev?.unitPrice ?? line.unitPrice);
+    const description = master ? fgLineDescription(master) : (prev?.description || line.description);
+    const fgCode = master ? (master.fgCode || null) : (prev?.fgCode ?? line.fgCode);
+    if (unitPrice === line.unitPrice && description === line.description && fgCode === line.fgCode) return line;
     const net = quoteLineNet({ qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue });
-    return { ...line, unitPrice, discountAmount: net.discountAmount, lineTotal: net.lineTotal };
+    return { ...line, unitPrice, description, fgCode, discountAmount: net.discountAmount, lineTotal: net.lineTotal };
   });
+}
+
+// เติมคำอธิบาย/รหัสสดจาก master ให้บรรทัด FG เพื่อการแสดงผล+พิมพ์ (ไม่บันทึกลง DB) —
+// ใช้เฉพาะใบสถานะที่ยังแก้ได้ (draft/sent/rejected); ใบ final (accepted/closed/revised/
+// cancelled) คงข้อมูล ณ วันปิดไว้เป็นหลักฐาน. ราคาไม่เติมที่นี่ (ราคาผูกกับยอดรวม —
+// ให้ enforceMasterPrices จัดการตอนบันทึกเท่านั้น ไม่งั้นราคาโชว์ไม่ตรงยอดหัวใบ).
+export async function refreshFgLinesForDisplay(supabase, quotes = []) {
+  const editable = new Set(['draft', 'sent', 'rejected']);
+  const targets = quotes.filter((q) => q && editable.has(q.status) && Array.isArray(q.lines));
+  const ids = [...new Set(targets.flatMap((q) => q.lines.filter((l) => l?.productId).map((l) => l.productId)))];
+  if (!ids.length) return quotes;
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit')
+    .in('id', ids);
+  if (error) return quotes; // เสริมการแสดงผลเท่านั้น — อย่าให้ GET ล้มเพราะ join นี้
+  const byId = new Map((data || []).map((p) => [p.id, p]));
+  for (const q of targets) {
+    q.lines = q.lines.map((l) => {
+      const p = l?.productId ? byId.get(l.productId) : null;
+      return p ? { ...l, description: fgLineDescription(p), fgCode: p.fgCode || l.fgCode } : l;
+    });
+  }
+  return quotes;
 }
 
 // normalize บรรทัดจาก client (สร้าง/แก้): คิดส่วนลดรายบรรทัด + ยอดสุทธิที่ server เสมอ
