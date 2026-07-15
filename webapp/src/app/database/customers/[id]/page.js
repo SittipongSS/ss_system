@@ -23,6 +23,8 @@ import PhoneInput from "@/components/ui/PhoneInput";
 import NationalIdInput from "@/components/ui/NationalIdInput";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
 
 export default function CustomerDetails() {
   const params = useParams();
@@ -285,22 +287,12 @@ export default function CustomerDetails() {
       >
         <ArrowLeft size={16} /> กลับไปข้อมูลลูกค้า
       </Link>
-      <div className="premium-header flex justify-between items-center mb-6">
-        <div className="header-content">
-          <h1 className="flex items-center gap-2 flex-wrap">
-            <span className="premium-header-icon">
-              <Building2 size={20} />
-            </span>
-            {customer.name}
-            <span className="pill font-mono text-xs">{customer.arCode}</span>
-          </h1>
-          <p>
-            วันที่สร้าง:{" "}
-            {fmtDate(customer.createdAt)}
-          </p>
-        </div>
-
-        <div className="action-bar">
+      <SalesDetailOverview
+        eyebrow={`CUSTOMER MASTER · ${customer.arCode || "NO AR CODE"}`}
+        title={customer.name}
+        description={<><span>{customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล"}</span><span>สร้างเมื่อ {fmtDate(customer.createdAt)}</span></>}
+        badges={<SalesStateBadge label={customer.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={customer.isActive === false ? "var(--text-3)" : "var(--green)"} />}
+        actions={<>
           {canEdit && (
             <ActionButton kind="edit" label="แก้ไขข้อมูล" onClick={() => setIsEditing(true)} />
           )}
@@ -312,8 +304,16 @@ export default function CustomerDetails() {
           {canEdit && canDelete && (
             <ActionButton kind="delete" label="ลบลูกค้า" onClick={handleDelete} />
           )}
-        </div>
-      </div>
+        </>}
+        facts={[
+          { icon: Boxes, label: "สินค้า", value: `${products.length} รายการ` },
+          { icon: ShoppingCart, label: "ใบสั่งซื้อ", value: `${orders.length} รายการ` },
+          { icon: FolderKanban, label: "โครงการ", value: `${projects.length} โครงการ` },
+          { icon: Building2, label: "ทีมดูแล", value: (customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", ") || "-" },
+        ]}
+      />
+
+      {!!projects.length && <div className="my-[18px]"><ContextGrid>{projects.slice(0, 3).map((project) => <ContextCard key={project.id} icon={FolderKanban} href={`/sa/projects/${project.id}`} eyebrow="โครงการของลูกค้า" title={`${project.code ? `${project.code} · ` : ""}${project.name}`} subtitle="เปิดดูดีล ไทม์ไลน์ และงานของโครงการ" badges={project.status ? <span className="ui-badge">{project.status}</span> : null} facts={[{ label: "ทีม", value: project.team || "-" }, { label: "สถานะ", value: project.status || "-" }]} />)}</ContextGrid></div>}
 
       {customer.isActive === false && (
         <div className="mb-[22px] rounded-xl px-4 py-3 flex items-center gap-2 text-sm" style={{ background: "var(--panel-2)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
@@ -347,10 +347,7 @@ export default function CustomerDetails() {
       </div>
 
       {/* Profile Card (full width) */}
-      <div className="glass-panel p-[20px] mb-[22px]">
-        <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-          <Building2 size={16} className="text-[var(--accent)]" /> ข้อมูลลูกค้า บริษัท/บุคคล (Customer Details)
-        </h3>
+      <div className="mb-[22px]"><DetailCard icon={Building2} eyebrow="Customer profile" title="ข้อมูลลูกค้า บริษัท/บุคคล">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 text-xs">
           <Field label="ประเภทลูกค้า" value={customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล (บริษัท)"} />
           <Field label="ทีมดูแล" value={(customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", ") || "-"} />
@@ -402,7 +399,7 @@ export default function CustomerDetails() {
             )}
           </div>
         </div>
-      </div>
+      </DetailCard></div>
 
       {/* เอกสารแนบของลูกค้า — แผนที่/สัญญา/หนังสือรับรอง/ภพ.20 ฯลฯ */}
       <div className="mb-[22px]">

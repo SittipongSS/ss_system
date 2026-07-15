@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban } from "lucide-react";
+import { ArrowLeft, Building2, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -15,6 +15,8 @@ import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
 
 export default function ProductDetails() {
   const params = useParams();
@@ -159,18 +161,12 @@ export default function ProductDetails() {
       >
         <ArrowLeft size={16} /> กลับ
       </button>
-      <div className="premium-header flex justify-between items-center mb-6">
-        <div className="header-content">
-          <h1 className="flex items-center gap-2 flex-wrap">
-            <span className="premium-header-icon"><Package size={20} /></span>
-            {product.productDescriptionEn || product.productDescription}
-            <span className="pill font-mono text-xs">{product.fgCode}</span>
-          </h1>
-          {product.productDescriptionEn && product.productDescription && <p className="text-[var(--text-3)] text-sm">{product.productDescription}</p>}
-          <p>แบรนด์: {brandBoth(product.brandName, product.brandNameEn)}</p>
-        </div>
-
-        <div className="action-bar">
+      <SalesDetailOverview
+        eyebrow={`PRODUCT MASTER · ${product.fgCode || "NO FG CODE"}`}
+        title={product.productDescriptionEn || product.productDescription}
+        description={<><span>{product.productDescriptionEn && product.productDescription ? product.productDescription : "ไม่มีชื่อภาษาไทย"}</span><span>แบรนด์ {brandBoth(product.brandName, product.brandNameEn) || "-"}</span></>}
+        badges={<SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />}
+        actions={<>
           {canEditProducts && (
             <ActionButton kind="edit" label="แก้ไขข้อมูล" disabled={isUpdating} onClick={() => setShowEdit(true)} />
           )}
@@ -182,8 +178,19 @@ export default function ProductDetails() {
           {canDeleteProducts && (
             <ActionButton kind="delete" label="ลบสินค้า" disabled={isUpdating} onClick={handleDelete} />
           )}
-        </div>
-      </div>
+        </>}
+        facts={[
+          { icon: Package, label: "ปริมาตร/หน่วย", value: `${product.volume} ${product.volumeUnit || "ml"}` },
+          { icon: ShoppingCart, label: "ราคาขายปลีก", value: fmtMoney(product.retailPriceIncVat) },
+          { icon: FolderKanban, label: "โครงการ", value: `${projects.length} โครงการ` },
+          { icon: Package, label: "หมวดสินค้า", value: product.categoryCode || "-" },
+        ]}
+      />
+
+      <div className="my-[18px]"><ContextGrid>
+        <ContextCard icon={Building2} href={product.customerId ? `/database/customers/${product.customerId}` : undefined} eyebrow="เจ้าของสินค้า" title={product.customerName || "ยังไม่ผูกลูกค้า"} subtitle={brandBoth(product.brandName, product.brandNameEn) || "ไม่ระบุแบรนด์"} badges={product.customerType ? <span className="ui-badge">{product.customerType}</span> : null} facts={[{ label: "FG Code", value: product.fgCode }, { label: "หมวด", value: product.categoryCode || "-" }]} />
+        {projects.slice(0, 3).map((project) => <ContextCard key={project.id} icon={FolderKanban} href={`/sa/projects/${project.id}`} eyebrow="โครงการที่ใช้สินค้านี้" title={`${project.code ? `${project.code} · ` : ""}${project.name}`} subtitle="เปิดดูงานและไทม์ไลน์โครงการ" badges={project.status ? <span className="ui-badge">{project.status}</span> : null} facts={[{ label: "ทีม", value: project.team || "-" }, { label: "สถานะ", value: project.status || "-" }]} />)}
+      </ContextGrid></div>
 
       {product.isActive === false && (
         <div className="mb-[22px] rounded-xl px-4 py-3 flex items-center gap-2 text-sm" style={{ background: "var(--panel-2)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
@@ -209,10 +216,7 @@ export default function ProductDetails() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-[22px]">
         {/* Product Profile */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="glass-panel p-[20px]">
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-              <Package size={16} className="text-[var(--accent)]" /> ข้อมูลสเปคสินค้า (Product Specs)
-            </h3>
+          <DetailCard icon={Package} eyebrow="Product specification" title="ข้อมูลสเปคสินค้า">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
               <div className="md:col-span-2">
                 <span className="text-[var(--text-3)] block mb-1">{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า)</span>
@@ -245,7 +249,7 @@ export default function ProductDetails() {
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.categoryCode || "-"}</span>
               </div>
             </div>
-          </div>
+          </DetailCard>
 
           {/* Cost breakdown — hidden entirely from other departments; SA sees
               costPrice, LG + admin also see the breakdown + profit. */}
