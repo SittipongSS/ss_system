@@ -113,6 +113,34 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')))
     .slice(0, 12);
 
+  const inquiryMap = new Map((inquiries || []).map((q) => [q.id, q]));
+  let activityFeed = [];
+  if (inquiryMap.size) {
+    const { data: feedRows, error: feedError } = await supabase
+      .from('inquiry_messages')
+      .select('id, inquiryId, kind, body, authorName, authorDept, createdAt, editedAt, acknowledgedAt, deletedAt')
+      .in('inquiryId', Array.from(inquiryMap.keys()))
+      .order('createdAt', { ascending: false })
+      .limit(40);
+    if (feedError) return fail(feedError.message, 500);
+    activityFeed = (feedRows || []).map((message) => {
+      const inquiry = inquiryMap.get(message.inquiryId);
+      return {
+        ...message,
+        body: message.deletedAt ? null : message.body,
+        inquiryCode: inquiry?.code || null,
+        inquiryTitle: inquiry?.title || 'เรื่องสอบถาม RD',
+        inquiryStatus: inquiry?.status || 'open',
+        urgent: !!inquiry?.urgent,
+        requesterName: inquiry?.requesterName || null,
+        assigneeName: inquiry?.assigneeName || null,
+        dueDate: inquiry?.committedDueDate || inquiry?.requestedDueDate || inquiry?.dueDate || null,
+        dealId: inquiry?.dealId || null,
+        projectId: inquiry?.projectId || null,
+      };
+    });
+  }
+
   return ok({
     from: period.from,
     to: period.to,
@@ -121,5 +149,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     taskSummary,
     inquirySummary: { ...finalizeInquiryStats(deptInquiries), createdInPeriod, unassignedOpen },
     openQueue,
+    activityFeed,
   });
 });

@@ -13,6 +13,7 @@ import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/i
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { DEPARTMENT_NAMES_TH } from "@/lib/permissions";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import styles from "./page.module.css";
 
 const TASK_STATUS_META = {
   Pending: { label: "รอ", color: "var(--text-3)" },
@@ -178,13 +179,13 @@ export default function InquiryThreadPage() {
         <Link href="/sa/inquiries" className="btn ghost sm"><ArrowLeft size={14} aria-hidden="true" /> รายการทั้งหมด</Link>
       }
     >
-      <div className="flex flex-col gap-4" style={{ maxWidth: 860 }}>
+      <div className={`flex flex-col gap-4 ${styles.page}`}>
         {error && (
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
         {/* สถานะ + บริบท + ปุ่มตามบทบาท */}
-        <section className="glass-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+        <section className={`glass-panel ${styles.overview}`} style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <InquiryStatusBadge status={data.status} />
             {data.urgent && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
@@ -206,12 +207,20 @@ export default function InquiryThreadPage() {
             </span>
           </div>
           {(data.deal || data.project) && (
-            <div style={{ fontSize: 13, display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <div className={styles.contextGrid}>
               {data.deal && (
-                <span>ดีล: <Link href={`/sales-planning/deals/${data.deal.id}`} className="linklike">{data.deal.code ? `${data.deal.code} · ` : ""}{data.deal.title}</Link>{data.deal.customerName ? ` — ${data.deal.customerName}` : ""}</span>
+                <Link href={`/sales-planning/deals/${data.deal.id}`} className={styles.contextCard}>
+                  <small>ดีลที่เกี่ยวข้อง</small><strong>{data.deal.code ? `${data.deal.code} · ` : ""}{data.deal.title}</strong>
+                  <span>{data.deal.customerName || "ไม่ระบุลูกค้า"}</span>
+                  <div>{data.deal.dealType && <b>{data.deal.dealType}</b>}{data.deal.stage && <b>{data.deal.stage}</b>}{data.deal.expectedCloseDate && <b>คาดปิด {fmtDate(data.deal.expectedCloseDate)}</b>}</div>
+                </Link>
               )}
               {data.project && (
-                <span>โครงการ: <Link href={`/sa/projects/${data.project.id}`} className="linklike">{data.project.code ? `${data.project.code} · ` : ""}{data.project.name}</Link></span>
+                <Link href={`/sa/projects/${data.project.id}`} className={styles.contextCard}>
+                  <small>โครงการที่เกี่ยวข้อง</small><strong>{data.project.code ? `${data.project.code} · ` : ""}{data.project.name}</strong>
+                  <span>{data.project.customerName || data.project.productName || "ไม่ระบุลูกค้า"}</span>
+                  <div>{data.project.status && <b>{data.project.status}</b>}{data.project.aeOwner && <b>AE {data.project.aeOwner}</b>}{data.project.dueDate && <b>ครบ {fmtDate(data.project.dueDate)}</b>}</div>
+                </Link>
               )}
             </div>
           )}
@@ -300,8 +309,9 @@ export default function InquiryThreadPage() {
         )}
 
         {/* เธรดข้อความ */}
-        <section className="glass-panel" style={{ padding: 16 }}>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+        <section className={`glass-panel ${styles.thread}`} style={{ padding: 16 }}>
+          <div className={styles.threadHead}><div><small>CONVERSATION</small><h2>การสนทนาและอัปเดต</h2></div><span>{(data.messages || []).filter((m) => m.kind !== "status").length} ข้อความ</span></div>
+          <ul className={styles.messageList}>
             {(data.messages || []).map((m) => {
               if (m.kind === "status") {
                 return (
@@ -313,10 +323,7 @@ export default function InquiryThreadPage() {
               const isTarget = m.authorDept === data.targetDept;
               const deptLabel = m.authorDept ? (DEPARTMENT_NAMES_TH[m.authorDept] || m.authorDept) : "";
               return (
-                <li key={m.id} style={{
-                  borderLeft: `3px solid ${isTarget ? "var(--green)" : "var(--blue)"}`,
-                  paddingLeft: 10,
-                }}>
+                <li key={m.id} className={`${styles.message} ${isTarget ? styles.targetMessage : styles.requesterMessage}`}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <strong style={{ fontSize: 13 }}>{m.authorName || "-"}</strong>
                     {deptLabel && <span className="ui-badge" style={{ color: isTarget ? "var(--green)" : "var(--blue)" }}>{deptLabel}</span>}

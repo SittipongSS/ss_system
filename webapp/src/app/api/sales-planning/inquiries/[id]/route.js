@@ -47,11 +47,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   let deal = null;
   let project = null;
   if (inquiry.dealId) {
-    const { data } = await supabase.from('sales_deals').select('id, code, title, customerName, team, stage').eq('id', inquiry.dealId).maybeSingle();
+    const { data } = await supabase.from('sales_deals').select('id, code, title, customerName, team, stage, dealType, projectValue, wonValue, probability, expectedCloseDate, ownerName, formulaName').eq('id', inquiry.dealId).maybeSingle();
     deal = data || null;
   }
   if (inquiry.projectId) {
-    const { data } = await supabase.from('projects').select('id, code, name, customerName').eq('id', inquiry.projectId).maybeSingle();
+    const { data } = await supabase.from('projects').select('id, code, name, customerName, status, startDate, dueDate, aeOwner, team, type, urgency, productName').eq('id', inquiry.projectId).maybeSingle();
     project = data || null;
   }
   const side = inquirySide(user, inquiry);
