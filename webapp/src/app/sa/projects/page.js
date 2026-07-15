@@ -7,12 +7,12 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus, Pencil, Trash2 } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { useCan } from "@/lib/roleContext";
-import { dealTypeBadge, KpiCard } from "@/components/salesPlanning/ui";
+import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoneyCompact, fmtName } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
 
@@ -101,14 +101,14 @@ export default function ProjectsIndexPage() {
 
   if (!canView) {
     return (
-      <Workspace icon={<FolderKanban size={22} />} title="โครงการ">
+      <SaWorkspace icon={<FolderKanban size={22} />} title="โครงการ">
         <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
-      </Workspace>
+      </SaWorkspace>
     );
   }
 
   return (
-    <Workspace
+    <SaWorkspace
       icon={<FolderKanban size={22} />}
       title="โครงการ"
       subtitle="ภาชนะรวมดีลของลูกค้าแต่ละงาน — มูลค่าโครงการ rollup จากดีลทุกใบ (FC Total · Actual · FC คงเหลือ)"
@@ -130,14 +130,14 @@ export default function ProjectsIndexPage() {
           </div>
         )}
 
-        <section className="kpi-grid" aria-busy={loading}>
-          <KpiCard icon={<BarChart3 size={16} aria-hidden="true" />} label="FC Total" value={money(totals.fcTotal)} hint="แผนทั้งหมดของโครงการที่แสดง" />
-          <KpiCard icon={<LineChart size={16} aria-hidden="true" />} label="Actual" value={money(totals.actual)} hint="ยอดเก็บจริง (ดีล Won)" />
-          <KpiCard icon={<Target size={16} aria-hidden="true" />} label="FC คงเหลือ" value={money(totals.fcRemaining)} hint="ดีลเปิดที่ยังต้องตามปิด" />
-          <KpiCard icon={<ClipboardList size={16} aria-hidden="true" />} label="โครงการ / ดีล" value={`${filtered.length} / ${totals.deals}`} hint="ตามตัวกรองปัจจุบัน" />
-        </section>
+        <SaMetricStrip>
+          <SaMetric icon={<BarChart3 />} label="FC Total" value={money(totals.fcTotal)} note="แผนทั้งหมดของโครงการที่แสดง" />
+          <SaMetric icon={<LineChart />} label="Actual" value={money(totals.actual)} note="ยอดจาก Sale Order ที่อนุมัติแล้ว" tone="good" />
+          <SaMetric icon={<Target />} label="FC คงเหลือ" value={money(totals.fcRemaining)} note="ดีลเปิดที่ยังต้องตามปิด" tone={totals.fcRemaining ? "warning" : undefined} />
+          <SaMetric icon={<ClipboardList />} label="โครงการ / ดีล" value={`${filtered.length} / ${totals.deals}`} note="ตามตัวกรองปัจจุบัน" />
+        </SaMetricStrip>
 
-        <section className="glass-panel" style={{ padding: 16 }}>
+        <SaSection icon={<FolderKanban size={17} />} title="ทะเบียนโครงการ" subtitle="ค้นหา กรอง และเปิดดูข้อมูลโครงการทั้งหมด" actions={<span className="ui-badge">{filtered.length} โครงการ</span>}>
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="search-glass" style={{ width: 300 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
@@ -150,7 +150,6 @@ export default function ProjectsIndexPage() {
               <option value="Drop">Drop</option>
             </Select>
             <div className="spacer" />
-            <span className="ui-badge">{filtered.length} โครงการ</span>
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
@@ -195,7 +194,7 @@ export default function ProjectsIndexPage() {
                           {firstDeal ? (
                             <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                               {dealTypeBadge(firstDeal.dealType || firstDeal.metadata?.projectType)}
-                              <Link prefetch={false} href={`/sa/deals/${firstDeal.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firstDeal.title || "-"}</Link>
+                              <Link prefetch={false} href={`/sales-planning/deals/${firstDeal.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firstDeal.title || "-"}</Link>
                             </div>
                           ) : <span style={{ color: "var(--text-3)" }}>-</span>}
                           <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: 12 }}>{(p.deals || []).length} ดีล</span>
@@ -234,7 +233,7 @@ export default function ProjectsIndexPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </SaSection>
         </div>
       <SalesProjectCreateModal
         open={showCreateModal || !!editingProject}
@@ -263,6 +262,6 @@ export default function ProjectsIndexPage() {
         message={deleteTarget ? `ต้องการลบโครงการ “${deleteTarget.code || deleteTarget.id} — ${deleteTarget.name || "-"}” และขั้นตอนทั้งหมดใช่หรือไม่?${(deleteTarget.deals || []).length ? " หากโครงการยังผูกกับดีล ระบบจะไม่อนุญาตให้ลบจากหน้านี้" : ""}` : ""}
         confirmLabel="ลบ"
       />
-    </Workspace>
+    </SaWorkspace>
   );
 }

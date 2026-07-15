@@ -3,8 +3,8 @@
 // ฝ่ายผู้ตอบ (rd) เห็นทุกเรื่องของฝ่ายตน. คิวเรียงตามกำหนดตอบ (SLA 3 วันทำการ).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MessageCircleQuestion, Plus } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import { Activity, AlertTriangle, CheckCircle2, Clock3, MessageCircleQuestion, Plus } from "lucide-react";
+import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import InquiryCreateModal from "@/components/salesPlanning/InquiryCreateModal";
 import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
 import { fmtDate, fmtDateTime } from "@/lib/format";
@@ -60,9 +60,15 @@ export default function InquiriesPage() {
   }, [rows]);
 
   const canCreate = can(role, "salesplan:edit");
+  const summary = useMemo(() => ({
+    total: rows.length,
+    open: rows.filter((row) => row.status === "open").length,
+    answered: rows.filter((row) => row.status === "answered").length,
+    overdue: rows.filter((row) => row.status === "open" && row.dueDate && todayISO && row.dueDate < todayISO).length,
+  }), [rows, todayISO]);
 
   return (
-    <Workspace
+    <SaWorkspace
       icon={<MessageCircleQuestion size={22} />}
       title="สอบถาม RD"
       subtitle="ข้อสอบถามจากฝ่ายขายถึงฝ่ายวิจัยและพัฒนา — ตอบกลับภายใน 3 วันทำการ"
@@ -77,15 +83,22 @@ export default function InquiriesPage() {
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
 
-        <div className="segmented" style={{ alignSelf: "flex-start" }}>
-          {FILTERS.map((f) => (
-            <button key={f.key} type="button" onClick={() => setFilter(f.key)} className={filter === f.key ? "active" : ""}>
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <SaMetricStrip>
+          <SaMetric icon={<Activity />} label="ทั้งหมด" value={summary.total} note="ตามสิทธิ์ที่มองเห็น" />
+          <SaMetric icon={<Clock3 />} label="รอตอบ" value={summary.open} note="คิวที่ยังเปิดอยู่" tone={summary.open ? "warning" : "good"} />
+          <SaMetric icon={<CheckCircle2 />} label="ตอบแล้ว" value={summary.answered} note="รอปิดหรือดำเนินการต่อ" />
+          <SaMetric icon={<AlertTriangle />} label="เลยกำหนด" value={summary.overdue} note="ต้องติดตามทันที" tone={summary.overdue ? "danger" : "good"} />
+        </SaMetricStrip>
 
-        <div className="premium-glass-table table-responsive">
+        <SaSection
+          icon={<MessageCircleQuestion size={17} />}
+          title="คิวสอบถาม RD"
+          subtitle="เรียงเรื่องที่รอตอบและใกล้ครบกำหนดขึ้นก่อน"
+          actions={<div className="segmented">{FILTERS.map((f) => (
+            <button key={f.key} type="button" onClick={() => setFilter(f.key)} className={filter === f.key ? "active" : ""}>{f.label}</button>
+          ))}</div>}
+        >
+          <div className="premium-glass-table table-responsive">
           <table className="w-full text-sm">
             <thead>
               <tr>
@@ -125,12 +138,13 @@ export default function InquiriesPage() {
               )}
             </tbody>
           </table>
-        </div>
-        {!loading && sorted.length > 0 && (
-          <div style={{ color: "var(--text-3)", fontSize: 12 }}>
+          </div>
+          {!loading && sorted.length > 0 && (
+          <div style={{ marginTop: 12, color: "var(--text-3)", fontSize: 12 }}>
             {sorted.length} เรื่อง · อัปเดตล่าสุด {fmtDateTime(sorted[0]?.updatedAt || sorted[0]?.createdAt)}
           </div>
-        )}
+          )}
+        </SaSection>
       </div>
 
       <InquiryCreateModal
@@ -138,6 +152,6 @@ export default function InquiriesPage() {
         onClose={() => setCreateOpen(false)}
         onCreated={() => { setCreateOpen(false); load(); }}
       />
-    </Workspace>
+    </SaWorkspace>
   );
 }

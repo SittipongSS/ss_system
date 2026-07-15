@@ -45,6 +45,7 @@ import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
 import { compactPersonName } from "@/lib/personName";
 import { brandDisplayFromList } from "@/lib/master/brands";
+import { SaPageShell } from "@/components/salesPlanning/SaWorkspace";
 
 const STATUS_TH = {
   New: "ใหม่ (New)", "In Progress": "ดำเนินการ (Active)", Completed: "เสร็จสิ้น (Completed)",
@@ -983,7 +984,7 @@ export default function ProjectDetailPage() {
   );
 
   return (
-    <div>
+    <SaPageShell>
       {/* Top Header Section */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "12px" }}>
         <Link
@@ -1007,7 +1008,7 @@ export default function ProjectDetailPage() {
             {/* Sales เป็นแม่: โครงการที่ผูกงานขายต้องลบที่หน้าบริหารงานขาย (ลบทั้งสาย).
                 โครงการกำพร้า (ยังไม่ผูกดีล) ลบตรงนี้ได้ตามเดิม. */}
             {data.dealId ? (
-              <Link className="btn-icon" href={`/sa/deals/${data.dealId}`} aria-label="จัดการที่หน้าบริหารงานขาย" title="โครงการนี้ผูกงานขาย — ลบ/จัดการที่หน้าบริหารงานขาย"><ExternalLink size={16} /></Link>
+              <Link className="btn-icon" href={`/sales-planning/deals/${data.dealId}`} aria-label="จัดการที่หน้าบริหารงานขาย" title="โครงการนี้ผูกงานขาย — ลบ/จัดการที่หน้าบริหารงานขาย"><ExternalLink size={16} /></Link>
             ) : (
               <button className="btn-icon danger" onClick={handleDeleteProject} aria-label="ลบโครงการ" title="ลบโครงการ"><Trash2 size={16} /></button>
             )}
@@ -1260,7 +1261,7 @@ export default function ProjectDetailPage() {
                   const assignee = users.find((user) => user.id === (task.assigneeId || task.ownerId));
                   return <tr key={task.id} className="premium-row">
                     <td style={{ fontWeight: 700 }}>{task.title}{task.note && <div style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 400, marginTop: 2 }}>{task.note}</div>}</td>
-                    <td>{deal ? <Link className="linklike" href={`/sa/deals/${deal.id}`}>{deal.title}</Link> : <span style={{ color: "var(--text-3)" }}>งานเดิมของโครงการ</span>}</td>
+                    <td>{deal ? <Link className="linklike" href={`/sales-planning/deals/${deal.id}`}>{deal.title}</Link> : <span style={{ color: "var(--text-3)" }}>งานเดิมของโครงการ</span>}</td>
                     <td><span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span></td>
                     <td>{assignee?.name || task.assigneeName || task.ownerName || "-"}</td>
                     <td>{task.dueDate || "-"}</td>
@@ -2008,6 +2009,6 @@ export default function ProjectDetailPage() {
           <button className="btn btn-primary timeline-save-button" onClick={confirmEdits} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึกการเปลี่ยนแปลง</button>
         </div>
       )}
-    </div>
+    </SaPageShell>
   );
 }
