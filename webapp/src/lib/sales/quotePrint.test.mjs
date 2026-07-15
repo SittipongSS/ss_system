@@ -73,6 +73,26 @@ test('quotation print uses the Project Timeline document design system', () => {
   assert.match(html, /size: A4 portrait/);
 });
 
+test('quotation print shows the selected document people with legacy fallback', () => {
+  const html = buildQuotePrintHTML({
+    quoteNumber: 'QT-002', quoteDate: '2026-07-15', customerName: 'Test',
+    lines: [], subtotal: 0, totalAmount: 0, vatRate: 0,
+    createdByName: 'ผู้สร้างใบ',
+    metadata: { aeOwner: 'สมชาย ดูแล', preparedBy: 'สมหญิง จัดทำ', aeSupervisor: 'สมศักดิ์ ตรวจสอบ' },
+  });
+  assert.match(html, /ผู้ดูแล \(AE\)<\/span><span class="v">สมชาย ดูแล/);
+  assert.match(html, /สมหญิง จัดทำ<\/div><div class="role">ผู้จัดทำ \/ ผู้เสนอราคา/);
+  assert.match(html, /สมศักดิ์ ตรวจสอบ<\/div><div class="role">ผู้ตรวจสอบ \/ ผู้อนุมัติ/);
+
+  // ใบเก่าไม่มี metadata: ผู้จัดทำ fallback เป็นผู้สร้างใบ, ไม่มีบรรทัดผู้ดูแล
+  const legacy = buildQuotePrintHTML({
+    quoteNumber: 'QT-003', lines: [], subtotal: 0, totalAmount: 0, vatRate: 0,
+    createdByName: 'ผู้สร้างใบ',
+  });
+  assert.match(legacy, /ผู้สร้างใบ<\/div><div class="role">ผู้จัดทำ \/ ผู้เสนอราคา/);
+  assert.doesNotMatch(legacy, /ผู้ดูแล \(AE\)/);
+});
+
 test('showQuotePrintError replaces the loading page with a safe error message', () => {
   const target = fakePrintWindow();
   showQuotePrintError(target, '<โหลดไม่สำเร็จ>');

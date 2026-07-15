@@ -107,7 +107,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       approvedBy: null,
       approvedByName: null,
       notes,
-      metadata: { ...(quote.metadata || {}), revisedFrom: quote.quoteNumber },
+      // metadata สืบทอดจากใบเดิม + ทับด้วยค่าที่ส่งมากับ revise (เช่น ผู้รับผิดชอบเอกสารที่แก้ก่อนกดออกฉบับใหม่)
+      metadata: {
+        ...(quote.metadata || {}),
+        ...(body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata) ? body.metadata : {}),
+        revisedFrom: quote.quoteNumber,
+      },
       createdBy: user.id || null,
       createdByName: user.name || null,
     })

@@ -14,6 +14,7 @@ import Select from "@/components/ui/Select";
 import MoneyInput from "@/components/ui/MoneyInput";
 import DateInput from "@/components/ui/DateInput";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
+import QuotationPeopleFields from "@/components/salesPlanning/QuotationPeopleFields";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
@@ -54,6 +55,8 @@ function NewQuotationInner() {
   const [vatRate, setVatRate] = useState(7);
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
   const [notes, setNotes] = useState("");
+  // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
+  const [people, setPeople] = useState({ aeOwner: "", preparedBy: "", aeSupervisor: "" });
 
   // โหลดดีล + โครงการ (ดึงรหัสโครงการมาโชว์ในตัวเลือก)
   useEffect(() => {
@@ -153,6 +156,12 @@ function NewQuotationInner() {
     return () => { alive = false; };
   }, [dealId, customerId]);
 
+  // ตั้งต้นผู้รับผิดชอบจากโครงการที่เลือก (แก้ทับได้ก่อนสร้างใบ)
+  useEffect(() => {
+    const p = projectId ? projectsById[projectId] : null;
+    setPeople({ aeOwner: p?.aeOwner || "", preparedBy: p?.preparedBy || "", aeSupervisor: p?.aeSupervisor || "" });
+  }, [projectId, projectsById]);
+
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
   const billingAddress = customer?.address || "";
   const shippingAddress = customer?.shippingAddress || customer?.address || "";
@@ -239,6 +248,7 @@ function NewQuotationInner() {
           paymentTerms: payment.paymentTerms,
           notes,
           paymentPlan,
+          metadata: { ...people },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -253,7 +263,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, totals.totalAmount, router]);
+  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, people, totals.totalAmount, router]);
 
   if (!canEdit) {
     return (
@@ -323,6 +333,14 @@ function NewQuotationInner() {
             <label>วันที่ออกใบ<DateInput className={styles.documentDateInput} value={quoteDate} onChange={(value) => { setQuoteDate(value); setValidUntil(addValidityDays(value, validityDays)); }} required /></label>
             <label>ยืนราคาถึง<DateInput className={styles.documentDateInput} value={validUntil} onChange={(value) => { setValidUntil(value); setValidityDays(validityDaysBetween(quoteDate, value)); }} min={quoteDate || undefined} /></label>
             <label>กำหนดยืนราคา (จำนวนวัน)<input type="number" min="1" step="1" className={`premium-input ${styles.documentDateInput}`} value={validityDays} onChange={(event) => { const days = event.target.value; setValidityDays(days); setValidUntil(addValidityDays(quoteDate, days)); }} /></label>
+          </section>
+
+          {/* ผู้รับผิดชอบเอกสาร — ชุดเดียวกับไทม์ไลน์ ตั้งต้นจากโครงการที่เลือก */}
+          <section className={styles.card}>
+            <div className={styles.sectionHeading}><UserRound size={17} /><h2>ผู้รับผิดชอบเอกสาร</h2><span>ตั้งต้นจากโครงการ — เปลี่ยนได้</span></div>
+            <div className={styles.documentMeta}>
+              <QuotationPeopleFields value={people} onChange={setPeople} />
+            </div>
           </section>
 
           <section className={styles.card}>

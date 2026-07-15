@@ -18,6 +18,7 @@ import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
+import QuotationPeopleFields, { quotationPeopleFromMetadata } from "@/components/salesPlanning/QuotationPeopleFields";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -60,6 +61,8 @@ export default function QuotationEditorPage() {
   const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
   const [products, setProducts] = useState([]);
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
+  // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
+  const [people, setPeople] = useState({ aeOwner: "", preparedBy: "", aeSupervisor: "" });
 
   useUnsavedChanges(dirty);
 
@@ -92,6 +95,7 @@ export default function QuotationEditorPage() {
           ? pp.installments.map((r) => ({ label: r.label || "", percent: r.percent ?? 0, note: r.note || "" }))
           : [],
       });
+      setPeople(quotationPeopleFromMetadata(q.metadata));
       setDirty(false);
     } catch (e) {
       setError(e.message || "โหลดใบเสนอราคาไม่สำเร็จ");
@@ -174,6 +178,7 @@ export default function QuotationEditorPage() {
     discountValue: form.discountValue || 0,
     vatRate: form.vatRate,
     paymentPlan: paymentPlanPayload(),
+    metadata: { ...people },
     ...extra,
   });
 
@@ -437,6 +442,14 @@ export default function QuotationEditorPage() {
                 setF({ validityDays, validUntil: addValidityDays(form.quoteDate, validityDays) });
               }} />
             </label>
+          </section>
+
+          {/* ผู้รับผิดชอบเอกสาร — ชุดเดียวกับไทม์ไลน์ (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ) */}
+          <section className={styles.card}>
+            <div className={styles.sectionHeading}><UserRound size={17} aria-hidden="true" /><h2>ผู้รับผิดชอบเอกสาร</h2></div>
+            <div className={styles.documentMeta}>
+              <QuotationPeopleFields value={people} disabled={!editable} onChange={(next) => { setPeople(next); setDirty(true); }} />
+            </div>
           </section>
 
           {/* รายการ */}
