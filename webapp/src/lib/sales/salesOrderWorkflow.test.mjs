@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canSalesOrderTransition, isSalesOrderReviewer, salesOrderActual } from './salesOrderWorkflow.js';
+import { canSalesOrderTransition, dealActualFromSalesOrders, isSalesOrderReviewer, salesOrderActual } from './salesOrderWorkflow.js';
 
 test('Actual is counted only after SO approval', () => {
   for (const status of ['draft', 'pending_approval', 'rejected', 'cancelled']) {
@@ -22,4 +22,11 @@ test('only AE Supervisor and admin are SO reviewers', () => {
   assert.equal(isSalesOrderReviewer('admin'), true);
   assert.equal(isSalesOrderReviewer('senior_ae'), false);
   assert.equal(isSalesOrderReviewer('ae'), false);
+});
+
+test('deal Actual is accepted only from the approved SO cache', () => {
+  assert.equal(dealActualFromSalesOrders({ wonValue: 1380, metadata: {} }), 0);
+  assert.equal(dealActualFromSalesOrders({ wonValue: 1380, metadata: { actualSource: 'manual' } }), 0);
+  assert.equal(dealActualFromSalesOrders({ wonValue: 1380, metadata: { actualSource: 'sale_order' } }), 1380);
+  assert.equal(dealActualFromSalesOrders({ wonValue: -5, metadata: { actualSource: 'sale_order' } }), 0);
 });

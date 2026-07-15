@@ -33,6 +33,18 @@ const fmtDate = (v) => {
   return `${dd}/${mm}/${d.getFullYear()}`; // DD/MM/YYYY (ค.ศ.)
 };
 
+export function paginateBillLines(lines = []) {
+  if (!Array.isArray(lines) || lines.length === 0) return [[]];
+  const pages = [];
+  let remaining = lines.slice();
+  while (remaining.length > 8) {
+    const take = Math.min(12, remaining.length - 8);
+    pages.push(remaining.splice(0, take));
+  }
+  pages.push(remaining);
+  return pages;
+}
+
 export function buildBillPrintHTML(order, customer = {}) {
   const items = order.items || [];
   const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;   // round to 2 decimals
@@ -60,7 +72,7 @@ export function buildBillPrintHTML(order, customer = {}) {
   const vat = r2(totalTax * VAT_RATE);
   const grand = r2(totalTax + vat);   // net total billed to the customer (incl VAT)
 
-  const rows = lines.map((l) => `<tr>
+  const rowsForLines = (pageLines) => pageLines.map((l) => `<tr>
     <td class="c-no">${l.i}</td>
     <td class="c-desc">
       <div class="fg-code">${esc(l.fgCode)}</div>
@@ -74,6 +86,66 @@ export function buildBillPrintHTML(order, customer = {}) {
 
   const taxId = customer.taxId || order.customerTaxId || "-";
   const address = customer.address || "-";
+  const pages = paginateBillLines(lines);
+  const documentPages = pages.map((pageLines, pageIndex) => {
+    const isFirstPage = pageIndex === 0;
+    const isLastPage = pageIndex === pages.length - 1;
+    return `
+  <main class="sheet explicit-page">
+    <div class="doc-top">
+      <div class="brand">
+        <div class="logo-wrap"><img class="logo-img" src="${LOGO_URL}" alt="S&amp;S"/></div>
+        <div>
+          <h2>${esc(COMPANY)}</h2>
+          <div class="company-info">
+            <div>${esc(COMPANY_ADDRESS)}</div>
+            <div>เลขประจำตัวผู้เสียภาษี ${esc(COMPANY_TAX_ID)}</div>
+            <div>โทร ${esc(COMPANY_OFFICE_TEL)} · Line ${esc(COMPANY_LINE)} · ${esc(COMPANY_WEBSITE)}</div>
+          </div>
+        </div>
+      </div>
+      <div class="doc-title">
+        <div class="big">EXCISE TAX</div>
+        <div class="sub">${esc(order.quotationRef || order.id || "-")}</div>
+      </div>
+    </div>
+
+    ${isFirstPage ? `<div class="header-grid">
+      <div class="hcol left">
+        <div class="hrow"><span class="k">ชื่อลูกค้า</span><span class="v">${esc(customer.name || order.customerName || "-")}</span></div>
+        <div class="hrow"><span class="k">เลขประจำตัวผู้เสียภาษี</span><span class="v">${esc(taxId)}</span></div>
+        <div class="hrow"><span class="k">ที่อยู่</span><span class="v">${esc(address)}</span></div>
+      </div>
+      <div class="hcol">
+        <div class="hrow"><span class="k">เลขที่ใบเสนอราคา</span><span class="v">${esc(order.quotationRef || "-")}</span></div>
+        <div class="hrow"><span class="k">เลขที่ใบสั่งซื้อ (PO)</span><span class="v">${esc(order.poReference || "-")}</span></div>
+        <div class="hrow"><span class="k">วันที่เอกสาร</span><span class="v">${fmtDate(order.createdAt)}</span></div>
+        <div class="hrow"><span class="k">กำหนดส่งมอบ</span><span class="v">${order.deliveryDate && order.deliveryDate !== "-" ? fmtDate(order.deliveryDate) : "-"}</span></div>
+      </div>
+    </div>` : ""}
+
+    <table>
+      <colgroup><col style="width:26px"/><col/><col style="width:78px"/><col style="width:66px"/><col style="width:104px"/></colgroup>
+      <thead><tr><th>no.</th><th>รายการสินค้า</th><th>ภาษี/หน่วย</th><th>จำนวน</th><th>รวมภาษี</th></tr></thead>
+      <tbody>${rowsForLines(pageLines)}</tbody>
+      ${isLastPage ? `<tfoot><tr><td class="c-desc" colspan="4" style="text-align:right">รวม</td><td class="c-money">${fmtMoney(totalTax)}</td></tr></tfoot>` : ""}
+    </table>
+
+    ${isLastPage ? `<div class="page-tail">
+      <div class="totals">
+        <div class="row"><span>รวมค่าภาษี (ก่อน VAT)</span><span>${fmtMoney(totalTax)}</span></div>
+        <div class="row"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>${fmtMoney(vat)}</span></div>
+        <div class="row grand"><span>ยอดวางบิลสุทธิ (รวม VAT)</span><span>${fmtMoney(grand)}</span></div>
+      </div>
+      <div class="signs">
+        <div class="sign"><div class="sig-space"></div><div class="line"></div><div class="lbl">ผู้จัดทำ</div><div class="date">วันที่ ........./........./.........</div></div>
+        <div class="sign"><div class="sig-space"></div><div class="line"></div><div class="lbl">ผู้รับเอกสาร / ลูกค้า</div><div class="date">วันที่ ........./........./.........</div></div>
+      </div>
+      <div class="note-line">หมายเหตุ: เอกสารนี้เรียกเก็บเฉพาะค่าภาษีสรรพสามิตและภาษีบำรุงท้องถิ่น ไม่รวมราคาสินค้า</div>
+    </div>` : ""}
+    <div class="page-number">หน้า ${pageIndex + 1} / ${pages.length}</div>
+  </main>`;
+  }).join("");
 
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"/>
 <title>ใบวางบิลค่าภาษีสรรพสามิต ${esc(order.quotationRef || order.id || "")}</title>
@@ -86,7 +158,10 @@ export function buildBillPrintHTML(order, customer = {}) {
   .toolbar { max-width: 210mm; margin: 0 auto; padding: 16px 12px 0; display: flex; align-items: center; justify-content: space-between; }
   .toolbar h1 { font-size: 15px; font-weight: 600; }
   .btn-print { background: #21385e; color: #fff; border: none; font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 7px; cursor: pointer; }
-  .sheet { width: 210mm; min-height: 297mm; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); }
+  .sheet { width: 210mm; height: 297mm; overflow: hidden; margin: 16px auto; background: #fff; padding: 12mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); position: relative; }
+  .explicit-page:not(:last-child) { break-after: page; page-break-after: always; }
+  .page-tail { display: flex; flex-direction: column; }
+  .page-number { position: absolute; right: 12mm; bottom: 7mm; color: #837868; font-size: 9px; }
 
   .doc-top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #c17a52; padding-bottom: 8px; margin-bottom: 10px; }
   .brand { display: flex; align-items: center; gap: 10px; }
@@ -131,12 +206,12 @@ export function buildBillPrintHTML(order, customer = {}) {
 
   .foot { margin-top: 16px; font-size: 9px; color: #837868; text-align: right; }
 
-  @page { size: A4 portrait; margin: 31mm 10mm 10mm; }
+  @page { size: A4 portrait; margin: 10mm; }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .no-print { display: none !important; }
-    .sheet { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 0; }
-    .doc-top { position: fixed; top: -29mm; left: 0; right: 0; height: 25mm; margin: 0; background: #fff; z-index: 20; }
+    .sheet { margin: 0; box-shadow: none; width: 190mm; height: 277mm; padding: 0; }
+    .page-number { right: 0; bottom: 0; }
     thead { display: table-header-group; }
   }
   @media screen and (max-width: 560px) {
@@ -153,74 +228,7 @@ export function buildBillPrintHTML(order, customer = {}) {
     <button class="btn-print" onclick="window.print()">🖨 สั่งพิมพ์ / บันทึก PDF</button>
   </div>
 
-  <div class="sheet">
-    <div class="doc-top">
-      <div class="brand">
-        <div class="logo-wrap"><img class="logo-img" src="${LOGO_URL}" alt="S&amp;S"/></div>
-        <div>
-          <h2>${esc(COMPANY)}</h2>
-          <div class="company-info">
-            <div>${esc(COMPANY_ADDRESS)}</div>
-            <div>เลขประจำตัวผู้เสียภาษี ${esc(COMPANY_TAX_ID)}</div>
-            <div>โทร ${esc(COMPANY_OFFICE_TEL)} · Line ${esc(COMPANY_LINE)} · ${esc(COMPANY_WEBSITE)}</div>
-          </div>
-        </div>
-      </div>
-      <div class="doc-title">
-        <div class="big">EXCISE TAX</div>
-        <div class="sub">${esc(order.quotationRef || order.id || "-")}</div>
-      </div>
-    </div>
-
-    <div class="header-grid">
-      <div class="hcol left">
-        <div class="hrow"><span class="k">ชื่อลูกค้า</span><span class="v">${esc(customer.name || order.customerName || "-")}</span></div>
-        <div class="hrow"><span class="k">เลขประจำตัวผู้เสียภาษี</span><span class="v">${esc(taxId)}</span></div>
-        <div class="hrow"><span class="k">ที่อยู่</span><span class="v">${esc(address)}</span></div>
-      </div>
-      <div class="hcol">
-        <div class="hrow"><span class="k">เลขที่ใบเสนอราคา</span><span class="v">${esc(order.quotationRef || "-")}</span></div>
-        <div class="hrow"><span class="k">เลขที่ใบสั่งซื้อ (PO)</span><span class="v">${esc(order.poReference || "-")}</span></div>
-        <div class="hrow"><span class="k">วันที่เอกสาร</span><span class="v">${fmtDate(order.createdAt)}</span></div>
-        <div class="hrow"><span class="k">กำหนดส่งมอบ</span><span class="v">${order.deliveryDate && order.deliveryDate !== "-" ? fmtDate(order.deliveryDate) : "-"}</span></div>
-      </div>
-    </div>
-
-    <table>
-      <colgroup>
-        <col style="width:26px"/>
-        <col/>
-        <col style="width:78px"/>
-        <col style="width:66px"/>
-        <col style="width:104px"/>
-      </colgroup>
-      <thead><tr>
-        <th>no.</th>
-        <th>รายการสินค้า</th>
-        <th>ภาษี/หน่วย</th>
-        <th>จำนวน</th>
-        <th>รวมภาษี</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr>
-        <td class="c-desc" colspan="4" style="text-align:right">รวม</td>
-        <td class="c-money">${fmtMoney(totalTax)}</td>
-      </tr></tfoot>
-    </table>
-
-    <div class="totals">
-      <div class="row"><span>รวมค่าภาษี (ก่อน VAT)</span><span>${fmtMoney(totalTax)}</span></div>
-      <div class="row"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>${fmtMoney(vat)}</span></div>
-      <div class="row grand"><span>ยอดวางบิลสุทธิ (รวม VAT)</span><span>${fmtMoney(grand)}</span></div>
-    </div>
-
-    <div class="signs">
-      <div class="sign"><div class="sig-space"></div><div class="line"></div><div class="lbl">ผู้จัดทำ</div><div class="date">วันที่ ........./........./.........</div></div>
-      <div class="sign"><div class="sig-space"></div><div class="line"></div><div class="lbl">ผู้รับเอกสาร / ลูกค้า</div><div class="date">วันที่ ........./........./.........</div></div>
-    </div>
-
-    <div class="note-line">หมายเหตุ: เอกสารนี้เรียกเก็บเฉพาะค่าภาษีสรรพสามิตและภาษีบำรุงท้องถิ่น ไม่รวมราคาสินค้า</div>
-  </div>
+  ${documentPages}
 </body></html>`;
 }
 

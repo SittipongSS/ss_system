@@ -63,7 +63,8 @@ test('quotation print uses the Project Timeline document design system', () => {
   });
 
   assert.match(html, /class="toolbar no-print"/);
-  assert.match(html, /class="sheet"/);
+  assert.match(html, /class="sheet explicit-page"/);
+  assert.match(html, /หน้า 1 \/ 1/);
   assert.match(html, /class="doc-top"/);
   assert.match(html, /class="header-grid"/);
   assert.match(html, /บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด/);
@@ -85,8 +86,8 @@ test('quotation print shows the selected document people with legacy fallback', 
   assert.match(html, /sb-head">ผู้จัดทำ[\s\S]*?\(สมหญิง จัดทำ\)/);
   assert.match(html, /sb-head">ผู้ตรวจสอบ[\s\S]*?\(สมศักดิ์ ตรวจสอบ\)/);
   assert.match(html, /sb-head">ผู้ยืนยันสั่งซื้อ[\s\S]*?ชื่อ-นามสกุล ตัวบรรจง/);
-  // หัวเอกสารอยู่ใน thead ของตารางชั้นนอก → พิมพ์ซ้ำทุกหน้า
-  assert.match(html, /<table class="page-table">\s*<thead><tr><td>[\s\S]*?class="doc-top"/);
+  // Preview สร้างกระดาษ A4 แยกหน้าไว้ก่อนพิมพ์ และใส่หัวเอกสารในทุกหน้า
+  assert.match(html, /class="sheet explicit-page">[\s\S]*?class="doc-top"/);
 
   // ใบเก่าไม่มี metadata: ผู้จัดทำ fallback เป็นผู้สร้างใบ, ไม่มีบรรทัดผู้ดูแล
   const legacy = buildQuotePrintHTML({

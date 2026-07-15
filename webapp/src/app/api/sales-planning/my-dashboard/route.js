@@ -2,6 +2,7 @@ import { withUser, ok, fail, unauthorized } from '@/lib/http';
 import { monthKey, forecastAmount } from '@/lib/salesPlanning';
 import { summarizeOpenTasks } from '@/lib/pm/taskSummary';
 import { taskCreditId } from '@/lib/permissions';
+import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,8 +53,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const isWon = (d) => ['won', 'in_project'].includes(d.stage);
   const isOpen = (d) => !['won', 'in_project', 'lost'].includes(d.stage);
   
-  // wonAmt uses wonValue or projectValue
-  const wonAmt = (d) => Number(d.wonValue ?? d.projectValue ?? 0);
+  const wonAmt = dealActualFromSalesOrders;
   const wonMonth = (d) => monthKey(d.metadata?.wonMonth) || monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
 
   // Calculate Won this month
