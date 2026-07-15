@@ -19,6 +19,7 @@ import { fmtDate } from "@/lib/format";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { compactPersonName } from "@/lib/personName";
 import { addBusinessDays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
+import { recalculateGraph } from "@/lib/pm/schedule";
 
 const STATUS_META = {
   Pending: { label: "รอดำเนินการ", color: "var(--text-3)" },
@@ -45,7 +46,9 @@ function withOptimisticSchedule(task, body) {
   if (Number.isNaN(start.getTime())) return next;
   while (!isBusinessDay(start)) start.setDate(start.getDate() + 1);
   const startIso = toLocalISODate(start);
-  if ("startDate" in body) next.startDate = startIso;
+  // ผู้ใช้ตั้งวันเริ่มเอง = ปักหมุด (กติกาเดียวกับ server) — พรีวิวกราฟจะได้ไม่ดูดแถวนี้
+  // กลับไปเกาะ anchor/predecessors ระหว่างยังไม่กดบันทึก
+  if ("startDate" in body) { next.startDate = startIso; next.startLocked = !!startIso; }
   if ("finishDate" in body && body.finishDate) {
     const durationDays = Math.max(1, countBusinessDays(startIso, body.finishDate) + 1);
     next.durationDays = durationDays;
@@ -94,9 +97,23 @@ export default function TimelineWorkspace({
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
   const [drafts, setDrafts] = useState({});
   const tasks = useMemo(
-    () => sourceTasks
-      .map((task) => (drafts[task.id] ? { ...task, ...drafts[task.id] } : task))
-      .sort((a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0)),
+    () => {
+      const merged = sourceTasks
+        .map((task) => (drafts[task.id] ? { ...task, ...drafts[task.id] } : task))
+        .sort((a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0));
+      if (!Object.keys(drafts).length) return merged;
+      // พรีวิว draft ทั้งกราฟ: แก้วันเริ่ม/วันเสร็จ/จำนวนวันแล้ว "ขั้นที่เชื่อมโยงกัน"
+      // (predecessors) ต้องเลื่อนตามให้เห็นทันที ไม่ใช่นิ่งจนกดบันทึก — ใช้ตัวคำนวณ
+      // เดียวกับ server (recalculateGraph) ผลพรีวิวจึงตรงกับที่จะถูกบันทึกจริง
+      const anchor = merged.map((t) => t.startDate).filter(Boolean).sort()[0];
+      if (!anchor) return merged;
+      try {
+        return recalculateGraph(merged, anchor)
+          .sort((a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0));
+      } catch {
+        return merged; // ข้อมูลผิดรูป (เช่น dependency วน) — โชว์แบบไม่คำนวณดีกว่าตารางพัง
+      }
+    },
     [sourceTasks, drafts],
   );
 
