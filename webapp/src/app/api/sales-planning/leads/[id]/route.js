@@ -3,7 +3,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { can, isSuperuser } from '@/lib/permissions';
 import { LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
-import { canViewLeads } from '../route';
+import { canViewLeads, inLeadScope } from '../route';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +31,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   const lead = await loadLead(supabase, id);
   if (!lead) return notFound('ไม่พบลีด');
+  // scope รายแถวเหมือนหน้า list (applyLeadScope) — เดิม route รายตัวไม่กรอง ทำให้
+  // เปิดอ่านลีดข้ามทีม (PII + ดีลที่เกี่ยวข้อง) ได้จาก id ตรง ๆ
+  if (!inLeadScope(user, lead)) return forbidden();
   const [{ data: events }, { data: relatedDeals }] = await Promise.all([
     supabase.from('lead_events').select('*').eq('leadId', id).order('createdAt', { ascending: false }),
     supabase.from('sales_deals').select('id, code, title, customerName, stage, dealType, projectValue, wonValue, probability, forecastMonth, projectId').eq('leadId', id).order('createdAt', { ascending: false }),

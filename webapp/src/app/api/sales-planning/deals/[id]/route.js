@@ -116,6 +116,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     patch.metadata = { ...(patch.metadata || before.metadata || {}), brand: body.brand || '' };
   }
 
+  // กันย้ายดีลออกนอกขอบเขตตัวเอง: ถ้า team/ownerId เปลี่ยน แถวหลังแก้ต้องยังอยู่ใน
+  // edit-scope ของผู้แก้ (POST เช็คแบบเดียวกันบน row ที่สร้าง — เดิม PATCH เชื่อ client)
+  if (('team' in body || 'ownerId' in body) && !inSalesEditScope(user, { ...before, ...patch })) {
+    return forbidden('ย้ายดีลไปทีม/เจ้าของนอกขอบเขตของคุณไม่ได้');
+  }
+
   const { data, error } = await supabase
     .from('sales_deals')
     .update(patch)
@@ -203,6 +209,17 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // หรือมาจาก PO สหมิตร (settle เข้ายอดแล้ว) — ให้ยกเลิกด้วยวิธีอื่นแทนการลบ.
   if (['won', 'in_project'].includes(before.stage) && !isSuperuser(user.role)) {
     return conflict('โครงการนี้ปิดการขาย (Won) แล้ว — ลบไม่ได้ เพราะถูกนับเป็นยอดขาย (ต้องการสิทธิ์แอดมิน)');
+  }
+  // ใบเสนอราคา accepted = แหล่งยอด Actual — ห้ามลบแม้ superuser (กติกาเดียวกับ
+  // DELETE quotation) เพราะ FK cascade จะพาใบ accepted + Sale Order หายเงียบ
+  // โดย audit ไม่บันทึกเอกสารการเงินที่ถูกทำลาย. ต้องยกเลิก/คืนสถานะใบก่อน.
+  {
+    const { count: acceptedCount } = await supabase
+      .from('quotations').select('id', { count: 'exact', head: true })
+      .eq('dealId', id).eq('status', 'accepted');
+    if ((acceptedCount || 0) > 0) {
+      return conflict('ดีลนี้มีใบเสนอราคาที่รับแล้ว (Won) — ลบไม่ได้ เพราะเป็นหลักฐานยอด Actual; ยกเลิกใบเสนอราคาก่อน');
+    }
   }
   if (before.metadata?.sahamitPoId) {
     return conflict('โครงการนี้มาจาก PO สหมิตร — ลบไม่ได้ (จัดการที่เอกสาร PO แทน)');
