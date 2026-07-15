@@ -5,6 +5,8 @@ import {
   COMPANY_LEGAL_NAME,
   COMPANY_LINE,
   COMPANY_OFFICE_TEL,
+  COMPANY_TAX_ID,
+  COMPANY_WEBSITE,
   DOCUMENT_FORMS,
   SYSTEM_DOCUMENT_LOGO_URL,
   documentFormLine,
@@ -51,7 +53,8 @@ export function printHeaderHtml({ form, docNumber, docDate }) {
           <h2>${esc(COMPANY_LEGAL_NAME)}</h2>
           <div class="company-info">
             <div>${esc(COMPANY_ADDRESS)}</div>
-            <div>โทร ${esc(COMPANY_OFFICE_TEL)} &nbsp; Line ${esc(COMPANY_LINE)}</div>
+            <div>เลขประจำตัวผู้เสียภาษี ${esc(COMPANY_TAX_ID)}</div>
+            <div>โทร ${esc(COMPANY_OFFICE_TEL)} &nbsp; Line ${esc(COMPANY_LINE)} &nbsp; ${esc(COMPANY_WEBSITE)}</div>
           </div>
         </div>
       </div>

@@ -1,11 +1,11 @@
-import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
+import { COMPANY_LEGAL_NAME, SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 
 // Print-ready A4 (landscape) document for an excise report (the uniform shape
 // from lib/tax/reports.js). Shares the visual language + logo of the billing
 // document (ISO style): IBM Plex Sans Thai (loaded via Google Fonts so the
 // about:blank print window renders the loopless font), navy + terracotta,
 // brand + doc-title header. `multiline` cells ("main\nsub") render as two lines.
-const COMPANY = "บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด";
+const COMPANY = COMPANY_LEGAL_NAME;
 const LOGO_URL = SYSTEM_DOCUMENT_LOGO_URL;
 
 const esc = (s) => String(s ?? "")

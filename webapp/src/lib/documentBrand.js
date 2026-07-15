@@ -2,9 +2,11 @@
 export const SYSTEM_DOCUMENT_LOGO_URL = '/scent-sense-logo.png';
 
 export const COMPANY_LEGAL_NAME = 'บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด';
-export const COMPANY_ADDRESS = '2/4 ซอย เพชรเกษม 35/1 แขวงบางหว้า เขตภาษีเจริญ กรุงเทพมหานคร 10160';
+export const COMPANY_ADDRESS = '2/4 ซอยเพชรเกษม 35/1 ถนนเพชรเกษม แขวงบางหว้า เขตภาษีเจริญ กรุงเทพมหานคร 10160';
+export const COMPANY_TAX_ID = '0105557081665';
 export const COMPANY_OFFICE_TEL = '02-000-7722';
 export const COMPANY_LINE = '@perfumefactory';
+export const COMPANY_WEBSITE = 'www.scentandsense.co.th';
 
 export const DOCUMENT_FORMS = Object.freeze({
   quotation: Object.freeze({

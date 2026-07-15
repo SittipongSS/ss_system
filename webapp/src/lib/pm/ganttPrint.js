@@ -12,6 +12,8 @@ import {
   COMPANY_LEGAL_NAME,
   COMPANY_LINE,
   COMPANY_OFFICE_TEL,
+  COMPANY_TAX_ID,
+  COMPANY_WEBSITE,
   DOCUMENT_FORMS,
   SYSTEM_DOCUMENT_LOGO_URL,
 } from '@/lib/documentBrand';
@@ -280,7 +282,8 @@ export function buildGanttPrintHTML(project) {
           <h2>${esc(COMPANY_LEGAL_NAME)}</h2>
           <div class="company-info">
             <div>${esc(COMPANY_ADDRESS)}</div>
-            <div>โทร. ${COMPANY_OFFICE_TEL} · Line ${esc(COMPANY_LINE)}</div>
+            <div>เลขประจำตัวผู้เสียภาษี ${esc(COMPANY_TAX_ID)}</div>
+            <div>โทร. ${COMPANY_OFFICE_TEL} · Line ${esc(COMPANY_LINE)} · ${esc(COMPANY_WEBSITE)}</div>
           </div>
         </div>
       </div>
