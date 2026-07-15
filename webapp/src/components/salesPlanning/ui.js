@@ -156,6 +156,24 @@ export function stageBadge(stage) {
   );
 }
 
+// สถานะใบเสนอราคา (คนละชุดกับ stage ของดีล) — closed = ถูกปิดเพราะดีลจบด้วยใบอื่น (mig 0102)
+export const QUOTE_STATUS_LABELS = {
+  draft: "ฉบับร่าง", sent: "ส่งลูกค้าแล้ว", accepted: "Won", rejected: "ถูกปฏิเสธ",
+  cancelled: "ยกเลิก", revised: "ถูกแก้ไข (มีฉบับใหม่)", closed: "ปิด (ดีลจบด้วยใบอื่น)",
+};
+export const QUOTE_STATUS_COLORS = {
+  draft: "var(--text-3)", sent: "var(--blue)", accepted: "var(--green)",
+  rejected: "var(--red)", cancelled: "var(--red)", revised: "var(--amber)", closed: "var(--text-3)",
+};
+export function quoteStatusBadge(status) {
+  return (
+    <span className="ui-badge" style={{ color: QUOTE_STATUS_COLORS[status] || "var(--text-3)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+      {status === "accepted" && <Trophy size={12} style={{ marginRight: 4, verticalAlign: "-1px" }} />}
+      {QUOTE_STATUS_LABELS[status] || status}
+    </span>
+  );
+}
+
 export function KpiCard({ icon, label, badge, value, hint, color, interactive = true }) {
   return <UiKpiCard icon={icon} label={label} badge={badge} value={value} hint={hint} color={color} interactive={interactive} />;
 }

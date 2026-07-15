@@ -15,7 +15,7 @@ import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
-import { FORECAST_LEVELS, dealTypeBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, dealTypeBadge, quoteStatusBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
@@ -1041,7 +1041,7 @@ export default function DealOverviewPage() {
                       {data.quotations.map((quote) => (
                         <tr key={quote.id} className="premium-row">
                           <td className="mono"><Link href={`/sa/quotations/${quote.id}`} className="linklike">{quote.quoteNumber}</Link></td>
-                          <td>{stageBadge(quote.status)}</td>
+                          <td>{quoteStatusBadge(quote.status)}</td>
                           <td className="num mono">{money(quote.totalAmount)}</td>
                         </tr>
                       ))}

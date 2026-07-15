@@ -5,12 +5,20 @@ import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/sa
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
+import { validateWonEvidence, WON_DOC_TYPE_LABELS } from '@/lib/sales/quotationWonEvidence';
 
 export const dynamic = 'force-dynamic';
 
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
+
+  // หลักฐานบังคับ (feedback ผู้ใช้ 2026-07-15): ไฟล์แนบ + ประเภท + วันที่เอกสาร
+  // (+กำหนดชำระเมื่อไม่ใช่เอกสารการชำระ) — validate ที่นี่ก่อน แล้ว RPC ตรวจซ้ำชั้น DB
+  const body = await req.json().catch(() => ({}));
+  const evidenceCheck = validateWonEvidence(body);
+  if (!evidenceCheck.ok) return badRequest(evidenceCheck.error);
+  const evidence = evidenceCheck.evidence;
 
   const { id } = await ctx.params;
   const { data: quote, error } = await supabase
@@ -21,7 +29,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('quotation not found');
   if (quote.status === 'accepted') return badRequest('ใบเสนอราคานี้ถูกรับแล้ว');
-  if (['cancelled', 'rejected'].includes(quote.status)) return badRequest('quotation cannot be accepted');
+  if (quote.status === 'closed') return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น)');
+  if (['cancelled', 'rejected', 'revised'].includes(quote.status)) return badRequest('quotation cannot be accepted');
   // ยอดต้อง > 0 ไม่งั้นการรับจะไปล้าง projectValue ของดีลเป็น 0 (N3)
   if (!(quotationWonAmount(quote) > 0)) return badRequest('ยอดใบเสนอราคาก่อน VAT ต้องมากกว่า 0');
 
@@ -51,6 +60,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     p_actor_name: user.name || null,
     p_history_id: genId('DSH'),
     p_forecast_id: genId('DFC'),
+    p_evidence: evidence,
   });
   if (acceptError) {
     if (acceptError.code === '23505' || acceptError.message?.includes('already_has_accepted')) {
@@ -69,7 +79,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: quote.id,
     before: quote,
     after: accepted,
-    summary: `mark quotation ${quote.quoteNumber} as Won for ${dealAuditLabel(deal)}`,
+    summary: `mark quotation ${quote.quoteNumber} as Won for ${dealAuditLabel(deal)} (หลักฐาน: ${WON_DOC_TYPE_LABELS[evidence.docType]} ลงวันที่ ${evidence.docDate})`,
     request: req,
   });
 

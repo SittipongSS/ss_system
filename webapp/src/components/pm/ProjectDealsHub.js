@@ -28,6 +28,7 @@ const QUOTE_STATUS = {
   rejected: { label: "ถูกปฏิเสธ", color: "var(--red)" },
   cancelled: { label: "ยกเลิก", color: "var(--red)" },
   revised: { label: "ถูกแก้ไข", color: "var(--amber)" },
+  closed: { label: "ปิด (ดีลจบด้วยใบอื่น)", color: "var(--text-3)" },
 };
 const ACTIVITY_KIND = {
   note: { label: "บันทึก", color: "var(--text-3)" },
