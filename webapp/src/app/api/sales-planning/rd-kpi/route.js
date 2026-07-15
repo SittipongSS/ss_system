@@ -106,6 +106,19 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .map((row) => { finalize(row); finalizeInquiryStats(row.inquiries); return row; })
     .sort((a, b) => b.score - a.score || b.inquiries.answered - a.inquiries.answered || a.name.localeCompare(b.name, 'th'));
   const taskSummary = aggregateGroup(DEPT, rows);
+  const userName = (id) => directory.get(id)?.name || directory.get(id)?.email || null;
+  const taskFeed = [...tasks]
+    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+    .slice(0, 40)
+    .map((task) => ({
+      id: task.id, title: task.title, note: task.note || null, status: task.status,
+      category: task.category || null, urgent: !!task.urgent, important: !!task.important,
+      dueDate: task.dueDate || null, createdAt: task.createdAt, updatedAt: task.updatedAt,
+      completedAt: task.completedAt || null,
+      assigneeName: userName(taskCreditId(task)) || userName(task.assigneeId) || userName(task.ownerId) || 'ทีม RD',
+      assignedByName: userName(task.assignedBy) || userName(task.ownerId),
+      inquiryId: task.inquiryId || null, dealId: task.dealId || null, projectId: task.projectId || null,
+    }));
 
   // คิวเรื่องค้าง (สำหรับ action queue บนแดชบอร์ด) — เรียงใกล้ครบกำหนดก่อน
   const openQueue = (inquiries || [])
@@ -150,5 +163,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     inquirySummary: { ...finalizeInquiryStats(deptInquiries), createdInPeriod, unassignedOpen },
     openQueue,
     activityFeed,
+    taskFeed,
   });
 });
