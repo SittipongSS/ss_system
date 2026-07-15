@@ -71,8 +71,9 @@ export default function InquiryThreadPage() {
 
   const due = useMemo(() => inquiryDueTone(data, todayISO), [data, todayISO]);
   const closed = data?.status === "closed";
-  const canCompose = data?.isAdmin || data?.side === "requester"
-    || (data?.side === "responder" && data?.assigneeId === data?.meId);
+  // ทุกคนในเธรด (ฝั่งถาม + ทุกคนในฝ่ายผู้ตอบ) พิมพ์ได้ตลอด ไม่ต้องรอรับเรื่อง/รอสลับตา
+  // (มติผู้ใช้ 2026-07-16) — RD ที่ยังไม่รับเรื่อง ตอบแล้ว server รับเรื่องให้อัตโนมัติ
+  const canCompose = data?.isAdmin || !!data?.side;
 
   const runAction = async (key, body, confirmText) => {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -314,11 +315,11 @@ export default function InquiryThreadPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
               <textarea
                 className="premium-input"
-                rows={3}
+                rows={4}
                 value={reply}
                 onChange={(e) => setReply(e.target.value)}
-                placeholder={data.canRespond ? "พิมพ์คำตอบ..." : "พิมพ์คำถามเพิ่มเติม..."}
-                style={{ resize: "vertical" }}
+                placeholder="พิมพ์ข้อความ..."
+                style={{ resize: "vertical", minHeight: 96 }}
               />
               {!!files.length && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>

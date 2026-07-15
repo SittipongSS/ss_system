@@ -26,10 +26,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!isResponder && !inInquiryRequesterScope(user, inquiry) && !canRespondInquiry(user, inquiry)) {
     return forbidden('เฉพาะผู้ถาม/ทีมผู้ถาม หรือฝ่ายผู้ตอบ ที่คุยในเธรดนี้ได้');
   }
-  if (isResponder && !inquiry.acceptedAt) return badRequest('กรุณากดรับเรื่องก่อนตอบ');
-  if (isResponder && inquiry.assigneeId && inquiry.assigneeId !== user.id) {
-    return forbidden('เฉพาะ RD ผู้รับเรื่องที่ตอบได้');
-  }
+  // ฝ่ายผู้ตอบพิมพ์ได้ทุกคนไม่ต้องรอกดรับเรื่อง (มติผู้ใช้ 2026-07-16) —
+  // ถ้ายังไม่มีผู้รับ การตอบครั้งแรก = รับเรื่องไปในตัว (ดู updates ด้านล่าง);
+  // ถ้ามีผู้รับแล้ว คนอื่นในฝ่ายก็ยังช่วยตอบในเธรดได้ (RD จัดงานกันเองในฝ่าย)
 
   const body = await req.json();
   const text = (body.body || '').trim();
@@ -57,6 +56,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     });
   }
   if (isResponder) {
+    // ตอบโดยยังไม่มีผู้รับเรื่อง = รับเรื่องไปในตัว (ฟิลด์ชุดเดียวกับ action:'take')
+    if (!inquiry.assigneeId) {
+      updates.assigneeId = user.id;
+      updates.assigneeName = user.name || null;
+      updates.acceptedBy = user.id;
+      updates.acceptedAt = inquiry.acceptedAt || new Date().toISOString();
+    }
     if (inquiry.status === 'open') updates.status = 'answered';
     if (!inquiry.answeredAt) {
       updates.answeredAt = new Date().toISOString();
@@ -68,7 +74,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
   const { data: updated, error: upError } = await supabase.from('inquiries').update(updates).eq('id', id).select().single();
   if (upError) return fail(upError.message, 500);
-  if (updates.status || updates.answeredAt) {
+  if (updates.status || updates.answeredAt || updates.assigneeId) {
     await recordAudit({ user, action: 'update', entityType: 'inquiry', entityId: id, before: inquiry, after: updated, request: req });
   }
 
