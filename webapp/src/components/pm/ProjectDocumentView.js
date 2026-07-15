@@ -56,21 +56,6 @@ const roleColor = (role) => ({
 
 const statusFill = taskStatusColor;
 
-function EditField({ value, onInput, onCommit, placeholder, disabled, style }) {
-  return (
-    <input
-      className="premium-input"
-      value={value ?? ""}
-      disabled={disabled}
-      placeholder={placeholder}
-      onChange={(e) => onInput(e.target.value)}
-      onBlur={(e) => onCommit(e.target.value)}
-      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-      style={{ height: "30px", fontSize: "13px", padding: "4px 10px", borderRadius: "6px", ...style }}
-    />
-  );
-}
-
 function SelectUserField({ value, onCommit, users, disabled, style }) {
   const hasValueInList = users.some(u => {
     const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
@@ -128,9 +113,8 @@ function ZoomControl({ px, onChange }) {
   );
 }
 
-export default function ProjectDocumentView({ project, canEdit, canEditProjectFields = canEdit, onUpdateProject, onUpdateTask, fgUI, statusLabel, statusColor }) {
+export default function ProjectDocumentView({ project, canEdit, canEditProjectFields = canEdit, onUpdateProject, onUpdateTask, statusLabel, statusColor }) {
   const isPortrait = useIsPortrait(); // จอตั้ง/แคบ → ลดคอลัมน์ที่แช่แข็ง ไม่ให้บังเนื้อหา
-  const [headerExpanded, setHeaderExpanded] = useState(false); // default: ย่อ เพื่อให้เห็น chart เต็ม
   const [nowMs] = useState(() => Date.now());
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
   const togglePhase = (phase) => setCollapsedPhases((prev) => {
@@ -159,7 +143,6 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
   const [draft, setDraft] = useState({});
   useEffect(() => { setDraft({}); }, [project.id]);
   const pv = (field) => (field in draft ? draft[field] : (project[field] || ""));
-  const onField = (field) => (v) => setDraft((d) => ({ ...d, [field]: v }));
   const commitField = (field) => (v) => {
     setDraft((d) => ({ ...d, [field]: v }));
     if ((v ?? "") !== (project[field] || "")) onUpdateProject?.({ [field]: v });
@@ -171,11 +154,6 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
   const aeUser = users.find((u) => userDisplayName(u) === pv("aeOwner"));
   const aeMobile = aeUser?.phone ? fmtPhone(aeUser.phone) : "";
   const aeEmail = aeUser?.email || "";
-  // ใบเสนอราคา (+ PO ในวงเล็บถ้ามี) — CR §3.3
-  const quotationNo = project.metadata?.quotationNumber || "";
-  const poNo = project.metadata?.poNumber || "";
-  const quotationLine = quotationNo ? `${quotationNo}${poNo ? ` (${poNo})` : ""}` : (poNo ? `(${poNo})` : "-");
-
   // ── ซูม: px ต่อวัน (จำค่าใน localStorage) ──
   const [pxPerDay, setPxPerDay] = useState(ZOOM_DEFAULT);
   useEffect(() => {
@@ -343,43 +321,36 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
         </div>
       </div>
 
-      {/* Document Header — ย่อ/ขยายได้ */}
-      <div style={{ flexShrink: 0, border: "1px solid var(--border)", borderRadius: "10px", background: "var(--panel)" }}>
-        <button
-          onClick={() => setHeaderExpanded((v) => !v)}
-          style={{ width: "100%", display: "flex", alignItems: "center", gap: "8px", padding: "12px 16px", background: "var(--panel-2)", border: "none", cursor: "pointer", textAlign: "left", overflow: "hidden", borderRadius: headerExpanded ? "10px 10px 0 0" : "10px" }}
-          title={headerExpanded ? "ย่อข้อมูลเอกสาร" : "ขยายข้อมูลเอกสาร"}
-        >
-          {headerExpanded ? <ChevronDown size={18} color="var(--accent)" /> : <ChevronRight size={18} color="var(--accent)" />}
-          <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>ข้อมูลเอกสารประจำโครงการ</span>
-          {!headerExpanded && (
-            <span style={{ fontSize: "13px", color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8, marginLeft: "8px" }}>
-              {[project.customerName, pv("productName") || project.name, project.metadata?.brand, fmtDate(project.startDate)].filter(Boolean).join("   ·   ")}
-            </span>
-          )}
-          <span style={{ fontSize: "12px", color: "var(--text-3)", marginLeft: "auto", fontWeight: 500 }}>(คลิกเพื่อ{headerExpanded ? "ย่อ" : "ขยาย"})</span>
-        </button>
-        {headerExpanded && (
-          <div style={{ display: "grid", gridTemplateColumns: isPortrait ? "1fr" : "1fr 1fr", gap: isPortrait ? "12px" : "20px", padding: "16px 20px", borderTop: "1px solid var(--border)" }}>
-            {/* ซ้าย */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", borderRight: isPortrait ? "none" : "1px solid var(--border)", paddingRight: isPortrait ? 0 : "20px", paddingBottom: isPortrait ? "12px" : 0, borderBottom: isPortrait ? "1px solid var(--border)" : "none" }}>
-              <Row label="Customer Name"><span style={{ fontSize: "13px", fontWeight: 600 }}>{project.customerName || "-"}</span></Row>
-              <Row label="Brand"><span style={{ fontSize: "13px", fontWeight: 600 }}>{project.metadata?.brand || "-"}</span></Row>
-              <div style={{ height: "6px" }} />
-              <Row label="ผู้ตรวจสอบ (AE Supervisor)"><SelectUserField value={pv("aeSupervisor")} users={users.filter(u => u.role === "ae_supervisor")} disabled={disabled} onCommit={commitField("aeSupervisor")} /></Row>
-              <Row label="ผู้ดูแล (Account Executive)"><SelectUserField value={pv("aeOwner")} users={users.filter(u => u.role === "ae" || u.role === "senior_ae")} disabled={disabled} onCommit={commitField("aeOwner")} /></Row>
-              <Row label="เบอร์มือถือ"><span style={{ fontSize: "13px", color: "var(--text-2)" }}>{aeMobile || "—"}</span></Row>
-              <Row label="Email"><span style={{ fontSize: "13px", color: "var(--text-2)" }}>{aeEmail || "—"}</span></Row>
-            </div>
-            {/* ขวา */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <Row label="Project Name"><EditField value={pv("productName")} placeholder={project.name} disabled={disabled} onInput={onField("productName")} onCommit={commitField("productName")} /></Row>
-              <Row label="ใบเสนอราคา"><span style={{ fontSize: "13px", fontWeight: 600 }}>{quotationLine}</span></Row>
-              <Row label="วันที่"><span style={{ fontSize: "13px", fontWeight: 600 }}>{fmtDate(project.startDate)}</span></Row>
-              {fgUI && <Row label="สินค้า (FG)">{fgUI}</Row>}
-            </div>
-          </div>
-        )}
+      {/* ผู้เกี่ยวข้องกับเอกสารยังแก้ไขได้ แต่ไม่ปะปนกับข้อมูลที่ระบบดึงไปพิมพ์อัตโนมัติ */}
+      <div style={{ flexShrink: 0, border: "1px solid var(--border)", borderRadius: "10px", background: "var(--panel)", padding: "14px 16px" }}>
+        <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)", marginBottom: "10px" }}>ผู้รับผิดชอบเอกสาร</div>
+        <div style={{ display: "grid", gridTemplateColumns: isPortrait ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: "10px" }}>
+          <PersonField
+            label="ผู้ดูแล"
+            role="ACCOUNT EXECUTIVE"
+            value={pv("aeOwner")}
+            users={users.filter(u => u.role === "ae" || u.role === "senior_ae" || u.role === "ae_supervisor")}
+            disabled={disabled}
+            onCommit={commitField("aeOwner")}
+            detail={[aeMobile, aeEmail].filter(Boolean).join(" · ")}
+          />
+          <PersonField
+            label="ผู้จัดทำ"
+            role="ACCOUNT COORDINATOR"
+            value={pv("preparedBy")}
+            users={users.filter(u => u.role === "ac")}
+            disabled={disabled}
+            onCommit={commitField("preparedBy")}
+          />
+          <PersonField
+            label="ผู้ตรวจสอบ"
+            role="AE SUPERVISOR"
+            value={pv("aeSupervisor") || pv("reviewedBy")}
+            users={users.filter(u => u.role === "ae_supervisor")}
+            disabled={disabled}
+            onCommit={commitField("aeSupervisor")}
+          />
+        </div>
       </div>
 
       <div style={{ flexShrink: 0, display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", fontSize: "11px", color: "var(--text-2)" }}>
@@ -546,11 +517,13 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
 }
 
 // ── helpers ──
-function Row({ label, children }) {
+function PersonField({ label, role, value, users, disabled, onCommit, detail }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", alignItems: "center", gap: "12px" }}>
-      <span style={{ fontSize: "12px", color: "var(--text-3)", fontWeight: 500 }}>{label}</span>
-      <div>{children}</div>
+    <div style={{ minWidth: 0, padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--panel-2)" }}>
+      <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text)" }}>{label}</div>
+      <div style={{ fontSize: "10px", color: "var(--text-3)", margin: "2px 0 7px" }}>{role}</div>
+      <SelectUserField value={value} users={users} disabled={disabled} onCommit={onCommit} style={{ width: "100%" }} />
+      {detail && <div style={{ marginTop: "6px", fontSize: "11px", color: "var(--text-2)", overflowWrap: "anywhere" }}>{detail}</div>}
     </div>
   );
 }
