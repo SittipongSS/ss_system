@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon } from 'lucide-react';
 
 // เส้นทางทั้งหมดที่ถือว่าอยู่ใต้เมนู "ตั้งค่า" (ให้ปุ่มติด active ตอนอยู่หน้าลูก)
 const SETTINGS_PATHS = ['/settings', '/database/holidays', '/database/chat-webhooks', '/users', '/audit'];
