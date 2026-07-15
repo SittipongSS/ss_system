@@ -12,14 +12,14 @@ import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, KpiCard, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, KpiCard, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
 import DetailRow from "@/components/ui/DetailRow";
-import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
+import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -75,6 +75,7 @@ export default function SalesPlanningPipelinePage() {
   const [quoteDeal, setQuoteDeal] = useState(null);
   const [quotations, setQuotations] = useState([]);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [wonQuote, setWonQuote] = useState(null); // ใบที่กำลังยืนยัน Won (เปิดฟอร์มหลักฐาน)
   const [docModal, setDocModal] = useState(false);
   const [docDeal, setDocDeal] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -272,21 +273,8 @@ export default function SalesPlanningPipelinePage() {
     }
   };
 
-  const acceptQuotation = async (quote) => {
-    if (!window.confirm(`ยืนยัน Won ด้วยใบเสนอราคา ${quote.quoteNumber}?\nยอดก่อน VAT ${money(quotationWonAmount(quote))}`)) return;
-    setQuoteLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, { method: "POST" });
-      if (!res.ok) throw new Error((await res.json()).error || "accept quotation ไม่สำเร็จ");
-      await loadQuotations(quoteDeal);
-      await load();
-    } catch (e) {
-      setError(e.message || "accept quotation ไม่สำเร็จ");
-    } finally {
-      setQuoteLoading(false);
-    }
-  };
+  // เปิดฟอร์มหลักฐาน Won (บังคับแนบสลิป/PO/เอกสารยืนยันสั่งซื้อ + วันที่เอกสาร)
+  const acceptQuotation = (quote) => setWonQuote(quote);
 
   // เปิดโมดัลสร้างโครงการ PM (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล — ปรับแก้ได้
   const openCreatePM = (deal) => {
@@ -704,7 +692,7 @@ export default function SalesPlanningPipelinePage() {
                 {quotations.map((quote) => (
                   <tr key={quote.id} className="premium-row">
                     <td className="mono">{quote.quoteNumber}</td>
-                    <td>{stageBadge(quote.status === "accepted" ? "won" : "quotation")}</td>
+                    <td>{quoteStatusBadge(quote.status)}</td>
                     <td>{quote.quoteDate || "-"}</td>
                     <td className="num mono">{money(quote.totalAmount)}</td>
                     <td>
@@ -748,6 +736,19 @@ export default function SalesPlanningPipelinePage() {
           </div>
         </div>
       </Modal>
+
+      <QuotationWonDialog
+        open={!!wonQuote}
+        onClose={() => setWonQuote(null)}
+        quote={wonQuote}
+        customerId={quoteDeal?.customerId}
+        customerName={quoteDeal?.customerName}
+        onDone={async () => {
+          setWonQuote(null);
+          await loadQuotations(quoteDeal);
+          await load();
+        }}
+      />
 
       <Modal open={docModal} onClose={() => setDocModal(false)} title={`Documents${docDeal?.title ? ` · ${docDeal.title}` : ""}`} size="lg">
         <div style={{ padding: 18 }}>

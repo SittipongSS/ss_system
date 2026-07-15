@@ -18,6 +18,8 @@ import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
+import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
+import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { canReviewSalesForecast, DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
@@ -26,7 +28,6 @@ import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
-import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
 import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
@@ -52,6 +53,7 @@ export default function QuotationEditorPage() {
   const [saveChoiceOpen, setSaveChoiceOpen] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [wonOpen, setWonOpen] = useState(false);
   const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
   const [products, setProducts] = useState([]);
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
@@ -100,7 +102,8 @@ export default function QuotationEditorPage() {
   }, []);
 
   const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status);
-  const canDeleteDocument = !!quote && canEditCap && (quote.status === "draft" || isSuperuser(role));
+  // closed = ล็อกถาวร (ดีลจบด้วยใบอื่น) — ห้ามลบแม้ superuser
+  const canDeleteDocument = !!quote && canEditCap && quote.status !== "closed" && (quote.status === "draft" || isSuperuser(role));
   const editable = canEditDocument && editMode;
 
   const productOptions = useMemo(() => products.map((product) => ({
@@ -212,20 +215,8 @@ export default function QuotationEditorPage() {
     }
   };
 
-  const doAccept = () => {
-    const wonAmount = quotationWonAmount(quote);
-    setConfirmState({
-      title: "ยืนยัน Won จากใบเสนอราคา",
-      description: `ปิดดีลเป็น Won ด้วยใบเสนอราคา ${quote.quoteNumber}`,
-      detail: `ยอดก่อน VAT ${money(wonAmount)} จะถูกบันทึกเป็นยอด Won โดยยอดรวมเอกสารคือ ${money(quote.totalAmount)}`,
-      confirmLabel: "ยืนยัน Won",
-      action: async () => {
-        if (!(await act("accept", `/api/sales-planning/quotations/${id}/accept`))) return false;
-        await load();
-        return true;
-      },
-    });
-  };
+  // เปิดฟอร์มหลักฐาน Won (บังคับแนบไฟล์ + วันที่เอกสาร — validate ใน dialog/route/RPC)
+  const doAccept = () => setWonOpen(true);
   const doDelete = () => {
     const elevatedDelete = quote.status !== "draft";
     setConfirmState({
@@ -305,6 +296,7 @@ export default function QuotationEditorPage() {
     rejected: { label: "ถูกปฏิเสธ", color: "var(--red)" },
     cancelled: { label: "ยกเลิก", color: "var(--red)" },
     revised: { label: "มีฉบับแก้ไขใหม่", color: "var(--amber)" },
+    closed: { label: "ปิด (ดีลจบด้วยใบอื่น)", color: "var(--text-3)" },
   }[quote?.status] || { label: quote?.status || "-", color: "var(--text-3)" };
   const saveTemplate = async () => {
     if (!tplForm.title.trim() || !tplForm.body.trim()) return;
@@ -576,8 +568,33 @@ export default function QuotationEditorPage() {
               </div>
 
               {quote.deal && <Link href={`/sa/deals/${quote.deal.id}`} className={styles.relatedLink}>เปิดดีลที่เกี่ยวข้อง <span>→</span></Link>}
-              {!editable && <p className={styles.lockedNote}>ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่</p>}
+              {!editable && quote.status !== "closed" && <p className={styles.lockedNote}>ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่</p>}
+              {quote.status === "closed" && <p className={styles.lockedNote}>ใบนี้ถูกปิดเพราะดีลจบด้วยใบเสนอราคาฉบับอื่น — แก้ไข/ลบไม่ได้</p>}
             </section>
+
+            {/* หลักฐานการปิด Won (mig 0102) — โชว์บนใบที่ accept แล้ว */}
+            {quote.status === "accepted" && Array.isArray(quote.wonAttachments) && quote.wonAttachments.length > 0 && (
+              <section className={styles.card}>
+                <div className={styles.sectionHeading}>
+                  <CheckCircle2 size={17} aria-hidden="true" />
+                  <h2>หลักฐานการปิด Won</h2>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
+                  <div><small style={{ color: "var(--text-3)", display: "block" }}>ประเภทเอกสาร</small>{WON_DOC_TYPE_LABELS[quote.wonDocType] || quote.wonDocType || "-"}</div>
+                  <div><small style={{ color: "var(--text-3)", display: "block" }}>วันที่เอกสาร</small>{quote.wonDocDate ? fmtDate(quote.wonDocDate) : "-"}</div>
+                  {quote.wonPaymentDueDate && <div><small style={{ color: "var(--text-3)", display: "block" }}>กำหนดชำระ</small>{fmtDate(quote.wonPaymentDueDate)}</div>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <small style={{ color: "var(--text-3)" }}>ไฟล์แนบ</small>
+                    {quote.wonAttachments.map((att, i) => (
+                      <a key={`${att.fileUrl}-${i}`} href={`/api/sales-planning/quotations/${quote.id}/file?i=${i}`} target="_blank" rel="noreferrer" className={styles.relatedLink}>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.fileName || `ไฟล์ ${i + 1}`}</span>
+                        <span>→</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            )}
             {quote.revisionHistory?.length > 1 && (
               <section className={styles.card}>
                 <div className={styles.sectionHeading}>
@@ -609,6 +626,15 @@ export default function QuotationEditorPage() {
           </aside>
         </div>
       )}
+
+      <QuotationWonDialog
+        open={wonOpen}
+        onClose={() => setWonOpen(false)}
+        quote={quote}
+        customerId={quote?.customerId || quote?.deal?.customerId}
+        customerName={quote?.customerName || quote?.deal?.customerName}
+        onDone={async () => { setWonOpen(false); await load(); }}
+      />
 
       <Modal open={saveChoiceOpen} onClose={() => !busy && setSaveChoiceOpen(false)} title="เลือกวิธีบันทึกใบเสนอราคา" size="sm">
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>

@@ -57,6 +57,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!before) return notFound('ไม่พบใบเสนอราคา');
   if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
   if (!EDITABLE_STATUSES.has(before.status)) {
+    if (before.status === 'closed') {
+      return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — แก้ไขไม่ได้');
+    }
     return badRequest(`ใบสถานะ "${before.status}" แก้ไขไม่ได้ — ใช้ Revise เพื่อออกฉบับใหม่`);
   }
 
@@ -165,6 +168,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const before = await loadQuote(supabase, id);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
   if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
+  if (before.status === 'closed') {
+    return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ลบไม่ได้');
+  }
   if (before.status !== 'draft') {
     return badRequest('ลบได้เฉพาะฉบับร่าง — ใบที่ส่งแล้วให้ยกเลิก (cancel) หรือออก Revise แทน');
   }

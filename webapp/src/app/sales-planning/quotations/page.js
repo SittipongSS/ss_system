@@ -10,24 +10,13 @@ import Workspace from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
-import { dealTypeBadge } from "@/components/salesPlanning/ui";
+import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/components/salesPlanning/ui";
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 
-const STATUS_LABELS = {
-  draft: "ฉบับร่าง", sent: "ส่งลูกค้าแล้ว", accepted: "Won",
-  rejected: "ถูกปฏิเสธ", cancelled: "ยกเลิก", revised: "ถูกแก้ไข (มีฉบับใหม่)",
-};
-const STATUS_COLORS = {
-  draft: "var(--text-3)", sent: "var(--blue)", accepted: "var(--green)",
-  rejected: "var(--red)", cancelled: "var(--red)", revised: "var(--amber)",
-};
-const statusBadge = (s) => (
-  <span className="ui-badge" style={{ color: STATUS_COLORS[s] || "var(--text-3)", borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
-    {STATUS_LABELS[s] || s}
-  </span>
-);
+// ป้ายสถานะใช้ชุดกลาง QUOTE_STATUS_LABELS/quoteStatusBadge จาก components/salesPlanning/ui
+const statusBadge = (s) => quoteStatusBadge(s);
 
 export default function QuotationsPage() {
   const canEdit = useCan("salesplan:edit");
@@ -111,7 +100,7 @@ export default function QuotationsPage() {
             </div>
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 190 }}>
               <option value="all">ทุกสถานะ</option>
-              {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {Object.entries(QUOTE_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
             <div className="spacer" />
             <span className="ui-badge">{filtered.length} ใบ</span>
@@ -169,7 +158,8 @@ export default function QuotationsPage() {
                             <Pencil size={15} aria-hidden="true" />
                           </Link>
                         )}
-                        {canEdit && (r.status === "draft" || isSuperuser(role)) && (
+                        {/* closed = ล็อกถาวร (ดีลจบด้วยใบอื่น) — ห้ามลบแม้ superuser */}
+                        {canEdit && r.status !== "closed" && (r.status === "draft" || isSuperuser(role)) && (
                           <button type="button" className="btn-icon danger" title={r.status === "draft" ? "ลบฉบับร่าง" : "ลบ (สิทธิ์ผู้ดูแลระบบ)"} aria-label={`ลบ ${r.quoteNumber}`}
                             onClick={() => deleteQuote(r)}>
                             <Trash2 size={15} aria-hidden="true" />
