@@ -11,7 +11,7 @@ import {
   quoteTotals,
   toMoney,
 } from '@/lib/salesPlanning';
-import { normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
+import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import {
   ACTIVE_QUOTATION_STATUSES,
@@ -80,7 +80,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (activeQuote) return conflict(activeQuotationConflictMessage(activeQuote));
 
   const body = await req.json().catch(() => ({}));
-  let lines = normalizeManualLines(body.lines || []);
+  // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
+  let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []));
   // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
   if (!lines.length && body.seedFromProject) lines = await seedLinesFromProject(supabase, deal);
   if (body.status === 'sent' && !lines.length) {

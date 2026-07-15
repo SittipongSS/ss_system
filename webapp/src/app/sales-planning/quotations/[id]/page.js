@@ -463,7 +463,15 @@ export default function QuotationEditorPage() {
                         </div>
                       </td>
                       <td><MoneyInput min="0" value={l.qty} disabled={!editable} onChange={(value) => setLine(i, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${i + 1}`} /></td>
-                      <td><MoneyInput min="0" value={l.unitPrice} disabled={!editable} onChange={(value) => setLine(i, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${i + 1}`} /></td>
+                      <td>
+                        {/* ราคาบรรทัด FG ล็อกตามฐานข้อมูลสินค้า (server enforce ซ้ำตอนบันทึก) */}
+                        <MoneyInput min="0" value={l.unitPrice} disabled={!editable || !!(l.productId || l.fgCode)} title={(l.productId || l.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(i, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${i + 1}`} />
+                        {editable && !!(l.productId || l.fgCode) && (
+                          <Link href={l.productId ? `/database/products/${l.productId}` : "/database/products"} target="_blank" className={styles.fgCode} style={{ color: "var(--blue)" }}>
+                            ราคาจากฐานข้อมูล →
+                          </Link>
+                        )}
+                      </td>
                       <td>
                         <div className={styles.discountControls}>
                           <Select className="premium-select" value={l.discountType || ""} disabled={!editable} onChange={(e) => setLine(i, { discountType: e.target.value || null, discountValue: e.target.value ? l.discountValue : 0 })}>
