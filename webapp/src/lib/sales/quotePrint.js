@@ -103,6 +103,11 @@ export function buildQuotePrintHTML(quote) {
   const dealTitle = quote.deal?.title || quote.dealTitle || '-';
   const projectTitle = quote.project?.name || quote.projectName || '-';
   const branch = quote.branchCode ? `สาขา ${quote.branchCode}` : 'สำนักงานใหญ่';
+  // ผู้รับผิดชอบเอกสาร (เลือกในฟอร์ม — ชุดเดียวกับไทม์ไลน์): ผู้ดูแลขึ้นหัวใบ,
+  // ผู้จัดทำ/ผู้ตรวจสอบลงช่องลงชื่อ (fallback ใบเก่า: ผู้สร้างใบ)
+  const aeOwner = quote.metadata?.aeOwner || '';
+  const preparedBy = quote.metadata?.preparedBy || quote.createdByName || '';
+  const reviewer = quote.metadata?.aeSupervisor || '';
 
   return `<!doctype html>
 <html lang="th">
@@ -221,6 +226,7 @@ export function buildQuotePrintHTML(quote) {
         <div class="hrow"><span class="k">ยืนราคาถึง</span><span class="v">${quote.validUntil ? value(fmtDate(quote.validUntil)) : '-'}</span></div>
         <div class="hrow"><span class="k">โครงการ</span><span class="v">${value(projectTitle)}</span></div>
         <div class="hrow"><span class="k">ดีล</span><span class="v">${value(dealTitle)}</span></div>
+        ${aeOwner ? `<div class="hrow"><span class="k">ผู้ดูแล (AE)</span><span class="v">${esc(aeOwner)}</span></div>` : ''}
         ${Number(quote.revisionNo) > 0 ? `<div class="hrow"><span class="k">ฉบับแก้ไข</span><span class="v">R${Number(quote.revisionNo)}</span></div>` : ''}
       </div>
     </section>
@@ -238,8 +244,8 @@ export function buildQuotePrintHTML(quote) {
       </div>
     </section>
     <section class="signs">
-      <div class="sign"><div class="line"></div><div class="who">${value(quote.createdByName)}</div><div class="role">ผู้เสนอราคา</div></div>
-      <div class="sign"><div class="line"></div><div class="who">ผู้อนุมัติ</div><div class="role">Scent &amp; Sense</div></div>
+      <div class="sign"><div class="line"></div><div class="who">${value(preparedBy)}</div><div class="role">ผู้จัดทำ / ผู้เสนอราคา</div></div>
+      <div class="sign"><div class="line"></div><div class="who">${reviewer ? esc(reviewer) : 'ผู้อนุมัติ'}</div><div class="role">ผู้ตรวจสอบ / ผู้อนุมัติ · Scent &amp; Sense</div></div>
       <div class="sign"><div class="line"></div><div class="who">ผู้ยืนยันสั่งซื้อ</div><div class="role">ลูกค้า · วันที่ ____/____/______</div></div>
     </section>
   </main>
