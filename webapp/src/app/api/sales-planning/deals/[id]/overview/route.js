@@ -27,7 +27,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesViewScope(user, deal)) return forbidden();
 
-  const [quotations, documents, activities, stageHistory, forecasts, dealTasks] = await Promise.all([
+  const [quotations, documents, activities, stageHistory, forecasts, dealTasks, inquiries] = await Promise.all([
     safe('quotations', supabase.from('quotations').select('*, lines:quotation_lines(*)').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
     safe('documents', supabase.from('sales_deal_documents').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
     safe('activities', supabase.from('sales_deal_activities').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
@@ -38,6 +38,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     safe('deal tasks', supabase.from('personal_tasks').select('*')
       .or(deal.projectId ? `dealId.eq.${deal.id},projectId.eq.${deal.projectId}` : `dealId.eq.${deal.id}`)
       .order('createdAt', { ascending: false }), []),
+    // ข้อสอบถามถึงฝ่ายอื่น (RD) ของดีลนี้ — "เก็บแยก โชว์รวม": merge เข้าฟีด
+    // ความเคลื่อนไหวฝั่ง client แบบเดียวกับ stageHistory (อ่านอย่างเดียวในฟีด)
+    safe('inquiries', supabase.from('inquiries').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
   ]);
 
   let project = { data: null, warning: null };
@@ -102,6 +105,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     quotations: latestQuotationRevisions(quotations.data),
     documents: documents.data,
     activities: activities.data,
+    inquiries: inquiries.data,
     dealTasks: enrichedDealTasks,
     stageHistory: stageHistory.data,
     forecasts: forecasts.data,

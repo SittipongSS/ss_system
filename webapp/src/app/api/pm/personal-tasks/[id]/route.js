@@ -3,7 +3,7 @@ import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http'
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
-import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleTeam } from '@/lib/pm/personalTaskAccess';
+import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleIdentity } from '@/lib/pm/personalTaskAccess';
 import { purgeAttachments } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
@@ -73,8 +73,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ── รับช่วงงาน: ย้าย assignee จริงทันที (ไม่สร้าง proxyBy ใหม่) ──
   // รองรับ proxyAction=pull จาก client รุ่นเก่า แต่ให้ผลแบบใหม่เหมือน take.
   if (body.responsibilityAction === 'take' || body.proxyAction === 'pull') {
-    const respTeam = await personalTaskResponsibleTeam(supabase, task);
-    if (!canPullTask(user, task, respTeam)) return forbidden('ดึงงานนี้มาเป็นผู้รับผิดชอบไม่ได้');
+    const resp = await personalTaskResponsibleIdentity(supabase, task);
+    if (!canPullTask(user, task, resp.team, resp.department)) return forbidden('ดึงงานนี้มาเป็นผู้รับผิดชอบไม่ได้');
     const takeoverUpdate = {
       assigneeId: user.id,
       assignedBy: user.id,
@@ -129,7 +129,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (next && next !== user.id) {
       const { data: au } = await supabase.auth.admin.getUserById(next);
       if (!au?.user) return badRequest('ไม่พบผู้รับมอบหมาย');
-      const assignee = { id: next, team: au.user.app_metadata?.team ?? null };
+      const assignee = {
+        id: next,
+        team: au.user.app_metadata?.team ?? null,
+        department: au.user.app_metadata?.department ?? null, // rd มอบภายในฝ่ายเดียวกัน
+      };
       if (!canAssignTask(user, assignee)) return forbidden('ไม่มีสิทธิ์มอบหมายงานให้ผู้ใช้นี้');
       updates.assignedBy = user.id;
     } else {

@@ -25,6 +25,7 @@ import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import InquiryCreateModal from "@/components/salesPlanning/InquiryCreateModal";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import { IMAGE_ACCEPT_ATTR, MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "@/lib/master/attachmentTypes";
@@ -199,11 +200,19 @@ export default function DealOverviewPage() {
   const acceptedQuote = useMemo(() => (data?.quotations || []).find((quote) => quote.status === "accepted"), [data]);
   const pendingDocs = useMemo(() => (data?.documents || []).filter((doc) => doc.status === "pending"), [data]);
 
-  // ไทม์ไลน์รวม: อัปเดตงาน (activities) + การเปลี่ยนสถานะ (stageHistory) เรียงเวลาล่าสุดก่อน
+  // ไทม์ไลน์รวม: อัปเดตงาน (activities) + การเปลี่ยนสถานะ (stageHistory) + เหตุการณ์
+  // เรื่องสอบถาม RD (inquiries — "เก็บแยก โชว์รวม": อ่านอย่างเดียว กดเข้าเธรดเต็ม)
+  // เรียงเวลาล่าสุดก่อน
   const timeline = useMemo(() => {
     const acts = (data?.activities || []).map((a) => ({ type: "activity", at: a.createdAt, act: a }));
     const stages = (data?.stageHistory || []).map((s) => ({ type: "stage", at: s.changedAt, stage: s }));
-    return [...acts, ...stages].sort((x, y) => String(y.at || "").localeCompare(String(x.at || "")));
+    const inqs = (data?.inquiries || []).flatMap((q) => {
+      const events = [{ type: "inquiry", at: q.createdAt, inquiry: q, event: "created" }];
+      if (q.answeredAt) events.push({ type: "inquiry", at: q.answeredAt, inquiry: q, event: "answered" });
+      if (q.closedAt) events.push({ type: "inquiry", at: q.closedAt, inquiry: q, event: "closed" });
+      return events;
+    });
+    return [...acts, ...stages, ...inqs].sort((x, y) => String(y.at || "").localeCompare(String(x.at || "")));
   }, [data]);
 
   // สรุปความคืบหน้าไทม์ไลน์ (จาก project_tasks ของโครงการ PM ที่ผูก)
@@ -293,6 +302,7 @@ export default function DealOverviewPage() {
   const [feedBusy, setFeedBusy] = useState(false);
   const [feedFiles, setFeedFiles] = useState([]); // { file, url } รูปที่เลือกไว้ (ยังไม่อัป)
   const [lightbox, setLightbox] = useState(null); // { src, name } พรีวิวเต็มจอ
+  const [inquiryOpen, setInquiryOpen] = useState(false); // โมดัล "สอบถาม RD"
 
   // เลือกรูปแนบ (composer) — กรองขนาด/ชนิด client-side ก่อน, สร้าง objectURL พรีวิว
   const onPickFiles = (e) => {
@@ -1093,6 +1103,11 @@ export default function DealOverviewPage() {
                 <MessageSquare size={17} aria-hidden="true" />
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ความเคลื่อนไหว</h2>
                 <span className="ui-badge" style={{ marginLeft: "auto", color: "var(--text-3)" }}>{timeline.length} รายการ</span>
+                {canEdit && (
+                  <button type="button" className="btn sm" onClick={() => setInquiryOpen(true)} title="ส่งข้อสอบถามถึงฝ่าย RD ในนามดีลนี้">
+                    <MessageSquare size={13} aria-hidden="true" /> สอบถาม RD
+                  </button>
+                )}
               </div>
 
               {canEdit && (
@@ -1142,6 +1157,28 @@ export default function DealOverviewPage() {
               {timeline.length ? (
                 <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
                   {timeline.map((item) => {
+                    if (item.type === "inquiry") {
+                      const q = item.inquiry;
+                      const eventMeta = {
+                        created: { label: "สอบถาม RD", color: "var(--violet)", text: q.title },
+                        answered: { label: "RD ตอบแล้ว", color: "var(--green)", text: q.title },
+                        closed: { label: "ปิดเรื่องสอบถาม", color: "var(--text-3)", text: q.title },
+                      }[item.event];
+                      return (
+                        <li key={`iq-${q.id}-${item.event}`} style={{ borderLeft: `3px solid ${eventMeta.color}`, paddingLeft: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span className="ui-badge" style={{ color: eventMeta.color }}>{eventMeta.label}</span>
+                            <Link href={`/sa/inquiries/${q.id}`} className="linklike" style={{ fontSize: 13.5 }}>
+                              {q.code ? `${q.code} · ` : ""}{eventMeta.text}
+                            </Link>
+                            {q.urgent && item.event === "created" && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
+                          </div>
+                          <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>
+                            {item.event === "created" ? (q.requesterName || "-") : (q.assigneeName || "-")} · {item.at ? fmtDateTime(item.at) : "-"}
+                          </div>
+                        </li>
+                      );
+                    }
                     if (item.type === "stage") {
                       const row = item.stage;
                       return (
@@ -1216,6 +1253,14 @@ export default function DealOverviewPage() {
           </div>
         </div>
       )}
+
+      {/* โมดัล "สอบถาม RD" — ส่งข้อสอบถามในนามดีลนี้ แล้วเหตุการณ์ขึ้นฟีดความเคลื่อนไหวเอง */}
+      <InquiryCreateModal
+        open={inquiryOpen}
+        onClose={() => setInquiryOpen(false)}
+        onCreated={() => { setInquiryOpen(false); load(); }}
+        deal={deal ? { id: deal.id, code: deal.code, title: deal.title, customerId: deal.customerId, customerName: deal.customerName || deal.customer?.name } : null}
+      />
 
       {/* เฟส B: โมดัลผูกดีลเข้าโครงการเดิมของลูกค้า — เลือกโครงการ + วันเริ่ม segment */}
       <Modal open={linkOpen} onClose={() => !actionBusy && setLinkOpen(false)} title="ผูกกับโครงการเดิม" size="sm">

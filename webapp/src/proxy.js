@@ -181,6 +181,12 @@ function apiWriteAllowed(method, path, role, extraCaps) {
   // ลีด (เฟส C): role marketing มีแค่ salesplan:lead (ไม่มี salesplan:edit) —
   // เปิดเขียนเฉพาะเส้นลีด; เส้น sales-planning อื่นยังต้อง salesplan:edit ตามเดิม.
   if (path.startsWith('/api/sales-planning/leads')) return can(role, 'salesplan:lead');
+  // ระบบสอบถาม–ตอบกลับ (inquiries, mig 0104): ฝ่ายขายสร้าง/ถามต่อ/ปิดด้วย
+  // salesplan:edit; ฝ่ายผู้ตอบ (role rd — cap inquiries:respond) รับเรื่อง/ตอบได้
+  // แม้ไม่มีสิทธิ์แก้งานขาย. สิทธิ์รายแถว (ฝ่าย/scope ทีม) บังคับใน handler.
+  if (path.startsWith('/api/sales-planning/inquiries')) {
+    return can(role, 'salesplan:edit') || can(role, 'inquiries:respond');
+  }
   if (path.startsWith('/api/sales-planning')) return can(role, 'salesplan:edit');
   // Native /sa APIs are part of Sales Planning (for example, creating a
   // project container before deals are linked). Keep the same write gate.

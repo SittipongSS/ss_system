@@ -228,10 +228,11 @@ const ROLE_CAPS = {
   ],
   // rd: ฝ่ายวิจัยและพัฒนา — คู่คิดหลักของฝ่ายขาย. อ่านดีล/โครงการ/ใบเสนอราคา
   // ทุกทีม (salesplan:view — scope 'all' ผ่าน salesPlanningViewScope) เพื่อเห็น
-  // บริบทเต็มเวลาฝ่ายขายส่งข้อสอบถาม + ใช้ระบบงานของฉัน (workflow tier แบบ staff).
+  // บริบทเต็มเวลาฝ่ายขายส่งข้อสอบถาม + ใช้ระบบงานของฉัน (workflow tier แบบ staff)
+  // + ตอบข้อสอบถามของฝ่ายตน (inquiries:respond — ตาราง inquiries, mig 0104).
   // ไม่มีสิทธิ์แก้ดีล/แผนโครงการ (ไม่มี salesplan:edit / pm:edit / sales:act) และ
   // ไม่เห็นต้นทุน/มาร์จิ้น (ไม่มี products:margin — grant รายคนได้ถ้าจำเป็น).
-  rd: ['pm:view', 'products:view', 'customers:view', 'salesplan:view'],
+  rd: ['pm:view', 'products:view', 'customers:view', 'salesplan:view', 'inquiries:respond'],
   // staff: a member of a non-sales department (PC/PD/WH/RD/QC). Logs in to see
   // PM + the tasks assigned to them, and may READ the shared master data
   // (products/customers) — but never the cost margin (no products:margin).
@@ -480,9 +481,12 @@ export function pmTaskScopes(role) {
 //   senior_ae / ac / ae            → someone in their OWN team (mirrors pmEditScope
 //                                     'team' — a sales member may hand work to a
 //                                     teammate; row visibility still team-scoped)
+//   rd                             → someone in their OWN department (RD ทำงานกันเอง
+//                                     2 คนไม่มีหัวหน้าฝ่ายในระบบ — สลับ/แบ่งงานกันได้;
+//                                     ฝ่ายขายยังมอบตรงให้ RD ไม่ได้ ต้องผ่าน inquiry)
 //   everyone else                  → only themselves
-// `assigner` = { id, role, team }; `assignee` = { id, team }. Assigning to
-// oneself is always allowed. Used by the personal-tasks API + the task form.
+// `assigner` = { id, role, team, department }; `assignee` = { id, team, department }.
+// Assigning to oneself is always allowed. Used by the personal-tasks API + the task form.
 export function canAssignTask(assigner, assignee) {
   if (!assigner?.id || !assignee?.id) return false;
   if (assigner.id === assignee.id) return true;
@@ -492,6 +496,10 @@ export function canAssignTask(assigner, assignee) {
   // TEAM_ROLES list so server + client + this rule never drift apart.
   if (TEAM_ROLES.includes(assigner.role)) {
     return !!assigner.team && assigner.team === assignee.team;
+  }
+  if (assigner.role === 'rd') {
+    const dept = normalizeDepartment(assigner.department);
+    return !!dept && dept === normalizeDepartment(assignee.department);
   }
   return false;
 }
@@ -520,16 +528,23 @@ export function canChangeTaskAssignee(task, nextAssigneeId) {
 
 // May `user` TAKE this task? A teammate (shares team with the responsible person,
 // or a superuser) who isn't already responsible, when no legacy proxy holds it.
-export function canPullTask(user, task, respTeam) {
+// `respDept` = department of the responsible person (for the rd same-department rule).
+export function canPullTask(user, task, respTeam, respDept) {
   if (!user?.id || !task) return false;
   if (task.status === 'Completed') return false;
   const respId = task.assigneeId || task.ownerId;
   if (respId === user.id) return false;                        // already yours
   if (task.proxyBy && task.proxyBy !== user.id) return false;  // held by someone else
   if (isSuperuser(user.role)) return true;                     // sup/admin → any team
-  // only an actual team member (not a read-only viewer / non-sales staff) may
-  // pull, and only within their own team.
-  return TEAM_ROLES.includes(user.role) && !!user.team && user.team === respTeam;
+  // an actual team member (not a read-only viewer / non-sales staff) may pull
+  // within their own team.
+  if (TEAM_ROLES.includes(user.role)) return !!user.team && user.team === respTeam;
+  // rd: ช่วยกันภายในฝ่ายเดียวกัน (mirror กติกามอบหมาย canAssignTask ของ rd)
+  if (user.role === 'rd') {
+    const dept = normalizeDepartment(user.department);
+    return !!dept && dept === normalizeDepartment(respDept);
+  }
+  return false;
 }
 
 // May `user` RELEASE (คืนงาน) the proxy hold? The current proxy, the responsible

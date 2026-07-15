@@ -36,6 +36,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   let projectId = body.projectId || null;
   const dealId = body.dealId || null;
+  // ลิงก์ย้อนกลับไปเรื่องสอบถามต้นทาง (ปุ่ม "สร้างงานจากคำถาม" — mig 0104)
+  let inquiryId = null;
+  if (body.inquiryId) {
+    const { data: inq } = await supabase.from('inquiries').select('id').eq('id', body.inquiryId).maybeSingle();
+    if (!inq) return badRequest('ไม่พบเรื่องสอบถามต้นทาง');
+    inquiryId = inq.id;
+  }
 
   // ── มอบหมาย: ตรวจสิทธิ์ตามลำดับชั้น (ไม่ผูกกับโครงการ) ──
   let assigneeId = null;
@@ -43,7 +50,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (body.assigneeId && body.assigneeId !== user.id) {
     const { data: au } = await supabase.auth.admin.getUserById(body.assigneeId);
     if (!au?.user) return badRequest('ไม่พบผู้รับมอบหมาย');
-    const assignee = { id: body.assigneeId, team: au.user.app_metadata?.team ?? null };
+    const assignee = {
+      id: body.assigneeId,
+      team: au.user.app_metadata?.team ?? null,
+      department: au.user.app_metadata?.department ?? null, // rd มอบภายในฝ่ายเดียวกัน
+    };
     if (!canAssignTask(user, assignee)) return forbidden('ไม่มีสิทธิ์มอบหมายงานให้ผู้ใช้นี้');
     assigneeId = body.assigneeId;
     assignedBy = user.id;
@@ -80,6 +91,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     difficulty: normalizeDifficulty(body.difficulty),
     projectId,
     dealId,
+    inquiryId,
     completedAt: status === 'Completed' ? today() : null,
   };
   if (assigneeId) { row.assigneeId = assigneeId; row.assignedBy = assignedBy; }
