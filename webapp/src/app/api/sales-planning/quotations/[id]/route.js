@@ -88,9 +88,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('validUntil' in body) patch.validUntil = body.validUntil || null;
   if ('paymentTerms' in body) patch.paymentTerms = (body.paymentTerms || '').trim() || null;
   if ('notes' in body) patch.notes = (body.notes || '').trim() || null;
-  // ผู้รับผิดชอบเอกสาร (aeOwner/preparedBy/aeSupervisor) + ค่าอื่นใน metadata — merge ไม่ทับทั้งก้อน
+  // ผู้รับผิดชอบเอกสาร (aeOwner/aeSupervisor) + ค่าอื่นใน metadata — merge ไม่ทับทั้งก้อน.
+  // ผู้จัดทำ (preparedBy) ล็อกจากบัญชีผู้สร้างใบ/ผู้ออก Revision — แก้ผ่าน PATCH ไม่ได้
   if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {
-    patch.metadata = { ...(before.metadata || {}), ...body.metadata };
+    const { preparedBy: _locked, ...editableMeta } = body.metadata;
+    patch.metadata = { ...(before.metadata || {}), ...editableMeta };
   }
   if ('status' in body) {
     if (!['draft', 'sent'].includes(body.status)) return badRequest('เปลี่ยนสถานะได้เฉพาะ draft/sent (รับใบใช้ปุ่ม Accept)');
