@@ -531,10 +531,10 @@ export default function QuotationEditorPage() {
             {/* ข้อมูลท้ายใบ: ยอด ส่วนลด VAT */}
             <div className={styles.totalsWrap}>
               <div className={styles.totalsPanel}>
-                <div className={styles.totalLine}><span>รวมเป็นเงิน</span><strong className="mono">{money(totals.subtotal)}</strong></div>
+                <div className={styles.totalLine}><span>ยอดรวมสินค้า/บริการ</span><strong className="mono">{money(totals.subtotal)}</strong></div>
                 <div className={styles.totalLine}>
                   <span className={styles.totalControls}>
-                    ส่วนลดท้ายใบ
+                    หัก ส่วนลด
                     <Select className="premium-select" value={form.discountType} disabled={!editable} onChange={(e) => setF({ discountType: e.target.value, discountValue: e.target.value ? form.discountValue : "" })}>
                       <option value="">ไม่ลด</option>
                       <option value="percent">%</option>
@@ -544,6 +544,9 @@ export default function QuotationEditorPage() {
                   </span>
                   <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-"}</strong>
                 </div>
+                {totals.discountAmount > 0 && (
+                  <div className={styles.totalLine}><span>ยอดหลังหักส่วนลด</span><strong className="mono">{money(totals.subtotal - totals.discountAmount)}</strong></div>
+                )}
                 <div className={styles.totalLine}>
                   <span className={styles.totalControls}>
                     ภาษีมูลค่าเพิ่ม

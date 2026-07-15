@@ -94,11 +94,16 @@ export function buildQuotePrintHTML(quote) {
       </table>`
     : '';
 
+  // โครงท้ายใบ (มติผู้ใช้ 2026-07-15): ยอดรวมสินค้า/บริการ → หัก ส่วนลด →
+  // ยอดหลังหักส่วนลด (โชว์เมื่อมีส่วนลด) → VAT → ยอดรวมทั้งสิ้น (มีหน่วย "บาท")
+  const hasDiscount = Number(quote.discountAmount) > 0;
+  const afterDiscount = Number(quote.subtotal || 0) - Number(quote.discountAmount || 0);
   const totals = `
-    <tr><td>รวมเป็นเงิน</td><td class="n">${money(quote.subtotal)}</td></tr>
-    ${Number(quote.discountAmount) > 0 ? `<tr><td>ส่วนลด${quote.discountType === 'percent' ? ` ${Number(quote.discountValue)}%` : ''}</td><td class="n discount">-${money(quote.discountAmount)}</td></tr>` : ''}
+    <tr><td>ยอดรวมสินค้า/บริการ</td><td class="n">${money(quote.subtotal)}</td></tr>
+    ${hasDiscount ? `<tr><td>หัก ส่วนลด${quote.discountType === 'percent' ? ` ${Number(quote.discountValue)}%` : ''}</td><td class="n discount">-${money(quote.discountAmount)}</td></tr>
+    <tr class="after-discount"><td>ยอดหลังหักส่วนลด</td><td class="n">${money(afterDiscount)}</td></tr>` : ''}
     <tr><td>ภาษีมูลค่าเพิ่ม ${Number(quote.vatRate || 0)}%</td><td class="n">${money(quote.vatAmount)}</td></tr>
-    <tr class="grand"><td>ยอดรวมทั้งสิ้น</td><td class="n">${money(quote.totalAmount)}</td></tr>`;
+    <tr class="grand"><td>ยอดรวมทั้งสิ้น</td><td class="n">${money(quote.totalAmount)} บาท</td></tr>`;
 
   const dealTitle = quote.deal?.title || quote.dealTitle || '-';
   const projectTitle = quote.project?.name || quote.projectName || '-';
@@ -176,6 +181,8 @@ export function buildQuotePrintHTML(quote) {
   table.totals td:first-child { border-left: 1px solid #dcd8d0; }
   table.totals td:last-child { border-right: 1px solid #dcd8d0; }
   table.totals .discount { color: #b0483b; }
+  /* ยอดหลังหักส่วนลด — เส้นคั่นบน + ตัวหนา (โครงท้ายใบตามมติผู้ใช้ 2026-07-15) */
+  table.totals tr.after-discount td { border-top: 1.5px solid #b8b0a4; font-weight: 700; }
   table.totals tr.grand td { background: #f7f3ec; color: #21385e; font-size: 12px; font-weight: 800;
                             border-top: 2px solid #c17a52; border-bottom: 2px solid #c17a52; }
   table.pay { margin-top: 5px; }

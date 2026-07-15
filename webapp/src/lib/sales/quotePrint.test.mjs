@@ -93,6 +93,26 @@ test('quotation print shows the selected document people with legacy fallback', 
   assert.doesNotMatch(legacy, /ผู้ดูแล \(AE\)/);
 });
 
+test('quotation print totals follow the agreed footer structure', () => {
+  const html = buildQuotePrintHTML({
+    quoteNumber: 'QT-004', lines: [],
+    subtotal: 100000, discountType: 'amount', discountValue: 5000, discountAmount: 5000,
+    vatRate: 7, vatAmount: 6650, totalAmount: 101650,
+  });
+  assert.match(html, /ยอดรวมสินค้า\/บริการ<\/td><td class="n">100,000\.00/);
+  assert.match(html, /หัก ส่วนลด<\/td><td class="n discount">-5,000\.00/);
+  assert.match(html, /ยอดหลังหักส่วนลด<\/td><td class="n">95,000\.00/);
+  assert.match(html, /ภาษีมูลค่าเพิ่ม 7%<\/td><td class="n">6,650\.00/);
+  assert.match(html, /ยอดรวมทั้งสิ้น<\/td><td class="n">101,650\.00 บาท/);
+
+  // ไม่มีส่วนลด → ไม่โชว์บรรทัดหักส่วนลด/ยอดหลังหักส่วนลด
+  const noDiscount = buildQuotePrintHTML({
+    quoteNumber: 'QT-005', lines: [], subtotal: 100000, vatRate: 7, vatAmount: 7000, totalAmount: 107000,
+  });
+  assert.doesNotMatch(noDiscount, /หัก ส่วนลด<\/td>/);
+  assert.doesNotMatch(noDiscount, /ยอดหลังหักส่วนลด<\/td>/);
+});
+
 test('showQuotePrintError replaces the loading page with a safe error message', () => {
   const target = fakePrintWindow();
   showQuotePrintError(target, '<โหลดไม่สำเร็จ>');
