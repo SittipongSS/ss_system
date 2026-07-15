@@ -24,6 +24,7 @@ import SortControl from "@/components/ui/SortControl";
 import StatusSelect, { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { productSelectOptions } from "@/components/master/productOption";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -967,12 +968,7 @@ export default function ProjectDetailPage() {
           <SearchableSelect
             entity="product"
             size="sm"
-            options={allProducts.filter(pr => !linkedIds.has(pr.id)).map(pr => ({
-              value: pr.id,
-              label: `${pr.fgCode} — ${pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""}`,
-              search: `${pr.fgCode || ""} ${pr.productDescription || ""} ${pr.productDescriptionEn || ""}`,
-              render: <span><strong>{pr.fgCode}</strong> — {pr.productDescriptionEn || pr.productDescription || pr.brandNameEn || pr.brandName || ""}</span>,
-            }))}
+            options={productSelectOptions(allProducts.filter(pr => !linkedIds.has(pr.id)))}
             value={addingProduct}
             onChange={setAddingProduct}
             placeholder="ค้นหา Product Code (FG)..."

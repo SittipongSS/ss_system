@@ -29,6 +29,7 @@ import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } fr
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { fgLineDescription } from "@/lib/sales/quoteLines";
+import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
@@ -107,20 +108,8 @@ export default function QuotationEditorPage() {
   const canDeleteDocument = !!quote && canEditCap && quote.status !== "closed" && (quote.status === "draft" || isSuperuser(role));
   const editable = canEditDocument && editMode;
 
-  // ผลค้นหาสินค้า: รหัส · แบรนด์ · ชื่อสินค้า · ปริมาตร (มติผู้ใช้ 2026-07-15) เรียงตามรหัส FG
-  const productOptions = useMemo(() => products
-    .map((product) => {
-      const brand = product.brandName || product.brandNameEn || "";
-      const volume = product.volume ? `${product.volume} ${product.volumeUnit || "ml"}` : "";
-      const name = product.productDescription || product.productDescriptionEn || "-";
-      return {
-        value: product.id,
-        fgCode: product.fgCode || "",
-        label: [product.fgCode, brand, name, volume].filter(Boolean).join(" · "),
-        search: `${product.fgCode || ""} ${brand} ${product.brandName || ""} ${product.brandNameEn || ""} ${product.productDescription || ""} ${product.productDescriptionEn || ""} ${volume}`,
-      };
-    })
-    .sort((a, b) => (a.fgCode || "￿").localeCompare(b.fgCode || "￿", "en") || a.label.localeCompare(b.label, "th")), [products]);
+  // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส (ตัวหนา) · แบรนด์ · ชื่อสินค้า · ปริมาตร
+  const productOptions = useMemo(() => productSelectOptions(products), [products]);
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: form.discountType || null,

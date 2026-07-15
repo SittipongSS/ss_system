@@ -21,6 +21,7 @@ import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { ACTIVE_QUOTATION_STATUSES } from "@/lib/sales/quotationCreateGuard";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
+import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./page.module.css";
 
 const EXCLUDE_STAGES = ["won", "in_project", "lost"];
@@ -168,11 +169,8 @@ function NewQuotationInner() {
   const onCustomer = (v) => { setCustomerId(v); setProjectId(""); setDealId(""); setCustomer(null); };
   const onProject = (v) => { setProjectId(v); setDealId(""); setCustomer(null); };
 
-  const productOptions = useMemo(() => products.map((product) => {
-    const description = product.productDescription || product.productDescriptionEn || "สินค้า";
-    const label = [product.fgCode, description].filter(Boolean).join(" · ");
-    return { value: product.id, label, search: `${product.fgCode || ""} ${description}` };
-  }), [products]);
+  // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส (ตัวหนา) · แบรนด์ · ชื่อสินค้า · ปริมาตร
+  const productOptions = useMemo(() => productSelectOptions(products), [products]);
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: discountType || null,

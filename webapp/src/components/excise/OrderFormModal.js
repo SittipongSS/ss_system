@@ -6,6 +6,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import DateInput from "@/components/ui/DateInput";
 import { fmtMoney } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { productSelectOptions } from "@/components/master/productOption";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -169,7 +170,10 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
                           value={it.registrationId}
                           onChange={(v) => setItem(idx, { registrationId: v })}
                           placeholder={customerId ? "เลือกสินค้า (อนุมัติแล้ว)" : "เลือกลูกค้าก่อน"}
-                          options={approvedRegs.map((r) => ({ value: r.id, label: `${r.fgCode} | ${r.productName}`, search: `${r.fgCode} ${r.productName}` }))}
+                          options={productSelectOptions(
+                            // ทะเบียนมีแค่ fgCode+ชื่อ → map เข้า shape มาตรฐาน (แบรนด์/ปริมาตรไม่มีใน snapshot)
+                            approvedRegs.map((r) => ({ id: r.id, fgCode: r.fgCode, name: r.productName })),
+                          )}
                           emptyText="ไม่มีสินค้าที่อนุมัติแล้วของลูกค้านี้"
                         />
                       </div>
