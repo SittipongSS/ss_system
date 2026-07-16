@@ -33,20 +33,25 @@ const signBox = ({ label, role, name }) => `
       </div>`;
 const printDate = (v) => (v ? fmtDate(v).replaceAll('/', '.') : '-');
 
+// จำนวน "หน่วยความสูง" ของแถว = จำนวนบรรทัดที่คำอธิบายจะ wrap. คอลัมน์รายการกว้าง
+// ~90mm ที่ฟอนต์ 11px ไทย รับได้ ~45 ตัวอักษร/บรรทัด (เดิมหาร 72 = ประเมินต่ำ →
+// แพ็กแถวเกินหน้า แล้วโดน overflow:hidden ตัดหายเงียบ). เผื่อไว้ที่ 45.
+const CHARS_PER_LINE = 45;
 const linePageUnits = (line) => {
   const description = `${line?.fgCode || ''} ${line?.description || ''}`.trim();
-  return Math.max(1, Math.ceil(description.length / 72));
+  return Math.max(1, Math.ceil(description.length / CHARS_PER_LINE));
 };
 
 // Explicit pages make the browser preview match the printed A4 pages. The final
 // page reserves room for totals, payment terms and signatures; preceding pages
-// can use the space for more item rows.
-export function paginateCommercialLines(lines = []) {
+// can use the space for more item rows. reserveUnits = พื้นที่เพิ่มบนหน้าสุดท้าย
+// สำหรับตารางงวดชำระ/หมายเหตุยาว (ผู้เรียกส่งมาตามเนื้อหาจริง — กันหน้าสุดท้ายล้น).
+export function paginateCommercialLines(lines = [], reserveUnits = 0) {
   if (!Array.isArray(lines) || lines.length === 0) return [[]];
 
-  const finalPageCapacity = 8;
-  const firstPageCapacity = 18;
-  const continuationCapacity = 24;
+  const finalPageCapacity = Math.max(2, 8 - Math.max(0, reserveUnits));
+  const firstPageCapacity = 15;
+  const continuationCapacity = 22;
   const pages = [];
   let remaining = lines.slice();
 
@@ -225,8 +230,13 @@ export function buildQuotePrintHTML(quote, options = {}) {
         <tbody><tr><td><div class="doc-body">${headerGrid}${itemsTable(rows)}${commercialSection}${signatureSection}</div></td></tr></tbody>
       </table>
     </main>`;
+  // เผื่อพื้นที่หน้าสุดท้าย: ตารางงวดชำระ (หัว+ต่องวด) + หมายเหตุ/เงื่อนไขที่ยาวหลายบรรทัด
+  const installmentRows = paymentPlan?.type === 'installment' ? (paymentPlan.installments || []).length : 0;
+  const notesUnits = Math.ceil(String(quote.notes || '').length / CHARS_PER_LINE)
+    + Math.ceil(String(quote.paymentTerms || '').length / CHARS_PER_LINE);
+  const finalReserve = (installmentRows ? installmentRows + 1 : 0) + Math.max(0, notesUnits - 2);
   const explicitPages = paginatedPreview
-    ? paginateCommercialLines(sortedLines).map((pageLines, pageIndex, pages) => {
+    ? paginateCommercialLines(sortedLines, finalReserve).map((pageLines, pageIndex, pages) => {
       const startIndex = pages.slice(0, pageIndex).reduce((sum, page) => sum + page.length, 0);
       const isFirstPage = pageIndex === 0;
       const isLastPage = pageIndex === pages.length - 1;

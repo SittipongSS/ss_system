@@ -10,6 +10,7 @@ import {
   forecastAmount,
   inSalesEditScope,
   inSalesViewScope,
+  isValidStage,
   monthKey,
   normalizeDealType,
   normalizeStage,
@@ -57,6 +58,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json();
   if ('title' in body && !body.title?.trim()) return badRequest('ต้องระบุชื่อดีล');
+  // ปฏิเสธ stage เพี้ยน (สะกดผิด/พิมพ์ใหญ่) แทนที่จะให้ normalizeStage ดันไป 'lead' เงียบ ๆ
+  if ('stage' in body && !isValidStage(body.stage)) return badRequest(`สถานะดีล "${body.stage}" ไม่ถูกต้อง`);
 
   const alreadyWon = ['won', 'in_project'].includes(before.stage);
   const nextStage = 'stage' in body ? normalizeStage(body.stage) : before.stage;

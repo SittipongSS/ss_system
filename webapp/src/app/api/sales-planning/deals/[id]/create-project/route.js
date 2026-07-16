@@ -189,14 +189,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return fail(linkError.message, 500);
   }
 
-  await supabase.from('sales_deal_stage_history').insert({
-    id: genId('DSH'),
-    dealId: deal.id,
-    fromStage: deal.stage,
-    toStage: nextStage,
-    changedBy: user.id || null,
-    changedByName: user.name || null,
-  });
+  // บันทึกประวัติเฉพาะเมื่อ stage เปลี่ยนจริง (ดีลที่ผ่าน timeline_proposed มาแล้ว
+  // nextStage === deal.stage → เดิมเขียนแถว from===to ปลอม เหมือน link-project/timeline)
+  if (deal.stage !== nextStage) {
+    await supabase.from('sales_deal_stage_history').insert({
+      id: genId('DSH'),
+      dealId: deal.id,
+      fromStage: deal.stage,
+      toStage: nextStage,
+      changedBy: user.id || null,
+      changedByName: user.name || null,
+    });
+  }
 
   await recordAudit({
     user,

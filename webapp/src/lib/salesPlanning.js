@@ -146,6 +146,11 @@ export function toProbability(value, stage = 'lead') {
 export function normalizeStage(value) {
   return DEAL_STAGES.includes(value) ? value : 'lead';
 }
+// true เฉพาะเมื่อเป็น stage จริง — ใช้ที่ PATCH เพื่อ "ปฏิเสธ" ค่าเพี้ยน แทนที่จะให้
+// normalizeStage เงียบ ๆ ดันไป 'lead' (ดีลถูกดีดถอยสุดทางโดยไม่มี error)
+export function isValidStage(value) {
+  return DEAL_STAGES.includes(value);
+}
 
 // ประเภทดีล 3 ค่า (เฟส A Sales Revamp) — คอลัมน์จริง sales_deals.dealType (migration 0088)
 // ค่าตรงกับ projects.type ของ PM แบบ 1:1 → passthrough ตรงตอนสร้างโครงการ (เลือก template).
@@ -208,6 +213,9 @@ export async function generateQuoteNumber(supabase, now = new Date()) {
   return { base, quoteNumber: `${base}-0` };
 }
 
+// ปัดเงินเป็น 2 ตำแหน่ง (สตางค์) — กันทศนิยมลอย (เช่น 99.999) หลุดลง DB/เอกสาร/ยอด Won
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
 // ส่วนลดหนึ่งชั้น (ใช้ทั้งรายบรรทัด + ท้ายใบ): percent = % ของฐาน, amount = บาทตรง
 export function discountAmountOf(base, discountType, discountValue) {
   const b = toMoney(base);
@@ -217,20 +225,20 @@ export function discountAmountOf(base, discountType, discountValue) {
   return Math.min(amt, b); // ส่วนลดไม่เกินฐาน — ยอดไม่ติดลบ
 }
 
-// ยอดสุทธิรายบรรทัด: qty × unitPrice − ส่วนลดบรรทัด
+// ยอดสุทธิรายบรรทัด: qty × unitPrice − ส่วนลดบรรทัด (ปัดสตางค์)
 export function quoteLineNet(line = {}) {
-  const gross = toMoney(line.qty, 1) * toMoney(line.unitPrice);
-  const discountAmount = discountAmountOf(gross, line.discountType, line.discountValue);
-  return { gross, discountAmount, lineTotal: gross - discountAmount };
+  const gross = round2(toMoney(line.qty, 1) * toMoney(line.unitPrice));
+  const discountAmount = round2(discountAmountOf(gross, line.discountType, line.discountValue));
+  return { gross, discountAmount, lineTotal: round2(gross - discountAmount) };
 }
 
 // รวมทั้งใบ (FM-SA-01): subtotal(หลังลดรายบรรทัด) − ส่วนลดท้ายใบ = ฐานภาษี → + VAT
 // vatRate default 0 = "ราคารวม VAT แล้ว" (ราคาตั้งต้น seed จาก retailPriceIncVat);
-// เลือก 7 เมื่อต้องการบวก VAT แยกท้ายใบ.
+// เลือก 7 เมื่อต้องการบวก VAT แยกท้ายใบ. ทุกยอดปัดสตางค์ก่อนคืน (กันทศนิยมลอยลง DB).
 export function quoteTotals(lines = [], { discountType = null, discountValue = 0, vatRate = 0 } = {}) {
-  const subtotal = lines.reduce((sum, line) => sum + quoteLineNet(line).lineTotal, 0);
-  const discountAmount = discountAmountOf(subtotal, discountType, discountValue);
-  const taxable = subtotal - discountAmount;
-  const vatAmount = +(taxable * (toMoney(vatRate) / 100)).toFixed(2);
-  return { subtotal, discountAmount, vatAmount, totalAmount: taxable + vatAmount };
+  const subtotal = round2(lines.reduce((sum, line) => sum + quoteLineNet(line).lineTotal, 0));
+  const discountAmount = round2(discountAmountOf(subtotal, discountType, discountValue));
+  const taxable = round2(subtotal - discountAmount);
+  const vatAmount = round2(taxable * (toMoney(vatRate) / 100));
+  return { subtotal, discountAmount, vatAmount, totalAmount: round2(taxable + vatAmount) };
 }
