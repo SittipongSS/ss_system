@@ -16,6 +16,7 @@ import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@
 import { businessDate } from '@/lib/businessDate';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
+import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 
 export const dynamic = 'force-dynamic';
 
@@ -111,6 +112,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     });
     if (!readiness.ok) return badRequest(readiness.error);
   }
+  // ผู้รับผิดชอบเอกสาร: ต้องเป็นผู้ใช้จริง + role ตรง (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ);
+  // ครบทั้งสามช่องเมื่อส่งใบให้ลูกค้า (status='sent'). กันชื่อ free-text ปลอม.
+  const peoplePick = await validateQuotationPeople(supabase, body.metadata || {}, { require: body.status === 'sent' });
+  if (!peoplePick.ok) return badRequest(peoplePick.error);
+
   // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
   const { base, quoteNumber } = await generateQuoteNumber(supabase);
   const quoteId = genId('QT');
@@ -146,8 +152,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       approvalRequestedBy: null,
       approvalRequestedByName: null,
       notes: body.notes || null,
-      // ผู้จัดทำล็อกจากบัญชีผู้สร้างใบเสมอ (มติผู้ใช้ 2026-07-15) — client ส่งมาก็ทับ
-      metadata: { ...(body.metadata || {}), preparedBy: user.name || null },
+      // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ = ผู้ใช้จริง+role ตรง)
+      metadata: {
+        ...(body.metadata || {}),
+        aeOwner: peoplePick.people.aeOwner || null,
+        preparedBy: peoplePick.people.preparedBy || null,
+        aeSupervisor: peoplePick.people.aeSupervisor || null,
+      },
       createdBy: user.id || null,
       createdByName: user.name || null,
     })

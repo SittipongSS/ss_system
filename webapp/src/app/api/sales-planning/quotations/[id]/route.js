@@ -9,6 +9,7 @@ import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } f
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
+import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,11 +101,28 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('validUntil' in body) patch.validUntil = body.validUntil || null;
   if ('paymentTerms' in body) patch.paymentTerms = (body.paymentTerms || '').trim() || null;
   if ('notes' in body) patch.notes = (body.notes || '').trim() || null;
-  // ผู้รับผิดชอบเอกสาร (aeOwner/aeSupervisor) + ค่าอื่นใน metadata — merge ไม่ทับทั้งก้อน.
-  // ผู้จัดทำ (preparedBy) ล็อกจากบัญชีผู้สร้างใบ/ผู้ออก Revision — แก้ผ่าน PATCH ไม่ได้
-  if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {
-    const { preparedBy: _locked, ...editableMeta } = body.metadata;
-    patch.metadata = { ...(before.metadata || {}), ...editableMeta };
+  // ผู้รับผิดชอบเอกสาร (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ) — ต้องเป็นผู้ใช้จริง + role ตรง.
+  // ตรวจเมื่อมีการแก้ people หรือเมื่อกำลังส่งใบ (บังคับครบ+ถูก role ย้อนหลังกับใบเก่า).
+  // ค่าอื่นใน metadata merge ตามเดิม ไม่ทับทั้งก้อน.
+  const willSend = body.status === 'sent';
+  const hasMetaPatch = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata);
+  if (hasMetaPatch || willSend) {
+    const src = hasMetaPatch ? body.metadata : {};
+    const effectivePeople = {
+      aeOwner: 'aeOwner' in src ? src.aeOwner : before.metadata?.aeOwner,
+      preparedBy: 'preparedBy' in src ? src.preparedBy : before.metadata?.preparedBy,
+      aeSupervisor: 'aeSupervisor' in src ? src.aeSupervisor : before.metadata?.aeSupervisor,
+    };
+    const peoplePick = await validateQuotationPeople(supabase, effectivePeople, { require: willSend });
+    if (!peoplePick.ok) return badRequest(peoplePick.error);
+    const { aeOwner: _o, preparedBy: _p, aeSupervisor: _s, ...editableMeta } = src;
+    patch.metadata = {
+      ...(before.metadata || {}),
+      ...editableMeta,
+      aeOwner: peoplePick.people.aeOwner || null,
+      preparedBy: peoplePick.people.preparedBy || null,
+      aeSupervisor: peoplePick.people.aeSupervisor || null,
+    };
   }
   if ('status' in body) {
     if (!['draft', 'sent'].includes(body.status)) return badRequest('เปลี่ยนสถานะได้เฉพาะ draft/sent (รับใบใช้ปุ่ม Accept)');

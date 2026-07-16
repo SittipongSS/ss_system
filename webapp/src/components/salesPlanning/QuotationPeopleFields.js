@@ -1,12 +1,13 @@
 "use client";
 
-// เลือกผู้รับผิดชอบเอกสารใบเสนอราคา — ชุดตัวเลือกเดียวกับฟอร์มโครงการ/ไทม์ไลน์
-// (SalesProjectCreateModal): ดึงรายชื่อจาก /api/pm/assignable-users เก็บเป็น "ชื่อ"
-// ใน quotations.metadata. ยกเว้น "ผู้จัดทำ" (มติผู้ใช้ 2026-07-15): ล็อกจากบัญชี
-// ผู้สร้าง/ผู้ออก Revision อัตโนมัติ แก้ไม่ได้ — server เป็นคน stamp ค่าจริง
+// เลือกผู้รับผิดชอบเอกสารใบเสนอราคา — ทั้งสามช่องเลือกจากผู้ใช้จริง filter ตาม role
+// (มติผู้ใช้ 2026-07-16): ผู้ดูแล=AE/Senior AE, ผู้จัดทำ=AC, ผู้ตรวจสอบ=AE Supervisor.
+// ดึงรายชื่อจาก /api/pm/assignable-users เก็บเป็น "ชื่อ" ใน quotations.metadata และ
+// server ตรวจซ้ำว่าชื่อที่ส่งมาเป็นผู้ใช้จริงที่ถือ role นั้น (lib/sales/quotationPeople).
 import { useEffect, useState } from "react";
 import Select from "@/components/ui/Select";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { QT_PEOPLE_LABELS, QT_PEOPLE_ROLES } from "@/lib/sales/quotationPeople";
 
 const userName = (u) => (u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "").trim();
 
@@ -16,22 +17,15 @@ export const quotationPeopleFromMetadata = (metadata) => ({
   aeSupervisor: metadata?.aeSupervisor || "",
 });
 
-// ชื่อบัญชีที่ล็อกอินอยู่ — AppLayout เก็บลง localStorage ตอนโหลดแอป (ใช้โชว์
-// ในช่องผู้จัดทำที่ล็อกไว้เท่านั้น ค่าจริง server stamp จาก session เอง)
-const selfName = () => {
-  try { return localStorage.getItem("userName") || ""; } catch { return ""; }
-};
-
 const PICKER_FIELDS = [
-  { key: "aeOwner", label: "ผู้ดูแล (AE)", roles: ["ae", "senior_ae", "ae_supervisor"] },
-  { key: "aeSupervisor", label: "ผู้ตรวจสอบ (AE Supervisor)", roles: ["ae_supervisor"] },
+  { key: "aeOwner", label: QT_PEOPLE_LABELS.aeOwner, roles: QT_PEOPLE_ROLES.aeOwner },
+  { key: "preparedBy", label: QT_PEOPLE_LABELS.preparedBy, roles: QT_PEOPLE_ROLES.preparedBy },
+  { key: "aeSupervisor", label: QT_PEOPLE_LABELS.aeSupervisor, roles: QT_PEOPLE_ROLES.aeSupervisor },
 ];
 
 export default function QuotationPeopleFields({ value, onChange, disabled = false }) {
   const [users, setUsers] = useState([]);
-  const [me, setMe] = useState("");
   useEffect(() => {
-    setMe(selfName());
     cachedFetchJson("/api/pm/assignable-users")
       .then((rows) => setUsers(Array.isArray(rows) ? rows : []))
       .catch(() => setUsers([]));
@@ -53,20 +47,5 @@ export default function QuotationPeopleFields({ value, onChange, disabled = fals
     </label>
   );
 
-  return (
-    <>
-      {pickerFor(PICKER_FIELDS[0])}
-      <label>ผู้จัดทำ (อัตโนมัติ)
-        <input
-          className="premium-input"
-          value={value.preparedBy || me || ""}
-          placeholder="บัญชีผู้สร้างใบ"
-          disabled
-          title="ดึงจากบัญชีผู้สร้างใบ/ผู้ออก Revision อัตโนมัติ — แก้ไม่ได้"
-          aria-label="ผู้จัดทำ (ล็อกจากบัญชีผู้ใช้)"
-        />
-      </label>
-      {pickerFor(PICKER_FIELDS[1])}
-    </>
-  );
+  return <>{PICKER_FIELDS.map(pickerFor)}</>;
 }

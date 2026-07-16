@@ -5,6 +5,7 @@ import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { businessDate } from '@/lib/businessDate';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
+import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const nextRev = (maxRow?.revisionNo ?? quote.revisionNo ?? 0) + 1;
   const now = new Date().toISOString();
 
+  // ผู้รับผิดชอบเอกสาร: สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise — ต้องเป็นผู้ใช้จริง
+  // + role ตรง (ฉบับ revise เป็น draft จึงยังไม่บังคับครบ; บังคับตอนกดส่งใบ). ผู้จัดทำ
+  // ไม่ล็อกเป็นผู้ออก revision อีกต่อไป — เลือก AC จริง (มติผู้ใช้ 2026-07-16).
+  const revBody = (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) ? body.metadata : {};
+  const revPeople = {
+    aeOwner: 'aeOwner' in revBody ? revBody.aeOwner : quote.metadata?.aeOwner,
+    preparedBy: 'preparedBy' in revBody ? revBody.preparedBy : quote.metadata?.preparedBy,
+    aeSupervisor: 'aeSupervisor' in revBody ? revBody.aeSupervisor : quote.metadata?.aeSupervisor,
+  };
+  const revPick = await validateQuotationPeople(supabase, revPeople, { require: false });
+  if (!revPick.ok) return badRequest(revPick.error);
+
   const newId = genId('QT');
   // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน
   // จะได้ค่าใหม่ ใบเก่าคงเดิม; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม.
@@ -111,12 +124,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       approvedBy: null,
       approvedByName: null,
       notes,
-      // metadata สืบทอดจากใบเดิม + ทับด้วยค่าที่ส่งมากับ revise (เช่น ผู้ดูแล/ผู้ตรวจสอบ
-      // ที่แก้ก่อนกดออกฉบับใหม่). ผู้จัดทำล็อกเป็นบัญชีผู้ออก Revision เสมอ (มติผู้ใช้)
+      // metadata สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise; ผู้รับผิดชอบ validate แล้ว
       metadata: {
         ...(quote.metadata || {}),
-        ...(body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata) ? body.metadata : {}),
-        preparedBy: user.name || null,
+        ...revBody,
+        aeOwner: revPick.people.aeOwner || null,
+        preparedBy: revPick.people.preparedBy || null,
+        aeSupervisor: revPick.people.aeSupervisor || null,
         revisedFrom: quote.quoteNumber,
       },
       createdBy: user.id || null,
