@@ -1,7 +1,7 @@
 "use client";
 
 // เลือกผู้รับผิดชอบเอกสารใบเสนอราคา — ทั้งสามช่องเลือกจากผู้ใช้จริง filter ตาม role
-// (มติผู้ใช้ 2026-07-16): ผู้ดูแล=AE/Senior AE, ผู้จัดทำ=AC, ผู้ตรวจสอบ=AE Supervisor.
+// (มติผู้ใช้): ผู้ดูแล=AE/Senior AE, ผู้ประสานงาน=AC, ผู้ตรวจสอบ=AE Supervisor.
 // ดึงรายชื่อจาก /api/pm/assignable-users เก็บเป็น "ชื่อ" ใน quotations.metadata และ
 // server ตรวจซ้ำว่าชื่อที่ส่งมาเป็นผู้ใช้จริงที่ถือ role นั้น (lib/sales/quotationPeople).
 import { useEffect, useState } from "react";
