@@ -3,13 +3,13 @@
 // เรื่องสอบถาม). แนบไฟล์ผ่าน /api/upload ตอนกดส่ง (แพตเทิร์นเดียวกับ composer
 // ความเคลื่อนไหวดีล) — มีปุ่มส่งชัดเจน ไม่มี auto-save.
 import { useEffect, useState } from "react";
-import { Paperclip, Send, X } from "lucide-react";
+import { Paperclip, Plus, Send, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import InquiryContextFields, { EMPTY_INQUIRY_CONTEXT, isInquiryContextComplete } from "@/components/salesPlanning/InquiryContextFields";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
-export default function InquiryCreateModal({ open, onClose, onCreated, deal = null }) {
+export default function InquiryCreateModal({ open, onClose, onCreated, deal = null, onCreateProject = null, onLinked = null }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [urgent, setUrgent] = useState(false);
@@ -22,6 +22,10 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
   const [customers, setCustomers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [deals, setDeals] = useState([]);
+  // ทางลัดผูกโครงการ (ดีลยังไม่เชื่อมโครงการ — กติกาบริบทครบทำให้ส่งไม่ได้จนกว่าจะผูก)
+  const [linkProjects, setLinkProjects] = useState([]);
+  const [linkProjectId, setLinkProjectId] = useState("");
+  const [linkBusy, setLinkBusy] = useState(false);
   const lockedToDeal = !!deal;
   // caller ส่ง deal เป็น object literal (identity เปลี่ยนทุก render) — ผูก effect กับค่า
   // ดิบเท่านั้น ไม่งั้น setContext จะยิงทุก render กลายเป็นลูป
@@ -34,9 +38,22 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
     setContext(dealId
       ? { customerId: dealCustomerId, projectId: dealProjectId, dealId }
       : EMPTY_INQUIRY_CONTEXT);
-    if (dealId) return; // เปิดจากหน้าดีล: บริบทมาครบแล้ว ไม่ต้องโหลดรายการให้เลือก
-    // ลูกค้าเป็น master (แคชได้) ส่วนโครงการ/ดีลต้องสดเสมอ — เพิ่งผูกโครงการมาต้องเห็นทันที
+    setLinkProjectId("");
     const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+    if (dealId) {
+      // เปิดจากหน้าดีล: บริบทครบแล้วถ้าดีลผูกโครงการ — ถ้ายัง โหลดโครงการของลูกค้า
+      // รายนี้มาให้ผูกได้จากในโมดัลเลย (ไม่ต้องออกไปหน้าดีลก่อน)
+      if (!dealProjectId) {
+        json("/api/pm/projects").then((rows) => {
+          const mine = (Array.isArray(rows) ? rows : [])
+            .filter((p) => !dealCustomerId || !p.customerId || p.customerId === dealCustomerId);
+          setLinkProjects(mine);
+          if (mine.length === 1) setLinkProjectId(mine[0].id);
+        });
+      }
+      return;
+    }
+    // ลูกค้าเป็น master (แคชได้) ส่วนโครงการ/ดีลต้องสดเสมอ — เพิ่งผูกโครงการมาต้องเห็นทันที
     Promise.all([
       cachedFetchJson("/api/master/customers").catch(() => []),
       json("/api/pm/projects"),
@@ -47,6 +64,29 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
       setDeals(Array.isArray(d) ? d : []);
     });
   }, [open, dealId, dealCustomerId, dealProjectId]);
+
+  // ผูกดีลเข้าโครงการเดิมของลูกค้า (reuse API เดียวกับปุ่ม "ผูกกับโครงการเดิม" หน้าดีล)
+  // สำเร็จแล้วบริบทครบทันที — ส่งคำถามต่อได้เลยไม่ต้องปิดโมดัล
+  const submitLink = async () => {
+    if (!linkProjectId) return;
+    setLinkBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/sales-planning/deals/${dealId}/link-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: linkProjectId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "ผูกโครงการไม่สำเร็จ");
+      setContext((prev) => ({ ...prev, projectId: linkProjectId }));
+      onLinked?.(linkProjectId);
+    } catch (e) {
+      setError(e.message || "ผูกโครงการไม่สำเร็จ");
+    } finally {
+      setLinkBusy(false);
+    }
+  };
 
   const reset = () => {
     setTitle(""); setBody(""); setUrgent(false); setRequestedDueDate(""); setFiles([]); setError("");
@@ -108,7 +148,8 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
     }
   };
 
-  const dealMissingProject = lockedToDeal && !dealProjectId;
+  // อิง context (ไม่ใช่ prop) — ผูกโครงการสำเร็จจากทางลัดด้านล่างแล้วต้องหายทันที
+  const dealMissingProject = lockedToDeal && !context.projectId;
   const canSubmit = !busy && !!title.trim() && (!!body.trim() || !!files.length) && isInquiryContextComplete(context);
 
   return (
@@ -122,8 +163,32 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
             ในนามดีล <strong>{deal.code ? `${deal.code} · ` : ""}{deal.title || "-"}</strong>
             {deal.customerName ? ` — ${deal.customerName}` : ""} (RD เปิดดูรายละเอียดดีลเองได้)
             {dealMissingProject && (
-              <div role="alert" style={{ color: "var(--red)", marginTop: 4 }}>
-                ดีลนี้ยังไม่ได้เชื่อมโครงการ — เชื่อมโครงการที่หน้าดีลก่อนจึงสอบถาม RD ได้
+              <div role="alert" style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ color: "var(--red)" }}>
+                  ดีลนี้ยังไม่ได้เชื่อมโครงการ — ผูกโครงการก่อนจึงส่งคำถามได้
+                </span>
+                {linkProjects.length > 0 ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <select className="premium-select" value={linkProjectId} style={{ flex: 1, minWidth: 180 }}
+                      onChange={(e) => setLinkProjectId(e.target.value)} disabled={linkBusy}>
+                      <option value="">— เลือกโครงการของลูกค้า —</option>
+                      {linkProjects.map((p) => (
+                        <option key={p.id} value={p.id}>{[p.code, p.name].filter(Boolean).join(" — ") || p.id}</option>
+                      ))}
+                    </select>
+                    <button type="button" className="btn sm" onClick={submitLink} disabled={!linkProjectId || linkBusy}>
+                      {linkBusy ? "กำลังผูก..." : "ผูกโครงการ"}
+                    </button>
+                  </div>
+                ) : (
+                  <span style={{ color: "var(--text-3)", fontSize: 12.5 }}>ลูกค้ารายนี้ยังไม่มีโครงการ</span>
+                )}
+                {onCreateProject && (
+                  <button type="button" className="btn ghost sm" style={{ alignSelf: "flex-start" }} disabled={linkBusy}
+                    onClick={() => onCreateProject()}>
+                    <Plus size={13} aria-hidden="true" /> สร้างโครงการใหม่จากดีลนี้
+                  </button>
+                )}
               </div>
             )}
           </div>
