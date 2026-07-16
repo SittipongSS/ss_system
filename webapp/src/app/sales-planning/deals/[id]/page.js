@@ -16,6 +16,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { FORECAST_LEVELS, dealTypeBadge, quoteStatusBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import AddBrandButton from "@/components/master/AddBrandButton";
@@ -576,9 +577,9 @@ export default function DealOverviewPage() {
     if (!window.confirm(`ลบดีล "${deal.title}"?${extraText}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
-      router.push("/sa/deals");
+      // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
+      const result = await deleteWithForce(`/api/sales-planning/deals/${id}`, { isAdmin: role === "admin" });
+      if (result.ok) router.push("/sa/deals");
     } catch (e) {
       setError(e.message || "ลบไม่สำเร็จ");
     }
@@ -590,8 +591,12 @@ export default function DealOverviewPage() {
   const canDeleteLinkedProject = !deal?.projectId || (linkedProject && canDeleteRecord({ role, team }, "projects", linkedProject));
   const hasExcise = (data?.exciseRegistrations?.length || 0) > 0;
   const superuser = isSuperuser(role);
-  const canDelete = deal && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId
-    && canDeleteLinkedProject && !hasExcise;
+  const isAdmin = role === "admin";
+  // admin เห็นปุ่มลบเสมอ (บังคับลบผ่านพรีวิว) — คนอื่นซ่อนปุ่มในเคสที่ API จะปฏิเสธ (U3)
+  const canDelete = deal && (isAdmin || (
+    (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId
+    && canDeleteLinkedProject && !hasExcise
+  ));
 
   // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
   const doCreateExcise = async (productId) => {

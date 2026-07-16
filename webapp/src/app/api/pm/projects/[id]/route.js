@@ -4,6 +4,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { withUser, ok, fail, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject, deleteProjectDeep } from '@/lib/pm/projectsRepo';
+import { isForceRequest, canForceDelete, forceDeleteProjectExcise } from '@/lib/forceDelete';
 import { genId } from '@/lib/id';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
@@ -265,23 +266,31 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return forbidden();
   }
 
+  // force = ทางลัดผู้ดูแลระบบ (admin): ลบโครงการที่ยังผูกดีลได้ (ดีลจะถูกปลดลิงก์
+  // projectId→null ผ่าน FK SET NULL — ไม่กำพร้า) + ลบทะเบียนสรรพสามิตพ่วง.
+  const force = isForceRequest(req) && canForceDelete(user);
+
   // ผูกดีลอยู่ (กี่ใบก็ตาม — เฟส B หลายดีลต่อโครงการ) → ปฏิเสธ ให้ไปลบที่ฝั่งงานขาย
   // กันการลบ project ทิ้งไว้ให้ดีลกำพร้า. โครงการกำพร้า (0 ดีล) เท่านั้นที่ลบตรงนี้ได้.
-  const { count: linkedCount } = await supabase
-    .from('sales_deals').select('id', { count: 'exact', head: true }).eq('projectId', id);
-  if ((linkedCount || 0) > 0) {
-    return conflict('โครงการนี้ผูกกับดีลอยู่ — ลบดีลที่หน้า "บริหารงานขาย" ก่อน (ดีลสุดท้ายจะลบโครงการพ่วงไปด้วย)');
+  if (!force) {
+    const { count: linkedCount } = await supabase
+      .from('sales_deals').select('id', { count: 'exact', head: true }).eq('projectId', id);
+    if ((linkedCount || 0) > 0) {
+      return conflict('โครงการนี้ผูกกับดีลอยู่ — ลบดีลที่หน้า "บริหารงานขาย" ก่อน (ดีลสุดท้ายจะลบโครงการพ่วงไปด้วย)');
+    }
   }
 
   try {
+    if (force) await forceDeleteProjectExcise(supabase, id);
     await deleteProjectDeep(supabase, id);
   } catch (e) {
     return fail(e.message, 500);
   }
   await recordAudit({
     user, action: 'delete', entityType: 'project', entityId: id, before: project,
-    summary: `ลบโครงการ (กำพร้า) ${project.code || id} ${project.name || ''}`.trim(), request: req,
+    summary: `ลบโครงการ ${force ? '(บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : '(กำพร้า)'} ${project.code || id} ${project.name || ''}`.trim(),
+    request: req,
   });
 
-  return ok({ success: true });
+  return ok({ success: true, forced: force });
 });

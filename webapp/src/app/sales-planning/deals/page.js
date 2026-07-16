@@ -10,6 +10,7 @@ import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/sa
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canSeeDealKpi, isSuperuser, salesDealScopes } from "@/lib/permissions";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { createClient } from "@/lib/supabaseBrowser";
 import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth } from "@/components/salesPlanning/ui";
@@ -260,9 +261,9 @@ export default function SalesPlanningPipelinePage() {
     if (!window.confirm(`ลบดีล "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${deal.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ลบดีลไม่สำเร็จ");
-      await load();
+      // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
+      const result = await deleteWithForce(`/api/sales-planning/deals/${deal.id}`, { isAdmin: role === "admin" });
+      if (result.ok) await load();
     } catch (e) {
       setError(e.message || "ลบดีลไม่สำเร็จ");
     }
@@ -635,7 +636,7 @@ export default function SalesPlanningPipelinePage() {
                             <Pencil size={15} aria-hidden="true" />
                           </button>
                         )}
-                        {deal.canEdit && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId && (
+                        {(role === "admin" || (deal.canEdit && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId)) && (
                           <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบดีล (ลบโครงการ PM ที่ผูกพ่วงด้วย)">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>

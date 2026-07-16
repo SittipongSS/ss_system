@@ -39,10 +39,12 @@ export async function projectHasExciseRegistrations(supabase, projectId) {
 
 // Delete a project and every child row it owns. FK ON DELETE CASCADE already
 // removes project_tasks / project_products / shipment_prep(+lines); sahamit_pos
-// .projectId is SET NULL. But personal_tasks & project_doc_revisions link by a
-// *logical* projectId (no FK, migrations 0019/0040) so we clear them by hand
-// first — otherwise they dangle. Caller is responsible for permission + blocker
-// checks (see projectHasExciseRegistrations). Returns the removed child counts.
+// .projectId is SET NULL. But personal_tasks, project_doc_revisions AND inquiries
+// link by a *logical* projectId (no FK, migrations 0019/0040/0104) so we clear
+// them by hand first — otherwise they dangle. inquiries also own inquiry_messages
+// + back-linked personal_tasks (both no-FK), removed transitively. Caller is
+// responsible for permission + blocker checks (see projectHasExciseRegistrations).
+// Returns the removed child counts.
 export async function deleteProjectDeep(supabase, projectId) {
   const [{ count: taskCount }, { count: revCount }] = await Promise.all([
     supabase.from('personal_tasks').select('id', { count: 'exact', head: true }).eq('projectId', projectId),
@@ -51,9 +53,18 @@ export async function deleteProjectDeep(supabase, projectId) {
   // Logical-link children: remove before the project row disappears.
   await supabase.from('personal_tasks').delete().eq('projectId', projectId);
   await supabase.from('project_doc_revisions').delete().eq('projectId', projectId);
+  // inquiries.projectId is a no-FK logical link (mig 0104) — clean the thread +
+  // its messages + any task created from it, else they orphan silently.
+  const { data: inqs } = await supabase.from('inquiries').select('id').eq('projectId', projectId);
+  const inquiryIds = (inqs || []).map((r) => r.id);
+  if (inquiryIds.length) {
+    await supabase.from('inquiry_messages').delete().in('inquiryId', inquiryIds);
+    await supabase.from('personal_tasks').delete().in('inquiryId', inquiryIds);
+    await supabase.from('inquiries').delete().in('id', inquiryIds);
+  }
   const { error } = await supabase.from('projects').delete().eq('id', projectId);
   if (error) throw error;
-  return { personalTasks: taskCount || 0, docRevisions: revCount || 0 };
+  return { personalTasks: taskCount || 0, docRevisions: revCount || 0, inquiries: inquiryIds.length };
 }
 
 // รหัสโครงการฐาน PJ-YYMMXXXX (เลขรัน 4 หลัก atomic ต่อเดือน — mig 0096).

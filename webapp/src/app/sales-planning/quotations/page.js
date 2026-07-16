@@ -10,6 +10,7 @@ import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/sa
 import DetailRow from "@/components/ui/DetailRow";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/components/salesPlanning/ui";
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
@@ -51,12 +52,13 @@ export default function QuotationsPage() {
     const warn = r.status !== "draft" ? "\n\n⚠ ใบนี้ไม่ใช่ฉบับร่าง — ลบด้วยสิทธิ์ผู้ดูแลระบบ (ปกติควรยกเลิก/Revise แทน)" : "";
     if (!window.confirm(`ลบใบเสนอราคา ${r.quoteNumber}?${warn}`)) return;
     setError("");
-    const res = await fetch(`/api/sales-planning/quotations/${r.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      setError((await res.json().catch(() => ({}))).error || "ลบใบเสนอราคาไม่สำเร็จ");
-      return;
+    try {
+      // admin: ใบ accepted (แหล่งยอด Actual) โดนบล็อก → พรีวิว Sale Order ที่จะหาย + ยืนยันบังคับลบ
+      const result = await deleteWithForce(`/api/sales-planning/quotations/${r.id}`, { isAdmin: role === "admin" });
+      if (result.ok) load();
+    } catch (e) {
+      setError(e.message || "ลบใบเสนอราคาไม่สำเร็จ");
     }
-    load();
   };
 
   const filtered = useMemo(() => {
@@ -171,8 +173,8 @@ export default function QuotationsPage() {
                             <Pencil size={15} aria-hidden="true" />
                           </Link>
                         )}
-                        {/* ลบ: draft ทุกคนที่แก้ได้ / แอดมินลบได้ทุกสถานะ */}
-                        {canEdit && r.status !== "accepted" && (r.status === "draft" || isSuperuser(role)) && (
+                        {/* ลบ: draft ทุกคนที่แก้ได้ / superuser ลบสถานะอื่น / admin บังคับลบได้ทุกสถานะ (รวม accepted) */}
+                        {(role === "admin" || (canEdit && r.status !== "accepted" && (r.status === "draft" || isSuperuser(role)))) && (
                           <button type="button" className="btn-icon danger" title={r.status === "draft" ? "ลบฉบับร่าง" : "ลบ (สิทธิ์ผู้ดูแลระบบ)"} aria-label={`ลบ ${r.quoteNumber}`}
                             onClick={() => deleteQuote(r)}>
                             <Trash2 size={15} aria-hidden="true" />

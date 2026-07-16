@@ -81,6 +81,20 @@ test('message locks: owner mutates until opposite side acknowledges', () => {
   assert.equal(canMutateInquiryMessage(ae, inquiry, locked), false);
 });
 
+test('canMutateInquiryMessage: admin (break-glass) แตะ system/status + locked ได้ แต่ลบซ้ำไม่ได้', () => {
+  const admin = { id: 'adm', role: 'admin' };
+  const statusMsg = { id: 's1', kind: 'status', authorId: 'r1', authorDept: 'RD' };
+  const lockedComment = { id: 'c1', kind: 'comment', authorId: 'ae-1', acknowledgedAt: '2026-07-15T00:00:00Z' };
+  const closed = { ...inquiry, status: 'closed' };
+  // admin ทำได้ทุกชนิดข้อความ แม้เรื่องปิด/ข้อความถูก ack แล้ว
+  assert.equal(canMutateInquiryMessage(admin, closed, statusMsg), true);
+  assert.equal(canMutateInquiryMessage(admin, closed, lockedComment), true);
+  // แต่ข้อความที่ถูกลบไปแล้ว ลบซ้ำไม่ได้ (แม้ admin)
+  assert.equal(canMutateInquiryMessage(admin, inquiry, { ...statusMsg, deletedAt: '2026-07-15T00:00:00Z' }), false);
+  // คนทั่วไปยังแตะ system message ไม่ได้เหมือนเดิม
+  assert.equal(canMutateInquiryMessage(ae, inquiry, statusMsg), false);
+});
+
 // ── บริบท ลูกค้า › โครงการ › ดีล (บังคับครบ) ──
 const stubSupabase = (deal) => ({
   from: () => ({

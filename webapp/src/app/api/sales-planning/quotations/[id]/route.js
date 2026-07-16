@@ -1,5 +1,9 @@
 import { recordAudit } from '@/lib/audit';
 import { isSuperuser } from '@/lib/permissions';
+import {
+  isForceRequest, isDryRun, canForceDelete,
+  quotationForcePreview, cleanupQuotationOrphans,
+} from '@/lib/forceDelete';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
@@ -215,26 +219,46 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const before = await loadQuote(supabase, id);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
   if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
-  if (before.status === 'accepted') {
-    return badRequest('ใบเสนอราคานี้เป็นแหล่งยอด Actual ของดีล — ลบไม่ได้ ต้องใช้กระบวนการยกเลิก/ย้อนรายการ');
+
+  // force = ทางลัดผู้ดูแลระบบ (admin) ที่ลบใบ accepted ได้ทั้งที่เป็นแหล่งยอด Actual;
+  // dryRun = พรีวิว Sale Order ที่จะ cascade หายตาม (admin เท่านั้น).
+  const force = isForceRequest(req) && canForceDelete(user);
+  const dryRun = isDryRun(req);
+  if (dryRun) {
+    if (!canForceDelete(user)) return forbidden();
+    const preview = await quotationForcePreview(supabase, before);
+    return ok({ dryRun: true, ...preview });
   }
-  const elevated = isSuperuser(user.role);
-  if (!elevated) {
-    if (before.status === 'closed') {
-      return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ลบไม่ได้');
+
+  if (!force) {
+    if (before.status === 'accepted') {
+      return badRequest('ใบเสนอราคานี้เป็นแหล่งยอด Actual ของดีล — ลบไม่ได้ ต้องใช้กระบวนการยกเลิก/ย้อนรายการ');
     }
-    if (before.status !== 'draft') {
-      return badRequest('ลบได้เฉพาะฉบับร่าง — ใบที่ส่งแล้วให้ยกเลิก (cancel) หรือออก Revise แทน');
+    const elevated = isSuperuser(user.role);
+    if (!elevated) {
+      if (before.status === 'closed') {
+        return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ลบไม่ได้');
+      }
+      if (before.status !== 'draft') {
+        return badRequest('ลบได้เฉพาะฉบับร่าง — ใบที่ส่งแล้วให้ยกเลิก (cancel) หรือออก Revise แทน');
+      }
     }
   }
+
+  // force: ปลด logical ref (metadata.acceptedQuotationId) ที่ชี้มาใบนี้ก่อนลบ.
+  // sales_orders.quotationId เป็น ON DELETE CASCADE จึงหายเองที่ระดับ DB.
+  if (force) await cleanupQuotationOrphans(supabase, before);
+
   const { error } = await supabase.from('quotations').delete().eq('id', id);
   if (error) return fail(error.message, 500);
+  const summary = force
+    ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — บังคับลบ สิทธิ์ผู้ดูแลระบบ)`
+    : (isSuperuser(user.role) && before.status !== 'draft'
+      ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — สิทธิ์ผู้ดูแลระบบ)`
+      : `ลบใบเสนอราคา (ร่าง) ${before.quoteNumber}`);
   await recordAudit({
     user, action: 'delete', entityType: 'quotation', entityId: id, before,
-    summary: elevated && before.status !== 'draft'
-      ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — สิทธิ์ผู้ดูแลระบบ)`
-      : `ลบใบเสนอราคา (ร่าง) ${before.quoteNumber}`,
-    request: req,
+    summary, request: req,
   });
-  return ok({ ok: true });
+  return ok({ ok: true, forced: force });
 });
