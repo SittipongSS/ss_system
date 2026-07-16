@@ -160,6 +160,9 @@ export default function SalesOrderDetailPage() {
   }
 
   const approved = order.status === "approved";
+  // แบ่งแยกหน้าที่: ผู้ตรวจสอบที่เป็นผู้สร้าง/ผู้ยื่น SO เอง อนุมัติ/ตีกลับใบนี้ไม่ได้
+  const ownSalesOrder = !!order.meId && (order.meId === order.createdBy || order.meId === order.submittedBy);
+  const canReviewThis = reviewer && !ownSalesOrder;
   const editable = canEdit && ["draft", "rejected"].includes(order.status);
   const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
   const workflowIndex = order.status === "approved" ? 3 : order.status === "pending_approval" ? 1 : 0;
@@ -222,8 +225,9 @@ export default function SalesOrderDetailPage() {
             {(canEdit || reviewer) && <DetailCard icon={UserRound} eyebrow="ACTIONS" title="จัดการเอกสาร" meta="สิทธิ์เปลี่ยนตามสถานะและบทบาท">
               <div className={styles.actionStack}>
                 {editable && <><button type="button" className="btn" disabled={!!busy} onClick={() => save(false)}><Save size={15} /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกร่าง"}</button><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => save(true)}><Send size={15} /> บันทึกและยื่นอนุมัติ</button></>}
-                {reviewer && order.status === "pending_approval" && <><button type="button" className="btn btn-success" disabled={!!busy} onClick={() => review("approve")}><CheckCircle2 size={15} /> อนุมัติและนับ Actual</button><button type="button" className="btn danger" disabled={!!busy} onClick={() => review("reject")}><Undo2 size={15} /> ตีกลับให้แก้ไข</button></>}
-                {approved && canEdit && <button type="button" className="btn danger" disabled={!!busy} onClick={cancel}><XCircle size={15} /> ยกเลิก SO</button>}
+                {canReviewThis && order.status === "pending_approval" && <><button type="button" className="btn btn-success" disabled={!!busy} onClick={() => review("approve")}><CheckCircle2 size={15} /> อนุมัติและนับ Actual</button><button type="button" className="btn danger" disabled={!!busy} onClick={() => review("reject")}><Undo2 size={15} /> ตีกลับให้แก้ไข</button></>}
+                {reviewer && ownSalesOrder && order.status === "pending_approval" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>}
+                {approved && reviewer && <button type="button" className="btn danger" disabled={!!busy} onClick={cancel}><XCircle size={15} /> ยกเลิก SO</button>}
                 {order.status === "cancelled" && role === "admin" && <button type="button" className="btn" disabled={!!busy} onClick={() => requestAction("restore")}><RotateCcw size={15} /> คืนเป็นฉบับร่าง</button>}
                 {role === "admin" && <button type="button" className="btn danger" disabled={!!busy} onClick={remove}><Trash2 size={15} /> ลบถาวร</button>}
               </div>

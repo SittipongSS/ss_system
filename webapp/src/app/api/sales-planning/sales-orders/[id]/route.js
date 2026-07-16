@@ -37,7 +37,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!order) return notFound('ไม่พบ Sale Order');
   if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
-  return ok(order);
+  // meId ให้หน้าเว็บซ่อนปุ่มอนุมัติของ SO ที่ตัวเองสร้าง/ยื่น (แบ่งแยกหน้าที่)
+  return ok({ ...order, meId: user.id || null });
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
@@ -106,6 +107,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (action === 'approve') {
     if (!reviewer) return forbidden('เฉพาะ AE Supervisor ที่อนุมัติ Sale Order ได้');
     if (before.status !== 'pending_approval') return badRequest('SO ใบนี้ไม่ได้รออนุมัติ');
+    // แบ่งแยกหน้าที่ (มติผู้ใช้ 2026-07-16): ห้ามอนุมัติ SO ที่ตัวเองสร้าง/ยื่น —
+    // ยอด Actual ต้องมีคนที่สองตรวจ (ผู้สร้าง/ผู้ยื่นต่างจากผู้อนุมัติ)
+    if (before.createdBy && before.createdBy === user.id) return forbidden('อนุมัติ SO ที่ตัวเองสร้างไม่ได้ — ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ');
+    if (before.submittedBy && before.submittedBy === user.id) return forbidden('อนุมัติ SO ที่ตัวเองยื่นไม่ได้ — ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ');
     const now = new Date().toISOString();
     const patch = { status: 'approved', approvedAt: now, approvedBy: user.id || null, approvedByName: user.name || null, approvalNote: String(body.note || '').trim() || null, updatedAt: now };
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
@@ -160,6 +165,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!reason) return badRequest('กรุณาระบุเหตุผลที่ยกเลิก Sale Order');
     if (before.status === 'cancelled') return badRequest('Sale Order นี้ถูกยกเลิกแล้ว');
     if (before.status === 'pending_approval' && !reviewer) return forbidden('รายการที่รออนุมัติต้องให้ AE Supervisor ดำเนินการ');
+    // ยกเลิก SO ที่อนุมัติแล้ว = ถอนยอด Actual ที่ผ่านการอนุมัติ → ต้องเป็นผู้ตรวจสอบ
+    // เท่านั้น (มติผู้ใช้ 2026-07-16): สมมาตรกับตอนอนุมัติ ไม่ให้ AE ถอนฝ่ายเดียว
+    if (before.status === 'approved' && !reviewer) return forbidden('ยกเลิก SO ที่อนุมัติแล้วต้องให้ AE Supervisor ดำเนินการ (ถอนยอด Actual)');
     const patch = {
       status: 'cancelled', cancelledAt: new Date().toISOString(),
       cancelledBy: user.name || user.id || null, cancelReason: reason,
