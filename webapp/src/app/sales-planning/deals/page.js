@@ -30,6 +30,8 @@ export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
   const role = useRole();
   const superuser = isSuperuser(role);
+  // สร้างดีลได้เฉพาะ AE / Senior AE (+ superuser กำกับดูแล) — AC เปิดดีลไม่ได้ (มติผู้ใช้)
+  const canCreateDeals = superuser || role === "ae" || role === "senior_ae";
   const [reviewOnly, setReviewOnly] = useState(false); // ตัวกรอง "รอเติมข้อมูล (backfill)"
   const [month, setMonth] = useState(thisMonth());
   const [allMonths, setAllMonths] = useState(true);
@@ -439,7 +441,7 @@ export default function SalesPlanningPipelinePage() {
     <>
       <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
 
-      {canEdit && (
+      {canCreateDeals && (
         <button type="button" className="btn btn-primary" onClick={openNewDeal}>
           <Plus size={15} aria-hidden="true" /> เพิ่มดีล
         </button>
@@ -645,7 +647,7 @@ export default function SalesPlanningPipelinePage() {
                 {!filteredDeals.length && (
                   <tr>
                     <td colSpan={8 + (SALES_FEATURES.quotations ? 1 : 0) + (SALES_FEATURES.documents ? 1 : 0) + (SALES_FEATURES.shipment ? 1 : 0)} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
-                      ยังไม่มีดีลในเดือนนี้ {canEdit ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
+                      ยังไม่มีดีลในเดือนนี้ {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>
                 )}

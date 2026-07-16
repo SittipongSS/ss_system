@@ -230,7 +230,8 @@ export default function LeadsPage() {
 
   // สร้างดีลจากลีด (feedback ผู้ใช้): ติ้กประเภทที่จะเปิดได้หลายอันในครั้งเดียว —
   // ลดขั้นการกรอก (ลูกค้า/ทีม/ผู้ดูแล/มูลค่า ดึงจากลีดให้หมด)
-  const canEditDeals = useCan("salesplan:edit");
+  // สร้างดีลได้เฉพาะ AE / Senior AE (+ superuser กำกับดูแล) — AC เปิดดีลไม่ได้ (มติผู้ใช้)
+  const canCreateDeals = superuser || role === "ae" || role === "senior_ae";
   const [dealModal, setDealModal] = useState(null); // lead
   const [dealsToCreate, setDealsToCreate] = useState([]);
   
@@ -332,7 +333,7 @@ export default function LeadsPage() {
     if (allowed.includes("assign") && (role === "admin" || inTeam)) btns.push({ a: "assign", label: "มอบหมาย", icon: UsersIcon, primary: true });
     if (allowed.includes("contact") && works) btns.push({ a: "contact", label: "ติดต่อแล้ว", icon: PhoneCall, primary: true });
     if (allowed.includes("meeting") && works) btns.push({ a: "meeting", label: "นัดประชุม", icon: CalendarClock });
-    if (allowed.includes("create_deal") && works && lead.status !== "qualified") btns.push({ a: "create_deal", label: "สร้างดีล", icon: FolderKanban, primary: true });
+    if (allowed.includes("create_deal") && works && canCreateDeals && lead.status !== "qualified") btns.push({ a: "create_deal", label: "สร้างดีล", icon: FolderKanban, primary: true });
     if (allowed.includes("bounce") && works) btns.push({ a: "bounce", label: "ตีกลับ", icon: Undo2 });
     if (allowed.includes("disqualify") && works) btns.push({ a: "disqualify", label: "ไม่ไปต่อ", icon: Ban });
     return btns;
@@ -469,7 +470,7 @@ export default function LeadsPage() {
                                   </button>
                                 );
                               }
-                              if (lead.status === "qualified" && canEditDeals) {
+                              if (lead.status === "qualified" && canCreateDeals) {
                                 return (
                                   <button type="button" className="btn btn-status sm" onClick={() => openDealModal(lead)} disabled={!!busy} title="เปิดดีลจากลีดนี้" style={{ '--btn-bg': 'var(--green)', width: "100%", padding: "0 4px", justifyContent: "center" }}>
                                     <Plus size={13} aria-hidden="true" /> สร้างดีล
