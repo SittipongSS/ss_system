@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import { snapForecastLevel, stageBadge, money } from "@/components/salesPlanning/ui";
-import { forecastAmount } from "@/lib/salesPlanning";
+import { forecastAmount, monthKey } from "@/lib/salesPlanning";
+// กติกา Won/เดือน/ยอด/จับคู่คน — ชุดเดียวกับตัวรวมยอดแดชบอร์ด (ไม่งั้นรายการ
+// ที่กดเข้ามาดูไม่ตรงกับตัวเลขบนการ์ด — ผลตรวจระบบขาย 2026-07-16)
+import { isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf, dealMatchesOwner } from "@/lib/sales/dashboardMetrics";
 import Link from "next/link";
 import { fmtDateTime } from "@/lib/format";
 
@@ -15,34 +18,36 @@ export default function DealDrillDownModal({ filter, onClose }) {
     async function load() {
       setLoading(true);
       try {
-        const url = new URL("/api/sales-planning/deals", window.location.origin);
-        if (filter.month) url.searchParams.set("month", filter.month);
-        
-        const res = await fetch(url);
+        // ดึงทั้งชุดแล้วกรองด้วยกติกากลางฝั่ง client — ?month ของ /deals กรองด้วย
+        // forecastMonth อย่างเดียว ใช้กับยอด Won (นับตาม wonMonth) ไม่ได้
+        const res = await fetch(new URL("/api/sales-planning/deals", window.location.origin));
         if (!res.ok) throw new Error("โหลดข้อมูลผิดพลาด");
         const data = await res.json();
-        
-        let filtered = data || [];
-        
-        // Filter by Owner or Team
-        if (filter.ownerId) {
-          filtered = filtered.filter(d => d.ownerId === filter.ownerId);
-        } else if (filter.team && filter.team !== "ไม่ระบุทีม") {
-          filtered = filtered.filter(d => d.team === filter.team);
-        }
-        
-        // Filter by Metric
+
+        // ช่วงเวลา: เดือนที่กด หรือทั้งปีของช่อง "รวมปี"
+        const inPeriod = (mk) => (filter.month ? mk === filter.month
+          : (filter.year ? String(mk || "").startsWith(`${filter.year}-`) : true));
+
+        let filtered = (data || []).filter((d) => {
+          // แถวรายบุคคล: จับคู่ด้วยชื่อ+ทีม (แดชบอร์ดรวมคนด้วย name+team ไม่ใช่ id เดี่ยว)
+          if (filter.ownerName || filter.ownerId) return dealMatchesOwner(d, filter);
+          if (filter.team && filter.team !== "ไม่ระบุทีม") return d.team === filter.team;
+          return true;
+        });
+
         if (filter.metric === "won") {
-          filtered = filtered.filter(d => d.stage === "won");
+          // Won = won + in_project, นับเดือนตาม wonMonth (ไม่ใช่ forecastMonth)
+          filtered = filtered.filter((d) => isWonDeal(d) && inPeriod(wonMonthOf(d)));
+        } else if (filter.metric === "lost") {
+          filtered = filtered.filter((d) => d.stage === "lost" && inPeriod(monthKey(d.forecastMonth)));
         } else if (filter.metric === "forecast" || filter.metric?.startsWith("fc")) {
-          filtered = filtered.filter(d => d.stage !== "won" && d.stage !== "lost");
-          
+          filtered = filtered.filter((d) => isOpenDeal(d) && inPeriod(monthKey(d.forecastMonth)));
           if (filter.metric.startsWith("fc")) {
             const level = Number(filter.metric.replace("fc", ""));
-            filtered = filtered.filter(d => snapForecastLevel(d.probability) === level);
+            filtered = filtered.filter((d) => snapForecastLevel(d.probability) === level);
           }
         }
-        
+
         setDeals(filtered);
       } catch (err) {
         console.error(err);
@@ -62,6 +67,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
 
   const metricLabel = {
     won: "ยอด Won",
+    lost: "ดีลที่แพ้ (มูลค่าคาดการณ์)",
     forecast: "ยอดคาดการณ์ (รวม)",
     fc100: "ยอดคาดการณ์ (100%)",
     fc80: "ยอดคาดการณ์ (80%)",
@@ -69,7 +75,9 @@ export default function DealDrillDownModal({ filter, onClose }) {
     fc20: "ยอดคาดการณ์ (20%)",
   }[filter.metric] || filter.metric;
 
-  const totalValue = deals.reduce((sum, d) => sum + (filter.metric === "won" ? Number(d.wonValue || 0) : forecastAmount(d)), 0);
+  // ยอดต่อดีลสูตรเดียวกับการ์ด: Won = Actual จาก SO (wonAmountOf), อื่น = คาดการณ์
+  const amountOf = (d) => (filter.metric === "won" ? wonAmountOf(d) : forecastAmount(d));
+  const totalValue = deals.reduce((sum, d) => sum + amountOf(d), 0);
 
   return (
     <div className="modal-backdrop" style={{ zIndex: 9999 }}>
@@ -79,7 +87,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
             <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
               {metricLabel}
               <span className="ui-badge" style={{ background: "var(--surface-3)", color: "var(--text)" }}>
-                {filter.month || "ทั้งปี"}
+                {filter.month || (filter.year ? `ทั้งปี ${filter.year}` : "ทั้งปี")}
               </span>
             </h2>
             <div style={{ color: "var(--text-3)", fontSize: 13, marginTop: 4 }}>
@@ -123,13 +131,13 @@ export default function DealDrillDownModal({ filter, onClose }) {
                     <td style={{ padding: "12px 20px" }}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {stageBadge(d.stage)}
-                        {d.stage !== "won" && d.stage !== "lost" && (
+                        {isOpenDeal(d) && (
                           <span className="ui-badge" style={{ color: "var(--text-3)" }}>FC {d.probability}%</span>
                         )}
                       </div>
                     </td>
                     <td className="num font-mono" style={{ padding: "12px 20px", fontWeight: 700, color: "var(--text)" }}>
-                      {money(filter.metric === "won" ? Number(d.wonValue || 0) : forecastAmount(d))}
+                      {money(amountOf(d))}
                     </td>
                   </tr>
                 ))}

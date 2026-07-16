@@ -1,7 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 import { cachedJson } from '@/lib/serverCache';
-import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
+import { isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,15 +36,14 @@ async function buildDashboard(supabase, month) {
     .eq('targetMonth', month);
   if (targetsError) throw new Error(targetsError.message);
 
-  const isWon = (d) => ['won', 'in_project'].includes(d.stage);
-  const isOpen = (d) => !['won', 'in_project', 'lost'].includes(d.stage);
+  // กติกา Won/open/ยอด/เดือน — ใช้ชุดกลางร่วมกับ drill-down modal (lib/sales/dashboardMetrics)
+  const isWon = isWonDeal;
+  const isOpen = isOpenDeal;
   // Actual อ่านผ่าน cache wonValue เฉพาะเมื่อ DB ยืนยันว่า cache มาจาก Approved SO.
   // projectValue ยังคงเป็นค่าคาดการณ์ของดีลและใช้คิด variance เท่านั้น.
-  const wonAmt = dealActualFromSalesOrders;
+  const wonAmt = wonAmountOf;
   const forecastAmt = (d) => Number(d.projectValue ?? 0);
-  // เดือนที่นับยอด Won: ใช้เดือนที่ผู้ใช้เลือกตอนกด Won ก่อน (metadata.wonMonth),
-  // ไม่งั้นเดือนของ confirmedAt / วันรับ PO / forecastMonth ตามลำดับ (ดีลเก่า).
-  const wonMonth = (d) => monthKey(d.metadata?.wonMonth) || monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
+  const wonMonth = wonMonthOf;
   const openDeals = visibleDeals.filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
   const wonDeals = visibleDeals.filter((d) => isWon(d) && wonMonth(d) === month);
   const lostDeals = visibleDeals.filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month);
