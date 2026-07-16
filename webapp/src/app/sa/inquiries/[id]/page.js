@@ -9,7 +9,8 @@ import {
   BriefcaseBusiness, CalendarDays, CalendarClock, Edit2, FolderKanban, Paperclip,
   Plus, RotateCcw, Save, Send, Trash2, UserRound, X,
 } from "lucide-react";
-import SaWorkspace from "@/components/salesPlanning/SaWorkspace";
+import SaWorkspace, { SaPageShell } from "@/components/salesPlanning/SaWorkspace";
+import Modal from "@/components/Modal";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import InquiryContextFields, { isInquiryContextComplete } from "@/components/salesPlanning/InquiryContextFields";
@@ -208,15 +209,25 @@ export default function InquiryThreadPage() {
   );
 
   return (
-    <SaWorkspace
-      icon={<MessageCircleQuestion size={22} />}
-      title={`${data.code || "สอบถาม RD"} — ${data.title}`}
-      subtitle={`ถามโดย ${data.requesterName || "-"} · ${fmtDateTime(data.createdAt)}`}
-      headerRight={
-        <Link href="/sa/inquiries" className="btn ghost sm"><ArrowLeft size={14} aria-hidden="true" /> รายการทั้งหมด</Link>
-      }
-    >
+    <SaPageShell>
       <div className={`flex flex-col gap-4 ${styles.page}`}>
+        {/* แถบบนบาง ๆ แทนการ์ดหัวเดิม (ชื่อเรื่องซ้ำกับการ์ดภาพรวมด้านล่างอยู่แล้ว):
+            ย้อนกลับซ้าย · แก้ไข/ลบ ขวา — btn-icon แพตเทิร์นเดียวกับหน้าดีล */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <Link href="/sa/inquiries" className="btn ghost sm"><ArrowLeft size={14} aria-hidden="true" /> ย้อนกลับ</Link>
+          <div style={{ display: "flex", gap: 6 }}>
+            {data.canEditRequest && (
+              <button type="button" className="btn-icon" onClick={openRequestEdit} disabled={!!busy} aria-label="แก้ไขคำถาม" title="แก้ไข">
+                <Edit2 size={16} aria-hidden="true" />
+              </button>
+            )}
+            {data.canDelete && (
+              <button type="button" className="btn-icon danger" onClick={deleteInquiry} disabled={!!busy} aria-label="ลบเรื่องสอบถาม" title="ลบ">
+                <Trash2 size={16} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        </div>
         {error && (
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
         )}
@@ -230,8 +241,6 @@ export default function InquiryThreadPage() {
             {data.canTake && !closed && <button type="button" className="btn sm" onClick={() => setDueForm({ mode: "take", date: "" })} disabled={!!busy}><Hand size={13} /> รับเรื่องนี้</button>}
             {data.canEditCommitment && !closed && <button type="button" className="btn sm" onClick={() => setDueForm({ mode: "move", date: data.committedDueDate || "" })} disabled={!!busy}><CalendarDays size={13} /> เลื่อนวันที่ตอบ</button>}
             {data.canRespond && data.assigneeId === data.meId && <button type="button" className="btn sm" onClick={() => createTask()} disabled={!!busy}><Plus size={13} /> สร้างงาน</button>}
-            {data.canEditRequest && <button type="button" className="btn sm" onClick={openRequestEdit} disabled={!!busy}><Edit2 size={13} /> แก้ไข</button>}
-            {data.canDelete && <button type="button" className="btn danger sm" onClick={deleteInquiry} disabled={!!busy}><Trash2 size={13} /> ลบ</button>}
             {data.side && !closed && <button type="button" className="btn btn-primary sm" onClick={() => runAction("confirm-close", { action: "confirm-close" }, "ยืนยันปิดในส่วนของคุณ?")} disabled={!!busy || (data.side === "requester" ? !!data.requesterCloseConfirmedAt : !!data.responderCloseConfirmedAt)}><CheckCircle2 size={13} /> {data.side === "requester" ? (data.requesterCloseConfirmedAt ? "SA ยืนยันแล้ว" : "SA ยืนยันปิด") : (data.responderCloseConfirmedAt ? "RD ยืนยันแล้ว" : "RD ยืนยันปิด")}</button>}
             {(data.side || data.isAdmin) && closed && <button type="button" className="btn sm" onClick={() => runAction("reopen", { action: "reopen" })} disabled={!!busy}><RotateCcw size={13} /> เปิดเรื่องอีกครั้ง</button>}
           </>}
@@ -243,26 +252,6 @@ export default function InquiryThreadPage() {
         />
 
         <DetailPageLayout aside={<InquiryContext data={data} closed={closed} />}>
-
-        {requestEdit && (
-          <DetailCard icon={Edit2} eyebrow="Request editor" title="แก้ไขคำถามก่อน RD รับเรื่อง">
-            <div className={styles.formStack}>
-            <input className="premium-input" value={requestEdit.title} onChange={(e) => setRequestEdit((v) => ({ ...v, title: e.target.value }))} />
-            <InquiryContextFields
-              value={requestEdit}
-              onChange={(next) => setRequestEdit((v) => ({ ...v, ...next }))}
-              customers={lists.customers}
-              projects={lists.projects}
-              deals={lists.deals}
-              disabled={!!busy}
-            />
-            <label style={{ fontSize: 13 }}>วันที่ SA คาดหวัง <input className="premium-input" type="date" value={requestEdit.requestedDueDate} onChange={(e) => setRequestEdit((v) => ({ ...v, requestedDueDate: e.target.value }))} /></label>
-            <label style={{ fontSize: 13 }}><input type="checkbox" checked={requestEdit.urgent} onChange={(e) => setRequestEdit((v) => ({ ...v, urgent: e.target.checked }))} /> เร่งด่วน</label>
-            <small style={{ color: "var(--text-3)" }}>แก้ไขบริบทได้ก่อน RD รับเรื่องเท่านั้น</small>
-            <div className="form-action-inline"><button className="btn ghost sm" onClick={() => setRequestEdit(null)}>ยกเลิก</button><button className="btn btn-primary sm" disabled={!requestEdit.title.trim() || !isInquiryContextComplete(requestEdit)} onClick={async () => { if (await runAction("edit-request", { action: "edit-request", ...requestEdit })) setRequestEdit(null); }}><Save size={13} /> บันทึก</button></div>
-            </div>
-          </DetailCard>
-        )}
 
         {dueForm && (
           <DetailCard
@@ -408,7 +397,44 @@ export default function InquiryThreadPage() {
         </section>
         </DetailPageLayout>
       </div>
-    </SaWorkspace>
+
+      {/* โมดัลแก้ไขคำถาม — หน้าตา/ขนาดเดียวกับโมดัลสร้าง "สอบถาม RD" (มติผู้ใช้) */}
+      <Modal open={!!requestEdit} onClose={() => !busy && setRequestEdit(null)} title="แก้ไขคำถาม" size="sm">
+        {requestEdit && (
+          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              หัวเรื่อง
+              <input className="premium-input" value={requestEdit.title} maxLength={200}
+                onChange={(e) => setRequestEdit((v) => ({ ...v, title: e.target.value }))} />
+            </label>
+            <InquiryContextFields
+              value={requestEdit}
+              onChange={(next) => setRequestEdit((v) => ({ ...v, ...next }))}
+              customers={lists.customers}
+              projects={lists.projects}
+              deals={lists.deals}
+              disabled={!!busy}
+            />
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              วันที่ SA คาดหวังคำตอบ
+              <input className="premium-input" type="date" value={requestEdit.requestedDueDate}
+                onChange={(e) => setRequestEdit((v) => ({ ...v, requestedDueDate: e.target.value }))} />
+            </label>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+              <input type="checkbox" checked={requestEdit.urgent} onChange={(e) => setRequestEdit((v) => ({ ...v, urgent: e.target.checked }))} /> เร่งด่วน
+            </label>
+            <small style={{ color: "var(--text-3)" }}>แก้ไขบริบทได้ก่อน RD รับเรื่องเท่านั้น</small>
+            <div className="form-action-inline">
+              <button type="button" className="btn ghost sm" onClick={() => setRequestEdit(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn btn-primary sm" disabled={!!busy || !requestEdit.title.trim() || !isInquiryContextComplete(requestEdit)}
+                onClick={async () => { if (await runAction("edit-request", { action: "edit-request", ...requestEdit })) setRequestEdit(null); }}>
+                <Save size={13} aria-hidden="true" /> บันทึก
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </SaPageShell>
   );
 }
 
