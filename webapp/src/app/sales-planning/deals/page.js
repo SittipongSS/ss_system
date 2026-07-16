@@ -71,6 +71,7 @@ export default function SalesPlanningPipelinePage() {
 
   const [dealModal, setDealModal] = useState(false);
   const [dealForm, setDealForm] = useState({ ...initialDealForm, forecastMonth: thisMonth() });
+  const [createDeals, setCreateDeals] = useState(null); // array = โหมดเพิ่ม (หลายดีลได้), null = โหมดแก้ไข
   const [submitting, setSubmitting] = useState(false);
   const [quoteModal, setQuoteModal] = useState(false);
   const [quoteDeal, setQuoteDeal] = useState(null);
@@ -157,11 +158,43 @@ export default function SalesPlanningPipelinePage() {
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
 
   const openNewDeal = () => {
-    setDealForm({ ...initialDealForm, forecastMonth: month });
+    setCreateDeals([{ ...initialDealForm, forecastMonth: month }]);
     setDealModal(true);
+  };
+  const addDealRow = () => setCreateDeals((prev) => [...(prev || []), { ...initialDealForm, forecastMonth: month }]);
+  const removeDealRow = (i) => setCreateDeals((prev) => prev.filter((_, idx) => idx !== i));
+
+  const submitCreateDeals = async () => {
+    setSubmitting(true);
+    setError("");
+    try {
+      for (const d of (createDeals || [])) {
+        if (!d.title?.trim()) throw new Error("กรุณาระบุชื่อดีลให้ครบทุกรายการ");
+        const selectedCustomer = customers.find((c) => c.id === d.customerId);
+        const payload = { ...d, customerName: selectedCustomer?.name || d.customerName || null };
+        const res = await fetch("/api/sales-planning/deals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const savedDeal = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(savedDeal.error || `สร้างดีล ${d.title} ไม่สำเร็จ`);
+        if (d.projectId && !d.lockedProjectId) {
+          const linkRes = await fetch(`/api/sales-planning/deals/${savedDeal.id}/link-project`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId: d.projectId, startDate: d.startDate || undefined }),
+          });
+          if (!linkRes.ok) throw new Error((await linkRes.json().catch(() => ({}))).error || `สร้างดีล ${d.title} แล้ว แต่เชื่อมโครงการไม่สำเร็จ`);
+        }
+      }
+      setDealModal(false);
+      setCreateDeals(null);
+      await load();
+    } catch (e2) {
+      setError(e2.message || "บันทึกดีลไม่สำเร็จ");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const openEditDeal = (deal) => {
+    setCreateDeals(null);
     setDealForm({
       id: deal.id,
       title: deal.title || "",
@@ -622,26 +655,63 @@ export default function SalesPlanningPipelinePage() {
         </SaSection>
       </div>
 
-      <Modal open={dealModal} onClose={() => setDealModal(false)} title={dealForm.id ? "แก้ไขดีล" : "เพิ่มดีล"} size="lg">
-        <form onSubmit={saveDeal} className="form-grid cols-2" aria-busy={submitting} style={{ padding: 18 }}>
-          <DealFormFields
-            form={dealForm}
-            onPatch={(patch) => setDealForm((f) => ({ ...f, ...patch }))}
-            customers={customers}
-            projects={projects}
-            showProject
-            categories={categories}
-            stages={PIPELINE_STAGES.filter((st) => st !== "won" || dealForm.stage === "won")}
-            alreadyWon={dealForm.stage === "won"}
-            onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
-          />
-          <div className="form-action-bar">
-            <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              <Save size={15} aria-hidden="true" /> {submitting ? "กำลังบันทึก..." : "บันทึก"}
-            </button>
+      <Modal open={dealModal} onClose={() => setDealModal(false)} title={createDeals ? "เพิ่มดีล" : "แก้ไขดีล"} size="lg">
+        {createDeals ? (
+          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16, maxHeight: "75vh", overflowY: "auto" }} aria-busy={submitting}>
+            {createDeals.map((d, i) => (
+              <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 16, position: "relative", background: "var(--surface-50)" }}>
+                {createDeals.length > 1 && (
+                  <button type="button" onClick={() => removeDealRow(i)} className="btn-icon danger" style={{ position: "absolute", top: 12, right: 12, background: "var(--surface)" }} title="ลบรายการนี้">
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                )}
+                <div className="form-grid cols-2">
+                  <DealFormFields
+                    form={d}
+                    onPatch={(patch) => setCreateDeals((prev) => prev.map((x, xi) => (xi === i ? { ...x, ...patch } : x)))}
+                    customers={customers}
+                    projects={projects}
+                    showProject
+                    categories={categories}
+                    stages={PIPELINE_STAGES.filter((st) => st !== "won")}
+                    onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
+                  />
+                </div>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <button type="button" className="btn ghost" onClick={addDealRow}>
+                <Plus size={14} aria-hidden="true" /> เพิ่มดีลอีกรายการ
+              </button>
+            </div>
+            <div className="form-action-bar">
+              <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
+              <button type="button" className="btn btn-primary" onClick={submitCreateDeals} disabled={submitting}>
+                <Save size={15} aria-hidden="true" /> {submitting ? "กำลังบันทึก..." : `บันทึก ${createDeals.length} ดีล`}
+              </button>
+            </div>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={saveDeal} className="form-grid cols-2" aria-busy={submitting} style={{ padding: 18 }}>
+            <DealFormFields
+              form={dealForm}
+              onPatch={(patch) => setDealForm((f) => ({ ...f, ...patch }))}
+              customers={customers}
+              projects={projects}
+              showProject
+              categories={categories}
+              stages={PIPELINE_STAGES.filter((st) => st !== "won" || dealForm.stage === "won")}
+              alreadyWon={dealForm.stage === "won"}
+              onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
+            />
+            <div className="form-action-bar">
+              <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
+              <button type="submit" className="btn btn-primary" disabled={submitting}>
+                <Save size={15} aria-hidden="true" /> {submitting ? "กำลังบันทึก..." : "บันทึก"}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       <Modal open={quoteModal} onClose={() => setQuoteModal(false)} title={`Quotation${quoteDeal?.title ? ` · ${quoteDeal.title}` : ""}`} size="lg">
