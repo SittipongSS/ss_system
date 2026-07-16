@@ -18,6 +18,8 @@ import {
 } from '@/lib/salesPlanning';
 import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
 import { isSuperuser } from '@/lib/permissions';
+import { inLeadScope } from '../leads/route';
+import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS } from '@/lib/sales/leads';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,6 +127,22 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // another team. Superusers (scope 'all') are unrestricted.
   if (!inSalesEditScope(user, row)) return forbidden();
 
+  // แตกดีลจากลีด: deal-POST คือทางเดียวที่ปิดลีด (transition route ปิด create_deal
+  // ของตัวเองไว้) — ต้อง re-implement guard เหมือน transition route: ห้ามแตะลีดนอก
+  // scope ของผู้แก้ และลีดต้องอยู่สถานะที่แตกดีลได้ (contacted/meeting/qualified).
+  // เชื่อ metadata.leadId ดิบไม่ได้ (เดิมยิงลีดทีมอื่น/สถานะใดก็บังคับ qualified ได้).
+  let sourceLead = null;
+  if (row.metadata?.leadId && row.metadata?.source === 'lead') {
+    const { data: lead } = await supabase.from('sales_leads')
+      .select('id, status, team, assigneeId, createdBy').eq('id', row.metadata.leadId).maybeSingle();
+    if (!lead) return badRequest('ไม่พบลีดต้นทาง');
+    if (!inLeadScope(user, lead)) return forbidden('ไม่มีสิทธิ์แตกดีลจากลีดนี้');
+    if (!LEAD_TRANSITIONS[lead.status]?.includes('create_deal')) {
+      return badRequest(`ลีดสถานะ "${LEAD_STATUS_LABELS[lead.status] || lead.status}" ยังแตกดีลไม่ได้`);
+    }
+    sourceLead = lead;
+  }
+
   const { data, error } = await supabase.from('sales_deals').insert(row).select(selectDeal).single();
   if (error) return fail(error.message, 500);
 
@@ -157,12 +175,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     request: req,
   });
 
-  // ถ้าดีลนี้สร้างมาจากลีด: เปลี่ยนสถานะลีดเป็น qualified (ครั้งแรก) + บันทึก event
-  // "create_deal" ทุกครั้งที่แตกดีล (ลีด 1 ใบมีได้หลายดีล — timeline/KPI ต้องนับครบ)
-  if (data.metadata?.leadId && data.metadata?.source === 'lead') {
-    const leadId = data.metadata.leadId;
-    const { data: lead } = await supabase.from('sales_leads').select('id, status').eq('id', leadId).maybeSingle();
-    if (lead) {
+  // ถ้าดีลนี้สร้างมาจากลีด (ผ่าน guard ด้านบนแล้ว): เปลี่ยนสถานะลีดเป็น qualified
+  // (ครั้งแรก) + บันทึก event "create_deal" ทุกครั้ง (ลีด 1 ใบมีได้หลายดีล — นับ conversion ครบ)
+  if (sourceLead) {
+    const leadId = sourceLead.id;
+    const lead = sourceLead;
+    {
       const now = new Date().toISOString();
       // อัปเดตสถานะเฉพาะครั้งแรก (ยังไม่ qualified) — ครั้งถัดไปคงสถานะเดิม
       if (lead.status !== 'qualified') {
