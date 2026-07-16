@@ -69,7 +69,7 @@ export default function TaskDetailPage() {
           ]}
         />
 
-        <DetailPageLayout aside={<TaskPeople task={task} person={person} />}>
+        <DetailPageLayout aside={<><TaskPeople task={task} person={person} /><AttachmentsPanel entityType="personal_task" entityId={task.id} canEdit={!!task.canManage} title="ไฟล์แนบงาน" /></>}>
 
         <DetailCard icon={ListTodo} eyebrow="Task information" title="ข้อมูลงาน" actions={!task.canManage ? <span className="ui-badge">แก้ได้เฉพาะสถานะ</span> : null}>
           {editing ? <div className={styles.grid}>
@@ -86,8 +86,6 @@ export default function TaskDetailPage() {
             <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>รายละเอียด / โน้ต</span><div className={styles.value}>{task.note || "ไม่มีรายละเอียดเพิ่มเติม"}</div></div>
           </div>}
         </DetailCard>
-
-        <AttachmentsPanel entityType="personal_task" entityId={task.id} canEdit={!!task.canManage} title="ไฟล์แนบงาน" />
 
         {(task.project || task.deal || task.inquiry) && <DetailCard icon={FolderKanban} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
           {task.project && <ContextCard icon={FolderKanban} href={`/sa/projects/${task.project.id}`} eyebrow="โครงการ" title={`${task.project.code ? `${task.project.code} · ` : ""}${task.project.name}`} subtitle={task.project.customerName || "รายละเอียดโครงการ"} facts={[{ label: "ทีม", value: task.project.team || "-" }, { label: "AE", value: task.project.aeOwner || "-" }]} />}
