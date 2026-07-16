@@ -146,7 +146,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
-  await supabase.from('quotations').update({ status: 'revised', updatedAt: now }).eq('id', quote.id);
+  // ใบต้นทางต้องกลายเป็น 'revised' (read-only) — ถ้าล้มเหลว จะเหลือ 2 ใบ active ในเลข
+  // ฐานเดียว. guard .eq('status', quote.status) กัน race, และถ้าเขียนไม่สำเร็จให้ถอน
+  // ใบ R ที่เพิ่งสร้าง (กันสถานะค้างครึ่งทาง — ไม่มี transaction ร่วมข้าม request)
+  const { data: sourceUpdated, error: sourceErr } = await supabase
+    .from('quotations').update({ status: 'revised', updatedAt: now })
+    .eq('id', quote.id).eq('status', quote.status).select('id').maybeSingle();
+  if (sourceErr || !sourceUpdated) {
+    if (lineRows.length) await supabase.from('quotation_lines').delete().eq('quotationId', newId);
+    await supabase.from('quotations').delete().eq('id', newId);
+    return fail(sourceErr?.message || 'ใบต้นทางถูกแก้ไขพร้อมกัน — รีเฟรชแล้วลองใหม่', 409);
+  }
 
   await recordAudit({
     user, action: 'create', entityType: 'quotation', entityId: newId,

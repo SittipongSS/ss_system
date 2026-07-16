@@ -39,3 +39,14 @@ test('quoteTotals default: ไม่มีส่วนลดท้ายใบ +
   assert.equal(t.vatAmount, 0);
   assert.equal(t.totalAmount, 1000);
 });
+
+test('quoteTotals: ยอดปัดสตางค์เสมอ (กันทศนิยมลอย 99.999 ลง DB/เอกสาร/ยอด Won)', () => {
+  // 3 × 33.333 = 99.999 → ต้องเป็น 100.00 ทุกยอด
+  const t = quoteTotals([{ qty: 3, unitPrice: 33.333 }], { vatRate: 0 });
+  assert.equal(t.subtotal, 100);
+  assert.equal(t.totalAmount, 100);
+  // ยอดที่ปัดแล้วต้องไม่มีเศษเกิน 2 ตำแหน่ง
+  const t2 = quoteTotals([{ qty: 7, unitPrice: 14.29 }], { vatRate: 7 });
+  assert.equal(Math.round(t2.totalAmount * 100) / 100, t2.totalAmount);
+  assert.equal(Math.round(t2.vatAmount * 100) / 100, t2.vatAmount);
+});
