@@ -82,10 +82,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // projectValue = มูลค่าคาดการณ์ — freeze เมื่อปิด Won แล้ว (แก้ไม่ได้อีก); ก่อน Won แก้ได้
   if ('projectValue' in body && !alreadyWon) patch.projectValue = toMoney(body.projectValue);
   if ('probability' in body || 'stage' in body) patch.probability = toProbability(body.probability ?? before.probability, nextStage);
-  // เดือนพยากรณ์ (FC): ย้ายได้เฉพาะก่อนปิด Won — หลัง Won ล็อก (เดือนถูกตรึงตอนปิด
-  // เพื่อวัดความแม่นยำ FC vs AT). การปิด Won จะตั้ง forecastMonth ผ่าน buildWinPatch เอง.
-  if (('forecastMonth' in body || 'expectedCloseDate' in body) && !alreadyWon) {
-    patch.forecastMonth = monthKey(body.forecastMonth || body.expectedCloseDate) || null;
+  // เดือนพยากรณ์ (FC): อนุมานจาก "วันที่คาดปิด" อย่างเดียว (มติผู้ใช้ 2026-07-16 —
+  // ฟอร์มไม่มีช่องเดือนแล้ว ไม่รับค่า forecastMonth จาก client). ขยับได้เฉพาะก่อนปิด
+  // Won — หลัง Won ล็อก (เดือนถูกตรึงตอนปิดเพื่อวัดความแม่นยำ FC vs AT; buildWinPatch
+  // เป็นคนตั้งตอนนั้นเอง).
+  if ('expectedCloseDate' in body && !alreadyWon) {
+    patch.forecastMonth = monthKey(body.expectedCloseDate) || null;
   }
   if (nextStage !== 'won' && 'stage' in body) patch.confirmedAt = null;
   if (nextStage !== 'lost' && 'stage' in body) patch.lostReason = null;

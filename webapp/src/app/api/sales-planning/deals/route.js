@@ -96,7 +96,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     projectValue: toMoney(body.projectValue),
     wonValue: null,
     probability: toProbability(body.probability, stage),
-    forecastMonth: monthKey(body.forecastMonth || body.expectedCloseDate),
+    // เดือน FC อนุมานจากวันที่คาดปิดเสมอ (มติผู้ใช้ 2026-07-16 — ฟอร์มไม่มีช่องเดือนแล้ว
+    // และไม่รับค่าจาก client); ไม่ระบุวันที่คาดปิด → ตกเป็นเดือนปัจจุบัน (default เดิมของฟอร์ม)
+    forecastMonth: monthKey(body.expectedCloseDate) || monthKey(new Date().toISOString()),
     expectedCloseDate: body.expectedCloseDate || null,
     depositPaid: !!body.depositPaid,
     confirmedAt: null,

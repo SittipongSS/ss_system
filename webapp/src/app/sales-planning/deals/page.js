@@ -73,7 +73,7 @@ export default function SalesPlanningPipelinePage() {
     : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
 
   const [dealModal, setDealModal] = useState(false);
-  const [dealForm, setDealForm] = useState({ ...initialDealForm, forecastMonth: thisMonth() });
+  const [dealForm, setDealForm] = useState({ ...initialDealForm });
   const [createDeals, setCreateDeals] = useState(null); // array = โหมดเพิ่ม (หลายดีลได้), null = โหมดแก้ไข
   const [submitting, setSubmitting] = useState(false);
   const [quoteModal, setQuoteModal] = useState(false);
@@ -161,10 +161,10 @@ export default function SalesPlanningPipelinePage() {
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
 
   const openNewDeal = () => {
-    setCreateDeals([{ ...initialDealForm, forecastMonth: month }]);
+    setCreateDeals([{ ...initialDealForm }]);
     setDealModal(true);
   };
-  const addDealRow = () => setCreateDeals((prev) => [...(prev || []), { ...initialDealForm, forecastMonth: month }]);
+  const addDealRow = () => setCreateDeals((prev) => [...(prev || []), { ...initialDealForm }]);
   const removeDealRow = (i) => setCreateDeals((prev) => prev.filter((_, idx) => idx !== i));
 
   const submitCreateDeals = async () => {
@@ -212,7 +212,6 @@ export default function SalesPlanningPipelinePage() {
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
       probability: snapForecastLevel(deal.probability),
-      forecastMonth: deal.forecastMonth || month,
       expectedCloseDate: deal.expectedCloseDate || "",
       startDate: deal.startDate || "",
       endDate: deal.endDate || "",

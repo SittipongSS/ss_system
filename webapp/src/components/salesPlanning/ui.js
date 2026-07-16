@@ -23,7 +23,7 @@ export const initialDealForm = {
   brand: "",        // ชื่อแบรนด์ (เลือกจากแบรนด์ของลูกค้า) — เก็บใน metadata.brand
   projectValue: "",
   probability: "50",
-  forecastMonth: "",
+  // ไม่มี forecastMonth แล้ว (มติผู้ใช้ 2026-07-16) — เดือน FC อนุมานจาก expectedCloseDate ฝั่ง server
   expectedCloseDate: "",
   startDate: "",   // วันที่เริ่มดีล (mig 0095) — ใช้เป็น anchor gen ไทม์ไลน์
   endDate: "",
