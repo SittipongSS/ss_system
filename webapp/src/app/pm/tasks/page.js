@@ -161,6 +161,7 @@ export default function TasksPage() {
   const canEdit = useCan("pm:edit");
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
+  const [lateModal, setLateModal] = useState(null); // {task, reason} — กรอกสาเหตุตอนปิดงานเลยกำหนด
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
   const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
 
@@ -491,22 +492,10 @@ export default function TasksPage() {
     } catch { setToast({ kind: "error", msg: "เกิดข้อผิดพลาด" }); }
     finally { setSaving(false); }
   };
-  const setTaskStatus = async (t, status) => {
-    if (status === t.status) return;
-    // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุที่ทำเสร็จช้า (server บังคับซ้ำ)
-    let lateReason;
-    if (status === "Completed" && t.dueDate) {
-      const d = new Date();
-      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      if (String(t.dueDate) < today) {
-        const r = window.prompt("งานนี้เลยกำหนดแล้ว — ระบุสาเหตุที่ทำเสร็จช้า", "");
-        if (r == null || !r.trim()) { setToast({ kind: "error", msg: "ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน" }); return; }
-        lateReason = r.trim();
-      }
-    }
+  const applyStatus = async (t, status, lateReason) => {
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(lateReason !== undefined ? { status, lateReason } : { status }) });
+      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(lateReason ? { status, lateReason } : { status }) });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload.error || "");
@@ -516,6 +505,16 @@ export default function TasksPage() {
       setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status: t.status } : x));
       setToast({ kind: "error", msg: error.message || "อัปเดตสถานะไม่สำเร็จ" });
     }
+  };
+  const setTaskStatus = (t, status) => {
+    if (status === t.status) return;
+    // ปิดงานที่ "เลยกำหนด" → เปิดช่องกรอกสาเหตุในโมดัล (แทนป๊อปอัป prompt)
+    if (status === "Completed" && t.dueDate) {
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (String(t.dueDate) < today) { setLateModal({ task: t, reason: "" }); return; }
+    }
+    applyStatus(t, status);
   };
   const statusSelect = (t) => (
     <StatusSelect value={t.status} variant="short" onClick={(e) => e.stopPropagation()} onChange={(v) => setTaskStatus(t, v)} title="เปลี่ยนสถานะ" />
@@ -1126,6 +1125,25 @@ export default function TasksPage() {
         confirmLabel={confirmState?.confirmLabel || "ยืนยัน"}
         danger={confirmState?.danger ?? true}
       />
+      {lateModal && (
+        <Modal open onClose={() => setLateModal(null)} title="ปิดงานที่เกินกำหนด" size="sm">
+          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+              งาน <strong style={{ color: "var(--text)" }}>{lateModal.task.title}</strong> เลยกำหนดแล้ว — ระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน
+            </div>
+            <textarea className="premium-input" rows={3} value={lateModal.reason}
+              onChange={(e) => setLateModal((v) => ({ ...v, reason: e.target.value }))}
+              placeholder="เช่น รออนุมัติจากลูกค้า / รอวัตถุดิบ / ปรับแก้ตามฟีดแบ็ก..." autoFocus />
+            <div className="form-action-inline">
+              <button type="button" className="btn ghost sm" onClick={() => setLateModal(null)}>ยกเลิก</button>
+              <button type="button" className="btn btn-primary sm" disabled={!lateModal.reason.trim()}
+                onClick={() => { const m = lateModal; setLateModal(null); applyStatus(m.task, "Completed", m.reason.trim()); }}>
+                ปิดงาน
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       </div>
     </SaWorkspace>
   );
