@@ -5,6 +5,8 @@ import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/sa
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
+import { sendChat, chatCard } from '@/lib/chat';
+import { fmtMoney } from '@/lib/format';
 import {
   DEFAULT_WON_EVIDENCE_BUCKET,
   validateWonEvidence,
@@ -116,6 +118,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `Won deal from quotation ${quote.quoteNumber} (ex VAT ${quotationWonAmount(quote)})`,
     request: req,
   });
+
+  // แจ้งทีมขาย: ดีลปิดได้ (Won) — จุดสำคัญสุดของวงจร เดิมเงียบ (ทาง QT accept ไม่ผ่าน
+  // insertWinSideEffects เลยไม่มีการ์ด). ส่งหลังเขียน DB สำเร็จ, fire-and-forget
+  sendChat('sales', chatCard({
+    title: '🎉 ปิดดีลได้ (Won)',
+    subtitle: dealAuditLabel(deal),
+    rows: [
+      { label: 'ใบเสนอราคา', value: quote.quoteNumber },
+      { label: 'ยอด (ก่อน VAT)', value: `${fmtMoney(quotationWonAmount(quote))} บาท` },
+      { label: 'ลูกค้า', value: deal.customerName || '' },
+      { label: 'ผู้ปิดการขาย', value: user.name || '' },
+      { label: 'หลักฐาน', value: `${WON_DOC_TYPE_LABELS[evidence.docType] || evidence.docType} · ${evidence.docDate}` },
+    ],
+    linkPath: `/sa/deals/${deal.id}`,
+    linkLabel: 'เปิดดีล',
+  }));
 
   return ok({ quotation: accepted, deal: updatedDeal });
 });
