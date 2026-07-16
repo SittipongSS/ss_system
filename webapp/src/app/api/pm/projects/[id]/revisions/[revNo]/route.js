@@ -1,4 +1,4 @@
-import { viewScope, inScope, can } from '@/lib/permissions';
+import { viewScope, inScope, can, redactProductMargin } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 
@@ -35,5 +35,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const row = (data || [])[0];
   if (!row) return notFound('ไม่พบเวอร์ชันเอกสาร');
 
+  // snapshot เก็บ product ดิบใน DB (คนถ่าย snapshot อาจเป็น margin-holder) → redact
+  // ตอน "อ่าน" ตามสิทธิ์ผู้อ่าน เพื่อไม่ให้ rd/staff/viewer เห็นต้นทุน/มาร์จิ้นย้อนหลัง.
+  if (Array.isArray(row.snapshot?.projectProducts)) {
+    row.snapshot = {
+      ...row.snapshot,
+      projectProducts: row.snapshot.projectProducts.map((l) => ({ ...l, product: redactProductMargin(user, l.product) })),
+    };
+  }
   return ok(row);
 });

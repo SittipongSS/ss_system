@@ -1,4 +1,4 @@
-import { viewScope, pmEditScope, inScope, can } from '@/lib/permissions';
+import { viewScope, pmEditScope, inScope, can, redactProductMargin } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, conflict, badRequest, unauthorized } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
@@ -22,7 +22,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .select('*, product:products(*)')
     .eq('projectId', project.id);
   if (error) return fail(error.message, 500);
-  return ok((data || []).map((l) => l.product).filter(Boolean));
+  // redact ต้นทุน/มาร์จิ้นตามสิทธิ์ผู้เรียก (pm:view มี rd/staff/viewer ที่ห้ามเห็น)
+  return ok((data || []).map((l) => redactProductMargin(user, l.product)).filter(Boolean));
 });
 
 // POST { productId } — ผูก FG เข้าโครงการ (1 โครงการมีได้หลาย FG)
@@ -47,7 +48,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (error.code === '23505') return conflict('สินค้านี้ผูกกับโครงการแล้ว');
     return fail(error.message, 500);
   }
-  return ok(data.product, 201);
+  return ok(redactProductMargin(user, data.product), 201);
 });
 
 // DELETE ?productId=... — ถอด FG ออกจากโครงการ
