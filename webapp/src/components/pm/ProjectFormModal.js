@@ -402,7 +402,7 @@ export default function ProjectFormModal({
             </Select>
           </div>
           <div className="form-group">
-            <label>ผู้จัดทำ (Account Coordinator)</label>
+            <label>ผู้ประสานงาน (Account Coordinator)</label>
             <Select fullWidth name="preparedBy" value={form.preparedBy} onChange={change}>
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ac").map((u) => {

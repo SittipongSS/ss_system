@@ -461,7 +461,7 @@ export default function QuotationEditorPage() {
             </label>
           </section>
 
-          {/* ผู้รับผิดชอบเอกสาร — ชุดเดียวกับไทม์ไลน์ (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ) */}
+          {/* ผู้รับผิดชอบเอกสาร — ชุดเดียวกับไทม์ไลน์ (ผู้ดูแล/ผู้ประสานงาน/ผู้ตรวจสอบ) */}
           <section className={styles.card}>
             <div className={styles.sectionHeading}><UserRound size={17} aria-hidden="true" /><h2>ผู้รับผิดชอบเอกสาร</h2></div>
             <div className={styles.documentMeta}>

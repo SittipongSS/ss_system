@@ -180,7 +180,7 @@ export function buildQuotePrintHTML(quote, options = {}) {
   const preparedBy = quote.metadata?.preparedBy || quote.createdByName || '';
   const reviewer = quote.metadata?.aeSupervisor || '';
   const signers = options.signers || [
-    { label: 'ผู้จัดทำ', role: 'Scent & Sense', name: preparedBy },
+    { label: 'ผู้ประสานงาน', role: 'Scent & Sense', name: preparedBy },
     { label: 'ผู้ตรวจสอบ', role: 'Scent & Sense', name: reviewer },
     { label: 'ผู้ยืนยันสั่งซื้อ', role: 'ลูกค้า', name: '' },
   ];

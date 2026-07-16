@@ -204,7 +204,7 @@ export function buildGanttPrintHTML(project) {
         <div class="hrow"><span class="k">Customer Name</span><span class="v">${esc(customerName)}</span></div>
         <div class="hrow"><span class="k">Brand</span><span class="v">${esc(project.metadata?.brand || '')}</span></div>
         <div class="hrow"><span class="k">ผู้ดูแล (AE)</span><span class="v">${esc(project.aeOwner || '')}</span></div>
-        <div class="hrow"><span class="k">ผู้จัดทำ (AC)</span><span class="v">${esc(preparerName)}</span></div>
+        <div class="hrow"><span class="k">ผู้ประสานงาน (AC)</span><span class="v">${esc(preparerName)}</span></div>
         <div class="hrow"><span class="k">ผู้ตรวจสอบ</span><span class="v">${esc(reviewerName)}</span></div>
         <div class="hrow"><span class="k">เบอร์มือถือ</span><span class="v">${esc(aeMobile)}</span></div>
         <div class="hrow"><span class="k">Email</span><span class="v">${esc(aeEmail)}</span></div>
@@ -250,7 +250,7 @@ export function buildGanttPrintHTML(project) {
   const signatures = `
     <div class="sign-sec">
       <div class="sign-row two">
-        ${signBox({ label: 'ผู้จัดทำ', role: 'ACCOUNT COORDINATOR', name: preparerName })}
+        ${signBox({ label: 'ผู้ประสานงาน', role: 'ACCOUNT COORDINATOR', name: preparerName })}
         ${signBox({ label: 'ผู้ตรวจสอบ', role: 'AE SUPERVISOR', name: reviewerName })}
       </div>
       ${signDepts.length ? `<div class="sign-row three">${signDepts.map((dep) => signBox({ label: `ผู้รับผิดชอบ ฝ่าย ${dep}` })).join('')}</div>` : ''}
