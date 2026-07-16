@@ -18,11 +18,14 @@ const ACTIVITY_KIND_LABEL = {
   next_step: "ขั้นตอนถัดไป",
 };
 
+const FEED_PAGE = 8;
+
 export default function MyDashboardTab({ month }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
+  const [visible, setVisible] = useState(FEED_PAGE);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,6 +43,8 @@ export default function MyDashboardTab({ month }) {
   }, [month]);
 
   useEffect(() => { load(); }, [load]);
+  // เปลี่ยนตัวกรองหรือเดือน = เริ่มนับหน้าฟีดใหม่ ไม่งั้นจะค้างจำนวนที่กางไว้จากชุดก่อน
+  useEffect(() => { setVisible(FEED_PAGE); }, [filter, month]);
 
   const feed = useMemo(() => {
     const dealPosts = (data?.dealActivityFeed || []).map((item) => ({
@@ -57,6 +62,7 @@ export default function MyDashboardTab({ month }) {
       .sort((a, b) => String(b.feedAt || "").localeCompare(String(a.feedAt || "")))
       .slice(0, 50);
   }, [data, filter]);
+  const shownFeed = feed.slice(0, visible);
 
   const target = Number(data?.target || 0);
   const actual = Number(data?.wonValue || 0);
@@ -105,9 +111,16 @@ export default function MyDashboardTab({ month }) {
               </div>
             </div>
             <div className={styles.feed}>
-              {feed.map((item) => item.feedType === "task"
+              {shownFeed.map((item) => item.feedType === "task"
                 ? <TaskPost key={`task-${item.id}`} item={item} />
                 : <DealPost key={`deal-${item.id}`} item={item} />)}
+              {feed.length > visible && (
+                <div className={styles.feedMore}>
+                  <button type="button" className="btn ghost sm" onClick={() => setVisible((n) => n + FEED_PAGE)}>
+                    ดูเพิ่มเติม (อีก {feed.length - visible})
+                  </button>
+                </div>
+              )}
               {!feed.length && <div className={styles.empty}>{loading ? "กำลังโหลดกิจกรรม..." : "ยังไม่มีกิจกรรมตามตัวกรองนี้"}</div>}
             </div>
           </section>
