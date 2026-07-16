@@ -64,7 +64,9 @@ export function buildSalesOrderPrintHTML(order) {
     signers: [
       { label: 'ผู้จัดทำ', role: 'Scent & Sense', name: order.createdByName || '' },
       { label: 'ผู้ยื่นอนุมัติ', role: 'Scent & Sense', name: order.submittedByName || '' },
-      { label: 'ผู้อนุมัติ', role: 'AE Supervisor', name: order.approvedByName || '' },
+      // ผู้อนุมัติ SO เป็นได้หลาย role (senior_ae/ae_supervisor/admin) — ไม่ระบุตำแหน่ง
+      // ตายตัว "AE Supervisor" ที่ผิดเมื่อ admin/senior_ae อนุมัติ; ใช้แนวเดียวกับผู้ลงนามอื่น
+      { label: 'ผู้อนุมัติ', role: 'Scent & Sense', name: order.approvedByName || '' },
     ],
   });
 }

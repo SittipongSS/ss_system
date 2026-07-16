@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dealTimelineDocument } from './dealTimelineDocument.js';
 
-test('linked deal timeline uses project document data and keeps the deal task segment', () => {
+test('linked deal timeline uses project data but ผู้ดูแล follows the live deal owner', () => {
   const result = dealTimelineDocument(
     { id: 'D1', code: 'DEAL-1', title: 'ดีล', ownerName: 'AE ดีล', categoryCode: '01' },
     {
@@ -17,7 +17,7 @@ test('linked deal timeline uses project document data and keeps the deal task se
   );
 
   assert.equal(result.code, 'PJ-1');
-  assert.equal(result.aeOwner, 'AE โครงการ');
+  assert.equal(result.aeOwner, 'AE ดีล'); // เจ้าของดีลสด ไม่ใช่ snapshot โครงการ
   assert.equal(result.preparedBy, 'AC โครงการ');
   assert.equal(result.aeSupervisor, 'Supervisor โครงการ');
   assert.deepEqual(result.tasks.map((task) => task.id), ['T1']);
@@ -35,4 +35,12 @@ test('unlinked deal timeline falls back to deal document data', () => {
   assert.equal(result.preparedBy, 'AC ดีล');
   assert.equal(result.aeSupervisor, 'Supervisor ดีล');
   assert.equal(result.metadata.brand, 'แบรนด์ดีล');
+});
+
+test('ผู้จัดทำ ไม่ fallback เป็นเจ้าของดีลเมื่อยังไม่ระบุ AC', () => {
+  const result = dealTimelineDocument({
+    id: 'D3', title: 'ดีลไม่มี AC', ownerName: 'AE ดีล', metadata: {},
+  }, {});
+  assert.equal(result.aeOwner, 'AE ดีล');
+  assert.equal(result.preparedBy, ''); // ว่าง ไม่ใช่ 'AE ดีล'
 });
