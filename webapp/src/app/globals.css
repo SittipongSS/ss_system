@@ -458,12 +458,6 @@ button, select, input, textarea {
   transition: transform 0.2s ease, box-shadow .2s ease;
 }
 .topnav-brand:hover .topnav-brand-img { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(5, 11, 26, 0.28); }
-.topnav-brand-title {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
 
 /* ตัวสลับระบบ (dropdown) */
 .topnav-sys { position: relative; flex-shrink: 0; }
@@ -573,7 +567,6 @@ button, select, input, textarea {
   .topnav-system { padding: 0 12px; gap: 10px; }
 }
 @media (max-width: 700px) {
-  .topnav-brand-title { display: none; }
   .topnav-logout-label { display: none; }
   .topnav-menu { padding: 0 8px; }
   .topbar-user-info { display: none !important; }

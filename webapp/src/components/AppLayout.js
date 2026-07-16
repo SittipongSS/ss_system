@@ -269,8 +269,8 @@ export default function AppLayout({ children }) {
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
         <div className="topnav-system">
           <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
-            <img src="/brand-logo.png" alt="Scent &amp; Sense" className="topnav-brand-img" />
-            <span className="topnav-brand-title">Scent &amp; Sense</span>
+            {/* โลโก้ตัวเต็มมี wordmark ในภาพแล้ว (มติผู้ใช้ 2026-07-16) — ไม่ใส่ข้อความซ้ำ */}
+            <img src="/scent-sense-logo.png" alt="Scent &amp; Sense" className="topnav-brand-img" />
           </Link>
 
           <div className="topnav-sys" ref={sysMenuRef}>

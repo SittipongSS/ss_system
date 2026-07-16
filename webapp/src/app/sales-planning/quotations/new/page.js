@@ -240,7 +240,13 @@ function NewQuotationInner() {
         body: JSON.stringify({
           contactIndex,
           status,
-          lines: lines.map(({ _lineKind, ...line }) => line),
+          lines: lines.map(({ _lineKind, _noteOpen, ...line }) => {
+            // หมายเหตุรายบรรทัดเก็บใน metadata.note — ตัดช่องว่าง/คีย์เปล่าก่อนส่ง
+            const note = (line.metadata?.note || "").trim();
+            const metadata = { ...(line.metadata || {}) };
+            if (note) metadata.note = note; else delete metadata.note;
+            return { ...line, metadata };
+          }),
           quoteDate,
           validUntil: validUntil || null,
           discountType: discountType || null,
@@ -347,12 +353,14 @@ function NewQuotationInner() {
           <section className={styles.card}>
             <div className={styles.sectionHeading}><ClipboardList size={17} /><h2>รายการสินค้า/บริการ</h2><div className="spacer" /><div className={styles.lineActions}><button type="button" className="btn btn-primary sm" onClick={addProductLine}><Plus size={13} /> เพิ่มสินค้า</button><button type="button" className="btn ghost sm" onClick={addManualLine}><Plus size={13} /> เพิ่มรายการเอง</button></div></div>
             <div className="premium-glass-table table-responsive">
-              <table className="w-full text-sm">
-                <thead><tr><th style={{ width: 36 }}>#</th><th>รายการ</th><th style={{ width: 90 }}>จำนวน</th><th style={{ width: 120 }}>ราคา/หน่วย</th><th style={{ width: 170 }}>ส่วนลดรายการ</th><th className="num" style={{ width: 120 }}>จำนวนเงิน</th><th style={{ width: 40 }}></th></tr></thead>
+              <table className={`w-full text-sm ${styles.linesTable}`}>
+                <thead><tr><th style={{ width: 36 }}>#</th><th>รายการ</th><th style={{ width: 110 }}>จำนวน</th><th style={{ width: 140 }}>ราคา/หน่วย</th><th style={{ width: 200 }}>ส่วนลดรายการ</th><th className="num" style={{ width: 130 }}>จำนวนเงิน</th><th style={{ width: 40 }}></th></tr></thead>
                 <tbody>
                   {lines.map((line, index) => <tr key={index} className="premium-row">
                     <td className={styles.rowNumber}>{index + 1}</td>
-                    <td><div className={styles.lineDescriptionCell}>{line._lineKind === "product" && <SearchableSelect entity="product" size="sm" value={line.productId || ""} onChange={(value) => selectLineProduct(index, value)} ariaLabel={`เลือกสินค้า รายการ ${index + 1}`} placeholder="เลือก FG / สินค้า..." options={productOptions} />}<input className="premium-input" value={line.description || ""} placeholder={line._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"} onChange={(event) => setLine(index, { description: event.target.value })} />{line.fgCode && <span className={styles.fgCode}>FG: {line.fgCode}</span>}</div></td>
+                    <td><div className={styles.lineDescriptionCell}>{line._lineKind === "product" && <SearchableSelect entity="product" size="sm" value={line.productId || ""} onChange={(value) => selectLineProduct(index, value)} ariaLabel={`เลือกสินค้า รายการ ${index + 1}`} placeholder="เลือก FG / สินค้า..." options={productOptions} />}<input className="premium-input" value={line.description || ""} placeholder={line._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"} onChange={(event) => setLine(index, { description: event.target.value })} />{line.fgCode && <span className={styles.fgCode}>FG: {line.fgCode}</span>}{(line._noteOpen || line.metadata?.note)
+                      ? <textarea className="premium-input" rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: { ...(line.metadata || {}), note: event.target.value } })} />
+                      : <button type="button" className="linklike" style={{ alignSelf: "flex-start", fontSize: 12 }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>}</div></td>
                     <td><MoneyInput min="0" value={line.qty} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} /></td>
                     <td><MoneyInput min="0" value={line.unitPrice} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} /></td>
                     <td><div className={styles.discountControls}><Select className="premium-select" value={line.discountType || ""} onChange={(event) => setLine(index, { discountType: event.target.value || null, discountValue: event.target.value ? line.discountValue : 0 })}><option value="">ไม่ลด</option><option value="percent">%</option><option value="amount">บาท</option></Select><MoneyInput min="0" value={line.discountValue || ""} disabled={!line.discountType} onChange={(value) => setLine(index, { discountValue: value ?? "" })} aria-label={`ส่วนลด รายการ ${index + 1}`} /></div></td>
