@@ -697,7 +697,7 @@ export default function DealOverviewPage() {
             badges={<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} />}
             actions={headerRight}
             facts={[
-              { icon: FolderKanban, label: "ผู้รับผิดชอบ", value: deal.ownerName || "-" },
+              { icon: FolderKanban, label: "ผู้ดูแล (AE)", value: deal.ownerName || "-" },
               { icon: ClipboardList, label: "ทีม", value: deal.team || "-" },
               { icon: Circle, label: "เดือน Forecast", value: deal.forecastMonth || "-" },
               { icon: Trophy, label: "ประเภท / โอกาส", value: `${dealTypeOf(deal)}${!alreadyWon && deal.stage !== "lost" ? ` · FC ${snapForecastLevel(deal.probability)}%` : ""}` },
