@@ -23,6 +23,7 @@ import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { canReviewSalesForecast, DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -110,8 +111,8 @@ export default function QuotationEditorPage() {
 
   const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status);
   // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
-  const canDeleteDocument = !!quote && canEditCap && quote.status !== "accepted"
-    && (quote.status === "draft" || isSuperuser(role));
+  const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
+    && (quote.status === "draft" || isSuperuser(role))));
   const editable = canEditDocument && editMode;
 
   // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส (ตัวหนา) · แบรนด์ · ชื่อสินค้า · ปริมาตร
@@ -263,9 +264,20 @@ export default function QuotationEditorPage() {
       confirmLabel: elevatedDelete ? "ยืนยันลบใบเสนอราคา" : "ลบฉบับร่าง",
       tone: "danger",
       action: async () => {
-        if (!(await act("delete", `/api/sales-planning/quotations/${id}`, { method: "DELETE" }))) return false;
-        router.push("/sa/quotations");
-        return true;
+        // admin: ใบ accepted โดนบล็อก → deleteWithForce จะพรีวิว Sale Order + ถามยืนยันบังคับลบ
+        setBusy("delete");
+        setError("");
+        try {
+          const result = await deleteWithForce(`/api/sales-planning/quotations/${id}`, { isAdmin: role === "admin" });
+          if (!result.ok) return false;
+          router.push("/sa/quotations");
+          return true;
+        } catch (e) {
+          setError(e.message || "ลบใบเสนอราคาไม่สำเร็จ");
+          return false;
+        } finally {
+          setBusy("");
+        }
       },
     });
   };

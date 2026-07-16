@@ -93,8 +93,12 @@ export function canEditInquiryResponse(user, inquiry) {
 }
 
 export function canMutateInquiryMessage(user, inquiry, message) {
-  if (!user || !inquiry || !message || message.kind !== 'comment' || message.deletedAt) return false;
+  if (!user || !inquiry || !message || message.deletedAt) return false;
+  // admin (break-glass): จัดการได้ทุกชนิดข้อความ รวม system/status ที่คนทั่วไปแตะไม่ได้
+  // — ตราบใดที่ยังไม่ถูกลบไปแล้ว (กันลบซ้ำ).
   if (isInquiryAdmin(user)) return true;
+  // คนทั่วไป: เฉพาะคอมเมนต์ของตัวเอง เรื่องยังไม่ปิด และยังไม่ถูกรับทราบ
+  if (message.kind !== 'comment') return false;
   return inquiry.status !== 'closed' && message.authorId === user.id && !message.acknowledgedAt;
 }
 
