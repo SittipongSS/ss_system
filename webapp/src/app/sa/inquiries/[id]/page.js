@@ -312,7 +312,7 @@ export default function InquiryThreadPage() {
 
           {/* composer — ปิดเรื่องแล้วต้องเปิดใหม่ก่อนจึงคุยต่อได้ */}
           {!closed && canCompose ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--border)", padding: "12px 18px 18px" }}>
               <textarea
                 className="premium-input"
                 rows={4}
@@ -345,7 +345,7 @@ export default function InquiryThreadPage() {
               </div>
             </div>
           ) : (
-            <div style={{ marginTop: 14, color: "var(--text-3)", fontSize: 13, textAlign: "center" }}>
+            <div style={{ borderTop: "1px solid var(--border)", padding: "14px 18px 18px", color: "var(--text-3)", fontSize: 13, textAlign: "center" }}>
               {closed ? `เรื่องนี้ปิดแล้ว ${data.closedAt ? `· ${fmtDateTime(data.closedAt)}` : ""} — เปิดเรื่องอีกครั้งเพื่อคุยต่อ` : "เฉพาะผู้รับเรื่องหรือฝ่ายขายที่เกี่ยวข้องเท่านั้นที่ส่งข้อความได้"}
             </div>
           )}
