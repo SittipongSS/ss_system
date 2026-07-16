@@ -10,6 +10,7 @@ import AddBrandButton from "@/components/master/AddBrandButton";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { useRole } from "@/lib/roleContext";
 
 const today = () => {
   const now = new Date();
@@ -19,6 +20,16 @@ const today = () => {
 
 export default function SalesProjectCreateModal({ open, onClose, onSuccess, editingId = null, initialData = null, customers = [], categories = [] }) {
   const [users, setUsers] = useState([]);
+  // ล็อกช่องผู้รับผิดชอบตามตำแหน่งผู้สร้าง (มติผู้ใช้): AE/Senior→ผู้ดูแล, AC→ผู้ประสานงาน,
+  // AE Supervisor→ผู้ตรวจสอบ; role อื่นเลือกได้. ล็อกเฉพาะตอนสร้างใหม่.
+  const role = useRole();
+  const [myName, setMyName] = useState("");
+  useEffect(() => { try { setMyName(localStorage.getItem("userName") || ""); } catch { /* ssr */ } }, []);
+  const lockPeopleField = (!editingId && myName)
+    ? ((role === "ae" || role === "senior_ae") ? "aeOwner"
+      : role === "ac" ? "preparedBy"
+      : role === "ae_supervisor" ? "aeSupervisor" : null)
+    : null;
   const [extraBrands, setExtraBrands] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -68,6 +79,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          ...(lockPeopleField ? { [lockPeopleField]: myName } : {}), // บังคับช่องที่ล็อก = ผู้สร้าง
           customerName: customer?.name || null,
           metadata: { ...(initialData?.metadata || {}), brand: form.brand, containerOnly: true },
         }),
@@ -125,9 +137,9 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
             <label>วันที่สิ้นสุด</label>
             <DateInput value={form.dueDate} onChange={(dueDate) => setForm((f) => ({ ...f, dueDate }))} className="w-full" />
           </div>
-          <div className="form-group col-span-2"><label>ผู้รับผิดชอบ (AE)</label><Select fullWidth value={form.aeOwner} onChange={(e) => setForm((f) => ({ ...f, aeOwner: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => ["ae", "senior_ae", "ae_supervisor"].includes(u.role)).map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
-          <div className="form-group"><label>Account Coordinator</label><Select fullWidth value={form.preparedBy} onChange={(e) => setForm((f) => ({ ...f, preparedBy: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => u.role === "ac").map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
-          <div className="form-group"><label>AE Supervisor</label><Select fullWidth value={form.aeSupervisor} onChange={(e) => setForm((f) => ({ ...f, aeSupervisor: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => u.role === "ae_supervisor").map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
+          <div className="form-group col-span-2"><label>ผู้ดูแล (AE){lockPeopleField === "aeOwner" ? " · ล็อกเป็นคุณ" : ""}</label><Select fullWidth value={lockPeopleField === "aeOwner" ? myName : form.aeOwner} disabled={lockPeopleField === "aeOwner"} onChange={(e) => setForm((f) => ({ ...f, aeOwner: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => ["ae", "senior_ae", "ae_supervisor"].includes(u.role)).map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
+          <div className="form-group"><label>ผู้ประสานงาน (AC){lockPeopleField === "preparedBy" ? " · ล็อกเป็นคุณ" : ""}</label><Select fullWidth value={lockPeopleField === "preparedBy" ? myName : form.preparedBy} disabled={lockPeopleField === "preparedBy"} onChange={(e) => setForm((f) => ({ ...f, preparedBy: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => u.role === "ac").map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
+          <div className="form-group"><label>ผู้ตรวจสอบ (AE Supervisor){lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label><Select fullWidth value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} disabled={lockPeopleField === "aeSupervisor"} onChange={(e) => setForm((f) => ({ ...f, aeSupervisor: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => u.role === "ae_supervisor").map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
         </div>
         {error && <p style={{ color: "var(--red)", fontSize: 13 }}>{error}</p>}
         <div className="form-action-bar">
