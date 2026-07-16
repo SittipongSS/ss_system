@@ -30,6 +30,7 @@ export default function TaskDetailPage() {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lateReason, setLateReason] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -43,26 +44,26 @@ export default function TaskDetailPage() {
   useEffect(() => { load(); }, [load]);
   const change = (key) => (e) => setForm((v) => ({ ...v, [key]: e?.target ? e.target.value : e }));
 
+  // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุที่ทำเสร็จช้า (กรอกในตัวฟอร์ม ไม่ใช่ป๊อปอัป)
+  const due = form.dueDate || task?.dueDate;
+  const willComplete = form.status === "Completed" && task?.status !== "Completed";
+  const needLateReason = willComplete && !!due && due < todayLocal();
+
   async function save() {
     setError("");
-    // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุที่ทำเสร็จช้า (server บังคับซ้ำ)
-    const due = form.dueDate || task.dueDate;
-    const willComplete = form.status === "Completed" && task.status !== "Completed";
-    let lateReason;
-    if (willComplete && due && due < todayLocal()) {
-      const r = window.prompt("งานนี้เลยกำหนดแล้ว — ระบุสาเหตุที่ทำเสร็จช้า", "");
-      if (r == null || !r.trim()) { setError("ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน"); return; }
-      lateReason = r.trim();
+    if (needLateReason && !lateReason.trim()) {
+      setError("ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน");
+      return;
     }
     setBusy(true);
     try {
       const keys = task.canManage ? ["title", "note", "startDate", "dueDate", "status", "category", "difficulty"] : ["status"];
       const payload = Object.fromEntries(keys.map((key) => [key, form[key] ?? null]));
-      if (lateReason !== undefined) payload.lateReason = lateReason;
+      if (needLateReason) payload.lateReason = lateReason.trim();
       const res = await fetch(`/api/pm/personal-tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
-      setEditing(false); await load();
+      setEditing(false); setLateReason(""); await load();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
 
@@ -77,7 +78,7 @@ export default function TaskDetailPage() {
           title={task.title}
           description={<><span>{task.category || "งานทั่วไป"}</span>{task.project && <><span>·</span><span>{task.project.name}</span></>}{task.deal && <><span>·</span><span>{task.deal.title}</span></>}</>}
           badges={<SalesStateBadge label={STATUS_LABELS[task.status] || task.status} color={STATUS_COLORS[task.status]} />}
-          actions={(task.canManage || task.canChangeStatus) ? (!editing ? <button className="btn" onClick={() => setEditing(true)}><Pencil size={14} /> แก้ไข</button> : <><button className="btn" onClick={() => { setEditing(false); setForm(task); }} disabled={busy}><X size={14} /> ยกเลิก</button><button className="btn btn-primary" onClick={save} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก"}</button></>) : null}
+          actions={(task.canManage || task.canChangeStatus) ? (!editing ? <button className="btn" onClick={() => setEditing(true)}><Pencil size={14} /> แก้ไข</button> : <><button className="btn" onClick={() => { setEditing(false); setForm(task); setLateReason(""); }} disabled={busy}><X size={14} /> ยกเลิก</button><button className="btn btn-primary" onClick={save} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก"}</button></>) : null}
           facts={[
             { icon: statusIcon, label: "สถานะ", value: STATUS_LABELS[task.status] || task.status },
             { icon: Calendar, label: "วันเริ่ม", value: task.startDate ? fmtDateNumeric(task.startDate) : "ไม่ระบุ" },
@@ -98,6 +99,12 @@ export default function TaskDetailPage() {
             <div className={styles.field}><label>กำหนดเสร็จ</label><DateInput value={form.dueDate || ""} onChange={change("dueDate")} disabled={!task.canManage} /></div>
             <div className={styles.field}><label>ความยาก</label><Select value={String(form.difficulty || 2)} onChange={change("difficulty")} disabled={!task.canManage}>{DIFFICULTY_OPTIONS.map((v) => <option key={v} value={v}>{DIFFICULTY_LABELS[v]}</option>)}</Select></div>
             <div className={`${styles.field} ${styles.wide}`}><label>รายละเอียด / โน้ต</label><textarea value={form.note || ""} onChange={change("note")} disabled={!task.canManage} /></div>
+            {needLateReason && (
+              <div className={`${styles.field} ${styles.wide}`}>
+                <label style={{ color: "var(--amber)" }}>สาเหตุที่ทำเสร็จช้า (งานเลยกำหนด — จำเป็น)</label>
+                <textarea value={lateReason} onChange={(e) => setLateReason(e.target.value)} placeholder="เช่น รออนุมัติจากลูกค้า / รอวัตถุดิบ / ปรับแก้ตามฟีดแบ็ก..." autoFocus />
+              </div>
+            )}
           </div> : <div className={styles.grid}>
             <div className={styles.field}><span className={styles.label}>หมวดงาน</span><div className={styles.value}><Tag size={14} /> {task.category || "ไม่ระบุ"}</div></div>
             <div className={styles.field}><span className={styles.label}>ความยาก</span><div className={styles.value}>{DIFFICULTY_LABELS[task.difficulty] || task.difficulty || "-"}</div></div>

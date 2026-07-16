@@ -4,6 +4,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
   applyDealScope,
+  canCreateDeal,
   canEditSalesPlanning,
   canViewSalesPlanning,
   dealAuditLabel,
@@ -61,7 +62,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!canEditSalesPlanning(user)) return forbidden();
+  // สร้างดีลได้เฉพาะ AE/Senior AE (+ superuser กำกับดูแล) — AC เปิดดีลไม่ได้ (มติผู้ใช้)
+  if (!canCreateDeal(user)) return forbidden('เปิดดีลได้เฉพาะ AE / Senior AE');
 
   const body = await req.json();
   if (!body.title?.trim()) return badRequest('ต้องระบุชื่อดีล');

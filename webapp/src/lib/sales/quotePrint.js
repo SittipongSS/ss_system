@@ -180,7 +180,7 @@ export function buildQuotePrintHTML(quote, options = {}) {
   const preparedBy = quote.metadata?.preparedBy || quote.createdByName || '';
   const reviewer = quote.metadata?.aeSupervisor || '';
   const signers = options.signers || [
-    { label: 'ผู้จัดทำ', role: 'Scent & Sense', name: preparedBy },
+    { label: 'ผู้ประสานงาน', role: 'Scent & Sense', name: preparedBy },
     { label: 'ผู้ตรวจสอบ', role: 'Scent & Sense', name: reviewer },
     { label: 'ผู้ยืนยันสั่งซื้อ', role: 'ลูกค้า', name: '' },
   ];
@@ -367,7 +367,8 @@ export function buildQuotePrintHTML(quote, options = {}) {
      เลขหน้ามุมล่างขวา แบบเดียวกับเอกสารไทม์ไลน์ (ganttPrint) */
   @page {
     size: A4 portrait; margin: 9mm 8mm 12mm 18mm;
-    @bottom-right { content: "หน้า " counter(page) " / " counter(pages); font-size: 9px; color: #837868; }
+    /* เลขหน้าใช้ .page-number (รู้จำนวนหน้าจริงจาก pages.length) เท่านั้น — ไม่ใส่
+       counter(page) ที่ @bottom-right ซ้ำ ไม่งั้นเลขหน้าซ้อนกันสองชุดตอนพิมพ์ */
   }
   /* จอแคบเท่านั้น (scope "screen" สำคัญ — ตอนพิมพ์ viewport กว้าง ~184mm ≈ 700px
      ถ้าไม่ scope กฎชุดนี้จะไปทับ layout หน้าพิมพ์: header เรียงตั้ง + ลงชื่อ 1 คอลัมน์) */
@@ -387,7 +388,12 @@ export function buildQuotePrintHTML(quote, options = {}) {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .no-print { display: none !important; }
     .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
-    .explicit-page { width: 184mm; height: 276mm; position: relative; }
+    /* หน้าพิมพ์เป็น flex column ให้ doc-body ยืดเต็มพื้นที่ใต้หัวเอกสารเอง (min-height:0)
+       — ไม่พึ่ง min-height 250mm ที่ทำให้ หัว(~35mm)+เนื้อหา ≈285mm ล้นเกินกล่องพิมพ์
+       แล้วดันเป็นหน้าเปล่าเพิ่ม. ความสูง 272mm (พื้นที่พิมพ์จริง 276mm − เผื่อ 4mm กัน
+       Chromium ปัดขึ้นหน้าเปล่า). ช่องลงชื่อยังชิดล่างด้วย margin-top:auto ของ .doc-body */
+    .explicit-page { width: 184mm; height: 272mm; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+    .explicit-page > .doc-body { flex: 1 1 auto; min-height: 0; }
     .explicit-page .page-number { right: 0; bottom: 0; }
     thead { display: table-header-group; }
   }

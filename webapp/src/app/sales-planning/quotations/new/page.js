@@ -157,7 +157,7 @@ function NewQuotationInner() {
   }, [dealId, customerId]);
 
   // ตั้งต้นผู้ดูแล/ผู้ตรวจสอบจากโครงการที่เลือก (แก้ทับได้ก่อนสร้างใบ) —
-  // ผู้จัดทำไม่ตั้งจากโครงการ: ล็อกจากบัญชีผู้สร้างใบ (server stamp เอง)
+  // ผู้ประสานงาน (AC) เลือกเองจากผู้ใช้จริง ไม่ตั้งต้นจากโครงการ
   useEffect(() => {
     const p = projectId ? projectsById[projectId] : null;
     setPeople({ aeOwner: p?.aeOwner || "", preparedBy: "", aeSupervisor: p?.aeSupervisor || "" });
@@ -338,7 +338,7 @@ function NewQuotationInner() {
 
           {/* ผู้รับผิดชอบเอกสาร — ชุดเดียวกับไทม์ไลน์ ตั้งต้นจากโครงการที่เลือก */}
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><UserRound size={17} /><h2>ผู้รับผิดชอบเอกสาร</h2><span>ผู้ดูแล/ผู้ตรวจสอบตั้งต้นจากโครงการ · ผู้จัดทำล็อกจากบัญชีผู้สร้างใบ</span></div>
+            <div className={styles.sectionHeading}><UserRound size={17} /><h2>ผู้รับผิดชอบเอกสาร</h2><span>เลือกจากผู้ใช้จริง · ผู้ดูแล/ผู้ตรวจสอบตั้งต้นจากโครงการ</span></div>
             <div className={styles.documentMeta}>
               <QuotationPeopleFields value={people} onChange={setPeople} />
             </div>

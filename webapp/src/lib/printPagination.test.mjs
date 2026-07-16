@@ -59,6 +59,6 @@ test('Project Timeline preview has explicit work pages and a final approval page
   assert.match(html, /หน้า 3 \/ 3/);
   assert.equal((html.match(/การรับรองเอกสาร Project Timeline/g) || []).length, 1);
   assert.match(html, /ผู้ดูแล \(AE\).*ผู้ดูแลทดสอบ/s);
-  assert.match(html, /ผู้จัดทำ \(AC\).*ผู้จัดทำทดสอบ/s);
+  assert.match(html, /ผู้ประสานงาน \(AC\).*ผู้จัดทำทดสอบ/s);
   assert.match(html, /ผู้ตรวจสอบ.*ผู้ตรวจสอบทดสอบ/s);
 });

@@ -5,7 +5,7 @@
 // ที่ถือ role ที่กำหนดของช่องนั้น.
 //
 //   ผู้ดูแล (aeOwner)      = AE / Senior AE
-//   ผู้จัดทำ (preparedBy)  = AC
+//   ผู้ประสานงาน (preparedBy) = AC
 //   ผู้ตรวจสอบ (aeSupervisor) = AE Supervisor
 //
 // เพราะ role ของสามช่องไม่ทับกัน การแยกหน้าที่ (ผู้ตรวจสอบ ≠ ผู้จัดทำ ≠ ผู้ดูแล) จึง
@@ -21,7 +21,7 @@ export const QT_PEOPLE_ROLES = {
 
 export const QT_PEOPLE_LABELS = {
   aeOwner: 'ผู้ดูแล (AE)',
-  preparedBy: 'ผู้จัดทำ (AC)',
+  preparedBy: 'ผู้ประสานงาน (AC)',
   aeSupervisor: 'ผู้ตรวจสอบ (AE Supervisor)',
 };
 
