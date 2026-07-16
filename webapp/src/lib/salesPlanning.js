@@ -78,6 +78,13 @@ export function canEditSalesPlanning(user) {
   return !!user && can(user.role, 'salesplan:edit');
 }
 
+// สร้าง "ดีล" ได้เฉพาะ AE / Senior AE (งานหน้าบ้าน — เจ้าของดีลคือ AE เสมอ);
+// AC เป็น back-office ไม่เปิดดีล. superuser (admin / sales head) เปิดได้ในฐานะกำกับดูแล.
+// แก้ไข/ดูดีลยังใช้ scope เดิม (canEditSalesPlanning + inSalesEditScope).
+export function canCreateDeal(user) {
+  return !!user && (user.role === 'ae' || user.role === 'senior_ae' || isSuperuser(user.role));
+}
+
 export function canEditSalesTarget(user) {
   // Targets are reserved for the sales head and admin. Plain salesplan:edit
   // (ae/ac) and team leads do NOT grant this.
