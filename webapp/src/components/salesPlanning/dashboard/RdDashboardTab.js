@@ -12,11 +12,14 @@ function monthRange(month) {
   return { from: `${month}-01`, to: `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}` };
 }
 
+const FEED_PAGE = 8;
+
 export default function RdDashboardTab({ month }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
+  const [visible, setVisible] = useState(FEED_PAGE);
   const todayISO = new Date().toLocaleDateString("en-CA");
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -30,6 +33,8 @@ export default function RdDashboardTab({ month }) {
     finally { setLoading(false); }
   }, [month]);
   useEffect(() => { load(); }, [load]);
+  // เปลี่ยนตัวกรองหรือเดือน = เริ่มนับหน้าฟีดใหม่ ไม่งั้นจะค้างจำนวนที่กางไว้จากชุดก่อน
+  useEffect(() => { setVisible(FEED_PAGE); }, [filter, month]);
 
   const feed = useMemo(() => {
     const inquiries = (data?.activityFeed || []).map((item) => ({ ...item, feedType: "inquiry", feedAt: item.createdAt }));
@@ -39,6 +44,7 @@ export default function RdDashboardTab({ month }) {
       .sort((a, b) => String(b.feedAt || "").localeCompare(String(a.feedAt || "")))
       .slice(0, 50);
   }, [data, filter]);
+  const shownFeed = feed.slice(0, visible);
   const queue = data?.openQueue || [];
   const inq = data?.inquirySummary;
 
@@ -71,7 +77,7 @@ export default function RdDashboardTab({ month }) {
           {[['all','ทั้งหมด'],['task','งาน'],['inquiry','ข้อสอบถาม'],['urgent','ด่วน']].map(([key,label]) => <button key={key} className={filter === key ? styles.activeFilter : ""} onClick={() => setFilter(key)}>{label}</button>)}
           </div></div>
           <div className={styles.feed}>
-          {feed.map((item) => item.feedType === "task" ? <TaskPost key={`task-${item.id}`} item={item} /> : <article key={`inquiry-${item.id}`} className={styles.post}>
+          {shownFeed.map((item) => item.feedType === "task" ? <TaskPost key={`task-${item.id}`} item={item} /> : <article key={`inquiry-${item.id}`} className={styles.post}>
             <div className={`${styles.avatar} ${item.authorDept === 'RD' ? styles.rd : styles.sa}`}>{item.authorDept || '?'}</div>
             <div className={styles.postBody}>
               <div className={styles.postMeta}><strong>{item.authorName || "ระบบ"}</strong><span>·</span><span>{fmtDateTime(item.createdAt)}</span>{item.editedAt && <span>· แก้ไขแล้ว</span>}</div>
@@ -80,6 +86,9 @@ export default function RdDashboardTab({ month }) {
               <div className={styles.postFooter}><InquiryStatusBadge status={item.inquiryStatus} />{item.urgent && <span className={styles.urgent}>ด่วน</span>}{item.acknowledgedAt && <span className={styles.ack}>✓ รับทราบแล้ว</span>}<Link href={`/sa/inquiries/${item.inquiryId}`}>เปิดเธรด <ArrowUpRight size={12}/></Link></div>
             </div>
           </article>)}
+          {feed.length > visible && <div className={styles.feedMore}>
+            <button type="button" className="btn ghost sm" onClick={() => setVisible((n) => n + FEED_PAGE)}>ดูเพิ่มเติม (อีก {feed.length - visible})</button>
+          </div>}
           {!feed.length && <div className={styles.empty}>{loading ? "กำลังโหลดกิจกรรม..." : "ยังไม่มีกิจกรรมตามตัวกรองนี้"}</div>}
           </div>
         </section>
