@@ -7,6 +7,7 @@ import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleIden
 import { purgeAttachments } from '@/lib/master/attachments';
 import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
 import { businessDate } from '@/lib/businessDate';
+import { appendTaskUpdate } from '@/lib/pm/taskUpdates';
 
 export const dynamic = 'force-dynamic';
 
@@ -205,6 +206,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { data, error } = await supabase.from('personal_tasks').update(updates).eq('id', id).select().single();
   if (error) return fail(error.message, 500);
+
+  // auto-log ลงสายอัปเดตความคืบหน้า (ไม่ทำ action หลักพัง) — ให้หัวหน้าเห็นไทม์ไลน์
+  if ('status' in updates && updates.status !== task.status) {
+    if (updates.status === 'Completed' && updates.lateReason) {
+      await appendTaskUpdate(supabase, { taskId: id, kind: 'late', body: updates.lateReason, fromStatus: task.status, toStatus: updates.status, user });
+    } else {
+      await appendTaskUpdate(supabase, { taskId: id, kind: 'status', fromStatus: task.status, toStatus: updates.status, user });
+    }
+  }
+  if ('dueDate' in updates && (updates.dueDate || null) !== (task.dueDate || null)) {
+    await appendTaskUpdate(supabase, { taskId: id, kind: 'due', body: `เลื่อนกำหนดเสร็จ ${task.dueDate || '—'} → ${updates.dueDate || '—'}`, user });
+  }
+
   await recordAudit({ user, action: 'update', entityType: 'task', entityId: id, before: task, after: data, request: req });
   return ok(data);
 });

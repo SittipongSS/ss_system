@@ -30,6 +30,9 @@ export default function TaskDetailPage() {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [updates, setUpdates] = useState([]);
+  const [newUpdate, setNewUpdate] = useState("");
+  const [posting, setPosting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -40,7 +43,26 @@ export default function TaskDetailPage() {
       setTask(body); setForm(body);
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   }, [id]);
-  useEffect(() => { load(); }, [load]);
+  const loadUpdates = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/pm/personal-tasks/${id}/updates`, { cache: "no-store" });
+      if (res.ok) setUpdates(await res.json());
+    } catch { /* เงียบ — สายอัปเดตไม่ critical */ }
+  }, [id]);
+  useEffect(() => { load(); loadUpdates(); }, [load, loadUpdates]);
+
+  async function postUpdate() {
+    const text = newUpdate.trim();
+    if (!text) return;
+    setPosting(true);
+    try {
+      const res = await fetch(`/api/pm/personal-tasks/${id}/updates`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: text }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โพสต์อัปเดตไม่สำเร็จ");
+      setNewUpdate(""); await loadUpdates();
+    } catch (e) { setError(e.message); } finally { setPosting(false); }
+  }
   const change = (key) => (e) => setForm((v) => ({ ...v, [key]: e?.target ? e.target.value : e }));
 
   async function save() {
@@ -62,7 +84,7 @@ export default function TaskDetailPage() {
       const res = await fetch(`/api/pm/personal-tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
-      setEditing(false); await load();
+      setEditing(false); await load(); loadUpdates();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
 
@@ -111,6 +133,31 @@ export default function TaskDetailPage() {
           {task.deal && <ContextCard icon={Briefcase} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: task.deal.team || "-" }, { label: "เจ้าของดีล", value: task.deal.ownerName || "-" }]} />}
           {task.inquiry && <ContextCard icon={MessageCircleQuestion} href={`/sa/inquiries/${task.inquiry.id}`} eyebrow="ข้อความต้นทาง" title={`${task.inquiry.code || "สอบถาม RD"} · ${task.inquiry.title}`} subtitle="เปิดการสนทนาและข้อมูลประกอบ" badges={<span className="ui-badge">{task.inquiry.status}</span>} />}
         </ContextGrid></DetailCard>}
+
+        <DetailCard icon={ListTodo} eyebrow="Progress updates" title="อัปเดตความคืบหน้า" meta={`${updates.length} รายการ`}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {updates.length === 0 && <div style={{ color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีอัปเดต — โพสต์ความคืบหน้า หรือระบุปัญหาที่ติดอยู่ได้เลย</div>}
+            {updates.map((u) => {
+              const late = u.kind === "late";
+              const system = u.kind === "status" || u.kind === "due";
+              let text = u.body;
+              if (u.kind === "status") text = `เปลี่ยนสถานะ: ${STATUS_LABELS[u.fromStatus] || u.fromStatus || "-"} → ${STATUS_LABELS[u.toStatus] || u.toStatus}`;
+              if (late) text = `ปิดงานเกินกำหนด — ${u.body}`;
+              return (
+                <div key={u.id} style={{ borderLeft: `2px solid ${late ? "var(--amber)" : system ? "var(--border)" : "var(--accent)"}`, paddingLeft: 10 }}>
+                  <div style={{ fontSize: 13, color: late ? "var(--amber)" : "var(--text)", whiteSpace: "pre-wrap" }}>{text}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{u.authorName || "-"} · {fmtDateTime(u.createdAt)}</div>
+                </div>
+              );
+            })}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+              <textarea className="premium-input" rows={2} value={newUpdate} onChange={(e) => setNewUpdate(e.target.value)} placeholder="อัปเดตความคืบหน้า / ติดอะไรอยู่..." style={{ resize: "vertical" }} />
+              <button type="button" className="btn btn-primary sm" style={{ alignSelf: "flex-end" }} onClick={postUpdate} disabled={posting || !newUpdate.trim()}>
+                {posting ? "กำลังโพสต์..." : "โพสต์อัปเดต"}
+              </button>
+            </div>
+          </div>
+        </DetailCard>
         </DetailPageLayout>
     </div>}
   </Workspace>;
