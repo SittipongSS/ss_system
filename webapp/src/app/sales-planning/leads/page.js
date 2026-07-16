@@ -75,6 +75,7 @@ export default function LeadsPage() {
   const [kpi, setKpi] = useState(null);
   const [users, setUsers] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [projects, setProjects] = useState([]);
   // หมวดสินค้า (product-types) — DealFormFields ในโมดัลสร้างดีลใช้ (hotfix: state ตัวนี้
   // หลุดตอนแยกฟอร์มใน #287 ทำหน้า crash ตอนเปิดโมดัล)
   const [categories, setCategories] = useState([]);
@@ -143,6 +144,9 @@ export default function LeadsPage() {
     // senior_ae โดน 403 แล้ว dropdown มอบหมายว่างเปล่า (มองไม่เห็นชื่อ AE)
     fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
     fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(Array.isArray(d) ? d : [])).catch(() => {});
+    // โครงการ — โมดัลแตกดีลจากลีดเลือกโครงการได้เหมือนหน้ารวมดีล (ไม่งั้นดีลที่มาจาก
+    // ลีดจะไม่มีโครงการติดมาเลย แล้วสอบถาม RD ในนามดีลนั้นไม่ได้)
+    fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(Array.isArray(d) ? d : [])).catch(() => {});
   }, [role, canLead]);
 
   const filtered = useMemo(() => {
@@ -302,6 +306,16 @@ export default function LeadsPage() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `สร้างดีล ${d.title} ไม่สำเร็จ`);
+        // deal-POST ไม่รับ projectId — ผูกโครงการผ่าน link-project (ต่อ segment ไทม์ไลน์
+        // ให้ด้วย) แพตเทิร์นเดียวกับหน้ารวมดีล
+        if (d.projectId) {
+          const linkRes = await fetch(`/api/sales-planning/deals/${data.id}/link-project`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId: d.projectId, startDate: d.startDate || undefined }),
+          });
+          if (!linkRes.ok) throw new Error((await linkRes.json().catch(() => ({}))).error || `สร้างดีล ${d.title} แล้ว แต่เชื่อมโครงการไม่สำเร็จ`);
+        }
         created.push(data);
       }
       setDealModal(null);
@@ -657,6 +671,8 @@ export default function LeadsPage() {
                     form={d}
                     onPatch={(patch) => setDealsToCreate((prev) => prev.map((x, xi) => (xi === i ? { ...x, ...patch } : x)))}
                     customers={customers}
+                    projects={projects}
+                    showProject
                     categories={categories}
                     stages={DEAL_STAGES.filter((st) => st !== "won")}
                     onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}

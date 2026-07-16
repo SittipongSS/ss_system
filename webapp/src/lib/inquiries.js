@@ -108,6 +108,35 @@ export function canAcknowledgeInquiryMessage(user, inquiry, message) {
   return (side === 'requester' && fromResponder) || (side === 'responder' && !fromResponder);
 }
 
+// ── บริบท ลูกค้า › โครงการ › ดีล ───────────────────────────────────────
+// ทุกเรื่องสอบถามต้องมีครบทั้งสาม (มติผู้ใช้ 2026-07-16) — RD ต้องเปิดดูงานต้นทาง
+// ได้เสมอ. ดีลเป็นตัวตั้ง: ลูกค้า/โครงการอ่านจากดีลจริงเสมอ ไม่เชื่อค่าที่ client ส่ง
+// (กัน UI ค้างส่งคู่ที่ไม่ตรงกัน แล้วเรื่องไปโผล่ใต้โครงการผิดตัว).
+// คืน { error, status? } ถ้าไม่ผ่าน หรือ { deal, context } ถ้าผ่าน.
+export async function resolveInquiryContext(supabase, user, body = {}) {
+  if (!body.dealId) return { error: 'ต้องเลือกดีล' };
+  const { data: deal } = await supabase
+    .from('sales_deals')
+    .select('id, code, title, customerId, customerName, projectId, team, ownerId')
+    .eq('id', body.dealId)
+    .maybeSingle();
+  if (!deal) return { error: 'ไม่พบดีล' };
+  if (!inSalesEditScope(user, deal)) return { error: 'ไม่มีสิทธิ์สอบถามในนามดีลนี้', status: 403 };
+  if (!deal.customerId) return { error: 'ดีลนี้ยังไม่ได้ระบุลูกค้า — ระบุลูกค้าที่หน้าดีลก่อน' };
+  if (!deal.projectId) return { error: 'ดีลนี้ยังไม่ได้เชื่อมโครงการ — เชื่อมโครงการที่หน้าดีลก่อน' };
+  if (body.projectId && body.projectId !== deal.projectId) return { error: 'โครงการที่เลือกไม่ตรงกับดีล' };
+  if (body.customerId && body.customerId !== deal.customerId) return { error: 'ลูกค้าที่เลือกไม่ตรงกับดีล' };
+  return {
+    deal,
+    context: {
+      dealId: deal.id,
+      projectId: deal.projectId,
+      customerId: deal.customerId,
+      team: deal.team ?? user?.team ?? null,
+    },
+  };
+}
+
 // ── เลขที่เรื่อง: IQ-YYMMXXXX (เลขรัน atomic ต่อเดือน — RPC เดิม mig 0096) ──
 export async function generateInquiryCode(supabase, now = new Date()) {
   const month = businessMonthKey(now);

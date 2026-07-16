@@ -12,7 +12,9 @@ import {
 import SaWorkspace from "@/components/salesPlanning/SaWorkspace";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import InquiryContextFields, { isInquiryContextComplete } from "@/components/salesPlanning/InquiryContextFields";
 import { inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
+import { cachedFetchJson } from "@/lib/apiCache";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { DEPARTMENT_NAMES_TH } from "@/lib/permissions";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
@@ -43,6 +45,8 @@ export default function InquiryThreadPage() {
   const [reply, setReply] = useState("");
   const [files, setFiles] = useState([]);
   const [requestEdit, setRequestEdit] = useState(null);
+  // รายการให้เลือกบริบท (ลูกค้า/โครงการ/ดีล) — โหลดตอนกดแก้ไขเท่านั้น
+  const [lists, setLists] = useState({ customers: [], projects: [], deals: [] });
   const [responderDetail, setResponderDetail] = useState("");
   const [committedDueDate, setCommittedDueDate] = useState("");
   const [todayISO, setTodayISO] = useState(null);
@@ -166,6 +170,27 @@ export default function InquiryThreadPage() {
     messageAction(message, "edit", { body: next.trim() });
   };
 
+  const openRequestEdit = () => {
+    setRequestEdit({
+      title: data.title,
+      urgent: !!data.urgent,
+      requestedDueDate: data.requestedDueDate || "",
+      customerId: data.customerId || "",
+      projectId: data.projectId || "",
+      dealId: data.dealId || "",
+    });
+    const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+    Promise.all([
+      cachedFetchJson("/api/master/customers").catch(() => []),
+      json("/api/pm/projects"),
+      json("/api/sales-planning/deals"),
+    ]).then(([customers, projects, deals]) => setLists({
+      customers: Array.isArray(customers) ? customers : [],
+      projects: Array.isArray(projects) ? projects : [],
+      deals: Array.isArray(deals) ? deals : [],
+    }));
+  };
+
   const deleteInquiry = async () => {
     if (!window.confirm("ลบเรื่องสอบถามนี้? รายการนี้ย้อนกลับไม่ได้")) return;
     setBusy("delete-inquiry");
@@ -204,7 +229,7 @@ export default function InquiryThreadPage() {
           actions={<>
             {data.canTake && !closed && <button type="button" className="btn sm" onClick={() => runAction("take", { action: "take" })} disabled={!!busy}><Hand size={13} /> รับเรื่องนี้</button>}
             {data.canRespond && data.assigneeId === data.meId && <button type="button" className="btn sm" onClick={() => createTask()} disabled={!!busy}><Plus size={13} /> สร้างงาน</button>}
-            {data.canEditRequest && <button type="button" className="btn sm" onClick={() => setRequestEdit({ title: data.title, urgent: !!data.urgent, requestedDueDate: data.requestedDueDate || "" })} disabled={!!busy}><Edit2 size={13} /> แก้ไข</button>}
+            {data.canEditRequest && <button type="button" className="btn sm" onClick={openRequestEdit} disabled={!!busy}><Edit2 size={13} /> แก้ไข</button>}
             {data.canDelete && <button type="button" className="btn danger sm" onClick={deleteInquiry} disabled={!!busy}><Trash2 size={13} /> ลบ</button>}
             {data.side && !closed && <button type="button" className="btn btn-primary sm" onClick={() => runAction("confirm-close", { action: "confirm-close" }, "ยืนยันปิดในส่วนของคุณ?")} disabled={!!busy || (data.side === "requester" ? !!data.requesterCloseConfirmedAt : !!data.responderCloseConfirmedAt)}><CheckCircle2 size={13} /> {data.side === "requester" ? (data.requesterCloseConfirmedAt ? "SA ยืนยันแล้ว" : "SA ยืนยันปิด") : (data.responderCloseConfirmedAt ? "RD ยืนยันแล้ว" : "RD ยืนยันปิด")}</button>}
             {(data.side || data.isAdmin) && closed && <button type="button" className="btn sm" onClick={() => runAction("reopen", { action: "reopen" })} disabled={!!busy}><RotateCcw size={13} /> เปิดเรื่องอีกครั้ง</button>}
@@ -223,9 +248,18 @@ export default function InquiryThreadPage() {
           <DetailCard icon={Edit2} eyebrow="Request editor" title="แก้ไขคำถามก่อน RD รับเรื่อง">
             <div className={styles.formStack}>
             <input className="premium-input" value={requestEdit.title} onChange={(e) => setRequestEdit((v) => ({ ...v, title: e.target.value }))} />
+            <InquiryContextFields
+              value={requestEdit}
+              onChange={(next) => setRequestEdit((v) => ({ ...v, ...next }))}
+              customers={lists.customers}
+              projects={lists.projects}
+              deals={lists.deals}
+              disabled={!!busy}
+            />
             <label style={{ fontSize: 13 }}>วันที่ SA คาดหวัง <input className="premium-input" type="date" value={requestEdit.requestedDueDate} onChange={(e) => setRequestEdit((v) => ({ ...v, requestedDueDate: e.target.value }))} /></label>
             <label style={{ fontSize: 13 }}><input type="checkbox" checked={requestEdit.urgent} onChange={(e) => setRequestEdit((v) => ({ ...v, urgent: e.target.checked }))} /> เร่งด่วน</label>
-            <div className="form-action-inline"><button className="btn ghost sm" onClick={() => setRequestEdit(null)}>ยกเลิก</button><button className="btn btn-primary sm" onClick={async () => { await runAction("edit-request", { action: "edit-request", ...requestEdit }); setRequestEdit(null); }}><Save size={13} /> บันทึก</button></div>
+            <small style={{ color: "var(--text-3)" }}>แก้ไขบริบทได้ก่อน RD รับเรื่องเท่านั้น</small>
+            <div className="form-action-inline"><button className="btn ghost sm" onClick={() => setRequestEdit(null)}>ยกเลิก</button><button className="btn btn-primary sm" disabled={!requestEdit.title.trim() || !isInquiryContextComplete(requestEdit)} onClick={async () => { await runAction("edit-request", { action: "edit-request", ...requestEdit }); setRequestEdit(null); }}><Save size={13} /> บันทึก</button></div>
             </div>
           </DetailCard>
         )}

@@ -4,7 +4,7 @@ import {
   canAcknowledgeInquiryMessage, canCloseInquiry, canDeleteInquiry,
   canEditInquiryRequest, canMutateInquiryMessage, canRespondInquiry,
   canTakeInquiry, canViewInquiry,
-  normalizeInquiryStatus, sanitizeInquiryAttachments,
+  normalizeInquiryStatus, resolveInquiryContext, sanitizeInquiryAttachments,
 } from './inquiries';
 
 const inquiry = {
@@ -79,4 +79,48 @@ test('message locks: owner mutates until opposite side acknowledges', () => {
   assert.equal(canAcknowledgeInquiryMessage(ae, inquiry, saleMessage), false);
   const locked = { ...saleMessage, acknowledgedAt: '2026-07-15T00:00:00Z' };
   assert.equal(canMutateInquiryMessage(ae, inquiry, locked), false);
+});
+
+// ── บริบท ลูกค้า › โครงการ › ดีล (บังคับครบ) ──
+const stubSupabase = (deal) => ({
+  from: () => ({
+    select: () => ({
+      eq: () => ({ maybeSingle: async () => ({ data: deal }) }),
+    }),
+  }),
+});
+const ae = { id: 'ae-1', role: 'ae', team: 'KA' };
+const fullDeal = { id: 'D1', code: 'DL-1', title: 'ดีล', customerId: 'C1', projectId: 'P1', team: 'KA', ownerId: 'ae-1' };
+
+test('resolveInquiryContext: ดีลครบบริบท → sync ลูกค้า/โครงการ/ทีม จากดีลจริง', async () => {
+  const { error, context } = await resolveInquiryContext(stubSupabase(fullDeal), ae, { dealId: 'D1' });
+  assert.equal(error, undefined);
+  assert.deepEqual(context, { dealId: 'D1', projectId: 'P1', customerId: 'C1', team: 'KA' });
+});
+
+test('resolveInquiryContext: ต้องเลือกดีล และดีลต้องมีจริง', async () => {
+  assert.match((await resolveInquiryContext(stubSupabase(fullDeal), ae, {})).error, /ต้องเลือกดีล/);
+  assert.match((await resolveInquiryContext(stubSupabase(null), ae, { dealId: 'X' })).error, /ไม่พบดีล/);
+});
+
+test('resolveInquiryContext: ดีลไร้โครงการ/ไร้ลูกค้า สอบถามไม่ได้', async () => {
+  const noProject = await resolveInquiryContext(stubSupabase({ ...fullDeal, projectId: null }), ae, { dealId: 'D1' });
+  assert.match(noProject.error, /ยังไม่ได้เชื่อมโครงการ/);
+  const noCustomer = await resolveInquiryContext(stubSupabase({ ...fullDeal, customerId: null }), ae, { dealId: 'D1' });
+  assert.match(noCustomer.error, /ยังไม่ได้ระบุลูกค้า/);
+});
+
+test('resolveInquiryContext: ดีลนอก scope = 403 (AE คนอื่นสอบถามในนามดีลนี้ไม่ได้)', async () => {
+  const other = { id: 'ae-2', role: 'ae', team: 'KA' };
+  const result = await resolveInquiryContext(stubSupabase(fullDeal), other, { dealId: 'D1' });
+  assert.equal(result.status, 403);
+  assert.equal(result.context, undefined);
+});
+
+test('resolveInquiryContext: ค่าที่ client ส่งต้องตรงกับดีล ไม่งั้นตีกลับ', async () => {
+  const sb = stubSupabase(fullDeal);
+  assert.match((await resolveInquiryContext(sb, ae, { dealId: 'D1', projectId: 'P9' })).error, /โครงการที่เลือกไม่ตรง/);
+  assert.match((await resolveInquiryContext(sb, ae, { dealId: 'D1', customerId: 'C9' })).error, /ลูกค้าที่เลือกไม่ตรง/);
+  // ส่งครบและตรง → ผ่าน
+  assert.equal((await resolveInquiryContext(sb, ae, { dealId: 'D1', projectId: 'P1', customerId: 'C1' })).error, undefined);
 });

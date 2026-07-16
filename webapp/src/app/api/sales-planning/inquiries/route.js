@@ -3,11 +3,11 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import { recordAudit } from '@/lib/audit';
 import { canUser, normalizeDepartment } from '@/lib/permissions';
 import {
-  canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, salesPlanningViewScope,
+  canEditSalesPlanning, canViewSalesPlanning, salesPlanningViewScope,
 } from '@/lib/salesPlanning';
 import {
   INQUIRY_SLA_BUSINESS_DAYS, INQUIRY_TARGET_DEPTS,
-  generateInquiryCode, sanitizeInquiryAttachments,
+  generateInquiryCode, resolveInquiryContext, sanitizeInquiryAttachments,
 } from '@/lib/inquiries';
 import { setHolidays, addBusinessDays, toLocalISODate } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -46,8 +46,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 });
 
 // POST /api/sales-planning/inquiries — ฝ่ายขายสร้างข้อสอบถามถึงฝ่ายเป้าหมาย (RD).
-// body: { title, body, targetDept?, urgent?, dealId?, projectId?, customerId?, attachments? }
-// ลิงก์ดีลเป็นตัวกำหนดบริบท (team/โครงการ/ลูกค้า sync จากดีลจริง — กันข้อมูลขัดกัน)
+// body: { title, body, targetDept?, urgent?, dealId, projectId, customerId, attachments? }
+// บริบท ลูกค้า › โครงการ › ดีล บังคับครบ — resolveInquiryContext sync จากดีลจริง
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
@@ -64,21 +64,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return badRequest('วันที่คาดหวังคำตอบไม่ถูกต้อง');
   }
 
-  // บริบทจากดีล (ถ้าผูก): ต้องมีจริง + ผู้ถามต้องมีสิทธิ์ทำงานกับดีลนั้น
-  let dealId = body.dealId || null;
-  let projectId = body.projectId || null;
-  let customerId = body.customerId || null;
-  let team = user.team ?? null;
-  let deal = null;
-  if (dealId) {
-    const { data: d } = await supabase.from('sales_deals').select('*').eq('id', dealId).maybeSingle();
-    if (!d) return badRequest('ไม่พบดีล');
-    if (!inSalesEditScope(user, d)) return forbidden('ไม่มีสิทธิ์สอบถามในนามดีลนี้');
-    deal = d;
-    projectId = d.projectId || projectId;
-    customerId = d.customerId || customerId;
-    team = d.team ?? team;
-  }
+  const { error: ctxError, status: ctxStatus, deal, context } = await resolveInquiryContext(supabase, user, body);
+  if (ctxError) return ctxStatus === 403 ? forbidden(ctxError) : badRequest(ctxError);
 
   // SLA ตอบกลับ: +N วันทำการจากวันนี้ (ข้ามเสาร์-อาทิตย์ + วันหยุดบริษัทจริง)
   setHolidays([...(await holidaySet())]);
@@ -98,10 +85,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     targetDept,
     status: 'open',
     urgent: !!body.urgent,
-    dealId, projectId, customerId,
+    ...context,
     requesterId: user.id,
     requesterName: user.name || null,
-    team,
     dueDate,
     requestedDueDate,
   };
@@ -129,8 +115,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     subtitle: `${code} · กำหนดตอบภายใน ${dueDate}`,
     rows: [
       { label: 'เรื่อง', value: title },
-      { label: 'ดีล', value: deal ? `${deal.code || ''} ${deal.title || ''}`.trim() : '' },
-      { label: 'ลูกค้า', value: deal?.customerName || '' },
+      { label: 'ดีล', value: `${deal.code || ''} ${deal.title || ''}`.trim() },
+      { label: 'ลูกค้า', value: deal.customerName || '' },
       { label: 'ผู้ถาม', value: user.name || '' },
       { label: 'ความเร่งด่วน', value: row.urgent ? 'ด่วน' : '' },
     ],
