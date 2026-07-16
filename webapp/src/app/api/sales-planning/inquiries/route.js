@@ -6,11 +6,9 @@ import {
   canEditSalesPlanning, canViewSalesPlanning, salesPlanningViewScope,
 } from '@/lib/salesPlanning';
 import {
-  INQUIRY_SLA_BUSINESS_DAYS, INQUIRY_TARGET_DEPTS,
+  INQUIRY_TARGET_DEPTS,
   generateInquiryCode, resolveInquiryContext, sanitizeInquiryAttachments,
 } from '@/lib/inquiries';
-import { setHolidays, addBusinessDays, toLocalISODate } from '@/lib/pm/dateHelpers';
-import { holidaySet } from '@/lib/master/holidays';
 import { sendChat, chatCard } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
@@ -67,10 +65,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const { error: ctxError, status: ctxStatus, deal, context } = await resolveInquiryContext(supabase, user, body);
   if (ctxError) return ctxStatus === 403 ? forbidden(ctxError) : badRequest(ctxError);
 
-  // SLA ตอบกลับ: +N วันทำการจากวันนี้ (ข้ามเสาร์-อาทิตย์ + วันหยุดบริษัทจริง)
-  setHolidays([...(await holidaySet())]);
-  const dueDate = toLocalISODate(addBusinessDays(new Date(), INQUIRY_SLA_BUSINESS_DAYS));
-
   let code = null;
   try {
     code = await generateInquiryCode(supabase);
@@ -88,7 +82,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     ...context,
     requesterId: user.id,
     requesterName: user.name || null,
-    dueDate,
     requestedDueDate,
   };
   const { data, error } = await supabase.from('inquiries').insert(row).select().single();
@@ -112,9 +105,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // แจ้งเตือน space ฝ่ายผู้ตอบ (fire-and-forget — ไม่มี webhook = ข้ามเงียบ ๆ)
   sendChat('rd', chatCard({
     title: `ข้อสอบถามใหม่ถึงฝ่าย ${targetDept}`,
-    subtitle: `${code} · กำหนดตอบภายใน ${dueDate}`,
+    subtitle: `${code} · รับเรื่องแล้วระบุวันที่จะตอบกลับ`,
     rows: [
       { label: 'เรื่อง', value: title },
+      { label: 'SA คาดหวังคำตอบ', value: requestedDueDate || '' },
       { label: 'ดีล', value: `${deal.code || ''} ${deal.title || ''}`.trim() },
       { label: 'ลูกค้า', value: deal.customerName || '' },
       { label: 'ผู้ถาม', value: user.name || '' },

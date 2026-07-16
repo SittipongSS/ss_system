@@ -5,6 +5,7 @@ import {
   TASK_KPI_WEIGHTS, aggregateGroup, clampPeriod, emptyPerson, finalize,
   inPeriod, loadTasksForUsers, tallyTask, taskCreditId, ymd,
 } from '@/lib/pm/taskKpi';
+import { compareInquiryUrgency } from '@/lib/inquiries';
 import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { businessDate } from '@/lib/businessDate';
@@ -13,8 +14,10 @@ export const dynamic = 'force-dynamic';
 
 // ── KPI ฝ่าย RD — วัดแยกจากฝ่ายขาย (มติ 2026-07-15) ──
 // สองเส้นวัด:
-//   1. SLA ตอบข้อสอบถาม (ตาราง inquiries): ตอบทันกำหนด (dueDate = +3 วันทำการ),
+//   1. ตอบข้อสอบถาม (ตาราง inquiries): ตอบทันวันที่ RD รับปากไว้ตอนรับเรื่อง
+//      (committedDueDate — ไม่มี SLA อัตโนมัติแล้ว มติ 2026-07-16),
 //      เวลาตอบเฉลี่ยเป็นวันทำการ, ค้างตอบ/เลยกำหนดตอนนี้
+//      เรื่องที่ยังไม่มีผู้รับ = ยังไม่มีกำหนด จึงไม่เข้าตัวหาร onTimePct
 //   2. งาน personal_tasks ของคนฝ่าย RD: สูตรคะแนนเดียวกับ KPI งานฝ่ายขาย
 //      (lib/pm/taskKpi — เสร็จ 40 + ตรงเวลา 40 + ความยาก 20)
 // ช่วงเวลา: default เดือนปัจจุบัน (from/to override ได้) — งานนับตามช่วง,
@@ -87,9 +90,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       for (const b of buckets) {
         b.answered += 1;
         if (respDays != null) b._responseDays.push(respDays);
-        if (q.dueDate) {
+        if (q.committedDueDate) {
           b.answeredWithDue += 1;
-          if (answeredDay <= q.dueDate) b.answeredOnTime += 1;
+          if (answeredDay <= q.committedDueDate) b.answeredOnTime += 1;
         }
       }
     }
@@ -97,7 +100,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       if (!q.assigneeId) unassignedOpen += 1;
       for (const b of buckets) {
         b.openNow += 1;
-        if (q.dueDate && q.dueDate < today) b.overdueNow += 1;
+        if (q.committedDueDate && q.committedDueDate < today) b.overdueNow += 1;
       }
     }
   }
@@ -120,10 +123,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       inquiryId: task.inquiryId || null, dealId: task.dealId || null, projectId: task.projectId || null,
     }));
 
-  // คิวเรื่องค้าง (สำหรับ action queue บนแดชบอร์ด) — เรียงใกล้ครบกำหนดก่อน
+  // คิวเรื่องค้าง (สำหรับ action queue บนแดชบอร์ด) — ยังไม่มีผู้รับก่อน แล้วใกล้ครบกำหนด
   const openQueue = (inquiries || [])
     .filter((q) => q.status === 'open')
-    .sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')))
+    .sort(compareInquiryUrgency)
     .slice(0, 12);
 
   const inquiryMap = new Map((inquiries || []).map((q) => [q.id, q]));
@@ -147,7 +150,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         urgent: !!inquiry?.urgent,
         requesterName: inquiry?.requesterName || null,
         assigneeName: inquiry?.assigneeName || null,
-        dueDate: inquiry?.committedDueDate || inquiry?.requestedDueDate || inquiry?.dueDate || null,
+        dueDate: inquiry?.committedDueDate || inquiry?.requestedDueDate || null,
         dealId: inquiry?.dealId || null,
         projectId: inquiry?.projectId || null,
       };

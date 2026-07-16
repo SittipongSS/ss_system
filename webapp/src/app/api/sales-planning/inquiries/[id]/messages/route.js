@@ -6,11 +6,12 @@ import {
   canRespondInquiry, inInquiryRequesterScope, sanitizeInquiryAttachments,
 } from '@/lib/inquiries';
 import { sendChat, chatCard } from '@/lib/chat';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
 // POST /api/sales-planning/inquiries/[id]/messages — ตอบกลับในเธรด (สองฝั่ง)
-// ฝั่งผู้ตอบ (RD): ข้อความแรก → สถานะ open→answered + ประทับ answeredAt (เส้นวัด SLA)
+// ฝั่งผู้ตอบ (RD): ข้อความแรก → สถานะ open→answered + ประทับ answeredAt (เส้นวัดกำหนดตอบ)
 //   ตอบโดยยังไม่มีใครรับเรื่อง = รับเรื่องไปในตัว (assignee ← ผู้ตอบ)
 // ฝั่งผู้ถาม (ฝ่ายขาย): ถามต่อระหว่างสถานะ answered → กลับเป็น open (รอ RD อีกรอบ)
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
@@ -62,6 +63,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       updates.assigneeName = user.name || null;
       updates.acceptedBy = user.id;
       updates.acceptedAt = inquiry.acceptedAt || new Date().toISOString();
+      // ทางลัดนี้ข้ามฟอร์มระบุวันที่จะตอบ — ตอบทันทีจึงถือว่ารับปากว่าตอบวันนี้
+      // (รักษากติกา "มีผู้รับ = ต้องมีวันที่รับปาก" ให้คิว/KPI วัดจากเส้นเดียวกันหมด
+      //  ไม่งั้น RD ที่ไม่กดรับเรื่องจะหลุดออกจากตัวหาร onTimePct ทั้งก้อน)
+      if (!inquiry.committedDueDate) {
+        updates.committedDueDate = businessDate();
+        updates.committedDueBy = user.id;
+        updates.committedDueAt = new Date().toISOString();
+      }
     }
     if (inquiry.status === 'open') updates.status = 'answered';
     if (!inquiry.answeredAt) {

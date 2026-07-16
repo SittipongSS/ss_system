@@ -16,13 +16,16 @@ export function InquiryStatusBadge({ status }) {
   );
 }
 
-// ป้ายกำหนดตอบ (SLA): แดง = เลยกำหนด, เหลือง = วันนี้/พรุ่งนี้ — เฉพาะเรื่องที่ยังรอตอบ
+// ป้ายกำหนดตอบ: แดง = เลยกำหนด, เหลือง = วันนี้/พรุ่งนี้ — เฉพาะเรื่องที่ยังรอตอบ.
+// วัดจากวันที่ RD รับปากไว้ตอนรับเรื่อง (committedDueDate) — ไม่มี SLA อัตโนมัติแล้ว
+// (มติผู้ใช้ 2026-07-16) เรื่องที่ยังไม่มีผู้รับจึงยังไม่มีกำหนด = ไม่มีป้าย
 export function inquiryDueTone(inquiry, todayISO) {
-  if (!inquiry?.dueDate || inquiry.status !== "open" || !todayISO) return null;
-  if (inquiry.dueDate < todayISO) return { color: "var(--red)", label: "เลยกำหนด" };
+  const due = inquiry?.committedDueDate;
+  if (!due || inquiry.status !== "open" || !todayISO) return null;
+  if (due < todayISO) return { color: "var(--red)", label: "เลยกำหนด" };
   const t = new Date(`${todayISO}T00:00:00`);
   t.setDate(t.getDate() + 1);
   const tomorrow = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
-  if (inquiry.dueDate <= tomorrow) return { color: "var(--amber)", label: "ใกล้ครบกำหนด" };
+  if (due <= tomorrow) return { color: "var(--amber)", label: "ใกล้ครบกำหนด" };
   return null;
 }

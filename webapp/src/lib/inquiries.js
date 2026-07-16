@@ -1,8 +1,10 @@
 // ── ระบบสอบถาม–ตอบกลับ (Inquiry) ฝ่ายขาย ↔ ฝ่ายที่ถูกถาม (เริ่มที่ RD) ──
-// หลักการ "เก็บแยก โชว์รวม": เธรดถาม-ตอบมีสถานะ/SLA ของตัวเอง (ตาราง inquiries +
+// หลักการ "เก็บแยก โชว์รวม": เธรดถาม-ตอบมีสถานะของตัวเอง (ตาราง inquiries +
 // inquiry_messages — mig 0104) แล้ว merge เหตุการณ์เข้าฟีดความเคลื่อนไหวของดีล
 // ตอนอ่าน. ฝั่งถาม = ฝ่ายขาย (สร้าง/ถามต่อ/ปิด — คนถามคือคนตัดสินว่าคำตอบพอ),
 // ฝั่งตอบ = role rd ของฝ่ายเป้าหมาย (รับเรื่อง/ตอบ — cap inquiries:respond).
+// กำหนดตอบ (มติผู้ใช้ 2026-07-16): ไม่มี SLA อัตโนมัติแล้ว — RD ระบุวันที่จะตอบ
+// ตอนกดรับเรื่อง (บังคับ) แล้ววันนั้นเป็นเส้นวัด KPI. เลื่อนได้ แต่ลงเธรดทุกครั้ง.
 import { canUser, isSuperuser, normalizeDepartment } from '@/lib/permissions';
 import { inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { businessMonthKey } from '@/lib/businessDate';
@@ -17,11 +19,18 @@ export const INQUIRY_STATUS_LABELS = {
 // ฝ่ายที่รับข้อสอบถามได้ตอนนี้ — เพิ่มฝ่ายอื่นภายหลังได้โดยไม่แตะ schema
 export const INQUIRY_TARGET_DEPTS = ['RD'];
 
-// SLA ตอบกลับมาตรฐาน (มติผู้ใช้ 2026-07-15): 3 วันทำการ
-export const INQUIRY_SLA_BUSINESS_DAYS = 3;
-
 export function normalizeInquiryStatus(value) {
   return INQUIRY_STATUSES.includes(value) ? value : 'open';
+}
+
+// ลำดับความเร่งของคิว (ใช้ร่วมหน้ารวมเรื่อง + action queue แดชบอร์ด RD):
+// เรื่องที่ยังไม่มีผู้รับมาก่อนเสมอ (รอนานสุดขึ้นก่อน) เพราะยังไม่มีใครรับปากวันตอบ
+// = ยังไม่มีกำหนด ถ้าเรียงด้วยวันที่ล้วนมันจะตกไปท้ายคิวทั้งที่เร่งที่สุด
+export function compareInquiryUrgency(a, b) {
+  const taken = (q) => (q?.assigneeId ? 1 : 0);
+  if (taken(a) !== taken(b)) return taken(a) - taken(b);
+  if (!a?.assigneeId) return String(a?.createdAt || '').localeCompare(String(b?.createdAt || ''));
+  return String(a?.committedDueDate || '9999').localeCompare(String(b?.committedDueDate || '9999'));
 }
 
 // ── สิทธิ์ ──────────────────────────────────────────────────────────────
@@ -86,6 +95,7 @@ export function canDeleteInquiry(user, inquiry) {
   return !inquiry?.acceptedAt && inInquiryRequesterScope(user, inquiry);
 }
 
+// เลื่อนวันที่รับปากว่าจะตอบ — เฉพาะผู้รับเรื่องคนนั้น (ทุกครั้งลงเหตุการณ์ในเธรด)
 export function canEditInquiryResponse(user, inquiry) {
   if (isInquiryAdmin(user)) return true;
   return inquiry?.status !== 'closed' && !!inquiry?.acceptedAt
