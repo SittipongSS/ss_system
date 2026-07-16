@@ -2,6 +2,10 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
+import { sendChat, chatCard } from '@/lib/chat';
+import { fmtMoney } from '@/lib/format';
+
+const soAmount = (o) => `${fmtMoney(o?.actualAmount)} บาท`;
 
 export const dynamic = 'force-dynamic';
 
@@ -83,6 +87,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (error) return fail(error.message, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `submit ${before.orderNumber} for approval`, request: req });
+    // แจ้ง space ผู้อนุมัติ: มี SO รออนุมัติ (จุด clear ยอด Actual — เดิมเงียบ)
+    sendChat('approvals', chatCard({
+      title: 'Sale Order รออนุมัติ',
+      subtitle: before.deal?.title || before.orderNumber,
+      rows: [
+        { label: 'เลขที่ SO', value: before.orderNumber },
+        { label: 'ยอด (ก่อน VAT)', value: soAmount(before) },
+        { label: 'ลูกค้า', value: before.customerName || '' },
+        { label: 'ผู้ยื่น', value: user.name || '' },
+      ],
+      linkPath: `/sa/sales-orders/${id}`,
+      linkLabel: 'ตรวจ/อนุมัติ',
+    }));
     return ok(data);
   }
 
@@ -95,6 +112,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (error) return fail(error.message, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `approve ${before.orderNumber}`, request: req });
+    // แจ้งทีมขาย: SO อนุมัติแล้ว → ยอด Actual เข้าระบบ
+    sendChat('sales', chatCard({
+      title: '✅ Sale Order อนุมัติแล้ว',
+      subtitle: before.deal?.title || before.orderNumber,
+      rows: [
+        { label: 'เลขที่ SO', value: before.orderNumber },
+        { label: 'ยอด Actual (ก่อน VAT)', value: soAmount(before) },
+        { label: 'ผู้อนุมัติ', value: user.name || '' },
+        { label: 'ผู้ยื่น', value: before.submittedByName || '' },
+      ],
+      linkPath: `/sa/sales-orders/${id}`,
+      linkLabel: 'เปิด Sale Order',
+    }));
     return ok(data);
   }
 
@@ -109,6 +139,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (error) return fail(error.message, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `reject ${before.orderNumber}: ${reason}`, request: req });
+    // แจ้งทีมขาย: SO ถูกตีกลับ ให้ผู้ยื่นแก้แล้วยื่นใหม่
+    sendChat('sales', chatCard({
+      title: '↩️ Sale Order ถูกตีกลับ',
+      subtitle: before.deal?.title || before.orderNumber,
+      rows: [
+        { label: 'เลขที่ SO', value: before.orderNumber },
+        { label: 'เหตุผล', value: reason },
+        { label: 'ผู้ตีกลับ', value: user.name || '' },
+        { label: 'ผู้ยื่น', value: before.submittedByName || '' },
+      ],
+      linkPath: `/sa/sales-orders/${id}`,
+      linkLabel: 'แก้ไข Sale Order',
+    }));
     return ok(data);
   }
 
@@ -122,8 +165,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       cancelledBy: user.name || user.id || null, cancelReason: reason,
       updatedAt: new Date().toISOString(),
     };
-    const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).select('*').single();
+    // optimistic guard .eq('status', before.status) — เหมือน save/submit/approve/reject
+    // กัน TOCTOU: คนอื่น submit (draft→pending) พร้อมกัน ต้องไม่ยกเลิกทับสถานะที่เปลี่ยนไป
+    const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
     if (error) return fail(error.message, 500);
+    if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `cancel ${before.orderNumber}: ${reason}`, request: req });
     return ok(data);
   }
@@ -131,9 +177,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (action === 'restore') {
     if (user.role !== 'admin') return forbidden('เฉพาะผู้ดูแลระบบที่คืนสถานะ Sale Order ได้');
     if (before.status !== 'cancelled') return badRequest('Sale Order นี้ไม่ได้อยู่ในสถานะยกเลิก');
-    const patch = { status: 'draft', cancelledAt: null, cancelledBy: null, cancelReason: null, approvedAt: null, approvedBy: null, approvedByName: null, approvalNote: null, updatedAt: new Date().toISOString() };
-    const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).select('*').single();
+    // คืนเป็น draft สะอาด: ล้างทั้งฟิลด์ยกเลิก/อนุมัติ และ submitted*/rejected* ที่ค้าง
+    // (เดิมเหลือ rejectionReason → หน้ารายละเอียดโชว์ป้าย "ตีกลับ" บน draft ใหม่)
+    const patch = {
+      status: 'draft',
+      cancelledAt: null, cancelledBy: null, cancelReason: null,
+      approvedAt: null, approvedBy: null, approvedByName: null, approvalNote: null,
+      submittedAt: null, submittedBy: null, submittedByName: null,
+      rejectedAt: null, rejectedBy: null, rejectedByName: null, rejectionReason: null,
+      updatedAt: new Date().toISOString(),
+    };
+    const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
     if (error) return fail(error.message, 500);
+    if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `restore ${before.orderNumber}`, request: req });
     return ok(data);
   }
