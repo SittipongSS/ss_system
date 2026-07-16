@@ -1299,6 +1299,8 @@ export default function DealOverviewPage() {
         onClose={() => setInquiryOpen(false)}
         onCreated={() => { setInquiryOpen(false); load(); }}
         deal={deal ? { id: deal.id, code: deal.code, title: deal.title, customerId: deal.customerId, projectId: deal.projectId, customerName: deal.customerName || deal.customer?.name } : null}
+        onLinked={() => load()}
+        onCreateProject={() => { setInquiryOpen(false); openCreatePM(); }}
       />
 
       {/* เฟส B: โมดัลผูกดีลเข้าโครงการเดิมของลูกค้า — เลือกโครงการ + วันเริ่ม segment */}
