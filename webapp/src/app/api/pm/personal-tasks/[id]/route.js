@@ -6,6 +6,7 @@ import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleIdentity } from '@/lib/pm/personalTaskAccess';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,9 +175,29 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
+  // จำ "เดดไลน์แรก" ตอนถูกเลื่อนครั้งแรก — เก็บ dueDate เดิมก่อนเปลี่ยน (null = ไม่เคยเลื่อน,
+  // หรือเพิ่งตั้งเดดไลน์ครั้งแรกจากว่าง). ครั้งถัดไปไม่ทับ (คงเดดไลน์แรกไว้).
+  if ('dueDate' in updates && task.dueDate && updates.dueDate !== task.dueDate && !task.originalDueDate) {
+    updates.originalDueDate = task.dueDate;
+  }
+
   // completedAt อัตโนมัติตามการเปลี่ยนสถานะ (เข้า Completed = วันนี้, ออก = ล้าง).
   if ('status' in updates && updates.status !== task.status) {
     updates.completedAt = updates.status === 'Completed' ? today() : null;
+    if (updates.status === 'Completed') {
+      // ปิดงานที่ "เลยกำหนด" (เทียบเดดไลน์ปัจจุบันกับวันนี้ตามเวลาไทย) ต้องระบุสาเหตุ.
+      const effectiveDue = 'dueDate' in updates ? updates.dueDate : task.dueDate;
+      const overdue = effectiveDue && String(effectiveDue) < businessDate();
+      if (overdue) {
+        const reason = (body.lateReason || '').trim();
+        if (!reason) return badRequest('งานนี้เลยกำหนดแล้ว — ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน');
+        updates.lateReason = reason.slice(0, 1000);
+      } else {
+        updates.lateReason = null; // เสร็จตรงเวลา = ไม่มีสาเหตุล่าช้า
+      }
+    } else {
+      updates.lateReason = null; // เปิดงานใหม่ = ล้างสาเหตุเดิม
+    }
   }
 
   updates.updatedBy = user.id;

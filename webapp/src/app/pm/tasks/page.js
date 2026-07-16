@@ -493,9 +493,20 @@ export default function TasksPage() {
   };
   const setTaskStatus = async (t, status) => {
     if (status === t.status) return;
+    // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุที่ทำเสร็จช้า (server บังคับซ้ำ)
+    let lateReason;
+    if (status === "Completed" && t.dueDate) {
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (String(t.dueDate) < today) {
+        const r = window.prompt("งานนี้เลยกำหนดแล้ว — ระบุสาเหตุที่ทำเสร็จช้า", "");
+        if (r == null || !r.trim()) { setToast({ kind: "error", msg: "ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน" }); return; }
+        lateReason = r.trim();
+      }
+    }
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(lateReason !== undefined ? { status, lateReason } : { status }) });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload.error || "");

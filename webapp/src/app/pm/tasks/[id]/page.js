@@ -16,6 +16,12 @@ import styles from "./page.module.css";
 const STATUS_LABELS = { Pending: "รอดำเนินการ", "In Progress": "กำลังทำ", Completed: "เสร็จแล้ว" };
 const STATUS_COLORS = { Pending: "var(--text-3)", "In Progress": "var(--accent)", Completed: "var(--green)" };
 
+// วันที่วันนี้ตามเครื่องผู้ใช้ (ไทย = ICT) รูปแบบ YYYY-MM-DD — ใช้เทียบเลยกำหนดฝั่ง client
+const todayLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 export default function TaskDetailPage() {
   const { id } = useParams();
   const [task, setTask] = useState(null);
@@ -38,10 +44,21 @@ export default function TaskDetailPage() {
   const change = (key) => (e) => setForm((v) => ({ ...v, [key]: e?.target ? e.target.value : e }));
 
   async function save() {
-    setBusy(true); setError("");
+    setError("");
+    // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุที่ทำเสร็จช้า (server บังคับซ้ำ)
+    const due = form.dueDate || task.dueDate;
+    const willComplete = form.status === "Completed" && task.status !== "Completed";
+    let lateReason;
+    if (willComplete && due && due < todayLocal()) {
+      const r = window.prompt("งานนี้เลยกำหนดแล้ว — ระบุสาเหตุที่ทำเสร็จช้า", "");
+      if (r == null || !r.trim()) { setError("ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน"); return; }
+      lateReason = r.trim();
+    }
+    setBusy(true);
     try {
       const keys = task.canManage ? ["title", "note", "startDate", "dueDate", "status", "category", "difficulty"] : ["status"];
       const payload = Object.fromEntries(keys.map((key) => [key, form[key] ?? null]));
+      if (lateReason !== undefined) payload.lateReason = lateReason;
       const res = await fetch(`/api/pm/personal-tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
@@ -65,6 +82,7 @@ export default function TaskDetailPage() {
             { icon: statusIcon, label: "สถานะ", value: STATUS_LABELS[task.status] || task.status },
             { icon: Calendar, label: "วันเริ่ม", value: task.startDate ? fmtDateNumeric(task.startDate) : "ไม่ระบุ" },
             { icon: AlertTriangle, label: "กำหนดเสร็จ", value: task.dueDate ? fmtDateNumeric(task.dueDate) : "ไม่ระบุ" },
+            ...(task.originalDueDate ? [{ icon: Clock, label: "เดดไลน์แรก", value: fmtDateNumeric(task.originalDueDate) }] : []),
             { icon: User, label: "ผู้รับผิดชอบ", value: person(task.assigneeId || task.ownerId) },
           ]}
         />
@@ -84,6 +102,7 @@ export default function TaskDetailPage() {
             <div className={styles.field}><span className={styles.label}>หมวดงาน</span><div className={styles.value}><Tag size={14} /> {task.category || "ไม่ระบุ"}</div></div>
             <div className={styles.field}><span className={styles.label}>ความยาก</span><div className={styles.value}>{DIFFICULTY_LABELS[task.difficulty] || task.difficulty || "-"}</div></div>
             <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>รายละเอียด / โน้ต</span><div className={styles.value}>{task.note || "ไม่มีรายละเอียดเพิ่มเติม"}</div></div>
+            {task.lateReason && <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>สาเหตุที่ทำเสร็จช้า</span><div className={styles.value} style={{ color: "var(--amber)" }}>{task.lateReason}</div></div>}
           </div>}
         </DetailCard>
 
