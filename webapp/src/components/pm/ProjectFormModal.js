@@ -11,6 +11,7 @@ import { productOptionDisplay } from "@/components/master/productOption";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { useRole } from "@/lib/roleContext";
 import { X } from "lucide-react";
 
 export default function ProjectFormModal({
@@ -25,6 +26,16 @@ export default function ProjectFormModal({
   // Assignable users are fetched fresh every time the modal opens (not at the
   // parent page's mount) so a newly-added user shows up without a full reload.
   const [users, setUsers] = useState([]);
+  // ล็อกช่องผู้รับผิดชอบตามตำแหน่งผู้สร้าง (มติผู้ใช้): AE/Senior→ผู้ดูแล, AC→ผู้ประสานงาน,
+  // AE Supervisor→ผู้ตรวจสอบ; role อื่น (admin) เลือกได้ทุกช่อง. ล็อกเฉพาะตอนสร้างใหม่.
+  const role = useRole();
+  const [myName, setMyName] = useState("");
+  useEffect(() => { try { setMyName(localStorage.getItem("userName") || ""); } catch { /* ssr */ } }, []);
+  const lockPeopleField = (!editingId && myName)
+    ? ((role === "ae" || role === "senior_ae") ? "aeOwner"
+      : role === "ac" ? "preparedBy"
+      : role === "ae_supervisor" ? "aeSupervisor" : null)
+    : null;
   const blank = useMemo(() => ({
     code: "", name: "", customerId: "", type: "NPD",
     startDate: "", dueDate: "", productMainCategory: "", productSubCategory: "", aeOwner: "",
@@ -159,6 +170,7 @@ export default function ProjectFormModal({
     }
     setSubmitting(true);
     const payload = { ...form };
+    if (lockPeopleField) payload[lockPeopleField] = myName; // บังคับค่าช่องที่ล็อก = ผู้สร้าง
     if (form.customerId) payload.customerName = customers.find((c) => c.id === form.customerId)?.name || "";
     payload.metadata = { ...(initialData?.metadata || {}), quotationNumber: form.quotationNumber, brand: form.brand, poNumber: form.poNumber };
     delete payload.quotationNumber;
@@ -392,8 +404,8 @@ export default function ProjectFormModal({
 
         <div className="pm-form-grid gap-[18px]">
           <div className="form-group col-span-2">
-            <label>ผู้ดูแล (Account Executive)</label>
-            <Select fullWidth name="aeOwner" value={form.aeOwner} onChange={change}>
+            <label>ผู้ดูแล (Account Executive){lockPeopleField === "aeOwner" ? " · ล็อกเป็นคุณ" : ""}</label>
+            <Select fullWidth name="aeOwner" value={lockPeopleField === "aeOwner" ? myName : form.aeOwner} onChange={change} disabled={lockPeopleField === "aeOwner"}>
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ae" || u.role === "senior_ae" || u.role === "ae_supervisor").map((u) => {
                 const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
@@ -402,8 +414,8 @@ export default function ProjectFormModal({
             </Select>
           </div>
           <div className="form-group">
-            <label>ผู้ประสานงาน (Account Coordinator)</label>
-            <Select fullWidth name="preparedBy" value={form.preparedBy} onChange={change}>
+            <label>ผู้ประสานงาน (Account Coordinator){lockPeopleField === "preparedBy" ? " · ล็อกเป็นคุณ" : ""}</label>
+            <Select fullWidth name="preparedBy" value={lockPeopleField === "preparedBy" ? myName : form.preparedBy} onChange={change} disabled={lockPeopleField === "preparedBy"}>
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ac").map((u) => {
                 const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
@@ -412,8 +424,8 @@ export default function ProjectFormModal({
             </Select>
           </div>
           <div className="form-group">
-            <label>ผู้ตรวจสอบ (AE Supervisor)</label>
-            <Select fullWidth name="aeSupervisor" value={form.aeSupervisor} onChange={change}>
+            <label>ผู้ตรวจสอบ (AE Supervisor){lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label>
+            <Select fullWidth name="aeSupervisor" value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} onChange={change} disabled={lockPeopleField === "aeSupervisor"}>
               <option value="">— ไม่ระบุ —</option>
               {users.filter(u => u.role === "ae_supervisor").map((u) => {
                 const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
