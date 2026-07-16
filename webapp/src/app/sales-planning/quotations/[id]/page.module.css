@@ -242,6 +242,9 @@
   flex-wrap: wrap;
 }
 
+/* กันตารางถูกบีบจนช่องกรอกเหลือไม่กี่ตัวอักษร — จอแคบให้เลื่อนแนวนอนแทน */
+.linesTable { min-width: 960px; }
+
 .lineDescriptionCell {
   display: flex;
   min-width: 260px;
@@ -265,7 +268,7 @@
 
 .discountControls {
   display: grid;
-  grid-template-columns: 74px 104px;
+  grid-template-columns: 84px minmax(0, 1fr);
   gap: 4px;
 }
 

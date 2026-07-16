@@ -169,6 +169,11 @@ export default function QuotationEditorPage() {
     lines: lines.map((line) => {
       const payloadLine = { ...line };
       delete payloadLine._lineKind;
+      delete payloadLine._noteOpen;
+      // หมายเหตุรายบรรทัดเก็บใน metadata.note — ตัดช่องว่าง/คีย์เปล่าก่อนส่ง
+      const note = (payloadLine.metadata?.note || "").trim();
+      payloadLine.metadata = { ...(payloadLine.metadata || {}) };
+      if (note) payloadLine.metadata.note = note; else delete payloadLine.metadata.note;
       return payloadLine;
     }),
     quoteDate: form.quoteDate,
@@ -494,9 +499,9 @@ export default function QuotationEditorPage() {
               )}
             </div>
             <div className="premium-glass-table table-responsive">
-              <table className="w-full text-sm">
+              <table className={`w-full text-sm ${styles.linesTable}`}>
                 <thead>
-                  <tr><th style={{ width: 36 }}>#</th><th>รายการ</th><th style={{ width: 90 }}>จำนวน</th><th style={{ width: 120 }}>ราคา/หน่วย</th><th style={{ width: 170 }}>ส่วนลดรายการ</th><th className="num" style={{ width: 120 }}>จำนวนเงิน</th>{editable && <th style={{ width: 40 }}></th>}</tr>
+                  <tr><th style={{ width: 36 }}>#</th><th>รายการ</th><th style={{ width: 110 }}>จำนวน</th><th style={{ width: 140 }}>ราคา/หน่วย</th><th style={{ width: 200 }}>ส่วนลดรายการ</th><th className="num" style={{ width: 130 }}>จำนวนเงิน</th>{editable && <th style={{ width: 40 }}></th>}</tr>
                 </thead>
                 <tbody>
                   {lines.map((l, i) => (
@@ -519,6 +524,12 @@ export default function QuotationEditorPage() {
                               บรรทัด FG โชว์ค่าสดจากฐานข้อมูล + ล็อกแก้ (server ทับซ้ำตอนบันทึก) */}
                           {l.fgCode && <span className={styles.fgCode}>FG: {l.fgCode}</span>}
                           <input className="premium-input" value={(l.productId && fgDescriptionFor(l.productId)) || l.description || ""} disabled={!editable || !!l.productId} title={l.productId ? "คำอธิบายจากฐานข้อมูลสินค้า (แบรนด์ · ชื่อสินค้า · ปริมาตร) — แก้ที่ฐานข้อมูล" : undefined} placeholder={l._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"} onChange={(e) => setLine(i, { description: e.target.value })} style={{ width: "100%" }} />
+                          {/* หมายเหตุรายบรรทัด (metadata.note) — โชว์ใต้รายการในใบเสนอราคา */}
+                          {editable
+                            ? ((l._noteOpen || l.metadata?.note)
+                              ? <textarea className="premium-input" rows={2} value={l.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${i + 1}`} onChange={(e) => setLine(i, { metadata: { ...(l.metadata || {}), note: e.target.value } })} />
+                              : <button type="button" className="linklike" style={{ alignSelf: "flex-start", fontSize: 12 }} onClick={() => setLine(i, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
+                            : (l.metadata?.note && <div style={{ color: "var(--text-3)", fontSize: 12.5, whiteSpace: "pre-wrap" }}>หมายเหตุ: {l.metadata.note}</div>)}
                         </div>
                       </td>
                       <td><MoneyInput min="0" value={l.qty} disabled={!editable} onChange={(value) => setLine(i, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${i + 1}`} /></td>

@@ -38,8 +38,12 @@ const printDate = (v) => (v ? fmtDate(v).replaceAll('/', '.') : '-');
 // แพ็กแถวเกินหน้า แล้วโดน overflow:hidden ตัดหายเงียบ). เผื่อไว้ที่ 45.
 const CHARS_PER_LINE = 45;
 const linePageUnits = (line) => {
+  // หมายเหตุรายบรรทัด (metadata.note) กินความสูงแถวด้วย — ต้องนับรวม ไม่งั้น
+  // แถวเกินหน้าแล้วโดน overflow ตัดหายเงียบ (บทเรียนเดียวกับ description)
+  const note = line?.metadata?.note || '';
   const description = `${line?.fgCode || ''} ${line?.description || ''}`.trim();
-  return Math.max(1, Math.ceil(description.length / CHARS_PER_LINE));
+  return Math.max(1, Math.ceil(description.length / CHARS_PER_LINE))
+    + (note ? Math.max(1, Math.ceil(note.length / CHARS_PER_LINE)) : 0);
 };
 
 // Explicit pages make the browser preview match the printed A4 pages. The final
@@ -140,7 +144,7 @@ export function buildQuotePrintHTML(quote, options = {}) {
     .map((line, index) => `
       <tr>
         <td class="c">${startIndex + index + 1}</td>
-        <td class="description">${line.fgCode ? `<span class="fg-code">${esc(line.fgCode)}</span> · ` : ''}${value(line.description)}</td>
+        <td class="description">${line.fgCode ? `<span class="fg-code">${esc(line.fgCode)}</span> · ` : ''}${value(line.description)}${line.metadata?.note ? `<div class="line-note">${esc(line.metadata.note)}</div>` : ''}</td>
         <td class="n">${Number(line.qty || 0).toLocaleString('th-TH')}</td>
         <td class="n">${money(line.unitPrice)}</td>
         ${hasLineDiscount ? `<td class="n">${Number(line.discountAmount) > 0 ? money(line.discountAmount) : '-'}</td>` : ''}
@@ -311,6 +315,8 @@ export function buildQuotePrintHTML(quote, options = {}) {
   .c { text-align: center; }
   .n { text-align: right; font-variant-numeric: tabular-nums; }
   .description { word-break: break-word; }
+  /* หมายเหตุรายบรรทัด (metadata.note) — บรรทัดรองใต้คำอธิบาย สีจางกว่า */
+  .line-note { margin-top: 2px; color: #5a5348; font-size: 10px; white-space: pre-wrap; }
   .fg, .muted { color: #837868; font-size: 9.5px; }
   /* รหัส FG นำหน้าคำอธิบายบรรทัด (รหัส · แบรนด์ · ชื่อสินค้า · ปริมาตร) */
   .fg-code { font-weight: 600; }
