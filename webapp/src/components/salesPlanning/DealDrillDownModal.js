@@ -40,12 +40,19 @@ export default function DealDrillDownModal({ filter, onClose }) {
           filtered = filtered.filter((d) => isWonDeal(d) && inPeriod(wonMonthOf(d)));
         } else if (filter.metric === "lost") {
           filtered = filtered.filter((d) => d.stage === "lost" && inPeriod(monthKey(d.forecastMonth)));
-        } else if (filter.metric === "forecast" || filter.metric?.startsWith("fc")) {
+        } else if (filter.metric === "fcTotal") {
+          // FC Total = เปิด + Won + แพ้ (Won นับตาม wonMonth, เปิด/แพ้ ตาม forecastMonth)
+          filtered = filtered.filter((d) =>
+            (isWonDeal(d) && inPeriod(wonMonthOf(d)))
+            || ((isOpenDeal(d) || d.stage === "lost") && inPeriod(monthKey(d.forecastMonth))));
+        } else if (filter.metric === "remaining" || filter.metric === "forecast") {
+          // FC คงเหลือ = ดีลที่ "ยังเปิด" ในงวด (= ผลรวม FC 20..100)
           filtered = filtered.filter((d) => isOpenDeal(d) && inPeriod(monthKey(d.forecastMonth)));
-          if (filter.metric.startsWith("fc")) {
-            const level = Number(filter.metric.replace("fc", ""));
-            filtered = filtered.filter((d) => snapForecastLevel(d.probability) === level);
-          }
+        } else if (filter.metric?.startsWith("fc")) {
+          // fc20/50/80/100 — ดีลเปิดที่ระดับโอกาสนั้น
+          const level = Number(filter.metric.replace("fc", ""));
+          filtered = filtered.filter((d) => isOpenDeal(d) && inPeriod(monthKey(d.forecastMonth))
+            && snapForecastLevel(d.probability) === level);
         }
 
         setDeals(filtered);
@@ -73,10 +80,14 @@ export default function DealDrillDownModal({ filter, onClose }) {
     fc80: "ยอดคาดการณ์ (80%)",
     fc50: "ยอดคาดการณ์ (50%)",
     fc20: "ยอดคาดการณ์ (20%)",
+    fcTotal: "FC Total (เปิด + Won + แพ้)",
+    remaining: "FC คงเหลือ (ดีลที่ยังเปิด)",
   }[filter.metric] || filter.metric;
 
-  // ยอดต่อดีลสูตรเดียวกับการ์ด: Won = Actual จาก SO (wonAmountOf), อื่น = คาดการณ์
-  const amountOf = (d) => (filter.metric === "won" ? wonAmountOf(d) : forecastAmount(d));
+  // ยอดต่อดีลสูตรเดียวกับการ์ด: ดีล Won = Actual จาก SO (wonAmountOf) เมื่อดูช่อง Won
+  // หรือ FC Total; อื่น ๆ = มูลค่าคาดการณ์ (forecastAmount)
+  const amountOf = (d) => (isWonDeal(d) && (filter.metric === "won" || filter.metric === "fcTotal")
+    ? wonAmountOf(d) : forecastAmount(d));
   const totalValue = deals.reduce((sum, d) => sum + amountOf(d), 0);
 
   return (

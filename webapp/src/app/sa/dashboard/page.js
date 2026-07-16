@@ -76,6 +76,8 @@ const METRICS = [
 ];
 
 const FC_KEYS = ["fc20", "fc50", "fc80", "fc100"];
+// ช่องที่กดดูรายดีลไม่ได้: Target (ค่าตั้ง ไม่ใช่ดีล) + % (อัตราส่วน ไม่ใช่ชุดดีล)
+const NON_DRILLABLE = new Set(["target", "pct"]);
 
 function deriveMetrics(cell) {
   const target = Number(cell?.target || 0);
@@ -332,7 +334,7 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                           </td>
                           {monthMetrics.map((mm, ci) => {
                             const val = mm[m.key];
-                            const interactive = onCellClick && m.key !== "target" && val > 0;
+                            const interactive = onCellClick && !NON_DRILLABLE.has(m.key) && val > 0;
                             const isCurrent = months[ci] === currentMonth;
                             return (
                               <td 
@@ -346,9 +348,9 @@ function YearGrid({ title, rows, months, grouped = false, showTotal = false, emp
                             );
                           })}
                           <td 
-                            className={`fz-cr num mono ${onCellClick && m.key !== "target" && totalMetrics[m.key] > 0 ? "cell-interactive" : ""}`} 
+                            className={`fz-cr num mono ${onCellClick && !NON_DRILLABLE.has(m.key) && totalMetrics[m.key] > 0 ? "cell-interactive" : ""}`} 
                             style={{ fontWeight: 700, color: totalMetrics[m.key] ? m.color : "var(--text-3)" }}
-                            onClick={() => onCellClick && m.key !== "target" && totalMetrics[m.key] > 0 && onCellClick(row, null, m.key)}
+                            onClick={() => onCellClick && !NON_DRILLABLE.has(m.key) && totalMetrics[m.key] > 0 && onCellClick(row, null, m.key)}
                           >
                             {(m.fmt || money)(totalMetrics[m.key])}
                           </td>
@@ -558,7 +560,7 @@ function DashboardContent() {
   };
 
   const handleCellClick = (row, m, metricKey) => {
-    if (metricKey === "target") return;
+    if (NON_DRILLABLE.has(metricKey)) return;
     // แถวรายบุคคล = แถวที่ไม่ใช่สรุปรวม/แถวทีม — ส่งชื่อ+ทีมให้ modal จับคู่แบบเดียวกับ
     // byOwner (รวมคนด้วย name+team); ช่อง "รวมปี" (m=null) ส่งปีไปให้กรองตามปีด้วย
     const summaryRow = row.id === "grand-total" || row.id === "year-summary";
