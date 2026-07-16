@@ -15,8 +15,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewLeads(user)) return forbidden();
 
-  const param = new URL(req.url).searchParams.get('month');
+  const params = new URL(req.url).searchParams;
+  const param = params.get('month');
   const month = param === 'all' ? 'all' : (monthKey(param) || monthKey(new Date().toISOString()));
+  // ฟิลเตอร์ทีม (ODM/KA/SV) — เดิม client ส่ง team มาแต่ server ไม่อ่าน = ฟิลเตอร์ไม่ทำงาน
+  const team = params.get('team');
   const holidays = await holidaySet().catch(() => new Set());
 
   // ลีดของเดือนที่เลือก (ตามวันที่รับเข้า) — KPI เป็นภาพรวมทั้งฝ่าย (นโยบายเดียวกับ
@@ -25,6 +28,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (month !== 'all') {
     query = query.gte('createdAt', `${month}-01`).lt('createdAt', nextMonthStart(month));
   }
+  if (team && team !== 'all') query = query.eq('team', team);
   const { data: leads, error } = await query;
   if (error) return fail(error.message, 500);
   const rows = leads || [];

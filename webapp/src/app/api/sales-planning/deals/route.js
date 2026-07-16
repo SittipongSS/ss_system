@@ -157,13 +157,24 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     request: req,
   });
 
-  // ถ้าดีลนี้สร้างมาจากลีด ให้ทำการเปลี่ยนสถานะลีดเป็น qualified โดยอัตโนมัติ
+  // ถ้าดีลนี้สร้างมาจากลีด: เปลี่ยนสถานะลีดเป็น qualified (ครั้งแรก) + บันทึก event
+  // "create_deal" ทุกครั้งที่แตกดีล (ลีด 1 ใบมีได้หลายดีล — timeline/KPI ต้องนับครบ)
   if (data.metadata?.leadId && data.metadata?.source === 'lead') {
     const leadId = data.metadata.leadId;
     const { data: lead } = await supabase.from('sales_leads').select('id, status').eq('id', leadId).maybeSingle();
-    if (lead && lead.status !== 'qualified') {
+    if (lead) {
       const now = new Date().toISOString();
-      await supabase.from('sales_leads').update({ status: 'qualified', closedAt: now, updatedAt: now }).eq('id', leadId);
+      // อัปเดตสถานะเฉพาะครั้งแรก (ยังไม่ qualified) — ครั้งถัดไปคงสถานะเดิม
+      if (lead.status !== 'qualified') {
+        const { data: updatedLead } = await supabase.from('sales_leads')
+          .update({ status: 'qualified', closedAt: now, updatedAt: now }).eq('id', leadId).select().single();
+        await recordAudit({
+          user, action: 'update', entityType: 'sales_lead', entityId: leadId,
+          before: lead, after: updatedLead || { ...lead, status: 'qualified' },
+          summary: `ลีด → qualified (สร้างดีล ${dealAuditLabel(data)})`, request: req,
+        });
+      }
+      // event ต่อดีล — บันทึกทุกครั้ง (แม้ลีด qualified อยู่แล้ว) เพื่อให้ conversion นับครบ
       await supabase.from('lead_events').insert({
         id: genId('LEV'),
         leadId,
