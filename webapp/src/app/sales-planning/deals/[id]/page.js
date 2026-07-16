@@ -524,7 +524,6 @@ export default function DealOverviewPage() {
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
       probability: snapForecastLevel(deal.probability),
-      forecastMonth: deal.forecastMonth || "",
       expectedCloseDate: deal.expectedCloseDate || "",
       startDate: deal.startDate || "",
       endDate: deal.endDate || "",

@@ -248,7 +248,6 @@ export default function LeadsPage() {
       dealType: "SCENT",
       stage: "qualified",
       projectValue: lead.budget || "",
-      forecastMonth: thisMonth(),
     }]);
   };
   
@@ -260,7 +259,6 @@ export default function LeadsPage() {
       dealType: "NPD",
       stage: "qualified",
       projectValue: "",
-      forecastMonth: thisMonth(),
     }]);
   };
   
@@ -293,7 +291,6 @@ export default function LeadsPage() {
             brand: d.brand || undefined,
             stage: d.stage,
             probability: Number(d.probability) || 50,
-            forecastMonth: d.forecastMonth || undefined,
             expectedCloseDate: d.expectedCloseDate || undefined,
             projectValue: d.projectValue || 0,
             notes: d.notes || undefined,

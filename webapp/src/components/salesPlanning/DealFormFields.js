@@ -6,14 +6,16 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 // ชุดช่องกรอกดีลมาตรฐาน (layout ตามมติ #283) — ใช้ร่วม 3 จุด: โมดัลหน้ารวมดีล /
 // โมดัลหน้าดีล / ฟอร์มสร้างดีลจากลีด เพื่อไม่ให้ฟอร์มเพี้ยนหากันอีก
 // แถว: ชื่อดีล (เต็ม) → ลูกค้า|แบรนด์ → ประเภท|หมวดสินค้า → สถานะ|FC% →
-// เดือนคาดการณ์|มูลค่าคาดการณ์ → วันที่เริ่ม|วันที่สิ้นสุด → [extra] → รายละเอียด (เต็ม)
+// มูลค่าคาดการณ์|วันที่คาดปิด → วันที่เริ่ม|วันที่สิ้นสุด → [extra] → รายละเอียด (เต็ม)
+// ไม่มีช่อง "เดือนคาดการณ์" แล้ว (มติผู้ใช้ 2026-07-16) — เดือน FC อนุมานจากวันที่คาดปิด
+// ฝั่ง server เสมอ ฟอร์มโชว์เดือนที่จะได้เป็น hint ใต้ช่องวันที่
 // ใช้ใน .form-grid (2 คอลัมน์) หรือ grid ใดๆ — ตัวเองไม่สร้าง form/grid ครอบ
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import AddBrandButton from "@/components/master/AddBrandButton";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/ui";
 
 export default function DealFormFields({
@@ -137,12 +139,13 @@ export default function DealFormFields({
         <MoneyInput value={form.projectValue} disabled={alreadyWon} onChange={(value) => set("projectValue")(value ?? "")} />
       </label>
       <label className="deal-field">
-        เดือนคาดการณ์{alreadyWon ? " (ล็อกหลังปิด Won)" : ""}
-        <input type="month" className="premium-input" value={form.forecastMonth || ""} disabled={alreadyWon} onChange={(e) => set("forecastMonth")(e.target.value)} />
-      </label>
-      <label className="deal-field">
         วันที่คาดการณ์ปิด{alreadyWon ? " (ล็อกหลังปิด Won)" : ""}
         <DateInput value={form.expectedCloseDate || ""} disabled={alreadyWon} onChange={set("expectedCloseDate")} />
+        <small style={{ color: "var(--text-3)" }}>
+          {form.expectedCloseDate
+            ? `เดือน FC: ${monthKey(form.expectedCloseDate) || "-"} (จากวันที่คาดปิด)`
+            : "ไม่ระบุ = เดือน FC ตกเป็นเดือนปัจจุบัน"}
+        </small>
       </label>
       <label className="deal-field">
         วันที่เริ่ม
