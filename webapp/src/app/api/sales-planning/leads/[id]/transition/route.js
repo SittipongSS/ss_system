@@ -60,7 +60,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     patch.screenedAt = lead.screenedAt || now; // SLA นับครั้งแรก — ตีกลับแล้วคัดใหม่ไม่รีเซ็ต
     event.team = body.team;
   } else if (action === 'assign') {
-    if (!(role === 'admin' || inTeam)) return forbidden('กระจายลีดได้เฉพาะ Senior AE ของทีม หรือแอดมิน');
+    // supervisor/admin (superuser) กระจายได้ทุกทีม + senior_ae/ac เฉพาะทีมตัวเอง
+    if (!(superuser || inTeam)) return forbidden('กระจายลีดได้เฉพาะ Senior AE ของทีม หรือ Supervisor/แอดมิน');
     if (!body.assigneeId || !body.assigneeName) return badRequest('ต้องเลือก AE ผู้รับผิดชอบ');
     patch.assigneeId = body.assigneeId;
     patch.assigneeName = body.assigneeName;
@@ -78,51 +79,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     event.meetingMode = body.meetingMode || null;
     event.eventAt = body.eventAt || now;
   } else if (action === 'create_deal') {
-    if (!workScope) return forbidden();
-    if (!body.dealTitle?.trim()) return badRequest('ต้องระบุชื่อดีล');
-    if (!['SCENT', 'NPD', 'RE-ORDER'].includes(body.dealType)) return badRequest('ประเภทดีลไม่ถูกต้อง');
-    
-    let customer = null;
-    if (body.customerId) {
-      const { data } = await supabase.from('customers').select('id, name').eq('id', body.customerId).maybeSingle();
-      if (!data) return badRequest('ไม่พบลูกค้าที่เลือก');
-      customer = data;
-    }
-    
-    const dealId = genId('SDL');
-    const newDeal = {
-      id: dealId,
-      title: body.dealTitle.trim(),
-      dealType: body.dealType,
-      stage: 'lead',
-      leadId: lead.id,
-      customerId: customer?.id || null,
-      customerName: customer ? customer.name : `${lead.contactName}${lead.company ? ` (${lead.company})` : ''}`,
-      ownerId: lead.assigneeId || user.id,
-      ownerName: lead.assigneeName || user.name,
-      team: lead.team,
-      createdAt: now,
-      updatedAt: now
-    };
-    
-    const { error: dealErr } = await supabase.from('sales_deals').insert(newDeal);
-    if (dealErr) return fail('สร้างดีลไม่สำเร็จ: ' + dealErr.message, 500);
-
-    if (body.forecastAmount && body.forecastMonth) {
-      const { error: fcErr } = await supabase.from('sales_deal_forecasts').insert({
-        id: genId('SDF'),
-        dealId,
-        forecastMonth: body.forecastMonth,
-        forecastAmount: Number(body.forecastAmount) || 0,
-        createdBy: user.id,
-        createdByName: user.name,
-        createdAt: now
-      });
-      if (fcErr) console.error('Failed to create forecast:', fcErr.message); // Not blocking
-    }
-    
-    patch.customerId = customer?.id || lead.customerId;
-    patch.closedAt = lead.closedAt || now;
+    // สร้างดีลจากลีดต้องผ่าน POST /api/sales-planning/deals (ทางเดียว) — ที่นั่นออกรหัส DL
+    // แบบ atomic + บันทึก stage history + audit + กันสร้างซ้ำ. path นี้เดิมสร้างดีล
+    // "ไร้รหัส/ไร้ประวัติ" และซ้ำได้ ปิดทิ้งเพื่อไม่ให้แตกจากทางหลัก (ผลตรวจ 2026-07-16).
+    return badRequest('สร้างดีลจากลีดผ่านปุ่ม "สร้างดีล" (ระบบดีล) เท่านั้น');
   } else if (action === 'disqualify') {
     if (!workScope) return forbidden();
     if (!body.reason?.trim()) return badRequest('ต้องระบุเหตุผลที่ไม่ไปต่อ');
@@ -135,11 +95,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     patch.team = null;
     patch.assigneeId = null;
     patch.assigneeName = null;
+    // ตีกลับ = เริ่มใหม่หมด: ล้างเวลาติดต่อ/นัดของรอบก่อน ไม่งั้น SLA ติดต่อกลับของ
+    // ผู้รับคนใหม่ถูกวัดจาก firstContactAt เดิม (assignedAt ใหม่ > firstContactAt เก่า →
+    // countBusinessDays ติดลบ → slaHit นับเป็น "ทัน" ฟรี ๆ)
+    patch.firstContactAt = null;
+    patch.meetingAt = null;
     event.reason = body.reason.trim();
   }
 
-  // If already qualified and doing create_deal, it stays qualified.
-  patch.status = lead.status === 'qualified' && action === 'create_deal' ? 'qualified' : TRANSITION_TO_STATUS[action];
+  patch.status = TRANSITION_TO_STATUS[action];
 
   const { data, error } = await supabase.from('sales_leads').update(patch).eq('id', id).select().single();
   if (error) return fail(error.message, 500);

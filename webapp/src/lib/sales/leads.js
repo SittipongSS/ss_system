@@ -92,5 +92,8 @@ export function slaBusinessDays(fromIso, toIso, holidays) {
 }
 export function slaHit(fromIso, toIso, holidays, limitDays = 1) {
   const d = slaBusinessDays(fromIso, toIso, holidays);
-  return d == null ? null : d <= limitDays;
+  // ค่าติดลบ = ข้อมูลเวลาผิดลำดับ (to ก่อน from เช่น firstContactAt ค้างจากรอบก่อน) —
+  // อย่านับเป็น "ทัน" กันเคส KPI พองจากลีดที่ตีกลับแล้วมอบใหม่ (ต้นเหตุแก้ที่ bounce แล้ว)
+  if (d == null || d < 0) return null;
+  return d <= limitDays;
 }
