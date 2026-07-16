@@ -5,8 +5,8 @@ import { normalizeDepartment } from '@/lib/permissions';
 import {
   canAcknowledgeInquiryMessage, canDeleteInquiry, canEditInquiryRequest,
   canEditInquiryResponse, canMutateInquiryMessage, canRespondInquiry,
-  canTakeInquiry, canViewInquiry, inInquiryRequesterScope, inquirySide,
-  isInquiryAdmin,
+  canTakeInquiry, canViewInquiry, inquirySide,
+  isInquiryAdmin, resolveInquiryContext,
 } from '@/lib/inquiries';
 
 export const dynamic = 'force-dynamic';
@@ -93,8 +93,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (body.requestedDueDate && !isDate(body.requestedDueDate)) return badRequest('วันที่คาดหวังไม่ถูกต้อง');
       updates.requestedDueDate = body.requestedDueDate || null;
     }
+    // ย้ายบริบท ลูกค้า › โครงการ › ดีล ได้ก่อน RD รับเรื่อง (กติกาเดียวกับตอนสร้าง:
+    // ดีลเป็นตัวตั้ง และผู้ย้ายต้องมีสิทธิ์กับดีลปลายทางด้วย)
+    if (body.dealId && body.dealId !== inquiry.dealId) {
+      const { error: ctxError, status: ctxStatus, context } = await resolveInquiryContext(supabase, user, body);
+      if (ctxError) return ctxStatus === 403 ? forbidden(ctxError) : badRequest(ctxError);
+      Object.assign(updates, context);
+      eventText = `${user.name || 'ฝ่ายขาย'} ย้ายเรื่องไปดีลอื่น`;
+    }
     if (!Object.keys(updates).length) return badRequest('ไม่มีข้อมูลให้แก้ไข');
-    eventText = `${user.name || 'ฝ่ายขาย'} แก้ไขรายละเอียดคำถาม`;
+    if (!eventText) eventText = `${user.name || 'ฝ่ายขาย'} แก้ไขรายละเอียดคำถาม`;
   } else if (body.action === 'edit-response') {
     if (!canEditInquiryResponse(user, inquiry)) return forbidden();
     updates.responderDetail = String(body.responderDetail || '').trim().slice(0, 5000) || null;

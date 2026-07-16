@@ -2,10 +2,12 @@
 // โมดัล "สอบถาม RD" — ฝ่ายขายส่งข้อสอบถามถึงฝ่ายเป้าหมาย (ใช้ทั้งหน้าดีลและหน้ารวม
 // เรื่องสอบถาม). แนบไฟล์ผ่าน /api/upload ตอนกดส่ง (แพตเทิร์นเดียวกับ composer
 // ความเคลื่อนไหวดีล) — มีปุ่มส่งชัดเจน ไม่มี auto-save.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Paperclip, Send, X } from "lucide-react";
 import Modal from "@/components/Modal";
+import InquiryContextFields, { EMPTY_INQUIRY_CONTEXT, isInquiryContextComplete } from "@/components/salesPlanning/InquiryContextFields";
 import { INQUIRY_SLA_BUSINESS_DAYS } from "@/lib/inquiries";
+import { cachedFetchJson } from "@/lib/apiCache";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 export default function InquiryCreateModal({ open, onClose, onCreated, deal = null }) {
@@ -16,9 +18,40 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
   const [files, setFiles] = useState([]); // File[] ที่เลือกไว้ (อัปตอนส่ง)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // บริบท ลูกค้า › โครงการ › ดีล — บังคับครบก่อนส่ง. เปิดจากหน้าดีล = ล็อกตามดีลนั้น
+  const [context, setContext] = useState(EMPTY_INQUIRY_CONTEXT);
+  const [customers, setCustomers] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [deals, setDeals] = useState([]);
+  const lockedToDeal = !!deal;
+  // caller ส่ง deal เป็น object literal (identity เปลี่ยนทุก render) — ผูก effect กับค่า
+  // ดิบเท่านั้น ไม่งั้น setContext จะยิงทุก render กลายเป็นลูป
+  const dealId = deal?.id || "";
+  const dealCustomerId = deal?.customerId || "";
+  const dealProjectId = deal?.projectId || "";
+
+  useEffect(() => {
+    if (!open) return;
+    setContext(dealId
+      ? { customerId: dealCustomerId, projectId: dealProjectId, dealId }
+      : EMPTY_INQUIRY_CONTEXT);
+    if (dealId) return; // เปิดจากหน้าดีล: บริบทมาครบแล้ว ไม่ต้องโหลดรายการให้เลือก
+    // ลูกค้าเป็น master (แคชได้) ส่วนโครงการ/ดีลต้องสดเสมอ — เพิ่งผูกโครงการมาต้องเห็นทันที
+    const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+    Promise.all([
+      cachedFetchJson("/api/master/customers").catch(() => []),
+      json("/api/pm/projects"),
+      json("/api/sales-planning/deals"),
+    ]).then(([c, p, d]) => {
+      setCustomers(Array.isArray(c) ? c : []);
+      setProjects(Array.isArray(p) ? p : []);
+      setDeals(Array.isArray(d) ? d : []);
+    });
+  }, [open, dealId, dealCustomerId, dealProjectId]);
 
   const reset = () => {
     setTitle(""); setBody(""); setUrgent(false); setRequestedDueDate(""); setFiles([]); setError("");
+    setContext(EMPTY_INQUIRY_CONTEXT);
   };
 
   const onPickFiles = (e) => {
@@ -32,11 +65,14 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
     setFiles((prev) => [...prev, ...valid].slice(0, 8));
   };
 
+  // ไฟล์แนบลงโฟลเดอร์ Drive ของลูกค้าที่เลือกในบริบท (เดิมอ่านจาก prop deal อย่างเดียว
+  // — เปิดจากหน้ารวมเรื่องแล้วไฟล์ไม่เข้าโฟลเดอร์ลูกค้า)
   const uploadOne = async (file) => {
+    const customerName = deal?.customerName || customers.find((c) => c.id === context.customerId)?.name || "";
     const fd = new FormData();
     fd.append("file", file);
-    if (deal?.customerId) { fd.append("entityType", "customer"); fd.append("entityId", deal.customerId); }
-    if (deal?.customerName) fd.append("customerName", deal.customerName);
+    if (context.customerId) { fd.append("entityType", "customer"); fd.append("entityId", context.customerId); }
+    if (customerName) fd.append("customerName", customerName);
     const res = await fetch("/api/upload", { method: "POST", body: fd });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(payload.error || `อัปโหลด ${file.name} ไม่สำเร็จ`);
@@ -44,7 +80,7 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
   };
 
   const submit = async () => {
-    if (!title.trim() || (!body.trim() && !files.length)) return;
+    if (!canSubmit) return;
     setBusy(true);
     setError("");
     try {
@@ -58,7 +94,7 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
           body: body.trim(),
           urgent,
           requestedDueDate: requestedDueDate || null,
-          dealId: deal?.id || null,
+          ...context,
           attachments,
         }),
       });
@@ -73,17 +109,34 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
     }
   };
 
+  const dealMissingProject = lockedToDeal && !dealProjectId;
+  const canSubmit = !busy && !!title.trim() && (!!body.trim() || !!files.length) && isInquiryContextComplete(context);
+
   return (
     <Modal open={open} onClose={() => !busy && onClose?.()} title="สอบถามฝ่าย RD" size="sm">
       <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
         {error && (
           <div role="alert" style={{ color: "var(--red)", fontSize: 13 }}>{error}</div>
         )}
-        {deal && (
+        {lockedToDeal ? (
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
             ในนามดีล <strong>{deal.code ? `${deal.code} · ` : ""}{deal.title || "-"}</strong>
             {deal.customerName ? ` — ${deal.customerName}` : ""} (RD เปิดดูรายละเอียดดีลเองได้)
+            {dealMissingProject && (
+              <div role="alert" style={{ color: "var(--red)", marginTop: 4 }}>
+                ดีลนี้ยังไม่ได้เชื่อมโครงการ — เชื่อมโครงการที่หน้าดีลก่อนจึงสอบถาม RD ได้
+              </div>
+            )}
           </div>
+        ) : (
+          <InquiryContextFields
+            value={context}
+            onChange={setContext}
+            customers={customers}
+            projects={projects}
+            deals={deals}
+            disabled={busy}
+          />
         )}
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           หัวเรื่อง
@@ -124,7 +177,7 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
             <input type="file" accept={UPLOAD_ACCEPT_ATTR} multiple onChange={onPickFiles} style={{ display: "none" }} />
           </label>
           <button type="button" className="btn ghost sm" onClick={() => { reset(); onClose?.(); }} disabled={busy}>ยกเลิก</button>
-          <button type="button" className="btn btn-primary sm" onClick={submit} disabled={busy || !title.trim() || (!body.trim() && !files.length)}>
+          <button type="button" className="btn btn-primary sm" onClick={submit} disabled={!canSubmit}>
             <Send size={13} aria-hidden="true" /> {busy ? "กำลังส่ง..." : "ส่งคำถาม"}
           </button>
         </div>

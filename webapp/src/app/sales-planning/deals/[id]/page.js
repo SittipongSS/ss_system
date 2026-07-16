@@ -1293,7 +1293,7 @@ export default function DealOverviewPage() {
         open={inquiryOpen}
         onClose={() => setInquiryOpen(false)}
         onCreated={() => { setInquiryOpen(false); load(); }}
-        deal={deal ? { id: deal.id, code: deal.code, title: deal.title, customerId: deal.customerId, customerName: deal.customerName || deal.customer?.name } : null}
+        deal={deal ? { id: deal.id, code: deal.code, title: deal.title, customerId: deal.customerId, projectId: deal.projectId, customerName: deal.customerName || deal.customer?.name } : null}
       />
 
       {/* เฟส B: โมดัลผูกดีลเข้าโครงการเดิมของลูกค้า — เลือกโครงการ + วันเริ่ม segment */}
