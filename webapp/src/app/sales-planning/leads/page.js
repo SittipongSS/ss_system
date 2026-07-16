@@ -139,7 +139,9 @@ export default function LeadsPage() {
   // รายชื่อ AE (มอบหมาย) + ลูกค้า (qualify) — โหลดเมื่อ role ทำงานคิวได้เท่านั้น
   useEffect(() => {
     if (role === "marketing" || !canLead) return;
-    fetch("/api/users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
+    // ใช้ assignable-users (gate ที่ pm:view) ไม่ใช่ /api/users (admin-only) — ไม่งั้น
+    // senior_ae โดน 403 แล้ว dropdown มอบหมายว่างเปล่า (มองไม่เห็นชื่อ AE)
+    fetch("/api/pm/assignable-users").then((r) => (r.ok ? r.json() : [])).then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
     fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(Array.isArray(d) ? d : [])).catch(() => {});
   }, [role, canLead]);
 
