@@ -700,11 +700,14 @@ export function landingFor(role) {
 }
 
 export function canSeeDealKpi(role) {
-  return isSuperuser(role) || role === 'senior_ae' || role === 'ae' || role === 'viewer';
+  // Sales ทุกตำแหน่งเห็น KPI ดีลได้ (มติผู้ใช้) — API scope per-role อยู่แล้ว
+  // (ae=own, senior_ae/ac=team, superuser/viewer=all) จึงไม่รั่วข้ามขอบเขต
+  return isSuperuser(role) || role === 'senior_ae' || role === 'ae' || role === 'ac' || role === 'viewer';
 }
 
 export function salesDealScopes(role) {
   if (isSuperuser(role) || role === 'viewer') return ['mine', 'team', 'all'];
-  if (role === 'senior_ae') return ['mine', 'team'];
+  // ac มี view scope ระดับทีมเหมือน senior_ae → ให้สลับดู KPI ระดับทีมได้
+  if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
   return ['mine'];
 }
