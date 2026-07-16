@@ -62,9 +62,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     canTake: canTakeInquiry(user, inquiry) && !inquiry.assigneeId,
     canEditRequest: canEditInquiryRequest(user, inquiry),
     canDelete: canDeleteInquiry(user, inquiry),
-    canEditResponse: canEditInquiryResponse(user, inquiry),
-    canEditCommitment: canEditInquiryResponse(user, inquiry) && !inquiry.committedDueAcknowledgedAt,
-    canAcknowledgeCommitment: side === 'requester' && !!inquiry.committedDueDate && !inquiry.committedDueAcknowledgedAt,
+    canEditCommitment: canEditInquiryResponse(user, inquiry),
     isAdmin: isInquiryAdmin(user),
   });
 });
@@ -83,8 +81,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (body.action === 'take') {
     if (!canTakeInquiry(user, inquiry)) return forbidden();
     if (inquiry.assigneeId) return badRequest('เรื่องนี้มีผู้รับแล้ว');
-    updates = { assigneeId: user.id, assigneeName: user.name || null, acceptedBy: user.id, acceptedAt: now };
-    eventText = `${user.name || 'RD'} รับเรื่องนี้`;
+    // รับเรื่อง = รับปากวันที่จะตอบไปพร้อมกัน (มติผู้ใช้ 2026-07-16) — ไม่มี SLA
+    // อัตโนมัติแล้ว วันที่นี้จึงเป็นเส้นวัด KPI เส้นเดียว ต้องมีตั้งแต่ต้น
+    if (!isDate(body.committedDueDate)) return badRequest('ต้องระบุวันที่จะตอบกลับตอนรับเรื่อง');
+    updates = {
+      assigneeId: user.id, assigneeName: user.name || null, acceptedBy: user.id, acceptedAt: now,
+      committedDueDate: body.committedDueDate, committedDueBy: user.id, committedDueAt: now,
+    };
+    eventText = `${user.name || 'RD'} รับเรื่องนี้ · จะตอบภายใน ${body.committedDueDate}`;
   } else if (body.action === 'edit-request') {
     if (!canEditInquiryRequest(user, inquiry)) return forbidden('แก้ไขคำถามไม่ได้หลัง RD รับเรื่องแล้ว');
     if (typeof body.title === 'string' && body.title.trim()) updates.title = body.title.trim().slice(0, 200);
@@ -103,29 +107,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
     if (!Object.keys(updates).length) return badRequest('ไม่มีข้อมูลให้แก้ไข');
     if (!eventText) eventText = `${user.name || 'ฝ่ายขาย'} แก้ไขรายละเอียดคำถาม`;
-  } else if (body.action === 'edit-response') {
-    if (!canEditInquiryResponse(user, inquiry)) return forbidden();
-    updates.responderDetail = String(body.responderDetail || '').trim().slice(0, 5000) || null;
-    updates.responderDetailUpdatedBy = user.id;
-    updates.responderDetailUpdatedAt = now;
-    eventText = `${user.name || 'RD'} อัปเดตรายละเอียดจาก RD`;
   } else if (body.action === 'set-commitment') {
+    // เลื่อนวันที่รับปากไว้ — ทำได้ แต่ลงเธรดทุกครั้งพร้อมวันเดิม (มติผู้ใช้ 2026-07-16)
     if (!canEditInquiryResponse(user, inquiry)) return forbidden();
-    if (inquiry.committedDueAcknowledgedAt) return badRequest('SA รับทราบวันที่แล้ว จึงแก้ไขไม่ได้');
     if (!isDate(body.committedDueDate)) return badRequest('ต้องระบุวันที่ RD จะตอบกลับ');
+    if (body.committedDueDate === inquiry.committedDueDate) return badRequest('วันที่เดิม ไม่มีอะไรเปลี่ยน');
     updates = {
       committedDueDate: body.committedDueDate,
       committedDueBy: user.id,
       committedDueAt: now,
-      committedDueAcknowledgedBy: null,
-      committedDueAcknowledgedAt: null,
     };
-    eventText = `${user.name || 'RD'} แจ้งวันที่จะตอบกลับ ${body.committedDueDate}`;
-  } else if (body.action === 'ack-commitment') {
-    if (side !== 'requester' || !inquiry.committedDueDate) return forbidden();
-    if (inquiry.committedDueAcknowledgedAt) return badRequest('รับทราบวันที่นี้แล้ว');
-    updates = { committedDueAcknowledgedBy: user.id, committedDueAcknowledgedAt: now };
-    eventText = `${user.name || 'ฝ่ายขาย'} รับทราบวันที่ตอบกลับของ RD`;
+    eventText = `${user.name || 'RD'} เลื่อนวันที่จะตอบกลับ ${inquiry.committedDueDate || '-'} → ${body.committedDueDate}`;
   } else if (body.action === 'confirm-close') {
     if (!side && !isInquiryAdmin(user)) return forbidden();
     if (inquiry.status === 'closed') return badRequest('เรื่องถูกปิดแล้ว');

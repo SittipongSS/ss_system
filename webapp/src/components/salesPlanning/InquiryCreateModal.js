@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { Paperclip, Send, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import InquiryContextFields, { EMPTY_INQUIRY_CONTEXT, isInquiryContextComplete } from "@/components/salesPlanning/InquiryContextFields";
-import { INQUIRY_SLA_BUSINESS_DAYS } from "@/lib/inquiries";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
@@ -169,7 +168,7 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
           </div>
         )}
         <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-          กำหนดตอบมาตรฐาน: ภายใน {INQUIRY_SLA_BUSINESS_DAYS} วันทำการ — มีคำตอบแล้วระบบแจ้งเตือนกลับ
+          RD จะระบุวันที่ตอบกลับตอนรับเรื่อง — มีคำตอบแล้วระบบแจ้งเตือนกลับ
         </div>
         <div className="form-action-inline">
           <label className="btn ghost sm" style={{ cursor: "pointer" }} title="แนบไฟล์ (PDF/รูป/เอกสาร)">

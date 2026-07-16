@@ -47,8 +47,8 @@ export default function InquiryThreadPage() {
   const [requestEdit, setRequestEdit] = useState(null);
   // รายการให้เลือกบริบท (ลูกค้า/โครงการ/ดีล) — โหลดตอนกดแก้ไขเท่านั้น
   const [lists, setLists] = useState({ customers: [], projects: [], deals: [] });
-  const [responderDetail, setResponderDetail] = useState("");
-  const [committedDueDate, setCommittedDueDate] = useState("");
+  // ฟอร์มวันที่จะตอบ: "take" = รับเรื่อง (บังคับระบุ), "move" = เลื่อนวันที่รับปากไว้
+  const [dueForm, setDueForm] = useState(null);
   const [todayISO, setTodayISO] = useState(null);
   useEffect(() => {
     const d = new Date();
@@ -63,8 +63,6 @@ export default function InquiryThreadPage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "โหลดเรื่องสอบถามไม่สำเร็จ");
       setData(payload);
-      setResponderDetail(payload.responderDetail || "");
-      setCommittedDueDate(payload.committedDueDate || "");
     } catch (e) {
       setError(e.message || "โหลดเรื่องสอบถามไม่สำเร็จ");
     } finally {
@@ -92,8 +90,10 @@ export default function InquiryThreadPage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "ทำรายการไม่สำเร็จ");
       await load();
+      return true;
     } catch (e) {
       setError(e.message || "ทำรายการไม่สำเร็จ");
+      return false; // caller เก็บฟอร์มไว้ให้ผู้ใช้แก้ต่อ ไม่ปิดทิ้งพร้อมข้อมูลที่พิมพ์
     } finally {
       setBusy("");
     }
@@ -227,7 +227,8 @@ export default function InquiryThreadPage() {
           description={<><span>ถามโดย {data.requesterName || "-"}</span><span>สร้างเมื่อ {fmtDateTime(data.createdAt)}</span>{data.targetDept && <span>ส่งถึง {DEPARTMENT_NAMES_TH[data.targetDept] || data.targetDept}</span>}</>}
           badges={<><SalesStateBadge {...(INQUIRY_STATUS_META[data.status] || { label: data.status, color: "var(--text-3)" })} />{data.urgent && <SalesStateBadge label="ด่วน" color="var(--red)" />}</>}
           actions={<>
-            {data.canTake && !closed && <button type="button" className="btn sm" onClick={() => runAction("take", { action: "take" })} disabled={!!busy}><Hand size={13} /> รับเรื่องนี้</button>}
+            {data.canTake && !closed && <button type="button" className="btn sm" onClick={() => setDueForm({ mode: "take", date: "" })} disabled={!!busy}><Hand size={13} /> รับเรื่องนี้</button>}
+            {data.canEditCommitment && !closed && <button type="button" className="btn sm" onClick={() => setDueForm({ mode: "move", date: data.committedDueDate || "" })} disabled={!!busy}><CalendarDays size={13} /> เลื่อนวันที่ตอบ</button>}
             {data.canRespond && data.assigneeId === data.meId && <button type="button" className="btn sm" onClick={() => createTask()} disabled={!!busy}><Plus size={13} /> สร้างงาน</button>}
             {data.canEditRequest && <button type="button" className="btn sm" onClick={openRequestEdit} disabled={!!busy}><Edit2 size={13} /> แก้ไข</button>}
             {data.canDelete && <button type="button" className="btn danger sm" onClick={deleteInquiry} disabled={!!busy}><Trash2 size={13} /> ลบ</button>}
@@ -237,8 +238,7 @@ export default function InquiryThreadPage() {
           facts={[
             { key: "owner", icon: UserRound, label: "ผู้รับเรื่อง", value: data.assigneeName || "ยังไม่มีผู้รับ" },
             { key: "requested", icon: CalendarDays, label: "SA คาดหวัง", value: data.requestedDueDate ? fmtDate(data.requestedDueDate) : "-" },
-            { key: "sla", icon: CalendarClock, label: "SLA ระบบ", value: data.dueDate ? `${fmtDate(data.dueDate)}${due ? ` · ${due.label}` : ""}` : "-" },
-            { key: "commit", icon: CheckCircle2, label: "RD จะตอบ", value: data.committedDueDate ? `${fmtDate(data.committedDueDate)}${data.committedDueAcknowledgedAt ? " · SA รับทราบ" : ""}` : "ยังไม่ระบุ" },
+            { key: "commit", icon: CalendarClock, label: "RD จะตอบ", value: data.committedDueDate ? `${fmtDate(data.committedDueDate)}${due ? ` · ${due.label}` : ""}` : "ยังไม่รับเรื่อง" },
           ]}
         />
 
@@ -259,21 +259,43 @@ export default function InquiryThreadPage() {
             <label style={{ fontSize: 13 }}>วันที่ SA คาดหวัง <input className="premium-input" type="date" value={requestEdit.requestedDueDate} onChange={(e) => setRequestEdit((v) => ({ ...v, requestedDueDate: e.target.value }))} /></label>
             <label style={{ fontSize: 13 }}><input type="checkbox" checked={requestEdit.urgent} onChange={(e) => setRequestEdit((v) => ({ ...v, urgent: e.target.checked }))} /> เร่งด่วน</label>
             <small style={{ color: "var(--text-3)" }}>แก้ไขบริบทได้ก่อน RD รับเรื่องเท่านั้น</small>
-            <div className="form-action-inline"><button className="btn ghost sm" onClick={() => setRequestEdit(null)}>ยกเลิก</button><button className="btn btn-primary sm" disabled={!requestEdit.title.trim() || !isInquiryContextComplete(requestEdit)} onClick={async () => { await runAction("edit-request", { action: "edit-request", ...requestEdit }); setRequestEdit(null); }}><Save size={13} /> บันทึก</button></div>
+            <div className="form-action-inline"><button className="btn ghost sm" onClick={() => setRequestEdit(null)}>ยกเลิก</button><button className="btn btn-primary sm" disabled={!requestEdit.title.trim() || !isInquiryContextComplete(requestEdit)} onClick={async () => { if (await runAction("edit-request", { action: "edit-request", ...requestEdit })) setRequestEdit(null); }}><Save size={13} /> บันทึก</button></div>
             </div>
           </DetailCard>
         )}
 
-        {(data.acceptedAt || data.isAdmin) && (
-          <DetailCard icon={CalendarClock} eyebrow="RD response plan" title="รายละเอียดและกำหนดตอบจาก RD">
+        {dueForm && (
+          <DetailCard
+            icon={CalendarClock}
+            eyebrow="Response date"
+            title={dueForm.mode === "take" ? "รับเรื่อง — ระบุวันที่จะตอบกลับ" : "เลื่อนวันที่จะตอบกลับ"}
+          >
             <div className={styles.formStack}>
-            <textarea className="premium-input" rows={3} value={responderDetail} onChange={(e) => setResponderDetail(e.target.value)} disabled={!data.canEditResponse} placeholder="รายละเอียดทางเทคนิค / ข้อมูลที่ RD ต้องการเพิ่มเติม" />
-            {data.canEditResponse && <button className="btn sm" style={{ justifySelf: "start" }} onClick={() => runAction("edit-response", { action: "edit-response", responderDetail })}><Save size={13} /> บันทึกรายละเอียด RD</button>}
-            <div className={styles.responseActions}>
-              <label style={{ fontSize: 13 }}>วันที่ RD จะตอบ<input className="premium-input" type="date" value={committedDueDate} onChange={(e) => setCommittedDueDate(e.target.value)} disabled={!data.canEditCommitment} /></label>
-              {data.canEditCommitment && <button className="btn sm" onClick={() => runAction("set-commitment", { action: "set-commitment", committedDueDate })} disabled={!committedDueDate}><CalendarDays size={13} /> แจ้งวันที่ตอบ</button>}
-              {data.canAcknowledgeCommitment && <button className="btn btn-primary sm" onClick={() => runAction("ack-date", { action: "ack-commitment" })}><CheckCircle2 size={13} /> SA รับทราบวันที่</button>}
-            </div>
+              <label style={{ fontSize: 13 }}>
+                วันที่ RD จะตอบ <span style={{ color: "var(--red)" }}>*</span>
+                <input className="premium-input" type="date" value={dueForm.date} min={todayISO || undefined}
+                  onChange={(e) => setDueForm((v) => ({ ...v, date: e.target.value }))} />
+              </label>
+              <small style={{ color: "var(--text-3)" }}>
+                {dueForm.mode === "take"
+                  ? `วันที่นี้คือกำหนดตอบของเรื่องนี้ และเป็นเส้นวัด KPI${data.requestedDueDate ? ` — SA คาดหวัง ${fmtDate(data.requestedDueDate)}` : ""}`
+                  : "การเลื่อนจะถูกบันทึกเป็นเหตุการณ์ในเธรดพร้อมวันเดิม"}
+              </small>
+              <div className="form-action-inline">
+                <button className="btn ghost sm" onClick={() => setDueForm(null)} disabled={!!busy}>ยกเลิก</button>
+                <button
+                  className="btn btn-primary sm"
+                  disabled={!!busy || !dueForm.date}
+                  onClick={async () => {
+                    const done = await runAction(dueForm.mode, dueForm.mode === "take"
+                      ? { action: "take", committedDueDate: dueForm.date }
+                      : { action: "set-commitment", committedDueDate: dueForm.date });
+                    if (done) setDueForm(null);
+                  }}
+                >
+                  <Save size={13} /> {dueForm.mode === "take" ? "รับเรื่องและยืนยันวันที่" : "บันทึกวันที่ใหม่"}
+                </button>
+              </div>
             </div>
           </DetailCard>
         )}

@@ -57,7 +57,7 @@ export default function RdDashboardTab({ month }) {
             <div>
               <div className={styles.overviewEyebrowRow}><span className={styles.eyebrow}>RD · TEAM WORKSPACE</span><span className={styles.period}>รอบข้อมูล {data?.from ? fmtDate(data.from) : "-"} – {data?.to ? fmtDate(data.to) : "-"}</span></div>
               <h2>ศูนย์ติดตามงาน RD</h2>
-              <p>งานของทีม · ข้อสอบถามจากฝ่ายขาย · กำหนดตอบและการรับทราบ</p>
+              <p>งานของทีม · ข้อสอบถามจากฝ่ายขาย · วันที่รับปากว่าจะตอบ</p>
             </div>
             <div className={styles.headerActions}>
               <span className={styles.liveBadge}><Activity size={12} /> LIVE FEED</span>
@@ -66,7 +66,7 @@ export default function RdDashboardTab({ month }) {
           </div>
           <div className={styles.quickFacts}>
             <QuickFact icon={<MessageCircleQuestion />} label="รอตอบ" value={inq?.openNow} note={`ไม่มีผู้รับ ${inq?.unassignedOpen || 0}`} />
-            <QuickFact icon={<AlertTriangle />} label="เลยกำหนด" value={inq?.overdueNow} tone={inq?.overdueNow ? "danger" : "good"} note="SLA / วันที่นัด" />
+            <QuickFact icon={<AlertTriangle />} label="เลยกำหนด" value={inq?.overdueNow} tone={inq?.overdueNow ? "danger" : "good"} note="เลยวันที่รับปากไว้" />
             <QuickFact icon={<CheckCircle2 />} label="ตอบแล้ว" value={inq?.answered} note={`ทันกำหนด ${inq?.onTimePct || 0}%`} />
             <QuickFact icon={<Clock3 />} label="เวลาตอบเฉลี่ย" value={inq?.avgResponseDays == null ? "-" : `${inq.avgResponseDays} วัน`} note="วันทำการ" />
           </div>
@@ -97,7 +97,7 @@ export default function RdDashboardTab({ month }) {
       <aside className={styles.aside}>
         <section className={`${styles.card} ${styles.queueCard}`}><div className={styles.queueHead}><div className={styles.sectionTitle}><MessageCircleQuestion size={17}/><div><h3>คิวที่ต้องจัดการ</h3><span>{queue.length} เรื่องล่าสุด</span></div></div><Link href="/sa/inquiries">ดูทั้งหมด</Link></div>
           <div className={styles.queueList}>{queue.map((q) => { const due = inquiryDueTone(q, todayISO); return <Link href={`/sa/inquiries/${q.id}`} key={q.id} className={styles.queueItem}>
-            <div><strong>{q.code || "RD"}</strong>{q.urgent && <span className={styles.dot}/>}</div><h4>{q.title}</h4><p>{q.assigneeName || "ยังไม่มีผู้รับ"}</p>{q.dueDate && <small style={{ color: due?.color }}>กำหนด {fmtDate(q.dueDate)} {due?.label}</small>}
+            <div><strong>{q.code || "RD"}</strong>{q.urgent && <span className={styles.dot}/>}</div><h4>{q.title}</h4><p>{q.assigneeName || "ยังไม่มีผู้รับ"}</p>{q.committedDueDate ? <small style={{ color: due?.color }}>จะตอบ {fmtDate(q.committedDueDate)} {due?.label}</small> : <small style={{ color: "var(--amber)" }}>รอรับเรื่อง</small>}
           </Link>; })}{!queue.length && <div className={styles.empty}>ไม่มีเรื่องค้าง 🎉</div>}</div>
         </section>
         <section className={`${styles.card} ${styles.teamCard}`}><div className={styles.sectionTitle}><Users size={18}/><div><h3>ภาพรวมทีม</h3><span>ประสิทธิภาพงานในรอบนี้</span></div></div><div className={styles.teamFacts}><p>งานเสร็จ <strong>{data?.taskSummary?.completed || 0}/{data?.taskSummary?.total || 0}</strong></p><p>กำลังดำเนินการ <strong>{data?.taskSummary?.active || 0}</strong></p><p>เลยกำหนด <strong className={data?.taskSummary?.overdue ? styles.danger : ""}>{data?.taskSummary?.overdue || 0}</strong></p><p>เสร็จตรงเวลา <strong>{data?.taskSummary?.onTimePct || 0}%</strong></p></div></section>

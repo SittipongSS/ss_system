@@ -1,12 +1,13 @@
 "use client";
 // หน้ารวมเรื่องสอบถาม–ตอบกลับ (Sale ↔ RD) — ฝั่งขายเห็นตาม scope ดีลของตัวเอง,
-// ฝ่ายผู้ตอบ (rd) เห็นทุกเรื่องของฝ่ายตน. คิวเรียงตามกำหนดตอบ (SLA 3 วันทำการ).
+// ฝ่ายผู้ตอบ (rd) เห็นทุกเรื่องของฝ่ายตน. คิวเรียงตามวันที่ RD รับปากว่าจะตอบ.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Activity, AlertTriangle, CheckCircle2, Clock3, MessageCircleQuestion, Plus } from "lucide-react";
 import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import InquiryCreateModal from "@/components/salesPlanning/InquiryCreateModal";
 import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
+import { compareInquiryUrgency } from "@/lib/inquiries";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
 import { can } from "@/lib/permissions";
@@ -50,12 +51,12 @@ export default function InquiriesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // เรื่องรอตอบขึ้นก่อน เรียงตามกำหนดตอบใกล้สุด (เรื่องปิดแล้วอยู่ท้ายตามเวลาล่าสุด)
+  // เรื่องรอตอบขึ้นก่อน ในกลุ่มเดียวกันเรียงตามความเร่ง (ยังไม่มีผู้รับ → ใกล้ครบกำหนด)
   const sorted = useMemo(() => {
     const rank = { open: 0, answered: 1, closed: 2 };
     return [...rows].sort((a, b) =>
       (rank[a.status] ?? 9) - (rank[b.status] ?? 9)
-      || String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999"))
+      || compareInquiryUrgency(a, b)
       || String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   }, [rows]);
 
@@ -64,14 +65,15 @@ export default function InquiriesPage() {
     total: rows.length,
     open: rows.filter((row) => row.status === "open").length,
     answered: rows.filter((row) => row.status === "answered").length,
-    overdue: rows.filter((row) => row.status === "open" && row.dueDate && todayISO && row.dueDate < todayISO).length,
+    // เลยกำหนด = เลยวันที่ RD รับปากไว้ (เรื่องที่ยังไม่มีผู้รับยังไม่มีกำหนด)
+    overdue: rows.filter((row) => row.status === "open" && row.committedDueDate && todayISO && row.committedDueDate < todayISO).length,
   }), [rows, todayISO]);
 
   return (
     <SaWorkspace
       icon={<MessageCircleQuestion size={22} />}
       title="สอบถาม RD"
-      subtitle="ข้อสอบถามจากฝ่ายขายถึงฝ่ายวิจัยและพัฒนา — ตอบกลับภายใน 3 วันทำการ"
+      subtitle="ข้อสอบถามจากฝ่ายขายถึงฝ่ายวิจัยและพัฒนา — RD ระบุวันที่จะตอบตอนรับเรื่อง"
       headerRight={canCreate ? (
         <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
           <Plus size={15} aria-hidden="true" /> สอบถาม RD
@@ -123,10 +125,9 @@ export default function InquiriesPage() {
                     <td>{row.requesterName || "-"}</td>
                     <td>{row.assigneeName || <span style={{ color: "var(--text-3)" }}>ยังไม่มีผู้รับ</span>}</td>
                     <td className="mono">
-                      <div>SA: {row.requestedDueDate ? fmtDate(row.requestedDueDate) : "-"}</div>
-                      <div>RD: {row.committedDueDate ? fmtDate(row.committedDueDate) : "-"}</div>
-                      <div style={{ color: "var(--text-3)", fontSize: 11 }}>SLA: {row.dueDate ? fmtDate(row.dueDate) : "-"}</div>
-                      {due && <span className="ui-badge" style={{ color: due.color, marginLeft: 6 }}>{due.label}</span>}
+                      <div>SA คาดหวัง: {row.requestedDueDate ? fmtDate(row.requestedDueDate) : "-"}</div>
+                      <div>RD จะตอบ: {row.committedDueDate ? fmtDate(row.committedDueDate) : <span style={{ color: "var(--text-3)" }}>ยังไม่รับเรื่อง</span>}</div>
+                      {due && <span className="ui-badge" style={{ color: due.color }}>{due.label}</span>}
                     </td>
                     <td><InquiryStatusBadge status={row.status} /></td>
                   </tr>
