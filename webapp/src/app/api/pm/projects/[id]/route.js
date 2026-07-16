@@ -1,4 +1,4 @@
-import { viewScope, inScope, inPmProjectScope, canDeleteRecord, can } from '@/lib/permissions';
+import { viewScope, inScope, inPmProjectScope, canDeleteRecord, can, redactProductMargin } from '@/lib/permissions';
 import { mergeTemplateTasks, recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -44,9 +44,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     supabase.from('project_products').select('*, product:products(*)').eq('projectId', project.id),
   ]);
 
+  // redact ต้นทุน/มาร์จิ้นของ FG ตามสิทธิ์ผู้เรียก (เหมือน /api/products) — pm:view มี
+  // ทั้ง rd/staff/viewer ที่ห้ามเห็น costPrice/มาร์จิ้น; ไม่ redact = รั่วผ่าน fetch ตรง.
   const projectProducts = (links || []).map((l) => ({
     ...l,
-    product: l.product
+    product: redactProductMargin(user, l.product),
   }));
 
   // ดีลที่ผูกโครงการนี้ — เฟส B: หลายดีลต่อโครงการ (SCENT→NPD→RE-ORDER…) อ่านเป็น list.
