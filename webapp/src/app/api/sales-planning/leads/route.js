@@ -26,6 +26,15 @@ export function applyLeadScope(query, user) {
   return query.eq('id', '__no_lead_scope__');
 }
 
+// scope รายใบ — กติกาเดียวกับ applyLeadScope (ใช้กับ GET /leads/[id] ที่โหลดมาแล้ว)
+export function inLeadScope(user, lead) {
+  const role = user?.role;
+  if (isSuperuser(role) || role === 'viewer' || role === 'marketing') return true;
+  if (role === 'senior_ae' || role === 'ac') return !!lead.team && lead.team === user?.team;
+  if (role === 'ae') return lead.assigneeId === user?.id || lead.createdBy === user?.id;
+  return false;
+}
+
 export function canViewLeads(user) {
   return !!user && (can(user.role, 'salesplan:lead') || can(user.role, 'salesplan:view'));
 }

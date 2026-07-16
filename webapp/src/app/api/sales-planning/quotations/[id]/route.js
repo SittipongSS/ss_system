@@ -74,6 +74,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
     return badRequest(`ใบสถานะ "${before.status}" แก้ไขไม่ได้ — ใช้ Revise เพื่อออกฉบับใหม่`);
   }
+  // ดีล Lost = จบแล้ว — ห้ามแก้/ส่งใบต่อ (สร้างใบใหม่ถูกบล็อกอยู่แล้ว แต่ใบเดิมเคยหลุด)
+  if (before.deal?.stage === 'lost') {
+    return badRequest('ดีลนี้ Lost แล้ว — แก้ไข/ส่งใบเสนอราคาต่อไม่ได้');
+  }
 
   const body = await req.json().catch(() => ({}));
   const now = new Date().toISOString();

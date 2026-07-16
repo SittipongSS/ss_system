@@ -18,7 +18,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const { data: quote, error } = await supabase
     .from('quotations')
-    .select('*, lines:quotation_lines(*), deal:sales_deals(id, title, team, ownerId, ownerName)')
+    .select('*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, team, ownerId, ownerName)')
     .eq('id', id)
     .maybeSingle();
   if (error) return fail(error.message, 500);
@@ -29,6 +29,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ออก Revise ไม่ได้');
     }
     return badRequest(`ใบสถานะ "${quote.status}" ออก Revise ไม่ได้${quote.status === 'accepted' ? ' — ใบที่รับแล้วต้องยกเลิกก่อน' : ''}`);
+  }
+  // ดีล Lost = จบแล้ว — ห้ามออกฉบับแก้ไขใหม่ (กติกาเดียวกับ PATCH/สร้างใบ)
+  if (quote.deal?.stage === 'lost') {
+    return badRequest('ดีลนี้ Lost แล้ว — ออก Revision ใหม่ไม่ได้');
   }
 
   const body = await req.json().catch(() => ({}));
@@ -120,7 +124,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     })
     .select()
     .single();
-  if (insertErr) return fail(insertErr.message, 500);
+  if (insertErr) {
+    // ชนเลขกับ revise ที่ยิงพร้อมกัน (quoteNumber UNIQUE) → 409 อ่านรู้เรื่อง ไม่ใช่ 500 ดิบ
+    if (insertErr.code === '23505') return fail('มีการออก Revision พร้อมกัน — รีเฟรชแล้วลองใหม่', 409);
+    return fail(insertErr.message, 500);
+  }
 
   const lineRows = revisionLines.map((l, i) => ({
     id: genId('QTL'),

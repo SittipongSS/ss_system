@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
-import { can } from '@/lib/permissions';
+import { can, inPmProjectScope } from '@/lib/permissions';
 import { buildAppendedTasks, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -33,6 +33,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const project = await loadProject(supabase, body.projectId);
   if (!project) return notFound('ไม่พบโครงการ');
+  // โครงการปลายทางต้องอยู่ใน edit-scope ของผู้ผูกด้วย (ทีมเดียวกัน/เจ้าของ) —
+  // เดิมเช็คแค่ลูกค้าตรงกัน ทำให้ผูกเข้าโครงการทีมอื่นแล้วดูดข้อมูลภายในโครงการได้
+  if (!inPmProjectScope(user, project)) return forbidden('โครงการนี้อยู่นอกขอบเขตทีมของคุณ');
   // ดีลที่ยังไม่มีลูกค้ารับลูกค้าจากโครงการได้ แต่ห้ามย้ายดีลข้ามลูกค้า
   // เพื่อป้องกันการเปลี่ยนเจ้าของข้อมูลเดิมโดยไม่ตั้งใจ
   if (!hasCompatibleProjectCustomer(deal, project)) {
