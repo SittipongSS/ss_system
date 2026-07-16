@@ -202,6 +202,19 @@ export async function DELETE(request) {
 
   if (!driveFileId) return Response.json({ ok: true });
 
+  // rollback นี้ลบได้เฉพาะไฟล์ "orphan" (อัปแล้วบันทึก metadata ไม่สำเร็จ = ยังไม่มี
+  // ที่ไหนอ้างอิง). ไฟล์ที่ commit แล้วห้ามลบผ่าน endpoint นี้ (กันใครก็ได้ยิง driveFileId
+  // มาลบไฟล์บริษัท): attachment ต้องลบผ่าน /api/master/attachments/[id] ที่เช็คสิทธิ์ราย
+  // entity; หลักฐาน Won ล็อกหลัง accept. เช็คทั้งตาราง attachments และ quotations.wonAttachments.
+  const supabase = getSupabaseAdmin();
+  const [{ data: attRef }, { data: wonRef }] = await Promise.all([
+    supabase.from('attachments').select('id').eq('driveFileId', driveFileId).limit(1),
+    supabase.from('quotations').select('id').contains('wonAttachments', [{ driveFileId }]).limit(1),
+  ]);
+  if (attRef?.length || wonRef?.length) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   try {
     const { deleteFile } = await import('@/lib/drive');
     await deleteFile(driveFileId); // best-effort (กลืน error เองภายใน)
