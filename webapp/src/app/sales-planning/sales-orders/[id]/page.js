@@ -15,7 +15,7 @@ import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { useCan, useRole } from "@/lib/roleContext";
-import { SALES_ORDER_CANCEL_REASONS, cancelReasonLabel } from "@/lib/sales/salesOrderWorkflow";
+import { SALES_ORDER_CANCEL_REASONS, cancelReasonLabel, isCustomerCancelReason } from "@/lib/sales/salesOrderWorkflow";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openSalesOrderPrintWindow, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
@@ -120,12 +120,20 @@ export default function SalesOrderDetailPage() {
   }
 
   // ยกเลิก SO ผ่าน modal (มติ 2026-07-18): เลือกเหตุผลมาตรฐาน + หมายเหตุ (บังคับเมื่อ "อื่น ๆ")
-  const [cancelForm, setCancelForm] = useState(null); // null = ปิด; { code, note } = เปิด
-  const openCancel = () => setCancelForm({ code: "", note: "" });
+  // เหตุกลุ่มลูกค้า + SO อนุมัติแล้ว → เสนอ "ย้อน Won" (ถอยดีลออกจาก Won).
+  const [cancelForm, setCancelForm] = useState(null); // null = ปิด; { code, note, reverseTo, lostReason } = เปิด
+  const openCancel = () => setCancelForm({ code: "", note: "", reverseTo: "", lostReason: "" });
+  const showReversal = !!cancelForm && order?.status === "approved" && isCustomerCancelReason(cancelForm.code);
   async function doCancel() {
     if (!cancelForm?.code) { setError("กรุณาเลือกเหตุผลที่ยกเลิก"); return; }
     if (cancelForm.code === "other" && !cancelForm.note.trim()) { setError('เลือก "อื่น ๆ" ต้องระบุหมายเหตุ'); return; }
-    const ok = await requestAction("cancel", { reasonCode: cancelForm.code, reason: cancelForm.note.trim() });
+    const payload = { reasonCode: cancelForm.code, reason: cancelForm.note.trim() };
+    if (showReversal && cancelForm.reverseTo) {
+      if (cancelForm.reverseTo === "lost" && !cancelForm.lostReason.trim()) { setError('เลือก "Lost" ต้องระบุเหตุผล'); return; }
+      payload.reverseTo = cancelForm.reverseTo;
+      payload.lostReason = cancelForm.lostReason.trim();
+    }
+    const ok = await requestAction("cancel", payload);
     if (ok) setCancelForm(null);
   }
 
@@ -284,6 +292,23 @@ export default function SalesOrderDetailPage() {
               <span style={{ color: "var(--text-2)" }}>หมายเหตุ {cancelForm.code === "other" ? "(บังคับ)" : "(ไม่บังคับ)"}</span>
               <textarea className="input" rows={2} value={cancelForm.note} onChange={(e) => setCancelForm((f) => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
             </label>
+            {showReversal && (
+              <div className="glass-panel" style={{ padding: "10px 12px", borderColor: "var(--amber)", display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ fontSize: 13, color: "var(--text)" }}>เหตุนี้เป็นฝั่งลูกค้า — ต้องการ <strong>ย้อน Won</strong> (ถอยดีลออกจาก Won + ถอนยอด Actual) ด้วยไหม?</span>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                  <input type="radio" name="rev" checked={cancelForm.reverseTo === ""} onChange={() => setCancelForm((f) => ({ ...f, reverseTo: "" }))} /> ไม่ย้อน (ยกเลิกเฉพาะ SO — ดีลคง Won)
+                </label>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                  <input type="radio" name="rev" checked={cancelForm.reverseTo === "reopen"} onChange={() => setCancelForm((f) => ({ ...f, reverseTo: "reopen" }))} /> ย้อน → เปิดดีลใหม่ (กลับสถานะก่อน Won)
+                </label>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                  <input type="radio" name="rev" checked={cancelForm.reverseTo === "lost"} onChange={() => setCancelForm((f) => ({ ...f, reverseTo: "lost" }))} /> ย้อน → ปิดดีลเป็น Lost (ลูกค้าเลิกถาวร)
+                </label>
+                {cancelForm.reverseTo === "lost" && (
+                  <textarea className="input" rows={2} value={cancelForm.lostReason} onChange={(e) => setCancelForm((f) => ({ ...f, lostReason: e.target.value }))} placeholder="เหตุผลที่ดีลไม่สำเร็จ (บังคับ)" />
+                )}
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button type="button" className="btn ghost" onClick={() => setCancelForm(null)} disabled={!!busy}>ยกเลิก</button>
               <button type="button" className="btn danger" onClick={doCancel} disabled={!!busy || !cancelForm.code}><XCircle size={15} /> ยืนยันยกเลิก SO</button>

@@ -33,6 +33,18 @@ export function cancelReasonLabel(code) {
   return SALES_ORDER_CANCEL_REASONS.find((r) => r.code === code)?.label || code || '';
 }
 
+// เหตุกลุ่ม "ฝั่งลูกค้า" = ดีลหลุดจริง → เสนอให้ย้อน Won (มติ 2026-07-18).
+// กลุ่ม document/data = ดีลยังอยู่ (แก้เอกสาร/ข้อมูลพลาด) ไม่ต้องถอยดีล.
+export function isCustomerCancelReason(code) {
+  return SALES_ORDER_CANCEL_REASONS.find((r) => r.code === code)?.group === 'customer';
+}
+
+// ปลายทางเมื่อย้อน Won: reopen = กลับสถานะเปิดก่อน Won · lost = ลูกค้าเลิกถาวร
+export const WON_REVERSAL_TARGETS = ['reopen', 'lost'];
+export function isValidReversalTarget(target) {
+  return WON_REVERSAL_TARGETS.includes(target);
+}
+
 export function salesOrderActual(order) {
   return order?.status === 'approved' ? Math.max(0, Number(order.actualAmount) || 0) : 0;
 }

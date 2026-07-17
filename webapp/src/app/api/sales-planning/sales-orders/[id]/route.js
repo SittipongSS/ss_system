@@ -1,7 +1,8 @@
+import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
-import { isSalesOrderReviewer, isValidCancelReasonCode, cancelReasonLabel } from '@/lib/sales/salesOrderWorkflow';
+import { isSalesOrderReviewer, isValidCancelReasonCode, cancelReasonLabel, isValidReversalTarget } from '@/lib/sales/salesOrderWorkflow';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 
@@ -172,6 +173,54 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // ยกเลิก SO ที่อนุมัติแล้ว = ถอนยอด Actual ที่ผ่านการอนุมัติ → ต้องเป็นผู้ตรวจสอบ
     // เท่านั้น (มติผู้ใช้ 2026-07-16): สมมาตรกับตอนอนุมัติ ไม่ให้ AE ถอนฝ่ายเดียว
     if (before.status === 'approved' && !reviewer) return forbidden('ยกเลิก SO ที่อนุมัติแล้วต้องให้ AE Supervisor ดำเนินการ (ถอนยอด Actual)');
+
+    // ย้อน Won พร้อมยกเลิก SO (มติ 2026-07-18): เมื่อลูกค้าหลุด (เหตุฝั่งลูกค้า) ให้ถอย
+    // ดีลออกจาก Won ด้วย — atomic ผ่าน RPC (ยกเลิก SO + ใบเสนอราคา accept → cancelled +
+    // ถอยดีล). ทำได้เฉพาะ SO ที่อนุมัติแล้ว (ตัวที่นับ Actual + ดีล Won).
+    const reverseTo = String(body.reverseTo || '').trim();
+    if (reverseTo) {
+      if (!isValidReversalTarget(reverseTo)) return badRequest('ปลายทางการย้อน Won ไม่ถูกต้อง');
+      if (before.status !== 'approved') return badRequest('ย้อน Won ได้เฉพาะ SO ที่อนุมัติแล้ว');
+      if (reverseTo === 'lost' && !String(body.lostReason || '').trim()) {
+        return badRequest('เลือกปลายทาง "Lost" ต้องระบุเหตุผล');
+      }
+      const { data: result, error: revErr } = await supabase.rpc('cancel_sales_order_with_reversal_atomic', {
+        p_order_id: id,
+        p_reason_code: reasonCode,
+        p_reason_note: note || null,
+        p_actor_id: user.id || null,
+        p_actor_name: user.name || null,
+        p_reverse_to: reverseTo,
+        p_lost_reason: String(body.lostReason || '').trim() || null,
+        p_history_id: genId('DSH'),
+        p_forecast_id: genId('DFC'),
+      });
+      if (revErr) {
+        const clientErr = /reversal_|sales_order_not_|deal_not_/.test(revErr.message || '');
+        return fail(revErr.message, clientErr ? 400 : 500);
+      }
+      const revReason = cancelReasonLabel(reasonCode) + (note ? ` — ${note}` : '');
+      const targetLabel = reverseTo === 'lost' ? 'Lost' : 'เปิดใหม่';
+      await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: result?.order, summary: `cancel + reverse Won ${before.orderNumber}: ${revReason} → ดีล ${targetLabel}`, request: req });
+      if (before.dealId) {
+        await recordAudit({ user, action: 'update', entityType: 'sales_deal', entityId: before.dealId, after: result?.deal, summary: `ย้อน Won (${targetLabel}) จากยกเลิก SO ${before.orderNumber}: ${revReason}`, request: req });
+      }
+      // แจ้งทีมขาย: ดีลถูกถอนจาก Won (จุดสำคัญ — ยอด Actual ถูกนำออก)
+      sendChat('sales', chatCard({
+        title: '↩️ ย้อน Won (ถอนยอดขาย)',
+        subtitle: before.deal?.title || before.orderNumber,
+        rows: [
+          { label: 'SO', value: before.orderNumber },
+          { label: 'เหตุผล', value: revReason },
+          { label: 'ดีลไปสถานะ', value: targetLabel },
+          { label: 'โดย', value: user.name || '' },
+        ],
+        linkPath: before.dealId ? `/sa/deals/${before.dealId}` : `/sa/sales-orders/${id}`,
+        linkLabel: 'เปิดดีล',
+      }));
+      return ok(result?.order || {});
+    }
+
     const patch = {
       status: 'cancelled', cancelledAt: new Date().toISOString(),
       cancelledBy: user.name || user.id || null,
