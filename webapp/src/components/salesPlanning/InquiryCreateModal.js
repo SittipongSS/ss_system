@@ -5,20 +5,17 @@
 import { useEffect, useState } from "react";
 import { Paperclip, Plus, Send, X } from "lucide-react";
 import Modal from "@/components/Modal";
-import InquiryContextFields, { EMPTY_INQUIRY_CONTEXT, isInquiryContextComplete } from "@/components/salesPlanning/InquiryContextFields";
+import InquiryRequestFields, { EMPTY_INQUIRY_REQUEST, isInquiryRequestComplete } from "@/components/salesPlanning/InquiryRequestFields";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 export default function InquiryCreateModal({ open, onClose, onCreated, deal = null, onCreateProject = null, onLinked = null }) {
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [urgent, setUrgent] = useState(false);
-  const [requestedDueDate, setRequestedDueDate] = useState("");
+  const [form, setForm] = useState(EMPTY_INQUIRY_REQUEST);
+  const [body, setBody] = useState(""); // ตัวคำถาม = ข้อความแรกของเธรด ไม่ใช่คอลัมน์ของเรื่อง
   const [files, setFiles] = useState([]); // File[] ที่เลือกไว้ (อัปตอนส่ง)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   // บริบท ลูกค้า › โครงการ › ดีล — บังคับครบก่อนส่ง. เปิดจากหน้าดีล = ล็อกตามดีลนั้น
-  const [context, setContext] = useState(EMPTY_INQUIRY_CONTEXT);
   const [customers, setCustomers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [deals, setDeals] = useState([]);
@@ -28,16 +25,16 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
   const [linkBusy, setLinkBusy] = useState(false);
   const lockedToDeal = !!deal;
   // caller ส่ง deal เป็น object literal (identity เปลี่ยนทุก render) — ผูก effect กับค่า
-  // ดิบเท่านั้น ไม่งั้น setContext จะยิงทุก render กลายเป็นลูป
+  // ดิบเท่านั้น ไม่งั้น setForm จะยิงทุก render กลายเป็นลูป
   const dealId = deal?.id || "";
   const dealCustomerId = deal?.customerId || "";
   const dealProjectId = deal?.projectId || "";
 
   useEffect(() => {
     if (!open) return;
-    setContext(dealId
-      ? { customerId: dealCustomerId, projectId: dealProjectId, dealId }
-      : EMPTY_INQUIRY_CONTEXT);
+    setForm(dealId
+      ? { ...EMPTY_INQUIRY_REQUEST, customerId: dealCustomerId, projectId: dealProjectId, dealId }
+      : EMPTY_INQUIRY_REQUEST);
     setLinkProjectId("");
     const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : [])).catch(() => []);
     if (dealId) {
@@ -79,7 +76,7 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "ผูกโครงการไม่สำเร็จ");
-      setContext((prev) => ({ ...prev, projectId: linkProjectId }));
+      setForm((prev) => ({ ...prev, projectId: linkProjectId }));
       onLinked?.(linkProjectId);
     } catch (e) {
       setError(e.message || "ผูกโครงการไม่สำเร็จ");
@@ -89,8 +86,7 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
   };
 
   const reset = () => {
-    setTitle(""); setBody(""); setUrgent(false); setRequestedDueDate(""); setFiles([]); setError("");
-    setContext(EMPTY_INQUIRY_CONTEXT);
+    setForm(EMPTY_INQUIRY_REQUEST); setBody(""); setFiles([]); setError("");
   };
 
   const onPickFiles = (e) => {
@@ -107,10 +103,10 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
   // ไฟล์แนบลงโฟลเดอร์ Drive ของลูกค้าที่เลือกในบริบท (เดิมอ่านจาก prop deal อย่างเดียว
   // — เปิดจากหน้ารวมเรื่องแล้วไฟล์ไม่เข้าโฟลเดอร์ลูกค้า)
   const uploadOne = async (file) => {
-    const customerName = deal?.customerName || customers.find((c) => c.id === context.customerId)?.name || "";
+    const customerName = deal?.customerName || customers.find((c) => c.id === form.customerId)?.name || "";
     const fd = new FormData();
     fd.append("file", file);
-    if (context.customerId) { fd.append("entityType", "customer"); fd.append("entityId", context.customerId); }
+    if (form.customerId) { fd.append("entityType", "customer"); fd.append("entityId", form.customerId); }
     if (customerName) fd.append("customerName", customerName);
     const res = await fetch("/api/upload", { method: "POST", body: fd });
     const payload = await res.json().catch(() => ({}));
@@ -129,11 +125,10 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim(),
+          ...form,
+          title: form.title.trim(),
           body: body.trim(),
-          urgent,
-          requestedDueDate: requestedDueDate || null,
-          ...context,
+          requestedDueDate: form.requestedDueDate || null,
           attachments,
         }),
       });
@@ -149,8 +144,9 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
   };
 
   // อิง context (ไม่ใช่ prop) — ผูกโครงการสำเร็จจากทางลัดด้านล่างแล้วต้องหายทันที
-  const dealMissingProject = lockedToDeal && !context.projectId;
-  const canSubmit = !busy && !!title.trim() && (!!body.trim() || !!files.length) && isInquiryContextComplete(context);
+  const dealMissingProject = lockedToDeal && !form.projectId;
+  // ตอนสร้างต้องมีตัวคำถามหรือไฟล์แนบด้วย (ตอนแก้ไม่มีเงื่อนไขนี้ — คำถามอยู่ในเธรดแล้ว)
+  const canSubmit = !busy && isInquiryRequestComplete(form) && (!!body.trim() || !!files.length);
 
   return (
     <Modal open={open} onClose={() => !busy && onClose?.()} title="สอบถามฝ่าย RD" size="sm">
@@ -192,33 +188,18 @@ export default function InquiryCreateModal({ open, onClose, onCreated, deal = nu
               </div>
             )}
           </div>
-        ) : (
-          <InquiryContextFields
-            value={context}
-            onChange={setContext}
-            customers={customers}
-            projects={projects}
-            deals={deals}
-            disabled={busy}
-          />
-        )}
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          หัวเรื่อง
-          <input className="premium-input" value={title} onChange={(e) => setTitle(e.target.value)}
-            placeholder="เช่น กลิ่นลาเวนเดอร์ปรับให้ติดทนขึ้นได้ไหม" maxLength={200} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          รายละเอียดคำถาม
-          <textarea className="premium-input" rows={4} value={body} onChange={(e) => setBody(e.target.value)}
-            placeholder="อธิบายสิ่งที่อยากรู้ / สเปกที่ลูกค้าขอ..." style={{ resize: "vertical" }} />
-        </label>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-          <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> เร่งด่วน
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          วันที่ SA คาดหวังคำตอบ
-          <input className="premium-input" type="date" value={requestedDueDate} onChange={(e) => setRequestedDueDate(e.target.value)} />
-        </label>
+        ) : null}
+        <InquiryRequestFields
+          form={form}
+          setForm={setForm}
+          disabled={busy}
+          customers={customers}
+          projects={projects}
+          deals={deals}
+          body={body}
+          onBodyChange={setBody}
+          showContext={!lockedToDeal}
+        />
         {!!files.length && (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {files.map((f, i) => (
