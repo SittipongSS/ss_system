@@ -215,7 +215,6 @@ export default function SalesPlanningPipelinePage() {
       expectedCloseDate: deal.expectedCloseDate || "",
       startDate: deal.startDate || "",
       endDate: deal.endDate || "",
-      depositPaid: !!deal.depositPaid,
       notes: deal.notes || "",
       projectId: deal.projectId || "",
       lockedProjectId: deal.projectId || "",
