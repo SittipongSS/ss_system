@@ -1,15 +1,11 @@
 "use client";
-import MoneyInput from "@/components/ui/MoneyInput";
 import { useState, useEffect, useMemo } from "react";
 import { Package, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
-import DateInput from "@/components/ui/DateInput";
-import Select from "@/components/ui/Select";
-import SearchableSelect from "@/components/ui/SearchableSelect";
-import AddBrandButton from "@/components/master/AddBrandButton";
+import ProductForm, { EMPTY_PRODUCT } from "@/components/database/ProductForm";
 import Workspace from "@/components/ui/Workspace";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
@@ -19,9 +15,8 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import { categoryOf, isExciseCategory, categoryInfo } from "@/lib/master/categoryOf";
-import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
+import { brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney } from "@/lib/format";
-import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -52,22 +47,7 @@ export default function ProductRegistry() {
   const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
-  const emptyForm = {
-    customerId: "",
-    fgCode: "",
-    productDescription: "",
-    productDescriptionEn: "",
-    brandName: "",
-    brandNameEn: "",
-    formulaName: "",
-    formulaCode: "",
-    formulaDate: "",
-    volume: "",
-    volumeUnit: "ml",
-    piecesPerCase: "",
-    costPrice: "",
-    retailPriceIncVat: "",
-  };
+  const emptyForm = EMPTY_PRODUCT;
   const [formData, setFormData] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [userName, setUserName] = useState("");
@@ -149,19 +129,9 @@ export default function ProductRegistry() {
   // แบรนด์ = ช่องเดียว โชว์สองภาษา (EN · TH). value ที่เก็บภายใน = TH (คีย์) ถ้ามี ไม่งั้น EN.
   const brandOptions = useMemo(() => normalizeBrands(selectedCustomer?.brands || []), [selectedCustomer]);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    // เปลี่ยนลูกค้า → ล้างแบรนด์เดิม (TH+EN) เพราะรายการแบรนด์ผูกกับลูกค้า
-    if (name === "customerId") setFormData((f) => ({ ...f, customerId: value, brandName: "", brandNameEn: "" }));
-    else setFormData((f) => ({ ...f, [name]: value }));
-  };
 
-  // เลือก/พิมพ์แบรนด์ในช่องเดียว → เก็บทั้ง TH+EN จากแบรนด์ของลูกค้า (match ด้วย th หรือ en);
-  // พิมพ์ใหม่ที่ไม่มีในลิสต์ → ถือเป็นชื่อไทย, EN ว่าง.
-  const pickBrand = (v) => {
-    const hit = (selectedCustomer?.brands || []).find((b) => brandTh(b) === v || brandEn(b) === v);
-    setFormData((f) => ({ ...f, brandName: hit ? brandTh(hit) : v, brandNameEn: hit ? brandEn(hit) : "" }));
-  };
+
+
 
   const openForm = () => {
     setFormData(emptyForm);
@@ -463,164 +433,24 @@ export default function ProductRegistry() {
       {/* Add product modal — FG always belongs to a customer (selected below). */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="เพิ่มสินค้าใหม่ (New Product)" size="lg">
         <form onSubmit={handleSubmit}>
-          {/* Section 1: product */}
-          <div className="mb-[22px]">
-            <div className="flex justify-between items-center border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลหลักสินค้า (Product Details)</h3>
-              <span className="text-xs font-semibold text-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 rounded-full">
-                ผู้สร้าง: {userName}
-              </span>
-            </div>
-            <div className="form-grid cols-2">
-              <div className="form-group col-span-2">
-                <label>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
-                <input type="text" name="fgCode" value={formData.fgCode} onChange={handleChange} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
-
-                {(() => {
-                  const cat = getCategoryInfo(formData.fgCode);
-                  if (!formData.fgCode) {
-                    return <span className="text-xs text-[var(--text-3)] mt-1">เฉพาะหมวด 01-002 (น้ำหอมฉีดผิวกาย) เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต</span>;
-                  }
-                  if (!cat.code) {
-                    return <div className="mt-2 text-xs text-[var(--text-3)] italic">รูปแบบรหัส FG ไม่ถูกต้อง (ไม่พบโครงสร้างหมวดหมู่ XX-YYY)</div>;
-                  }
-                  if (!cat.found) {
-                    return <div className="mt-2 text-xs text-[var(--red)] bg-[var(--red-soft)] p-2 rounded border border-[var(--border)]">พบหมวดหมู่ <strong>{cat.code}</strong> แต่ไม่มีในฐานข้อมูล (อาจพิมพ์ผิด หรือเป็นหมวดใหม่)</div>;
-                  }
-
-                  const isExcise = cat.code === "01-002";
-                  return (
-                    <div className={`mt-2 p-3 text-xs rounded-lg border border-[var(--border)] flex flex-col gap-1 ${isExcise ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-2)] text-[var(--text-2)]"}`}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono bg-white/50 px-1.5 py-0.5 rounded text-[10px] font-bold">{cat.code}</span>
-                        <span className="font-semibold">{cat.typeInfo.nameTh || cat.typeInfo.nameEn}</span>
-                      </div>
-                      <div className="text-[11px] opacity-80 pl-1">
-                        กลุ่มหลัก: {cat.typeInfo.mainCategoryName}
-                      </div>
-                      <div className={`mt-1 pl-1 font-semibold ${isExcise ? "" : "text-[var(--green)]"}`}>
-                        {isExcise ? "⚠️ สินค้านี้เข้าข่ายต้องเสียภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)" : "✓ สินค้านี้ได้รับการยกเว้นภาษีสรรพสามิต"}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-              <div className="form-group col-span-2">
-                <label>ชื่อสินค้า / รายละเอียด (ไทย)</label>
-                <input type="text" name="productDescription" value={formData.productDescription} onChange={handleChange} placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
-              </div>
-              <div className="form-group col-span-2">
-                <label>ชื่อสินค้า / รายละเอียด (อังกฤษ)</label>
-                <input type="text" name="productDescriptionEn" value={formData.productDescriptionEn} onChange={handleChange} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
-                <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
-              </div>
-              <div className="form-group">
-                <label>{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า) <span className="text-[var(--red)]">*</span></label>
-                <SearchableSelect
-                  entity="customer"
-                  value={formData.customerId}
-                  onChange={(v) => handleChange({ target: { name: "customerId", value: v } })}
-                  placeholder="ค้นหารหัส / ชื่อลูกค้า..."
-                  emptyText="ไม่พบลูกค้า"
-                  options={customerList.map((c) => ({
-                    value: c.id,
-                    label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
-                    search: `${c.arCode || ""} ${c.name}`,
-                  }))}
-                />
-                <span className="text-xs text-[var(--text-3)] mt-1">FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก</span>
-              </div>
-              <div className="form-group">
-                <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-                <div className="flex gap-1.5 items-center">
-                  <div className="flex-1 min-w-0">
-                    <SearchableSelect
-                      entity="brand"
-                      disabled={!formData.customerId}
-                      options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
-                      value={formData.brandName || formData.brandNameEn}
-                      onChange={pickBrand}
-                      placeholder={formData.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
-                      emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — กด + เพื่อเพิ่ม"
-                    />
-                  </div>
-                  <AddBrandButton
-                    customerId={formData.customerId}
-                    disabled={!formData.customerId}
-                    onAdded={(b, updatedCustomer) => {
-                      // อัปเดตลูกค้าใน state ของหน้า → brandOptions (derive จาก
-                      // selectedCustomer) เห็นแบรนด์ใหม่ทันที + cache ไม่ค้างของเก่า
-                      setCustomers((prev) => {
-                        const next = prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c));
-                        apiCache.set("/api/master/customers", next);
-                        return next;
-                      });
-                      setFormData((f) => ({ ...f, brandName: b.th, brandNameEn: b.en }));
-                    }}
-                  />
-                </div>
-                <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่มใหม่ด้วยปุ่ม +, แก้ชื่อได้ที่หน้าลูกค้า</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2: formula (ข้อมูลฝ่าย RD — ไม่บังคับ: FG ที่ไม่มีสูตรก็มี) */}
-          <div className="mb-[22px]">
-            <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลสูตร (Formula)</h3>
-            </div>
-            <div className="form-grid cols-2">
-              <div className="form-group col-span-2">
-                <label>ชื่อสูตร</label>
-                <input type="text" name="formulaName" value={formData.formulaName} onChange={handleChange} placeholder="เช่น มิดไนท์บลูม v2" className="premium-input w-full" />
-              </div>
-              <div className="form-group">
-                <label>รหัสสูตร</label>
-                <input type="text" name="formulaCode" value={formData.formulaCode} onChange={handleChange} placeholder="เช่น F-2569-014" className="premium-input w-full font-mono" />
-              </div>
-              <div className="form-group">
-                <label>วันที่สูตร</label>
-                <DateInput value={formData.formulaDate} onChange={(value) => setFormData((current) => ({ ...current, formulaDate: value || "" }))} className="w-full" />
-                <span className="text-xs text-[var(--text-3)] mt-1">วันที่ของตัวสูตร (เวอร์ชันที่ RD ออกให้) ไม่ใช่วันที่บันทึกเข้าระบบ</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 3: packaging & pricing */}
-          <div className="mb-[22px]">
-            <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลบรรจุภัณฑ์และราคา (Packaging & Pricing)</h3>
-            </div>
-            <div className="form-grid cols-2">
-              <div className="form-group">
-                <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
-                <div className="flex gap-2">
-                  <input type="number" name="volume" value={formData.volume} onChange={handleChange} required min="0.01" step="0.01" className="premium-input flex-1 font-mono" />
-                  <Select name="volumeUnit" value={formData.volumeUnit} onChange={handleChange} style={{ width: "80px" }}>
-                    <option value="ml">ml</option>
-                    <option value="g">g</option>
-                    <option value="kg">kg</option>
-                    <option value="oz">oz</option>
-                    <option value="L">L</option>
-                    <option value="pcs">pcs</option>
-                  </Select>
-                </div>
-              </div>
-              <div className="form-group">
-                <label>จำนวนชิ้นต่อลัง</label>
-                <input type="number" name="piecesPerCase" value={formData.piecesPerCase} onChange={handleChange} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
-              </div>
-              <div className="form-group">
-                <label>ราคาโรงงาน (บาท)</label>
-                <MoneyInput name="costPrice" value={formData.costPrice} onChange={(value) => setFormData((current) => ({ ...current, costPrice: value ?? "" }))} className="w-full" />
-              </div>
-              <div className="form-group">
-                <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
-                <MoneyInput name="retailPriceIncVat" value={formData.retailPriceIncVat} onChange={(value) => setFormData((current) => ({ ...current, retailPriceIncVat: value ?? "" }))} className="w-full" />
-              </div>
-            </div>
-          </div>
-
+          {/* ฟอร์มเดียวกับโมดัลแก้ไข (EditProductModal) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง */}
+          <ProductForm
+            form={formData}
+            onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))}
+            productTypes={productTypes}
+            customers={customerList}
+            brandOptions={brandOptions}
+            creatorName={userName}
+            onCustomerChange={(v) => setFormData((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }))}
+            onBrandAdded={(b, updatedCustomer) => {
+              // อัปเดตลูกค้าใน state ของหน้า → brandOptions เห็นแบรนด์ใหม่ทันที + cache ไม่ค้าง
+              setCustomers((prev) => {
+                const next = prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c));
+                apiCache.set("/api/master/customers", next);
+                return next;
+              });
+            }}
+          />
           <div className="form-action-bar">
             <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>
             <button type="submit" disabled={submitting} className="btn btn-primary px-8">
