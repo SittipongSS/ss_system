@@ -86,14 +86,12 @@ const SORT_OPTIONS = [
   { key: "name", label: "ชื่องาน" },
 ];
 
-// Kanban: คอลัมน์ตามสถานะ
-const BOARD_COLS = [
-  { key: "Pending", label: "รอ", color: "var(--text-3)" },
-  { key: "In Progress", label: "ทำอยู่", color: "var(--accent)" },
-  { key: "Completed", label: "เสร็จ", color: "var(--green)" },
-];
+// (มุมมองบอร์ด Kanban ถูกถอดออก — มติผู้ใช้ 2026-07-17: ซ้ำกับตัวกรองสถานะ
+// บนตาราง และเป็นมุมมองเดียวที่ไล่โชว์ทุกงานโดยไม่ตัด)
 
-// Eisenhower: 4 ช่อง สำคัญ × ด่วน
+// Eisenhower: 4 ช่อง สำคัญ × ด่วน — โชว์สูงสุดช่องละ MATRIX_MAX ใบ (ที่เหลือ
+// สรุปเป็น "+N งาน" — มุมมองนี้ไว้กวาดตาจัดลำดับ ไม่ใช่ไล่รายการยาว)
+const MATRIX_MAX = 8;
 const MATRIX_QUADS = [
   { key: "do", sub: "สำคัญ + ด่วน", color: "var(--red)" },
   { key: "plan", sub: "สำคัญ ไม่ด่วน", color: "var(--green)" },
@@ -549,7 +547,7 @@ export default function TasksPage() {
       subtitle={`มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้${me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}`}
       headerRight={
         <div className="flex gap-3 items-center flex-wrap">
-          <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
+          <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "calendar", "matrix"]} />
           {(canEdit || role === "rd") && <button onClick={openAdd} className="btn btn-accent"><Plus size={16} /> เพิ่มงาน</button>}
         </div>
       }
@@ -655,25 +653,6 @@ export default function TasksPage() {
 
       {loading ? (
         <SkeletonRows />
-      ) : view === "board" ? (
-        /* ── Kanban board (ตามสถานะ) ── */
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", alignItems: "start" }}>
-          {BOARD_COLS.filter((col) => col.key !== "Completed" || statusFilter === "done").map((col) => {
-            const items = visible.filter((t) => t.status === col.key);
-            return (
-              <div key={col.key} className="glass-panel" style={{ padding: 0, overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", borderBottom: "1px solid var(--border)", borderTop: `3px solid ${col.color}`, fontWeight: 700, fontSize: "13px" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: col.color }} />
-                  {col.label}
-                  <span style={{ marginLeft: "auto", fontSize: "12px", color: "var(--text-3)", fontWeight: 500 }}>{items.length}</span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", minHeight: "60px" }}>
-                  {items.length === 0 ? <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>—</div> : items.map(miniCard)}
-                </div>
-              </div>
-            );
-          })}
-        </div>
       ) : view === "matrix" ? (
         /* ── Eisenhower matrix (สำคัญ × ด่วน) ── */
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px", alignItems: "start" }}>
@@ -689,7 +668,12 @@ export default function TasksPage() {
                   <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{quad.sub}</div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", minHeight: "60px" }}>
-                  {items.length === 0 ? <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>—</div> : items.map(miniCard)}
+                  {items.length === 0 ? <div style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>—</div> : items.slice(0, MATRIX_MAX).map(miniCard)}
+                  {items.length > MATRIX_MAX && (
+                    <button type="button" className="linklike" style={{ alignSelf: "center", fontSize: 12 }} onClick={() => setView("table")}>
+                      +{items.length - MATRIX_MAX} งาน — ดูทั้งหมดในตาราง
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -854,7 +838,7 @@ export default function TasksPage() {
           })}
         </div>
       )}
-      {!loading && !["board", "matrix", "calendar"].includes(view) && visible.length > 0 && (
+      {!loading && !["matrix", "calendar"].includes(view) && visible.length > 0 && (
         <Pager
           page={page}
           pageCount={pageCount}
