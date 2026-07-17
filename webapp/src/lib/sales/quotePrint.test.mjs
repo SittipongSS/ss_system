@@ -87,7 +87,7 @@ test('quotation print signature boxes: ผู้เสนอราคา (creato
   assert.match(html, /ผู้ดูแล \(AE\)<\/span><span class="v">สมชาย ดูแล/);
   assert.match(html, /sb-head">ผู้เสนอราคา[\s\S]*?\(ผู้สร้างใบ\)/);
   assert.match(html, /sb-head">ผู้อนุมัติ[\s\S]*?\(เจ้าของ อนุมัติ\)/);
-  assert.match(html, /sb-head">ผู้ยืนยันสั่งซื้อ[\s\S]*?ชื่อ-นามสกุล ตัวบรรจง/);
+  assert.match(html, /sb-head">ผู้ยืนยันสั่งซื้อ <span class="sb-role">· ผู้ซื้อ<\/span>[\s\S]*?ชื่อ-นามสกุล ตัวบรรจง/);
   assert.match(html, /class="sheet explicit-page">[\s\S]*?class="doc-top"/);
 
   // ยังไม่อนุมัติ: ผู้อนุมัติ fallback เป็นชื่อเจ้าของดีล (deal.ownerName)

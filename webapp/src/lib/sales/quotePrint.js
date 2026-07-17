@@ -187,7 +187,7 @@ export function buildQuotePrintHTML(quote, options = {}) {
   const signers = options.signers || [
     { label: 'ผู้เสนอราคา', role: 'Scent & Sense', name: proposer },
     { label: 'ผู้อนุมัติ', role: 'Scent & Sense', name: approver },
-    { label: 'ผู้ยืนยันสั่งซื้อ', role: 'ลูกค้า', name: '' },
+    { label: 'ผู้ยืนยันสั่งซื้อ', role: 'ผู้ซื้อ', name: '' },
   ];
 
   const headerGrid = `
