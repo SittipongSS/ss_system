@@ -16,8 +16,7 @@ import Select from "@/components/ui/Select";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink, taskLinkType } from "@/lib/pm/taskLink";
-import { compactPersonName } from "@/lib/personName";
-import { isSuperuser, TEAM_ROLES } from "@/lib/permissions";
+import PersonSelect from "@/components/ui/PersonSelect";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 // ค่าโครงการใน dropdown ที่แปลว่า "ดีลที่ยังไม่ผูกโครงการ" (ดีลกลุ่มนี้มีจริงและ
@@ -199,7 +198,9 @@ export default function TaskFormModal({
     }
   };
 
-  const cannotAssign = me && !isSuperuser(me.role) && !TEAM_ROLES.includes(me.role);
+  // ไม่มีใครให้มอบ = มอบให้คนอื่นไม่ได้ — อ่านจากรายชื่อจริงที่กรองด้วย canAssignTask มาแล้ว
+  // (เดิมเดารายชื่อจาก role เอง แล้วผิดกับ rd ซึ่งมอบกันเองในฝ่ายได้)
+  const cannotAssign = !!me && !assignableUsers.some((u) => u.id !== me.id);
 
   return (
     <Modal open={open} onClose={() => !saving && onClose?.()} title={editing ? "แก้ไขงาน" : "เพิ่มงาน"} size="md">
@@ -345,10 +346,14 @@ export default function TaskFormModal({
 
           <div className="form-group">
             <label><UserPlus size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>
-            <Select fullWidth value={form.assigneeId} disabled={!canManage} onChange={(e) => set({ assigneeId: e.target.value })}>
-              <option value="">— ตัวฉันเอง —</option>
-              {assignableUsers.filter((u) => u.id !== me?.id).map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}{u.team ? ` (${u.team})` : ""}</option>)}
-            </Select>
+            <PersonSelect
+              users={assignableUsers.filter((u) => u.id !== me?.id)}
+              value={form.assigneeId}
+              disabled={!canManage}
+              emptyLabel="— ตัวฉันเอง —"
+              ariaLabel="มอบหมายให้"
+              onChange={(assigneeId) => set({ assigneeId })}
+            />
             {cannotAssign && (
               <div className="text-[11px] text-[var(--text-3)] mt-1">ตำแหน่งของคุณมอบหมายงานให้คนอื่นไม่ได้ — สร้างเป็นงานของตัวเองเท่านั้น</div>
             )}

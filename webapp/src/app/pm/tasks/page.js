@@ -14,7 +14,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
-import { isSuperuser, TEAM_ROLES, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId } from "@/lib/permissions";
+import { isSuperuser, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
@@ -184,15 +184,8 @@ export default function TasksPage() {
     fetch("/api/pm/task-deals").then((r) => (r.ok ? r.json() : [])).then((d) => setAllDeals(d || [])).catch(() => {});
   }, []);
 
-  // ผู้ใช้ที่ "ฉันมอบหมายงานให้ได้" (สะท้อน canAssignTask ฝั่ง server)
-  const assignableUsers = useMemo(() => {
-    if (!me) return [];
-    if (isSuperuser(me.role)) return users;
-    if (TEAM_ROLES.includes(me.role) && me.team) return users.filter((u) => u.team === me.team);
-    // rd: มอบหมาย/สลับงานกันเองภายในฝ่ายเดียวกัน (RD 2 คน ไม่มีหัวหน้าฝ่ายในระบบ)
-    if (me.role === "rd" && me.department) return users.filter((u) => u.department === me.department);
-    return users.filter((u) => u.id === me.id);
-  }, [me, users]);
+  // ผู้ใช้ที่ "ฉันมอบหมายงานให้ได้" — กติกาเดียวกับ server (เดิมเขียนเงื่อนไขซ้ำที่นี่เอง)
+  const assignableUsers = useMemo(() => assignableUsersFor(me, users), [me, users]);
 
   const q = search.trim().toLowerCase();
   const resolveProj = (pid) => projectsMap[pid] || allProjects.find((p) => p.id === pid) || null;

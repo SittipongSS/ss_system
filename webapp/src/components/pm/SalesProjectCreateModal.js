@@ -5,7 +5,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
-import Select from "@/components/ui/Select";
+import PersonSelect from "@/components/ui/PersonSelect";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -59,7 +59,6 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
     if (form.brand && !unique.some((option) => option.value === form.brand)) unique.unshift({ value: form.brand, label: form.brand });
     return unique;
   }, [customers, form.customerId, form.brand]);
-  const userName = (u) => (u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "").trim();
 
   const submit = async (event) => {
     event.preventDefault();
@@ -130,9 +129,9 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
             <label>วันที่สิ้นสุด</label>
             <DateInput value={form.dueDate} onChange={(dueDate) => setForm((f) => ({ ...f, dueDate }))} className="w-full" />
           </div>
-          <div className="form-group col-span-2"><label>ผู้ดูแล (AE){lockPeopleField === "aeOwner" ? " · ล็อกเป็นคุณ" : ""}</label><Select fullWidth value={lockPeopleField === "aeOwner" ? myName : form.aeOwner} disabled={lockPeopleField === "aeOwner"} onChange={(e) => setForm((f) => ({ ...f, aeOwner: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => ["ae", "senior_ae", "ae_supervisor"].includes(u.role)).map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
-          <div className="form-group"><label>ผู้ประสานงาน (AC){lockPeopleField === "preparedBy" ? " · ล็อกเป็นคุณ" : ""}</label><Select fullWidth value={lockPeopleField === "preparedBy" ? myName : form.preparedBy} disabled={lockPeopleField === "preparedBy"} onChange={(e) => setForm((f) => ({ ...f, preparedBy: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => u.role === "ac").map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
-          <div className="form-group"><label>ผู้ตรวจสอบ (AE Supervisor){lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label><Select fullWidth value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} disabled={lockPeopleField === "aeSupervisor"} onChange={(e) => setForm((f) => ({ ...f, aeSupervisor: e.target.value }))}><option value="">— ไม่ระบุ —</option>{users.filter((u) => u.role === "ae_supervisor").map((u) => <option key={u.id} value={userName(u)}>{userName(u)}</option>)}</Select></div>
+          <div className="form-group col-span-2"><label>ผู้ดูแล (AE){lockPeopleField === "aeOwner" ? " · ล็อกเป็นคุณ" : ""}</label><PersonSelect by="name" users={users.filter((u) => ["ae", "senior_ae", "ae_supervisor"].includes(u.role))} value={lockPeopleField === "aeOwner" ? myName : form.aeOwner} disabled={lockPeopleField === "aeOwner"} ariaLabel="ผู้ดูแล (AE)" onChange={(aeOwner) => setForm((f) => ({ ...f, aeOwner }))} /></div>
+          <div className="form-group"><label>ผู้ประสานงาน (AC){lockPeopleField === "preparedBy" ? " · ล็อกเป็นคุณ" : ""}</label><PersonSelect by="name" users={users.filter((u) => u.role === "ac")} value={lockPeopleField === "preparedBy" ? myName : form.preparedBy} disabled={lockPeopleField === "preparedBy"} ariaLabel="ผู้ประสานงาน (AC)" onChange={(preparedBy) => setForm((f) => ({ ...f, preparedBy }))} /></div>
+          <div className="form-group"><label>ผู้ตรวจสอบ (AE Supervisor){lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label><PersonSelect by="name" users={users.filter((u) => u.role === "ae_supervisor")} value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} disabled={lockPeopleField === "aeSupervisor"} ariaLabel="ผู้ตรวจสอบ (AE Supervisor)" onChange={(aeSupervisor) => setForm((f) => ({ ...f, aeSupervisor }))} /></div>
         </div>
         {error && <p style={{ color: "var(--red)", fontSize: 13 }}>{error}</p>}
         <div className="form-action-bar">

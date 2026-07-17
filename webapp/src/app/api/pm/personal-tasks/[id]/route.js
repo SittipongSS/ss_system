@@ -69,7 +69,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     canPostUpdate: !!manage || canChangeTaskStatus(user, task, manage),
     // ตัวตนผู้เรียก — โมดัลแก้งานใช้ (กันเลือกมอบหมายให้ตัวเอง/ป้ายทีม) หน้า detail
     // จะได้ไม่ต้องยิง /api/pm/my-work ทั้งก้อนมาเอาแค่ 3 ฟิลด์
-    me: { id: user.id, role: user.role, team: user.team ?? null },
+    // department ต้องติดมาด้วย — หน้ารายละเอียดกรองรายชื่อมอบหมายด้วย canAssignTask
+    // ซึ่งเทียบฝ่ายเป็นด่านแรก
+    me: { id: user.id, role: user.role, team: user.team ?? null, department: user.department ?? null },
   });
 });
 
@@ -148,7 +150,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const assignee = {
         id: next,
         team: au.user.app_metadata?.team ?? null,
-        department: au.user.app_metadata?.department ?? null, // rd มอบภายในฝ่ายเดียวกัน
+        // role ต้องส่งไปด้วย — ฝ่ายส่วนใหญ่ไม่ได้ตั้งไว้ตรง ๆ canAssignTask อนุมานจาก role ให้
+        role: au.user.app_metadata?.role ?? null,
+        department: au.user.app_metadata?.department ?? null,
       };
       if (!canAssignTask(user, assignee)) return forbidden('ไม่มีสิทธิ์มอบหมายงานให้ผู้ใช้นี้');
       updates.assignedBy = user.id;
