@@ -15,6 +15,7 @@ const SPACE_ENV = {
   sales: 'CHAT_WEBHOOK_SALES', // space ทีมขาย
   pm: 'CHAT_WEBHOOK_PM', // space โครงการ (ใช้ในเฟส 3 daily digest)
   rd: 'CHAT_WEBHOOK_RD', // space ฝ่าย RD (ข้อสอบถามใหม่จากฝ่ายขาย)
+  leads: 'CHAT_WEBHOOK_LEADS', // space คิวลีด (แจ้งจุดส่งมอบ + ลีดค้างเช้า)
 };
 
 // รายการ space มาตรฐาน — ใช้ร่วมกันทั้ง validation ฝั่ง API และหน้า UI ตั้งค่า
@@ -23,6 +24,7 @@ export const CHAT_SPACES = [
   { key: 'sales', label: 'ทีมขาย', hint: 'ผลอนุมัติ, ดีลชนะ (Won), forecast review, คำตอบข้อสอบถามจาก RD' },
   { key: 'pm', label: 'โครงการ (PM)', hint: 'สรุปงานใกล้ครบกำหนดประจำวัน (เริ่มใช้เฟส daily digest)' },
   { key: 'rd', label: 'ฝ่าย RD', hint: 'ข้อสอบถามใหม่/ถามต่อจากฝ่ายขาย — คนใน space คือฝ่าย RD' },
+  { key: 'leads', label: 'คิวลีด', hint: 'ลีดใหม่รอคัดกรอง · คัดแล้วรอกระจาย · มอบให้ AE — คนใน space คือทีมขายที่ทำคิวลีด (SLA 1 วันทำการ)' },
 ];
 
 // cache รายการ webhook จากตาราง ~60 วิ — event ถี่ ๆ ไม่ต้อง query ทุกครั้ง
@@ -98,7 +100,7 @@ export async function sendChatNow(spaceKey, card) {
 }
 
 // ส่งแบบ fire-and-forget — จุดเกี่ยวใน API ทั้งหมดใช้ตัวนี้
-// spaceKey: 'approvals' | 'sales' | 'pm'
+// spaceKey: 'approvals' | 'sales' | 'pm' | 'rd' | 'leads'
 export function sendChat(spaceKey, card) {
   const deliver = async () => {
     try {
