@@ -108,6 +108,10 @@ export async function POST(request) {
     productDescriptionEn: body.productDescriptionEn ?? null, // ชื่อสินค้า EN (0059)
     brandName: body.brandName ?? null,
     brandNameEn: body.brandNameEn ?? null, // snapshot EN ของแบรนด์ (0059)
+    // ข้อมูลสูตร (0112) — optional ทั้งชุด: FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์) ก็สร้างได้
+    formulaName: body.formulaName?.trim() || null,
+    formulaCode: body.formulaCode?.trim() || null,
+    formulaDate: body.formulaDate || null,
     volume,
     volumeUnit: body.volumeUnit || 'ml',
     // ชิ้นต่อลัง (ตัวแปลงหน่วยฝั่งสหมิตร, migration 0075) — optional, null = ยังไม่ตั้ง.

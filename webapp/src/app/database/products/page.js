@@ -6,6 +6,7 @@ import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
+import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import AddBrandButton from "@/components/master/AddBrandButton";
@@ -58,6 +59,9 @@ export default function ProductRegistry() {
     productDescriptionEn: "",
     brandName: "",
     brandNameEn: "",
+    formulaName: "",
+    formulaCode: "",
+    formulaDate: "",
     volume: "",
     volumeUnit: "ml",
     piecesPerCase: "",
@@ -560,10 +564,32 @@ export default function ProductRegistry() {
             </div>
           </div>
 
-          {/* Section 2: packaging & pricing */}
+          {/* Section 2: formula (ข้อมูลฝ่าย RD — ไม่บังคับ: FG ที่ไม่มีสูตรก็มี) */}
           <div className="mb-[22px]">
             <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลบรรจุภัณฑ์และราคา (Packaging & Pricing)</h3>
+              <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลสูตร (Formula)</h3>
+            </div>
+            <div className="form-grid cols-2">
+              <div className="form-group col-span-2">
+                <label>ชื่อสูตร</label>
+                <input type="text" name="formulaName" value={formData.formulaName} onChange={handleChange} placeholder="เช่น มิดไนท์บลูม v2" className="premium-input w-full" />
+              </div>
+              <div className="form-group">
+                <label>รหัสสูตร</label>
+                <input type="text" name="formulaCode" value={formData.formulaCode} onChange={handleChange} placeholder="เช่น F-2569-014" className="premium-input w-full font-mono" />
+              </div>
+              <div className="form-group">
+                <label>วันที่สูตร</label>
+                <DateInput value={formData.formulaDate} onChange={(value) => setFormData((current) => ({ ...current, formulaDate: value || "" }))} className="w-full" />
+                <span className="text-xs text-[var(--text-3)] mt-1">วันที่ของตัวสูตร (เวอร์ชันที่ RD ออกให้) ไม่ใช่วันที่บันทึกเข้าระบบ</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: packaging & pricing */}
+          <div className="mb-[22px]">
+            <div className="border-b border-[var(--border)] pb-3 mb-5">
+              <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลบรรจุภัณฑ์และราคา (Packaging & Pricing)</h3>
             </div>
             <div className="form-grid cols-2">
               <div className="form-group">

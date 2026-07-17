@@ -127,10 +127,14 @@ export async function PATCH(request, { params }) {
     'fgCode', 'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
     'volume', 'volumeUnit', 'costPrice', 'retailPriceIncVat', 'assignee',
     'categoryCode', 'metadata',
+    'formulaName', 'formulaCode', // ข้อมูลสูตร (0112)
     'isActive', // lifecycle flag (0036) — พัก/เลิกใช้สินค้า
   ];
   const updated = { ...product };
   for (const k of catalogEditable) if (body[k] !== undefined) updated[k] = body[k];
+  // วันที่สูตร (0112) — คอลัมน์เป็น date: ฟอร์มส่ง '' ตอนล้างค่า ต้องเป็น null
+  // ไม่งั้น Postgres ตีกลับ invalid input syntax for type date
+  if (body.formulaDate !== undefined) updated.formulaDate = body.formulaDate || null;
   // ชิ้นต่อลัง (0075) — coerce เป็นตัวเลข/null (ฟอร์มส่งมาเป็น string).
   if (body.piecesPerCase !== undefined) {
     updated.piecesPerCase =
