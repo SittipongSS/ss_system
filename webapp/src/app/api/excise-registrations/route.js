@@ -6,13 +6,19 @@ import { recordAudit } from '@/lib/audit';
 export const dynamic = 'force-dynamic';
 
 // GET /api/excise-registrations — team-scoped list (legal/supervisor see all).
-export async function GET() {
+// ?slim=1: เฉพาะคอลัมน์ที่จอสรุป (/tax) ใช้ — ตัด snapshot ภาษี/metadata/เอกสาร
+// ออกจาก payload (ลด traffic); โหมดเต็มพฤติกรรมเดิม.
+const REGISTRATION_SELECT_SLIM =
+  'id, status, createdAt, fgCode, productName, customerName, rejectionReason, team';
+
+export async function GET(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
+  const slim = new URL(request.url).searchParams.get('slim') === '1';
 
   let query = supabase
     .from('excise_registrations')
-    .select('*')
+    .select(slim ? REGISTRATION_SELECT_SLIM : '*')
     .order('createdAt', { ascending: false });
   if (viewScopeUser(user) === 'team') query = query.eq('team', user?.team ?? null);
 

@@ -33,8 +33,10 @@ export default function TaxDashboard() {
   const canLG = useCan("legal:approve");
   const router = useRouter();
   
-  const { data: rawRegs, loading: l1 } = useApiList("/api/excise-registrations");
-  const { data: rawOrders, loading: l2 } = useApiList("/api/orders");
+  // โหมด slim: จอนี้ใช้แค่สถานะ/ตัวเลขสรุป/ชื่อในคิวงาน — ไม่ต้องดาวน์โหลด
+  // order_items + master product เต็มแถว (ลด traffic ต่อการเปิดหลายเท่า)
+  const { data: rawRegs, loading: l1 } = useApiList("/api/excise-registrations?slim=1");
+  const { data: rawOrders, loading: l2 } = useApiList("/api/orders?slim=1");
 
   const [timeRange, setTimeRange] = useState("all"); // 'all', 'month', 'quarter'
 
@@ -64,7 +66,8 @@ export default function TaxDashboard() {
   };
 
   const itemsLine = (ord) => {
-    const n = ord.items?.length || 0;
+    // slim ส่ง itemCount (ตัวเลข); โหมดเต็ม (cache เก่า) ยังมี items[] — รองรับทั้งคู่
+    const n = ord.itemCount ?? ord.items?.length ?? 0;
     const tax = (ord.totalTax || 0) === 0 ? "ยกเว้นภาษี" : `ภาษี ฿${(ord.totalTax || 0).toLocaleString("th-TH")}`;
     return `${n} รายการ · ${tax}`;
   };

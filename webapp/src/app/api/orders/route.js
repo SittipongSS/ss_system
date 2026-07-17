@@ -7,21 +7,34 @@ import { recordAudit } from '@/lib/audit';
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 export const dynamic = 'force-dynamic';
-export async function GET() {
+
+// ?slim=1 — โหมดประหยัด traffic สำหรับจอที่ใช้แค่ตัวเลขสรุป/คิวงาน (เช่น /tax
+// command center): เลือกเฉพาะคอลัมน์ที่ใช้จริง + นับจำนวนรายการแทนการฝัง
+// order_items ทั้งแถวพร้อม master product เต็มตัว และไม่ join registrations เลย.
+// โหมดเต็ม (ไม่ส่ง param) พฤติกรรมเดิมทุกประการ.
+const ORDER_SELECT_SLIM =
+  'id, status, createdAt, totalTax, quotationRef, customerName, rejectionReason, team, items:order_items(count)';
+
+export async function GET(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
+  const slim = new URL(request.url).searchParams.get('slim') === '1';
 
   // A PO embeds its line items, each with the master product. Registrations are
   // joined in JS (no FK to embed) — see @/lib/tax/orders.
   let query = supabase
     .from('orders')
-    .select(ORDER_SELECT)
+    .select(slim ? ORDER_SELECT_SLIM : ORDER_SELECT)
     .order('createdAt', { ascending: false });
   // Team-scoped roles only see their own team's orders; 'all' sees everything.
   if (viewScopeUser(user) === 'team') query = query.eq('team', user?.team ?? null);
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (slim) {
+    // count embed คืน items: [{ count: n }] — แปลงเป็น itemCount ตัวเลขเดียว
+    return Response.json((data || []).map(({ items, ...row }) => ({ ...row, itemCount: items?.[0]?.count ?? 0 })));
+  }
   await attachRegistrations(supabase, data);
   return Response.json(data);
 }
