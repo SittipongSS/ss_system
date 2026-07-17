@@ -14,7 +14,7 @@ import StatCards from "@/components/database/StatCards";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
-import { fmtMoney, fmtDateTime } from "@/lib/format";
+import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
 
@@ -235,6 +235,19 @@ export default function ProductDetails() {
               <div>
                 <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
                 <span className="font-semibold text-[var(--text)] text-sm">{brandBoth(product.brandName, product.brandNameEn)}</span>
+              </div>
+              {/* ข้อมูลสูตร (0112) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์) โชว์ — ได้ */}
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">ชื่อสูตร (Formula)</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{product.formulaName || "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">รหัสสูตร (Formula Code)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaCode || "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">วันที่สูตร (Formula Date)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : "—"}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
