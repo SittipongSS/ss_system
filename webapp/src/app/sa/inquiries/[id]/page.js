@@ -13,7 +13,7 @@ import SaWorkspace, { SaPageShell } from "@/components/salesPlanning/SaWorkspace
 import Modal from "@/components/Modal";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
-import InquiryContextFields, { isInquiryContextComplete } from "@/components/salesPlanning/InquiryContextFields";
+import InquiryRequestFields, { inquiryToRequestForm, isInquiryRequestComplete } from "@/components/salesPlanning/InquiryRequestFields";
 import { inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { fmtDate, fmtDateTime } from "@/lib/format";
@@ -172,14 +172,7 @@ export default function InquiryThreadPage() {
   };
 
   const openRequestEdit = () => {
-    setRequestEdit({
-      title: data.title,
-      urgent: !!data.urgent,
-      requestedDueDate: data.requestedDueDate || "",
-      customerId: data.customerId || "",
-      projectId: data.projectId || "",
-      dealId: data.dealId || "",
-    });
+    setRequestEdit(inquiryToRequestForm(data));
     const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : [])).catch(() => []);
     Promise.all([
       cachedFetchJson("/api/master/customers").catch(() => []),
@@ -402,31 +395,21 @@ export default function InquiryThreadPage() {
       <Modal open={!!requestEdit} onClose={() => !busy && setRequestEdit(null)} title="แก้ไขคำถาม" size="sm">
         {requestEdit && (
           <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-              หัวเรื่อง
-              <input className="premium-input" value={requestEdit.title} maxLength={200}
-                onChange={(e) => setRequestEdit((v) => ({ ...v, title: e.target.value }))} />
-            </label>
-            <InquiryContextFields
-              value={requestEdit}
-              onChange={(next) => setRequestEdit((v) => ({ ...v, ...next }))}
+            {/* ช่องกรอกชุดเดียวกับโมดัลสร้าง — ไม่มี "รายละเอียดคำถาม" เพราะตัวคำถามถูกเก็บ
+                เป็นข้อความแรกของเธรด ไม่ใช่คอลัมน์ของเรื่อง (API edit-request ก็ไม่รับ)
+                — แก้ตรงนี้เท่ากับแก้ประวัติการสนทนา ถ้าอยากเสริมให้ตอบกลับในเธรดแทน */}
+            <InquiryRequestFields
+              form={requestEdit}
+              setForm={setRequestEdit}
               customers={lists.customers}
               projects={lists.projects}
               deals={lists.deals}
               disabled={!!busy}
             />
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-              วันที่ SA คาดหวังคำตอบ
-              <input className="premium-input" type="date" value={requestEdit.requestedDueDate}
-                onChange={(e) => setRequestEdit((v) => ({ ...v, requestedDueDate: e.target.value }))} />
-            </label>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-              <input type="checkbox" checked={requestEdit.urgent} onChange={(e) => setRequestEdit((v) => ({ ...v, urgent: e.target.checked }))} /> เร่งด่วน
-            </label>
             <small style={{ color: "var(--text-3)" }}>แก้ไขบริบทได้ก่อน RD รับเรื่องเท่านั้น</small>
             <div className="form-action-inline">
               <button type="button" className="btn ghost sm" onClick={() => setRequestEdit(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-primary sm" disabled={!!busy || !requestEdit.title.trim() || !isInquiryContextComplete(requestEdit)}
+              <button type="button" className="btn btn-primary sm" disabled={!!busy || !isInquiryRequestComplete(requestEdit)}
                 onClick={async () => { if (await runAction("edit-request", { action: "edit-request", ...requestEdit })) setRequestEdit(null); }}>
                 <Save size={13} aria-hidden="true" /> บันทึก
               </button>

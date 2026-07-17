@@ -486,32 +486,46 @@ export function pmTaskScopes(role) {
   return ['mine'];
 }
 
+// ฝ่ายของผู้ใช้ — app_metadata.department ถ้ามี ไม่งั้นอนุมานจาก role. ต้องมี fallback นี้เสมอ
+// เพราะบัญชีส่วนใหญ่ไม่ได้ตั้ง department ไว้ตรง ๆ (มันมาจาก role) — เทียบฝ่ายด้วยค่าดิบ
+// จะได้ null แล้วบล็อกการมอบหมายทั้งหมดเงียบ ๆ
+export function departmentOf(user) {
+  return normalizeDepartment(user?.department) || departmentFor(user?.role) || null;
+}
+
 // Authority to ASSIGN a task to someone (Sales Task Management / งานมอบหมาย).
-//   superuser (admin/ae_supervisor) → anyone, any team
-//   senior_ae / ac / ae            → someone in their OWN team (mirrors pmEditScope
-//                                     'team' — a sales member may hand work to a
-//                                     teammate; row visibility still team-scoped)
-//   rd                             → someone in their OWN department (RD ทำงานกันเอง
-//                                     2 คนไม่มีหัวหน้าฝ่ายในระบบ — สลับ/แบ่งงานกันได้;
-//                                     ฝ่ายขายยังมอบตรงให้ RD ไม่ได้ ต้องผ่าน inquiry)
-//   everyone else                  → only themselves
-// `assigner` = { id, role, team, department }; `assignee` = { id, team, department }.
-// Assigning to oneself is always allowed. Used by the personal-tasks API + the task form.
+// ── กติกาหลัก: มอบหมายได้เฉพาะ "คนในฝ่ายเดียวกัน" (มติผู้ใช้ 2026-07-17) ──
+//   admin                          → ทุกคน (บัญชีดูแลระบบ — ทางออกฉุกเฉิน ไม่ใช่คนทำงานขาย)
+//   ae_supervisor                  → ทั้งฝ่าย SA (ข้ามทีมได้ แต่ข้ามฝ่ายไม่ได้)
+//   senior_ae / ac / ae            → เฉพาะ "ทีมเดียวกัน" (ODM/KA/SV) ซึ่งแคบกว่าฝ่าย
+//                                     (มติผู้ใช้: คงไว้เท่าเดิม ไม่ขยายเป็นทั้งฝ่าย)
+//   rd                             → เฉพาะฝ่าย RD (2 คนไม่มีหัวหน้าฝ่ายในระบบ — สลับงานกันเอง)
+//   everyone else                  → ตัวเองเท่านั้น
+// ฝ่ายขายมอบงานตรงให้ RD/QC/PC ไม่ได้ — ต้องผ่าน "สอบถาม RD" (inquiry) เท่านั้น
+// `assigner`/`assignee` = { id, role, team, department }; มอบให้ตัวเองได้เสมอ
 export function canAssignTask(assigner, assignee) {
   if (!assigner?.id || !assignee?.id) return false;
   if (assigner.id === assignee.id) return true;
-  if (isSuperuser(assigner.role)) return true;
+  if (assigner.role === 'admin') return true;
+  // ด่านฝ่าย มาก่อนทุกกติกา — รวม ae_supervisor
+  const dept = departmentOf(assigner);
+  if (!dept || dept !== departmentOf(assignee)) return false;
+  if (isSuperuser(assigner.role)) return true; // ae_supervisor: ทั้งฝ่าย SA
   // Any team member (Senior AE / AE / AC) may hand work to any teammate —
   // peer-to-peer within the team, not just top-down. Uses the canonical
   // TEAM_ROLES list so server + client + this rule never drift apart.
   if (TEAM_ROLES.includes(assigner.role)) {
     return !!assigner.team && assigner.team === assignee.team;
   }
-  if (assigner.role === 'rd') {
-    const dept = normalizeDepartment(assigner.department);
-    return !!dept && dept === normalizeDepartment(assignee.department);
-  }
+  if (assigner.role === 'rd') return true; // ผ่านด่านฝ่ายมาแล้ว = RD ด้วยกัน
   return false;
+}
+
+// รายชื่อที่ "ฉันมอบหมายงานให้ได้" — ตัวเดียวที่ทุกหน้าต้องใช้ กันหน้าใดหน้าหนึ่งลืมกรอง
+// (เคยเกิด: หน้ารายการกรอง แต่หน้ารายละเอียดยิงรายชื่อดิบเข้า dropdown ทั้งก้อน)
+export function assignableUsersFor(me, users = []) {
+  if (!me?.id) return [];
+  return users.filter((u) => canAssignTask(me, u));
 }
 
 // ── Task takeover ("ดึงงาน") ─────────────────────────────────────────

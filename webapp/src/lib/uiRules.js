@@ -2,6 +2,8 @@
 // independently decide whether a selector should expose search.
 export const ENTITY_SELECT_RULES = Object.freeze({
   customer: Object.freeze({ searchable: true }),
+  // คน: ค้นได้เสมอ — ต้องพิมพ์นามสกุลหาได้ ไม่ใช่ไล่หาในรายชื่อยาว ๆ
+  person: Object.freeze({ searchable: true }),
   product: Object.freeze({ searchable: true }),
   brand: Object.freeze({ searchable: false }),
   mainCategory: Object.freeze({ searchable: true }),

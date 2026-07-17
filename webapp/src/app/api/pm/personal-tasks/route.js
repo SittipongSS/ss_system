@@ -70,7 +70,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const assignee = {
       id: body.assigneeId,
       team: au.user.app_metadata?.team ?? null,
-      department: au.user.app_metadata?.department ?? null, // rd มอบภายในฝ่ายเดียวกัน
+      // role ต้องส่งไปด้วย — ฝ่ายส่วนใหญ่ไม่ได้ตั้งไว้ตรง ๆ canAssignTask อนุมานจาก role ให้
+      role: au.user.app_metadata?.role ?? null,
+      department: au.user.app_metadata?.department ?? null,
     };
     if (!canAssignTask(user, assignee)) return forbidden('ไม่มีสิทธิ์มอบหมายงานให้ผู้ใช้นี้');
     assigneeId = body.assigneeId;
