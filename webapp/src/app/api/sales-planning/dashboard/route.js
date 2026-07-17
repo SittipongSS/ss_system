@@ -5,10 +5,15 @@ import { isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dash
 
 export const dynamic = 'force-dynamic';
 
-// ภาพรวมเป็นข้อมูลระดับ "ทั้งฝ่าย" เหมือนกันทุกผู้ใช้ (ไม่ scope ตามทีม/คน) →
-// cache ต่อเดือน 30 วิ — endpoint นี้กิน Active CPU สูงสุดของระบบ (สแกน sales_deals
-// ทั้งตาราง + aggregate ทุกครั้งที่เปิดหน้าภาพรวม); ความสดช้าสุด 30 วิ ยอมรับได้กับ KPI
-const DASHBOARD_TTL_MS = 30 * 1000;
+// ภาพรวมเป็นข้อมูลระดับ "ทั้งฝ่าย" เหมือนกันทุกผู้ใช้ (ไม่ scope ตามทีม/คน) → cache ได้เต็มที่
+// endpoint นี้เคยกิน Active CPU อันดับ 1 ของระบบ (Vercel Observability 2026-07-17:
+// 1.4K ครั้ง/12ชม. — โควตา Fluid CPU ฟรี 4 ชม./เดือนเต็มเพราะแบบนี้). ความสดช้าสุด
+// 5 นาทีรับได้กับ KPI ภาพรวม — ใครเพิ่งกด Won แล้วรีเฟรชยังเห็นเลขเก่าไม่เกิน 5 นาที
+const DASHBOARD_TTL_MS = 5 * 60 * 1000;
+
+// เฉพาะคอลัมน์ที่ตัวรวมยอดแตะจริง — select('*') ลากทุกคอลัมน์ของทุกดีลมา parse ทิ้ง
+// ทุกครั้งที่ cache หมดอายุ เปลือง CPU + origin transfer โดยไม่มีใครใช้
+const DEAL_COLUMNS = 'stage, projectValue, probability, forecastMonth, wonValue, metadata, confirmedAt, dealType, ownerId, ownerName, team';
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -35,7 +40,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 // โปร่งใสทั้งบริษัท). การจำกัด scope ตามทีม/เจ้าของ ยังบังคับที่หน้า pipeline
 // (deals) และหน้าวางเป้า (targets) ตามเดิม — เฉพาะภาพรวมนี้ที่เห็นครบ.
 async function loadAllDeals(supabase) {
-  const { data: deals, error } = await supabase.from('sales_deals').select('*');
+  const { data: deals, error } = await supabase.from('sales_deals').select(DEAL_COLUMNS);
   if (error) throw new Error(error.message);
   return deals || [];
 }
