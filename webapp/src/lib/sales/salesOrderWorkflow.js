@@ -10,6 +10,29 @@ export function isSalesOrderReviewer(role) {
   return role === 'ae_supervisor' || role === 'admin';
 }
 
+// เหตุผลยกเลิก SO แบบมาตรฐาน (มติผู้ใช้ 2026-07-18) — 3 กลุ่ม:
+//   customer = ฝั่งลูกค้า (ดีลหลุดจริง → พิจารณาย้อน Won ในอนาคต)
+//   document = แก้เอกสาร (ดีลยังอยู่ ออก SO ใหม่)
+//   data     = ข้อมูลพลาด
+// เก็บเป็น cancelReasonCode (โครงสร้าง) คู่กับ cancelReason (หมายเหตุอิสระ) เพื่อรายงาน.
+export const SALES_ORDER_CANCEL_REASONS = [
+  { code: 'customer_cancelled', group: 'customer', label: 'ลูกค้ายกเลิกคำสั่งซื้อ' },
+  { code: 'customer_no_payment', group: 'customer', label: 'ลูกค้าไม่ชำระ / ผิดเงื่อนไข' },
+  { code: 'switched_option', group: 'customer', label: 'เปลี่ยนไปใช้ข้อเสนอ/ใบเสนอราคาอื่น' },
+  { code: 'wrong_document', group: 'document', label: 'ออก SO ผิด (ผิดใบ/ดีล/ลูกค้า)' },
+  { code: 'reissue_correction', group: 'document', label: 'แก้รายการ/ราคา — ออก SO ใหม่' },
+  { code: 'duplicate_test', group: 'data', label: 'รายการซ้ำ / ทดสอบ' },
+  { code: 'other', group: 'data', label: 'อื่น ๆ (ระบุในหมายเหตุ)' },
+];
+
+const CANCEL_REASON_CODES = new Set(SALES_ORDER_CANCEL_REASONS.map((r) => r.code));
+export function isValidCancelReasonCode(code) {
+  return CANCEL_REASON_CODES.has(code);
+}
+export function cancelReasonLabel(code) {
+  return SALES_ORDER_CANCEL_REASONS.find((r) => r.code === code)?.label || code || '';
+}
+
 export function salesOrderActual(order) {
   return order?.status === 'approved' ? Math.max(0, Number(order.actualAmount) || 0) : 0;
 }

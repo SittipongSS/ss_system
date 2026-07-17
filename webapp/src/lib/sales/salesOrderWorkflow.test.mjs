@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canSalesOrderTransition, dealActualFromSalesOrders, isSalesOrderReviewer, salesOrderActual } from './salesOrderWorkflow.js';
+import { SALES_ORDER_CANCEL_REASONS, canSalesOrderTransition, cancelReasonLabel, dealActualFromSalesOrders, isSalesOrderReviewer, isValidCancelReasonCode, salesOrderActual } from './salesOrderWorkflow.js';
 
 test('Actual is counted only after SO approval', () => {
   for (const status of ['draft', 'pending_approval', 'rejected', 'cancelled']) {
@@ -29,4 +29,19 @@ test('deal Actual is accepted only from the approved SO cache', () => {
   assert.equal(dealActualFromSalesOrders({ wonValue: 1380, metadata: { actualSource: 'manual' } }), 0);
   assert.equal(dealActualFromSalesOrders({ wonValue: 1380, metadata: { actualSource: 'sale_order' } }), 1380);
   assert.equal(dealActualFromSalesOrders({ wonValue: -5, metadata: { actualSource: 'sale_order' } }), 0);
+});
+
+test('SO cancel reason codes validate + label, grouped by customer/document/data', () => {
+  assert.equal(isValidCancelReasonCode('customer_cancelled'), true);
+  assert.equal(isValidCancelReasonCode('reissue_correction'), true);
+  assert.equal(isValidCancelReasonCode('other'), true);
+  assert.equal(isValidCancelReasonCode('bogus'), false);
+  assert.equal(isValidCancelReasonCode(''), false);
+  assert.equal(isValidCancelReasonCode(undefined), false);
+  assert.equal(cancelReasonLabel('customer_no_payment'), 'ลูกค้าไม่ชำระ / ผิดเงื่อนไข');
+  // ครบ 3 กลุ่มตามมติ (ฝั่งลูกค้า / แก้เอกสาร / ข้อมูลพลาด)
+  const groups = new Set(SALES_ORDER_CANCEL_REASONS.map((r) => r.group));
+  assert.deepEqual([...groups].sort(), ['customer', 'data', 'document']);
+  // ทุก code ที่อยู่ใน migration CHECK ต้องมีใน list (กันหลุด)
+  assert.equal(SALES_ORDER_CANCEL_REASONS.length, 7);
 });
