@@ -446,18 +446,14 @@ button, select, input, textarea {
   padding-right: 14px;
   border-right: 1px solid rgba(255, 255, 255, 0.16);
 }
+/* แถบบนเป็นพื้นกรมท่าทั้งสองธีม โลโก้จึงเป็นสีขาวล้วน ไม่ต้องมีกรอบพื้นขาวรอง */
 .topnav-brand-img {
-  height: 36px;
+  height: 34px;
   width: auto;
-  object-fit: contain;
-  padding: 3px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 4px 14px rgba(5, 11, 26, 0.2);
-  transition: transform 0.2s ease, box-shadow .2s ease;
+  color: #fff;
+  transition: transform 0.2s ease, opacity .2s ease;
 }
-.topnav-brand:hover .topnav-brand-img { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(5, 11, 26, 0.28); }
+.topnav-brand:hover .topnav-brand-img { transform: translateY(-1px); opacity: .88; }
 
 /* ตัวสลับระบบ (dropdown) */
 .topnav-sys { position: relative; flex-shrink: 0; }
@@ -605,7 +601,7 @@ button, select, input, textarea {
 
   .topnav-system { height: var(--topbar-h); padding: 0 10px; gap: 8px; }
   .topnav-menu { display: none; }
-  .topnav-brand-img { height: 30px; }
+  .topnav-brand-img { height: 26px; }
   .topnav-sys { min-width: 0; }
   .topnav-sys-btn {
     max-width: min(62vw, 270px);
@@ -850,6 +846,11 @@ h1, h2, h3, h4, h5, h6 {
   display: inline-block;
   vertical-align: baseline;
 }
+
+/* โลโก้บนพื้นหน้าเว็บ (login / หน้าแรก): กรมท่าบนพื้นสว่าง, ขาวบนพื้นเข้ม —
+   สีกรมท่าเวอร์ชันธีมมืดเข้มเกินกว่าจะอ่านออกบนพื้นมืด จึงใช้ขาวแทน ไม่ใช่ var(--navy) */
+.brand-mark { color: var(--navy); }
+[data-theme="dark"] .brand-mark { color: #fff; }
 
 /* หมายเหตุเฟส T: sidebar ถูกแทนด้วย .topnav แล้ว — เหลือเฉพาะคลาส brand-* ที่หน้า
    login/hub/โมดัลอื่นยังใช้ */
@@ -5027,23 +5028,19 @@ button.empty-state { width: 100%; font: inherit; }
   min-width: 0;
 }
 
+/* โลโก้ตัวเต็มเป็นแนวนอนอยู่แล้ว วางลงตรง ๆ ได้ — ไม่ต้องมีกล่องกรมท่าครอบแล้วครอปภาพจัตุรัสอย่างเดิม */
 .shipment-print-logo {
-  width: 168px;
-  height: 76px;
-  flex: 0 0 168px;
-  border-radius: 8px;
-  background-color: #18234f;
-  overflow: hidden;
-  position: relative;
+  height: 64px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
 }
 
 .shipment-print-logo img {
-  position: absolute;
-  width: 168px;
-  height: 168px;
-  max-width: none;
-  left: 0;
-  top: -46px;
+  height: 64px;
+  width: auto;
+  max-width: 180px;
+  display: block;
 }
 
 .shipment-print-kicker {

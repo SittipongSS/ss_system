@@ -15,8 +15,6 @@ import {
 // Timeline document (lib/pm/ganttPrint.js): same fonts, colours, logo, layout.
 
 export const COMPANY = COMPANY_LEGAL_NAME;
-// Brand logo embedded as a data URI (from public/brand-logo.png) so it always
-// renders inside the about:blank print window — an external/public URL does not.
 const LOGO_URL = SYSTEM_DOCUMENT_LOGO_URL;
 const VAT_RATE = 0.07;
 

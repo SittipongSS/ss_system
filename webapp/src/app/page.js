@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseBrowser";
+import BrandMark from "@/components/BrandMark";
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -77,12 +78,8 @@ export default function LoginPage() {
     >
       <div className="glass-panel" style={{ padding: "32px", width: "100%", maxWidth: "420px" }}>
         <div style={{ textAlign: "center", marginBottom: "28px" }}>
-          <img
-            src="/brand-logo.png"
-            alt="Scent &amp; Sense"
-            style={{ width: "56px", height: "56px", margin: "0 auto 16px", borderRadius: "var(--radius-lg)", objectFit: "contain", display: "block" }}
-          />
-          <h1 style={{ fontSize: "22px", fontWeight: 600, letterSpacing: "-0.01em" }}>Scent &amp; Sense</h1>
+          {/* โลโก้มี wordmark ในตัวแล้ว จึงไม่มีหัวข้อชื่อบริษัทซ้ำใต้ภาพ */}
+          <BrandMark height={54} className="brand-mark" style={{ margin: "0 auto" }} />
         </div>
 
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>

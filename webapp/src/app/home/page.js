@@ -5,6 +5,7 @@ import { Scale, FolderKanban, Database, ArrowRight, LogOut, Users, LineChart, Ci
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
 import { landingFor, can, canUser, canAccessSahamit, canAccessMgmt } from "@/lib/permissions";
+import BrandMark from "@/components/BrandMark";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 const SUPABASE_CONFIGURED =
@@ -100,11 +101,7 @@ export default function HomeHubPage() {
       <div style={{ width: "100%", maxWidth: "1000px" }}>
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: "36px" }}>
-          <img
-            src="/brand-logo.png"
-            alt="Scent &amp; Sense"
-            style={{ width: "60px", height: "60px", margin: "0 auto 18px", borderRadius: "var(--radius-lg)", objectFit: "contain", display: "block" }}
-          />
+          <BrandMark height={48} className="brand-mark" style={{ margin: "0 auto 18px" }} />
           <h1 style={{ fontSize: "24px", fontWeight: 600, letterSpacing: "-0.01em" }}>
             สวัสดี{userName ? `, ${userName}` : ""}
           </h1>

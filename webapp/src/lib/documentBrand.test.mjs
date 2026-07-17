@@ -1,17 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { BRAND_LOGO_VIEWBOX } from './brandLogo.js';
 import {
   COMPANY_ADDRESS,
   COMPANY_TAX_ID,
   COMPANY_WEBSITE,
   DOCUMENT_FORMS,
+  SYSTEM_DOCUMENT_LOGO_COLOR,
   SYSTEM_DOCUMENT_LOGO_URL,
   documentFormLine,
 } from './documentBrand.js';
 
-test('uses the supplied logo as the system document logo', () => {
-  assert.equal(SYSTEM_DOCUMENT_LOGO_URL, '/scent-sense-logo.png');
+test('เอกสารพิมพ์ฝังโลโก้ตัวเต็มเป็นสีกรมท่ามาในภาพเลย', () => {
+  // ฝังมาเป็นภาพ ไม่ใช่ลิงก์ เพราะหน้าต่างพิมพ์ถูกเขียนขึ้นเอง
+  assert.match(SYSTEM_DOCUMENT_LOGO_URL, /^data:image\/svg\+xml,/);
+  const svg = decodeURIComponent(SYSTEM_DOCUMENT_LOGO_URL.replace(/^data:image\/svg\+xml,/, ''));
+  // สีต้องติดมากับภาพ — ปล่อยเป็น currentColor แล้วเอกสารจะพิมพ์ออกมาเป็นสีดำ
+  assert.ok(svg.includes(`color:${SYSTEM_DOCUMENT_LOGO_COLOR}`));
+  assert.ok(svg.includes(BRAND_LOGO_VIEWBOX));
+  assert.equal(svg.includes('<path'), true);
 });
 
 test('company header details match the approved registration info', () => {

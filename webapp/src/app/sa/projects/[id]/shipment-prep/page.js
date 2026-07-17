@@ -119,7 +119,7 @@ export default function ShipmentPrepPage() {
               <div
                 className="shipment-print-logo"
               >
-                {/* Plain img is intentional: print CSS crops the approved square master artwork. */}
+                {/* Plain img is intentional: the document logo is a colour-baked data URI, not a themed mark. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={SYSTEM_DOCUMENT_LOGO_URL} alt="Scent & Sense" />
               </div>
