@@ -81,7 +81,11 @@ export default function TaskDetailPage() {
             <div className={styles.field}><span className={styles.label}>หมวดงาน</span><div className={styles.value}><Tag size={14} /> {task.category || "ไม่ระบุ"}</div></div>
             <div className={styles.field}><span className={styles.label}>ความยาก</span><div className={styles.value}>{DIFFICULTY_LABELS[task.difficulty] || task.difficulty || "-"}</div></div>
             <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>รายละเอียด / โน้ต</span><div className={styles.value}>{task.note || "ไม่มีรายละเอียดเพิ่มเติม"}</div></div>
-            {task.lateReason && <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>สาเหตุที่ทำเสร็จช้า</span><div className={styles.value} style={{ color: "var(--amber)" }}>{task.lateReason}</div></div>}
+            {/* ไม่มีช่อง "สาเหตุที่ทำเสร็จช้า" ที่นี่ — อยู่ในเธรดอัปเดตงานแล้ว (มติผู้ใช้
+                2026-07-17). ช่องนี้อ่าน task.lateReason ซึ่งเก็บค่าล่าสุดค่าเดียว และ
+                ถูกล้างทิ้งตอนเปิดงานใหม่/ปิดตรงเวลา — เธรดเก็บครบทุกครั้งพร้อมเวลา
+                และคนเขียน จึงเห็นคู่กับอัปเดตอื่นตามลำดับเวลา. คอลัมน์ใน DB ยังอยู่
+                (KPI/รายงานยังใช้ได้) แค่ไม่โชว์ซ้ำ */}
           </div>
         </DetailCard>
 
