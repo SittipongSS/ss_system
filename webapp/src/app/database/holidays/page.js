@@ -150,14 +150,14 @@ export default function HolidaysPage() {
           </div>
 
           {/* weekday header */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "6px", marginBottom: "6px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "6px", marginBottom: "6px" }}>
             {WEEKDAYS_TH.map((w, i) => (
               <div key={w} style={{ textAlign: "center", fontSize: "12px", fontWeight: 600, color: i === 0 || i === 6 ? "var(--red)" : "var(--text-3)", padding: "4px 0" }}>{w}</div>
             ))}
           </div>
 
           {/* day grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "6px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "6px" }}>
             {cells.map((d, i) => {
               if (d === null) return <div key={`e${i}`} />;
               const iso = toISO(cursor.y, cursor.m, d);

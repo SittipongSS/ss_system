@@ -688,10 +688,10 @@ export default function TasksPage() {
             <button className="btn-icon" onClick={() => shiftMonth(1)} aria-label="เดือนถัดไป"><ChevronRight size={16} /></button>
           </div>
           <div className="glass-panel" style={{ padding: "10px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", marginBottom: "4px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "4px", marginBottom: "4px" }}>
               {WEEKDAYS_TH.map((w) => <div key={w} style={{ textAlign: "center", fontSize: "11px", fontWeight: 700, color: "var(--text-3)", padding: "4px 0" }}>{w}</div>)}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "4px" }}>
               {calCells.map((d, i) => {
                 if (!d) return <div key={i} style={{ minHeight: "84px", borderRadius: "8px", background: "color-mix(in srgb, var(--panel-2) 40%, transparent)" }} />;
                 const dayKey = ymd(d);
