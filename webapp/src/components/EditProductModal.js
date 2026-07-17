@@ -3,24 +3,14 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Factory } from "lucide-react";
 import Modal from "@/components/Modal";
-import DateInput from "@/components/ui/DateInput";
-import Select from "@/components/ui/Select";
-import SearchableSelect from "@/components/ui/SearchableSelect";
-import AddBrandButton from "@/components/master/AddBrandButton";
-import { categoryInfo } from "@/lib/master/categoryOf";
-import { brandTh, brandEn, brandBoth, normalizeBrands } from "@/lib/master/brands";
+import ProductForm, { PRODUCT_EDIT_FIELDS } from "@/components/database/ProductForm";
+import { brandTh, brandEn, normalizeBrands } from "@/lib/master/brands";
 import { fmtMoney } from "@/lib/format";
-import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
 // (Excise APPROVAL still lives on the registration.) Layout/styling mirrors the
 // "add product" form on /database/products so both forms feel like one system.
-const FIELDS = [
-  "customerId",
-  "fgCode", "productDescription", "productDescriptionEn", "brandName", "brandNameEn",
-  "formulaName", "formulaCode", "formulaDate",
-  "volume", "volumeUnit", "piecesPerCase", "retailPriceIncVat",
-];
+// (ช่องที่ดึงจากสินค้าเดิม = PRODUCT_EDIT_FIELDS ใน ProductForm — ที่เดียว)
 
 export default function EditProductModal({ open, onClose, onSaved, product, brandOptions = [], customers = [] }) {
   const [form, setForm] = useState({});
@@ -39,7 +29,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   useEffect(() => {
     if (open && product) {
       const seed = {};
-      for (const k of FIELDS) seed[k] = product[k] ?? "";
+      for (const k of PRODUCT_EDIT_FIELDS) seed[k] = product[k] ?? "";
       setForm(seed);
       setFactoryPriceDraft(product.costPrice ?? "");
       setPriceEditorOpen(false);
@@ -59,10 +49,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     }
   }, [open, product?.id]);
 
-  const getCategoryInfo = (fgCode) => categoryInfo(fgCode, productTypes);
 
   if (!product) return null;
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   // Brand suggestions follow the selected customer's brands[] (fall back to the
   // parent-supplied list while customers aren't loaded). Changing the customer
@@ -80,12 +68,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     : customerBrands;
 
   const handleCustomerChange = (v) => { setExtraBrands([]); setForm((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" })); };
-  // เลือกแบรนด์ → เก็บทั้ง TH+EN จากลิสต์ (match ด้วย th หรือ en). ไม่มี free-text
-  // แล้ว — แบรนด์ใหม่ต้องเพิ่มเข้าลูกค้าผ่านปุ่ม "+" (กฎ ลูกค้า›แบรนด์›สินค้า).
-  const handleBrandChange = (v) => {
-    const hit = brandOptionList.find((b) => brandTh(b) === v || brandEn(b) === v);
-    setForm((f) => ({ ...f, brandName: hit ? brandTh(hit) : v, brandNameEn: hit ? brandEn(hit) : "" }));
-  };
+
 
   const submit = async (e) => {
     e.preventDefault();
@@ -157,193 +140,32 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     setPriceSubmitting(false);
   };
 
-  const field = (k, label, type = "text", extra = {}) => (
-    <div className="form-group">
-      <label>{label}</label>
-      <input
-        type={type}
-        value={form[k] ?? ""}
-        onChange={(e) => set(k, e.target.value)}
-        className={`premium-input w-full ${type === "number" ? "font-mono" : ""}`}
-        {...extra}
-      />
-    </div>
-  );
+
 
   const money = (v) =>
     v == null || v === "" || Number.isNaN(Number(v)) ? "-" : fmtMoney(v);
 
-  const cat = getCategoryInfo(form.fgCode);
-  const catBox = (() => {
-    if (!form.fgCode) {
-      return <span className="text-xs text-[var(--text-3)] mt-1">เฉพาะหมวด 01-002 (น้ำหอมฉีดผิวกาย) เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต</span>;
-    }
-    if (!cat.code) {
-      return <div className="mt-2 text-xs text-[var(--text-3)] italic">รูปแบบรหัส FG ไม่ถูกต้อง (ไม่พบโครงสร้างหมวดหมู่ XX-YYY)</div>;
-    }
-    if (!cat.found) {
-      if (productTypes.length === 0) return null; // ยังโหลดไม่เสร็จ
-      return <div className="mt-2 text-xs text-[var(--red)] bg-[var(--red-soft)] p-2 rounded border border-[var(--border)]">พบหมวดหมู่ <strong>{cat.code}</strong> แต่ไม่มีในฐานข้อมูล (อาจพิมพ์ผิด หรือเป็นหมวดใหม่)</div>;
-    }
 
-    const isExcise = cat.code === "01-002";
-    return (
-      <div className={`mt-2 p-3 text-xs rounded-lg border border-[var(--border)] flex flex-col gap-1 ${isExcise ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-2)] text-[var(--text-2)]"}`}>
-        <div className="flex items-center gap-2">
-          <span className="font-mono bg-white/50 px-1.5 py-0.5 rounded text-[10px] font-bold">{cat.code}</span>
-          <span className="font-semibold">{cat.typeInfo.nameTh || cat.typeInfo.nameEn}</span>
-        </div>
-        <div className="text-[11px] opacity-80 pl-1">
-          กลุ่มหลัก: {cat.typeInfo.mainCategoryName}
-        </div>
-        <div className={`mt-1 pl-1 font-semibold ${isExcise ? "" : "text-[var(--green)]"}`}>
-          {isExcise ? "⚠️ สินค้านี้เข้าข่ายต้องเสียภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)" : "✓ สินค้านี้ได้รับการยกเว้นภาษีสรรพสามิต"}
-        </div>
-      </div>
-    );
-  })();
 
   return (
     <Modal open={open} onClose={() => !(submitting || priceSubmitting) && onClose()} title={`แก้ไขสินค้า — ${product.fgCode}`} size="lg">
       <form onSubmit={submit}>
-        {/* Section 1: product */}
-        <div className="mb-[22px]">
-          <div className="border-b border-[var(--border)] pb-3 mb-5">
-            <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลหลักสินค้า (Product Details)</h3>
-          </div>
-          <div className="form-grid cols-2">
-            <div className="form-group col-span-2">
-              <label>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></label>
-              <input type="text" value={form.fgCode ?? ""} onChange={(e) => set("fgCode", e.target.value)} required placeholder="FG-AAA-BB-CCC-DDDD" className="premium-input w-full font-mono text-base" />
-              {catBox}
-            </div>
-            <div className="form-group col-span-2">
-              <label>ชื่อสินค้า / รายละเอียด (ไทย)</label>
-              <input type="text" value={form.productDescription ?? ""} onChange={(e) => set("productDescription", e.target.value)} placeholder="เช่น มิดไนท์บลูม 50ml" className="premium-input w-full" />
-            </div>
-            <div className="form-group col-span-2">
-              <label>ชื่อสินค้า / รายละเอียด (อังกฤษ)</label>
-              <input type="text" value={form.productDescriptionEn ?? ""} onChange={(e) => set("productDescriptionEn", e.target.value)} placeholder="e.g. Midnight Bloom 50ml" className="premium-input w-full" />
-              <span className="text-xs text-[var(--text-3)] mt-1">กรอกอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ) <span className="text-[var(--red)]">*</span></span>
-            </div>
-            <div className="form-group">
-              <label>{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า) <span className="text-[var(--red)]">*</span></label>
-              <SearchableSelect
-                entity="customer"
-                value={form.customerId ?? ""}
-                onChange={handleCustomerChange}
-                placeholder="ค้นหารหัส / ชื่อลูกค้า..."
-                emptyText="ไม่พบลูกค้า"
-                options={(() => {
-                  const opts = customers.map((c) => ({
-                    value: c.id,
-                    label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
-                    search: `${c.arCode || ""} ${c.name}`,
-                  }));
-                  // เจ้าของปัจจุบันอาจไม่อยู่ในลิสต์ (list ถูก scope ตามทีม แต่สินค้า
-                  // ข้ามทีมมีจริง) — แทรกไว้ไม่ให้ค่าเดิมโชว์ว่างตอนแก้ไข
-                  if (form.customerId && !opts.some((o) => o.value === form.customerId)) {
-                    opts.unshift({ value: form.customerId, label: product.customerName || form.customerId });
-                  }
-                  return opts;
-                })()}
-              />
-              <span className="text-xs text-[var(--text-3)] mt-1">เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ</span>
-            </div>
-            <div className="form-group">
-              <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-              <div className="flex gap-1.5 items-center">
-                <div className="flex-1 min-w-0">
-                  <SearchableSelect
-                    entity="brand"
-                    disabled={!form.customerId}
-                    options={brandOptionList.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
-                    value={form.brandName || form.brandNameEn || ""}
-                    onChange={handleBrandChange}
-                    placeholder={form.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
-                    emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — กด + เพื่อเพิ่ม"
-                  />
-                </div>
-                <AddBrandButton
-                  customerId={form.customerId}
-                  disabled={!form.customerId}
-                  onAdded={(b) => {
-                    setExtraBrands((x) => [...x, b]);
-                    setForm((f) => ({ ...f, brandName: b.th, brandNameEn: b.en }));
-                  }}
-                />
-              </div>
-              <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่มใหม่ด้วยปุ่ม +, แก้ชื่อได้ที่หน้าลูกค้า</span>
-            </div>
-          </div>
-        </div>
+        {/* ฟอร์มเดียวกับโมดัลเพิ่มสินค้า (/database/products) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.
+            ต่างแค่โหมด: ไม่มีป้ายผู้สร้าง และราคาโรงงานดูอย่างเดียว (แก้ผ่านแผงด้านล่าง) */}
+        <ProductForm
+          form={form}
+          onForm={(patch) => setForm((f) => ({ ...f, ...patch }))}
+          productTypes={productTypes}
+          customers={customers}
+          brandOptions={brandOptionList}
+          factoryPrice="readonly"
+          currentCostPrice={product.costPrice}
+          onCustomerChange={handleCustomerChange}
+          onBrandAdded={(b) => setExtraBrands((x) => [...x, b])}
+        />
 
-        {/* Section 2: formula (ข้อมูลฝ่าย RD — ไม่บังคับ: FG ที่ไม่มีสูตรก็มี) */}
+        {/* แผงอัปเดตราคาโรงงาน — action แยกจากการบันทึกสเปค (กระทบประวัติราคา/ต้นทุน) */}
         <div className="mb-[22px]">
-          <div className="border-b border-[var(--border)] pb-3 mb-5">
-            <h3 className="font-semibold text-[var(--text)]">2. ข้อมูลสูตร (Formula)</h3>
-          </div>
-          <div className="form-grid cols-2">
-            <div className="form-group col-span-2">
-              <label>ชื่อสูตร</label>
-              <input type="text" value={form.formulaName ?? ""} onChange={(e) => set("formulaName", e.target.value)} placeholder="เช่น มิดไนท์บลูม v2" className="premium-input w-full" />
-            </div>
-            <div className="form-group">
-              <label>รหัสสูตร</label>
-              <input type="text" value={form.formulaCode ?? ""} onChange={(e) => set("formulaCode", e.target.value)} placeholder="เช่น F-2569-014" className="premium-input w-full font-mono" />
-            </div>
-            <div className="form-group">
-              <label>วันที่สูตร</label>
-              <DateInput value={form.formulaDate ?? ""} onChange={(value) => set("formulaDate", value || "")} className="w-full" />
-              <span className="text-xs text-[var(--text-3)] mt-1">วันที่ของตัวสูตร (เวอร์ชันที่ RD ออกให้) ไม่ใช่วันที่บันทึกเข้าระบบ</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 3: packaging & pricing */}
-        <div className="mb-[22px]">
-          <div className="border-b border-[var(--border)] pb-3 mb-5">
-            <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลบรรจุภัณฑ์และราคา (Packaging & Pricing)</h3>
-          </div>
-          <div className="form-grid cols-2">
-            <div className="form-group">
-              <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
-              <div className="flex gap-2">
-                <input type="number" value={form.volume ?? ""} onChange={(e) => set("volume", e.target.value)} required min="0.01" step="0.01" className="premium-input flex-1 font-mono" />
-                <Select value={form.volumeUnit || "ml"} onChange={(e) => set("volumeUnit", e.target.value)} style={{ width: "80px" }}>
-                  <option value="ml">ml</option>
-                  <option value="g">g</option>
-                  <option value="kg">kg</option>
-                  <option value="oz">oz</option>
-                  <option value="L">L</option>
-                  <option value="pcs">pcs</option>
-                </Select>
-              </div>
-            </div>
-            <div className="form-group">
-              <label>จำนวนชิ้นต่อลัง</label>
-              <input type="number" value={form.piecesPerCase ?? ""} onChange={(e) => set("piecesPerCase", e.target.value)} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
-            </div>
-            <div className="form-group">
-              <label>ราคาโรงงาน (บาท)</label>
-              <input
-                type="text"
-                value={money(product.costPrice)}
-                readOnly
-                className="premium-input w-full font-mono tabular-nums"
-                style={{ color: "var(--text-3)", background: "var(--panel-2)", cursor: "not-allowed" }}
-                aria-describedby="factory-price-readonly-help"
-              />
-              <span id="factory-price-readonly-help" className="text-xs text-[var(--text-3)] mt-1">
-                ช่องนี้ดูอย่างเดียว ต้องกด “อัปเดตราคาโรงงาน” ด้านล่างเพื่อแก้ราคา
-              </span>
-            </div>
-            <div className="form-group">
-              <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
-              <MoneyInput value={form.retailPriceIncVat ?? ""} onChange={(value) => set("retailPriceIncVat", value ?? "")} className="w-full" />
-            </div>
-          </div>
-
           <div className="glass-panel mt-5" style={{ padding: "16px 18px", borderLeft: "3px solid var(--amber)" }}>
             <div className="flex items-start gap-3 flex-wrap">
               <div className="brand-logo" style={{ width: 38, height: 38, borderRadius: "var(--radius-md)", background: "var(--panel-2)", color: "var(--amber)" }}>
