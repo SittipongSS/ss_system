@@ -19,6 +19,14 @@
 --
 --  additive ล้วน รันซ้ำได้. ⚠ รันมือบน Supabase SQL Editor ก่อน/พร้อม deploy —
 --  ยังไม่รัน = หน้ารายละเอียดงานจะโหลดเธรดไม่ได้ (แต่ตัวงานยังใช้ได้ปกติ).
+--
+--  ⚠ prod เคยมีตารางชื่อนี้อยู่ก่อนแล้ว จากเซสชันเก่าที่ลองทำเธรดแล้วไม่จบ —
+--  schema คนละแบบ (มี fromStatus/toStatus แทน meta) และไม่เคยมีไฟล์ migration
+--  ในโปรเจกต์. "create table if not exists" จึงเป็น no-op เงียบ ๆ ไม่ซ่อมอะไร
+--  แล้ว insert พังด้วย "Could not find the 'meta' column".
+--  ⇒ ต้องมี alter add/drop ต่อท้ายเสมอ ตัว create table อย่างเดียวไม่พอ
+--    (บทเรียน: idempotent ที่แท้จริง = รันกับตารางที่ผิดรูปแล้วต้องซ่อมให้ถูก
+--     ไม่ใช่แค่ "รันซ้ำแล้วไม่ error")
 -- ============================================================
 
 create table if not exists public.personal_task_updates (
@@ -32,6 +40,40 @@ create table if not exists public.personal_task_updates (
   "authorName" text,
   "createdAt"  timestamptz not null default now()
 );
+
+-- ซ่อมตารางที่สร้างไว้ก่อนด้วย schema เก่า (no-op ถ้าสร้างใหม่จากบล็อกข้างบน)
+alter table public.personal_task_updates
+  add column if not exists "taskId"     text,
+  add column if not exists kind         text default 'comment',
+  add column if not exists body         text,
+  add column if not exists meta         jsonb default '{}'::jsonb,
+  add column if not exists "authorId"   text,
+  add column if not exists "authorName" text,
+  add column if not exists "createdAt"  timestamptz default now();
+
+-- คอลัมน์จากดีไซน์เก่า: เก็บได้แค่การเปลี่ยนสถานะ ใช้กับ kind='due' (เลื่อนกำหนด)
+-- ไม่ได้ — meta jsonb เก็บ {field, from, to} ได้ทุกชนิด. ไม่มีโค้ดไหนอ่าน/เขียน
+-- สองตัวนี้ (ในระบบมี fromStatus/toStatus ที่ sales_lead_events — คนละตาราง)
+alter table public.personal_task_updates
+  drop column if exists "fromStatus",
+  drop column if exists "toStatus";
+
+-- check constraint ของ kind: ตารางเก่าอาจมีของเดิมที่ไม่รู้จัก 'comment'/'due'/'late'
+-- (ชื่อ constraint เดาไม่ได้) — ล้าง check ทั้งหมดบนตารางนี้แล้วใส่ชุดที่ถูกกลับไป
+do $$
+declare c record;
+begin
+  for c in
+    select conname from pg_constraint
+    where conrelid = 'public.personal_task_updates'::regclass and contype = 'c'
+  loop
+    execute format('alter table public.personal_task_updates drop constraint %I', c.conname);
+  end loop;
+end $$;
+
+alter table public.personal_task_updates
+  add constraint personal_task_updates_kind_check
+  check (kind in ('comment', 'status', 'due', 'late'));
 
 create index if not exists personal_task_updates_task_idx
   on public.personal_task_updates ("taskId", "createdAt" desc);
