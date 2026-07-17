@@ -527,7 +527,6 @@ export default function DealOverviewPage() {
       expectedCloseDate: deal.expectedCloseDate || "",
       startDate: deal.startDate || "",
       endDate: deal.endDate || "",
-      depositPaid: !!deal.depositPaid,
       notes: deal.notes || "",
       projectId: deal.projectId || "",
       lockedProjectId: deal.projectId || "",
@@ -1364,14 +1363,6 @@ export default function DealOverviewPage() {
               stages={PIPELINE_STAGES.filter((st) => st !== "won" || alreadyWon)}
               alreadyWon={alreadyWon}
               onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
-              extra={(
-                <>
-                  <label className="form-inline-check" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input type="checkbox" checked={dealForm.depositPaid} onChange={(e) => setDealForm({ ...dealForm, depositPaid: e.target.checked })} />
-                    ได้รับมัดจำแล้ว
-                  </label>
-                </>
-              )}
             />
             <div className="form-action-bar">
               <button type="button" className="btn" onClick={() => setDealModalOpen(false)}>ยกเลิก</button>

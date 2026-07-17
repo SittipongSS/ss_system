@@ -6,10 +6,16 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 // ชุดช่องกรอกดีลมาตรฐาน (layout ตามมติ #283) — ใช้ร่วม 3 จุด: โมดัลหน้ารวมดีล /
 // โมดัลหน้าดีล / ฟอร์มสร้างดีลจากลีด เพื่อไม่ให้ฟอร์มเพี้ยนหากันอีก
 // แถว: ชื่อดีล (เต็ม) → ลูกค้า|แบรนด์ → ประเภท|หมวดสินค้า → สถานะ|FC% →
-// มูลค่าคาดการณ์|วันที่คาดปิด → วันที่เริ่ม|วันที่สิ้นสุด → [extra] → รายละเอียด (เต็ม)
+// มูลค่าคาดการณ์|วันที่คาดปิด → วันที่เริ่ม|วันที่สิ้นสุด → รายละเอียด (เต็ม)
 // ไม่มีช่อง "เดือนคาดการณ์" แล้ว (มติผู้ใช้ 2026-07-16) — เดือน FC อนุมานจากวันที่คาดปิด
 // ฝั่ง server เสมอ ฟอร์มโชว์เดือนที่จะได้เป็น hint ใต้ช่องวันที่
 // ใช้ใน .form-grid (2 คอลัมน์) หรือ grid ใดๆ — ตัวเองไม่สร้าง form/grid ครอบ
+//
+// ไม่มี prop `extra` แล้ว (มติผู้ใช้ 2026-07-17): เดิมหน้ารายละเอียดดีลใช้ยัด
+// checkbox "ได้รับมัดจำแล้ว" เข้ามาที่เดียว ฟอร์มแก้ดีลเลยหน้าตาไม่ตรงกับหน้ารวม
+// — ผิดกฎ "แก้ = ฟอร์มเดียวกับสร้าง" (ดู AGENTS.md). ช่องเฉพาะจุดแบบนี้คือรูรั่ว
+// ของกฎ เปิดไว้เมื่อไรฟอร์มก็เพี้ยนกันเมื่อนั้น — ถ้าต้องมีช่องต่างจริง ใช้ props
+// แบบโหมด (เช่น alreadyWon) ไม่ใช่ช่องเสียบอิสระ
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import AddBrandButton from "@/components/master/AddBrandButton";
@@ -28,7 +34,6 @@ export default function DealFormFields({
   stages = [],           // ตัวเลือกสถานะ (caller กรอง won เอง)
   alreadyWon = false,    // ล็อก FC%/เดือน/มูลค่า หลังปิด Won
   onCustomersUpdated,    // ให้ AddBrandButton อัปเดตรายชื่อลูกค้าของ caller
-  extra = null,          // ช่องเฉพาะจุด (เช่น มูลค่าปิดจริง/มัดจำ ของหน้าดีล) ก่อนรายละเอียด
 }) {
   const set = (k) => (v) => onPatch({ [k]: v });
   return (
@@ -155,7 +160,6 @@ export default function DealFormFields({
         วันที่สิ้นสุด
         <DateInput value={form.endDate || ""} onChange={set("endDate")} />
       </label>
-      {extra}
       <label className="deal-field" style={{ gridColumn: "1 / -1" }}>
         รายละเอียด
         <textarea className="premium-input" rows={3} value={form.notes || ""} onChange={(e) => set("notes")(e.target.value)} />

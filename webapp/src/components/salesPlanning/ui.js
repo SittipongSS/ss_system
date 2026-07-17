@@ -27,7 +27,6 @@ export const initialDealForm = {
   expectedCloseDate: "",
   startDate: "",   // วันที่เริ่มดีล (mig 0095) — ใช้เป็น anchor gen ไทม์ไลน์
   endDate: "",
-  depositPaid: false,
   notes: "",
 };
 
