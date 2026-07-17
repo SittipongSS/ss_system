@@ -4,6 +4,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import Select from "@/components/ui/Select";
+import PersonSelect from "@/components/ui/PersonSelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { productOptionDisplay } from "@/components/master/productOption";
@@ -394,33 +395,36 @@ export default function ProjectFormModal({
         <div className="pm-form-grid gap-[18px]">
           <div className="form-group col-span-2">
             <label>ผู้ดูแล (Account Executive){lockPeopleField === "aeOwner" ? " · ล็อกเป็นคุณ" : ""}</label>
-            <Select fullWidth name="aeOwner" value={lockPeopleField === "aeOwner" ? myName : form.aeOwner} onChange={change} disabled={lockPeopleField === "aeOwner"}>
-              <option value="">— ไม่ระบุ —</option>
-              {users.filter(u => u.role === "ae" || u.role === "senior_ae" || u.role === "ae_supervisor").map((u) => {
-                const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
-                return <option key={u.id} value={name}>{name}</option>;
-              })}
-            </Select>
+            <PersonSelect
+              by="name"
+              users={users.filter((u) => ["ae", "senior_ae", "ae_supervisor"].includes(u.role))}
+              value={lockPeopleField === "aeOwner" ? myName : form.aeOwner}
+              disabled={lockPeopleField === "aeOwner"}
+              ariaLabel="ผู้ดูแล (Account Executive)"
+              onChange={(aeOwner) => setForm((f) => ({ ...f, aeOwner }))}
+            />
           </div>
           <div className="form-group">
             <label>ผู้ประสานงาน (Account Coordinator){lockPeopleField === "preparedBy" ? " · ล็อกเป็นคุณ" : ""}</label>
-            <Select fullWidth name="preparedBy" value={lockPeopleField === "preparedBy" ? myName : form.preparedBy} onChange={change} disabled={lockPeopleField === "preparedBy"}>
-              <option value="">— ไม่ระบุ —</option>
-              {users.filter(u => u.role === "ac").map((u) => {
-                const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
-                return <option key={u.id} value={name}>{name}</option>;
-              })}
-            </Select>
+            <PersonSelect
+              by="name"
+              users={users.filter((u) => u.role === "ac")}
+              value={lockPeopleField === "preparedBy" ? myName : form.preparedBy}
+              disabled={lockPeopleField === "preparedBy"}
+              ariaLabel="ผู้ประสานงาน (Account Coordinator)"
+              onChange={(preparedBy) => setForm((f) => ({ ...f, preparedBy }))}
+            />
           </div>
           <div className="form-group">
             <label>ผู้ตรวจสอบ (AE Supervisor){lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label>
-            <Select fullWidth name="aeSupervisor" value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} onChange={change} disabled={lockPeopleField === "aeSupervisor"}>
-              <option value="">— ไม่ระบุ —</option>
-              {users.filter(u => u.role === "ae_supervisor").map((u) => {
-                const name = (u.name || "").trim() || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
-                return <option key={u.id} value={name}>{name}</option>;
-              })}
-            </Select>
+            <PersonSelect
+              by="name"
+              users={users.filter((u) => u.role === "ae_supervisor")}
+              value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor}
+              disabled={lockPeopleField === "aeSupervisor"}
+              ariaLabel="ผู้ตรวจสอบ (AE Supervisor)"
+              onChange={(aeSupervisor) => setForm((f) => ({ ...f, aeSupervisor }))}
+            />
           </div>
         </div>
 

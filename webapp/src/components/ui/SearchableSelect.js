@@ -15,6 +15,7 @@ export default function SearchableSelect({
   emptyText,
   size = "md",
   searchable = true,
+  searchPlaceholder = "ค้นหา...",
   entity,
   className = "",
   ariaLabel,
@@ -99,7 +100,7 @@ export default function SearchableSelect({
               <input
                 autoFocus
                 value={search}
-                placeholder="ค้นหา..."
+                placeholder={searchPlaceholder}
                 onChange={(event) => {
                   setSearch(event.target.value);
                   if (allowFreeText) onChange?.(event.target.value);

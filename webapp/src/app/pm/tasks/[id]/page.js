@@ -10,6 +10,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import TaskFormModal from "@/components/pm/TaskFormModal";
 import { DIFFICULTY_LABELS } from "@/lib/pm/tasks";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { assignableUsersFor } from "@/lib/permissions";
 import { fmtDateNumeric, fmtDateTime } from "@/lib/format";
 import styles from "./page.module.css";
 
@@ -45,7 +46,9 @@ export default function TaskDetailPage() {
       json("/api/pm/task-deals"),   // ดีลที่ผูกงานได้ (scope ทีม) — ตัวเดียวกับหน้ารายการ
       json("/api/pm/projects"),     // ใช้แค่ติดรหัสโครงการหน้าชื่อดีลใน dropdown
     ]).then(([users, deals, projects]) => setOpts({
-      assignableUsers: Array.isArray(users) ? users : [],
+      // ต้องกรองด้วยกติกาเดียวกับ server — ยิงรายชื่อดิบเข้า dropdown จะเห็นคนทั้งบริษัท
+      // ทุกฝ่าย เลือกไปก็โดนปฏิเสธ (หน้ารายการกรองอยู่ หน้านี้เคยลืม)
+      assignableUsers: assignableUsersFor(task?.me, Array.isArray(users) ? users : []),
       deals: Array.isArray(deals) ? deals : [],
       projects: Array.isArray(projects) ? projects : [],
     }));

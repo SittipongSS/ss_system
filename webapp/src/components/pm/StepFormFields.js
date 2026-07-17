@@ -7,8 +7,7 @@ import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import PredecessorPicker from "@/components/pm/PredecessorPicker";
-import { TEAM_LABELS } from "@/lib/permissions";
-import { compactPersonName } from "@/lib/personName";
+import PersonSelect from "@/components/ui/PersonSelect";
 import { syncStepForm } from "@/lib/pm/stepSchedule";
 
 export const STEP_ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
@@ -46,28 +45,20 @@ export const stepToForm = (task) => ({
 export function AssigneeField({ form, setForm, users }) {
   const role = form.role;
   if (role === "SA") {
-    const byTeam = {};
-    users.filter((u) => u.department === "SA").forEach((u) => {
-      (byTeam[u.team || "—"] ||= []).push(u);
-    });
-    const teams = Object.keys(byTeam).sort();
+    // ทีมของแต่ละคนแสดงเป็นบรรทัดรองในตัวเลือก (PersonSelect) แทนการจัดกลุ่ม optgroup
+    // — ค้นหาได้ทั้งชื่อ นามสกุล และชื่อทีม ซึ่ง optgroup ทำไม่ได้
+    const saUsers = users.filter((u) => u.department === "SA");
     return (
-      <Select
-        fullWidth
+      <PersonSelect
+        users={saUsers}
         value={form.assigneeId || ""}
-        onChange={(e) => {
-          const picked = users.find((u) => u.id === e.target.value);
-          setForm((f) => ({ ...f, assigneeId: e.target.value, assignee: picked?.name || "" }));
+        emptyLabel="— ไม่มอบหมาย —"
+        ariaLabel="ผู้รับผิดชอบ"
+        onChange={(assigneeId) => {
+          const picked = users.find((u) => u.id === assigneeId);
+          setForm((f) => ({ ...f, assigneeId, assignee: picked?.name || "" }));
         }}
-        title="มอบหมายให้คนใน SA (จะไปอยู่ใน 'งานของฉัน' ของคนนั้น)"
-      >
-        <option value="">— ไม่มอบหมาย —</option>
-        {teams.map((tm) => (
-          <optgroup key={tm} label={TEAM_LABELS[tm] || tm}>
-            {byTeam[tm].map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name || u.email)}</option>)}
-          </optgroup>
-        ))}
-      </Select>
+      />
     );
   }
   if (STAFF_DEPTS.includes(role)) {

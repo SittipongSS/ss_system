@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData } from './permissions';
 
 test('canAssignTask: teammates assign to each other; sup/admin to anyone', () => {
   const ae = { id: 'u1', role: 'ae', team: 'KA' };
@@ -24,7 +24,7 @@ test('canAssignTask: teammates assign to each other; sup/admin to anyone', () =>
   // a team member with no team set can only self-assign
   assert.equal(canAssignTask({ id: 'u1', role: 'ae', team: null }, acMate), false);
 
-  // superuser → anyone, any team (sup/admin)
+  // AE Supervisor → ทั้งฝ่าย SA (ข้ามทีมได้ เพราะยังเป็นฝ่ายเดียวกัน)
   assert.equal(canAssignTask({ id: 's', role: 'ae_supervisor', team: null }, otherTeam), true);
   assert.equal(canAssignTask({ id: 'a', role: 'admin', team: null }, otherTeam), true);
 
@@ -35,6 +35,51 @@ test('canAssignTask: teammates assign to each other; sup/admin to anyone', () =>
   // missing ids → false
   assert.equal(canAssignTask(null, acMate), false);
   assert.equal(canAssignTask(ae, null), false);
+});
+
+test('canAssignTask: มอบหมายข้ามฝ่ายไม่ได้ — ฝ่ายขายต้องส่งงานให้ RD ผ่านสอบถาม RD เท่านั้น', () => {
+  const supervisor = { id: 's', role: 'ae_supervisor', team: null };
+  const ae = { id: 'u1', role: 'ae', team: 'KA' };
+  const rd = { id: 'r1', role: 'rd' };
+  const rdMate = { id: 'r2', role: 'rd' };
+  const qcStaff = { id: 'q1', role: 'staff', department: 'QC' };
+
+  // แม้แต่หัวหน้าฝ่ายขายก็มอบงานตรงให้ RD/QC ไม่ได้ (มติผู้ใช้ 2026-07-17)
+  assert.equal(canAssignTask(supervisor, rd), false);
+  assert.equal(canAssignTask(supervisor, qcStaff), false);
+  assert.equal(canAssignTask(ae, rd), false);
+
+  // RD มอบกันเองในฝ่ายได้ แต่มอบย้อนกลับให้ฝ่ายขายไม่ได้
+  assert.equal(canAssignTask(rd, rdMate), true);
+  assert.equal(canAssignTask(rd, ae), false);
+
+  // admin = บัญชีดูแลระบบ ยกเว้นให้ข้ามฝ่ายได้ (ทางออกฉุกเฉิน)
+  assert.equal(canAssignTask({ id: 'a', role: 'admin' }, rd), true);
+});
+
+test('canAssignTask: ฝ่ายอนุมานจาก role ได้เมื่อไม่ได้ตั้ง department ไว้ตรง ๆ', () => {
+  // บัญชีส่วนใหญ่ไม่มี app_metadata.department — ถ้าเทียบค่าดิบจะเป็น null ทั้งคู่
+  // แล้วบล็อกการมอบหมายทั้งระบบเงียบ ๆ
+  assert.equal(canAssignTask({ id: 'r1', role: 'rd' }, { id: 'r2', role: 'rd' }), true);
+  // department ที่ตั้งไว้ตรง ๆ ต้องชนะค่าที่อนุมานจาก role
+  assert.equal(canAssignTask({ id: 'r1', role: 'rd' }, { id: 'x', role: 'staff', department: 'RD' }), true);
+  // ค่าเก่า (SALES) ต้อง normalize เป็น SA ก่อนเทียบ
+  assert.equal(canAssignTask({ id: 's', role: 'ae_supervisor', department: 'SALES' }, { id: 'u1', role: 'ae', team: 'KA' }), true);
+  // ไม่รู้ฝ่ายทั้งคู่ = มอบไม่ได้ (ไม่ใช่ "ผ่านเพราะ null เท่ากัน")
+  assert.equal(canAssignTask({ id: 'z1', role: 'nope' }, { id: 'z2', role: 'nope' }), false);
+});
+
+test('assignableUsersFor: กรองด้วยกติกาเดียวกับ canAssignTask', () => {
+  const ae = { id: 'u1', role: 'ae', team: 'KA' };
+  const users = [
+    { id: 'u1', role: 'ae', team: 'KA' },      // ตัวเอง
+    { id: 'u2', role: 'ac', team: 'KA' },      // ทีมเดียวกัน
+    { id: 'u9', role: 'ae', team: 'ODM' },     // คนละทีม
+    { id: 'r1', role: 'rd' },                  // คนละฝ่าย
+  ];
+  assert.deepEqual(assignableUsersFor(ae, users).map((u) => u.id), ['u1', 'u2']);
+  // ยังไม่รู้ว่าเราเป็นใคร = ยังไม่ต้องโชว์ใคร (กันเผลอโชว์ทั้งบริษัทตอนโหลด)
+  assert.deepEqual(assignableUsersFor(null, users), []);
 });
 
 test('taskCreditId: proxy worker → assignee → owner', () => {
