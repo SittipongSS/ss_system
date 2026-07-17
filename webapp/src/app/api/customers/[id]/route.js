@@ -120,7 +120,7 @@ export async function PATCH(request, { params }) {
   const body = await request.json();
 
   // ── Approval action (approve / reject a pending customer) ────────────
-  // Setting approvalStatus is reserved for Senior AE+ — AE/AC hold customers:edit
+  // Setting approvalStatus is reserved for AE Supervisor — AE/AC/Senior hold customers:edit
   // but must not approve. Row-level team scope is already enforced above by
   // canEditRecord (senior_ae = own team, supervisor/admin = all teams).
   if (body.approvalStatus !== undefined) {
@@ -242,7 +242,7 @@ export async function PATCH(request, { params }) {
   updates.updatedAt = new Date().toISOString();
 
   // Re-approval rule (ทุกระบบ): editing an APPROVED customer drops it back to
-  // 'pending' so a Senior AE+ must re-approve. Hidden from downstream pickers
+  // 'pending' so an AE Supervisor must re-approve. Hidden from downstream pickers
   // (GET returns approved-only) until then. No-op if it wasn't approved.
   const reapproval = resetApprovalOnEdit(customer, user);
   if (reapproval) Object.assign(updates, reapproval);

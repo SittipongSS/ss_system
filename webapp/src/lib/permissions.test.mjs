@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData } from './permissions';
 
 test('canAssignTask: teammates assign to each other; sup/admin to anyone', () => {
   const ae = { id: 'u1', role: 'ae', team: 'KA' };
@@ -315,4 +315,15 @@ test('pmTaskEditTier: none for outsiders', () => {
   assert.equal(pmTaskEditTier({ role: 'staff', id: 'p', department: 'PC' }, { assigneeId: null, role: 'QC' }, { ownerId: 'u2' }), 'none');
   // legal has no pm:view → never edits PM tasks
   assert.equal(pmTaskEditTier({ role: 'legal', id: 'l' }, { assigneeId: 'l', role: 'LG' }, { ownerId: 'l' }), 'none');
+});
+
+// ── สิทธิ์อนุมัติข้อมูลหลัก (มติผู้ใช้ 2026-07-17: รวมศูนย์ที่ AE Supervisor) ──
+test('canApproveMasterData: เฉพาะ AE Supervisor (+ admin break-glass)', () => {
+  assert.equal(canApproveMasterData('ae_supervisor'), true);
+  assert.equal(canApproveMasterData('admin'), true);
+  // senior_ae เคยอนุมัติของทีมตัวเองได้ — ตัดออกแล้ว
+  assert.equal(canApproveMasterData('senior_ae'), false);
+  for (const role of ['ae', 'ac', 'marketing', 'legal', 'rd', 'viewer', 'staff', 'secretary']) {
+    assert.equal(canApproveMasterData(role), false, `${role} ต้องอนุมัติไม่ได้`);
+  }
 });

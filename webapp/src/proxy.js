@@ -111,7 +111,7 @@ const OPEN_PAGES = ['/home', '/sa', '/pm', '/database', '/tax', '/sales-planning
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
-// products:edit to create (lands as 'pending'), Senior AE+ to approve; excise
+// products:edit to create (lands as 'pending'), AE Supervisor to approve; excise
 // registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
 // Holiday/product-type writes stay supervisor-only.
 const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt'];

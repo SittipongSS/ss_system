@@ -1,7 +1,7 @@
 // ── Re-approval on edit (org rule: ทุกระบบ) ───────────────────────────────
 // Policy: any APPROVED master-data record (customer / product) that is later
 // edited — its detail fields OR its attachments — must drop back to 'pending'
-// and be re-approved by a Senior AE+ (canApproveMasterData). This keeps an
+// and be re-approved by an AE Supervisor (canApproveMasterData). This keeps an
 // approved record from silently changing after sign-off.
 //
 // Returns a field patch to merge into the update, or null when no reset is
