@@ -11,6 +11,7 @@ import { apiCache, cachedFetchJson } from '@/lib/apiCache';
 import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
+import BrandMark from '@/components/BrandMark';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { sortSystems, systemForPathname } from '@/config/navigation';
 
@@ -270,7 +271,7 @@ export default function AppLayout({ children }) {
         <div className="topnav-system">
           <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
             {/* โลโก้ตัวเต็มมี wordmark ในภาพแล้ว (มติผู้ใช้ 2026-07-16) — ไม่ใส่ข้อความซ้ำ */}
-            <img src="/scent-sense-logo.png" alt="Scent &amp; Sense" className="topnav-brand-img" />
+            <BrandMark height={34} className="topnav-brand-img" />
           </Link>
 
           <div className="topnav-sys" ref={sysMenuRef}>
