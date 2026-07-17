@@ -4,7 +4,7 @@ import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { FileText, Save, Trash2, History, Truck, ChevronDown, ChevronRight, AlertCircle, PackageCheck, ExternalLink } from "lucide-react";
+import { FileText, Pencil, Save, Trash2, History, Truck, ChevronDown, ChevronRight, AlertCircle, PackageCheck, ExternalLink } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { useApiList } from "@/lib/excise/useApiList";
 import { apiCache } from "@/lib/apiCache";
@@ -215,6 +215,23 @@ export default function PoDetailPage() {
   const [settleData, setSettleData] = useState(null); // { poReceivedMonth, lines } | null=กำลังโหลด
   const [settleChoices, setSettleChoices] = useState({}); // poLineId -> dealId | "new" | "skip"
   const [toast, setToast] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // ลบทั้งใบ — server เป็นคนตัดสินว่าลบได้ไหม (ผูกโครงการ/ดีล/แบ่งส่ง/วัสดุ = 409
+  // พร้อมข้อความบอกว่าติดอะไร) หน้าเว็บแค่ถามยืนยันแล้วส่งต่อข้อความนั้นให้ผู้ใช้
+  const deletePo = async () => {
+    if (!confirm(`ลบ PO ${po?.poNumber || ""}? รายการทั้งใบจะถูกลบและย้อนกลับไม่ได้`)) return;
+    setDeleteBusy(true);
+    try {
+      await sahamitFetch(`/api/sahamit/po/${id}`, { method: "DELETE" });
+      apiCache.delete("/api/sahamit/po");
+      apiCache.delete("/api/sahamit/material");
+      router.push("/sahamit/po");
+    } catch (e) {
+      alert(e.message || "ลบ PO ไม่สำเร็จ");
+      setDeleteBusy(false);
+    }
+  };
 
   // แบ่งส่ง (split): ระบุยอดส่งจริงต่อบรรทัด → เปิด PO ยอดเหลือ
   const [splitOpen, setSplitOpen] = useState(false);
@@ -383,6 +400,19 @@ export default function PoDetailPage() {
                   <PackageCheck size={14} /> สร้าง PM (ออปชัน)
                 </button>
               ) : null}
+
+              {/* แก้/ลบ ทั้งใบ — ฟอร์มแก้เป็นตัวเดียวกับตอนสร้าง; ลบมี guard ฝั่ง server
+                  (PO ที่ผูกโครงการ/ดีล/แบ่งส่ง/วัสดุ จะตีกลับพร้อมบอกว่าติดอะไร) */}
+              {canEdit && (
+                <button type="button" className="btn ghost" onClick={() => router.push(`/sahamit/po/${id}/edit`)}>
+                  <Pencil size={14} /> แก้ไข PO
+                </button>
+              )}
+              {canEdit && (
+                <button type="button" className="btn ghost danger" onClick={deletePo} disabled={deleteBusy}>
+                  <Trash2 size={14} /> {deleteBusy ? "กำลังลบ..." : "ลบ PO"}
+                </button>
+              )}
             </div>
           </div>
 
