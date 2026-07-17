@@ -241,7 +241,7 @@ button, select, input, textarea {
 .date-calendar-header button { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 8px; }
 .date-calendar-header button:hover { background: var(--panel-2); }
 .date-calendar-weekdays,
-.date-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.date-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .date-calendar-weekdays span { padding: 4px 0; text-align: center; color: var(--text-3); font-size: 11px; font-weight: 700; }
 .date-calendar-grid button { aspect-ratio: 1; border-radius: 8px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .date-calendar-grid button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
