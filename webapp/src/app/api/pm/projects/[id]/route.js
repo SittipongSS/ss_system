@@ -11,6 +11,7 @@ import { recordAudit } from '@/lib/audit';
 import { rollupDeals } from '@/lib/sales/projectRollup';
 import { sortDealsByOrder } from '@/lib/pm/dealOrder';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
+import { canApproveProjectClose } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
@@ -139,7 +140,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .maybeSingle();
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, canEdit, me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
+  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, canEdit, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]
