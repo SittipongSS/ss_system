@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { AlertTriangle, Briefcase, Calendar, CheckCircle2, CircleDashed, Clock, FolderKanban, ListTodo, MessageCircleQuestion, MessageSquare, Pencil, Send, Tag, User } from "lucide-react";
+import { AlertTriangle, Briefcase, Calendar, Clock, FolderKanban, ListTodo, MessageCircleQuestion, MessageSquare, Pencil, Send, Tag, User } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -52,7 +52,6 @@ export default function TaskDetailPage() {
   };
 
   const person = (userId) => task?.people?.[userId] || "-";
-  const statusIcon = task?.status === "Completed" ? CheckCircle2 : task?.status === "In Progress" ? Clock : CircleDashed;
 
   return <Workspace icon={<ListTodo size={22} />} title={task?.title || "รายละเอียดงาน"} subtitle="กำหนดการ ผู้รับผิดชอบ และงานที่เชื่อมโยง" back={{ href: "/sa/tasks", label: "กลับหน้ารายการงาน" }} hideHeader loading={loading}>
     {error && <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>{error}</div>}
@@ -65,8 +64,9 @@ export default function TaskDetailPage() {
           actions={(task.canManage || task.canChangeStatus)
             ? <button className="btn" onClick={openEdit}><Pencil size={14} /> แก้ไข</button>
             : null}
+          // ไม่มีช่อง "สถานะ" ในแถวนี้ — ป้ายข้างชื่องานบอกอยู่แล้ว (แบบเดียวกับหน้า
+          // สอบถาม RD) เดิมโชว์ซ้ำสองที่ในการ์ดเดียวกัน
           facts={[
-            { icon: statusIcon, label: "สถานะ", value: STATUS_LABELS[task.status] || task.status },
             { icon: Calendar, label: "วันเริ่ม", value: task.startDate ? fmtDateNumeric(task.startDate) : "ไม่ระบุ" },
             { icon: AlertTriangle, label: "กำหนดเสร็จ", value: task.dueDate ? fmtDateNumeric(task.dueDate) : "ไม่ระบุ" },
             ...(task.originalDueDate ? [{ icon: Clock, label: "เดดไลน์แรก", value: fmtDateNumeric(task.originalDueDate) }] : []),
