@@ -13,6 +13,8 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
+import Pager from "@/components/excise/Pager";
+import { usePagination } from "@/lib/usePagination";
 import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import { isSuperuser, TEAM_ROLES, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
@@ -315,6 +317,12 @@ export default function TasksPage() {
       .sort(comparator),
     [pool, statusFilter, comparator],
   );
+
+  // แบ่งหน้าเฉพาะมุมมองแบน (ตาราง/รายการ) — บอร์ด/เมทริกซ์/ปฏิทินแสดงครบตามเดิม
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(visible, {
+      resetKey: `${scope}|${mineView}|${q}|${statusFilter}|${assigneeFilter}|${categoryFilter}|${sortKey}|${sortDir}`,
+    });
 
   const handleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -754,7 +762,7 @@ export default function TasksPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((t) => {
+              {pageRows.map((t) => {
                 const u = getUrgencyInfo(t);
                 const manage = canManageTask(t);
                 return (
@@ -804,7 +812,7 @@ export default function TasksPage() {
       ) : (
         /* ── List view (cards) ── */
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: "12px" }}>
-          {visible.map((t) => {
+          {pageRows.map((t) => {
             const u = getUrgencyInfo(t);
             const done = t.status === "Completed";
             const manage = canManageTask(t);
@@ -845,6 +853,16 @@ export default function TasksPage() {
             );
           })}
         </div>
+      )}
+      {!loading && !["board", "matrix", "calendar"].includes(view) && visible.length > 0 && (
+        <Pager
+          page={page}
+          pageCount={pageCount}
+          total={total}
+          onPage={setPage}
+          pageSize={pageSize}
+          onPageSize={setPageSize}
+        />
       )}
       </SaSection>
 

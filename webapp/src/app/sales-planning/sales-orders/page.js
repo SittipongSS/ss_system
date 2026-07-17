@@ -6,6 +6,8 @@ import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Search } f
 import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Select from "@/components/ui/Select";
+import Pager from "@/components/excise/Pager";
+import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
 
@@ -48,6 +50,9 @@ export default function SalesOrdersPage() {
     });
   }, [query, rows, status]);
 
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(filtered, { resetKey: `${query}|${status}` });
+
   const summary = useMemo(() => ({
     total: rows.length,
     pending: rows.filter((row) => row.status === "pending_approval").length,
@@ -81,7 +86,7 @@ export default function SalesOrdersPage() {
             <table className="w-full text-sm">
               <thead><tr><th>เลขที่ SO</th><th>ลูกค้า / ดีล</th><th>อ้างอิง QT</th><th>วันที่ SO</th><th className="num">Actual ก่อน VAT</th><th>สถานะ</th></tr></thead>
               <tbody>
-                {filtered.map((row) => (
+                {pageRows.map((row) => (
                   <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
                     <td><Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link></td>
                     <td>{row.customerName || "-"}<span style={{ display: "block", color: "var(--text-3)", fontSize: 12 }}>{row.deal?.title || "-"}</span></td>
@@ -93,6 +98,16 @@ export default function SalesOrdersPage() {
               </tbody>
             </table>
           </div>
+          {filtered.length > 0 && (
+            <Pager
+              page={page}
+              pageCount={pageCount}
+              total={total}
+              onPage={setPage}
+              pageSize={pageSize}
+              onPageSize={setPageSize}
+            />
+          )}
         </SaSection>
       </div>
     </SaWorkspace>
