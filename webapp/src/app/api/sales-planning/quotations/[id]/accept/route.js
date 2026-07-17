@@ -67,16 +67,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   const currentFingerprint = quotationApprovalFingerprint(quote);
+  // ปิด Won ได้ต่อเมื่อใบผ่านการอนุมัติ (approved + fingerprint ตรง) หรือเป็นใบ grandfather
+  // (not_required) — กัน Won ใบที่ยังไม่ได้เซ็นรับรองจากเจ้าของดีล (มติ 2026-07-18).
   const readiness = validateDocumentReadiness({
     action: 'accept',
     status: quote.status,
     lineCount: quote.lines?.length || 0,
     totalAmount: quote.totalAmount,
-    approvalStatus: 'not_required',
-    approvalFingerprint: null,
+    approvalStatus: quote.approvalStatus,
+    approvalFingerprint: quote.approvalFingerprint,
     currentFingerprint,
   });
-  if (!readiness.ok) return badRequest(readiness.error);
+  if (!readiness.ok) {
+    return badRequest(quote.approvalStatus === 'pending'
+      ? 'ใบเสนอราคานี้ยังไม่ได้รับการอนุมัติจากเจ้าของดีล — อนุมัติก่อนจึงจะปิด Won ได้'
+      : readiness.error);
+  }
 
   const { data: result, error: acceptError } = await supabase.rpc('accept_quotation_atomic', {
     p_quote_id: quote.id,

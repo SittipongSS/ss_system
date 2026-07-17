@@ -114,7 +114,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       discountValue,
       vatRate,
       paymentTerms,
-      approvalStatus: 'not_required',
+      approvalStatus: 'pending', // ฉบับ revise ใหม่ต้องให้เจ้าของดีลอนุมัติก่อนส่ง (มติ 2026-07-18)
       approvalReason: null,
       approvalRequestedAt: null,
       approvalRequestedBy: null,

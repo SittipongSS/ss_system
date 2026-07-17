@@ -95,6 +95,16 @@ export function canReviewSalesForecast(user) {
   return !!user && can(user.role, 'salesplan:review');
 }
 
+// อนุมัติใบเสนอราคา = การเซ็นรับรองโดย "เจ้าของดีล" (มติผู้ใช้ 2026-07-18 —
+// ผู้อนุมัติบน FM-SA-01 = AE เจ้าของโครงการ/ลูกค้า). ผู้สร้างใบ (AC/AE/Senior) อาจไม่ใช่
+// เจ้าของ → เจ้าของต้องอนุมัติก่อนส่ง; ถ้าเจ้าของสร้างเอง = เซ็นเองได้ (creator === owner).
+// superuser (admin/หัวหน้าขาย) อนุมัติได้ในฐานะกำกับดูแล. deal ต้องมาพร้อม ownerId.
+export function canApproveQuotation(user, deal) {
+  if (!user || !deal) return false;
+  if (isSuperuser(user.role)) return true;
+  return !!user.id && user.id === deal.ownerId;
+}
+
 export function inSalesViewScope(user, record) {
   return inScope(salesPlanningViewScope(user?.role), user, record)
     || inPmBackfillOwnerScope(user, record);

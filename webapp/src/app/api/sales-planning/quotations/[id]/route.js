@@ -6,7 +6,7 @@ import {
 } from '@/lib/forceDelete';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
-  canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
+  canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
   quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
 import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
@@ -61,7 +61,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .eq('baseNumber', baseNumber)
     .order('revisionNo', { ascending: false });
   if (revisionError) return fail(revisionError.message, 500);
-  return ok({ ...quote, revisionHistory: revisionHistory || [] });
+  // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
+  return ok({ ...quote, revisionHistory: revisionHistory || [], canApprove: canApproveQuotation(user, quote.deal) });
 });
 
 // PATCH — แก้เนื้อหาใบ (lines/ส่วนลด/VAT/เงื่อนไขชำระ/หมายเหตุ/วันหมดอายุ/สถานะ draft↔sent)
@@ -86,19 +87,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json().catch(() => ({}));
   const now = new Date().toISOString();
-  const patch = {
-    updatedAt: now,
-    approvalStatus: 'not_required',
-    approvalReason: null,
-    approvalRequestedAt: null,
-    approvalRequestedBy: null,
-    approvalRequestedByName: null,
-    approvalFingerprint: null,
-    approvalNotes: null,
-    approvedAt: null,
-    approvedBy: null,
-    approvedByName: null,
-  };
+  // ไม่รีเซ็ตสถานะอนุมัติที่หัว patch อีกต่อไป (มติ 2026-07-18: ใบต้องอนุมัติจริง) —
+  // จะรีเซ็ตเป็น 'pending' เฉพาะเมื่อ "เนื้อห ากระทบยอด/เอกสารเปลี่ยน" (contentChanged
+  // ด้านล่าง) เท่านั้น; แก้ช่องที่ไม่กระทบเอกสาร (เช่น ผู้รับผิดชอบ) คงสถานะอนุมัติเดิม.
+  const patch = { updatedAt: now };
 
   // เนื้อหาใบ
   if ('quoteDate' in body) patch.quoteDate = body.quoteDate || before.quoteDate;
@@ -174,6 +166,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // Editing document content after it was sent creates a new draft state.
   const contentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
     || 'notes' in body || 'quoteDate' in body || 'validUntil' in body;
+  // แก้เนื้อหาที่กระทบเอกสาร/ยอด → ต้องอนุมัติใหม่ (มติ 2026-07-18): ล้างการอนุมัติเดิม
+  // กลับเป็น 'pending' + ตัด fingerprint/ผู้อนุมัติ. ใบ grandfather (not_required) ก็ถูก
+  // ดันเข้าสู่ระบบอนุมัติเมื่อถูกแก้เนื้อหา (สอดคล้องกับใบใหม่). ยกเว้น: ไม่แตะสถานะอนุมัติ
+  // เมื่อแก้เฉพาะช่องที่ไม่ใช่เนื้อหา (ผู้รับผิดชอบ ฯลฯ).
+  if (contentChanged) {
+    patch.approvalStatus = 'pending';
+    patch.approvalFingerprint = null;
+    patch.approvedAt = null;
+    patch.approvedBy = null;
+    patch.approvedByName = null;
+  }
   const finalLines = newLines || before.lines || [];
   let finalQuote = { ...before, ...patch, lines: finalLines };
   if (contentChanged) {
@@ -182,16 +185,25 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if ('status' in body && body.status === 'sent') {
+    // ส่งลูกค้าได้ต่อเมื่อสถานะอนุมัติ = approved (หรือ not_required สำหรับใบ grandfather)
+    // และ fingerprint ตรงกับเนื้อหาปัจจุบัน (แก้หลังอนุมัติ = ต้องอนุมัติใหม่). ใช้ค่าหลัง
+    // patch: ถ้าคำขอนี้แก้เนื้อหาด้วย จะกลายเป็น pending → ส่งไม่ได้ (ต้องอนุมัติก่อน).
+    const effApprovalStatus = 'approvalStatus' in patch ? patch.approvalStatus : before.approvalStatus;
+    const effFingerprint = 'approvalFingerprint' in patch ? patch.approvalFingerprint : before.approvalFingerprint;
     const readiness = validateDocumentReadiness({
       action: 'send',
       status: before.status,
       lineCount: finalLines.length,
       totalAmount: finalQuote.totalAmount,
-      approvalStatus: 'not_required',
-      approvalFingerprint: null,
+      approvalStatus: effApprovalStatus,
+      approvalFingerprint: effFingerprint,
       currentFingerprint: quotationApprovalFingerprint(finalQuote, finalLines),
     });
-    if (!readiness.ok) return badRequest(readiness.error);
+    if (!readiness.ok) {
+      return badRequest(effApprovalStatus === 'pending'
+        ? 'ใบเสนอราคานี้ยังไม่ได้รับการอนุมัติจากเจ้าของดีล — อนุมัติก่อนจึงจะส่งลูกค้าได้'
+        : readiness.error);
+    }
   }
 
   // เขียน lines ทุกครั้งที่ยอดเปลี่ยน (ไม่เฉพาะตอน client ส่ง lines) — enforceMasterPrices
