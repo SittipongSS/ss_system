@@ -1,4 +1,4 @@
-import { withUser, ok, badRequest, forbidden, notFound } from '@/lib/http';
+import { withUser, ok, fail, badRequest, forbidden, notFound } from '@/lib/http';
 import { canChangeTaskStatus } from '@/lib/permissions';
 import { canManagePersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { appendTaskUpdate, listTaskUpdates } from '@/lib/pm/taskUpdates';
@@ -39,6 +39,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const text = String(body?.body || '').trim();
   if (!text) return badRequest('ต้องพิมพ์ข้อความอัปเดต');
 
-  await appendTaskUpdate(supabase, { taskId: id, kind: 'comment', body: text, user });
+  // คนกดปุ่มส่ง = ต้องรู้ว่าไม่สำเร็จ ห้ามกลืน error แล้วตอบ 201 (เวอร์ชันแรกทำแบบนั้น
+  // ตารางยังไม่มี → insert พัง → ตอบ 201 + เธรดว่าง → ผู้ใช้นึกว่าส่งแล้วแต่ไม่มีอะไรขึ้น)
+  const failed = await appendTaskUpdate(supabase, { taskId: id, kind: 'comment', body: text, user });
+  if (failed) return fail(`บันทึกอัปเดตไม่สำเร็จ: ${failed}`, 500);
   return ok(await listTaskUpdates(supabase, id), 201);
 });
