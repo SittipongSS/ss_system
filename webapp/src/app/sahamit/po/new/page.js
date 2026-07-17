@@ -92,7 +92,7 @@ export default function PoCreatePage() {
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="btn" onClick={() => router.push("/sahamit/po")} disabled={busy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary px-6" onClick={submit} disabled={busy || !rows.length}>
+            <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || !rows.length}>
               {busy ? "กำลังบันทึก..." : "บันทึก PO"}
             </button>
           </div>

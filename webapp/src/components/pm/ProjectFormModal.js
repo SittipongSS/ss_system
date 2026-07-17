@@ -434,7 +434,7 @@ export default function ProjectFormModal({
         )}
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn">ยกเลิก</button>
-          <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+          <button type="submit" disabled={submitting} className="btn btn-primary">
             {submitting ? "กำลังบันทึก..." : editingId ? "บันทึกการแก้ไข" : createLabel}
           </button>
         </div>

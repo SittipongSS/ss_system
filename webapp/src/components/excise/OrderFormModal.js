@@ -204,7 +204,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
 
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>
-          <button type="submit" className="btn btn-primary px-6" disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? "กำลังบันทึก..." : editing ? (order.status === "rejected" ? "บันทึกและส่งกลับ" : "บันทึกการแก้ไข") : "บันทึกรายการยื่นชำระ"}
           </button>
         </div>

@@ -135,7 +135,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
 
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>
-          <button type="submit" className="btn btn-primary px-6" disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? "กำลังบันทึก..." : editing ? "บันทึกการแก้ไข" : "บันทึกร่าง → แนบเอกสาร"}
           </button>
         </div>

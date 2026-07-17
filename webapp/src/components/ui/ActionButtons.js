@@ -11,7 +11,7 @@ import {
 // มีผลทั้งระบบ. ปุ่มที่ต้องใช้ข้อความ/ไอคอนเฉพาะบริบท ส่ง label/icon override ได้
 // โดยยังคงสีตามความหมายเดิม (เช่น submit ที่เขียนว่า "เริ่มยื่น" / "บันทึกชำระภาษี").
 const KINDS = {
-  approve: { cls: "btn-success", Icon: Check, label: "อนุมัติ" },
+  approve: { cls: "btn-primary", Icon: Check, label: "อนุมัติ" },
   reject: { cls: "btn-danger", Icon: Undo2, label: "ตีกลับ" },
   stop: { cls: "btn-danger", Icon: Ban, label: "ไม่ไปต่อ" },
   edit: { cls: "btn-secondary", Icon: Pencil, label: "แก้ไข" },

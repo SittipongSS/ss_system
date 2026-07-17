@@ -542,7 +542,7 @@ export default function TasksPage() {
       headerRight={
         <div className="flex gap-3 items-center flex-wrap">
           <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "board", "calendar", "matrix"]} />
-          {(canEdit || role === "rd") && <button onClick={openAdd} className="btn btn-primary"><Plus size={16} /> เพิ่มงาน</button>}
+          {(canEdit || role === "rd") && <button onClick={openAdd} className="btn btn-accent"><Plus size={16} /> เพิ่มงาน</button>}
         </div>
       }
     >

@@ -178,7 +178,7 @@ export default function CustomerDirectory() {
     <>
       <span className="ui-badge">{customers.length} รายการ</span>
       {canEdit && (
-        <button onClick={() => setShowForm(true)} className="btn btn-primary flex items-center gap-1.5">
+        <button onClick={() => setShowForm(true)} className="btn btn-accent flex items-center gap-1.5">
           <Plus size={16} /> เพิ่มลูกค้า
         </button>
       )}
@@ -379,7 +379,7 @@ export default function CustomerDirectory() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="btn btn-primary px-8"
+              className="btn btn-primary"
             >
               {isSubmitting ? "กำลังบันทึก..." : "บันทึกข้อมูลลูกค้า"}
             </button>

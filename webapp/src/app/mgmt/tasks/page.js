@@ -89,7 +89,7 @@ export default function MgmtTasksPage() {
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {toBuddhistYear(y)}</option>)}
           </Select>
-          {canEdit && <button className="btn btn-primary flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มงาน</button>}
+          {canEdit && <button className="btn btn-accent flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มงาน</button>}
         </div>
       </div>
 

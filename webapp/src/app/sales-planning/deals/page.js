@@ -440,7 +440,7 @@ export default function SalesPlanningPipelinePage() {
       <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
 
       {canCreateDeals && (
-        <button type="button" className="btn btn-primary" onClick={openNewDeal}>
+        <button type="button" className="btn btn-accent" onClick={openNewDeal}>
           <Plus size={15} aria-hidden="true" /> เพิ่มดีล
         </button>
       )}

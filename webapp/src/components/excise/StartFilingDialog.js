@@ -52,7 +52,7 @@ export default function StartFilingDialog({ open, onClose, onDone, order }) {
         </div>
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>
-          <button type="submit" className="btn btn-primary px-6" disabled={busy}>{busy ? "กำลังบันทึก..." : "เริ่มยื่น"}</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "กำลังบันทึก..." : "เริ่มยื่น"}</button>
         </div>
       </form>
     </Modal>

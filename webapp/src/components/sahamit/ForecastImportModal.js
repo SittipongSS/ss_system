@@ -343,7 +343,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
           </span>
           <div className="flex gap-2">
             <button type="button" className="btn" onClick={onClose} disabled={busy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary px-6" onClick={submit} disabled={busy || !hasGrid}>
+            <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || !hasGrid}>
               {busy ? "กำลังบันทึก..." : editRound ? "บันทึกการแก้ไข" : "บันทึกรอบ FC"}
             </button>
           </div>
