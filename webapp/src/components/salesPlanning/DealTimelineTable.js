@@ -464,7 +464,7 @@ export default function TimelineWorkspace({
                             </div>
                             {task.note && <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 8, background: "var(--panel-2)", padding: "6px 8px", borderRadius: 6 }}><strong style={{ color: "var(--text-3)" }}>หมายเหตุ:</strong> {task.note}</div>}
                           </div>
-                          {active && canEdit && <button type="button" className="btn btn-success sm" onClick={() => patch(task, { status: "Completed" })}>✔ ทำเสร็จแล้ว</button>}
+                          {active && canEdit && <button type="button" className="btn btn-primary sm" onClick={() => patch(task, { status: "Completed" })}>✔ ทำเสร็จแล้ว</button>}
                         </div>
                         {canReorder && <div style={{ width: 28, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}><button type="button" className="btn-icon" onClick={() => move(task, -1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ขึ้น`}>▴</button><button type="button" className="btn-icon" onClick={() => move(task, 1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ลง`}>▾</button></div>}
                       </div>
@@ -616,7 +616,7 @@ export default function TimelineWorkspace({
         <div className="timeline-save-bar form-action-bar page" role="status">
           <span className="timeline-save-message">มีการแก้ไข <b>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก</span>
           <button type="button" className="btn" onClick={discardDrafts} disabled={saving}>ยกเลิกการแก้ไข</button>
-          <button type="button" className="btn btn-primary timeline-save-button" onClick={saveDrafts} disabled={saving}>{saving ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}</button>
+          <button type="button" className="btn btn-primary" onClick={saveDrafts} disabled={saving}>{saving ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}</button>
         </div>
       )}
 

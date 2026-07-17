@@ -85,7 +85,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration }) {
 
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>
-          <button type="submit" className="btn btn-primary px-6" disabled={busy || !approvalNumber.trim()}>
+          <button type="submit" className="btn btn-primary" disabled={busy || !approvalNumber.trim()}>
             {busy ? "กำลังบันทึก..." : "ยืนยันอนุมัติ"}
           </button>
         </div>

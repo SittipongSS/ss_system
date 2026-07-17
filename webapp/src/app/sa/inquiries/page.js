@@ -75,7 +75,7 @@ export default function InquiriesPage() {
       title="สอบถาม RD"
       subtitle="ข้อสอบถามจากฝ่ายขายถึงฝ่ายวิจัยและพัฒนา — RD ระบุวันที่จะตอบตอนรับเรื่อง"
       headerRight={canCreate ? (
-        <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+        <button type="button" className="btn btn-accent" onClick={() => setCreateOpen(true)}>
           <Plus size={15} aria-hidden="true" /> สอบถาม RD
         </button>
       ) : null}

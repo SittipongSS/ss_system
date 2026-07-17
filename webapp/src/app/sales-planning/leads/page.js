@@ -384,7 +384,7 @@ export default function LeadsPage() {
         <>
           <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
           {canCreate && (
-            <button type="button" className="btn btn-primary" onClick={() => { setForm(initialForm); setFormOpen(true); }}>
+            <button type="button" className="btn btn-accent" onClick={() => { setForm(initialForm); setFormOpen(true); }}>
               <Plus size={15} aria-hidden="true" /> รับลีดใหม่
             </button>
           )}

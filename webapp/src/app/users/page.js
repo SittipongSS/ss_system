@@ -239,7 +239,7 @@ export default function UserManagement() {
                 setCreateForm(emptyForm);
                 setShowCreate(true);
               }}
-              className="btn btn-primary flex items-center gap-1.5"
+              className="btn btn-accent flex items-center gap-1.5"
             >
               <Plus size={16} /> เพิ่มผู้ใช้
             </button>
@@ -374,7 +374,7 @@ export default function UserManagement() {
             <button type="button" onClick={() => setShowCreate(false)} className="btn">
               ยกเลิก
             </button>
-            <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+            <button type="submit" disabled={submitting} className="btn btn-primary">
               {submitting ? "กำลังบันทึก..." : "สร้างผู้ใช้"}
             </button>
           </div>
@@ -395,7 +395,7 @@ export default function UserManagement() {
               <button type="button" onClick={() => setEditUser(null)} className="btn">
                 ยกเลิก
               </button>
-              <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+              <button type="submit" disabled={submitting} className="btn btn-primary">
                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
               </button>
             </div>
@@ -458,7 +458,7 @@ export default function UserManagement() {
             </div>
             <div className="form-action-bar">
               <button type="button" onClick={() => setTransferUser(null)} className="btn">ยกเลิก</button>
-              <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+              <button type="submit" disabled={submitting} className="btn btn-primary">
                 {submitting ? "กำลังโอน..." : "โอนงาน"}
               </button>
             </div>

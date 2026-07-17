@@ -143,7 +143,7 @@ export default function ProductDetails() {
     return (
       <div className="glass-panel p-12 text-center">
         <h2 className="text-xl font-semibold text-[var(--text)] mb-2">{error || "ไม่พบข้อมูลสินค้านี้"}</h2>
-        <Link href="/database/products" className="btn btn-primary px-6 inline-flex items-center gap-2 mt-4">
+        <Link href="/database/products" className="btn btn-primary inline-flex items-center gap-2 mt-4">
           <ArrowLeft size={16} /> กลับไปฐานข้อมูลสินค้า
         </Link>
       </div>

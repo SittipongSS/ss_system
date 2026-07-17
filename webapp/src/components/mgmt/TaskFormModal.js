@@ -110,7 +110,7 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
       </div>
       <div className="form-action-bar">
         <button className="btn" onClick={onClose} disabled={saving}>ยกเลิก</button>
-        <button className="btn btn-primary px-6" onClick={submit} disabled={saving}>{saving ? "กำลังบันทึก..." : "บันทึก"}</button>
+        <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? "กำลังบันทึก..." : "บันทึก"}</button>
       </div>
     </Modal>
   );

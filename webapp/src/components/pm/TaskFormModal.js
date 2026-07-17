@@ -359,7 +359,7 @@ export default function TaskFormModal({
 
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={saving}>ยกเลิก</button>
-          <button type="submit" disabled={saving} className="btn btn-primary px-8">{saving ? "กำลังบันทึก..." : editing ? "บันทึก" : "เพิ่ม"}</button>
+          <button type="submit" disabled={saving} className="btn btn-primary">{saving ? "กำลังบันทึก..." : editing ? "บันทึก" : "เพิ่ม"}</button>
         </div>
       </form>
     </Modal>

@@ -128,7 +128,7 @@ export default function PoEditPage() {
         </span>
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" className="btn" onClick={() => router.push(`/sahamit/po/${id}`)} disabled={busy}>ยกเลิก</button>
-          <button type="button" className="btn btn-primary px-6" onClick={submit} disabled={busy || !rows.length}>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || !rows.length}>
             {busy ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
           </button>
         </div>

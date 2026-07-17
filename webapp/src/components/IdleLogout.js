@@ -76,7 +76,7 @@ export default function IdleLogout() {
           <span className="font-semibold text-[var(--text)]">{secondsLeft}</span> วินาที
         </p>
         <div className="flex justify-end gap-2 mt-8 pt-6 border-t border-[var(--border)]">
-          <button onClick={stayActive} className="btn btn-primary px-8">
+          <button onClick={stayActive} className="btn btn-primary">
             ใช้งานต่อ
           </button>
         </div>

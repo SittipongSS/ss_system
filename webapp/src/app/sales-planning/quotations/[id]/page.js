@@ -649,7 +649,7 @@ export default function QuotationEditorPage() {
               </div>
               <div className={styles.workflowActions}>
                 {editable && quote.status === "draft" && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}
-                {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-success" onClick={doAccept} disabled={!!busy} title="ปิด Won ผ่านใบเสนอราคานี้"><CheckCircle2 size={15} aria-hidden="true" /> Won</button>}
+                {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-primary" onClick={doAccept} disabled={!!busy} title="ปิด Won ผ่านใบเสนอราคานี้"><CheckCircle2 size={15} aria-hidden="true" /> Won</button>}
                 <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={15} aria-hidden="true" /> พิมพ์ / PDF</button>
               </div>
 

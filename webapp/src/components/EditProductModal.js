@@ -271,7 +271,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
 
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={submitting || priceSubmitting}>ยกเลิก</button>
-          <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+          <button type="submit" disabled={submitting} className="btn btn-primary">
             {submitting ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
           </button>
         </div>

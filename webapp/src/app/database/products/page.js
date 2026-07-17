@@ -232,7 +232,7 @@ export default function ProductRegistry() {
     <>
       <span className="ui-badge">{products.length} รายการ</span>
       {canEdit && (
-        <button onClick={openForm} className="btn btn-primary flex items-center gap-1.5">
+        <button onClick={openForm} className="btn btn-accent flex items-center gap-1.5">
           <Plus size={16} /> เพิ่มสินค้า
         </button>
       )}
@@ -446,7 +446,7 @@ export default function ProductRegistry() {
           />
           <div className="form-action-bar">
             <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>
-            <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+            <button type="submit" disabled={submitting} className="btn btn-primary">
               {submitting ? "กำลังบันทึก..." : "บันทึกสินค้า"}
             </button>
           </div>

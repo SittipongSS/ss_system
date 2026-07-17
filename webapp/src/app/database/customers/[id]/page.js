@@ -218,7 +218,7 @@ export default function CustomerDetails() {
         <p className="text-[var(--text-3)] mb-6">
           ลูกค้าที่คุณกำลังพยายามเข้าถึงอาจถูกลบหรือไม่มีอยู่ในระบบ
         </p>
-        <Link href="/database/customers" className="btn btn-primary px-6 inline-flex items-center gap-2">
+        <Link href="/database/customers" className="btn btn-primary inline-flex items-center gap-2">
           <ArrowLeft size={16} /> กลับไปยังข้อมูลลูกค้า
         </Link>
       </div>
@@ -605,7 +605,7 @@ export default function CustomerDetails() {
           />
           <div className="form-action-bar page">
             <button type="button" onClick={() => setIsEditing(false)} className="btn">ยกเลิก</button>
-            <button type="submit" disabled={isSubmitting} className="btn btn-primary px-6">
+            <button type="submit" disabled={isSubmitting} className="btn btn-primary">
               {isSubmitting ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
             </button>
           </div>

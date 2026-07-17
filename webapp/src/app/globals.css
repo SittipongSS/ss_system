@@ -315,9 +315,9 @@ button, select, input, textarea {
 .form-action-bar .btn { min-width: 96px; min-height: 38px; justify-content: center; }
 .form-action-bar .btn.ghost { border-color: var(--border); background: var(--panel); box-shadow: var(--shadow-sm); }
 .form-action-bar .btn.ghost:hover { background: var(--panel-2); }
-.form-action-bar .btn-primary,
-.form-action-bar .btn-success,
-.form-action-bar .btn-danger { min-width: 116px; }
+/* ความกว้างขั้นต่ำมาจาก .btn-primary/.btn-accent เอง (104px) — เดิม override เป็น
+   116px เฉพาะแถบนี้ ทำให้ปุ่มบันทึกในโมดัลกว้างไม่เท่าปุ่มที่อื่น */
+.form-action-bar .btn-danger { min-width: 104px; justify-content: center; }
 .form-action-bar > :first-child:not(.btn):not(.form-actions-buttons) { margin-right: auto; }
 .form-action-inline { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .form-action-inline .btn { justify-content: center; }
@@ -2016,6 +2016,19 @@ button.ui-kpi-card { cursor: pointer; }
   background: var(--panel-2);
 }
 
+/* ── ปุ่ม action หลัก (มติผู้ใช้ 2026-07-17) ───────────────────────────
+   สองสีสองหน้าที่ — อย่าสลับกัน:
+     .btn-accent (terracotta สีแบรนด์) = "เริ่มของใหม่" — เพิ่มดีล/ลูกค้า/สินค้า
+                                          ปุ่มหลักของหน้า มีได้หน้าละ 1 ตัว
+     .btn-primary (navy)               = "ยืนยันสิ่งที่ทำอยู่" — บันทึก/ยืนยัน/พิมพ์
+   ความกว้างขั้นต่ำอยู่ที่ตัวปุ่มเอง ห้ามเติม px-6/px-8 ที่ปลายทาง — เดิมทำแบบนั้น
+   แล้วปุ่ม "บันทึก" กว้าง 72/96/112px คนละโมดัล เพราะแต่ละที่จำไม่ตรงกัน */
+.btn-primary,
+.btn-accent {
+  min-width: 104px;
+  justify-content: center;
+}
+
 .btn-primary {
   background: var(--navy);
   border: 1px solid var(--border-strong);
@@ -2066,9 +2079,10 @@ button.ui-kpi-card { cursor: pointer; }
    ───────────────────────────────────────────────────────────── */
 
 /* Status-colored button variants (extend .btn). Replace raw inline
-   `background: var(--red/amber/green); border:none` action buttons. */
-.btn-success { background: var(--green); border-color: var(--green); color: #fff; }
-.btn-success:hover { background: color-mix(in oklab, var(--green) 88%, #000); box-shadow: var(--shadow-md); }
+   `background: var(--red/amber/green); border:none` action buttons.
+   ⚠ ไม่มี .btn-success แล้ว (มติผู้ใช้ 2026-07-17): "ยืนยัน" กับ "บันทึก" ควรหน้าตา
+   เดียวกัน ไม่มีเหตุผลให้ยืนยันเป็นเขียว — ใช้ .btn-primary แทน.
+   .btn-danger ยังอยู่: การทำลายต้องเตือนด้วยสี ตัดไม่ได้ */
 .btn-warning { background: var(--amber); border-color: var(--amber); color: #fff; }
 .btn-warning:hover { background: color-mix(in oklab, var(--amber) 88%, #000); box-shadow: var(--shadow-md); }
 .btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
@@ -4668,12 +4682,10 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .timeline-save-message { flex: 1; min-width: 180px; font-size: 13px; color: var(--text); }
 .timeline-save-message b { color: var(--amber); }
-.timeline-save-button { min-width: 210px; min-height: 42px; font-size: 14px; font-weight: 700; }
 @media (max-width: 640px) {
   .timeline-save-bar { flex-wrap: wrap; bottom: 14px !important; }
   .timeline-save-message { flex-basis: 100%; }
   .timeline-save-bar .btn { flex: 1; }
-  .timeline-save-button { min-width: 0; }
 }
 
 /* Cell padding / alignment for the glass table variant. Unlike .premium-table

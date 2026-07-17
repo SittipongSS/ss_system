@@ -1653,7 +1653,7 @@ export default function ProjectDetailPage() {
 
                       {isInProgress && !isEditing && canEdit && (
                         <div style={{ display: "flex", alignItems: "center" }}>
-                          <button className="btn btn-success" onClick={() => stageTaskEdit(task.id, { status: "Completed" })} style={{ fontSize: "12px" }}>✔ ทำเสร็จแล้ว</button>
+                          <button className="btn btn-primary" onClick={() => stageTaskEdit(task.id, { status: "Completed" })} style={{ fontSize: "12px" }}>✔ ทำเสร็จแล้ว</button>
                         </div>
                       )}
                     </div>
@@ -1784,7 +1784,7 @@ export default function ProjectDetailPage() {
           </div>
           <div className="form-action-bar">
             <button type="button" onClick={() => setShowAddTask(false)} className="btn">ยกเลิก</button>
-            <button type="submit" className="btn btn-primary px-8">เพิ่ม</button>
+            <button type="submit" className="btn btn-primary">เพิ่ม</button>
           </div>
         </form>
       </Modal>
@@ -1866,7 +1866,7 @@ export default function ProjectDetailPage() {
             </div>
             <div className="form-action-bar">
               <button type="button" onClick={closeEditModal} className="btn">ยกเลิก</button>
-              <button type="submit" className="btn btn-primary px-8"><Check size={14} className="mr-1" /> ตกลง</button>
+              <button type="submit" className="btn btn-primary"><Check size={14} className="mr-1" /> ตกลง</button>
             </div>
           </form>
         )}
@@ -1893,7 +1893,7 @@ export default function ProjectDetailPage() {
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", padding: "0 20px 16px" }}>
           <button className="btn" disabled={issuingRev} onClick={() => setShowIssueRev(false)}>ยกเลิก</button>
-          <button className="btn btn-primary px-6" disabled={issuingRev} onClick={confirmIssueRev}>
+          <button className="btn btn-primary" disabled={issuingRev} onClick={confirmIssueRev}>
             <GitCommit size={14} /> {issuingRev ? "กำลังออก…" : `ออก Rev. ${nextRev}`}
           </button>
         </div>
@@ -1968,7 +1968,7 @@ export default function ProjectDetailPage() {
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", padding: "0 20px 16px" }}>
           <button className="btn" onClick={() => setShowDrop(false)}>ยกเลิก</button>
-          <button className="btn btn-danger px-6" onClick={confirmDrop}>ยืนยันยกเลิกโครงการ</button>
+          <button className="btn btn-danger" onClick={confirmDrop}>ยืนยันยกเลิกโครงการ</button>
         </div>
       </Modal>
 
@@ -2006,7 +2006,7 @@ export default function ProjectDetailPage() {
         <div className="timeline-save-bar form-action-bar page" role="status">
           <span className="timeline-save-message">มีการแก้ไข <b>{dirtyCount}</b> ขั้นตอน — ยังไม่บันทึก</span>
           <button className="btn" onClick={cancelEdits}>ยกเลิกการแก้ไข</button>
-          <button className="btn btn-primary timeline-save-button" onClick={confirmEdits} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึกการเปลี่ยนแปลง</button>
+          <button className="btn btn-primary" onClick={confirmEdits} title="บันทึกการแก้ทั้งหมดลงเอกสาร (จุดย้อนกลับสร้างได้จากปุ่ม “ออก Rev”)">บันทึกการเปลี่ยนแปลง</button>
         </div>
       )}
     </SaPageShell>

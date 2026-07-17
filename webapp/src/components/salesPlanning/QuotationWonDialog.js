@@ -173,7 +173,7 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 14 }}>
           <button type="button" className="btn ghost" onClick={close} disabled={busy}>ยกเลิก</button>
-          <button type="button" className="btn btn-success" onClick={submit} disabled={busy}>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
             <CheckCircle2 size={15} aria-hidden="true" /> {busy ? "กำลังบันทึก…" : "ยืนยัน Won"}
           </button>
         </div>

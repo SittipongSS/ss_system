@@ -153,7 +153,7 @@ export default function PoPage() {
             <Download size={16} /> Excel
           </button>
           {canEdit && (
-            <Link href="/sahamit/po/new" className="btn btn-primary">
+            <Link href="/sahamit/po/new" className="btn btn-accent">
               <Plus size={16} /> บันทึก PO
             </Link>
           )}
@@ -174,7 +174,7 @@ export default function PoPage() {
           <div style={{ fontWeight: 600, fontSize: 15 }}>ยังไม่มี PO</div>
           <div style={{ fontSize: 13, marginTop: 6 }}>เริ่มจากบันทึก PO ที่ลูกค้าส่งมา</div>
           {canEdit && (
-            <Link href="/sahamit/po/new" className="btn btn-primary" style={{ marginTop: 16 }}>
+            <Link href="/sahamit/po/new" className="btn btn-accent" style={{ marginTop: 16 }}>
               <Plus size={16} /> บันทึก PO
             </Link>
           )}

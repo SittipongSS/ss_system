@@ -91,7 +91,7 @@ export default function ChangePasswordModal({ open, forced = false, onClose, onC
         <div className="p-2">
           <p className="text-[var(--text-2)]">เปลี่ยนรหัสผ่านเรียบร้อยแล้ว กรุณาเข้าสู่ระบบใหม่อีกครั้งด้วยรหัสผ่านใหม่</p>
           <div className="flex justify-end mt-8 pt-6 border-t border-[var(--border)]">
-            <button onClick={goToLogin} className="btn btn-primary px-8">ไปหน้าเข้าสู่ระบบ</button>
+            <button onClick={goToLogin} className="btn btn-primary">ไปหน้าเข้าสู่ระบบ</button>
           </div>
         </div>
       ) : (
@@ -142,7 +142,7 @@ export default function ChangePasswordModal({ open, forced = false, onClose, onC
             {!forced && (
               <button type="button" onClick={close} className="btn">ยกเลิก</button>
             )}
-            <button type="submit" disabled={submitting} className="btn btn-primary px-8">
+            <button type="submit" disabled={submitting} className="btn btn-primary">
               {submitting ? "กำลังบันทึก..." : "เปลี่ยนรหัสผ่าน"}
             </button>
           </div>

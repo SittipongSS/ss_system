@@ -42,7 +42,7 @@ export default function RejectDialog({ open, onClose, onConfirm, title = "ตี
         </div>
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>
-          <button type="submit" className="btn btn-danger px-6" disabled={busy}>
+          <button type="submit" className="btn btn-danger" disabled={busy}>
             {busy ? "กำลังส่ง..." : "ยืนยันตีกลับ"}
           </button>
         </div>
