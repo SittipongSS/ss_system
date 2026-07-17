@@ -122,7 +122,7 @@ export default function ProjectsIndexPage() {
           <button type="button" className="btn ghost" onClick={load} disabled={loading}>
             <RefreshCw size={15} aria-hidden="true" /> รีเฟรช
           </button>
-          <button type="button" className="btn primary" onClick={() => setShowCreateModal(true)}>
+          <button type="button" className="btn btn-accent" onClick={() => setShowCreateModal(true)}>
             <Plus size={15} aria-hidden="true" /> สร้างโครงการ
           </button>
         </div>
