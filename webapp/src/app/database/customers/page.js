@@ -1,20 +1,16 @@
 "use client";
-import Select from "@/components/ui/Select";
 import { useEffect, useMemo, useState } from "react";
 import { Building2, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
+import CustomerForm, { EMPTY_CUSTOMER } from "@/components/database/CustomerForm";
 import Workspace from "@/components/ui/Workspace";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
-import ContactsEditor from "@/components/database/ContactsEditor";
-import BrandsEditor from "@/components/database/BrandsEditor";
 import { brandTh, brandEn, brandBothOf } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId } from "@/lib/format";
-import PhoneInput from "@/components/ui/PhoneInput";
-import NationalIdInput from "@/components/ui/NationalIdInput";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
@@ -49,19 +45,7 @@ export default function CustomerDirectory() {
   const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
-  const [formData, setFormData] = useState({
-    arCode: "",
-    name: "",
-    customerType: "company",
-    taxId: "",
-    branchCode: "00000",
-    phone: "",
-    address: "",
-    shippingAddress: "",
-    brands: [],
-    contacts: [],
-    creditTerms: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_CUSTOMER);
 
   const fetchCustomers = async () => {
     try {
@@ -131,7 +115,7 @@ export default function CustomerDirectory() {
       });
       if (res.ok) {
         const created = await res.json();
-        setFormData({ arCode: "", name: "", customerType: "company", taxId: "", branchCode: "00000", phone: "", address: "", shippingAddress: "", brands: [], contacts: [], creditTerms: "" });
+        setFormData(EMPTY_CUSTOMER);
         setShowForm(false);
         fetchCustomers();
         if (created?.approvalStatus === "pending") {
@@ -380,161 +364,9 @@ export default function CustomerDirectory() {
         size="md"
       >
         <form onSubmit={handleSubmit}>
-          {/* Section 1 — ข้อมูลบริษัท */}
-          <div className="mb-[22px]">
-            <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลบริษัท (Company Details)</h3>
-            </div>
-            <div className="form-grid cols-2">
-              <div className="form-group col-span-2">
-                <label>ประเภทลูกค้า <span className="text-[var(--red)]">*</span></label>
-                <Select
-                  name="customerType"
-                  value={formData.customerType}
-                  onChange={handleChange}
-                  className="premium-select w-full"
-                >
-                  <option value="company">นิติบุคคล (บริษัท)</option>
-                  <option value="individual">บุคคลธรรมดา</option>
-                </Select>
-                <span className="text-[11px] text-[var(--text-3)] mt-1">กำหนดชุดเอกสารแนบที่ต้องใช้ (แนบได้ที่หน้าลูกค้าหลังบันทึก)</span>
-              </div>
-              <div className="form-group">
-                <label>
-                  รหัสลูกค้า (AR Code) <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="arCode"
-                  value={formData.arCode}
-                  onChange={handleChange}
-                  required
-                  placeholder="เช่น AR-001"
-                  className="premium-input w-full font-mono"
-                />
-              </div>
-              <div className="form-group">
-                <label>
-                  {CUSTOMER_NAME_LABEL} <span className="text-[var(--red)]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                  placeholder="ชื่อลูกค้า บริษัท หรือบุคคล..."
-                  className="premium-input w-full"
-                />
-              </div>
-              <div className="form-group">
-                <label>
-                  เลขประจำตัวผู้เสียภาษี
-                </label>
-                <NationalIdInput
-                  name="taxId"
-                  value={formData.taxId}
-                  onChange={(value) => setFormData((current) => ({ ...current, taxId: value }))}
-                  placeholder="เลข 13 หลัก (ถ้ามี)"
-                  className="w-full"
-                />
-              </div>
-              <div className="form-group">
-                <label>สาขา (Branch)</label>
-                <input
-                  type="text"
-                  name="branchCode"
-                  value={formData.branchCode}
-                  onChange={handleChange}
-                  placeholder="00000"
-                  className="premium-input w-full font-mono"
-                />
-                <span className="text-[11px] text-[var(--text-3)] mt-1">00000 = สำนักงานใหญ่</span>
-              </div>
-              <div className="form-group">
-                <label>เบอร์โทรบริษัท</label>
-                <PhoneInput
-                  name="phone"
-                  value={formData.phone}
-                  onChange={(value) => setFormData((current) => ({ ...current, phone: value }))}
-                  placeholder="เช่น 02-123-4567"
-                  className="w-full"
-                />
-              </div>
-              <div className="form-group col-span-2">
-                <label>
-                  ที่อยู่ลูกค้า <span className="text-[var(--red)]">*</span>
-                </label>
-                <textarea
-                  name="address"
-                  value={formData.address}
-                  onChange={handleChange}
-                  required
-                  rows={2}
-                  placeholder="ที่อยู่สำหรับออกเอกสาร..."
-                  className="premium-input w-full"
-                  style={{ height: "80px", padding: "10px 12px", resize: "none" }}
-                ></textarea>
-              </div>
-              <div className="form-group col-span-2">
-                <label>ที่อยู่จัดส่ง (ถ้าต่างจากที่อยู่ออกเอกสาร)</label>
-                <textarea
-                  name="shippingAddress"
-                  value={formData.shippingAddress}
-                  onChange={handleChange}
-                  rows={2}
-                  placeholder="เว้นว่าง = ใช้ที่อยู่ออกเอกสารเป็นที่อยู่จัดส่ง"
-                  className="premium-input w-full"
-                  style={{ height: "80px", padding: "10px 12px", resize: "none" }}
-                ></textarea>
-              </div>
-              <div className="form-group col-span-2">
-                <label>แบรนด์สินค้า</label>
-                <BrandsEditor
-                  value={formData.brands}
-                  onChange={(v) => setFormData((f) => ({ ...f, brands: v }))}
-                />
-                <span className="text-[11px] text-[var(--text-3)] mt-1">
-                  ใส่ได้หลายแบรนด์
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2 — ผู้ติดต่อ (หลายคนได้) */}
-          <div className="mb-[22px]">
-            <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">2. ผู้ติดต่อ (Contacts)</h3>
-              <span className="text-[11px] text-[var(--text-3)]">เพิ่มได้หลายคน แยกตามแผนก (จัดซื้อ/การเงิน/เทคนิค) — คนแรกถือเป็นผู้ติดต่อหลัก</span>
-            </div>
-            <ContactsEditor value={formData.contacts} onChange={(contacts) => setFormData((f) => ({ ...f, contacts }))} />
-          </div>
-
-          {/* Section 3 — ข้อมูลเพิ่มเติม */}
-          <div className="mb-[22px]">
-            <div className="border-b border-[var(--border)] pb-3 mb-5">
-              <h3 className="font-semibold text-[var(--text)]">3. ข้อมูลเพิ่มเติม (Additional)</h3>
-            </div>
-            <div className="form-grid cols-2">
-              <div className="form-group col-span-2">
-                <label>เงื่อนไขเครดิต (Credit Terms)</label>
-                <input
-                  type="text"
-                  name="creditTerms"
-                  value={formData.creditTerms}
-                  onChange={handleChange}
-                  placeholder="เช่น เครดิต 30 วัน"
-                  className="premium-input w-full"
-                />
-              </div>
-              <div className="form-group col-span-2">
-                <span className="text-[11px] text-[var(--text-3)]">
-                  แผนที่และเอกสารแนบ (สัญญา/หนังสือรับรอง/ภพ.20 ฯลฯ) เพิ่มได้ที่หน้าข้อมูลลูกค้าหลังบันทึก
-                </span>
-              </div>
-            </div>
-          </div>
-
+          {/* ฟอร์มเดียวกับโมดัลแก้ไข (หน้า [id]) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.
+              ไม่มีช่อง "ทีมดูแล" ตอนสร้าง เพราะ server ตั้งทีมให้จากคนสร้าง */}
+          <CustomerForm form={formData} onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))} />
           <div className="form-action-bar">
             <button
               type="button"

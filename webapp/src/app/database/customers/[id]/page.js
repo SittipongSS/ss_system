@@ -1,28 +1,23 @@
 "use client";
-import Select from "@/components/ui/Select";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import { useCan, useRole } from "@/lib/roleContext";
-import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
+import { isSuperuser, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
+import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import StatusBadge from "@/components/excise/StatusBadge";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatCards from "@/components/database/StatCards";
-import ContactsEditor from "@/components/database/ContactsEditor";
-import BrandsEditor from "@/components/database/BrandsEditor";
-import { brandBothOf, brandBoth, normalizeBrands } from "@/lib/master/brands";
+import { brandBothOf, brandBoth } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
-import PhoneInput from "@/components/ui/PhoneInput";
-import NationalIdInput from "@/components/ui/NationalIdInput";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
-import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
 
@@ -49,20 +44,7 @@ export default function CustomerDetails() {
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    arCode: "",
-    name: "",
-    customerType: "company",
-    teams: [],
-    taxId: "",
-    branchCode: "00000",
-    phone: "",
-    address: "",
-    shippingAddress: "",
-    brands: [],
-    contacts: [],
-    creditTerms: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_CUSTOMER);
 
   // Table Tabs
   const [activeTab, setActiveTab] = useState("products");
@@ -77,26 +59,8 @@ export default function CustomerDetails() {
         setProducts(data.products || []);
         setOrders(data.orders || []);
 
-        // Populate edit form
-        setFormData({
-          arCode: data.customer.arCode || "",
-          name: data.customer.name || "",
-          teams: data.customer.teams?.length ? data.customer.teams : (data.customer.team ? [data.customer.team] : []),
-          customerType: data.customer.customerType || "company",
-          taxId: data.customer.taxId || "",
-          branchCode: data.customer.branchCode || "00000",
-          phone: data.customer.phone || "",
-          address: data.customer.address || "",
-          shippingAddress: data.customer.shippingAddress || "",
-          brands: normalizeBrands(data.customer.brands),
-          // contacts[] (0033); fall back to legacy singles for rows not yet migrated.
-          contacts: Array.isArray(data.customer.contacts) && data.customer.contacts.length
-            ? data.customer.contacts
-            : (data.customer.contactPerson || data.customer.contactPhone || data.customer.email
-                ? [{ role: "", name: data.customer.contactPerson || "", phone: data.customer.contactPhone || "", email: data.customer.email || "" }]
-                : []),
-          creditTerms: data.customer.creditTerms || "",
-        });
+        // Populate edit form (fallback ข้อมูลยุคเก่าอยู่ใน customerToForm)
+        setFormData(customerToForm(data.customer));
       } else {
         const errData = await res.json();
         setError(errData.error || "ไม่สามารถโหลดข้อมูลลูกค้าได้");
@@ -631,86 +595,17 @@ export default function CustomerDetails() {
       {/* Edit modal */}
       <Modal open={isEditing} onClose={() => setIsEditing(false)} title="แก้ไขข้อมูลลูกค้า (Edit Customer)" size="md">
         <form onSubmit={handleEditSubmit}>
-          <div className="grid gap-[16px] grid-cols-2">
-            <div className="form-group col-span-2">
-              <label>ประเภทลูกค้า <span className="text-[var(--red)]">*</span></label>
-              <Select name="customerType" value={formData.customerType} onChange={handleInputChange} className="premium-select w-full text-xs">
-                <option value="company">นิติบุคคล (บริษัท)</option>
-                <option value="individual">บุคคลธรรมดา</option>
-              </Select>
-              <span className="text-[10px] text-[var(--text-3)] mt-1">เปลี่ยนประเภท = ชุดเอกสารแนบที่ต้องใช้เปลี่ยนตาม</span>
-            </div>
-            <div className="form-group col-span-2">
-              <label>ทีมดูแล {!superuser && <span className="text-[10px] font-normal text-[var(--text-3)]">(เฉพาะหัวหน้า/แอดมินแก้ได้)</span>}</label>
-              <div className="flex flex-wrap gap-2">
-                {TEAMS.map((t) => {
-                  const on = formData.teams.includes(t);
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      disabled={!superuser}
-                      onClick={() => setFormData((f) => ({ ...f, teams: on ? f.teams.filter((x) => x !== t) : [...f.teams, t] }))}
-                      className={`btn text-xs ${on ? "btn-primary" : ""}`}
-                      style={!superuser ? { opacity: on ? 1 : 0.5, cursor: "default" } : undefined}
-                    >
-                      {TEAM_LABELS[t] || t}
-                    </button>
-                  );
-                })}
-              </div>
-              <span className="text-[10px] text-[var(--text-3)] mt-1">เลือกได้หลายทีม — ทีมที่เลือกจะแก้/อนุมัติลูกค้ารายนี้ได้</span>
-            </div>
-            <div className="form-group col-span-2 sm:col-span-1">
-              <label>รหัสลูกค้า (AR Code) <span className="text-[var(--red)]">*</span></label>
-              <input type="text" name="arCode" value={formData.arCode} onChange={handleInputChange} required className="premium-input w-full font-mono text-xs" />
-            </div>
-            <div className="form-group col-span-2 sm:col-span-1">
-              <label>{CUSTOMER_NAME_LABEL} <span className="text-[var(--red)]">*</span></label>
-              <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className="premium-input w-full text-xs" />
-            </div>
-            <div className="form-group col-span-2 sm:col-span-1">
-              <label>เลขประจำตัวผู้เสียภาษี</label>
-              <NationalIdInput name="taxId" value={formData.taxId} onChange={(value) => setFormData((current) => ({ ...current, taxId: value }))} placeholder="เลข 13 หลัก (ถ้ามี)" className="w-full text-xs" />
-            </div>
-            <div className="form-group col-span-2 sm:col-span-1">
-              <label>สาขา (Branch)</label>
-              <input type="text" name="branchCode" value={formData.branchCode} onChange={handleInputChange} placeholder="00000" className="premium-input w-full font-mono text-xs" />
-              <span className="text-[10px] text-[var(--text-3)] mt-1">00000 = สำนักงานใหญ่</span>
-            </div>
-            <div className="form-group col-span-2 sm:col-span-1">
-              <label>เบอร์โทร</label>
-              <PhoneInput name="phone" value={formData.phone} onChange={(value) => setFormData((current) => ({ ...current, phone: value }))} placeholder="เช่น 02-123-4567" className="w-full text-xs" />
-            </div>
-            <div className="form-group col-span-2">
-              <label>ผู้ติดต่อ (เพิ่มได้หลายคน — คนแรก = ผู้ติดต่อหลัก)</label>
-              <ContactsEditor value={formData.contacts} onChange={(contacts) => setFormData((f) => ({ ...f, contacts }))} />
-            </div>
-            <div className="form-group col-span-2">
-              <label>เงื่อนไขเครดิต (Credit Terms)</label>
-              <input type="text" name="creditTerms" value={formData.creditTerms} onChange={handleInputChange} placeholder="เช่น เครดิต 30 วัน" className="premium-input w-full text-xs" />
-            </div>
-            <div className="form-group col-span-2">
-              <label>ที่อยู่ลูกค้า (ออกเอกสาร) <span className="text-[var(--red)]">*</span></label>
-              <textarea name="address" value={formData.address} onChange={handleInputChange} required rows={3} className="premium-input w-full text-xs" style={{ padding: "8px 12px", resize: "none" }}></textarea>
-            </div>
-            <div className="form-group col-span-2">
-              <label>ที่อยู่จัดส่ง (ถ้าต่างจากที่อยู่ออกเอกสาร)</label>
-              <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} rows={3} placeholder="เว้นว่าง = ใช้ที่อยู่ออกเอกสาร" className="premium-input w-full text-xs" style={{ padding: "8px 12px", resize: "none" }}></textarea>
-            </div>
-            <div className="form-group col-span-2">
-              <label>แบรนด์สินค้า</label>
-              <BrandsEditor
-                value={formData.brands}
-                onChange={(v) => setFormData((f) => ({ ...f, brands: v }))}
-              />
-              <span className="text-[10px] text-[var(--text-3)] mt-1">ใส่ได้หลายแบรนด์</span>
-            </div>
-          </div>
-
+          {/* ฟอร์มเดียวกับโมดัลเพิ่มลูกค้า (หน้ารวม) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.
+              ต่างแค่โหมด: มีช่องทีมดูแล (ย้ายทีมได้เฉพาะ superuser — API บังคับซ้ำ) */}
+          <CustomerForm
+            form={formData}
+            onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))}
+            showTeams
+            canEditTeams={superuser}
+          />
           <div className="form-action-bar page">
             <button type="button" onClick={() => setIsEditing(false)} className="btn">ยกเลิก</button>
-            <button type="submit" disabled={isSubmitting} className="btn btn-primary px-6 text-xs font-semibold py-2">
+            <button type="submit" disabled={isSubmitting} className="btn btn-primary px-6">
               {isSubmitting ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
             </button>
           </div>
