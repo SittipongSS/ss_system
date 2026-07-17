@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, Filter, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
-import PredecessorPicker from "@/components/pm/PredecessorPicker";
+import StepFormFields, { EMPTY_STEP_FORM, stepToForm } from "@/components/pm/StepFormFields";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -27,7 +27,6 @@ const STATUS_META = {
   "In Progress": { label: "กำลังทำ", color: "var(--accent)" },
   Completed: { label: "เสร็จแล้ว", color: "var(--green)" },
 };
-const ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
 const ROLE_META = {
   SA: { color: "var(--blue)", bg: "color-mix(in srgb, var(--blue) 10%, transparent)" },
   RD: { color: "var(--violet)", bg: "color-mix(in srgb, var(--violet) 10%, transparent)" },
@@ -37,7 +36,6 @@ const ROLE_META = {
 };
 const PHASE_COLORS = ["var(--accent)", "var(--violet)", "var(--teal)", "var(--amber)", "var(--green)", "var(--blue)"];
 
-const emptyForm = { name: "", role: "SA", phase: "", durationDays: 1, startDate: "", assigneeId: "", assignee: "", isMilestone: false, note: "", predecessors: [] };
 
 function withOptimisticSchedule(task, body) {
   const next = { ...body };
@@ -89,7 +87,7 @@ export default function TimelineWorkspace({
   const [busyId, setBusyId] = useState("");
   const [users, setUsers] = useState([]);
   const [editTask, setEditTask] = useState(null); // task ที่เปิดแก้ในโมดัล
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(EMPTY_STEP_FORM);
   const [addAfterId, setAddAfterId] = useState(null); // แทรกหลังแถวนี้ (null = ต่อท้าย)
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -212,7 +210,7 @@ export default function TimelineWorkspace({
 
   const openEdit = (t) => {
     setEditTask(t);
-    setForm({ name: t.name || "", role: t.role || "SA", phase: t.phase || "", durationDays: t.durationDays ?? 1, startDate: t.startDate || "", assigneeId: t.assigneeId || "", assignee: t.assignee || "", isMilestone: !!t.isMilestone, note: t.note || "", predecessors: t.predecessors || [] });
+    setForm(stepToForm(t));
   };
   const saveEdit = async (e) => {
     e.preventDefault();
@@ -226,7 +224,7 @@ export default function TimelineWorkspace({
     setAddAfterId(afterId);
     const after = tasks.find((t) => t.id === afterId);
     // แทรกหลังขั้นไหน default ขึ้นกับขั้นนั้น (พฤติกรรมเดียวกับปุ่มแทรกของตารางโครงการ)
-    setForm({ ...emptyForm, phase: after?.phase || phases[phases.length - 1] || "", predecessors: afterId ? [afterId] : [] });
+    setForm({ ...EMPTY_STEP_FORM, phase: after?.phase || phases[phases.length - 1] || "", predecessors: afterId ? [afterId] : [] });
     setAddOpen(true);
   };
   const saveAdd = async (e) => {
@@ -281,65 +279,12 @@ export default function TimelineWorkspace({
     tasks,
   };
 
-  const taskForm = (onSubmit, title, submitLabel) => (
+  // ช่องกรอกใช้ชุดกลางร่วมกับหน้าโครงการ (กฎ "แก้ = ฟอร์มเดียวกับตอนสร้าง" ใน AGENTS.md)
+  // — เป็น project_tasks แถวเดียวกัน ยิง API เดียวกัน จึงต้องกรอกได้เท่ากันทั้งสองทาง
+  const taskForm = (onSubmit, submitLabel) => (
     <form onSubmit={onSubmit}>
-      <div style={{ padding: "16px 18px", display: "grid", gap: 12 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          ชื่อขั้นตอน
-          <input className="premium-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus />
-        </label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            แผนก
-            <Select className="premium-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </Select>
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            จำนวนวันทำการ
-            <input type="number" min="1" className="premium-input" value={form.durationDays}
-              onChange={(e) => setForm({ ...form, durationDays: Math.max(1, Number(e.target.value) || 1) })} />
-          </label>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            ผู้รับผิดชอบ
-            <Select className="premium-select" value={form.assigneeId} onChange={(e) => {
-              const selected = assigneeOptions.find((user) => user.id === e.target.value);
-              setForm({ ...form, assigneeId: e.target.value, assignee: selected?.name || "" });
-            }}>
-              <option value="">— ยังไม่ระบุ —</option>
-              {assigneeOptions.map((user) => <option key={user.id} value={user.id}>{compactPersonName(user.name)}</option>)}
-            </Select>
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            วันที่เริ่ม
-            <DateInput value={form.startDate} onChange={(startDate) => setForm({ ...form, startDate })} />
-          </label>
-        </div>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          เฟส
-          <input className="premium-input" list="deal-tl-phases" value={form.phase} onChange={(e) => setForm({ ...form, phase: e.target.value })} placeholder="เลือกหรือพิมพ์เฟสใหม่" />
-          <datalist id="deal-tl-phases">{phases.map((p) => <option key={p} value={p} />)}</datalist>
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-          <input type="checkbox" checked={form.isMilestone} onChange={(e) => setForm({ ...form, isMilestone: e.target.checked })} />
-          ตั้งเป็น Milestone
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          หมายเหตุ
-          <textarea className="premium-input" rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} style={{ resize: "vertical" }} />
-        </label>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          งานที่ต้องรอให้เสร็จก่อน (ขึ้นกับ) <span style={{ fontSize: 11, color: "var(--text-3)" }}>เลือกได้หลายขั้น — server เลื่อนวันให้ตามสายอัตโนมัติ</span>
-          <PredecessorPicker
-            tasks={tasksWithNumbers}
-            selfId={editTask?.id || null}
-            value={form.predecessors || []}
-            onChange={(predecessors) => setForm({ ...form, predecessors })}
-            maxHeight={150}
-          />
-        </div>
+      <div style={{ padding: "16px 18px" }}>
+        <StepFormFields form={form} setForm={setForm} users={users} phases={phases} tasks={tasksWithNumbers} selfId={editTask?.id || null} />
       </div>
       <div className="form-action-bar" style={{ padding: "16px 18px" }}>
         <button type="button" className="btn ghost" onClick={() => { setEditTask(null); setAddOpen(false); }} disabled={saving}>ยกเลิก</button>
@@ -621,10 +566,10 @@ export default function TimelineWorkspace({
       )}
 
       <Modal open={!!editTask} onClose={() => !saving && setEditTask(null)} title="แก้ไขขั้นตอน" size="sm">
-        {editTask && taskForm(saveEdit, "แก้ไขขั้นตอน", "เก็บการแก้ไข")}
+        {editTask && taskForm(saveEdit, "เก็บการแก้ไข")}
       </Modal>
       <Modal open={addOpen} onClose={() => !saving && setAddOpen(false)} title={addAfterId ? "แทรกขั้นตอน" : "เพิ่มขั้นตอน"} size="sm">
-        {addOpen && taskForm(saveAdd, "เพิ่มขั้นตอน", "เพิ่มขั้นตอน")}
+        {addOpen && taskForm(saveAdd, "เพิ่มขั้นตอน")}
       </Modal>
     </>
   );

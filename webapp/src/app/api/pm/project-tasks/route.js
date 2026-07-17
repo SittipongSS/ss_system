@@ -124,7 +124,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     name: body.name || '',
     role: body.role || 'SA',
     assignee: body.assignee || null,
-    // assigneeId ไม่ใส่ตอนสร้าง (assign ผ่าน PATCH) — กัน insert พังก่อนรัน migration 0019
+    // ผู้รับผิดชอบที่เลือกตอนเพิ่มขั้นตอนต้องติดไปด้วย ไม่งั้นค่าที่กรอกหายเงียบ ๆ
+    // (เคยเว้นไว้ตอน migration 0019 ยังไม่รัน — รันแล้ว และ PATCH เขียนคอลัมน์นี้อยู่)
+    assigneeId: body.assigneeId || null,
     phase: body.phase || null,
     isMilestone: !!body.isMilestone,
     durationDays: body.durationDays ?? 1,
