@@ -18,7 +18,12 @@ test('Sale Order print uses FM-SA-03 and complete commercial references', () => 
   assert.match(html, /SO-26070001-0/);
   assert.match(html, /อ้างอิง QT[\s\S]*QT-26070001-0/);
   assert.match(html, /กำหนดชำระ[\s\S]*15\/08\/2026/);
-  assert.match(html, /ผู้อนุมัติ[\s\S]*\(ผู้อนุมัติ\)/);
+  // ช่องลงชื่อ 3 ช่อง (มติ 2026-07-18): ผู้จัดทำ·พนักงานขาย / ผู้อนุมัติ·ผู้จัดการฝ่ายขาย / ฝ่ายบัญชี
+  assert.match(html, /sb-head">ผู้จัดทำ <span class="sb-role">· พนักงานขาย<\/span>[\s\S]*?\(ผู้จัดทำ\)/);
+  assert.match(html, /sb-head">ผู้อนุมัติ <span class="sb-role">· ผู้จัดการฝ่ายขาย<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
+  assert.match(html, /sb-head">ฝ่ายบัญชี /);
+  // ตัดช่อง "ผู้ยื่นอนุมัติ" ออกแล้ว
+  assert.doesNotMatch(html, /ผู้ยื่นอนุมัติ/);
   assert.doesNotMatch(html, /class="watermark"/);
 });
 
