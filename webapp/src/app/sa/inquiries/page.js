@@ -8,6 +8,8 @@ import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/sa
 import InquiryCreateModal from "@/components/salesPlanning/InquiryCreateModal";
 import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
 import { compareInquiryUrgency } from "@/lib/inquiries";
+import { usePagination } from "@/lib/usePagination";
+import Pager from "@/components/excise/Pager";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
 import { can } from "@/lib/permissions";
@@ -60,6 +62,9 @@ export default function InquiriesPage() {
       || String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   }, [rows]);
 
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(sorted, { resetKey: `${filter}` });
+
   const canCreate = can(role, "salesplan:edit");
   const summary = useMemo(() => ({
     total: rows.length,
@@ -110,7 +115,7 @@ export default function InquiriesPage() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={7} style={{ padding: 18, color: "var(--text-3)" }}>กำลังโหลด...</td></tr>
-              ) : sorted.length ? sorted.map((row) => {
+              ) : sorted.length ? pageRows.map((row) => {
                 const due = inquiryDueTone(row, todayISO);
                 return (
                   <tr key={row.id} className="premium-row">
@@ -140,6 +145,9 @@ export default function InquiriesPage() {
             </tbody>
           </table>
           </div>
+          {!loading && sorted.length > 0 && (
+            <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
+          )}
           {!loading && sorted.length > 0 && (
           <div style={{ marginTop: 12, color: "var(--text-3)", fontSize: 12 }}>
             {sorted.length} เรื่อง · อัปเดตล่าสุด {fmtDateTime(sorted[0]?.updatedAt || sorted[0]?.createdAt)}

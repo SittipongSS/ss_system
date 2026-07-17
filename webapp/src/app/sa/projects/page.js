@@ -11,6 +11,8 @@ import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/sa
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import ConfirmModal from "@/components/tax/ConfirmModal";
+import Pager from "@/components/excise/Pager";
+import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoneyCompact, fmtName } from "@/lib/format";
@@ -78,6 +80,9 @@ export default function ProjectsIndexPage() {
         .some((v) => (v || "").toLowerCase().includes(q));
     });
   }, [rows, query, statusFilter, customers]);
+
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(filtered, { resetKey: `${query}|${statusFilter}` });
 
   // KPI รวมของโครงการที่กรองอยู่ — บวกจาก rollup ต่อโครงการ (นิยามเดียวกับต่อแถว)
   const totals = useMemo(() => {
@@ -168,7 +173,7 @@ export default function ProjectsIndexPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => {
+                {pageRows.map((p) => {
                   const r = p.dealsRollup || {};
                   const projectBrand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand);
                   const firstDeal = (p.deals || [])[0];
@@ -233,6 +238,16 @@ export default function ProjectsIndexPage() {
               </tbody>
             </table>
           </div>
+          {filtered.length > 0 && (
+            <Pager
+              page={page}
+              pageCount={pageCount}
+              total={total}
+              onPage={setPage}
+              pageSize={pageSize}
+              onPageSize={setPageSize}
+            />
+          )}
         </SaSection>
         </div>
       <SalesProjectCreateModal

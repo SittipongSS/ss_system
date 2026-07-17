@@ -15,6 +15,8 @@ import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/componen
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
+import { usePagination } from "@/lib/usePagination";
+import Pager from "@/components/excise/Pager";
 
 // ป้ายสถานะใช้ชุดกลาง QUOTE_STATUS_LABELS/quoteStatusBadge จาก components/salesPlanning/ui
 const statusBadge = (s) => quoteStatusBadge(s);
@@ -69,6 +71,10 @@ export default function QuotationsPage() {
       return [r.quoteNumber, r.customerName, r.deal?.title, r.deal?.ownerName].some((v) => (v || "").toLowerCase().includes(q));
     });
   }, [rows, query, statusFilter]);
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(filtered, {
+      resetKey: `${query}|${statusFilter}`,
+    });
   const summary = useMemo(() => ({
     total: rows.length,
     active: rows.filter((row) => ["draft", "sent", "pending_approval"].includes(row.status)).length,
@@ -133,7 +139,7 @@ export default function QuotationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r) => (
+                {pageRows.map((r) => (
                   <DetailRow key={r.id} href={`/sa/quotations/${r.id}`} className="premium-row">
                     <td>
                       {/* prefetch={false} ลิงก์ในแถว — กัน RSC prefetch ต่อแถวของลิสต์ยาว */}
@@ -190,6 +196,17 @@ export default function QuotationsPage() {
               </tbody>
             </table>
           </div>
+
+          {filtered.length > 0 && (
+            <Pager
+              page={page}
+              pageCount={pageCount}
+              total={total}
+              onPage={setPage}
+              pageSize={pageSize}
+              onPageSize={setPageSize}
+            />
+          )}
         </SaSection>
       </div>
 

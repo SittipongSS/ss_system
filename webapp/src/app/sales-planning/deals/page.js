@@ -21,6 +21,8 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
 import DetailRow from "@/components/ui/DetailRow";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
+import { usePagination } from "@/lib/usePagination";
+import Pager from "@/components/excise/Pager";
 
 // สถานะที่เลือกได้ใน pipeline — won เป็นสถานะปิดสุดท้าย (ไม่มี in_project ให้เลือกแล้ว
 // แต่ STAGE_LABELS ยังรองรับข้อมูลเก่า)
@@ -158,6 +160,11 @@ export default function SalesPlanningPipelinePage() {
   }, [deals, query, stageFilter, typeFilter, reviewOnly, sortKey, sortDir]);
 
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
+
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(filteredDeals, {
+      resetKey: `${query}|${stageFilter}|${typeFilter}|${reviewOnly}|${sortKey}|${sortDir}|${month}|${allMonths}`,
+    });
 
   const openNewDeal = () => {
     setCreateDeals([{ ...initialDealForm }]);
@@ -553,7 +560,7 @@ export default function SalesPlanningPipelinePage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredDeals.map((deal) => (
+                {pageRows.map((deal) => (
                   <DetailRow key={deal.id} href={`/sa/deals/${deal.id}`} className="premium-row">
                     <td>
                       {/* prefetch={false} ทั้งลิงก์ในแถว: ลิสต์ยาว ๆ เคยยิง RSC prefetch
@@ -652,6 +659,17 @@ export default function SalesPlanningPipelinePage() {
               </tbody>
             </table>
           </div>
+
+          {filteredDeals.length > 0 && (
+            <Pager
+              page={page}
+              pageCount={pageCount}
+              total={total}
+              onPage={setPage}
+              pageSize={pageSize}
+              onPageSize={setPageSize}
+            />
+          )}
         </SaSection>
       </div>
 

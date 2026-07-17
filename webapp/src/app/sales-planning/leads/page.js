@@ -29,6 +29,8 @@ import { FORECAST_LEVELS, MonthPicker, thisMonth, initialDealForm, snapForecastL
 import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { usePagination } from "@/lib/usePagination";
+import Pager from "@/components/excise/Pager";
 
 const ACTION_COLORS = {
   screen: 'var(--blue)',
@@ -166,6 +168,11 @@ export default function LeadsPage() {
       return ((a.createdAt || "") < (b.createdAt || "") ? 1 : -1) * mul;
     });
   }, [leads, query, statusFilter, sortKey, sortDir]);
+
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+    usePagination(filtered, {
+      resetKey: `${query}|${statusFilter}|${sortKey}|${sortDir}`,
+    });
 
   const countBy = useMemo(() => {
     const c = {};
@@ -445,7 +452,7 @@ export default function LeadsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((lead) => (
+                {pageRows.map((lead) => (
                   <tr key={lead.id} className="premium-row" onClick={() => router.push(`/sa/leads/${lead.id}`)} style={{ cursor: "pointer" }}>
                     <td>
                       <strong>{lead.contactName}</strong>
@@ -551,6 +558,17 @@ export default function LeadsPage() {
               </tbody>
             </table>
           </div>
+
+          {filtered.length > 0 && (
+            <Pager
+              page={page}
+              pageCount={pageCount}
+              total={total}
+              onPage={setPage}
+              pageSize={pageSize}
+              onPageSize={setPageSize}
+            />
+          )}
         </SaSection>
       </div>
 
