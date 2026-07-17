@@ -95,6 +95,38 @@ export function canReviewSalesForecast(user) {
   return !!user && can(user.role, 'salesplan:review');
 }
 
+// RD อ่านดีล/ใบเสนอราคา/SO ทุกทีมเพื่อบริบทงานสูตร/ผลิต แต่ต้องไม่เห็นตัวเลขเงิน
+// (มติ 2026-07-17) — ตัดที่ server ตามแพตเทิร์น products:margin; viewer (ผู้บริหาร/
+// C-level) ยังเห็นเงินเต็ม. UI ใช้ flag `moneyRedacted` จาก API ซ่อนช่องเงิน
+// (ห้ามเดาจาก role ฝั่ง client — ฟิลด์ถูกลบมาแล้ว fmtMoney จะกลายเป็น ฿0.00 หลอกตา).
+export function canSeeDealValues(user) {
+  return !!user && user.role !== 'rd';
+}
+
+// ครอบคลุมเงินทุกชั้นของเอกสารขาย: ดีล (projectValue/wonValue/budget) · forecast
+// (forecastAmount) · เป้า (targetAmount) · ใบเสนอราคา+SO ทั้งหัวและรายบรรทัด.
+const DEAL_MONEY_FIELDS = new Set([
+  'projectValue', 'wonValue', 'budget',
+  'forecastAmount', 'targetAmount',
+  'subtotal', 'subTotal', 'discountValue', 'discountAmount',
+  'vatAmount', 'totalAmount', 'actualAmount', 'depositAmount',
+  'unitPrice', 'lineTotal',
+]);
+
+// ลบฟิลด์เงินออกจาก payload ทั้งกราฟ (ลึกทุกชั้น รวม array/metadata) — คืนสำเนาใหม่.
+export function redactDealMoney(node) {
+  if (Array.isArray(node)) return node.map(redactDealMoney);
+  if (node && typeof node === 'object') {
+    const out = {};
+    for (const [key, value] of Object.entries(node)) {
+      if (DEAL_MONEY_FIELDS.has(key)) continue;
+      out[key] = redactDealMoney(value);
+    }
+    return out;
+  }
+  return node;
+}
+
 export function inSalesViewScope(user, record) {
   return inScope(salesPlanningViewScope(user?.role), user, record)
     || inPmBackfillOwnerScope(user, record);

@@ -2,13 +2,15 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { isSuperuser } from '@/lib/permissions';
-import { canEditSalesTarget, canViewSalesPlanning, normalizeTargetPeriod, salesPlanningViewScope, toMoney, yearKey } from '@/lib/salesPlanning';
+import { canEditSalesTarget, canSeeDealValues, canViewSalesPlanning, normalizeTargetPeriod, salesPlanningViewScope, toMoney, yearKey } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
+  // RD อ่านดีลเพื่อบริบทงานผลิตเท่านั้น — เป้ายอดขายเป็นเงินล้วน ปิดทั้งเส้น
+  if (!canSeeDealValues(user)) return forbidden('ฝ่าย RD ไม่มีสิทธิ์ดูข้อมูลยอดขาย');
 
   const params = new URL(req.url).searchParams;
   const periodTypeParam = params.get('periodType');

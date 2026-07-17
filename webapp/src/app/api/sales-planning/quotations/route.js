@@ -1,5 +1,5 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { canSeeDealValues, canViewSalesPlanning, inSalesViewScope, redactDealMoney } from '@/lib/salesPlanning';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 
 export const dynamic = 'force-dynamic';
@@ -25,5 +25,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const rows = latestQuotationRevisions(visibleRows)
     .filter((q) => !status || status === 'all' || q.status === status)
     .map((q) => ({ ...q, lineCount: (q.lines || []).length, lines: undefined }));
+  if (!canSeeDealValues(user)) {
+    return ok(rows.map((q) => ({ ...redactDealMoney(q), moneyRedacted: true })));
+  }
   return ok(rows);
 });

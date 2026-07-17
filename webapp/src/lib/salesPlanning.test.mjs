@@ -5,7 +5,7 @@ import {
   requiredConfirmDateForNeedMonth,
   buildSahamitReverseRiskRows,
 } from './salesPlanningReverse';
-import { inSalesEditScope, inSalesViewScope, salesPlanningEditScope, salesPlanningViewScope } from './salesPlanning';
+import { canSeeDealValues, inSalesEditScope, inSalesViewScope, redactDealMoney, salesPlanningEditScope, salesPlanningViewScope } from './salesPlanning';
 
 test('requiredConfirmDateForNeedMonth subtracts working days from first day of need month', () => {
   assert.equal(requiredConfirmDateForNeedMonth('2026-08', 1, new Set()), '2026-07-31');
@@ -78,4 +78,52 @@ test('AE sees only own sales plan projects, including PM backfill by owner name'
   assert.equal(inSalesViewScope(ae, { ownerId: 'u-ae-1', ownerName: 'Someone', team: 'ODM' }), true);
   assert.equal(inSalesViewScope(ae, { ownerId: 'other-user', ownerName: 'Sittipong SS', team: 'KA', metadata: { source: 'manual' } }), false);
   assert.equal(inSalesViewScope(ae, { ownerId: null, ownerName: 'sittipong ss', team: null, metadata: { source: 'pm-backfill' } }), true);
+});
+
+test('canSeeDealValues: only rd is blind to money — sales roles and executive viewer keep it', () => {
+  for (const role of ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'viewer']) {
+    assert.equal(canSeeDealValues({ role }), true, role);
+  }
+  assert.equal(canSeeDealValues({ role: 'rd' }), false);
+  assert.equal(canSeeDealValues(null), false);
+});
+
+test('redactDealMoney strips money fields at every depth and keeps the rest', () => {
+  const redacted = redactDealMoney({
+    id: 'DL-1',
+    title: 'ดีลทดสอบ',
+    projectValue: 100000,
+    wonValue: 90000,
+    budget: 50000,
+    forecastDrift: { forecastAmount: 120000, month: '2026-07' },
+    quotations: [{
+      quoteNumber: 'QT2607-001',
+      totalAmount: 107000,
+      vatAmount: 7000,
+      subtotal: 100000,
+      lines: [{ description: 'FG-A', qty: 2, unitPrice: 50000, lineTotal: 100000 }],
+    }],
+    salesOrders: [{ orderNumber: 'SO2607-001', actualAmount: 100000, status: 'approved' }],
+    metadata: { source: 'lead', depositAmount: 30000 },
+  });
+
+  // เนื้องานยังครบ
+  assert.equal(redacted.id, 'DL-1');
+  assert.equal(redacted.title, 'ดีลทดสอบ');
+  assert.equal(redacted.quotations[0].quoteNumber, 'QT2607-001');
+  assert.equal(redacted.quotations[0].lines[0].qty, 2);
+  assert.equal(redacted.salesOrders[0].status, 'approved');
+  assert.equal(redacted.forecastDrift.month, '2026-07');
+
+  // เงินหายทุกชั้น (ต้อง "ไม่มี key" ไม่ใช่ null — ให้ fmtMoney โชว์ — ได้ถูกต้อง)
+  for (const [obj, key] of [
+    [redacted, 'projectValue'], [redacted, 'wonValue'], [redacted, 'budget'],
+    [redacted.forecastDrift, 'forecastAmount'],
+    [redacted.quotations[0], 'totalAmount'], [redacted.quotations[0], 'vatAmount'], [redacted.quotations[0], 'subtotal'],
+    [redacted.quotations[0].lines[0], 'unitPrice'], [redacted.quotations[0].lines[0], 'lineTotal'],
+    [redacted.salesOrders[0], 'actualAmount'],
+    [redacted.metadata, 'depositAmount'],
+  ]) {
+    assert.equal(Object.hasOwn(obj, key), false, key);
+  }
 });

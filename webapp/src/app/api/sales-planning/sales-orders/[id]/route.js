@@ -1,6 +1,6 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canSeeDealValues, canViewSalesPlanning, inSalesEditScope, inSalesViewScope, redactDealMoney } from '@/lib/salesPlanning';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
@@ -38,7 +38,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!order) return notFound('ไม่พบ Sale Order');
   if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
   // meId ให้หน้าเว็บซ่อนปุ่มอนุมัติของ SO ที่ตัวเองสร้าง/ยื่น (แบ่งแยกหน้าที่)
-  return ok({ ...order, meId: user.id || null });
+  const payload = { ...order, meId: user.id || null };
+  if (!canSeeDealValues(user)) return ok({ ...redactDealMoney(payload), moneyRedacted: true });
+  return ok(payload);
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {

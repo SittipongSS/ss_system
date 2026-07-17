@@ -6,6 +6,7 @@ import {
   applyDealScope,
   canCreateDeal,
   canEditSalesPlanning,
+  canSeeDealValues,
   canViewSalesPlanning,
   dealAuditLabel,
   forecastAmount,
@@ -14,6 +15,7 @@ import {
   monthKey,
   normalizeDealType,
   normalizeStage,
+  redactDealMoney,
   toMoney,
   toProbability,
 } from '@/lib/salesPlanning';
@@ -57,6 +59,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     canEdit: editor && inSalesEditScope(user, d),
     forecastDrift: driftMap.get(d.id) || null,
   }));
+  if (!canSeeDealValues(user)) {
+    return ok(rows.map((d) => ({ ...redactDealMoney(d), moneyRedacted: true })));
+  }
   return ok(rows);
 });
 

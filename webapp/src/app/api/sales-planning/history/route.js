@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { canEditSalesTarget, canViewSalesPlanning, monthKey, toMoney, yearKey } from '@/lib/salesPlanning';
+import { canEditSalesTarget, canSeeDealValues, canViewSalesPlanning, monthKey, toMoney, yearKey } from '@/lib/salesPlanning';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +35,8 @@ function aggregateWonDeals(deals) {
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
+  // RD อ่านดีลเพื่อบริบทงานผลิตเท่านั้น — ยอดขายย้อนหลังเป็นเงินล้วน ปิดทั้งเส้น
+  if (!canSeeDealValues(user)) return forbidden('ฝ่าย RD ไม่มีสิทธิ์ดูข้อมูลยอดขาย');
 
   const params = new URL(req.url).searchParams;
   const yearsParam = (params.get('years') || '')

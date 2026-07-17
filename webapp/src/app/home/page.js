@@ -61,7 +61,11 @@ export default function HomeHubPage() {
   const enterTax = () => router.push(landingFor(role));
   const enterPM = () => router.push("/sa/tasks");
   // marketing ไม่มี salesplan:view (เห็นเฉพาะลีด) → เข้าที่คิวลีดโดยตรง
-  const enterSalesPlanning = () => router.push(can(role, "salesplan:view") ? "/sa" : "/sa/leads");
+  // rd มี salesplan:view แต่ถูกปิดแดชบอร์ด (เงินล้วน — canSeeDealValues) → เข้าที่ดีลตรง ๆ
+  const enterSalesPlanning = () => {
+    if (role === "rd") return router.push("/sa/deals");
+    return router.push(can(role, "salesplan:view") ? "/sa" : "/sa/leads");
+  };
   const enterSAHAMIT = () => router.push("/sahamit");
   const enterMGMT = () => router.push("/mgmt");
   // Land on each system's command-center "ภาพรวม" (consistent with tax/pm/sahamit).

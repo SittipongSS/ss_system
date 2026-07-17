@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canSeeDealValues, canViewSalesPlanning, inSalesEditScope, inSalesViewScope, redactDealMoney } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +34,9 @@ export const GET = withUser(async ({ user, supabase }) => {
     .map((row) => ({ ...row, deal: dealById.get(row.dealId) || null, quotation: quoteById.get(row.quotationId) || null }))
     .filter((row) => row.deal && inSalesViewScope(user, row.deal));
 
+  if (!canSeeDealValues(user)) {
+    return ok(visible.map((row) => ({ ...redactDealMoney(row), moneyRedacted: true })));
+  }
   return ok(visible);
 });
 

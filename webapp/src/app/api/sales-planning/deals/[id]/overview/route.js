@@ -1,5 +1,5 @@
 import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canSeeDealValues, canViewSalesPlanning, inSalesEditScope, inSalesViewScope, redactDealMoney } from '@/lib/salesPlanning';
 import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
@@ -100,7 +100,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, deal);
 
-  return ok({
+  // RD: ตัดฟิลด์เงินทั้งกราฟ (ดีล/QT/SO/forecast/sibling) ก่อนออกจาก server —
+  // moneyRedacted ให้ UI ซ่อนช่องเงิน (ฟิลด์หายแล้ว fmtMoney จะโชว์ ฿0.00 หลอกตา)
+  const respond = (payload) =>
+    canSeeDealValues(user) ? ok(payload) : ok({ ...redactDealMoney(payload), moneyRedacted: true });
+
+  return respond({
     deal,
     canEdit,
     forecastDrift,

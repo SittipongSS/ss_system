@@ -9,6 +9,7 @@ import {
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canEditSalesPlanning,
+  canSeeDealValues,
   canViewSalesPlanning,
   dealAuditLabel,
   forecastAmount,
@@ -48,7 +49,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesViewScope(user, deal)) return forbidden();
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
-  return ok({ ...deal, forecastDrift });
+  const payload = { ...deal, forecastDrift };
+  if (!canSeeDealValues(user)) return ok({ ...redactDealMoney(payload), moneyRedacted: true });
+  return ok(payload);
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {

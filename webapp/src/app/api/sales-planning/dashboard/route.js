@@ -1,5 +1,5 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
-import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
+import { DEAL_TYPES, canSeeDealValues, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 import { cachedJson } from '@/lib/serverCache';
 import { isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
 
@@ -18,6 +18,8 @@ const DEAL_COLUMNS = 'stage, projectValue, probability, forecastMonth, wonValue,
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
+  // RD อ่านดีลเพื่อบริบทงานผลิตเท่านั้น — หน้าวิเคราะห์ยอดขายเป็นเงินล้วน ปิดทั้งเส้น
+  if (!canSeeDealValues(user)) return forbidden('ฝ่าย RD ไม่มีสิทธิ์ดูข้อมูลยอดขาย');
 
   const sp = new URL(req.url).searchParams;
   // โหมด ?year=YYYY: หน้า /sa เปิดทีเดียวต้องการครบ 12 เดือน — เดิมยิง 12 request

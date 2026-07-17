@@ -193,7 +193,9 @@ export default function AppLayout({ children }) {
       system: 'salesplan',
       home: '/sa',
       items: [
-        { href: '/sa/dashboard', name: 'แดชบอร์ด', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sa/dashboard' || p === '/sa' || p === '/sales-planning' || p === '/sa/my-dashboard' || p === '/sa/kpi' },
+        // rd อ่านดีล/QT/SO เพื่อบริบทงานผลิต แต่ไม่เห็นตัวเลขเงิน (canSeeDealValues) —
+        // แดชบอร์ดเป็นยอดขายล้วน ซ่อนทั้งเมนู (API ปิดเส้นนี้สำหรับ rd แล้วเช่นกัน)
+        { href: '/sa/dashboard', name: 'แดชบอร์ด', icon: LayoutDashboard, cap: 'salesplan:view', hideRoles: ['rd'], match: (p) => p === '/sa/dashboard' || p === '/sa' || p === '/sales-planning' || p === '/sa/my-dashboard' || p === '/sa/kpi' },
         // เฟส C: คิวลีดของ Marketing/ฝ่ายขาย — role marketing เห็นเมนูนี้ตัวเดียว
         { href: '/sa/leads', name: 'ลีด', icon: Inbox, cap: 'salesplan:lead', match: (p) => p.startsWith('/sa/leads') || p.startsWith('/sales-planning/leads') },
         // "ดีล" = งานขายแต่ละก้อน (SCENT/NPD/RE-ORDER) — คำ "โครงการ" สงวนให้ตัว
@@ -250,7 +252,7 @@ export default function AppLayout({ children }) {
   // help the secretary — surfaces that system too.
   const accessibleGroups = sortSystems(allGroups
     .filter((g) => g.system !== 'sahamit' || canAccessSahamit(role, team))
-    .map((g) => ({ ...g, items: g.items.filter((it) => canUser({ role, extraCaps }, it.cap)) }))
+    .map((g) => ({ ...g, items: g.items.filter((it) => canUser({ role, extraCaps }, it.cap) && !(it.hideRoles || []).includes(role)) }))
     .filter((g) => g.items.length > 0));
 
   const currentGroup = accessibleGroups.find((g) => g.system === activeSystem) || null;
@@ -287,10 +289,15 @@ export default function AppLayout({ children }) {
                 </Link>
                 {accessibleGroups.map((g) => {
                   const SystemIcon = SYSTEM_ICONS[g.system] || LayoutDashboard;
+                  // home ของกลุ่มอาจเป็นเมนูที่ role นี้ถูกซ่อน (เช่น rd ถูกซ่อนแดชบอร์ด
+                  // ซึ่งเป็นปลายทางของ /sa) — พาไปเมนูแรกที่เข้าได้จริงแทน
+                  const groupHome = g.items.some((it) => g.home === it.href || it.match?.(g.home))
+                    ? g.home
+                    : (g.items[0]?.href || g.home);
                   return (
                     <Link
                       key={g.system}
-                      href={g.home}
+                      href={groupHome}
                       role="menuitem"
                       className={`topnav-sys-item ${g.system === activeSystem ? 'active' : ''}`}
                     >

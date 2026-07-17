@@ -3,6 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
   canReviewSalesForecast,
+  canSeeDealValues,
   canViewSalesPlanning,
   applyDealScope,
   forecastAmount,
@@ -45,6 +46,8 @@ async function monthSummary(supabase, user, reviewMonth, team) {
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
+  // RD อ่านดีลเพื่อบริบทงานผลิตเท่านั้น — ทบทวนพยากรณ์ยอดเป็นเงินล้วน ปิดทั้งเส้น
+  if (!canSeeDealValues(user)) return forbidden('ฝ่าย RD ไม่มีสิทธิ์ดูข้อมูลยอดขาย');
 
   const params = new URL(req.url).searchParams;
   const reviewMonth = monthKey(params.get('month'));

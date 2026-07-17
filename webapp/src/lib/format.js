@@ -12,13 +12,17 @@ import { brandLabel } from '@/lib/master/brands';
 // อย่า format เงิน/วันที่เองด้วย toLocaleString/toLocaleDateString — import จากไฟล์นี้เสมอ.
 
 // เงินเต็ม: ฿ + ทศนิยม 2 ตำแหน่งเสมอ (เช่น "฿1,234.50").
-export const fmtMoney = (amount) =>
-  (Number(amount) || 0).toLocaleString("th-TH", {
+// null/undefined = "ไม่มีข้อมูล" → "—" (ไม่ใช่ ฿0.00 ซึ่งแปลว่า "ศูนย์บาท") — สำคัญกับ
+// role ที่ฟิลด์เงินถูกตัดจาก server (redactDealMoney): ทุกหน้าจะโชว์ — โดยอัตโนมัติ.
+export const fmtMoney = (amount) => {
+  if (amount == null) return "—";
+  return (Number(amount) || 0).toLocaleString("th-TH", {
     style: "currency",
     currency: "THB",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+};
 
 // Plain numeric formats for tables and editable controls. Keep the currency
 // symbol in labels/headers when the field already makes the unit clear.
@@ -74,6 +78,7 @@ export const displayDateToIso = (value) => {
 // เงินแบบย่อ: ฿ + x.xxK (พัน) / x.xxM (ล้าน); ต่ำกว่าพันแสดงเต็ม 2 ทศนิยม.
 // ใช้ในที่แคบ เช่น KPI card / กราฟ / แดชบอร์ด ที่ตัวเลขยาวเกินไป.
 export const fmtMoneyCompact = (amount) => {
+  if (amount == null) return "—"; // เหตุผลเดียวกับ fmtMoney: ไม่มีข้อมูล ≠ ศูนย์บาท
   const n = Number(amount) || 0;
   const abs = Math.abs(n);
   const sign = n < 0 ? "-" : "";

@@ -6,8 +6,8 @@ import {
 } from '@/lib/forceDelete';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
-  canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
-  quoteTotals, toMoney,
+  canEditSalesPlanning, canSeeDealValues, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
+  quoteTotals, redactDealMoney, toMoney,
 } from '@/lib/salesPlanning';
 import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
@@ -61,7 +61,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .eq('baseNumber', baseNumber)
     .order('revisionNo', { ascending: false });
   if (revisionError) return fail(revisionError.message, 500);
-  return ok({ ...quote, revisionHistory: revisionHistory || [] });
+  const payload = { ...quote, revisionHistory: revisionHistory || [] };
+  if (!canSeeDealValues(user)) return ok({ ...redactDealMoney(payload), moneyRedacted: true });
+  return ok(payload);
 });
 
 // PATCH — แก้เนื้อหาใบ (lines/ส่วนลด/VAT/เงื่อนไขชำระ/หมายเหตุ/วันหมดอายุ/สถานะ draft↔sent)
