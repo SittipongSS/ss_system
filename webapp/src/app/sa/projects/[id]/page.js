@@ -12,13 +12,14 @@ import {
   GitCommit, History, RotateCcw, ShieldCheck, PackageCheck, ExternalLink,
 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
-import { TEAM_LABELS, isSuperuser } from "@/lib/permissions";
+import { isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
+import StepFormFields, { EMPTY_STEP_FORM, stepToForm } from "@/components/pm/StepFormFields";
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ProjectDealsHub, { ProjectActivityFeed, ProjectQuotationsCard } from "@/components/pm/ProjectDealsHub";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
-import PredecessorPicker, { PredecessorPopover } from "@/components/pm/PredecessorPicker";
+import { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import Select from "@/components/ui/Select";
 import SortControl from "@/components/ui/SortControl";
 import StatusSelect, { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
@@ -31,6 +32,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
+import { computeFinish, durationFromDates } from "@/lib/pm/stepSchedule";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import { getComputedStatus, statusDotColor } from "@/lib/pm/derived";
@@ -53,7 +55,6 @@ const STATUS_TH = {
 };
 
 
-const ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
 
 // ฝ่ายอื่นที่ไม่ใช่ SA — เข้ามาในนาม "ตัวแทนฝ่าย" (staff 1 คนต่อฝ่าย). ขั้นตอนของ
 // ฝ่ายเหล่านี้ถูกมอบหมายอัตโนมัติให้ตัวแทนฝ่ายนั้น (ไม่ต้องเลือกคน — เห็นใน My Work เอง).
@@ -74,47 +75,6 @@ function resolveAssigneeName(task, users) {
     return rep ? rep.name : `ตัวแทนฝ่าย ${task.role}`;
   }
   return task.assignee || "—";
-}
-
-// ช่อง "ผู้รับผิดชอบ" ในฟอร์มแก้ขั้นตอน — ปรับตามฝ่ายของขั้นตอน:
-//   SA          → เลือกคนใน SA จัดกลุ่มตามทีม ODM/KA/SV (assign รายคน)
-//   ฝ่ายอื่น     → มอบหมายอัตโนมัติให้ตัวแทนฝ่าย (อ่านอย่างเดียว ไม่ต้องเลือก)
-//   LG/ALL/อื่น → ไม่ระบุรายคน
-function AssigneeField({ form, setForm, users }) {
-  const role = form.role;
-  if (role === "SA") {
-    const byTeam = {};
-    users.filter((u) => u.department === "SA").forEach((u) => {
-      (byTeam[u.team || "—"] ||= []).push(u);
-    });
-    const teams = Object.keys(byTeam).sort();
-    return (
-      <Select
-        value={form.assigneeId || ""}
-        onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-        style={{ flex: 1 }}
-        title="มอบหมายให้คนใน SA (จะไปอยู่ใน 'งานของฉัน' ของคนนั้น)"
-      >
-        <option value="">— ไม่มอบหมาย —</option>
-        {teams.map((tm) => (
-          <optgroup key={tm} label={TEAM_LABELS[tm] || tm}>
-            {byTeam[tm].map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name || u.email)}</option>)}
-          </optgroup>
-        ))}
-      </Select>
-    );
-  }
-  if (STAFF_DEPTS.includes(role)) {
-    const rep = deptRep(users, role);
-    return (
-      <span style={{ flex: 1, fontSize: "12px", color: "var(--text-2)", background: "var(--panel-2)", padding: "6px 10px", borderRadius: "8px", border: "1px solid var(--border)" }}>
-        มอบหมายอัตโนมัติ → ตัวแทนฝ่าย {role}{rep ? `: ${rep.name}` : " (ยังไม่มีตัวแทน)"}
-      </span>
-    );
-  }
-  return (
-    <span style={{ flex: 1, fontSize: "12px", color: "var(--text-3)" }}>— ไม่ระบุรายคน ({role}) —</span>
-  );
 }
 
 const PHASE_COLORS = ["var(--accent)", "var(--purple)", "var(--blue)", "var(--amber)", "#f97316", "var(--green)", "var(--accent)"];
@@ -145,27 +105,6 @@ const formatDate = (v) => {
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
-// พรีวิว "วันเสร็จ" ในฟอร์มแก้ — ใช้เอนจินวันทำการเดียวกับ server (recalculateForward):
-// เลื่อนวันเริ่มมาเป็นวันทำการก่อน แล้วบวก (duration-1) วันทำการ. server คำนวณซ้ำตอนบันทึก
-// (ค่าที่โชว์ตรงกับที่ 3 วิวจะแสดงหลังบันทึก ตราบใดที่ปฏิทินวันหยุดฝั่ง client โหลดแล้ว).
-const computeFinish = (startStr, dur) => {
-  if (!startStr) return null;
-  const d = new Date(startStr);
-  if (isNaN(d.getTime())) return null;
-  while (!isBusinessDay(d)) d.setDate(d.getDate() + 1);
-  let need = Math.max(0, (Number(dur) || 1) - 1);
-  while (need > 0) { d.setDate(d.getDate() + 1); if (isBusinessDay(d)) need--; }
-  return d;
-};
-
-// ผกผันของ computeFinish: วันเริ่ม + วันสิ้นสุด → ระยะเวลา (วันทำการ, inclusive)
-const durationFromDates = (startStr, finishStr) => {
-  if (!startStr || !finishStr) return 1;
-  const s = new Date(startStr); const fe = new Date(finishStr);
-  if (isNaN(s.getTime()) || isNaN(fe.getTime()) || fe <= s) return 1;
-  return Math.max(1, countBusinessDays(startStr, finishStr) + 1);
-};
-
 // Actual vs planned finish variance (mirror ss-cj)
 const getVariance = (task) => {
   if (task.status !== "Completed" || !task.actualFinishDate || !task.finishDate) return null;
@@ -184,6 +123,9 @@ export default function ProjectDetailPage() {
   const hasEditCap = useCan("salesplan:edit");
   const canCreateTaxRegistration = useCan("products:edit");
   const userRole = useRole();
+  // ชื่อผู้ใช้ปัจจุบัน — ใช้เทียบกับ aeOwner ซึ่งเก็บเป็นข้อความ ไม่ใช่ id (แบบเดียวกับฟอร์มโครงการ)
+  const [myName, setMyName] = useState("");
+  useEffect(() => { try { setMyName(localStorage.getItem("userName") || ""); } catch { /* ssr */ } }, []);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [allProducts, setAllProducts] = useState([]);
@@ -209,7 +151,7 @@ export default function ProjectDetailPage() {
   };
   const [showAddTask, setShowAddTask] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
-  const [taskForm, setTaskForm] = useState({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" });
+  const [taskForm, setTaskForm] = useState({ ...EMPTY_STEP_FORM });
   const [collapsedPhases, setCollapsedPhases] = useState(() => new Set());
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -305,22 +247,6 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const createShipmentPrepFromProject = async () => {
-    if (!p?.id) return;
-    setCreatingShipmentPrep(true);
-    try {
-      const res = await fetch(`/api/pm/projects/${p.id}/shipment-prep`, { method: "POST" });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setToast({ kind: "error", msg: payload.error || "สร้างเอกสารเตรียมส่งของไม่สำเร็จ" });
-        return;
-      }
-      setToast({ kind: payload.reused ? "info" : "success", msg: payload.reused ? "เปิดเอกสารเตรียมส่งของเดิม" : "สร้างเอกสารเตรียมส่งของแล้ว" });
-      router.push(`/sa/projects/${p.code || p.id}/shipment-prep`);
-    } finally {
-      setCreatingShipmentPrep(false);
-    }
-  };
 
   // ── เฟส 1: แก้ task แบบ "ค้างก่อน-ยืนยันรวด" (ลด error จากการกดพลาด) ───────
   // inline edit (สถานะ/ทำเสร็จ/predecessors) ไม่ยิงทันที แต่ค้างใน dirty + โชว์ค่าใหม่
@@ -576,7 +502,7 @@ export default function ProjectDetailPage() {
       setShowAddTask(false);
       setInsertAfterId(null);
       setInsertBeforeId(null);
-      setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" });
+      setTaskForm({ ...EMPTY_STEP_FORM });
       load();
     } else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "เพิ่มขั้นตอนไม่สำเร็จ" });
   };
@@ -594,73 +520,6 @@ export default function ProjectDetailPage() {
     return next;
   });
 
-  // แก้ วันเริ่ม/วันสิ้นสุด/ระยะเวลา ในฟอร์ม → ซิงค์สองทาง (เอนจินวันทำการเดียวกับ server)
-  //   แก้วันสิ้นสุด → คำนวณระยะเวลา แล้ว snap วันสิ้นสุดกลับเป็นวันทำการให้ตรงกับที่ server จะบันทึก
-  //   แก้วันเริ่ม/ระยะเวลา → คำนวณวันสิ้นสุดใหม่
-  const syncSchedule = (changes) =>
-    setEditForm((f) => {
-      const next = { ...f, ...changes };
-      if ("finishDate" in changes) {
-        const dur = durationFromDates(next.startDate, next.finishDate);
-        next.durationDays = dur;
-        const fin = computeFinish(next.startDate, dur);
-        next.finishDate = fin ? toLocalISODate(fin) : next.finishDate;
-      } else {
-        const fin = computeFinish(next.startDate, next.durationDays);
-        next.finishDate = fin ? toLocalISODate(fin) : "";
-      }
-      return next;
-    });
-
-  // ฟิลด์แก้ไขขั้นตอน — ใช้ร่วมกันทั้ง inline-edit (List view) และ modal (Table view)
-  // ทั้งสองทางใช้ editForm/setEditForm/syncSchedule ชุดเดียวกัน ต่างแค่ selfId + footer
-  const renderStepEditFields = (selfId) => (
-    <>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <input className="premium-input" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่อขั้นตอน" style={{ flex: 1 }} />
-        <Select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" })} style={{ width: "100px" }}>
-          {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Select>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-        <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ผู้รับผิดชอบ:</label>
-        <AssigneeField form={editForm} setForm={setEditForm} users={users} />
-      </div>
-      <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันที่เริ่ม:</label>
-          <DateInput value={editForm.startDate || ""} onChange={(value) => syncSchedule({ startDate: value })} style={{ width: "170px" }} title="วันเริ่มของขั้นตอนนี้" />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>วันเสร็จ:</label>
-          <DateInput value={editForm.finishDate || ""} min={editForm.startDate || undefined} onChange={(value) => syncSchedule({ finishDate: value })} style={{ width: "170px" }} title="วันสิ้นสุด (ปรับแล้วระยะเวลาจะคำนวณให้อัตโนมัติ)" />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <label style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>ระยะเวลา (วัน):</label>
-          <input type="number" min="1" className="premium-input" value={editForm.durationDays} onChange={(e) => syncSchedule({ durationDays: e.target.value })} style={{ width: "64px" }} title="จำนวนวันทำการ (ปรับแล้ววันเสร็จจะคำนวณให้อัตโนมัติ)" />
-        </div>
-        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
-          <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm({ ...editForm, isMilestone: e.target.checked })} style={{ accentColor: "var(--amber)", cursor: "pointer" }} />
-          ตั้งเป็น Milestone
-        </label>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>หมายเหตุ</label>
-        <textarea className="premium-input" value={editForm.note || ""} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ width: "100%", resize: "vertical", padding: "6px 10px", fontSize: "13px" }} />
-        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-2)", cursor: "pointer" }}>
-          <input type="checkbox" checked={editForm.showNoteInPrint || false} onChange={(e) => setEditForm({ ...editForm, showNoteInPrint: e.target.checked })} style={{ accentColor: "var(--accent)", cursor: "pointer" }} />
-          แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
-        </label>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
-        <label style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>งานที่ต้องรอให้เสร็จก่อน (Predecessors):</label>
-        <PredecessorPicker tasks={processedTasks} selfId={selfId} value={editForm.predecessors} onChange={(predecessors) => setEditForm((f) => ({ ...f, predecessors }))} />
-      </div>
-      <div style={{ fontSize: "11px", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "4px" }}>
-        <Calendar size={11} /> ระบบคำนวณวันเสร็จจากวันเริ่ม + จำนวนวันทำการ
-      </div>
-    </>
-  );
 
   // เลื่อนลำดับขั้น (ขึ้น/ลง) ภายในเฟสเดียวกัน — cosmetic (stepOrder) ไม่กระทบ timeline
   // (timeline ขับด้วย predecessor graph) จึงสลับลำดับแสดงผลได้ปลอดภัย
@@ -693,35 +552,9 @@ export default function ProjectDetailPage() {
     );
   };
 
-  // เหมือน syncSchedule แต่สำหรับฟอร์ม "เพิ่มขั้นตอน" (taskForm) — วันเริ่มเว้นว่างได้
-  const syncTaskSchedule = (changes) =>
-    setTaskForm((f) => {
-      const next = { ...f, ...changes };
-      if ("finishDate" in changes) {
-        if (next.startDate && next.finishDate) {
-          const dur = durationFromDates(next.startDate, next.finishDate);
-          next.durationDays = dur;
-          const fin = computeFinish(next.startDate, dur);
-          next.finishDate = fin ? toLocalISODate(fin) : next.finishDate;
-        }
-      } else {
-        next.finishDate = next.startDate ? toLocalISODate(computeFinish(next.startDate, next.durationDays)) : "";
-      }
-      return next;
-    });
-
   const startEditing = (task) => {
     setEditingTaskId(task.id);
-    setEditForm({
-      name: task.name, role: task.role || "SA", assignee: task.assignee || "",
-      assigneeId: task.assigneeId || "",
-      durationDays: task.durationDays ?? 1, startDate: task.startDate || "",
-      finishDate: task.finishDate || "",
-      dueDate: task.dueDate || "",
-      isMilestone: !!task.isMilestone, phase: task.phase || "",
-      predecessors: task.predecessors || [],
-      note: task.note || "", showNoteInPrint: !!task.showNoteInPrint,
-    });
+    setEditForm(stepToForm(task));
   };
   // patch จากฟอร์มแก้ขั้นตอน (ใช้ร่วม inline-edit ของ List + modal ของ Table)
   const stepPatchFromForm = () => ({
@@ -743,16 +576,7 @@ export default function ProjectDetailPage() {
 
   // เปิดแก้ไขขั้นตอนแบบ modal (จาก Table view) — ไม่สลับไป List view
   const openEditModal = (task) => {
-    setEditForm({
-      name: task.name, role: task.role || "SA", assignee: task.assignee || "",
-      assigneeId: task.assigneeId || "",
-      durationDays: task.durationDays ?? 1, startDate: task.startDate || "",
-      finishDate: task.finishDate || "",
-      dueDate: task.dueDate || "",
-      isMilestone: !!task.isMilestone, phase: task.phase || "",
-      predecessors: task.predecessors || [],
-      note: task.note || "", showNoteInPrint: !!task.showNoteInPrint,
-    });
+    setEditForm(stepToForm(task));
     setEditTask(task);
     setShowEditTask(true);
   };
@@ -1335,7 +1159,7 @@ export default function ProjectDetailPage() {
                 title="เรียงลำดับ (ภายในแต่ละเฟส)"
               />
               {canAddTimelineTask && (
-                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} className="btn btn-primary sm">
+                <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ ...EMPTY_STEP_FORM, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [] }); setShowAddTask(true); }} className="btn btn-primary sm">
                   <Plus size={14} /> เพิ่มขั้นตอน
                 </button>
               )}
@@ -1466,7 +1290,7 @@ export default function ProjectDetailPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             {canAddTimelineTask && (
-              <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ name: "", role: "SA", phase: "", durationDays: 1, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} className="btn btn-primary sm">
+              <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(null); setTaskForm({ ...EMPTY_STEP_FORM, predecessors: processedTasks.length > 0 ? [processedTasks[processedTasks.length - 1].id] : [] }); setShowAddTask(true); }} className="btn btn-primary sm">
                 <Plus size={14} /> เพิ่มขั้นตอน
               </button>
             )}
@@ -1565,7 +1389,7 @@ export default function ProjectDetailPage() {
                   <div style={{ display: "flex", flexDirection: "column", paddingLeft: task.phase ? "12px" : "0" }}>
                     {isFirstOfPhase && canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "0 0 4px", zIndex: 2 }}>
-                        <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอนก่อนหัวแถวแรกของเฟสนี้">
+                        <button onClick={() => { setInsertAfterId(null); setInsertBeforeId(task.id); setTaskForm({ ...EMPTY_STEP_FORM, role: task.role || "SA", phase: task.phase || "" }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอนก่อนหัวแถวแรกของเฟสนี้">
                           <PlusCircle size={14} />
                         </button>
                       </div>
@@ -1589,7 +1413,7 @@ export default function ProjectDetailPage() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {isEditing ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--panel)", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)" }}>
-                            {renderStepEditFields(task.id)}
+                            <StepFormFields form={editForm} setForm={setEditForm} users={users} phases={formPhases} tasks={processedTasks} selfId={task.id} />
                             <div className="form-action-inline">
                               <button className="btn btn-secondary sm" onClick={() => { setEditingTaskId(null); setEditForm(null); }}>ยกเลิก</button>
                               <button className="btn btn-primary sm" onClick={() => saveEditing(task.id)}><Check size={14} /> ตกลง</button>
@@ -1661,7 +1485,7 @@ export default function ProjectDetailPage() {
 
                     {canEdit && !isEditing && (
                       <div style={{ display: "flex", justifyContent: "center", margin: "4px 0", zIndex: 2 }}>
-                        <button onClick={() => { setInsertBeforeId(null); setInsertAfterId(task.id); setTaskForm({ name: "", role: task.role || "SA", phase: task.phase || "", durationDays: 1, predecessors: [task.id], assignee: "", startDate: "", dueDate: "", isMilestone: false, note: "", showNoteInPrint: false, assigneeId: "" }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
+                        <button onClick={() => { setInsertBeforeId(null); setInsertAfterId(task.id); setTaskForm({ ...EMPTY_STEP_FORM, role: task.role || "SA", phase: task.phase || "", predecessors: [task.id] }); setShowAddTask(true); }} style={{ background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--text-3)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: 0.5, transition: "0.2s", padding: 0 }} title="แทรกขั้นตอน">
                           <PlusCircle size={14} />
                         </button>
                       </div>
@@ -1680,7 +1504,7 @@ export default function ProjectDetailPage() {
       {hasWriteAccess && p.status !== "Completed" && p.status !== "Dropped" && (
         <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
           {p.status === "On Hold" ? (
-            (p.aeOwner === me?.name || isSuperuser(userRole)) && (
+            ((myName && p.aeOwner === myName) || isSuperuser(userRole)) && (
               <button type="button" className="btn btn-primary" onClick={() => updateProject({ status: "In Progress" })}>
                 <CheckCircle2 size={14} /> ดึงกลับมาดำเนินการ (Restore)
               </button>
@@ -1712,76 +1536,7 @@ export default function ProjectDetailPage() {
       {/* Add task modal */}
       <Modal open={showAddTask} onClose={() => setShowAddTask(false)} title="เพิ่มขั้นตอน" size="md">
         <form onSubmit={addTask}>
-          <div className="grid gap-[14px]">
-            <div className="form-group">
-              <label>ชื่อขั้นตอน <span className="text-[var(--red)]">*</span></label>
-              <input value={taskForm.name} onChange={(e) => setTaskForm((f) => ({ ...f, name: e.target.value }))} required className="premium-input w-full" placeholder="ระบุชื่อขั้นตอน" />
-            </div>
-
-            <div className="pm-form-grid gap-3">
-              <div className="form-group" style={{ gridColumn: "span 2" }}>
-                <label>แผนก (Role)</label>
-                <Select fullWidth value={taskForm.role} onChange={(e) => setTaskForm((f) => ({ ...f, role: e.target.value, assigneeId: e.target.value === "SA" ? taskForm.assigneeId : "" }))}>
-                  {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                </Select>
-              </div>
-              <div className="form-group" style={{ gridColumn: "span 2" }}>
-                <label>ผู้รับผิดชอบ</label>
-                <AssigneeField form={taskForm} setForm={setTaskForm} users={users} />
-              </div>
-            </div>
-
-            <div className="pm-form-grid gap-3">
-              <div className="form-group">
-                <label>วันที่เริ่ม <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เว้นว่างเพื่ออิงตามงานที่รอ)</span></label>
-                <DateInput value={taskForm.startDate} onChange={(value) => syncTaskSchedule({ startDate: value })} className="w-full" />
-              </div>
-              <div className="form-group">
-                <label>วันสิ้นสุด <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(กรอกแล้วจำนวนวันจะคำนวณให้)</span></label>
-                <DateInput value={taskForm.finishDate || ""} min={taskForm.startDate || undefined} disabled={!taskForm.startDate} onChange={(value) => syncTaskSchedule({ finishDate: value })} className="w-full" title={taskForm.startDate ? "วันสิ้นสุดของขั้นตอน" : "กรอกวันที่เริ่มก่อน"} />
-              </div>
-              <div className="form-group">
-                <label>จำนวนวันทำการ</label>
-                <input type="number" min="1" value={taskForm.durationDays} onChange={(e) => syncTaskSchedule({ durationDays: e.target.value })} className="premium-input w-full" />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>เฟส (Phase)</label>
-              <SearchableSelect
-                allowFreeText
-                options={formPhases.map((ph) => ({ value: ph, label: ph }))}
-                value={taskForm.phase}
-                onChange={(v) => setTaskForm((f) => ({ ...f, phase: v }))}
-                placeholder="เลือกหรือพิมพ์เฟสใหม่"
-                emptyText="ยังไม่มีเฟส (พิมพ์เพื่อเพิ่มใหม่)"
-              />
-            </div>
-
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text)", fontWeight: 500 }}>
-              <input type="checkbox" checked={taskForm.isMilestone} onChange={(e) => setTaskForm((f) => ({ ...f, isMilestone: e.target.checked }))} style={{ accentColor: "var(--amber)", width: "16px", height: "16px", cursor: "pointer" }} />
-              ตั้งเป็น Milestone <span style={{ fontSize: "10px", background: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)", padding: "2px 8px", borderRadius: "12px", border: "1px solid color-mix(in srgb, var(--amber) 40%, transparent)", marginLeft: "4px", display: "inline-flex", alignItems: "center", fontWeight: 600 }}><Flag size={10} style={{ marginRight: "4px" }} /> จุดสังเกตหลัก</span>
-            </label>
-
-            <div className="form-group">
-              <label>หมายเหตุ</label>
-              <textarea value={taskForm.note} onChange={(e) => setTaskForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ resize: "vertical" }} />
-              <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-2)", marginTop: "8px" }}>
-                <input type="checkbox" checked={taskForm.showNoteInPrint} onChange={(e) => setTaskForm((f) => ({ ...f, showNoteInPrint: e.target.checked }))} style={{ accentColor: "var(--accent)", width: "16px", height: "16px", cursor: "pointer" }} />
-                แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
-              </label>
-            </div>
-
-            <div className="form-group border-t border-[var(--border)] pt-[14px]">
-              <label>งานที่ต้องรอให้เสร็จก่อน (Predecessors) <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เลือกได้หลายงาน)</span></label>
-              <PredecessorPicker
-                tasks={processedTasks}
-                value={taskForm.predecessors}
-                onChange={(predecessors) => setTaskForm((f) => ({ ...f, predecessors }))}
-                maxHeight={150}
-              />
-            </div>
-          </div>
+          <StepFormFields form={taskForm} setForm={setTaskForm} users={users} phases={formPhases} tasks={processedTasks} />
           <div className="form-action-bar">
             <button type="button" onClick={() => setShowAddTask(false)} className="btn">ยกเลิก</button>
             <button type="submit" className="btn btn-primary">เพิ่ม</button>
@@ -1793,77 +1548,7 @@ export default function ProjectDetailPage() {
       <Modal open={showEditTask} onClose={closeEditModal} title="แก้ไขขั้นตอน" size="md">
         {editForm && editTask && (
           <form onSubmit={(e) => { e.preventDefault(); saveEditModal(); }}>
-            <div className="grid gap-[14px]">
-              <div className="form-group">
-                <label>ชื่อขั้นตอน <span className="text-[var(--red)]">*</span></label>
-                <input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} required className="premium-input w-full" placeholder="ระบุชื่อขั้นตอน" />
-              </div>
-
-              <div className="pm-form-grid gap-3">
-                <div className="form-group" style={{ gridColumn: "span 2" }}>
-                  <label>แผนก (Role)</label>
-                  <Select fullWidth value={editForm.role} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value, assigneeId: e.target.value === "SA" ? editForm.assigneeId : "" }))}>
-                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </Select>
-                </div>
-                <div className="form-group" style={{ gridColumn: "span 2" }}>
-                  <label>ผู้รับผิดชอบ</label>
-                  <AssigneeField form={editForm} setForm={setEditForm} users={users} />
-                </div>
-              </div>
-
-              <div className="pm-form-grid gap-3">
-                <div className="form-group">
-                  <label>วันที่เริ่ม <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เว้นว่างเพื่ออิงตามงานที่รอ)</span></label>
-                  <DateInput value={editForm.startDate || ""} onChange={(value) => syncSchedule({ startDate: value })} className="w-full" />
-                </div>
-                <div className="form-group">
-                  <label>วันสิ้นสุด <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(กรอกแล้วจำนวนวันจะคำนวณให้)</span></label>
-                  <DateInput value={editForm.finishDate || ""} min={editForm.startDate || undefined} disabled={!editForm.startDate} onChange={(value) => syncSchedule({ finishDate: value })} className="w-full" title={editForm.startDate ? "วันสิ้นสุดของขั้นตอน" : "กรอกวันที่เริ่มก่อน"} />
-                </div>
-                <div className="form-group">
-                  <label>จำนวนวันทำการ</label>
-                  <input type="number" min="1" value={editForm.durationDays} onChange={(e) => syncSchedule({ durationDays: e.target.value })} className="premium-input w-full" />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>เฟส (Phase)</label>
-                <SearchableSelect
-                  allowFreeText
-                  options={formPhases.map((ph) => ({ value: ph, label: ph }))}
-                  value={editForm.phase || ""}
-                  onChange={(v) => setEditForm((f) => ({ ...f, phase: v }))}
-                  placeholder="เลือกหรือพิมพ์เฟสใหม่"
-                  emptyText="ยังไม่มีเฟส (พิมพ์เพื่อเพิ่มใหม่)"
-                />
-              </div>
-
-              <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text)", fontWeight: 500 }}>
-                <input type="checkbox" checked={editForm.isMilestone || false} onChange={(e) => setEditForm((f) => ({ ...f, isMilestone: e.target.checked }))} style={{ accentColor: "var(--amber)", width: "16px", height: "16px", cursor: "pointer" }} />
-                ตั้งเป็น Milestone <span style={{ fontSize: "10px", background: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)", padding: "2px 8px", borderRadius: "12px", border: "1px solid color-mix(in srgb, var(--amber) 40%, transparent)", marginLeft: "4px", display: "inline-flex", alignItems: "center", fontWeight: 600 }}><Flag size={10} style={{ marginRight: "4px" }} /> จุดสังเกตหลัก</span>
-              </label>
-
-              <div className="form-group">
-                <label>หมายเหตุ</label>
-                <textarea value={editForm.note || ""} onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" placeholder="หมายเหตุของขั้นตอนนี้ (ถ้ามี)" rows={2} style={{ resize: "vertical" }} />
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-2)", marginTop: "8px" }}>
-                  <input type="checkbox" checked={editForm.showNoteInPrint || false} onChange={(e) => setEditForm((f) => ({ ...f, showNoteInPrint: e.target.checked }))} style={{ accentColor: "var(--accent)", width: "16px", height: "16px", cursor: "pointer" }} />
-                  แสดงหมายเหตุนี้ตอนพิมพ์เอกสาร
-                </label>
-              </div>
-
-              <div className="form-group border-t border-[var(--border)] pt-[14px]">
-                <label>งานที่ต้องรอให้เสร็จก่อน (Predecessors) <span className="text-[11px] text-[var(--text-3)] font-normal ml-1">(เลือกได้หลายงาน)</span></label>
-                <PredecessorPicker
-                  tasks={processedTasks}
-                  selfId={editTask.id}
-                  value={editForm.predecessors || []}
-                  onChange={(predecessors) => setEditForm((f) => ({ ...f, predecessors }))}
-                  maxHeight={150}
-                />
-              </div>
-            </div>
+            <StepFormFields form={editForm} setForm={setEditForm} users={users} phases={formPhases} tasks={processedTasks} selfId={editTask.id} />
             <div className="form-action-bar">
               <button type="button" onClick={closeEditModal} className="btn">ยกเลิก</button>
               <button type="submit" className="btn btn-primary"><Check size={14} className="mr-1" /> ตกลง</button>
