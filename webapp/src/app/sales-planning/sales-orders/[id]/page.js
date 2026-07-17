@@ -10,9 +10,12 @@ import {
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
+import Modal from "@/components/Modal";
+import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { useCan, useRole } from "@/lib/roleContext";
+import { SALES_ORDER_CANCEL_REASONS, cancelReasonLabel } from "@/lib/sales/salesOrderWorkflow";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openSalesOrderPrintWindow, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
@@ -116,10 +119,14 @@ export default function SalesOrderDetailPage() {
     if (reason) await requestAction("reject", { reason });
   }
 
-  async function cancel() {
-    const reason = window.prompt("เหตุผลที่ยกเลิก Sale Order")?.trim() || "";
-    if (!reason || !window.confirm("ยืนยันยกเลิก SO? หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที")) return;
-    await requestAction("cancel", { reason });
+  // ยกเลิก SO ผ่าน modal (มติ 2026-07-18): เลือกเหตุผลมาตรฐาน + หมายเหตุ (บังคับเมื่อ "อื่น ๆ")
+  const [cancelForm, setCancelForm] = useState(null); // null = ปิด; { code, note } = เปิด
+  const openCancel = () => setCancelForm({ code: "", note: "" });
+  async function doCancel() {
+    if (!cancelForm?.code) { setError("กรุณาเลือกเหตุผลที่ยกเลิก"); return; }
+    if (cancelForm.code === "other" && !cancelForm.note.trim()) { setError('เลือก "อื่น ๆ" ต้องระบุหมายเหตุ'); return; }
+    const ok = await requestAction("cancel", { reasonCode: cancelForm.code, reason: cancelForm.note.trim() });
+    if (ok) setCancelForm(null);
   }
 
   async function remove() {
@@ -227,7 +234,7 @@ export default function SalesOrderDetailPage() {
                 {editable && <><button type="button" className="btn" disabled={!!busy} onClick={() => save(false)}><Save size={15} /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกร่าง"}</button><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => save(true)}><Send size={15} /> บันทึกและยื่นอนุมัติ</button></>}
                 {canReviewThis && order.status === "pending_approval" && <><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => review("approve")}><CheckCircle2 size={15} /> อนุมัติและนับ Actual</button><button type="button" className="btn danger" disabled={!!busy} onClick={() => review("reject")}><Undo2 size={15} /> ตีกลับให้แก้ไข</button></>}
                 {reviewer && ownSalesOrder && order.status === "pending_approval" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>}
-                {approved && reviewer && <button type="button" className="btn danger" disabled={!!busy} onClick={cancel}><XCircle size={15} /> ยกเลิก SO</button>}
+                {approved && reviewer && <button type="button" className="btn danger" disabled={!!busy} onClick={openCancel}><XCircle size={15} /> ยกเลิก SO</button>}
                 {order.status === "cancelled" && role === "admin" && <button type="button" className="btn" disabled={!!busy} onClick={() => requestAction("restore")}><RotateCcw size={15} /> คืนเป็นฉบับร่าง</button>}
                 {role === "admin" && <button type="button" className="btn danger" disabled={!!busy} onClick={remove}><Trash2 size={15} /> ลบถาวร</button>}
               </div>
@@ -239,6 +246,7 @@ export default function SalesOrderDetailPage() {
                 <div><dt>ผู้ยื่น</dt><dd>{order.submittedByName || "-"}</dd></div>
                 <div><dt>ผู้อนุมัติ</dt><dd>{order.approvedByName || "-"}</dd></div>
                 <div><dt>กำหนดชำระ</dt><dd>{fmtDate(order.paymentDueDate)}</dd></div>
+                {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd>{cancelReasonLabel(order.cancelReasonCode)}{order.cancelReason ? ` — ${order.cancelReason}` : ""}</dd></div>}
               </dl>
             </DetailCard>
           </>}
@@ -260,6 +268,29 @@ export default function SalesOrderDetailPage() {
           </DetailCard>
         </DetailPageLayout>
       </div>
+
+      {cancelForm && (
+        <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก Sale Order" size="sm" dismissible={!busy}>
+          <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ color: "var(--text-2)", margin: 0 }}>หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที — เลือกเหตุผลที่ยกเลิก</p>
+            <label style={{ display: "block", fontSize: 13 }}>
+              <span style={{ color: "var(--text-2)" }}>เหตุผล</span>
+              <Select value={cancelForm.code} onChange={(e) => setCancelForm((f) => ({ ...f, code: e.target.value }))}>
+                <option value="">— เลือกเหตุผล —</option>
+                {SALES_ORDER_CANCEL_REASONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+              </Select>
+            </label>
+            <label style={{ display: "block", fontSize: 13 }}>
+              <span style={{ color: "var(--text-2)" }}>หมายเหตุ {cancelForm.code === "other" ? "(บังคับ)" : "(ไม่บังคับ)"}</span>
+              <textarea className="input" rows={2} value={cancelForm.note} onChange={(e) => setCancelForm((f) => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="btn ghost" onClick={() => setCancelForm(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn danger" onClick={doCancel} disabled={!!busy || !cancelForm.code}><XCircle size={15} /> ยืนยันยกเลิก SO</button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </Workspace>
   );
 }

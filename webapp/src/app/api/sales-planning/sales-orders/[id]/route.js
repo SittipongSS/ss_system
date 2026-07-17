@@ -1,7 +1,7 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
-import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
+import { isSalesOrderReviewer, isValidCancelReasonCode, cancelReasonLabel } from '@/lib/sales/salesOrderWorkflow';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 
@@ -161,8 +161,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if (action === 'cancel') {
-    const reason = String(body.reason || '').trim();
-    if (!reason) return badRequest('กรุณาระบุเหตุผลที่ยกเลิก Sale Order');
+    // เหตุผลยกเลิกแบบมีโครงสร้าง (มติ 2026-07-18): เลือกรหัสจากตัวเลือกมาตรฐาน +
+    // หมายเหตุอิสระ (บังคับหมายเหตุเมื่อเลือก "อื่น ๆ"). เก็บทั้ง code + note.
+    const reasonCode = String(body.reasonCode || '').trim();
+    const note = String(body.reason || body.note || '').trim();
+    if (!isValidCancelReasonCode(reasonCode)) return badRequest('กรุณาเลือกเหตุผลที่ยกเลิก Sale Order');
+    if (reasonCode === 'other' && !note) return badRequest('เลือก "อื่น ๆ" ต้องระบุหมายเหตุ');
     if (before.status === 'cancelled') return badRequest('Sale Order นี้ถูกยกเลิกแล้ว');
     if (before.status === 'pending_approval' && !reviewer) return forbidden('รายการที่รออนุมัติต้องให้ AE Supervisor ดำเนินการ');
     // ยกเลิก SO ที่อนุมัติแล้ว = ถอนยอด Actual ที่ผ่านการอนุมัติ → ต้องเป็นผู้ตรวจสอบ
@@ -170,7 +174,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (before.status === 'approved' && !reviewer) return forbidden('ยกเลิก SO ที่อนุมัติแล้วต้องให้ AE Supervisor ดำเนินการ (ถอนยอด Actual)');
     const patch = {
       status: 'cancelled', cancelledAt: new Date().toISOString(),
-      cancelledBy: user.name || user.id || null, cancelReason: reason,
+      cancelledBy: user.name || user.id || null,
+      cancelReasonCode: reasonCode, cancelReason: note || null,
       updatedAt: new Date().toISOString(),
     };
     // optimistic guard .eq('status', before.status) — เหมือน save/submit/approve/reject
@@ -178,7 +183,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
     if (error) return fail(error.message, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
-    await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `cancel ${before.orderNumber}: ${reason}`, request: req });
+    const summaryReason = cancelReasonLabel(reasonCode) + (note ? ` — ${note}` : '');
+    await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `cancel ${before.orderNumber}: ${summaryReason}`, request: req });
     return ok(data);
   }
 
@@ -189,7 +195,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // (เดิมเหลือ rejectionReason → หน้ารายละเอียดโชว์ป้าย "ตีกลับ" บน draft ใหม่)
     const patch = {
       status: 'draft',
-      cancelledAt: null, cancelledBy: null, cancelReason: null,
+      cancelledAt: null, cancelledBy: null, cancelReason: null, cancelReasonCode: null,
       approvedAt: null, approvedBy: null, approvedByName: null, approvalNote: null,
       submittedAt: null, submittedBy: null, submittedByName: null,
       rejectedAt: null, rejectedBy: null, rejectedByName: null, rejectionReason: null,
