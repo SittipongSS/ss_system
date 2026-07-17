@@ -2,35 +2,29 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { AlertTriangle, Briefcase, Calendar, CheckCircle2, CircleDashed, Clock, FolderKanban, ListTodo, MessageCircleQuestion, Pencil, Save, Tag, User, X } from "lucide-react";
+import { AlertTriangle, Briefcase, Calendar, CheckCircle2, CircleDashed, Clock, FolderKanban, ListTodo, MessageCircleQuestion, Pencil, Tag, User } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import DateInput from "@/components/ui/DateInput";
-import Select from "@/components/ui/Select";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES } from "@/lib/pm/tasks";
+import TaskFormModal from "@/components/pm/TaskFormModal";
+import { DIFFICULTY_LABELS } from "@/lib/pm/tasks";
+import { cachedFetchJson } from "@/lib/apiCache";
 import { fmtDateNumeric, fmtDateTime } from "@/lib/format";
 import styles from "./page.module.css";
 
 const STATUS_LABELS = { Pending: "รอดำเนินการ", "In Progress": "กำลังทำ", Completed: "เสร็จแล้ว" };
 const STATUS_COLORS = { Pending: "var(--text-3)", "In Progress": "var(--accent)", Completed: "var(--green)" };
 
-// วันที่วันนี้ตามเครื่องผู้ใช้ (ไทย = ICT) รูปแบบ YYYY-MM-DD — ใช้เทียบเลยกำหนดฝั่ง client
-const todayLocal = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
-
 export default function TaskDetailPage() {
   const { id } = useParams();
   const [task, setTask] = useState(null);
-  const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [lateReason, setLateReason] = useState("");
+  // ตัวเลือกของโมดัล (ดีล/โครงการ/คน) — โหลดตอนกดแก้ไขเท่านั้น ไม่ใช่ตอนเปิดหน้า
+  // (คนส่วนใหญ่เข้ามาดูเฉย ๆ ไม่ได้แก้ — ไม่ควรจ่ายค่าโหลดลิสต์พวกนี้ทุกครั้งที่เปิดหน้า)
+  const [opts, setOpts] = useState({ deals: [], projects: [], assignableUsers: [] });
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -38,34 +32,24 @@ export default function TaskDetailPage() {
       const res = await fetch(`/api/pm/personal-tasks/${id}`, { cache: "no-store" });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "ไม่สามารถโหลดงานได้");
-      setTask(body); setForm(body);
+      setTask(body);
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
-  const change = (key) => (e) => setForm((v) => ({ ...v, [key]: e?.target ? e.target.value : e }));
 
-  // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุที่ทำเสร็จช้า (กรอกในตัวฟอร์ม ไม่ใช่ป๊อปอัป)
-  const due = form.dueDate || task?.dueDate;
-  const willComplete = form.status === "Completed" && task?.status !== "Completed";
-  const needLateReason = willComplete && !!due && due < todayLocal();
-
-  async function save() {
-    setError("");
-    if (needLateReason && !lateReason.trim()) {
-      setError("ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน");
-      return;
-    }
-    setBusy(true);
-    try {
-      const keys = task.canManage ? ["title", "note", "startDate", "dueDate", "status", "category", "difficulty"] : ["status"];
-      const payload = Object.fromEntries(keys.map((key) => [key, form[key] ?? null]));
-      if (needLateReason) payload.lateReason = lateReason.trim();
-      const res = await fetch(`/api/pm/personal-tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
-      setEditing(false); setLateReason(""); await load();
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
-  }
+  const openEdit = () => {
+    setEditing(true);
+    const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+    Promise.all([
+      cachedFetchJson("/api/pm/assignable-users").catch(() => []),
+      json("/api/pm/task-deals"),   // ดีลที่ผูกงานได้ (scope ทีม) — ตัวเดียวกับหน้ารายการ
+      json("/api/pm/projects"),     // ใช้แค่ติดรหัสโครงการหน้าชื่อดีลใน dropdown
+    ]).then(([users, deals, projects]) => setOpts({
+      assignableUsers: Array.isArray(users) ? users : [],
+      deals: Array.isArray(deals) ? deals : [],
+      projects: Array.isArray(projects) ? projects : [],
+    }));
+  };
 
   const person = (userId) => task?.people?.[userId] || "-";
   const statusIcon = task?.status === "Completed" ? CheckCircle2 : task?.status === "In Progress" ? Clock : CircleDashed;
@@ -78,7 +62,9 @@ export default function TaskDetailPage() {
           title={task.title}
           description={<><span>{task.category || "งานทั่วไป"}</span>{task.project && <><span>·</span><span>{task.project.name}</span></>}{task.deal && <><span>·</span><span>{task.deal.title}</span></>}</>}
           badges={<SalesStateBadge label={STATUS_LABELS[task.status] || task.status} color={STATUS_COLORS[task.status]} />}
-          actions={(task.canManage || task.canChangeStatus) ? (!editing ? <button className="btn" onClick={() => setEditing(true)}><Pencil size={14} /> แก้ไข</button> : <><button className="btn" onClick={() => { setEditing(false); setForm(task); setLateReason(""); }} disabled={busy}><X size={14} /> ยกเลิก</button><button className="btn btn-primary" onClick={save} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก"}</button></>) : null}
+          actions={(task.canManage || task.canChangeStatus)
+            ? <button className="btn" onClick={openEdit}><Pencil size={14} /> แก้ไข</button>
+            : null}
           facts={[
             { icon: statusIcon, label: "สถานะ", value: STATUS_LABELS[task.status] || task.status },
             { icon: Calendar, label: "วันเริ่ม", value: task.startDate ? fmtDateNumeric(task.startDate) : "ไม่ระบุ" },
@@ -91,26 +77,12 @@ export default function TaskDetailPage() {
         <DetailPageLayout aside={<><TaskPeople task={task} person={person} /><AttachmentsPanel entityType="personal_task" entityId={task.id} canEdit={!!task.canManage} title="ไฟล์แนบงาน" /></>}>
 
         <DetailCard icon={ListTodo} eyebrow="Task information" title="ข้อมูลงาน" actions={!task.canManage ? <span className="ui-badge">แก้ได้เฉพาะสถานะ</span> : null}>
-          {editing ? <div className={styles.grid}>
-            <div className={`${styles.field} ${styles.wide}`}><label>ชื่องาน</label><input value={form.title || ""} onChange={change("title")} disabled={!task.canManage} /></div>
-            <div className={styles.field}><label>สถานะ</label><Select value={form.status || "Pending"} onChange={change("status")} disabled={!task.canChangeStatus}><option value="Pending">รอดำเนินการ</option><option value="In Progress">กำลังทำ</option><option value="Completed">เสร็จแล้ว</option></Select></div>
-            <div className={styles.field}><label>หมวดงาน</label><Select value={form.category || ""} onChange={change("category")} disabled={!task.canManage}><option value="">ไม่ระบุ</option>{TASK_CATEGORIES.map((v) => <option key={v} value={v}>{v}</option>)}</Select></div>
-            <div className={styles.field}><label>วันเริ่ม</label><DateInput value={form.startDate || ""} onChange={change("startDate")} disabled={!task.canManage} /></div>
-            <div className={styles.field}><label>กำหนดเสร็จ</label><DateInput value={form.dueDate || ""} onChange={change("dueDate")} disabled={!task.canManage} /></div>
-            <div className={styles.field}><label>ความยาก</label><Select value={String(form.difficulty || 2)} onChange={change("difficulty")} disabled={!task.canManage}>{DIFFICULTY_OPTIONS.map((v) => <option key={v} value={v}>{DIFFICULTY_LABELS[v]}</option>)}</Select></div>
-            <div className={`${styles.field} ${styles.wide}`}><label>รายละเอียด / โน้ต</label><textarea value={form.note || ""} onChange={change("note")} disabled={!task.canManage} /></div>
-            {needLateReason && (
-              <div className={`${styles.field} ${styles.wide}`}>
-                <label style={{ color: "var(--amber)" }}>สาเหตุที่ทำเสร็จช้า (งานเลยกำหนด — จำเป็น)</label>
-                <textarea value={lateReason} onChange={(e) => setLateReason(e.target.value)} placeholder="เช่น รออนุมัติจากลูกค้า / รอวัตถุดิบ / ปรับแก้ตามฟีดแบ็ก..." autoFocus />
-              </div>
-            )}
-          </div> : <div className={styles.grid}>
+          <div className={styles.grid}>
             <div className={styles.field}><span className={styles.label}>หมวดงาน</span><div className={styles.value}><Tag size={14} /> {task.category || "ไม่ระบุ"}</div></div>
             <div className={styles.field}><span className={styles.label}>ความยาก</span><div className={styles.value}>{DIFFICULTY_LABELS[task.difficulty] || task.difficulty || "-"}</div></div>
             <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>รายละเอียด / โน้ต</span><div className={styles.value}>{task.note || "ไม่มีรายละเอียดเพิ่มเติม"}</div></div>
             {task.lateReason && <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>สาเหตุที่ทำเสร็จช้า</span><div className={styles.value} style={{ color: "var(--amber)" }}>{task.lateReason}</div></div>}
-          </div>}
+          </div>
         </DetailCard>
 
         {(task.project || task.deal || task.inquiry) && <DetailCard icon={FolderKanban} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
@@ -120,6 +92,22 @@ export default function TaskDetailPage() {
         </ContextGrid></DetailCard>}
         </DetailPageLayout>
     </div>}
+
+    {/* แก้ไข = โมดัลตัวเดียวกับตอนสร้าง (มติผู้ใช้ 2026-07-17) */}
+    {task && (
+      <TaskFormModal
+        open={editing}
+        onClose={() => setEditing(false)}
+        task={task}
+        deals={opts.deals}
+        projects={opts.projects}
+        assignableUsers={opts.assignableUsers}
+        me={task.me}
+        canManage={!!task.canManage}
+        canChangeStatus={!!task.canChangeStatus}
+        onSaved={() => { setEditing(false); load(); }}
+      />
+    )}
   </Workspace>;
 }
 
