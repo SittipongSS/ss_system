@@ -2258,6 +2258,13 @@ button.empty-state { width: 100%; font: inherit; }
 .form-grid.cols-2 > label > textarea { width: 100%; }
 .form-inline-check { flex-direction: row; }
 .deal-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* แถวคู่ของฟอร์มดีล — กินเต็มความกว้างของ grid แม่ แล้วแบ่งซ้าย-ขวาเอง เพื่อให้คู่ที่
+   ตั้งใจให้อยู่ด้วยกัน (เช่น วันที่เริ่ม/สิ้นสุด) ไม่หลุดคนละบรรทัดเวลาจำนวนช่องเปลี่ยน.
+   [data-single] = แถวที่เหลือช่องเดียว (จำนวนคี่) ให้กินเต็มแถว ไม่ทิ้งรูข้าง ๆ.
+   ยุบเป็นคอลัมน์เดียวที่จอเล็ก ตามเกณฑ์เดียวกับ .form-grid.cols-2 (560px) */
+.deal-row { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; min-width: 0; }
+.deal-row[data-single] { grid-template-columns: 1fr; }
+@media (max-width: 560px) { .deal-row { grid-template-columns: 1fr; } }
 .deal-field .ui-select,
 .deal-field .date-input-wrap,
 .deal-field > input,
