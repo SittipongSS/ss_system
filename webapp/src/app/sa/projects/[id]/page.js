@@ -36,6 +36,7 @@ import { computeFinish, durationFromDates } from "@/lib/pm/stepSchedule";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import { getComputedStatus, statusDotColor } from "@/lib/pm/derived";
+import { PROJECT_CLOSE_STATUS_LABELS, PROJECT_CLOSE_TYPE_LABELS, PROJECT_CLOSE_TYPES } from "@/lib/pm/projectClose";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateTime } from "@/lib/format";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
@@ -197,6 +198,37 @@ export default function ProjectDetailPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // เฟส F — อนุมัติปิดโครงการ (มติ 2026-07-18)
+  const [closeBusy, setCloseBusy] = useState("");
+  const [closeReqForm, setCloseReqForm] = useState(null); // { closeType, reason } เมื่อเปิด modal ขอปิด
+  const closeAction = useCallback(async (action, payload = {}) => {
+    setCloseBusy(action);
+    try {
+      const res = await fetch(`/api/pm/projects/${id}/close`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(d.error || "ทำรายการไม่สำเร็จ"); return false; }
+      await load();
+      return true;
+    } finally { setCloseBusy(""); }
+  }, [id, load]);
+  const submitCloseRequest = async () => {
+    if (!closeReqForm?.closeType) { alert("เลือกประเภทการปิด"); return; }
+    if (!closeReqForm.reason.trim()) { alert("ระบุเหตุผล/สรุปการปิด"); return; }
+    const ok = await closeAction("request", { closeType: closeReqForm.closeType, reason: closeReqForm.reason.trim() });
+    if (ok) setCloseReqForm(null);
+  };
+  const promptReopen = async () => {
+    const reason = window.prompt("เหตุผลที่เปิดโครงการใหม่ (เช่น RE-ORDER ลูกค้ากลับมา)")?.trim();
+    if (reason) await closeAction("reopen", { reason });
+  };
+  const promptReject = async () => {
+    const reason = window.prompt("เหตุผลที่ตีกลับคำขอปิด")?.trim();
+    if (reason) await closeAction("reject", { reason });
+  };
+
   useEffect(() => {
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
     cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
@@ -849,7 +881,11 @@ export default function ProjectDetailPage() {
           <span>แบรนด์: {projectBrand}</span>
           {p.productMainCategory ? <span>หมวดสินค้า: {`${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}`}</span> : null}
         </>}
-        badges={<SalesStateBadge label={getComputedStatus(p)} color={statusDotColor(getComputedStatus(p))} />}
+        badges={<>
+          <SalesStateBadge label={getComputedStatus(p)} color={statusDotColor(getComputedStatus(p))} />
+          {p.closeStatus === "pending_close" && <span className="ui-badge" style={{ color: "var(--amber)" }}>รออนุมัติปิด · {PROJECT_CLOSE_TYPE_LABELS[p.closeType] || ""}</span>}
+          {p.closeStatus === "closed" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>ปิดแล้ว · {PROJECT_CLOSE_TYPE_LABELS[p.closeType] || ""}</span>}
+        </>}
         actions={!showTimeline ? <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")}><GanttChart size={14} /> เปิดไทม์ไลน์</button> : null}
         facts={[
           { icon: Calendar, label: "วันเริ่ม", value: p.startDate || "-" },
@@ -858,6 +894,33 @@ export default function ProjectDetailPage() {
           { icon: GanttChart, label: "จำนวนดีล", value: `${(p.deals || []).length} ดีล` },
         ]}
       />
+
+      {tab === "overview" && (() => {
+        const cs = p.closeStatus || "open";
+        const isRequester = p.me?.id && p.closeRequestedBy === p.me.id;
+        const canReqClose = hasEditCap && p.canEdit && cs === "open";
+        const canApprove = p.canApproveClose && cs === "pending_close" && !isRequester;
+        // แสดงการ์ดเฉพาะเมื่อมีอะไรให้ทำ/แสดง (open+แก้ได้ / รออนุมัติ / ปิดแล้ว)
+        if (cs === "open" && !canReqClose) return null;
+        return (
+          <div className="glass-panel" style={{ marginTop: 16, padding: "12px 16px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, justifyContent: "space-between", borderColor: cs === "pending_close" ? "var(--amber)" : cs === "closed" ? "var(--border)" : "var(--border)" }}>
+            <div style={{ fontSize: 13 }}>
+              <strong>สถานะการปิดโครงการ:</strong> {PROJECT_CLOSE_STATUS_LABELS[cs]}
+              {cs !== "open" && p.closeType ? ` · ${PROJECT_CLOSE_TYPE_LABELS[p.closeType]}` : ""}
+              {cs === "pending_close" && p.closeRequestedByName ? <span style={{ color: "var(--text-3)" }}> · ขอโดย {p.closeRequestedByName}</span> : null}
+              {cs === "closed" && p.closedByName ? <span style={{ color: "var(--text-3)" }}> · อนุมัติโดย {p.closedByName}</span> : null}
+              {p.closeReason ? <div style={{ color: "var(--text-2)", marginTop: 2 }}>{p.closeReason}</div> : null}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {canReqClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={() => setCloseReqForm({ closeType: "completed", reason: "" })}>ขอปิดโครงการ</button>}
+              {cs === "pending_close" && isRequester && <button type="button" className="btn ghost" disabled={!!closeBusy} onClick={() => closeAction("cancel_request")}>ถอนคำขอ</button>}
+              {canApprove && <><button type="button" className="btn btn-primary" disabled={!!closeBusy} onClick={() => closeAction("approve")}>อนุมัติปิด</button><button type="button" className="btn danger" disabled={!!closeBusy} onClick={promptReject}>ตีกลับ</button></>}
+              {cs === "pending_close" && p.canApproveClose && isRequester && <span className="ui-badge" style={{ color: "var(--text-3)" }}>คำขอของคุณ ต้องให้ผู้อนุมัติคนอื่น</span>}
+              {cs === "closed" && p.canApproveClose && <button type="button" className="btn" disabled={!!closeBusy} onClick={promptReopen}>เปิดโครงการใหม่ (RE-ORDER)</button>}
+            </div>
+          </div>
+        );
+      })()}
 
       {tab === "overview" && <div style={{ marginTop: 16 }}><ContextGrid>
         <ContextCard
@@ -1684,6 +1747,29 @@ export default function ProjectDetailPage() {
           onClose={() => setDepPopover(null)}
           onSave={(predecessors) => { stageTaskEdit(depPopover.task.id, { predecessors }); setDepPopover(null); }}
         />
+      )}
+
+      {/* เฟส F: modal ขอปิดโครงการ — เลือกประเภท (ปิดสำเร็จ/ยกเลิก) + เหตุผล */}
+      {closeReqForm && (
+        <Modal open onClose={() => setCloseReqForm(null)} title="ขออนุมัติปิดโครงการ" size="sm" dismissible={!closeBusy}>
+          <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ color: "var(--text-2)", margin: 0, fontSize: 13 }}>คำขอจะส่งให้ AE Supervisor อนุมัติ — เลือกประเภทการปิด</p>
+            <label style={{ fontSize: 13 }}>
+              <span style={{ color: "var(--text-2)" }}>ประเภทการปิด</span>
+              <Select value={closeReqForm.closeType} onChange={(e) => setCloseReqForm((f) => ({ ...f, closeType: e.target.value }))}>
+                {PROJECT_CLOSE_TYPES.map((t) => <option key={t} value={t}>{PROJECT_CLOSE_TYPE_LABELS[t]}</option>)}
+              </Select>
+            </label>
+            <label style={{ fontSize: 13 }}>
+              <span style={{ color: "var(--text-2)" }}>เหตุผล / สรุปการปิด (บังคับ)</span>
+              <textarea className="input" rows={3} value={closeReqForm.reason} onChange={(e) => setCloseReqForm((f) => ({ ...f, reason: e.target.value }))} placeholder="เช่น ส่งมอบครบทุกดีล ลูกค้ารับของแล้ว / ลูกค้ายกเลิกโครงการ" />
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="btn ghost" onClick={() => setCloseReqForm(null)} disabled={!!closeBusy}>ยกเลิก</button>
+              <button type="button" className="btn btn-primary" onClick={submitCloseRequest} disabled={!!closeBusy}>ส่งคำขอ</button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* เฟส 1: แถบยืนยันการเปลี่ยนแปลงที่ค้างอยู่ — ลอยล่างจอ เห็นจากทุกวิว */}
