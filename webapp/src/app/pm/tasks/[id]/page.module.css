@@ -20,3 +20,13 @@
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .sidebar { position: static; order: -1; } }
 @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } .card { padding: 15px; } }
 .page { display: flex; max-width: 1380px; flex-direction: column; gap: 16px; }
+
+/* เธรดอัปเดตงาน — เส้นเวลาแนวตั้ง อ่านไล่จากเก่าไปใหม่ */
+.updateList { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.updateList li { padding-left: 12px; border-left: 2px solid var(--border); }
+.updateHead { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12px; }
+.updateHead strong { color: var(--text-2); font-weight: 650; }
+.updateHead span:last-child { color: var(--text-3); }
+.updateBody { margin-top: 3px; color: var(--text-2); font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.updateComposer { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.updateComposer textarea { resize: vertical; }

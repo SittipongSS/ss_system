@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { AlertTriangle, Briefcase, Calendar, CheckCircle2, CircleDashed, Clock, FolderKanban, ListTodo, MessageCircleQuestion, Pencil, Tag, User } from "lucide-react";
+import { AlertTriangle, Briefcase, Calendar, CheckCircle2, CircleDashed, Clock, FolderKanban, ListTodo, MessageCircleQuestion, MessageSquare, Pencil, Send, Tag, User } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -85,6 +85,8 @@ export default function TaskDetailPage() {
           </div>
         </DetailCard>
 
+        <TaskUpdates task={task} onPosted={load} />
+
         {(task.project || task.deal || task.inquiry) && <DetailCard icon={FolderKanban} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
           {task.project && <ContextCard icon={FolderKanban} href={`/sa/projects/${task.project.id}`} eyebrow="โครงการ" title={`${task.project.code ? `${task.project.code} · ` : ""}${task.project.name}`} subtitle={task.project.customerName || "รายละเอียดโครงการ"} facts={[{ label: "ทีม", value: task.project.team || "-" }, { label: "AE", value: task.project.aeOwner || "-" }]} />}
           {task.deal && <ContextCard icon={Briefcase} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: task.deal.team || "-" }, { label: "เจ้าของดีล", value: task.deal.ownerName || "-" }]} />}
@@ -109,6 +111,74 @@ export default function TaskDetailPage() {
       />
     )}
   </Workspace>;
+}
+
+// เธรดอัปเดตความคืบหน้า (0113): คนทำงานเล่าว่าติดอะไร + ระบบบันทึกการเปลี่ยน
+// สถานะ/เลื่อนกำหนดให้เอง — หัวหน้าจะได้ไม่ต้องเดินมาถามว่าทำไมยังไม่เสร็จ
+const UPDATE_META = {
+  comment: { label: "อัปเดต", color: "var(--accent)" },
+  status: { label: "เปลี่ยนสถานะ", color: "var(--blue)" },
+  due: { label: "เลื่อนกำหนด", color: "var(--amber)" },
+  late: { label: "สาเหตุที่เสร็จช้า", color: "var(--red)" },
+};
+
+function TaskUpdates({ task, onPosted }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const updates = task.updates || [];
+
+  const post = async () => {
+    if (!text.trim()) return;
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch(`/api/pm/personal-tasks/${task.id}/updates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: text.trim() }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "ส่งอัปเดตไม่สำเร็จ");
+      setText("");
+      onPosted?.();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return <DetailCard icon={MessageSquare} eyebrow="Progress updates" title="อัปเดตงาน" meta={updates.length ? `${updates.length} รายการ` : null}>
+    {updates.length > 0 ? (
+      <ul className={styles.updateList}>
+        {updates.map((u) => {
+          const meta = UPDATE_META[u.kind] || UPDATE_META.comment;
+          return (
+            <li key={u.id}>
+              <div className={styles.updateHead}>
+                <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>
+                <strong>{u.authorName || "ระบบ"}</strong>
+                <span>{fmtDateTime(u.createdAt)}</span>
+              </div>
+              {u.body && <div className={styles.updateBody}>{u.body}</div>}
+            </li>
+          );
+        })}
+      </ul>
+    ) : (
+      <div style={{ color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีอัปเดต — เล่าความคืบหน้าหรือสิ่งที่ติดอยู่ไว้ตรงนี้ได้</div>
+    )}
+
+    {task.canPostUpdate && (
+      <div className={styles.updateComposer}>
+        <textarea className="premium-input" rows={2} value={text} disabled={busy}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="ติดอะไรอยู่ / คืบหน้าถึงไหนแล้ว..." />
+        {err && <div style={{ color: "var(--red)", fontSize: 12.5 }} role="alert">{err}</div>}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button type="button" className="btn btn-primary sm" onClick={post} disabled={busy || !text.trim()}>
+            <Send size={13} /> {busy ? "กำลังส่ง..." : "ส่งอัปเดต"}
+          </button>
+        </div>
+      </div>
+    )}
+  </DetailCard>;
 }
 
 function TaskPeople({ task, person }) {

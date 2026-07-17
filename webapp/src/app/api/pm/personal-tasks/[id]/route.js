@@ -6,6 +6,7 @@ import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleIdentity } from '@/lib/pm/personalTaskAccess';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
+import { appendTaskUpdate, autoTaskUpdates, listTaskUpdates } from '@/lib/pm/taskUpdates';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -62,6 +63,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     people,
     canManage: !!manage,
     canChangeStatus: canChangeTaskStatus(user, task, manage),
+    // เธรดอัปเดต (0113) — ส่งมากับงานเลย ไม่ต้องให้หน้า detail ยิงอีกรอบ
+    updates: await listTaskUpdates(supabase, id),
+    // โพสต์อัปเดตได้ = คนที่เกี่ยวข้องกับงานจริง (ผู้ดูแล/ผู้รับผิดชอบ/ผู้ทำแทน)
+    canPostUpdate: !!manage || canChangeTaskStatus(user, task, manage),
     // ตัวตนผู้เรียก — โมดัลแก้งานใช้ (กันเลือกมอบหมายให้ตัวเอง/ป้ายทีม) หน้า detail
     // จะได้ไม่ต้องยิง /api/pm/my-work ทั้งก้อนมาเอาแค่ 3 ฟิลด์
     me: { id: user.id, role: user.role, team: user.team ?? null },
@@ -209,6 +214,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { data, error } = await supabase.from('personal_tasks').update(updates).eq('id', id).select().single();
   if (error) return fail(error.message, 500);
   await recordAudit({ user, action: 'update', entityType: 'task', entityId: id, before: task, after: data, request: req });
+
+  // เล่าให้ทีมฟังในเธรดงาน: เปลี่ยนสถานะ / เลื่อนกำหนด / สาเหตุที่เสร็จช้า
+  // (คนละหน้าที่กับ audit — audit คือใครแก้อะไร supervisor อ่าน)
+  for (const u of autoTaskUpdates(task, data, { lateReason: updates.lateReason })) {
+    await appendTaskUpdate(supabase, { taskId: id, ...u, user });
+  }
   return ok(data);
 });
 
