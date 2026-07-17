@@ -6,7 +6,6 @@ import ConfirmModal from "@/components/tax/ConfirmModal";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
-import AddBrandButton from "@/components/master/AddBrandButton";
 import { productOptionDisplay } from "@/components/master/productOption";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
@@ -198,17 +197,15 @@ export default function ProjectFormModal({
 
   // ตัวเลือกแบรนด์ = แบรนด์ที่ลูกค้า "เป็นเจ้าของ" (customers.brands[]) — master ของแบรนด์.
   // กรองตามลูกค้า "เสมอ": ยังไม่เลือกลูกค้า → ไม่มีแบรนด์ให้เลือก (กันโชว์แบรนด์ข้ามลูกค้า)
-  // extraBrands = แบรนด์ที่เพิ่งเพิ่มผ่านปุ่ม "+" (customers prop ยังไม่รีเฟรช);
-  // แบรนด์เดิมของโครงการที่ไม่อยู่ในลิสต์ (free-text ยุคเก่า) แทรกไว้ไม่ให้ค่าหาย.
-  const [extraBrands, setExtraBrands] = useState([]);
-  useEffect(() => { if (open) setExtraBrands([]); }, [open, form.customerId]);
+  // เพิ่มแบรนด์จากฟอร์มนี้ไม่ได้แล้ว (มติผู้ใช้ 2026-07-17) — แบรนด์เกิดที่หน้าลูกค้า
+  // ที่เดียวตามกฎ ลูกค้า›แบรนด์›สินค้า. แบรนด์เดิมของโครงการที่ไม่อยู่ในลิสต์
+  // (free-text ยุคเก่า) ยังแทรกไว้ไม่ให้ค่าหายตอนเปิดแก้.
   const brandOptions = useMemo(() => {
     const selected = customers.find((c) => c.id === form.customerId);
-    const merged = [...brandSelectOptions(selected?.brands || []), ...brandSelectOptions(extraBrands)];
-    const unique = [...new Map(merged.map((option) => [option.value, option])).values()];
+    const unique = [...new Map(brandSelectOptions(selected?.brands || []).map((option) => [option.value, option])).values()];
     if (form.brand && !unique.some((option) => option.value === form.brand)) unique.unshift({ value: form.brand, label: form.brand });
     return unique;
-  }, [customers, form.customerId, extraBrands, form.brand]);
+  }, [customers, form.customerId, form.brand]);
 
   return (
     <Modal open={open} onClose={onClose} title={editingId ? "แก้ไขโครงการ" : "สร้างโครงการใหม่"} size="lg">
@@ -292,17 +289,9 @@ export default function ProjectFormModal({
                   onChange={(v) => setForm((f) => ({ ...f, brand: v }))}
                   options={brandOptions}
                   placeholder={form.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
-                  emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — กด + เพื่อเพิ่ม"
+                  emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — เพิ่มที่หน้าข้อมูลลูกค้า"
                 />
               </div>
-              <AddBrandButton
-                customerId={form.customerId}
-                disabled={!form.customerId}
-                onAdded={(brand) => {
-                  setExtraBrands((rows) => [...rows, brand]);
-                  setForm((f) => ({ ...f, brand: brand.th || brand.en }));
-                }}
-              />
             </div>
           </div>
         </div>

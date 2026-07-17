@@ -443,14 +443,6 @@ export default function ProductRegistry() {
             brandOptions={brandOptions}
             creatorName={userName}
             onCustomerChange={(v) => setFormData((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }))}
-            onBrandAdded={(b, updatedCustomer) => {
-              // อัปเดตลูกค้าใน state ของหน้า → brandOptions เห็นแบรนด์ใหม่ทันที + cache ไม่ค้าง
-              setCustomers((prev) => {
-                const next = prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c));
-                apiCache.set("/api/master/customers", next);
-                return next;
-              });
-            }}
           />
           <div className="form-action-bar">
             <button type="button" onClick={() => setShowForm(false)} className="btn">ยกเลิก</button>

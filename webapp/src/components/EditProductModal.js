@@ -24,7 +24,6 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   const [priceError, setPriceError] = useState(null);
   const [priceSaved, setPriceSaved] = useState(false);
   // แบรนด์ที่เพิ่งเพิ่มผ่านปุ่ม "+" ในโมดัลนี้ (customers prop ยังไม่รีเฟรช)
-  const [extraBrands, setExtraBrands] = useState([]);
 
   useEffect(() => {
     if (open && product) {
@@ -37,7 +36,6 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
       setError(null);
       setPriceError(null);
       setPriceSaved(false);
-      setExtraBrands([]);
 
       // Fetch product types if not already fetched
       if (productTypes.length === 0) {
@@ -59,7 +57,6 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   // แบรนด์ = ช่องเดียว โชว์ EN · TH; ไม่มี selCustomer ใช้ prop เดิม (string[]) แปลงเป็น {th,en}.
   const customerBrands = [
     ...(selCustomer ? normalizeBrands(selCustomer.brands || []) : (brandOptions || []).map((b) => ({ th: b, en: "" }))),
-    ...extraBrands,
   ];
   // แบรนด์เดิมของสินค้าที่ไม่อยู่ในลิสต์ลูกค้า (free-text ยุคเก่า) — แทรกไว้ไม่ให้ค่าหาย
   const currentBrandValue = form.brandName || form.brandNameEn || "";
@@ -67,7 +64,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     ? [{ th: form.brandName || "", en: form.brandNameEn || "" }, ...customerBrands]
     : customerBrands;
 
-  const handleCustomerChange = (v) => { setExtraBrands([]); setForm((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" })); };
+  const handleCustomerChange = (v) => setForm((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }));
 
 
   const submit = async (e) => {
@@ -161,7 +158,6 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           factoryPrice="readonly"
           currentCostPrice={product.costPrice}
           onCustomerChange={handleCustomerChange}
-          onBrandAdded={(b) => setExtraBrands((x) => [...x, b])}
         />
 
         {/* แผงอัปเดตราคาโรงงาน — action แยกจากการบันทึกสเปค (กระทบประวัติราคา/ต้นทุน) */}

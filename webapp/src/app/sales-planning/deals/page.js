@@ -17,7 +17,6 @@ import { FORECAST_LEVELS, MonthPicker, dealTypeBadge, forecastBadge, initialDeal
 import { fmtMoney, fmtName } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
-import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
 import DetailRow from "@/components/ui/DetailRow";
@@ -675,7 +674,6 @@ export default function SalesPlanningPipelinePage() {
                     showProject
                     categories={categories}
                     stages={PIPELINE_STAGES.filter((st) => st !== "won")}
-                    onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
                   />
                 </div>
               </div>
@@ -703,7 +701,6 @@ export default function SalesPlanningPipelinePage() {
               categories={categories}
               stages={PIPELINE_STAGES.filter((st) => st !== "won" || dealForm.stage === "won")}
               alreadyWon={dealForm.stage === "won"}
-              onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
             />
             <div className="form-action-bar">
               <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
