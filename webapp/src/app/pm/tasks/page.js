@@ -1,10 +1,10 @@
 "use client";
-import DateInput from "@/components/ui/DateInput";
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, Paperclip, FileText, X } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, X } from "lucide-react";
 import Modal from "@/components/Modal";
+import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
 import Select from "@/components/ui/Select";
 import SortControl from "@/components/ui/SortControl";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -13,18 +13,15 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
-import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import { isSuperuser, TEAM_ROLES, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
-import { TASK_CATEGORIES, DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
-import { resolvePersonalTaskLink, taskLinkType } from "@/lib/pm/taskLink";
+import { DIFFICULTY_LABELS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
 import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm/taskViews";
 import { compactPersonName } from "@/lib/personName";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { InquiryStatusBadge, inquiryDueTone } from "@/components/salesPlanning/inquiryUi";
 
@@ -78,51 +75,7 @@ const makeComparator = (sortKey, dir = "asc") => {
   return (a, b) => ((a.createdAt || "") < (b.createdAt || "") ? 1 : -1) * mul;
 };
 
-const PERSONAL_BLANK = {
-  title: "", note: "", startDate: "", dueDate: "",
-  linkType: "none", projectId: "", dealId: "", assigneeId: "",
-  category: "", important: false, urgent: false, difficulty: 2,
-};
 
-async function uploadNewTaskAttachment(taskId, file) {
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("customerName", `personal_task-${taskId}`);
-  fd.append("entityType", "personal_task");
-  fd.append("entityId", taskId);
-
-  const uploadRes = await fetch("/api/upload", { method: "POST", body: fd });
-  const uploadData = await uploadRes.json().catch(() => ({}));
-  if (!uploadRes.ok) throw new Error(uploadData.error || `อัปโหลด ${file.name} ไม่สำเร็จ`);
-
-  const attachmentRes = await fetch("/api/master/attachments", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      entityType: "personal_task",
-      entityId: taskId,
-      docType: "other",
-      fileUrl: uploadData.url,
-      driveFileId: uploadData.driveFileId,
-      fileName: file.name,
-      mimeType: file.type || null,
-      sizeBytes: file.size,
-      metadata: {},
-    }),
-  });
-
-  if (!attachmentRes.ok) {
-    if (uploadData.driveFileId) {
-      fetch("/api/upload", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ driveFileId: uploadData.driveFileId }),
-      }).catch(() => {});
-    }
-    const payload = await attachmentRes.json().catch(() => ({}));
-    throw new Error(payload.error || `บันทึก ${file.name} ไม่สำเร็จ`);
-  }
-}
 
 const SORT_OPTIONS = [
   { key: "created", label: "สร้างล่าสุด" },
@@ -196,11 +149,9 @@ export default function TasksPage() {
   // task modal
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(PERSONAL_BLANK);
+  const [form, setForm] = useState(TASK_BLANK);
   const [saving, setSaving] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState([]);
   const [inquirySource, setInquirySource] = useState(null);
-  const pendingFileRef = useRef(null);
 
   // กันผลลัพธ์ที่มาช้า/สลับลำดับเมื่อสลับ scope เร็ว ๆ
   const loadSeq = useRef(0);
@@ -374,7 +325,7 @@ export default function TasksPage() {
     : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
 
   // ── CRUD ──
-  const openAdd = () => { setEditingId(null); setInquirySource(null); setForm(PERSONAL_BLANK); setPendingFiles([]); setShowModal(true); };
+  const openAdd = () => { setEditingId(null); setInquirySource(null); setForm(TASK_BLANK); setShowModal(true); };
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const inquiryId = params.get("inquiryId");
@@ -394,7 +345,7 @@ export default function TasksPage() {
         setEditingId(null);
         setInquirySource({ inquiryId, messageId: message?.id || null, code: inquiry.code || inquiry.id, returnTo });
         setForm({
-          ...PERSONAL_BLANK,
+          ...TASK_BLANK,
           title: `[${inquiry.code || "IQ"}] ${sourceText.slice(0, 120)}`,
           note: sourceText,
           dueDate: inquiry.committedDueDate || inquiry.requestedDueDate || inquiry.dueDate || "",
@@ -404,93 +355,22 @@ export default function TasksPage() {
           important: !!inquiry.urgent,
           urgent: !!inquiry.urgent,
         });
-        setPendingFiles([]);
+       
         setShowModal(true);
       }).catch((error) => setToast({ kind: "error", msg: error.message || "เปิดฟอร์มสร้างงานไม่สำเร็จ" }));
       return;
     }
     setEditingId(null);
     setInquirySource(null);
-    setForm({ ...PERSONAL_BLANK, linkType: "deal", dealId });
-    setPendingFiles([]);
+    setForm({ ...TASK_BLANK, linkType: "deal", dealId });
+   
     setShowModal(true);
   }, []);
+  // แก้ = ส่ง task ให้โมดัลไปเติมฟอร์มเอง (taskToForm) — ไม่ต้อง map ซ้ำที่นี่
   const openEdit = (t) => {
     setEditingId(t.id);
     setInquirySource(null);
-    setPendingFiles([]);
-    setForm({
-      title: t.title, note: t.note || "",
-      startDate: t.startDate || "", dueDate: t.dueDate || "",
-      linkType: taskLinkType(t),
-      projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
-      category: t.category || "", important: !!t.important, urgent: !!t.urgent,
-      difficulty: t.difficulty ?? 2,
-    });
     setShowModal(true);
-  };
-  const selectPendingFiles = (event) => {
-    const selected = Array.from(event.target.files || []);
-    event.target.value = "";
-    const oversized = selected.filter((file) => file.size > MAX_UPLOAD_BYTES);
-    if (oversized.length > 0) {
-      setToast({ kind: "error", msg: `ไฟล์ต้องมีขนาดไม่เกิน ${MAX_UPLOAD_MB} MB: ${oversized.map((file) => file.name).join(", ")}` });
-    }
-    const valid = selected.filter((file) => file.size <= MAX_UPLOAD_BYTES);
-    setPendingFiles((current) => {
-      const known = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
-      return [...current, ...valid.filter((file) => !known.has(`${file.name}:${file.size}:${file.lastModified}`))];
-    });
-  };
-  const savePersonal = async (e) => {
-    e.preventDefault();
-    if (!form.title.trim()) { setToast({ kind: "error", msg: "ต้องระบุชื่องาน" }); return; }
-    if (form.linkType === "deal" && !form.dealId) { setToast({ kind: "error", msg: "กรุณาเลือกดีล" }); return; }
-    setSaving(true);
-    try {
-      const url = editingId ? `/api/pm/personal-tasks/${editingId}` : "/api/pm/personal-tasks";
-      const { projectId, dealId } = resolvePersonalTaskLink(form, allDeals);
-      const res = await fetch(url, {
-        method: editingId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: form.title,
-          note: form.note,
-          startDate: form.startDate || null,
-          dueDate: form.dueDate || null,
-          projectId,
-          dealId,
-          assigneeId: form.assigneeId || null,
-          category: form.category || null,
-          important: !!form.important,
-          urgent: !!form.urgent,
-          difficulty: form.difficulty,
-          inquiryId: inquirySource?.inquiryId || null,
-          inquiryMessageId: inquirySource?.messageId || null,
-        }),
-      });
-      if (res.ok) {
-        const savedTask = await res.json();
-        const failedFiles = [];
-        if (!editingId && pendingFiles.length > 0) {
-          for (const file of pendingFiles) {
-            try {
-              await uploadNewTaskAttachment(savedTask.id, file);
-            } catch (error) {
-              console.error(error);
-              failedFiles.push(file.name);
-            }
-          }
-        }
-        setShowModal(false);
-        setPendingFiles([]);
-        loadWork(scope);
-        if (failedFiles.length > 0) {
-          setToast({ kind: "error", msg: `สร้างงานแล้ว แต่แนบไฟล์ไม่สำเร็จ: ${failedFiles.join(", ")} — เปิดแก้ไขงานเพื่อแนบอีกครั้ง` });
-        } else if (inquirySource?.returnTo) router.push(inquirySource.returnTo);
-      } else setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ" });
-    } catch { setToast({ kind: "error", msg: "เกิดข้อผิดพลาด" }); }
-    finally { setSaving(false); }
   };
   const applyStatus = async (t, status, lateReason) => {
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
@@ -969,151 +849,27 @@ export default function TasksPage() {
       </SaSection>
 
       {/* task modal */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editingId ? "แก้ไขงาน" : "เพิ่มงาน"} size="md">
-        <form onSubmit={savePersonal}>
-          <div className="grid gap-[14px]">
-            {inquirySource && (
-              <div className="glass-panel" style={{ padding: "10px 12px", fontSize: 12.5, color: "var(--text-2)" }}>
-                สร้างจากเรื่องสอบถาม <strong>{inquirySource.code}</strong>{inquirySource.messageId ? " · ผูกกับข้อความต้นทาง" : ""}
-                <div style={{ marginTop: 3, color: "var(--text-3)" }}>ระบบจะล็อกข้อความฝั่งตรงข้ามเมื่อบันทึกงานสำเร็จ</div>
-              </div>
-            )}
-            <div className="form-group">
-              <label>ชื่องาน <span className="text-[var(--red)]">*</span></label>
-              <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required className="premium-input w-full" placeholder="เช่น โทรตามลูกค้า, เตรียมเอกสาร" />
-            </div>
-            <div className="form-group">
-              <label>รายละเอียด</label>
-              <textarea value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className="premium-input w-full" rows={2} placeholder="โน้ตเพิ่มเติม (ไม่บังคับ)" />
-              {editingId ? (
-                <AttachmentsPanel
-                  entityType="personal_task"
-                  entityId={editingId}
-                  canEdit={canManageTask(personalTasks.find((task) => task.id === editingId))}
-                  inlineUpload
-                />
-              ) : (
-                <div className="mt-1 flex flex-col items-end">
-                  <button
-                    type="button"
-                    onClick={() => pendingFileRef.current?.click()}
-                    disabled={saving}
-                    className="inline-flex items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Paperclip size={13} />
-                    <span>แนบไฟล์</span>
-                  </button>
-                  <input
-                    ref={pendingFileRef}
-                    type="file"
-                    accept={UPLOAD_ACCEPT_ATTR}
-                    multiple
-                    onChange={selectPendingFiles}
-                    className="hidden"
-                  />
-                  {pendingFiles.length > 0 && (
-                    <div className="mt-1 w-full divide-y divide-[var(--border)]">
-                      {pendingFiles.map((file) => {
-                        const key = `${file.name}:${file.size}:${file.lastModified}`;
-                        return (
-                          <div key={key} className="flex items-center justify-between gap-2 py-1 text-xs">
-                            <span className="flex min-w-0 items-center gap-1.5 text-[var(--text-2)]">
-                              <FileText size={14} className="shrink-0" />
-                              <span className="truncate">{file.name}</span>
-                              <span className="shrink-0 text-[10px] text-[var(--text-3)]">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setPendingFiles((current) => current.filter((item) => `${item.name}:${item.size}:${item.lastModified}` !== key))}
-                              className="btn-icon danger shrink-0"
-                              aria-label={`นำ ${file.name} ออกจากรายการแนบ`}
-                              title="นำออก"
-                            >
-                              <X size={13} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+      <TaskFormModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        task={editingId ? personalTasks.find((t) => t.id === editingId) || null : null}
+        initialForm={editingId ? null : form}
+        inquirySource={inquirySource}
+        deals={allDeals}
+        projects={allProjects}
+        assignableUsers={assignableUsers}
+        me={me}
+        canManage={editingId ? canManageTask(personalTasks.find((t) => t.id === editingId)) : true}
+        canChangeStatus
+        onSaved={(saved, { warning } = {}) => {
+          setShowModal(false);
+          loadWork(scope);
+          if (warning) setToast({ kind: "error", msg: warning });
+          else if (!editingId && inquirySource?.returnTo) router.push(inquirySource.returnTo);
+        }}
+        onError={(msg) => setToast({ kind: "error", msg: msg || "บันทึกไม่สำเร็จ" })}
+      />
 
-            <div className="pm-form-grid gap-3">
-              <div className="form-group">
-                <label>วันเริ่ม</label>
-                <DateInput value={form.startDate} onChange={(value) => setForm((f) => ({ ...f, startDate: value }))} className="w-full" />
-              </div>
-              <div className="form-group">
-                <label>กำหนดเสร็จ</label>
-                <DateInput value={form.dueDate} onChange={(value) => setForm((f) => ({ ...f, dueDate: value }))} className="w-full" />
-              </div>
-            </div>
-
-            <div className="pm-form-grid gap-3">
-              <div className="form-group">
-                <label><Tag size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> หมวดหมู่</label>
-                <Select fullWidth value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
-                  <option value="">— ไม่ระบุ —</option>
-                  {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </Select>
-              </div>
-              <div className="form-group">
-                <label>ระดับความยาก</label>
-                <Select fullWidth value={String(form.difficulty)} onChange={(e) => setForm((f) => ({ ...f, difficulty: Number(e.target.value) }))}>
-                  {DIFFICULTY_OPTIONS.map((d) => <option key={d} value={d}>{DIFFICULTY_LABELS[d]}</option>)}
-                </Select>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>ความสำคัญ</label>
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <button type="button" onClick={() => setForm((f) => ({ ...f, important: !f.important }))} className={`btn sm${form.important ? " btn-primary" : ""}`}><Star size={14} /> สำคัญ</button>
-                <button type="button" onClick={() => setForm((f) => ({ ...f, urgent: !f.urgent }))} className={`btn sm${form.urgent ? " btn-primary" : ""}`}><Flame size={14} /> ด่วน</button>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>เชื่อมกับ</label>
-              <div className="segmented" style={{ marginBottom: "8px" }}>
-                {[["none", "ไม่ผูก"], ["deal", "ดีล"]].map(([k, lbl]) => (
-                  <button type="button" key={k} disabled={!!inquirySource} className={form.linkType === k ? "active" : ""} onClick={() => setForm((f) => ({ ...f, linkType: k }))}>{lbl}</button>
-                ))}
-              </div>
-              {form.linkType === "deal" && (
-                <>
-                  <Select fullWidth disabled={!!inquirySource} value={form.dealId} onChange={(e) => setForm((f) => ({ ...f, dealId: e.target.value }))}>
-                    <option value="">— เลือกดีลของทีม {me?.team || "ตัวเอง"} —</option>
-                    {allDeals.map((deal) => {
-                      const project = deal.projectId ? allProjects.find((row) => row.id === deal.projectId) : null;
-                      return <option key={deal.id} value={deal.id}>{project ? `${project.code || project.id} · ` : ""}{deal.title}{deal.customerName ? ` — ${deal.customerName}` : ""}{!project ? " · ยังไม่ผูกโครงการ" : ""}</option>;
-                    })}
-                  </Select>
-                  {!allDeals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
-                </>
-              )}
-            </div>
-
-            <div className="form-group">
-              <label><UserPlus size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> มอบหมายให้ <span className="text-[11px] text-[var(--text-3)] font-normal">(งานจะไปอยู่ในรายการงานของคนนั้น)</span></label>
-              <Select fullWidth value={form.assigneeId} onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}>
-                <option value="">— ตัวฉันเอง —</option>
-                {assignableUsers.filter((u) => u.id !== me?.id).map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}{u.team ? ` (${u.team})` : ""}</option>)}
-              </Select>
-              {me && !isSuperuser(me.role) && !TEAM_ROLES.includes(me.role) && (
-                <div className="text-[11px] text-[var(--text-3)] mt-1">ตำแหน่งของคุณมอบหมายงานให้คนอื่นไม่ได้ — สร้างเป็นงานของตัวเองเท่านั้น</div>
-              )}
-            </div>
-
-          </div>
-          <div className="form-action-bar">
-            <button type="button" onClick={() => setShowModal(false)} className="btn">ยกเลิก</button>
-            <button type="submit" disabled={saving} className="btn btn-primary px-8">{editingId ? "บันทึก" : "เพิ่ม"}</button>
-          </div>
-        </form>
-      </Modal>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
       <ConfirmModal

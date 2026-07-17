@@ -62,6 +62,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     people,
     canManage: !!manage,
     canChangeStatus: canChangeTaskStatus(user, task, manage),
+    // ตัวตนผู้เรียก — โมดัลแก้งานใช้ (กันเลือกมอบหมายให้ตัวเอง/ป้ายทีม) หน้า detail
+    // จะได้ไม่ต้องยิง /api/pm/my-work ทั้งก้อนมาเอาแค่ 3 ฟิลด์
+    me: { id: user.id, role: user.role, team: user.team ?? null },
   });
 });
 
