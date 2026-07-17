@@ -18,7 +18,7 @@ export function ApprovalBadge({ status }) {
   return <span className={meta.cls}>{meta.label}</span>;
 }
 
-// Approve / reject buttons for a pending row. Shown only to approvers (Senior AE+).
+// Approve / reject buttons for a pending row. Shown only to approvers (AE Supervisor).
 // onDecide(status) is called with 'approved' | 'rejected'.
 export function ApprovalActions({ onDecide }) {
   return (

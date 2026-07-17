@@ -304,16 +304,18 @@ export function isSuperuser(role) {
 }
 
 // ── Master-data approval authority ────────────────────────────────────
-// Org rule: AE / AC may CREATE customers & products, but the new record stays
-// 'pending' until a Senior AE (own team) or a sales head / admin (any team)
-// approves it. The approvers are exactly the roles at/above Senior AE — they
-// also auto-approve their own creations (they ARE the approval authority).
-//   senior_ae      — approves own team's submissions
-//   ae_supervisor  — approves all teams (sales head)
-//   admin          — approves all teams (break-glass)
-// Team-scope of senior_ae's approval is still enforced row-level via inScope().
+// Org rule: AE / AC / Senior AE สร้างลูกค้า/สินค้าได้ แต่ของใหม่ค้างเป็น 'pending'
+// จนกว่า AE Supervisor จะอนุมัติ. ผู้อนุมัติ auto-approve ของที่ตัวเองสร้าง
+// (เป็นผู้มีอำนาจอนุมัติอยู่แล้ว).
+//   ae_supervisor  — อนุมัติได้ทุกทีม (sales head) = ผู้อนุมัติตัวจริงเพียงคนเดียว
+//   admin          — บัญชี sysadmin แยก เก็บไว้ break-glass (ดู [[admin-account-separation]])
+//
+// เดิม senior_ae อนุมัติของทีมตัวเองได้ — ตัดออกตามมติผู้ใช้ 2026-07-17: การอนุมัติ
+// ข้อมูลหลักรวมศูนย์ที่ AE Supervisor คนเดียว. ผลพลอยได้คือ Senior AE ที่สร้าง
+// ลูกค้า/สินค้าเองจะไม่ auto-approve อีก ต้องรอ Supervisor เหมือน AE/AC
+// (isSuperuser = admin || ae_supervisor — ครอบทั้งสอง role ที่เหลือพอดี)
 export function canApproveMasterData(role) {
-  return isSuperuser(role) || role === 'senior_ae';
+  return isSuperuser(role);
 }
 
 // ── SAHAMIT module access ─────────────────────────────────────────────

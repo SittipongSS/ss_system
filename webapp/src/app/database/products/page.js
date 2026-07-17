@@ -74,7 +74,7 @@ export default function ProductRegistry() {
     setLoading(false);
   };
 
-  // Approve / reject a pending product (Senior AE+ only — enforced server-side too).
+  // Approve / reject a pending product (AE Supervisor only — enforced server-side too).
   const decide = async (id, status) => {
     let rejectionReason = null;
     if (status === "rejected") {

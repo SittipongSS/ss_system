@@ -58,7 +58,7 @@ export async function PATCH(request, { params }) {
   const body = await request.json();
 
   // ── Approval action (approve / reject a pending product) ─────────────
-  // Setting approvalStatus is reserved for Senior AE+ — AE/AC hold products:edit
+  // Setting approvalStatus is reserved for AE Supervisor — AE/AC/Senior hold products:edit
   // but must not approve. Row-level team scope is already enforced above by
   // canEditRecord (senior_ae = own team, supervisor/admin = all teams).
   if (body.approvalStatus !== undefined) {
@@ -178,7 +178,7 @@ export async function PATCH(request, { params }) {
   updated.updatedAt = new Date().toISOString();
 
   // Re-approval rule (ทุกระบบ): editing an APPROVED product drops it back to
-  // 'pending' so a Senior AE+ must re-approve. No-op if it wasn't approved.
+  // 'pending' so an AE Supervisor must re-approve. No-op if it wasn't approved.
   // EXCEPTION: a pure พัก/เปิดใช้ toggle (isActive-only) is a lifecycle action,
   // not a spec edit — it must NOT un-approve the product (that would silently
   // pull an approved, selling product out of the approved-only pickers and

@@ -67,7 +67,8 @@ export async function POST(request) {
     return Response.json({ error: 'รหัสลูกค้านี้มีในระบบแล้ว' }, { status: 409 });
   }
 
-  // AE / AC creations land as 'pending'; Senior AE+ auto-approve their own.
+  // AE / AC / Senior AE creations land as 'pending' — only AE Supervisor approves
+  // (admin = sysadmin break-glass). Approvers auto-approve their own.
   const nowIso = new Date().toISOString();
   const autoApprove = canApproveMasterData(user?.role);
 
@@ -124,7 +125,7 @@ export async function POST(request) {
   }
   await recordAudit({ user, action: 'create', entityType: 'customer', entityId: data.id, after: data, request });
 
-  // แจ้งผู้อนุมัติเมื่อมีลูกค้าใหม่ค้างรออนุมัติ (Senior AE+ สร้างเอง = approved ไม่ต้องแจ้ง)
+  // แจ้งผู้อนุมัติเมื่อมีลูกค้าใหม่ค้างรออนุมัติ (AE Supervisor สร้างเอง = approved ไม่ต้องแจ้ง)
   if (data.approvalStatus === 'pending') {
     sendChat('approvals', chatCard({
       title: '👤 ลูกค้าใหม่รออนุมัติ',

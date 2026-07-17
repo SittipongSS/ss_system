@@ -11,7 +11,7 @@ import { after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 const SPACE_ENV = {
-  approvals: 'CHAT_WEBHOOK_APPROVALS', // space หัวหน้า/ผู้อนุมัติ (Senior AE+)
+  approvals: 'CHAT_WEBHOOK_APPROVALS', // space หัวหน้า/ผู้อนุมัติ (AE Supervisor)
   sales: 'CHAT_WEBHOOK_SALES', // space ทีมขาย
   pm: 'CHAT_WEBHOOK_PM', // space โครงการ (ใช้ในเฟส 3 daily digest)
   rd: 'CHAT_WEBHOOK_RD', // space ฝ่าย RD (ข้อสอบถามใหม่จากฝ่ายขาย)

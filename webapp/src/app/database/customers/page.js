@@ -66,7 +66,7 @@ export default function CustomerDirectory() {
     fetchCustomers();
   }, []);
 
-  // Approve / reject a pending customer (Senior AE+ only — enforced server-side too).
+  // Approve / reject a pending customer (AE Supervisor only — enforced server-side too).
   const decide = async (id, status) => {
     let rejectionReason = null;
     if (status === "rejected") {

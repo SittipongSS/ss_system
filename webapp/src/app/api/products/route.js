@@ -91,7 +91,8 @@ export async function POST(request) {
   const materialCost = factoryPrice * 0.65;
   const factoryProfit = factoryPrice - materialCost - laborCost - shippingCost;
 
-  // AE / AC creations land as 'pending'; Senior AE+ auto-approve their own.
+  // AE / AC / Senior AE creations land as 'pending' — only AE Supervisor approves
+  // (admin = sysadmin break-glass). Approvers auto-approve their own.
   const nowIso = new Date().toISOString();
   const autoApprove = canApproveMasterData(user?.role);
 
@@ -164,7 +165,7 @@ export async function POST(request) {
   });
   await recordAudit({ user, action: 'create', entityType: 'product', entityId: data.id, after: data, request });
 
-  // แจ้งผู้อนุมัติเมื่อมีสินค้าใหม่ค้างรออนุมัติ (Senior AE+ สร้างเอง = approved ไม่ต้องแจ้ง)
+  // แจ้งผู้อนุมัติเมื่อมีสินค้าใหม่ค้างรออนุมัติ (AE Supervisor สร้างเอง = approved ไม่ต้องแจ้ง)
   if (data.approvalStatus === 'pending') {
     sendChat('approvals', chatCard({
       title: '📦 สินค้าใหม่รออนุมัติ',
