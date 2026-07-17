@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SALES_ORDER_CANCEL_REASONS, canSalesOrderTransition, cancelReasonLabel, dealActualFromSalesOrders, isSalesOrderReviewer, isValidCancelReasonCode, salesOrderActual } from './salesOrderWorkflow.js';
+import { SALES_ORDER_CANCEL_REASONS, WON_REVERSAL_TARGETS, canSalesOrderTransition, cancelReasonLabel, dealActualFromSalesOrders, isCustomerCancelReason, isSalesOrderReviewer, isValidCancelReasonCode, isValidReversalTarget, salesOrderActual } from './salesOrderWorkflow.js';
 
 test('Actual is counted only after SO approval', () => {
   for (const status of ['draft', 'pending_approval', 'rejected', 'cancelled']) {
@@ -44,4 +44,21 @@ test('SO cancel reason codes validate + label, grouped by customer/document/data
   assert.deepEqual([...groups].sort(), ['customer', 'data', 'document']);
   // ทุก code ที่อยู่ใน migration CHECK ต้องมีใน list (กันหลุด)
   assert.equal(SALES_ORDER_CANCEL_REASONS.length, 7);
+});
+
+test('Won reversal: customer-group reasons flag deal reversal; targets validate', () => {
+  // เฉพาะกลุ่มลูกค้าเท่านั้นที่เสนอย้อน Won
+  assert.equal(isCustomerCancelReason('customer_cancelled'), true);
+  assert.equal(isCustomerCancelReason('customer_no_payment'), true);
+  assert.equal(isCustomerCancelReason('switched_option'), true);
+  assert.equal(isCustomerCancelReason('wrong_document'), false);
+  assert.equal(isCustomerCancelReason('reissue_correction'), false);
+  assert.equal(isCustomerCancelReason('duplicate_test'), false);
+  assert.equal(isCustomerCancelReason('other'), false);
+  // ปลายทางย้อน
+  assert.equal(isValidReversalTarget('reopen'), true);
+  assert.equal(isValidReversalTarget('lost'), true);
+  assert.equal(isValidReversalTarget('won'), false);
+  assert.equal(isValidReversalTarget(''), false);
+  assert.deepEqual(WON_REVERSAL_TARGETS, ['reopen', 'lost']);
 });
