@@ -61,12 +61,13 @@ export function buildSalesOrderPrintHTML(order) {
     statusLabel,
     watermark: order.status === 'approved' ? '' : `เอกสาร${statusLabel}`,
     paginatedPreview: true,
+    // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ = AE (พนักงานขาย) ·
+    // ผู้อนุมัติ = AE Supervisor (ผู้จัดการฝ่ายขาย) · ฝ่ายบัญชี (เว้นให้เซ็นรับเอกสาร).
+    // name = ชื่อผู้ทำจริง (createdByName/approvedByName); role = ตำแหน่งบนแบบฟอร์ม.
     signers: [
-      { label: 'ผู้จัดทำ', role: 'Scent & Sense', name: order.createdByName || '' },
-      { label: 'ผู้ยื่นอนุมัติ', role: 'Scent & Sense', name: order.submittedByName || '' },
-      // ผู้อนุมัติ SO เป็นได้หลาย role (senior_ae/ae_supervisor/admin) — ไม่ระบุตำแหน่ง
-      // ตายตัว "AE Supervisor" ที่ผิดเมื่อ admin/senior_ae อนุมัติ; ใช้แนวเดียวกับผู้ลงนามอื่น
-      { label: 'ผู้อนุมัติ', role: 'Scent & Sense', name: order.approvedByName || '' },
+      { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: order.createdByName || '' },
+      { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: order.approvedByName || '' },
+      { label: 'ฝ่ายบัญชี', role: 'Scent & Sense', name: '' },
     ],
   });
 }
