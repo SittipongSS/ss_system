@@ -14,27 +14,58 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
 
-  const month = monthKey(new URL(req.url).searchParams.get('month')) || monthKey(new Date().toISOString());
+  const sp = new URL(req.url).searchParams;
+  // โหมด ?year=YYYY: หน้า /sa เปิดทีเดียวต้องการครบ 12 เดือน — เดิมยิง 12 request
+  // แต่ละอันสแกน sales_deals ทั้งตาราง (= สแกน 12 รอบต่อการเปิดหนึ่งครั้ง). โหมดปี
+  // สแกนดีลรอบเดียว + ดึงเป้าทุกเดือนรอบเดียว แล้ว aggregate 12 เดือนใน JS.
+  const yearParam = sp.get('year');
+  const year = /^\d{4}$/.test(yearParam || '') ? yearParam : null;
   try {
+    if (year) {
+      return ok(await cachedJson(`sales-dashboard:year:${year}`, DASHBOARD_TTL_MS, () => buildYearDashboards(supabase, year)));
+    }
+    const month = monthKey(sp.get('month')) || monthKey(new Date().toISOString());
     return ok(await cachedJson(`sales-dashboard:${month}`, DASHBOARD_TTL_MS, () => buildDashboard(supabase, month)));
   } catch (e) {
     return fail(e.message, 500);
   }
 });
 
-async function buildDashboard(supabase, month) {
-  // ภาพรวมเป็นระดับ "ทั้งฝ่าย" — เปิดให้ทุก sales role เห็นทุกทีม (นโยบาย: overview
-  // โปร่งใสทั้งบริษัท). การจำกัด scope ตามทีม/เจ้าของ ยังบังคับที่หน้า pipeline
-  // (deals) และหน้าวางเป้า (targets) ตามเดิม — เฉพาะภาพรวมนี้ที่เห็นครบ.
-  const { data: deals, error: dealsError } = await supabase.from('sales_deals').select('*');
-  if (dealsError) throw new Error(dealsError.message);
-  const visibleDeals = deals || [];
+// ภาพรวมเป็นระดับ "ทั้งฝ่าย" — เปิดให้ทุก sales role เห็นทุกทีม (นโยบาย: overview
+// โปร่งใสทั้งบริษัท). การจำกัด scope ตามทีม/เจ้าของ ยังบังคับที่หน้า pipeline
+// (deals) และหน้าวางเป้า (targets) ตามเดิม — เฉพาะภาพรวมนี้ที่เห็นครบ.
+async function loadAllDeals(supabase) {
+  const { data: deals, error } = await supabase.from('sales_deals').select('*');
+  if (error) throw new Error(error.message);
+  return deals || [];
+}
 
+async function buildDashboard(supabase, month) {
+  const visibleDeals = await loadAllDeals(supabase);
   const { data: targets, error: targetsError } = await supabase
     .from('sales_targets')
     .select('*')
     .eq('targetMonth', month);
   if (targetsError) throw new Error(targetsError.message);
+  return aggregateMonth(visibleDeals, targets || [], month);
+}
+
+async function buildYearDashboards(supabase, year) {
+  const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  const visibleDeals = await loadAllDeals(supabase);
+  const { data: targets, error: targetsError } = await supabase
+    .from('sales_targets')
+    .select('*')
+    .in('targetMonth', months);
+  if (targetsError) throw new Error(targetsError.message);
+  // shape ต่อเดือนเหมือน response โหมด ?month= ทุกประการ — client ใช้โค้ดเดิมได้เลย
+  return {
+    year,
+    months: months.map((m) => aggregateMonth(visibleDeals, (targets || []).filter((t) => t.targetMonth === m), m)),
+  };
+}
+
+function aggregateMonth(visibleDeals, targets, month) {
 
   // กติกา Won/open/ยอด/เดือน — ใช้ชุดกลางร่วมกับ drill-down modal (lib/sales/dashboardMetrics)
   const isWon = isWonDeal;

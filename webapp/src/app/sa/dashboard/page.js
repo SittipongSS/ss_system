@@ -16,7 +16,7 @@ import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
 import MyDashboardTab from "@/components/salesPlanning/dashboard/MyDashboardTab";
 import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
 import RdDashboardTab from "@/components/salesPlanning/dashboard/RdDashboardTab";
-import { cachedFetchJson } from "@/lib/apiCache";
+import { apiCache, cachedFetchJson } from "@/lib/apiCache";
 
 const DASHBOARD_TABS = [
   { key: "my", label: "แดชบอร์ดของฉัน" },
@@ -444,18 +444,28 @@ function DashboardContent() {
   const months = useMemo(() => monthsForYear(year), [year]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    // ภาพรวมทั้งปีดึงครั้งเดียวผ่านโหมด ?year= (เดิมยิง 12 request รายเดือน — server
+    // สแกน sales_deals ทั้งตาราง 12 รอบต่อการเปิดหนึ่งครั้ง). โชว์ของเก่าจาก apiCache
+    // ทันทีถ้ามี (stale-while-revalidate แบบเดียวกับ useApiList ของ /tax) แล้วค่อย
+    // แทนที่ด้วยข้อมูลสดเมื่อ fetch เสร็จ — เปิดหน้าซ้ำการ์ดขึ้นทันทีไม่ต้องรอสปินเนอร์
+    const yearKey = `/api/sales-planning/dashboard?year=${encodeURIComponent(year)}`;
+    const cachedMonths = apiCache.get(yearKey);
+    if (cachedMonths) {
+      setYearDashboards(cachedMonths);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError("");
     try {
-      const [dashboards, sahamitRiskRes, reviewRes] = await Promise.all([
-        Promise.all(months.map(async (m) => {
-          const res = await fetch(`/api/sales-planning/dashboard?month=${encodeURIComponent(m)}`);
-          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดภาพรวมไม่สำเร็จ");
-          return res.json();
-        })),
+      const [dashRes, sahamitRiskRes, reviewRes] = await Promise.all([
+        fetch(yearKey),
         SALES_FEATURES.sahamitRisk ? fetch(`/api/sales-planning/sahamit-risk?month=${encodeURIComponent(month)}`) : Promise.resolve(null),
         SALES_FEATURES.forecastReview ? fetch(`/api/sales-planning/forecast-reviews?month=${encodeURIComponent(month)}`) : Promise.resolve(null),
       ]);
+      if (!dashRes.ok) throw new Error((await dashRes.json().catch(() => ({}))).error || "โหลดภาพรวมไม่สำเร็จ");
+      const dashboards = (await dashRes.json()).months || [];
+      apiCache.set(yearKey, dashboards);
       setYearDashboards(dashboards);
       setSahamitRisk(sahamitRiskRes?.ok ? await sahamitRiskRes.json() : null);
       const nextReview = reviewRes?.ok ? await reviewRes.json() : null;
@@ -466,7 +476,7 @@ function DashboardContent() {
     } finally {
       setLoading(false);
     }
-  }, [months, month]);
+  }, [year, month]);
 
   useEffect(() => {
     load();
