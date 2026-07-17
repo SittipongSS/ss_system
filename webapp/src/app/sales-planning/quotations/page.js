@@ -96,7 +96,7 @@ export default function QuotationsPage() {
       title="บริหารงานขาย — ใบเสนอราคา"
       subtitle="FM-SA-01 · เลขที่ QT-YYMMXXXX-R ใช้ติดตาม ห้ามซ้ำ — ทุกใบผูกกับดีลเสมอ"
       headerRight={canEdit && (
-        <Link href="/sa/quotations/new" className="btn btn-primary">
+        <Link href="/sa/quotations/new" className="btn btn-accent">
           <Plus size={15} aria-hidden="true" /> สร้างใบเสนอราคา
         </Link>
       )}
