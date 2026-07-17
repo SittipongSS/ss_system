@@ -14,7 +14,6 @@ import {
 import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
-import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 
@@ -102,19 +101,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const totals = quoteTotals(lines, { discountType, discountValue, vatRate });
   // งวดชำระ: เติมยอดจาก % ของยอดรวม + สรุปเป็นข้อความ paymentTerms (แก้ทับได้)
   const paymentPlan = normalizePaymentPlan(body.paymentPlan, totals.totalAmount);
-  if (body.status === 'sent') {
-    const readiness = validateDocumentReadiness({
-      action: 'send',
-      status: 'draft',
-      lineCount: lines.length,
-      totalAmount: totals.totalAmount,
-      approvalStatus: 'not_required',
-    });
-    if (!readiness.ok) return badRequest(readiness.error);
-  }
-  // ผู้รับผิดชอบเอกสาร: ต้องเป็นผู้ใช้จริง + role ตรง (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ);
-  // ครบทั้งสามช่องเมื่อส่งใบให้ลูกค้า (status='sent'). กันชื่อ free-text ปลอม.
-  const peoplePick = await validateQuotationPeople(supabase, body.metadata || {}, { require: body.status === 'sent' });
+  // ใบใหม่เริ่มเป็น "ร่าง + รออนุมัติ" เสมอ (มติ 2026-07-18): ส่งลูกค้าตอนสร้างไม่ได้
+  // เพราะต้องให้เจ้าของดีลอนุมัติก่อน (flow: ร่าง → อนุมัติ → ส่ง). ไม่รับ status='sent'.
+  // ผู้รับผิดชอบเอกสารตรวจตอนสร้างแบบไม่บังคับ (บังคับครบตอนกดส่งจริงใน PATCH).
+  const peoplePick = await validateQuotationPeople(supabase, body.metadata || {}, { require: false });
   if (!peoplePick.ok) return badRequest(peoplePick.error);
 
   // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
@@ -128,7 +118,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       quoteNumber,
       baseNumber: base,
       revisionNo: 0,
-      status: body.status === 'sent' ? 'sent' : 'draft',
+      status: 'draft', // ใบใหม่เป็นร่างเสมอ — ส่งได้หลังเจ้าของดีลอนุมัติ (มติ 2026-07-18)
       quoteDate: body.quoteDate || businessDate(),
       validUntil: body.validUntil || null,
       customerId: deal.customerId || null,
@@ -146,11 +136,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       vatRate,
       paymentPlan,
       paymentTerms: (body.paymentTerms || '').trim() || paymentPlanSummary(paymentPlan, totals.totalAmount),
-      approvalStatus: 'not_required',
+      // รออนุมัติจากเจ้าของดีลก่อนส่ง (มติ 2026-07-18) — ใบเดิม grandfather ไว้ที่ mig 0114
+      approvalStatus: 'pending',
       approvalReason: null,
       approvalRequestedAt: null,
       approvalRequestedBy: null,
       approvalRequestedByName: null,
+      approvalFingerprint: null,
+      approvedAt: null,
+      approvedBy: null,
+      approvedByName: null,
       notes: body.notes || null,
       // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ = ผู้ใช้จริง+role ตรง)
       metadata: {

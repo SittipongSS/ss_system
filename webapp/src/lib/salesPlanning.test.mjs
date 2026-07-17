@@ -5,7 +5,7 @@ import {
   requiredConfirmDateForNeedMonth,
   buildSahamitReverseRiskRows,
 } from './salesPlanningReverse';
-import { inSalesEditScope, inSalesViewScope, salesPlanningEditScope, salesPlanningViewScope } from './salesPlanning';
+import { canApproveQuotation, inSalesEditScope, inSalesViewScope, salesPlanningEditScope, salesPlanningViewScope } from './salesPlanning';
 
 test('requiredConfirmDateForNeedMonth subtracts working days from first day of need month', () => {
   assert.equal(requiredConfirmDateForNeedMonth('2026-08', 1, new Set()), '2026-07-31');
@@ -78,4 +78,22 @@ test('AE sees only own sales plan projects, including PM backfill by owner name'
   assert.equal(inSalesViewScope(ae, { ownerId: 'u-ae-1', ownerName: 'Someone', team: 'ODM' }), true);
   assert.equal(inSalesViewScope(ae, { ownerId: 'other-user', ownerName: 'Sittipong SS', team: 'KA', metadata: { source: 'manual' } }), false);
   assert.equal(inSalesViewScope(ae, { ownerId: null, ownerName: 'sittipong ss', team: null, metadata: { source: 'pm-backfill' } }), true);
+});
+
+test('canApproveQuotation: only deal owner and superuser may approve (owner sign-off)', () => {
+  const deal = { id: 'DL-1', ownerId: 'u-ae-owner' };
+  // เจ้าของดีลอนุมัติได้ (รวมเคสเจ้าของสร้างเอง = เซ็นเอง)
+  assert.equal(canApproveQuotation({ id: 'u-ae-owner', role: 'ae' }, deal), true);
+  // AE คนอื่น (แม้ทีมเดียวกัน) อนุมัติไม่ได้
+  assert.equal(canApproveQuotation({ id: 'u-ae-other', role: 'ae' }, deal), false);
+  // AC (ผู้ประสานงาน สร้างใบได้) อนุมัติไม่ได้ถ้าไม่ใช่เจ้าของ
+  assert.equal(canApproveQuotation({ id: 'u-ac', role: 'ac' }, deal), false);
+  // superuser อนุมัติได้ (กำกับดูแล)
+  assert.equal(canApproveQuotation({ id: 'u-admin', role: 'admin' }, deal), true);
+  assert.equal(canApproveQuotation({ id: 'u-sup', role: 'ae_supervisor' }, deal), true);
+  // เจ้าของเป็น senior_ae ก็อนุมัติได้ (ยึด ownerId ไม่ยึด role)
+  assert.equal(canApproveQuotation({ id: 'u-snr', role: 'senior_ae' }, { ownerId: 'u-snr' }), true);
+  // กัน null
+  assert.equal(canApproveQuotation(null, deal), false);
+  assert.equal(canApproveQuotation({ id: 'x', role: 'ae' }, null), false);
 });

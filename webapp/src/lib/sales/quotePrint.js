@@ -178,15 +178,16 @@ export function buildQuotePrintHTML(quote, options = {}) {
   const dealTitle = quote.deal?.title || quote.dealTitle || '-';
   const projectTitle = quote.project?.name || quote.projectName || '-';
   const branch = quote.branchCode ? `สาขา ${quote.branchCode}` : 'สำนักงานใหญ่';
-  // ผู้รับผิดชอบเอกสาร (เลือกในฟอร์ม — ชุดเดียวกับไทม์ไลน์): ผู้ดูแลขึ้นหัวใบ,
-  // ผู้จัดทำ/ผู้ตรวจสอบลงช่องลงชื่อ (fallback ใบเก่า: ผู้สร้างใบ)
+  // ช่องลงชื่อ FM-SA-01 (มติผู้ใช้ 2026-07-18): ผู้เสนอราคา = ผู้สร้างใบ ·
+  // ผู้อนุมัติ = เจ้าของดีลที่กดอนุมัติ (approvedByName; fallback ชื่อเจ้าของดีล/ผู้ดูแล) ·
+  // ผู้ยืนยันสั่งซื้อ = ลูกค้า. ผู้ดูแล (AE) ยังขึ้นหัวใบตามเดิม.
   const aeOwner = quote.metadata?.aeOwner || '';
-  const preparedBy = quote.metadata?.preparedBy || quote.createdByName || '';
-  const reviewer = quote.metadata?.aeSupervisor || '';
+  const proposer = quote.createdByName || quote.metadata?.preparedBy || '';
+  const approver = quote.approvedByName || quote.deal?.ownerName || aeOwner || '';
   const signers = options.signers || [
-    { label: 'ผู้ประสานงาน', role: 'Scent & Sense', name: preparedBy },
-    { label: 'ผู้ตรวจสอบ', role: 'Scent & Sense', name: reviewer },
-    { label: 'ผู้ยืนยันสั่งซื้อ', role: 'ลูกค้า', name: '' },
+    { label: 'ผู้เสนอราคา', role: 'Scent & Sense', name: proposer },
+    { label: 'ผู้อนุมัติ', role: 'Scent & Sense', name: approver },
+    { label: 'ผู้ยืนยันสั่งซื้อ', role: 'ผู้ซื้อ', name: '' },
   ];
 
   const headerGrid = `

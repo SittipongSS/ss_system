@@ -74,27 +74,35 @@ test('quotation print uses the Project Timeline document design system', () => {
   assert.match(html, /size: A4 portrait/);
 });
 
-test('quotation print shows the selected document people with legacy fallback', () => {
+test('quotation print signature boxes: ผู้เสนอราคา (creator) / ผู้อนุมัติ (deal owner) / ลูกค้า', () => {
+  // อนุมัติแล้ว: ผู้อนุมัติ = approvedByName (ชนะทุก fallback); ผู้เสนอราคา = ผู้สร้างใบ
   const html = buildQuotePrintHTML({
     quoteNumber: 'QT-002', quoteDate: '2026-07-15', customerName: 'Test',
     lines: [], subtotal: 0, totalAmount: 0, vatRate: 0,
     createdByName: 'ผู้สร้างใบ',
+    approvedByName: 'เจ้าของ อนุมัติ',
+    deal: { ownerName: 'เจ้าของ ดีล' },
     metadata: { aeOwner: 'สมชาย ดูแล', preparedBy: 'สมหญิง จัดทำ', aeSupervisor: 'สมศักดิ์ ตรวจสอบ' },
   });
   assert.match(html, /ผู้ดูแล \(AE\)<\/span><span class="v">สมชาย ดูแล/);
-  // ช่องลงชื่อตีกรอบ 3 ช่อง: ผู้ประสานงาน / ผู้ตรวจสอบ / ผู้ยืนยันสั่งซื้อ (ลูกค้า)
-  assert.match(html, /sb-head">ผู้ประสานงาน[\s\S]*?\(สมหญิง จัดทำ\)/);
-  assert.match(html, /sb-head">ผู้ตรวจสอบ[\s\S]*?\(สมศักดิ์ ตรวจสอบ\)/);
-  assert.match(html, /sb-head">ผู้ยืนยันสั่งซื้อ[\s\S]*?ชื่อ-นามสกุล ตัวบรรจง/);
-  // Preview สร้างกระดาษ A4 แยกหน้าไว้ก่อนพิมพ์ และใส่หัวเอกสารในทุกหน้า
+  assert.match(html, /sb-head">ผู้เสนอราคา[\s\S]*?\(ผู้สร้างใบ\)/);
+  assert.match(html, /sb-head">ผู้อนุมัติ[\s\S]*?\(เจ้าของ อนุมัติ\)/);
+  assert.match(html, /sb-head">ผู้ยืนยันสั่งซื้อ <span class="sb-role">· ผู้ซื้อ<\/span>[\s\S]*?ชื่อ-นามสกุล ตัวบรรจง/);
   assert.match(html, /class="sheet explicit-page">[\s\S]*?class="doc-top"/);
 
-  // ใบเก่าไม่มี metadata: ผู้ประสานงาน fallback เป็นผู้สร้างใบ, ไม่มีบรรทัดผู้ดูแล
+  // ยังไม่อนุมัติ: ผู้อนุมัติ fallback เป็นชื่อเจ้าของดีล (deal.ownerName)
+  const pending = buildQuotePrintHTML({
+    quoteNumber: 'QT-004', lines: [], subtotal: 0, totalAmount: 0, vatRate: 0,
+    createdByName: 'ผู้สร้างใบ', deal: { ownerName: 'เจ้าของ ดีล' },
+  });
+  assert.match(pending, /sb-head">ผู้อนุมัติ[\s\S]*?\(เจ้าของ ดีล\)/);
+
+  // ใบเก่าไม่มี metadata/deal: ผู้เสนอราคา = ผู้สร้างใบ, ไม่มีบรรทัดผู้ดูแล
   const legacy = buildQuotePrintHTML({
     quoteNumber: 'QT-003', lines: [], subtotal: 0, totalAmount: 0, vatRate: 0,
     createdByName: 'ผู้สร้างใบ',
   });
-  assert.match(legacy, /sb-head">ผู้ประสานงาน[\s\S]*?\(ผู้สร้างใบ\)/);
+  assert.match(legacy, /sb-head">ผู้เสนอราคา[\s\S]*?\(ผู้สร้างใบ\)/);
   assert.doesNotMatch(legacy, /ผู้ดูแล \(AE\)/);
 });
 

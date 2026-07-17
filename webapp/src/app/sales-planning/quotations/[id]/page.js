@@ -110,6 +110,9 @@ export default function QuotationEditorPage() {
   }, []);
 
   const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status);
+  // ใบที่ยังต้องอนุมัติ (มติ 2026-07-18) — บล็อกปุ่มส่ง/Won จนกว่าเจ้าของดีลอนุมัติ.
+  // ใบ grandfather (not_required) และใบที่อนุมัติแล้ว (approved) ไม่บล็อก.
+  const needsApproval = !!quote && quote.approvalStatus === "pending";
   // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
     && (quote.status === "draft" || isSuperuser(role))));
@@ -211,6 +214,16 @@ export default function QuotationEditorPage() {
     } finally {
       setBusy("");
     }
+  };
+
+  // อนุมัติใบ (เจ้าของดีล/superuser) — pending → approved. ต้องบันทึกก่อน (ไม่ค้าง dirty)
+  // เพราะ fingerprint อนุมัติจะ snapshot เนื้อหาที่บันทึกแล้ว.
+  const approve = async () => {
+    if (dirty) { setError("บันทึกการแก้ไขก่อนอนุมัติ"); return; }
+    const data = await act("approve", `/api/sales-planning/quotations/${id}/approval`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    });
+    if (data) await load();
   };
 
   const act = async (label, url, opts = { method: "POST" }) => {
@@ -647,9 +660,23 @@ export default function QuotationEditorPage() {
                 <span className={styles.statusDot} style={{ "--state-color": statusMeta.color }} />
                 <div><small>สถานะเอกสาร</small><strong>{statusMeta.label}</strong></div>
               </div>
+              {/* สถานะการอนุมัติ (มติ 2026-07-18): ใบต้องให้เจ้าของดีลอนุมัติก่อนส่ง */}
+              {needsApproval && (
+                <div className="glass-panel" style={{ padding: "10px 12px", margin: "0 0 10px", borderColor: "var(--amber)", color: "var(--amber)", fontSize: 13 }}>
+                  รออนุมัติจากเจ้าของดีล — ยังส่งลูกค้า/ปิด Won ไม่ได้จนกว่าจะอนุมัติ
+                </div>
+              )}
+              {quote.approvalStatus === "approved" && quote.approvedByName && (
+                <div style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--green)" }}>
+                  อนุมัติแล้วโดย {quote.approvedByName}
+                </div>
+              )}
               <div className={styles.workflowActions}>
-                {editable && quote.status === "draft" && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}
-                {["sent", "draft"].includes(quote.status) && canEditCap && <button type="button" className="btn btn-primary" onClick={doAccept} disabled={!!busy} title="ปิด Won ผ่านใบเสนอราคานี้"><CheckCircle2 size={15} aria-hidden="true" /> Won</button>}
+                {needsApproval && quote.canApprove && ["draft", "sent", "rejected"].includes(quote.status) && (
+                  <button type="button" className="btn btn-primary" onClick={approve} disabled={!!busy || dirty} title={dirty ? "บันทึกก่อนอนุมัติ" : "อนุมัติใบเสนอราคานี้ (เจ้าของดีล)"}><CheckCircle2 size={15} aria-hidden="true" /> อนุมัติ</button>
+                )}
+                {editable && quote.status === "draft" && !needsApproval && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}
+                {["sent", "draft"].includes(quote.status) && canEditCap && !needsApproval && <button type="button" className="btn btn-primary" onClick={doAccept} disabled={!!busy} title="ปิด Won ผ่านใบเสนอราคานี้"><CheckCircle2 size={15} aria-hidden="true" /> Won</button>}
                 <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={15} aria-hidden="true" /> พิมพ์ / PDF</button>
               </div>
 
