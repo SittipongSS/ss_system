@@ -4,8 +4,10 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import { can, isSuperuser } from '@/lib/permissions';
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf,
+  LEAD_CHANNEL_LABELS,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
+import { sendChat, chatCard } from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,6 +111,20 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     summary: `รับลีด ${data.contactName}${data.company ? ` (${data.company})` : ''} · ${data.channel}`,
     request: req,
   });
+
+  // จุดส่งมอบ 1/3: ลีดใหม่เข้าคิว → แจ้งผู้คัดกรอง (Supervisor) ให้เริ่มนับ SLA 1 วันทำการ.
+  // fire-and-forget หลังเขียน DB สำเร็จ — แจ้งเตือนล่มไม่กระทบการรับลีด (กติกา lib/chat).
+  sendChat('leads', chatCard({
+    title: '📥 ลีดใหม่รอคัดกรอง',
+    subtitle: data.company ? `${data.contactName} · ${data.company}` : data.contactName,
+    rows: [
+      { label: 'ช่องทาง', value: LEAD_CHANNEL_LABELS[data.channel] || data.channel },
+      { label: 'ผู้กรอก', value: data.createdByName || '' },
+      { label: 'สิ่งที่ต้องทำ', value: 'AE Supervisor คัดกรอง + เลือกทีม (ภายใน 1 วันทำการ)' },
+    ],
+    linkPath: `/sa/leads`,
+    linkLabel: 'เปิดคิวลีด',
+  }));
 
   return ok(data, 201);
 });

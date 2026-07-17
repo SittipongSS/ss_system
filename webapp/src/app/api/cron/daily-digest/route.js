@@ -10,9 +10,10 @@ export const maxDuration = 60;
 // เรียกโดย Vercel Cron (08:30 ไทย จ-ศ, ดู vercel.json) ด้วย Authorization: Bearer CRON_SECRET
 // หรือ admin เปิดเองจากเบราว์เซอร์เพื่อทดสอบ. ไม่มีเหตุการณ์ = ไม่ส่งการ์ด (ไม่สแปม space)
 //
-// เนื้อหา 2 การ์ด (reuse ตรรกะเดิม ไม่มีกติกาใหม่):
-//   1. งานค้างอนุมัติ (ลูกค้า/สินค้า/ใบเสนอราคา pending) → space ผู้อนุมัติ
-//   2. งานโครงการเลยกำหนด/ครบใน 3 วัน (นิยาม isUrgent ใน lib/pm/derived.js) → space โครงการ
+// เนื้อหา 3 การ์ด (reuse ตรรกะเดิม ไม่มีกติกาใหม่):
+//   1. งานค้างอนุมัติ (ลูกค้า/สินค้า pending) → space ผู้อนุมัติ
+//   2. ลีดค้างคิว (รอคัดกรอง/กระจาย/ติดต่อกลับ — มี SLA) → space คิวลีด
+//   3. งานโครงการเลยกำหนด/ครบใน 3 วัน (นิยาม isUrgent ใน lib/pm/derived.js) → space โครงการ
 // (FC สหมิตรเสี่ยง เคยอยู่ในแผนแต่ผู้ใช้ตัดออก — ดูใน dashboard เองพอ)
 
 const fmtShortDate = (iso) => {
@@ -43,6 +44,34 @@ async function approvalsDigest(supabase) {
     ].filter(Boolean),
     linkPath: '/home',
     linkLabel: 'เข้าระบบ',
+  });
+}
+
+async function leadsDigest(supabase) {
+  // ลีดค้างในสถานะที่ "รอคนทำ" + มี SLA ผูก: รอคัดกรอง (Supervisor) · รอกระจาย (Senior) ·
+  // รอติดต่อกลับ (AE). ภาพรวมทั้งฝ่าย (เหมือน approvalsDigest) — การทำงานรายใบยัง scope
+  // ที่หน้า /sa/leads. ไม่มีลีดค้าง = ไม่ส่งการ์ด (ไม่สแปม space).
+  const { data } = await supabase
+    .from('sales_leads')
+    .select('status')
+    .in('status', ['new', 'screened', 'assigned']);
+  const rows = data || [];
+  if (!rows.length) return null;
+
+  const count = (s) => rows.filter((r) => r.status === s).length;
+  const nNew = count('new');
+  const nScreened = count('screened');
+  const nAssigned = count('assigned');
+  return chatCard({
+    title: '📋 ลีดค้างคิวเช้านี้',
+    subtitle: `รวม ${rows.length} รายการ (SLA 1 วันทำการ)`,
+    rows: [
+      nNew ? { label: `รอคัดกรอง (${nNew})`, value: 'AE Supervisor คัดกรอง + เลือกทีม' } : null,
+      nScreened ? { label: `รอกระจาย (${nScreened})`, value: 'Senior AE มอบให้ AE' } : null,
+      nAssigned ? { label: `รอติดต่อกลับ (${nAssigned})`, value: 'AE ติดต่อลูกค้ากลับ' } : null,
+    ].filter(Boolean),
+    linkPath: '/sa/leads',
+    linkLabel: 'เปิดคิวลีด',
   });
 }
 
@@ -107,6 +136,7 @@ export async function GET(request) {
   // การ์ดไหนพัง (query/ส่งไม่สำเร็จ) ไม่ต้องล้มทั้ง digest — เก็บ error รายการ์ดไว้ในผลลัพธ์
   const jobs = [
     ['approvals', 'approvals', approvalsDigest],
+    ['leads', 'leads', leadsDigest],
     ['pm', 'pm', pmDigest],
   ];
   for (const [name, spaceKey, build] of jobs) {
