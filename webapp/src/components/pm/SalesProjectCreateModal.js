@@ -6,7 +6,6 @@ import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import Select from "@/components/ui/Select";
-import AddBrandButton from "@/components/master/AddBrandButton";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -30,7 +29,6 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
       : role === "ac" ? "preparedBy"
       : role === "ae_supervisor" ? "aeSupervisor" : null)
     : null;
-  const [extraBrands, setExtraBrands] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -42,7 +40,6 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
   useEffect(() => {
     if (!open) return;
     setError("");
-    setExtraBrands([]);
     const categoryCode = initialData?.productMainCategory || "";
     const [mainCode = "", typeCode = ""] = categoryCode.split("-");
     setForm({
@@ -58,11 +55,10 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
 
   const brandOptions = useMemo(() => {
     const customer = customers.find((row) => row.id === form.customerId);
-    const merged = [...brandSelectOptions(customer?.brands || []), ...brandSelectOptions(extraBrands)];
-    const unique = [...new Map(merged.map((option) => [option.value, option])).values()];
+    const unique = [...new Map(brandSelectOptions(customer?.brands || []).map((option) => [option.value, option])).values()];
     if (form.brand && !unique.some((option) => option.value === form.brand)) unique.unshift({ value: form.brand, label: form.brand });
     return unique;
-  }, [customers, form.customerId, extraBrands, form.brand]);
+  }, [customers, form.customerId, form.brand]);
   const userName = (u) => (u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "").trim();
 
   const submit = async (event) => {
@@ -117,10 +113,7 @@ export default function SalesProjectCreateModal({ open, onClose, onSuccess, edit
           </div>
           <div className="form-group">
             <label>แบรนด์ (อังกฤษ · ไทย)</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <div style={{ flex: 1 }}><SearchableSelect entity="brand" disabled={!form.customerId} value={form.brand} onChange={(brand) => setForm((f) => ({ ...f, brand }))} options={brandOptions} placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"} /></div>
-              <AddBrandButton customerId={form.customerId} disabled={!form.customerId} onAdded={(brand) => { setExtraBrands((rows) => [...rows, brand]); setForm((f) => ({ ...f, brand: brand.th || brand.en })); }} />
-            </div>
+            <SearchableSelect entity="brand" disabled={!form.customerId} value={form.brand} onChange={(brand) => setForm((f) => ({ ...f, brand }))} options={brandOptions} placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"} emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — เพิ่มที่หน้าข้อมูลลูกค้า" />
           </div>
           <ProductCategorySelect
             categories={categories}

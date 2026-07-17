@@ -672,7 +672,6 @@ export default function LeadsPage() {
                     showProject
                     categories={categories}
                     stages={DEAL_STAGES.filter((st) => st !== "won")}
-                    onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
                   />
                 </div>
               </div>

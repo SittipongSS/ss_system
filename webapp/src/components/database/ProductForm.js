@@ -14,7 +14,6 @@ import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import AddBrandButton from "@/components/master/AddBrandButton";
 import { categoryInfo } from "@/lib/master/categoryOf";
 import { brandBoth } from "@/lib/master/brands";
 import { fmtMoney } from "@/lib/format";
@@ -74,7 +73,6 @@ export default function ProductForm({
   productTypes = [],
   customers = [],
   brandOptions = [],         // [{th,en}] ของลูกค้าที่เลือก
-  onBrandAdded,              // (brand, updatedCustomer) => void — caller อัปเดตลิสต์ลูกค้าเอง
   onCustomerChange,          // (customerId) => void — caller ล้างแบรนด์/โหลดใหม่
   creatorName = null,        // ป้าย "ผู้สร้าง" (เฉพาะตอนสร้าง)
   factoryPrice = "input",    // "input" | "readonly"
@@ -144,19 +142,11 @@ export default function ProductForm({
                     onForm({ brandName: hit ? hit.th || "" : v, brandNameEn: hit ? hit.en || "" : "" });
                   }}
                   placeholder={form.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
-                  emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — กด + เพื่อเพิ่ม"
+                  emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — เพิ่มที่หน้าข้อมูลลูกค้า"
                 />
               </div>
-              <AddBrandButton
-                customerId={form.customerId}
-                disabled={!form.customerId}
-                onAdded={(b, updatedCustomer) => {
-                  onBrandAdded?.(b, updatedCustomer);
-                  onForm({ brandName: b.th, brandNameEn: b.en });
-                }}
-              />
             </div>
-            <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่มใหม่ด้วยปุ่ม +, แก้ชื่อได้ที่หน้าลูกค้า</span>
+            <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่ม/แก้ชื่อได้ที่หน้าลูกค้า</span>
           </div>
         </div>
       </div>

@@ -19,7 +19,6 @@ import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { FORECAST_LEVELS, dealTypeBadge, quoteStatusBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
-import AddBrandButton from "@/components/master/AddBrandButton";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
@@ -1362,7 +1361,6 @@ export default function DealOverviewPage() {
               categories={categories}
               stages={PIPELINE_STAGES.filter((st) => st !== "won" || alreadyWon)}
               alreadyWon={alreadyWon}
-              onCustomersUpdated={(uc) => setCustomers((prev) => prev.map((c) => (c.id === uc.id ? uc : c)))}
             />
             <div className="form-action-bar">
               <button type="button" className="btn" onClick={() => setDealModalOpen(false)}>ยกเลิก</button>

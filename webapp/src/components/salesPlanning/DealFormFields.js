@@ -19,7 +19,6 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 // แบบโหมด (เช่น alreadyWon) ไม่ใช่ช่องเสียบอิสระ
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
-import AddBrandButton from "@/components/master/AddBrandButton";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
@@ -50,7 +49,6 @@ export default function DealFormFields({
   categories = [],
   stages = [],           // ตัวเลือกสถานะ (caller กรอง won เอง)
   alreadyWon = false,    // ล็อก FC%/เดือน/มูลค่า หลังปิด Won
-  onCustomersUpdated,    // ให้ AddBrandButton อัปเดตรายชื่อลูกค้าของ caller
 }) {
   const set = (k) => (v) => onPatch({ [k]: v });
 
@@ -109,30 +107,19 @@ export default function DealFormFields({
   const brandField = (
     <label className="deal-field" key="brand">
       แบรนด์
-      <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <span style={{ flex: 1, minWidth: 0 }}>
-          <SearchableSelect
-            entity="brand"
-            value={form.brand || ""}
-            onChange={set("brand")}
-            disabled={!form.customerId}
-            options={(() => {
-              const options = brandSelectOptions(customers.find((c) => c.id === form.customerId)?.brands || []);
-              if (form.brand && !options.some((option) => option.value === form.brand)) options.unshift({ value: form.brand, label: form.brand });
-              return [{ value: "", label: form.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน" }, ...options];
-            })()}
-            placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"}
-          />
-        </span>
-        <AddBrandButton
-          customerId={form.customerId}
-          disabled={!form.customerId}
-          onAdded={(b, updatedCustomer) => {
-            onCustomersUpdated?.(updatedCustomer);
-            onPatch({ brand: b.th || b.en });
-          }}
-        />
-      </span>
+      <SearchableSelect
+        entity="brand"
+        value={form.brand || ""}
+        onChange={set("brand")}
+        disabled={!form.customerId}
+        options={(() => {
+          const options = brandSelectOptions(customers.find((c) => c.id === form.customerId)?.brands || []);
+          if (form.brand && !options.some((option) => option.value === form.brand)) options.unshift({ value: form.brand, label: form.brand });
+          return [{ value: "", label: form.customerId ? "— ไม่ระบุแบรนด์ —" : "เลือกลูกค้าก่อน" }, ...options];
+        })()}
+        placeholder={form.customerId ? "เลือกแบรนด์..." : "เลือกลูกค้าก่อน"}
+      />
+      <small style={{ color: "var(--text-3)" }}>เพิ่มแบรนด์ใหม่ได้ที่หน้าข้อมูลลูกค้า</small>
     </label>
   );
 
