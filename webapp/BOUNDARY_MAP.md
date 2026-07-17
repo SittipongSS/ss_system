@@ -178,7 +178,11 @@ PATCH order (แก้ line items) ใช้แนวเดียวกัน: h
 เพิ่ม audit ให้ route ใหม่: `import { recordAudit }` แล้วเรียก **หลัง write สำเร็จ** ด้วย `await`
 (serverless — ต้อง await ให้ insert จบก่อน return).
 
-**การจัดการพื้นที่ (Supabase ใกล้เต็ม):** log โตเรื่อยๆ ไม่มี auto-purge (ตั้งใจ). กฎประหยัด:
+**การจัดการพื้นที่ (วินัยป้องกัน — ไม่ใช่วิกฤต):** log โตเรื่อยๆ ไม่มี auto-purge (ตั้งใจ).
+ความกดดันพื้นที่เดิมมาจาก Supabase Storage ยุคเก็บไฟล์แนบ — แก้แล้วโดยย้ายไป Google Drive
+([DRIVE_STORAGE_PLAN.md](DRIVE_STORAGE_PLAN.md)). baseline วัดจริง 2026-07-17: DB ทั้งหมด **23 MB**
+จากเพดาน free tier 500 MB (`audit_logs` ใหญ่สุดที่ 5.2 MB / 2,759 แถว). กฎประหยัดด้านล่างคงไว้ทั้งหมด
+เพื่อกันกลับไปจุดเดิม:
 - `before` เฉพาะ update/delete (create ไม่ต้องมี). `before`/`after` เก็บ record เต็มเพื่อกู้คืน manual ได้.
 - **ห้ามเก็บ embedded relations ซ้ำ** — order audit เก็บ header แบบ plain (ตัด `items`/`registrations`
   ที่ ORDER_SELECT ดึงมา; ของจริงอยู่ในตาราง `order_items` แล้ว).
