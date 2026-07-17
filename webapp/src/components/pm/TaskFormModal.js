@@ -20,9 +20,14 @@ import { compactPersonName } from "@/lib/personName";
 import { isSuperuser, TEAM_ROLES } from "@/lib/permissions";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
+// ค่าโครงการใน dropdown ที่แปลว่า "ดีลที่ยังไม่ผูกโครงการ" (ดีลกลุ่มนี้มีจริงและ
+// ผูกงานได้ — ถ้าไม่มีถังนี้ การกรองตามโครงการจะทำให้มันหายไปเฉย ๆ)
+const NO_PROJECT = "__no_project__";
+
 export const TASK_BLANK = {
   title: "", note: "", startDate: "", dueDate: "",
   linkType: "none", projectId: "", dealId: "", assigneeId: "",
+  linkProjectId: "",   // ตัวกรองใน dropdown เท่านั้น — ไม่ได้ส่งขึ้น API
   category: "", important: false, urgent: false, difficulty: 2,
   status: "Pending",
 };
@@ -39,14 +44,21 @@ const todayLocal = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export const taskToForm = (t) => ({
-  title: t.title || "", note: t.note || "",
-  startDate: t.startDate || "", dueDate: t.dueDate || "",
-  linkType: taskLinkType(t),
-  projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
-  category: t.category || "", important: !!t.important, urgent: !!t.urgent,
-  difficulty: t.difficulty ?? 2, status: t.status || "Pending",
-});
+export const taskToForm = (t, deals = []) => {
+  // เปิดฟอร์มแก้แล้วช่องโครงการต้องตั้งไว้ให้ตรงกับดีลเดิม ไม่งั้นช่องดีลจะว่าง
+  // ทั้งที่งานผูกดีลอยู่ (dealId ที่ไม่อยู่ใน dealChoices)
+  const deal = t.dealId ? deals.find((d) => d.id === t.dealId) : null;
+  const projectId = t.projectId || deal?.projectId || "";
+  return {
+    title: t.title || "", note: t.note || "",
+    startDate: t.startDate || "", dueDate: t.dueDate || "",
+    linkType: taskLinkType(t),
+    projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
+    linkProjectId: t.dealId ? (projectId || NO_PROJECT) : "",
+    category: t.category || "", important: !!t.important, urgent: !!t.urgent,
+    difficulty: t.difficulty ?? 2, status: t.status || "Pending",
+  };
+};
 
 async function uploadTaskAttachment(taskId, file) {
   const fd = new FormData();
@@ -87,14 +99,32 @@ export default function TaskFormModal({
   // ใหม่ทุก render จะทำให้ทับสิ่งที่พิมพ์ค้างไว้
   useEffect(() => {
     if (!open) return;
-    setForm(task ? taskToForm(task) : { ...TASK_BLANK, ...(initialForm || {}) });
+    const seed = task ? taskToForm(task, deals) : { ...TASK_BLANK, ...(initialForm || {}) };
+    // caller อาจ preset dealId มา (สร้างงานจากหน้าดีล / จากเรื่องสอบถาม) โดยไม่รู้จัก
+    // linkProjectId — เติมให้จากดีลจริง ไม่งั้นดีลที่ preset จะหายจาก dropdown ที่กรอง
+    if (seed.dealId && !seed.linkProjectId) {
+      const d = deals.find((row) => row.id === seed.dealId);
+      seed.linkProjectId = d?.projectId || NO_PROJECT;
+    }
+    setForm(seed);
     setLateReason("");
     setPendingFiles([]);
     setError("");
+    // deals อยู่ใน dep ด้วยเพราะ taskToForm ใช้หา projectId ของดีลเดิม — หน้า detail
+    // โหลดดีลทีหลัง (ตอนกดแก้ไข) ถ้าไม่ re-seed ช่องโครงการจะค้างว่าง
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, task?.id]);
+  }, [open, task?.id, deals.length]);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+
+  // ดีลแยกตามโครงการ — ถังพิเศษสำหรับดีลที่ยังไม่ผูกโครงการ
+  const unlinkedDeals = deals.filter((d) => !d.projectId);
+  const linkProjects = projects.filter((p) => deals.some((d) => d.projectId === p.id));
+  const dealChoices = form.linkProjectId === NO_PROJECT
+    ? unlinkedDeals
+    : form.linkProjectId
+      ? deals.filter((d) => d.projectId === form.linkProjectId)
+      : [];
 
   // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุ (กรอกในฟอร์ม ไม่ใช่ป๊อปอัปซ้อน)
   const willComplete = editing && form.status === "Completed" && task.status !== "Completed";
@@ -289,14 +319,26 @@ export default function TaskFormModal({
             </div>
             {form.linkType === "deal" && (
               <>
-                <Select fullWidth disabled={!!inquirySource || !canManage} value={form.dealId} onChange={(e) => set({ dealId: e.target.value })}>
-                  <option value="">— เลือกดีลของทีม {me?.team || "ตัวเอง"} —</option>
-                  {deals.map((deal) => {
-                    const project = deal.projectId ? projects.find((row) => row.id === deal.projectId) : null;
-                    return <option key={deal.id} value={deal.id}>{project ? `${project.code || project.id} · ` : ""}{deal.title}{deal.customerName ? ` — ${deal.customerName}` : ""}{!project ? " · ยังไม่ผูกโครงการ" : ""}</option>;
-                  })}
-                </Select>
+                {/* เลือกโครงการก่อน แล้วดีลกรองตามโครงการ (มติผู้ใช้ 2026-07-17) —
+                    ดีลที่ยังไม่ผูกโครงการมีจริงและผูกงานได้ จึงมีถังแยกไว้ให้ ไม่งั้น
+                    มันจะหายไปจาก dropdown ทั้งที่เดิมเลือกได้ */}
+                <div className="pm-form-grid gap-3" style={{ marginBottom: 8 }}>
+                  <Select fullWidth disabled={!!inquirySource || !canManage} value={form.linkProjectId}
+                    onChange={(e) => set({ linkProjectId: e.target.value, dealId: "" })}>
+                    <option value="">— เลือกโครงการก่อน —</option>
+                    {linkProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `${p.code} · ` : ""}{p.name}</option>)}
+                    {unlinkedDeals.length > 0 && <option value={NO_PROJECT}>— ดีลที่ยังไม่ผูกโครงการ ({unlinkedDeals.length}) —</option>}
+                  </Select>
+                  <Select fullWidth disabled={!!inquirySource || !canManage || !form.linkProjectId} value={form.dealId}
+                    onChange={(e) => set({ dealId: e.target.value })}>
+                    <option value="">{form.linkProjectId ? "— เลือกดีล —" : "เลือกโครงการก่อน"}</option>
+                    {dealChoices.map((deal) => (
+                      <option key={deal.id} value={deal.id}>{deal.title}{deal.customerName ? ` — ${deal.customerName}` : ""}</option>
+                    ))}
+                  </Select>
+                </div>
                 {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
+                {form.linkProjectId && !dealChoices.length && <div className="text-[11px] text-[var(--text-3)] mt-1">โครงการนี้ยังไม่มีดีลที่ผูกงานได้</div>}
               </>
             )}
           </div>
