@@ -301,6 +301,20 @@ export default function TimelineWorkspace({
     </form>
   );
 
+  // ปุ่มสลับ "ฝ่ายของฉัน/ทุกฝ่าย" ต้องอยู่ใน toolbar ของมุมมอง list/table — ห้ามผูกกับ
+  // แถวหัว (showHeading/showViewSwitcher): หน้าโครงการส่ง false ทั้งคู่ (วาดหัวเอง)
+  // แล้วปุ่มหายทั้งหน้า (บทเรียน #530)
+  const deptToggle = myDept ? (
+    <button
+      type="button"
+      className={`btn sm ${deptOnly ? "btn-primary" : "ghost"}`}
+      onClick={() => setDeptOnly((value) => !value)}
+      title={deptOnly ? "กำลังแสดงเฉพาะขั้นตอนของฝ่ายคุณ — กดเพื่อดูทุกฝ่าย" : `แสดงเฉพาะขั้นตอนของฝ่ายคุณ (${myDept})`}
+    >
+      <Filter size={13} /> {deptOnly ? `ฝ่ายของฉัน (${myDept})` : "ทุกฝ่าย"}
+    </button>
+  ) : null;
+
   return (
     <>
       {(showHeading || showViewSwitcher) && (
@@ -311,19 +325,7 @@ export default function TimelineWorkspace({
               <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>{done}/{tasks.length} ขั้นตอนเสร็จแล้ว</div>
             </div>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            {myDept && view !== "document" && (
-              <button
-                type="button"
-                className={`btn sm ${deptOnly ? "btn-primary" : "ghost"}`}
-                onClick={() => setDeptOnly((value) => !value)}
-                title={deptOnly ? "กำลังแสดงเฉพาะขั้นตอนของฝ่ายคุณ — กดเพื่อดูทุกฝ่าย" : `แสดงเฉพาะขั้นตอนของฝ่ายคุณ (${myDept})`}
-              >
-                <Filter size={13} /> {deptOnly ? `ฝ่ายของฉัน (${myDept})` : "ทุกฝ่าย"}
-              </button>
-            )}
-            {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
-          </div>
+          {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
         </div>
       )}
 
@@ -345,7 +347,10 @@ export default function TimelineWorkspace({
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ fontSize: 14, fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
-            {canAdd && <button type="button" className="btn btn-primary sm" onClick={() => openAdd(null)} disabled={!!busyId}><Plus size={14} /> เพิ่มขั้นตอน</button>}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {deptToggle}
+              {canAdd && <button type="button" className="btn btn-primary sm" onClick={() => openAdd(null)} disabled={!!busyId}><Plus size={14} /> เพิ่มขั้นตอน</button>}
+            </div>
           </div>
 
           <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: 14 }}>
@@ -449,6 +454,7 @@ export default function TimelineWorkspace({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         <div style={{ fontSize: 13, fontWeight: 700 }}>ตารางขั้นตอนงาน <span style={{ color: "var(--text-3)", fontWeight: 500 }}>({tableGroups.reduce((sum, group) => sum + group.tasks.length, 0)}{tableStatusFilter !== "all" || deptOnly ? ` / ${tasks.length}` : ""} ขั้นตอน)</span></div>
         <div className="toolbar">
+          {deptToggle}
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Filter size={14} color="var(--text-3)" />
             <Select className="premium-select" value={tableStatusFilter} onChange={(event) => setTableStatusFilter(event.target.value)} aria-label="กรองสถานะไทม์ไลน์" style={{ minWidth: 148 }}>
