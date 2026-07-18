@@ -8,7 +8,8 @@ import SortControl from "@/components/ui/SortControl";
 // (PATCH/POST/DELETE /api/pm/project-tasks) — สิทธิ์+คำนวณวัน+สถานะอัตโนมัติฝั่ง server.
 // แก้ dependency (ขึ้นกับ) ยังทำที่หน้าโครงการ (แสดงเป็นชิปอย่างเดียวที่นี่).
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, Filter, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
+import { AlertTriangle, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
+import FilterPopover from "@/components/ui/FilterPopover";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import StepFormFields, { EMPTY_STEP_FORM, stepToForm } from "@/components/pm/StepFormFields";
@@ -94,11 +95,18 @@ export default function TimelineWorkspace({
   const [saving, setSaving] = useState(false);
   const [tableStatusFilter, setTableStatusFilter] = useState("all");
   const [tableSort, setTableSort] = useState("step");
-  // สลับดูเฉพาะขั้นตอนของฝ่ายตัวเอง (มติผู้ใช้ 2026-07-18) — ขั้นที่ไม่ระบุฝ่าย/ALL
-  // เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ; ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย)
+  // ตัวกรองฝ่าย (มติผู้ใช้ 2026-07-18 รวมเป็น FilterPopover เดียวกับสถานะ) — เลือกได้
+  // หลายฝ่าย ว่าง = ทุกฝ่าย; ขั้นที่ไม่ระบุฝ่าย/ALL เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ;
+  // ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย — เป็นเอกสารทางการ)
   const myDept = useDepartment();
-  const [deptOnly, setDeptOnly] = useState(false);
-  const inMyDept = (task) => !deptOnly || !myDept || !task.role || task.role === "ALL" || task.role === myDept;
+  const [deptFilter, setDeptFilter] = useState([]);
+  const matchDept = (task) => !deptFilter.length || !task.role || task.role === "ALL" || deptFilter.includes(task.role);
+  const matchStatus = (task) => {
+    if (tableStatusFilter === "pending") return !task.status || task.status === "Pending";
+    if (tableStatusFilter === "progress") return task.status === "In Progress";
+    if (tableStatusFilter === "completed") return task.status === "Completed";
+    return true;
+  };
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
   const [drafts, setDrafts] = useState({});
   const tasks = useMemo(
@@ -142,13 +150,7 @@ export default function TimelineWorkspace({
 
   const phases = useMemo(() => [...new Set(tasks.map((t) => t.phase).filter(Boolean))], [tasks]);
   const tableGroups = useMemo(() => groups.map((group) => {
-    const filtered = group.tasks.filter((task) => {
-      if (!inMyDept(task)) return false;
-      if (tableStatusFilter === "pending") return !task.status || task.status === "Pending";
-      if (tableStatusFilter === "progress") return task.status === "In Progress";
-      if (tableStatusFilter === "completed") return task.status === "Completed";
-      return true;
-    });
+    const filtered = group.tasks.filter((task) => matchDept(task) && matchStatus(task));
     const statusRank = { "In Progress": 0, Pending: 1, Completed: 2 };
     const sorted = [...filtered].sort((a, b) => {
       if (tableSort === "due") return String(a.finishDate || "9999").localeCompare(String(b.finishDate || "9999"));
@@ -157,8 +159,8 @@ export default function TimelineWorkspace({
       return (a.stepOrder ?? 0) - (b.stepOrder ?? 0);
     });
     return { ...group, tasks: sorted };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- inMyDept ผันตาม deptOnly/myDept ที่อยู่ใน deps แล้ว
-  }).filter((group) => group.tasks.length), [groups, tableSort, tableStatusFilter, deptOnly, myDept]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- matchDept/matchStatus ผันตาม deptFilter/tableStatusFilter ที่อยู่ใน deps แล้ว
+  }).filter((group) => group.tasks.length), [groups, tableSort, tableStatusFilter, deptFilter]);
   // PredecessorPicker แสดงเลขขั้นจาก displayNumber — เติมจาก map เลข 1.1/1.2 ของตารางนี้
   const tasksWithNumbers = useMemo(
     () => tasks.map((t) => ({ ...t, displayNumber: numberOf.get(t.id) })),
@@ -301,19 +303,36 @@ export default function TimelineWorkspace({
     </form>
   );
 
-  // ปุ่มสลับ "ฝ่ายของฉัน/ทุกฝ่าย" ต้องอยู่ใน toolbar ของมุมมอง list/table — ห้ามผูกกับ
-  // แถวหัว (showHeading/showViewSwitcher): หน้าโครงการส่ง false ทั้งคู่ (วาดหัวเอง)
-  // แล้วปุ่มหายทั้งหน้า (บทเรียน #530)
-  const deptToggle = myDept ? (
-    <button
-      type="button"
-      className={`btn sm ${deptOnly ? "btn-primary" : "ghost"}`}
-      onClick={() => setDeptOnly((value) => !value)}
-      title={deptOnly ? "กำลังแสดงเฉพาะขั้นตอนของฝ่ายคุณ — กดเพื่อดูทุกฝ่าย" : `แสดงเฉพาะขั้นตอนของฝ่ายคุณ (${myDept})`}
-    >
-      <Filter size={13} /> {deptOnly ? `ฝ่ายของฉัน (${myDept})` : "ทุกฝ่าย"}
-    </button>
-  ) : null;
+  // ตัวกรองสถานะ + ฝ่าย รวมใน FilterPopover เดียว (มติผู้ใช้ 2026-07-18 — ภาษากรอง
+  // เดียวกับหน้า tax/สหมิตร) ต้องอยู่ใน toolbar ของมุมมอง list/table — ห้ามผูกกับ
+  // แถวหัว (showHeading/showViewSwitcher): หน้าโครงการส่ง false ทั้งคู่ (บทเรียน #530)
+  // ตัวเลือกฝ่าย = ฝ่ายที่มีขั้นตอนจริงในไทม์ไลน์นี้ โดย "ฝ่ายของฉัน" ขึ้นเป็นตัวแรก
+  const deptOptions = useMemo(() => {
+    const present = [...new Set(tasks.map((t) => t.role).filter((r) => r && r !== "ALL"))].sort();
+    const ordered = myDept && present.includes(myDept) ? [myDept, ...present.filter((d) => d !== myDept)] : present;
+    return ordered.map((dep) => ({ value: dep, label: dep === myDept ? `ฝ่ายของฉัน (${dep})` : dep }));
+  }, [tasks, myDept]);
+  const filterCount = (tableStatusFilter !== "all" ? 1 : 0) + deptFilter.length;
+  const filterControl = (
+    <FilterPopover
+      count={filterCount}
+      onClear={() => { setTableStatusFilter("all"); setDeptFilter([]); }}
+      groups={[
+        {
+          key: "status", label: "สถานะ", single: true,
+          options: [{ value: "pending", label: "รอดำเนินการ" }, { value: "progress", label: "กำลังทำ" }, { value: "completed", label: "เสร็จแล้ว" }],
+          selected: tableStatusFilter === "all" ? [] : [tableStatusFilter],
+          onChange: (values) => setTableStatusFilter(values[0] || "all"),
+        },
+        ...(deptOptions.length ? [{
+          key: "dept", label: "ฝ่าย",
+          options: deptOptions,
+          selected: deptFilter,
+          onChange: setDeptFilter,
+        }] : []),
+      ]}
+    />
+  );
 
   return (
     <>
@@ -348,7 +367,7 @@ export default function TimelineWorkspace({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ fontSize: 14, fontWeight: 600 }}>ความคืบหน้า (Progress List)</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {deptToggle}
+              {filterControl}
               {canAdd && <button type="button" className="btn btn-primary sm" onClick={() => openAdd(null)} disabled={!!busyId}><Plus size={14} /> เพิ่มขั้นตอน</button>}
             </div>
           </div>
@@ -391,7 +410,7 @@ export default function TimelineWorkspace({
 
           {!tasks.length && <div className="glass-panel" style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีขั้นตอนในไทม์ไลน์นี้</div>}
           {groups.map((group, groupIndex) => {
-            const phaseTasks = group.tasks.filter(inMyDept);
+            const phaseTasks = group.tasks.filter((task) => matchDept(task) && matchStatus(task));
             if (!phaseTasks.length) return null;
             const phaseKey = `${group.phase}|${groupIndex}`;
             const collapsed = collapsedPhases.has(phaseKey);
@@ -452,15 +471,9 @@ export default function TimelineWorkspace({
       {view === "table" && (
       <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>ตารางขั้นตอนงาน <span style={{ color: "var(--text-3)", fontWeight: 500 }}>({tableGroups.reduce((sum, group) => sum + group.tasks.length, 0)}{tableStatusFilter !== "all" || deptOnly ? ` / ${tasks.length}` : ""} ขั้นตอน)</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>ตารางขั้นตอนงาน <span style={{ color: "var(--text-3)", fontWeight: 500 }}>({tableGroups.reduce((sum, group) => sum + group.tasks.length, 0)}{filterCount ? ` / ${tasks.length}` : ""} ขั้นตอน)</span></div>
         <div className="toolbar">
-          {deptToggle}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Filter size={14} color="var(--text-3)" />
-            <Select className="premium-select" value={tableStatusFilter} onChange={(event) => setTableStatusFilter(event.target.value)} aria-label="กรองสถานะไทม์ไลน์" style={{ minWidth: 148 }}>
-              <option value="all">ทุกสถานะ</option><option value="pending">รอดำเนินการ</option><option value="progress">กำลังทำ</option><option value="completed">เสร็จแล้ว</option>
-            </Select>
-          </div>
+          {filterControl}
           <SortControl
             value={tableSort}
             onChange={(event) => setTableSort(event.target.value)}
