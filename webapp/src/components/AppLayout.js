@@ -132,11 +132,8 @@ export default function AppLayout({ children }) {
     };
   }, [mobileMoreOpen]);
 
-  useEffect(() => {
-    const activeItem = bottomNavRef.current?.querySelector('[aria-current="page"]');
-    if (!activeItem) return;
-    requestAnimationFrame(() => activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }));
-  }, [pathname]);
+  // (เดิมมี effect เลื่อนแถบล่างหาปุ่ม active — ตัดออกแล้ว: แถบล่างไม่เลื่อนอีกต่อไป
+  //  ปุ่มพอดีจอ 4+เพิ่มเติม ตามมติ 2026-07-18)
 
   const toggleTheme = () => {
     if (isDark) {
@@ -384,22 +381,34 @@ export default function AppLayout({ children }) {
         </div>
       </main>
 
+      {/* M3 navigation bar (มติ 2026-07-18): 4 ปุ่มแรกพอดีจอ + "เพิ่มเติม" เปิด sheet —
+          เลิกแถบเลื่อนข้าง (เมนูที่ต้องปัดหา = anti-pattern); เมนูที่เหลือย้ายเข้า sheet */}
       <nav ref={bottomNavRef} className="mobile-bottom-nav" aria-label={`เมนู${systemSubtitle}`}>
-        {menuItems.map((item) => {
+        {menuItems.slice(0, 4).map((item) => {
           const Icon = item.icon;
           const active = item.match(pathname);
           return (
             <Link href={item.href} key={item.href} className={`mobile-bottom-item${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined}>
-              <Icon size={20} aria-hidden="true" />
+              <span className="mbi-ico"><Icon size={20} aria-hidden="true" /></span>
               <span>{item.name}</span>
             </Link>
           );
         })}
         {!menuItems.length && (
           <Link href="/home" className={`mobile-bottom-item${pathname === '/home' ? ' active' : ''}`}>
-            <Home size={20} aria-hidden="true" /><span>หน้าหลัก</span>
+            <span className="mbi-ico"><Home size={20} aria-hidden="true" /></span><span>หน้าหลัก</span>
           </Link>
         )}
+        <button
+          type="button"
+          className={`mobile-bottom-item${menuItems.slice(4).some((item) => item.match(pathname)) ? ' active' : ''}`}
+          onClick={() => setMobileMoreOpen(true)}
+          aria-label="เมนูเพิ่มเติม"
+          aria-expanded={mobileMoreOpen}
+        >
+          <span className="mbi-ico"><MoreHorizontal size={20} aria-hidden="true" /></span>
+          <span>เพิ่มเติม</span>
+        </button>
       </nav>
 
       {mobileMoreOpen && (
@@ -411,6 +420,22 @@ export default function AppLayout({ children }) {
             </div>
             <button type="button" className="btn-icon" onClick={() => setMobileMoreOpen(false)} aria-label="ปิดเมนู"><X size={20} /></button>
           </div>
+
+          {menuItems.length > 4 && (
+            <section className="mobile-nav-section">
+              <h2>เมนูอื่นของระบบนี้</h2>
+              <div className="mobile-nav-grid">
+                {menuItems.slice(4).map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link href={item.href} key={item.href} className={`mobile-nav-card${item.match(pathname) ? ' active' : ''}`}>
+                      <Icon size={20} /><span>{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <section className="mobile-nav-section">
             <h2>เครื่องมือ</h2>
