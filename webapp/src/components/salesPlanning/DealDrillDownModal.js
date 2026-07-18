@@ -7,7 +7,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { snapForecastLevel, stageBadge, money } from "@/components/salesPlanning/ui";
 import { forecastAmount, monthKey } from "@/lib/salesPlanning";
-import { isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf, dealMatchesOwner } from "@/lib/sales/dashboardMetrics";
+import { isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf, dealMatchesOwner } from "@/lib/sales/dashboardMetrics";
 import { fmtDateTime } from "@/lib/format";
 
 export default function DealDrillDownModal({ filter, onClose }) {
@@ -44,11 +44,12 @@ export default function DealDrillDownModal({ filter, onClose }) {
         if (filter.metric === "won") {
           filtered = filtered.filter((d) => isWonDeal(d) && inPeriod(wonMonthOf(d)));
         } else if (filter.metric === "lost") {
-          filtered = filtered.filter((d) => d.stage === "lost" && inPeriod(monthKey(d.forecastMonth)));
+          // แพ้จริงเท่านั้น (กติกาเดียวกับ KPI ฝั่ง server — ดีลสหมิตรที่ถูกยุบ/แทนที่ไม่นับ)
+          filtered = filtered.filter((d) => isRealLostDeal(d) && inPeriod(monthKey(d.forecastMonth)));
         } else if (filter.metric === "fcTotal") {
           filtered = filtered.filter((d) =>
             (isWonDeal(d) && inPeriod(wonMonthOf(d)))
-            || ((isOpenDeal(d) || d.stage === "lost") && inPeriod(monthKey(d.forecastMonth))));
+            || ((isOpenDeal(d) || isRealLostDeal(d)) && inPeriod(monthKey(d.forecastMonth))));
         } else if (filter.metric === "remaining" || filter.metric === "forecast") {
           filtered = filtered.filter((d) => isOpenDeal(d) && inPeriod(monthKey(d.forecastMonth)));
         } else if (filter.metric?.startsWith("fc")) {

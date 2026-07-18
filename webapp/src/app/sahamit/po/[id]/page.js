@@ -296,7 +296,6 @@ export default function PoDetailPage() {
     try {
       const payload = await sahamitFetch(`/api/sahamit/po/${id}/create-project`, { method: "POST" });
       setProjectConfirmOpen(false);
-      if (payload.warning) setToast({ kind: "info", msg: payload.warning });
       const project = payload.project;
       if (project?.code || project?.id) router.push(`/sa/projects/${project.code || project.id}`);
       else await reload();
@@ -345,9 +344,10 @@ export default function PoDetailPage() {
       });
       setSettleOpen(false);
       const priceWarn = payload.priceMissing ? " ⚠ ราคา master บางสินค้ายังไม่ตั้ง — ไปเติมในใบเสนอราคา" : "";
+      const writeWarn = payload.warnings?.length ? ` ⚠ เขียนข้อมูลไม่ครบ ${payload.warnings.length} จุด (${payload.warnings[0]}) — แจ้งแอดมิน` : "";
       setToast({
-        kind: "success",
-        msg: `รวมเป็นดีลเดียว ${payload.title || ""} + ออกใบเสนอราคา ${payload.quoteNumber || ""} (${payload.settled || 0} รายการ) — เข้าคิวอนุมัติเจ้าของดีล${priceWarn}`,
+        kind: payload.warnings?.length ? "info" : "success",
+        msg: `รวมเป็นดีลเดียว ${payload.title || ""} + ออกใบเสนอราคา ${payload.quoteNumber || ""} (${payload.settled || 0} รายการ) — เข้าคิวอนุมัติเจ้าของดีล${priceWarn}${writeWarn}`,
       });
       await reload();
     } catch (e) {
