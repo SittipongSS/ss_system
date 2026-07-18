@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Target } from "lucide-react";
+import Link from "next/link";
+import { History, Target } from "lucide-react";
 import { windowStat, periodKindOf } from "@/lib/sales/performanceMath";
 import { money, pctFmt, SeriesLegend } from "./shared";
 
@@ -16,7 +17,7 @@ const WINDOWS = [
   { key: "year", label: "ทั้งปี" },
 ];
 
-export default function YearProgressBar({ matrix, year, now, closedCount, carryOn, onCarryChange }) {
+export default function YearProgressBar({ matrix, year, now, closedCount, carryOn, onCarryChange, historyHref }) {
   const [win, setWin] = useState("year");
   const isCurrentYear = year === now.year;
   const activeWin = isCurrentYear ? win : "year";
@@ -63,6 +64,11 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carryO
           <button type="button" className={carryOn ? "active" : ""} onClick={() => onCarryChange(true)}>ทบยอด</button>
           <button type="button" className={!carryOn ? "active" : ""} onClick={() => onCarryChange(false)}>เป้าปกติ</button>
         </div>
+        {historyHref && (
+          <Link href={historyHref} className="btn ghost sm" title="กรอกยอดขายจริงรายเดือนของปีก่อน เพื่อให้กราฟ YoY เทียบได้">
+            <History size={14} aria-hidden="true" /> ยอดปีก่อน
+          </Link>
+        )}
       </div>
 
       <div style={{ position: "relative", marginTop: 22 }}>

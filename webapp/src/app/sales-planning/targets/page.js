@@ -309,9 +309,14 @@ export default function SalesPlanningTargetsPage() {
   const headerRight = (
     <>
       {isSuper && canTarget && (
-        <Link href="/sa/targets/plan" className="btn btn-primary" style={{ fontWeight: 700 }}>
-          <Sparkles size={16} aria-hidden="true" /> วางแผนเป้าใหม่
-        </Link>
+        <>
+          <Link href="/sa/targets/history" className="btn ghost" title="กรอกยอดขายจริงรายเดือนของปีก่อน สำหรับกราฟ YoY ในแท็บผลงานขาย">
+            ยอดปีก่อน
+          </Link>
+          <Link href="/sa/targets/plan" className="btn btn-primary" style={{ fontWeight: 700 }}>
+            <Sparkles size={16} aria-hidden="true" /> วางแผนเป้าใหม่
+          </Link>
+        </>
       )}
       <Select
         className="premium-select"
