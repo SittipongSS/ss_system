@@ -327,8 +327,8 @@ export default function PoDetailPage() {
     }
   };
 
-  // ยืนยันดีลรายบรรทัด → ระบบผูกดีลเข้าโครงการ + ออกใบเสนอราคาเข้าคิวเซ็น (ท่อ QT→SO
-  // มติ §7 — ไม่ปิด Won ที่นี่แล้ว; Won เกิดตอน accept QT พร้อมแนบไฟล์ PO + เลือกเดือน)
+  // ยืนยันทั้งชุด → ดีลรวม 1 ใบต่อ PO + QT 1 ใบหลายบรรทัด (ท่อ QT→SO มติ §7 —
+  // ไม่ปิด Won ที่นี่; Won เกิดตอน accept QT พร้อมแนบไฟล์ PO + เลือกเดือน แล้วออก SO)
   const confirmSettle = async () => {
     const settlements = (settleData?.lines || [])
       .filter((ln) => !ln.settledDealId)
@@ -344,11 +344,10 @@ export default function PoDetailPage() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settlements }),
       });
       setSettleOpen(false);
-      const errMsg = payload.errors?.length ? ` · ไม่สำเร็จ ${payload.errors.length} บรรทัด (${payload.errors[0].error})` : "";
-      const priceWarn = payload.results?.some((r) => r.priceMissing) ? " ⚠ บางใบราคา master ยังไม่ตั้ง — ไปเติมในใบเสนอราคา" : "";
+      const priceWarn = payload.priceMissing ? " ⚠ ราคา master บางสินค้ายังไม่ตั้ง — ไปเติมในใบเสนอราคา" : "";
       setToast({
-        kind: payload.errors?.length ? "info" : "success",
-        msg: `ออกใบเสนอราคาแล้ว ${payload.settled || 0} ใบ — เข้าคิวอนุมัติเจ้าของดีล${priceWarn}${errMsg}`,
+        kind: "success",
+        msg: `รวมเป็นดีลเดียว ${payload.title || ""} + ออกใบเสนอราคา ${payload.quoteNumber || ""} (${payload.settled || 0} รายการ) — เข้าคิวอนุมัติเจ้าของดีล${priceWarn}`,
       });
       await reload();
     } catch (e) {
@@ -586,9 +585,11 @@ export default function PoDetailPage() {
                 </div>
               )}
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                จับคู่แต่ละสินค้าใน PO กับดีลของมันเอง (แนะนำดีลที่เดือนคาดปิดใกล้เดือนรับ PO {settleData.poReceivedMonth || "—"} สุด)
-                — ระบบจะผูกดีลเข้าโครงการ แล้วออก<b>ใบเสนอราคา (ราคาตาม master)</b> เข้าคิวอนุมัติเจ้าของดีล
-                · Won เกิดตอน accept ใบเสนอราคา (แนบไฟล์ PO + เลือกเดือน) แล้วออก SO เข้าคิวอนุมัติตามปกติ
+                จับคู่แต่ละสินค้าใน PO กับดีล FC ของมัน (แนะนำดีลที่เดือนคาดปิดใกล้เดือนรับ PO {settleData.poReceivedMonth || "—"} สุด)
+                — ยืนยันแล้วระบบจะ<b>รวมทุกบรรทัดเป็นดีลเดียว (SHM_PO {settleData.poNumber || ""})</b> ผูกเข้าโครงการ
+                แล้วออก<b>ใบเสนอราคา 1 ใบหลายบรรทัด (ราคาตาม master)</b> เข้าคิวอนุมัติเจ้าของดีล
+                — ยอดเก็บเงิน/งวดชำระ/SO จะตรงกับ PO ทั้งใบ · ดีล FC ต้นทางถูกยุบเข้าดีลรวม
+                (แบ่งได้ถ้า PO ครอบบางส่วน) · Won เกิดตอน accept ใบเสนอราคา (แนบไฟล์ PO + เลือกเดือน)
               </div>
               <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
                 <table className="premium-table">
@@ -617,7 +618,7 @@ export default function PoDetailPage() {
                           </td>
                           <td>
                             {ln.settledDealId ? (
-                              <a className="ui-badge" style={{ color: "var(--green)" }} href={`/sa/deals/${ln.settledDealId}`}>ออกใบเสนอราคาแล้ว →</a>
+                              <a className="ui-badge" style={{ color: "var(--green)" }} href={`/sa/deals/${ln.settledDealId}`}>รวมในดีล PO แล้ว →</a>
                             ) : (
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <Select
@@ -631,7 +632,7 @@ export default function PoDetailPage() {
                                       {c.title} · คาดปิด {c.forecastMonth || "—"} · {fmtMoneyCompact(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
                                     </option>
                                   ))}
-                                  <option value="new">— สร้างดีลใหม่ (PO นอก forecast) —</option>
+                                  <option value="new">— ไม่มีดีล FC (สินค้านอก forecast — เข้าดีลรวมเลย) —</option>
                                   <option value="skip">— ข้าม (ไม่เชื่อม) —</option>
                                 </Select>
                                 {partial && (
@@ -642,8 +643,8 @@ export default function PoDetailPage() {
                                     onChange={(e) => setSettleModes((p) => ({ ...p, [ln.poLineId]: e.target.value }))}
                                     title={`PO ครอบ ${nf(ln.qty)} จากที่ดีลผูกไว้ ${nf(chosen.allocQty)}`}
                                   >
-                                    <option value="split">แบ่งดีล — ส่วนที่เหลือ {nf(chosen.allocQty - ln.qty)} ชิ้นเปิดรอ PO ถัดไป</option>
-                                    <option value="whole">ใช้ทั้งดีล — ปิดทั้งดีลด้วย PO นี้</option>
+                                    <option value="split">แบ่ง — ยุบเฉพาะที่ PO ครอบ, เหลือ {nf(chosen.allocQty - ln.qty)} ชิ้นเปิดรอ PO ถัดไป</option>
+                                    <option value="whole">ทั้งดีล — ยุบทั้งดีลเข้าดีลรวมของ PO นี้</option>
                                   </Select>
                                 )}
                               </div>

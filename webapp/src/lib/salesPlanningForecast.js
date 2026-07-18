@@ -1,6 +1,4 @@
-import { genId } from '@/lib/id';
-import { recordAudit } from '@/lib/audit';
-import { monthKey, toMoney } from '@/lib/salesPlanning';
+import { monthKey } from '@/lib/salesPlanning';
 
 const CLOSED_STAGES = ['won', 'in_project', 'lost'];
 const lc = (v) => String(v || '').trim().toLowerCase();
@@ -13,37 +11,6 @@ function monthDistance(a, b) {
   const [ya, mo] = ma.split('-').map(Number);
   const [yb, mn] = mb.split('-').map(Number);
   return Math.abs((ya * 12 + mo) - (yb * 12 + mn));
-}
-
-// Compute how much of each mapped line the PO covers (by fgCode qty), first-come
-// per link. Returns per-link { link, covered, remaining } + rollups.
-function computeCoverage(links, poQtyByFg, priceOf) {
-  const remainingByFg = new Map();
-  for (const [fg, qty] of poQtyByFg.entries()) remainingByFg.set(lc(fg), Number(qty) || 0);
-
-  const ordered = [...links].sort((a, b) =>
-    String(a.createdAt || '').localeCompare(String(b.createdAt || '')) || String(a.id).localeCompare(String(b.id)));
-
-  let coveredValue = 0;
-  let remainingValue = 0;
-  let anyCovered = false;
-  let allCovered = true;
-  const rows = ordered.map((link) => {
-    const fg = lc(link.fgCode);
-    const alloc = Number(link.qtyAllocated || 0);
-    const avail = remainingByFg.get(fg) || 0;
-    const covered = Math.max(0, Math.min(alloc, avail));
-    remainingByFg.set(fg, avail - covered);
-    const remaining = alloc - covered;
-    const price = Number(priceOf(link.fgCode) ?? 0);
-    coveredValue += covered * (Number.isFinite(price) ? price : 0);
-    remainingValue += remaining * (Number.isFinite(price) ? price : 0);
-    if (covered > 0) anyCovered = true;
-    if (remaining > 0) allCovered = false;
-    return { link, covered, remaining };
-  });
-
-  return { rows, coveredValue, remainingValue, anyCovered, allCovered };
 }
 
 // ── Phase 3: FC drift ────────────────────────────────────────────────────
@@ -146,90 +113,6 @@ export async function loadForecastDrift(supabase, deal) {
   if (!deal) return null;
   const map = await loadForecastDriftMap(supabase, [deal]);
   return map.get(deal.id) || null;
-}
-
-// ── ท่อขายเต็ม (มติ §7 2026-07-19): โมดูลสหมิตรไม่ปิด Won เองอีกแล้ว ─────────────
-// PO ครอบดีลบางส่วน + ผู้ใช้เลือก "แบ่งดีล": สร้างดีลลูก (เปิด, สถานะ/ความน่าจะเป็น
-// เท่าดีลแม่ — ไม่ใช่ Won) รับส่วนที่ PO ครอบเพื่อไปออก QT ต่อ, ดีลแม่เก็บส่วนที่เหลือ
-// open รอ PO ถัดไป. ครอบเต็ม/ไม่ครอบเลย → ใช้ดีลเดิมทั้งใบ (split=false).
-// Won เกิดทีหลังทางเดียวผ่าน accept QT มาตรฐาน (แนบไฟล์ PO + เลือกเดือน) → SO.
-export async function carveOpenDealForPo({ supabase, user, deal, links, poQtyByFg, priceOf, po, now, request }) {
-  const cov = computeCoverage(links, poQtyByFg, priceOf);
-  if (!cov.anyCovered || cov.allCovered) return { deal, split: false };
-
-  const coveredFg = [...new Set(cov.rows.filter((r) => r.covered > 0).map((r) => r.link.fgCode))].sort();
-  const childRow = {
-    id: genId('DEAL'),
-    customerId: deal.customerId,
-    customerName: deal.customerName,
-    title: `${deal.title} (PO ${po.poNumber})`,
-    stage: deal.stage,
-    projectValue: toMoney(cov.coveredValue),
-    probability: deal.probability,
-    forecastMonth: deal.forecastMonth,
-    expectedCloseDate: deal.expectedCloseDate,
-    depositPaid: false,
-    confirmedAt: null,
-    notes: deal.notes,
-    ownerId: deal.ownerId,
-    ownerName: deal.ownerName,
-    team: deal.team,
-    dealType: deal.dealType || 'RE-ORDER',
-    parentDealId: deal.id,
-    metadata: {
-      ...(deal.metadata || {}),
-      splitFromDealId: deal.id,
-      fgCodes: coveredFg,
-    },
-  };
-  const { data: child, error: childErr } = await supabase.from('sales_deals').insert(childRow).select().single();
-  if (childErr) throw childErr;
-
-  // ย้าย allocation: line ที่ covered เต็ม → ดีลลูก; line ที่ covered บางส่วน →
-  // แยกเป็นสองแถว (ลูก = covered, แม่ = remaining).
-  for (const r of cov.rows) {
-    if (r.covered <= 0) continue;
-    if (r.remaining <= 0) {
-      await supabase.from('sales_deal_forecast_lines')
-        .update({ dealId: child.id, qtyAllocated: r.covered })
-        .eq('id', r.link.id);
-    } else {
-      await supabase.from('sales_deal_forecast_lines')
-        .update({ qtyAllocated: r.remaining })
-        .eq('id', r.link.id);
-      await supabase.from('sales_deal_forecast_lines').insert({
-        id: genId('SDF'),
-        dealId: child.id,
-        forecastLineId: r.link.forecastLineId,
-        customerId: r.link.customerId,
-        fgCode: r.link.fgCode,
-        demandMonth: r.link.demandMonth,
-        qtyAllocated: r.covered,
-        createdById: user.id || null,
-        createdByName: user.name || null,
-      });
-    }
-  }
-
-  // ดีลแม่: หักมูลค่าที่ split ออก, เก็บ open ต่อ (stage เดิม)
-  const childIds = [...(Array.isArray(deal.metadata?.splitChildDealIds) ? deal.metadata.splitChildDealIds : []), child.id];
-  await supabase.from('sales_deals').update({
-    projectValue: toMoney(cov.remainingValue),
-    metadata: { ...(deal.metadata || {}), splitChildDealIds: childIds },
-    updatedAt: now,
-  }).eq('id', deal.id);
-
-  await supabase.from('sales_deal_stage_history').insert({
-    id: genId('DSH'), dealId: child.id, fromStage: null, toStage: child.stage,
-    changedBy: user.id || null, changedByName: user.name || null,
-  });
-  await recordAudit({
-    user, action: 'create', entityType: 'sales_deal', entityId: child.id,
-    after: child,
-    summary: `split Sahamit deal ${deal.id} → open child for PO ${po.poNumber} (ท่อ QT→SO)`,
-    request,
-  });
-  return { deal: child, split: true };
 }
 
 // Month distance helper is exported for per-line candidate ranking on the client/route.

@@ -1,12 +1,16 @@
-// ยืนยัน PO ↔ ดีล + ออกใบเสนอราคา (ท่อขายเต็ม — มติ §7 2026-07-19)
-// เดิม route นี้ปิด Won ทางลัด (markWon ตรง) → เลิกแล้ว. ตอนนี้ทำแค่ 2 อย่างต่อบรรทัด:
-//   1. ผูกดีลเข้าโครงการ PM ของ PO (ต้องสร้างโครงการก่อน — QT มาตรฐานบังคับ projectId)
-//   2. ออก QT จากบรรทัด PO (ราคาล็อกจาก master) → เข้าคิว "เจ้าของดีลเซ็น" ปกติ
-// จากนั้นวิ่งท่อมาตรฐานล้วน: เซ็น → ส่ง → accept (แนบไฟล์ PO + เลือกเดือน = Won) →
-// SO → คิวอนุมัติสองคน → Actual (trigger 0110). ย้อน = ยกเลิก SO ผ่าน reversal 0116.
-import { getSahamitContext, sahamitError, loadSahamitProducts, indexByFgCode, sahamitDealTitle } from '@/lib/sahamit/server';
+// ยืนยัน PO ↔ ดีล + ออกใบเสนอราคา (ท่อขายเต็ม — มติ §7 2026-07-19, ปรับ 1 PO = 1 ดีลรวม)
+// เดิม route นี้ปิด Won ทางลัด (markWon ตรง) → เลิกแล้ว. ตอนนี้การยืนยันหนึ่งครั้ง:
+//   1. รวมทุกบรรทัดที่เลือกเป็น "ดีลรวมใบเดียวต่อ PO" (SHM_PO <เลขที่>) — ดีล FC ต้นทาง
+//      ย้าย junction เข้าดีลรวม แล้วปิดด้วยธง merged (กรองออกจากสถิติแพ้ได้);
+//      partial + เลือก "แบ่ง" → ย้ายเฉพาะส่วนที่ PO ครอบ ต้นทางเปิดต่อรอ PO ถัดไป
+//   2. ผูกดีลรวมเข้าโครงการ PM ของ PO (ต้องสร้างโครงการก่อน — QT มาตรฐานบังคับ projectId)
+//   3. ออก QT "ใบเดียวหลายบรรทัด" ตาม PO (ราคาล็อกจาก master) → คิวเจ้าของดีลเซ็นปกติ
+// เหตุผลดีลรวม: การเก็บเงินผูกกับ PO ทั้งใบ — ลูกค้าเซ็น QT ใบเดียว, งวดชำระชุดเดียว,
+// SO ใบเดียวยอดตรง PO. จากนั้นวิ่งท่อมาตรฐานล้วน: เซ็น → ส่ง → accept (แนบไฟล์ PO +
+// เลือกเดือน = Won) → SO → คิวอนุมัติสองคน → Actual (trigger 0110), ย้อนผ่าน 0116.
+import { getSahamitContext, sahamitError, loadSahamitProducts, indexByFgCode } from '@/lib/sahamit/server';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, monthKey, toMoney } from '@/lib/salesPlanning';
-import { carveOpenDealForPo, monthGap } from '@/lib/salesPlanningForecast';
+import { monthGap } from '@/lib/salesPlanningForecast';
 import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
@@ -75,7 +79,7 @@ export async function GET(request, { params }) {
     allocByDealFg.set(k, (allocByDealFg.get(k) || 0) + Number(r.qtyAllocated || 0));
   }
 
-  // บรรทัดที่ PO นี้ออก QT ไปแล้ว (จาก deal.metadata.sahamitPoId + fgCodes)
+  // บรรทัดที่ PO นี้รวมเข้าดีล/ออก QT ไปแล้ว (จาก deal.metadata.sahamitPoId + fgCodes)
   const { data: settled } = await supabase
     .from('sales_deals').select('id, metadata').eq('customerId', customerId).eq('metadata->>sahamitPoId', po.id);
   const settledByFg = new Map();
@@ -91,7 +95,7 @@ export async function GET(request, { params }) {
 
   const lines = activeLines.map((line) => {
     const k = norm(line.fgCode);
-    // เสนอ "เฉพาะดีลที่เลข FG ตรงกับสินค้า" เท่านั้น — ถ้าไม่มี → ให้สร้างดีลใหม่/ข้าม
+    // เสนอ "เฉพาะดีลที่เลข FG ตรงกับสินค้า" เท่านั้น — ถ้าไม่มี → รวมเข้าดีล PO เลย/ข้าม
     const matched = [...(byFg.get(k)?.values() || [])].map((d) => cand(d, line, true)).sort(byGap);
     return {
       poLineId: line.id,
@@ -113,9 +117,11 @@ export async function GET(request, { params }) {
   });
 }
 
-// POST — ยืนยันรายบรรทัด. body: { settlements: [{ poLineId, dealId, mode? } | { poLineId, createNew:true }] }
+// POST — ยืนยันทั้งชุด → ดีลรวม 1 ใบ + QT 1 ใบ.
+// body: { settlements: [{ poLineId, dealId, mode? } | { poLineId, createNew:true }] }
 // mode (เฉพาะ dealId ที่ PO ครอบบางส่วน): 'split' = แบ่งดีล (ส่วนเหลือเปิดต่อ) |
-// 'whole' = ใช้ทั้งดีล (ปิดทั้งดีลด้วย PO นี้). default 'split'.
+// 'whole' = ใช้ทั้งดีล (ปิดทั้งดีลรวมเข้า PO นี้). default 'split'.
+// validation ล้มบรรทัดไหน → ตีกลับทั้งคำขอ (QT ต้องครบตรง PO — ห้ามออกใบขาดบรรทัด)
 export async function POST(request, { params }) {
   const ctx = await getSahamitContext();
   if (!ctx.ok) return sahamitError(ctx);
@@ -142,156 +148,226 @@ export async function POST(request, { params }) {
   const products = await loadSahamitProducts(supabase, customerId);
   const productIndex = indexByFgCode(products);
   const now = new Date().toISOString();
-  const priceOf = (f) => productIndex.get(lc(f))?.price ?? 0;
+  // มูลค่าดีลฝั่งสหมิตร = ราคาโรงงาน (costPrice) ตามธรรมเนียมโมดูล; ราคาใน QT เป็น
+  // retailPriceIncVat จาก master (enforceMasterPrices จัดการ) — คนละตัวกันโดยตั้งใจ
+  const priceOf = (f) => Number(productIndex.get(lc(f))?.price ?? 0) || 0;
 
-  // กันเชื่อมซ้ำ: บรรทัดที่ PO นี้ออก QT ไปแล้ว (ดีลมี metadata.sahamitPoId = PO นี้)
-  // จะไม่ถูกทำซ้ำ แม้ client ส่งมาอีก. จับด้วย fgCode (normalize) เหมือนตอน GET.
+  // กันเชื่อมซ้ำ: fgCode ที่ PO นี้รวมเข้าดีล/ออก QT ไปแล้ว จะไม่ถูกทำซ้ำ (ข้ามเงียบ ๆ)
   const { data: alreadySettled } = await supabase
     .from('sales_deals').select('metadata').eq('customerId', customerId).eq('metadata->>sahamitPoId', po.id);
   const settledFg = new Set();
   for (const d of alreadySettled || []) for (const fg of (d.metadata?.fgCodes || [])) settledFg.add(norm(fg));
 
-  const results = [];
+  // ── pass 1: validate ทุกบรรทัดก่อน แล้วค่อยเขียน (all-or-nothing) ────────────
+  const plan = []; // { line, fg, qty, product, source: deal|null, links, mode }
   const skipped = [];
-  const errors = [];
-
+  const seenFg = new Set(settledFg);
   for (const s of settlements) {
     const line = activeLines.find((l) => l.id === s.poLineId);
     if (!line) continue;
     if (!s.dealId && !s.createNew) continue; // ข้าม
-    if (settledFg.has(norm(line.fgCode))) { skipped.push(line.id); continue; } // เชื่อมไปแล้ว
-
     const fg = String(line.fgCode || '').trim();
-    const qty = toQty(line.qty);
-    const product = productIndex.get(lc(fg));
-    let target = null; // ดีลที่จะออก QT (ดีลเดิม / ดีลลูกจาก split / ดีลใหม่)
+    if (seenFg.has(norm(fg))) { skipped.push(line.id); continue; } // เชื่อมไปแล้ว/ซ้ำในชุด
+    seenFg.add(norm(fg));
 
-    try {
-      if (s.dealId) {
-        const { data: d } = await supabase.from('sales_deals').select('*').eq('id', s.dealId).maybeSingle();
-        if (!d || d.customerId !== customer.id || CLOSED.includes(d.stage)) {
-          errors.push({ poLineId: line.id, error: 'ดีลที่เลือกใช้ไม่ได้ (ไม่พบ/ปิดแล้ว)' });
-          continue;
-        }
-        if (d.projectId && d.projectId !== po.projectId) {
-          errors.push({ poLineId: line.id, error: 'ดีลนี้ผูกโครงการอื่นอยู่แล้ว' });
-          continue;
-        }
-        // สิทธิ์ตามสายขายมาตรฐาน (ae=ของตัวเอง, senior/ac=ทีม, superuser=ทั้งหมด)
-        if (!inSalesEditScope(user, d)) {
-          errors.push({ poLineId: line.id, error: `ไม่มีสิทธิ์แก้ดีลของ ${d.ownerName || 'ผู้อื่น'}` });
-          continue;
-        }
-
-        // PO ครอบบางส่วน + ผู้ใช้เลือกแบ่งดีล → ดีลลูกเปิด (ไม่ Won) รับส่วนที่ครอบ
-        if ((s.mode || 'split') === 'split') {
-          const { data: links } = await supabase.from('sales_deal_forecast_lines').select('*').eq('dealId', d.id);
-          const carved = await carveOpenDealForPo({
-            supabase, user, deal: d, links: links || [],
-            poQtyByFg: new Map([[fg, qty]]), priceOf, po, now, request,
-          });
-          target = carved.deal;
-        } else {
-          target = d;
-        }
-      } else {
-        // PO นอก forecast → สร้างดีลใหม่ "เปิด" แล้ววิ่งท่อเดียวกัน (ไม่ใช่ won stub แล้ว)
-        const price = Number(product?.price ?? 0);
-        const dealRow = {
-          id: genId('DEAL'),
-          customerId: customer.id,
-          customerName: customer.name || null,
-          title: sahamitDealTitle(product, line.productName || fg),
-          stage: 'qualified',
-          projectValue: toMoney(qty * (Number.isFinite(price) ? price : 0)),
-          probability: 80,
-          forecastMonth: monthKey(po.receivedDate || po.dueDate || now),
-          expectedCloseDate: po.dueDate || null,
-          depositPaid: false,
-          confirmedAt: null,
-          notes: `สร้างจาก PO สหมิตร ${po.poNumber} (นอก forecast) · ${fg}`,
-          ownerId: user.id || null,
-          ownerName: user.name || null,
-          team: 'KA',
-          dealType: 'RE-ORDER',
-          metadata: {
-            source: 'sahamit-po',
-            projectType: 'RE-ORDER',
-            fgCodes: [fg],
-            productNames: [line.productName || product?.name || fg].filter(Boolean),
-            poReceivedDate: po.receivedDate || null,
-          },
-        };
-        const { data: created, error: createErr } = await supabase.from('sales_deals').insert(dealRow).select().single();
-        if (createErr) throw createErr;
-        await supabase.from('sales_deal_stage_history').insert({
-          id: genId('DSH'), dealId: created.id, fromStage: null, toStage: created.stage,
-          changedBy: user.id || null, changedByName: user.name || null,
-        });
-        target = created;
+    let source = null;
+    let links = [];
+    if (s.dealId) {
+      const { data: d } = await supabase.from('sales_deals').select('*').eq('id', s.dealId).maybeSingle();
+      if (!d || d.customerId !== customer.id || CLOSED.includes(d.stage)) {
+        return Response.json({ error: `${fg}: ดีลที่เลือกใช้ไม่ได้ (ไม่พบ/ปิดแล้ว)` }, { status: 400 });
       }
+      if (d.projectId) {
+        return Response.json({ error: `${fg}: ดีลนี้ผูกโครงการอื่นอยู่แล้ว` }, { status: 400 });
+      }
+      // สิทธิ์ตามสายขายมาตรฐาน (ae=ของตัวเอง, senior/ac=ทีม, superuser=ทั้งหมด)
+      if (!inSalesEditScope(user, d)) {
+        return Response.json({ error: `${fg}: ไม่มีสิทธิ์แก้ดีลของ ${d.ownerName || 'ผู้อื่น'}` }, { status: 400 });
+      }
+      const { data: linkRows } = await supabase.from('sales_deal_forecast_lines').select('*').eq('dealId', d.id);
+      source = d;
+      links = linkRows || [];
+    }
+    plan.push({
+      line,
+      fg,
+      qty: toQty(line.qty),
+      product: productIndex.get(lc(fg)),
+      source,
+      links,
+      mode: s.mode === 'whole' ? 'whole' : 'split',
+    });
+  }
+  if (!plan.length) {
+    return Response.json({ error: 'รายการที่เลือกถูกเชื่อมไปแล้วทั้งหมด', skipped: skipped.length, settled: 0 }, { status: 409 });
+  }
 
-      // ผูกดีลเข้าโครงการของ PO + ประทับ PO ลง metadata (ใช้เป็นกุญแจกันซ้ำ/แสดงสถานะ)
-      const { data: linked, error: linkErr } = await supabase
-        .from('sales_deals')
-        .update({
-          projectId: po.projectId,
-          metadata: {
-            ...(target.metadata || {}),
-            sahamitPoId: po.id,
-            poNumber: po.poNumber,
-            poReceivedDate: po.receivedDate || null,
-            projectCode: project.code || null,
-            sahamitPoLineId: line.id,
-          },
-          updatedAt: now,
-        })
-        .eq('id', target.id).select().single();
-      if (linkErr) throw linkErr;
+  // ── pass 2: สร้างดีลรวม 1 ใบต่อ PO ──────────────────────────────────────────
+  // เจ้าของ = เจ้าของดีล FC ตัวแรกที่ถูกจับคู่ (สหมิตรเป็น AE ทีม KA อยู่แล้ว);
+  // ไม่มีดีลต้นทางเลย (ทุกบรรทัดนอก forecast) → ผู้ใช้ที่กดยืนยัน
+  const ownerSrc = plan.find((p) => p.source)?.source || null;
+  const fgList = plan.map((p) => p.fg);
+  const totalValue = plan.reduce((sum, p) => sum + p.qty * priceOf(p.fg), 0);
+  const mergedRow = {
+    id: genId('DEAL'),
+    customerId: customer.id,
+    customerName: customer.name || null,
+    title: `SHM_PO ${po.poNumber}`,
+    stage: 'qualified',
+    projectValue: toMoney(totalValue),
+    probability: 80,
+    forecastMonth: monthKey(po.receivedDate || po.dueDate || now),
+    expectedCloseDate: po.dueDate || null,
+    depositPaid: false,
+    confirmedAt: null,
+    notes: `ดีลรวมจาก PO สหมิตร ${po.poNumber} (${plan.length} สินค้า)`,
+    ownerId: ownerSrc?.ownerId || user.id || null,
+    ownerName: ownerSrc?.ownerName || user.name || null,
+    team: 'KA',
+    projectId: po.projectId,
+    dealType: 'RE-ORDER',
+    metadata: {
+      source: 'sahamit-po', // ไม่ใช่ sahamit-forecast → กติกา "FC อัพเดทเคลียร์ดีล" ไม่แตะดีลนี้
+      projectType: 'RE-ORDER',
+      sahamitPoId: po.id,
+      poNumber: po.poNumber,
+      poReceivedDate: po.receivedDate || null,
+      projectCode: project.code || null,
+      fgCodes: fgList,
+      productNames: plan.map((p) => p.line.productName || p.product?.name || p.fg),
+      mergedFromDealIds: plan.filter((p) => p.source).map((p) => p.source.id),
+    },
+  };
+  const { data: merged, error: mergedErr } = await supabase.from('sales_deals').insert(mergedRow).select().single();
+  if (mergedErr) return Response.json({ error: mergedErr.message }, { status: 500 });
+  await supabase.from('sales_deal_stage_history').insert({
+    id: genId('DSH'), dealId: merged.id, fromStage: null, toStage: merged.stage,
+    changedBy: user.id || null, changedByName: user.name || null,
+  });
 
-      // ออก QT จากบรรทัด PO — ราคาโดน enforceMasterPrices ทับจาก master เสมอ
-      // (สินค้าไม่อยู่ใน master → productId null → ราคา 0 ให้ไปเติมใน editor + แจ้ง warning)
-      const { quote } = await createQuotationDraft({
-        supabase,
-        user,
-        deal: linked,
-        body: {
-          lines: [{ productId: product?.id || null, fgCode: fg, description: line.productName || undefined, qty }],
-          notes: `ออกจาก PO สหมิตร ${po.poNumber}`,
-          metadata: { source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber, sahamitPoLineId: line.id },
+  // ── pass 3: ออก QT ใบเดียวหลายบรรทัดก่อนแตะดีลต้นทาง — พลาดตรงนี้ rollback แค่
+  // ดีลรวม (ยังไม่มีอะไรถูกย้าย/ปิด) ─────────────────────────────────────────────
+  let quote;
+  try {
+    ({ quote } = await createQuotationDraft({
+      supabase,
+      user,
+      deal: merged,
+      body: {
+        lines: plan.map((p) => ({
+          productId: p.product?.id || null,
+          fgCode: p.fg,
+          description: p.line.productName || undefined,
+          qty: p.qty,
+        })),
+        notes: `ออกจาก PO สหมิตร ${po.poNumber}`,
+        metadata: { source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber },
+      },
+      request,
+    }));
+  } catch (e) {
+    await supabase.from('sales_deals').delete().eq('id', merged.id);
+    const msg = e instanceof QuotationDraftError ? e.message : (e.message || 'ออกใบเสนอราคาไม่สำเร็จ');
+    return Response.json({ error: msg }, { status: e instanceof QuotationDraftError ? e.status : 500 });
+  }
+
+  // ── pass 4: ย้าย junction FC เข้าดีลรวม + จัดการดีลต้นทาง ────────────────────
+  // การเชื่อม FC ต่อสินค้า×เดือนอยู่ครบบนดีลรวม → FC-vs-PO รายสินค้ายังวัดได้เสมอ
+  const mergedSourceIds = [];
+  const partialSourceIds = [];
+  for (const p of plan) {
+    if (!p.source) continue;
+    const rows = p.links
+      .filter((l) => norm(l.fgCode) === norm(p.fg))
+      .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')) || String(a.id).localeCompare(String(b.id)));
+    const totalAlloc = rows.reduce((sum, r) => sum + Number(r.qtyAllocated || 0), 0);
+    let need = p.qty;
+    let covered = 0;
+    for (const row of rows) {
+      if (need <= 0) break;
+      const alloc = Number(row.qtyAllocated || 0);
+      const take = Math.min(alloc, need);
+      if (take <= 0) continue;
+      if (take >= alloc) {
+        await supabase.from('sales_deal_forecast_lines').update({ dealId: merged.id }).eq('id', row.id);
+      } else {
+        await supabase.from('sales_deal_forecast_lines').update({ qtyAllocated: alloc - take }).eq('id', row.id);
+        await supabase.from('sales_deal_forecast_lines').insert({
+          id: genId('SDF'),
+          dealId: merged.id,
+          forecastLineId: row.forecastLineId,
+          customerId: row.customerId,
+          fgCode: row.fgCode,
+          demandMonth: row.demandMonth,
+          qtyAllocated: take,
+          createdById: user.id || null,
+          createdByName: user.name || null,
+        });
+      }
+      need -= take;
+      covered += take;
+    }
+
+    const remainingAlloc = totalAlloc - covered;
+    const closeWhole = p.mode === 'whole' || remainingAlloc <= 0;
+    if (closeWhole) {
+      // ปิดต้นทางด้วยธง merged (ไม่ใช่แพ้จริง — ให้รายงานกรองออกได้เหมือน superseded)
+      await supabase.from('sales_deals').update({
+        stage: 'lost',
+        lostReason: `รวมเข้าดีล PO สหมิตร ${po.poNumber}`,
+        metadata: {
+          ...(p.source.metadata || {}),
+          sahamitMergedIntoDealId: merged.id,
+          sahamitMergedPoId: po.id,
+          sahamitMergedAt: now,
         },
-        request,
+        updatedAt: now,
+      }).eq('id', p.source.id);
+      await supabase.from('sales_deal_stage_history').insert({
+        id: genId('DSH'), dealId: p.source.id, fromStage: p.source.stage, toStage: 'lost',
+        changedBy: user.id || null, changedByName: user.name || null,
       });
-
-      results.push({
-        poLineId: line.id,
-        dealId: linked.id,
-        title: linked.title,
-        quotationId: quote.id,
-        quoteNumber: quote.quoteNumber,
-        // ราคาใบ = retailPriceIncVat จาก master (ไม่ใช่ costPrice ที่ใช้คิดมูลค่าดีล) —
-        // เช็คจากยอดรวมใบที่ออกจริง: 0 = master ยังไม่ตั้งราคาขาย/ไม่รู้จักสินค้า
-        priceMissing: !product?.id || !(Number(quote.totalAmount) > 0),
-      });
-      settledFg.add(norm(fg)); // กันซ้ำภายในคำขอเดียวกัน (สองบรรทัด fgCode เดียว)
-    } catch (e) {
-      errors.push({ poLineId: line.id, error: e instanceof QuotationDraftError ? e.message : (e.message || 'ไม่สำเร็จ') });
+      mergedSourceIds.push(p.source.id);
+    } else {
+      // แบ่ง: ต้นทางเปิดต่อด้วยส่วนที่เหลือ — หักมูลค่าส่วนที่ย้ายออก (ราคาโรงงาน)
+      const newValue = Math.max(0, toMoney(Number(p.source.projectValue || 0) - covered * priceOf(p.fg)));
+      await supabase.from('sales_deals').update({
+        projectValue: newValue,
+        metadata: {
+          ...(p.source.metadata || {}),
+          sahamitPartialMergedToDealId: merged.id,
+          sahamitPartialMergedPoId: po.id,
+        },
+        updatedAt: now,
+      }).eq('id', p.source.id);
+      partialSourceIds.push(p.source.id);
     }
   }
 
-  if (results.length) {
-    await supabase.from('sahamit_pos')
-      .update({ salesDealId: po.salesDealId || results[0].dealId, updatedAt: now })
-      .eq('id', po.id).eq('customerId', customerId);
-    await recordAudit({
-      user,
-      action: 'create',
-      entityType: 'quotation',
-      entityId: results[0].quotationId,
-      after: { poId: po.id, poNumber: po.poNumber, results },
-      summary: `ยืนยัน PO สหมิตร ${po.poNumber} → ออก QT ${results.length} ใบเข้าคิวเซ็น (ท่อ QT→SO)`,
-      request,
-    });
-  }
-  return Response.json({ settled: results.length, results, skipped: skipped.length, errors });
+  await supabase.from('sahamit_pos')
+    .update({ salesDealId: merged.id, updatedAt: now })
+    .eq('id', po.id).eq('customerId', customerId);
+
+  await recordAudit({
+    user,
+    action: 'create',
+    entityType: 'sales_deal',
+    entityId: merged.id,
+    after: { deal: merged, quotationId: quote.id, quoteNumber: quote.quoteNumber, mergedSourceIds, partialSourceIds },
+    summary: `รวม PO สหมิตร ${po.poNumber} เป็นดีลเดียว (${plan.length} สินค้า, ยุบ ${mergedSourceIds.length} ดีล${partialSourceIds.length ? `, แบ่ง ${partialSourceIds.length}` : ''}) + ออก QT ${quote.quoteNumber} เข้าคิวเซ็น`,
+    request,
+  });
+
+  return Response.json({
+    settled: plan.length,
+    dealId: merged.id,
+    title: merged.title,
+    quotationId: quote.id,
+    quoteNumber: quote.quoteNumber,
+    // ราคาใบ = retailPriceIncVat จาก master — ยอดรวม 0/ไม่ครบ = master ยังไม่ตั้งราคาขาย
+    priceMissing: !(Number(quote.totalAmount) > 0) || plan.some((p) => !p.product?.id),
+    mergedFrom: mergedSourceIds.length,
+    partialFrom: partialSourceIds.length,
+    skipped: skipped.length,
+  });
 }
