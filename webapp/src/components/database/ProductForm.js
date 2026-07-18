@@ -52,6 +52,13 @@ function CategoryBox({ fgCode, productTypes }) {
     if (!productTypes.length) return null; // ยังโหลดไม่เสร็จ — อย่าเพิ่งฟ้องว่าไม่มีหมวด
     return <div className="mt-2 text-xs text-[var(--red)] bg-[var(--red-soft)] p-2 rounded border border-[var(--border)]">พบหมวดหมู่ <strong>{cat.code}</strong> แต่ไม่มีในฐานข้อมูล (อาจพิมพ์ผิด หรือเป็นหมวดใหม่)</div>;
   }
+  if (cat.typeInfo.isActive === false) {
+    return (
+      <div className="mt-2 text-xs text-[var(--red)] bg-[var(--red-soft)] p-2 rounded border border-[var(--border)]">
+        หมวด <strong>{cat.code}</strong> ถูกพักใช้งานแล้ว ข้อมูลเดิมยังดูได้ แต่ไม่สามารถใช้กับสินค้าใหม่หรือเปลี่ยนสินค้าอื่นมาเป็นหมวดนี้
+      </div>
+    );
+  }
   const isExcise = cat.code === "01-002";
   return (
     <div className={`mt-2 p-3 text-xs rounded-lg border border-[var(--border)] flex flex-col gap-1 ${isExcise ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-2)] text-[var(--text-2)]"}`}>

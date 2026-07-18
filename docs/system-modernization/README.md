@@ -21,8 +21,8 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | เฟส | ขอบเขต | สถานะ | เอกสาร |
 |---|---|---|---|
 | 0 | Requirements, UX/UI Rulebook และ Document specification | เสร็จสมบูรณ์ | [Phase 0](./phase-00-foundation.md) |
-| 1 | Account menu, Profile และ Security | รอตรวจ | [Phase 1](./phase-01-account-profile.md) |
-| 2 | Product category management | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 1 | Account menu, Profile และ Security | เสร็จสมบูรณ์ | [Phase 1](./phase-01-account-profile.md) |
+| 2 | Product category management | กำลังดำเนินการ | [Phase 2](./phase-02-product-category.md) |
 | 3 | Product category Import/Export | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 4 | Admin Center และข้อมูลบริษัทแบบมีเวอร์ชัน | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 5 | Electronic signature | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |

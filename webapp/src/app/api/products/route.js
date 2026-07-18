@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScope, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
-import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
+import { categoryOf, isExciseCategory, activeProductTypeError } from '@/lib/master/productTypes';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
@@ -72,6 +72,8 @@ export async function POST(request) {
   // snapshot taken server-side so the catalog row is stable even if the
   // customer is later renamed. Category is derived from the FG code.
   const categoryCode = body.categoryCode || categoryOf(fgCode);
+  const categoryError = await activeProductTypeError(categoryCode);
+  if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
 
   // Taxability is auto-derived from the category (not re-parsed from fgCode —
   // that caused the category and taxability flag to disagree when they drifted

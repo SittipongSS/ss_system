@@ -1,6 +1,6 @@
 # Phase 1 — Account Menu, Profile และ Security
 
-สถานะ: รอตรวจ
+สถานะ: เสร็จสมบูรณ์
 
 เริ่ม: 19 กรกฎาคม 2026
 
@@ -67,8 +67,8 @@
 - [x] ตรวจ Account popover เปิด/ปิดและ menu semantics
 - [x] ตรวจ Mobile breakpoint: form หนึ่งคอลัมน์, top bar compact และ bottom navigation
 - [x] ไม่มี horizontal overflow บน desktop
-- [ ] ผู้ใช้ตรวจภาพและการใช้งาน
-- [ ] Commit, Push, PR และ CI
+- [x] ผู้ใช้ตรวจภาพและการใช้งาน
+- [x] Commit, Push, PR และ CI
 
 ## Visual evidence
 
@@ -86,9 +86,10 @@
 
 ## Phase closeout
 
-- วันที่ปิดเฟส: รอผู้ใช้ยืนยัน
-- PR: รอเปิดหลังผู้ใช้ยืนยัน
-- Commit: รอผู้ใช้ยืนยัน
-- ผล CI: รอ Pull Request
-- ผู้ยืนยัน: รอผู้ใช้
+- วันที่ปิดเฟส: 19 กรกฎาคม 2026
+- PR: [#540](https://github.com/SittipongSS/ss_system/pull/540)
+- Commit: `f3eb6ee`
+- Merge commit: `efc3294`
+- ผล CI: GitHub CI, Vercel และ Vercel Preview ผ่าน
+- ผู้ยืนยัน: ผู้ใช้เจ้าของระบบ โดย Merge PR #540
 - เฟสถัดไป: Phase 2 — Product category management

@@ -7,6 +7,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
+import { activeProductTypeError } from '@/lib/master/productTypes';
 import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (deal.projectId) return conflict('ดีลนี้ผูกโครงการแล้ว');
 
   const body = await req.json().catch(() => ({}));
+  const categoryError = await activeProductTypeError(body.productMainCategory || deal.categoryCode || null);
+  if (categoryError) return badRequest(categoryError);
   // วันที่ต้องซิงค์กับดีล: โมดัลไม่ระบุ → ใช้วันเริ่ม/สิ้นสุดของดีล (mig 0095) ก่อนตกไปวันนี้
   const startDate = body.startDate || deal.startDate || todayStr();
   const dueDate = body.dueDate || deal.endDate || deal.expectedCloseDate || null;

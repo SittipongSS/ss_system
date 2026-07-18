@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSuperuser } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
-import { categoryOf, isExciseCategory } from '@/lib/master/productTypes';
+import { categoryOf, isExciseCategory, activeProductTypeError } from '@/lib/master/productTypes';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { recordAudit } from '@/lib/audit';
@@ -157,6 +157,14 @@ export async function PATCH(request, { params }) {
   // Also backfills legacy rows saved before categoryCode existed (migration 0006).
   if (body.categoryCode === undefined && (body.fgCode !== undefined || !updated.categoryCode)) {
     updated.categoryCode = categoryOf(updated.fgCode) || updated.categoryCode || null;
+  }
+
+  // Historic products may retain a category that was later deactivated. Only a
+  // change to a different category is blocked, so ordinary edits to that old
+  // product remain possible.
+  if (updated.categoryCode !== product.categoryCode) {
+    const categoryError = await activeProductTypeError(updated.categoryCode);
+    if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
   }
 
   // Taxability is intrinsic to the category (auto rule), not re-parsed from
