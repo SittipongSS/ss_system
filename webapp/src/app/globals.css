@@ -525,34 +525,42 @@ button, select, input, textarea {
   scrollbar-width: thin;
 }
 .topnav-menu-spacer { flex: 1; }
+/* เมนูระบบ = ภาษาเดียวกับแท็บ (มติผู้ใช้ 2026-07-18 — ตัวเลือก B):
+   active = ตัวอักษรสี accent + แถบชี้ 3px ปลายมนชิดเส้นล่าง · hover = state layer จาง
+   (เลิกกล่อง pill/เงา/เด้ง — ภาษานั้นสงวนให้ .segmented ที่เป็น "ตัวกรอง") */
 .topnav-item {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 34px;
-  margin: 5px 0;
   padding: 0 12px;
   color: var(--text-2);
   text-decoration: none;
   font-size: 13.5px;
+  font-weight: 500;
   white-space: nowrap;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  transition: color 0.12s, border-color 0.12s, background 0.12s, transform 0.12s;
+  position: relative;
+  border-radius: var(--radius) var(--radius) 0 0;
+  transition: color 0.12s, background 0.12s;
 }
-.topnav-item:hover { color: var(--text); border-color: var(--border); background: var(--panel-2); transform: translateY(-1px); }
+.topnav-item:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.topnav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .topnav-item.active {
   color: var(--accent);
   font-weight: 600;
-  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.topnav-item.active::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--accent);
 }
 .topnav-item.active svg { color: var(--accent); }
-.topnav-utility-item {
-  background: color-mix(in srgb, var(--panel-2) 58%, transparent);
-  border-color: var(--border);
-}
+/* เมนูอรรถประโยชน์ (วางเป้า/ตั้งค่า) — ภาษาเดียวกัน แค่โทนจางกว่าเมนูงานหลัก */
+.topnav-utility-item { color: var(--text-3); }
 
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
 .btn.ghost:hover { background: var(--panel-2); }
@@ -624,6 +632,8 @@ button, select, input, textarea {
   }
   .page { padding-bottom: calc(var(--mobile-nav-h) + 28px + env(safe-area-inset-bottom)); }
 
+  /* M3 navigation bar: ปุ่มพอดีจอ (≤4 เมนู + เพิ่มเติม) ไม่ต้องปัดหา —
+     เมนูที่เหลือเข้า sheet "เพิ่มเติม" (มติผู้ใช้ 2026-07-18 — ตัวเลือก B) */
   .mobile-bottom-nav {
     position: fixed;
     inset: auto 0 0 0;
@@ -631,10 +641,6 @@ button, select, input, textarea {
     display: flex;
     align-items: stretch;
     gap: 2px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x proximity;
-    scrollbar-width: none;
     min-height: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
     padding: 5px 6px env(safe-area-inset-bottom);
     border-top: 1px solid var(--border-strong);
@@ -644,8 +650,8 @@ button, select, input, textarea {
   }
   .mobile-bottom-nav::-webkit-scrollbar { display: none; }
   .mobile-bottom-item {
-    flex: 0 0 78px;
-    min-width: 78px;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 54px;
     display: flex;
     flex-direction: column;
@@ -659,10 +665,9 @@ button, select, input, textarea {
     text-decoration: none;
     font: inherit;
     cursor: pointer;
-    scroll-snap-align: center;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
+    transition: transform 0.12s ease, color 0.12s ease;
   }
   .mobile-bottom-item span {
     width: 100%;
@@ -673,7 +678,17 @@ button, select, input, textarea {
     font-size: 10.5px;
     line-height: 1.2;
   }
-  .mobile-bottom-item.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  /* M3 active indicator: pill สี accent จาง ๆ รองไอคอน (ไม่ทาทั้งปุ่ม) */
+  .mbi-ico {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 14px;
+    border-radius: 999px;
+    transition: background 0.15s ease;
+  }
+  .mobile-bottom-item.active { color: var(--accent); font-weight: 600; }
+  .mobile-bottom-item.active .mbi-ico { background: color-mix(in srgb, var(--accent) 20%, transparent); }
   .mobile-bottom-item:active,
   .mobile-top-more:active { transform: scale(0.9); }
 
