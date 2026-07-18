@@ -33,7 +33,8 @@ export default function ForecastPage() {
   // forecast line ที่ถูกสร้างเป็นโครงการไปแล้ว (กันสร้างซ้ำตั้งแต่ UI)
   const { data: mappedLineIds, reload: reloadMapped } = useApiList("/api/sahamit/forecast/mapped-lines");
   const mappedSet = useMemo(() => new Set((mappedLineIds || []).map(String)), [mappedLineIds]);
-  const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae"), [assignables]);
+  // ผู้ดูแลดีลสหมิตร = AE ทีม KA เท่านั้น (server เช็คซ้ำใน create-sales-deal)
+  const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae" && u.team === "KA"), [assignables]);
   const canEdit = useCan("sahamit:edit");
   const [selectedNo, setSelectedNo] = useState(null);
   const [tab, setTab] = useState("matrix");
@@ -219,7 +220,8 @@ export default function ForecastPage() {
         body: JSON.stringify({ lineIds: [...selectedLines], forecastMonth: dealMonth, ownerId: dealOwnerId }),
       });
       const skipMsg = json.skipped ? ` (ข้ามที่มีโครงการแล้ว ${json.skipped} รายการ)` : "";
-      alert(`สร้างโครงการเข้าแผนการขายแล้ว ${json.count || 0} โครงการ (1 รายการ = 1 โครงการ)${skipMsg}`);
+      const supMsg = json.superseded ? ` · เคลียร์ดีลรอบเก่าที่ยังไม่ปิด ${json.superseded} ดีล (FC อัพเดท)` : "";
+      alert(`สร้างโครงการเข้าแผนการขายแล้ว ${json.count || 0} โครงการ (1 รายการ = 1 โครงการ)${skipMsg}${supMsg}`);
       setSelectedLines(new Set());
       setDealModalOpen(false);
       reloadMapped();
