@@ -1,7 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 import { cachedJson } from '@/lib/serverCache';
-import { forecastAccuracyRollup, isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,7 +82,9 @@ function aggregateMonth(visibleDeals, targets, month) {
   const wonMonth = wonMonthOf;
   const openDeals = visibleDeals.filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
   const wonDeals = visibleDeals.filter((d) => isWon(d) && wonMonth(d) === month);
-  const lostDeals = visibleDeals.filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month);
+  // แพ้ "จริง" เท่านั้น — ดีลสหมิตรที่ถูกยุบเข้าดีลรวม PO / ถูกแทนที่เพราะ FC อัพเดท
+  // ไม่ใช่การแพ้ (กรองจุดเดียวตรงนี้ → byStage/byType/byOwner/byTeam/accuracy ตามหมด)
+  const lostDeals = visibleDeals.filter((d) => isRealLostDeal(d) && monthKey(d.forecastMonth) === month);
   const monthDeals = [...openDeals, ...wonDeals, ...lostDeals];
   const accuracy = forecastAccuracyRollup(openDeals, wonDeals, lostDeals);
   const pipelineValue = accuracy.remainingForecast;
