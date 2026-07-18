@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { canEditSalesPlanning, forecastAmount, monthKey, toMoney } from '@/lib/salesPlanning';
-import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts } from '@/lib/sahamit/server';
+import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts, sahamitDealTitle } from '@/lib/sahamit/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,14 +114,7 @@ export async function POST(request, { params }) {
     const productName = line.productName || product?.name || line.fgCode;
     const demandMonth = monthKey(line.month);
 
-    // ชื่อดีลตามฟอร์แมตที่ตกลง: SHM_แบรนด์_ชื่อสินค้า ปริมาตร
-    // แบรนด์/ปริมาตรมาจาก master — ถ้าสินค้าไม่อยู่ใน master (หรือไม่มีข้อมูล) ละส่วนนั้น
-    const brand = product?.brandNameEn || product?.brandNameTh || null;
-    const volumeLabel = Number(product?.volume) > 0 ? `${product.volume}${product.volumeUnit || 'ml'}` : null;
-    const nameWithVolume = volumeLabel && !productName.includes(volumeLabel)
-      ? `${productName} ${volumeLabel}`
-      : productName;
-    const title = ['SHM', brand, nameWithVolume].filter(Boolean).join('_');
+    const title = sahamitDealTitle(product, productName);
 
     const dealRow = {
       id: genId('DEAL'),

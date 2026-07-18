@@ -8,6 +8,16 @@ import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 export const isWonDeal = (d) => ['won', 'in_project'].includes(d?.stage);
 export const isOpenDeal = (d) => !['won', 'in_project', 'lost'].includes(d?.stage);
 
+// ดีล lost "เชิงธุรการ" ของสายสหมิตร — ไม่ใช่แพ้จริง ห้ามปนสถิติแพ้/FC:
+// - sahamitMergedIntoDealId: ดีล FC ถูกยุบเข้าดีลรวมของ PO (ขายได้จริง! demand ไป
+//   โผล่บนดีลรวมแทน — นับด้วยจะทั้งเพี้ยน lost และนับ FC ซ้ำ)
+// - sahamitSupersededByRoundId: ดีลรอบ FC เก่าถูกแทนที่เพราะสหมิตรอัพเดท FC
+// ทุกจุดที่นับดีลแพ้ (dashboard + drill-down) ต้องกรองผ่าน isRealLostDeal ตัวเดียวนี้
+export const isAdministrativeLoss = (d) => Boolean(
+  d?.metadata?.sahamitMergedIntoDealId || d?.metadata?.sahamitSupersededByRoundId,
+);
+export const isRealLostDeal = (d) => d?.stage === 'lost' && !isAdministrativeLoss(d);
+
 // ยอด Actual ของดีล Won — อ่านผ่าน cache wonValue เฉพาะเมื่อยืนยันว่ามาจาก Approved SO
 export const wonAmountOf = (d) => dealActualFromSalesOrders(d);
 
