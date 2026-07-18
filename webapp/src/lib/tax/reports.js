@@ -32,11 +32,20 @@ const statusLabel = (s) => statusMeta(s).label;
 const teamLabel = (t) => (t ? (TEAM_LABELS[t] || t) : '-');
 const two = (a, b) => `${a}\n${b}`;
 
+// ตัวกรองรับได้ทั้งค่าเดียว/หลายค่า (comma-separated จาก query string หรือ array) —
+// ตัวกรองทั้งระบบเป็น multi-select (มติผู้ใช้ 2026-07-18); ว่าง/'all' = ไม่กรอง
+const asList = (v) => {
+  if (Array.isArray(v)) return v.filter(Boolean);
+  if (!v || v === 'all') return [];
+  return String(v).split(',').filter(Boolean);
+};
+
 async function fetchRegistrations({ team, customerId } = {}) {
   const supabase = getSupabaseAdmin();
   let q = supabase.from('excise_registrations').select('*');
   if (team) q = q.eq('team', team);
-  if (customerId) q = q.eq('customerId', customerId);
+  const customerIds = asList(customerId);
+  if (customerIds.length) q = q.in('customerId', customerIds);
   const { data, error } = await q;
   if (error) throw error;
   return data || [];
@@ -45,7 +54,8 @@ async function fetchOrders({ team, customerId } = {}) {
   const supabase = getSupabaseAdmin();
   let q = supabase.from('orders').select(ORDER_SELECT);
   if (team) q = q.eq('team', team);
-  if (customerId) q = q.eq('customerId', customerId);
+  const customerIds = asList(customerId);
+  if (customerIds.length) q = q.in('customerId', customerIds);
   const { data, error } = await q;
   if (error) throw error;
   return data || [];
@@ -67,9 +77,10 @@ async function fetchProductMap() {
 export async function registrationReport(filter = {}) {
   const { from, to, margin, status, ids } = filter;
   const idSet = ids && ids.length ? new Set(ids) : null;
+  const statuses = asList(status);
   const regs = (await fetchRegistrations(filter)).filter(
     (r) => (!from && !to ? true : inRange(r.createdAt, from, to))
-      && (!status || status === 'all' || r.status === status)
+      && (!statuses.length || statuses.includes(r.status))
       && (!idSet || idSet.has(r.id)),
   );
   const products = await fetchProductMap();
@@ -125,8 +136,9 @@ export async function registrationReport(filter = {}) {
 export async function filingReport(filter = {}) {
   const { from, to, status, ids } = filter;
   const idSet = ids && ids.length ? new Set(ids) : null;
+  const statuses = asList(status);
   const orders = (await fetchOrders(filter)).filter(
-    (o) => (!from && !to ? true : inRange(o.createdAt, from, to)) && (!status || status === 'all' || o.status === status),
+    (o) => (!from && !to ? true : inRange(o.createdAt, from, to)) && (!statuses.length || statuses.includes(o.status)),
   );
   const rows = [];
   for (const o of orders) {
