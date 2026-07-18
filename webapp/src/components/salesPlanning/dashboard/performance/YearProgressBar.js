@@ -18,7 +18,8 @@ const WINDOWS = [
 ];
 
 export default function YearProgressBar({ matrix, year, now, closedCount, carryOn, onCarryChange, historyHref }) {
-  const [win, setWin] = useState("year");
+  // เริ่มที่ "เดือนนี้" — หน้านี้ถูกเปิดตอนประชุมเช้าเป็นหลัก (มติผู้ใช้ 2026-07-18)
+  const [win, setWin] = useState("month");
   const isCurrentYear = year === now.year;
   const activeWin = isCurrentYear ? win : "year";
 
