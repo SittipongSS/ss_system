@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, CircleDollarSign, Scale, Database, Briefcase } from 'lucide-react';
 
 // เส้นทางทั้งหมดที่ถือว่าอยู่ใต้เมนู "ตั้งค่า" (ให้ปุ่มติด active ตอนอยู่หน้าลูก)
 const SETTINGS_PATHS = ['/settings', '/database/holidays', '/database/chat-webhooks', '/users', '/audit'];
@@ -18,12 +18,14 @@ import { sortSystems, systemForPathname } from '@/config/navigation';
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// ไอคอนประจำระบบ — ชุดเดียวกับการ์ดระบบใน /home (มติผู้ใช้ 2026-07-18: ให้จำภาพ
+// เดียวกันทั้งการ์ดหน้าแรก ตัวสลับระบบ และเมนู) — แก้ที่นี่ต้องแก้ /home ให้ตรงกันด้วย
 const SYSTEM_ICONS = {
-  salesplan: FolderKanban,
-  tax: ReceiptText,
-  sahamit: Boxes,
-  master: Building2,
-  mgmt: Users,
+  salesplan: CircleDollarSign,
+  tax: Scale,
+  sahamit: LineChart,
+  master: Database,
+  mgmt: Briefcase,
 };
 
 // (ตัด prefetch หลัง login ออก — มติผู้ใช้ 2026-07-17 เรื่องลด traffic: เดิมอุ่น

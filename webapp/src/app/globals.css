@@ -464,8 +464,10 @@ button, select, input, textarea {
   height: 36px;
   padding: 0 13px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  /* T2 (มติ 2026-07-18): pill เงียบ — ตัดขอบขาวออก เหลือพื้นจางอย่างเดียว
+     (ลดเสียงให้เข้าภาษานำทางใหม่ที่เลิกใช้กล่อง pill) */
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid transparent;
   color: #fff;
   font-family: inherit;
   font-size: 13px;
@@ -474,7 +476,7 @@ button, select, input, textarea {
   white-space: nowrap;
   transition: background 0.15s;
 }
-.topnav-sys-btn:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.36); }
+.topnav-sys-btn:hover { background: rgba(255, 255, 255, 0.18); }
 .topnav-sys-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -512,10 +514,11 @@ button, select, input, textarea {
 /* ชั้นเมนูของระบบปัจจุบัน */
 .topnav-menu {
   height: var(--topnav-menu-h);
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  /* D1 (มติ 2026-07-18): ย้อมชั้นเมนูด้วยกรมท่าจาง ๆ ให้ไหลต่อจากแถบระบบเป็น
+     header ผืนเดียว — เส้นคั่นของชั้นนี้ตัดออก (เส้นปิดท้ายใช้ของ .topnav ตัวเดียว) */
+  background: color-mix(in srgb, var(--navy) 7%, var(--panel));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: stretch;
   gap: 6px;
@@ -679,11 +682,12 @@ button, select, input, textarea {
     line-height: 1.2;
   }
   /* M3 active indicator: pill สี accent จาง ๆ รองไอคอน (ไม่ทาทั้งปุ่ม) */
+  /* B1 (มติ 2026-07-18): pill สูง 32px ตามสเปค M3 active indicator (เดิม ~26px เตี้ยไป) */
   .mbi-ico {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 3px 14px;
+    padding: 6px 16px;
     border-radius: 999px;
     transition: background 0.15s ease;
   }
