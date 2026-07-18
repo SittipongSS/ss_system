@@ -7,6 +7,7 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { canEditSalesPlanning, dealAuditLabel, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { genId } from '@/lib/id';
+import { activeProductTypeError } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json().catch(() => ({}));
   const categoryCode = (body.categoryCode ?? deal.categoryCode ?? '').trim() || null;
+  const categoryError = await activeProductTypeError(categoryCode);
+  if (categoryError) return badRequest(categoryError);
   // anchor: body > วันที่เริ่มของดีล (mig 0095) > วันนี้
   const startDate = body.startDate || deal.startDate || todayStr();
   const now = new Date().toISOString();

@@ -21,6 +21,7 @@ import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
 import { isSuperuser } from '@/lib/permissions';
 import { inLeadScope } from '../leads/route';
 import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS } from '@/lib/sales/leads';
+import { activeProductTypeError } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +68,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const body = await req.json();
   if (!body.title?.trim()) return badRequest('ต้องระบุชื่อดีล');
+  const categoryCode = (body.categoryCode || '').trim() || null;
+  const categoryError = await activeProductTypeError(categoryCode);
+  if (categoryError) return badRequest(categoryError);
 
   let customerName = body.customerName || null;
   if (body.customerId) {
@@ -114,7 +118,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // ชื่อสูตรกลิ่น (ดีล SCENT — จุดปลั๊กอิน RD ในอนาคต)
     formulaName: (body.formulaName || '').trim() || null,
     // หมวดสินค้า (DL1 — mig 0094): ใช้เลือก timeline template ตามหมวด
-    categoryCode: (body.categoryCode || '').trim() || null,
+    categoryCode,
     // วันที่เริ่ม/สิ้นสุดของดีล (mig 0095) — startDate ใช้เป็น anchor gen ไทม์ไลน์
     startDate: body.startDate || null,
     endDate: body.endDate || null,

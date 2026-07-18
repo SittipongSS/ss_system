@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can, canUser } from '@/lib/permissions';
+import { can, canUser, canManageProductCategories } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -68,6 +68,16 @@ export async function proxy(request) {
     }
     const redirectUrl = new URL('/', request.url);
     return withRefreshedCookies(NextResponse.redirect(redirectUrl));
+  }
+
+  // Business taxonomy management belongs to the Sales head and the break-glass
+  // admin account. Other signed-in users still read categories through the API
+  // for forms, but a direct URL must not expose the management surface.
+  if (
+    user && !isApi && path.startsWith('/database/product-categories') &&
+    !canManageProductCategories(user.app_metadata?.role)
+  ) {
+    return withRefreshedCookies(NextResponse.redirect(new URL('/database', request.url)));
   }
 
   // ── Phased rollout lockdown ───────────────────────────────────────────
@@ -197,7 +207,7 @@ function apiWriteAllowed(method, path, role, extraCaps) {
   // งานบริหาร (mgmt) — admin + secretary, หรือผู้ใช้ที่ได้รับสิทธิ์เสริม mgmt:edit.
   if (path.startsWith('/api/mgmt')) return canUser(mgmtUser, 'mgmt:edit');
   // Master taxonomy (product categories) — supervisor-only writes.
-  if (path.startsWith('/api/product-types')) return can(role, 'master:manage');
+  if (path.startsWith('/api/product-types')) return canManageProductCategories(role);
   // Holiday calendar (working-day source for PM timeline) — supervisor-only writes.
   if (path.startsWith('/api/holidays')) return can(role, 'master:manage');
   // Excise registrations: SA submits/edits the link, LG approves (PATCH).

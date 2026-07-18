@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { isProductCategorySelectable } from "@/lib/master/productCategory";
 
 const mainName = (row) => row.mainCategoryName || row.mainCategoryNameTh || row.mainCategoryNameEn || "";
 const subName = (row) => row.nameTh || row.nameEn || "";
@@ -21,9 +22,14 @@ export default function ProductCategorySelect({
   const [valueMain = "", valueSub = ""] = String(value || "").split("-");
   const mainCode = mainValue ?? valueMain;
   const typeCode = subValue ?? valueSub;
+  const currentCode = value || (mainCode && typeCode ? `${mainCode}-${typeCode}` : "");
+  const selectableCategories = useMemo(
+    () => categories.filter((row) => isProductCategorySelectable(row, currentCode)),
+    [categories, currentCode],
+  );
   const mainOptions = useMemo(() => {
     const rows = new Map();
-    for (const category of categories) {
+    for (const category of selectableCategories) {
       if (!category.mainCategoryCode || rows.has(category.mainCategoryCode)) continue;
       rows.set(category.mainCategoryCode, mainName(category));
     }
@@ -32,22 +38,22 @@ export default function ProductCategorySelect({
       label: `${code} ${name}`.trim(),
       search: `${code} ${name}`.trim(),
     }));
-  }, [categories]);
-  const subOptions = useMemo(() => categories
+  }, [selectableCategories]);
+  const subOptions = useMemo(() => selectableCategories
     .filter((row) => row.mainCategoryCode === mainCode && row.typeCode)
     .sort((a, b) => String(a.typeCode).localeCompare(String(b.typeCode)))
     .map((row) => ({
       value: row.typeCode,
-      label: `${row.typeCode} ${subName(row)}`.trim(),
+      label: `${row.typeCode} ${subName(row)}${row.isActive === false ? " (พักใช้งาน)" : ""}`.trim(),
       search: `${row.typeCode} ${subName(row)}`.trim(),
-    })), [categories, mainCode]);
+    })), [selectableCategories, mainCode]);
 
   const changeMain = (nextMain) => {
     onMainChange?.(nextMain);
     onChange?.("", { mainCode: nextMain, typeCode: "", category: null });
   };
   const changeSub = (nextType) => {
-    const category = categories.find((row) => row.mainCategoryCode === mainCode && row.typeCode === nextType) || null;
+    const category = selectableCategories.find((row) => row.mainCategoryCode === mainCode && row.typeCode === nextType) || null;
     onSubChange?.(nextType, category);
     onChange?.(nextType ? `${mainCode}-${nextType}` : "", { mainCode, typeCode: nextType, category });
   };

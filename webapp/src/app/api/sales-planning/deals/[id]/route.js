@@ -25,6 +25,7 @@ import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 import { recalculateGraph, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
+import { activeProductTypeError } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -117,6 +118,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // หมวดสินค้า (DL1 — mig 0094): ใช้เลือก timeline template ตามหมวด
   if ('categoryCode' in body) {
     patch.categoryCode = (body.categoryCode || '').trim() || null;
+    if (patch.categoryCode !== (before.categoryCode || null)) {
+      const categoryError = await activeProductTypeError(patch.categoryCode);
+      if (categoryError) return badRequest(categoryError);
+    }
   }
   // วันที่เริ่ม/สิ้นสุดของดีล (mig 0095)
   if ('startDate' in body) patch.startDate = body.startDate || null;

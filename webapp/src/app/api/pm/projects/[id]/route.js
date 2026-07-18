@@ -2,7 +2,7 @@ import { viewScope, inScope, inPmProjectScope, canDeleteRecord, can, redactProdu
 import { mergeTemplateTasks, recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
-import { withUser, ok, fail, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject, deleteProjectDeep } from '@/lib/pm/projectsRepo';
 import { isForceRequest, canForceDelete, forceDeleteProjectExcise } from '@/lib/forceDelete';
 import { genId } from '@/lib/id';
@@ -12,6 +12,7 @@ import { rollupDeals } from '@/lib/sales/projectRollup';
 import { sortDealsByOrder } from '@/lib/pm/dealOrder';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { canApproveProjectClose } from '@/lib/pm/projectClose';
+import { activeProductTypeError } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,6 +158,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json();
   const updates = pickFields(body, EDITABLE, { nullable: ['startDate', 'dueDate'] });
+  if (
+    updates.productMainCategory !== undefined &&
+    (updates.productMainCategory || '') !== (project.productMainCategory || '')
+  ) {
+    const categoryError = await activeProductTypeError(updates.productMainCategory || null);
+    if (categoryError) return badRequest(categoryError);
+  }
   updates.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase.from('projects').update(updates).eq('id', id).select().single();

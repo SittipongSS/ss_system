@@ -318,6 +318,14 @@ export function canApproveMasterData(role) {
   return isSuperuser(role);
 }
 
+// Product-category taxonomy is business master data owned by the Sales head.
+// Keep this separate from `master:manage`: that capability also controls
+// system-level configuration (for example holidays) and remains admin-only
+// until the final permission-redesign phase.
+export function canManageProductCategories(role) {
+  return role === 'admin' || role === 'ae_supervisor';
+}
+
 // ── SAHAMIT module access ─────────────────────────────────────────────
 // The SAHAMIT (Planning & Sales) module is restricted to the SA · Key Account
 // (KA) team, plus admin / sales-head oversight. Capability alone isn't enough —

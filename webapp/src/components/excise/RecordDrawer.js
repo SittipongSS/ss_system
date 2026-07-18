@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { X } from "lucide-react";
 
 // Right-side slide-over for a single record: header (title + status badge),
@@ -7,7 +7,8 @@ import { X } from "lucide-react";
 // backdrop; the panel itself is theme-token styled inline (no globals change).
 //
 //   open / onClose, title, subtitle, badge (ReactNode), footer (ReactNode), children
-export default function RecordDrawer({ open, onClose, title, subtitle, badge, footer, children }) {
+export default function RecordDrawer({ open, onClose, title, subtitle, badge, footer, closeOnOverlay = true, children }) {
+  const titleId = useId();
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
@@ -21,8 +22,11 @@ export default function RecordDrawer({ open, onClose, title, subtitle, badge, fo
 
   if (!open) return null;
   return (
-    <div className="overlay" onClick={onClose} style={{ justifyContent: "flex-end", alignItems: "stretch", padding: 0 }}>
+    <div className="overlay" onClick={closeOnOverlay ? onClose : undefined} style={{ justifyContent: "flex-end", alignItems: "stretch", padding: 0 }}>
       <aside
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(480px, 100%)", height: "100%", background: "var(--panel-2)",
@@ -36,7 +40,7 @@ export default function RecordDrawer({ open, onClose, title, subtitle, badge, fo
         >
           <div style={{ minWidth: 0 }}>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 style={{ fontSize: 16, fontWeight: 700 }}>{title}</h3>
+              <h3 id={titleId} style={{ fontSize: 16, fontWeight: 700 }}>{title}</h3>
               {badge}
             </div>
             {subtitle && <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 3 }}>{subtitle}</p>}

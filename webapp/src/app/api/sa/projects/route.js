@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { todayStr } from '@/lib/pm/schedule';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
 import { normalizeDealType } from '@/lib/salesPlanning';
+import { activeProductTypeError } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const body = await req.json().catch(() => ({}));
   if (!body.name) return badRequest('ต้องระบุชื่อโครงการ');
+  const categoryError = await activeProductTypeError(body.productMainCategory || null);
+  if (categoryError) return badRequest(categoryError);
 
   const startDate = body.startDate || todayStr();
   const dueDate = body.dueDate || null;

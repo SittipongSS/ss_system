@@ -8,6 +8,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode, loadProject } from '@/lib/pm/projectsRepo';
+import { activeProductTypeError } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,6 +84,8 @@ export async function POST(request, { params }) {
   let projectError = null;
 
   const firstProduct = knownLines[0].product;
+  const categoryError = await activeProductTypeError(firstProduct.categoryCode || null);
+  if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
   const baseRow = {
     name: body.name || `RE-ORDER Sahamit PO ${po.poNumber}`,
     customerId: customer.id,
