@@ -106,9 +106,11 @@ export default function PerformanceTab({ year }) {
   }, [prevMonths, historyRows]);
 
   // ---- URL state (แชร์มุมมองได้) ----
+  // ค่าเริ่มต้น = มุมมองประชุมเช้า: เดือนปัจจุบัน · เป้าปกติ (ไม่ทบยอด) · รวมทั้งบริษัท
+  // — ทบยอดเป็นมุมมองเสริมที่กดเปิดเอง (มติผู้ใช้ 2026-07-18)
   const defaultBp = yearNum === now.year ? `${year}-${String(now.monthIdx + 1).padStart(2, "0")}` : year;
   const [view, setView] = useState(() => ({
-    carry: searchParams.get("carry") !== "0",
+    carry: searchParams.get("carry") === "1",
     bp: searchParams.get("bp") || defaultBp,
     scope: ["company", "team", "person"].includes(searchParams.get("scope")) ? searchParams.get("scope") : "company",
     team: searchParams.get("team") || SALES_TEAMS[0],
@@ -121,7 +123,7 @@ export default function PerformanceTab({ year }) {
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     const setOrDel = (k, v, def) => (v && v !== def ? params.set(k, v) : params.delete(k));
-    setOrDel("carry", view.carry ? "" : "0", "");
+    setOrDel("carry", view.carry ? "1" : "", "");
     setOrDel("bp", view.bp, defaultBp);
     setOrDel("scope", view.scope, "company");
     setOrDel("team", view.scope === "team" ? view.team : "", "");
