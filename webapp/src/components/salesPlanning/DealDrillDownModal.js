@@ -84,9 +84,9 @@ export default function DealDrillDownModal({ filter, onClose }) {
     remaining: "FC คงเหลือ (ดีลที่ยังเปิด)",
   }[filter.metric] || filter.metric;
 
-  // ยอดต่อดีลสูตรเดียวกับการ์ด: ดีล Won = Actual จาก SO (wonAmountOf) เมื่อดูช่อง Won
-  // หรือ FC Total; อื่น ๆ = มูลค่าคาดการณ์ (forecastAmount)
-  const amountOf = (d) => (isWonDeal(d) && (filter.metric === "won" || filter.metric === "fcTotal")
+  // Actual uses the SO-verified won amount. FC metrics always preserve the
+  // original projectValue so FC Total can audit forecast accuracy.
+  const amountOf = (d) => (isWonDeal(d) && filter.metric === "won"
     ? wonAmountOf(d) : forecastAmount(d));
   const totalValue = deals.reduce((sum, d) => sum + amountOf(d), 0);
 

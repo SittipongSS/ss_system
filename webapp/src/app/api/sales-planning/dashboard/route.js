@@ -1,7 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 import { cachedJson } from '@/lib/serverCache';
-import { isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { forecastAccuracyRollup, isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,18 +84,20 @@ function aggregateMonth(visibleDeals, targets, month) {
   const wonDeals = visibleDeals.filter((d) => isWon(d) && wonMonth(d) === month);
   const lostDeals = visibleDeals.filter((d) => d.stage === 'lost' && monthKey(d.forecastMonth) === month);
   const monthDeals = [...openDeals, ...wonDeals, ...lostDeals];
-  const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
+  const accuracy = forecastAccuracyRollup(openDeals, wonDeals, lostDeals);
+  const pipelineValue = accuracy.remainingForecast;
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
-  const wonValue = wonDeals.reduce((sum, d) => sum + wonAmt(d), 0);
+  const wonValue = accuracy.wonValue;
   // variance = ผลต่างคาดการณ์ vs ปิดจริง ของดีลที่ Won (บวก = ปิดต่ำกว่าคาด)
-  const wonForecastValue = wonDeals.reduce((sum, d) => sum + forecastAmt(d), 0);
+  const wonForecastValue = accuracy.wonForecastValue;
   const wonVariance = wonForecastValue - wonValue;
   // มูลค่าคาดการณ์ของดีลที่ "แพ้" ในเดือนนี้ — ใช้คิด FC คงเหลือ = FC Total − AT − Lost
-  const lostForecast = lostDeals.reduce((sum, d) => sum + forecastAmt(d), 0);
-  // "FC เต็ม" = ยอดรวมทั้งเดือน = ปิดจริง (Won) + ที่ยังเปิด (คาดการณ์) — ไม่รวมดีลที่แพ้.
-  // "FC คงเหลือ" = ส่วนที่ยังต้องปิดต่อ = ดีลที่ยังเปิด (open pipeline) เท่านั้น.
-  const fullForecast = pipelineValue + wonValue;
-  const remainingForecast = pipelineValue;
+  const lostForecast = accuracy.lostForecast;
+  // FC Total is the original forecast footprint for accuracy review: Open + Won + Lost.
+  // Keep the frozen projectValue for resolved deals; never substitute Actual for their FC.
+  // FC remaining is operational follow-up and therefore contains Open deals only.
+  const fullForecast = accuracy.fullForecast;
+  const remainingForecast = accuracy.remainingForecast;
 
   const byStage = {};
   for (const d of monthDeals) {
@@ -124,13 +126,13 @@ function aggregateMonth(visibleDeals, targets, month) {
   }
   const byForecast = FC_LEVELS.map((l) => fcMap[l] || { level: l, count: 0, value: 0 });
 
-  // แยกตามประเภทดีล 3 ค่า (SCENT/NPD/RE-ORDER — เฟส A): FC Total = won+open ของเดือนนี้,
-  // Actual = ปิดจริง, FC คงเหลือ = open ที่ยังต้องตามปิด — นิยามเดียวกับ KPI รวมด้านบน.
+  // Per type: FC Total = Open + Won + Lost, Actual = Won actual,
+  // FC remaining = Open only. Lost stays in FC Total so forecast misses remain visible.
   const typeMap = Object.fromEntries(DEAL_TYPES.map((t) => [t, { type: t, fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0 }]));
   for (const d of monthDeals) {
     const b = typeMap[dealTypeOf(d)];
-    if (isWon(d)) { b.actual += wonAmt(d); b.fcTotal += wonAmt(d); b.wonCount += 1; }
-    else if (d.stage === 'lost') { b.lostCount += 1; }
+    if (isWon(d)) { b.actual += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1; }
+    else if (d.stage === 'lost') { b.fcTotal += forecastAmt(d); b.lostCount += 1; }
     else { b.fcRemaining += forecastAmt(d); b.fcTotal += forecastAmt(d); b.openCount += 1; }
   }
   const byType = DEAL_TYPES.map((t) => typeMap[t]);
@@ -149,7 +151,7 @@ function aggregateMonth(visibleDeals, targets, month) {
     const cleanName = normalizedOwnerName(name);
     const key = cleanName ? `${team || 'no-team'}|${cleanName}` : (id || 'unassigned');
     if (!ownerMap[key]) {
-      ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
+      ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
     } else {
       ownerMap[key].ownerId ||= id || null;
       ownerMap[key].ownerName = ownerMap[key].ownerName === 'ไม่ระบุ' && name ? name : ownerMap[key].ownerName;
@@ -163,9 +165,9 @@ function aggregateMonth(visibleDeals, targets, month) {
   }
   for (const d of [...openDeals, ...wonDeals, ...lostDeals]) {
     const b = ownerBucket(d.ownerId, d.ownerName, d.team);
-    if (isWon(d)) { b.won += wonAmt(d); b.wonCount += 1; }
-    else if (d.stage === 'lost') { b.lost += forecastAmt(d); }
-    else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
+    if (isWon(d)) { b.won += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1; }
+    else if (d.stage === 'lost') { b.lost += forecastAmt(d); b.fcTotal += forecastAmt(d); }
+    else if (isOpen(d)) { b.weighted += forecastAmount(d); b.fcTotal += forecastAmt(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
   const byOwner = Object.values(ownerMap)
     .filter((b) => !isEmptyBucket(b))
@@ -178,7 +180,7 @@ function aggregateMonth(visibleDeals, targets, month) {
   const teamKey = (team) => team || 'ไม่ระบุ';
   const teamBucket = (team) => {
     const key = teamKey(team);
-    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
+    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
     return teamMap[key];
   };
   // เป้าระดับ SA (team=null) = "ยอดรวมบริษัท" คร่อมทุกทีม — แยกไว้ต่างหาก ไม่ใช่ทีมหนึ่ง
@@ -198,9 +200,9 @@ function aggregateMonth(visibleDeals, targets, month) {
   }
   for (const d of [...openDeals, ...wonDeals, ...lostDeals]) {
     const b = teamBucket(d.team);
-    if (isWon(d)) { b.won += wonAmt(d); b.wonCount += 1; }
-    else if (d.stage === 'lost') { b.lost += forecastAmt(d); }
-    else if (isOpen(d)) { b.weighted += forecastAmount(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
+    if (isWon(d)) { b.won += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1; }
+    else if (d.stage === 'lost') { b.lost += forecastAmt(d); b.fcTotal += forecastAmt(d); }
+    else if (isOpen(d)) { b.weighted += forecastAmount(d); b.fcTotal += forecastAmt(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
   const byTeam = Object.values(teamMap)
     .filter((b) => b.team) // ตัดถัง null (SA รวม / ดีลไม่ระบุทีม) ออกจากตารางทีม

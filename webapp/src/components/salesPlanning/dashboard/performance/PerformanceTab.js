@@ -98,7 +98,7 @@ export default function PerformanceTab({ year }) {
       else {
         const t = m.teams.find((x) => x.team === row.team);
         if (t) t.actual[mi] = amt;
-        else m.teams.push({ team: row.team, target: Array(12).fill(0), forecast: Array(12).fill(0), actual: Object.assign(Array(12).fill(0), { [mi]: amt }) });
+        else m.teams.push({ team: row.team, target: Array(12).fill(0), fcTotal: Array(12).fill(0), forecast: Array(12).fill(0), actual: Object.assign(Array(12).fill(0), { [mi]: amt }) });
       }
     }
     // ทับระดับทีมแล้วยอดบริษัทต้องตาม — ถ้ามีแถวบริษัทกรอกเองใช้ค่านั้นอยู่แล้ว

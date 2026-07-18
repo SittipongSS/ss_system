@@ -17,7 +17,7 @@ import {
   periodKindOf,
 } from './performanceMath';
 
-const row = (target, actual, forecast = Array(12).fill(0)) => ({ target, actual, forecast });
+const row = (target, actual, forecast = Array(12).fill(0), fcTotal = forecast) => ({ target, actual, forecast, fcTotal });
 const fill = (v) => Array(12).fill(v);
 
 /* ---------- buildMatrix ---------- */
@@ -26,21 +26,21 @@ test('buildMatrix folds byOwner/byTeam/totals into 12-slot arrays and sorts by t
   const months = [
     {
       month: '2026-01',
-      totals: { targetAmount: 30, weightedForecast: 5, wonValue: 12 },
+      totals: { targetAmount: 30, fullForecast: 21, weightedForecast: 5, wonValue: 12 },
       byOwner: [
-        { ownerId: 'u2', ownerName: 'บี', team: 'SV', target: 10, won: 4, weighted: 2 },
-        { ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 10, won: 8, weighted: 3 },
+        { ownerId: 'u2', ownerName: 'บี', team: 'SV', target: 10, won: 4, weighted: 2, fcTotal: 8 },
+        { ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 10, won: 8, weighted: 3, fcTotal: 13 },
       ],
       byTeam: [
-        { team: 'SV', target: 10, won: 4, weighted: 2 },
-        { team: 'KA', target: 20, won: 8, weighted: 3 }, // เป้าทีม > รวมรายคน (มีเป้าระดับทีม)
+        { team: 'SV', target: 10, won: 4, weighted: 2, fcTotal: 8 },
+        { team: 'KA', target: 20, won: 8, weighted: 3, fcTotal: 13 }, // เป้าทีม > รวมรายคน (มีเป้าระดับทีม)
       ],
     },
     {
       month: '2026-03',
-      totals: { targetAmount: 40, weightedForecast: 0, wonValue: 0 },
-      byOwner: [{ ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 15, won: 0, weighted: 0 }],
-      byTeam: [{ team: 'KA', target: 15, won: 0, weighted: 0 }],
+      totals: { targetAmount: 40, fullForecast: 6, weightedForecast: 0, wonValue: 0 },
+      byOwner: [{ ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 15, won: 0, weighted: 0, fcTotal: 6 }],
+      byTeam: [{ team: 'KA', target: 15, won: 0, weighted: 0, fcTotal: 6 }],
     },
   ];
   const m = buildMatrix(months);
@@ -49,12 +49,15 @@ test('buildMatrix folds byOwner/byTeam/totals into 12-slot arrays and sorts by t
   assert.equal(m.people[0].target[0], 10);
   assert.equal(m.people[0].target[2], 15);
   assert.equal(m.people[0].actual[0], 8);
+  assert.equal(m.people[0].fcTotal[0], 13);
+  assert.equal(m.people[0].fcTotal[2], 6);
   assert.equal(m.people[0].forecast[0], 3);
   assert.equal(m.people[0].target[1], 0); // เดือนไม่มีข้อมูล = 0
   // ทีมอ่านจาก byTeam ตรง ๆ ไม่ sum จากรายคน — เป้าระดับทีมไม่หาย
   assert.equal(m.teams[0].team, 'KA');
   assert.equal(m.teams[0].target[0], 20);
   assert.equal(m.company.target[0], 30);
+  assert.equal(m.company.fcTotal[0], 21);
   assert.equal(m.company.actual[0], 12);
 });
 
@@ -107,6 +110,7 @@ test('windowStat sums the window and adds carry when carryOn', () => {
   assert.equal(s.target, 20);
   assert.equal(s.carry, 5); // ม.ค. ขาด 5
   assert.equal(s.mustClose, 25);
+  assert.equal(s.fcTotal, 7);
   assert.equal(s.forecast, 7);
   assert.equal(s.actual, 0);
   assert.equal(s.projected, 7);

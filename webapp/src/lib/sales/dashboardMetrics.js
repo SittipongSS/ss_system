@@ -11,6 +11,25 @@ export const isOpenDeal = (d) => !['won', 'in_project', 'lost'].includes(d?.stag
 // ยอด Actual ของดีล Won — อ่านผ่าน cache wonValue เฉพาะเมื่อยืนยันว่ามาจาก Approved SO
 export const wonAmountOf = (d) => dealActualFromSalesOrders(d);
 
+// FC Total preserves every forecast made in the period (Open + Won + Lost)
+// so forecast misses remain auditable. FC remaining is the Open portion only.
+export function forecastAccuracyRollup(openDeals = [], wonDeals = [], lostDeals = []) {
+  const fc = (d) => Number(d?.projectValue ?? 0);
+  const remainingForecast = openDeals.reduce((sum, d) => sum + fc(d), 0);
+  const wonForecastValue = wonDeals.reduce((sum, d) => sum + fc(d), 0);
+  const lostForecast = lostDeals.reduce((sum, d) => sum + fc(d), 0);
+  const wonValue = wonDeals.reduce((sum, d) => sum + wonAmountOf(d), 0);
+  return {
+    fullForecast: remainingForecast + wonForecastValue + lostForecast,
+    remainingForecast,
+    wonForecastValue,
+    lostForecast,
+    wonValue,
+    // Positive means Actual beat the resolved FC; Lost contributes zero Actual.
+    forecastVariance: wonValue - wonForecastValue - lostForecast,
+  };
+}
+
 // เดือนที่นับยอด Won: เดือนที่ผู้ใช้เลือกตอนกด Won ก่อน แล้วค่อย fallback ตามลำดับ
 export const wonMonthOf = (d) => monthKey(d?.metadata?.wonMonth)
   || monthKey(d?.confirmedAt)

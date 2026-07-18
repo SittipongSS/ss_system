@@ -23,7 +23,7 @@ function monthIdxOf(monthKey) {
 // team/company อ่านจาก byTeam/totals ตรง ๆ — ห้าม sum จากรายคน เพราะเป้าระดับทีม
 // (ownerId null) ไม่อยู่ใน byOwner และจะนับซ้ำ/ขาดเงียบ ๆ.
 export function buildMatrix(yearDashboards) {
-  const company = { target: ZERO12(), forecast: ZERO12(), actual: ZERO12() };
+  const company = { target: ZERO12(), fcTotal: ZERO12(), forecast: ZERO12(), actual: ZERO12() };
   const people = new Map();
   const teams = new Map();
 
@@ -32,6 +32,7 @@ export function buildMatrix(yearDashboards) {
     if (mi == null) continue;
     const totals = dashboard.totals || {};
     company.target[mi] += Number(totals.targetAmount || 0);
+    company.fcTotal[mi] += Number(totals.fullForecast || 0);
     company.forecast[mi] += Number(totals.weightedForecast || 0);
     company.actual[mi] += Number(totals.wonValue || 0);
 
@@ -44,12 +45,14 @@ export function buildMatrix(yearDashboards) {
           name: row.ownerName || 'ไม่ระบุ',
           team: row.team || null,
           target: ZERO12(),
+          fcTotal: ZERO12(),
           forecast: ZERO12(),
           actual: ZERO12(),
         });
       }
       const p = people.get(key);
       p.target[mi] += Number(row.target || 0);
+      p.fcTotal[mi] += Number(row.fcTotal || 0);
       p.forecast[mi] += Number(row.weighted || 0);
       p.actual[mi] += Number(row.won || 0);
     }
@@ -57,10 +60,11 @@ export function buildMatrix(yearDashboards) {
     for (const row of dashboard.byTeam || []) {
       const key = row.team || 'ไม่ระบุทีม';
       if (!teams.has(key)) {
-        teams.set(key, { team: key, target: ZERO12(), forecast: ZERO12(), actual: ZERO12() });
+        teams.set(key, { team: key, target: ZERO12(), fcTotal: ZERO12(), forecast: ZERO12(), actual: ZERO12() });
       }
       const t = teams.get(key);
       t.target[mi] += Number(row.target || 0);
+      t.fcTotal[mi] += Number(row.fcTotal || 0);
       t.forecast[mi] += Number(row.weighted || 0);
       t.actual[mi] += Number(row.won || 0);
     }
@@ -108,12 +112,14 @@ export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount 
   const target = sumRange(row.target, startIdx, endIdx);
   const carry = carryOn ? carryIn(row.target, row.actual, startIdx, closedCount) : 0;
   const mustClose = target + carry;
+  const fcTotal = sumRange(row.fcTotal || [], startIdx, endIdx);
   const forecast = sumRange(row.forecast, startIdx, endIdx);
   const actual = sumRange(row.actual, startIdx, endIdx);
   return {
     target,
     carry,
     mustClose,
+    fcTotal,
     forecast,
     actual,
     projected: actual + forecast,
