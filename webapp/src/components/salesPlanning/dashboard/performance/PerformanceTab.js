@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCan, useRole } from "@/lib/roleContext";
 import { buildMatrix, closedMonths, ytdMonths } from "@/lib/sales/performanceMath";
 import { apiCache } from "@/lib/apiCache";
 import { SALES_TEAMS } from "@/components/salesPlanning/ui";
@@ -33,6 +34,10 @@ export default function PerformanceTab({ year }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  // ลิงก์หน้ากรอกยอดรายเดือนปีก่อน — สิทธิ์เดียวกับตัวช่วยวางเป้า (Supervisor/admin)
+  const canTarget = useCan("salesplan:target");
+  const role = useRole();
+  const canEditHistory = canTarget && (role === "admin" || role === "ae_supervisor");
 
   const yearNum = Number(year);
   const prevYear = String(yearNum - 1);
@@ -146,7 +151,7 @@ export default function PerformanceTab({ year }) {
         </div>
       )}
 
-      <YearProgressBar {...common} carryOn={view.carry} onCarryChange={(carry) => update({ carry })} />
+      <YearProgressBar {...common} carryOn={view.carry} onCarryChange={(carry) => update({ carry })} historyHref={canEditHistory ? "/sa/targets/history" : null} />
 
       <MorningBoard
         {...common}
