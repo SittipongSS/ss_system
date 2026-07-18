@@ -144,13 +144,21 @@ export default function MyDashboardTab({ month }) {
             </div>
           </section>
 
+          {/* ตัวเลขเป้า/ทบยอด/กราฟฉบับเต็มย้ายไปแท็บ "ผลงานขาย" (2026-07-18) —
+              ที่นี่เหลือสรุปบรรทัดเดียว + ลิงก์เจาะตัวเอง กันข้อมูลซ้ำสองที่แล้วเพี้ยนหากัน */}
           <section className={`${styles.card} ${styles.teamCard}`}>
-            <div className={styles.sectionTitle}><TrendingUp size={18} /><div><h3>เป้าหมายของฉัน</h3><span>Target เทียบ Actual เดือนนี้</span></div></div>
-            <div style={{ marginTop: 16 }}>
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}><strong style={{ fontSize: 22 }}>{fmtMoney(actual)}</strong><span style={{ color: "var(--text-3)", fontSize: 11 }}>{fmtPercent(targetPct)}</span></div>
-              <div style={{ height: 8, marginTop: 9, overflow: "hidden", borderRadius: 999, background: "var(--panel-2)" }}><div style={{ width: `${Math.min(100, Math.max(0, targetPct))}%`, height: "100%", borderRadius: 999, background: "var(--accent)" }} /></div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, color: "var(--text-3)", fontSize: 10.5 }}><span>0</span><span>Target {fmtMoney(target)}</span></div>
+            <div className={styles.sectionTitle}><TrendingUp size={18} /><div><h3>เป้าหมายของฉัน</h3><span>เดือนนี้</span></div></div>
+            <div style={{ marginTop: 12, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <strong style={{ fontSize: 22 }}>{fmtMoney(actual)}</strong>
+              <span style={{ color: "var(--text-3)", fontSize: 12 }}>/ {fmtMoney(target)} · {fmtPercent(targetPct)}</span>
             </div>
+            <Link
+              href={data?.me?.id ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(data.me.id)}` : "/sa/dashboard?tab=performance"}
+              className="btn ghost sm"
+              style={{ width: "100%", marginTop: 12 }}
+            >
+              ดูผลงานเต็ม (ทบยอด · กราฟ · YoY) <ArrowUpRight size={13} />
+            </Link>
           </section>
 
           <section className={`${styles.card} ${styles.teamCard}`}>
