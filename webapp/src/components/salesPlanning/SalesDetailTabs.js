@@ -1,22 +1,9 @@
 "use client";
 
 import { SALES_DETAIL_TABS } from "@/lib/salesDetailTabs";
+import Tabs from "@/components/ui/Tabs";
 
+// แท็บส่วนของหน้ารายละเอียดงานขาย — ใช้ Tabs กลาง (globals: .tabs-header/.tab-btn)
 export default function SalesDetailTabs({ value, onChange, label = "ส่วนของรายการ" }) {
-  return (
-    <div className="tabs-header" role="tablist" aria-label={label}>
-      {SALES_DETAIL_TABS.map((tab) => (
-        <button
-          key={tab.key}
-          type="button"
-          role="tab"
-          aria-selected={value === tab.key}
-          className={`tab-btn ${value === tab.key ? "active" : ""}`}
-          onClick={() => onChange(tab.key)}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  );
+  return <Tabs tabs={SALES_DETAIL_TABS} value={value} onChange={onChange} ariaLabel={label} />;
 }
