@@ -69,13 +69,17 @@
 - [x] Mobile Light/Dark
 - [x] ตรวจ Drawer และไม่มี horizontal overflow
 - [x] ตรวจหมวดพักใช้ไม่ปรากฏในงานใหม่ แต่ข้อมูลเดิมยังอ่านได้ด้วย Unit/API validation
-- [ ] ตรวจ Confirm และ Toast กับฐานข้อมูลที่ลง Migration 0118 แล้ว
+- [x] ตรวจหน้า production กับฐานข้อมูลที่ลง Migration 0118 แล้ว: เมนู, summary, grouped table, usage count, Drawer เพิ่ม/แก้ไข และ Confirm แบบเปิดแล้วกดยกเลิกโดยไม่เปลี่ยนข้อมูล
+- [x] ตรวจ Confirm dialog และแก้ shared Modal ให้มี `role="dialog"`, accessible name, focus trap และคืน focus เมื่อปิด
+- [ ] ตรวจ Toast จากการเพิ่ม/แก้ไข/เปลี่ยนสถานะจริงใน environment ที่อนุญาตให้เขียนข้อมูล
 - [ ] ผู้ใช้ตรวจภาพและการใช้งาน
-- [ ] Commit, Push, PR และ CI
+- [x] Commit, Push, PR #542, CI และ merge commit `ba61df8`
 
 ## Visual evidence
 
-- รอจับภาพหลัง QA
+- ตรวจ production ที่ `https://ss-team.vercel.app/database/product-categories` ด้วยบัญชี Admin เมื่อ 19 กรกฎาคม 2026
+- พบข้อมูล 4 หมวดหลัก, 105 หมวดรอง, 105 กำลังใช้งาน และ 0 พักใช้งาน
+- Drawer เพิ่ม/แก้ไขแสดงรหัสล็อก ชื่อไทยหลัก ชื่ออังกฤษรอง และ usage ของ `01-002` เท่ากับ 91 สินค้า, 39 ดีล, 6 โครงการ
 
 ## Known issues / งานที่เลื่อนไป
 
