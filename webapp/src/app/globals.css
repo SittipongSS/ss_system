@@ -2509,6 +2509,10 @@ button.empty-state { width: 100%; font: inherit; }
 }
 
 /* Tabs */
+/* Tabs = สลับ "ส่วน/มุมมอง" ของหน้า (active = เส้นใต้). ใช้ผ่าน component กลาง
+   components/ui/Tabs.js เสมอ (อย่าเขียน .tabs-header/.tab-btn เองในหน้าใหม่).
+   คู่กับ .segmented (ViewSwitcher) = ตัว "กรอง/สลับโหมด" (active = พื้นส้ม).
+   กติกากันเพี้ยน: สลับหน้า → Tabs · กรองในหน้า → segmented. */
 .tabs-header {
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -2528,10 +2532,11 @@ button.empty-state { width: 100%; font: inherit; }
   padding: 8px 14px;
   cursor: pointer;
   position: relative;
-  transition: color 0.1s;
+  transition: color 0.1s, border-color 0.12s;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
+.tab-btn:disabled { opacity: .4; cursor: not-allowed; }
 
 .tab-btn:hover {
   color: var(--text);
@@ -3026,11 +3031,6 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .grid-cell-box:active {
   transform: translateY(0.5px);
-}
-
-/* Tab underline: smoother */
-.tab-btn {
-  transition: color 0.1s, border-color 0.12s;
 }
 
 /* ─── Forecast Product Cards (Option A + C) ─── */

@@ -17,6 +17,7 @@ import MyDashboardTab from "@/components/salesPlanning/dashboard/MyDashboardTab"
 import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
 import RdDashboardTab from "@/components/salesPlanning/dashboard/RdDashboardTab";
 import { apiCache, cachedFetchJson } from "@/lib/apiCache";
+import Tabs from "@/components/ui/Tabs";
 
 const DASHBOARD_TABS = [
   { key: "my", label: "แดชบอร์ดของฉัน" },
@@ -611,27 +612,19 @@ function DashboardContent() {
           </div>
         )}
 
-        <div className="tabs-header" role="tablist" aria-label="มุมมองภาพรวม">
-          {DASHBOARD_TABS.filter((t) => {
+        <Tabs
+          ariaLabel="มุมมองภาพรวม"
+          value={tab}
+          onChange={setTab}
+          tabs={DASHBOARD_TABS.filter((t) => {
             if (t.key === "overview" && !canSeeDealKpi(role)) return false; // Basic filter for overview
             if (t.key === "task_kpi" && !canSeeKpi) return false;
-              if (t.key === "lead_kpi" && !canSeeLeadKpi(role)) return false;
+            if (t.key === "lead_kpi" && !canSeeLeadKpi(role)) return false;
             if (t.key === "rd_kpi" && !canSeeRdKpi(role)) return false; // แดชบอร์ด/KPI ฝ่าย RD — วัดแยกจากฝ่ายขาย
             if (t.key === "my" && role === "rd") return false; // rd ไม่มีดีลของตัวเอง — ใช้แท็บ RD แทน
             return true;
-          }).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              className={`tab-btn ${tab === t.key ? "active" : ""}`}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+          })}
+        />
 
         {tab === "my" && (
           <MyDashboardTab month={month} />

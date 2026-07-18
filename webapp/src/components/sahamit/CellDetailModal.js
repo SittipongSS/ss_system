@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { Lock } from "lucide-react";
 import Modal from "@/components/Modal";
+import Tabs from "@/components/ui/Tabs";
 import CoveragePanel from "@/components/sahamit/CoveragePanel";
 import { fmtDate } from "@/lib/format";
 import { cellDetail, RECON_STATUS_COLOR } from "@/lib/sahamit/reconcileClient";
@@ -57,11 +58,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
         <div style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>ไม่พบข้อมูลช่องนี้</div>
       ) : (
         <div style={{ padding: "4px 2px", maxHeight: "70vh", overflow: "auto" }}>
-          <div className="tabs-header">
-            {TABS.map((t) => (
-              <button key={t.key} className={`tab-btn ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>{t.label}</button>
-            ))}
-          </div>
+          <Tabs tabs={TABS} value={tab} onChange={setTab} />
 
           {tab === "overview" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>

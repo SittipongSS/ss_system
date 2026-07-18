@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import FilterPopover from "@/components/ui/FilterPopover";
+import Tabs from "@/components/ui/Tabs";
 import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -276,11 +277,7 @@ export default function ForecastPage() {
         </div>
       ) : (
         <>
-          <div className="tabs-header">
-            {TABS.map((t) => (
-              <button key={t.key} className={`tab-btn ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>{t.label}</button>
-            ))}
-          </div>
+          <Tabs tabs={TABS} value={tab} onChange={setTab} />
 
           {/* ค้นหา + กรองหมวด — มีผลกับแท็บที่เป็นรายการสินค้า (ไม่รวมประวัติ/เทียบรอบ) */}
           {tab !== "history" && (

@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
+import Tabs from "@/components/ui/Tabs";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
@@ -380,26 +381,16 @@ export default function CustomerDetails() {
       </div>
 
       {/* Tabs Header */}
-      <div className="tabs-header">
-        <button onClick={() => setActiveTab("products")} className={`tab-btn ${activeTab === "products" ? "active" : ""}`}>
-          รายการสินค้า ({products.length})
-        </button>
-        {canViewTax && (
-          <>
-            <button onClick={() => setActiveTab("registrations")} className={`tab-btn ${activeTab === "registrations" ? "active" : ""}`}>
-              การขึ้นทะเบียน ({regs.length})
-            </button>
-            <button onClick={() => setActiveTab("orders")} className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}>
-              การยื่นชำระภาษี ({orders.length})
-            </button>
-          </>
-        )}
-        {projects.length > 0 && (
-          <button onClick={() => setActiveTab("projects")} className={`tab-btn ${activeTab === "projects" ? "active" : ""}`}>
-            โครงการ ({projects.length})
-          </button>
-        )}
-      </div>
+      <Tabs
+        value={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { key: "products", label: `รายการสินค้า (${products.length})` },
+          canViewTax && { key: "registrations", label: `การขึ้นทะเบียน (${regs.length})` },
+          canViewTax && { key: "orders", label: `การยื่นชำระภาษี (${orders.length})` },
+          projects.length > 0 && { key: "projects", label: `โครงการ (${projects.length})` },
+        ]}
+      />
 
       {/* Products Tab */}
       {activeTab === "products" && (
