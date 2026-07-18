@@ -126,6 +126,20 @@ test('quotation print totals follow the agreed footer structure', () => {
   assert.doesNotMatch(noDiscount, /ยอดหลังหักส่วนลด<\/td>/);
 });
 
+test('quotation pending approval prints with a watermark; approved/legacy do not', () => {
+  const base = { quoteNumber: 'QT-006', lines: [], subtotal: 0, totalAmount: 0, vatRate: 0 };
+  assert.match(
+    buildQuotePrintHTML({ ...base, approvalStatus: 'pending' }),
+    /class="watermark">เอกสารยังไม่อนุมัติ/,
+  );
+  assert.doesNotMatch(
+    buildQuotePrintHTML({ ...base, approvalStatus: 'approved' }),
+    /class="watermark"/,
+  );
+  // ใบ grandfather (not_required / ไม่มีฟิลด์) ไม่ใช่ใบรออนุมัติ — ไม่ขึ้นลายน้ำ
+  assert.doesNotMatch(buildQuotePrintHTML(base), /class="watermark"/);
+});
+
 test('showQuotePrintError replaces the loading page with a safe error message', () => {
   const target = fakePrintWindow();
   showQuotePrintError(target, '<โหลดไม่สำเร็จ>');

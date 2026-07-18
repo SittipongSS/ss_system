@@ -133,7 +133,10 @@ export function buildQuotePrintHTML(quote, options = {}) {
   const documentDateLabel = options.documentDateLabel || 'วันที่ออกใบ';
   const secondaryDateLabel = options.secondaryDateLabel || 'ยืนราคาถึง';
   const secondaryDateValue = options.secondaryDateValue ?? quote.validUntil;
-  const watermark = options.watermark || '';
+  // ใบที่ยังไม่ผ่านอนุมัติจากเจ้าของดีล (pending) ต้องขึ้นลายน้ำเสมอ (มติผู้ใช้ 2026-07-18)
+  // — ใบ grandfather (not_required) / อนุมัติแล้ว ไม่ขึ้น; caller override ได้ทาง options
+  const watermark = options.watermark
+    || (quote.approvalStatus === 'pending' ? 'เอกสารยังไม่อนุมัติ' : '');
   const paginatedPreview = options.paginatedPreview !== false;
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
   const hasLineDiscount = lines.some((line) => Number(line.discountAmount) > 0);
