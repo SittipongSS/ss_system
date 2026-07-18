@@ -98,9 +98,11 @@ export default function LeadsPage() {
     { key: "budget", label: "Budget" },
   ];
 
+  // ทิศตั้งต้นต่อคีย์: ตัวหนังสือ/สถานะอ่าน ก→ฮ (asc), วันที่/ยอดเอาใหม่/มากก่อน (desc)
+  const defaultDir = (key) => (key === "name" || key === "status" ? "asc" : "desc");
   const handleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("desc"); }
+    else { setSortKey(key); setSortDir(defaultDir(key)); }
   };
   const sortArrow = (key) => sortKey === key
     ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
@@ -165,7 +167,8 @@ export default function LeadsPage() {
       if (sortKey === "name") return (a.contactName || "").localeCompare(b.contactName || "", "th") * mul;
       if (sortKey === "status") return ((LEAD_STATUSES.indexOf(a.status) || 99) - (LEAD_STATUSES.indexOf(b.status) || 99)) * mul;
       if (sortKey === "budget") return ((a.budget || 0) - (b.budget || 0)) * mul;
-      return ((a.createdAt || "") < (b.createdAt || "") ? 1 : -1) * mul;
+      // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอลีดเก่าสุด
+      return ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1) * mul;
     });
   }, [leads, query, statusFilter, sortKey, sortDir]);
 
@@ -429,7 +432,7 @@ export default function LeadsPage() {
             <div className="spacer" />
             <SortControl
               value={sortKey}
-              onChange={(event) => { setSortKey(event.target.value); setSortDir("asc"); }}
+              onChange={(event) => { setSortKey(event.target.value); setSortDir(defaultDir(event.target.value)); }}
               options={SORT_OPTIONS}
               direction={sortDir}
               onDirectionChange={setSortDir}
