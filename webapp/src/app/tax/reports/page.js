@@ -106,8 +106,9 @@ export default function ReportsPage() {
   const [type, setType] = useState("registration");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [customerId, setCustomerId] = useState("");
-  const [status, setStatus] = useState("all");
+  // ตัวกรองเป็น multi-select ทั้งคู่ (มติผู้ใช้ 2026-07-18) — ว่าง = ทั้งหมด
+  const [customerIds, setCustomerIds] = useState([]);
+  const [statuses, setStatuses] = useState([]);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(() => new Set()); // row ids to download
@@ -119,10 +120,10 @@ export default function ReportsPage() {
     const p = new URLSearchParams({ type });
     if (from) p.set("from", from);
     if (to) p.set("to", to);
-    if (customerId) p.set("customerId", customerId);
-    if (status && status !== "all") p.set("status", status);
+    if (customerIds.length) p.set("customerId", customerIds.join(","));
+    if (statuses.length) p.set("status", statuses.join(","));
     return p.toString();
-  }, [type, from, to, customerId, status]);
+  }, [type, from, to, customerIds, statuses]);
 
   useEffect(() => {
     let alive = true;
@@ -183,7 +184,10 @@ export default function ReportsPage() {
     },
   }))];
 
-  const customerName = customers.find((c) => c.id === customerId)?.name;
+  // หัวเอกสารพิมพ์: เลือกลูกค้ารายเดียวโชว์ชื่อ หลายรายโชว์จำนวน (ชื่อรายแถวมีในตารางอยู่แล้ว)
+  const customerName = customerIds.length === 1
+    ? customers.find((c) => c.id === customerIds[0])?.name
+    : (customerIds.length > 1 ? `ลูกค้า ${customerIds.length} ราย` : undefined);
   const downloadXlsx = () => {
     const a = document.createElement("a");
     a.href = `/api/tax/reports?${query}&format=xlsx${idsParam}`;
@@ -240,25 +244,25 @@ export default function ReportsPage() {
         <div className="toolbar">
           <div className="segmented">
             {REPORT_TABS.map((t) => (
-              <button key={t.key} className={type === t.key ? "active" : ""} onClick={() => { setType(t.key); setStatus("all"); }}>{t.label}</button>
+              <button key={t.key} className={type === t.key ? "active" : ""} onClick={() => { setType(t.key); setStatuses([]); }}>{t.label}</button>
             ))}
           </div>
           <div className="spacer" />
           <FilterPopover
-            count={(status && status !== "all" ? 1 : 0) + (customerId ? 1 : 0)}
-            onClear={() => { setStatus("all"); setCustomerId(""); }}
+            count={statuses.length + customerIds.length}
+            onClear={() => { setStatuses([]); setCustomerIds([]); }}
             groups={[
               {
-                key: "status", label: "สถานะ", icon: CircleDot, single: true,
+                key: "status", label: "สถานะ", icon: CircleDot,
                 options: statusFilters.filter((f) => f.key !== "all").map((f) => ({ value: f.key, label: f.label })),
-                selected: status && status !== "all" ? [status] : [],
-                onChange: (arr) => setStatus(arr[0] || "all"),
+                selected: statuses,
+                onChange: setStatuses,
               },
               {
-                key: "customer", label: "ลูกค้า", icon: Building2, single: true,
+                key: "customer", label: "ลูกค้า", icon: Building2,
                 options: customers.map((c) => ({ value: c.id, label: c.name })),
-                selected: customerId ? [customerId] : [],
-                onChange: (arr) => setCustomerId(arr[0] || ""),
+                selected: customerIds,
+                onChange: setCustomerIds,
               },
             ]}
           />
