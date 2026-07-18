@@ -247,10 +247,12 @@ export function buildGanttPrintHTML(project) {
       <div class="leg"><span class="sw" style="background:${STATUS_FILL.Pending}"></span>รอดำเนินการ</div>
       <div class="leg"><span class="dia">◆</span> จุดสำคัญ (Milestone)</div>
     </div>`;
+  // แถวบน 3 ช่อง (มติผู้ใช้ 2026-07-18): ผู้ดูแล (AE) / ผู้จัดทำ (AC) / ผู้ตรวจสอบ
   const signatures = `
     <div class="sign-sec">
-      <div class="sign-row two">
-        ${signBox({ label: 'ผู้ประสานงาน', role: 'ACCOUNT COORDINATOR', name: preparerName })}
+      <div class="sign-row three">
+        ${signBox({ label: 'ผู้ดูแล', role: 'ACCOUNT EXECUTIVE', name: project.aeOwner || '' })}
+        ${signBox({ label: 'ผู้จัดทำ', role: 'ACCOUNT COORDINATOR', name: preparerName })}
         ${signBox({ label: 'ผู้ตรวจสอบ', role: 'AE SUPERVISOR', name: reviewerName })}
       </div>
       ${signDepts.length ? `<div class="sign-row three">${signDepts.map((dep) => signBox({ label: `ผู้รับผิดชอบ ฝ่าย ${dep}` })).join('')}</div>` : ''}

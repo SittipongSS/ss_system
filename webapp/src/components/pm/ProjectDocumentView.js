@@ -496,7 +496,9 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
 
           {/* ลายเซ็น */}
           <div style={{ position: "sticky", left: 0, display: "flex", flexWrap: "wrap", justifyContent: "space-around", gap: "32px", padding: "24px 20px", borderTop: "1px solid var(--border)", background: "var(--panel-2)", zIndex: 1, width: "100%", minWidth: "min-content" }}>
-            <SignBlock label="ผู้ประสานงาน" role="ตำแหน่ง ACCOUNT COORDINATOR" value={pv("preparedBy")} disabled={disabled} users={users.filter(u => u.role === "ac")} onCommit={commitField("preparedBy")} />
+            {/* ชุดเดียวกับช่องลงชื่อบนเอกสารพิมพ์ (ganttPrint): ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ */}
+            <SignBlock label="ผู้ดูแล" role="ตำแหน่ง ACCOUNT EXECUTIVE" value={pv("aeOwner")} disabled={disabled} users={users.filter(u => u.role === "ae" || u.role === "senior_ae" || u.role === "ae_supervisor")} onCommit={commitField("aeOwner")} />
+            <SignBlock label="ผู้จัดทำ" role="ตำแหน่ง ACCOUNT COORDINATOR" value={pv("preparedBy")} disabled={disabled} users={users.filter(u => u.role === "ac")} onCommit={commitField("preparedBy")} />
             {/* ผู้ตรวจสอบ = field เดียวกับฟอร์มและหัวเอกสาร (aeSupervisor) — เลิกใช้ reviewedBy เพื่อไม่ให้ข้อมูลแตกเป็นสองที่ */}
             <SignBlock label="ผู้ตรวจสอบ" role="ตำแหน่ง AE SUPERVISOR" value={pv("aeSupervisor") || pv("reviewedBy")} disabled={disabled} users={users.filter(u => u.role === "ae_supervisor")} onCommit={commitField("aeSupervisor")} />
           </div>

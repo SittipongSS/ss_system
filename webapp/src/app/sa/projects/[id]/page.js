@@ -1024,7 +1024,9 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {(p.deals || []).length > 1 && (
+        {/* โชว์ตั้งแต่มีดีลเดียว (มติผู้ใช้ 2026-07-18: "ปุ่มเลือกดีลหาย") — มีดีลเดียวก็ยัง
+            มีตัวเลือก "งานกลางโครงการ" ให้สลับดูได้ */}
+        {(p.deals || []).length > 0 && (
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>ไทม์ไลน์ที่แสดง</div>
@@ -1105,7 +1107,7 @@ export default function ProjectDetailPage() {
               })()}
             </div>
             <div className="project-timeline-card-actions">
-              {(p.deals || []).length > 1 && (
+              {(p.deals || []).length > 0 && (
                 <MultiSelectFilter
                   label="ดีลที่แสดง"
                   selected={timelineDealFilters}
