@@ -75,21 +75,33 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
 
   // เดือนที่ส่งให้ modal รายดีล: งวดเดือน = เดือนนั้น, งวดใหญ่กว่า = ทั้งปี (กรองปีแทน)
   const dealMonth = kind === "month" ? `${year}-${String(win.startIdx + 1).padStart(2, "0")}` : null;
-  const openDeals = (row, isTeam) =>
+  const openMetricDeals = (row, isTeam, metric) =>
     onDealDrill?.({
       month: dealMonth,
       year: String(year),
-      ownerId: !isTeam && row.id && !String(row.id).includes(":") ? row.id : null,
-      ownerName: !isTeam ? row.name : null,
+      ownerId: row.id !== "company" && !isTeam && row.id && !String(row.id).includes(":") ? row.id : null,
+      ownerName: row.id !== "company" && !isTeam ? row.name : null,
       team: isTeam ? row.team : row.team || null,
-      metric: "won",
-      label: isTeam ? `ทีม ${row.team}` : row.name,
+      metric,
+      label: row.id === "company" ? "รวมทั้งบริษัท" : isTeam ? `ทีม ${row.team}` : row.name,
     });
 
   const Row = ({ row, isTeam = false, isTotal = false }) => {
     const s = statOf(row);
     const label = isTotal ? "รวมทั้งบริษัท" : isTeam ? `ทีม ${row.team}` : row.name;
     const clickable = !isTotal;
+    const cellClass = (base = "") => `${base}${isTotal ? " fz-foot" : ""}`.trim();
+    const metricButton = (value, metric, color, metricLabel) => value > 0 ? (
+      <button
+        type="button"
+        className="table-metric-button mono"
+        style={{ color }}
+        onClick={() => openMetricDeals(row, isTeam, metric)}
+        aria-label={`ดูรายละเอียด ${metricLabel} ${label} ${money(value)}`}
+      >
+        {money(value)}
+      </button>
+    ) : <span className="mono" style={{ color }}>{money(value)}</span>;
     return (
       <tr
         className="premium-row"
@@ -99,33 +111,31 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
             ? { background: "color-mix(in srgb, var(--accent) 6%, transparent)", fontWeight: 600 }
             : undefined}
       >
-        <td
-          className="fz-c1"
-          style={{ cursor: clickable ? "pointer" : "default", whiteSpace: "nowrap" }}
-          onClick={() => clickable && onDrill(isTeam ? { scope: "team", team: row.team } : { scope: "person", person: row.id })}
-          title={clickable ? "คลิกเพื่อเจาะรายละเอียด" : undefined}
-        >
-          <strong>{label}</strong>
+        <td className={cellClass("fz-c1")} style={{ whiteSpace: "nowrap" }}>
+          {clickable ? (
+            <button
+              type="button"
+              className="table-row-link"
+              onClick={() => onDrill(isTeam ? { scope: "team", team: row.team } : { scope: "person", person: row.id })}
+              aria-label={`เจาะรายละเอียด ${label}`}
+            >
+              {label}
+            </button>
+          ) : <strong>{label}</strong>}
           {!isTeam && !isTotal && row.team && (
             <span style={{ display: "block", color: "var(--text-3)", fontSize: 11.5, fontWeight: 400 }}>{row.team}</span>
           )}
         </td>
-        <td className="num mono">{money(s.target)}</td>
-        {carry && <td className="num mono" style={{ color: s.carry > 0 ? "var(--red)" : "var(--text-3)" }}>{s.carry > 0 ? money(s.carry) : "–"}</td>}
-        {carry && <td className="num mono" style={{ fontWeight: 600 }}>{money(s.mustClose)}</td>}
-        <td className="num mono" style={{ color: "var(--amber)" }}>{money(s.forecast)}</td>
-        <td
-          className={`num mono ${s.actual > 0 ? "cell-interactive" : ""}`}
-          style={{ color: "var(--green)", fontWeight: 600 }}
-          onClick={() => s.actual > 0 && openDeals(row, isTeam)}
-          title={s.actual > 0 ? "คลิกดูรายดีลที่ประกอบยอด" : undefined}
-        >
-          {money(s.actual)}
-        </td>
-        <td className="num mono" style={{ color: s.diff >= 0 ? "var(--green)" : "var(--red)" }}>
+        <td className={cellClass("num mono")}>{money(s.target)}</td>
+        {carry && <td className={cellClass("num mono")} style={{ color: s.carry > 0 ? "var(--red)" : "var(--text-3)" }}>{s.carry > 0 ? money(s.carry) : "—"}</td>}
+        {carry && <td className={cellClass("num mono")} style={{ fontWeight: 600 }}>{money(s.mustClose)}</td>}
+        <td className={cellClass("num")}>{metricButton(s.fcTotal, "fcTotal", "var(--blue)", "FC Total")}</td>
+        <td className={cellClass("num")}>{metricButton(s.forecast, "remaining", "var(--amber)", "FC คงเหลือ")}</td>
+        <td className={cellClass("num")} style={{ fontWeight: 600 }}>{metricButton(s.actual, "won", "var(--green)", "Actual")}</td>
+        <td className={cellClass("num mono")} style={{ color: s.diff >= 0 ? "var(--green)" : "var(--red)" }}>
           {s.diff >= 0 ? "+" : ""}{money(s.diff)}
         </td>
-        <td style={{ minWidth: 150 }}>
+        <td className={cellClass()} style={{ minWidth: 150 }}>
           <div className="flex items-center gap-2">
             <ProgressBar stat={s} />
             <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
@@ -133,7 +143,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
             </span>
           </div>
         </td>
-        <td><StatusPill stat={s} periodKind={periodKind} /></td>
+        <td className={cellClass()}><StatusPill stat={s} periodKind={periodKind} /></td>
       </tr>
     );
   };
@@ -142,7 +152,7 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2 mb-1" style={{ flexWrap: "wrap" }}>
         <Sun size={17} aria-hidden="true" style={{ color: "var(--amber)" }} />
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>บอร์ดประชุมเช้า — {periodLabel(win)}</h2>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ตารางติดตามยอดขาย — {periodLabel(win)}</h2>
         <div className="spacer" />
         <div className="segmented" role="group" aria-label="ชนิดงวด">
           {KINDS.map((k) => (
@@ -166,20 +176,21 @@ export default function MorningBoard({ matrix, year, now, closedCount, carry, bp
         )}
       </div>
       <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: 12.5 }}>
-        ทุกคน ทุกทีม ในตารางเดียว
+        สรุป Target, FC Total, FC คงเหลือ และ Actual รายคน/รายทีม
         {carry ? ' · "ต้องปิด" = เป้า + ยอดทบยกมา' : " · โหมดเป้าปกติ (ไม่ทบยอด)"}
-        {" "}· แถบ: เขียว = Actual · ส้ม = Forecast · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"} · คลิกชื่อเพื่อเจาะรายคน/ทีม
+        {" "}· แถบ: เขียว = Actual · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"} · คลิกตัวเลขเพื่อดูรายการดีล
       </p>
 
-      <div className="fz-box premium-glass-table" style={{ "--fz-c1w": "150px" }}>
-        <table className="fz-table w-full text-sm" style={{ minWidth: carry ? 980 : 840 }}>
+      <div className="fz-box premium-glass-table performance-tracking-table" style={{ "--fz-c1w": "150px" }}>
+        <table className="fz-table w-full text-sm" style={{ minWidth: carry ? 1120 : 980 }}>
           <thead>
             <tr>
               <th className="fz-c1">พนักงาน / ทีม</th>
               <th className="num">Target</th>
               {carry && <th className="num">ทบยกมา</th>}
               {carry && <th className="num">ต้องปิด</th>}
-              <th className="num">Forecast</th>
+              <th className="num">FC Total</th>
+              <th className="num">FC คงเหลือ</th>
               <th className="num">Actual</th>
               <th className="num">ขาด / เกิน</th>
               <th>% ปิดได้{carry ? " (เทียบต้องปิด)" : ""}</th>

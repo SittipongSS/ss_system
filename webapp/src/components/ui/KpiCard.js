@@ -28,16 +28,18 @@ export default function KpiCard({
   const accent = color || TONES[tone] || TONES.accent;
   const Icon = icon && !isValidElement(icon) ? icon : null;
   const iconNode = Icon ? <Icon size={16} aria-hidden="true" /> : icon;
+  const displayValue = typeof value === "number" ? fmtNumber(value) : value;
+  const compactValue = String(displayValue ?? "").length > 14;
   const content = (
     <>
       <div className="ui-kpi-heading">
-        <span className="ui-kpi-label">{badge || <>{iconNode}{label ? <span>{label}</span> : null}</>}</span>
+        <span className="ui-kpi-label">{badge || <>{iconNode}{label ? <span title={typeof label === "string" ? label : undefined}>{label}</span> : null}</>}</span>
       </div>
       <div className="ui-kpi-value-row">
-        <div className="ui-kpi-value">{typeof value === "number" ? fmtNumber(value) : value}</div>
+        <div className={`ui-kpi-value${compactValue ? " compact" : ""}`} title={typeof displayValue === "string" ? displayValue : undefined}>{displayValue}</div>
         {taxValue !== undefined ? <div className="ui-kpi-tax">{fmtMoney(taxValue)}</div> : null}
       </div>
-      {hint ? <div className="ui-kpi-hint">{hint}</div> : null}
+      <div className={`ui-kpi-hint${hint ? "" : " is-empty"}`} aria-hidden={hint ? undefined : "true"}>{hint || "\u00A0"}</div>
     </>
   );
 

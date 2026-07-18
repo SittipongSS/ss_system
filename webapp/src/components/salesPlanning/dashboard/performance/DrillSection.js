@@ -22,7 +22,7 @@ const PERIODS = [
   { key: "year", label: "รายปี" },
 ];
 
-const BLANK = { target: Array(12).fill(0), forecast: Array(12).fill(0), actual: Array(12).fill(0) };
+const BLANK = { target: Array(12).fill(0), fcTotal: Array(12).fill(0), forecast: Array(12).fill(0), actual: Array(12).fill(0) };
 
 export default function DrillSection({ matrix, prevMatrix, year, now, closedCount, ytdCount, carry, scope, team, person, period, onChange, onDrill }) {
   // แถวข้อมูลของมุมมองที่เลือก + Actual ปีก่อนของมุมมองเดียวกัน (ถ้ามี)

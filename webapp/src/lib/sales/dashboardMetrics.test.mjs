@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf, dealMatchesOwner,
+  forecastAccuracyRollup, isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf, dealMatchesOwner,
 } from './dashboardMetrics.js';
 
 test('won/open classification matches the dashboard aggregator rules', () => {
@@ -23,6 +23,20 @@ test('won month prefers explicit wonMonth then confirmedAt then PO date then for
 test('won amount counts only SO-verified actuals', () => {
   assert.equal(wonAmountOf({ wonValue: 500, metadata: { actualSource: 'sale_order' } }), 500);
   assert.equal(wonAmountOf({ wonValue: 500, metadata: {} }), 0);
+});
+
+test('FC Total keeps Open, Won and Lost forecasts while remaining keeps Open only', () => {
+  const result = forecastAccuracyRollup(
+    [{ projectValue: 40 }],
+    [{ projectValue: 100, wonValue: 80, metadata: { actualSource: 'sale_order' } }],
+    [{ projectValue: 25 }],
+  );
+  assert.equal(result.fullForecast, 165);
+  assert.equal(result.remainingForecast, 40);
+  assert.equal(result.wonForecastValue, 100);
+  assert.equal(result.lostForecast, 25);
+  assert.equal(result.wonValue, 80);
+  assert.equal(result.forecastVariance, -45);
 });
 
 test('owner matching folds legacy ids by name+team like byOwner buckets', () => {

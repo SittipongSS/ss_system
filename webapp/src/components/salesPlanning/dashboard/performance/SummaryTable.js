@@ -12,6 +12,7 @@ const sumTo = (arr, n) => arr.slice(0, n).reduce((a, b) => a + Number(b || 0), 0
 
 function summarize(row, { ytdCount, lastYearActual }) {
   const targetYear = sumTo(row.target, 12);
+  const fcTotalYear = sumTo(row.fcTotal || [], 12);
   const forecastYear = sumTo(row.forecast, 12);
   const actualYtd = sumTo(row.actual, ytdCount);
   const targetYtd = sumTo(row.target, ytdCount);
@@ -21,26 +22,34 @@ function summarize(row, { ytdCount, lastYearActual }) {
   const needPerMonth = remain > 0 ? Math.max(0, targetYear - actualYtd) / remain : null;
   const lastYtd = lastYearActual ? sumTo(lastYearActual, ytdCount) : 0;
   const yoy = lastYtd > 0 ? (actualYtd / lastYtd - 1) * 100 : null;
-  return { targetYear, forecastYear, actualYtd, targetYtd, gap, achv, needPerMonth, yoy };
+  return { targetYear, fcTotalYear, forecastYear, actualYtd, targetYtd, gap, achv, needPerMonth, yoy };
 }
 
 function SummaryRow({ label, sublabel, s, tone, onClick }) {
   const hasTarget = s.targetYear > 0;
+  const isTotal = tone === "total";
+  const cellClass = (base = "") => `${base}${isTotal ? " fz-foot" : ""}`.trim();
   return (
     <tr
       className="premium-row"
       style={{ cursor: onClick ? "pointer" : "default", ...(tone === "team" ? { background: "color-mix(in srgb, var(--accent) 6%, transparent)", fontWeight: 600 } : tone === "total" ? { background: "var(--panel-2)", fontWeight: 700, borderTop: "2px solid var(--border)" } : {}) }}
       onClick={onClick}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
+      } : undefined}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
       title={onClick ? "คลิกเพื่อเจาะรายละเอียด" : undefined}
     >
-      <td style={{ whiteSpace: "nowrap" }}>
+      <td className={cellClass("fz-c1")} style={{ whiteSpace: "nowrap" }}>
         <strong>{label}</strong>
         {sublabel && <span style={{ display: "block", color: "var(--text-3)", fontSize: 11.5, fontWeight: 400 }}>{sublabel}</span>}
       </td>
-      <td className="num mono">{money(s.targetYear)}</td>
-      <td className="num mono" style={{ color: "var(--amber)" }}>{money(s.forecastYear)}</td>
-      <td className="num mono" style={{ color: "var(--green)", fontWeight: 600 }}>{money(s.actualYtd)}</td>
-      <td className="num" style={{ minWidth: 110 }}>
+      <td className={cellClass("num mono")}>{money(s.targetYear)}</td>
+      <td className={cellClass("num mono")} style={{ color: "var(--blue)" }}>{money(s.fcTotalYear)}</td>
+      <td className={cellClass("num mono")} style={{ color: "var(--amber)" }}>{money(s.forecastYear)}</td>
+      <td className={cellClass("num mono")} style={{ color: "var(--green)", fontWeight: 600 }}>{money(s.actualYtd)}</td>
+      <td className={cellClass("num")} style={{ minWidth: 110 }}>
         <span className="mono" style={{ fontSize: 12.5, fontWeight: 600 }}>{pctFmt(s.achv)}</span>
         {hasTarget && (
           <span style={{ display: "block", height: 5, borderRadius: 3, background: "var(--panel-2)", overflow: "hidden", marginTop: 4 }}>
@@ -48,14 +57,14 @@ function SummaryRow({ label, sublabel, s, tone, onClick }) {
           </span>
         )}
       </td>
-      <td className="num mono" style={{ color: s.gap >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+      <td className={cellClass("num mono")} style={{ color: s.gap >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
         {hasTarget || s.actualYtd > 0 ? `${s.gap >= 0 ? "+" : ""}${money(s.gap)}` : "–"}
       </td>
-      <td className="num mono">{s.needPerMonth == null ? "–" : s.needPerMonth === 0 ? "ปิดแล้ว ✓" : money(s.needPerMonth)}</td>
-      <td className="num mono" style={{ color: s.yoy == null ? "var(--text-3)" : s.yoy >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+      <td className={cellClass("num mono")}>{s.needPerMonth == null ? "—" : s.needPerMonth === 0 ? "ปิดแล้ว ✓" : money(s.needPerMonth)}</td>
+      <td className={cellClass("num mono")} style={{ color: s.yoy == null ? "var(--text-3)" : s.yoy >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
         {s.yoy == null ? "–" : `${s.yoy >= 0 ? "+" : ""}${s.yoy.toFixed(1)}%`}
       </td>
-      <td>
+      <td className={cellClass()}>
         {!hasTarget && s.actualYtd <= 0 ? (
           <span style={{ color: "var(--text-3)" }}>–</span>
         ) : s.gap >= 0 ? (
@@ -81,13 +90,14 @@ export default function SummaryTable({ matrix, prevMatrix, year, ytdCount, carry
       <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: 12.5 }}>
         Actual = YTD · {gapHead} = Actual YTD − Target YTD (ติดลบ = ต้องทบเข้าเดือนถัดไป) · ต้องทำ/เดือน = เฉลี่ยที่เหลือเพื่อปิดเป้าทั้งปี · คลิกแถวเพื่อเจาะ
       </p>
-      <div className="premium-glass-table table-responsive">
-        <table className="w-full text-sm" style={{ minWidth: 880 }}>
+      <div className="fz-box premium-glass-table performance-summary-table">
+        <table className="fz-table w-full text-sm" style={{ minWidth: 1080 }}>
           <thead>
             <tr>
-              <th>พนักงาน / ทีม</th>
+              <th className="fz-c1">พนักงาน / ทีม</th>
               <th className="num">Target ทั้งปี</th>
-              <th className="num">Forecast ทั้งปี</th>
+              <th className="num">FC Total ทั้งปี</th>
+              <th className="num">FC คงเหลือ</th>
               <th className="num">Actual YTD</th>
               <th className="num">% Achv (YTD)</th>
               <th className="num">{gapHead}</th>
@@ -125,7 +135,7 @@ export default function SummaryTable({ matrix, prevMatrix, year, ytdCount, carry
             })}
           </tbody>
           <tfoot>
-            <SummaryRow label="รวมทั้งบริษัท" s={summarize(matrix.company, opts(prevMatrix.company?.actual || null))} tone="total" onClick={() => onDrill({ scope: "company" })} />
+            <SummaryRow label="รวมทั้งบริษัท" s={summarize(matrix.company, opts(prevMatrix.company?.actual || null))} tone="total" />
           </tfoot>
         </table>
       </div>
