@@ -112,11 +112,20 @@ export async function POST(request, { params }) {
     const productName = line.productName || product?.name || line.fgCode;
     const demandMonth = monthKey(line.month);
 
+    // ชื่อดีลตามฟอร์แมตที่ตกลง: SHM_แบรนด์_ชื่อสินค้า ปริมาตร
+    // แบรนด์/ปริมาตรมาจาก master — ถ้าสินค้าไม่อยู่ใน master (หรือไม่มีข้อมูล) ละส่วนนั้น
+    const brand = product?.brandNameEn || product?.brandNameTh || null;
+    const volumeLabel = Number(product?.volume) > 0 ? `${product.volume}${product.volumeUnit || 'ml'}` : null;
+    const nameWithVolume = volumeLabel && !productName.includes(volumeLabel)
+      ? `${productName} ${volumeLabel}`
+      : productName;
+    const title = ['SHM', brand, nameWithVolume].filter(Boolean).join('_');
+
     const dealRow = {
       id: genId('DEAL'),
       customerId: customer.id,
       customerName: customer.name || null,
-      title: `${productName} · ${line.month}`,
+      title,
       stage: 'qualified',
       projectValue: toMoney(qty * (Number.isFinite(price) ? price : 0)),
       probability: 30,
