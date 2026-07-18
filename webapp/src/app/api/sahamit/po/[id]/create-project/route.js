@@ -8,9 +8,12 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode, loadProject } from '@/lib/pm/projectsRepo';
-import { settlePoIntoSalesDeal, linkProjectToSettledDeal } from '@/lib/salesPlanningForecast';
 
 export const dynamic = 'force-dynamic';
+
+// สร้างโครงการ PM จาก PO "อย่างเดียว" (มติ §7 2026-07-19) — เดิม route นี้พ่วงปิด Won
+// เข้าดีลด้วย (settlePoIntoSalesDeal) → เลิกแล้ว. Won มีทางเดียวผ่านท่อ QT→SO:
+// สร้างโครงการที่นี่ก่อน แล้วไป "ยืนยันดีล + ออกใบเสนอราคา" ที่ settle-deal.
 
 function toQty(value) {
   const n = Number(value);
@@ -183,37 +186,12 @@ export async function POST(request, { params }) {
     return Response.json({ error: linkError.message }, { status: 500 });
   }
 
-  let deal = null;
-  let warning = null;
-  try {
-    if (po.salesDealId) {
-      // PO ถูก settle เข้าดีลไปแล้ว (ปิด Won ก่อนหน้า) → แค่ผูก PM เข้าดีลเดิม (won → in_project)
-      const { data: settled } = await supabase.from('sales_deals').select('*').eq('id', po.salesDealId).maybeSingle();
-      deal = settled ? await linkProjectToSettledDeal({ supabase, user, deal: settled, project, now, request }) : null;
-    } else {
-      // ยังไม่เคย settle → ปิด Won เข้าดีล พร้อมผูก PM ในคราวเดียว
-      const res = await settlePoIntoSalesDeal({ supabase, user, po, customer, activeLines, productIndex, project, now, request });
-      deal = res.deal;
-      if (deal?.id) {
-        await supabase.from('sahamit_pos').update({ salesDealId: deal.id }).eq('id', po.id).eq('customerId', customerId);
-      }
-    }
-    if (deal?.id) {
-      await supabase
-        .from('projects')
-        .update({ metadata: { ...(project.metadata || {}), salesDealId: deal.id } })
-        .eq('id', project.id);
-    }
-  } catch (e) {
-    warning = `cannot settle sales deal: ${e.message}`;
-  }
-
   await recordAudit({
     user,
     action: 'create',
     entityType: 'project',
     entityId: project.id,
-    after: { ...project, tasks: tasks || [], projectProducts, sahamitPo: updatedPo, salesDeal: deal || null },
+    after: { ...project, tasks: tasks || [], projectProducts, sahamitPo: updatedPo },
     summary: `create RE-ORDER project ${project.code} from Sahamit PO ${po.poNumber}`,
     request,
   });
@@ -231,8 +209,6 @@ export async function POST(request, { params }) {
   return Response.json({
     project: { ...project, tasks: tasks || [] },
     po: updatedPo,
-    salesDeal: deal || null,
-    warning,
     reused: false,
   }, { status: 201 });
 }

@@ -1,21 +1,13 @@
-import { genId } from '@/lib/id';
-import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canEditSalesPlanning,
   canViewSalesPlanning,
-  dealAuditLabel,
-  generateQuoteNumber,
   inSalesEditScope,
   inSalesViewScope,
-  quoteTotals,
-  toMoney,
 } from '@/lib/salesPlanning';
-import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay, seedLinesFromProject } from '@/lib/sales/quoteLines';
-import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
-import { businessDate } from '@/lib/businessDate';
+import { refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
-import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,132 +61,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // มติผู้ใช้ 2026-07-15: 1 ดีลมีใบเสนอราคาได้หลายใบจนกว่าจะ Won — guard "1 ใบ active
   // ต่อดีล" (0099) ถูกยกเลิก (mig 0103 ดรอป unique index); ตอน Won ใบอื่นถูกปิด+ล็อกใน RPC
   const body = await req.json().catch(() => ({}));
-  // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
-  let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []));
-  // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
-  if (!lines.length && body.seedFromProject) lines = await seedLinesFromProject(supabase, deal);
-  if (body.status === 'sent' && !lines.length) {
-    return badRequest('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');
+  // core การสร้างใบอยู่ใน lib เดียวกับสายสหมิตร (ยืนยัน PO → ออก QT) — แก้กติกาใบที่นั่น
+  try {
+    const { quote, deal: updatedDeal } = await createQuotationDraft({ supabase, user, deal, body, request: req });
+    return ok({ ...quote, deal: updatedDeal }, 201);
+  } catch (e) {
+    if (e instanceof QuotationDraftError) return fail(e.message, e.status);
+    throw e;
   }
-
-  // งวดชำระ — validate ก่อน (client อาจส่งมาไม่ครบ 100%)
-  const pv = validatePaymentPlan(body.paymentPlan);
-  if (!pv.ok) return badRequest(pv.error);
-
-  // snapshot ข้อมูลลูกค้า ณ วันออกใบ — server เติมเอง (ในใบ read-only, มติผู้ใช้:
-  // แก้ข้อมูลลูกค้าต้องไปแก้ที่ฐานข้อมูลลูกค้า). เลือก "คน" ผู้ติดต่อได้ผ่าน contactIndex.
-  const { data: customer } = await supabase
-    .from('customers')
-    .select('address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
-    .eq('id', deal.customerId)
-    .maybeSingle();
-  const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
-  const ci = Number.isInteger(body.contactIndex) ? body.contactIndex : 0;
-  const contact = contacts[ci] || contacts[0] || {
-    name: customer?.contactPerson || '', phone: customer?.contactPhone || '', email: '',
-  };
-
-  // ส่วนลดท้ายใบ + VAT (เฟส D — FM-SA-01): default vatRate 0 = ราคารวม VAT แล้ว
-  const discountType = ['percent', 'amount'].includes(body.discountType) ? body.discountType : null;
-  const discountValue = discountType ? toMoney(body.discountValue) : 0;
-  const vatRate = toMoney(body.vatRate, 0);
-  const totals = quoteTotals(lines, { discountType, discountValue, vatRate });
-  // งวดชำระ: เติมยอดจาก % ของยอดรวม + สรุปเป็นข้อความ paymentTerms (แก้ทับได้)
-  const paymentPlan = normalizePaymentPlan(body.paymentPlan, totals.totalAmount);
-  // ใบใหม่เริ่มเป็น "ร่าง + รออนุมัติ" เสมอ (มติ 2026-07-18): ส่งลูกค้าตอนสร้างไม่ได้
-  // เพราะต้องให้เจ้าของดีลอนุมัติก่อน (flow: ร่าง → อนุมัติ → ส่ง). ไม่รับ status='sent'.
-  // ผู้รับผิดชอบเอกสารตรวจตอนสร้างแบบไม่บังคับ (บังคับครบตอนกดส่งจริงใน PATCH).
-  const peoplePick = await validateQuotationPeople(supabase, body.metadata || {}, { require: false });
-  if (!peoplePick.ok) return badRequest(peoplePick.error);
-
-  // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
-  const { base, quoteNumber } = await generateQuoteNumber(supabase);
-  const quoteId = genId('QT');
-  const { data: quote, error } = await supabase
-    .from('quotations')
-    .insert({
-      id: quoteId,
-      dealId: deal.id,
-      quoteNumber,
-      baseNumber: base,
-      revisionNo: 0,
-      status: 'draft', // ใบใหม่เป็นร่างเสมอ — ส่งได้หลังเจ้าของดีลอนุมัติ (มติ 2026-07-18)
-      quoteDate: body.quoteDate || businessDate(),
-      validUntil: body.validUntil || null,
-      customerId: deal.customerId || null,
-      customerName: deal.customerName || null,
-      // snapshot ลูกค้า (read-only ในใบ)
-      billingAddress: customer?.address || null,
-      shippingAddress: customer?.shippingAddress || customer?.address || null,
-      branchCode: customer?.branchCode || null,
-      contactName: contact.name || null,
-      contactPhone: contact.phone || null,
-      contactEmail: contact.email || null,
-      ...totals,
-      discountType,
-      discountValue,
-      vatRate,
-      paymentPlan,
-      paymentTerms: (body.paymentTerms || '').trim() || paymentPlanSummary(paymentPlan, totals.totalAmount),
-      // รออนุมัติจากเจ้าของดีลก่อนส่ง (มติ 2026-07-18) — ใบเดิม grandfather ไว้ที่ mig 0114
-      approvalStatus: 'pending',
-      approvalReason: null,
-      approvalRequestedAt: null,
-      approvalRequestedBy: null,
-      approvalRequestedByName: null,
-      approvalFingerprint: null,
-      approvedAt: null,
-      approvedBy: null,
-      approvedByName: null,
-      notes: body.notes || null,
-      // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ = ผู้ใช้จริง+role ตรง)
-      metadata: {
-        ...(body.metadata || {}),
-        aeOwner: peoplePick.people.aeOwner || null,
-        preparedBy: peoplePick.people.preparedBy || null,
-        aeSupervisor: peoplePick.people.aeSupervisor || null,
-      },
-      createdBy: user.id || null,
-      createdByName: user.name || null,
-    })
-    .select()
-    .single();
-  if (error) {
-    return fail(error.code === '23505' ? `เลข quotation ซ้ำ: ${quoteNumber}` : error.message, error.code === '23505' ? 409 : 500);
-  }
-
-  let insertedLines = [];
-  if (lines.length) {
-    const rows = lines.map((line) => ({ ...line, quotationId: quote.id }));
-    const { data: lineRows, error: lineError } = await supabase.from('quotation_lines').insert(rows).select();
-    if (lineError) {
-      await supabase.from('quotations').delete().eq('id', quote.id);
-      return fail(lineError.message, 500);
-    }
-    insertedLines = lineRows || [];
-  }
-
-  const nextStage = deal.stage === 'lead' || deal.stage === 'qualified' ? 'quotation' : deal.stage;
-  let updatedDeal = deal;
-  if (nextStage !== deal.stage) {
-    const { data: patchedDeal } = await supabase
-      .from('sales_deals')
-      .update({ stage: nextStage, updatedAt: new Date().toISOString() })
-      .eq('id', deal.id)
-      .select()
-      .single();
-    updatedDeal = patchedDeal || deal;
-  }
-
-  await recordAudit({
-    user,
-    action: 'create',
-    entityType: 'quotation',
-    entityId: quote.id,
-    after: { ...quote, lines: insertedLines || [] },
-    summary: `สร้าง quotation ${quote.quoteNumber} สำหรับ ${dealAuditLabel(deal)}`,
-    request: req,
-  });
-
-  return ok({ ...quote, lines: insertedLines || [], deal: updatedDeal }, 201);
 });
