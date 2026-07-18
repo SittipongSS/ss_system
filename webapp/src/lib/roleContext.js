@@ -15,6 +15,11 @@ export const TeamContext = createContext(null);
 // approve/reject buttons show for a grantee, mirroring the server's canUser.
 export const ExtraCapsContext = createContext(null);
 
+// The signed-in user's department/ฝ่าย (SA/RD/PC/PD/QC/LG/WH/AD/...) — from
+// app_metadata.department with fallback departmentFor(role), same rule as the
+// server (assignable-users). Used e.g. by the timeline "เฉพาะฝ่ายของฉัน" toggle.
+export const DepartmentContext = createContext(null);
+
 export function useRole() {
   return useContext(RoleContext);
 }
@@ -23,6 +28,10 @@ export function useRole() {
 // hiding approve buttons for another team's records).
 export function useTeam() {
   return useContext(TeamContext);
+}
+
+export function useDepartment() {
+  return useContext(DepartmentContext);
 }
 
 export function useCan(cap) {

@@ -8,9 +8,9 @@ import { Home, Building2, Package, ClipboardCheck, ClipboardList, ReceiptText, F
 const SETTINGS_PATHS = ['/settings', '/database/holidays', '/database/chat-webhooks', '/users', '/audit'];
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { can, canUser, canAccessSahamit, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { can, canUser, canAccessSahamit, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
-import { RoleContext, TeamContext, ExtraCapsContext } from '@/lib/roleContext';
+import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { sortSystems, systemForPathname } from '@/config/navigation';
@@ -42,6 +42,7 @@ export default function AppLayout({ children }) {
   const pathname = usePathname();
   const [role, setRole] = useState(null);
   const [team, setTeam] = useState(null);
+  const [department, setDepartment] = useState(null); // ฝ่ายของผู้ใช้ (SA/RD/PC/...)
   const [extraCaps, setExtraCaps] = useState(null); // per-user LG/margin grants
   const [userName, setUserName] = useState('');
   const [userInitials, setUserInitials] = useState('');
@@ -66,6 +67,7 @@ export default function AppLayout({ children }) {
     // yet (local dev before setup), fall back to a permissive local session.
     if (!SUPABASE_CONFIGURED) {
       setRole('ae_supervisor');
+      setDepartment(departmentFor('ae_supervisor'));
       setUserName('Local D.');
       setUserInitials('LD');
       return;
@@ -95,6 +97,8 @@ export default function AppLayout({ children }) {
       // Role + team come from app_metadata (service-role-only; users cannot self-edit it).
       setRole(user.app_metadata?.role || 'user');
       setTeam(user.app_metadata?.team || null);
+      // ฝ่าย: กติกาเดียวกับ server (assignable-users) — department ตรง หรืออนุมานจาก role
+      setDepartment(normalizeDepartment(user.app_metadata?.department) || departmentFor(user.app_metadata?.role) || null);
       setExtraCaps(Array.isArray(user.app_metadata?.extraCaps) ? user.app_metadata.extraCaps : []);
       // Force a password change on first login / after an admin reset.
       setMustChangePwd(!!user.app_metadata?.must_change_password);
@@ -377,7 +381,9 @@ export default function AppLayout({ children }) {
         <div className="page">
           <RoleContext.Provider value={role}>
             <ExtraCapsContext.Provider value={extraCaps}>
-              <TeamContext.Provider value={team}>{children}</TeamContext.Provider>
+              <TeamContext.Provider value={team}>
+                <DepartmentContext.Provider value={department}>{children}</DepartmentContext.Provider>
+              </TeamContext.Provider>
             </ExtraCapsContext.Provider>
           </RoleContext.Provider>
         </div>

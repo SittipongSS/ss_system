@@ -18,6 +18,7 @@ import StatusSelect from "@/components/pm/StatusSelect";
 import { fmtDate } from "@/lib/format";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { compactPersonName } from "@/lib/personName";
+import { useDepartment } from "@/lib/roleContext";
 import { addBusinessDays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { recalculateGraph } from "@/lib/pm/schedule";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -93,6 +94,11 @@ export default function TimelineWorkspace({
   const [saving, setSaving] = useState(false);
   const [tableStatusFilter, setTableStatusFilter] = useState("all");
   const [tableSort, setTableSort] = useState("step");
+  // สลับดูเฉพาะขั้นตอนของฝ่ายตัวเอง (มติผู้ใช้ 2026-07-18) — ขั้นที่ไม่ระบุฝ่าย/ALL
+  // เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ; ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย)
+  const myDept = useDepartment();
+  const [deptOnly, setDeptOnly] = useState(false);
+  const inMyDept = (task) => !deptOnly || !myDept || !task.role || task.role === "ALL" || task.role === myDept;
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
   const [drafts, setDrafts] = useState({});
   const tasks = useMemo(
@@ -137,6 +143,7 @@ export default function TimelineWorkspace({
   const phases = useMemo(() => [...new Set(tasks.map((t) => t.phase).filter(Boolean))], [tasks]);
   const tableGroups = useMemo(() => groups.map((group) => {
     const filtered = group.tasks.filter((task) => {
+      if (!inMyDept(task)) return false;
       if (tableStatusFilter === "pending") return !task.status || task.status === "Pending";
       if (tableStatusFilter === "progress") return task.status === "In Progress";
       if (tableStatusFilter === "completed") return task.status === "Completed";
@@ -150,7 +157,8 @@ export default function TimelineWorkspace({
       return (a.stepOrder ?? 0) - (b.stepOrder ?? 0);
     });
     return { ...group, tasks: sorted };
-  }).filter((group) => group.tasks.length), [groups, tableSort, tableStatusFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- inMyDept ผันตาม deptOnly/myDept ที่อยู่ใน deps แล้ว
+  }).filter((group) => group.tasks.length), [groups, tableSort, tableStatusFilter, deptOnly, myDept]);
   // PredecessorPicker แสดงเลขขั้นจาก displayNumber — เติมจาก map เลข 1.1/1.2 ของตารางนี้
   const tasksWithNumbers = useMemo(
     () => tasks.map((t) => ({ ...t, displayNumber: numberOf.get(t.id) })),
@@ -303,7 +311,19 @@ export default function TimelineWorkspace({
               <div style={{ color: "var(--text-3)", fontSize: 12, marginTop: 2 }}>{done}/{tasks.length} ขั้นตอนเสร็จแล้ว</div>
             </div>
           )}
-          {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {myDept && view !== "document" && (
+              <button
+                type="button"
+                className={`btn sm ${deptOnly ? "btn-primary" : "ghost"}`}
+                onClick={() => setDeptOnly((value) => !value)}
+                title={deptOnly ? "กำลังแสดงเฉพาะขั้นตอนของฝ่ายคุณ — กดเพื่อดูทุกฝ่าย" : `แสดงเฉพาะขั้นตอนของฝ่ายคุณ (${myDept})`}
+              >
+                <Filter size={13} /> {deptOnly ? `ฝ่ายของฉัน (${myDept})` : "ทุกฝ่าย"}
+              </button>
+            )}
+            {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
+          </div>
         </div>
       )}
 
@@ -366,22 +386,24 @@ export default function TimelineWorkspace({
 
           {!tasks.length && <div className="glass-panel" style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีขั้นตอนในไทม์ไลน์นี้</div>}
           {groups.map((group, groupIndex) => {
+            const phaseTasks = group.tasks.filter(inMyDept);
+            if (!phaseTasks.length) return null;
             const phaseKey = `${group.phase}|${groupIndex}`;
             const collapsed = collapsedPhases.has(phaseKey);
-            const phaseDone = group.tasks.filter((task) => task.status === "Completed").length;
-            const phasePct = group.tasks.length ? Math.round((phaseDone / group.tasks.length) * 100) : 0;
-            const phaseActive = group.tasks.some((task) => task.status === "In Progress");
+            const phaseDone = phaseTasks.filter((task) => task.status === "Completed").length;
+            const phasePct = phaseTasks.length ? Math.round((phaseDone / phaseTasks.length) * 100) : 0;
+            const phaseActive = phaseTasks.some((task) => task.status === "In Progress");
             const phaseColor = PHASE_COLORS[groupIndex % PHASE_COLORS.length];
             return (
               <section key={phaseKey}>
                 <button type="button" onClick={() => togglePhase(phaseKey)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", marginBottom: collapsed ? 0 : 8, background: `color-mix(in srgb, ${phaseColor} 7%, var(--panel))`, border: "none", borderLeft: `3px solid ${phaseColor}`, borderRadius: 10, cursor: "pointer", textAlign: "left" }}>
                   {collapsed ? <ChevronRight size={14} color={phaseColor} /> : <ChevronDown size={14} color={phaseColor} />}
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{groupIndex + 1}. {group.phase || "ไม่ระบุเฟส"}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: phaseDone === group.tasks.length ? "var(--green)" : phaseActive ? "var(--accent)" : "var(--text-3)" }}>{phaseDone}/{group.tasks.length}</span>
-                  {phaseDone === group.tasks.length ? <CheckCircle2 size={13} color="var(--green)" /> : <div style={{ width: 52, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${phasePct}%`, background: phaseActive ? "var(--accent)" : phaseColor }} /></div>}
+                  <span style={{ fontSize: 12, fontWeight: 600, color: phaseDone === phaseTasks.length ? "var(--green)" : phaseActive ? "var(--accent)" : "var(--text-3)" }}>{phaseDone}/{phaseTasks.length}</span>
+                  {phaseDone === phaseTasks.length ? <CheckCircle2 size={13} color="var(--green)" /> : <div style={{ width: 52, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${phasePct}%`, background: phaseActive ? "var(--accent)" : phaseColor }} /></div>}
                 </button>
                 {!collapsed && <div style={{ paddingLeft: 12 }}>
-                  {group.tasks.map((task, taskIndex) => {
+                  {phaseTasks.map((task, taskIndex) => {
                     const complete = task.status === "Completed";
                     const active = task.status === "In Progress";
                     const role = ROLE_META[task.role] || { color: "var(--text-2)", bg: "var(--panel-2)" };
@@ -389,7 +411,7 @@ export default function TimelineWorkspace({
                       <div key={task.id} style={{ display: "flex", alignItems: "stretch", opacity: busyId === task.id ? 0.5 : 1 }}>
                         <div style={{ width: 28, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}</div>
                         <div className="pm-task-card" style={{ position: "relative", flex: 1, marginBottom: 8, background: task.isMilestone ? "color-mix(in srgb, var(--amber) 8%, var(--panel))" : complete ? "color-mix(in srgb, var(--green) 5%, var(--panel))" : active ? "var(--panel-2)" : "var(--panel)", border: `1px solid ${complete ? "color-mix(in srgb, var(--green) 30%, transparent)" : active ? "var(--accent)" : task.isMilestone ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)"}`, boxShadow: active ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
-                          {taskIndex < group.tasks.length - 1 && <div className="pm-task-connector" style={{ background: complete ? "var(--green)" : "var(--border)" }} />}
+                          {taskIndex < phaseTasks.length - 1 && <div className="pm-task-connector" style={{ background: complete ? "var(--green)" : "var(--border)" }} />}
                           <button type="button" onClick={() => canEdit && task.status !== "Pending" && patch(task, { status: complete ? "In Progress" : "Completed" })} disabled={!canEdit || task.status === "Pending" || !!busyId} style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: complete ? "var(--green)" : active ? "var(--accent)" : "var(--bg)", border: `2px solid ${complete ? "var(--green)" : active ? "var(--accent)" : "var(--border)"}`, color: "#fff", padding: 0, cursor: canEdit && task.status !== "Pending" ? "pointer" : "default", boxShadow: active ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none" }}>
                             {complete ? <Check size={16} strokeWidth={3} /> : active ? <Clock size={15} /> : <span style={{ fontSize: 10, color: "var(--text-3)", fontWeight: 700 }}>{numberOf.get(task.id)}</span>}
                           </button>
@@ -425,7 +447,7 @@ export default function TimelineWorkspace({
       {view === "table" && (
       <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>ตารางขั้นตอนงาน <span style={{ color: "var(--text-3)", fontWeight: 500 }}>({tableGroups.reduce((sum, group) => sum + group.tasks.length, 0)}{tableStatusFilter !== "all" ? ` / ${tasks.length}` : ""} ขั้นตอน)</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>ตารางขั้นตอนงาน <span style={{ color: "var(--text-3)", fontWeight: 500 }}>({tableGroups.reduce((sum, group) => sum + group.tasks.length, 0)}{tableStatusFilter !== "all" || deptOnly ? ` / ${tasks.length}` : ""} ขั้นตอน)</span></div>
         <div className="toolbar">
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Filter size={14} color="var(--text-3)" />
