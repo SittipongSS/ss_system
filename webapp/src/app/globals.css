@@ -4906,6 +4906,21 @@ button.empty-state { width: 100%; font: inherit; }
 .performance-tracking-table .fz-c1 { min-width: 150px; }
 .performance-summary-table .fz-c1 { min-width: 190px; }
 
+/* Performance totals belong after the final data row. A vertically sticky
+   footer masks the last salesperson row while the matrix is scrolling, so
+   these two tables keep only the first column horizontally pinned. */
+.performance-tracking-table .fz-table tfoot td.fz-foot,
+.performance-summary-table .fz-table tfoot td.fz-foot {
+  position: static;
+  box-shadow: none;
+}
+.performance-tracking-table .fz-table tfoot td.fz-c1,
+.performance-summary-table .fz-table tfoot td.fz-c1 {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+}
+
 @media (max-width: 700px) {
   .table-row-link,
   .table-metric-button { min-height: 40px; }
