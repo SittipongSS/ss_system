@@ -45,15 +45,17 @@ export async function POST(request, { params }) {
   const forecastMonth = monthKey(body.forecastMonth);
   if (!forecastMonth) return Response.json({ error: 'ต้องระบุเดือนคาดได้รับ PO (forecastMonth)' }, { status: 400 });
 
-  // เจ้าของดีลต้องเป็น AE (role=ae) เท่านั้น — ตรวจจาก app_metadata ฝั่ง server
+  // เจ้าของดีลต้องเป็น AE ทีม KA เท่านั้น — ตรวจจาก app_metadata ฝั่ง server
   if (!body.ownerId) return Response.json({ error: 'ต้องเลือกผู้ดูแล (AE)' }, { status: 400 });
   const { data: ownerRes, error: ownerErr } = await supabase.auth.admin.getUserById(String(body.ownerId));
   const owner = ownerRes?.user;
   if (ownerErr || !owner) return Response.json({ error: 'ไม่พบผู้ใช้ AE ที่เลือก' }, { status: 400 });
-  if (owner.app_metadata?.role !== 'ae') return Response.json({ error: 'ผู้ดูแลต้องเป็น AE เท่านั้น' }, { status: 400 });
+  if (owner.app_metadata?.role !== 'ae' || owner.app_metadata?.team !== 'KA') {
+    return Response.json({ error: 'ผู้ดูแลต้องเป็น AE ทีม KA เท่านั้น' }, { status: 400 });
+  }
   const ownerId = owner.id;
   const ownerName = owner.user_metadata?.name || owner.email || null;
-  const ownerTeam = owner.app_metadata?.team || user.team || 'KA';
+  const ownerTeam = 'KA'; // บังคับจากเงื่อนไขข้างบนแล้ว
 
   // เลือกได้ 2 แบบ: lineIds (ราย line, แม่นสุด) หรือ fgCodes (ทุกเดือนของสินค้านั้น)
   const lineIds = new Set((Array.isArray(body.lineIds) ? body.lineIds : []).map((v) => String(v || '')).filter(Boolean));
@@ -128,7 +130,7 @@ export async function POST(request, { params }) {
       title,
       stage: 'qualified',
       projectValue: toMoney(qty * (Number.isFinite(price) ? price : 0)),
-      probability: 30,
+      probability: 80,
       forecastMonth,
       expectedCloseDate: closeDate,
       depositPaid: false,
@@ -188,15 +190,52 @@ export async function POST(request, { params }) {
     created.push(deal);
   }
 
+  // FC อัพเดท → เคลียร์ดีลรอบเก่า: สินค้า (fgCode) ที่เพิ่งสร้างดีลจากรอบนี้ ถ้ามีดีล
+  // FC รอบอื่นที่ยังไม่ won ค้างอยู่ ให้ปิดเป็น lost (ธง superseded ใน metadata ไว้กรอง
+  // ออกจากรายงาน lost-rate ได้) — FC ล่าสุดจึงเป็นดีลชุดเดียวที่วิ่งต่อในท่อ.
+  // ดีลที่ won/in_project หรือผูกโครงการแล้วไม่แตะ.
+  const createdFg = new Set(toCreate.map((l) => String(l.fgCode || '').trim().toLowerCase()).filter(Boolean));
+  const { data: fcDeals } = await supabase
+    .from('sales_deals').select('*')
+    .eq('customerId', customer.id)
+    .eq('metadata->>source', 'sahamit-forecast');
+  const superseded = [];
+  for (const d of fcDeals || []) {
+    if (['won', 'in_project', 'lost'].includes(d.stage) || d.projectId) continue;
+    if (d.metadata?.sahamitForecastRoundId === round.id) continue; // ดีลรอบนี้เอง (รวมที่เพิ่งสร้าง)
+    const fgs = (d.metadata?.fgCodes || []).map((fg) => String(fg || '').trim().toLowerCase());
+    if (!fgs.some((fg) => createdFg.has(fg))) continue;
+    const { data: closed, error: closeErr } = await supabase
+      .from('sales_deals')
+      .update({
+        stage: 'lost',
+        lostReason: `FC สหมิตรอัพเดท — แทนที่ด้วยดีลรอบ #${round.roundNo}`,
+        metadata: {
+          ...(d.metadata || {}),
+          sahamitSupersededByRoundId: round.id,
+          sahamitSupersededByRoundNo: round.roundNo,
+          sahamitSupersededAt: now,
+        },
+        updatedAt: now,
+      })
+      .eq('id', d.id).select().single();
+    if (closeErr || !closed) continue;
+    await supabase.from('sales_deal_stage_history').insert({
+      id: genId('DSH'), dealId: d.id, fromStage: d.stage, toStage: 'lost',
+      changedBy: user.id || null, changedByName: user.name || null,
+    });
+    superseded.push(closed);
+  }
+
   await recordAudit({
     user,
     action: 'create',
     entityType: 'sales_deal',
     entityId: created[0]?.id || round.id,
-    after: { count: created.length, ownerName, forecastMonth, skipped },
-    summary: `create ${created.length} sales deal(s) from Sahamit FC #${round.roundNo} (1 line = 1 deal, AE ${ownerName}${skipped ? `, ข้ามซ้ำ ${skipped}` : ''})`,
+    after: { count: created.length, ownerName, forecastMonth, skipped, superseded: superseded.length },
+    summary: `create ${created.length} sales deal(s) from Sahamit FC #${round.roundNo} (1 line = 1 deal, AE ${ownerName}${skipped ? `, ข้ามซ้ำ ${skipped}` : ''}${superseded.length ? `, เคลียร์ดีลรอบเก่า ${superseded.length}` : ''})`,
     request,
   });
 
-  return Response.json({ deals: created, count: created.length, skipped });
+  return Response.json({ deals: created, count: created.length, skipped, superseded: superseded.length });
 }
