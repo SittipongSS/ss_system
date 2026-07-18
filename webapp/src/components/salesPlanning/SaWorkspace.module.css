@@ -115,7 +115,7 @@ button.metric:focus-visible { position: relative; z-index: 1; outline: 2px solid
   .metric:nth-child(2) { border-right: 0; }
   .metric:nth-child(-n + 2) { border-bottom: 1px solid var(--border); }
   .page :global(.premium-header) { align-items: stretch !important; flex-direction: column; gap: 14px; }
-  .page :global(.premium-header > .flex) { justify-content: flex-start; }
+  .page :global(.premium-header > .flex) { justify-content: flex-start; flex-wrap: wrap; row-gap: 10px; }
 }
 @media (max-width: 620px) {
   .page :global(.premium-header) { padding: 17px; }

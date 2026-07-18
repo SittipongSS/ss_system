@@ -45,7 +45,8 @@ export default function Workspace({ icon, title, subtitle, headerRight, back, ba
           </h1>
           {subtitle && <p>{subtitle}</p>}
         </div>
-        {headerRight && <div className="flex items-center gap-3">{headerRight}</div>}
+        {/* flex-wrap: จอแคบให้เครื่องมือห่อลงบรรทัดใหม่ ไม่ดันปุ่มตกขอบจอ (บั๊กมือถือ 2026-07-18) */}
+        {headerRight && <div className="flex items-center gap-3 flex-wrap" style={{ minWidth: 0 }}>{headerRight}</div>}
       </div>}
 
       {rail && <div className="flex flex-col gap-5 mb-6">{rail}</div>}
