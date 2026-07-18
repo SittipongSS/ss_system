@@ -20,7 +20,11 @@ export function showSalesOrderPrintError(printWindow, message = 'ไม่สา
 export function buildSalesOrderPrintHTML(order) {
   const quotation = order.quotation || {};
   const taxableAmount = Math.max(0, Number(order.totalAmount || 0) - Number(order.vatAmount || 0));
-  const vatRate = taxableAmount > 0 ? (Number(order.vatAmount || 0) / taxableAmount) * 100 : 0;
+  // อัตรา VAT คิดย้อนจากยอดเงิน (ที่ปัดเป็นสตางค์แล้ว) — ต้องปัดเป็น 2 ตำแหน่ง ไม่งั้น
+  // float noise โผล่บนเอกสาร เช่น "ภาษีมูลค่าเพิ่ม 7.000000000000001%"
+  const vatRate = taxableAmount > 0
+    ? Math.round((Number(order.vatAmount || 0) / taxableAmount) * 10000) / 100
+    : 0;
   const statusLabel = STATUS_LABELS[order.status] || order.status || '-';
   const notes = [order.notes, order.approvalNote ? `หมายเหตุการอนุมัติ: ${order.approvalNote}` : null]
     .filter(Boolean)

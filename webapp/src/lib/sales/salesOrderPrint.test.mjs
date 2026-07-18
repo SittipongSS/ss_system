@@ -36,6 +36,13 @@ test('unapproved Sale Order print carries a visible status watermark', () => {
   assert.match(buildSalesOrderPrintHTML({ ...order, status: 'cancelled' }), /class="watermark">เอกสารยกเลิก/);
 });
 
+test('Sale Order VAT rate is rounded — no float noise like 7.000000000000001%', () => {
+  // 76.23 / 1089 * 100 = 7.000000000000001 บนเลขทศนิยม IEEE — เอกสารต้องโชว์ 7%
+  const html = buildSalesOrderPrintHTML({ ...order, subtotal: 1089, vatAmount: 76.23, totalAmount: 1165.23 });
+  assert.match(html, /ภาษีมูลค่าเพิ่ม 7%/);
+  assert.doesNotMatch(html, /7\.000000/);
+});
+
 test('Sale Order print renders into a prepared window', () => {
   const writes = [];
   const target = { closed: false, document: { open() {}, write(value) { writes.push(value); }, close() {} } };
