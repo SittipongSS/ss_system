@@ -38,17 +38,9 @@
   background: var(--panel);
   box-shadow: var(--glass-shadow);
 }
-.page :global(.tabs-header) {
-  width: fit-content;
-  max-width: 100%;
-  padding: 4px;
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--panel-2) 72%, transparent);
-  box-shadow: none;
-}
-.page :global(.tab-btn) { border-radius: 9px; white-space: nowrap; }
+/* แท็บใช้หน้าตากลางจาก globals (.tabs-header เส้นใต้ + indicator สี accent) —
+   override กล่อง pill เดิมถูกถอด (2026-07-18): มันทำให้แท็บดูเหมือน .segmented
+   จนแยกไม่ออกว่าอันไหนกรอง/อันไหนสลับหน้า (feedback ผู้ใช้ "มีหลายแบบจัง") */
 .page :global(.premium-glass-table) { overflow: auto; }
 .page :global(.premium-glass-table table) { border-collapse: separate; border-spacing: 0; }
 .page :global(.premium-glass-table thead th) {
