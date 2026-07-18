@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, CircleDollarSign, Scale, Database, Briefcase } from 'lucide-react';
+import { Home, Building2, Package, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, CircleDollarSign, Scale, Database, Briefcase, UserRound } from 'lucide-react';
 
 // เส้นทางทั้งหมดที่ถือว่าอยู่ใต้เมนู "ตั้งค่า" (ให้ปุ่มติด active ตอนอยู่หน้าลูก)
 const SETTINGS_PATHS = ['/settings', '/database/holidays', '/database/chat-webhooks', '/users', '/audit'];
@@ -12,6 +12,7 @@ import { can, canUser, canAccessSahamit, departmentFor, normalizeDepartment, ROL
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
+import AccountMenu from '@/components/AccountMenu';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { sortSystems, systemForPathname } from '@/config/navigation';
 
@@ -107,6 +108,23 @@ export default function AppLayout({ children }) {
       try { localStorage.setItem('userName', dName); } catch {}
     });
   }, [router]);
+
+  useEffect(() => {
+    const onProfileUpdated = (event) => {
+      const profile = event.detail || {};
+      const dName = fmtName(profile) || profile.email || userName;
+      const firstName = String(profile.firstName || '').trim();
+      const lastName = String(profile.lastName || '').trim();
+      const initials = firstName
+        ? `${firstName.charAt(0)}${lastName ? lastName.charAt(0) : ''}`.toUpperCase()
+        : String(profile.email || dName || 'U').slice(0, 2).toUpperCase();
+      setUserName(dName);
+      setUserInitials(initials);
+      try { localStorage.setItem('userName', dName); } catch {}
+    };
+    window.addEventListener('account-profile-updated', onProfileUpdated);
+    return () => window.removeEventListener('account-profile-updated', onProfileUpdated);
+  }, [userName]);
 
   useEffect(() => {
     const sys = systemForPathname(pathname);
@@ -310,36 +328,17 @@ export default function AppLayout({ children }) {
           </button>
 
           <div className="topbar-actions">
-            {/* Login User Info */}
-            <div className="topbar-user-info">
-              <div className="user-avatar">{userInitials || userName.substring(0, 2).toUpperCase()}</div>
-              <div className="user-info" style={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '8px' }}>
-                <span className="user-name" style={{ fontSize: '13px', fontWeight: '600' }}>{userName}</span>
-                <span className={`topbar-user-role ${role === 'admin' || role === 'ae_supervisor' || role === 'legal' || role === 'secretary' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}`} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
-                  {team ? `${ROLE_LABELS[role] || role} · ${TEAM_LABELS[team] || team}` : (ROLE_LABELS[role] || role)}
-                </span>
-              </div>
-            </div>
-
-            {/* Theme toggle (เดิมอยู่ footer ของ sidebar) */}
-            <button onClick={toggleTheme} className="btn ghost icon-only" title={isDark ? 'Light mode' : 'Dark mode'}>
-              {isDark ? <Sun size={16} strokeWidth={2} /> : <Moon size={16} strokeWidth={2} />}
-            </button>
-
-            {/* บันทึกการใช้งาน + ผู้ใช้ ย้ายไปรวมในหน้า /settings (เมนู "ตั้งค่า") */}
-
-            {/* Change own password */}
-            {SUPABASE_CONFIGURED && (
-              <button onClick={() => setShowPwd(true)} className="btn ghost icon-only" title="เปลี่ยนรหัสผ่าน">
-                <KeyRound size={16} strokeWidth={2} />
-              </button>
-            )}
-
-            {/* Logout Button */}
-            <button onClick={handleLogout} className="btn ghost topbar-logout-btn flex items-center gap-1.5" title="ออกจากระบบ">
-              <LogOut size={16} strokeWidth={2} />
-              <span className="font-semibold topnav-logout-label">ออกจากระบบ</span>
-            </button>
+            <AccountMenu
+              userName={userName}
+              userInitials={userInitials}
+              roleLabel={team ? `${ROLE_LABELS[role] || role} · ${TEAM_LABELS[team] || team}` : (ROLE_LABELS[role] || role)}
+              roleTone={role === 'admin' || role === 'ae_supervisor' || role === 'legal' || role === 'secretary' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}
+              isDark={isDark}
+              canChangePassword={SUPABASE_CONFIGURED}
+              onToggleTheme={toggleTheme}
+              onChangePassword={() => setShowPwd(true)}
+              onLogout={handleLogout}
+            />
           </div>
         </div>
 
@@ -456,6 +455,7 @@ export default function AppLayout({ children }) {
 
           <section className="mobile-nav-section mobile-account-actions">
             <h2>บัญชีและการตั้งค่า</h2>
+            <Link href="/account" onClick={() => setMobileMoreOpen(false)}><UserRound size={18} /><span>บัญชีของฉัน</span></Link>
             <button type="button" onClick={toggleTheme}>{isDark ? <Sun size={18} /> : <Moon size={18} />}<span>{isDark ? 'โหมดสว่าง' : 'โหมดมืด'}</span></button>
             {SUPABASE_CONFIGURED && <button type="button" onClick={() => setShowPwd(true)}><KeyRound size={18} /><span>เปลี่ยนรหัสผ่าน</span></button>}
             <button type="button" className="danger" onClick={handleLogout}><LogOut size={18} /><span>ออกจากระบบ</span></button>

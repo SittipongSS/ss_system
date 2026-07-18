@@ -17,8 +17,8 @@
 
 | Resource | Actions ที่พบ/วางแผน | Scopes ที่ต้องพิจารณา | Temporary gate | เฟส |
 |---|---|---|---|---|
-| account_profile | view, update | own | signed-in + owner | 1 |
-| account_password | change | own | signed-in + current password | 1 |
+| account_profile | view, update | own | signed-in; API ผูก target จาก session เท่านั้น | 1 |
+| account_password | change | own | signed-in + current password; API ผูก target จาก session เท่านั้น | 1 |
 | product_category | view, create, update, deactivate, reactivate, inspect_usage | all | signed-in read / `master:manage` write | 2 |
 | product_category_import | download_template, export, preview, commit, view_history | all | `master:manage` | 3 |
 | organization_settings | view, edit_draft, publish, archive | all | admin/`master:manage` | 4 |
@@ -29,6 +29,15 @@
 | issued_document | view, print, download_pdf, verify | own/team/department/all | workflow เดิม | 7 |
 | user_access | view, invite, update_role, update_scope, deactivate | all | `users:view`/`users:manage` | 8 |
 | audit_log | view, export | own/team/department/all | `audit:view` | 8 |
+
+## หลักฐานจาก Phase 1
+
+- `GET /api/account/profile` อ่านเฉพาะบัญชีที่กำลังลงชื่อเข้าใช้
+- `PATCH /api/account/profile` รับเฉพาะชื่อ นามสกุล และเบอร์โทรศัพท์ แล้วเขียนเฉพาะ `user_metadata`
+- Client ไม่ส่ง user ID และ API ไม่รับ target user จาก request body จึงแก้บัญชีอื่นไม่ได้
+- Role, team, department, extra capabilities และสถานะบัญชีเป็นข้อมูลอ่านอย่างเดียวในหน้า Account
+- การแก้ Profile บันทึก Audit ด้วย `entityType: user`; การเปลี่ยนรหัสผ่านไม่บันทึกรหัสผ่านหรือ secret ลง Audit
+- การจัดสิทธิ์ใหม่ยังเลื่อนไป Phase 8 ตามเดิม ไม่มี Role หรือ Capability ใหม่ใน Phase 1
 
 ## คำถามสำหรับ Permission phase
 
