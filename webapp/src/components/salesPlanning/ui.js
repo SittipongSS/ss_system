@@ -122,7 +122,7 @@ export function MonthPicker({ value, onChange, allMonths = false, onAllMonths })
         {monthsForYear(year).map((m, i) => <option key={m} value={m}>{MONTH_LABELS[i]} {year}</option>)}
       </Select>
       {onAllMonths && (
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-2)", whiteSpace: "nowrap" }}>
           <input type="checkbox" checked={allMonths} onChange={(e) => onAllMonths(e.target.checked)} /> ทุกเดือน
         </label>
       )}
