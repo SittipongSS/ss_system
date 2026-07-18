@@ -149,6 +149,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     month,
     periodFrom,
     periodTo,
+    // ตัวตนผู้ใช้ — การ์ด "เป้าหมายของฉัน" ใช้ลิงก์เข้าแท็บผลงานขายแบบเจาะตัวเอง
+    me: { id: user.id, name: user.name || null, team: user.team || null },
     userId: user.id,
     target,
     wonValue,
