@@ -269,7 +269,9 @@ export async function POST(request, { params }) {
         title: linked.title,
         quotationId: quote.id,
         quoteNumber: quote.quoteNumber,
-        priceMissing: !product?.id || !Number(product?.price),
+        // ราคาใบ = retailPriceIncVat จาก master (ไม่ใช่ costPrice ที่ใช้คิดมูลค่าดีล) —
+        // เช็คจากยอดรวมใบที่ออกจริง: 0 = master ยังไม่ตั้งราคาขาย/ไม่รู้จักสินค้า
+        priceMissing: !product?.id || !(Number(quote.totalAmount) > 0),
       });
       settledFg.add(norm(fg)); // กันซ้ำภายในคำขอเดียวกัน (สองบรรทัด fgCode เดียว)
     } catch (e) {
