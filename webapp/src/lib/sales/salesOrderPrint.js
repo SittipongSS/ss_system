@@ -59,7 +59,10 @@ export function buildSalesOrderPrintHTML(order) {
     referenceLabel: 'อ้างอิง QT',
     referenceValue: quotation.quoteNumber,
     statusLabel,
-    watermark: order.status === 'approved' ? '' : `เอกสาร${statusLabel}`,
+    // ลายน้ำใช้คำว่า "ฉบับร่าง" คำเดียวทั้ง QT/SO (มติผู้ใช้ 2026-07-18) — ยกเว้นใบยกเลิก
+    // คงคำว่า "เอกสารยกเลิก" ไว้ (ตีความเป็นร่างไม่ได้); สถานะละเอียดยังดูได้ที่หัวใบ
+    watermark: order.status === 'approved' ? ''
+      : (order.status === 'cancelled' ? `เอกสาร${statusLabel}` : 'ฉบับร่าง'),
     paginatedPreview: true,
     // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ = AE (พนักงานขาย) ·
     // ผู้อนุมัติ = AE Supervisor (ผู้จัดการฝ่ายขาย) · ฝ่ายบัญชี (เว้นให้เซ็นรับเอกสาร).

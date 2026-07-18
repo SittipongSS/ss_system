@@ -29,8 +29,11 @@ test('Sale Order print uses FM-SA-03 and complete commercial references', () => 
 
 test('unapproved Sale Order print carries a visible status watermark', () => {
   const html = buildSalesOrderPrintHTML({ ...order, status: 'draft' });
-  assert.match(html, /class="watermark">เอกสารฉบับร่าง/);
+  assert.match(html, /class="watermark">ฉบับร่าง/);
   assert.match(html, /สถานะเอกสาร[\s\S]*ฉบับร่าง/);
+  // รออนุมัติก็นับเป็นร่าง (คำเดียวทั้ง QT/SO) — แต่ใบยกเลิกคงคำว่า ยกเลิก
+  assert.match(buildSalesOrderPrintHTML({ ...order, status: 'pending_approval' }), /class="watermark">ฉบับร่าง/);
+  assert.match(buildSalesOrderPrintHTML({ ...order, status: 'cancelled' }), /class="watermark">เอกสารยกเลิก/);
 });
 
 test('Sale Order print renders into a prepared window', () => {

@@ -130,7 +130,7 @@ test('quotation pending approval prints with a watermark; approved/legacy do not
   const base = { quoteNumber: 'QT-006', lines: [], subtotal: 0, totalAmount: 0, vatRate: 0 };
   assert.match(
     buildQuotePrintHTML({ ...base, approvalStatus: 'pending' }),
-    /class="watermark">เอกสารยังไม่อนุมัติ/,
+    /class="watermark">ฉบับร่าง/,
   );
   assert.doesNotMatch(
     buildQuotePrintHTML({ ...base, approvalStatus: 'approved' }),
