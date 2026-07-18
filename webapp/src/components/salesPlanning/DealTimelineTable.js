@@ -93,20 +93,16 @@ export default function TimelineWorkspace({
   const [addAfterId, setAddAfterId] = useState(null); // แทรกหลังแถวนี้ (null = ต่อท้าย)
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [tableStatusFilter, setTableStatusFilter] = useState("all");
   const [tableSort, setTableSort] = useState("step");
-  // ตัวกรองฝ่าย (มติผู้ใช้ 2026-07-18 รวมเป็น FilterPopover เดียวกับสถานะ) — เลือกได้
-  // หลายฝ่าย ว่าง = ทุกฝ่าย; ขั้นที่ไม่ระบุฝ่าย/ALL เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ;
-  // ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย — เป็นเอกสารทางการ)
+  // ตัวกรองสถานะ + ฝ่าย ใน FilterPopover เดียว เป็น multi-select ทั้งคู่ (มติผู้ใช้
+  // 2026-07-18: ตัวกรองทั้งระบบเลือกหลายค่าได้) — ว่าง = ทั้งหมด; ขั้นที่ไม่ระบุฝ่าย/ALL
+  // เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ; ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย)
   const myDept = useDepartment();
+  const [statusFilter, setStatusFilter] = useState([]);
   const [deptFilter, setDeptFilter] = useState([]);
   const matchDept = (task) => !deptFilter.length || !task.role || task.role === "ALL" || deptFilter.includes(task.role);
-  const matchStatus = (task) => {
-    if (tableStatusFilter === "pending") return !task.status || task.status === "Pending";
-    if (tableStatusFilter === "progress") return task.status === "In Progress";
-    if (tableStatusFilter === "completed") return task.status === "Completed";
-    return true;
-  };
+  const statusKeyOf = (task) => (task.status === "In Progress" ? "progress" : task.status === "Completed" ? "completed" : "pending");
+  const matchStatus = (task) => !statusFilter.length || statusFilter.includes(statusKeyOf(task));
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
   const [drafts, setDrafts] = useState({});
   const tasks = useMemo(
@@ -159,8 +155,8 @@ export default function TimelineWorkspace({
       return (a.stepOrder ?? 0) - (b.stepOrder ?? 0);
     });
     return { ...group, tasks: sorted };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- matchDept/matchStatus ผันตาม deptFilter/tableStatusFilter ที่อยู่ใน deps แล้ว
-  }).filter((group) => group.tasks.length), [groups, tableSort, tableStatusFilter, deptFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- matchDept/matchStatus ผันตาม statusFilter/deptFilter ที่อยู่ใน deps แล้ว
+  }).filter((group) => group.tasks.length), [groups, tableSort, statusFilter, deptFilter]);
   // PredecessorPicker แสดงเลขขั้นจาก displayNumber — เติมจาก map เลข 1.1/1.2 ของตารางนี้
   const tasksWithNumbers = useMemo(
     () => tasks.map((t) => ({ ...t, displayNumber: numberOf.get(t.id) })),
@@ -312,17 +308,17 @@ export default function TimelineWorkspace({
     const ordered = myDept && present.includes(myDept) ? [myDept, ...present.filter((d) => d !== myDept)] : present;
     return ordered.map((dep) => ({ value: dep, label: dep === myDept ? `ฝ่ายของฉัน (${dep})` : dep }));
   }, [tasks, myDept]);
-  const filterCount = (tableStatusFilter !== "all" ? 1 : 0) + deptFilter.length;
+  const filterCount = statusFilter.length + deptFilter.length;
   const filterControl = (
     <FilterPopover
       count={filterCount}
-      onClear={() => { setTableStatusFilter("all"); setDeptFilter([]); }}
+      onClear={() => { setStatusFilter([]); setDeptFilter([]); }}
       groups={[
         {
-          key: "status", label: "สถานะ", single: true,
+          key: "status", label: "สถานะ",
           options: [{ value: "pending", label: "รอดำเนินการ" }, { value: "progress", label: "กำลังทำ" }, { value: "completed", label: "เสร็จแล้ว" }],
-          selected: tableStatusFilter === "all" ? [] : [tableStatusFilter],
-          onChange: (values) => setTableStatusFilter(values[0] || "all"),
+          selected: statusFilter,
+          onChange: setStatusFilter,
         },
         ...(deptOptions.length ? [{
           key: "dept", label: "ฝ่าย",
