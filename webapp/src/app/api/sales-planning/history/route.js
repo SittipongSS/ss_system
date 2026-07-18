@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { canEditSalesTarget, canViewSalesPlanning, monthKey, toMoney, yearKey } from '@/lib/salesPlanning';
+import { canEditSalesTarget, canViewSalesPlanning, monthKey, normalizeTargetPeriod, toMoney, yearKey } from '@/lib/salesPlanning';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
 export const dynamic = 'force-dynamic';
@@ -32,11 +32,29 @@ function aggregateWonDeals(deals) {
 // GET /api/sales-planning/history?years=2568,2569,2570
 // Returns saved history rows + a `systemActuals` map (from won deals) the client
 // overlays as pre-fill / "source: system" hints. Superuser-scoped like targets.
+//
+// โหมด ?monthsOf=YYYY: คืนเฉพาะแถวรายเดือน (periodType='month') ของปีนั้น —
+// ให้แท็บผลงานขาย/หน้ากรอกยอดรายเดือนใช้ โดยไม่ scan sales_deals ทั้งตาราง
+// (systemActuals จำเป็นเฉพาะ wizard วางเป้า).
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
 
   const params = new URL(req.url).searchParams;
+
+  const monthsOf = yearKey(params.get('monthsOf'));
+  if (monthsOf) {
+    const { data: rows, error } = await supabase
+      .from('sales_history')
+      .select('*')
+      .eq('periodType', 'month')
+      .gte('period', `${monthsOf}-01`)
+      .lte('period', `${monthsOf}-12`)
+      .order('period', { ascending: true });
+    if (error) return fail(error.message, 500);
+    return ok({ rows: rows || [] });
+  }
+
   const yearsParam = (params.get('years') || '')
     .split(',')
     .map((y) => yearKey(y.trim()))
@@ -68,9 +86,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const results = [];
   for (const item of items) {
-    const period = yearKey(item.period);
-    if (!period) return badRequest('ต้องระบุปี (YYYY)');
-    const periodType = item.periodType === 'month' ? 'month' : 'year';
+    // แถวรายปีใช้คีย์ 'YYYY', รายเดือน 'YYYY-MM' — เดิมใช้ yearKey ทื่อ ๆ ซึ่งตัด
+    // '2025-01' เหลือ '2025' เงียบ ๆ ทั้งที่ periodType เป็น month (บั๊ก แก้ 2026-07-18).
+    // ไม่ส่ง periodType = year เหมือนพฤติกรรม API เดิม (helper กลาง default เป็น month)
+    const normalized = normalizeTargetPeriod(item.period, item.periodType === 'month' ? 'month' : 'year');
+    if (!normalized) return badRequest('ระบุงวดไม่ถูกต้อง (YYYY หรือ YYYY-MM)');
+    const { period, periodType } = normalized;
     const team = item.team || null;
     const ownerId = item.ownerId || null;
     if (ownerId && !team) return badRequest('ประวัติรายบุคคลต้องมีทีม');
