@@ -14,7 +14,9 @@ export function validateDocumentReadiness({
   }
   if (action === 'send' || action === 'accept') {
     if (!(Number(lineCount) > 0)) return { ok: false, error: 'document must contain at least one line' };
-    if (!(Number(totalAmount) > 0)) return { ok: false, error: 'document total must be greater than zero' };
+    // ยอด 0 ส่งลูกค้าได้ (มติผู้ใช้ 2026-07-18: บางใบลดจนเหลือ 0) — แต่ accept/Won
+    // ยังต้อง > 0 เพราะการรับใบจะเขียนทับ projectValue ของดีลด้วยยอดนี้ (N3)
+    if (action === 'accept' && !(Number(totalAmount) > 0)) return { ok: false, error: 'document total must be greater than zero' };
   }
   if (action === 'send' || action === 'accept') {
     if (!['not_required', 'approved'].includes(approvalStatus)) {

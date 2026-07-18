@@ -48,7 +48,9 @@ test('approved document is blocked when its fingerprint is stale', () => {
   assert.match(result.error, /changed after approval/);
 });
 
-test('send rejects an empty or zero-total document', () => {
+test('send rejects an empty document but allows a zero total (discounted to 0)', () => {
   assert.equal(validateDocumentReadiness({ action: 'send', lineCount: 0, totalAmount: 100 }).ok, false);
-  assert.equal(validateDocumentReadiness({ action: 'send', lineCount: 1, totalAmount: 0 }).ok, false);
+  assert.equal(validateDocumentReadiness({ action: 'send', lineCount: 1, totalAmount: 0 }).ok, true);
+  // accept/Won ยังต้อง > 0 — การรับใบเขียนทับ projectValue ของดีล
+  assert.equal(validateDocumentReadiness({ action: 'accept', lineCount: 1, totalAmount: 0 }).ok, false);
 });

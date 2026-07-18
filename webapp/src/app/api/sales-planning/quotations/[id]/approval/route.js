@@ -38,8 +38,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (quote.approvalStatus !== 'pending') {
     return badRequest('ใบเสนอราคานี้ไม่อยู่ในสถานะรออนุมัติ');
   }
+  // ยอด 0 อนุมัติได้ (มติผู้ใช้ 2026-07-18: บางใบลดจนเหลือ 0) — ต้องมีรายการเท่านั้น
   if (!(quote.lines?.length > 0)) return badRequest('ต้องมีอย่างน้อย 1 รายการก่อนอนุมัติ');
-  if (!(Number(quote.totalAmount) > 0)) return badRequest('ยอดใบเสนอราคาต้องมากกว่า 0 ก่อนอนุมัติ');
 
   const now = new Date().toISOString();
   const patch = {
