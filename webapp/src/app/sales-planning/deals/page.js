@@ -65,9 +65,11 @@ export default function SalesPlanningPipelinePage() {
     { key: "amount", label: "มูลค่า" },
   ];
 
+  // ทิศตั้งต้นต่อคีย์: ตัวหนังสือ/สถานะอ่าน ก→ฮ (asc), วันที่/มูลค่าเอาใหม่/มากก่อน (desc)
+  const defaultDir = (key) => (key === "name" || key === "status" ? "asc" : "desc");
   const handleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("desc"); }
+    else { setSortKey(key); setSortDir(defaultDir(key)); }
   };
   const sortArrow = (key) => sortKey === key
     ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
@@ -155,7 +157,8 @@ export default function SalesPlanningPipelinePage() {
         const valB = ["won", "in_project"].includes(b.stage) ? (b.wonValue ?? b.projectValue ?? 0) : (b.projectValue ?? 0);
         return (valA - valB) * mul;
       }
-      return ((a.updatedAt || a.createdAt || "") < (b.updatedAt || b.createdAt || "") ? 1 : -1) * mul;
+      // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอดีลเก่าสุด
+      return ((a.updatedAt || a.createdAt || "") < (b.updatedAt || b.createdAt || "") ? -1 : 1) * mul;
     });
   }, [deals, query, stageFilter, typeFilter, reviewOnly, sortKey, sortDir]);
 
@@ -534,7 +537,7 @@ export default function SalesPlanningPipelinePage() {
             <div className="spacer" />
             <SortControl
               value={sortKey}
-              onChange={(event) => { setSortKey(event.target.value); setSortDir("asc"); }}
+              onChange={(event) => { setSortKey(event.target.value); setSortDir(defaultDir(event.target.value)); }}
               options={SORT_OPTIONS}
               direction={sortDir}
               onDirectionChange={setSortDir}

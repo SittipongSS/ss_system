@@ -72,27 +72,21 @@ export default function DealFormFields({
     </label>
   );
 
+  // เชื่อมโครงการต้องเลือกลูกค้าก่อน (มติผู้ใช้ 2026-07-18) — ตัวเลือกจึงเหลือเฉพาะ
+  // โครงการของลูกค้านั้น (+ โครงการที่ยังไม่ผูกลูกค้า) ไม่ต้องเดาลูกค้าย้อนจากโครงการอีก
   const projectField = showProject && (
     <label className="deal-field" key="project">
       โครงการ
       <SearchableSelect
         entity="project"
         value={form.projectId || ""}
-        onChange={(projectId) => {
-          const project = projects.find((item) => item.id === projectId);
-          onPatch({
-            projectId,
-            ...(!form.customerId && project?.customerId
-              ? { customerId: project.customerId, customerName: project.customerName || "" }
-              : {}),
-          });
-        }}
-        disabled={!!form.lockedProjectId || alreadyWon}
-        placeholder="ค้นหารหัส / ชื่อโครงการ..."
+        onChange={(projectId) => onPatch({ projectId })}
+        disabled={!form.customerId || !!form.lockedProjectId || alreadyWon}
+        placeholder={form.customerId ? "ค้นหารหัส / ชื่อโครงการ..." : "เลือกลูกค้าก่อน"}
         options={[
-          { value: "", label: "— ยังไม่เชื่อมโครงการ —" },
+          { value: "", label: form.customerId ? "— ยังไม่เชื่อมโครงการ —" : "เลือกลูกค้าก่อน" },
           ...projects
-            .filter((project) => !form.customerId || !project.customerId || project.customerId === form.customerId || project.id === form.projectId)
+            .filter((project) => !project.customerId || project.customerId === form.customerId || project.id === form.projectId)
             .map((project) => ({
               value: project.id,
               label: [project.code, project.name].filter(Boolean).join(" — ") || project.id,
