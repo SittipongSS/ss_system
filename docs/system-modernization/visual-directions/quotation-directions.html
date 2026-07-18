@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quotation Visual Directions — SS System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy: #21385e;
+      --navy-2: #304f79;
+      --accent: #c17a52;
+      --accent-soft: #f6e7dd;
+      --ink: #1a1e27;
+      --text-2: #505866;
+      --text-3: #777b84;
+      --line: #d8d4cc;
+      --line-strong: #a9a59d;
+      --warm: #f7f3ec;
+      --warm-2: #eee7dc;
+      --paper: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: #e8eaed; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #e8eaed;
+      font-family: "IBM Plex Sans Thai", "Tahoma", sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .review-bar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 18px;
+      color: #fff;
+      background: var(--navy);
+      box-shadow: 0 3px 16px rgba(24, 32, 46, .24);
+    }
+    .review-bar strong { font-size: 14px; }
+    .review-bar .spacer { flex: 1; }
+    .review-bar button {
+      min-height: 34px;
+      padding: 6px 13px;
+      border: 1px solid rgba(255,255,255,.42);
+      border-radius: 8px;
+      color: #fff;
+      background: transparent;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .review-bar button:hover { background: rgba(255,255,255,.1); }
+    .review-bar button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    .review-bar button.primary { color: var(--navy); background: #fff; }
+
+    .directions { display: grid; gap: 36px; padding: 28px 16px 60px; }
+    .direction { width: 210mm; margin: 0 auto; }
+    .direction-label {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin: 0 0 10px;
+      color: var(--navy);
+    }
+    .direction-label b { font-size: 18px; }
+    .direction-label span { color: #5c6572; font-size: 12px; }
+
+    .sheet {
+      position: relative;
+      width: 210mm;
+      min-height: 297mm;
+      padding: 11mm 12mm 10mm;
+      overflow: hidden;
+      background: var(--paper);
+      box-shadow: 0 12px 38px rgba(30, 37, 48, .16);
+      font-variant-numeric: tabular-nums;
+    }
+    body.grayscale .sheet { filter: grayscale(1); }
+    .logo-mark {
+      width: 70px;
+      height: 34px;
+      flex: 0 0 auto;
+      background: var(--navy);
+      -webkit-mask: url("../../../webapp/public/scent-sense-logo.svg") center / contain no-repeat;
+      mask: url("../../../webapp/public/scent-sense-logo.svg") center / contain no-repeat;
+    }
+    .company-name { font-size: 12px; font-weight: 700; color: var(--navy); }
+    .company-lines { margin-top: 2px; color: var(--text-3); font-size: 8px; line-height: 1.45; }
+    .doc-title-th { color: var(--navy); font-size: 21px; font-weight: 700; line-height: 1.12; }
+    .doc-title-en { color: var(--accent); font-size: 9px; font-weight: 700; letter-spacing: 1.8px; }
+    .form-line { color: var(--text-3); font-size: 7.8px; }
+    .label { color: var(--text-3); font-size: 8px; font-weight: 500; }
+    .value { color: var(--ink); font-size: 9.5px; font-weight: 600; }
+    .muted { color: var(--text-3); font-size: 8px; }
+    .num { text-align: right; white-space: nowrap; }
+    .center { text-align: center; }
+    .nowrap { white-space: nowrap; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th { font-size: 8px; font-weight: 600; }
+    td { font-size: 9px; vertical-align: top; }
+    .item-main { color: var(--ink); font-weight: 600; }
+    .item-sub { margin-top: 2px; color: var(--text-3); font-size: 7.5px; }
+    .terms-title { color: var(--navy); font-size: 8px; font-weight: 700; }
+    .terms-copy { color: var(--text-2); font-size: 8px; line-height: 1.55; }
+    .sig-name { color: var(--ink); font-size: 8.5px; font-weight: 600; }
+    .sig-meta { color: var(--text-3); font-size: 7px; }
+
+    /* Direction A — Controlled ISO */
+    .sheet-a { padding-top: 9mm; }
+    .a-head {
+      display: grid;
+      grid-template-columns: 1.45fr .9fr;
+      gap: 8mm;
+      padding-bottom: 5mm;
+      border-bottom: 2px solid var(--navy);
+    }
+    .a-brand { display: flex; gap: 9px; align-items: center; }
+    .a-title { text-align: right; }
+    .a-title .iso-box {
+      display: inline-grid;
+      grid-template-columns: repeat(3, auto);
+      gap: 0;
+      margin-top: 5px;
+      border: 1px solid var(--line-strong);
+    }
+    .a-title .iso-box span { padding: 2px 5px; border-left: 1px solid var(--line-strong); font-size: 7px; }
+    .a-title .iso-box span:first-child { border-left: 0; }
+    .a-meta {
+      display: grid;
+      grid-template-columns: 1.45fr .9fr;
+      margin-top: 5mm;
+      border: 1px solid var(--line-strong);
+    }
+    .a-meta > div { padding: 3.5mm; }
+    .a-meta > div + div { border-left: 1px solid var(--line-strong); }
+    .a-row { display: grid; grid-template-columns: 27mm 1fr; gap: 4px; padding: 1.3px 0; }
+    .a-doc-table { margin-top: 5mm; }
+    .a-doc-table th, .a-doc-table td { border: 1px solid var(--line-strong); padding: 2.4mm 2mm; }
+    .a-doc-table th { color: var(--navy); background: var(--warm-2); text-align: center; }
+    .a-summary {
+      display: grid;
+      grid-template-columns: 1fr 72mm;
+      gap: 7mm;
+      margin-top: 5mm;
+    }
+    .a-terms { border: 1px solid var(--line); padding: 3mm; }
+    .a-totals { border: 1px solid var(--line-strong); }
+    .a-total-row { display: flex; justify-content: space-between; padding: 1.7mm 2.5mm; border-bottom: 1px solid var(--line); font-size: 8.5px; }
+    .a-total-row:last-child { border-bottom: 0; }
+    .a-total-row.grand { color: var(--navy); background: var(--warm-2); font-size: 11px; font-weight: 700; }
+    .a-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; margin-top: 8mm; }
+    .a-sign { min-height: 29mm; border: 1px solid var(--line-strong); text-align: center; }
+    .a-sign-title { padding: 1.5mm; color: var(--navy); background: var(--warm-2); border-bottom: 1px solid var(--line); font-size: 8px; font-weight: 700; }
+    .a-sign-body { padding: 3mm 2mm 2mm; }
+    .a-sign-space { height: 10mm; display: grid; place-items: center; color: var(--text-3); font-size: 7px; border-bottom: 1px dotted var(--line-strong); }
+    .a-footer {
+      position: absolute;
+      left: 12mm;
+      right: 12mm;
+      bottom: 7mm;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 2mm;
+      border-top: 1px solid var(--line-strong);
+      color: var(--text-3);
+      font-size: 7px;
+    }
+
+    /* Direction B — Premium Brand */
+    .sheet-b { padding: 0; }
+    .b-accent { height: 7mm; background: var(--accent); }
+    .b-inner { padding: 10mm 14mm 11mm; }
+    .b-head { display: flex; justify-content: space-between; gap: 12mm; align-items: flex-start; }
+    .b-brand .logo-mark { width: 86px; height: 42px; }
+    .b-brand .company-name { margin-top: 3px; font-size: 11px; }
+    .b-title { text-align: right; }
+    .b-title .doc-title-th { font-size: 25px; font-weight: 600; }
+    .b-title .doc-title-en { margin-top: 1px; color: var(--text-3); letter-spacing: 2.4px; }
+    .b-title .quote-no { margin-top: 5mm; color: var(--accent); font-size: 13px; font-weight: 600; }
+    .b-controlled { margin-top: 2px; color: var(--text-3); font-size: 7px; }
+    .b-intro {
+      display: grid;
+      grid-template-columns: 1.3fr .8fr;
+      gap: 8mm;
+      margin-top: 10mm;
+      padding: 5mm;
+      border-radius: 4mm;
+      background: var(--warm);
+    }
+    .b-party h3 { margin: 0 0 2mm; color: var(--navy); font-size: 12px; font-weight: 600; }
+    .b-party p { margin: 1px 0; color: var(--text-2); font-size: 8.5px; }
+    .b-meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-content: start; }
+    .b-meta .value { text-align: right; }
+    .b-doc-table { margin-top: 8mm; }
+    .b-doc-table th { padding: 2.7mm 2mm; color: #fff; background: var(--navy); text-align: center; }
+    .b-doc-table th:first-child { border-radius: 2.5mm 0 0 0; }
+    .b-doc-table th:last-child { border-radius: 0 2.5mm 0 0; }
+    .b-doc-table td { padding: 3.2mm 2mm; border-bottom: 1px solid var(--line); }
+    .b-doc-table tbody tr:nth-child(even) td { background: #fbfaf7; }
+    .b-summary { display: grid; grid-template-columns: 1fr 69mm; gap: 10mm; margin-top: 7mm; }
+    .b-terms { padding-top: 2mm; }
+    .b-terms .terms-title { color: var(--accent); letter-spacing: .4px; }
+    .b-totals { padding: 4mm; border-radius: 3mm; background: var(--warm); }
+    .b-total-row { display: flex; justify-content: space-between; padding: 1.4mm 0; color: var(--text-2); font-size: 8.5px; }
+    .b-total-row.grand { margin-top: 2mm; padding-top: 3mm; border-top: 2px solid var(--accent); color: var(--accent); font-size: 13px; font-weight: 700; }
+    .b-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm; margin-top: 11mm; }
+    .b-sign { text-align: center; }
+    .b-sign-role { color: var(--navy); font-size: 8px; font-weight: 700; }
+    .b-sign-space { height: 13mm; display: grid; place-items: end center; padding-bottom: 1mm; border-bottom: 1px solid var(--line-strong); color: var(--text-3); font-size: 7px; }
+    .b-sign .sig-name { margin-top: 2mm; }
+    .b-footer {
+      position: absolute;
+      left: 14mm;
+      right: 14mm;
+      bottom: 7mm;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8mm;
+      color: var(--text-3);
+      font-size: 7px;
+    }
+    .b-footer::before { content: ""; position: absolute; left: 0; right: 0; top: -2.5mm; height: 1px; background: linear-gradient(90deg, var(--accent), var(--line) 45%, var(--line)); }
+
+    /* Direction C — Balanced System */
+    .sheet-c { padding: 10mm 12mm 10mm; }
+    .c-head {
+      display: grid;
+      grid-template-columns: 1.35fr .9fr;
+      gap: 8mm;
+      padding-bottom: 4mm;
+      border-bottom: 1px solid var(--line);
+      position: relative;
+    }
+    .c-head::after { content: ""; position: absolute; left: 0; bottom: -1px; width: 35mm; height: 2px; background: var(--accent); }
+    .c-brand { display: flex; gap: 9px; align-items: center; }
+    .c-title { text-align: right; }
+    .c-title .doc-title-th { font-size: 22px; }
+    .c-title .doc-title-en { color: var(--text-3); }
+    .c-form { margin-top: 2.5mm; display: flex; justify-content: flex-end; gap: 5px; color: var(--text-3); font-size: 7px; }
+    .c-form strong { color: var(--navy); }
+    .c-meta {
+      display: grid;
+      grid-template-columns: 1.35fr .9fr;
+      gap: 3mm;
+      margin-top: 5mm;
+    }
+    .c-panel { padding: 3.5mm; border: 1px solid var(--line); border-radius: 2.5mm; background: #fff; }
+    .c-panel:first-child { border-left: 2px solid var(--accent); background: var(--warm); }
+    .c-panel-title { margin-bottom: 2mm; color: var(--navy); font-size: 8px; font-weight: 700; }
+    .c-row { display: grid; grid-template-columns: 25mm 1fr; gap: 4px; padding: 1.1px 0; }
+    .c-doc-table { margin-top: 5mm; border: 1px solid var(--line); border-radius: 2.5mm; overflow: hidden; }
+    .c-doc-table table { border-collapse: separate; border-spacing: 0; }
+    .c-doc-table th { padding: 2.5mm 2mm; color: var(--navy); background: var(--warm-2); border-bottom: 1px solid var(--line-strong); text-align: center; }
+    .c-doc-table td { padding: 3mm 2mm; border-bottom: 1px solid var(--line); }
+    .c-doc-table tr:last-child td { border-bottom: 0; }
+    .c-summary { display: grid; grid-template-columns: 1fr 72mm; gap: 8mm; margin-top: 5mm; }
+    .c-terms { padding: 3mm 0; }
+    .c-terms-block + .c-terms-block { margin-top: 2.5mm; }
+    .c-totals { border: 1px solid var(--line); border-radius: 2.5mm; overflow: hidden; }
+    .c-total-row { display: flex; justify-content: space-between; padding: 1.6mm 2.5mm; border-bottom: 1px solid var(--line); color: var(--text-2); font-size: 8.5px; }
+    .c-total-row.grand { border-bottom: 0; color: #fff; background: var(--navy); font-size: 12px; font-weight: 700; }
+    .c-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; margin-top: 7mm; }
+    .c-sign { min-height: 29mm; border: 1px solid var(--line); border-radius: 2.5mm; overflow: hidden; text-align: center; }
+    .c-sign-title { display: flex; justify-content: center; gap: 4px; padding: 1.5mm; color: var(--navy); background: var(--warm); border-bottom: 1px solid var(--line); font-size: 8px; font-weight: 700; }
+    .c-sign-title span { color: var(--text-3); font-weight: 400; }
+    .c-sign-body { padding: 2.5mm; }
+    .c-sign-space { height: 10mm; display: grid; place-items: center; color: var(--accent); font-size: 7px; border-bottom: 1px dotted var(--line-strong); }
+    .c-verify { display: inline-block; margin-top: 1mm; color: var(--text-3); font-size: 6.6px; }
+    .c-footer {
+      position: absolute;
+      left: 12mm;
+      right: 12mm;
+      bottom: 7mm;
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 7mm;
+      padding-top: 2mm;
+      border-top: 1px solid var(--line);
+      color: var(--text-3);
+      font-size: 7px;
+    }
+
+    @page { size: A4 portrait; margin: 0; }
+    @media print {
+      html, body { background: #fff; }
+      .review-bar, .direction-label { display: none !important; }
+      .directions { display: block; padding: 0; }
+      .direction { margin: 0; break-after: page; page-break-after: always; }
+      .direction:last-child { break-after: auto; page-break-after: auto; }
+      .sheet { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="review-bar">
+    <strong>ใบเสนอราคา — เปรียบเทียบ Visual Direction</strong>
+    <span>Prototype เท่านั้น · ยังไม่เชื่อม Production</span>
+    <span class="spacer"></span>
+    <button type="button" onclick="document.body.classList.toggle('grayscale'); this.textContent = document.body.classList.contains('grayscale') ? 'ดูสี' : 'ดูขาวดำ'">ดูขาวดำ</button>
+    <button class="primary" type="button" onclick="window.print()">พิมพ์ทั้ง 3 แบบ</button>
+  </div>
+
+  <main class="directions">
+    <section class="direction" id="direction-a">
+      <div class="direction-label"><b>A — Controlled ISO</b><span>ความถูกต้องและการตรวจสอบมาก่อน</span></div>
+      <article class="sheet sheet-a">
+        <header class="a-head">
+          <div class="a-brand">
+            <div class="logo-mark"></div>
+            <div>
+              <div class="company-name">บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด</div>
+              <div class="company-lines">2/4 ซอยเพชรเกษม 35/1 ถนนเพชรเกษม แขวงบางหว้า เขตภาษีเจริญ กรุงเทพมหานคร 10160<br>เลขประจำตัวผู้เสียภาษี 0105557081665 · โทร 02-000-7722 · www.scentandsense.co.th</div>
+            </div>
+          </div>
+          <div class="a-title">
+            <div class="doc-title-th">ใบเสนอราคา</div>
+            <div class="doc-title-en">QUOTATION</div>
+            <div class="iso-box"><span>FM-SA-01</span><span>REV.00</span><span>08/05/2568</span></div>
+          </div>
+        </header>
+
+        <section class="a-meta">
+          <div>
+            <div class="a-row"><span class="label">ลูกค้า</span><span class="value">บริษัท สหมิตร โปรดักส์ จำกัด</span></div>
+            <div class="a-row"><span class="label">ที่อยู่ออกบิล</span><span class="value">88/8 ถนนกาญจนาภิเษก แขวงบางแค เขตบางแค กรุงเทพมหานคร 10160</span></div>
+            <div class="a-row"><span class="label">ผู้ติดต่อ</span><span class="value">คุณณัฐชา · 081-234-5678</span></div>
+            <div class="a-row"><span class="label">โครงการ</span><span class="value">Home Fragrance Collection 2026</span></div>
+          </div>
+          <div>
+            <div class="a-row"><span class="label">เลขที่</span><span class="value">QT-26070001-0</span></div>
+            <div class="a-row"><span class="label">วันที่ออก</span><span class="value">19 กรกฎาคม 2569</span></div>
+            <div class="a-row"><span class="label">ยืนราคาถึง</span><span class="value">18 สิงหาคม 2569</span></div>
+            <div class="a-row"><span class="label">ผู้ดูแล</span><span class="value">กานติมา ธาดาธารกิจ</span></div>
+          </div>
+        </section>
+
+        <table class="a-doc-table">
+          <colgroup><col style="width:8mm"><col><col style="width:18mm"><col style="width:30mm"><col style="width:34mm"></colgroup>
+          <thead><tr><th>ลำดับ</th><th>รายการ</th><th>จำนวน</th><th>ราคา/หน่วย</th><th>จำนวนเงิน</th></tr></thead>
+          <tbody>
+            <tr><td class="center">1</td><td><div class="item-main">ก้านไม้หอมปรับอากาศ 100 ml</div><div class="item-sub">FG-RD-100 · กลิ่น Signature Bloom · บรรจุกล่องมาตรฐาน</div></td><td class="num">1,000</td><td class="num">185.00</td><td class="num">185,000.00</td></tr>
+            <tr><td class="center">2</td><td><div class="item-main">สเปรย์ปรับอากาศ 250 ml</div><div class="item-sub">FG-RS-250 · กลิ่น Signature Bloom · ฉลากลูกค้า</div></td><td class="num">500</td><td class="num">220.00</td><td class="num">110,000.00</td></tr>
+            <tr><td class="center">3</td><td><div class="item-main">ค่าพัฒนากลิ่นและตัวอย่าง</div><div class="item-sub">บริการพัฒนาสูตรและตัวอย่างก่อนผลิตจริง</div></td><td class="num">1</td><td class="num">25,000.00</td><td class="num">25,000.00</td></tr>
+          </tbody>
+        </table>
+
+        <section class="a-summary">
+          <div class="a-terms">
+            <div class="terms-title">หมายเหตุ / REMARKS</div>
+            <div class="terms-copy">ราคานี้รวมบรรจุภัณฑ์ตามรายละเอียดที่ระบุ ไม่รวมค่าจัดส่งนอกเขตกรุงเทพฯ</div>
+            <div class="terms-title" style="margin-top:3mm">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>
+            <div class="terms-copy">มัดจำ 50% เมื่อยืนยันคำสั่งซื้อ และชำระส่วนที่เหลือก่อนส่งมอบสินค้า</div>
+          </div>
+          <div class="a-totals">
+            <div class="a-total-row"><span>รวมสินค้า/บริการ</span><b>320,000.00</b></div>
+            <div class="a-total-row"><span>ส่วนลด</span><b>-10,000.00</b></div>
+            <div class="a-total-row"><span>VAT 7%</span><b>21,700.00</b></div>
+            <div class="a-total-row grand"><span>ยอดรวมทั้งสิ้น</span><span>331,700.00 บาท</span></div>
+          </div>
+        </section>
+
+        <section class="a-signatures">
+          <div class="a-sign"><div class="a-sign-title">ผู้เสนอราคา</div><div class="a-sign-body"><div class="a-sign-space">ลายเซ็นอิเล็กทรอนิกส์</div><div class="sig-name">กานติมา ธาดาธารกิจ</div><div class="sig-meta">19/07/2569 14:22</div></div></div>
+          <div class="a-sign"><div class="a-sign-title">ผู้อนุมัติ</div><div class="a-sign-body"><div class="a-sign-space">ลายเซ็นอิเล็กทรอนิกส์</div><div class="sig-name">สุพิชญา ใจดี</div><div class="sig-meta">19/07/2569 14:30</div></div></div>
+          <div class="a-sign"><div class="a-sign-title">ผู้ยืนยันสั่งซื้อ</div><div class="a-sign-body"><div class="a-sign-space">ลงชื่อ</div><div class="sig-name">ชื่อ-นามสกุลตัวบรรจง</div><div class="sig-meta">วันที่ ______ / ______ / ______</div></div></div>
+        </section>
+
+        <footer class="a-footer"><span>FM-SA-01 · Rev.00 · มีผล 08/05/2568</span><span>เอกสารควบคุม · SS System</span><span>หน้า 1 / 1</span></footer>
+      </article>
+    </section>
+
+    <section class="direction" id="direction-b">
+      <div class="direction-label"><b>B — Premium Brand</b><span>ภาพลักษณ์และประสบการณ์ลูกค้ามาก่อน</span></div>
+      <article class="sheet sheet-b">
+        <div class="b-accent"></div>
+        <div class="b-inner">
+          <header class="b-head">
+            <div class="b-brand">
+              <div class="logo-mark"></div>
+              <div class="company-name">บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด</div>
+              <div class="company-lines">SCENT &amp; SENSE LABORATORY CO., LTD.<br>02-000-7722 · @perfumefactory · www.scentandsense.co.th</div>
+            </div>
+            <div class="b-title">
+              <div class="doc-title-th">ใบเสนอราคา</div>
+              <div class="doc-title-en">QUOTATION</div>
+              <div class="quote-no">QT-26070001-0</div>
+              <div class="b-controlled">FM-SA-01 · REV.00 · EFFECTIVE 08/05/2568</div>
+            </div>
+          </header>
+
+          <section class="b-intro">
+            <div class="b-party">
+              <div class="label">เรียน / TO</div>
+              <h3>บริษัท สหมิตร โปรดักส์ จำกัด</h3>
+              <p>88/8 ถนนกาญจนาภิเษก แขวงบางแค เขตบางแค กรุงเทพมหานคร 10160</p>
+              <p>คุณณัฐชา · 081-234-5678</p>
+              <p style="margin-top:2mm"><span class="label">โครงการ</span> Home Fragrance Collection 2026</p>
+            </div>
+            <div class="b-meta">
+              <span class="label">วันที่ออก</span><span class="value">19 กรกฎาคม 2569</span>
+              <span class="label">ยืนราคาถึง</span><span class="value">18 สิงหาคม 2569</span>
+              <span class="label">ผู้ดูแล</span><span class="value">กานติมา ธาดาธารกิจ</span>
+              <span class="label">สถานะ</span><span class="value">อนุมัติแล้ว</span>
+            </div>
+          </section>
+
+          <table class="b-doc-table">
+            <colgroup><col style="width:8mm"><col><col style="width:18mm"><col style="width:30mm"><col style="width:34mm"></colgroup>
+            <thead><tr><th>#</th><th>รายการสินค้าและบริการ</th><th>จำนวน</th><th>ราคา/หน่วย</th><th>จำนวนเงิน</th></tr></thead>
+            <tbody>
+              <tr><td class="center">01</td><td><div class="item-main">ก้านไม้หอมปรับอากาศ 100 ml</div><div class="item-sub">FG-RD-100 · Signature Bloom · Standard box</div></td><td class="num">1,000</td><td class="num">185.00</td><td class="num">185,000.00</td></tr>
+              <tr><td class="center">02</td><td><div class="item-main">สเปรย์ปรับอากาศ 250 ml</div><div class="item-sub">FG-RS-250 · Signature Bloom · Customer label</div></td><td class="num">500</td><td class="num">220.00</td><td class="num">110,000.00</td></tr>
+              <tr><td class="center">03</td><td><div class="item-main">ค่าพัฒนากลิ่นและตัวอย่าง</div><div class="item-sub">Fragrance development and pre-production samples</div></td><td class="num">1</td><td class="num">25,000.00</td><td class="num">25,000.00</td></tr>
+            </tbody>
+          </table>
+
+          <section class="b-summary">
+            <div class="b-terms">
+              <div class="terms-title">REMARKS · หมายเหตุ</div>
+              <div class="terms-copy">ราคานี้รวมบรรจุภัณฑ์ตามรายละเอียดที่ระบุ ไม่รวมค่าจัดส่งนอกเขตกรุงเทพฯ</div>
+              <div class="terms-title" style="margin-top:4mm">PAYMENT TERMS · เงื่อนไขการชำระเงิน</div>
+              <div class="terms-copy">มัดจำ 50% เมื่อยืนยันคำสั่งซื้อ และชำระส่วนที่เหลือก่อนส่งมอบสินค้า</div>
+            </div>
+            <div class="b-totals">
+              <div class="b-total-row"><span>รวมสินค้า/บริการ</span><b>320,000.00</b></div>
+              <div class="b-total-row"><span>ส่วนลด</span><b>-10,000.00</b></div>
+              <div class="b-total-row"><span>VAT 7%</span><b>21,700.00</b></div>
+              <div class="b-total-row grand"><span>ยอดสุทธิ</span><span>331,700.00</span></div>
+              <div class="muted" style="text-align:right;margin-top:1mm">บาท · THB</div>
+            </div>
+          </section>
+
+          <section class="b-signatures">
+            <div class="b-sign"><div class="b-sign-role">ผู้เสนอราคา</div><div class="b-sign-space">ลายเซ็นอิเล็กทรอนิกส์</div><div class="sig-name">กานติมา ธาดาธารกิจ</div><div class="sig-meta">19/07/2569 14:22</div></div>
+            <div class="b-sign"><div class="b-sign-role">ผู้อนุมัติ</div><div class="b-sign-space">ลายเซ็นอิเล็กทรอนิกส์</div><div class="sig-name">สุพิชญา ใจดี</div><div class="sig-meta">19/07/2569 14:30</div></div>
+            <div class="b-sign"><div class="b-sign-role">ผู้ยืนยันสั่งซื้อ</div><div class="b-sign-space">ลงชื่อ</div><div class="sig-name">ชื่อ-นามสกุลตัวบรรจง</div><div class="sig-meta">วันที่ ______ / ______ / ______</div></div>
+          </section>
+        </div>
+        <footer class="b-footer"><span>บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด · เลขประจำตัวผู้เสียภาษี 0105557081665</span><span>FM-SA-01 · Rev.00 · หน้า 1/1</span></footer>
+      </article>
+    </section>
+
+    <section class="direction" id="direction-c">
+      <div class="direction-label"><b>C — Balanced System</b><span>โครงสร้าง ISO และบุคลิกแบรนด์ในระดับพอดี — แนะนำ</span></div>
+      <article class="sheet sheet-c">
+        <header class="c-head">
+          <div class="c-brand">
+            <div class="logo-mark"></div>
+            <div>
+              <div class="company-name">บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด</div>
+              <div class="company-lines">2/4 ซอยเพชรเกษม 35/1 แขวงบางหว้า เขตภาษีเจริญ กรุงเทพมหานคร 10160<br>เลขประจำตัวผู้เสียภาษี 0105557081665 · 02-000-7722 · @perfumefactory</div>
+            </div>
+          </div>
+          <div class="c-title">
+            <div class="doc-title-th">ใบเสนอราคา</div>
+            <div class="doc-title-en">QUOTATION</div>
+            <div class="c-form"><strong>FM-SA-01</strong><span>Rev.00</span><span>มีผล 08/05/2568</span></div>
+          </div>
+        </header>
+
+        <section class="c-meta">
+          <div class="c-panel">
+            <div class="c-panel-title">ข้อมูลลูกค้า</div>
+            <div class="c-row"><span class="label">ลูกค้า</span><span class="value">บริษัท สหมิตร โปรดักส์ จำกัด</span></div>
+            <div class="c-row"><span class="label">ที่อยู่ออกบิล</span><span class="value">88/8 ถนนกาญจนาภิเษก แขวงบางแค เขตบางแค กรุงเทพมหานคร 10160</span></div>
+            <div class="c-row"><span class="label">ผู้ติดต่อ</span><span class="value">คุณณัฐชา · 081-234-5678</span></div>
+            <div class="c-row"><span class="label">โครงการ</span><span class="value">Home Fragrance Collection 2026</span></div>
+          </div>
+          <div class="c-panel">
+            <div class="c-panel-title">ข้อมูลเอกสาร</div>
+            <div class="c-row"><span class="label">เลขที่</span><span class="value">QT-26070001-0</span></div>
+            <div class="c-row"><span class="label">วันที่ออก</span><span class="value">19 กรกฎาคม 2569</span></div>
+            <div class="c-row"><span class="label">ยืนราคาถึง</span><span class="value">18 สิงหาคม 2569</span></div>
+            <div class="c-row"><span class="label">ผู้ดูแล</span><span class="value">กานติมา ธาดาธารกิจ</span></div>
+          </div>
+        </section>
+
+        <div class="c-doc-table">
+          <table>
+            <colgroup><col style="width:8mm"><col><col style="width:18mm"><col style="width:30mm"><col style="width:34mm"></colgroup>
+            <thead><tr><th>ลำดับ</th><th>รายการสินค้าและบริการ</th><th>จำนวน</th><th>ราคา/หน่วย</th><th>จำนวนเงิน</th></tr></thead>
+            <tbody>
+              <tr><td class="center">1</td><td><div class="item-main">ก้านไม้หอมปรับอากาศ 100 ml</div><div class="item-sub">FG-RD-100 · กลิ่น Signature Bloom · บรรจุกล่องมาตรฐาน</div></td><td class="num">1,000</td><td class="num">185.00</td><td class="num">185,000.00</td></tr>
+              <tr><td class="center">2</td><td><div class="item-main">สเปรย์ปรับอากาศ 250 ml</div><div class="item-sub">FG-RS-250 · กลิ่น Signature Bloom · ฉลากลูกค้า</div></td><td class="num">500</td><td class="num">220.00</td><td class="num">110,000.00</td></tr>
+              <tr><td class="center">3</td><td><div class="item-main">ค่าพัฒนากลิ่นและตัวอย่าง</div><div class="item-sub">บริการพัฒนาสูตรและตัวอย่างก่อนผลิตจริง</div></td><td class="num">1</td><td class="num">25,000.00</td><td class="num">25,000.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="c-summary">
+          <div class="c-terms">
+            <div class="c-terms-block"><div class="terms-title">หมายเหตุ <span class="muted">/ REMARKS</span></div><div class="terms-copy">ราคานี้รวมบรรจุภัณฑ์ตามรายละเอียดที่ระบุ ไม่รวมค่าจัดส่งนอกเขตกรุงเทพฯ</div></div>
+            <div class="c-terms-block"><div class="terms-title">เงื่อนไขการชำระเงิน <span class="muted">/ PAYMENT TERMS</span></div><div class="terms-copy">มัดจำ 50% เมื่อยืนยันคำสั่งซื้อ และชำระส่วนที่เหลือก่อนส่งมอบสินค้า</div></div>
+          </div>
+          <div class="c-totals">
+            <div class="c-total-row"><span>รวมสินค้า/บริการ</span><b>320,000.00</b></div>
+            <div class="c-total-row"><span>ส่วนลด</span><b>-10,000.00</b></div>
+            <div class="c-total-row"><span>VAT 7%</span><b>21,700.00</b></div>
+            <div class="c-total-row grand"><span>ยอดรวมทั้งสิ้น</span><span>331,700.00 บาท</span></div>
+          </div>
+        </section>
+
+        <section class="c-signatures">
+          <div class="c-sign"><div class="c-sign-title">ผู้เสนอราคา <span>พนักงานขาย</span></div><div class="c-sign-body"><div class="c-sign-space">ลายเซ็นอิเล็กทรอนิกส์</div><div class="sig-name">กานติมา ธาดาธารกิจ</div><div class="sig-meta">ลงนาม 19/07/2569 14:22</div><span class="c-verify">Signature ref. SIG-01928</span></div></div>
+          <div class="c-sign"><div class="c-sign-title">ผู้อนุมัติ <span>ผู้จัดการฝ่ายขาย</span></div><div class="c-sign-body"><div class="c-sign-space">ลายเซ็นอิเล็กทรอนิกส์</div><div class="sig-name">สุพิชญา ใจดี</div><div class="sig-meta">อนุมัติ 19/07/2569 14:30</div><span class="c-verify">Document fingerprint verified</span></div></div>
+          <div class="c-sign"><div class="c-sign-title">ผู้ยืนยันสั่งซื้อ <span>ลูกค้า</span></div><div class="c-sign-body"><div class="c-sign-space">ลงชื่อ</div><div class="sig-name">ชื่อ-นามสกุลตัวบรรจง</div><div class="sig-meta">วันที่ ______ / ______ / ______</div><span class="c-verify">ประทับตราบริษัท (ถ้ามี)</span></div></div>
+        </section>
+
+        <footer class="c-footer"><span>บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด · เอกสารควบคุม</span><span>FM-SA-01 · Rev.00</span><span>หน้า 1 / 1</span></footer>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
