@@ -131,7 +131,9 @@ reopen: เพิ่มดีล RE-ORDER ใหม่ → กลับ 'reopene
 + paymentTerms (text จาก template + แก้ได้)
 + หมายเหตุ + เลือกจาก template: ตารางใหม่ `quote_note_templates` (id·serviceType·title·body·active)
   — supervisor จัดการ template ได้ (หน้า /database หรือในเมนูใบเสนอราคา)
-· ราคา freeze เดิม + redactProductMargin เดิม + approval เกินเงื่อนไข (0070) คงไว้
+· ราคา freeze เดิม + redactProductMargin เดิม คงไว้
+· approval เกินเงื่อนไข (0070/0098) ถูกถอดออกแล้วใน mig 0100 — มติ 2026-07-18: อนาคตจะกลับมา
+  เป็นโมเดลใหม่ "เซ็นรับรองโดยเจ้าของ" (ไม่ใช่ด่านตามยอด) → ดู QT_CREATE_PAGE_PLAN.md §6
 ```
 
 **`sales_deals`** — ตามแผน deal-project เดิม (dealType/หลายดีลต่อโครงการ) + เพิ่ม:
