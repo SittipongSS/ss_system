@@ -27,7 +27,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 4A | Admin Center และข้อมูลบริษัทแบบมีเวอร์ชัน | เสร็จสมบูรณ์ | [Phase 4A](./phase-04a-admin-center-company-data.md) |
 | 4B | Workflow และ Timeline Template แบบมีเวอร์ชัน | เสร็จสมบูรณ์ | [Phase 4B](./phase-04b-workflow-timeline-templates.md) |
 | 4C | Home และ Navigation Hub | เสร็จสมบูรณ์ | [Phase 4C](./phase-04c-home-navigation-hub.md) |
-| 5 | Electronic signature | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 5 | Electronic signature | กำลังดำเนินการ | [Phase 5](./phase-05-electronic-signature.md) |
 | 6 | Document Design System และ Mockup | รอดำเนินการ | [Document Design System](./document-design-system.md) |
 | 7 | Document engine, versioning และย้ายเอกสาร | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 8 | Permission redesign และ Migration | รอดำเนินการลำดับสุดท้าย | [Action inventory](./permission-action-inventory.md) |
@@ -66,6 +66,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Phase 4A — Admin Center and Versioned Company Data](./phase-04a-admin-center-company-data.md)
 - [Phase 4B — Versioned Workflow and Timeline Templates](./phase-04b-workflow-timeline-templates.md)
 - [Phase 4C — Home and Navigation Hub Modernization](./phase-04c-home-navigation-hub.md)
+- [Phase 5 — Electronic Signature](./phase-05-electronic-signature.md)
 - [UX/UI Rulebook](./ux-ui-rulebook.md)
 - [Document Design System](./document-design-system.md)
 - [Decision 0001 — Program governance](./decisions/0001-program-governance.md)

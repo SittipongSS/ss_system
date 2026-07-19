@@ -40,6 +40,14 @@
 - การแก้ Profile บันทึก Audit ด้วย `entityType: user`; การเปลี่ยนรหัสผ่านไม่บันทึกรหัสผ่านหรือ secret ลง Audit
 - การจัดสิทธิ์ใหม่ยังเลื่อนไป Phase 8 ตามเดิม ไม่มี Role หรือ Capability ใหม่ใน Phase 1
 
+## หลักฐานจาก Phase 5A
+
+- `GET/POST/DELETE /api/account/signature` derive owner จาก session และไม่รับ target user ID
+- File proxy ตรวจทั้ง `userId`, signature root, version และ owner-scoped storage path ก่อนคืน private PNG
+- Signed-in user จัดการได้เฉพาะลายเซ็นของตนเอง; Phase 5A ไม่เพิ่ม Role หรือ Capability ใหม่
+- Admin view/revoke ของผู้อื่นยังไม่ implement และคงไว้เป็น decision ของ Phase 8
+- Version/event history และ storage object เดิมไม่ถูกลบเมื่อ Replace หรือ Revoke
+
 ## คำถามสำหรับ Permission phase
 
 - Action ใดต้องแยก View กับ Export

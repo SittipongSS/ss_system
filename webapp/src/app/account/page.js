@@ -6,6 +6,7 @@ import PhoneInput from "@/components/ui/PhoneInput";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
+import SignatureVault from "@/components/account/SignatureVault";
 import { DEPARTMENT_LABELS, DEPARTMENT_NAMES_TH, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
 import { fmtName } from "@/lib/format";
 import styles from "./page.module.css";
@@ -112,7 +113,7 @@ export default function AccountPage() {
       <div className="premium-header">
         <div className="header-content">
           <h1><span className="premium-header-icon"><UserRound size={22} /></span> บัญชีของฉัน</h1>
-          <p>จัดการข้อมูลส่วนตัวและความปลอดภัยของบัญชี</p>
+          <p>จัดการข้อมูลส่วนตัว ความปลอดภัย และลายเซ็นอิเล็กทรอนิกส์ของบัญชี</p>
         </div>
       </div>
 
@@ -201,6 +202,7 @@ export default function AccountPage() {
                 )}
               </div>
             </section>
+            <SignatureVault />
           </aside>
         </div>
       )}
