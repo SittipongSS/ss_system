@@ -23,7 +23,7 @@
 | product_category_import | download_template, export, preview, commit, view_history | all | AE Supervisor + Admin ผ่าน `canManageProductCategories` | 3 |
 | organization_settings | view, edit_draft, publish, archive | all | admin/`master:manage` | 4A |
 | workflow_timeline_template | view, preview, edit_draft, publish, archive | module/all | ยังไม่ตัดสินใจ; ห้ามขยายสิทธิ์ก่อน Phase 8 | 4B |
-| document_form_metadata | view, edit_draft, publish, archive | all | admin/`master:manage` | 4/7 |
+| document_form_metadata | view, edit_draft, publish, archive | all | Admin + AE Supervisor ผ่าน `canManageDocumentStandards` | 6A |
 | signature | view_status, upload, replace, revoke | own | signed-in + owner | 5 |
 | signature_admin | view_status, revoke_emergency | all | ยังไม่ตัดสินใจ | 5/8 |
 | document_template | view, preview, edit_draft, publish, archive | module/all | admin เดิม | 6/7 |

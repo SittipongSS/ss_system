@@ -28,7 +28,8 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 4B | Workflow และ Timeline Template แบบมีเวอร์ชัน | เสร็จสมบูรณ์ | [Phase 4B](./phase-04b-workflow-timeline-templates.md) |
 | 4C | Home และ Navigation Hub | เสร็จสมบูรณ์ | [Phase 4C](./phase-04c-home-navigation-hub.md) |
 | 5 | Electronic signature | กำลังดำเนินการ | [Phase 5](./phase-05-electronic-signature.md) |
-| 6 | Document Design System และ Mockup | รอดำเนินการ | [Document Design System](./document-design-system.md) |
+| 6A | Versioned Document Standards | กำลังดำเนินการ | [Phase 6A](./phase-06a-document-standards.md) |
+| 6B | Document Design System และ Quotation Mockup | รอดำเนินการ | [Document Design System](./document-design-system.md) |
 | 7 | Document engine, versioning และย้ายเอกสาร | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 8 | Permission redesign และ Migration | รอดำเนินการลำดับสุดท้าย | [Action inventory](./permission-action-inventory.md) |
 | 9 | Permission UAT, staged rollout และปิดโปรแกรม | รอดำเนินการ | [Release checklist](./release-checklist.md) |
@@ -67,6 +68,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Phase 4B — Versioned Workflow and Timeline Templates](./phase-04b-workflow-timeline-templates.md)
 - [Phase 4C — Home and Navigation Hub Modernization](./phase-04c-home-navigation-hub.md)
 - [Phase 5 — Electronic Signature](./phase-05-electronic-signature.md)
+- [Phase 6A — Versioned Document Standards](./phase-06a-document-standards.md)
 - [UX/UI Rulebook](./ux-ui-rulebook.md)
 - [Document Design System](./document-design-system.md)
 - [Decision 0001 — Program governance](./decisions/0001-program-governance.md)
@@ -74,5 +76,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Decision 0003 — Organization settings versioning](./decisions/0003-organization-settings-versioning.md)
 - [Decision 0004 — Versioned operational templates and commercial content boundary](./decisions/0004-versioned-operational-templates.md)
 - [Decision 0005 — Home remains a navigation hub](./decisions/0005-home-remains-navigation-hub.md)
+- [Decision 0006 — Private versioned electronic signatures](./decisions/0006-private-versioned-electronic-signatures.md)
+- [Decision 0007 — Versioned document standards before signature evidence](./decisions/0007-versioned-document-standards.md)
 - [Permission action inventory](./permission-action-inventory.md)
 - [Release checklist](./release-checklist.md)

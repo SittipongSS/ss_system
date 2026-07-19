@@ -326,6 +326,14 @@ export function canManageProductCategories(role) {
   return role === 'admin' || role === 'ae_supervisor';
 }
 
+// Controlled document identity is business-owned by the Sales head, while the
+// admin account remains the break-glass authority. Keep this separate from
+// `master:manage`: granting that capability would also expose system-only
+// configuration such as Company Data and Workflow Template management.
+export function canManageDocumentStandards(role) {
+  return role === 'admin' || role === 'ae_supervisor';
+}
+
 // ── SAHAMIT module access ─────────────────────────────────────────────
 // The SAHAMIT (Planning & Sales) module is restricted to the SA · Key Account
 // (KA) team, plus admin / sales-head oversight. Capability alone isn't enough —
