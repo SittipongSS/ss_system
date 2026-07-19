@@ -15,6 +15,14 @@ import { fmtPhone, fmtDateNumeric as fmtDate } from "@/lib/format";
 import Select from "@/components/ui/Select";
 import { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { QT_PEOPLE_ROLES } from "@/lib/sales/quotationPeople";
+
+// ผู้ดูแล/ผู้ประสานงาน/ผู้ตรวจสอบ ของโครงการถูกคัดลอกไปเป็นผู้รับผิดชอบใบเสนอราคา
+// ซึ่ง validate role ฝั่ง server — อ้าง QT_PEOPLE_ROLES ตรง ๆ ไม่เขียนรายการซ้ำ
+// ไม่งั้นสองที่ drift แล้วชื่อที่เลือกที่นี่จะบันทึกใบเสนอราคาไม่ผ่าน (เคยเกิดมาแล้ว)
+const AE_OWNER_ROLES = QT_PEOPLE_ROLES.aeOwner;
+const AC_ROLES = QT_PEOPLE_ROLES.preparedBy;
+const SUPERVISOR_ROLES = QT_PEOPLE_ROLES.aeSupervisor;
 
 const DAY_MS = 86400000;
 const ROW_H = 34;       // ความสูงแถวงาน (ให้บาร์ align กับช่องซ้าย)
@@ -332,7 +340,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
             label="ผู้ดูแล"
             role="ACCOUNT EXECUTIVE"
             value={pv("aeOwner")}
-            users={users.filter(u => u.role === "ae" || u.role === "senior_ae")}
+            users={users.filter(u => AE_OWNER_ROLES.includes(u.role))}
             disabled={disabled}
             onCommit={commitField("aeOwner")}
             detail={[aeMobile, aeEmail].filter(Boolean).join(" · ")}
@@ -341,7 +349,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
             label="ผู้ประสานงาน"
             role="ACCOUNT COORDINATOR"
             value={pv("preparedBy")}
-            users={users.filter(u => u.role === "ac")}
+            users={users.filter(u => AC_ROLES.includes(u.role))}
             disabled={disabled}
             onCommit={commitField("preparedBy")}
           />
@@ -349,7 +357,7 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
             label="ผู้ตรวจสอบ"
             role="AE SUPERVISOR"
             value={pv("aeSupervisor") || pv("reviewedBy")}
-            users={users.filter(u => u.role === "ae_supervisor")}
+            users={users.filter(u => SUPERVISOR_ROLES.includes(u.role))}
             disabled={disabled}
             onCommit={commitField("aeSupervisor")}
           />
@@ -500,10 +508,11 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
           {/* ลายเซ็น */}
           <div style={{ position: "sticky", left: 0, display: "flex", flexWrap: "wrap", justifyContent: "space-around", gap: "32px", padding: "24px 20px", borderTop: "1px solid var(--border)", background: "var(--panel-2)", zIndex: 1, width: "100%", minWidth: "min-content" }}>
             {/* ชุดเดียวกับช่องลงชื่อบนเอกสารพิมพ์ (ganttPrint): ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ */}
-            <SignBlock label="ผู้ดูแล" role="ตำแหน่ง ACCOUNT EXECUTIVE" value={pv("aeOwner")} disabled={disabled} users={users.filter(u => u.role === "ae" || u.role === "senior_ae" || u.role === "ae_supervisor")} onCommit={commitField("aeOwner")} />
-            <SignBlock label="ผู้จัดทำ" role="ตำแหน่ง ACCOUNT COORDINATOR" value={pv("preparedBy")} disabled={disabled} users={users.filter(u => u.role === "ac")} onCommit={commitField("preparedBy")} />
+            {/* ช่องนี้เขียนลง aeOwner ตัวเดียวกับหัวเอกสาร — role ต้องตรงกันทั้งสองที่ */}
+            <SignBlock label="ผู้ดูแล" role="ตำแหน่ง ACCOUNT EXECUTIVE" value={pv("aeOwner")} disabled={disabled} users={users.filter(u => AE_OWNER_ROLES.includes(u.role))} onCommit={commitField("aeOwner")} />
+            <SignBlock label="ผู้จัดทำ" role="ตำแหน่ง ACCOUNT COORDINATOR" value={pv("preparedBy")} disabled={disabled} users={users.filter(u => AC_ROLES.includes(u.role))} onCommit={commitField("preparedBy")} />
             {/* ผู้ตรวจสอบ = field เดียวกับฟอร์มและหัวเอกสาร (aeSupervisor) — เลิกใช้ reviewedBy เพื่อไม่ให้ข้อมูลแตกเป็นสองที่ */}
-            <SignBlock label="ผู้ตรวจสอบ" role="ตำแหน่ง AE SUPERVISOR" value={pv("aeSupervisor") || pv("reviewedBy")} disabled={disabled} users={users.filter(u => u.role === "ae_supervisor")} onCommit={commitField("aeSupervisor")} />
+            <SignBlock label="ผู้ตรวจสอบ" role="ตำแหน่ง AE SUPERVISOR" value={pv("aeSupervisor") || pv("reviewedBy")} disabled={disabled} users={users.filter(u => SUPERVISOR_ROLES.includes(u.role))} onCommit={commitField("aeSupervisor")} />
           </div>
         </div>
       </div>
