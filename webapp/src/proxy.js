@@ -80,6 +80,15 @@ export async function proxy(request) {
     return withRefreshedCookies(NextResponse.redirect(new URL('/database', request.url)));
   }
 
+  // Phase 4A company versions are system configuration. Keep the page aligned
+  // with the server API gate until the permission redesign in Phase 8.
+  if (
+    user && !isApi && path.startsWith('/settings/company') &&
+    !can(user.app_metadata?.role, 'master:manage')
+  ) {
+    return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
+  }
+
   // ── Phased rollout lockdown ───────────────────────────────────────────
   // All three systems — Project Management (/pm), database (/database) and the
   // excise tax system (/tax) — are now open to their normal roles. Admins

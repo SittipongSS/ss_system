@@ -1,6 +1,15 @@
 "use client";
-import { useEffect, useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
+
+const FOCUSABLE_SELECTOR = [
+  "button:not([disabled])",
+  "[href]",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
 
 // Right-side slide-over for a single record: header (title + status badge),
 // scrollable body, sticky footer for actions. Built on the shared `.overlay`
@@ -9,24 +18,63 @@ import { X } from "lucide-react";
 //   open / onClose, title, subtitle, badge (ReactNode), footer (ReactNode), children
 export default function RecordDrawer({ open, onClose, title, subtitle, badge, footer, closeOnOverlay = true, children }) {
   const titleId = useId();
+  const drawerRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    const drawer = drawerRef.current;
+    const previousActiveElement = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    const focusableElements = () => (
+      drawer ? [...drawer.querySelectorAll(FOCUSABLE_SELECTOR)] : []
+    );
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        onCloseRef.current?.();
+        return;
+      }
+      if (e.key !== "Tab" || !drawer) return;
+      const focusable = focusableElements();
+      if (!focusable.length) {
+        e.preventDefault();
+        drawer.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !drawer.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
+    (focusableElements()[0] || drawer)?.focus();
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
+      if (previousActiveElement instanceof HTMLElement && document.contains(previousActiveElement)) {
+        previousActiveElement.focus();
+      }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (
     <div className="overlay" onClick={closeOnOverlay ? onClose : undefined} style={{ justifyContent: "flex-end", alignItems: "stretch", padding: 0 }}>
       <aside
+        ref={drawerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(480px, 100%)", height: "100%", background: "var(--panel-2)",

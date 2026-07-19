@@ -2,9 +2,10 @@
 // ศูนย์รวมการตั้งค่าระบบ — เมนู "ตั้งค่า" เดียวใน top nav ชี้มาที่นี่
 // โชว์เฉพาะการ์ดที่สิทธิ์ของผู้ใช้เข้าถึงได้ (ปฏิทินเห็นทุกคนเพราะเป็นข้อมูลอ่านได้ทั้งระบบ)
 import Link from "next/link";
-import { Settings, CalendarDays, BellRing, Users, History, ChevronRight } from "lucide-react";
+import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { can } from "@/lib/permissions";
+import styles from "./page.module.css";
 
 export default function SettingsPage() {
   const role = useRole();
@@ -14,36 +15,62 @@ export default function SettingsPage() {
   const canUsersView = useCan("users:view");
   const canUsers = can(role, "users:manage") || canUsersView;
 
-  const items = [
+  const sections = [
     {
-      href: "/database/holidays",
-      icon: CalendarDays,
-      title: "วันหยุด (ปฏิทินทำการ)",
-      desc: "วันหยุดบริษัท/นักขัตฤกษ์ที่ระบบใช้นับวันทำการของไทม์ไลน์โครงการ",
-      show: true,
+      title: "ข้อมูลองค์กร",
+      desc: "ข้อมูลกลางที่มีผลกับทั้งระบบและต้องมีผู้รับผิดชอบชัดเจน",
+      items: [
+        {
+          href: "/settings/company",
+          icon: Building2,
+          title: "ข้อมูลบริษัท",
+          desc: "จัดการชื่อนิติบุคคล ที่อยู่ เลขผู้เสียภาษี และช่องทางติดต่อแบบมีเวอร์ชัน",
+          show: canChat,
+        },
+      ],
     },
     {
-      href: "/database/chat-webhooks",
-      icon: BellRing,
-      title: "แจ้งเตือน Google Chat",
-      desc: "webhook ของแต่ละ space ที่ระบบส่งการ์ดแจ้งเตือน — แก้แล้วมีผลทันที",
-      show: canChat,
+      title: "การทำงานและการแจ้งเตือน",
+      desc: "ค่ากลางที่กระทบปฏิทินและการสื่อสารของระบบ",
+      items: [
+        {
+          href: "/database/holidays",
+          icon: CalendarDays,
+          title: "วันหยุด (ปฏิทินทำการ)",
+          desc: "วันหยุดบริษัทและวันหยุดนักขัตฤกษ์ที่ใช้คำนวณไทม์ไลน์โครงการ",
+          show: true,
+        },
+        {
+          href: "/database/chat-webhooks",
+          icon: BellRing,
+          title: "แจ้งเตือน Google Chat",
+          desc: "Webhook ของแต่ละ Space ที่ระบบใช้ส่งการ์ดแจ้งเตือน",
+          show: canChat,
+        },
+      ],
     },
     {
-      href: "/users",
-      icon: Users,
-      title: "ผู้ใช้งาน",
-      desc: "บัญชีผู้ใช้ บทบาท ทีม และสิทธิ์เพิ่มเติมรายคน",
-      show: canUsers,
+      title: "การเข้าถึงและการตรวจสอบ",
+      desc: "บัญชีผู้ใช้ สิทธิ์ และหลักฐานการเปลี่ยนแปลงข้อมูล",
+      items: [
+        {
+          href: "/users",
+          icon: Users,
+          title: "ผู้ใช้งาน",
+          desc: "บัญชีผู้ใช้ บทบาท ทีม และสิทธิ์เพิ่มเติมรายคน",
+          show: canUsers,
+        },
+        {
+          href: "/audit",
+          icon: History,
+          title: "บันทึกการใช้งาน",
+          desc: "ประวัติการเพิ่ม แก้ และเปลี่ยนสถานะข้อมูลทั้งระบบ",
+          show: canAudit,
+        },
+      ],
     },
-    {
-      href: "/audit",
-      icon: History,
-      title: "บันทึกการใช้งาน",
-      desc: "ประวัติการเพิ่ม/แก้/ลบข้อมูลทั้งระบบ ย้อนดูก่อน-หลังได้",
-      show: canAudit,
-    },
-  ].filter((i) => i.show);
+  ].map((section) => ({ ...section, items: section.items.filter((item) => item.show) }))
+    .filter((section) => section.items.length);
 
   return (
     <>
@@ -57,34 +84,30 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
-        {items.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="glass-panel"
-              style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", textDecoration: "none", color: "inherit" }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--accent)",
-                }}
-              >
-                <Icon size={22} />
-              </span>
-              <span style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ display: "block", fontSize: 15, fontWeight: 700 }}>{item.title}</span>
-                <span style={{ display: "block", fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</span>
-              </span>
-              <ChevronRight size={18} style={{ color: "var(--text-3)", flexShrink: 0 }} />
-            </Link>
-          );
-        })}
+      <div className={styles.sectionList}>
+        {sections.map((section) => (
+          <section key={section.title} aria-labelledby={`settings-${section.title}`}>
+            <header className={styles.sectionHeader}>
+              <h2 id={`settings-${section.title}`}>{section.title}</h2>
+              <p>{section.desc}</p>
+            </header>
+            <div className={styles.cardGrid}>
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link key={item.href} href={item.href} className={`glass-panel hover-card ${styles.navCard}`}>
+                    <span className={styles.icon} aria-hidden="true"><Icon size={22} /></span>
+                    <span className={styles.copy}>
+                      <strong>{item.title}</strong>
+                      <span>{item.desc}</span>
+                    </span>
+                    <ChevronRight size={18} className={styles.chevron} aria-hidden="true" />
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </div>
     </>
   );
