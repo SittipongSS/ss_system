@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   BadgeCheck, Building2, CalendarDays, CheckCircle2, CircleDollarSign,
   ClipboardList, ExternalLink, FileCheck2, FileText, FolderKanban,
-  Printer, RotateCcw, Save, Send, Trash2, Undo2, UserRound, XCircle,
+  Printer, RotateCcw, Save, Send, ShieldAlert, Trash2, Undo2, UserRound, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -16,6 +16,12 @@ import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/compon
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { useCan, useRole } from "@/lib/roleContext";
 import { SALES_ORDER_CANCEL_REASONS, cancelReasonLabel, isCustomerCancelReason } from "@/lib/sales/salesOrderWorkflow";
+import {
+  ADMIN_OVERRIDE_REASON_MAX,
+  adminOverrideReasonError,
+  isSalesOrderSelfApproval,
+  normalizeAdminOverrideReason,
+} from "@/lib/sales/salesOrderApprovalOverride";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openSalesOrderPrintWindow, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
@@ -52,6 +58,7 @@ export default function SalesOrderDetailPage() {
   const [busy, setBusy] = useState("");
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState("idle");
+  const [overrideForm, setOverrideForm] = useState(null);
   useUnsavedChanges(dirty);
 
   const load = useCallback(async () => {
@@ -122,6 +129,15 @@ export default function SalesOrderDetailPage() {
     if (reason) await requestAction("reject", { reason });
   }
 
+  async function approveWithAdminOverride() {
+    const reasonError = adminOverrideReasonError(overrideForm?.reason);
+    if (reasonError) return;
+    const ok = await requestAction("approve", {
+      overrideReason: normalizeAdminOverrideReason(overrideForm.reason),
+    });
+    if (ok) setOverrideForm(null);
+  }
+
   // ยกเลิก SO ผ่าน modal (มติ 2026-07-18): เลือกเหตุผลมาตรฐาน + หมายเหตุ (บังคับเมื่อ "อื่น ๆ")
   // เหตุกลุ่มลูกค้า + SO อนุมัติแล้ว → เสนอ "ย้อน Won" (ถอยดีลออกจาก Won).
   const [cancelForm, setCancelForm] = useState(null); // null = ปิด; { code, note, reverseTo, lostReason } = เปิด
@@ -179,15 +195,17 @@ export default function SalesOrderDetailPage() {
 
   const approved = order.status === "approved";
   // แบ่งแยกหน้าที่: ผู้ตรวจสอบที่เป็นผู้สร้าง/ผู้ยื่น SO เอง อนุมัติ/ตีกลับใบนี้ไม่ได้
-  const ownSalesOrder = !!order.meId && (order.meId === order.createdBy || order.meId === order.submittedBy);
+  const ownSalesOrder = isSalesOrderSelfApproval(order, order.meId);
   const canReviewThis = reviewer && !ownSalesOrder;
+  const canAdminOverride = role === "admin" && ownSalesOrder && order.status === "pending_approval";
+  const overrideReasonValidation = overrideForm ? adminOverrideReasonError(overrideForm.reason) : "";
   const editable = canEdit && ["draft", "rejected"].includes(order.status);
   const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
   const workflowIndex = order.status === "approved" ? 3 : order.status === "pending_approval" ? 1 : 0;
   const workflow = [
     { label: "จัดทำร่าง", hint: order.createdByName || "ผู้จัดทำ" },
     { label: "ยื่นอนุมัติ", hint: order.submittedAt ? fmtDate(order.submittedAt) : "รอผู้จัดทำ" },
-    { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName || "รอตรวจ" },
+    { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName ? `${order.approvedByName}${order.approvalMode === "admin_override" ? " · Admin Override" : ""}` : "รอตรวจ" },
     { label: "นับ Actual", hint: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
   ];
 
@@ -198,7 +216,7 @@ export default function SalesOrderDetailPage() {
           eyebrow="SALE ORDER · COMMERCIAL APPROVAL"
           title={order.orderNumber}
           description={`${order.customerName || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
-          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}</>}
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>Admin Override</span>}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             { icon: FileText, label: "อ้างอิง QT", value: order.quotation?.quoteNumber || "-" },
@@ -244,7 +262,8 @@ export default function SalesOrderDetailPage() {
               <div className={styles.actionStack}>
                 {editable && <><button type="button" className="btn" disabled={!!busy} onClick={() => save(false)}><Save size={15} /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกร่าง"}</button><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => save(true)}><Send size={15} /> บันทึกและยื่นอนุมัติ</button></>}
                 {canReviewThis && order.status === "pending_approval" && <><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => review("approve")}><CheckCircle2 size={15} /> อนุมัติและนับ Actual</button><button type="button" className="btn danger" disabled={!!busy} onClick={() => review("reject")}><Undo2 size={15} /> ตีกลับให้แก้ไข</button></>}
-                {reviewer && ownSalesOrder && order.status === "pending_approval" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>}
+                {canAdminOverride && <><span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span><button type="button" className="btn action-outline btn-warning" disabled={!!busy} onClick={() => setOverrideForm({ reason: "" })}><ShieldAlert size={15} /> อนุมัติแบบ Admin Override</button></>}
+                {reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>}
                 {approved && reviewer && <button type="button" className="btn danger" disabled={!!busy} onClick={openCancel}><XCircle size={15} /> ยกเลิก SO</button>}
                 {order.status === "cancelled" && role === "admin" && <button type="button" className="btn" disabled={!!busy} onClick={() => requestAction("restore")}><RotateCcw size={15} /> คืนเป็นฉบับร่าง</button>}
                 {role === "admin" && <button type="button" className="btn danger" disabled={!!busy} onClick={remove}><Trash2 size={15} /> ลบถาวร</button>}
@@ -256,6 +275,8 @@ export default function SalesOrderDetailPage() {
                 <div><dt>ผู้จัดทำ</dt><dd>{order.createdByName || "-"}</dd></div>
                 <div><dt>ผู้ยื่น</dt><dd>{order.submittedByName || "-"}</dd></div>
                 <div><dt>ผู้อนุมัติ</dt><dd>{order.approvedByName || "-"}</dd></div>
+                {order.approvalMode === "admin_override" && <div><dt>รูปแบบอนุมัติ</dt><dd><span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>Admin Override</span></dd></div>}
+                {order.approvalOverrideReason && <div><dt>เหตุผล Override</dt><dd>{order.approvalOverrideReason}</dd></div>}
                 <div><dt>กำหนดชำระ</dt><dd>{fmtDate(order.paymentDueDate)}</dd></div>
                 {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd>{cancelReasonLabel(order.cancelReasonCode)}{order.cancelReason ? ` — ${order.cancelReason}` : ""}</dd></div>}
               </dl>
@@ -279,6 +300,41 @@ export default function SalesOrderDetailPage() {
           </DetailCard>
         </DetailPageLayout>
       </div>
+
+      {overrideForm && (
+        <Modal open onClose={() => setOverrideForm(null)} title="อนุมัติแบบ Admin Override" size="sm" dismissible={!busy}>
+          <div className="drawer-section" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="glass-panel" style={{ padding: "10px 12px", borderColor: "var(--amber)", background: "var(--amber-soft)", display: "flex", gap: 10 }}>
+              <ShieldAlert size={20} color="var(--amber)" aria-hidden="true" />
+              <div style={{ color: "var(--text-2)", fontSize: 13 }}>
+                <strong style={{ color: "var(--text)" }}>กรณีพิเศษเมื่อยังไม่มีผู้ตรวจสอบคนที่สอง</strong>
+                <p style={{ margin: "4px 0 0" }}>การอนุมัตินี้จะนับ Actual {fmtMoney(order.actualAmount)} ทันที และบันทึกเหตุผลไว้กับหลักฐานลายเซ็นถาวร</p>
+              </div>
+            </div>
+            <label className="form-group" htmlFor="admin-override-reason">
+              <span>เหตุผลที่ต้องใช้ Admin Override</span>
+              <textarea
+                id="admin-override-reason"
+                className="textarea-premium"
+                rows={4}
+                required
+                maxLength={ADMIN_OVERRIDE_REASON_MAX}
+                value={overrideForm.reason}
+                onChange={(event) => setOverrideForm({ reason: event.target.value })}
+                aria-describedby="admin-override-help"
+                placeholder="เช่น ขณะนี้องค์กรยังไม่มีผู้ตรวจสอบคนที่สอง และต้องดำเนินเอกสารเพื่อเริ่มงาน"
+              />
+              <small id="admin-override-help" style={{ color: overrideForm.reason && overrideReasonValidation ? "var(--red)" : "var(--text-3)" }}>
+                {overrideForm.reason && overrideReasonValidation ? overrideReasonValidation : `บังคับอย่างน้อย 10 ตัวอักษร · ${overrideForm.reason.length}/${ADMIN_OVERRIDE_REASON_MAX}`}
+              </small>
+            </label>
+            <div className="action-bar" style={{ marginTop: 0 }}>
+              <button type="button" className="btn ghost" onClick={() => setOverrideForm(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn btn-warning" onClick={approveWithAdminOverride} disabled={!!busy || !!overrideReasonValidation}><ShieldAlert size={15} /> {busy === "approve" ? "กำลังอนุมัติ…" : "ยืนยัน Override และนับ Actual"}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {cancelForm && (
         <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก Sale Order" size="sm" dismissible={!busy}>

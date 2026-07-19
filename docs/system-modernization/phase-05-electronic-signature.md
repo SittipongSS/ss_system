@@ -56,6 +56,7 @@
 - [ ] Migration 0125 รันบน Supabase จริงและ RPC transaction/no-write ผ่าน UAT
 - [ ] Quotation approval สร้าง evidence แบบ atomic และ no-write เมื่อ signature/standard/stale ไม่ผ่าน
 - [ ] Sale Order approval สร้าง evidence แบบ atomic และคง separation-of-duty
+- [ ] Admin break-glass บังคับเหตุผล, เก็บ immutable override evidence และนับ Actual แบบ atomic เฉพาะ Admin
 - [x] Fingerprint deterministic และเปลี่ยนเมื่อข้อมูลสำคัญเปลี่ยน
 - [x] UI แสดง actionable link ไป Account เมื่อ API ส่ง safe `accountUrl`
 - [x] Signature Vault ครอป 3:1, drag/zoom/keyboard/reset และสร้าง Preview PNG 1200×400 px ฝั่ง Browser
@@ -73,6 +74,21 @@
 - Supabase runtime RPC, no-write transaction และ approval UAT รอทดสอบด้วยบัญชีจริง
 - ผู้ใช้ยืนยันรัน Migration `0125` แล้ววันที่ 20 กรกฎาคม 2026; รอ RPC/approval UAT ด้วยบัญชีจริง
 - Local Browser UAT: Desktop/Dark และ Mobile 390×844 ผ่าน; เลือก PNG, ขยับด้วย keyboard, zoom 105%, สร้าง Preview 1200×400 px และไม่มี horizontal overflow/runtime error
+
+## Validation log — 20 กรกฎาคม 2026 (Migration 0126 hotfix)
+
+- Production UAT ผ่านสำหรับ Quotation `QT-26070027-0`: อนุมัติโดย `Admin Info` และ UI ยืนยันว่าบันทึกหลักฐานลายเซ็นแล้ว
+- QT เปลี่ยนเป็น Won และสร้าง Sale Order `SO-26070007-0` สำเร็จ
+- การยื่น SO ถูกปฏิเสธก่อนเขียนสถานะด้วย `record "new" has no field "approvalStatus"`; หลัง error เอกสารยังเป็น Draft, ผู้ยื่นว่าง และ Actual ยังไม่นับ
+- Root cause คือ pointer-cleanup trigger function ใน Migration `0125` อ้าง field ของ Quotation และ Sale Order ผ่าน `NEW` record เดียวกัน
+- Migration `0126_signature_evidence_trigger_fix.sql` แยก trigger function ตาม table row type; รอรันบน Supabase และยื่น SO ใบเดิมซ้ำเพื่อปิด UAT
+- `npm run check:migrations` ผ่าน 126 migrations; latest `0126`
+- `npm test` ผ่าน 411/411 tests, targeted ESLint ผ่าน และ `npm run build` ผ่านบน Next.js 16.2.7
+- ผู้ใช้รัน Migration `0126` แล้วและยื่น `SO-26070007-0` ซ้ำสำเร็จ: สถานะเป็นรอ AE Supervisor, ผู้ยื่นคือ `Admin Info`, เอกสารถูกล็อก และ Actual ยังไม่ถูกนับ
+- ปัจจุบันยังไม่มีผู้ตรวจสอบคนที่สอง ผู้ใช้จึงยืนยัน Controlled Admin break-glass เพื่อเดินงานต่อโดยไม่ปิด separation-of-duty สำหรับบทบาทอื่น
+- Migration `0127_sales_order_admin_approval_override.sql` เพิ่ม active approval projection และ immutable evidence extension; รอรันบน Supabase และ UAT กับ `SO-26070007-0`
+- `npm run check:migrations` ผ่าน 127 migrations; targeted tests 12/12 และ `npm test` ผ่าน 416/416
+- Targeted ESLint และ `npm run build` ผ่านบน Next.js 16.2.7; UI ใช้ Modal/shared classes และ design tokens เดิมโดยไม่เพิ่ม dependency
 
 ## Current-state inventory
 
