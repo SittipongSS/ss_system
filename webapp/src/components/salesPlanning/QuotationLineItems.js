@@ -90,10 +90,11 @@ export default function QuotationLineItems({
         <table className={`w-full text-sm ${styles.linesTable}`}>
           <thead>
             <tr>
-              <th style={{ width: 36 }}>#</th>
+              <th className={styles.rowNumber} style={{ width: 36 }}>#</th>
               <th>รายการ</th>
-              <th style={{ width: 120 }}>จำนวน</th>
-              <th style={{ width: 130 }}>ราคา/หน่วย</th>
+              {/* หัวคอลัมน์ตัวเลขชิดขวาให้ตรงกับตัวเลขในช่องกรอก (numeric-input ชิดขวา) */}
+              <th className={styles.numHeader} style={{ width: 120 }}>จำนวน</th>
+              <th className={styles.numHeader} style={{ width: 130 }}>ราคา/หน่วย</th>
               <th style={{ width: 210 }}>ส่วนลดรายการ</th>
               {/* 150px รับยอดรายบรรทัดถึงหลักสิบล้าน (จำนวนหลักพัน × ราคาหลักหมื่น) ไม่ล้นช่อง */}
               <th className="num" style={{ width: 150 }}>จำนวนเงิน</th>
@@ -148,16 +149,13 @@ export default function QuotationLineItems({
                 <td><MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} /></td>
                 <td>
                   <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />
-                  {/* master ยังไม่ตั้งราคา → ป้ายส้มพาไปตั้งที่ฐานข้อมูล (ห้ามกรอกในใบ) */}
-                  {editable && !!(line.productId || line.fgCode) && (line.productId && !(masterPriceFor(line.productId) > 0) ? (
+                  {/* เตือนเฉพาะตอน master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ
+                      ไม่ต้องมีคำอธิบายกำกับ ช่องถูกล็อกอยู่แล้วและมี tooltip บอกที่มา */}
+                  {editable && line.productId && !(masterPriceFor(line.productId) > 0) && (
                     <Link prefetch={false} href={`/database/products/${line.productId}`} target="_blank" className={styles.fgCode} style={{ color: "var(--amber)" }}>
                       ยังไม่ตั้งราคาในฐานข้อมูล — ไปตั้งราคา →
                     </Link>
-                  ) : (
-                    <Link prefetch={false} href={line.productId ? `/database/products/${line.productId}` : "/database/products"} target="_blank" className={styles.fgCode} style={{ color: "var(--blue)" }}>
-                      ราคาจากฐานข้อมูล →
-                    </Link>
-                  ))}
+                  )}
                 </td>
                 <td>
                   <div className={styles.discountControls}>
@@ -169,9 +167,9 @@ export default function QuotationLineItems({
                     <MoneyInput min="0" value={line.discountValue || ""} disabled={!editable || !line.discountType} onChange={(value) => setLine(index, { discountValue: value ?? "" })} aria-label={`ส่วนลด รายการ ${index + 1}`} />
                   </div>
                 </td>
-                <td className="num mono">{fmtMoney(quoteLineNet(line).lineTotal)}</td>
+                <td className={`num mono ${styles.lineAmount}`}>{fmtMoney(quoteLineNet(line).lineTotal)}</td>
                 {editable && (
-                  <td><button type="button" className="btn-icon danger" onClick={() => removeLine(index)} aria-label={`ลบรายการ ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>
+                  <td className={styles.rowActions}><button type="button" className="btn-icon danger" onClick={() => removeLine(index)} aria-label={`ลบรายการ ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>
                 )}
               </tr>
             ))}
@@ -184,8 +182,10 @@ export default function QuotationLineItems({
         <div className={styles.totalsPanel}>
           <div className={styles.totalLine}><span>ยอดรวมสินค้า/บริการ</span><strong className="mono">{fmtMoney(totals.subtotal)}</strong></div>
           <div className={styles.totalLine}>
+            {/* ป้ายต้องห่อ span — grid วาง anonymous text node เป็น item แต่ :nth-child
+                นับเฉพาะ element ทำให้กฎจัดคอลัมน์เพี้ยน (ช่องกรอกตกไปอีกบรรทัด) */}
             <span className={styles.totalControls}>
-              หัก ส่วนลด
+              <span>หัก ส่วนลด</span>
               <Select className="premium-select" value={discountType || ""} disabled={!editable} onChange={(event) => onDiscountChange?.({ type: event.target.value, value: event.target.value ? discountValue : 0 })}>
                 <option value="">ไม่ลด</option>
                 <option value="percent">%</option>
@@ -200,7 +200,7 @@ export default function QuotationLineItems({
           )}
           <div className={styles.totalLine}>
             <span className={styles.totalControls}>
-              ภาษีมูลค่าเพิ่ม
+              <span>ภาษีมูลค่าเพิ่ม</span>
               <Select className="premium-select" value={String(vatRate ?? 0)} disabled={!editable} onChange={(event) => onVatRateChange?.(Number(event.target.value))}>
                 <option value="0">รวม VAT แล้ว</option>
                 <option value="7">+ VAT 7% ท้ายใบ</option>
