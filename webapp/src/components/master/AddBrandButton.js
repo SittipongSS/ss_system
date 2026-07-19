@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Plus } from "lucide-react";
 
 // ปุ่ม "+" เพิ่มแบรนด์ใหม่เข้า customers.brands[] จากฟอร์มที่กำลังเลือกแบรนด์
@@ -13,8 +14,56 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
   const [en, setEn] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const ref = useRef(null);
+  const panelRef = useRef(null);
+  const [panelStyle, setPanelStyle] = useState({});
 
   const close = () => { setOpen(false); setTh(""); setEn(""); setError(""); };
+
+  // แผงเปิดผ่าน portal + position:fixed แบบเดียวกับ ui-select-menu/FilterPopover —
+  // ถ้าวางเป็น absolute ในการ์ด แผงโดน overflow:hidden ของการ์ดตัด หรือโดน
+  // stacking context ของ glass-panel (backdrop-filter) ทับ
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const rect = ref.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(280, window.innerWidth * 0.78);
+      // ใช้ความสูงจริงของแผง (effect รันหลัง portal mount แล้ว) — ตัวเลขประมาณการ
+      // เป็นแค่ fallback ก่อน ref พร้อม
+      const panelHeight = panelRef.current?.offsetHeight || Math.min(220, window.innerHeight - 16);
+      const roomBelow = window.innerHeight - rect.bottom;
+      const above = roomBelow < panelHeight + 12 && rect.top > roomBelow;
+      const style = {
+        position: "fixed",
+        // ชิดขอบขวาของปุ่มเหมือน right:0 เดิม แล้ว clamp ไม่ให้หลุดจอ
+        left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+        width,
+        zIndex: 10050,
+      };
+      // พลิกขึ้นบน: ยึด "ขอบล่างแผง" ไว้เหนือปุ่มด้วย bottom — กันแผงลอยห่างปุ่ม
+      // เมื่อความสูงจริงเตี้ยกว่าประมาณการ
+      if (above) style.bottom = window.innerHeight - rect.top + 6;
+      else style.top = rect.bottom + 6;
+      setPanelStyle(style);
+    };
+    // หลังแยก DOM ไป portal แล้ว ต้องเช็ค outside-click ทั้งฝั่งปุ่มและฝั่งแผง
+    const onDown = (e) => {
+      if (!ref.current?.contains(e.target) && !panelRef.current?.contains(e.target)) close();
+    };
+    place();
+    // วัดซ้ำหลังแผง mount ได้ขนาดจริง — รอบแรกความสูงอาจคลาดจากการตัดบรรทัด
+    const raf = requestAnimationFrame(place);
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   const save = async () => {
     const brand = { th: th.trim(), en: en.trim() };
@@ -45,7 +94,7 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
   };
 
   return (
-    <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+    <span ref={ref} style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
       <button
         type="button"
         className="btn-icon"
@@ -56,11 +105,12 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
       >
         <Plus size={16} />
       </button>
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div
+          ref={panelRef}
           style={{
-            position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 50,
-            width: "min(280px, 78vw)", background: "var(--panel)",
+            ...panelStyle,
+            background: "var(--panel)",
             border: "1px solid var(--border)", borderRadius: "var(--radius)",
             boxShadow: "0 8px 24px rgba(0,0,0,.14)", padding: "12px",
             display: "flex", flexDirection: "column", gap: "8px",
@@ -76,7 +126,8 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
               {saving ? "กำลังเพิ่ม..." : "เพิ่มแบรนด์"}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </span>
   );
