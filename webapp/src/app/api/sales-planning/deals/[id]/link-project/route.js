@@ -9,6 +9,7 @@ import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
+import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,11 +75,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     }
     adopted = floating.length;
   } else {
+    let templateOptions;
+    try {
+      templateOptions = await loadWorkflowTemplateForGeneration(supabase, dealTypeOf(deal));
+    } catch (templateError) {
+      return fail(templateError.message || 'โหลด Workflow Template ไม่สำเร็จ', templateError instanceof WorkflowTemplateError ? templateError.status : 500);
+    }
     const segTasks = applyAutoStatuses(buildAppendedTasks(project, {
       dealType: dealTypeOf(deal),
       dealId: deal.id,
       startDate,
       existingTasks: existing || [],
+      ...templateOptions,
     }));
     if (segTasks.length) {
       const { data: taskRows, error: taskErr } = await supabase.from('project_tasks').insert(segTasks).select();

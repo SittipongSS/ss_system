@@ -9,6 +9,7 @@ import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
+import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,7 +138,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     );
   } else {
     // เฟส B: task ชุดก่อตั้งติดป้ายดีลเจ้าของ (timeline segment ต่อดีล — mig 0090)
-    const tasks = applyAutoStatuses(buildProjectTasks(project, project.id, deal.id));
+    let templateOptions;
+    try {
+      templateOptions = await loadWorkflowTemplateForGeneration(supabase, project.type);
+    } catch (templateError) {
+      await supabase.from('projects').delete().eq('id', project.id);
+      return fail(templateError.message || 'โหลด Workflow Template ไม่สำเร็จ', templateError instanceof WorkflowTemplateError ? templateError.status : 500);
+    }
+    const tasks = applyAutoStatuses(buildProjectTasks(project, project.id, deal.id, templateOptions));
     if (tasks.length) {
       const { data: taskRows, error: taskError } = await supabase
         .from('project_tasks')

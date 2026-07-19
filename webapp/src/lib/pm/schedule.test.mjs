@@ -4,7 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { setHolidays, isBusinessDay, countBusinessDays } from './dateHelpers';
-import { recalculateForward, recalculateGraph, buildProjectTasks } from './schedule';
+import { recalculateForward, recalculateGraph, buildProjectTasks, mergeTemplateTasks } from './schedule';
+import { templateFor } from './templates';
 
 setHolidays([]); // weekends only → deterministic, no calendar dependency
 const biz = (d) => isBusinessDay(new Date(d));
@@ -142,4 +143,76 @@ test('buildProjectTasks produces a valid, sequentially-ordered template schedule
   assert.ok(tasks.length > 0, 'template produced tasks');
   assertInvariants(tasks, 'buildProjectTasks');
   assert.ok(tasks.every((t, i) => t.stepOrder === i), 'stepOrder is 0..n sequential');
+});
+
+const versionedTemplate = (type) => templateFor(type).map((step) => ({
+  ...step,
+  stepKey: `${type.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${String(step.step).padStart(2, '0')}`,
+  dependencyMode: Array.isArray(step.dependsOnSteps)
+    ? (step.dependsOnSteps.length ? 'custom' : 'root')
+    : 'sequential',
+  dependsOnStepKeys: (step.dependsOnSteps || []).map(
+    (dependency) => `${type.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${String(dependency).padStart(2, '0')}`,
+  ),
+}));
+
+const comparableSchedule = (rows) => {
+  const indexById = new Map(rows.map((row, index) => [row.id, index]));
+  return rows.map((row) => ({
+    name: row.name,
+    role: row.role,
+    durationDays: row.durationDays,
+    phase: row.phase,
+    isMilestone: row.isMilestone,
+    predecessorIndexes: row.predecessors.map((id) => indexById.get(id)),
+  }));
+};
+
+for (const type of ['SCENT', 'NPD', 'RE-ORDER']) {
+  for (const category of ['01-002', '01-001']) {
+    test(`versioned ${type} seed preserves static schedule for category ${category}`, () => {
+      const project = { type, productMainCategory: category, startDate: '2026-06-15' };
+      const staticRows = buildProjectTasks(project, 'PRJ-static');
+      const versionedRows = buildProjectTasks(project, 'PRJ-versioned', null, {
+        templateVersionId: `version-${type}`,
+        template: versionedTemplate(type),
+      });
+      assert.deepEqual(comparableSchedule(versionedRows), comparableSchedule(staticRows));
+      assert.ok(versionedRows.every((row) => row.workflowTemplateVersionId === `version-${type}`));
+      assert.ok(versionedRows.every((row) => row.workflowTemplateStepKey));
+      assert.ok(staticRows.every((row) => !('workflowTemplateVersionId' in row)), 'legacy rows remain unpinned');
+    });
+  }
+}
+
+test('versioned sequential dependency follows previous visible category row', () => {
+  const template = [
+    { stepKey: 'a', name: 'A', role: 'SA', durationDays: 1, dependencyMode: 'root' },
+    { stepKey: 'excise', name: 'Excise', role: 'LG', durationDays: 1, dependencyMode: 'sequential', categoryOnly: '01-002' },
+    { stepKey: 'finish', name: 'Finish', role: 'WH', durationDays: 1, dependencyMode: 'sequential' },
+  ];
+  const nonExcise = buildProjectTasks(
+    { type: 'NPD', productMainCategory: '01-001', startDate: '2026-06-15' },
+    'PRJ-category', null, { templateVersionId: 'v1', template },
+  );
+  assert.deepEqual(nonExcise.map((row) => row.name), ['A', 'Finish']);
+  assert.deepEqual(nonExcise[1].predecessors, [nonExcise[0].id]);
+});
+
+test('resync reuses a versioned task by stable step key after its display name changes', () => {
+  const existing = [{
+    id: 'task-a', projectId: 'PRJ-pinned', dealId: 'deal-1', origin: 'template',
+    workflowTemplateVersionId: 'version-2', workflowTemplateStepKey: 'brief',
+    name: 'ชื่อเดิม', role: 'SA', durationDays: 2, status: 'In Progress', predecessors: [],
+  }];
+  const result = mergeTemplateTasks(
+    { id: 'PRJ-pinned', type: 'SCENT', productMainCategory: '', startDate: '2026-06-15' },
+    existing,
+    { templateVersionId: 'version-2', template: [{ stepKey: 'brief', name: 'ชื่อใหม่', role: 'SA', durationDays: 1, dependencyMode: 'root' }] },
+  );
+  assert.equal(result.templateRows[0].id, 'task-a');
+  assert.equal(result.templateRows[0].name, 'ชื่อใหม่');
+  assert.equal(result.templateRows[0].status, 'In Progress');
+  assert.equal(result.templateRows[0].workflowTemplateVersionId, 'version-2');
+  assert.equal(result.templateRows[0].workflowTemplateStepKey, 'brief');
 });

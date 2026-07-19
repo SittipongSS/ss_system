@@ -25,7 +25,8 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 2 | Product category management | เสร็จสมบูรณ์ | [Phase 2](./phase-02-product-category.md) |
 | 3 | Product category Import/Export | เสร็จสมบูรณ์ | [Phase 3](./phase-03-product-category-import-export.md) |
 | 4A | Admin Center และข้อมูลบริษัทแบบมีเวอร์ชัน | กำลังดำเนินการ | [Phase 4A](./phase-04a-admin-center-company-data.md) |
-| 4B | Workflow และ Timeline Template แบบมีเวอร์ชัน | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 4B | Workflow และ Timeline Template แบบมีเวอร์ชัน | กำลังดำเนินการ | [Phase 4B](./phase-04b-workflow-timeline-templates.md) |
+| 4C | Home และ Navigation Hub | รอดำเนินการ | [Phase 4C](./phase-04c-home-navigation-hub.md) |
 | 5 | Electronic signature | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 6 | Document Design System และ Mockup | รอดำเนินการ | [Document Design System](./document-design-system.md) |
 | 7 | Document engine, versioning และย้ายเอกสาร | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
@@ -61,10 +62,14 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Phase 0 — Foundation](./phase-00-foundation.md)
 - [Phase 3 — Product Category Import/Export](./phase-03-product-category-import-export.md)
 - [Phase 4A — Admin Center and Versioned Company Data](./phase-04a-admin-center-company-data.md)
+- [Phase 4B — Versioned Workflow and Timeline Templates](./phase-04b-workflow-timeline-templates.md)
+- [Phase 4C — Home and Navigation Hub Modernization](./phase-04c-home-navigation-hub.md)
 - [UX/UI Rulebook](./ux-ui-rulebook.md)
 - [Document Design System](./document-design-system.md)
 - [Decision 0001 — Program governance](./decisions/0001-program-governance.md)
 - [Decision 0002 — Document governance baseline](./decisions/0002-document-governance-baseline.md)
 - [Decision 0003 — Organization settings versioning](./decisions/0003-organization-settings-versioning.md)
+- [Decision 0004 — Versioned operational templates and commercial content boundary](./decisions/0004-versioned-operational-templates.md)
+- [Decision 0005 — Home remains a navigation hub](./decisions/0005-home-remains-navigation-hub.md)
 - [Permission action inventory](./permission-action-inventory.md)
 - [Release checklist](./release-checklist.md)

@@ -3,6 +3,7 @@
 // v1: forward scheduling (จากวันเริ่ม). predecessors = task ที่ต้องเสร็จก่อน.
 import { isBusinessDay } from './dateHelpers';
 import { templateFor, templateForMerge, defaultAssignee } from './templates';
+import { templateMatchesCategory } from '../workflowTemplates';
 
 export const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -154,26 +155,37 @@ const genTaskId = () => `PT-${Date.now().toString(36)}-${(_seq++).toString(36)}`
 // project: { type, productMainCategory, startDate, aeOwner } ; projectId: ผูกหลัง insert
 // dealId (เฟส B): ดีลเจ้าของ segment — ทุก task ติดป้ายดีล (mig 0090)
 // คืน array ของ row พร้อม insert ลง project_tasks (camelCase)
-export function buildProjectTasks(project, projectId, dealId = null) {
+const staticStepKey = (type, step) => `${String(type || 'NPD').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${String(step).padStart(2, '0')}`;
+
+const stepKeyOf = (row, type) => row.stepKey || staticStepKey(type, row.step);
+
+const dependencyKeysOf = (row, type) => {
+  if (row.dependencyMode === 'sequential') return null;
+  if (row.dependencyMode === 'root') return [];
+  if (Array.isArray(row.dependsOnStepKeys)) return row.dependsOnStepKeys;
+  if (Array.isArray(row.dependsOnSteps)) return row.dependsOnSteps.map((step) => staticStepKey(type, step));
+  return null;
+};
+
+export function buildProjectTasks(project, projectId, dealId = null, templateOptions = {}) {
   const cat = project.productMainCategory || '';
-  const template = templateFor(project.type).filter((t) => {
-    if (t.categoryOnly && t.categoryOnly !== cat) return false;
-    if (t.categoryExclude && t.categoryExclude === cat) return false;
-    return true;
-  });
+  const sourceTemplate = templateOptions.template || templateFor(project.type);
+  const template = sourceTemplate.filter((t) => templateMatchesCategory(t, cat));
 
   // gen id ก่อน เพื่ออ้างใน predecessors
   const raw = template.map((t, idx) => ({
     ...t,
     id: genTaskId(),
+    templateStepKey: stepKeyOf(t, project.type),
     status: 'Pending',
     assignee: defaultAssignee(t.role, project),
   }));
 
   const withPreds = raw.map((t, idx) => {
     let preds = [];
-    if (Array.isArray(t.dependsOnSteps)) {
-      preds = t.dependsOnSteps.map((s) => raw.find((rt) => rt.step === s)?.id).filter(Boolean);
+    const dependencyKeys = dependencyKeysOf(t, project.type);
+    if (dependencyKeys) {
+      preds = dependencyKeys.map((key) => raw.find((rt) => rt.templateStepKey === key)?.id).filter(Boolean);
     } else if (idx > 0) {
       preds = [raw[idx - 1].id]; // default sequential
     }
@@ -200,6 +212,10 @@ export function buildProjectTasks(project, projectId, dealId = null) {
     status: t.status,
     predecessors: t.predecessors || [],
     cellsOverride: t.cellsOverride ?? null,
+    ...(templateOptions.templateVersionId ? {
+      workflowTemplateVersionId: templateOptions.templateVersionId,
+      workflowTemplateStepKey: t.templateStepKey,
+    } : {}),
   }));
 }
 
@@ -208,9 +224,9 @@ export function buildProjectTasks(project, projectId, dealId = null) {
 // ตัวเอง ต่อท้าย stepOrder เดิม โดย anchor ที่วันเริ่มของ segment (ไม่ใช่วันเริ่มโครงการ):
 // task รากของ segment (ไม่มี predecessor) ถูก pin ด้วย startLocked เพื่อไม่ให้ถูกดูด
 // กลับไป anchor โครงการเวลา recalculateGraph ทั้งโครงการ (pin เลื่อนช้าได้ ไม่ถอย).
-export function buildAppendedTasks(project, { dealType, dealId, startDate, existingTasks = [] }) {
+export function buildAppendedTasks(project, { dealType, dealId, startDate, existingTasks = [], template, templateVersionId }) {
   const segProject = { ...project, type: dealType, startDate: startDate || todayStr(), createdAt: null };
-  const rows = buildProjectTasks(segProject, project.id, dealId);
+  const rows = buildProjectTasks(segProject, project.id, dealId, { template, templateVersionId });
   const baseOrder = (existingTasks || []).reduce((m, t) => Math.max(m, Number(t.stepOrder ?? 0)), -1) + 1;
   return rows.map((r, i) => ({
     ...r,
@@ -225,27 +241,27 @@ export function buildAppendedTasks(project, { dealType, dealId, startDate, exist
 // ผู้ใช้เพิ่มเอง (origin='custom') จะถูกเก็บไว้ท้ายรายการ; ขั้นตอน template ที่
 // ไม่เข้าหมวดแล้ว (เช่นขั้นสรรพสามิตตอนเปลี่ยนออกจาก 01-002) จะถูกลบ.
 // คืน { rows: แถวสุดท้ายทั้งหมด (insert/update), toDeleteIds: id ที่ต้องลบ }.
-export function mergeTemplateTasks(project, existingTasks) {
+export function mergeTemplateTasks(project, existingTasks, templateOptions = {}) {
   const cat = project.productMainCategory || '';
   // legacy-aware: โครงการ NPD เก่า (มี task ช่วงกลิ่นจากก่อนแยก template) ใช้ชุดเต็มเส้น
   // เพื่อไม่ลบงานช่วงกลิ่นทิ้งตอน resync (ดู templateForMerge ใน templates.js)
-  const fullTemplate = templateForMerge(project.type, existingTasks);
-  const filtered = fullTemplate.filter((t) => {
-    if (t.categoryOnly && t.categoryOnly !== cat) return false;
-    if (t.categoryExclude && t.categoryExclude === cat) return false;
-    return true;
-  });
+  const fullTemplate = templateOptions.template || templateForMerge(project.type, existingTasks);
+  const filtered = fullTemplate.filter((t) => templateMatchesCategory(t, cat));
 
   // reuse เฉพาะแถวที่มาจาก template (origin !== 'custom') — กันแถวที่ผู้ใช้เพิ่มเอง
   // ที่บังเอิญชื่อชนกับ template มาถูกดูดเป็น template row (จะซ้ำกับ customRows)
-  const existingByName = new Map((existingTasks || []).filter((t) => t.origin !== 'custom').map((t) => [t.name, t]));
+  const templateTasks = (existingTasks || []).filter((t) => t.origin !== 'custom');
+  const existingByName = new Map(templateTasks.map((t) => [t.name, t]));
+  const existingByStepKey = new Map(templateTasks.filter((t) => t.workflowTemplateStepKey).map((t) => [t.workflowTemplateStepKey, t]));
 
   // 1) แถวจาก template (reuse id/progress ของเดิมถ้าชื่อตรงกัน)
   const raw = filtered.map((t, idx) => {
-    const prev = existingByName.get(t.name);
+    const templateStepKey = stepKeyOf(t, project.type);
+    const prev = existingByStepKey.get(templateStepKey) || existingByName.get(t.name);
     return {
       ...t,
       id: prev?.id || genTaskId(),
+      templateStepKey,
       status: prev?.status || 'Pending',
       assignee: prev?.assignee ?? defaultAssignee(t.role, project),
       actualFinishDate: prev?.actualFinishDate ?? null,
@@ -256,8 +272,9 @@ export function mergeTemplateTasks(project, existingTasks) {
 
   const withPreds = raw.map((t, idx) => {
     let preds = [];
-    if (Array.isArray(t.dependsOnSteps)) {
-      preds = t.dependsOnSteps.map((s) => raw.find((rt) => rt.step === s)?.id).filter(Boolean);
+    const dependencyKeys = dependencyKeysOf(t, project.type);
+    if (dependencyKeys) {
+      preds = dependencyKeys.map((key) => raw.find((rt) => rt.templateStepKey === key)?.id).filter(Boolean);
     } else if (idx > 0) {
       preds = [raw[idx - 1].id];
     }
@@ -289,6 +306,10 @@ export function mergeTemplateTasks(project, existingTasks) {
     actualFinishDate: t.actualFinishDate ?? null,
     predecessors: t.predecessors || [],
     cellsOverride: t.cellsOverride ?? null,
+    ...(templateOptions.templateVersionId ? {
+      workflowTemplateVersionId: templateOptions.templateVersionId,
+      workflowTemplateStepKey: t.templateStepKey,
+    } : {}),
   }));
 
   // 2) ขั้นตอนที่ผู้ใช้เพิ่มเอง → คงไว้ท้ายรายการ. ใช้ origin='custom' (migration 0022)
