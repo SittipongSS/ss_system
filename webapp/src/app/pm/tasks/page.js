@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Briefcase, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
-import Select from "@/components/ui/Select";
 import SortControl from "@/components/ui/SortControl";
+import FilterPopover from "@/components/ui/FilterPopover";
 import StatusSelect from "@/components/pm/StatusSelect";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import EmptyState from "@/components/ui/EmptyState";
@@ -139,8 +139,11 @@ export default function TasksPage() {
   const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" });
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // all | progress | urgent | done
-  const [assigneeFilter, setAssigneeFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  // ผู้รับมอบหมาย + หมวดหมู่ รวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18)
+  // — multi-select ทั้งคู่, ว่าง = ทั้งหมด. สถานะไม่อยู่ในแผงนี้เพราะเป็น drill-down
+  // ของการ์ด KPI ด้านบน (มาตรฐาน: KPI/สโคป/เรียงลำดับ อยู่นอกปุ่มกรอง)
+  const [assigneeFilter, setAssigneeFilter] = useState([]);
+  const [categoryFilter, setCategoryFilter] = useState([]);
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("asc");
   // ปฏิทิน: เดือนที่กำลังดู (เริ่มที่เดือนปัจจุบัน)
@@ -288,8 +291,8 @@ export default function TasksPage() {
   // งานหลังกรอง ค้นหา/ผู้รับ/หมวด (ยังไม่กรองสถานะ — ใช้คำนวณการ์ดสรุป)
   const pool = useMemo(() => roleFilteredTasks
     .filter((t) => !q || [t.title, t.note, t.category].some((v) => (v || "").toLowerCase().includes(q)))
-    .filter((t) => assigneeFilter === "all" || (t.assigneeId || t.ownerId) === assigneeFilter)
-    .filter((t) => categoryFilter === "all" || t.category === categoryFilter),
+    .filter((t) => !assigneeFilter.length || assigneeFilter.includes(t.assigneeId || t.ownerId))
+    .filter((t) => !categoryFilter.length || categoryFilter.includes(t.category)),
     [roleFilteredTasks, q, assigneeFilter, categoryFilter]);
 
   const stats = useMemo(() => ({
@@ -312,7 +315,7 @@ export default function TasksPage() {
   // แบ่งหน้าเฉพาะมุมมองแบน (ตาราง/รายการ) — บอร์ด/เมทริกซ์/ปฏิทินแสดงครบตามเดิม
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(visible, {
-      resetKey: `${scope}|${mineView}|${q}|${statusFilter}|${assigneeFilter}|${categoryFilter}|${sortKey}|${sortDir}`,
+      resetKey: `${scope}|${mineView}|${q}|${statusFilter}|${assigneeFilter.join()}|${categoryFilter.join()}|${sortKey}|${sortDir}`,
     });
 
   const handleSort = (key) => {
@@ -552,7 +555,7 @@ export default function TasksPage() {
         {allowedScopes.length > 1 && (
           <div className="segmented deal-scope-toggle">
             {allowedScopes.map((s) => (
-              <button key={s} onClick={() => { setScope(s); setAssigneeFilter("all"); }} className={scope === s ? "active" : ""}>{role === "rd" && s === "team" ? "ทีม RD" : SCOPE_TH[s]}</button>
+              <button key={s} onClick={() => { setScope(s); setAssigneeFilter([]); }} className={scope === s ? "active" : ""}>{role === "rd" && s === "team" ? "ทีม RD" : SCOPE_TH[s]}</button>
             ))}
           </div>
         )}
@@ -621,17 +624,25 @@ export default function TasksPage() {
             กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: 700 }}>×</span>
           </button>
         )}
-        {categoryOptions.length > 1 && (
-          <Select compact value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} title="กรองตามหมวดหมู่">
-            <option value="all">ทุกหมวด</option>
-            {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-          </Select>
-        )}
-        {scope !== "mine" && assigneeOptions.length > 1 && (
-          <Select compact value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} title="กรองตามผู้รับมอบหมาย">
-            <option value="all">ทุกคน</option>
-            {assigneeOptions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </Select>
+        {/* หมวดหมู่/ผู้รับมอบหมาย = ตัวเลือกจากงานที่โหลดมา — ซ่อนหมวดที่มีค่าเดียว
+            (กรองแล้วไม่เปลี่ยนอะไร) และซ่อนผู้รับมอบหมายในสโคป "ของฉัน" ตามเดิม */}
+        {(categoryOptions.length > 1 || (scope !== "mine" && assigneeOptions.length > 1)) && (
+          <FilterPopover
+            count={categoryFilter.length + assigneeFilter.length}
+            onClear={() => { setCategoryFilter([]); setAssigneeFilter([]); }}
+            groups={[
+              ...(categoryOptions.length > 1 ? [{
+                key: "category", label: "หมวดหมู่", icon: Tag,
+                options: categoryOptions.map((c) => ({ value: c, label: c })),
+                selected: categoryFilter, onChange: setCategoryFilter,
+              }] : []),
+              ...(scope !== "mine" && assigneeOptions.length > 1 ? [{
+                key: "assignee", label: "ผู้รับมอบหมาย", icon: User,
+                options: assigneeOptions.map((a) => ({ value: a.id, label: a.name })),
+                selected: assigneeFilter, onChange: setAssigneeFilter,
+              }] : []),
+            ]}
+          />
         )}
         <div className="spacer">
           <SortControl
@@ -715,7 +726,7 @@ export default function TasksPage() {
         </div>
       ) : visible.length === 0 ? (
         <EmptyState icon={Plus} dashed onClick={canEdit ? openAdd : undefined}>
-          {statusFilter !== "all" || q || assigneeFilter !== "all" || categoryFilter !== "all"
+          {statusFilter !== "all" || q || assigneeFilter.length || categoryFilter.length
             ? "ไม่มีงานตรงกับตัวกรองนี้"
             : canEdit
               ? "ยังไม่มีงาน — กดเพื่อสร้าง/มอบหมายงาน (เช่น โทรตามลูกค้า, เตรียมใบเสนอราคา)"
