@@ -164,6 +164,10 @@ export function lockedOut(user, path, method, isApi) {
   }
   if (path === '/settings') return false;
   if (path.startsWith('/settings/document-standards') && canManageDocumentStandards(role)) return false;
+  // ย้ายมาจาก /database/* (เดิมเปิดผ่าน OPEN_PAGES): ปฏิทินวันหยุดทุก role ต้องดูได้
+  // (ไทม์ไลน์โครงการอ้างอิง) ส่วน chat-webhooks หน้าเปิดได้แต่ตัวหน้า gate การจัดการ
+  // ด้วย master:manage เอง — สิทธิ์คงเดิมทุกประการ ไม่ขยาย/ไม่หด
+  if (startsWithAny(path, ['/settings/holidays', '/settings/chat-webhooks'])) return false;
   // Pages: the hub + open systems, plus the two admin READ surfaces when granted
   // per-user (audit log / user list). Grants are read-only; the write APIs stay
   // gated on the role caps (users:manage) in apiWriteAllowed.

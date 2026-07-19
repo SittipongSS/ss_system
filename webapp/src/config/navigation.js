@@ -2,7 +2,7 @@ import { SYSTEM_ORDER } from './systems.js';
 
 export { SYSTEM_ORDER };
 
-export const SETTINGS_PATHS = ['/settings', '/database/holidays', '/database/chat-webhooks', '/users', '/audit'];
+export const SETTINGS_PATHS = ['/settings', '/users', '/audit'];
 
 export function isSettingsPathname(pathname) {
   return SETTINGS_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));

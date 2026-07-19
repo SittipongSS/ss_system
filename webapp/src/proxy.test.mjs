@@ -23,6 +23,17 @@ test('account and central settings hub are open without broadening restricted ch
   assert.equal(lockedOut(viewer, '/api/account/signature', 'POST', true), false);
 });
 
+test('holidays and chat-webhooks keep their open-page access after moving under /settings', () => {
+  // เดิมสองหน้านี้อยู่ /database/* ซึ่งเปิดผ่าน OPEN_PAGES ให้ทุก role ที่ล็อกอิน —
+  // ย้าย URL แล้วสิทธิ์ต้องเท่าเดิม (ปฏิทินวันหยุดเป็นข้อมูลอ้างอิงของไทม์ไลน์)
+  for (const role of ['ae', 'ac', 'rd', 'legal', 'staff', 'viewer', 'secretary', 'ae_supervisor']) {
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/settings/holidays', 'GET', false), false, `${role} /settings/holidays`);
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/settings/chat-webhooks', 'GET', false), false, `${role} /settings/chat-webhooks`);
+  }
+  // เปิดเฉพาะสอง path นี้ ไม่ใช่ /settings/* ทั้งชุด
+  assert.equal(lockedOut({ role: 'viewer', extraCaps: [] }, '/settings/company', 'GET', false), true);
+});
+
 test('AE Supervisor can open document standards while other business roles cannot', () => {
   assert.equal(
     lockedOut({ role: 'ae_supervisor', extraCaps: [] }, '/settings/document-standards', 'GET', false),
