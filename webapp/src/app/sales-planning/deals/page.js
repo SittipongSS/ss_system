@@ -19,6 +19,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
+import FilterPopover from "@/components/ui/FilterPopover";
 import DetailRow from "@/components/ui/DetailRow";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { usePagination } from "@/lib/usePagination";
@@ -34,7 +35,13 @@ export default function SalesPlanningPipelinePage() {
   const superuser = isSuperuser(role);
   // สร้างดีลได้เฉพาะ AE / Senior AE (+ superuser กำกับดูแล) — AC เปิดดีลไม่ได้ (มติผู้ใช้)
   const canCreateDeals = superuser || role === "ae" || role === "senior_ae";
-  const [reviewOnly, setReviewOnly] = useState(false); // ตัวกรอง "รอเติมข้อมูล (backfill)"
+  // ตัวกรองทั้งหมดอยู่ใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
+  // ทุกหมวด multi-select, ว่าง = ทั้งหมด. "รอเติมข้อมูล" เดิมมี state แต่ไม่มีปุ่มให้กด
+  // (กรองไม่ได้จริง) — ย้ายมาเป็นหมวดหนึ่งในแผงนี้
+  const [stageFilter, setStageFilter] = useState([]);
+  const [typeFilter, setTypeFilter] = useState([]); // ประเภทดีล SCENT/NPD/RE-ORDER
+  const [reviewFilter, setReviewFilter] = useState([]);
+  const reviewOnly = reviewFilter.includes("needsReview");
   const [month, setMonth] = useState(thisMonth());
   const [allMonths, setAllMonths] = useState(true);
   const [deals, setDeals] = useState([]);
@@ -45,8 +52,6 @@ export default function SalesPlanningPipelinePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [stageFilter, setStageFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all"); // กรองตามประเภทดีล SCENT/NPD/RE-ORDER
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("desc");
   // มุมมอง KPI: ของฉัน/ทีม/ทั้งหมด — PR #275 ใช้ตัวแปรพวกนี้แต่ไม่ได้ประกาศ (หน้า crash)
@@ -142,8 +147,8 @@ export default function SalesPlanningPipelinePage() {
     const q = query.trim().toLowerCase();
     const result = deals.filter((deal) => {
       if (reviewOnly && !deal.metadata?.needsReview) return false;
-      if (stageFilter !== "all" && deal.stage !== stageFilter) return false;
-      if (typeFilter !== "all" && dealTypeOf(deal) !== typeFilter) return false;
+      if (stageFilter.length && !stageFilter.includes(deal.stage)) return false;
+      if (typeFilter.length && !typeFilter.includes(dealTypeOf(deal))) return false;
       if (!q) return true;
       return [deal.title, deal.customerName, deal.ownerName, deal.notes, deal.formulaName].some((v) => (v || "").toLowerCase().includes(q));
     });
@@ -166,7 +171,7 @@ export default function SalesPlanningPipelinePage() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filteredDeals, {
-      resetKey: `${query}|${stageFilter}|${typeFilter}|${reviewOnly}|${sortKey}|${sortDir}|${month}|${allMonths}`,
+      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${reviewOnly}|${sortKey}|${sortDir}|${month}|${allMonths}`,
     });
 
   const openNewDeal = () => {
@@ -525,14 +530,27 @@ export default function SalesPlanningPipelinePage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
             </div>
-            <Select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="premium-select" aria-label="กรอง stage" style={{ width: 180 }}>
-              <option value="all">ทุก stage</option>
-              {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
-            </Select>
-            <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="premium-select" aria-label="กรองประเภทดีล" style={{ width: 170 }}>
-              <option value="all">ทุกประเภท</option>
-              {DEAL_TYPES.map((t) => <option key={t} value={t}>{DEAL_TYPE_LABELS[t]}</option>)}
-            </Select>
+            <FilterPopover
+              count={stageFilter.length + typeFilter.length + reviewFilter.length}
+              onClear={() => { setStageFilter([]); setTypeFilter([]); setReviewFilter([]); }}
+              groups={[
+                {
+                  key: "stage", label: "สถานะ", icon: ClipboardList,
+                  options: PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] })),
+                  selected: stageFilter, onChange: setStageFilter,
+                },
+                {
+                  key: "type", label: "ประเภทดีล", icon: FolderKanban,
+                  options: DEAL_TYPES.map((t) => ({ value: t, label: DEAL_TYPE_LABELS[t] })),
+                  selected: typeFilter, onChange: setTypeFilter,
+                },
+                {
+                  key: "review", label: "ข้อมูลดีล", icon: AlertTriangle,
+                  options: [{ value: "needsReview", label: `รอเติมข้อมูล${reviewCount ? ` (${reviewCount})` : ""}` }],
+                  selected: reviewFilter, onChange: setReviewFilter,
+                },
+              ]}
+            />
 
             <div className="spacer" />
             <SortControl

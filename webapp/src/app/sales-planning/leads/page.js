@@ -14,6 +14,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import DateTimeInput from "@/components/ui/DateTimeInput";
 import PhoneInput from "@/components/ui/PhoneInput";
 import SortControl from "@/components/ui/SortControl";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { canSeeLeadKpi } from "@/lib/permissions";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { isSuperuser, TEAMS, TEAM_LABELS } from "@/lib/permissions";
@@ -87,7 +88,14 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("open");
+  // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) — ทุกหมวด
+  // multi-select, ว่าง = ทั้งหมด. "คิวงาน" (ซ่อนลีดที่ปิดแล้ว) เดิมเป็นค่าตั้งต้นของ
+  // dropdown สถานะ — แยกเป็นหมวดของตัวเองและติ๊กไว้ตั้งแต่แรกเพื่อคงพฤติกรรมเดิม
+  // (badge จะขึ้น 1 ให้เห็นว่ามีตัวกรองอยู่ ไม่ใช่ซ่อนเงียบ ๆ แบบเดิม)
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [channelFilter, setChannelFilter] = useState([]);
+  const [queueFilter, setQueueFilter] = useState(["openOnly"]);
+  const openOnly = queueFilter.includes("openOnly");
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("desc");
 
@@ -156,8 +164,11 @@ export default function LeadsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const result = leads.filter((l) => {
-      if (statusFilter === "open" && ["qualified", "disqualified"].includes(l.status)) return false;
-      if (statusFilter !== "open" && statusFilter !== "all" && l.status !== statusFilter) return false;
+      // "คิวงาน" เป็นทางลัดของค่าตั้งต้น — ถ้าผู้ใช้เลือกสถานะเองแล้ว ให้สถานะชนะ
+      // ไม่งั้นติ๊ก "เปิดลูกค้า/ไม่ผ่าน" ทั้งที่คิวงานยังติดอยู่จะได้ผลลัพธ์ว่างเสมอ
+      if (openOnly && !statusFilter.length && ["qualified", "disqualified"].includes(l.status)) return false;
+      if (statusFilter.length && !statusFilter.includes(l.status)) return false;
+      if (channelFilter.length && !channelFilter.includes(l.channel)) return false;
       if (!q) return true;
       return [l.contactName, l.company, l.phone, l.email, l.details, l.assigneeName].some((v) => (v || "").toLowerCase().includes(q));
     });
@@ -170,11 +181,11 @@ export default function LeadsPage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอลีดเก่าสุด
       return ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [leads, query, statusFilter, sortKey, sortDir]);
+  }, [leads, query, statusFilter, channelFilter, openOnly, sortKey, sortDir]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
-      resetKey: `${query}|${statusFilter}|${sortKey}|${sortDir}`,
+      resetKey: `${query}|${statusFilter.join()}|${channelFilter.join()}|${openOnly}|${sortKey}|${sortDir}`,
     });
 
   const countBy = useMemo(() => {
@@ -424,11 +435,27 @@ export default function LeadsPage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
             </div>
-            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 210 }}>
-              <option value="open">ที่ยังไม่ปิด (คิวงาน)</option>
-              <option value="all">ทุกสถานะ</option>
-              {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABELS[s]} ({countBy[s] || 0})</option>)}
-            </Select>
+            <FilterPopover
+              count={statusFilter.length + channelFilter.length + queueFilter.length}
+              onClear={() => { setStatusFilter([]); setChannelFilter([]); setQueueFilter([]); }}
+              groups={[
+                {
+                  key: "queue", label: "คิวงาน", icon: Inbox,
+                  options: [{ value: "openOnly", label: "เฉพาะที่ยังไม่ปิด (ซ่อนเปิดลูกค้า/ไม่ผ่าน)" }],
+                  selected: queueFilter, onChange: setQueueFilter,
+                },
+                {
+                  key: "status", label: "สถานะ", icon: Filter,
+                  options: LEAD_STATUSES.map((s) => ({ value: s, label: `${LEAD_STATUS_LABELS[s]} (${countBy[s] || 0})` })),
+                  selected: statusFilter, onChange: setStatusFilter,
+                },
+                {
+                  key: "channel", label: "ช่องทาง", icon: PhoneCall,
+                  options: LEAD_CHANNELS.map((c) => ({ value: c, label: LEAD_CHANNEL_LABELS[c] || c })),
+                  selected: channelFilter, onChange: setChannelFilter,
+                },
+              ]}
+            />
             <div className="spacer" />
             <SortControl
               value={sortKey}
