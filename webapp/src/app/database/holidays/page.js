@@ -2,6 +2,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
 import DateInput from "@/components/ui/DateInput";
+import SkeletonRows from "@/components/ui/Skeleton";
+import EmptyState from "@/components/ui/EmptyState";
 import { useCan } from "@/lib/roleContext";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
@@ -127,25 +129,25 @@ export default function HolidaysPage() {
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: "10px", padding: "12px 14px", margin: "0 0 18px", fontSize: "12.5px", color: "var(--text-2)" }}>
-        <Info size={16} style={{ flexShrink: 0, marginTop: "1px", color: "var(--accent)" }} />
+      <div className="info-note">
+        <Info size={16} />
         <div>เสาร์–อาทิตย์ถือเป็นวันหยุดเสมอโดยอัตโนมัติ — ที่นี่ใส่เฉพาะ<b>วันหยุดเพิ่มเติม</b> (นักขัตฤกษ์/วันหยุดบริษัท){canManage && tab === "calendar" && " · คลิกที่วัน (จันทร์–ศุกร์) เพื่อเพิ่ม/ลบวันหยุด"} การเปลี่ยนแปลงมีผลกับโครงการ<b>ที่สร้าง/แก้ไขหลังจากนี้</b></div>
       </div>
 
       {loading ? (
-        <div style={{ padding: "60px", textAlign: "center", color: "var(--text-3)" }}>กำลังโหลด...</div>
+        <SkeletonRows rows={8} />
       ) : tab === "calendar" ? (
         <div className="glass-panel" style={{ padding: "18px 20px" }}>
           {/* month nav */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-            <button onClick={() => goMonth(-1)} className="btn btn-secondary" style={{ padding: "6px 10px" }}><ChevronLeft size={16} /></button>
+            <button onClick={() => goMonth(-1)} className="btn-icon" aria-label="เดือนก่อนหน้า" title="เดือนก่อนหน้า"><ChevronLeft size={16} /></button>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: "17px", fontWeight: 700 }}>{MONTHS_TH[cursor.m]} {cursor.y}</div>
               <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{monthHolidayCount} วันหยุดในเดือนนี้</div>
             </div>
             <div style={{ display: "flex", gap: "6px" }}>
-              <button onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })} className="btn btn-secondary" style={{ padding: "6px 12px", fontSize: "12px" }}>วันนี้</button>
-              <button onClick={() => goMonth(1)} className="btn btn-secondary" style={{ padding: "6px 10px" }}><ChevronRight size={16} /></button>
+              <button onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })} className="btn sm">วันนี้</button>
+              <button onClick={() => goMonth(1)} className="btn-icon" aria-label="เดือนถัดไป" title="เดือนถัดไป"><ChevronRight size={16} /></button>
             </div>
           </div>
 
@@ -215,7 +217,7 @@ export default function HolidaysPage() {
           )}
 
           {holidays.length === 0 ? (
-            <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีวันหยุดในระบบ</div>
+            <EmptyState icon={CalendarDays}>ยังไม่มีวันหยุดในระบบ</EmptyState>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
               {byYear.map(([year, items]) => (

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, Edit3, Plus, Power, PowerOff, Search, Tags, Upload } from "lucide-react";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { Skeleton } from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { useRole } from "@/lib/roleContext";
@@ -202,7 +203,8 @@ export default function ProductCategoriesPage() {
         <div className={styles.headerActions}>
           <Link prefetch={false} className="btn ghost" href="/api/product-types/export"><Download size={16} /> ส่งออกข้อมูล</Link>
           <Link className="btn" href="/database/product-categories/import"><Upload size={16} /> นำเข้าข้อมูล</Link>
-          <button type="button" className="btn btn-primary" onClick={openCreate}>
+          {/* ปุ่ม filled เดียวของหน้า — โทน accent เดียวกับปุ่มเพิ่มของหน้าสินค้า/ลูกค้า */}
+          <button type="button" className="btn btn-accent" onClick={openCreate}>
             <Plus size={16} /> เพิ่มหมวดสินค้า
           </button>
         </div>
@@ -230,7 +232,9 @@ export default function ProductCategoriesPage() {
         </div>
 
         {loading ? (
-          <div className={styles.empty}>กำลังโหลดหมวดสินค้า…</div>
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} width={i % 2 ? "75%" : "100%"} />)}
+          </div>
         ) : groupedRows.length === 0 ? (
           <div className={styles.empty}>ไม่พบหมวดสินค้าตามเงื่อนไข</div>
         ) : (
