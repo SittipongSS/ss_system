@@ -123,11 +123,11 @@ const startsWithAny = (path, prefixes) => prefixes.some((p) => path === p || pat
 // both. e.g. /api/master/customers/123 -> /api/customers/123.
 const normalizeMaster = (path) => path.replace(/^\/api\/master\//, '/api/');
 
-// Pages a non-admin may open: hub + PM + database + excise tax + Sales Planning + SAHAMIT.
+// Pages a non-admin may open: own account + hub + PM + database + excise tax + Sales Planning + SAHAMIT.
 // NOTE: the proxy is coarse (role-only). /sahamit is opened here for any sales
 // role, but the page guard + API handlers narrow it to team===KA + customer
 // AR-109 (the proxy can't see team/customer). See canAccessSahamit().
-const OPEN_PAGES = ['/home', '/sa', '/pm', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt'];
+const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
@@ -143,7 +143,7 @@ const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types',
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).
 // `/` (login) is handled by the caller and never reaches here.
-function lockedOut(user, path, method, isApi) {
+export function lockedOut(user, path, method, isApi) {
   if (!ADMIN_LOCKDOWN) return false;
   const role = user?.role;
   if (can(role, 'users:manage')) return false; // admin — full access to all systems

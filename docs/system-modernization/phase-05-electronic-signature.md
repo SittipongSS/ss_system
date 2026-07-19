@@ -94,7 +94,7 @@
 
 ## Validation log — 19 กรกฎาคม 2026
 
-- `npm test` ผ่าน 390/390 tests รวม PNG structure/dimension/size, revoke reason, version state,
+- `npm test` ผ่าน 392/392 tests รวม PNG structure/dimension/size, revoke reason, version state,
   owner-scoped storage path และ safe RPC error mapping
 - `npm run check:migrations` ผ่าน 122 migrations; latest `0122`
 - Targeted ESLint ผ่านสำหรับ Account, Signature Vault, shared Drawer, signature API และ signature libraries
@@ -108,6 +108,9 @@
   ผู้ใช้ต้องเปิดสิทธิ์นี้ก่อนทดสอบ local preview ด้วยไฟล์จริง
 - Database/Preview UAT สำหรับ owner-only read, stale write, RPC transaction และ orphan-object rollback
   รอผู้ใช้รัน Migration 0122 บน Supabase environment
+- Production navigation regression หลัง Merge PR #565: ผู้ใช้ non-admin ถูก redirect จาก `/account`
+  เพราะ route gate เปิดเฉพาะ `/api/account`; แก้โดยเปิดหน้า `/account` สำหรับผู้ใช้ที่ล็อกอินทุก role
+  และเพิ่ม regression test โดยไม่ขยายสิทธิ์ `/settings`
 
 ## Known risks
 
