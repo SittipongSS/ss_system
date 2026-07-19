@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Edit3, Plus, Power, PowerOff, Search, Tags } from "lucide-react";
+import Link from "next/link";
+import { Download, Edit3, Plus, Power, PowerOff, Search, Tags, Upload } from "lucide-react";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
@@ -198,9 +199,13 @@ export default function ProductCategoriesPage() {
           <h1><span className="premium-header-icon"><Tags size={22} /></span> หมวดสินค้า</h1>
           <p>จัดการรหัสและชื่อหมวดที่ใช้ร่วมกันในสินค้า ดีล โครงการ และไทม์ไลน์</p>
         </div>
-        <button type="button" className="btn btn-primary" onClick={openCreate}>
-          <Plus size={16} /> เพิ่มหมวดสินค้า
-        </button>
+        <div className={styles.headerActions}>
+          <Link prefetch={false} className="btn ghost" href="/api/product-types/export"><Download size={16} /> ส่งออกข้อมูล</Link>
+          <Link className="btn" href="/database/product-categories/import"><Upload size={16} /> นำเข้าข้อมูล</Link>
+          <button type="button" className="btn btn-primary" onClick={openCreate}>
+            <Plus size={16} /> เพิ่มหมวดสินค้า
+          </button>
+        </div>
       </header>
 
       <section className={styles.summary} aria-label="สรุปหมวดสินค้า">

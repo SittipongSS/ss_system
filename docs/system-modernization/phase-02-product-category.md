@@ -1,6 +1,6 @@
 # Phase 2 — Product Category Management
 
-สถานะ: กำลังดำเนินการ
+สถานะ: รอตรวจ
 
 เริ่ม: 19 กรกฎาคม 2026
 

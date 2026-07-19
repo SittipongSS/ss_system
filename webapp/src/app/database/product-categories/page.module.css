@@ -1,3 +1,5 @@
+.headerActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
 .summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -80,6 +82,9 @@
 }
 
 @media (max-width: 480px) {
+  .headerActions { width: 100%; }
+  .headerActions > * { min-height: 40px; flex: 1 1 calc(50% - 4px); justify-content: center; }
+  .headerActions > :last-child { flex-basis: 100%; }
   .summary { gap: 8px; }
   .summary > div { min-height: 72px; padding: 12px; }
   .summary strong { font-size: 21px; }
