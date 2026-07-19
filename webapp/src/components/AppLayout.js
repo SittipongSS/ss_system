@@ -2,31 +2,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, CircleDollarSign, Scale, Database, Briefcase, UserRound } from 'lucide-react';
+import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { can, canUser, canAccessSahamit, canManageProductCategories, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canManageProductCategories, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
 import AccountMenu from '@/components/AccountMenu';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
-import { isSettingsPathname, sortSystems, systemForPathname } from '@/config/navigation';
+import { isSettingsPathname, systemForPathname } from '@/config/navigation';
+import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, systemLandingForUser, systemsForUser } from '@/config/systems';
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-// ไอคอนประจำระบบ — ชุดเดียวกับการ์ดระบบใน /home (มติผู้ใช้ 2026-07-18: ให้จำภาพ
-// เดียวกันทั้งการ์ดหน้าแรก ตัวสลับระบบ และเมนู) — แก้ที่นี่ต้องแก้ /home ให้ตรงกันด้วย
-const SYSTEM_ICONS = {
-  salesplan: CircleDollarSign,
-  tax: Scale,
-  sahamit: LineChart,
-  master: Database,
-  mgmt: Briefcase,
-  settings: SettingsIcon,
-};
 
 // (ตัด prefetch หลัง login ออก — มติผู้ใช้ 2026-07-17 เรื่องลด traffic: เดิมอุ่น
 // cache ด้วยการดาวน์โหลด products/customers/orders/registrations "ทั้งตารางเต็ม
@@ -129,6 +119,9 @@ export default function AppLayout({ children }) {
     const sys = systemForPathname(pathname);
 
     if (sys) setActiveSystem(sys);
+    if (getSystemByKey(sys)) {
+      try { localStorage.setItem(RECENT_SYSTEM_STORAGE_KEY, sys); } catch {}
+    }
     setSysMenuOpen(false); // navigating closes the system dropdown
     setMobileMoreOpen(false);
   }, [pathname]);
@@ -188,9 +181,7 @@ export default function AppLayout({ children }) {
   // only the current system's items; the system dropdown switches systems.
   const allGroups = [
     {
-      label: 'ฐานข้อมูล',
       system: 'master',
-      home: '/database',
       items: [
         { href: '/database', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'customers:view', match: (p) => p === '/database' },
         { href: '/database/customers', name: 'ข้อมูลลูกค้า', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
@@ -199,9 +190,7 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      label: 'งานภาษีสรรพสามิต',
       system: 'tax',
-      home: '/tax',
       items: [
         { href: '/tax', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
         { href: '/tax/registrations', name: 'การขึ้นทะเบียน', icon: ClipboardCheck, cap: 'history:view', match: (p) => p.startsWith('/tax/registrations') },
@@ -210,9 +199,7 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      label: 'บริหารงานขาย',
       system: 'salesplan',
-      home: '/sa',
       items: [
         { href: '/sa/dashboard', name: 'แดชบอร์ด', icon: LayoutDashboard, cap: 'salesplan:view', match: (p) => p === '/sa/dashboard' || p === '/sa' || p === '/sales-planning' || p === '/sa/my-dashboard' || p === '/sa/kpi' },
         // เฟส C: คิวลีดของ Marketing/ฝ่ายขาย — role marketing เห็นเมนูนี้ตัวเดียว
@@ -227,13 +214,11 @@ export default function AppLayout({ children }) {
         { href: '/sa/sales-orders', name: 'Sale Order', icon: ClipboardList, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
         // เรื่องสอบถาม Sale ↔ RD (mig 0104) — ฝั่งขายเห็นตาม scope ดีล, rd เห็นของฝ่ายตน
         { href: '/sa/inquiries', name: 'สอบถาม RD', icon: MessageCircleQuestion, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/inquiries') },
-        { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, cap: 'salesplan:view', match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
+        { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },
     {
-      label: 'งานบริหาร',
       system: 'mgmt',
-      home: '/mgmt',
       items: [
         { href: '/mgmt', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'mgmt:view', match: (p) => p === '/mgmt' },
         { href: '/mgmt/tasks', name: 'รายการงาน', icon: ListTodo, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/tasks') },
@@ -243,9 +228,7 @@ export default function AppLayout({ children }) {
       ],
     },
     {
-      label: 'งานสหมิตร',
       system: 'sahamit',
-      home: '/sahamit',
       items: [
         { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
         { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
@@ -257,31 +240,40 @@ export default function AppLayout({ children }) {
     },
   ];
 
-  const systemSubtitle =
-    activeSystem === 'settings' ? 'การตั้งค่าระบบ'
-      : activeSystem === 'master' ? 'ฐานข้อมูล'
-      : activeSystem === 'salesplan' ? 'บริหารงานขาย'
-        : activeSystem === 'sahamit' ? 'งานสหมิตร'
-          : activeSystem === 'mgmt' ? 'งานบริหาร'
-            : 'ภาษีสรรพสามิต';
+  const userContext = { role, team, extraCaps };
+  const activeSystemDefinition = getSystemByKey(activeSystem);
+  const systemSubtitle = activeSystem === 'settings'
+    ? 'การตั้งค่าระบบ'
+    : (activeSystemDefinition?.label || 'ภาษีสรรพสามิต');
 
   // ระบบที่ผู้ใช้เข้าถึงได้ (ใช้ทั้ง dropdown สลับระบบ และกรองเมนูแถวล่าง).
   // canUser (not can) so a per-user grant — e.g. an SA granted mgmt:view to
   // help the secretary — surfaces that system too.
-  const accessibleGroups = sortSystems(allGroups
-    .filter((g) => g.system !== 'sahamit' || canAccessSahamit(role, team))
-    .map((g) => ({
-      ...g,
-      items: g.items.filter((it) =>
-        canUser({ role, extraCaps }, it.cap) &&
-        (!it.managerOnly || canManageProductCategories(role))
-      ),
-    }))
-    .filter((g) => g.items.length > 0));
+  const groupsBySystem = new Map(allGroups.map((group) => [group.system, group]));
+  const accessibleGroups = systemsForUser(userContext)
+    .map((system) => {
+      const group = groupsBySystem.get(system.key);
+      if (!group) return null;
+      return {
+        ...group,
+        label: system.label,
+        home: systemLandingForUser(system, userContext),
+        icon: system.icon,
+        items: group.items.filter((item) => {
+          const caps = item.caps || [item.cap];
+          return caps.some((cap) => canUser(userContext, cap)) &&
+            (!item.managerOnly || canManageProductCategories(role));
+        }),
+      };
+    })
+    .filter(Boolean)
+    .filter((g) => g.items.length > 0);
 
   const currentGroup = accessibleGroups.find((g) => g.system === activeSystem) || null;
   const menuItems = currentGroup?.items || [];
-  const ActiveSystemIcon = SYSTEM_ICONS[activeSystem] || LayoutDashboard;
+  const ActiveSystemIcon = activeSystem === 'settings'
+    ? SettingsIcon
+    : (activeSystemDefinition?.icon || LayoutDashboard);
   const isSettingsContext = isSettingsPathname(pathname);
 
   return (
@@ -313,7 +305,7 @@ export default function AppLayout({ children }) {
                   <Home size={15} className="ico" /> หน้าแรก
                 </Link>
                 {accessibleGroups.map((g) => {
-                  const SystemIcon = SYSTEM_ICONS[g.system] || LayoutDashboard;
+                  const SystemIcon = g.icon || LayoutDashboard;
                   return (
                     <Link
                       key={g.system}

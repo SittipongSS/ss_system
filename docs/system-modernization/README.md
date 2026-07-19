@@ -24,9 +24,9 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 1 | Account menu, Profile และ Security | เสร็จสมบูรณ์ | [Phase 1](./phase-01-account-profile.md) |
 | 2 | Product category management | เสร็จสมบูรณ์ | [Phase 2](./phase-02-product-category.md) |
 | 3 | Product category Import/Export | เสร็จสมบูรณ์ | [Phase 3](./phase-03-product-category-import-export.md) |
-| 4A | Admin Center และข้อมูลบริษัทแบบมีเวอร์ชัน | กำลังดำเนินการ | [Phase 4A](./phase-04a-admin-center-company-data.md) |
-| 4B | Workflow และ Timeline Template แบบมีเวอร์ชัน | กำลังดำเนินการ | [Phase 4B](./phase-04b-workflow-timeline-templates.md) |
-| 4C | Home และ Navigation Hub | รอดำเนินการ | [Phase 4C](./phase-04c-home-navigation-hub.md) |
+| 4A | Admin Center และข้อมูลบริษัทแบบมีเวอร์ชัน | รอตรวจ | [Phase 4A](./phase-04a-admin-center-company-data.md) |
+| 4B | Workflow และ Timeline Template แบบมีเวอร์ชัน | รอตรวจ | [Phase 4B](./phase-04b-workflow-timeline-templates.md) |
+| 4C | Home และ Navigation Hub | กำลังดำเนินการ | [Phase 4C](./phase-04c-home-navigation-hub.md) |
 | 5 | Electronic signature | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 6 | Document Design System และ Mockup | รอดำเนินการ | [Document Design System](./document-design-system.md) |
 | 7 | Document engine, versioning และย้ายเอกสาร | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
