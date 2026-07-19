@@ -24,15 +24,16 @@ function qtyFromProjectProduct(row) {
 }
 
 // seed บรรทัดจาก FG ที่ผูกในโครงการของดีล — ราคา freeze จาก master ณ ตอนสร้าง
+// (ราคาโรงงาน — กติกาเดียวกับ enforceMasterPrices)
 export async function seedLinesFromProject(supabase, deal) {
   if (!deal.projectId) return [];
   const { data } = await supabase
     .from('project_products')
-    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, retailPriceIncVat)')
+    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, costPrice)')
     .eq('projectId', deal.projectId);
   return (data || []).map((row, index) => {
     const qty = qtyFromProjectProduct(row);
-    const unitPrice = toMoney(row.product?.retailPriceIncVat);
+    const unitPrice = toMoney(row.product?.[QUOTE_PRICE_FIELD]);
     return {
       id: genId('QTL'),
       productId: row.productId || row.product?.id || null,
@@ -51,29 +52,24 @@ export async function seedLinesFromProject(supabase, deal) {
   });
 }
 
-// ฐานราคาของใบ (มติผู้ใช้ 2026-07-19): ใบของสายสหมิตร (ดีล source sahamit-*) ใช้
-// "ราคาโรงงาน" (costPrice) — สหมิตรซื้อราคาโรงงาน ยอด QT/SO ต้องตรงยอด PO;
-// ใบลูกค้าทั่วไปใช้ราคาขายปลีก (retailPriceIncVat) ตามเดิม. ธงเก็บใน
-// quotation.metadata.priceBasis ('factory') ตั้งแต่ตอนสร้าง แล้วทุกจุดที่ enforce
-// ราคา (สร้าง/แก้/revise) ต้องอ่านผ่านตัวนี้เสมอ — ห้ามเดา field เอง.
-export function quotePriceField(metadata) {
-  return metadata?.priceBasis === 'factory' ? 'costPrice' : 'retailPriceIncVat';
-}
+// ราคาขายในใบเสนอราคาทั้งระบบ = "ราคาโรงงาน" (costPrice) — มติผู้ใช้ 2026-07-19.
+// retailPriceIncVat ไม่ใช่ราคาขาย: มีไว้คำนวณภาษีสรรพสามิต (โมดูล tax) เท่านั้น.
+export const QUOTE_PRICE_FIELD = 'costPrice';
 
 // ข้อมูลบรรทัด FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี
-// productId ถูกทับทั้ง "ราคา" (ตาม priceField — ดู quotePriceField) และ "คำอธิบาย"
+// productId ถูกทับทั้ง "ราคา" (ราคาโรงงาน — QUOTE_PRICE_FIELD) และ "คำอธิบาย"
 // (แบรนด์ · ชื่อสินค้า · ปริมาตร) + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ —
 // **ห้ามกำหนดราคาจากใบเสนอราคาทุกกรณี** flow คือไปตั้งราคาที่ฐานข้อมูลสินค้าแล้วกลับมาบันทึกใบ.
 // - master ยังไม่ตั้งราคา (0/ว่าง) = ไม่มีข้อมูล ไม่ใช่ราคา 0 → คงราคาที่บันทึกไว้เดิม
 //   ในใบ (previousLines); บรรทัดใหม่ = 0 จนกว่าจะตั้งราคาใน master (ส่ง/Won มี guard
 //   ยอด > 0 กันอยู่แล้ว) — ค่าที่ client ส่งมาไม่ถูกใช้เด็ดขาด
 // - สินค้าหายจาก master (ถูกลบ) → คงราคา/คำอธิบายเดิมที่บันทึกไว้ในใบ
-export async function enforceMasterPrices(supabase, lines = [], previousLines = [], priceField = 'retailPriceIncVat') {
+export async function enforceMasterPrices(supabase, lines = [], previousLines = []) {
   const ids = [...new Set(lines.filter((l) => l.productId).map((l) => l.productId))];
   if (!ids.length) return lines;
   const { data, error } = await supabase
     .from('products')
-    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, retailPriceIncVat, costPrice')
+    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, costPrice')
     .in('id', ids);
   if (error) throw error;
   const productById = new Map((data || []).map((p) => [p.id, p]));
@@ -84,7 +80,7 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
     if (!line.productId) return line;
     const master = productById.get(line.productId);
     const prev = prevById.get(line.productId);
-    const masterPrice = master ? toMoney(master[priceField]) : 0;
+    const masterPrice = master ? toMoney(master[QUOTE_PRICE_FIELD]) : 0;
     const unitPrice = masterPrice > 0
       ? masterPrice
       : toMoney(prev?.unitPrice ?? (master ? 0 : line.unitPrice));

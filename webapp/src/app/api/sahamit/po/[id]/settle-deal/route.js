@@ -161,9 +161,8 @@ export async function POST(request, { params }) {
   const products = await loadSahamitProducts(supabase, customerId);
   const productIndex = indexByFgCode(products);
   const now = new Date().toISOString();
-  // ราคาสายสหมิตร = ราคาโรงงาน (costPrice) ทั้งมูลค่าดีลและราคาใน QT (มติ 2026-07-19 —
-  // สหมิตรซื้อราคาโรงงาน ยอด QT/SO ต้องตรง PO; createQuotationDraft ตั้ง
-  // priceBasis='factory' อัตโนมัติจาก deal.metadata.source แล้ว enforce จาก master)
+  // ราคาโรงงาน (costPrice) ทั้งมูลค่าดีลและราคาใน QT — ราคาขายในใบทั้งระบบเป็นราคา
+  // โรงงานอยู่แล้ว (มติ 2026-07-19, QUOTE_PRICE_FIELD) ยอด QT/SO จึงตรงยอด PO เสมอ
   const priceOf = (f) => Number(productIndex.get(lc(f))?.price ?? 0) || 0;
 
   const settledByFg = await loadSettledFg(supabase, customerId, po.id);

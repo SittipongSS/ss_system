@@ -144,12 +144,11 @@ export default function QuotationEditorPage() {
   };
   // ราคาจาก master — 0/ว่าง = ยังไม่ตั้งราคา (โชว์ป้ายเตือนให้ไปตั้งที่ฐานข้อมูล
   // — ห้ามกรอกราคาจากใบเสนอราคาทุกกรณี ราคามาจากฐานข้อมูลทางเดียว)
-  // ฐานราคาตามธงของใบ: สายสหมิตร (priceBasis='factory') ใช้ราคาโรงงาน — ให้ตรงกับ
-  // ที่ server enforce ตอนบันทึก ไม่งั้นราคาบนจอเด้งตอน save
-  const priceField = quote?.metadata?.priceBasis === "factory" ? "costPrice" : "retailPriceIncVat";
+  // ราคาขายในใบ = ราคาโรงงาน (costPrice) ทั้งระบบ (มติ 2026-07-19); retailPriceIncVat
+  // มีไว้คำนวณสรรพสามิตเท่านั้น — ให้ตรงกับที่ server enforce ตอนบันทึก
   const masterPriceFor = (productId) => {
     const p = products.find((x) => x.id === productId);
-    return Number(p?.[priceField] || 0);
+    return Number(p?.costPrice || 0);
   };
 
   const selectLineProduct = (i, productId) => {
@@ -160,7 +159,7 @@ export default function QuotationEditorPage() {
       fgCode: p.fgCode || null,
       // คำอธิบายมาตรฐาน แบรนด์ · ชื่อสินค้า · ปริมาตร (รหัสแสดงเป็นป้าย FG แยก)
       description: fgLineDescription(p),
-      unitPrice: Number(p[priceField] || 0),
+      unitPrice: Number(p.costPrice || 0),
     });
   };
   const removeLine = (i) => { setLines((prev) => prev.filter((_, idx) => idx !== i)); setDirty(true); };
