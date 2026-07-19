@@ -10,6 +10,15 @@ export function isSalesOrderReviewer(role) {
   return role === 'ae_supervisor' || role === 'admin';
 }
 
+// Hard delete is only cleanup for a draft that has never entered the signed
+// workflow. Historical evidence remains authoritative even after the active
+// pointer is cleared by cancellation or restore-to-draft.
+export function canHardDeleteSalesOrder(order) {
+  return order?.status === 'draft'
+    && !order?.signatureEvidenceId
+    && !order?.hasSignatureEvidence;
+}
+
 // เหตุผลยกเลิก SO แบบมาตรฐาน (มติผู้ใช้ 2026-07-18) — 3 กลุ่ม:
 //   customer = ฝั่งลูกค้า (ดีลหลุดจริง → พิจารณาย้อน Won ในอนาคต)
 //   document = แก้เอกสาร (ดีลยังอยู่ ออก SO ใหม่)

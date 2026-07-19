@@ -15,7 +15,7 @@ import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { useCan, useRole } from "@/lib/roleContext";
-import { SALES_ORDER_CANCEL_REASONS, cancelReasonLabel, isCustomerCancelReason } from "@/lib/sales/salesOrderWorkflow";
+import { SALES_ORDER_CANCEL_REASONS, canHardDeleteSalesOrder, cancelReasonLabel, isCustomerCancelReason } from "@/lib/sales/salesOrderWorkflow";
 import {
   ADMIN_OVERRIDE_REASON_MAX,
   adminOverrideReasonError,
@@ -157,7 +157,7 @@ export default function SalesOrderDetailPage() {
   }
 
   async function remove() {
-    if (!window.confirm("ลบ SO ถาวร? ยอด Actual จะถูกคำนวณใหม่และไม่สามารถย้อนกลับได้")) return;
+    if (!window.confirm("ลบ SO ฉบับร่างนี้ถาวร? การลบไม่สามารถย้อนกลับได้")) return;
     setBusy("delete");
     setError("");
     const res = await fetch(`/api/sales-planning/sales-orders/${id}`, { method: "DELETE" });
@@ -266,7 +266,7 @@ export default function SalesOrderDetailPage() {
                 {reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>}
                 {approved && reviewer && <button type="button" className="btn danger" disabled={!!busy} onClick={openCancel}><XCircle size={15} /> ยกเลิก SO</button>}
                 {order.status === "cancelled" && role === "admin" && <button type="button" className="btn" disabled={!!busy} onClick={() => requestAction("restore")}><RotateCcw size={15} /> คืนเป็นฉบับร่าง</button>}
-                {role === "admin" && <button type="button" className="btn danger" disabled={!!busy} onClick={remove}><Trash2 size={15} /> ลบถาวร</button>}
+                {role === "admin" && canHardDeleteSalesOrder(order) && <button type="button" className="btn danger" disabled={!!busy} onClick={remove}><Trash2 size={15} /> ลบฉบับร่างถาวร</button>}
               </div>
             </DetailCard>}
 
