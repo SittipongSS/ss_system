@@ -1,4 +1,6 @@
-export const SYSTEM_ORDER = ['salesplan', 'tax', 'sahamit', 'master', 'mgmt'];
+import { SYSTEM_ORDER } from './systems.js';
+
+export { SYSTEM_ORDER };
 
 export const SETTINGS_PATHS = ['/settings', '/database/holidays', '/database/chat-webhooks', '/users', '/audit'];
 
