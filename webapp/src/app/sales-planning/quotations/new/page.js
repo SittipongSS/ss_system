@@ -7,21 +7,20 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CircleDollarSign, ClipboardList, ExternalLink, FileText, MapPin, Plus, Save, Trash2, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CircleDollarSign, ClipboardList, ExternalLink, FileText, MapPin, Plus, Save, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
-import MoneyInput from "@/components/ui/MoneyInput";
 import DateInput from "@/components/ui/DateInput";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationPeopleFields from "@/components/salesPlanning/QuotationPeopleFields";
+import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import { useCan } from "@/lib/roleContext";
-import { DEAL_TYPE_LABELS, dealTypeOf, quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
+import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
-import { productSelectOptions } from "@/components/master/productOption";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
@@ -170,49 +169,14 @@ function NewQuotationInner() {
   const onCustomer = (v) => { setCustomerId(v); setProjectId(""); setDealId(""); setCustomer(null); };
   const onProject = (v) => { setProjectId(v); setDealId(""); setCustomer(null); };
 
-  // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส (ตัวหนา) · แบรนด์ · ชื่อสินค้า · ปริมาตร
-  const productOptions = useMemo(() => productSelectOptions(products), [products]);
-
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: discountType || null,
     discountValue,
     vatRate,
   }), [lines, discountType, discountValue, vatRate]);
 
-  const addProductLine = () => {
-    setLines((current) => [...current, {
-      _lineKind: "product",
-      productId: null,
-      fgCode: null,
-      description: "",
-      qty: 1,
-      unitPrice: 0,
-      discountType: null,
-      discountValue: 0,
-      source: "manual",
-    }]);
-  };
-
-  const addManualLine = () => setLines((current) => [...current, {
-    _lineKind: "manual", productId: null, fgCode: null, description: "", qty: 1, unitPrice: 0,
-    discountType: null, discountValue: 0, source: "manual",
-  }]);
-  const setLine = (index, patch) => setLines((current) => current.map((line, lineIndex) => (
-    lineIndex === index ? { ...line, ...patch } : line
-  )));
-  const selectLineProduct = (index, productId) => {
-    const product = products.find((item) => item.id === productId);
-    if (!product) return;
-    setLine(index, {
-      productId: product.id,
-      fgCode: product.fgCode || null,
-      description: product.productDescription || product.productDescriptionEn || product.fgCode || "สินค้า",
-      // ราคาขายในใบ = ราคาโรงงาน (costPrice) ทั้งระบบ (มติ 2026-07-19) — ตรงกับที่
-      // server enforce ตอนบันทึก; retailPriceIncVat มีไว้คำนวณสรรพสามิตเท่านั้น
-      unitPrice: Number(product.costPrice || 0),
-    });
-  };
-  const removeLine = (index) => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index));
+  const addProductLine = () => setLines((current) => [...current, newProductLine()]);
+  const addManualLine = () => setLines((current) => [...current, newManualLine()]);
 
   const paymentPlan = useMemo(() => (payment.type === "installment"
     ? { type: "installment", paymentMethod: payment.paymentMethod.trim() || null, installments: payment.installments.map((row) => ({ label: row.label, percent: Number(row.percent) || 0, note: row.note })) }
@@ -348,33 +312,16 @@ function NewQuotationInner() {
 
           <section className={styles.card}>
             <div className={styles.sectionHeading}><ClipboardList size={17} /><h2>รายการสินค้า/บริการ</h2><div className="spacer" /><div className={styles.lineActions}><button type="button" className="btn btn-primary sm" onClick={addProductLine}><Plus size={13} /> เพิ่มสินค้า</button><button type="button" className="btn ghost sm" onClick={addManualLine}><Plus size={13} /> เพิ่มรายการเอง</button></div></div>
-            <div className="premium-glass-table table-responsive">
-              <table className={`w-full text-sm ${styles.linesTable}`}>
-                <thead><tr><th style={{ width: 36 }}>#</th><th>รายการ</th><th style={{ width: 110 }}>จำนวน</th><th style={{ width: 140 }}>ราคา/หน่วย</th><th style={{ width: 200 }}>ส่วนลดรายการ</th><th className="num" style={{ width: 130 }}>จำนวนเงิน</th><th style={{ width: 40 }}></th></tr></thead>
-                <tbody>
-                  {lines.map((line, index) => <tr key={index} className="premium-row">
-                    <td className={styles.rowNumber}>{index + 1}</td>
-                    <td><div className={styles.lineDescriptionCell}>{line._lineKind === "product" && <SearchableSelect entity="product" size="sm" value={line.productId || ""} onChange={(value) => selectLineProduct(index, value)} ariaLabel={`เลือกสินค้า รายการ ${index + 1}`} placeholder="เลือก FG / สินค้า..." options={productOptions} />}<input className="premium-input" value={line.description || ""} placeholder={line._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"} onChange={(event) => setLine(index, { description: event.target.value })} />{line.fgCode && <span className={styles.fgCode}>FG: {line.fgCode}</span>}{(line._noteOpen || line.metadata?.note)
-                      ? <textarea className="premium-input" rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: { ...(line.metadata || {}), note: event.target.value } })} />
-                      : <button type="button" className="linklike" style={{ alignSelf: "flex-start", fontSize: 12 }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>}</div></td>
-                    <td><MoneyInput min="0" value={line.qty} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} /></td>
-                    {/* ราคาบรรทัด FG มาจากฐานข้อมูลสินค้าเท่านั้น (enforceMasterPrices ทับฝั่ง server อยู่แล้ว) — ล็อกช่องให้ตรงกับหน้าแก้ไขใบ */}
-                    <td><MoneyInput min="0" value={line.unitPrice} disabled={!!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} /></td>
-                    <td><div className={styles.discountControls}><Select className="premium-select" value={line.discountType || ""} onChange={(event) => setLine(index, { discountType: event.target.value || null, discountValue: event.target.value ? line.discountValue : 0 })}><option value="">ไม่ลด</option><option value="percent">%</option><option value="amount">บาท</option></Select><MoneyInput min="0" value={line.discountValue || ""} disabled={!line.discountType} onChange={(value) => setLine(index, { discountValue: value ?? "" })} aria-label={`ส่วนลด รายการ ${index + 1}`} /></div></td>
-                    <td className="num mono">{fmtMoney(quoteLineNet(line).lineTotal)}</td>
-                    <td><button type="button" className="btn-icon danger" onClick={() => removeLine(index)} aria-label={`ลบรายการ ${index + 1}`}><Trash2 size={14} /></button></td>
-                  </tr>)}
-                  {!lines.length && <tr><td colSpan={7} className={styles.emptyRows}>ยังไม่มีรายการ — กด “เพิ่มสินค้า” หรือ “เพิ่มรายการเอง”</td></tr>}
-                </tbody>
-              </table>
-            </div>
-            <div className={styles.totalsWrap}><div className={styles.totalsPanel}>
-              <div className={styles.totalLine}><span>ยอดรวมสินค้า/บริการ</span><strong className="mono">{fmtMoney(totals.subtotal)}</strong></div>
-              <div className={styles.totalLine}><span className={styles.totalControls}>หัก ส่วนลด<Select className="premium-select" value={discountType} onChange={(event) => { setDiscountType(event.target.value); if (!event.target.value) setDiscountValue(0); }}><option value="">ไม่ลด</option><option value="percent">%</option><option value="amount">บาท</option></Select><MoneyInput min="0" value={discountValue || ""} disabled={!discountType} onChange={(value) => setDiscountValue(value ?? 0)} aria-label="ส่วนลดท้ายใบ" /></span><strong className="mono">{totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : "-"}</strong></div>
-              {totals.discountAmount > 0 && <div className={styles.totalLine}><span>ยอดหลังหักส่วนลด</span><strong className="mono">{fmtMoney(totals.subtotal - totals.discountAmount)}</strong></div>}
-              <div className={styles.totalLine}><span className={styles.totalControls}>ภาษีมูลค่าเพิ่ม<Select className="premium-select" value={String(vatRate)} onChange={(event) => setVatRate(Number(event.target.value))}><option value="0">รวม VAT แล้ว</option><option value="7">+ VAT 7% ท้ายใบ</option></Select></span><strong className="mono">{vatRate > 0 ? fmtMoney(totals.vatAmount) : "-"}</strong></div>
-              <div className={styles.totalGrand}><strong>ยอดรวมทั้งสิ้น</strong><strong className="mono">{fmtMoney(totals.totalAmount)}</strong></div>
-            </div></div>
+            <QuotationLineItems
+              lines={lines}
+              onChange={setLines}
+              products={products}
+              discountType={discountType}
+              discountValue={discountValue}
+              vatRate={vatRate}
+              onDiscountChange={({ type, value }) => { setDiscountType(type); setDiscountValue(value); }}
+              onVatRateChange={setVatRate}
+            />
           </section>
 
           <section className={styles.card}>

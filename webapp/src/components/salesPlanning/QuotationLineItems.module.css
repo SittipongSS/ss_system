@@ -1,0 +1,119 @@
+/* table-layout: fixed — ความกว้างคอลัมน์ล็อกตาม th; ชื่อสินค้ายาวตัดด้วย … ใน
+   ปุ่มเลือกสินค้า (.ui-select-value มี ellipsis) แทนการเบียดช่องตัวเลขจนอ่านไม่ได้
+   จอแคบกว่า 960px ให้เลื่อนแนวนอนผ่าน .table-responsive แทน */
+.linesTable {
+  min-width: 960px;
+  table-layout: fixed;
+}
+
+.lineDescriptionCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lineDescriptionCell > input { width: 100%; }
+
+.fgCode {
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+/* บรรทัด FG 2 บรรทัด: รหัส · แบรนด์ (รอง) / ชื่อสินค้า · ปริมาตร (หลัก) —
+   ชื่อยาวปล่อยให้ตัดขึ้นบรรทัดใหม่ในคอลัมน์ ไม่ใช้ ellipsis */
+.fgInfo {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fgInfoMeta {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.fgInfoMeta strong {
+  color: var(--text-2);
+  font-weight: 700;
+}
+
+.fgInfoName {
+  overflow-wrap: break-word;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.rowNumber {
+  color: var(--text-3);
+  text-align: center;
+}
+
+.discountControls {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 4px;
+}
+
+.emptyRows {
+  padding: 32px !important;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.noteReadonly {
+  color: var(--text-3);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+
+.totalsWrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.totalsPanel {
+  display: flex;
+  width: min(100%, 470px);
+  flex-direction: column;
+  gap: 9px;
+  font-size: 13.5px;
+}
+
+.totalLine,
+.totalGrand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.totalControls {
+  display: grid;
+  grid-template-columns: auto 116px 128px;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.totalControls > :last-child:nth-child(2) {
+  grid-column: 2 / 4;
+}
+
+.totalGrand {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 2px solid var(--border);
+  font-size: 17px;
+}
+
+@media (max-width: 640px) {
+  .totalLine { align-items: flex-start; }
+  .totalControls { grid-template-columns: 1fr; }
+  .totalControls > :last-child:nth-child(2) { grid-column: auto; }
+}
