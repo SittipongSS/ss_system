@@ -21,6 +21,7 @@ import ConfirmModal from "@/components/tax/ConfirmModal";
 import { brandBothOf, brandBoth } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
+import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
 
@@ -323,8 +324,8 @@ export default function CustomerDetails() {
               ) : isPortrait ? (
                 <div className="grid grid-cols-1 gap-3">
                   {products.map((p) => {
-                    const isExempt = p.isExciseTaxable === false;
-                    const taxRate = isExempt ? 0 : p.exciseTax + p.localTax;
+                    const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode));
+                    const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
                     return (
                       <div key={p.id} onClick={() => router.push(`/database/products/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
                         <div className="flex items-start justify-between gap-2">
@@ -336,9 +337,11 @@ export default function CustomerDetails() {
                         </div>
                         <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
                           <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"} · {fmtMoney(p.retailPriceIncVat)}</span>
-                          {canViewTax && (
-                            <span className="text-[var(--text-2)]">
-                              {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : <span className="font-mono">{fmtMoney(taxRate)}</span>}
+                          {/* ป้ายภาษีเฉพาะ 01-002 — สินค้าหมวดอื่น (ส่วนใหญ่) ไม่ต้องพูดถึงภาษี */}
+                          {canViewTax && isExciseCat && (
+                            <span className="flex items-center gap-1.5">
+                              {taxRate > 0 && <span className="font-mono text-[var(--text-2)]">{fmtMoney(taxRate)}</span>}
+                              <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>
                             </span>
                           )}
                         </div>
@@ -362,8 +365,8 @@ export default function CustomerDetails() {
                       </thead>
                       <tbody>
                         {products.map((p) => {
-                          const isExempt = p.isExciseTaxable === false;
-                          const taxRate = isExempt ? 0 : p.exciseTax + p.localTax;
+                          const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode));
+                          const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
                           return (
                             <tr key={p.id} onClick={() => router.push(`/database/products/${p.id}`)} className="clickable-row">
                               <td className="font-semibold font-mono text-[var(--text)]">{p.fgCode}</td>
@@ -375,7 +378,12 @@ export default function CustomerDetails() {
                               <td className="num font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</td>
                               {canViewTax && (
                                 <td className="num font-mono text-[var(--text-2)]">
-                                  {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(taxRate)}
+                                  {isExciseCat ? (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      {taxRate > 0 && <span>{fmtMoney(taxRate)}</span>}
+                                      <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>
+                                    </div>
+                                  ) : <span className="text-[var(--text-3)]">-</span>}
                                 </td>
                               )}
                               <td className="text-center"><ProductStatusPill status={p.status} /></td>

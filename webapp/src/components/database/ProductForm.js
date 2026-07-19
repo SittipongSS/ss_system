@@ -67,9 +67,10 @@ function CategoryBox({ fgCode, productTypes }) {
         <span className="font-semibold">{cat.typeInfo.nameTh || cat.typeInfo.nameEn}</span>
       </div>
       <div className="text-[11px] opacity-80 pl-1">กลุ่มหลัก: {cat.typeInfo.mainCategoryName}</div>
-      <div className={`mt-1 pl-1 font-semibold ${isExcise ? "" : "text-[var(--green)]"}`}>
-        {isExcise ? "⚠️ สินค้านี้เข้าข่ายต้องเสียภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)" : "✓ สินค้านี้ได้รับการยกเว้นภาษีสรรพสามิต"}
-      </div>
+      {/* เตือนเฉพาะ 01-002 (ส่วนน้อย) — หมวดอื่นไม่เกี่ยวกับสรรพสามิต ไม่ต้องพูดถึงภาษีเลย */}
+      {isExcise && (
+        <div className="mt-1 pl-1 font-semibold">⚠️ สินค้านี้ต้องขึ้นทะเบียนและชำระภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)</div>
+      )}
     </div>
   );
 }
