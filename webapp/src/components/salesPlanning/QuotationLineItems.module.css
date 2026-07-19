@@ -46,9 +46,30 @@
   line-height: 1.45;
 }
 
+/* แถวรายการสูงไม่เท่ากันในแต่ละคอลัมน์ (บรรทัด FG 2 บรรทัด, ลิงก์ใต้ช่องราคา) —
+   vertical-align: middle จะทำให้ช่องกรอกแต่ละคอลัมน์ลอยคนละระดับ. ชิดบนแทน
+   แล้วดันเฉพาะเซลล์ที่เป็นข้อความ/ปุ่มให้ตรงกลางแถบคอนโทรลแถวแรก (สูง 34px) */
+.linesTable tbody td {
+  vertical-align: top;
+}
+
 .rowNumber {
   color: var(--text-3);
   text-align: center;
+}
+
+/* หัว "#" ชิดกลางให้ตรงกับเลขลำดับในแถว (ทับ text-align: left ของหัวตารางกลาง) */
+.linesTable th.rowNumber { text-align: center; }
+
+.linesTable tbody td.rowNumber { padding-top: 17px; }
+.linesTable tbody td.lineAmount { padding-top: 17px; }
+.linesTable tbody td.rowActions { padding-top: 13px; }
+
+/* หัวคอลัมน์ตัวเลข: ชิดขวาแล้วเผื่อ padding ของ input (10px) + เส้นขอบ (1px)
+   ให้ตัวอักษรหัวตารางตรงแนวกับตัวเลขในช่องกรอกพอดี */
+.linesTable th.numHeader {
+  padding-right: 25px;
+  text-align: right;
 }
 
 .discountControls {
