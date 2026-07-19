@@ -24,9 +24,9 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 1 | Account menu, Profile และ Security | เสร็จสมบูรณ์ | [Phase 1](./phase-01-account-profile.md) |
 | 2 | Product category management | เสร็จสมบูรณ์ | [Phase 2](./phase-02-product-category.md) |
 | 3 | Product category Import/Export | เสร็จสมบูรณ์ | [Phase 3](./phase-03-product-category-import-export.md) |
-| 4A | Admin Center และข้อมูลบริษัทแบบมีเวอร์ชัน | รอตรวจ | [Phase 4A](./phase-04a-admin-center-company-data.md) |
-| 4B | Workflow และ Timeline Template แบบมีเวอร์ชัน | รอตรวจ | [Phase 4B](./phase-04b-workflow-timeline-templates.md) |
-| 4C | Home และ Navigation Hub | กำลังดำเนินการ | [Phase 4C](./phase-04c-home-navigation-hub.md) |
+| 4A | Admin Center และข้อมูลบริษัทแบบมีเวอร์ชัน | เสร็จสมบูรณ์ | [Phase 4A](./phase-04a-admin-center-company-data.md) |
+| 4B | Workflow และ Timeline Template แบบมีเวอร์ชัน | เสร็จสมบูรณ์ | [Phase 4B](./phase-04b-workflow-timeline-templates.md) |
+| 4C | Home และ Navigation Hub | เสร็จสมบูรณ์ | [Phase 4C](./phase-04c-home-navigation-hub.md) |
 | 5 | Electronic signature | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 6 | Document Design System และ Mockup | รอดำเนินการ | [Document Design System](./document-design-system.md) |
 | 7 | Document engine, versioning และย้ายเอกสาร | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
@@ -42,6 +42,8 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
   ถูก Merge แล้ว และ CI/Vercel ผ่าน
 - งาน FC ใช้ Drawer สำหรับรายละเอียด และตารางรองรับ FC Total กับ FC คงเหลือ
 - งานใหม่ของโปรแกรมนี้ต้องไม่ย้อนกลับไปเพิ่มบนสาขา PR #529
+- Phase 4 ส่งมอบผ่าน PR #552, #557, #558 และ #561; GitHub CI และ Vercel ผ่านทุก PR
+- Production smoke test ของ Home, Company Data และ Workflow Template ผ่านเมื่อ 19 กรกฎาคม 2026 โดยไม่เปลี่ยนข้อมูล
 
 ## Definition of Done ของทุกเฟส
 
