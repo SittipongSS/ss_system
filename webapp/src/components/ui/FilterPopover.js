@@ -24,16 +24,24 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
       const rect = ref.current?.getBoundingClientRect();
       if (!rect) return;
       const width = Math.min(window.innerWidth * 0.94, 420);
-      const estimatedHeight = Math.min(348, window.innerHeight - 16);
+      // ใช้ความสูงจริงของแผง (effect รันหลัง portal mount แล้ว) — ประมาณการ 348
+      // เป็นแค่ fallback; ถ้าเดาสูงเกินจะพลิกขึ้นบนทั้งที่ข้างล่างมีที่พอ
+      const panelHeight = panelRef.current?.offsetHeight || Math.min(348, window.innerHeight - 16);
       const roomBelow = window.innerHeight - rect.bottom;
-      const above = roomBelow < estimatedHeight + 12 && rect.top > roomBelow;
-      setPanelStyle({
+      const above = roomBelow < panelHeight + 12 && rect.top > roomBelow;
+      const style = {
         position: "fixed",
         left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
-        top: above ? Math.max(8, rect.top - estimatedHeight - 6) : rect.bottom + 6,
         width,
         zIndex: 10050,
-      });
+        // จอเตี้ย: จำกัดสูงตามพื้นที่ฝั่งที่เปิด แล้วให้ pane ข้างในเลื่อนเอง
+        maxHeight: Math.max(120, (above ? rect.top : roomBelow) - 14),
+      };
+      // พลิกขึ้นบน: ยึด "ขอบล่างแผง" ไว้เหนือปุ่มด้วย bottom — ถ้าคำนวณ top จาก
+      // ความสูงประมาณการ แผงจริงที่เตี้ยกว่า (กลุ่มตัวกรองน้อย) จะลอยห่างจากปุ่ม
+      if (above) style.bottom = window.innerHeight - rect.top + 6;
+      else style.top = rect.bottom + 6;
+      setPanelStyle(style);
     };
     const onDown = (e) => {
       if (!ref.current?.contains(e.target) && !panelRef.current?.contains(e.target)) setOpen(false);
@@ -45,11 +53,14 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
       }
     };
     place();
+    // วัดซ้ำหลังแผงได้ width จริง — รอบแรกวัดตอนยังไม่จัดตำแหน่ง ความสูงอาจคลาดจากการตัดบรรทัด
+    const raf = requestAnimationFrame(place);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => {
+      cancelAnimationFrame(raf);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", place);
