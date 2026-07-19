@@ -104,12 +104,14 @@ Browser ไม่มีสิทธิ์เข้าตารางโดยต
 - [x] Migration ordering/integrity check และ rollback notes ผ่าน
 - [x] ผู้ใช้รัน Migration 0120 บน Supabase environment แล้ว
 - [x] Unit tests สำหรับ normalization และ validation ผ่าน
-- [ ] API authorization, no-write-on-invalid, stale update และ atomic publish ผ่าน
+- [x] Admin API GET/create/update/archive, no-write-on-invalid และ stale update ผ่าน Preview UAT
+- [x] Atomic Publish success ผ่าน Preview UAT
+- [ ] Non-admin API/page authorization ผ่าน UAT
 - [x] Admin Center/Company Data UI ผ่าน Desktop/Mobile และ Light/Dark
 - [x] Keyboard, focus trap/restore, Escape, loading, empty, error และ confirm states ผ่าน
 - [x] ESLint, automated tests และ production build ผ่าน
 - [x] Permission action inventory ได้รับการทบทวนและ roadmap อัปเดต
-- [ ] ผู้ใช้ตรวจและยืนยันก่อน Commit, Push และ PR
+- [x] ผู้ใช้ตรวจและยืนยันก่อน Commit, Push และ Draft PR
 
 ## Validation log — 19 กรกฎาคม 2026
 
@@ -127,13 +129,20 @@ Browser ไม่มีสิทธิ์เข้าตารางโดยต
 - เพิ่ม `npm run verify:organization-settings` สำหรับตรวจ seed pointer, one Published/one Draft, RLS, invalid/stale no-write, Draft create/archive และ immutable history; โหมดเขียนต้องระบุ `--write` โดยตั้งใจ
 - Production session ยืนยันบัญชี Admin ได้ แต่ `/settings/company` ยังเป็น 404 ตามคาด เพราะ source ของ Phase 4A ยังไม่ถูก deploy
 - Local development ไม่มี Supabase environment และ Vercel ไม่อนุญาตให้ดึงค่าที่ตั้งเป็น Sensitive ออกมารันภายนอก deployment; ไม่ได้เปิดเผยค่า secret และลบ environment ชั่วคราวแล้ว
+- Draft PR #552 ผ่าน GitHub CI และ Vercel Preview หลัง rebase กับ `origin/main`
+- Preview UAT ด้วยบัญชี Admin ยืนยัน Published Version 1 จาก Migration 0120 และสร้าง Draft Version 2 จาก Published ปัจจุบันได้
+- Invalid tax ID ถูกปฏิเสธและไม่บันทึก; valid Draft บันทึกหมายเหตุ UAT ได้โดย Published Version 1 ไม่เปลี่ยน
+- เปิด Draft เดียวกันสองแท็บเพื่อทดสอบ optimistic concurrency: การบันทึกจากแท็บเก่าถูกปฏิเสธพร้อมข้อความให้โหลดข้อมูลล่าสุด และค่า stale ไม่ถูกเขียนทับ
+- Archive Draft Version 2 ผ่าน Confirm dialog แล้ว; หน้าหลักกลับมาไม่มี Draft, Version 2 เป็น Archived และ Published ยังคงเป็น Version 1
+- Audit log มีหลักฐาน create/update/archive พร้อม actor, version และ before/after snapshot ครบ; Draft เก็บค่าบริษัทเดิมและหมายเหตุ UAT โดยไม่มีค่า stale
+- Preview Company Data และ Audit console ไม่มี error/warning ระหว่าง UAT
+- สร้าง Draft Version 3 จาก Published Version 1, บันทึกหมายเหตุ `Phase 4A UAT — atomic Publish validation` และ Publish สำเร็จ
+- หลัง Publish ระบบแสดง Version 3 เป็น Published และ Version 1 เป็น Archived โดยค่าข้อมูลบริษัททุกช่องคงเดิม; ไม่มี Draft ค้างอยู่
+- Audit log มีหลักฐาน create/update/publish ของ Version 3 พร้อม actor, version, change note และ Published snapshot ครบ
 
 งานที่ยังต้องทำก่อนปิดเฟส:
 
-- สร้าง Preview deployment หลังผู้ใช้ยืนยัน Commit/Push เพื่อให้ route Phase 4A ทำงานกับ production-like environment ที่มี secret ครบ
-- รัน `npm run verify:organization-settings -- --write` ใน environment ที่ได้รับอนุญาต และทดสอบ API end-to-end: authorization, invalid payload no-write และ stale Draft
-- ทดสอบ atomic Publish success หลังได้รับคำยืนยันแยก เพราะจะเพิ่ม Published version และเปลี่ยน version history จริง
-- เก็บหลักฐาน Before/After หลัง Migration และ UAT environment พร้อมใช้งาน
+- ทดสอบ API/page authorization ด้วยบัญชีที่ไม่มี `master:manage`
 
 ## Known risks
 
