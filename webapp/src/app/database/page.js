@@ -1,11 +1,11 @@
 "use client";
-import Select from "@/components/ui/Select";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, Package, Building2, ChevronRight, TrendingUp, Filter, BarChart3, PieChart as PieChartIcon, Hourglass } from "lucide-react";
+import { LayoutDashboard, Package, Building2, ChevronRight, TrendingUp, BarChart3, PieChart as PieChartIcon, Hourglass, CalendarRange, Users } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ActionQueue from "@/components/ui/ActionQueue";
+import FilterPopover from "@/components/ui/FilterPopover";
 import KpiCard from "@/components/ui/KpiCard";
 import EmptyState from "@/components/ui/EmptyState";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -28,9 +28,10 @@ export default function DatabaseOverview() {
 
   const canApprove = canApproveMasterData(role);
 
-  // Filters State
+  // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
+  // ช่วงเวลาเลือกได้ค่าเดียว (single), ทีม multi-select, ว่าง = ทั้งหมด
   const [timeframe, setTimeframe] = useState("all");
-  const [teamFilter, setTeamFilter] = useState("all");
+  const [teamFilter, setTeamFilter] = useState([]);
 
   // Extract unique teams for the filter dropdown
   const allTeams = useMemo(() => {
@@ -44,9 +45,9 @@ export default function DatabaseOverview() {
   const { products, customers } = useMemo(() => {
     const now = new Date();
     const filterFn = (item) => {
-      if (teamFilter !== "all") {
+      if (teamFilter.length) {
         const itemTeams = item.teams?.length ? item.teams : (item.team ? [item.team] : []);
-        if (!itemTeams.includes(teamFilter) && item.team !== teamFilter) return false;
+        if (!itemTeams.some((t) => teamFilter.includes(t))) return false;
       }
       if (timeframe === "all") return true;
       const d = new Date(item.createdAt);
@@ -142,16 +143,26 @@ export default function DatabaseOverview() {
 
   const toolbar = (
     <div className="toolbar">
-      <span className="toolbar-label"><Filter size={14} /> ตัวกรอง</span>
-      <Select value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="premium-select" style={{ width: "auto" }}>
-        <option value="all">เวลาทั้งหมด</option>
-        <option value="1y">ปีนี้</option>
-        <option value="30d">30 วันล่าสุด</option>
-      </Select>
-      <Select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
-        <option value="all">ทุกทีม</option>
-        {allTeams.map(t => <option key={t} value={t}>{t}</option>)}
-      </Select>
+      <FilterPopover
+        count={(timeframe !== "all" ? 1 : 0) + teamFilter.length}
+        onClear={() => { setTimeframe("all"); setTeamFilter([]); }}
+        groups={[
+          {
+            key: "timeframe", label: "ช่วงเวลา", icon: CalendarRange, single: true,
+            options: [
+              { value: "1y", label: "ปีนี้" },
+              { value: "30d", label: "30 วันล่าสุด" },
+            ],
+            selected: timeframe === "all" ? [] : [timeframe],
+            onChange: (vals) => setTimeframe(vals[0] || "all"),
+          },
+          ...(allTeams.length ? [{
+            key: "team", label: "ทีมดูแล", icon: Users,
+            options: allTeams.map((t) => ({ value: t, label: t })),
+            selected: teamFilter, onChange: setTeamFilter,
+          }] : []),
+        ]}
+      />
     </div>
   );
 
