@@ -1,18 +1,18 @@
 "use client";
-import Select from "@/components/ui/Select";
 
 // หน้ารวมใบเสนอราคา (/sa/quotations — เฟส D, มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
 // ทุกใบยังผูก โครงการ›ดีล เสมอ — สร้างใหม่ต้องเลือกดีลก่อน แล้วไปแก้ต่อที่หน้า editor.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BadgeCheck, CircleDollarSign, Clock3, FileText, Pencil, Plus, Search, Printer, Trash2 } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, Clock3, FileText, FolderKanban, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
 import SaWorkspace, { SaMetric, SaMetricStrip, SaSection } from "@/components/salesPlanning/SaWorkspace";
 import DetailRow from "@/components/ui/DetailRow";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/components/salesPlanning/ui";
-import { dealTypeOf } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { usePagination } from "@/lib/usePagination";
@@ -29,7 +29,11 @@ export default function QuotationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
+  // ทุกหมวด multi-select, ว่าง = ทั้งหมด
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [typeFilter, setTypeFilter] = useState([]);
+  const [ownerFilter, setOwnerFilter] = useState([]);
 
   // สร้างใบใหม่ = ไปหน้าเต็ม /sa/quotations/new (cascade ลูกค้า→โครงการ→ดีล) — ไม่มี modal
   const load = useCallback(async () => {
@@ -66,14 +70,23 @@ export default function QuotationsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      if (statusFilter !== "all" && r.status !== statusFilter) return false;
+      if (statusFilter.length && !statusFilter.includes(r.status)) return false;
+      if (typeFilter.length && !typeFilter.includes(dealTypeOf(r.deal))) return false;
+      if (ownerFilter.length && !ownerFilter.includes(r.deal?.ownerName || "")) return false;
       if (!q) return true;
       return [r.quoteNumber, r.customerName, r.deal?.title, r.deal?.ownerName].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [rows, query, statusFilter]);
+  }, [rows, query, statusFilter, typeFilter, ownerFilter]);
+
+  // ผู้ดูแลที่มีใบจริงในระบบ (ตัวเลือกกรอง) — ดึงจากแถวที่โหลดมา ไม่ต้องยิง API เพิ่ม
+  const ownerOptions = useMemo(() => (
+    [...new Set(rows.map((r) => r.deal?.ownerName).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, "th"))
+      .map((name) => ({ value: name, label: name }))
+  ), [rows]);
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
-      resetKey: `${query}|${statusFilter}`,
+      resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}`,
     });
   const summary = useMemo(() => ({
     total: rows.length,
@@ -119,10 +132,27 @@ export default function QuotationsPage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข QT / ลูกค้า / ดีล" aria-label="ค้นหาใบเสนอราคา" />
             </div>
-            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" aria-label="กรองสถานะ" style={{ width: 190 }}>
-              <option value="all">ทุกสถานะ</option>
-              {Object.entries(QUOTE_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
+            <FilterPopover
+              count={statusFilter.length + typeFilter.length + ownerFilter.length}
+              onClear={() => { setStatusFilter([]); setTypeFilter([]); setOwnerFilter([]); }}
+              groups={[
+                {
+                  key: "status", label: "สถานะ", icon: FileText,
+                  options: Object.entries(QUOTE_STATUS_LABELS).map(([k, v]) => ({ value: k, label: v })),
+                  selected: statusFilter, onChange: setStatusFilter,
+                },
+                {
+                  key: "type", label: "ประเภทดีล", icon: FolderKanban,
+                  options: DEAL_TYPES.map((t) => ({ value: t, label: DEAL_TYPE_LABELS[t] })),
+                  selected: typeFilter, onChange: setTypeFilter,
+                },
+                ...(ownerOptions.length ? [{
+                  key: "owner", label: "ผู้ดูแล", icon: User,
+                  options: ownerOptions,
+                  selected: ownerFilter, onChange: setOwnerFilter,
+                }] : []),
+              ]}
+            />
             <div className="spacer" />
           </div>
 
