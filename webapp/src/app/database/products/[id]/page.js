@@ -17,6 +17,7 @@ import { brandThList, brandBoth } from "@/lib/master/brands";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
+import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 
 export default function ProductDetails() {
   const params = useParams();
@@ -151,6 +152,9 @@ export default function ProductDetails() {
   }
 
   const isExempt = product.isExciseTaxable === false;
+  // การ์ดภาษี (Excise breakdown + ทะเบียนภาษี) คิดเฉพาะหมวด 01-002 (พิกัดน้ำหอม) —
+  // หมวดอื่นไม่เข้าข่ายสรรพสามิต ไม่ต้องโชว์การ์ดภาษีเลย
+  const isExciseCat = isExciseCategory(product.categoryCode || categoryOf(product.fgCode));
 
   return (
     <>
@@ -205,7 +209,7 @@ export default function ProductDetails() {
           items={[
             { label: "ปริมาตร/หน่วย", value: `${product.volume} ${product.volumeUnit || "ml"}` },
             { label: "ราคาขายปลีก", value: fmtMoney(product.retailPriceIncVat) },
-            ...(canViewTax ? [
+            ...(canViewTax && isExciseCat ? [
               { label: "ภาษี/ชิ้น", value: isExempt ? "ยกเว้น" : fmtMoney((product.exciseTax || 0) + (product.localTax || 0)), tone: isExempt ? "success" : "accent" },
               { label: "ทะเบียนภาษี", value: `${regs.length} รายการ` },
             ] : []),
@@ -214,56 +218,8 @@ export default function ProductDetails() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-[22px]">
-        {/* Product Profile */}
+        {/* Product Profile — การ์ดรายละเอียด (สเปค) ย้ายไปคอลัมน์ขวาใต้การ์ดภาษี */}
         <div className="lg:col-span-2 space-y-6">
-          <DetailCard icon={Package} eyebrow="Product specification" title="ข้อมูลสเปคสินค้า">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
-              <div className="md:col-span-2">
-                <span className="text-[var(--text-3)] block mb-1">{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า)</span>
-                {product.customerId ? (
-                  <Link href={`/database/customers/${product.customerId}`} className="font-semibold text-[var(--accent)] text-sm hover:underline">
-                    {product.customerName || product.customerId}
-                  </Link>
-                ) : (
-                  <span className="font-semibold text-[var(--text)] text-sm">{product.customerName || "-"}</span>
-                )}
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">รหัสสำเร็จรูป FG Code</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm bg-[var(--panel-2)] px-2 py-0.5 rounded">{product.fgCode}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
-                <span className="font-semibold text-[var(--text)] text-sm">{brandBoth(product.brandName, product.brandNameEn)}</span>
-              </div>
-              {/* ข้อมูลสูตร (0112) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์) โชว์ — ได้ */}
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">ชื่อสูตร (Formula)</span>
-                <span className="font-semibold text-[var(--text)] text-sm">{product.formulaName || "—"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">รหัสสูตร (Formula Code)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaCode || "—"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">วันที่สูตร (Formula Date)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : "—"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.volume} {product.volumeUnit || "ml"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">ชิ้นต่อลัง (Pieces / Case)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${Number(product.piecesPerCase).toLocaleString("th-TH")} ชิ้น/ลัง` : "—"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.categoryCode || "-"}</span>
-              </div>
-            </div>
-          </DetailCard>
-
           {/* Cost breakdown — hidden entirely from other departments; SA sees
               costPrice, LG + admin also see the breakdown + profit. */}
           {canSeeCost && (
@@ -298,34 +254,6 @@ export default function ProductDetails() {
                 </div>
               )}
             </div>
-          </div>
-          )}
-
-          {/* Excise registrations for this product (information) — tax-gated. */}
-          {canViewTax && (
-          <div className="glass-panel p-[20px]">
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
-              การขึ้นทะเบียนภาษีของสินค้านี้ ({regs.length})
-            </h3>
-            {regs.length === 0 ? (
-              <p className="text-xs text-[var(--text-3)] italic">ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — ยื่นได้ที่เมนู “ยื่นขึ้นทะเบียนสินค้า”</p>
-            ) : (
-              <div className="space-y-2">
-                {regs.map((r) => (
-                  <div
-                    key={r.id}
-                    onClick={() => (window.location.href = `/tax/registrations?open=${r.id}`)}
-                    className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
-                  >
-                    <span className="font-medium text-[var(--text-2)]">{r.customerName || "-"}</span>
-                    <div className="flex items-center gap-3">
-                      {r.approvalNumber && <span className="font-mono text-[var(--text-3)]">{r.approvalNumber}</span>}
-                      <ProductStatusPill status={r.status} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
           )}
 
@@ -406,9 +334,9 @@ export default function ProductDetails() {
           )}
         </div>
 
-        {/* Tax Information Column — tax-gated */}
-        {canViewTax && (
+        {/* คอลัมน์ขวา: ภาษี (เฉพาะหมวด 01-002 + tax-gated) → รายละเอียดสเปค → ทะเบียนภาษี */}
         <div className="space-y-6">
+          {canViewTax && isExciseCat && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
               ภาษีสรรพสามิตต่อหน่วย (Excise Tax Breakdown)
@@ -444,8 +372,85 @@ export default function ProductDetails() {
             )}
             <p className="text-[10px] text-[var(--text-3)] mt-3">สร้างเมื่อ: {fmtDateTime(product.createdAt)}</p>
           </div>
+          )}
+
+          {/* การ์ดรายละเอียด (สเปคสินค้า) — อยู่ใต้การ์ดภาษีตามมติ 2026-07-19 */}
+          <DetailCard icon={Package} eyebrow="Product specification" title="ข้อมูลสเปคสินค้า">
+            <div className="grid grid-cols-1 gap-y-4 text-xs">
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า)</span>
+                {product.customerId ? (
+                  <Link href={`/database/customers/${product.customerId}`} className="font-semibold text-[var(--accent)] text-sm hover:underline">
+                    {product.customerName || product.customerId}
+                  </Link>
+                ) : (
+                  <span className="font-semibold text-[var(--text)] text-sm">{product.customerName || "-"}</span>
+                )}
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">รหัสสำเร็จรูป FG Code</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm bg-[var(--panel-2)] px-2 py-0.5 rounded">{product.fgCode}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{brandBoth(product.brandName, product.brandNameEn)}</span>
+              </div>
+              {/* ข้อมูลสูตร (0112) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์) โชว์ — ได้ */}
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">ชื่อสูตร (Formula)</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{product.formulaName || "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">รหัสสูตร (Formula Code)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaCode || "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">วันที่สูตร (Formula Date)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.volume} {product.volumeUnit || "ml"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">ชิ้นต่อลัง (Pieces / Case)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${Number(product.piecesPerCase).toLocaleString("th-TH")} ชิ้น/ลัง` : "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.categoryCode || "-"}</span>
+              </div>
+            </div>
+          </DetailCard>
+
+          {/* การขึ้นทะเบียนภาษี — เฉพาะหมวด 01-002 (พิกัดสรรพสามิต) + tax-gated */}
+          {canViewTax && isExciseCat && (
+          <div className="glass-panel p-[20px]">
+            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
+              การขึ้นทะเบียนภาษีของสินค้านี้ ({regs.length})
+            </h3>
+            {regs.length === 0 ? (
+              <p className="text-xs text-[var(--text-3)] italic">ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — ยื่นได้ที่เมนู “ยื่นขึ้นทะเบียนสินค้า”</p>
+            ) : (
+              <div className="space-y-2">
+                {regs.map((r) => (
+                  <div
+                    key={r.id}
+                    onClick={() => (window.location.href = `/tax/registrations?open=${r.id}`)}
+                    className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
+                  >
+                    <span className="font-medium text-[var(--text-2)]">{r.customerName || "-"}</span>
+                    <div className="flex items-center gap-3">
+                      {r.approvalNumber && <span className="font-mono text-[var(--text-3)]">{r.approvalNumber}</span>}
+                      <ProductStatusPill status={r.status} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          )}
         </div>
-        )}
       </div>
 
       <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} customers={customers} />

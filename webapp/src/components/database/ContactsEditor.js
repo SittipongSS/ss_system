@@ -7,7 +7,7 @@ import Select from "@/components/ui/Select";
 // { role, name, phone, email } where role = department. The first contact is
 // treated as primary (synced back to the legacy contactPerson/phone/email by
 // the API). Controlled: value = array, onChange(nextArray).
-const ROLES = ["จัดซื้อ", "การเงิน", "เทคนิค", "อื่นๆ"];
+const ROLES = ["เจ้าของ", "จัดซื้อ", "การเงิน", "เทคนิค", "อื่นๆ"];
 
 export default function ContactsEditor({ value = [], onChange }) {
   const rows = Array.isArray(value) ? value : [];

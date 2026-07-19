@@ -197,6 +197,7 @@ export default function ProductForm({
                 <option value="oz">oz</option>
                 <option value="L">L</option>
                 <option value="pcs">pcs</option>
+                <option value="package">package</option>
               </Select>
             </div>
           </div>
