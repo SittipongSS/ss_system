@@ -33,6 +33,7 @@
 - Form code เช่น `FM-SA-01`
 - Revision เช่น `00`
 - Effective date แบบวันที่สากลในฐานข้อมูล
+- Controlled form line แสดงตรงตามมาตรฐาน `FM-SA-01: Rev. No.00 08/05/2568` โดยรักษา `:`, `.`, `-` และช่องว่างตามรูปแบบ
 - Accent preset: Terracotta, Teal, Amber, Green หรือ Navy
 - Numbering pattern แบบ guarded token เช่น `QT-{YY}{MM}{RUNNING:4}-{REVISION}`
 - Change note บังคับก่อน Publish
@@ -115,7 +116,8 @@ Browser ไม่มีสิทธิ์เข้าตารางโดยต
 - Targeted ESLint และ Next.js 16.2.7 production build ผ่าน รวมหน้า/API ของ Document Standards ครบ
 - Chrome QA ด้วย AE Supervisor ผ่าน Desktop Light/Dark, Settings link/back link, document tabs, Draft Drawer, Escape/focus restore และ console ไม่มี error/warning
 - Responsive QA ที่ viewport mobile ผ่าน: ตารางเปลี่ยนเป็นการ์ด, Drawer เต็มความกว้าง และ document/body ไม่มี horizontal overflow
-- QA รอบนี้ไม่เขียนข้อมูลจริง; การรัน Migration 0123 และ Preview UAT สำหรับ create/save/archive/stale/publish ยังเป็น release gate ก่อนส่ง PR
+- Follow-up รูปแบบ controlled form line ผ่าน targeted tests 19/19 และ production build: `FM-SA-01: Rev. No.00 08/05/2568` ไม่มีจุดหลังเลข Revision
+- QA รอบนี้ไม่เขียนข้อมูลจริง; Preview UAT สำหรับ create/save/archive/stale/publish ยังเป็น release gate โดยผู้ใช้ยืนยันว่ารัน Migration 0123 แล้ว
 
 ## Known risks
 

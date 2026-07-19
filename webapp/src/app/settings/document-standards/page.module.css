@@ -22,7 +22,6 @@
 .preview > strong { margin-top: 16px; font-size: 20px; line-height: 1.3; }
 .preview > small { margin-top: 2px; color: var(--text-2); font-size: 11px; letter-spacing: .04em; }
 .previewNumber { position: relative; z-index: 1; margin-top: 14px; color: var(--doc-accent); font-family: var(--font-mono); font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
-.previewFoot { position: absolute; z-index: 1; right: 15px; bottom: 12px; color: var(--text-3); font-size: 10.5px; }
 .previewCompact { min-height: 150px; }
 .fieldHelp { margin-top: 6px; color: var(--text-3); font-size: 11.5px; line-height: 1.55; }
 .numberExample { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 10px 11px; border-radius: var(--radius); color: var(--text-2); background: var(--panel-2); }

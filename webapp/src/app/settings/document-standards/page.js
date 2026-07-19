@@ -15,7 +15,9 @@ import {
   DOCUMENT_ACCENT_LABELS,
   DOCUMENT_STANDARD_KEYS,
   DOCUMENT_STANDARD_LABELS,
+  documentStandardFormLine,
   documentStandardStatusLabel,
+  formatDocumentStandardEffectiveDate,
   hasDocumentStandardChangeNote,
   numberingPatternExample,
 } from "@/lib/documentStandards";
@@ -34,9 +36,8 @@ const EMPTY_FORM = {
 };
 
 const dateTime = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" });
-const dateOnly = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeZone: "UTC" });
 const formatDateTime = (value) => value ? dateTime.format(new Date(value)) : "-";
-const formatEffectiveDate = (value) => value ? dateOnly.format(new Date(`${value}T00:00:00Z`)) : "-";
+const formatEffectiveDate = formatDocumentStandardEffectiveDate;
 const actorOf = (row) => row?.publishedByName || row?.archivedByName || row?.updatedByName || row?.createdByName || "ระบบ";
 const statusClass = (status) => status === "published" ? base.published : status === "draft" ? base.draft : base.archived;
 
@@ -63,12 +64,11 @@ function StandardPreview({ row, compact = false }) {
     <div className={`${styles.preview} ${styles[row.accentKey] || styles.terracotta} ${compact ? styles.previewCompact : ""}`.trim()}>
       <div className={styles.previewTop}>
         <span>Scent &amp; Sense</span>
-        <span>{row.formCode} · Rev.{row.revision}</span>
+        <span>{documentStandardFormLine(row)}</span>
       </div>
       <strong>{row.titleTh}</strong>
       <small>{row.titleEn || "-"}</small>
       <div className={styles.previewNumber}>{numberingPatternExample(row.numberingPattern, "0")}</div>
-      <div className={styles.previewFoot}>มีผล {formatEffectiveDate(row.effectiveDate)}</div>
     </div>
   );
 }

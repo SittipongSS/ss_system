@@ -107,9 +107,16 @@ export function hasDocumentStandardChangeNote(version) {
   return !!String(version?.changeNote || '').trim();
 }
 
+export function formatDocumentStandardEffectiveDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return '-';
+  const [, year, month, day] = match;
+  return `${day}/${month}/${String(Number(year) + 543).padStart(4, '0')}`;
+}
+
 export function documentStandardFormLine(version) {
   if (!version) return '-';
-  return `${version.formCode} · Rev.${version.revision} · มีผล ${version.effectiveDate}`;
+  return `${version.formCode}: Rev. No.${version.revision} ${formatDocumentStandardEffectiveDate(version.effectiveDate)}`;
 }
 
 export function numberingPatternExample(pattern, revision = '0') {

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   documentStandardFormLine,
+  formatDocumentStandardEffectiveDate,
   normalizeDocumentStandardInput,
   numberingPatternExample,
   validateNumberingPattern,
@@ -49,5 +50,7 @@ test('numbering patterns require an approved running token', () => {
 
 test('builds stable preview and controlled form line', () => {
   assert.equal(numberingPatternExample('QT-{YY}{MM}{RUNNING:4}-{REVISION}', '2'), 'QT-26070001-2');
-  assert.equal(documentStandardFormLine({ formCode: 'FM-SA-01', revision: '00', effectiveDate: '2025-05-08' }), 'FM-SA-01 · Rev.00 · มีผล 2025-05-08');
+  assert.equal(formatDocumentStandardEffectiveDate('2025-05-08'), '08/05/2568');
+  assert.equal(formatDocumentStandardEffectiveDate(''), '-');
+  assert.equal(documentStandardFormLine({ formCode: 'FM-SA-01', revision: '00', effectiveDate: '2025-05-08' }), 'FM-SA-01: Rev. No.00 08/05/2568');
 });
