@@ -13,6 +13,7 @@
 - เพิ่ม Signature Vault ในหน้า Account
 - แสดงสถานะ active/not configured, Preview และ version history
 - Upload PNG, Replace และ Revoke ด้วย explicit action และ confirm step
+- ก่อน Upload/Replace ให้ครอปและจัดตำแหน่งในกรอบ 3:1 แล้วสร้าง PNG 1200×400 px บน Browser; ไฟล์ต้นฉบับไม่ถูก Upload
 - ใช้ Drawer สำหรับรายละเอียดและการจัดการ
 - เก็บไฟล์ใน private bucket และอ่านผ่าน owner-scoped API
 - เก็บ asset metadata และ SHA-256
@@ -26,6 +27,52 @@
   และ Sale Order `FM-SA-03` แบบ atomic
 - เก็บ signer snapshot, signed timestamp, document fingerprint และ controlled form metadata
 - Approval เดิมเป็น legacy record และห้าม backfill evidence
+- ผู้ใช้ยืนยัน enforcement: approval ใหม่ต้องมี Active Signature; หากไม่มีให้ no-write และพาไป `/account`
+- Phase 5B ใช้ Migration `0125_signature_evidence.sql` หลังแก้ duplicate migration hotfix เป็น `0124`
+
+## Data/API Phase 5B
+
+- `document_signature_evidence` — append-only evidence ต่อ approval action
+- อ้างอิง `user_signature_versions.id` และ `document_standard_versions.id`
+- เก็บ `documentType`, `documentId`, `documentNumber`, `documentFingerprint`, signer/asset/form snapshots และ `signedAt`
+- เพิ่ม active evidence pointer แบบ nullable บน `quotations` และ `sales_orders`; legacy approval เดิมคงเป็น `null`
+- `approve_quotation_with_signature_evidence_atomic` — ตรวจ pending/stale/active signature/published FM-SA-01 แล้ว approve + evidence พร้อมกัน
+- `approve_sales_order_with_signature_evidence_atomic` — ตรวจ pending/stale/separation-of-duty/active signature/published FM-SA-03 แล้ว approve + evidence พร้อมกัน
+- Error ที่ client แก้ได้ใช้ safe code เช่น `signature_required`, `approval_stale` และ `document_standard_required`; ห้ามส่ง database detail
+
+## ไม่รวมใน Phase 5B
+
+- วางภาพลายเซ็นลง Quotation/Sale Order Print/PDF
+- ลายเซ็นผู้จัดทำหรือผู้เสนอราคาที่ไม่มี explicit signing action
+- ลายเซ็นลูกค้า, OTP, Certificate หรือ PKI
+- Admin preview/revoke ลายเซ็นของผู้อื่น
+- Issued PDF storage, Document Engine, Commercial Preset และ Permission redesign
+
+## Validation Phase 5B
+
+- [x] ผู้ใช้ยืนยัน enforcement และ scope ก่อน implementation
+- [x] Decision 0008 และ migration sequencing ถูกบันทึกก่อน schema/API implementation
+- [x] Migration 0124/0125 file integrity, append-only guard, RLS/RPC contract และ sequencing ผ่าน automated/static validation
+- [ ] Migration 0125 รันบน Supabase จริงและ RPC transaction/no-write ผ่าน UAT
+- [ ] Quotation approval สร้าง evidence แบบ atomic และ no-write เมื่อ signature/standard/stale ไม่ผ่าน
+- [ ] Sale Order approval สร้าง evidence แบบ atomic และคง separation-of-duty
+- [x] Fingerprint deterministic และเปลี่ยนเมื่อข้อมูลสำคัญเปลี่ยน
+- [x] UI แสดง actionable link ไป Account เมื่อ API ส่ง safe `accountUrl`
+- [x] Signature Vault ครอป 3:1, drag/zoom/keyboard/reset และสร้าง Preview PNG 1200×400 px ฝั่ง Browser
+- [x] Legacy approval ไม่ถูก backfill และ Print/PDF ไม่เปลี่ยนใน implementation นี้
+- [x] Automated tests, targeted ESLint และ production build ผ่าน
+- [ ] Preview UAT หลังผู้ใช้รัน Migration 0125
+- [ ] ผู้ใช้ตรวจและยืนยันก่อน Commit, Push และ PR
+
+## Validation log — 20 กรกฎาคม 2026 (Phase 5B)
+
+- `npm run check:migrations` ผ่าน 125 migrations; latest `0125`
+- `npm test` ผ่าน 409/409 tests รวม signature evidence migration contract, safe error mapping, Sale Order fingerprint และ crop geometry
+- Targeted ESLint ผ่านสำหรับ approval APIs, Quotation/Sale Order UI และ signature evidence/fingerprint libraries
+- `npm run build` ผ่านบน Next.js 16.2.7
+- Supabase runtime RPC, no-write transaction และ approval UAT รอทดสอบด้วยบัญชีจริง
+- ผู้ใช้ยืนยันรัน Migration `0125` แล้ววันที่ 20 กรกฎาคม 2026; รอ RPC/approval UAT ด้วยบัญชีจริง
+- Local Browser UAT: Desktop/Dark และ Mobile 390×844 ผ่าน; เลือก PNG, ขยับด้วย keyboard, zoom 105%, สร้าง Preview 1200×400 px และไม่มี horizontal overflow/runtime error
 
 ## Current-state inventory
 

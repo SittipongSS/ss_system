@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import Toast from "@/components/ui/Toast";
+import SignatureCropper from "./SignatureCropper";
 import styles from "./SignatureVault.module.css";
 
 const ACTION_LABELS = {
@@ -57,6 +58,8 @@ export default function SignatureVault() {
   const [loadError, setLoadError] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [candidate, setCandidate] = useState(null);
+  const [cropSource, setCropSource] = useState(null);
+  const [cropReady, setCropReady] = useState(false);
   const [candidateUrl, setCandidateUrl] = useState("");
   const [candidateError, setCandidateError] = useState("");
   const [revokeMode, setRevokeMode] = useState(false);
@@ -64,6 +67,7 @@ export default function SignatureVault() {
   const [confirmAction, setConfirmAction] = useState("");
   const [busy, setBusy] = useState("");
   const [toast, setToast] = useState(null);
+  const cropperRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +100,8 @@ export default function SignatureVault() {
     if (busy) return;
     setDrawerOpen(false);
     setCandidate(null);
+    setCropSource(null);
+    setCropReady(false);
     setCandidateError("");
     setRevokeMode(false);
     setRevokeReason("");
@@ -119,8 +125,26 @@ export default function SignatureVault() {
       setCandidateError("ไฟล์ใหญ่เกิน 1 MB");
       return;
     }
-    setCandidate(file);
+    setCandidate(null);
+    setCropSource(file);
+    setCropReady(false);
     setRevokeMode(false);
+  };
+
+  const applyCrop = async () => {
+    if (!cropReady || !cropperRef.current) return;
+    setBusy("crop");
+    setCandidateError("");
+    try {
+      const cropped = await cropperRef.current.exportFile();
+      setCandidate(cropped);
+      setCropSource(null);
+      setCropReady(false);
+    } catch (error) {
+      setCandidateError(error.message || "ครอปลายเซ็นไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
   };
 
   const upload = async () => {
@@ -226,7 +250,12 @@ export default function SignatureVault() {
         opaqueSurface
         footer={(
           <>
-            {confirmAction ? (
+            {cropSource ? (
+              <>
+                <button type="button" className="btn ghost" onClick={() => { setCropSource(null); setCropReady(false); }} disabled={!!busy}>ยกเลิกการครอป</button>
+                <button type="button" className="btn btn-accent" onClick={applyCrop} disabled={!cropReady || !!busy}>{busy === "crop" ? "กำลังสร้างภาพ…" : "ใช้ภาพที่ครอป"}</button>
+              </>
+            ) : confirmAction ? (
               <>
                 <button type="button" className="btn ghost" onClick={() => setConfirmAction("")} disabled={!!busy}>ย้อนกลับ</button>
                 <button
@@ -255,6 +284,20 @@ export default function SignatureVault() {
         )}
       >
         <div className={styles.drawerBody}>
+          {cropSource ? (
+            <>
+              <SignatureCropper
+                ref={cropperRef}
+                file={cropSource}
+                onReadyChange={setCropReady}
+              />
+              {candidateError && <p className={styles.validationError} role="alert">{candidateError}</p>}
+              <section className={styles.securityNote} aria-label="การประมวลผลภาพ">
+                <ShieldCheck size={20} aria-hidden="true" />
+                <div><strong>ครอปบนอุปกรณ์ของคุณ</strong><p>ไฟล์ต้นฉบับยังไม่ถูกส่งขึ้น Server ระบบจะอัปโหลดเฉพาะ PNG ที่ครอปและคุณยืนยันแล้ว</p></div>
+              </section>
+            </>
+          ) : <>
           {confirmAction && (
             <section className={`${styles.confirmPanel} ${confirmAction === "revoke" ? styles.dangerPanel : ""}`} role="alert">
               <AlertTriangle size={20} aria-hidden="true" />
@@ -288,7 +331,7 @@ export default function SignatureVault() {
             {(candidate || active) && (
               <div className={styles.previewMeta}>
                 <span>{candidate?.name || `signature-v${active.versionNumber}.png`}</span>
-                <span>{candidate ? fmtBytes(candidate.size) : `${active.width}×${active.height} px · ${fmtBytes(active.sizeBytes)}`}</span>
+                <span>{candidate ? `1200×400 px · ${fmtBytes(candidate.size)}` : `${active.width}×${active.height} px · ${fmtBytes(active.sizeBytes)}`}</span>
               </div>
             )}
           </section>
@@ -302,7 +345,7 @@ export default function SignatureVault() {
                 <ImagePlus size={16} aria-hidden="true" /> เลือกไฟล์ PNG
                 <input type="file" accept="image/png,.png" onChange={selectFile} className={styles.fileInput} />
               </label>
-              <p className={styles.assistText}>PNG ไม่เกิน 1 MB · กว้าง 120–2400 px · สูง 40–1200 px · แนะนำพื้นหลังโปร่งใส</p>
+              <p className={styles.assistText}>PNG ไม่เกิน 1 MB · เลือกแล้วครอปเป็น 1200×400 px · แนะนำพื้นหลังโปร่งใส</p>
               {candidateError && <p className={styles.validationError} role="alert">{candidateError}</p>}
             </section>
           )}
@@ -351,6 +394,7 @@ export default function SignatureVault() {
           </section>
 
           {data?.localOnly && <p className={styles.localNote}>Local mode: ใช้ตรวจ UX เท่านั้น ข้อมูลจะไม่ถูกบันทึกข้ามการ Reload</p>}
+          </>}
         </div>
       </RecordDrawer>
       <Toast toast={toast} onClose={() => setToast(null)} />

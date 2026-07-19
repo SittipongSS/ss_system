@@ -3,6 +3,11 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { isSalesOrderReviewer, isValidCancelReasonCode, cancelReasonLabel, isValidReversalTarget } from '@/lib/sales/salesOrderWorkflow';
+import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
+import {
+  approveSalesOrderWithSignatureEvidence,
+  signatureEvidenceErrorResponse,
+} from '@/lib/admin/signatureEvidence';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 
@@ -112,11 +117,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // ยอด Actual ต้องมีคนที่สองตรวจ (ผู้สร้าง/ผู้ยื่นต่างจากผู้อนุมัติ)
     if (before.createdBy && before.createdBy === user.id) return forbidden('อนุมัติ SO ที่ตัวเองสร้างไม่ได้ — ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ');
     if (before.submittedBy && before.submittedBy === user.id) return forbidden('อนุมัติ SO ที่ตัวเองยื่นไม่ได้ — ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ');
-    const now = new Date().toISOString();
-    const patch = { status: 'approved', approvedAt: now, approvedBy: user.id || null, approvedByName: user.name || null, approvalNote: String(body.note || '').trim() || null, updatedAt: now };
-    const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
-    if (error) return fail(error.message, 500);
-    if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
+    let result;
+    try {
+      result = await approveSalesOrderWithSignatureEvidence(supabase, {
+        documentId: id,
+        evidenceId: genId('DSE'),
+        expectedUpdatedAt: before.updatedAt,
+        documentFingerprint: salesOrderApprovalFingerprint(before, before.lines),
+        note: String(body.note || '').trim() || null,
+        user,
+      });
+    } catch (approvalError) {
+      return signatureEvidenceErrorResponse(approvalError);
+    }
+    const data = result.document;
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `approve ${before.orderNumber}`, request: req });
     // แจ้งทีมขาย: SO อนุมัติแล้ว → ยอด Actual เข้าระบบ
     sendChat('sales', chatCard({

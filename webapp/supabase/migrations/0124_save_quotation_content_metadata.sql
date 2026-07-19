@@ -1,4 +1,4 @@
--- 0123 - save_quotation_content: persist patch.metadata (ผู้รับผิดชอบเอกสาร).
+-- 0124 - save_quotation_content: persist patch.metadata (ผู้รับผิดชอบเอกสาร).
 --
 -- Formalizes the hotfix already run manually on Supabase production on 2026-07-19
 -- (referred to as "mig 0119" at the time, before 0119 was taken by

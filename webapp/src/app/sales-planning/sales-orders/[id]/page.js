@@ -47,6 +47,7 @@ export default function SalesOrderDetailPage() {
   const [order, setOrder] = useState(null);
   const [form, setForm] = useState({ orderDate: "", paymentDueDate: "", notes: "" });
   const [error, setError] = useState("");
+  const [errorActionUrl, setErrorActionUrl] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -79,6 +80,7 @@ export default function SalesOrderDetailPage() {
   async function requestAction(action, payload = {}) {
     setBusy(action);
     setError("");
+    setErrorActionUrl("");
     setNotice("");
     if (action === "save") setSaveState("saving");
     const res = await fetch(`/api/sales-planning/sales-orders/${id}`, {
@@ -90,6 +92,7 @@ export default function SalesOrderDetailPage() {
     if (!res.ok) {
       setBusy("");
       setError(data.error || "อัปเดต Sale Order ไม่สำเร็จ");
+      setErrorActionUrl(data.accountUrl || "");
       if (action === "save") setSaveState("error");
       return false;
     }
@@ -195,7 +198,7 @@ export default function SalesOrderDetailPage() {
           eyebrow="SALE ORDER · COMMERCIAL APPROVAL"
           title={order.orderNumber}
           description={`${order.customerName || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
-          badges={<SalesStateBadge label={status.label} color={status.color} />}
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             { icon: FileText, label: "อ้างอิง QT", value: order.quotation?.quoteNumber || "-" },
@@ -206,7 +209,7 @@ export default function SalesOrderDetailPage() {
           <p className={styles.statusDescription}>{status.description}</p>
         </SalesDetailOverview>
 
-        {error && <div className={styles.alertError} role="alert">{error}</div>}
+        {error && <div className={styles.alertError} role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}><span>{error}</span>{errorActionUrl && <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link>}</div>}
         {notice && <div className={styles.alertSuccess} role="status">{notice}</div>}
         {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><p>{order.rejectionReason}</p></div></div>}
 
