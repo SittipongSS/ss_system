@@ -4,8 +4,6 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, CircleDollarSign, Scale, Database, Briefcase, UserRound } from 'lucide-react';
 
-// เส้นทางทั้งหมดที่ถือว่าอยู่ใต้เมนู "ตั้งค่า" (ให้ปุ่มติด active ตอนอยู่หน้าลูก)
-const SETTINGS_PATHS = ['/settings', '/database/holidays', '/database/chat-webhooks', '/users', '/audit'];
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { can, canUser, canAccessSahamit, canManageProductCategories, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
@@ -14,7 +12,7 @@ import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@
 import BrandMark from '@/components/BrandMark';
 import AccountMenu from '@/components/AccountMenu';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
-import { sortSystems, systemForPathname } from '@/config/navigation';
+import { isSettingsPathname, sortSystems, systemForPathname } from '@/config/navigation';
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -27,6 +25,7 @@ const SYSTEM_ICONS = {
   sahamit: LineChart,
   master: Database,
   mgmt: Briefcase,
+  settings: SettingsIcon,
 };
 
 // (ตัด prefetch หลัง login ออก — มติผู้ใช้ 2026-07-17 เรื่องลด traffic: เดิมอุ่น
@@ -259,13 +258,12 @@ export default function AppLayout({ children }) {
   ];
 
   const systemSubtitle =
-    activeSystem === 'master' ? 'ฐานข้อมูล'
+    activeSystem === 'settings' ? 'การตั้งค่าระบบ'
+      : activeSystem === 'master' ? 'ฐานข้อมูล'
       : activeSystem === 'salesplan' ? 'บริหารงานขาย'
         : activeSystem === 'sahamit' ? 'งานสหมิตร'
           : activeSystem === 'mgmt' ? 'งานบริหาร'
-            : activeSystem === 'users' ? 'จัดการผู้ใช้'
-              : activeSystem === 'audit' ? 'บันทึกการใช้งาน'
-                : 'ภาษีสรรพสามิต';
+            : 'ภาษีสรรพสามิต';
 
   // ระบบที่ผู้ใช้เข้าถึงได้ (ใช้ทั้ง dropdown สลับระบบ และกรองเมนูแถวล่าง).
   // canUser (not can) so a per-user grant — e.g. an SA granted mgmt:view to
@@ -284,9 +282,10 @@ export default function AppLayout({ children }) {
   const currentGroup = accessibleGroups.find((g) => g.system === activeSystem) || null;
   const menuItems = currentGroup?.items || [];
   const ActiveSystemIcon = SYSTEM_ICONS[activeSystem] || LayoutDashboard;
+  const isSettingsContext = isSettingsPathname(pathname);
 
   return (
-    <div className="app-container">
+    <div className={`app-container${isSettingsContext ? ' settings-context' : ''}`}>
       {/* ── Top bar 2 ชั้น (ตรึงบนสุดทั้งระบบ) ── */}
       <header className="topnav">
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
@@ -335,6 +334,14 @@ export default function AppLayout({ children }) {
           </button>
 
           <div className="topbar-actions">
+            <Link
+              href="/settings"
+              className={`topnav-global-action${isSettingsContext ? ' active' : ''}`}
+              aria-current={isSettingsContext ? 'page' : undefined}
+            >
+              <SettingsIcon size={17} aria-hidden="true" />
+              <span>ตั้งค่า</span>
+            </Link>
             <AccountMenu
               userName={userName}
               userInitials={userInitials}
@@ -350,7 +357,7 @@ export default function AppLayout({ children }) {
         </div>
 
         {/* ชั้นเมนูของระบบปัจจุบัน — จอแคบเลื่อนแนวนอนได้ (ไม่มี drawer แล้ว) */}
-        <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
+        {!isSettingsContext && <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
           {menuItems.map((item) => {
             const Icon = item.icon;
             const active = item.match(pathname);
@@ -371,15 +378,7 @@ export default function AppLayout({ children }) {
               <span>วางเป้า</span>
             </Link>
           )}
-          {/* เมนูระบบรวมจุดเดียว: ปฏิทิน/แจ้งเตือน/ผู้ใช้/audit ย้ายเข้า /settings ทั้งหมด */}
-          <Link
-            href="/settings"
-            className={`topnav-item topnav-utility-item ${SETTINGS_PATHS.some((p) => pathname.startsWith(p)) ? 'active' : ''}`}
-          >
-            <SettingsIcon size={16} className="ico" />
-            <span>ตั้งค่า</span>
-          </Link>
-        </nav>
+        </nav>}
       </header>
 
       {/* Main Content Area */}
@@ -398,7 +397,16 @@ export default function AppLayout({ children }) {
       {/* M3 navigation bar (มติ 2026-07-18): 4 ปุ่มแรกพอดีจอ + "เพิ่มเติม" เปิด sheet —
           เลิกแถบเลื่อนข้าง (เมนูที่ต้องปัดหา = anti-pattern); เมนูที่เหลือย้ายเข้า sheet */}
       <nav ref={bottomNavRef} className="mobile-bottom-nav" aria-label={`เมนู${systemSubtitle}`}>
-        {menuItems.slice(0, 4).map((item) => {
+        {isSettingsContext ? (
+          <>
+            <Link href="/home" className="mobile-bottom-item">
+              <span className="mbi-ico"><Home size={20} aria-hidden="true" /></span><span>หน้าหลัก</span>
+            </Link>
+            <Link href="/settings" className="mobile-bottom-item active" aria-current="page">
+              <span className="mbi-ico"><SettingsIcon size={20} aria-hidden="true" /></span><span>ตั้งค่า</span>
+            </Link>
+          </>
+        ) : menuItems.slice(0, 4).map((item) => {
           const Icon = item.icon;
           const active = item.match(pathname);
           return (
@@ -408,7 +416,7 @@ export default function AppLayout({ children }) {
             </Link>
           );
         })}
-        {!menuItems.length && (
+        {!isSettingsContext && !menuItems.length && (
           <Link href="/home" className={`mobile-bottom-item${pathname === '/home' ? ' active' : ''}`}>
             <span className="mbi-ico"><Home size={20} aria-hidden="true" /></span><span>หน้าหลัก</span>
           </Link>
@@ -456,7 +464,7 @@ export default function AppLayout({ children }) {
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
               {canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
-              <Link href="/settings" className={`mobile-nav-card${SETTINGS_PATHS.some((p) => pathname.startsWith(p)) ? ' active' : ''}`}><SettingsIcon size={20} /><span>ตั้งค่า</span></Link>
+              <Link href="/settings" className={`mobile-nav-card${isSettingsContext ? ' active' : ''}`}><SettingsIcon size={20} /><span>ตั้งค่า</span></Link>
             </div>
           </section>
 

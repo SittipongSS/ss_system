@@ -383,6 +383,10 @@ button, select, input, textarea {
   min-height: calc(100vh / var(--ui-scale));
 }
 
+.app-container.settings-context {
+  --topnav-menu-h: 0px;
+}
+
 .main-content {
   min-width: 0;
   min-height: calc(100vh / var(--ui-scale));
@@ -585,6 +589,35 @@ button, select, input, textarea {
   gap: 8px;
   margin-left: auto;
   flex-shrink: 0;
+}
+
+.topnav-global-action {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.topnav-global-action:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.topnav-global-action.active {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.topnav-global-action:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .topbar-user-info {
