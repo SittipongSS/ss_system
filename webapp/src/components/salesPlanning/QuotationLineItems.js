@@ -149,16 +149,13 @@ export default function QuotationLineItems({
                 <td><MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} /></td>
                 <td>
                   <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />
-                  {/* master ยังไม่ตั้งราคา → ป้ายส้มพาไปตั้งที่ฐานข้อมูล (ห้ามกรอกในใบ) */}
-                  {editable && !!(line.productId || line.fgCode) && (line.productId && !(masterPriceFor(line.productId) > 0) ? (
+                  {/* เตือนเฉพาะตอน master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ
+                      ไม่ต้องมีคำอธิบายกำกับ ช่องถูกล็อกอยู่แล้วและมี tooltip บอกที่มา */}
+                  {editable && line.productId && !(masterPriceFor(line.productId) > 0) && (
                     <Link prefetch={false} href={`/database/products/${line.productId}`} target="_blank" className={styles.fgCode} style={{ color: "var(--amber)" }}>
                       ยังไม่ตั้งราคาในฐานข้อมูล — ไปตั้งราคา →
                     </Link>
-                  ) : (
-                    <Link prefetch={false} href={line.productId ? `/database/products/${line.productId}` : "/database/products"} target="_blank" className={styles.fgCode} style={{ color: "var(--blue)" }}>
-                      ราคาจากฐานข้อมูล →
-                    </Link>
-                  ))}
+                  )}
                 </td>
                 <td>
                   <div className={styles.discountControls}>
