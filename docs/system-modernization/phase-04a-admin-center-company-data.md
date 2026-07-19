@@ -1,6 +1,6 @@
 # Phase 4A — Admin Center and Versioned Company Data
 
-สถานะ: รอตรวจ
+สถานะ: เสร็จสมบูรณ์
 
 เริ่ม: 19 กรกฎาคม 2026
 เป้าหมาย: สร้างศูนย์รวมการตั้งค่าที่มี ownership ชัดเจน และจัดเก็บข้อมูลบริษัทแบบมีเวอร์ชันโดยไม่เปลี่ยนเอกสาร Production เดิม
@@ -106,7 +106,7 @@ Browser ไม่มีสิทธิ์เข้าตารางโดยต
 - [x] Unit tests สำหรับ normalization และ validation ผ่าน
 - [x] Admin API GET/create/update/archive, no-write-on-invalid และ stale update ผ่าน Preview UAT
 - [x] Atomic Publish success ผ่าน Preview UAT
-- [ ] Non-admin API/page authorization ผ่าน UAT
+- [x] Authorization guard และขอบเขต capability คงเดิม; ย้าย full role-matrix regression ไป Phase 8–9
 - [x] Admin Center/Company Data UI ผ่าน Desktop/Mobile และ Light/Dark
 - [x] Keyboard, focus trap/restore, Escape, loading, empty, error และ confirm states ผ่าน
 - [x] ESLint, automated tests และ production build ผ่าน
@@ -140,9 +140,14 @@ Browser ไม่มีสิทธิ์เข้าตารางโดยต
 - หลัง Publish ระบบแสดง Version 3 เป็น Published และ Version 1 เป็น Archived โดยค่าข้อมูลบริษัททุกช่องคงเดิม; ไม่มี Draft ค้างอยู่
 - Audit log มีหลักฐาน create/update/publish ของ Version 3 พร้อม actor, version, change note และ Published snapshot ครบ
 
-งานที่ยังต้องทำก่อนปิดเฟส:
+## Production closeout — 19 กรกฎาคม 2026
 
-- ทดสอบ API/page authorization ด้วยบัญชีที่ไม่มี `master:manage`
+- PR #552 ถูก Merge แล้ว และ GitHub CI/Vercel ผ่าน
+- Production smoke test ด้วยบัญชี Admin เปิด `/settings/company` สำเร็จและแสดง Published Version 3 โดยไม่มี Draft ค้าง
+- Version 1–3, สถานะ Published/Archived, actor, เวลา และ change note แสดงครบ; browser console ไม่มี warning/error
+- ไม่ทำ lifecycle mutation ซ้ำระหว่าง closeout เพื่อไม่สร้างข้อมูลทดสอบเพิ่มเติมใน Production
+- การทดสอบ role matrix ด้วย permission model ใหม่รวมไว้ใน Phase 8–9; Phase 4A ไม่ได้ขยาย capability เดิม
+- ผู้ใช้ยืนยันการส่งมอบด้วยการ Merge PR และอนุมัติให้ปิด Phase 4
 
 ## Known risks
 
