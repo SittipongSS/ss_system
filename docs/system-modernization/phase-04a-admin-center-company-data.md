@@ -105,7 +105,8 @@ Browser ไม่มีสิทธิ์เข้าตารางโดยต
 - [x] ผู้ใช้รัน Migration 0120 บน Supabase environment แล้ว
 - [x] Unit tests สำหรับ normalization และ validation ผ่าน
 - [x] Admin API GET/create/update/archive, no-write-on-invalid และ stale update ผ่าน Preview UAT
-- [ ] Non-admin API authorization และ atomic Publish success ผ่าน UAT
+- [x] Atomic Publish success ผ่าน Preview UAT
+- [ ] Non-admin API/page authorization ผ่าน UAT
 - [x] Admin Center/Company Data UI ผ่าน Desktop/Mobile และ Light/Dark
 - [x] Keyboard, focus trap/restore, Escape, loading, empty, error และ confirm states ผ่าน
 - [x] ESLint, automated tests และ production build ผ่าน
@@ -135,11 +136,13 @@ Browser ไม่มีสิทธิ์เข้าตารางโดยต
 - Archive Draft Version 2 ผ่าน Confirm dialog แล้ว; หน้าหลักกลับมาไม่มี Draft, Version 2 เป็น Archived และ Published ยังคงเป็น Version 1
 - Audit log มีหลักฐาน create/update/archive พร้อม actor, version และ before/after snapshot ครบ; Draft เก็บค่าบริษัทเดิมและหมายเหตุ UAT โดยไม่มีค่า stale
 - Preview Company Data และ Audit console ไม่มี error/warning ระหว่าง UAT
+- สร้าง Draft Version 3 จาก Published Version 1, บันทึกหมายเหตุ `Phase 4A UAT — atomic Publish validation` และ Publish สำเร็จ
+- หลัง Publish ระบบแสดง Version 3 เป็น Published และ Version 1 เป็น Archived โดยค่าข้อมูลบริษัททุกช่องคงเดิม; ไม่มี Draft ค้างอยู่
+- Audit log มีหลักฐาน create/update/publish ของ Version 3 พร้อม actor, version, change note และ Published snapshot ครบ
 
 งานที่ยังต้องทำก่อนปิดเฟส:
 
 - ทดสอบ API/page authorization ด้วยบัญชีที่ไม่มี `master:manage`
-- ทดสอบ atomic Publish success หลังได้รับคำยืนยันแยก เพราะจะเพิ่ม Published version และเปลี่ยน version history จริง
 
 ## Known risks
 
