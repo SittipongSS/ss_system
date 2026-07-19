@@ -148,6 +148,15 @@ export default function ProductRegistry() {
     if (!formData.productDescription?.trim() && !formData.productDescriptionEn?.trim()) {
       alert("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
     }
+    // เตือนกลับด้านกับของเดิม: popup เฉพาะตอนเข้าหมวด 01-002 (ส่วนน้อยที่มีภาระภาษีตามมา) — หมวดอื่นบันทึกเงียบ ๆ
+    if (isExciseCategory(categoryOf(formData.fgCode))) {
+      if (
+        !confirm(
+          "⚠️ แจ้งเตือน:\nรหัสสินค้า (FG) อยู่ในหมวด 01-002 (น้ำหอมฉีดผิวกาย)\n\nสินค้านี้ต้องขึ้นทะเบียนและชำระภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)\nต้องการบันทึกต่อหรือไม่?",
+        )
+      )
+        return;
+    }
     setSubmitting(true);
     const payload = {
       ...formData,
