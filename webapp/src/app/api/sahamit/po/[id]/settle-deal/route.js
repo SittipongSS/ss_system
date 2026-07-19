@@ -161,8 +161,9 @@ export async function POST(request, { params }) {
   const products = await loadSahamitProducts(supabase, customerId);
   const productIndex = indexByFgCode(products);
   const now = new Date().toISOString();
-  // มูลค่าดีลฝั่งสหมิตร = ราคาโรงงาน (costPrice) ตามธรรมเนียมโมดูล; ราคาใน QT เป็น
-  // retailPriceIncVat จาก master (enforceMasterPrices จัดการ) — คนละตัวกันโดยตั้งใจ
+  // ราคาสายสหมิตร = ราคาโรงงาน (costPrice) ทั้งมูลค่าดีลและราคาใน QT (มติ 2026-07-19 —
+  // สหมิตรซื้อราคาโรงงาน ยอด QT/SO ต้องตรง PO; createQuotationDraft ตั้ง
+  // priceBasis='factory' อัตโนมัติจาก deal.metadata.source แล้ว enforce จาก master)
   const priceOf = (f) => Number(productIndex.get(lc(f))?.price ?? 0) || 0;
 
   const settledByFg = await loadSettledFg(supabase, customerId, po.id);
@@ -433,7 +434,7 @@ export async function POST(request, { params }) {
     title: merged.title,
     quotationId: quote.id,
     quoteNumber: quote.quoteNumber,
-    // ราคาใบ = retailPriceIncVat จาก master — ยอดรวม 0/ไม่ครบ = master ยังไม่ตั้งราคาขาย
+    // ราคาใบ = ราคาโรงงาน (costPrice) จาก master — ยอดรวม 0/ไม่ครบ = master ยังไม่ตั้งราคา
     priceMissing: !(Number(quote.totalAmount) > 0) || chosen.some((c) => !c.product?.id),
     mergedFrom: mergedSourceIds.length,
     partialFrom: partialSourceIds.length,

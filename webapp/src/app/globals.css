@@ -2016,6 +2016,14 @@ h1, h2, h3, h4, h5, h6 {
   transition: border-color .12s, box-shadow .12s;
 }
 
+/* ช่องที่ถูกล็อก (เช่น ราคาบรรทัด FG — ราคามาจากฐานข้อมูลสินค้าทางเดียว) ต้องดูออก
+   ว่ากดไม่ได้ ไม่ใช่หน้าตาเหมือนช่องปกติ */
+.premium-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--panel-2);
+}
+
 .premium-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);

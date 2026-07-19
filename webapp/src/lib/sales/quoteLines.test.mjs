@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enforceMasterPrices, fgLineDescription, normalizeManualLines, refreshFgLinesForDisplay } from './quoteLines.js';
+import { enforceMasterPrices, fgLineDescription, normalizeManualLines, quotePriceField, refreshFgLinesForDisplay } from './quoteLines.js';
 
 // stub supabase: คืนราคา master ตาม map ที่กำหนด
 const fakeSupabase = (products) => ({
@@ -26,6 +26,20 @@ test('FG line price is overridden by master price (client value ignored)', async
   const lines = await enforceMasterPrices(fakeSupabase([{ id: 'P1', retailPriceIncVat: 150 }]), [fgLine()]);
   assert.equal(lines[0].unitPrice, 150);
   assert.equal(lines[0].lineTotal, 300); // qty 2 × 150 คิดยอดใหม่
+});
+
+// สายสหมิตรใช้ราคาโรงงาน (มติ 2026-07-19 — ยอด QT/SO ต้องตรง PO ที่คิด costPrice)
+test('priceField=costPrice uses factory price from master (sahamit basis)', async () => {
+  const master = [{ id: 'P1', retailPriceIncVat: 150, costPrice: 90 }];
+  const lines = await enforceMasterPrices(fakeSupabase(master), [fgLine()], [], 'costPrice');
+  assert.equal(lines[0].unitPrice, 90);
+  assert.equal(lines[0].lineTotal, 180); // qty 2 × 90
+});
+
+test('quotePriceField maps priceBasis flag to master column', () => {
+  assert.equal(quotePriceField({ priceBasis: 'factory' }), 'costPrice');
+  assert.equal(quotePriceField({}), 'retailPriceIncVat');
+  assert.equal(quotePriceField(undefined), 'retailPriceIncVat');
 });
 
 test('line discount is recomputed from the enforced price', async () => {
