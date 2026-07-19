@@ -51,6 +51,7 @@ export default function QuotationEditorPage() {
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [errorActionUrl, setErrorActionUrl] = useState("");
   const [tplOpen, setTplOpen] = useState(false);
   const [saveChoiceOpen, setSaveChoiceOpen] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
@@ -192,10 +193,15 @@ export default function QuotationEditorPage() {
   const act = async (label, url, opts = { method: "POST" }) => {
     setBusy(label);
     setError("");
+    setErrorActionUrl("");
     try {
       const res = await fetch(url, opts);
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "ทำรายการไม่สำเร็จ");
+      if (!res.ok) {
+        setError(data.error || "ทำรายการไม่สำเร็จ");
+        setErrorActionUrl(data.accountUrl || "");
+        return null;
+      }
       return data;
     } catch (e) {
       setError(e.message || "ทำรายการไม่สำเร็จ");
@@ -381,7 +387,10 @@ export default function QuotationEditorPage() {
       hideHeader
     >
       {error && (
-        <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>{error}</div>
+        <div className="glass-panel" role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>
+          <span>{error}</span>
+          {errorActionUrl && <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link>}
+        </div>
       )}
 
       {quote && (
@@ -540,6 +549,9 @@ export default function QuotationEditorPage() {
                 <div style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--green)" }}>
                   อนุมัติแล้วโดย {quote.approvedByName}
                 </div>
+              )}
+              {quote.signatureEvidenceId && (
+                <div style={{ margin: "0 0 10px" }}><span className="ui-badge" style={{ color: "var(--green)" }}>บันทึกหลักฐานลายเซ็นแล้ว</span></div>
               )}
               <div className={styles.workflowActions}>
                 {needsApproval && quote.canApprove && ["draft", "sent", "rejected"].includes(quote.status) && (

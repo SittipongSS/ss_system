@@ -1,7 +1,12 @@
 import { recordAudit } from '@/lib/audit';
+import { genId } from '@/lib/id';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canApproveQuotation, canViewSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
+import {
+  approveQuotationWithSignatureEvidence,
+  signatureEvidenceErrorResponse,
+} from '@/lib/admin/signatureEvidence';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,21 +46,20 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ยอด 0 อนุมัติได้ (มติผู้ใช้ 2026-07-18: บางใบลดจนเหลือ 0) — ต้องมีรายการเท่านั้น
   if (!(quote.lines?.length > 0)) return badRequest('ต้องมีอย่างน้อย 1 รายการก่อนอนุมัติ');
 
-  const now = new Date().toISOString();
-  const patch = {
-    approvalStatus: 'approved',
-    approvalFingerprint: quotationApprovalFingerprint(quote, quote.lines),
-    approvedAt: now,
-    approvedBy: user.id || null,
-    approvedByName: user.name || null,
-    approvalNotes: String(reqBody?.note || '').trim() || null,
-    updatedAt: now,
-  };
-  // optimistic guard — กันอนุมัติทับหลังมีคนแก้เนื้อหา (สถานะเปลี่ยนจาก pending) พร้อมกัน
-  const { data, error: updErr } = await supabase
-    .from('quotations').update(patch).eq('id', id).eq('approvalStatus', 'pending').select('*').maybeSingle();
-  if (updErr) return fail(updErr.message, 500);
-  if (!data) return badRequest('สถานะใบเปลี่ยนแล้ว (อาจถูกแก้เนื้อหา) — โหลดใหม่แล้วอนุมัติอีกครั้ง');
+  let result;
+  try {
+    result = await approveQuotationWithSignatureEvidence(supabase, {
+      documentId: id,
+      evidenceId: genId('DSE'),
+      expectedUpdatedAt: quote.updatedAt,
+      documentFingerprint: quotationApprovalFingerprint(quote, quote.lines),
+      note: String(reqBody?.note || '').trim() || null,
+      user,
+    });
+  } catch (approvalError) {
+    return signatureEvidenceErrorResponse(approvalError);
+  }
+  const data = result.document;
 
   await recordAudit({
     user, action: 'update', entityType: 'quotation', entityId: id, before: quote, after: data,

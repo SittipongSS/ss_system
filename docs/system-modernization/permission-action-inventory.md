@@ -25,6 +25,7 @@
 | workflow_timeline_template | view, preview, edit_draft, publish, archive | module/all | ยังไม่ตัดสินใจ; ห้ามขยายสิทธิ์ก่อน Phase 8 | 4B |
 | document_form_metadata | view, edit_draft, publish, archive | all | Admin + AE Supervisor ผ่าน `canManageDocumentStandards` | 6A |
 | signature | view_status, upload, replace, revoke | own | signed-in + owner | 5 |
+| signature_evidence | create_on_approval, view_status | own approval / scoped document | ผู้อนุมัติเดิมของ Quotation หรือ Sale Order และต้องมี Active Signature | 5B |
 | signature_admin | view_status, revoke_emergency | all | ยังไม่ตัดสินใจ | 5/8 |
 | document_template | view, preview, edit_draft, publish, archive | module/all | admin เดิม | 6/7 |
 | issued_document | view, print, download_pdf, verify | own/team/department/all | workflow เดิม | 7 |

@@ -78,5 +78,6 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Decision 0005 — Home remains a navigation hub](./decisions/0005-home-remains-navigation-hub.md)
 - [Decision 0006 — Private versioned electronic signatures](./decisions/0006-private-versioned-electronic-signatures.md)
 - [Decision 0007 — Versioned document standards before signature evidence](./decisions/0007-versioned-document-standards.md)
+- [Decision 0008 — Atomic signature evidence for controlled documents](./decisions/0008-atomic-signature-evidence.md)
 - [Permission action inventory](./permission-action-inventory.md)
 - [Release checklist](./release-checklist.md)
