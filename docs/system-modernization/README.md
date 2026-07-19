@@ -4,7 +4,7 @@
 Admin Center, ลายเซ็นอิเล็กทรอนิกส์, Document Design System และ Permission
 ของ SS System
 
-อัปเดตล่าสุด: 19 กรกฎาคม 2026
+อัปเดตล่าสุด: 20 กรกฎาคม 2026
 
 ## กติกาการทำงาน
 

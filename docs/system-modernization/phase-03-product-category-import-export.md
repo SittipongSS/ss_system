@@ -1,6 +1,6 @@
 # Phase 3 — Product Category Import/Export
 
-สถานะ: กำลังดำเนินการ
+สถานะ: เสร็จสมบูรณ์
 
 เริ่ม: 19 กรกฎาคม 2026
 
@@ -149,16 +149,16 @@ Migration ถัดไปวางแผนเป็น `0119_product_category_i
 - [x] เอกสารและขอบเขตได้รับการยืนยัน
 - [x] Migration check และ rollback notes ผ่าน
 - [x] Unit tests: workbook parser, normalization, duplicate, group conflict, status และ stale data
-- [ ] API tests: unauthenticated/forbidden, preview no-write, atomic commit และ history scope
+- [ ] API tests: unauthenticated/forbidden, preview no-write, atomic commit และ history scope — ยังไม่มี route-level tests; ย้ายไปงานค้าง (มี unit tests ระดับ parser/preview แล้ว)
 - [x] Export/template round-trip test
 - [x] ESLint, automated tests และ production build ผ่าน
 - [x] Desktop/Mobile และ Light/Dark ผ่าน
-- [ ] Keyboard, focus, loading, empty, error และ success states ผ่าน
-- [ ] Preview ตารางกว้างไม่มีเนื้อหาทับ footer หรือ horizontal overflow ที่ผิดตำแหน่ง
-- [ ] ไฟล์ตัวอย่าง Before/After และ error workbook ถูกบันทึก
+- [ ] Keyboard, focus, loading, empty, error และ success states ผ่านครบทุกข้อ — ตรวจบางส่วนตามบันทึก QA (แก้ Empty state ให้มี accessible name); การไล่ keyboard/focus ครบชุดย้ายไปงานค้าง
+- [x] Preview ตารางกว้างไม่มีเนื้อหาทับ footer หรือ horizontal overflow ที่ผิดตำแหน่ง — ตามบันทึก QA 19 กรกฎาคม 2026
+- [ ] ไฟล์ตัวอย่าง Before/After และ error workbook ถูกบันทึก — ยังไม่ได้ทำ; ย้ายไปงานค้าง
 - [x] Permission action inventory อัปเดต
-- [ ] ผู้ใช้ตรวจและยืนยัน
-- [ ] Commit, Push, PR และ CI สำเร็จ
+- [x] ผู้ใช้ตรวจและยืนยัน — ยืนยันผ่านการ Merge PR #546
+- [x] Commit, Push, PR #546 และ CI สำเร็จ (merge commit `1c10a7a`)
 
 บันทึก QA วันที่ 2026-07-19:
 
@@ -166,6 +166,19 @@ Migration ถัดไปวางแผนเป็น `0119_product_category_i
 - ตรวจภาพจริง Desktop/Mobile และ Light/Dark แล้ว ไม่พบ page-level horizontal overflow หรือ bottom navigation ทับ action
 - แก้ Empty state ของประวัติจากปุ่มไม่มีชื่อเป็นปุ่ม `ตรวจอีกครั้ง` ที่มี accessible name
 - การทดสอบ Preview/Commit แบบ end-to-end กับข้อมูลจริงยังรอ environment ที่เชื่อม Supabase; ห้ามใช้ข้อมูล Production เพื่อทดสอบโดยไม่ได้รับอนุญาตเฉพาะครั้ง
+
+## Phase closeout — บันทึกย้อนหลัง 20 กรกฎาคม 2026
+
+- PR: [#546](https://github.com/SittipongSS/ss_system/pull/546) ถูก Merge เมื่อ 19 กรกฎาคม 2026 (merge commit `1c10a7a`) และ CI ผ่าน
+- ผู้ยืนยัน: ผู้ใช้เจ้าของระบบ ผ่านการ Merge PR; Roadmap ระบุเฟสนี้ `เสร็จสมบูรณ์` ตั้งแต่ 19 กรกฎาคม 2026
+- เอกสารนี้ค้างสถานะ `กำลังดำเนินการ` ไว้หลัง Merge; ปรับให้ตรงสถานะจริงเมื่อ 20 กรกฎาคม 2026
+
+งานค้างที่ยกออกจากเฟส (ไม่ขวางการปิดเฟส แต่ต้องตามเก็บ):
+
+- Route-level API tests: unauthenticated/forbidden, preview no-write, atomic commit และ history scope
+- ทดสอบ Preview→Commit แบบ end-to-end กับฐานข้อมูลจริงในรอบการนำเข้าจริงครั้งแรก โดยเก็บหลักฐาน Before/After
+- ไฟล์ตัวอย่าง Before/After และ error workbook สำหรับอ้างอิง
+- ไล่ตรวจ keyboard/focus states ครบชุดของ Import workspace
 
 ## Known risks / งานที่ต้องเฝ้าระวัง
 
