@@ -49,6 +49,10 @@ const nextConfig = {
       { source: '/pm/projects/:path*', destination: '/sa/projects/:path*', permanent: false },
       { source: '/pm/tasks', destination: '/sa/tasks', permanent: false },
       { source: '/pm/tasks/:path*', destination: '/sa/tasks/:path*', permanent: false },
+      // ค่ากลางระดับระบบย้ายเข้า Admin Center (/settings) — คง URL เดิมไว้ให้
+      // bookmark/ลิงก์ในการ์ดแจ้งเตือนเก่ายังใช้ได้
+      { source: '/database/holidays', destination: '/settings/holidays', permanent: false },
+      { source: '/database/chat-webhooks', destination: '/settings/chat-webhooks', permanent: false },
     ];
   },
 };

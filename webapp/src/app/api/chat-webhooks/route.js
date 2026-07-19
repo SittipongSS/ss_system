@@ -119,7 +119,7 @@ export async function POST(request) {
       { label: 'ผู้ทดสอบ', value: user?.name },
       { label: 'ผลลัพธ์', value: 'ถ้าเห็นการ์ดนี้ แปลว่าตั้งค่าถูกต้อง ✅' },
     ],
-    linkPath: '/database/chat-webhooks',
+    linkPath: '/settings/chat-webhooks',
     linkLabel: 'เปิดหน้าตั้งค่า',
   }));
 

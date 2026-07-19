@@ -5,7 +5,7 @@
 //   - กลืน error ทุกชนิด (log อย่างเดียว) — ห้าม throw กลับไปหา caller
 //
 // แหล่ง webhook URL (เฟส 2): ตาราง chat_webhooks ก่อน (migration 0099, แก้ผ่านหน้า
-// /database/chat-webhooks) — มี row ของ key = ยึดตาราง (enabled=false คือปิดจริง)
+// /settings/chat-webhooks) — มี row ของ key = ยึดตาราง (enabled=false คือปิดจริง)
 // ไม่มี row → fallback env เดิม (CHAT_WEBHOOK_*)
 import { after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';

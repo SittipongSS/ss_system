@@ -48,7 +48,7 @@ export default function SettingsPage() {
       desc: "ค่ากลางที่กระทบปฏิทินและการสื่อสารของระบบ",
       items: [
         {
-          href: "/database/holidays",
+          href: "/settings/holidays",
           icon: CalendarDays,
           title: "วันหยุด (ปฏิทินทำการ)",
           desc: "วันหยุดบริษัทและวันหยุดนักขัตฤกษ์ที่ใช้คำนวณไทม์ไลน์โครงการ",
@@ -62,7 +62,7 @@ export default function SettingsPage() {
           show: canChat,
         },
         {
-          href: "/database/chat-webhooks",
+          href: "/settings/chat-webhooks",
           icon: BellRing,
           title: "แจ้งเตือน Google Chat",
           desc: "Webhook ของแต่ละ Space ที่ระบบใช้ส่งการ์ดแจ้งเตือน",
