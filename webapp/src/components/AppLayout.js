@@ -369,7 +369,8 @@ export default function AppLayout({ children }) {
             );
           })}
           <span className="topnav-menu-spacer" />
-          {canUser({ role, extraCaps }, 'salesplan:target') && (
+          {/* วางเป้าเป็นเมนูของระบบบริหารงานขายระบบเดียว — ไม่โชว์ตอนอยู่ระบบอื่น */}
+          {activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && (
             <Link
               href="/sa/targets"
               className={`topnav-item topnav-utility-item ${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? 'active' : ''}`}
@@ -463,7 +464,7 @@ export default function AppLayout({ children }) {
             <h2>เครื่องมือ</h2>
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
-              {canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
+              {activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
               <Link href="/settings" className={`mobile-nav-card${isSettingsContext ? ' active' : ''}`}><SettingsIcon size={20} /><span>ตั้งค่า</span></Link>
             </div>
           </section>

@@ -1,13 +1,14 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { Package, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
+import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
-import Select from "@/components/ui/Select";
+import FilterPopover from "@/components/ui/FilterPopover";
 import ProductForm, { EMPTY_PRODUCT } from "@/components/database/ProductForm";
 import Workspace from "@/components/ui/Workspace";
+import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
@@ -44,7 +45,9 @@ export default function ProductRegistry() {
   const [customers, setCustomers] = useState(() => apiCache.get("/api/master/customers") ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [showForm, setShowForm] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("all");
+  // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
+  // ทุกหมวด multi-select, ว่าง = ทั้งหมด
+  const [statusFilter, setStatusFilter] = useState([]);
   const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
@@ -199,7 +202,7 @@ export default function ProductRegistry() {
   };
   const filteredProducts = products.filter((p) => {
     if (!showInactive && p.isActive === false) return false;
-    if (statusFilter !== "all" && approvalStatusOf(p) !== statusFilter) return false;
+    if (statusFilter.length && !statusFilter.includes(approvalStatusOf(p))) return false;
     if (!q) return true;
     return [p.fgCode, p.productDescription, p.productDescriptionEn, p.brandName, p.brandNameEn].some((v) => (v || "").toLowerCase().includes(q));
   });
@@ -223,7 +226,7 @@ export default function ProductRegistry() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
-      resetKey: `${q}|${statusFilter}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
+      resetKey: `${q}|${statusFilter.join(",")}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
     });
 
   const open = (p) => (window.location.href = `/database/products/${p.id}`);
@@ -246,19 +249,30 @@ export default function ProductRegistry() {
         <Search size={18} color="var(--text-3)" />
         <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า / FG / แบรนด์..." />
       </div>
+      {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
+          ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}
+      <FilterPopover
+        count={statusFilter.length + (showInactive ? 1 : 0)}
+        onClear={() => { setStatusFilter([]); setShowInactive(false); }}
+        groups={[
+          {
+            key: "status", label: "สถานะอนุมัติ", icon: ClipboardCheck,
+            options: [
+              { value: "pending", label: "รออนุมัติ" },
+              { value: "approved", label: "อนุมัติแล้ว" },
+              { value: "rejected", label: "ไม่อนุมัติ" },
+            ],
+            selected: statusFilter, onChange: setStatusFilter,
+          },
+          ...(counts.inactive > 0 ? [{
+            key: "inactive", label: "ที่เลิกใช้", icon: Archive,
+            options: [{ value: "show", label: `รวมสินค้าที่เลิกใช้ (${counts.inactive})` }],
+            selected: showInactive ? ["show"] : [],
+            onChange: (vals) => setShowInactive(vals.includes("show")),
+          }] : []),
+        ]}
+      />
       <div className="spacer" />
-      <span className="toolbar-label"><Filter size={14} /> กรอง</span>
-      <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
-        <option value="all">ทุกสถานะ</option>
-        <option value="pending">รออนุมัติ</option>
-        <option value="approved">อนุมัติแล้ว</option>
-        <option value="rejected">ไม่อนุมัติ</option>
-      </Select>
-      {counts.inactive > 0 && (
-        <button type="button" onClick={() => setShowInactive((v) => !v)} className={`btn ${showInactive ? "btn-primary" : ""}`} title="แสดง/ซ่อนสินค้าที่เลิกใช้">
-          {showInactive ? "ซ่อนที่เลิกใช้" : `แสดงที่เลิกใช้ (${counts.inactive})`}
-        </button>
-      )}
       <div className="segmented">
         <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
         <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
@@ -295,9 +309,9 @@ export default function ProductRegistry() {
       toolbar={toolbar}
     >
       {sort.sorted.length === 0 ? (
-        <div className="glass-panel p-10 text-center text-[var(--text-3)]">
-          {q || statusFilter !== "all" ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
-        </div>
+        <EmptyState icon={Package}>
+          {q || statusFilter.length ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
+        </EmptyState>
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {pageRows.map((p) => {

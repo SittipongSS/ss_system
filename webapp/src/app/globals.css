@@ -1756,15 +1756,17 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
   background: transparent;
-  color: var(--accent-fg);
+  /* แถบระบบเป็น navy เข้มทั้งสองธีม — ต้องเป็นสีขาวคงที่ ห้ามใช้ --accent-fg
+     (ธีมมืด --accent-fg เป็นสีเกือบดำ ตัวหนังสือจะกลืนหายบนพื้น navy) */
+  color: #fff;
   font: inherit;
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease;
 }
 .account-menu-trigger:hover,
 .account-menu-trigger[aria-expanded="true"] {
-  border-color: color-mix(in srgb, var(--panel) 18%, transparent);
-  background: color-mix(in srgb, var(--panel) 12%, transparent);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
 }
 .account-menu-trigger:focus-visible {
   outline: 2px solid var(--accent);
@@ -1802,7 +1804,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 0;
   border: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--accent-fg) 72%, transparent);
+  color: rgba(255, 255, 255, 0.72); /* บนพื้น navy เสมอ — ไม่อิงธีม */
   font-size: 10.5px;
   font-weight: 500;
   text-overflow: ellipsis;
@@ -2482,6 +2484,21 @@ button.ui-kpi-card { cursor: pointer; }
   line-height: 1.5;
 }
 .empty-state .es-icon { opacity: 0.45; }
+
+/* กล่องหมายเหตุประกอบหน้า (ไอคอน + ข้อความสั้น) — ใช้ร่วมกัน เช่น หน้าวันหยุด/แจ้งเตือน Chat */
+.info-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 0 0 18px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.info-note > svg { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
 button.empty-state { width: 100%; font: inherit; }
 .empty-state.dashed { border: 1px dashed var(--border); cursor: pointer; background: transparent; }
 .empty-state.dashed:hover { background: var(--panel-2); border-color: var(--border-strong); }

@@ -1,13 +1,14 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Building2, Plus, Search, Filter, LayoutGrid, Table2, ChevronRight } from "lucide-react";
+import { Building2, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Users, Archive } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
-import Select from "@/components/ui/Select";
+import FilterPopover from "@/components/ui/FilterPopover";
 import CustomerForm, { EMPTY_CUSTOMER } from "@/components/database/CustomerForm";
 import Workspace from "@/components/ui/Workspace";
+import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
 import { brandTh, brandEn, brandBothOf } from "@/lib/master/brands";
@@ -41,8 +42,10 @@ export default function CustomerDirectory() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [teamFilter, setTeamFilter] = useState("all");
+  // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
+  // ทุกหมวด multi-select, ว่าง = ทั้งหมด
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [teamFilter, setTeamFilter] = useState([]);
   const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
@@ -148,8 +151,8 @@ export default function CustomerDirectory() {
   );
   const filteredCustomers = customers.filter((c) => {
     if (!showInactive && c.isActive === false) return false;
-    if (statusFilter !== "all" && approvalStatusOf(c) !== statusFilter) return false;
-    if (teamFilter !== "all" && !teamsOf(c).includes(teamFilter)) return false;
+    if (statusFilter.length && !statusFilter.includes(approvalStatusOf(c))) return false;
+    if (teamFilter.length && !teamsOf(c).some((t) => teamFilter.includes(t))) return false;
     if (!q) return true;
     return [c.arCode, c.name, c.taxId, c.phone, ...(c.brands || []).flatMap((b) => [brandTh(b), brandEn(b)])]
       .some((v) => (v || "").toLowerCase().includes(q));
@@ -169,7 +172,7 @@ export default function CustomerDirectory() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
-      resetKey: `${q}|${statusFilter}|${teamFilter}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
+      resetKey: `${q}|${statusFilter.join(",")}|${teamFilter.join(",")}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
     });
 
   const open = (c) => (window.location.href = `/database/customers/${c.id}`);
@@ -191,25 +194,35 @@ export default function CustomerDirectory() {
         <Search size={18} color="var(--text-3)" />
         <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า / AR / แบรนด์..." />
       </div>
+      {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
+          ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}
+      <FilterPopover
+        count={statusFilter.length + teamFilter.length + (showInactive ? 1 : 0)}
+        onClear={() => { setStatusFilter([]); setTeamFilter([]); setShowInactive(false); }}
+        groups={[
+          {
+            key: "status", label: "สถานะอนุมัติ", icon: ClipboardCheck,
+            options: [
+              { value: "pending", label: "รออนุมัติ" },
+              { value: "approved", label: "อนุมัติแล้ว" },
+              { value: "rejected", label: "ไม่อนุมัติ" },
+            ],
+            selected: statusFilter, onChange: setStatusFilter,
+          },
+          ...(teams.length > 1 ? [{
+            key: "team", label: "ทีมดูแล", icon: Users,
+            options: teams.map((t) => ({ value: t, label: t })),
+            selected: teamFilter, onChange: setTeamFilter,
+          }] : []),
+          ...(counts.inactive > 0 ? [{
+            key: "inactive", label: "ที่เลิกใช้", icon: Archive,
+            options: [{ value: "show", label: `รวมลูกค้าที่เลิกใช้ (${counts.inactive})` }],
+            selected: showInactive ? ["show"] : [],
+            onChange: (vals) => setShowInactive(vals.includes("show")),
+          }] : []),
+        ]}
+      />
       <div className="spacer" />
-      <span className="toolbar-label"><Filter size={14} /> กรอง</span>
-      <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
-        <option value="all">ทุกสถานะ</option>
-        <option value="pending">รออนุมัติ</option>
-        <option value="approved">อนุมัติแล้ว</option>
-        <option value="rejected">ไม่อนุมัติ</option>
-      </Select>
-      {teams.length > 1 && (
-        <Select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
-          <option value="all">ทุกทีม</option>
-          {teams.map((t) => <option key={t} value={t}>{t}</option>)}
-        </Select>
-      )}
-      {counts.inactive > 0 && (
-        <button type="button" onClick={() => setShowInactive((v) => !v)} className={`btn ${showInactive ? "btn-primary" : ""}`} title="แสดง/ซ่อนลูกค้าที่เลิกใช้">
-          {showInactive ? "ซ่อนที่เลิกใช้" : `แสดงที่เลิกใช้ (${counts.inactive})`}
-        </button>
-      )}
       <div className="segmented">
         <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
         <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
@@ -246,9 +259,9 @@ export default function CustomerDirectory() {
       toolbar={toolbar}
     >
       {sort.sorted.length === 0 ? (
-        <div className="glass-panel p-10 text-center text-[var(--text-3)]">
-          {q || statusFilter !== "all" || teamFilter !== "all" ? "ไม่พบลูกค้าที่ค้นหา" : "ยังไม่มีข้อมูลลูกค้าในระบบ"}
-        </div>
+        <EmptyState icon={Building2}>
+          {q || statusFilter.length || teamFilter.length ? "ไม่พบลูกค้าที่ค้นหา" : "ยังไม่มีข้อมูลลูกค้าในระบบ"}
+        </EmptyState>
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {pageRows.map((c) => {
