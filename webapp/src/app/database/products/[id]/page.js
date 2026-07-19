@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban } from "lucide-react";
+import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -10,15 +10,23 @@ import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import EditProductModal from "@/components/EditProductModal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import StatCards from "@/components/database/StatCards";
+import SkeletonRows from "@/components/ui/Skeleton";
+import Toast from "@/components/ui/Toast";
+import ConfirmModal from "@/components/tax/ConfirmModal";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
-import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
+import { fmtMoney, fmtDate } from "@/lib/format";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
-import { ContextCard, ContextGrid, DetailCard } from "@/components/ui/DetailPage";
+import { DetailCard } from "@/components/ui/DetailPage";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 
+// หน้า detail สินค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
+//   - แถบหัว = ตัวตน (ชื่อ/FG/แบรนด์/สร้างเมื่อ) + ตัวเลขความสัมพันธ์ (โครงการ/ใบสั่งซื้อ/ภาษี)
+//   - คอลัมน์หลักซ้าย = การ์ดรายละเอียดสเปค "พระเอกของหน้า" ตามด้วยต้นทุน/ใบสั่งซื้อ/
+//     โครงการ/เอกสาร — ไม่มีแถบ KPI (StatCards) กับแถวการ์ดโครงการ (ContextCard) ที่
+//     เคยโชว์ข้อมูลซ้ำ 2-3 รอบอีกแล้ว
+//   - rail ขวา = ของประกอบด้านภาษี (breakdown + ทะเบียน) — เฉพาะหมวด 01-002
 export default function ProductDetails() {
   const params = useParams();
   const router = useRouter();
@@ -49,6 +57,8 @@ export default function ProductDetails() {
   const [showEdit, setShowEdit] = useState(false);
   const [brandOptions, setBrandOptions] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [toast, setToast] = useState(null);
+  const [confirmBox, setConfirmBox] = useState(null); // { title, message, confirmLabel, danger, onConfirm }
 
   const fetchProduct = async () => {
     try {
@@ -93,9 +103,8 @@ export default function ProductDetails() {
   // Retire / reactivate a product (parity with customers). Retired products drop
   // out of registration/order pickers but keep history; used when a product is
   // discontinued but can't be deleted (still referenced).
-  const handleToggleActive = async () => {
+  const toggleActive = async () => {
     const next = !(product.isActive !== false);
-    if (!next && !confirm("พักใช้งานสินค้านี้? จะหายจากรายการเลือกของระบบอื่น (ประวัติยังอยู่ครบ)")) return;
     setIsUpdating(true);
     try {
       const res = await fetch(`/api/master/products/${id}`, {
@@ -104,41 +113,50 @@ export default function ProductDetails() {
         body: JSON.stringify({ isActive: next }),
       });
       if (res.ok) await fetchProduct();
-      else alert((await res.json()).error || "ดำเนินการไม่สำเร็จ");
+      else setToast({ kind: "error", msg: (await res.json()).error || "ดำเนินการไม่สำเร็จ" });
     } catch {
-      alert("เกิดข้อผิดพลาด");
+      setToast({ kind: "error", msg: "เกิดข้อผิดพลาด" });
     }
     setIsUpdating(false);
   };
 
-  const handleDelete = async () => {
-    if (!confirm("ยืนยันว่าต้องการลบรหัสสินค้านี้ออกจากระบบหรือไม่?")) return;
-    setIsUpdating(true);
-    try {
-      const res = await fetch(`/api/master/products/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        alert("ลบข้อมูลสินค้าเรียบร้อยแล้ว");
-        router.push("/database/products");
-      } else {
-        const errData = await res.json();
-        alert(errData.error || "ไม่สามารถลบข้อมูลสินค้าได้");
+  const handleToggleActive = () => {
+    if (product.isActive !== false) {
+      setConfirmBox({
+        title: "พักใช้งานสินค้านี้?",
+        message: "สินค้าจะหายจากรายการเลือกของระบบอื่น (ประวัติยังอยู่ครบ) — กด “เปิดใช้อีกครั้ง” เพื่อนำกลับมาได้",
+        confirmLabel: "พักใช้",
+        danger: false,
+        onConfirm: toggleActive,
+      });
+    } else {
+      toggleActive();
+    }
+  };
+
+  const handleDelete = () => setConfirmBox({
+    title: "ลบรหัสสินค้านี้?",
+    message: "ข้อมูลสินค้าจะถูกลบออกจากระบบและกู้คืนไม่ได้",
+    confirmLabel: "ลบสินค้า",
+    danger: true,
+    onConfirm: async () => {
+      setIsUpdating(true);
+      try {
+        const res = await fetch(`/api/master/products/${id}`, { method: "DELETE" });
+        if (res.ok) {
+          router.push("/database/products");
+        } else {
+          const errData = await res.json();
+          setToast({ kind: "error", msg: errData.error || "ไม่สามารถลบข้อมูลสินค้าได้" });
+        }
+      } catch (err) {
+        setToast({ kind: "error", msg: "เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์" });
       }
-    } catch (err) {
-      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
-    }
-    setIsUpdating(false);
-  };
+      setIsUpdating(false);
+    },
+  });
 
-  if (loading) {
-    return (
-      <div className="flex justify-center p-24">
-        <svg className="animate-spin h-10 w-10 text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-      </div>
-    );
-  }
+  if (loading) return <SkeletonRows rows={8} />;
 
   if (error || !product) {
     return (
@@ -152,23 +170,25 @@ export default function ProductDetails() {
   }
 
   const isExempt = product.isExciseTaxable === false;
-  // การ์ดภาษี (Excise breakdown + ทะเบียนภาษี) คิดเฉพาะหมวด 01-002 (พิกัดน้ำหอม) —
-  // หมวดอื่นไม่เข้าข่ายสรรพสามิต ไม่ต้องโชว์การ์ดภาษีเลย
+  // การ์ดฝั่งภาษี (Excise breakdown + ทะเบียน) และต้นทุนโรงงาน คิดเฉพาะหมวด 01-002
+  // (พิกัดน้ำหอม — มติผู้ใช้ 2026-07-19); หมวดอื่นไม่เข้าข่ายสรรพสามิต ไม่โชว์เลย
   const isExciseCat = isExciseCategory(product.categoryCode || categoryOf(product.fgCode));
 
   return (
     <>
+      <Toast toast={toast} onClose={() => setToast(null)} />
       <button
         type="button"
+        className="btn ghost topbar-back-btn"
+        style={{ marginBottom: "14px" }}
         onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/database/products"))}
-        style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--text-2)", fontSize: "13px", fontWeight: 500, marginBottom: "14px", background: "none", border: "none", padding: 0, cursor: "pointer" }}
       >
         <ArrowLeft size={16} /> กลับ
       </button>
       <SalesDetailOverview
         eyebrow={`PRODUCT MASTER · ${product.fgCode || "NO FG CODE"}`}
         title={product.productDescriptionEn || product.productDescription}
-        description={<><span>{product.productDescriptionEn && product.productDescription ? product.productDescription : "ไม่มีชื่อภาษาไทย"}</span><span>แบรนด์ {brandBoth(product.brandName, product.brandNameEn) || "-"}</span></>}
+        description={<><span>{product.productDescriptionEn && product.productDescription ? product.productDescription : "ไม่มีชื่อภาษาไทย"}</span><span>แบรนด์ {brandBoth(product.brandName, product.brandNameEn) || "-"}</span><span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
         badges={<SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />}
         actions={<>
           {canEditProducts && (
@@ -184,45 +204,85 @@ export default function ProductDetails() {
           )}
         </>}
         facts={[
-          { icon: Package, label: "ปริมาตร/หน่วย", value: `${product.volume} ${product.volumeUnit || "ml"}` },
-          { icon: ShoppingCart, label: "ราคาขายปลีก", value: fmtMoney(product.retailPriceIncVat) },
+          // ตัวเลข "ความสัมพันธ์" เท่านั้น — ฟิลด์ตัวตน (ปริมาตร/ราคา/หมวด) อยู่บ้านเดียว
+          // ที่การ์ดสเปคด้านล่าง ไม่โชว์ซ้ำบนแถบหัวอีก
           { icon: FolderKanban, label: "โครงการ", value: `${projects.length} โครงการ` },
-          { icon: Package, label: "หมวดสินค้า", value: product.categoryCode || "-" },
+          ...(canViewTax ? [{ icon: ShoppingCart, label: "ใบสั่งซื้อ", value: `${orders.length} รายการ` }] : []),
+          ...(canViewTax && isExciseCat ? [
+            { icon: Package, label: "ทะเบียนภาษี", value: `${regs.length} รายการ` },
+            { icon: Package, label: "ภาษี/ชิ้น", value: isExempt ? "ยกเว้น" : fmtMoney((product.exciseTax || 0) + (product.localTax || 0)) },
+          ] : []),
         ]}
       />
 
-      <div className="my-[18px]"><ContextGrid>
-        <ContextCard icon={Building2} href={product.customerId ? `/database/customers/${product.customerId}` : undefined} eyebrow="เจ้าของสินค้า" title={product.customerName || "ยังไม่ผูกลูกค้า"} subtitle={brandBoth(product.brandName, product.brandNameEn) || "ไม่ระบุแบรนด์"} badges={product.customerType ? <span className="ui-badge">{product.customerType}</span> : null} facts={[{ label: "FG Code", value: product.fgCode }, { label: "หมวด", value: product.categoryCode || "-" }]} />
-        {projects.slice(0, 3).map((project) => <ContextCard key={project.id} icon={FolderKanban} href={`/sa/projects/${project.id}`} eyebrow="โครงการที่ใช้สินค้านี้" title={`${project.code ? `${project.code} · ` : ""}${project.name}`} subtitle="เปิดดูงานและไทม์ไลน์โครงการ" badges={project.status ? <span className="ui-badge">{project.status}</span> : null} facts={[{ label: "ทีม", value: project.team || "-" }, { label: "สถานะ", value: project.status || "-" }]} />)}
-      </ContextGrid></div>
-
       {product.isActive === false && (
-        <div className="mb-[22px] rounded-xl px-4 py-3 flex items-center gap-2 text-sm" style={{ background: "var(--panel-2)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+        <div className="my-[18px] rounded-xl px-4 py-3 flex items-center gap-2 text-sm" style={{ background: "var(--panel-2)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
           <Archive size={16} className="text-[var(--text-3)]" />
           สินค้านี้ถูกพักใช้งาน — ไม่แสดงในรายการเลือกของระบบอื่น (กด “เปิดใช้อีกครั้ง” เพื่อนำกลับมา)
         </div>
       )}
 
-      {/* Metric strip — key facts at a glance (non-sensitive) */}
-      <div className="mb-[22px]">
-        <StatCards
-          items={[
-            { label: "ปริมาตร/หน่วย", value: `${product.volume} ${product.volumeUnit || "ml"}` },
-            { label: "ราคาขายปลีก", value: fmtMoney(product.retailPriceIncVat) },
-            ...(canViewTax && isExciseCat ? [
-              { label: "ภาษี/ชิ้น", value: isExempt ? "ยกเว้น" : fmtMoney((product.exciseTax || 0) + (product.localTax || 0)), tone: isExempt ? "success" : "accent" },
-              { label: "ทะเบียนภาษี", value: `${regs.length} รายการ` },
-            ] : []),
-          ]}
-        />
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-[22px] mt-[18px]">
+        {/* คอลัมน์หลัก — รายละเอียดสินค้าคือพระเอกของหน้า detail จึงขึ้นการ์ดแรก
+            (ไม่มี rail ภาษี — หมวดอื่น/ไม่มีสิทธิ์ — ก็กางเต็มความกว้าง) */}
+        <div className={`space-y-6 ${canViewTax && isExciseCat ? "lg:col-span-2" : "lg:col-span-3"}`}>
+          <DetailCard icon={Package} eyebrow="Product specification" title="ข้อมูลสเปคสินค้า">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
+              <div className="md:col-span-2">
+                <span className="text-[var(--text-3)] block mb-1">{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า)</span>
+                {product.customerId ? (
+                  <Link href={`/database/customers/${product.customerId}`} className="font-semibold text-[var(--accent)] text-sm hover:underline">
+                    {product.customerName || product.customerId}
+                  </Link>
+                ) : (
+                  <span className="font-semibold text-[var(--text)] text-sm">{product.customerName || "-"}</span>
+                )}
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">รหัสสำเร็จรูป FG Code</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm bg-[var(--panel-2)] px-2 py-0.5 rounded">{product.fgCode}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{brandBoth(product.brandName, product.brandNameEn)}</span>
+              </div>
+              {/* ข้อมูลสูตร (0112) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์) โชว์ — ได้ */}
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">ชื่อสูตร (Formula)</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{product.formulaName || "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">รหัสสูตร (Formula Code)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaCode || "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">วันที่สูตร (Formula Date)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.volume} {product.volumeUnit || "ml"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">ชิ้นต่อลัง (Pieces / Case)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${Number(product.piecesPerCase).toLocaleString("th-TH")} ชิ้น/ลัง` : "—"}</span>
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.categoryCode || "-"}</span>
+              </div>
+              {isExciseCat && (
+                <div>
+                  <span className="text-[var(--text-3)] block mb-1">ราคาขายปลีก (ฐานคำนวณสรรพสามิต)</span>
+                  <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoney(product.retailPriceIncVat)}</span>
+                </div>
+              )}
+            </div>
+          </DetailCard>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-[22px]">
-        {/* Product Profile — การ์ดรายละเอียด (สเปค) ย้ายไปคอลัมน์ขวาใต้การ์ดภาษี */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Cost breakdown — hidden entirely from other departments; SA sees
-              costPrice, LG + admin also see the breakdown + profit. */}
-          {canSeeCost && (
+          {/* Cost breakdown — เฉพาะหมวด 01-002 (มติ 2026-07-19); สิทธิ์เดิม: SA เห็น
+              costPrice, LG + admin เห็น breakdown + กำไร. แผนกอื่นไม่เห็นเลย. */}
+          {canSeeCost && isExciseCat && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
               {canSeeMargin ? "โครงสร้างต้นทุนโรงงานและกำไรต่อหน่วย (Cost & Profit Breakdown)" : "ราคาทุนโรงงานต่อหน่วย (Cost Price)"}
@@ -334,9 +394,9 @@ export default function ProductDetails() {
           )}
         </div>
 
-        {/* คอลัมน์ขวา: ภาษี (เฉพาะหมวด 01-002 + tax-gated) → รายละเอียดสเปค → ทะเบียนภาษี */}
+        {/* rail ขวา: ของประกอบด้านภาษี — เฉพาะหมวด 01-002 + tax-gated */}
+        {canViewTax && isExciseCat && (
         <div className="space-y-6">
-          {canViewTax && isExciseCat && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
               ภาษีสรรพสามิตต่อหน่วย (Excise Tax Breakdown)
@@ -370,61 +430,8 @@ export default function ProductDetails() {
                 </div>
               </div>
             )}
-            <p className="text-[10px] text-[var(--text-3)] mt-3">สร้างเมื่อ: {fmtDateTime(product.createdAt)}</p>
           </div>
-          )}
 
-          {/* การ์ดรายละเอียด (สเปคสินค้า) — อยู่ใต้การ์ดภาษีตามมติ 2026-07-19 */}
-          <DetailCard icon={Package} eyebrow="Product specification" title="ข้อมูลสเปคสินค้า">
-            <div className="grid grid-cols-1 gap-y-4 text-xs">
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า)</span>
-                {product.customerId ? (
-                  <Link href={`/database/customers/${product.customerId}`} className="font-semibold text-[var(--accent)] text-sm hover:underline">
-                    {product.customerName || product.customerId}
-                  </Link>
-                ) : (
-                  <span className="font-semibold text-[var(--text)] text-sm">{product.customerName || "-"}</span>
-                )}
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">รหัสสำเร็จรูป FG Code</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm bg-[var(--panel-2)] px-2 py-0.5 rounded">{product.fgCode}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
-                <span className="font-semibold text-[var(--text)] text-sm">{brandBoth(product.brandName, product.brandNameEn)}</span>
-              </div>
-              {/* ข้อมูลสูตร (0112) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์) โชว์ — ได้ */}
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">ชื่อสูตร (Formula)</span>
-                <span className="font-semibold text-[var(--text)] text-sm">{product.formulaName || "—"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">รหัสสูตร (Formula Code)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaCode || "—"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">วันที่สูตร (Formula Date)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : "—"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.volume} {product.volumeUnit || "ml"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">ชิ้นต่อลัง (Pieces / Case)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${Number(product.piecesPerCase).toLocaleString("th-TH")} ชิ้น/ลัง` : "—"}</span>
-              </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.categoryCode || "-"}</span>
-              </div>
-            </div>
-          </DetailCard>
-
-          {/* การขึ้นทะเบียนภาษี — เฉพาะหมวด 01-002 (พิกัดสรรพสามิต) + tax-gated */}
-          {canViewTax && isExciseCat && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
               การขึ้นทะเบียนภาษีของสินค้านี้ ({regs.length})
@@ -436,7 +443,7 @@ export default function ProductDetails() {
                 {regs.map((r) => (
                   <div
                     key={r.id}
-                    onClick={() => (window.location.href = `/tax/registrations?open=${r.id}`)}
+                    onClick={() => router.push(`/tax/registrations?open=${r.id}`)}
                     className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
                   >
                     <span className="font-medium text-[var(--text-2)]">{r.customerName || "-"}</span>
@@ -449,11 +456,20 @@ export default function ProductDetails() {
               </div>
             )}
           </div>
-          )}
         </div>
+        )}
       </div>
 
       <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} customers={customers} />
+      <ConfirmModal
+        open={!!confirmBox}
+        onClose={() => setConfirmBox(null)}
+        onConfirm={async () => { await confirmBox?.onConfirm?.(); setConfirmBox(null); }}
+        title={confirmBox?.title}
+        message={confirmBox?.message}
+        confirmLabel={confirmBox?.confirmLabel}
+        danger={confirmBox?.danger !== false}
+      />
     </>
   );
 }
