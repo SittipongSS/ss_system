@@ -164,7 +164,9 @@ export default function LeadsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const result = leads.filter((l) => {
-      if (openOnly && ["qualified", "disqualified"].includes(l.status)) return false;
+      // "คิวงาน" เป็นทางลัดของค่าตั้งต้น — ถ้าผู้ใช้เลือกสถานะเองแล้ว ให้สถานะชนะ
+      // ไม่งั้นติ๊ก "เปิดลูกค้า/ไม่ผ่าน" ทั้งที่คิวงานยังติดอยู่จะได้ผลลัพธ์ว่างเสมอ
+      if (openOnly && !statusFilter.length && ["qualified", "disqualified"].includes(l.status)) return false;
       if (statusFilter.length && !statusFilter.includes(l.status)) return false;
       if (channelFilter.length && !channelFilter.includes(l.channel)) return false;
       if (!q) return true;
