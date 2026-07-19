@@ -16,7 +16,7 @@ const FOCUSABLE_SELECTOR = [
 // backdrop; the panel itself is theme-token styled inline (no globals change).
 //
 //   open / onClose, title, subtitle, badge (ReactNode), footer (ReactNode), children
-export default function RecordDrawer({ open, onClose, title, subtitle, badge, footer, closeOnOverlay = true, children }) {
+export default function RecordDrawer({ open, onClose, title, subtitle, badge, footer, closeOnOverlay = true, opaqueSurface = false, children }) {
   const titleId = useId();
   const drawerRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -77,7 +77,10 @@ export default function RecordDrawer({ open, onClose, title, subtitle, badge, fo
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(480px, 100%)", height: "100%", background: "var(--panel-2)",
+          width: "min(480px, 100%)", height: "100%",
+          background: opaqueSurface
+            ? "linear-gradient(var(--panel-2), var(--panel-2)), var(--bg)"
+            : "var(--panel-2)",
           boxShadow: "var(--shadow-lg)", display: "flex", flexDirection: "column",
           borderLeft: "1px solid var(--border)",
         }}
