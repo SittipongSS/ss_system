@@ -148,10 +148,11 @@ export default function ProductRegistry() {
     if (!formData.productDescription?.trim() && !formData.productDescriptionEn?.trim()) {
       alert("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
     }
-    if (!isExciseCategory(categoryOf(formData.fgCode))) {
+    // เตือนกลับด้านกับของเดิม: popup เฉพาะตอนเข้าหมวด 01-002 (ส่วนน้อยที่มีภาระภาษีตามมา) — หมวดอื่นบันทึกเงียบ ๆ
+    if (isExciseCategory(categoryOf(formData.fgCode))) {
       if (
         !confirm(
-          "⚠️ แจ้งเตือน:\nรหัสสินค้า (FG) ไม่ได้อยู่ในหมวด 01-002 (น้ำหอมฉีดผิวกาย)\n\nระบบจะตีความว่าสินค้านี้ 'ไม่ต้องเสียภาษีสรรพสามิต'\nต้องการบันทึกต่อหรือไม่?",
+          "⚠️ แจ้งเตือน:\nรหัสสินค้า (FG) อยู่ในหมวด 01-002 (น้ำหอมฉีดผิวกาย)\n\nสินค้านี้ต้องขึ้นทะเบียนและชำระภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)\nต้องการบันทึกต่อหรือไม่?",
         )
       )
         return;
@@ -300,7 +301,7 @@ export default function ProductRegistry() {
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {pageRows.map((p) => {
-            const isExempt = p.isExciseTaxable === false;
+            const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode));
             const status = approvalStatusOf(p);
             const showActions = status === "pending" && canApproveRow(p);
             const inactive = p.isActive === false;
@@ -332,10 +333,12 @@ export default function ProductRegistry() {
                   <span className="text-[var(--text-3)]">ราคาขายปลีก</span>
                   <div className="text-right">
                     <div className="font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</div>
-                    {isExempt ? (
-                      <div className="mt-0.5"><span className="status-pill success text-[10px]">ยกเว้นภาษี</span></div>
-                    ) : taxPerUnit(p) > 0 && (
-                      <div className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</div>
+                    {/* ป้ายภาษีเน้นเฉพาะ 01-002 (ส่วนน้อยที่ต้องขึ้นทะเบียน+ชำระสรรพสามิต) — เรื่องยกเว้นดูที่การ์ดภาษีในหน้ารายละเอียด */}
+                    {isExciseCat && (
+                      <div className="mt-0.5 flex items-center justify-end gap-1.5">
+                        {taxPerUnit(p) > 0 && <span className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
+                        <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -370,8 +373,7 @@ export default function ProductRegistry() {
               </thead>
               <tbody>
                 {pageRows.map((p) => {
-                  const isExempt = p.isExciseTaxable === false;
-                  const taxRate = isExempt ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
+                  const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode));
                   const cat = categoryLabelOf(p);
                   return (
                     <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: 0.55 } : undefined}>
@@ -392,10 +394,11 @@ export default function ProductRegistry() {
                       {canSeeCost && <td className="num mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</td>}
                       <td className="num mono text-[var(--text-2)]">
                         {fmtMoney(p.retailPriceIncVat)}
-                        {isExempt ? (
-                          <div className="mt-0.5"><span className="status-pill success text-[10px]">ยกเว้นภาษี</span></div>
-                        ) : taxRate > 0 && (
-                          <div className="text-[11px] text-[var(--text-3)] font-normal mt-0.5">ภาษี/ชิ้น: {fmtMoney(taxRate)}</div>
+                        {isExciseCat && (
+                          <div className="mt-0.5 flex items-center justify-end gap-1.5">
+                            {taxPerUnit(p) > 0 && <span className="text-[11px] text-[var(--text-3)] font-normal">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
+                            <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>
+                          </div>
                         )}
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
