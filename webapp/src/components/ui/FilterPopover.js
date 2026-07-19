@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { SlidersHorizontal, ChevronDown, X, Check } from "lucide-react";
 
 // ปุ่มเดียวยุบตัวกรองหลายตัวไว้ในแผงแบบ two-pane (ซ้าย=หมวด, ขวา=ตัวเลือก)
@@ -12,12 +13,48 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
   const [open, setOpen] = useState(false);
   const [activeKey, setActiveKey] = useState(groups[0]?.key);
   const ref = useRef(null);
+  const panelRef = useRef(null);
+  const [panelStyle, setPanelStyle] = useState({});
 
+  // แผงเปิดผ่าน portal + position:fixed แบบเดียวกับ ui-select-menu — ถ้าวางเป็น
+  // absolute ในการ์ด แผงโดน overflow:hidden ของการ์ด (เช่น SaSection) ตัดทิ้ง
   useEffect(() => {
     if (!open) return;
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const place = () => {
+      const rect = ref.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(window.innerWidth * 0.94, 420);
+      const estimatedHeight = Math.min(348, window.innerHeight - 16);
+      const roomBelow = window.innerHeight - rect.bottom;
+      const above = roomBelow < estimatedHeight + 12 && rect.top > roomBelow;
+      setPanelStyle({
+        position: "fixed",
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        top: above ? Math.max(8, rect.top - estimatedHeight - 6) : rect.bottom + 6,
+        width,
+        zIndex: 10050,
+      });
+    };
+    const onDown = (e) => {
+      if (!ref.current?.contains(e.target) && !panelRef.current?.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        ref.current?.querySelector("button")?.focus();
+      }
+    };
+    place();
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
   }, [open]);
 
   const active = count > 0;
@@ -51,8 +88,8 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
         <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
       </button>
 
-      {open && (
-        <div className="glass-panel ui-filter-popover" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 100, width: "min(94vw, 420px)", padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {open && typeof document !== "undefined" && createPortal(
+        <div ref={panelRef} className="glass-panel ui-filter-popover" style={{ ...panelStyle, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
             <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-2)" }}>{label}</span>
             {active && (
@@ -124,7 +161,8 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
