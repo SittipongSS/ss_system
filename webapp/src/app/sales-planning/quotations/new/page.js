@@ -123,6 +123,9 @@ function NewQuotationInner() {
   const selectedProject = projectId ? projectsById[projectId] : null;
   const selectedDeal = useMemo(() => eligible.find((deal) => deal.id === dealId) || null, [eligible, dealId]);
   const selectedDealType = selectedDeal ? dealTypeOf(selectedDeal) : null;
+  // ฐานราคาตามดีล: สายสหมิตร = ราคาโรงงาน (server enforce ตอนบันทึกด้วยกติกาเดียวกัน
+  // ใน createQuotationDraft — ที่นี่ให้ราคาบนจอตรงตั้งแต่ตอนเลือกสินค้า ไม่เด้งตอน save)
+  const linePriceField = String(selectedDeal?.metadata?.source || "").startsWith("sahamit") ? "costPrice" : "retailPriceIncVat";
 
   // prefill จาก query (?dealId / ?projectId / ?customerId) — รันครั้งเดียวหลังโหลดดีลเสร็จ
   useEffect(() => {
@@ -207,7 +210,7 @@ function NewQuotationInner() {
       productId: product.id,
       fgCode: product.fgCode || null,
       description: product.productDescription || product.productDescriptionEn || product.fgCode || "สินค้า",
-      unitPrice: Number(product.retailPriceIncVat || 0),
+      unitPrice: Number(product[linePriceField] || 0),
     });
   };
   const removeLine = (index) => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index));

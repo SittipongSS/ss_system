@@ -6,7 +6,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { dealAuditLabel, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
-import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
+import { enforceMasterPrices, normalizeManualLines, quotePriceField, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
@@ -20,8 +20,14 @@ export class QuotationDraftError extends Error {
 }
 
 export async function createQuotationDraft({ supabase, user, deal, body = {}, request }) {
+  // ฐานราคาของใบ: ดีลสายสหมิตร (source sahamit-*) = ราคาโรงงาน (มติ 2026-07-19 —
+  // สหมิตรซื้อราคาโรงงาน ยอดใบต้องตรง PO) ไม่ว่าใบจะถูกสร้างจากทางไหน; ธงติดไปกับ
+  // metadata ของใบ ให้ PATCH/revise enforce ด้วยฐานเดียวกันตลอดอายุใบ
+  const priceBasis = body.metadata?.priceBasis
+    || (String(deal.metadata?.source || '').startsWith('sahamit') ? 'factory' : undefined);
+  const priceField = quotePriceField({ priceBasis });
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
-  let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []));
+  let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []), [], priceField);
   // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
   if (!lines.length && body.seedFromProject) lines = await seedLinesFromProject(supabase, deal);
   if (body.status === 'sent' && !lines.length) {
@@ -101,6 +107,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ = ผู้ใช้จริง+role ตรง)
       metadata: {
         ...(body.metadata || {}),
+        ...(priceBasis ? { priceBasis } : {}),
         aeOwner: peoplePick.people.aeOwner || null,
         preparedBy: peoplePick.people.preparedBy || null,
         aeSupervisor: peoplePick.people.aeSupervisor || null,

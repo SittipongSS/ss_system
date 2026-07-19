@@ -19,7 +19,7 @@ import { useCan } from "@/lib/roleContext";
 const TABS = [
   { key: "overview", label: "รายการสินค้า" },
   { key: "matrix", label: "ตารางจัดการ (Matrix)" },
-  { key: "lines", label: "รายเดือน (สร้างโครงการ)" },
+  { key: "lines", label: "รายเดือน (สร้างดีล)" },
   { key: "history", label: "ประวัติ / เทียบรอบ" },
 ];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -219,14 +219,14 @@ export default function ForecastPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineIds: [...selectedLines], forecastMonth: dealMonth, ownerId: dealOwnerId }),
       });
-      const skipMsg = json.skipped ? ` (ข้ามที่มีโครงการแล้ว ${json.skipped} รายการ)` : "";
+      const skipMsg = json.skipped ? ` (ข้ามที่สร้างดีลแล้ว ${json.skipped} รายการ)` : "";
       const supMsg = json.superseded ? ` · เคลียร์ดีลรอบเก่าที่ยังไม่ปิด ${json.superseded} ดีล (FC อัพเดท)` : "";
-      alert(`สร้างโครงการเข้าแผนการขายแล้ว ${json.count || 0} โครงการ (1 รายการ = 1 โครงการ)${skipMsg}${supMsg}`);
+      alert(`สร้างดีลเข้าแผนการขายแล้ว ${json.count || 0} ดีล (1 รายการ = 1 ดีล)${skipMsg}${supMsg}`);
       setSelectedLines(new Set());
       setDealModalOpen(false);
       reloadMapped();
     } catch (e) {
-      alert(e.message || "สร้างโครงการเข้าแผนการขายไม่สำเร็จ");
+      alert(e.message || "สร้างดีลเข้าแผนการขายไม่สำเร็จ");
     } finally {
       setCreating(false);
     }
@@ -352,7 +352,7 @@ export default function ForecastPage() {
                 {canEdit && <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>}
                 {matrix.rows.length > 0 && (
                   <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
-                    ไปแท็บ “รายเดือน (สร้างโครงการ)” เพื่อเลือกรายการส่งเข้าแผนการขาย
+                    ไปแท็บ “รายเดือน (สร้างดีล)” เพื่อเลือกรายการส่งเข้าแผนการขาย
                   </span>
                 )}
               </div>
@@ -430,7 +430,7 @@ export default function ForecastPage() {
                 </Select>
                 {lineList.length > 0 && (
                   <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
-                    ติ๊กเลือกรายการ (สินค้า×เดือน) เพื่อรวมเป็นโครงการเดียว
+                    ติ๊กเลือกรายการ (สินค้า×เดือน) — 1 รายการ = 1 ดีล
                   </span>
                 )}
               </div>
@@ -488,7 +488,7 @@ export default function ForecastPage() {
                                 checked={selectedLines.has(r.id)}
                                 disabled={r.mapped}
                                 onChange={() => toggleLine(r.id)}
-                                title={r.mapped ? "รายการนี้ถูกสร้างเป็นโครงการแล้ว" : undefined}
+                                title={r.mapped ? "รายการนี้ถูกสร้างเป็นดีลแล้ว" : undefined}
                               />
                             </td>
                             <td className="font-mono" style={{ fontWeight: 600 }}>{r.fgCode}</td>
@@ -496,7 +496,7 @@ export default function ForecastPage() {
                               {r.productName || "— ไม่รู้จัก —"}
                               {r.mapped && (
                                 <span className="ui-badge" style={{ marginLeft: 8, color: "var(--green)", fontSize: 10.5 }}>
-                                  <CheckCircle2 size={11} style={{ verticalAlign: "-1px" }} /> มีโครงการแล้ว
+                                  <CheckCircle2 size={11} style={{ verticalAlign: "-1px" }} /> สร้างดีลแล้ว
                                 </span>
                               )}
                             </td>
@@ -575,8 +575,8 @@ export default function ForecastPage() {
       <Modal open={dealModalOpen} onClose={() => !creating && setDealModalOpen(false)} title="สร้างแผนการขายจาก Forecast" size="md">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="glass-panel" style={{ padding: "12px 14px", fontSize: 13, lineHeight: 1.7 }}>
-            เลือก <b>{selection.count}</b> รายการ (สินค้า×เดือน) → สร้าง <b>{selection.count}</b> โครงการ
-            <span style={{ color: "var(--text-3)" }}> (1 รายการ = 1 โครงการ)</span>
+            เลือก <b>{selection.count}</b> รายการ (สินค้า×เดือน) → สร้าง <b>{selection.count}</b> ดีล
+            <span style={{ color: "var(--text-3)" }}> (1 รายการ = 1 ดีล)</span>
             <br />
             รวม <b>{nf(selection.qty)}</b> ชิ้น · มูลค่า <b>{nfBaht(selection.value)}</b>
             {selection.unpriced > 0 && (
@@ -602,7 +602,7 @@ export default function ForecastPage() {
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
             <button className="btn ghost" onClick={() => setDealModalOpen(false)} disabled={creating}>ยกเลิก</button>
             <button className="btn btn-primary" onClick={createDeal} disabled={creating || !dealOwnerId || !selection.count}>
-              <Send size={14} /> {creating ? "กำลังสร้าง..." : `สร้าง ${selection.count} โครงการ`}
+              <Send size={14} /> {creating ? "กำลังสร้าง..." : `สร้าง ${selection.count} ดีล`}
             </button>
           </div>
         </div>

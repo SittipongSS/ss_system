@@ -99,7 +99,7 @@ export async function POST(request, { params }) {
   const toCreate = picked.filter((line) => !blockedLineIds.has(String(line.id)));
   const skipped = picked.length - toCreate.length;
   if (!toCreate.length) {
-    return Response.json({ error: 'รายการที่เลือกถูกสร้างเป็นโครงการไปแล้วทั้งหมด', skipped, count: 0 }, { status: 409 });
+    return Response.json({ error: 'รายการที่เลือกถูกสร้างเป็นดีลไปแล้วทั้งหมด', skipped, count: 0 }, { status: 409 });
   }
 
   const now = new Date().toISOString();
