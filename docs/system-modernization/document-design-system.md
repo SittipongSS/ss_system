@@ -80,6 +80,38 @@
 ข้อความที่ธุรกิจแก้ได้ เช่น หมายเหตุ เงื่อนไขการชำระเงิน เงื่อนไขส่งมอบ
 และข้อความท้ายเอกสาร
 
+## Commercial preset requirements
+
+ยืนยันเมื่อ 19 กรกฎาคม 2026 ว่าแต่ละทีมและแต่ละประเภทดีลใช้วิธีชำระเงิน,
+โครงงวด และหมายเหตุไม่เหมือนกัน จึงต้องมี Commercial Preset แยกจาก
+Workflow/Timeline Template
+
+สถานะปัจจุบัน:
+
+- `quote_note_templates` แยกได้ตาม `serviceType` แต่ยังไม่มี team scope หรือ version lifecycle
+- `quotations.paymentPlan` เก็บงวดชำระแบบ snapshot ต่อใบ แต่ยังไม่มี Preset กลางให้เลือก
+- Quotation และ Sales Order แสดงตารางงวดเมื่อ `paymentPlan.type = installment` แล้ว
+- ตารางปัจจุบันมีงวด, รายละเอียด, เปอร์เซ็นต์และจำนวนเงิน แต่ยังไม่มี due rule/date แบบโครงสร้าง
+
+ขอบเขตเป้าหมายของ Commercial Preset:
+
+- Match ด้วยชนิดเอกสาร, ทีม, ประเภทดีล และประเภทบริการ
+- fallback จาก exact match ไป team default แล้วจบที่ general default
+- เก็บวิธีชำระเงิน, ข้อความเงื่อนไข, หมายเหตุ และรายการงวด
+- รายการงวดรองรับชื่อ, เปอร์เซ็นต์, trigger/เงื่อนไขครบกำหนด, due offset/date rule และหมายเหตุ
+- จำนวนเงินคำนวณจากยอดรวมของเอกสาร ไม่เก็บยอดคงที่ใน Preset
+- เลือก Preset ตอนสร้างใบและแก้เฉพาะใบได้ก่อนอนุมัติ
+- Snapshot เนื้อหา, calculated rows และ Preset version ลงเอกสารที่ออกจริง
+- Published Preset ใหม่ไม่มีผลย้อนหลังกับเอกสารที่อนุมัติแล้ว
+- Sales Supervisor และ Admin จัดการชั่วคราวจนถึง Permission Phase 8–9
+
+การแบ่งเฟส:
+
+- Phase 6 ออกแบบ Quotation Master Template และตารางงวดสำหรับหนึ่งงวด, หลายงวด,
+  ข้อความยาว, หลายหน้า, สีและขาวดำ
+- Phase 7 สร้าง versioned Commercial Preset, selector/fallback, snapshot และ Document Engine integration
+- Phase 4B ไม่แก้ Commercial Preset หรือ Production Document Template
+
 ### Form configuration
 
 การเปิด/ปิด Field, ชื่อเอกสาร, บทบาทผู้ลงนาม, Form code, Revision

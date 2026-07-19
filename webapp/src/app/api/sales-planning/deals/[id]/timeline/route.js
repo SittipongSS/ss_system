@@ -8,6 +8,7 @@ import { applyAutoStatuses } from '@/lib/pm/status';
 import { canEditSalesPlanning, dealAuditLabel, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { genId } from '@/lib/id';
 import { activeProductTypeError } from '@/lib/master/productTypes';
+import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,11 +54,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const now = new Date().toISOString();
 
   setHolidays([...(await holidaySet())]);
+  let templateOptions;
+  try {
+    templateOptions = await loadWorkflowTemplateForGeneration(supabase, dealTypeOf(deal));
+  } catch (error) {
+    return fail(error.message || 'โหลด Workflow Template ไม่สำเร็จ', error instanceof WorkflowTemplateError ? error.status : 500);
+  }
   const rows = applyAutoStatuses(buildProjectTasks(
     // เทียบ field โครงการ: type = ประเภทดีล, productMainCategory = หมวดบนดีล
     { type: dealTypeOf(deal), productMainCategory: categoryCode || '', startDate, aeOwner: deal.ownerName || '' },
     null,          // projectId ว่าง = ไทม์ไลน์ลอยของดีล
     deal.id,
+    templateOptions,
   ));
   const { data: inserted, error: insErr } = await supabase.from('project_tasks').insert(rows).select();
   if (insErr) return fail(`สร้างไทม์ไลน์ไม่สำเร็จ: ${insErr.message}`, 500);

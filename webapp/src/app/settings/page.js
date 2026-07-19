@@ -2,7 +2,7 @@
 // ศูนย์รวมการตั้งค่าระบบ — เมนู "ตั้งค่า" เดียวใน top nav ชี้มาที่นี่
 // โชว์เฉพาะการ์ดที่สิทธิ์ของผู้ใช้เข้าถึงได้ (ปฏิทินเห็นทุกคนเพราะเป็นข้อมูลอ่านได้ทั้งระบบ)
 import Link from "next/link";
-import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2 } from "lucide-react";
+import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { can } from "@/lib/permissions";
 import styles from "./page.module.css";
@@ -39,6 +39,13 @@ export default function SettingsPage() {
           title: "วันหยุด (ปฏิทินทำการ)",
           desc: "วันหยุดบริษัทและวันหยุดนักขัตฤกษ์ที่ใช้คำนวณไทม์ไลน์โครงการ",
           show: true,
+        },
+        {
+          href: "/settings/workflow-templates",
+          icon: Workflow,
+          title: "Workflow และ Timeline Template",
+          desc: "จัดการขั้นตอน ระยะเวลา ผู้รับผิดชอบ และ dependency ของงานแต่ละประเภทแบบมีเวอร์ชัน",
+          show: canChat,
         },
         {
           href: "/database/chat-webhooks",

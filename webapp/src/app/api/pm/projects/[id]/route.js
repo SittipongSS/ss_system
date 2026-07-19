@@ -13,6 +13,7 @@ import { sortDealsByOrder } from '@/lib/pm/dealOrder';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { canApproveProjectClose } from '@/lib/pm/projectClose';
 import { activeProductTypeError } from '@/lib/master/productTypes';
+import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
 
@@ -194,7 +195,24 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       await recordAudit({ user, action: 'update', entityType: 'project', entityId: id, before: project, after: data, summary: `เปลี่ยนหมวดสินค้า ${data.code || id} (หลาย segment — ข้าม resync ขั้นตอนอัตโนมัติ)`, request: req });
       return ok(data);
     }
-    const { templateRows, customRows, toDeleteIds, existingIds } = mergeTemplateTasks(data, existing || []);
+    const versionIds = [...new Set((existing || [])
+      .filter((task) => task.origin !== 'custom')
+      .map((task) => task.workflowTemplateVersionId)
+      .filter(Boolean))];
+    let templateOptions = {};
+    // Pre-0121 tasks have no provenance and intentionally stay on the static/
+    // legacy-aware path. A single pinned version is safe to load even after it
+    // becomes Archived; multiple versions in one segment require explicit UAT.
+    if (versionIds.length === 1) {
+      try {
+        templateOptions = await loadWorkflowTemplateForGeneration(supabase, data.type, versionIds[0]);
+      } catch (templateError) {
+        return fail(templateError.message || 'โหลด Workflow Template ไม่สำเร็จ', templateError instanceof WorkflowTemplateError ? templateError.status : 500);
+      }
+    } else if (versionIds.length > 1) {
+      return conflict('ขั้นตอนของ segment นี้อ้างหลาย Template version กรุณาตรวจข้อมูลก่อน resync');
+    }
+    const { templateRows, customRows, toDeleteIds, existingIds } = mergeTemplateTasks(data, existing || [], templateOptions);
 
     if (toDeleteIds.length) await supabase.from('project_tasks').delete().in('id', toDeleteIds);
 

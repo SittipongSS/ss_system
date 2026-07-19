@@ -9,6 +9,7 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode, loadProject } from '@/lib/pm/projectsRepo';
 import { activeProductTypeError } from '@/lib/master/productTypes';
+import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
 
@@ -159,7 +160,16 @@ export async function POST(request, { params }) {
   }
 
   setHolidays([...(await holidaySet())]);
-  const taskRows = applyAutoStatuses(buildProjectTasks(project, project.id));
+  let templateOptions;
+  try {
+    templateOptions = await loadWorkflowTemplateForGeneration(supabase, 'RE-ORDER');
+  } catch (templateError) {
+    await supabase.from('projects').delete().eq('id', project.id);
+    return Response.json({ error: templateError.message || 'cannot load Workflow Template' }, {
+      status: templateError instanceof WorkflowTemplateError ? templateError.status : 500,
+    });
+  }
+  const taskRows = applyAutoStatuses(buildProjectTasks(project, project.id, null, templateOptions));
   const { data: tasks, error: taskError } = taskRows.length
     ? await supabase.from('project_tasks').insert(taskRows).select()
     : { data: [], error: null };

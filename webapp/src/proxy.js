@@ -80,10 +80,11 @@ export async function proxy(request) {
     return withRefreshedCookies(NextResponse.redirect(new URL('/database', request.url)));
   }
 
-  // Phase 4A company versions are system configuration. Keep the page aligned
-  // with the server API gate until the permission redesign in Phase 8.
+  // Phase 4 versioned settings are system configuration. Keep these pages
+  // aligned with their server API gates until the permission redesign in Phase 8.
   if (
-    user && !isApi && path.startsWith('/settings/company') &&
+    user && !isApi &&
+    (path.startsWith('/settings/company') || path.startsWith('/settings/workflow-templates')) &&
     !can(user.app_metadata?.role, 'master:manage')
   ) {
     return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
