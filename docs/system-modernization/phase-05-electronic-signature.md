@@ -90,6 +90,16 @@
 - `npm run check:migrations` ผ่าน 127 migrations; targeted tests 12/12 และ `npm test` ผ่าน 416/416
 - Targeted ESLint และ `npm run build` ผ่านบน Next.js 16.2.7; UI ใช้ Modal/shared classes และ design tokens เดิมโดยไม่เพิ่ม dependency
 
+## Validation log — 20 กรกฎาคม 2026 (Sale Order hard-delete policy hotfix)
+
+- Production UAT อนุมัติ `SO-26070007-0` แบบ Admin Override และพบ Signature Evidence ครบถ้วน
+- การกดลบถาวรบน SO ที่อนุมัติแล้วถูกฐานข้อมูลปฏิเสธด้วย Foreign Key จาก `document_signature_evidence` ซึ่งเป็น behavior ที่ถูกต้องสำหรับหลักฐานแบบ immutable แต่ UI/API ยังเปิด action ที่ขัดกับ deletion policy
+- Hard delete อนุญาตเฉพาะ SO สถานะ Draft ที่ไม่เคยมี Signature Evidence; SO ที่เข้าสู่ workflow แล้วต้องใช้ `ยกเลิก SO` เพื่อถอน Actual และเก็บประวัติ
+- API ตรวจหลักฐานย้อนหลังจาก `document_signature_evidence` เพิ่มเติมจาก active pointer เพื่อกัน SO ที่เคยอนุมัติและถูกคืนเป็น Draft ถูกลบ
+- UI แสดงปุ่ม `ลบฉบับร่างถาวร` เฉพาะเมื่อผ่าน policy เดียวกับ API และไม่เพิ่ม CSS หรือ dependency ใหม่
+- Targeted policy tests 7/7, `npm test` ผ่าน 417/417, targeted ESLint ผ่าน, `npm run check:migrations` ผ่าน 127 migrations และ `npm run build` ผ่านบน Next.js 16.2.7
+- รอ UAT ยกเลิก SO โดยเลือกเหตุผล `รายการซ้ำ / ทดสอบ` หลัง deploy hotfix
+
 ## Current-state inventory
 
 - Quotation มี owner approval, `approvedBy`, `approvedAt` และ `approvalFingerprint`

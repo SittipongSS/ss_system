@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SALES_ORDER_CANCEL_REASONS, WON_REVERSAL_TARGETS, canSalesOrderTransition, cancelReasonLabel, dealActualFromSalesOrders, isCustomerCancelReason, isSalesOrderReviewer, isValidCancelReasonCode, isValidReversalTarget, salesOrderActual } from './salesOrderWorkflow.js';
+import { SALES_ORDER_CANCEL_REASONS, WON_REVERSAL_TARGETS, canHardDeleteSalesOrder, canSalesOrderTransition, cancelReasonLabel, dealActualFromSalesOrders, isCustomerCancelReason, isSalesOrderReviewer, isValidCancelReasonCode, isValidReversalTarget, salesOrderActual } from './salesOrderWorkflow.js';
 
 test('Actual is counted only after SO approval', () => {
   for (const status of ['draft', 'pending_approval', 'rejected', 'cancelled']) {
@@ -22,6 +22,15 @@ test('only AE Supervisor and admin are SO reviewers', () => {
   assert.equal(isSalesOrderReviewer('admin'), true);
   assert.equal(isSalesOrderReviewer('senior_ae'), false);
   assert.equal(isSalesOrderReviewer('ae'), false);
+});
+
+test('hard delete is limited to unsigned drafts that never entered approval', () => {
+  assert.equal(canHardDeleteSalesOrder({ status: 'draft' }), true);
+  assert.equal(canHardDeleteSalesOrder({ status: 'draft', signatureEvidenceId: 'DSE-1' }), false);
+  assert.equal(canHardDeleteSalesOrder({ status: 'draft', hasSignatureEvidence: true }), false);
+  for (const status of ['pending_approval', 'approved', 'rejected', 'cancelled']) {
+    assert.equal(canHardDeleteSalesOrder({ status }), false);
+  }
 });
 
 test('deal Actual is accepted only from the approved SO cache', () => {

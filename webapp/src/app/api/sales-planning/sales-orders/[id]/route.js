@@ -2,7 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
-import { isSalesOrderReviewer, isValidCancelReasonCode, cancelReasonLabel, isValidReversalTarget } from '@/lib/sales/salesOrderWorkflow';
+import { canHardDeleteSalesOrder, isSalesOrderReviewer, isValidCancelReasonCode, cancelReasonLabel, isValidReversalTarget } from '@/lib/sales/salesOrderWorkflow';
 import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
 import {
   adminOverrideReasonError,
@@ -29,14 +29,22 @@ async function loadOrder(supabase, id) {
   if (error) throw error;
   if (!order) return null;
 
-  const [{ data: deal }, { data: quotation }, { data: project }] = await Promise.all([
+  const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }] = await Promise.all([
     supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
     supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms').eq('id', order.quotationId).maybeSingle(),
     order.projectId
       ? supabase.from('projects').select('id, code, name').eq('id', order.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
+    supabase.from('document_signature_evidence').select('id').eq('salesOrderId', id).limit(1).maybeSingle(),
   ]);
-  return { ...order, deal: deal || null, quotation: quotation || null, project: project || null };
+  if (signatureEvidenceError) throw signatureEvidenceError;
+  return {
+    ...order,
+    deal: deal || null,
+    quotation: quotation || null,
+    project: project || null,
+    hasSignatureEvidence: Boolean(signatureEvidence?.id || order.signatureEvidenceId),
+  };
 }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
@@ -308,6 +316,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   try { before = await loadOrder(supabase, id); }
   catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!before) return notFound('ไม่พบ Sale Order');
+  if (!canHardDeleteSalesOrder(before)) {
+    return fail(
+      before.hasSignatureEvidence || before.signatureEvidenceId
+        ? 'ลบถาวรไม่ได้: SO นี้มี Signature Evidence และต้องเก็บเป็นหลักฐาน — กรุณาใช้ “ยกเลิก SO” แทน'
+        : 'ลบถาวรได้เฉพาะ SO ฉบับร่างที่ยังไม่เข้าสู่ workflow — กรุณาใช้ “ยกเลิก SO” แทน',
+      409,
+    );
+  }
   const { error } = await supabase.from('sales_orders').delete().eq('id', id);
   if (error) return fail(error.message, 500);
   await recordAudit({ user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null, summary: `delete ${before.orderNumber}`, request: req });
