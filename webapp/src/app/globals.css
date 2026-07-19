@@ -1723,15 +1723,17 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
   background: transparent;
-  color: var(--accent-fg);
+  /* แถบระบบเป็น navy เข้มทั้งสองธีม — ต้องเป็นสีขาวคงที่ ห้ามใช้ --accent-fg
+     (ธีมมืด --accent-fg เป็นสีเกือบดำ ตัวหนังสือจะกลืนหายบนพื้น navy) */
+  color: #fff;
   font: inherit;
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease;
 }
 .account-menu-trigger:hover,
 .account-menu-trigger[aria-expanded="true"] {
-  border-color: color-mix(in srgb, var(--panel) 18%, transparent);
-  background: color-mix(in srgb, var(--panel) 12%, transparent);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
 }
 .account-menu-trigger:focus-visible {
   outline: 2px solid var(--accent);
@@ -1769,7 +1771,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 0;
   border: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--accent-fg) 72%, transparent);
+  color: rgba(255, 255, 255, 0.72); /* บนพื้น navy เสมอ — ไม่อิงธีม */
   font-size: 10.5px;
   font-weight: 500;
   text-overflow: ellipsis;
