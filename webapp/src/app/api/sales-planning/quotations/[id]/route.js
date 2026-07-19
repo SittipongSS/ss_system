@@ -9,7 +9,7 @@ import {
   canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
   quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
-import { enforceMasterPrices, normalizeManualLines, quotePriceField, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
+import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
@@ -134,8 +134,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       : (before.lines || []).map((l) => ({ ...l }));
     // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — แก้ราคาต้องแก้ที่
     // ฐานข้อมูลสินค้า; สินค้าที่หายจาก master คงราคาเดิมของใบ (fallback before.lines)
-    // ฐานราคาตามธงของใบ (สายสหมิตร = ราคาโรงงาน) — ห้าม default ทับเป็น retail
-    newLines = await enforceMasterPrices(supabase, newLines, before.lines || [], quotePriceField(before.metadata));
+    newLines = await enforceMasterPrices(supabase, newLines, before.lines || []);
     // ใบว่าง (0 รายการ) เก็บเป็นร่างได้ — ใส่รหัส FG ทีหลัง; การส่ง/รับใบมี guard ยอด>0 อยู่แล้ว
     if (!newLines.length && (body.status === 'sent' || before.status === 'sent')) {
       return badRequest('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');

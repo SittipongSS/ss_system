@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enforceMasterPrices, fgLineDescription, normalizeManualLines, quotePriceField, refreshFgLinesForDisplay } from './quoteLines.js';
+import { enforceMasterPrices, fgLineDescription, normalizeManualLines, refreshFgLinesForDisplay } from './quoteLines.js';
 
 // stub supabase: คืนราคา master ตาม map ที่กำหนด
 const fakeSupabase = (products) => ({
@@ -22,29 +22,17 @@ const fgLine = (over = {}) => normalizeManualLines([{
   discountType: null, discountValue: 0, ...over,
 }])[0];
 
-test('FG line price is overridden by master price (client value ignored)', async () => {
-  const lines = await enforceMasterPrices(fakeSupabase([{ id: 'P1', retailPriceIncVat: 150 }]), [fgLine()]);
+// ราคาขายในใบ = ราคาโรงงาน (costPrice) ทั้งระบบ (มติ 2026-07-19);
+// retailPriceIncVat มีไว้คำนวณสรรพสามิตเท่านั้น — ห้ามหลุดมาเป็นราคาใบ
+test('FG line price is overridden by factory price (client + retail ignored)', async () => {
+  const lines = await enforceMasterPrices(fakeSupabase([{ id: 'P1', costPrice: 150, retailPriceIncVat: 999 }]), [fgLine()]);
   assert.equal(lines[0].unitPrice, 150);
   assert.equal(lines[0].lineTotal, 300); // qty 2 × 150 คิดยอดใหม่
 });
 
-// สายสหมิตรใช้ราคาโรงงาน (มติ 2026-07-19 — ยอด QT/SO ต้องตรง PO ที่คิด costPrice)
-test('priceField=costPrice uses factory price from master (sahamit basis)', async () => {
-  const master = [{ id: 'P1', retailPriceIncVat: 150, costPrice: 90 }];
-  const lines = await enforceMasterPrices(fakeSupabase(master), [fgLine()], [], 'costPrice');
-  assert.equal(lines[0].unitPrice, 90);
-  assert.equal(lines[0].lineTotal, 180); // qty 2 × 90
-});
-
-test('quotePriceField maps priceBasis flag to master column', () => {
-  assert.equal(quotePriceField({ priceBasis: 'factory' }), 'costPrice');
-  assert.equal(quotePriceField({}), 'retailPriceIncVat');
-  assert.equal(quotePriceField(undefined), 'retailPriceIncVat');
-});
-
 test('line discount is recomputed from the enforced price', async () => {
   const line = fgLine({ discountType: 'percent', discountValue: 10 });
-  const lines = await enforceMasterPrices(fakeSupabase([{ id: 'P1', retailPriceIncVat: 100 }]), [line]);
+  const lines = await enforceMasterPrices(fakeSupabase([{ id: 'P1', costPrice: 100 }]), [line]);
   assert.equal(lines[0].unitPrice, 100);
   assert.equal(lines[0].discountAmount, 20); // 10% ของ 2×100
   assert.equal(lines[0].lineTotal, 180);
@@ -59,28 +47,28 @@ test('manual lines (no productId) pass through untouched', async () => {
 test('FG line description/code are refreshed from master (brand · name · volume)', async () => {
   const master = [{
     id: 'P1', fgCode: 'FG-001', brandName: 'แบรนด์เอ', productDescription: 'น้ำหอมส้ม',
-    volume: 50, volumeUnit: 'ml', retailPriceIncVat: 150,
+    volume: 50, volumeUnit: 'ml', costPrice: 150,
   }];
   const lines = await enforceMasterPrices(fakeSupabase(master), [fgLine({ description: 'ชื่อเก่า' })]);
   assert.equal(lines[0].description, 'แบรนด์เอ · น้ำหอมส้ม · 50 ml');
   assert.equal(lines[0].fgCode, 'FG-001');
 });
 
-test('master with no retail price keeps previously saved price — never zeroes the quote', async () => {
-  // บั๊กจริง 2026-07-15: master ยังไม่ตั้งราคาขาย → ราคาในใบโดนทับเป็น 0 →
+test('master with no factory price keeps previously saved price — never zeroes the quote', async () => {
+  // บั๊กจริง 2026-07-15: master ยังไม่ตั้งราคา → ราคาในใบโดนทับเป็น 0 →
   // ยอดใบเป็น 0 → กด Won ติด "ยอดก่อน VAT ต้องมากกว่า 0"
-  for (const retailPriceIncVat of [0, null, undefined]) {
-    const master = [{ id: 'P1', fgCode: 'FG-001', productDescription: 'น้ำหอมส้ม', retailPriceIncVat }];
+  for (const costPrice of [0, null, undefined]) {
+    const master = [{ id: 'P1', fgCode: 'FG-001', productDescription: 'น้ำหอมส้ม', costPrice }];
     const prev = [{ productId: 'P1', unitPrice: 150 }];
     const lines = await enforceMasterPrices(fakeSupabase(master), [fgLine()], prev);
-    assert.equal(lines[0].unitPrice, 150, `retail ${retailPriceIncVat} must keep saved price`);
+    assert.equal(lines[0].unitPrice, 150, `costPrice ${costPrice} must keep saved price`);
     assert.equal(lines[0].lineTotal, 300);
     assert.equal(lines[0].description, 'น้ำหอมส้ม'); // คำอธิบายยัง refresh จาก master
   }
 });
 
-test('master with no retail price and no saved price → 0 (client can never set FG prices)', async () => {
-  const master = [{ id: 'P1', fgCode: 'FG-001', productDescription: 'น้ำหอมส้ม', retailPriceIncVat: 0 }];
+test('master with no factory price and no saved price → 0 (client can never set FG prices)', async () => {
+  const master = [{ id: 'P1', fgCode: 'FG-001', productDescription: 'น้ำหอมส้ม', costPrice: 0 }];
   const lines = await enforceMasterPrices(fakeSupabase(master), [fgLine()]); // client ส่ง 999 มา
   assert.equal(lines[0].unitPrice, 0); // ห้ามใช้ค่าจาก client — ต้องไปตั้งราคาที่ฐานข้อมูล
 });
