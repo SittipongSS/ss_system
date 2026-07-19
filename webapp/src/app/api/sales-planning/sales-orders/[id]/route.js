@@ -5,6 +5,11 @@ import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesVi
 import { isSalesOrderReviewer, isValidCancelReasonCode, cancelReasonLabel, isValidReversalTarget } from '@/lib/sales/salesOrderWorkflow';
 import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
 import {
+  adminOverrideReasonError,
+  isSalesOrderSelfApproval,
+  normalizeAdminOverrideReason,
+} from '@/lib/sales/salesOrderApprovalOverride';
+import {
   approveSalesOrderWithSignatureEvidence,
   signatureEvidenceErrorResponse,
 } from '@/lib/admin/signatureEvidence';
@@ -113,10 +118,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (action === 'approve') {
     if (!reviewer) return forbidden('เฉพาะ AE Supervisor ที่อนุมัติ Sale Order ได้');
     if (before.status !== 'pending_approval') return badRequest('SO ใบนี้ไม่ได้รออนุมัติ');
-    // แบ่งแยกหน้าที่ (มติผู้ใช้ 2026-07-16): ห้ามอนุมัติ SO ที่ตัวเองสร้าง/ยื่น —
-    // ยอด Actual ต้องมีคนที่สองตรวจ (ผู้สร้าง/ผู้ยื่นต่างจากผู้อนุมัติ)
-    if (before.createdBy && before.createdBy === user.id) return forbidden('อนุมัติ SO ที่ตัวเองสร้างไม่ได้ — ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ');
-    if (before.submittedBy && before.submittedBy === user.id) return forbidden('อนุมัติ SO ที่ตัวเองยื่นไม่ได้ — ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ');
+    // แบ่งแยกหน้าที่ยังคงเป็นค่าเริ่มต้น; Admin ใช้ break-glass ได้เมื่อยังไม่มี
+    // ผู้ตรวจสอบคนที่สอง โดยต้องระบุเหตุผลซึ่งถูกเก็บกับหลักฐานแบบ immutable.
+    const selfApproval = isSalesOrderSelfApproval(before, user.id);
+    let overrideReason = null;
+    if (selfApproval) {
+      if (user.role !== 'admin') {
+        return forbidden('อนุมัติ SO ที่ตัวเองสร้างหรือยื่นไม่ได้ — ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ');
+      }
+      const reasonError = adminOverrideReasonError(body.overrideReason);
+      if (reasonError) return badRequest(reasonError);
+      overrideReason = normalizeAdminOverrideReason(body.overrideReason);
+    }
     let result;
     try {
       result = await approveSalesOrderWithSignatureEvidence(supabase, {
@@ -125,13 +138,25 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         expectedUpdatedAt: before.updatedAt,
         documentFingerprint: salesOrderApprovalFingerprint(before, before.lines),
         note: String(body.note || '').trim() || null,
+        overrideReason,
         user,
       });
     } catch (approvalError) {
       return signatureEvidenceErrorResponse(approvalError);
     }
     const data = result.document;
-    await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `approve ${before.orderNumber}`, request: req });
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_order',
+      entityId: id,
+      before,
+      after: data,
+      summary: selfApproval
+        ? `admin override approve ${before.orderNumber}: ${overrideReason}`
+        : `approve ${before.orderNumber}`,
+      request: req,
+    });
     // แจ้งทีมขาย: SO อนุมัติแล้ว → ยอด Actual เข้าระบบ
     sendChat('sales', chatCard({
       title: '✅ Sale Order อนุมัติแล้ว',
@@ -141,6 +166,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         { label: 'ยอด Actual (ก่อน VAT)', value: soAmount(before) },
         { label: 'ผู้อนุมัติ', value: user.name || '' },
         { label: 'ผู้ยื่น', value: before.submittedByName || '' },
+        ...(selfApproval ? [{ label: 'รูปแบบ', value: 'Admin Override' }] : []),
       ],
       linkPath: `/sa/sales-orders/${id}`,
       linkLabel: 'เปิด Sale Order',
