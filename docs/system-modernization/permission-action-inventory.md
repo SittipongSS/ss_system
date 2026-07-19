@@ -20,8 +20,9 @@
 | account_profile | view, update | own | signed-in; API ผูก target จาก session เท่านั้น | 1 |
 | account_password | change | own | signed-in + current password; API ผูก target จาก session เท่านั้น | 1 |
 | product_category | view, create, update, deactivate, reactivate, inspect_usage | all | signed-in read / AE Supervisor + Admin จัดการผ่าน `canManageProductCategories` | 2 |
-| product_category_import | download_template, export, preview, commit, view_history | all | `master:manage` | 3 |
-| organization_settings | view, edit_draft, publish, archive | all | admin/`master:manage` | 4 |
+| product_category_import | download_template, export, preview, commit, view_history | all | AE Supervisor + Admin ผ่าน `canManageProductCategories` | 3 |
+| organization_settings | view, edit_draft, publish, archive | all | admin/`master:manage` | 4A |
+| workflow_timeline_template | view, preview, edit_draft, publish, archive | module/all | ยังไม่ตัดสินใจ; ห้ามขยายสิทธิ์ก่อน Phase 8 | 4B |
 | document_form_metadata | view, edit_draft, publish, archive | all | admin/`master:manage` | 4/7 |
 | signature | view_status, upload, replace, revoke | own | signed-in + owner | 5 |
 | signature_admin | view_status, revoke_emergency | all | ยังไม่ตัดสินใจ | 5/8 |

@@ -22,9 +22,10 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 |---|---|---|---|
 | 0 | Requirements, UX/UI Rulebook และ Document specification | เสร็จสมบูรณ์ | [Phase 0](./phase-00-foundation.md) |
 | 1 | Account menu, Profile และ Security | เสร็จสมบูรณ์ | [Phase 1](./phase-01-account-profile.md) |
-| 2 | Product category management | กำลังดำเนินการ | [Phase 2](./phase-02-product-category.md) |
-| 3 | Product category Import/Export | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
-| 4 | Admin Center และข้อมูลบริษัทแบบมีเวอร์ชัน | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 2 | Product category management | รอตรวจ | [Phase 2](./phase-02-product-category.md) |
+| 3 | Product category Import/Export | กำลังดำเนินการ | [Phase 3](./phase-03-product-category-import-export.md) |
+| 4A | Admin Center และข้อมูลบริษัทแบบมีเวอร์ชัน | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 4B | Workflow และ Timeline Template แบบมีเวอร์ชัน | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 5 | Electronic signature | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 6 | Document Design System และ Mockup | รอดำเนินการ | [Document Design System](./document-design-system.md) |
 | 7 | Document engine, versioning และย้ายเอกสาร | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
@@ -58,6 +59,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 ## เอกสารกลาง
 
 - [Phase 0 — Foundation](./phase-00-foundation.md)
+- [Phase 3 — Product Category Import/Export](./phase-03-product-category-import-export.md)
 - [UX/UI Rulebook](./ux-ui-rulebook.md)
 - [Document Design System](./document-design-system.md)
 - [Decision 0001 — Program governance](./decisions/0001-program-governance.md)

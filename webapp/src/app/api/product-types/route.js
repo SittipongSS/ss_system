@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canManageProductCategories } from '@/lib/permissions';
 import { listProductTypes } from '@/lib/master/productTypes';
+import { loadProductCategoryManagement } from '@/lib/master/productCategoryAdmin';
 import { normalizeProductCategoryInput, productCategoryCode } from '@/lib/master/productCategory';
 import { cachedJson, invalidateCache } from '@/lib/serverCache';
 import { recordAudit } from '@/lib/audit';
@@ -24,47 +25,7 @@ export async function GET(request) {
         return Response.json({ error: 'forbidden' }, { status: 403 });
       }
       const supabase = getSupabaseAdmin();
-      const [typesResult, productsResult, dealsResult, projectsResult] = await Promise.all([
-        supabase.from('product_types').select('*')
-          .order('mainCategoryCode', { ascending: true })
-          .order('typeCode', { ascending: true }),
-        supabase.from('products').select('categoryCode').not('categoryCode', 'is', null),
-        supabase.from('sales_deals').select('categoryCode').not('categoryCode', 'is', null),
-        supabase.from('projects').select('productMainCategory').not('productMainCategory', 'is', null),
-      ]);
-      const queryError = typesResult.error || productsResult.error || dealsResult.error || projectsResult.error;
-      if (queryError) return Response.json({ error: queryError.message }, { status: 500 });
-
-      const countBy = (rows, key) => {
-        const counts = new Map();
-        for (const row of rows || []) {
-          const code = String(row?.[key] || '').trim();
-          if (code) counts.set(code, (counts.get(code) || 0) + 1);
-        }
-        return counts;
-      };
-      const productCounts = countBy(productsResult.data, 'categoryCode');
-      const dealCounts = countBy(dealsResult.data, 'categoryCode');
-      const projectCounts = countBy(projectsResult.data, 'productMainCategory');
-      const items = (typesResult.data || []).map((row) => {
-        const code = productCategoryCode(row);
-        const usage = {
-          products: productCounts.get(code) || 0,
-          deals: dealCounts.get(code) || 0,
-          projects: projectCounts.get(code) || 0,
-        };
-        return { ...row, code, usage: { ...usage, total: usage.products + usage.deals + usage.projects } };
-      });
-      return Response.json({
-        items,
-        summary: {
-          mainCategories: new Set(items.map((row) => row.mainCategoryCode)).size,
-          total: items.length,
-          active: items.filter((row) => row.isActive !== false).length,
-          inactive: items.filter((row) => row.isActive === false).length,
-          used: items.filter((row) => row.usage.total > 0).length,
-        },
-      });
+      return Response.json(await loadProductCategoryManagement(supabase));
     }
     const data = await cachedJson('product-types', CACHE_TTL_MS, () => listProductTypes());
     return Response.json(data);
@@ -73,7 +34,7 @@ export async function GET(request) {
   }
 }
 
-// POST — add a category. Supervisor-only (master:manage); also gated by proxy.
+// POST — add a category. AE Supervisor + Admin via the business-owner gate.
 export async function POST(request) {
   const user = await getCurrentUser();
   if (!canManageProductCategories(user?.role)) {
