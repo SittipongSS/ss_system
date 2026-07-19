@@ -27,6 +27,25 @@ export const QT_PEOPLE_LABELS = {
 
 const ROLE_LABEL = { ae: 'AE', senior_ae: 'Senior AE', ac: 'AC', ae_supervisor: 'AE Supervisor' };
 
+// ข้อความ role ที่ช่องนั้นรับได้ — ใช้ทั้งข้อความ error ฝั่ง server และคำเตือนในฟอร์ม
+// เพื่อไม่ให้สองที่บอกผู้ใช้คนละอย่าง
+export const qtRoleText = (field) => (QT_PEOPLE_ROLES[field] || []).map((r) => ROLE_LABEL[r] || r).join(' / ');
+
+// ชื่อที่แสดงของผู้ใช้จาก /api/pm/assignable-users — ต้องได้ค่าเดียวกับที่ฝั่ง server
+// จับคู่ (user_metadata.name → email) ไม่งั้นฟอร์มกับ validate จะเห็นไม่ตรงกัน
+export const assignableUserName = (u) => (
+  (u?.name || '').trim() || `${u?.firstName || ''} ${u?.lastName || ''}`.trim() || (u?.email || '').trim()
+);
+
+// ชื่อนี้ใส่ช่องนี้ได้ไหม — เช็คฝั่ง client ด้วยกติกาเดียวกับ validateQuotationPeople
+// (ค่าว่าง = ได้; ยังไม่รู้รายชื่อ = ยังตัดสินไม่ได้ ให้ถือว่าได้ไปก่อน)
+export function quotationPersonAllowed(users, field, name) {
+  if (!name) return true;
+  if (!Array.isArray(users) || !users.length) return true;
+  const allowed = QT_PEOPLE_ROLES[field] || [];
+  return users.some((u) => allowed.includes(u?.role) && assignableUserName(u) === name);
+}
+
 // name -> { roles:Set, active:bool } จาก auth directory (เฉพาะผู้ใช้ที่มี role).
 async function loadRoleDirectory(supabase) {
   const byName = new Map();
@@ -75,8 +94,7 @@ export async function validateQuotationPeople(supabase, people, opts = {}) {
     const entry = dir.get(want[f]);
     const allowed = QT_PEOPLE_ROLES[f];
     if (!entry || !entry.active || !allowed.some((r) => entry.roles.has(r))) {
-      const roleText = allowed.map((r) => ROLE_LABEL[r] || r).join(' / ');
-      return { ok: false, error: `${QT_PEOPLE_LABELS[f]} ต้องเลือกจากผู้ใช้จริงที่เป็น ${roleText}` };
+      return { ok: false, error: `${QT_PEOPLE_LABELS[f]} ต้องเลือกจากผู้ใช้จริงที่เป็น ${qtRoleText(f)}` };
     }
   }
   return { ok: true, people: want };

@@ -325,11 +325,14 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
       <div style={{ flexShrink: 0, border: "1px solid var(--border)", borderRadius: "10px", background: "var(--panel)", padding: "14px 16px" }}>
         <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)", marginBottom: "10px" }}>ผู้รับผิดชอบเอกสาร</div>
         <div style={{ display: "grid", gridTemplateColumns: isPortrait ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: "10px" }}>
+          {/* ผู้ดูแล = AE / Senior AE เท่านั้น (มติผู้ใช้ 2026-07-19) — หัวหน้ามีอำนาจเหนือ AE
+              แต่ไม่ลงชื่อเป็นผู้ดูแล. ต้องตรงกับ QT_PEOPLE_ROLES.aeOwner ไม่งั้นชื่อที่เลือก
+              ที่นี่จะบันทึกใบเสนอราคาไม่ผ่าน */}
           <PersonField
             label="ผู้ดูแล"
             role="ACCOUNT EXECUTIVE"
             value={pv("aeOwner")}
-            users={users.filter(u => u.role === "ae" || u.role === "senior_ae" || u.role === "ae_supervisor")}
+            users={users.filter(u => u.role === "ae" || u.role === "senior_ae")}
             disabled={disabled}
             onCommit={commitField("aeOwner")}
             detail={[aeMobile, aeEmail].filter(Boolean).join(" · ")}

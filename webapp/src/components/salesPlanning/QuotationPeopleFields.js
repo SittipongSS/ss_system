@@ -7,9 +7,7 @@
 import { useEffect, useState } from "react";
 import Select from "@/components/ui/Select";
 import { cachedFetchJson } from "@/lib/apiCache";
-import { QT_PEOPLE_LABELS, QT_PEOPLE_ROLES } from "@/lib/sales/quotationPeople";
-
-const userName = (u) => (u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "").trim();
+import { assignableUserName as userName, QT_PEOPLE_LABELS, QT_PEOPLE_ROLES, qtRoleText, quotationPersonAllowed } from "@/lib/sales/quotationPeople";
 
 export const quotationPeopleFromMetadata = (metadata) => ({
   aeOwner: metadata?.aeOwner || "",
@@ -38,14 +36,25 @@ export default function QuotationPeopleFields({ value, onChange, disabled = fals
     return names;
   };
 
-  const pickerFor = ({ key, label, roles }) => (
-    <label key={key}>{label}
-      <Select fullWidth value={value[key] || ""} disabled={disabled} onChange={(e) => onChange({ ...value, [key]: e.target.value })} aria-label={label}>
-        <option value="">— ไม่ระบุ —</option>
-        {optionsFor(roles, value[key]).map((name) => <option key={name} value={name}>{name}</option>)}
-      </Select>
-    </label>
-  );
+  // ชื่อที่ค้างอยู่แต่ role ไม่ตรงช่อง (เช่น โครงการเก่าตั้งผู้ดูแลเป็น AE Supervisor)
+  // บันทึกไม่ผ่านแน่นอน — เตือนตรงช่องตั้งแต่ตอนกรอก ดีกว่าปล่อยให้ไปเด้ง error ตอนกดบันทึก
+  const pickerFor = ({ key, label, roles }) => {
+    const current = value[key] || "";
+    const invalid = !quotationPersonAllowed(users, key, current);
+    return (
+      <label key={key}>{label}
+        <Select fullWidth value={current} disabled={disabled} onChange={(e) => onChange({ ...value, [key]: e.target.value })} aria-label={label}>
+          <option value="">— ไม่ระบุ —</option>
+          {optionsFor(roles, current).map((name) => <option key={name} value={name}>{name}</option>)}
+        </Select>
+        {invalid && (
+          <span style={{ color: "var(--amber)", fontSize: 11.5, fontWeight: 500, lineHeight: 1.45 }}>
+            “{current}” ไม่ใช่ {qtRoleText(key)} — เลือกชื่อใหม่ก่อนบันทึก
+          </span>
+        )}
+      </label>
+    );
+  };
 
   return <>{PICKER_FIELDS.map(pickerFor)}</>;
 }
