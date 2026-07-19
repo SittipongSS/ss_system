@@ -29,8 +29,8 @@ export default function DatabaseOverview() {
   const canApprove = canApproveMasterData(role);
 
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
-  // ช่วงเวลาเลือกได้ค่าเดียว (single), ทีม multi-select, ว่าง = ทั้งหมด
-  const [timeframe, setTimeframe] = useState("all");
+  // ทุกหมวด multi-select, ว่าง = ทั้งหมด (ช่วงเวลาหลายค่า = รวมกัน/union)
+  const [timeframe, setTimeframe] = useState([]);
   const [teamFilter, setTeamFilter] = useState([]);
 
   // Extract unique teams for the filter dropdown
@@ -49,12 +49,14 @@ export default function DatabaseOverview() {
         const itemTeams = item.teams?.length ? item.teams : (item.team ? [item.team] : []);
         if (!itemTeams.some((t) => teamFilter.includes(t))) return false;
       }
-      if (timeframe === "all") return true;
+      if (!timeframe.length) return true;
       const d = new Date(item.createdAt);
       if (isNaN(d)) return true;
-      if (timeframe === "30d") return (now - d) / (1000 * 60 * 60 * 24) <= 30;
-      if (timeframe === "1y") return d.getFullYear() === now.getFullYear();
-      return true;
+      return timeframe.some((tf) =>
+        tf === "30d" ? (now - d) / (1000 * 60 * 60 * 24) <= 30
+          : tf === "1y" ? d.getFullYear() === now.getFullYear()
+            : true,
+      );
     };
     return {
       products: (rawProducts || []).filter(filterFn),
@@ -144,17 +146,16 @@ export default function DatabaseOverview() {
   const toolbar = (
     <div className="toolbar">
       <FilterPopover
-        count={(timeframe !== "all" ? 1 : 0) + teamFilter.length}
-        onClear={() => { setTimeframe("all"); setTeamFilter([]); }}
+        count={timeframe.length + teamFilter.length}
+        onClear={() => { setTimeframe([]); setTeamFilter([]); }}
         groups={[
           {
-            key: "timeframe", label: "ช่วงเวลา", icon: CalendarRange, single: true,
+            key: "timeframe", label: "ช่วงเวลา", icon: CalendarRange,
             options: [
               { value: "1y", label: "ปีนี้" },
               { value: "30d", label: "30 วันล่าสุด" },
             ],
-            selected: timeframe === "all" ? [] : [timeframe],
-            onChange: (vals) => setTimeframe(vals[0] || "all"),
+            selected: timeframe, onChange: setTimeframe,
           },
           ...(allTeams.length ? [{
             key: "team", label: "ทีมดูแล", icon: Users,
