@@ -2,9 +2,9 @@
 // ศูนย์รวมการตั้งค่าระบบ — เมนู "ตั้งค่า" เดียวใน top nav ชี้มาที่นี่
 // โชว์เฉพาะการ์ดที่สิทธิ์ของผู้ใช้เข้าถึงได้ (ปฏิทินเห็นทุกคนเพราะเป็นข้อมูลอ่านได้ทั้งระบบ)
 import Link from "next/link";
-import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow } from "lucide-react";
+import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2 } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
-import { can } from "@/lib/permissions";
+import { can, canManageDocumentStandards } from "@/lib/permissions";
 import styles from "./page.module.css";
 
 export default function SettingsPage() {
@@ -14,6 +14,7 @@ export default function SettingsPage() {
   // เรียก hook ก่อนเสมอ (ห้ามอยู่หลัง || ที่ short-circuit ได้ — ลำดับ hook ต้องคงที่)
   const canUsersView = useCan("users:view");
   const canUsers = can(role, "users:manage") || canUsersView;
+  const canDocuments = canManageDocumentStandards(role);
 
   const sections = [
     {
@@ -26,6 +27,19 @@ export default function SettingsPage() {
           title: "ข้อมูลบริษัท",
           desc: "จัดการชื่อนิติบุคคล ที่อยู่ เลขผู้เสียภาษี และช่องทางติดต่อแบบมีเวอร์ชัน",
           show: canChat,
+        },
+      ],
+    },
+    {
+      title: "มาตรฐานเอกสาร",
+      desc: "ข้อมูลควบคุมที่ใช้ร่วมกันทุกระบบและต้องรักษาประวัติเมื่อมีการเปลี่ยนแปลง",
+      items: [
+        {
+          href: "/settings/document-standards",
+          icon: FileBadge2,
+          title: "มาตรฐานเอกสาร",
+          desc: "จัดการชื่อเอกสาร รหัสแบบฟอร์ม Revision วันที่มีผล สี Accent และรูปแบบเลขที่แบบมีเวอร์ชัน",
+          show: canDocuments,
         },
       ],
     },

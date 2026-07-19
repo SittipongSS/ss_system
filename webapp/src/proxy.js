@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can, canUser, canManageProductCategories } from '@/lib/permissions';
+import { can, canUser, canManageDocumentStandards, canManageProductCategories } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -90,6 +90,13 @@ export async function proxy(request) {
     return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
   }
 
+  if (
+    user && !isApi && path.startsWith('/settings/document-standards') &&
+    !canManageDocumentStandards(user.app_metadata?.role)
+  ) {
+    return withRefreshedCookies(NextResponse.redirect(new URL('/settings', request.url)));
+  }
+
   // ── Phased rollout lockdown ───────────────────────────────────────────
   // All three systems — Project Management (/pm), database (/database) and the
   // excise tax system (/tax) — are now open to their normal roles. Admins
@@ -134,7 +141,7 @@ const OPEN_PAGES = ['/account', '/home', '/sa', '/pm', '/database', '/tax', '/sa
 // products:edit to create (lands as 'pending'), AE Supervisor to approve; excise
 // registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
 // Holiday/product-type writes stay supervisor-only.
-const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt'];
+const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers', '/api/products', '/api/attachments', '/api/upload', '/api/excise-registrations', '/api/orders', '/api/sales-planning', '/api/sahamit', '/api/mgmt', '/api/document-standards'];
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
@@ -155,6 +162,8 @@ export function lockedOut(user, path, method, isApi) {
     if (method === 'GET' && path.startsWith('/api/audit') && canUser(user, 'audit:view')) return false;
     return true;
   }
+  if (path === '/settings') return false;
+  if (path.startsWith('/settings/document-standards') && canManageDocumentStandards(role)) return false;
   // Pages: the hub + open systems, plus the two admin READ surfaces when granted
   // per-user (audit log / user list). Grants are read-only; the write APIs stay
   // gated on the role caps (users:manage) in apiWriteAllowed.
@@ -218,6 +227,7 @@ function apiWriteAllowed(method, path, role, extraCaps) {
   if (path.startsWith('/api/mgmt')) return canUser(mgmtUser, 'mgmt:edit');
   // Master taxonomy (product categories) — supervisor-only writes.
   if (path.startsWith('/api/product-types')) return canManageProductCategories(role);
+  if (path.startsWith('/api/document-standards')) return canManageDocumentStandards(role);
   // Holiday calendar (working-day source for PM timeline) — supervisor-only writes.
   if (path.startsWith('/api/holidays')) return can(role, 'master:manage');
   // Excise registrations: SA submits/edits the link, LG approves (PATCH).
