@@ -8,6 +8,7 @@ import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import CustomerForm, { EMPTY_CUSTOMER } from "@/components/database/CustomerForm";
 import Workspace from "@/components/ui/Workspace";
+import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
 import { brandTh, brandEn, brandBothOf } from "@/lib/master/brands";
@@ -246,9 +247,9 @@ export default function CustomerDirectory() {
       toolbar={toolbar}
     >
       {sort.sorted.length === 0 ? (
-        <div className="glass-panel p-10 text-center text-[var(--text-3)]">
+        <EmptyState icon={Building2}>
           {q || statusFilter !== "all" || teamFilter !== "all" ? "ไม่พบลูกค้าที่ค้นหา" : "ยังไม่มีข้อมูลลูกค้าในระบบ"}
-        </div>
+        </EmptyState>
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {pageRows.map((c) => {

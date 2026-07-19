@@ -8,6 +8,7 @@ import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import ProductForm, { EMPTY_PRODUCT } from "@/components/database/ProductForm";
 import Workspace from "@/components/ui/Workspace";
+import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
@@ -295,9 +296,9 @@ export default function ProductRegistry() {
       toolbar={toolbar}
     >
       {sort.sorted.length === 0 ? (
-        <div className="glass-panel p-10 text-center text-[var(--text-3)]">
+        <EmptyState icon={Package}>
           {q || statusFilter !== "all" ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
-        </div>
+        </EmptyState>
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {pageRows.map((p) => {

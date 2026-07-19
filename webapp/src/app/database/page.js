@@ -3,9 +3,11 @@ import Select from "@/components/ui/Select";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, Package, Building2, ChevronRight, TrendingUp, Filter, BarChart3, PieChart as PieChartIcon } from "lucide-react";
+import { LayoutDashboard, Package, Building2, ChevronRight, TrendingUp, Filter, BarChart3, PieChart as PieChartIcon, Hourglass } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ActionQueue from "@/components/ui/ActionQueue";
+import KpiCard from "@/components/ui/KpiCard";
+import EmptyState from "@/components/ui/EmptyState";
 import { useApiList } from "@/lib/excise/useApiList";
 import { useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
@@ -16,35 +18,6 @@ import { brandLabel } from "@/lib/master/brands";
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
 const COLORS = ['var(--accent)', 'var(--blue)', 'var(--green)', 'var(--amber)', 'var(--violet)'];
-
-function StatCard({ title, value, icon: Icon, toneColor, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      className="glass-panel hover-card"
-      style={{
-        padding: "20px", display: "flex", flexDirection: "column", gap: "12px",
-        cursor: onClick ? "pointer" : "default",
-        borderTop: `3px solid ${toneColor}`,
-        position: "relative",
-        overflow: "hidden"
-      }}
-    >
-      <div className="flex items-center justify-between" style={{ color: "var(--text-3)", fontSize: 13, fontWeight: 600 }}>
-        <span>{title}</span>
-        {Icon && <Icon size={18} color={toneColor} style={{ opacity: 0.8 }} />}
-      </div>
-      <div style={{ fontSize: 32, fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>
-        {value.toLocaleString()}
-      </div>
-      {/* Subtle decorative background gradient */}
-      <div style={{
-        position: 'absolute', right: -20, bottom: -20, width: 80, height: 80,
-        borderRadius: '50%', background: toneColor, opacity: 0.05, pointerEvents: 'none'
-      }} />
-    </div>
-  );
-}
 
 export default function DatabaseOverview() {
   const router = useRouter();
@@ -167,52 +140,44 @@ export default function DatabaseOverview() {
     return q;
   }, [products, customers, canApprove, role, myTeam, router]);
 
+  const toolbar = (
+    <div className="toolbar">
+      <span className="toolbar-label"><Filter size={14} /> ตัวกรอง</span>
+      <Select value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="premium-select" style={{ width: "auto" }}>
+        <option value="all">เวลาทั้งหมด</option>
+        <option value="1y">ปีนี้</option>
+        <option value="30d">30 วันล่าสุด</option>
+      </Select>
+      <Select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className="premium-select" style={{ width: "auto" }}>
+        <option value="all">ทุกทีม</option>
+        {allTeams.map(t => <option key={t} value={t}>{t}</option>)}
+      </Select>
+    </div>
+  );
+
   return (
     <Workspace
       icon={<LayoutDashboard size={22} />}
       title="ภาพรวมระบบฐานข้อมูล"
-      subtitle="Interactive Dashboard สรุปข้อมูลสินค้า ลูกค้า และสถานะการทำงาน"
+      subtitle="สรุปข้อมูลสินค้า ลูกค้า และรายการรออนุมัติ"
       loading={l1 || l2}
+      toolbar={toolbar}
     >
       <div className="flex flex-col gap-6" style={{ paddingBottom: 40 }}>
-        
-        {/* Controls / Filters */}
-        <div className="glass-panel flex flex-wrap items-center gap-4" style={{ padding: "12px 20px" }}>
-          <div className="flex items-center gap-2" style={{ color: "var(--text-3)", fontSize: 13, fontWeight: 500 }}>
-            <Filter size={16} /> ตัวกรองข้อมูล:
-          </div>
-          <Select
-            value={timeframe} 
-            onChange={(e) => setTimeframe(e.target.value)}
-            style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}
-          >
-            <option value="all">เวลาทั้งหมด (All Time)</option>
-            <option value="1y">ปีนี้ (This Year)</option>
-            <option value="30d">30 วันล่าสุด (Last 30 Days)</option>
-          </Select>
-          <Select
-            value={teamFilter} 
-            onChange={(e) => setTeamFilter(e.target.value)}
-            style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}
-          >
-            <option value="all">ทุกทีม (All Teams)</option>
-            {allTeams.map(t => <option key={t} value={t}>{t}</option>)}
-          </Select>
-        </div>
 
-        {/* KPIs Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
-          <StatCard title="สินค้าทั้งหมด" value={pStats.total} icon={Package} toneColor="var(--accent)" onClick={() => router.push("/database/products")} />
-          <StatCard title="ลูกค้าทั้งหมด" value={cStats.total} icon={Building2} toneColor="var(--blue)" onClick={() => router.push("/database/customers")} />
-          <StatCard title="สินค้ารออนุมัติ" value={pStats.pending} icon={TrendingUp} toneColor="var(--amber)" onClick={() => router.push("/database/products")} />
-          <StatCard title="ลูกค้ารออนุมัติ" value={cStats.pending} icon={TrendingUp} toneColor="var(--red)" onClick={() => router.push("/database/customers")} />
+        {/* KPIs */}
+        <div className="kpi-grid" style={{ marginBottom: 0 }}>
+          <KpiCard label="สินค้าทั้งหมด" value={pStats.total} icon={Package} tone="accent" onClick={() => router.push("/database/products")} />
+          <KpiCard label="ลูกค้าทั้งหมด" value={cStats.total} icon={Building2} tone="info" onClick={() => router.push("/database/customers")} />
+          <KpiCard label="สินค้ารออนุมัติ" value={pStats.pending} icon={Hourglass} tone="warning" onClick={() => router.push("/database/products")} />
+          <KpiCard label="ลูกค้ารออนุมัติ" value={cStats.pending} icon={Hourglass} tone="danger" onClick={() => router.push("/database/customers")} />
         </div>
 
         {/* Charts Section 1 */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: "16px" }}>
-          <div className="glass-panel flex flex-col" style={{ padding: "20px", height: 350 }}>
-            <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text)", fontWeight: 600, fontSize: 14 }}>
-              <TrendingUp size={16} color="var(--accent)" /> แนวโน้มการขึ้นทะเบียน (ต่อเดือน)
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="glass-panel chart-card flex flex-col" style={{ height: 350 }}>
+            <div className="chart-header">
+              <h3 className="flex items-center gap-2"><TrendingUp size={16} color="var(--accent)" /> แนวโน้มการขึ้นทะเบียน (ต่อเดือน)</h3>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -239,9 +204,9 @@ export default function DatabaseOverview() {
             </div>
           </div>
 
-          <div className="glass-panel flex flex-col" style={{ padding: "20px", height: 350 }}>
-            <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text)", fontWeight: 600, fontSize: 14 }}>
-              <BarChart3 size={16} color="var(--green)" /> Top 5 ลูกค้าที่มีสินค้ามากที่สุด
+          <div className="glass-panel chart-card flex flex-col" style={{ height: 350 }}>
+            <div className="chart-header">
+              <h3 className="flex items-center gap-2"><BarChart3 size={16} color="var(--green)" /> Top 5 ลูกค้าที่มีสินค้ามากที่สุด</h3>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -262,15 +227,15 @@ export default function DatabaseOverview() {
         </div>
 
         {/* Charts Section 2 & Action Queue */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: "16px" }}>
-          
-          <div className="glass-panel flex flex-col" style={{ padding: "20px", height: 350 }}>
-            <div className="flex items-center gap-2 mb-4" style={{ color: "var(--text)", fontWeight: 600, fontSize: 14 }}>
-              <PieChartIcon size={16} color="var(--violet)" /> สัดส่วนสินค้าแบ่งตามหมวดหมู่
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          <div className="glass-panel chart-card flex flex-col" style={{ height: 350 }}>
+            <div className="chart-header">
+              <h3 className="flex items-center gap-2"><PieChartIcon size={16} color="var(--violet)" /> สัดส่วนสินค้าแบ่งตามหมวดหมู่</h3>
             </div>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               {categoryData.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-sm" style={{ color: 'var(--text-3)' }}>ไม่มีข้อมูลสินค้า</div>
+                <EmptyState icon={Package} plain className="h-full">ไม่มีข้อมูลสินค้าตามตัวกรองนี้</EmptyState>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
@@ -297,16 +262,18 @@ export default function DatabaseOverview() {
             </div>
           </div>
 
-          <div className="glass-panel flex flex-col" style={{ padding: "20px", minHeight: 350 }}>
-            <div className="flex items-center gap-2 mb-3" style={{ color: "var(--text)", fontWeight: 600, fontSize: 14 }}>
-              {canApprove ? "รออนุมัติจากคุณ" : "รายการรออนุมัติ"} {queue.length > 0 && <span className="ui-badge warning">{queue.length}</span>}
+          <div className="glass-panel chart-card flex flex-col" style={{ minHeight: 350 }}>
+            <div className="chart-header">
+              <h3 className="flex items-center gap-2">
+                {canApprove ? "รออนุมัติจากคุณ" : "รายการรออนุมัติ"} {queue.length > 0 && <span className="ui-badge warning">{queue.length}</span>}
+              </h3>
+              <div className="flex items-center gap-3 text-sm">
+                <Link href="/database/products" className="text-[var(--accent)] hover:underline flex items-center">เปิดหน้าสินค้า <ChevronRight size={14} /></Link>
+                <Link href="/database/customers" className="text-[var(--accent)] hover:underline flex items-center">เปิดหน้าลูกค้า <ChevronRight size={14} /></Link>
+              </div>
             </div>
             <div style={{ flex: 1, maxHeight: 290, overflowY: "auto", paddingRight: 4 }}>
               <ActionQueue items={queue} empty="ไม่มีรายการรออนุมัติตอนนี้ 🎉" />
-            </div>
-            <div className="mt-3 flex gap-4 text-sm" style={{ color: "var(--text-2)" }}>
-              <Link href="/database/products" className="flex items-center hover-card" style={{ color: "var(--accent)" }}>เปิดคลังสินค้า <ChevronRight size={14} /></Link>
-              <Link href="/database/customers" className="flex items-center hover-card" style={{ color: "var(--blue)" }}>เปิดฐานลูกค้า <ChevronRight size={14} /></Link>
             </div>
           </div>
         </div>

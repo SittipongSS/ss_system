@@ -2451,6 +2451,21 @@ button.ui-kpi-card { cursor: pointer; }
   line-height: 1.5;
 }
 .empty-state .es-icon { opacity: 0.45; }
+
+/* กล่องหมายเหตุประกอบหน้า (ไอคอน + ข้อความสั้น) — ใช้ร่วมกัน เช่น หน้าวันหยุด/แจ้งเตือน Chat */
+.info-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 0 0 18px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.info-note > svg { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
 button.empty-state { width: 100%; font: inherit; }
 .empty-state.dashed { border: 1px dashed var(--border); cursor: pointer; background: transparent; }
 .empty-state.dashed:hover { background: var(--panel-2); border-color: var(--border-strong); }
