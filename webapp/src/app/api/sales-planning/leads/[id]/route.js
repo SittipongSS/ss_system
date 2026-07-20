@@ -1,7 +1,7 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { can, isSuperuser } from '@/lib/permissions';
-import { LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf } from '@/lib/sales/leads';
+import { can } from '@/lib/permissions';
+import { LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, canEditLead, canDeleteLead, LEAD_LOCKED_STATUSES } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
 import { canViewLeads, inLeadScope } from '../route';
 
@@ -13,17 +13,7 @@ async function loadLead(supabase, id) {
   return data;
 }
 
-// แก้ข้อมูลลีดได้เมื่อ: ผู้กรอกเอง (ก่อนปิด) / ผู้รับมอบ / senior ทีมนั้น / supervisor+
-function canEditLead(user, lead) {
-  const role = user?.role;
-  if (role === 'admin') return true;
-  if (['contacted', 'meeting', 'qualified', 'disqualified'].includes(lead.status)) return false;
-  if (isSuperuser(role)) return true;
-  if (role === 'marketing') return lead.createdBy === user.id;
-  if (role === 'senior_ae' || role === 'ac') return !lead.team || lead.team === user.team;
-  if (role === 'ae') return lead.assigneeId === user.id || lead.createdBy === user.id;
-  return false;
-}
+// นโยบายแก้/ลบอยู่ที่ lib/sales/leads.js (canEditLead/canDeleteLead) — ใช้ร่วมกับหน้า list
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
@@ -48,7 +38,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const before = await loadLead(supabase, id);
   if (!before) return notFound('ไม่พบลีด');
-  if (!canEditLead(user, before)) return forbidden();
+  if (!canEditLead(user, before)) {
+    if (user.role === 'marketing' && before.createdBy === user.id && before.status !== 'new') {
+      return forbidden('ลีดที่คัดกรองแล้วอยู่ในความดูแลของฝ่ายขาย — ทีม Marketing แก้ไข/ลบไม่ได้');
+    }
+    return forbidden();
+  }
 
   const body = await req.json();
   const patch = { updatedAt: new Date().toISOString() };
@@ -80,7 +75,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok(data);
 });
 
-// DELETE — admin ลบได้ทุกสถานะ; supervisor/marketing ลบได้เฉพาะลีดที่ยังไม่เริ่มติดต่อ
+// DELETE — admin ลบได้ทุกสถานะ; supervisor ลบได้ก่อนเริ่มติดต่อ;
+// marketing ลบได้เฉพาะใบที่ตัวเองกรอกและยังไม่ถูกคัดกรอง (นโยบายเดียวกับแก้ไข)
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const role = user.role;
@@ -88,13 +84,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const before = await loadLead(supabase, id);
   if (!before) return notFound('ไม่พบลีด');
 
-  const canInitDelete = role === 'admin' || isSuperuser(role) || (role === 'marketing' && before.createdBy === user.id);
-  if (!canInitDelete) return forbidden('ไม่มีสิทธิลบลีดนี้');
-
-  if (['contacted', 'meeting', 'qualified', 'disqualified'].includes(before.status)) {
-    if (role !== 'admin') {
+  if (!canDeleteLead(user, before)) {
+    if (role !== 'admin' && LEAD_LOCKED_STATUSES.includes(before.status)) {
       return badRequest('ลีดที่มีการติดต่อแล้วลบได้เฉพาะแอดมิน');
     }
+    if (role === 'marketing' && before.createdBy === user.id) {
+      return badRequest('ลีดที่คัดกรองแล้วอยู่ในความดูแลของฝ่ายขาย — ทีม Marketing แก้ไข/ลบไม่ได้');
+    }
+    return forbidden('ไม่มีสิทธิลบลีดนี้');
   }
 
   const { error } = await supabase.from('sales_leads').delete().eq('id', id);

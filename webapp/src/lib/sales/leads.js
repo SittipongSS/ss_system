@@ -4,6 +4,7 @@
 // เปิดลูกค้า (qualified) / ไม่ไปต่อ (disqualified) / ตีกลับทีมผิด (bounce → new).
 // KPI/SLA คำนวณจาก timestamp ล้วน ๆ — ไม่มีการกรอกมือ.
 import { countBusinessDays } from '@/lib/pm/dateHelpers';
+import { isSuperuser } from '@/lib/permissions';
 
 export const LEAD_CHANNELS = [
   'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig',
@@ -63,6 +64,36 @@ export const MEETING_MODE_LABELS = {
   onsite_at_office: 'ลูกค้าเข้ามา',
   online: 'Online',
 };
+
+// สถานะที่เริ่มติดต่อแล้ว — ข้อมูลลีดล็อกสำหรับทุก role ยกเว้น admin
+export const LEAD_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqualified'];
+
+// นโยบายแก้/ลบลีด — จุดเดียวให้ API route และหน้า list ใช้ร่วมกัน (ห้ามเขียนซ้ำ):
+//   admin → ทุกใบทุกสถานะ · supervisor → ก่อนเริ่มติดต่อ
+//   marketing → เฉพาะใบที่ตัวเองกรอก และเฉพาะก่อนคัดกรอง (status = new) —
+//     มติผู้ใช้ 2026-07-20: คัดกรองแล้วถือว่าส่งมอบให้ฝ่ายขาย MKT ห้ามแก้/ลบ
+//   senior_ae/ac → ลีดของทีมตัวเอง (หรือยังไม่มีทีม) ก่อนเริ่มติดต่อ
+//   ae → ใบที่ถูกมอบหรือกรอกเอง ก่อนเริ่มติดต่อ
+export function canEditLead(user, lead) {
+  const role = user?.role;
+  if (role === 'admin') return true;
+  if (LEAD_LOCKED_STATUSES.includes(lead.status)) return false;
+  if (isSuperuser(role)) return true;
+  if (role === 'marketing') return lead.status === 'new' && !!user?.id && lead.createdBy === user.id;
+  if (role === 'senior_ae' || role === 'ac') return !lead.team || lead.team === user?.team;
+  if (role === 'ae') return (!!user?.id && (lead.assigneeId === user.id || lead.createdBy === user.id));
+  return false;
+}
+
+// ลบ = เข้มกว่าแก้: เฉพาะ admin/supervisor/marketing (ฝ่ายขายใช้ "ไม่ไปต่อ" แทนการลบ)
+export function canDeleteLead(user, lead) {
+  const role = user?.role;
+  if (role === 'admin') return true;
+  if (LEAD_LOCKED_STATUSES.includes(lead.status)) return false;
+  if (isSuperuser(role)) return true;
+  if (role === 'marketing') return lead.status === 'new' && !!user?.id && lead.createdBy === user.id;
+  return false;
+}
 
 // transition ที่ทำได้จากแต่ละสถานะ (กติกา flow — role บังคับเพิ่มใน handler)
 export const LEAD_TRANSITIONS = {
