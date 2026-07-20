@@ -27,6 +27,8 @@
 
 .sheet {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 210mm;
   height: 297mm;
   min-height: 297mm;
@@ -39,6 +41,14 @@
 }
 
 .sheet:last-child { break-after: auto; }
+
+.sheetContent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding-bottom: 4mm;
+}
 
 .documentHeader {
   display: grid;
@@ -81,6 +91,19 @@
 
 .continuation { margin: 3mm 0 1.8mm; color: var(--doc-muted); font-size: 8pt; font-weight: 600; }
 
+.sectionLead {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 6mm;
+  margin-top: 6mm;
+  padding-bottom: 2.2mm;
+  border-bottom: 1.3px solid var(--doc-navy);
+}
+.sectionLead strong { color: var(--doc-navy); font-size: 13pt; }
+.sectionLead span { margin-left: 1.5mm; color: var(--doc-muted); font-size: 8pt; font-weight: 500; }
+.sectionLead small { color: var(--doc-muted); font-size: 7.5pt; font-weight: 600; }
+
 .itemTable, .installmentTable { width: 100%; border-collapse: collapse; }
 .itemTable { margin-top: 4mm; }
 .itemTable thead { display: table-header-group; }
@@ -97,7 +120,6 @@
 .center { text-align: center; }
 .number { text-align: right; white-space: nowrap; }
 
-.finalContent { break-inside: avoid; }
 .totals { width: 74mm; margin: 3.5mm 0 0 auto; border-top: 1.3px solid var(--doc-navy); }
 .totals > div { display: grid; grid-template-columns: 1fr auto; gap: 4mm; padding: 1.2mm 1.5mm; font-size: 8.8pt; }
 .totals span { color: var(--doc-muted); }
@@ -105,6 +127,15 @@
 .afterDiscount { border-top: 1px dashed var(--doc-line); }
 .grandTotal { margin-top: .5mm; color: var(--doc-navy); background: var(--doc-paper); border-top: 1.8px solid var(--doc-navy); border-bottom: 1px solid var(--doc-navy); font-size: 11.5pt !important; }
 .grandTotal span { color: var(--doc-navy); font-weight: 600; }
+
+.paymentContent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.paymentDetails { break-inside: avoid; }
+.paymentDetails .installmentSection { margin-top: 3.5mm; }
 
 .installmentSection { margin-top: 3.5mm; break-inside: avoid; }
 .installmentTable th { padding: 1.5mm 1.2mm; color: var(--doc-navy); background: var(--doc-neutral-soft); border: 1px solid var(--doc-line); font-size: 7.8pt; }
@@ -117,7 +148,7 @@
 .termsGrid p { margin: 0; color: var(--doc-text); font-size: 7.8pt; }
 .termsGrid .remarks { grid-column: 1 / -1; }
 
-.signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-top: 3mm; break-inside: avoid; }
+.signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-top: auto; padding-top: 3mm; break-inside: avoid; }
 .signatures > div { min-height: 31mm; padding: 2mm; text-align: center; border: 1px solid var(--doc-line-strong); }
 .signatures h2 { margin: 0; color: var(--doc-navy); font-size: 8pt; }
 .signatures h2 span { display: block; color: var(--doc-muted); font-size: 6.8pt; font-weight: 400; }
@@ -204,5 +235,6 @@
     break-after: page;
     page-break-after: always;
   }
+  .sheetContent { padding-bottom: 2vw; }
   .sheet:last-child { break-after: auto; page-break-after: auto; }
 }

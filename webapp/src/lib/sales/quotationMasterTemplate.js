@@ -129,36 +129,142 @@ function rowUnits(line) {
   return Math.max(1, Math.ceil(copy.length / 48)) + (note ? Math.max(1, Math.ceil(note.length / 54)) : 0);
 }
 
-export function paginateQuotationMasterLines(lines = [], summaryReserve = 0) {
+function pageUnits(lines = []) {
+  return lines.reduce((sum, line) => sum + rowUnits(line), 0);
+}
+
+function balancedSplit(lines, leftCapacity, rightCapacity, rightReserve) {
+  let best = null;
+  for (let index = 1; index < lines.length; index += 1) {
+    const left = lines.slice(0, index);
+    const right = lines.slice(index);
+    const leftUnits = pageUnits(left);
+    const rightUnits = pageUnits(right);
+    if (leftUnits > leftCapacity || rightUnits > rightCapacity) continue;
+
+    const score = Math.abs(leftUnits - (rightUnits + rightReserve));
+    if (!best || score < best.score) best = { left, right, score };
+  }
+  return best;
+}
+
+export function paginateQuotationMasterLines(lines = [], options = {}) {
   if (!Array.isArray(lines) || lines.length === 0) return [[]];
 
-  const firstCapacity = 14;
-  const continuationCapacity = 19;
-  // The final page also carries totals, payment schedule, terms and signatures.
-  // Keep only a small row budget there; otherwise a short quotation stays on
-  // page 1 (which also has the customer block) and silently grows beyond A4.
-  const finalCapacity = Math.max(1, 5 - Math.max(0, summaryReserve));
-  const finalRowTarget = 2;
+  const {
+    firstCapacity = 14,
+    continuationCapacity = 19,
+    totalsReserve = 4,
+  } = options;
+  const firstFinalCapacity = Math.max(1, firstCapacity - totalsReserve);
+  const continuationFinalCapacity = Math.max(1, continuationCapacity - totalsReserve);
   const remaining = lines.map((line) => ({ ...line }));
   const pages = [];
-  const remainingUnits = () => remaining.reduce((sum, line) => sum + rowUnits(line), 0);
 
-  while (remainingUnits() > finalCapacity || remaining.length > finalRowTarget) {
-    const capacity = pages.length === 0 ? firstCapacity : continuationCapacity;
+  while (remaining.length) {
+    const isFirst = pages.length === 0;
+    const capacity = isFirst ? firstCapacity : continuationCapacity;
+    const finalCapacity = isFirst ? firstFinalCapacity : continuationFinalCapacity;
+    const units = pageUnits(remaining);
+
+    if (units <= finalCapacity) {
+      pages.push(remaining.splice(0));
+      break;
+    }
+
+    if (units <= capacity + continuationFinalCapacity) {
+      const split = balancedSplit(
+        remaining,
+        capacity,
+        continuationFinalCapacity,
+        totalsReserve,
+      );
+      if (split) {
+        pages.push(split.left, split.right);
+        break;
+      }
+    }
+
     const page = [];
     let used = 0;
-    while (remaining.length) {
-      const units = rowUnits(remaining[0]);
-      if (page.length && used + units > capacity) break;
+    while (remaining.length > 1) {
+      const unitsForLine = rowUnits(remaining[0]);
+      if (page.length && used + unitsForLine > capacity) break;
       page.push(remaining.shift());
-      used += units;
-      if (remainingUnits() <= finalCapacity && remaining.length <= finalRowTarget) break;
+      used += unitsForLine;
       if (used >= capacity) break;
     }
+    if (page.length === 0) page.push(remaining.shift());
     pages.push(page);
   }
 
-  if (remaining.length || pages.length === 0) pages.push(remaining);
+  return pages;
+}
+
+function firstPageCapacity(customer) {
+  const customerCopy = `${customer?.name || ''} ${customer?.address || ''}`.trim();
+  const longCopyReserve = Math.min(4, Math.ceil(Math.max(0, customerCopy.length - 120) / 45));
+  return 14 - longCopyReserve;
+}
+
+function paymentContentUnits({ installments, paymentMethod, paymentTerms, remarks }) {
+  return (installments.length * 2)
+    + Math.max(1, Math.ceil(String(paymentMethod || '').length / 120))
+    + Math.max(1, Math.ceil(String(paymentTerms || '').length / 140))
+    + Math.max(1, Math.ceil(String(remarks || '').length / 140));
+}
+
+function buildSemanticPages({
+  linePages,
+  lines,
+  installments,
+  paymentMethod,
+  paymentTerms,
+  remarks,
+  discountAmount,
+}) {
+  const paymentUnits = paymentContentUnits({ installments, paymentMethod, paymentTerms, remarks });
+  const canCombine = linePages.length === 1
+    && lines.length === 1
+    && installments.length === 1
+    && discountAmount === 0
+    && paymentUnits <= 7;
+
+  const pages = linePages.map((pageLines, index) => ({
+    id: `items-${index + 1}`,
+    kind: canCombine ? 'combined' : 'items',
+    lines: pageLines,
+    showParty: index === 0,
+    showTotals: index === linePages.length - 1,
+    showPayment: canCombine,
+    showSignatures: canCombine,
+  }));
+
+  if (canCombine) return pages;
+
+  const separateAcceptancePage = paymentUnits > 14;
+  pages.push({
+    id: 'payment',
+    kind: 'payment',
+    lines: [],
+    showParty: false,
+    showTotals: false,
+    showPayment: true,
+    showSignatures: !separateAcceptancePage,
+  });
+
+  if (separateAcceptancePage) {
+    pages.push({
+      id: 'acceptance',
+      kind: 'acceptance',
+      lines: [],
+      showParty: false,
+      showTotals: false,
+      showPayment: false,
+      showSignatures: true,
+    });
+  }
+
   return pages;
 }
 
@@ -232,8 +338,22 @@ export function buildQuotationMasterPreview(
   const vatAmount = roundMoney(afterDiscount * (BASE_QUOTE.vatRate / 100));
   const totalAmount = roundMoney(afterDiscount + vatAmount);
   const installments = allocateInstallmentAmounts(totalAmount, scenario.installments || BASE_QUOTE.installments);
-  const summaryReserve = Math.min(6, Math.ceil(installments.length / 2)
-    + Math.ceil(String(scenario.remarks || BASE_QUOTE.remarks).length / 160));
+  const customer = { ...BASE_QUOTE.customer, ...(scenario.customer || {}) };
+  const paymentMethod = scenario.paymentMethod || BASE_QUOTE.paymentMethod;
+  const paymentTerms = scenario.paymentTerms || BASE_QUOTE.paymentTerms;
+  const remarks = scenario.remarks || BASE_QUOTE.remarks;
+  const linePages = paginateQuotationMasterLines(lines, {
+    firstCapacity: firstPageCapacity(customer),
+  });
+  const pages = buildSemanticPages({
+    linePages,
+    lines,
+    installments,
+    paymentMethod,
+    paymentTerms,
+    remarks,
+    discountAmount,
+  });
 
   return {
     ...BASE_QUOTE,
@@ -242,12 +362,16 @@ export function buildQuotationMasterPreview(
     templateVersion: selectedTemplate.templateVersion,
     standard: { ...BASE_QUOTE.standard },
     company: { ...BASE_QUOTE.company },
-    customer: { ...BASE_QUOTE.customer, ...(scenario.customer || {}) },
+    customer,
     references: { ...BASE_QUOTE.references },
     document: { ...BASE_QUOTE.document, state },
     discount,
     lines,
-    pages: paginateQuotationMasterLines(lines, summaryReserve),
+    paymentMethod,
+    paymentTerms,
+    remarks,
+    linePages,
+    pages,
     totals: { subtotal, discountAmount, afterDiscount, vatAmount, totalAmount },
     installments,
     signature: state === 'approved' ? { ...BASE_QUOTE.signature } : null,

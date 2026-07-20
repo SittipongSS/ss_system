@@ -23,7 +23,12 @@ test('every preview scenario builds a stable isolated master model', () => {
     assert.equal(model.templateVariant, DEFAULT_QUOTATION_MASTER_VARIANT);
     assert.ok(model.lines.length > 0, scenario.id);
     assert.ok(model.pages.length > 0, scenario.id);
-    assert.equal(model.pages.flat().length, model.lines.length, scenario.id);
+    assert.equal(model.pages.flatMap((page) => page.lines).length, model.lines.length, scenario.id);
+    assert.deepEqual(
+      model.pages.flatMap((page) => page.lines).map((line) => line.id),
+      model.lines.map((line) => line.id),
+      scenario.id,
+    );
     assert.equal(model.formLine, 'FM-SA-01: Rev. No.00. 08/05/2568');
   }
 });
@@ -50,7 +55,7 @@ test('pagination preserves order and does not mutate source lines', () => {
     description: `รายการ ${index} ${'รายละเอียด'.repeat(index % 3)}`,
   }));
   const before = structuredClone(lines);
-  const pages = paginateQuotationMasterLines(lines, 3);
+  const pages = paginateQuotationMasterLines(lines, { totalsReserve: 3 });
   assert.deepEqual(lines, before);
   assert.deepEqual(pages.flat().map((line) => line.id), lines.map((line) => line.id));
   assert.ok(pages.length > 1);
@@ -64,21 +69,53 @@ test('preview exposes stable V1, V2 and V3 template identities', () => {
   }
 });
 
-test('summary-heavy short quotations move final content to a continuation page', () => {
+test('semantic pagination separates commercial value from payment details', () => {
   const standard = buildQuotationMasterPreview('standard', 'approved');
   const installments = buildQuotationMasterPreview('installments', 'approved');
   const compact = buildQuotationMasterPreview('compact', 'approved');
-  assert.ok(standard.pages.length > 1, 'standard must not grow page 1 beyond A4');
-  assert.deepEqual(standard.pages.map((page) => page.length), [2, 2]);
-  assert.deepEqual(installments.pages.map((page) => page.length), [3, 2]);
-  assert.ok(installments.pages.length > 1, 'four installments need a continuation page');
+  assert.deepEqual(standard.pages.map((page) => page.kind), ['items', 'payment']);
+  assert.deepEqual(standard.linePages.map((page) => page.length), [4]);
+  assert.equal(standard.pages[0].showTotals, true);
+  assert.equal(standard.pages[1].lines.length, 0);
+  assert.equal(standard.pages[1].showPayment, true);
+  assert.deepEqual(installments.pages.map((page) => page.kind), ['items', 'payment']);
+  assert.deepEqual(installments.linePages.map((page) => page.length), [5]);
   assert.equal(compact.pages.length, 1, 'a genuinely compact quotation still fits one page');
+  assert.equal(compact.pages[0].kind, 'combined');
+  assert.equal(compact.pages[0].showPayment, true);
+  assert.equal(compact.pages[0].showSignatures, true);
 });
 
-test('every scenario avoids empty trailing pages after pagination', () => {
+test('every scenario keeps totals with the final item page and payment after all items', () => {
   for (const scenario of QUOTATION_PREVIEW_SCENARIOS) {
     const model = buildQuotationMasterPreview(scenario.id, 'approved');
-    assert.ok(model.pages.every((page) => page.length > 0), `${scenario.id} must not append an empty page`);
+    const itemPages = model.pages.filter((page) => page.lines.length > 0);
+    const totalsPages = model.pages.filter((page) => page.showTotals);
+    const paymentPageIndex = model.pages.findIndex((page) => page.showPayment);
+    assert.ok(itemPages.every((page) => page.lines.length > 0), `${scenario.id} item pages must not be empty`);
+    assert.equal(totalsPages.length, 1, `${scenario.id} must render totals once`);
+    assert.equal(totalsPages[0], itemPages.at(-1), `${scenario.id} totals must close the final item page`);
+    assert.ok(paymentPageIndex >= 0, `${scenario.id} must render payment details`);
+    assert.ok(
+      paymentPageIndex >= model.pages.indexOf(itemPages.at(-1)),
+      `${scenario.id} payment details must follow all items`,
+    );
+  }
+});
+
+test('fixture page distributions stay balanced by semantic section', () => {
+  const expected = {
+    compact: [['combined', 1]],
+    standard: [['items', 4], ['payment', 0]],
+    dense: [['items', 6], ['items', 5], ['payment', 0]],
+    multipage: [['items', 11], ['items', 10], ['items', 6], ['payment', 0]],
+    'long-content': [['items', 3], ['items', 3], ['payment', 0]],
+    installments: [['items', 5], ['payment', 0]],
+  };
+
+  for (const [scenarioId, distribution] of Object.entries(expected)) {
+    const model = buildQuotationMasterPreview(scenarioId, 'approved');
+    assert.deepEqual(model.pages.map((page) => [page.kind, page.lines.length]), distribution);
   }
 });
 
@@ -90,6 +127,8 @@ test('print stylesheet locks explicit sheets to A4 with legacy page-break fallba
   assert.match(css, /@media print[\s\S]*height: 297mm/);
   assert.match(css, /page-break-after: always/);
   assert.match(css, /\.sheet:last-child \{ break-after: auto; page-break-after: auto; \}/);
+  assert.match(css, /\.sheetContent \{[\s\S]*display: flex;[\s\S]*padding-bottom: 4mm;/);
+  assert.match(css, /\.signatures \{[^}]*margin-top: auto;[^}]*padding-top: 3mm;/);
 });
 
 test('V1, V2 and V3 preserve their approved accent hierarchy', () => {

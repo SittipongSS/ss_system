@@ -52,3 +52,12 @@ Phase 6B ต้องเลือกทิศทางจาก Prototype A/B/C 
 - V3 ใช้ totals, customer/reference rails, item code, terms และ signature hierarchy แบบ V2; เพิ่ม accent เฉพาะ document title, payment schedule header และ translucent watermark
 - Footer ทุก variant ไม่มีคำว่า `เอกสารควบคุม` แต่ยังคง form metadata และ page number
 - Pagination เป็น layout contract ร่วมกันทุก variant โดย Standard ต้องแบ่งรายการ 2 + 2 และไม่ปล่อยพื้นที่หน้าแรกโดยไม่จำเป็น
+
+## Amendment — Semantic document pagination, 20 กรกฎาคม 2026
+
+- ยกเลิกข้อกำหนด Standard แบบ 2 + 2 และเปลี่ยนเป็นการแบ่งหน้าตามกลุ่มความหมายของธุรกิจ
+- ส่วนสินค้าและมูลค่าจบด้วยยอดรวมในหน้าสินค้าสุดท้าย ส่วนตารางงวด วิธีชำระ เงื่อนไข และหมายเหตุเป็น payment section ที่ตามหลังสินค้าทั้งหมด
+- Standard ใช้หน้าแรกสำหรับสินค้า 4 รายการพร้อมยอดรวม และหน้าสองสำหรับ payment section พร้อมลายเซ็น
+- Compact รวมหน้าเดียวได้เมื่อจำนวนรายการ งวด ส่วนลด และความยาวข้อความอยู่ใน safe capacity; scenario อื่นไม่ hard-code จำนวนหน้า แต่คำนวณจาก row/content units
+- ลายเซ็นต้องอยู่ชิดด้านล่างเหนือ footer และห้ามตัดกลางชุด; เมื่อ payment section ยาวเกิน safe capacity ให้ย้ายลายเซ็นทั้งชุดไปหน้า acceptance แยก
+- Semantic page kinds (`combined`, `items`, `payment`, `acceptance`) เป็น Preview model contract ร่วมกันของ V1/V2/V3 และไม่เปลี่ยน Production Print authority
