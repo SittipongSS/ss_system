@@ -454,7 +454,10 @@ export default function PoDetailPage() {
                   disabled={!po.lines?.length}
                   title={po.projectId ? undefined : "ต้องสร้างโครงการ PM ก่อน"}
                 >
-                  <PackageCheck size={14} /> {po.salesDealId ? "จัดการดีล / ใบเสนอราคา" : "2. ยืนยันดีล + ออกใบเสนอราคา"}
+                  {/* ป้ายต้องตรงกับสิ่งที่โมดัลทำจริง = เชื่อมบรรทัดที่ยังไม่ได้เชื่อม
+                      เดิมเขียน "จัดการดีล / ใบเสนอราคา" แต่ดู/แก้ใบเดิมไม่ได้ พอ PO
+                      เชื่อมครบแล้วกดยืนยันจะขึ้น "ไม่มีบรรทัดที่จะเชื่อม" เหมือน error */}
+                  <PackageCheck size={14} /> {po.salesDealId ? "เชื่อมบรรทัดที่เหลือ" : "2. ยืนยันดีล + ออกใบเสนอราคา"}
                 </button>
               )}
               {po.salesDealId && (
@@ -662,6 +665,30 @@ export default function PoDetailPage() {
                   ⚠ PO นี้ยังไม่มีโครงการ PM — ต้องกด <b>สร้างโครงการ PM</b> ก่อน จึงจะออกใบเสนอราคาได้ (มติ: ยืนยันดีล + โครงการ ก่อนเข้าท่อ QT→SO)
                 </div>
               )}
+              {/* เชื่อมครบแล้ว = ใบเสนอราคาออกไปแล้วตั้งแต่ตอนยืนยัน (action เดียวทำทั้ง
+                  รวมดีล + ออกใบ) — พาไปดูใบเดิม ไม่ใช่ปล่อยให้กดยืนยันแล้วเจอ
+                  "ไม่มีบรรทัดที่จะเชื่อม" */}
+              {settleData.allSettled && (
+                <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--green)", fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div>✓ PO ใบนี้เชื่อมดีลครบทุกบรรทัดแล้ว — <b>ใบเสนอราคาออกไปแล้ว</b>ตอนกดยืนยัน ไม่ต้องออกซ้ำ</div>
+                  {settleData.quotations?.length ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {settleData.quotations.map((q) => (
+                        <a key={q.id} href={`/sa/quotations/${q.id}`} style={{ color: "var(--accent)", fontSize: 12 }}>
+                          <span className="font-mono" style={{ fontWeight: 600 }}>{q.quoteNumber}</span>
+                          {" · "}{fmtMoneyCompact(q.totalAmount)}
+                          {" · "}{q.approvalStatus === "approved" ? "เจ้าของดีลเซ็นแล้ว" : "รอเจ้าของดีลเซ็น"}
+                          {" →"}
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                      ⚠ ไม่พบใบเสนอราคาของดีลนี้ — เปิดดีลขายเพื่อตรวจสอบ หรือแจ้งแอดมิน
+                    </div>
+                  )}
+                </div>
+              )}
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>
                 จับคู่แต่ละสินค้าใน PO กับดีล FC ของมัน (แนะนำดีลที่เดือนคาดปิดใกล้เดือนรับ PO {settleData.poReceivedMonth || "—"} สุด)
                 — ยืนยันแล้วระบบจะ<b>รวมทุกบรรทัดเป็นดีลเดียว (SHM_PO {settleData.poNumber || ""})</b> ผูกเข้าโครงการ
@@ -735,10 +762,15 @@ export default function PoDetailPage() {
                 </table>
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-                <button className="btn" onClick={() => setSettleOpen(false)} disabled={settleBusy}>ยกเลิก</button>
-                <button className="btn btn-primary" onClick={confirmSettle} disabled={settleBusy || !settleData.projectId}>
-                  {settleBusy ? "กำลังออกใบเสนอราคา…" : "ยืนยัน + ออกใบเสนอราคา"}
+                <button className="btn" onClick={() => setSettleOpen(false)} disabled={settleBusy}>
+                  {settleData.allSettled ? "ปิด" : "ยกเลิก"}
                 </button>
+                {/* ไม่มีบรรทัดเหลือ = ไม่มีอะไรให้ยืนยัน — ซ่อนปุ่มแทนที่จะให้กดแล้วเด้ง toast */}
+                {!settleData.allSettled && (
+                  <button className="btn btn-primary" onClick={confirmSettle} disabled={settleBusy || !settleData.projectId}>
+                    {settleBusy ? "กำลังออกใบเสนอราคา…" : "ยืนยัน + ออกใบเสนอราคา"}
+                  </button>
+                )}
               </div>
             </>
           )}
