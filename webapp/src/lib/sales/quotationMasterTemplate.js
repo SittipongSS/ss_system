@@ -1,4 +1,11 @@
-export const QUOTATION_MASTER_TEMPLATE_VERSION = 'quotation-balanced-controlled-v1';
+export const QUOTATION_MASTER_TEMPLATE_VERSIONS = Object.freeze([
+  { id: 'v1', label: 'V1', templateVersion: 'quotation-balanced-controlled-v1' },
+  { id: 'v2', label: 'V2', templateVersion: 'quotation-balanced-controlled-v2' },
+  { id: 'v3', label: 'V3', templateVersion: 'quotation-balanced-controlled-v3' },
+]);
+export const DEFAULT_QUOTATION_MASTER_VARIANT = 'v3';
+export const QUOTATION_MASTER_TEMPLATE_VERSION = QUOTATION_MASTER_TEMPLATE_VERSIONS
+  .find((item) => item.id === DEFAULT_QUOTATION_MASTER_VARIANT).templateVersion;
 
 export const QUOTATION_PREVIEW_SCENARIOS = Object.freeze([
   { id: 'compact', label: 'แบบย่อ', description: '1 รายการ ชำระครั้งเดียว ไม่มีส่วนลด' },
@@ -131,26 +138,27 @@ export function paginateQuotationMasterLines(lines = [], summaryReserve = 0) {
   // Keep only a small row budget there; otherwise a short quotation stays on
   // page 1 (which also has the customer block) and silently grows beyond A4.
   const finalCapacity = Math.max(1, 5 - Math.max(0, summaryReserve));
+  const finalRowTarget = 2;
   const remaining = lines.map((line) => ({ ...line }));
   const pages = [];
   const remainingUnits = () => remaining.reduce((sum, line) => sum + rowUnits(line), 0);
 
-  while (remainingUnits() > finalCapacity) {
+  while (remainingUnits() > finalCapacity || remaining.length > finalRowTarget) {
     const capacity = pages.length === 0 ? firstCapacity : continuationCapacity;
-    const target = Math.min(capacity, remainingUnits() - finalCapacity);
     const page = [];
     let used = 0;
     while (remaining.length) {
       const units = rowUnits(remaining[0]);
-      if (page.length && used + units > target) break;
+      if (page.length && used + units > capacity) break;
       page.push(remaining.shift());
       used += units;
-      if (used >= target) break;
+      if (remainingUnits() <= finalCapacity && remaining.length <= finalRowTarget) break;
+      if (used >= capacity) break;
     }
     pages.push(page);
   }
 
-  pages.push(remaining);
+  if (remaining.length || pages.length === 0) pages.push(remaining);
   return pages;
 }
 
@@ -206,7 +214,13 @@ function scenarioInput(id) {
   }
 }
 
-export function buildQuotationMasterPreview(scenarioId = 'standard', state = 'approved') {
+export function buildQuotationMasterPreview(
+  scenarioId = 'standard',
+  state = 'approved',
+  templateVariant = DEFAULT_QUOTATION_MASTER_VARIANT,
+) {
+  const selectedTemplate = QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === templateVariant)
+    || QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === DEFAULT_QUOTATION_MASTER_VARIANT);
   const scenario = scenarioInput(scenarioId);
   const lines = (scenario.lines || []).map((line) => ({ ...line }));
   const subtotal = roundMoney(lines.reduce((sum, line) => sum + Number(line.lineTotal || 0), 0));
@@ -224,6 +238,8 @@ export function buildQuotationMasterPreview(scenarioId = 'standard', state = 'ap
   return {
     ...BASE_QUOTE,
     ...scenario,
+    templateVariant: selectedTemplate.id,
+    templateVersion: selectedTemplate.templateVersion,
     standard: { ...BASE_QUOTE.standard },
     company: { ...BASE_QUOTE.company },
     customer: { ...BASE_QUOTE.customer, ...(scenario.customer || {}) },
