@@ -27,7 +27,7 @@
 | signature | view_status, upload, replace, revoke | own | signed-in + owner | 5 |
 | signature_evidence | create_on_approval, view_status | own approval / scoped document | ผู้อนุมัติเดิมของ Quotation หรือ Sale Order และต้องมี Active Signature | 5B |
 | signature_admin | view_status, revoke_emergency | all | ยังไม่ตัดสินใจ | 5/8 |
-| document_template | view, preview, edit_draft, publish, archive | module/all | admin เดิม | 6/7 |
+| document_template | view, preview, edit_draft, publish, archive | module/all | Preview: Admin + AE Supervisor ผ่าน `canManageDocumentStandards`; edit/publish/archive: admin เดิม | 6B/7 |
 | issued_document | view, print, download_pdf, verify | own/team/department/all | workflow เดิม | 7 |
 | user_access | view, invite, update_role, update_scope, deactivate | all | `users:view`/`users:manage` | 8 |
 | audit_log | view, export | own/team/department/all | `audit:view` | 8 |

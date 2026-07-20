@@ -1,0 +1,44 @@
+.previewPage { display: flex; flex-direction: column; gap: 16px; }
+.headerActions { display: flex; align-items: center; gap: 8px; }
+
+.controlPanel { padding: 16px 18px; }
+.controlIntro { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 10px; }
+.controlIntro :global(.ui-badge) { width: max-content; color: var(--blue); background: var(--blue-soft); }
+.controlIntro strong { color: var(--text); font-size: 14px; }
+.controlIntro p { grid-column: 2; margin: 0; color: var(--text-3); font-size: 12px; }
+.controls { display: grid; grid-template-columns: minmax(190px, 1fr) auto auto; align-items: end; gap: 14px; margin-top: 14px; }
+.controls :global(.form-group) { margin: 0; }
+.controls :global(.form-group) > span { display: block; margin-bottom: 6px; color: var(--text-2); font-size: 11.5px; font-weight: 600; }
+.controls :global(.segmented) { min-height: var(--ctl-h); }
+.controls :global(.segmented button) { min-height: var(--ctl-h); }
+.scenarioSummary { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.scenarioSummary strong { color: var(--text); font-size: 12.5px; }
+.scenarioSummary span { color: var(--text-3); font-size: 12px; }
+.scenarioSummary span:last-child { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.previewStage {
+  overflow: hidden;
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+@media (max-width: 900px) {
+  .headerActions { width: 100%; flex-wrap: wrap; }
+  .controls { grid-template-columns: 1fr; align-items: stretch; }
+  .controls :global(.segmented) { width: 100%; }
+  .controls :global(.segmented button) { flex: 1; min-height: 40px; }
+  .scenarioSummary span:last-child { width: 100%; margin-left: 0; }
+  .previewStage { padding: 8px; }
+}
+
+@media print {
+  :global(.topnav),
+  :global(.mobile-bottom-nav),
+  .screenOnly { display: none !important; }
+  :global(.app-container),
+  :global(.main-content),
+  :global(.page) { display: block !important; width: auto !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  .previewPage, .previewStage { display: block; margin: 0; padding: 0; overflow: visible; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+}

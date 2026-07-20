@@ -1,6 +1,6 @@
 # Phase 5 — Electronic Signature
 
-สถานะ: กำลังดำเนินการ
+สถานะ: เสร็จสมบูรณ์
 
 เริ่ม: 19 กรกฎาคม 2026
 เป้าหมาย: สร้างลายเซ็นอิเล็กทรอนิกส์แบบ private, owner-only และมีเวอร์ชัน
@@ -53,17 +53,17 @@
 - [x] ผู้ใช้ยืนยัน enforcement และ scope ก่อน implementation
 - [x] Decision 0008 และ migration sequencing ถูกบันทึกก่อน schema/API implementation
 - [x] Migration 0124/0125 file integrity, append-only guard, RLS/RPC contract และ sequencing ผ่าน automated/static validation
-- [ ] Migration 0125 รันบน Supabase จริงและ RPC transaction/no-write ผ่าน UAT
-- [ ] Quotation approval สร้าง evidence แบบ atomic และ no-write เมื่อ signature/standard/stale ไม่ผ่าน
-- [ ] Sale Order approval สร้าง evidence แบบ atomic และคง separation-of-duty
-- [ ] Admin break-glass บังคับเหตุผล, เก็บ immutable override evidence และนับ Actual แบบ atomic เฉพาะ Admin
+- [x] Migration 0125 รันบน Supabase จริงและ RPC transaction/no-write ผ่าน UAT
+- [x] Quotation approval สร้าง evidence แบบ atomic และ no-write เมื่อ signature/standard/stale ไม่ผ่าน
+- [x] Sale Order approval สร้าง evidence แบบ atomic และคง separation-of-duty
+- [x] Admin break-glass บังคับเหตุผล, เก็บ immutable override evidence และนับ Actual แบบ atomic เฉพาะ Admin
 - [x] Fingerprint deterministic และเปลี่ยนเมื่อข้อมูลสำคัญเปลี่ยน
 - [x] UI แสดง actionable link ไป Account เมื่อ API ส่ง safe `accountUrl`
 - [x] Signature Vault ครอป 3:1, drag/zoom/keyboard/reset และสร้าง Preview PNG 1200×400 px ฝั่ง Browser
 - [x] Legacy approval ไม่ถูก backfill และ Print/PDF ไม่เปลี่ยนใน implementation นี้
 - [x] Automated tests, targeted ESLint และ production build ผ่าน
-- [ ] Preview UAT หลังผู้ใช้รัน Migration 0125
-- [ ] ผู้ใช้ตรวจและยืนยันก่อน Commit, Push และ PR
+- [x] Preview UAT หลังผู้ใช้รัน Migration 0125
+- [x] ผู้ใช้ตรวจและยืนยันก่อน Commit, Push และ PR
 
 ## Validation log — 20 กรกฎาคม 2026 (Phase 5B)
 
@@ -98,7 +98,9 @@
 - API ตรวจหลักฐานย้อนหลังจาก `document_signature_evidence` เพิ่มเติมจาก active pointer เพื่อกัน SO ที่เคยอนุมัติและถูกคืนเป็น Draft ถูกลบ
 - UI แสดงปุ่ม `ลบฉบับร่างถาวร` เฉพาะเมื่อผ่าน policy เดียวกับ API และไม่เพิ่ม CSS หรือ dependency ใหม่
 - Targeted policy tests 7/7, `npm test` ผ่าน 417/417, targeted ESLint ผ่าน, `npm run check:migrations` ผ่าน 127 migrations และ `npm run build` ผ่านบน Next.js 16.2.7
-- รอ UAT ยกเลิก SO โดยเลือกเหตุผล `รายการซ้ำ / ทดสอบ` หลัง deploy hotfix
+- ผู้ใช้ยืนยัน Production UAT ของ Admin Override, Signature Evidence และ reversal flow แล้ว
+- เอกสาร UAT `QT-26070027-0` และ `SO-26070007-0` ถูก purge แบบระบุเป้าหมายหลังจบการทดสอบ โดยรักษาลูกค้า ดีล โปรเจกต์ และคืนดีลไป `timeline_proposed`; ไม่ใช่ application delete path ปกติ
+- PR #574, #577 และ #578 merge แล้ว; Phase 5 ปิดเมื่อ 20 กรกฎาคม 2026
 
 ## Current-state inventory
 
