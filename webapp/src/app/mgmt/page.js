@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, ListTodo, CheckCircle2, Clock3, Circle, AlertTriangle } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
-import KpiCard from "@/components/excise/KpiCard";
+import KpiCard from "@/components/ui/KpiCard";
+import SkeletonRows from "@/components/ui/Skeleton";
 import { TASK_STATUS_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
 
 const nowYear = new Date().getFullYear();
@@ -74,7 +75,7 @@ export default function MgmtOverviewPage() {
       </div>
 
       {loading ? (
-        <div style={{ padding: 60, textAlign: "center", color: "var(--text-3)" }}>กำลังโหลด...</div>
+        <SkeletonRows rows={7} />
       ) : (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 18 }}>

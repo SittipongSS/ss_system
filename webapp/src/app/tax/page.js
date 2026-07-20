@@ -7,7 +7,7 @@ import { LayoutDashboard, ClipboardCheck, ReceiptText, BarChart3, ChevronRight, 
 import Workspace from "@/components/ui/Workspace";
 import { useCan } from "@/lib/roleContext";
 import { useApiList } from "@/lib/excise/useApiList";
-import KpiCard from "@/components/excise/KpiCard";
+import KpiCard from "@/components/ui/KpiCard";
 import WorkQueue from "@/components/excise/WorkQueue";
 import { RegsDonutChart, OrdersComposedChart } from "@/components/excise/TaxDashboardCharts";
 

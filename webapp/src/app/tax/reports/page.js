@@ -72,7 +72,7 @@ function ZipDownloadButton({ disabled, selectedTypes, onChange, onDownload }) {
                   }}
                 >
                   <span style={{ width: "16px", height: "16px", borderRadius: "4px", border: checked ? "none" : "1.5px solid var(--border)", background: checked ? "var(--accent)" : "transparent", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {checked && <Check size={12} color="#fff" strokeWidth={3} />}
+                    {checked && <Check size={12} color="var(--accent-fg)" strokeWidth={3} />}
                   </span>
                   <span>{t.label}</span>
                 </button>

@@ -35,7 +35,6 @@
 
 @media print {
   :global(.topnav),
-  :global(.mobile-bottom-nav),
   .screenOnly { display: none !important; }
   :global(.app-container),
   :global(.main-content),

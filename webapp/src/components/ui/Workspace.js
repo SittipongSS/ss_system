@@ -2,69 +2,115 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import SkeletonRows from "@/components/ui/Skeleton";
 
-// Generic page shell shared across modules (tax, master data, …). Collapses the
-// header + loading-spinner + section spacing that pages would otherwise
-// copy-paste, so each page only describes its content. Originally lived as
-// TaxWorkspace; promoted to the shared UI layer (generic name) per the
-// shared-ui rollout.
-//
-// Props:
-//   icon        — lucide icon element (e.g. <Building2 size={22} />)
-//   title       — page title
-//   subtitle    — one-line description under the title
-//   headerRight — ReactNode shown on the right of the header (counts, buttons)
-//   back        — { href, label } → understated back link above the header
-//                 (same pattern as the PM project detail page)
-//   backActions — ReactNode shown at the right end of the back-link row (e.g.
-//                 compact icon-only edit/delete buttons that sit next to กลับ)
-//   rail        — ReactNode pinned under the header (stage rail / stat cards)
-//   toolbar     — ReactNode (search / filters) shown above the body
-//   loading     — when true, render a centred spinner instead of children
-//   children    — page body
-export default function Workspace({ icon, title, subtitle, headerRight, back, backActions, rail, toolbar, loading, hideHeader = false, children }) {
+// Canonical shell for every application module. Sales management established
+// the visual hierarchy; keeping it here prevents module-specific drift.
+export default function Workspace({
+  icon,
+  title,
+  subtitle,
+  headerRight,
+  back,
+  backActions,
+  rail,
+  toolbar,
+  loading,
+  hideHeader = false,
+  className = "",
+  children,
+}) {
   return (
-    <>
+    <section className={`ui-workspace ${className}`.trim()}>
       {(back || backActions) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "14px" }}>
+        <div className="ui-workspace-back-row">
           {back && (
-            <Link
-              href={back.href}
-              style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--text-2)", fontSize: "13px", fontWeight: 500, textDecoration: "none" }}
-            >
-              <ArrowLeft size={16} /> {back.label}
+            <Link href={back.href} className="ui-workspace-back">
+              <ArrowLeft size={16} aria-hidden="true" /> {back.label}
             </Link>
           )}
-          {backActions && <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>{backActions}</div>}
+          {backActions && <div className="ui-workspace-back-actions">{backActions}</div>}
         </div>
       )}
-      {!hideHeader && <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div className="header-content">
-          <h1>
-            {icon && <span className="premium-header-icon">{icon}</span>} {title}
-          </h1>
-          {subtitle && <p>{subtitle}</p>}
-        </div>
-        {/* flex-wrap: จอแคบให้เครื่องมือห่อลงบรรทัดใหม่ ไม่ดันปุ่มตกขอบจอ (บั๊กมือถือ 2026-07-18) */}
-        {headerRight && <div className="flex items-center gap-3 flex-wrap" style={{ minWidth: 0 }}>{headerRight}</div>}
-      </div>}
 
-      {rail && <div className="flex flex-col gap-5 mb-6">{rail}</div>}
+      {!hideHeader && (
+        <header className="premium-header ui-workspace-header">
+          <div className="header-content">
+            <h1>
+              {icon && <span className="premium-header-icon">{icon}</span>} {title}
+            </h1>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
+          {headerRight && <div className="ui-workspace-header-actions">{headerRight}</div>}
+        </header>
+      )}
 
-      {toolbar && <div className="mb-5">{toolbar}</div>}
-
-      {loading ? <Spinner /> : children}
-    </>
+      {rail && <div className="ui-workspace-rail">{rail}</div>}
+      {toolbar && <div className="ui-workspace-toolbar">{toolbar}</div>}
+      {loading ? <SkeletonRows rows={6} /> : children}
+    </section>
   );
 }
 
+// Compatibility export for older pages. New loading surfaces use skeletons.
 export function Spinner() {
+  return <SkeletonRows rows={6} />;
+}
+
+export function WorkspaceSection({
+  icon,
+  title,
+  subtitle,
+  actions,
+  children,
+  bodyClassName = "",
+  className = "",
+}) {
   return (
-    <div className="flex justify-center p-12">
-      <svg className="animate-spin h-8 w-8 text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-      </svg>
-    </div>
+    <section className={`ui-section ${className}`.trim()}>
+      {(icon || title || actions) && (
+        <header className="ui-section-header">
+          <div className="ui-section-title">
+            {icon}
+            <div>
+              <h2>{title}</h2>
+              {subtitle && <p>{subtitle}</p>}
+            </div>
+          </div>
+          {actions && <div className="ui-section-actions">{actions}</div>}
+        </header>
+      )}
+      <div className={`ui-section-body ${bodyClassName}`.trim()}>{children}</div>
+    </section>
+  );
+}
+
+export function MetricStrip({ children, className = "", ...props }) {
+  return <section className={`ui-metric-strip ${className}`.trim()} {...props}>{children}</section>;
+}
+
+export function Metric({
+  as: Element = "div",
+  icon,
+  label,
+  value,
+  note,
+  tone,
+  active = false,
+  className = "",
+  ...props
+}) {
+  return (
+    <Element
+      className={`ui-metric ${tone ? `is-${tone}` : ""} ${active ? "is-active" : ""} ${className}`.trim()}
+      {...props}
+    >
+      <span className="ui-metric-icon">{icon}</span>
+      <span>
+        <small>{label}</small>
+        <strong>{value ?? "-"}</strong>
+        {note && <em>{note}</em>}
+      </span>
+    </Element>
   );
 }

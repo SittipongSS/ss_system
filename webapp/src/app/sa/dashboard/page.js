@@ -13,6 +13,7 @@ import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
 import RdDashboardTab from "@/components/salesPlanning/dashboard/RdDashboardTab";
 import PerformanceTab from "@/components/salesPlanning/dashboard/performance/PerformanceTab";
 import Tabs from "@/components/ui/Tabs";
+import SkeletonRows from "@/components/ui/Skeleton";
 
 // หน้า /sa/dashboard — ศูนย์รวมแดชบอร์ดฝ่ายขาย 5 แท็บ. แท็บ "ผลงานขาย" แทน
 // "KPI ดีล" เดิม (2026-07-18): บอร์ดประชุมเช้า + ทบยอด + เจาะรายคน/ทีม —
@@ -28,7 +29,7 @@ const DASHBOARD_TABS = [
 
 export default function SalesPlanningOverviewPage() {
   return (
-    <React.Suspense fallback={<div>Loading dashboard...</div>}>
+    <React.Suspense fallback={<SkeletonRows rows={7} />}>
       <DashboardContent />
     </React.Suspense>
   );

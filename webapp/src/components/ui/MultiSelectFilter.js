@@ -56,9 +56,9 @@ export default function MultiSelectFilter({ label, icon: Icon, options, selected
         {label}
         {active && (
           single ? (
-            <span className="chip" style={{ background: "var(--accent)", color: "#fff", borderColor: "transparent" }}>{selectedLabel}</span>
+            <span className="chip" style={{ background: "var(--accent)", color: "var(--accent-fg)", borderColor: "transparent" }}>{selectedLabel}</span>
           ) : (
-            <span className="chip" style={{ background: "var(--accent)", color: "#fff", borderColor: "transparent", minWidth: "18px", justifyContent: "center" }}>{selected.length}</span>
+            <span className="chip" style={{ background: "var(--accent)", color: "var(--accent-fg)", borderColor: "transparent", minWidth: "18px", justifyContent: "center" }}>{selected.length}</span>
           )
         )}
         <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
@@ -89,7 +89,7 @@ export default function MultiSelectFilter({ label, icon: Icon, options, selected
                   }}
                 >
                   <span style={{ width: "16px", height: "16px", borderRadius: single ? "50%" : "4px", border: checked ? "none" : "1.5px solid var(--border)", background: checked ? "var(--accent)" : "transparent", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {checked && (single ? <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fff" }} /> : <Check size={12} color="#fff" strokeWidth={3} />)}
+                    {checked && (single ? <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--accent-fg)" }} /> : <Check size={12} color="var(--accent-fg)" strokeWidth={3} />)}
                   </span>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opt.label}</span>
                 </button>

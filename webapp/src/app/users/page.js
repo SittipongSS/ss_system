@@ -1,6 +1,7 @@
 "use client";
 import Select from "@/components/ui/Select";
 import Workspace from "@/components/ui/Workspace";
+import SkeletonRows from "@/components/ui/Skeleton";
 import { useEffect, useState } from "react";
 import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft } from "lucide-react";
 import { nextMonthKey } from "@/lib/usersTransfer";
@@ -236,7 +237,7 @@ export default function UserManagement() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center p-12 text-[var(--text-3)]">กำลังโหลด...</div>
+        <SkeletonRows rows={7} />
       ) : (
         <div className="glass-panel">
           {/* ปุ่มเพิ่ม = action ของเนื้อหาในการ์ด อยู่ขวาสุดของ card header ตามกติกา Page Header */}

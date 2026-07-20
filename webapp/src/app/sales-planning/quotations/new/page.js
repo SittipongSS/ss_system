@@ -23,6 +23,7 @@ import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity"
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
+import SkeletonRows from "@/components/ui/Skeleton";
 
 const EXCLUDE_STAGES = ["won", "in_project", "lost"];
 
@@ -347,7 +348,7 @@ function NewQuotationInner() {
 
 export default function NewQuotationPage() {
   return (
-    <Suspense fallback={<div style={{ padding: 24, color: "var(--text-3)" }}>กำลังโหลด…</div>}>
+    <Suspense fallback={<SkeletonRows rows={7} />}>
       <NewQuotationInner />
     </Suspense>
   );

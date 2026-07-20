@@ -8,12 +8,12 @@ import { fmtMoney } from "@/lib/format";
 
 // Colors mapped to our design system
 const COLORS = {
-  success: "#10b981", // var(--green)
-  warning: "#f59e0b", // var(--amber)
-  danger: "#ef4444",  // var(--red)
-  info: "#3b82f6",    // var(--blue)
-  neutral: "#9ca3af", // var(--text-3)
-  accent: "#8b5cf6"   // var(--accent)
+  success: "var(--green)",
+  warning: "var(--amber)",
+  danger: "var(--red)",
+  info: "var(--blue)",
+  neutral: "var(--text-3)",
+  accent: "var(--accent)",
 };
 
 export function RegsDonutChart({ regs = [] }) {
@@ -146,7 +146,7 @@ export function OrdersComposedChart({ orders = [] }) {
           name="TaxAmount" 
           stroke={COLORS.accent} 
           strokeWidth={3} 
-          dot={{ r: 4, fill: COLORS.accent, strokeWidth: 2, stroke: "#fff" }}
+          dot={{ r: 4, fill: COLORS.accent, strokeWidth: 2, stroke: "var(--panel)" }}
           activeDot={{ r: 6 }}
         />
       </ComposedChart>

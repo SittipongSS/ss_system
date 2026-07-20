@@ -79,11 +79,11 @@ function resolveAssigneeName(task, users) {
   return task.assignee || "—";
 }
 
-const PHASE_COLORS = ["var(--accent)", "var(--purple)", "var(--blue)", "var(--amber)", "#f97316", "var(--green)", "var(--accent)"];
+const PHASE_COLORS = ["var(--accent)", "var(--violet)", "var(--blue)", "var(--amber)", "var(--teal)", "var(--green)", "var(--accent)"];
 
 const typeStyle = (type) => type === "NPD"
-  ? { background: "var(--purple)", color: "#fff" }
-  : { background: "var(--blue)", color: "#fff" };
+  ? { background: "var(--violet)", color: "var(--accent-fg)" }
+  : { background: "var(--blue)", color: "var(--accent-fg)" };
 
 // per-department badge colors (mirror ss-cj)
 const roleStyle = (role) => {
@@ -981,7 +981,7 @@ export default function ProjectDetailPage() {
                   : (p.revStale
                     ? `แก้ไขหลังออก Rev. ${p.currentRev} — เนื้อหาปัจจุบันต่างจากเวอร์ชันทางการ กรุณาออก Rev ใหม่เพื่อยืนยัน`
                     : `เวอร์ชันเอกสารล่าสุด: Rev. ${p.currentRev}`)}
-                style={{ whiteSpace: "nowrap", ...(p.currentRev != null && p.revStale ? { borderColor: "var(--warning, #c79a3a)", color: "var(--warning, #c79a3a)" } : {}) }}
+                style={{ whiteSpace: "nowrap", ...(p.currentRev != null && p.revStale ? { borderColor: "var(--amber)", color: "var(--amber)" } : {}) }}
               >
                 {p.currentRev == null ? "ฉบับร่าง" : (p.revStale ? `Rev. ${p.currentRev} • แก้แล้ว` : `Rev. ${p.currentRev}`)}
               </span>
@@ -1083,7 +1083,7 @@ export default function ProjectDetailPage() {
             className="glass-panel"
             style={{ padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
           >
-            <span style={{ background: "var(--accent)", color: "#fff", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
+            <span style={{ background: "var(--accent)", color: "var(--accent-fg)", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
               <GanttChart size={18} />
             </span>
             <div style={{ minWidth: 160 }}>
@@ -1394,7 +1394,7 @@ export default function ProjectDetailPage() {
                     const mDone = m.status === "Completed";
                     const mProg = m.status === "In Progress";
                     const color = mDone ? "var(--green)" : (mProg ? "var(--accent)" : "var(--border-strong)");
-                    const icon = mDone ? <Check size={14} strokeWidth={3} color="#fff" /> : (mProg ? <Clock size={14} strokeWidth={2.5} color="#fff" /> : <span style={{ fontSize: "10px", color: "var(--text-3)" }}>{m.displayNumber || (i + 1)}</span>);
+                    const icon = mDone ? <Check size={14} strokeWidth={3} color="var(--accent-fg)" /> : (mProg ? <Clock size={14} strokeWidth={2.5} color="var(--accent-fg)" /> : <span style={{ fontSize: "10px", color: "var(--text-3)" }}>{m.displayNumber || (i + 1)}</span>);
                     return (
                       <Fragment key={m.id}>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", opacity: mDone || mProg ? 1 : 0.6 }}>
@@ -1473,7 +1473,7 @@ export default function ProjectDetailPage() {
                       {showConnector && <div className="pm-task-connector" style={{ background: isCompleted ? "var(--green)" : "var(--border)" }} />}
 
                       <div style={{ zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                        <button onClick={() => canEdit && handleToggleTask(task)} disabled={!canEdit || task.status === "Pending" || isEditing} style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--bg)"), border: `2px solid ${isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--border)")}`, color: "#fff", cursor: !canEdit || task.status === "Pending" || isEditing ? "not-allowed" : "pointer", padding: 0, boxShadow: isInProgress ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none", transition: "all 0.2s" }}>
+                        <button onClick={() => canEdit && handleToggleTask(task)} disabled={!canEdit || task.status === "Pending" || isEditing} style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--bg)"), border: `2px solid ${isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--border)")}`, color: "var(--accent-fg)", cursor: !canEdit || task.status === "Pending" || isEditing ? "not-allowed" : "pointer", padding: 0, boxShadow: isInProgress ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none", transition: "all 0.2s" }}>
                           {isCompleted ? <Check size={16} strokeWidth={3} /> : (isInProgress ? <Clock size={15} strokeWidth={2.5} /> : <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-3)" }}>{task.displayNumber}</span>)}
                         </button>
                       </div>
