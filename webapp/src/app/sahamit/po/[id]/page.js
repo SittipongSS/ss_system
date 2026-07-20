@@ -340,9 +340,12 @@ export default function PoDetailPage() {
         body: JSON.stringify({ projectId: linkProjectId }),
       });
       setLinkOpen(false);
-      const project = payload.project;
-      if (project?.code || project?.id) router.push(`/sa/projects/${project.code || project.id}`);
-      else await reload();
+      // อยู่หน้า PO ต่อ (ไม่เด้งเข้าโครงการ) เพื่อกดขั้น "ยืนยันดีล + ออกใบเสนอราคา" ต่อได้เลย
+      // ล้าง cache PO list ให้ po.projectId + lines สดก่อน settle
+      apiCache.delete("/api/sahamit/po");
+      await reload();
+      const proj = payload.project;
+      setToast({ kind: "success", msg: `เชื่อม PO เข้าโครงการ ${proj?.code || proj?.name || ""} แล้ว — กด "ยืนยันดีล + ออกใบเสนอราคา" ต่อได้เลย` });
     } catch (e) {
       setToast({ kind: "error", msg: e.message || "เชื่อมโครงการไม่สำเร็จ" });
     } finally {
@@ -731,6 +734,9 @@ export default function PoDetailPage() {
                         </tr>
                       );
                     })}
+                    {settleData.lines.length === 0 && (
+                      <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--text-3)", padding: 16 }}>PO นี้ไม่มีบรรทัดสินค้าที่ใช้งาน — เพิ่ม/แก้บรรทัดใน PO ก่อนออกใบเสนอราคา</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
