@@ -206,6 +206,12 @@
 .v3 .installmentTable th { background: var(--doc-accent-soft); }
 .v3 .watermark { color: var(--doc-accent-watermark); }
 
+/* V4 ใช้หน้าตาแบบ V2 (ไม่มี accent override) — ต่างกันที่การจัดหน้าเท่านั้น
+   เงื่อนไขชำระ + หมายเหตุ + ลงชื่อ ต้องเป็นก้อนเดียวชิดล่างเอกสาร ไม่ใช่
+   ตารางงวดไหลจากบนแล้วลายเซ็นหล่นไปติดขอบล่างแยกกันแบบ V1–V3 */
+.v4 .paymentContent { justify-content: flex-end; break-inside: avoid; }
+.v4 .signatures { margin-top: 3mm; }
+
 @page { size: A4 portrait; margin: 0; }
 
 @media screen and (max-width: 900px) {

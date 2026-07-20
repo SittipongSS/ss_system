@@ -180,3 +180,89 @@ test('document states map to watermark and signature evidence variants', () => {
   assert.equal(cancelled.watermark, 'ยกเลิก');
   assert.equal(cancelled.signature, null);
 });
+
+// ── V4: กติกาแบ่งหน้าตามมติผู้ใช้ 2026-07-20 ─────────────────────────────
+// V4 = หน้าตาแบบ V2 แต่ (1) เติมรายการให้เต็มหน้าก่อนค่อยตัด (2) หน้าที่ถือ
+// มูลค่ารวมต้องมีรายการอยู่ด้านบน (3) เงื่อนไขชำระ+หมายเหตุ+ลงชื่อ เป็นกลุ่มเดียว
+
+test('V4 อยู่ในทะเบียนแม่แบบ แต่ค่าตั้งต้นยังเป็น V3', () => {
+  const v4 = QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === 'v4');
+  assert.ok(v4, 'ต้องมี v4 ในทะเบียน');
+  assert.equal(v4.templateVersion, 'quotation-balanced-controlled-v4');
+  // V4 เป็นตัวเลือก preview เท่านั้น ยังไม่เปลี่ยนค่าตั้งต้นของระบบ
+  assert.equal(DEFAULT_QUOTATION_MASTER_VARIANT, 'v3');
+  assert.equal(QUOTATION_MASTER_TEMPLATE_VERSION, 'quotation-balanced-controlled-v3');
+});
+
+test('โหมด fill เติมหน้าให้เต็มก่อนตัด ไม่เกลี่ยสองหน้าแบบ balanced', () => {
+  const lines = Array.from({ length: 12 }, (_, index) => ({ id: `L${index}`, fgCode: 'FG', description: 'สินค้า' }));
+  const balanced = paginateQuotationMasterLines(lines, { mode: 'balanced' });
+  const filled = paginateQuotationMasterLines(lines, { mode: 'fill' });
+
+  // balanced จงใจเกลี่ยให้สองหน้าใกล้เคียงกัน — fill ต้องอัดหน้าแรกมากกว่า
+  assert.ok(filled[0].length > balanced[0].length, `fill ${filled[0].length} ต้องมากกว่า balanced ${balanced[0].length}`);
+  // ไม่ทำข้อมูลหาย ไม่สลับลำดับ และไม่แก้ของเดิม
+  assert.deepEqual(filled.flat().map((l) => l.id), lines.map((l) => l.id));
+  assert.equal(lines.length, 12);
+});
+
+test('โหมด fill เหลือรายการให้หน้าถัดไปเสมอ — ไม่มีหน้าที่มีแต่ยอดรวมลอย', () => {
+  for (const count of [8, 15, 20, 31, 60]) {
+    const lines = Array.from({ length: count }, (_, index) => ({ id: `L${index}`, description: 'สินค้าทดสอบ' }));
+    const pages = paginateQuotationMasterLines(lines, { mode: 'fill' });
+    for (const [index, page] of pages.entries()) {
+      assert.ok(page.length >= 1, `${count} รายการ: หน้า ${index + 1} ต้องมีอย่างน้อย 1 รายการ`);
+    }
+    assert.equal(pages.flat().length, count);
+  }
+});
+
+test('V4: หน้าที่ถือมูลค่ารวมต้องมีรายการสินค้าอยู่ด้านบนเสมอ', () => {
+  for (const scenario of QUOTATION_PREVIEW_SCENARIOS) {
+    const model = buildQuotationMasterPreview(scenario.id, 'approved', 'v4');
+    const totalsPage = model.pages.find((page) => page.showTotals);
+    assert.ok(totalsPage, scenario.id);
+    assert.ok(totalsPage.lines.length >= 1, `${scenario.id}: หน้ามูลค่ารวมต้องมีรายการ`);
+  }
+});
+
+test('V4: เงื่อนไขชำระ หมายเหตุ และลงชื่อ ไม่ถูกแยกคนละหน้า', () => {
+  for (const scenario of QUOTATION_PREVIEW_SCENARIOS) {
+    const model = buildQuotationMasterPreview(scenario.id, 'approved', 'v4');
+    for (const page of model.pages) {
+      assert.equal(page.showPayment, page.showSignatures, `${scenario.id}/${page.id}: กลุ่มท้ายเอกสารต้องอยู่ด้วยกัน`);
+    }
+    // และมีกลุ่มนี้โผล่หน้าเดียวเท่านั้น
+    assert.equal(model.pages.filter((page) => page.showSignatures).length, 1, scenario.id);
+    // ไม่มีหน้า acceptance แยกแบบ V1–V3
+    assert.equal(model.pages.some((page) => page.kind === 'acceptance'), false, scenario.id);
+  }
+});
+
+test('V4 อัดหน้าได้แน่นกว่า V3 โดยไม่ทำให้ใบสั้นยาวขึ้น', () => {
+  for (const scenario of QUOTATION_PREVIEW_SCENARIOS) {
+    const v3 = buildQuotationMasterPreview(scenario.id, 'approved', 'v3');
+    const v4 = buildQuotationMasterPreview(scenario.id, 'approved', 'v4');
+    assert.ok(
+      v4.pages.length <= v3.pages.length,
+      `${scenario.id}: V4 ใช้ ${v4.pages.length} หน้า ต้องไม่มากกว่า V3 ที่ ${v3.pages.length}`,
+    );
+  }
+  // เคสจริงที่ fill-first ช่วยได้: multipage ลดจาก 4 เหลือ 3 หน้า
+  assert.equal(buildQuotationMasterPreview('multipage', 'approved', 'v3').pages.length, 4);
+  assert.equal(buildQuotationMasterPreview('multipage', 'approved', 'v4').pages.length, 3);
+});
+
+test('V4 ใช้หน้าตาแบบ V2 (ไม่มี accent override) และดันกลุ่มท้ายเอกสารชิดล่าง', () => {
+  const css = readFileSync(
+    new URL('../../components/documents/QuotationMasterDocument.module.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(css, /\.v4 \.paymentContent \{[^}]*justify-content: flex-end/);
+  assert.match(css, /\.v4 \.paymentContent \{[^}]*break-inside: avoid/);
+  // อ้างอิง V2 = ไม่มีสี accent เพิ่มเหมือน V1/V3
+  assert.doesNotMatch(css, /\.v4 \.itemCode/);
+  assert.doesNotMatch(css, /\.v4 \.grandTotal/);
+  assert.doesNotMatch(css, /\.v4 \.installmentTable/);
+  assert.doesNotMatch(css, /\.v4 \.watermark/);
+});
