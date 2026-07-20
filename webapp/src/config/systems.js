@@ -38,7 +38,9 @@ export const SYSTEM_CATALOG = [
     description: 'จัดการข้อมูลลูกค้า สินค้า และข้อมูลหลักที่ใช้ร่วมกันทุกระบบ',
     icon: Database,
     isVisible: (user) => canUser(user, 'customers:view') || canUser(user, 'products:view'),
-    landing: () => '/database',
+    // หน้าภาพรวม /database ผสมสถิติลูกค้าไว้ด้วย — บทบาทที่มีแค่ products:view
+    // (secretary, marketing) จึงลงที่หน้าสินค้าตรง ๆ แทน
+    landing: (user) => (canUser(user, 'customers:view') ? '/database' : '/database/products'),
   },
   {
     key: 'mgmt',
