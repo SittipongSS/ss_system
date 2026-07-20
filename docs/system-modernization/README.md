@@ -29,8 +29,11 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 4C | Home และ Navigation Hub | เสร็จสมบูรณ์ | [Phase 4C](./phase-04c-home-navigation-hub.md) |
 | 5 | Electronic signature | เสร็จสมบูรณ์ | [Phase 5](./phase-05-electronic-signature.md) |
 | 6A | Versioned Document Standards | เสร็จสมบูรณ์ | [Phase 6A](./phase-06a-document-standards.md) |
-| 6B | Document Design System และ Quotation Master Template | กำลังดำเนินการ | [Phase 6B](./phase-06b-quotation-master-template.md) |
-| 7 | Document engine, versioning และย้ายเอกสาร | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 6B | Document Design System และ Quotation Master Template | เสร็จสมบูรณ์ | [Phase 6B](./phase-06b-quotation-master-template.md) |
+| 7A | Versioned Commercial Presets | กำลังดำเนินการ | [Phase 7A](./phase-07a-commercial-presets.md) |
+| 7B | Issued document snapshot และ immutable PDF | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 7C | Production Quotation Print replacement | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 7D | Sales Order document migration | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 8 | Permission redesign และ Migration | รอดำเนินการลำดับสุดท้าย | [Action inventory](./permission-action-inventory.md) |
 | 9 | Permission UAT, staged rollout และปิดโปรแกรม | รอดำเนินการ | [Release checklist](./release-checklist.md) |
 
@@ -70,6 +73,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Phase 5 — Electronic Signature](./phase-05-electronic-signature.md)
 - [Phase 6A — Versioned Document Standards](./phase-06a-document-standards.md)
 - [Phase 6B — Quotation Master Template](./phase-06b-quotation-master-template.md)
+- [Phase 7A — Versioned Commercial Presets](./phase-07a-commercial-presets.md)
 - [UX/UI Rulebook](./ux-ui-rulebook.md)
 - [Document Design System](./document-design-system.md)
 - [Decision 0001 — Program governance](./decisions/0001-program-governance.md)
@@ -81,5 +85,6 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Decision 0007 — Versioned document standards before signature evidence](./decisions/0007-versioned-document-standards.md)
 - [Decision 0008 — Atomic signature evidence for controlled documents](./decisions/0008-atomic-signature-evidence.md)
 - [Decision 0009 — Balanced Controlled quotation master direction](./decisions/0009-balanced-controlled-quotation-master.md)
+- [Decision 0010 — Versioned Commercial Presets before document consumers](./decisions/0010-versioned-commercial-presets.md)
 - [Permission action inventory](./permission-action-inventory.md)
 - [Release checklist](./release-checklist.md)

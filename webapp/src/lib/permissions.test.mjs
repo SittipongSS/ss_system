@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -17,6 +17,14 @@ test('canManageDocumentStandards: AE Supervisor และ Admin เท่าน�
   assert.equal(canManageDocumentStandards('ae_supervisor'), true);
   for (const role of ['senior_ae', 'ae', 'ac', 'secretary', 'legal', 'viewer', 'staff']) {
     assert.equal(canManageDocumentStandards(role), false, role);
+  }
+});
+
+test('canManageCommercialPresets: AE Supervisor และ Admin เท่านั้น', () => {
+  assert.equal(canManageCommercialPresets('admin'), true);
+  assert.equal(canManageCommercialPresets('ae_supervisor'), true);
+  for (const role of ['senior_ae', 'ae', 'ac', 'legal', 'viewer', 'staff']) {
+    assert.equal(canManageCommercialPresets(role), false, role);
   }
 });
 

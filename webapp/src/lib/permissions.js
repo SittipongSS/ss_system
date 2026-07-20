@@ -334,6 +334,12 @@ export function canManageDocumentStandards(role) {
   return role === 'admin' || role === 'ae_supervisor';
 }
 
+// Commercial terms are business-owned by the Sales head. Keep this separate
+// from system-wide `master:manage` until the permission redesign in Phase 8–9.
+export function canManageCommercialPresets(role) {
+  return role === 'admin' || role === 'ae_supervisor';
+}
+
 // ── SAHAMIT module access ─────────────────────────────────────────────
 // The SAHAMIT (Planning & Sales) module is restricted to the SA · Key Account
 // (KA) team, plus admin / sales-head oversight. Capability alone isn't enough —

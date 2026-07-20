@@ -47,3 +47,17 @@ test('AE Supervisor can open document standards while other business roles canno
     );
   }
 });
+
+test('AE Supervisor can open commercial presets while other business roles cannot', () => {
+  assert.equal(
+    lockedOut({ role: 'ae_supervisor', extraCaps: [] }, '/settings/commercial-presets', 'GET', false),
+    false,
+  );
+  for (const role of ['senior_ae', 'ae', 'ac', 'legal', 'viewer', 'staff']) {
+    assert.equal(
+      lockedOut({ role, extraCaps: [] }, '/settings/commercial-presets', 'GET', false),
+      true,
+      role,
+    );
+  }
+});

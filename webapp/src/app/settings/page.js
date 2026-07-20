@@ -2,9 +2,9 @@
 // ศูนย์รวมการตั้งค่าระบบ — เมนู "ตั้งค่า" เดียวใน top nav ชี้มาที่นี่
 // โชว์เฉพาะการ์ดที่สิทธิ์ของผู้ใช้เข้าถึงได้ (ปฏิทินเห็นทุกคนเพราะเป็นข้อมูลอ่านได้ทั้งระบบ)
 import Link from "next/link";
-import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, FileSearch } from "lucide-react";
+import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, FileSearch, WalletCards } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
-import { can, canManageDocumentStandards } from "@/lib/permissions";
+import { can, canManageCommercialPresets, canManageDocumentStandards } from "@/lib/permissions";
 import styles from "./page.module.css";
 
 export default function SettingsPage() {
@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const canUsersView = useCan("users:view");
   const canUsers = can(role, "users:manage") || canUsersView;
   const canDocuments = canManageDocumentStandards(role);
+  const canCommercial = canManageCommercialPresets(role);
 
   const sections = [
     {
@@ -47,6 +48,13 @@ export default function SettingsPage() {
           title: "ตัวอย่างแม่แบบใบเสนอราคา",
           desc: "ตรวจ A4 ฟอนต์ สี ตารางงวด หมายเหตุ และลายเซ็นของ Master Template V2 โดยไม่กระทบเอกสารจริง",
           show: canDocuments,
+        },
+        {
+          href: "/settings/commercial-presets",
+          icon: WalletCards,
+          title: "Commercial Preset",
+          desc: "จัดการวิธีชำระ เงื่อนไข หมายเหตุ และงวดชำระตามทีมและประเภทดีลแบบมีเวอร์ชัน",
+          show: canCommercial,
         },
       ],
     },
