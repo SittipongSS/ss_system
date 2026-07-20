@@ -8,9 +8,10 @@ import {
   canEditLead, canDeleteLead, LEAD_LOCKED_STATUSES,
 } from './leads';
 
-test('channelGroupOf: chatcone→online, phone/walkin→onsite, website→website', () => {
+test('channelGroupOf: chatcone/typeform→online, phone/walkin→onsite, website→website', () => {
   assert.equal(channelGroupOf('chatcone_line'), 'online');
   assert.equal(channelGroupOf('chatcone_ig'), 'online');
+  assert.equal(channelGroupOf('typeform'), 'online');
   assert.equal(channelGroupOf('phone'), 'onsite');
   assert.equal(channelGroupOf('walkin'), 'onsite');
   assert.equal(channelGroupOf('website'), 'website');
@@ -50,7 +51,7 @@ test('service detail บังคับเฉพาะ product/other', () => {
   assert.ok(SERVICE_DETAIL_REQUIRED.has('product'));
   assert.ok(SERVICE_DETAIL_REQUIRED.has('other'));
   assert.ok(!SERVICE_DETAIL_REQUIRED.has('diffuser'));
-  assert.equal(LEAD_CHANNELS.length, 7);
+  assert.equal(LEAD_CHANNELS.length, 8);
 });
 
 test('MKT แก้/ลบได้เฉพาะใบตัวเอง "ก่อนคัดกรอง" — คัดกรองแล้วส่งมอบฝ่ายขาย (มติ 2026-07-20)', () => {

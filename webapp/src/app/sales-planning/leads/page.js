@@ -22,7 +22,7 @@ import { DEAL_TYPES, DEAL_TYPE_LABELS, DEAL_STAGES, STAGE_LABELS } from "@/lib/s
 import { brandThList } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import {
-  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
+  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
   MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS, canEditLead, canDeleteLead,
 } from "@/lib/sales/leads";
@@ -598,31 +598,18 @@ export default function LeadsPage() {
           <div style={{ gridColumn: "1 / -1" }}>
             <h4 style={{ fontSize: 13, color: "var(--text)", marginBottom: 8, fontWeight: 600 }}>ช่องทางที่รับลีด</h4>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, fontSize: 13 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <strong style={{ color: "var(--text-3)" }}>Online</strong>
-                {["chatcone_line", "chatcone_meta", "chatcone_tiktok", "chatcone_ig"].map(c => (
-                  <label key={c} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
-                    <input type="radio" name="leadChannel" checked={form.channel === c} onChange={() => setForm({ ...form, channel: c })} />
-                    {LEAD_CHANNEL_LABELS[c]}
-                  </label>
-                ))}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <strong style={{ color: "var(--text-3)" }}>Onsite</strong>
-                {["phone", "walkin"].map(c => (
-                  <label key={c} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
-                    <input type="radio" name="leadChannel" checked={form.channel === c} onChange={() => setForm({ ...form, channel: c })} />
-                    {LEAD_CHANNEL_LABELS[c]}
-                  </label>
-                ))}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <strong style={{ color: "var(--text-3)" }}>Website</strong>
-                <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
-                  <input type="radio" name="leadChannel" checked={form.channel === "website"} onChange={() => setForm({ ...form, channel: "website" })} />
-                  {LEAD_CHANNEL_LABELS["website"]}
-                </label>
-              </div>
+              {/* คอลัมน์ต่อกลุ่ม derive จาก enum กลาง — เพิ่ม channel ใหม่ที่ lib/sales/leads.js ที่เดียว */}
+              {Object.entries(CHANNEL_GROUP_LABELS).map(([group, groupLabel]) => (
+                <div key={group} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <strong style={{ color: "var(--text-3)" }}>{groupLabel}</strong>
+                  {LEAD_CHANNELS.filter((c) => channelGroupOf(c) === group).map(c => (
+                    <label key={c} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                      <input type="radio" name="leadChannel" checked={form.channel === c} onChange={() => setForm({ ...form, channel: c })} />
+                      {LEAD_CHANNEL_LABELS[c]}
+                    </label>
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
           
