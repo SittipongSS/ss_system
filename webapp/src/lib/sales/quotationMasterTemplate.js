@@ -544,3 +544,69 @@ export function buildQuotationMasterPreview(
     formLine: controlledFormLine(BASE_QUOTE.standard),
   };
 }
+
+// วันที่ตัวอย่าง (ISO) สำหรับ preview — ใช้ ISO เพราะ fmtDate ของตัวพิมพ์จริงแปลง
+// สตริงพ.ศ.แบบ '20/07/2569' ไม่ได้ ส่วน BASE_QUOTE.document เก็บสตริงพ.ศ.ไว้โชว์เฉย ๆ
+const PREVIEW_ISO_ISSUE_DATE = '2026-07-20';
+const PREVIEW_ISO_VALID_UNTIL = '2026-08-19';
+
+// Adapter (Phase 7C, Direction A): แปลง fixture model → รูป `quote` ที่ตัวพิมพ์จริง
+// (quotePrint.buildQuotePrintHTML) รับ เพื่อให้หน้า preview ใช้ "เครื่องยนต์เดียวกับใบจริง"
+// → ดูตัวอย่างแล้วตรงกับที่พิมพ์ 100%. คณิตศาสตร์ fixture (ยอดรวม/จัดสรรงวด) ใช้ซ้ำจาก
+// buildQuotationMasterPreview — เลิกใช้เฉพาะ pagination/React renderer ของแม่แบบเดิม.
+export function buildQuotationPreviewPrintInput(scenarioId = 'standard', state = 'approved') {
+  const model = buildQuotationMasterPreview(scenarioId, state);
+  const { totals } = model;
+  const isInstallment = model.installments.length > 1;
+  const quote = {
+    id: null,
+    quoteNumber: model.document.number,
+    quoteDate: PREVIEW_ISO_ISSUE_DATE,
+    validUntil: PREVIEW_ISO_VALID_UNTIL,
+    revisionNo: 0,
+    customerName: model.customer.name,
+    branchCode: null,
+    billingAddress: model.customer.address,
+    shippingAddress: model.customer.address,
+    contactName: model.customer.contactName,
+    contactPhone: model.customer.contactPhone,
+    lines: model.lines.map((line, index) => ({
+      id: line.id,
+      sortOrder: index,
+      fgCode: line.fgCode,
+      description: line.description,
+      qty: line.qty,
+      unitPrice: line.unitPrice,
+      lineTotal: line.lineTotal,
+      metadata: line.note ? { note: line.note } : undefined,
+    })),
+    subtotal: totals.subtotal,
+    discountType: model.discount.type,
+    discountValue: model.discount.value,
+    discountAmount: totals.discountAmount,
+    vatRate: model.vatRate,
+    vatAmount: totals.vatAmount,
+    totalAmount: totals.totalAmount,
+    paymentPlan: isInstallment
+      ? {
+        type: 'installment',
+        paymentMethod: model.paymentMethod,
+        installments: model.installments.map((row) => ({
+          label: row.label, percent: row.percent, amount: row.amount, note: row.note,
+        })),
+      }
+      : { type: 'full', paymentMethod: model.paymentMethod },
+    paymentTerms: model.paymentTerms,
+    notes: model.remarks,
+    // draft → ลายน้ำ "ฉบับร่าง" อัตโนมัติผ่าน approvalStatus; cancelled → ส่ง watermark ตรง
+    approvalStatus: state === 'draft' ? 'pending' : 'approved',
+    approvedByName: model.references.salesOwner,
+    createdByName: model.references.salesOwner,
+    deal: { title: model.references.deal, ownerName: model.references.salesOwner },
+    project: { name: model.references.project },
+    metadata: { aeOwner: model.references.salesOwner },
+  };
+  const options = {};
+  if (state === 'cancelled') options.watermark = 'ยกเลิก';
+  return { quote, options };
+}
