@@ -140,8 +140,15 @@ export function validateWorkflowTemplateSteps(stepRows = []) {
     const visibleKeys = new Set(visibleSteps.map((step) => step.stepKey));
     for (const step of visibleSteps) {
       if (step.dependencyMode !== 'custom') continue;
-      const hiddenDependencies = (step.dependsOnStepKeys || []).filter((key) => !visibleKeys.has(key));
-      if (hiddenDependencies.length) {
+      const deps = step.dependsOnStepKeys || [];
+      const hiddenDependencies = deps.filter((key) => !visibleKeys.has(key));
+      // either-or ตามหมวด: step อาจพึ่ง dependency ที่เป็นคู่ exclusive กัน (เช่น
+      // "วางบิลมีสรรพสามิต" categoryOnly=01-002 กับ "วางบิลไม่มีสรรพสามิต"
+      // categoryExclude=01-002 → "รับชำระเงิน" พึ่งทั้งคู่) — หมวดหนึ่ง ๆ เหลือ anchor
+      // 1 ตัวเสมอ. ยอมให้บาง dependency หายตามหมวดได้ error เฉพาะเมื่อหายหมด (step
+      // จะกลายเป็น root ที่ไม่ได้ตั้งใจ). generation เดิม (buildProjectTasks) drop dep
+      // ที่หายอยู่แล้ว — validator เข้มกว่านี้จึงบล็อก template ที่ใช้ได้จริง (regression 4B)
+      if (deps.length && hiddenDependencies.length === deps.length) {
         const categoryLabel = category === '__other__' || !category ? 'หมวดทั่วไป' : `หมวด ${category}`;
         errors.push(`${step.name || step.stepKey}: dependency ${hiddenDependencies.join(', ')} ไม่อยู่ใน ${categoryLabel}`);
       }

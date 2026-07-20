@@ -56,12 +56,23 @@ test('category matching preserves only/exclude behavior', () => {
   assert.equal(templateMatchesCategory({ categoryExclude: '01-002' }, '01-001'), true);
 });
 
-test('category validation rejects a visible step that depends on a filtered-out step', () => {
+test('category validation rejects a visible step whose ONLY dependency is filtered out', () => {
   const rows = [
     { stepKey: 'excise', name: 'Excise', role: 'LG', durationDays: 1, dependencyMode: 'root', dependsOnStepKeys: [], categoryOnly: '01-002' },
     { stepKey: 'finish', name: 'Finish', role: 'SA', durationDays: 1, dependencyMode: 'custom', dependsOnStepKeys: ['excise'] },
   ];
   assert.match(validateWorkflowTemplateSteps(rows).join(' '), /dependency excise ไม่อยู่ใน หมวดทั่วไป/);
+});
+
+test('category validation allows either-or dependency (คู่ exclusive ตามหมวด เหลือ anchor 1 ตัวเสมอ)', () => {
+  // แพตเทิร์นจริงของ NPD: วางบิลมี/ไม่มีสรรพสามิต (exclusive กันตามหมวด) → รับชำระเงินพึ่งทั้งคู่
+  const rows = [
+    { stepKey: 'bill-excise', name: 'วางบิล + สรรพสามิต', role: 'SA', durationDays: 1, dependencyMode: 'root', dependsOnStepKeys: [], categoryOnly: '01-002' },
+    { stepKey: 'bill-plain', name: 'วางบิล (ไม่มีสรรพสามิต)', role: 'SA', durationDays: 1, dependencyMode: 'root', dependsOnStepKeys: [], categoryExclude: '01-002' },
+    { stepKey: 'pay', name: 'รับชำระเงิน / ยืนยันการโอน', role: 'SA', durationDays: 1, dependencyMode: 'custom', dependsOnStepKeys: ['bill-excise', 'bill-plain'] },
+  ];
+  const errors = validateWorkflowTemplateSteps(rows).join(' ');
+  assert.doesNotMatch(errors, /รับชำระเงิน/);
 });
 
 test('workflow summary reports counts without pretending summed days are critical path', () => {
