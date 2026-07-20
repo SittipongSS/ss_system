@@ -1,6 +1,6 @@
 # Phase 6A — Versioned Document Standards
 
-สถานะ: รอ real-data Preview UAT
+สถานะ: เสร็จสมบูรณ์
 
 เริ่ม: 20 กรกฎาคม 2026
 เป้าหมาย: สร้างมาตรฐานเอกสารที่แก้ไขได้แบบควบคุมเวอร์ชัน และทำให้ศูนย์ตั้งค่าเข้าถึงได้จากปุ่มส่วนกลางโดยไม่ผูกกับระบบธุรกิจใด
@@ -99,14 +99,14 @@ Browser ไม่มีสิทธิ์เข้าตารางโดยต
 - [x] ผู้ใช้ยืนยัน scope และลำดับ 6A → 5B → 6B ก่อนแก้ไฟล์
 - [x] Sync `main`, สร้าง branch ใหม่ และไม่แก้/stage/delete `.agents/`
 - [x] จัดทำ Phase document และ Decision log ก่อน implementation
-- [ ] Migration integrity, constraints, RLS, RPC และ rollback notes ผ่าน
+- [x] Migration integrity, constraints, RLS, RPC และ rollback notes ผ่าน
 - [x] Normalization/validation, permission และ route regression tests ผ่าน
-- [ ] Draft create/save/archive, stale/no-write และ atomic Publish ผ่าน Preview UAT
+- [x] Draft create/save/archive, stale/no-write และ atomic Publish ผ่าน Preview UAT
 - [x] Settings link/gate ผ่าน Desktop/Mobile และ role ที่เกี่ยวข้อง
 - [x] UI ผ่าน Desktop/Mobile, Light/Dark, keyboard และ accessibility
 - [x] Automated tests, targeted ESLint และ production build ผ่าน
 - [x] Permission action inventory, roadmap และ validation log อัปเดต
-- [ ] ผู้ใช้ตรวจและยืนยันก่อน Commit, Push และ PR
+- [x] ผู้ใช้ตรวจและยืนยันก่อน Commit, Push และ PR
 
 ### Validation log — 20 กรกฎาคม 2026
 
@@ -117,7 +117,8 @@ Browser ไม่มีสิทธิ์เข้าตารางโดยต
 - Chrome QA ด้วย AE Supervisor ผ่าน Desktop Light/Dark, Settings link/back link, document tabs, Draft Drawer, Escape/focus restore และ console ไม่มี error/warning
 - Responsive QA ที่ viewport mobile ผ่าน: ตารางเปลี่ยนเป็นการ์ด, Drawer เต็มความกว้าง และ document/body ไม่มี horizontal overflow
 - Follow-up รูปแบบ controlled form line ผ่าน targeted tests 19/19 และ production build: `FM-SA-01: Rev. No.00 08/05/2568` ไม่มีจุดหลังเลข Revision
-- QA รอบนี้ไม่เขียนข้อมูลจริง; Preview UAT สำหรับ create/save/archive/stale/publish ยังเป็น release gate โดยผู้ใช้ยืนยันว่ารัน Migration 0123 แล้ว
+- Published Document Standard ถูกใช้จริงโดย Phase 5B approval RPC และถูก snapshot ลง Signature Evidence สำเร็จ
+- PR #568 และ #570 merge แล้ว; ผู้ใช้ยืนยันรูปแบบ controlled form line และ Phase 6A ปิดเมื่อ 20 กรกฎาคม 2026
 
 ## Known risks
 
