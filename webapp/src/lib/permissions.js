@@ -198,9 +198,12 @@ const SALES_HEAD_CAPS = SUPERUSER_CAPS.filter((c) => !SALES_HEAD_EXCLUDED.includ
 const ROLE_CAPS = {
   // admin: system administrator — full capabilities, all teams (see isSuperuser).
   admin: SUPERUSER_CAPS,
-  // secretary: ฝ่ายเลขานุการ — เข้าได้เฉพาะโมดูล "งานบริหาร" (mgmt) เท่านั้น,
-  // ไม่มีสิทธิ์ในระบบ tax/pm/sahamit/master. scope = ทั้งบริษัท (gate ที่ cap พอ).
-  secretary: ['mgmt:view', 'mgmt:edit'],
+  // secretary: ฝ่ายเลขานุการ — โมดูล "งานบริหาร" (mgmt) เต็มสิทธิ์,
+  // ไม่มีสิทธิ์ในระบบ tax/pm/sahamit. scope = ทั้งบริษัท (gate ที่ cap พอ).
+  // + products:view อ่านอย่างเดียว (มติ 2026-07-20) — แคตตาล็อกสินค้าเป็นข้อมูลกลาง
+  //   ที่ต้องใช้อ้างอิง; ไม่มี products:edit → proxy บล็อกการเขียนให้เอง
+  //   และไม่มี products:margin → ไม่เห็นต้นทุน/มาร์จิ้น
+  secretary: ['mgmt:view', 'mgmt:edit', 'products:view'],
   // ae_supervisor: sales head — all-team data scope, but not a system admin.
   ae_supervisor: SALES_HEAD_CAPS,
   // team lead: ops + may delete orders (scoped to own team via deleteScope).
@@ -209,9 +212,11 @@ const ROLE_CAPS = {
   // back-office + front-office: same capabilities, differ only by edit SCOPE
   ac: SALES_OPS,
   ae: SALES_OPS,
-  // marketing (ฝ่ายการตลาด MK — เฟส C): กรอก/แก้ลีดของตัวเองเท่านั้น เห็นเฉพาะ
-  // เมนูลีด — ไม่มีสิทธิ์ดู pipeline/ลูกค้า/โครงการ/ยอดขายใด ๆ
-  marketing: ['salesplan:lead'],
+  // marketing (ฝ่ายการตลาด MK — เฟส C): กรอก/แก้ลีดของตัวเองเท่านั้น
+  // ไม่มีสิทธิ์ดู pipeline/ลูกค้า/โครงการ/ยอดขายใด ๆ
+  // + products:view อ่านอย่างเดียว (มติ 2026-07-20) — ต้องรู้ว่าบริษัทขายอะไร
+  //   ตอนคุยลีด; ไม่มี products:edit / products:margin (ดู secretary)
+  marketing: ['salesplan:lead', 'products:view'],
   // legal views registries + does tax approval; no edit/delete of sales data.
   // legal is the cost-margin authority (sees the factory cost breakdown + profit).
   legal: ['customers:view', 'products:view', 'products:margin', 'legal:view', 'legal:approve', 'history:view'],

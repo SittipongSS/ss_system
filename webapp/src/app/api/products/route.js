@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScope, canApproveMasterData, redactProductMargin } from '@/lib/permissions';
+import { canApproveMasterData, redactProductMargin } from '@/lib/permissions';
 import { categoryOf, isExciseCategory, activeProductTypeError } from '@/lib/master/productTypes';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
@@ -25,9 +25,14 @@ export async function GET(request) {
 
   let query = supabase.from('products').select('*').order('createdAt', { ascending: false });
   if (customerId) query = query.eq('customerId', customerId);
-  // Team-scoped roles only see their own team's products; 'all' sees everything.
-  // Skipped when filtering by customerId (see note above).
-  else if (viewScope(user?.role) === 'team') query = query.eq('team', user?.team ?? null);
+  // NO team scope on read (มติ 2026-07-20): the FG catalog is shared master data,
+  // like product_types. `product.team` records who CREATED the row, not who owns
+  // the product — the owner is the customer — so scoping reads by it hid FGs from
+  // the very teams selling them. That mismatch already forced the ?customerId=
+  // bypass above (a443cbe) for the PM picker; scoping the list view had the same
+  // bug with no escape hatch. Confidentiality is handled where it belongs:
+  // redactProductMargin strips cost/margin below, and writes stay team-scoped via
+  // editScope in POST/PATCH.
   // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
   if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
 
