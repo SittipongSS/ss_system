@@ -18,6 +18,7 @@ import Modal from "@/components/Modal";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationPeopleFields, { quotationPeopleFromMetadata } from "@/components/salesPlanning/QuotationPeopleFields";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
+import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -553,6 +554,11 @@ export default function QuotationEditorPage() {
               {quote.signatureEvidenceId && (
                 <div style={{ margin: "0 0 10px" }}><span className="ui-badge" style={{ color: "var(--green)" }}>บันทึกหลักฐานลายเซ็นแล้ว</span></div>
               )}
+              {/* รู้ตั้งแต่เปิดหน้าว่าเซ็นไม่ได้ ดีกว่าไปเจอ 409 ตอนกดอนุมัติ */}
+              <SignatureReadyNotice
+                active={!!needsApproval && !!quote.canApprove && ["draft", "sent", "rejected"].includes(quote.status)}
+                docLabel="ใบเสนอราคานี้"
+              />
               <div className={styles.workflowActions}>
                 {needsApproval && quote.canApprove && ["draft", "sent", "rejected"].includes(quote.status) && (
                   <button type="button" className="btn btn-primary" onClick={approve} disabled={!!busy || dirty} title={dirty ? "บันทึกก่อนอนุมัติ" : "อนุมัติใบเสนอราคานี้ (เจ้าของดีล)"}><CheckCircle2 size={15} aria-hidden="true" /> อนุมัติ</button>

@@ -2,7 +2,7 @@
 // ศูนย์รวมการตั้งค่าระบบ — เมนู "ตั้งค่า" เดียวใน top nav ชี้มาที่นี่
 // โชว์เฉพาะการ์ดที่สิทธิ์ของผู้ใช้เข้าถึงได้ (ปฏิทินเห็นทุกคนเพราะเป็นข้อมูลอ่านได้ทั้งระบบ)
 import Link from "next/link";
-import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, FileSearch, WalletCards } from "lucide-react";
+import { Settings, CalendarDays, BellRing, Users, History, ChevronRight, Building2, Workflow, FileBadge2, FileSearch, WalletCards, Signature } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { can, canManageCommercialPresets, canManageDocumentStandards } from "@/lib/permissions";
 import styles from "./page.module.css";
@@ -94,6 +94,13 @@ export default function SettingsPage() {
           icon: Users,
           title: "ผู้ใช้งาน",
           desc: "บัญชีผู้ใช้ บทบาท ทีม และสิทธิ์เพิ่มเติมรายคน",
+          show: canUsers,
+        },
+        {
+          href: "/settings/signature-coverage",
+          icon: Signature,
+          title: "ความพร้อมลายเซ็น",
+          desc: "ใครยังไม่มีลายเซ็นอิเล็กทรอนิกส์ทั้งที่ต้องอนุมัติใบเสนอราคา/Sale Order",
           show: canUsers,
         },
         {

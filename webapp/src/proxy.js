@@ -179,6 +179,8 @@ export function lockedOut(user, path, method, isApi) {
     if (method === 'GET' && startsWithAny(path, OPEN_READ_APIS)) return false; // supporting reads
     // Read-only admin surface opened by a per-user grant: the audit log.
     if (method === 'GET' && path.startsWith('/api/audit') && canUser(user, 'audit:view')) return false;
+    // เช่นเดียวกัน: รายงานความพร้อมลายเซ็น (Phase 5B) อ่านอย่างเดียว ใช้ cap เดิม users:view
+    if (method === 'GET' && path.startsWith('/api/admin/signature-coverage') && canUser(user, 'users:view')) return false;
     return true;
   }
   if (path === '/settings') return false;
@@ -194,6 +196,7 @@ export function lockedOut(user, path, method, isApi) {
   if (startsWithAny(path, OPEN_PAGES)) return false;
   if (path === '/audit' && canUser(user, 'audit:view')) return false;
   if (path === '/users' && canUser(user, 'users:view')) return false;
+  if (path === '/settings/signature-coverage' && canUser(user, 'users:view')) return false;
   return true;
 }
 
