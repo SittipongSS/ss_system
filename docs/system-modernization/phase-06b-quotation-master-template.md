@@ -110,6 +110,28 @@
 - `npm run build`, targeted test, ESLint และ `git diff --check` ผ่าน; Production `quotePrint.js`/`salesOrderPrint.js` และข้อมูลจริงไม่ถูกเปลี่ยน
 - ยังคงต้องให้ผู้ใช้ UAT ผ่าน Print/Save as PDF จริงอีกครั้งใน PR ก่อนอนุญาต merge
 
+## Minimal accent refinement — 20 กรกฎาคม 2026
+
+- ผู้ใช้ยืนยันให้ลดการใช้ terracotta accent ใน Quotation Master V2 โดยคง accent ไว้เฉพาะชื่อเอกสารเพื่อรักษา document identity
+- เปลี่ยนยอดรวมสุทธิจากแถบสีทึบเป็นพื้นกระดาษพร้อมเส้นและข้อความ navy; หัวตารางรายการยังคง navy เพื่อ contrast และลำดับการอ่าน
+- เปลี่ยนขอบข้อมูลลูกค้า/ข้อมูลอ้างอิง, หัวตารางงวดชำระ, เงื่อนไข, signed surface และ watermark เป็น neutral/navy hierarchy
+- รหัสสินค้า, ลายเซ็นอิเล็กทรอนิกส์ และ Evidence ใช้ navy/muted แทน accent เพื่อไม่ให้ข้อมูลรองแย่งจุดเด่นจากชื่อเอกสาร
+- เพิ่ม CSS contract test เพื่อป้องกัน accent กระจายกลับไปยังส่วนตกแต่ง โดย Production `quotePrint.js` และข้อมูลจริงยังไม่เปลี่ยน
+- Targeted Quotation Master test ผ่าน 9/9, automated test ทั้ง repository ผ่าน 437/437, `git diff --check` ผ่าน และ Next.js production build สำเร็จ
+- Visual UAT ของ workspace ปัจจุบันรอผู้ใช้ล็อกอินที่ `localhost:3001`; ไม่ใช้ credential หรือข้าม authentication ระหว่าง validation
+
+## V1/V2/V3 comparison and pagination refinement — 20 กรกฎาคม 2026
+
+- เพิ่มตัวสลับ V1/V2/V3 ในหน้า Preview โดย V3 เป็นค่าเริ่มต้นและการสลับไม่เปลี่ยน scenario, document state หรือ color mode
+- V1 เก็บ visual direction เดิม, V2 เป็น minimal accent และ V3 ใช้กล่องยอดรวม/เส้นกล่องข้อมูล/รหัสสินค้า/terms/signature แบบ V2 พร้อมเพิ่ม accent-soft เฉพาะหัวตารางงวดและใช้ accent โปร่งกับ watermark
+- Footer ของทุกเวอร์ชันตัดคำว่า `เอกสารควบคุม` ออก เหลือเว็บไซต์, controlled form line และเลขหน้า
+- ปรับ pagination ให้ Standard 4 รายการแบ่งเป็น 2 + 2 แทน 1 + 3 โดยยังคง Compact หน้าเดียวและ 4 งวดเป็น 3 + 2
+- แต่ละ variant มี template identifier แยก `quotation-balanced-controlled-v1`, `-v2` และ `-v3`; งานนี้ยังเป็น Preview เท่านั้นและไม่เปลี่ยน Production Print authority
+- Targeted Quotation Master tests ผ่าน 12/12 และ automated tests ทั้ง repository ผ่าน 440/440; `git diff --check` และ Next.js production build ผ่าน
+- Browser QA ที่ 1440 × 1000 ยืนยัน Standard เป็น A4 สองหน้าสูง 1,123 px เท่ากัน, สินค้า 2 + 2, ไม่มี footer collision และไม่มี page-level horizontal overflow
+- Responsive QA ที่ 390 × 844 ไม่มี horizontal overflow, กระดาษสูงตามเนื้อหา, segmented control V1/V2/V3 มี touch target 40 px และ footer ไม่มีคำว่า `เอกสารควบคุม`
+- Visual contract ยืนยัน V1 ใช้ grand total/rail accent เดิม, V2 ใช้ white/navy/neutral และ V3 ใช้ item code navy, V2 totals/rails, accent-soft schedule header และ accent watermark โปร่ง 14%; grayscale filter ทำงาน
+
 ## Known risks
 
 - Browser print engine อาจแบ่งหน้าไม่เหมือนกันตาม font readiness จึงต้องรอ `document.fonts.ready` ก่อน Print/PDF

@@ -183,7 +183,7 @@ function Signatures({ model }) {
 function DocumentFooter({ model, pageNumber, pageCount }) {
   return (
     <footer className={styles.footer}>
-      <span>{model.company.website} · เอกสารควบคุม</span>
+      <span>{model.company.website}</span>
       <span>{model.formLine}</span>
       <span>หน้า {pageNumber} / {pageCount}</span>
     </footer>
@@ -192,10 +192,12 @@ function DocumentFooter({ model, pageNumber, pageCount }) {
 
 export default function QuotationMasterDocument({ model, grayscale = false }) {
   let lineOffset = 0;
+  const templateVariant = model.templateVariant || 'v3';
   return (
     <div
       id="quotation-master-preview"
-      className={`${styles.document}${grayscale ? ` ${styles.grayscale}` : ''}`}
+      className={`${styles.document} ${styles[templateVariant]}${grayscale ? ` ${styles.grayscale}` : ''}`}
+      data-template-variant={templateVariant}
       data-template-version={model.templateVersion}
     >
       {model.pages.map((pageLines, pageIndex) => {

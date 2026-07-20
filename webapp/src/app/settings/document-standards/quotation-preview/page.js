@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { ChevronLeft, FileText, Palette, Printer, ShieldCheck } from 'lucide-react';
 import QuotationMasterDocument from '@/components/documents/QuotationMasterDocument';
 import {
+  DEFAULT_QUOTATION_MASTER_VARIANT,
+  QUOTATION_MASTER_TEMPLATE_VERSIONS,
   QUOTATION_PREVIEW_SCENARIOS,
   QUOTATION_PREVIEW_STATES,
   buildQuotationMasterPreview,
@@ -14,12 +16,14 @@ import styles from './page.module.css';
 export default function QuotationMasterPreviewPage() {
   const [scenarioId, setScenarioId] = useState('standard');
   const [documentState, setDocumentState] = useState('approved');
+  const [templateVariant, setTemplateVariant] = useState(DEFAULT_QUOTATION_MASTER_VARIANT);
   const [grayscale, setGrayscale] = useState(false);
   const model = useMemo(
-    () => buildQuotationMasterPreview(scenarioId, documentState),
-    [scenarioId, documentState],
+    () => buildQuotationMasterPreview(scenarioId, documentState, templateVariant),
+    [scenarioId, documentState, templateVariant],
   );
   const scenario = QUOTATION_PREVIEW_SCENARIOS.find((item) => item.id === scenarioId);
+  const selectedTemplate = QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === templateVariant);
 
   async function printPreview() {
     await document.fonts.ready;
@@ -55,6 +59,23 @@ export default function QuotationMasterPreviewPage() {
           </label>
 
           <div className="form-group">
+            <span>รูปแบบแม่แบบ</span>
+            <div className="segmented" aria-label="เวอร์ชันแม่แบบ">
+              {QUOTATION_MASTER_TEMPLATE_VERSIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={templateVariant === item.id}
+                  className={templateVariant === item.id ? 'active' : ''}
+                  onClick={() => setTemplateVariant(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-group">
             <span>สถานะเอกสาร</span>
             <div className="segmented" aria-label="สถานะเอกสารตัวอย่าง">
               {QUOTATION_PREVIEW_STATES.map((item) => (
@@ -81,7 +102,7 @@ export default function QuotationMasterPreviewPage() {
         </div>
 
         <div className={styles.scenarioSummary} aria-live="polite">
-          <strong>{scenario?.label}</strong>
+          <strong>{selectedTemplate?.label} · {scenario?.label}</strong>
           <span>{scenario?.description}</span>
           <span>{model.lines.length} รายการ · {model.pages.length} หน้า · {model.installments.length} งวด</span>
         </div>

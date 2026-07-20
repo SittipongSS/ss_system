@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  DEFAULT_QUOTATION_MASTER_VARIANT,
   QUOTATION_MASTER_TEMPLATE_VERSION,
+  QUOTATION_MASTER_TEMPLATE_VERSIONS,
   QUOTATION_PREVIEW_SCENARIOS,
   allocateInstallmentAmounts,
   buildQuotationMasterPreview,
@@ -18,6 +20,7 @@ test('every preview scenario builds a stable isolated master model', () => {
   for (const scenario of QUOTATION_PREVIEW_SCENARIOS) {
     const model = buildQuotationMasterPreview(scenario.id, 'approved');
     assert.equal(model.templateVersion, QUOTATION_MASTER_TEMPLATE_VERSION);
+    assert.equal(model.templateVariant, DEFAULT_QUOTATION_MASTER_VARIANT);
     assert.ok(model.lines.length > 0, scenario.id);
     assert.ok(model.pages.length > 0, scenario.id);
     assert.equal(model.pages.flat().length, model.lines.length, scenario.id);
@@ -53,13 +56,30 @@ test('pagination preserves order and does not mutate source lines', () => {
   assert.ok(pages.length > 1);
 });
 
+test('preview exposes stable V1, V2 and V3 template identities', () => {
+  for (const variant of QUOTATION_MASTER_TEMPLATE_VERSIONS) {
+    const model = buildQuotationMasterPreview('compact', 'approved', variant.id);
+    assert.equal(model.templateVariant, variant.id);
+    assert.equal(model.templateVersion, variant.templateVersion);
+  }
+});
+
 test('summary-heavy short quotations move final content to a continuation page', () => {
   const standard = buildQuotationMasterPreview('standard', 'approved');
   const installments = buildQuotationMasterPreview('installments', 'approved');
   const compact = buildQuotationMasterPreview('compact', 'approved');
   assert.ok(standard.pages.length > 1, 'standard must not grow page 1 beyond A4');
+  assert.deepEqual(standard.pages.map((page) => page.length), [2, 2]);
+  assert.deepEqual(installments.pages.map((page) => page.length), [3, 2]);
   assert.ok(installments.pages.length > 1, 'four installments need a continuation page');
   assert.equal(compact.pages.length, 1, 'a genuinely compact quotation still fits one page');
+});
+
+test('every scenario avoids empty trailing pages after pagination', () => {
+  for (const scenario of QUOTATION_PREVIEW_SCENARIOS) {
+    const model = buildQuotationMasterPreview(scenario.id, 'approved');
+    assert.ok(model.pages.every((page) => page.length > 0), `${scenario.id} must not append an empty page`);
+  }
 });
 
 test('print stylesheet locks explicit sheets to A4 with legacy page-break fallback', () => {
@@ -70,6 +90,30 @@ test('print stylesheet locks explicit sheets to A4 with legacy page-break fallba
   assert.match(css, /@media print[\s\S]*height: 297mm/);
   assert.match(css, /page-break-after: always/);
   assert.match(css, /\.sheet:last-child \{ break-after: auto; page-break-after: auto; \}/);
+});
+
+test('V1, V2 and V3 preserve their approved accent hierarchy', () => {
+  const css = readFileSync(
+    new URL('../../components/documents/QuotationMasterDocument.module.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(css, /\.identityBlock h1 \{[^}]*color: var\(--doc-accent\)/);
+  assert.match(css, /\.grandTotal \{[^}]*background: var\(--doc-paper\)/);
+  assert.match(css, /\.installmentTable th \{[^}]*background: var\(--doc-neutral-soft\)/);
+  assert.match(css, /\.watermark \{[\s\S]*color: var\(--doc-watermark\)/);
+  assert.match(css, /\.v1 \.grandTotal \{[^}]*background: var\(--doc-accent\)/);
+  assert.match(css, /\.v3 \.installmentTable th \{[^}]*background: var\(--doc-accent-soft\)/);
+  assert.match(css, /\.v3 \.watermark \{[^}]*color: var\(--doc-accent-watermark\)/);
+  assert.doesNotMatch(css, /\.v3 \.itemCode/);
+  assert.doesNotMatch(css, /\.v3 \.termsGrid/);
+});
+
+test('every preview variant omits the controlled-document footer wording', () => {
+  const component = readFileSync(
+    new URL('../../components/documents/QuotationMasterDocument.js', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(component, /เอกสารควบคุม/);
 });
 
 test('document states map to watermark and signature evidence variants', () => {
