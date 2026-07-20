@@ -7,6 +7,7 @@ import {
   approveQuotationWithSignatureEvidence,
   signatureEvidenceErrorResponse,
 } from '@/lib/admin/signatureEvidence';
+import { captureIssuedQuotationSnapshot } from '@/lib/sales/issuedQuotationSnapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +61,20 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return signatureEvidenceErrorResponse(approvalError);
   }
   const data = result.document;
+
+  // Phase 7B: capture the immutable issued-document snapshot from the frozen
+  // approved state. Best-effort — approval already committed atomically; a failed
+  // snapshot must not roll it back and can be regenerated (RPC is idempotent).
+  try {
+    const snapshotQuote = { ...quote, ...data, lines: quote.lines, deal: quote.deal };
+    await captureIssuedQuotationSnapshot(supabase, {
+      quote: snapshotQuote,
+      evidence: result.evidence,
+      user,
+    });
+  } catch (snapshotError) {
+    console.error('issued quotation snapshot capture failed', id, snapshotError);
+  }
 
   await recordAudit({
     user, action: 'update', entityType: 'quotation', entityId: id, before: quote, after: data,
