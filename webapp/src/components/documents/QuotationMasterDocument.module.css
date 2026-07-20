@@ -116,8 +116,9 @@
 .signatures > div { min-height: 31mm; padding: 2mm; text-align: center; border: 1px solid var(--doc-line-strong); }
 .signatures h2 { margin: 0; color: var(--doc-navy); font-size: 8pt; }
 .signatures h2 span { display: block; color: var(--doc-muted); font-size: 6.8pt; font-weight: 400; }
-.signatureSpace, .signaturePreview { display: grid; place-items: center; height: 12mm; color: var(--doc-line-strong); font-size: 7pt; }
-.signaturePreview { color: var(--doc-accent); font-size: 9pt; font-weight: 600; font-style: italic; }
+.signatureSpace, .signaturePreview { display: grid; height: 12mm; color: var(--doc-line-strong); font-size: 7pt; }
+.signatureSpace { box-sizing: border-box; place-items: end start; padding: 0 1mm .8mm; }
+.signaturePreview { place-items: center; color: var(--doc-accent); font-size: 9pt; font-weight: 600; font-style: italic; }
 .signatures strong { display: block; font-size: 7.8pt; }
 .signatures p { margin: .5mm 0 0; color: var(--doc-muted); font-size: 6.8pt; }
 .signatures small { display: block; margin-top: .5mm; color: var(--doc-accent); font-size: 6.3pt; }
@@ -157,9 +158,9 @@
 @media screen and (max-width: 900px) {
   .sheet {
     width: 100%;
-    min-height: auto;
-    aspect-ratio: 210 / 297;
-    padding: 4.8vw 5vw 5vw;
+    min-height: 0;
+    aspect-ratio: auto;
+    padding: 4.8vw 5vw 9vw;
     font-size: clamp(5px, 1.18vw, 9.5pt);
   }
   .documentHeader { grid-template-columns: 1.3fr .9fr; gap: 3vw; }
