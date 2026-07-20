@@ -1,4 +1,10 @@
 export const WORKFLOW_TEMPLATE_KEYS = Object.freeze(['SCENT', 'NPD', 'RE-ORDER']);
+
+// มติ 2026-07-20 (mig 0131): token พิเศษใน categoryOnly/categoryExclude —
+// 'flag:excise' = "หมวดสินค้าที่ติ๊กเสียภาษีสรรพสามิต" (product_types.isExcise)
+// แทนการอ้างรหัสหมวดตรง ๆ. รหัสหมวดปกติ (เช่น '01-002') ยังเทียบแบบ literal ได้
+// เพื่อรองรับ version เก่าที่ pin ไว้กับโครงการเดิม.
+export const EXCISE_CATEGORY_TOKEN = 'flag:excise';
 export const WORKFLOW_TEMPLATE_ROLES = Object.freeze(['SA', 'RD', 'PC', 'PD', 'QC', 'LG', 'WH', 'ALL']);
 export const WORKFLOW_DEPENDENCY_MODES = Object.freeze(['sequential', 'root', 'custom']);
 
@@ -176,10 +182,16 @@ export function normalizeWorkflowTemplateDraft(input = {}) {
   return { value, errors: unique(errors) };
 }
 
-export function templateMatchesCategory(step, categoryCode) {
+// categoryFlags = ธงของ "หมวดที่กำลังเทียบ" ({ isExcise }) — จำเป็นเมื่อ template ใช้
+// token flag:excise; ไม่ส่ง = token ไม่ match (หมวดถือว่าไม่เสียสรรพสามิต).
+// การเทียบ literal (rule === category) ต้องมาก่อนเสมอ เพื่อให้ validator ที่ iterate
+// รายการ rule เป็น pseudo-category ยังทำงานได้ และ version เก่า ('01-002') ไม่พัง.
+export function templateMatchesCategory(step, categoryCode, categoryFlags = null) {
   const category = text(categoryCode);
-  if (step.categoryOnly && step.categoryOnly !== category) return false;
-  if (step.categoryExclude && step.categoryExclude === category) return false;
+  const ruleHits = (rule) =>
+    rule === category || (rule === EXCISE_CATEGORY_TOKEN && !!categoryFlags?.isExcise);
+  if (step.categoryOnly && !ruleHits(step.categoryOnly)) return false;
+  if (step.categoryExclude && ruleHits(step.categoryExclude)) return false;
   return true;
 }
 

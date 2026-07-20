@@ -7,7 +7,7 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { canEditSalesPlanning, dealAuditLabel, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { genId } from '@/lib/id';
-import { activeProductTypeError } from '@/lib/master/productTypes';
+import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -67,6 +67,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   } catch (error) {
     return fail(error.message || 'โหลด Workflow Template ไม่สำเร็จ', error instanceof WorkflowTemplateError ? error.status : 500);
   }
+  // ขั้นสรรพสามิตใน template ผูก token flag:excise (mig 0131) → ต้องส่งธงของหมวดดีล
+  templateOptions.categoryFlags = await categoryFlagsOf(categoryCode);
   const rows = applyAutoStatuses(buildProjectTasks(
     // เทียบ field โครงการ: type = ประเภทดีล, productMainCategory = หมวดบนดีล
     { type: dealTypeOf(deal), productMainCategory: categoryCode || '', startDate, aeOwner: deal.ownerName || '' },

@@ -41,6 +41,17 @@ export function normalizeProductCategoryInput(input = {}, { partial = false } = 
   setText('nameEn', PRODUCT_CATEGORY_LIMITS.nameEn);
   setText('note', PRODUCT_CATEGORY_LIMITS.note);
 
+  // ช่องติ๊กกำกับดูแล (mig 0131): isExcise = เสียภาษีสรรพสามิต (ขับตรรกะภาษีทั้งระบบ),
+  // requiresFdaNotice = ต้องจดแจ้ง อย. (เฟสแรก: ป้าย + เตือนตอนสร้างสินค้า)
+  for (const key of ['isExcise', 'requiresFdaNotice']) {
+    if (partial && input[key] === undefined) continue;
+    if (input[key] !== undefined && typeof input[key] !== 'boolean') {
+      errors.push(`${key} ต้องเป็นค่า true/false`);
+      continue;
+    }
+    value[key] = !!input[key];
+  }
+
   if (!partial || input.nameTh !== undefined || input.nameEn !== undefined) {
     const nameTh = value.nameTh ?? String(input.nameTh ?? '').trim();
     const nameEn = value.nameEn ?? String(input.nameEn ?? '').trim();

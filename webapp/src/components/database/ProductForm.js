@@ -39,11 +39,12 @@ export const productToForm = (p) => {
   return seed;
 };
 
-// กล่องบอกหมวดหมู่/ภาษีสรรพสามิตใต้ช่อง FG Code
+// กล่องบอกหมวดหมู่/ภาษีสรรพสามิต/จดแจ้ง อย. ใต้ช่อง FG Code — ธงมาจากช่องติ๊ก
+// บนหมวดสินค้า (product_types.isExcise / requiresFdaNotice, mig 0131)
 function CategoryBox({ fgCode, productTypes }) {
   const cat = categoryInfo(fgCode, productTypes);
   if (!fgCode) {
-    return <span className="text-xs text-[var(--text-3)] mt-1">เฉพาะหมวด 01-002 (น้ำหอมฉีดผิวกาย) เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต</span>;
+    return <span className="text-xs text-[var(--text-3)] mt-1">เฉพาะหมวดที่ติ๊ก &quot;เสียภาษีสรรพสามิต&quot; เท่านั้นที่ระบบจะคิดภาษีสรรพสามิต</span>;
   }
   if (!cat.code) {
     return <div className="mt-2 text-xs text-[var(--text-3)] italic">รูปแบบรหัส FG ไม่ถูกต้อง (ไม่พบโครงสร้างหมวดหมู่ XX-YYY)</div>;
@@ -59,7 +60,8 @@ function CategoryBox({ fgCode, productTypes }) {
       </div>
     );
   }
-  const isExcise = cat.code === "01-002";
+  const isExcise = !!cat.typeInfo.isExcise;
+  const requiresFda = !!cat.typeInfo.requiresFdaNotice;
   return (
     <div className={`mt-2 p-3 text-xs rounded-lg border border-[var(--border)] flex flex-col gap-1 ${isExcise ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-2)] text-[var(--text-2)]"}`}>
       <div className="flex items-center gap-2">
@@ -67,9 +69,12 @@ function CategoryBox({ fgCode, productTypes }) {
         <span className="font-semibold">{cat.typeInfo.nameTh || cat.typeInfo.nameEn}</span>
       </div>
       <div className="text-[11px] opacity-80 pl-1">กลุ่มหลัก: {cat.typeInfo.mainCategoryName}</div>
-      {/* เตือนเฉพาะ 01-002 (ส่วนน้อย) — หมวดอื่นไม่เกี่ยวกับสรรพสามิต ไม่ต้องพูดถึงภาษีเลย */}
+      {/* เตือนเฉพาะหมวดที่ติ๊กธง (ส่วนน้อย) — หมวดอื่นไม่ต้องพูดถึงภาษี/อย. เลย */}
       {isExcise && (
         <div className="mt-1 pl-1 font-semibold">⚠️ สินค้านี้ต้องขึ้นทะเบียนและชำระภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)</div>
+      )}
+      {requiresFda && (
+        <div className={`mt-1 pl-1 font-semibold ${isExcise ? "" : "text-[var(--blue)]"}`}>📋 หมวดนี้ต้องจดแจ้ง อย. — โปรดตรวจว่าสินค้าได้จดแจ้งก่อนวางจำหน่าย</div>
       )}
     </div>
   );

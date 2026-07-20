@@ -11,6 +11,7 @@ import { productOptionDisplay } from "@/components/master/productOption";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { isExciseCategory } from "@/lib/master/categoryOf";
 import { useRole } from "@/lib/roleContext";
 import { X } from "lucide-react";
 
@@ -101,15 +102,17 @@ export default function ProjectFormModal({
     }
   }, [open, editingId, initialData, blank]);
 
-  // ข้อ 1: หมวดสินค้า "อิงตาม FG ที่ผูก" — ถ้ามี FG ที่เป็น 01-002 (สรรพสามิต)
-  // แม้แต่ตัวเดียว ทั้งโครงการใช้หมวด 01-002 (เป็นใหญ่สุด → ได้ template เสียภาษี);
-  // ถ้าไม่มีตัวไหนเป็น 01-002 ใช้หมวดของ FG ตัวแรกเพื่อแสดงผล. ไม่มี FG → ปล่อยให้เลือกเอง
+  // ข้อ 1: หมวดสินค้า "อิงตาม FG ที่ผูก" — ถ้ามี FG หมวดสรรพสามิต (ติ๊ก isExcise บน
+  // product_types, mig 0131) แม้แต่ตัวเดียว ทั้งโครงการใช้หมวดนั้น (เป็นใหญ่สุด →
+  // ได้ template เสียภาษี); ถ้าไม่มีตัวไหนเข้าข่าย ใช้หมวดของ FG ตัวแรกเพื่อแสดงผล.
+  // ไม่มี FG → ปล่อยให้เลือกเอง
   const fgCategoryLock = form.projectProducts.length > 0;
   useEffect(() => {
     if (!open) return;
     const fgs = form.projectProducts.map((pp) => effectiveProducts.find((p) => p.id === pp.productId)).filter(Boolean);
     if (!fgs.length) return; // ไม่มี FG → คงค่าที่ผู้ใช้เลือกเองไว้
-    const code = fgs.some((f) => f.categoryCode === "01-002") ? "01-002" : (fgs[0].categoryCode || "");
+    const exciseFg = fgs.find((f) => isExciseCategory(f.categoryCode || "", categories));
+    const code = exciseFg ? (exciseFg.categoryCode || "") : (fgs[0].categoryCode || "");
     const [mainCode = "", typeCode = ""] = code ? code.split("-") : [];
     if (code === form.productMainCategory && mainCode === form.mainCode && typeCode === form.typeCode) return;
     const sub = categories.find((c) => c.mainCategoryCode === mainCode && c.typeCode === typeCode)?.nameTh || "";
@@ -127,7 +130,7 @@ export default function ProjectFormModal({
 
       // Auto-fill customer/name from the first linked FG (only when still empty).
       // หมวดสินค้าไม่เซ็ตที่นี่ — ปล่อยให้ effect ด้านล่าง derive จาก FG ทั้งหมด
-      // (01-002 เป็นใหญ่สุด) เพื่อให้ "FG เป็นตัวกำหนดหมวด" เสมอ
+      // (หมวดสรรพสามิตเป็นใหญ่สุด) เพื่อให้ "FG เป็นตัวกำหนดหมวด" เสมอ
       const firstFg = newProducts[0] ? effectiveProducts.find(p => p.id === newProducts[0].productId) : null;
       if (firstFg && !isSelected) {
         return {
@@ -157,13 +160,13 @@ export default function ProjectFormModal({
     // วันเริ่ม = anchor ของ timeline → บังคับใส่ (โครงการย้อนหลังต้องตั้งวันจริงในอดีต)
     if (!form.startDate) { setFormError("กรุณาระบุวันที่เริ่มโครงการ"); return; }
     // ข้อ 2: แจ้งเตือนก่อนปรับขั้นตอน — เมื่อแก้โครงการเดิมแล้วสถานะสรรพสามิต
-    // (01-002) พลิก ระบบจะเพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต + คำนวณกำหนดการใหม่
+    // (flag isExcise ของหมวด) พลิก ระบบจะเพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต + คำนวณกำหนดการใหม่
     if (editingId) {
-      const wasExcise = (initialData?.productMainCategory || "") === "01-002";
-      const nowExcise = (form.productMainCategory || "") === "01-002";
+      const wasExcise = isExciseCategory(initialData?.productMainCategory || "", categories);
+      const nowExcise = isExciseCategory(form.productMainCategory || "", categories);
       if (wasExcise !== nowExcise) {
         const msg = nowExcise
-          ? "หมวดสินค้าเปลี่ยนเป็นสรรพสามิต (01-002) — ระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ (ขั้นตอนที่ทำไปแล้วจะถูกเก็บไว้) ดำเนินการต่อหรือไม่?"
+          ? "หมวดสินค้าเปลี่ยนเป็นหมวดที่เสียภาษีสรรพสามิต — ระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ (ขั้นตอนที่ทำไปแล้วจะถูกเก็บไว้) ดำเนินการต่อหรือไม่?"
           : "หมวดสินค้าเปลี่ยนออกจากสรรพสามิต — ระบบจะลบขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ (ขั้นตอนอื่นจะถูกเก็บไว้) ดำเนินการต่อหรือไม่?";
         if (!(await askConfirm({ title: "ยืนยันการปรับขั้นตอนสรรพสามิต", message: msg, confirmLabel: "ดำเนินการต่อ", danger: false }))) return;
       }
@@ -377,13 +380,13 @@ export default function ProjectFormModal({
           {fgCategoryLock && (
             <div style={{ fontSize: "11px", color: "var(--blue)", marginTop: "8px", display: "flex", alignItems: "center", gap: "4px" }}>
               🔒 หมวดอิงตามสินค้า (FG) ที่ผูกไว้โดยอัตโนมัติ
-              {form.productMainCategory === "01-002" && " — มีสินค้าเข้าข่ายสรรพสามิต จึงใช้หมวด 01-002"}
+              {isExciseCategory(form.productMainCategory, categories) && ` — มีสินค้าเข้าข่ายสรรพสามิต จึงใช้หมวด ${form.productMainCategory}`}
             </div>
           )}
           {form.productMainCategory && (
             <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "8px" }}>
               รหัสหมวด: <span className="font-mono">{form.productMainCategory}</span>
-              {form.productMainCategory === "01-002" && <span style={{ color: "var(--amber)" }}> · เข้าข่ายสรรพสามิต (จะมีขั้นตอนขึ้นทะเบียน)</span>}
+              {isExciseCategory(form.productMainCategory, categories) && <span style={{ color: "var(--amber)" }}> · เข้าข่ายสรรพสามิต (จะมีขั้นตอนขึ้นทะเบียน)</span>}
             </div>
           )}
         </div>

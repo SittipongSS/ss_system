@@ -11,6 +11,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -91,6 +92,8 @@ export async function POST(request, { params }) {
       status: templateError instanceof WorkflowTemplateError ? templateError.status : 500,
     });
   }
+  // ขั้นสรรพสามิตใน template ผูก token flag:excise (mig 0131) → ส่งธงของหมวดโครงการ
+  templateOptions.categoryFlags = await categoryFlagsOf(project.productMainCategory);
   const { data: existingTasks } = await supabase
     .from('project_tasks').select('id, stepOrder').eq('projectId', project.id);
   const segTasks = applyAutoStatuses(buildAppendedTasks(project, {

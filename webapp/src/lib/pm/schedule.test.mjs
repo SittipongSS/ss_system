@@ -139,7 +139,11 @@ test('graph: a startDate without startLocked is NOT treated as a pin (flows from
 });
 
 test('buildProjectTasks produces a valid, sequentially-ordered template schedule', () => {
-  const tasks = buildProjectTasks({ type: 'NPD', productMainCategory: '01-002', startDate: '2026-06-15' }, 'PRJ-test');
+  // mig 0131: หมวดสรรพสามิตส่งธงผ่าน templateOptions (token flag:excise ใน template)
+  const tasks = buildProjectTasks(
+    { type: 'NPD', productMainCategory: '01-002', startDate: '2026-06-15' },
+    'PRJ-test', null, { categoryFlags: { isExcise: true } },
+  );
   assert.ok(tasks.length > 0, 'template produced tasks');
   assertInvariants(tasks, 'buildProjectTasks');
   assert.ok(tasks.every((t, i) => t.stepOrder === i), 'stepOrder is 0..n sequential');
@@ -172,10 +176,13 @@ for (const type of ['SCENT', 'NPD', 'RE-ORDER']) {
   for (const category of ['01-002', '01-001']) {
     test(`versioned ${type} seed preserves static schedule for category ${category}`, () => {
       const project = { type, productMainCategory: category, startDate: '2026-06-15' };
-      const staticRows = buildProjectTasks(project, 'PRJ-static');
+      // ธงหมวด (mig 0131): 01-002 = หมวดที่ติ๊กเสียภาษีสรรพสามิต ในชุดข้อมูลจำลองนี้
+      const categoryFlags = { isExcise: category === '01-002' };
+      const staticRows = buildProjectTasks(project, 'PRJ-static', null, { categoryFlags });
       const versionedRows = buildProjectTasks(project, 'PRJ-versioned', null, {
         templateVersionId: `version-${type}`,
         template: versionedTemplate(type),
+        categoryFlags,
       });
       assert.deepEqual(comparableSchedule(versionedRows), comparableSchedule(staticRows));
       assert.ok(versionedRows.every((row) => row.workflowTemplateVersionId === `version-${type}`));

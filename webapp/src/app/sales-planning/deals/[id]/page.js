@@ -268,14 +268,18 @@ export default function DealOverviewPage() {
   const role = useRole();
   const team = useTeam();
   const alreadyWon = ["won", "in_project"].includes(deal?.stage);
+  // หมวดสินค้า (ประกาศก่อน lc — useMemo ข้างล่างอ้างใน deps; ใช้ร่วมกับโมดัลแก้ดีล/สร้าง PM ด้วย)
+  const [categories, setCategories] = useState([]);
   const lc = useMemo(
     () => (deal ? dealLifecycle(deal, {
       projectProducts: data?.projectProducts,
       exciseRegistrations: data?.exciseRegistrations,
       sahamitPo: data?.sahamitPo,
       shipmentPrep: data?.shipmentPrep,
+      // หมวดสินค้า — ใช้ตัดสินการ์ดสรรพสามิตจาก flag isExcise (mig 0131)
+      productTypes: categories,
     }) : null),
-    [deal, data],
+    [deal, data, categories],
   );
 
   const [actionBusy, setActionBusy] = useState("");
@@ -324,7 +328,6 @@ export default function DealOverviewPage() {
 
   // โมดัลแก้ดีล + สร้าง PM
   const [customers, setCustomers] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [projects, setProjects] = useState([]);
   const dealBrand = useMemo(() => {
