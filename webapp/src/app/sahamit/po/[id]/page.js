@@ -215,6 +215,12 @@ export default function PoDetailPage() {
   const [settleData, setSettleData] = useState(null); // { poReceivedMonth, projectId, lines } | null=กำลังโหลด
   const [settleChoices, setSettleChoices] = useState({}); // poLineId -> dealId | "new" | "skip"
   const [settleModes, setSettleModes] = useState({}); // poLineId -> "split" | "whole" (เฉพาะ PO ครอบดีลบางส่วน)
+  // เลือกโครงการเดิมมาเชื่อม (มติ 2026-07-20) — ทางเลือกคู่กับ "สร้างโครงการใหม่"
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkProjects, setLinkProjects] = useState([]);
+  const [linkProjectId, setLinkProjectId] = useState("");
   const [toast, setToast] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
@@ -306,6 +312,44 @@ export default function PoDetailPage() {
     }
   };
 
+  // เลือกโครงการเดิม: โหลดโครงการของลูกค้าสหมิตร (customerId เดียวกับ PO) มาให้เลือก
+  const openLinkProject = async () => {
+    setLinkOpen(true);
+    setLinkLoading(true);
+    setLinkProjects([]);
+    setLinkProjectId("");
+    try {
+      const res = await fetch("/api/pm/projects");
+      const rows = res.ok ? await res.json() : [];
+      const mine = (Array.isArray(rows) ? rows : []).filter((p) => p.customerId && p.customerId === po.customerId);
+      setLinkProjects(mine);
+      if (mine.length === 1) setLinkProjectId(mine[0].id);
+    } catch {
+      setLinkProjects([]);
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+  const submitLinkProject = async () => {
+    if (!linkProjectId) { setToast({ kind: "error", msg: "เลือกโครงการที่จะเชื่อมก่อน" }); return; }
+    setLinkBusy(true);
+    try {
+      const payload = await sahamitFetch(`/api/sahamit/po/${id}/link-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: linkProjectId }),
+      });
+      setLinkOpen(false);
+      const project = payload.project;
+      if (project?.code || project?.id) router.push(`/sa/projects/${project.code || project.id}`);
+      else await reload();
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message || "เชื่อมโครงการไม่สำเร็จ" });
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
   // เปิด modal จับคู่รายบรรทัด (โหลด candidate ต่อบรรทัด)
   const openSettleModal = async () => {
     setSettleOpen(true);
@@ -392,9 +436,14 @@ export default function PoDetailPage() {
                   <ExternalLink size={14} /> เปิด PM Project
                 </button>
               ) : canCreateProject ? (
-                <button type="button" className="btn btn-primary" onClick={() => setProjectConfirmOpen(true)} disabled={!po.lines?.length}>
-                  <PackageCheck size={14} /> 1. สร้างโครงการ PM
-                </button>
+                <>
+                  <button type="button" className="btn" onClick={openLinkProject} disabled={!po.lines?.length} title="เชื่อม PO เข้าโครงการสหมิตรที่มีอยู่แล้ว">
+                    <PackageCheck size={14} /> 1. เลือกโครงการเดิม
+                  </button>
+                  <button type="button" className="btn btn-primary" onClick={() => setProjectConfirmOpen(true)} disabled={!po.lines?.length}>
+                    <PackageCheck size={14} /> หรือสร้างโครงการใหม่
+                  </button>
+                </>
               ) : null}
 
               {canSettle && (
@@ -572,6 +621,35 @@ export default function PoDetailPage() {
         confirmLabel={projectBusy ? "กำลังสร้าง..." : "สร้างโครงการ"}
         danger={false}
       />
+
+      <Modal open={linkOpen} onClose={() => !linkBusy && setLinkOpen(false)} title="เลือกโครงการเดิมมาเชื่อม PO">
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          {linkLoading ? (
+            <div style={{ color: "var(--text-3)", fontSize: 13 }}>กำลังโหลดโครงการ…</div>
+          ) : linkProjects.length === 0 ? (
+            <div style={{ color: "var(--text-3)", fontSize: 13 }}>ยังไม่มีโครงการสหมิตรให้เลือก — ใช้ &quot;สร้างโครงการใหม่&quot; แทน</div>
+          ) : (
+            <>
+              <label style={{ fontSize: 13, fontWeight: 600 }}>โครงการ</label>
+              <Select value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)}>
+                <option value="">— เลือกโครงการ —</option>
+                {linkProjects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.code ? `${p.code} · ` : ""}{p.name}{p.type ? ` (${p.type})` : ""}</option>
+                ))}
+              </Select>
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                FG และจำนวนจาก PO นี้จะถูกเพิ่มเข้าโครงการที่เลือก แล้วเดินขั้นตอน &quot;ยืนยันดีล + ออกใบเสนอราคา&quot; ต่อได้
+              </div>
+            </>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+            <button type="button" className="btn ghost" onClick={() => !linkBusy && setLinkOpen(false)} disabled={linkBusy}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={submitLinkProject} disabled={linkBusy || !linkProjectId}>
+              {linkBusy ? "กำลังเชื่อม…" : "เชื่อมโครงการ"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={settleOpen} onClose={() => !settleBusy && setSettleOpen(false)} title="ยืนยันดีล + ออกใบเสนอราคา (รายบรรทัด)" size="lg">
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
