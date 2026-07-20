@@ -156,12 +156,13 @@ test('showQuotePrintError replaces the loading page with a safe error message', 
 const lineOf = (id, description = 'สินค้าทดสอบ') => ({ id, description });
 
 test('พิมพ์จริง: เติมรายการให้เต็มหน้าก่อนตัด ไม่เกลี่ยไปหน้าสุดท้าย', () => {
-  const lines = Array.from({ length: 30 }, (_, index) => lineOf(`L${index}`));
+  const lines = Array.from({ length: 40 }, (_, index) => lineOf(`L${index}`));
   const pages = paginateCommercialLines(lines, 0);
 
-  // หน้าแรกความจุ 15 หน่วย — ของเดิมจงใจเติมไม่เต็มเพื่อดันงานไปหน้าท้าย
-  assert.equal(pages[0].length, 15, 'หน้าแรกต้องเต็มความจุ');
-  assert.equal(pages.flat().length, 30, 'ไม่มีรายการหาย');
+  // หน้าแรกความจุ px-calibrated = 24 หน่วย (วัด DOM จริง 2026-07-21 — เดิม 15 เติมไม่เต็ม
+  // ใช้พื้นที่จริงแค่ ~54%). หน้าถัดไป 32.
+  assert.equal(pages[0].length, 24, 'หน้าแรกต้องเต็มความจุที่คาลิเบรตแล้ว');
+  assert.equal(pages.flat().length, 40, 'ไม่มีรายการหาย');
   assert.deepEqual(pages.flat().map((line) => line.id), lines.map((line) => line.id), 'ลำดับต้องคงเดิม');
 });
 
