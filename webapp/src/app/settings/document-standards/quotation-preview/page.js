@@ -1,57 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FileText, Palette, Printer, ShieldCheck } from 'lucide-react';
 import Workspace from '@/components/ui/Workspace';
+import QuotationMasterDocument from '@/components/documents/QuotationMasterDocument';
 import {
+  DEFAULT_QUOTATION_MASTER_VARIANT,
+  QUOTATION_MASTER_TEMPLATE_VERSIONS,
   QUOTATION_PREVIEW_SCENARIOS,
   QUOTATION_PREVIEW_STATES,
   buildQuotationMasterPreview,
-  buildQuotationPreviewPrintInput,
 } from '@/lib/sales/quotationMasterTemplate';
-import { buildQuotePrintHTML } from '@/lib/sales/quotePrint';
 import styles from './page.module.css';
 
-// Phase 7C (Direction A): หน้า preview เรนเดอร์ผ่าน "เครื่องยนต์เดียวกับใบจริง"
-// (quotePrint.buildQuotePrintHTML) ใน iframe → ดูตัวอย่างตรงกับที่พิมพ์ออกมา 100%.
-// เดิมใช้ component แม่แบบแยก (QuotationMasterDocument) ซึ่งคนละ layout/pagination
-// กับใบจริง ทำให้ preview ≠ ใบพิมพ์ — ปลดระวางไปตามมติ 7C.
 export default function QuotationMasterPreviewPage() {
   const [scenarioId, setScenarioId] = useState('standard');
   const [documentState, setDocumentState] = useState('approved');
+  const [templateVariant, setTemplateVariant] = useState(DEFAULT_QUOTATION_MASTER_VARIANT);
   const [grayscale, setGrayscale] = useState(false);
-  const frameRef = useRef(null);
-
-  const scenario = QUOTATION_PREVIEW_SCENARIOS.find((item) => item.id === scenarioId);
   const model = useMemo(
-    () => buildQuotationMasterPreview(scenarioId, documentState),
-    [scenarioId, documentState],
+    () => buildQuotationMasterPreview(scenarioId, documentState, templateVariant),
+    [scenarioId, documentState, templateVariant],
   );
-  const html = useMemo(() => {
-    const { quote, options } = buildQuotationPreviewPrintInput(scenarioId, documentState);
-    return buildQuotePrintHTML(quote, options);
-  }, [scenarioId, documentState]);
+  const scenario = QUOTATION_PREVIEW_SCENARIOS.find((item) => item.id === scenarioId);
+  const selectedTemplate = QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === templateVariant);
 
-  // ปรับความสูง iframe ให้เท่าเนื้อหาจริง (หน้า A4 หลายหน้า) ไม่ให้มี scrollbar ซ้อน
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return undefined;
-    const resize = () => {
-      try {
-        const doc = frame.contentDocument;
-        if (doc?.body) frame.style.height = `${doc.body.scrollHeight}px`;
-      } catch { /* cross-origin ไม่เกิดกับ srcDoc เดียวกัน */ }
-    };
-    frame.addEventListener('load', resize);
-    const timer = setTimeout(resize, 300);
-    return () => { frame.removeEventListener('load', resize); clearTimeout(timer); };
-  }, [html]);
-
-  function printPreview() {
-    const frame = frameRef.current;
-    if (!frame?.contentWindow) return;
-    frame.contentWindow.focus();
-    frame.contentWindow.print();
+  async function printPreview() {
+    await document.fonts.ready;
+    window.print();
   }
 
   return (
@@ -67,14 +43,14 @@ export default function QuotationMasterPreviewPage() {
       <div className={`premium-header ${styles.screenOnly}`}>
         <div className="header-content">
           <h1><span className="premium-header-icon"><FileText size={22} /></span> Quotation Master Template</h1>
-          <p>ตัวอย่างใบเสนอราคา FM-SA-01 — เรนเดอร์ด้วยเครื่องยนต์เดียวกับใบพิมพ์จริง จึงตรงกับที่พิมพ์ 100%</p>
+          <p>ตัวอย่าง Balanced Controlled สำหรับตรวจ Layout ก่อนเชื่อม Production Document Engine ใน Phase 7</p>
         </div>
       </div>
 
       <section className={`glass-panel ${styles.controlPanel} ${styles.screenOnly}`} aria-label="ตัวควบคุมตัวอย่างเอกสาร">
         <div className={styles.controlIntro}>
           <span className="ui-badge"><ShieldCheck size={14} /> Preview only</span>
-          <strong>ข้อมูลตัวอย่าง ไม่ใช่ข้อมูลจริง</strong>
+          <strong>Production Template ยังไม่เปลี่ยน</strong>
           <p>ข้อมูลทั้งหมดเป็น Fixture และไม่มีการอ่านหรือเขียนข้อมูลลูกค้าจริง</p>
         </div>
 
@@ -85,6 +61,23 @@ export default function QuotationMasterPreviewPage() {
               {QUOTATION_PREVIEW_SCENARIOS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
           </label>
+
+          <div className="form-group">
+            <span>รูปแบบแม่แบบ</span>
+            <div className="segmented" aria-label="เวอร์ชันแม่แบบ">
+              {QUOTATION_MASTER_TEMPLATE_VERSIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={templateVariant === item.id}
+                  className={templateVariant === item.id ? 'active' : ''}
+                  onClick={() => setTemplateVariant(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="form-group">
             <span>สถานะเอกสาร</span>
@@ -113,20 +106,14 @@ export default function QuotationMasterPreviewPage() {
         </div>
 
         <div className={styles.scenarioSummary} aria-live="polite">
-          <strong>{scenario?.label}</strong>
+          <strong>{selectedTemplate?.label} · {scenario?.label}</strong>
           <span>{scenario?.description}</span>
-          <span>{model.lines.length} รายการ · {model.installments.length} งวด</span>
+          <span>{model.lines.length} รายการ · {model.pages.length} หน้า · {model.installments.length} งวด</span>
         </div>
       </section>
 
       <section className={styles.previewStage} aria-label="ตัวอย่าง A4">
-        <iframe
-          ref={frameRef}
-          className={styles.previewFrame}
-          title="ตัวอย่างใบเสนอราคา"
-          srcDoc={html}
-          style={grayscale ? { filter: 'grayscale(1)' } : undefined}
-        />
+        <QuotationMasterDocument model={model} grayscale={grayscale} />
       </section>
     </div>
   );
