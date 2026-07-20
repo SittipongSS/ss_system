@@ -7,7 +7,7 @@ import { countBusinessDays } from '@/lib/pm/dateHelpers';
 import { isSuperuser } from '@/lib/permissions';
 
 export const LEAD_CHANNELS = [
-  'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig',
+  'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig', 'typeform',
   'phone', 'walkin', 'website',
 ];
 export const LEAD_CHANNEL_LABELS = {
@@ -15,13 +15,15 @@ export const LEAD_CHANNEL_LABELS = {
   chatcone_meta: 'Meta',
   chatcone_tiktok: 'TikTok',
   chatcone_ig: 'IG',
+  typeform: 'Typeform',
   phone: 'โทรเข้า',
   walkin: 'Walk-in',
   website: 'เว็บไซต์',
 };
 // กลุ่มช่องทาง (Online / Onsite / Website) — derive จาก channel ตอนเขียน
+// (เพิ่ม channel ใหม่ต้องเพิ่มใน CHECK constraint ของ sales_leads ด้วย — ดู mig 0129)
 export function channelGroupOf(channel) {
-  if (String(channel || '').startsWith('chatcone_')) return 'online';
+  if (String(channel || '').startsWith('chatcone_') || channel === 'typeform') return 'online';
   if (channel === 'website') return 'website';
   return 'onsite'; // phone / walkin
 }
