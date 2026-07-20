@@ -51,7 +51,11 @@ export async function GET(request) {
   }
 
   try {
-    return Response.json(await listAttachments(entityType, entityId));
+    // no-store: รายการไฟล์แนบเปลี่ยนได้ตลอด — กันเบราว์เซอร์ cache คำตอบเก่า (เช่น []
+    // ก่อนแนบไฟล์) แล้วแสดงผิดหลัง refresh
+    return Response.json(await listAttachments(entityType, entityId), {
+      headers: { 'Cache-Control': 'no-store' },
+    });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
