@@ -5,6 +5,7 @@ import assert from 'node:assert';
 import {
   LEAD_CHANNELS, channelGroupOf, LEAD_TRANSITIONS, TRANSITION_TO_STATUS,
   slaBusinessDays, slaHit, SERVICE_DETAIL_REQUIRED,
+  canEditLead, canDeleteLead, LEAD_LOCKED_STATUSES,
 } from './leads';
 
 test('channelGroupOf: chatcone→online, phone/walkin→onsite, website→website', () => {
@@ -50,4 +51,40 @@ test('service detail บังคับเฉพาะ product/other', () => {
   assert.ok(SERVICE_DETAIL_REQUIRED.has('other'));
   assert.ok(!SERVICE_DETAIL_REQUIRED.has('diffuser'));
   assert.equal(LEAD_CHANNELS.length, 7);
+});
+
+test('MKT แก้/ลบได้เฉพาะใบตัวเอง "ก่อนคัดกรอง" — คัดกรองแล้วส่งมอบฝ่ายขาย (มติ 2026-07-20)', () => {
+  const mkt = { role: 'marketing', id: 'mk1' };
+  const own = (status) => ({ status, createdBy: 'mk1', team: null, assigneeId: null });
+  // ก่อนคัดกรอง (new) — แก้/ลบของตัวเองได้
+  assert.equal(canEditLead(mkt, own('new')), true);
+  assert.equal(canDeleteLead(mkt, own('new')), true);
+  // คัดกรองแล้ว/มอบหมายแล้ว — ห้ามทั้งแก้และลบ แม้เป็นใบที่ตัวเองกรอก
+  for (const status of ['screened', 'assigned', ...LEAD_LOCKED_STATUSES]) {
+    assert.equal(canEditLead(mkt, own(status)), false, `edit ${status}`);
+    assert.equal(canDeleteLead(mkt, own(status)), false, `delete ${status}`);
+  }
+  // ใบของคนอื่น — แตะไม่ได้แม้ยัง new
+  assert.equal(canEditLead(mkt, { status: 'new', createdBy: 'mk2' }), false);
+  assert.equal(canDeleteLead(mkt, { status: 'new', createdBy: 'mk2' }), false);
+});
+
+test('นโยบายแก้/ลบของ role อื่นคงเดิม: admin ทุกสถานะ, supervisor ก่อนติดต่อ, ทีมขายตาม scope', () => {
+  const lead = (status, extra = {}) => ({ status, createdBy: 'mk1', team: 'KA', assigneeId: null, ...extra });
+  // admin — ทุกใบทุกสถานะ
+  assert.equal(canEditLead({ role: 'admin', id: 'a1' }, lead('qualified')), true);
+  assert.equal(canDeleteLead({ role: 'admin', id: 'a1' }, lead('qualified')), true);
+  // supervisor — ก่อนเริ่มติดต่อ
+  const sup = { role: 'ae_supervisor', id: 's1' };
+  assert.equal(canEditLead(sup, lead('screened')), true);
+  assert.equal(canDeleteLead(sup, lead('assigned')), true);
+  assert.equal(canEditLead(sup, lead('contacted')), false);
+  // senior_ae — เฉพาะทีมตัวเอง (หรือยังไม่มีทีม) และลบไม่ได้
+  assert.equal(canEditLead({ role: 'senior_ae', id: 'se1', team: 'KA' }, lead('screened')), true);
+  assert.equal(canEditLead({ role: 'senior_ae', id: 'se1', team: 'ODM' }, lead('screened')), false);
+  assert.equal(canDeleteLead({ role: 'senior_ae', id: 'se1', team: 'KA' }, lead('screened')), false);
+  // ae — เฉพาะใบที่ถูกมอบหรือกรอกเอง และลบไม่ได้
+  assert.equal(canEditLead({ role: 'ae', id: 'ae1' }, lead('assigned', { assigneeId: 'ae1' })), true);
+  assert.equal(canEditLead({ role: 'ae', id: 'ae1' }, lead('assigned', { assigneeId: 'ae2' })), false);
+  assert.equal(canDeleteLead({ role: 'ae', id: 'ae1' }, lead('assigned', { assigneeId: 'ae1' })), false);
 });

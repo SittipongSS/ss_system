@@ -24,7 +24,7 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
-  MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS,
+  MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS, canEditLead, canDeleteLead,
 } from "@/lib/sales/leads";
 import { FORECAST_LEVELS, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
@@ -371,20 +371,9 @@ export default function LeadsPage() {
     return btns;
   };
 
-  const canEditRow = (lead) => {
-    if (role === "admin") return true;
-    if (["contacted", "meeting", "qualified", "disqualified"].includes(lead.status)) return false;
-    if (superuser) return true;
-    if (role === "marketing") return meId != null && lead.createdBy === meId;
-    return canLead;
-  };
-
-  const canDeleteRow = (lead) => {
-    if (role === "admin") return true;
-    if (["contacted", "meeting", "qualified", "disqualified"].includes(lead.status)) return false;
-    if (superuser || role === "marketing") return true;
-    return false;
-  };
+  // นโยบายเดียวกับ API (lib/sales/leads.js) — ปุ่มโชว์เฉพาะเมื่อ action จะสำเร็จจริง
+  const canEditRow = (lead) => canEditLead({ role, id: meId, team }, lead);
+  const canDeleteRow = (lead) => canDeleteLead({ role, id: meId, team }, lead);
 
   const slaPct = (s) => (s && s.checked ? fmtPercent((s.hit / s.checked) * 100) : "-");
 
