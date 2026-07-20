@@ -14,7 +14,7 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/components/salesPlanning/ui";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
+import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
 
@@ -196,7 +196,7 @@ export default function QuotationsPage() {
                               const res = await fetch(`/api/sales-planning/quotations/${r.id}`);
                               const data = await res.json().catch(() => ({}));
                               if (!res.ok) throw new Error(data?.error || "ไม่สามารถโหลดข้อมูลใบเสนอราคาได้");
-                              openQuotePrintWindow(data, printWindow);
+                              await openQuotePrintWindowPreferIssued(data, printWindow);
                             } catch (error) {
                               showQuotePrintError(printWindow, error.message);
                             }

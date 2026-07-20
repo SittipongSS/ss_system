@@ -50,6 +50,12 @@ const linePageUnits = (line) => {
 // page reserves room for totals, payment terms and signatures; preceding pages
 // can use the space for more item rows. reserveUnits = พื้นที่เพิ่มบนหน้าสุดท้าย
 // สำหรับตารางงวดชำระ/หมายเหตุยาว (ผู้เรียกส่งมาตามเนื้อหาจริง — กันหน้าสุดท้ายล้น).
+// กติกาแบ่งหน้า V4 (มติผู้ใช้ 2026-07-20 — ยกมาจากแม่แบบ V4 ให้ใบจริงใช้กติกาเดียวกัน):
+//   1. เติมรายการให้ "เต็มหน้า" ก่อนค่อยตัด — เดิมใช้ targetUnits ที่ตั้งใจเติมไม่เต็ม
+//      เพื่อเกลี่ยงานไปหน้าสุดท้าย ทำให้หน้ากลางโล่งทั้งที่ยังใส่ได้อีก
+//   2. ตัดตามข้อเสมอ ไม่ผ่ากลางรายการ
+//   3. หน้าที่ถือมูลค่ารวมต้องมีรายการสินค้าอยู่ด้านบนอย่างน้อย 1 รายการ —
+//      ตอนเติมหน้าจึงเหลือรายการไว้ให้หน้าถัดไปเสมอ ไม่กวาดจนหมด
 export function paginateCommercialLines(lines = [], reserveUnits = 0) {
   if (!Array.isArray(lines) || lines.length === 0) return [[]];
 
@@ -57,26 +63,28 @@ export function paginateCommercialLines(lines = [], reserveUnits = 0) {
   const firstPageCapacity = 15;
   const continuationCapacity = 22;
   const pages = [];
-  let remaining = lines.slice();
+  const remaining = lines.slice();
 
   const totalUnits = () => remaining.reduce((sum, line) => sum + linePageUnits(line), 0);
   while (totalUnits() > finalPageCapacity) {
     const capacity = pages.length === 0 ? firstPageCapacity : continuationCapacity;
-    const targetUnits = Math.min(capacity, totalUnits() - finalPageCapacity);
     const page = [];
     let usedUnits = 0;
 
-    while (remaining.length > 0) {
+    // remaining.length > 1 = กันไม่ให้กวาดหมด ไม่งั้นหน้าสุดท้ายเหลือแต่ยอดรวม
+    // กับช่องลงชื่อลอย ๆ โดยไม่มีรายการสินค้า (ผิดกฎข้อ 3)
+    while (remaining.length > 1) {
       const units = linePageUnits(remaining[0]);
-      if (page.length > 0 && usedUnits + units > targetUnits) break;
+      if (page.length > 0 && usedUnits + units > capacity) break;
       page.push(remaining.shift());
       usedUnits += units;
-      if (usedUnits >= targetUnits) break;
+      if (usedUnits >= capacity) break;
     }
+    if (page.length === 0) page.push(remaining.shift());
     pages.push(page);
   }
 
-  pages.push(remaining);
+  if (remaining.length) pages.push(remaining);
   return pages;
 }
 
@@ -221,22 +229,30 @@ export function buildQuotePrintHTML(quote, options = {}) {
       <thead><tr><th>ลำดับ</th><th>รายการ</th><th>จำนวน</th><th>ราคา/หน่วย</th>${hasLineDiscount ? '<th>ส่วนลด</th>' : ''}<th>จำนวนเงิน</th></tr></thead>
       <tbody>${pageRows}</tbody>
     </table>`;
-  const commercialSection = `
+  // มูลค่ารวมผูกกับรายการสินค้า จึงอยู่ต่อท้ายตารางทันที (กฎ V4 ข้อ 3: หน้าที่ถือ
+  // ยอดรวมต้องมีรายการอยู่ด้านบน)
+  const totalsSection = `
     <section class="commercial">
       <div class="totals-wrap"><table class="totals" style="width:${hasLineDiscount ? '108mm' : '86mm'}"><colgroup><col><col style="width:36mm"></colgroup><tbody>${totals}</tbody></table></div>
+    </section>`;
+  // หมายเหตุ + วิธี/เงื่อนไขชำระ + ช่องลงชื่อ = กลุ่มเดียวชิดล่างเอกสาร แยกกันไม่ได้
+  // (มติผู้ใช้ 2026-07-20) เดิมกล่องเงื่อนไขไหลต่อจากยอดรวมแล้วช่องลงชื่อหล่นไป
+  // ติดขอบล่างแยกกัน เกิดช่องว่างกลางหน้า
+  const closingGroup = `
+    <section class="closing-group">
       <div class="commercial-info">
         <div class="info-block"><div class="lbl">หมายเหตุ / REMARKS</div>${value(quote.notes)}</div>
         <div class="info-block"><div class="lbl">วิธีการชำระเงิน / PAYMENT METHOD</div>${value(paymentPlan?.paymentMethod)}</div>
         <div class="info-block"><div class="lbl">เงื่อนไขการชำระเงิน / PAYMENT TERMS</div>${value(quote.paymentTerms)}${installmentTable}</div>
       </div>
+      <section class="sign-sec">${signers.map(signBox).join('')}</section>
     </section>`;
-  const signatureSection = `<section class="sign-sec">${signers.map(signBox).join('')}</section>`;
   const classicDocument = `
     <main class="sheet">
       ${watermark ? `<div class="watermark">${esc(watermark)}</div>` : ''}
       <table class="page-table">
         <thead><tr><td>${printHeaderHtml({ form, docNumber: documentNumber, docDate: printDate(documentDate) })}</td></tr></thead>
-        <tbody><tr><td><div class="doc-body">${headerGrid}${itemsTable(rows)}${commercialSection}${signatureSection}</div></td></tr></tbody>
+        <tbody><tr><td><div class="doc-body">${headerGrid}${itemsTable(rows)}${totalsSection}${closingGroup}</div></td></tr></tbody>
       </table>
     </main>`;
   // เผื่อพื้นที่หน้าสุดท้าย: ตารางงวดชำระ (หัว+ต่องวด) + หมายเหตุ/เงื่อนไขที่ยาวหลายบรรทัด
@@ -257,7 +273,7 @@ export function buildQuotePrintHTML(quote, options = {}) {
       <div class="doc-body">
         ${isFirstPage ? headerGrid : ''}
         ${itemsTable(rowsForLines(pageLines, startIndex))}
-        ${isLastPage ? `${commercialSection}${signatureSection}` : ''}
+        ${isLastPage ? `${totalsSection}${closingGroup}` : ''}
       </div>
     </main>`;
     }).join('')
@@ -355,12 +371,16 @@ export function buildQuotePrintHTML(quote, options = {}) {
   .page-table { width: 100%; border-collapse: collapse; }
   .page-table > thead > tr > td, .page-table > tbody > tr > td { border: none; padding: 0; }
   .page-table > tbody > tr, .page-table > tbody { page-break-inside: auto !important; break-inside: auto !important; }
-  /* เนื้อหาใต้หัวเอกสารเป็น flex คอลัมน์ min-height เกือบเต็มหน้า → ช่องลงชื่อ
+  /* เนื้อหาใต้หัวเอกสารเป็น flex คอลัมน์ min-height เกือบเต็มหน้า → กลุ่มท้ายเอกสาร
      (margin-top:auto) ถูกดันชิดล่างสุดของหน้า; เอกสารยาวหลายหน้า จะไหลต่อท้ายเนื้อหา */
   .doc-body { display: flex; flex-direction: column; min-height: 250mm; }
 
+  /* กลุ่มท้ายเอกสาร (หมายเหตุ + เงื่อนไขชำระ + ช่องลงชื่อ) = ก้อนเดียวชิดล่าง
+     margin-top:auto ย้ายมาอยู่ที่กลุ่มแทนที่จะอยู่ที่ .sign-sec เดี่ยว ๆ ไม่งั้น
+     กล่องเงื่อนไขจะไหลติดยอดรวมด้านบนแล้วเหลือช่องว่างคั่นกลางหน้า */
+  .closing-group { margin-top: auto; page-break-inside: avoid; break-inside: avoid; }
   /* ช่องลงชื่อตีกรอบ 3 ช่อง (ผู้จัดทำ/ผู้ตรวจสอบ/ลูกค้า) — โครงเดียวกับเอกสารไทม์ไลน์ */
-  .sign-sec { margin-top: auto; padding-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr);
+  .sign-sec { padding-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr);
               gap: 8px; page-break-inside: avoid; break-inside: avoid; }
   .sign-box { border: 1px solid #b8b0a4; border-radius: 6px; overflow: hidden; background: #fff; }
   .sb-head { background: #f0ebe0; border-bottom: 1px solid #dcd8d0; text-align: center;
@@ -402,7 +422,8 @@ export function buildQuotePrintHTML(quote, options = {}) {
     /* หน้าพิมพ์เป็น flex column ให้ doc-body ยืดเต็มพื้นที่ใต้หัวเอกสารเอง (min-height:0)
        — ไม่พึ่ง min-height 250mm ที่ทำให้ หัว(~35mm)+เนื้อหา ≈285mm ล้นเกินกล่องพิมพ์
        แล้วดันเป็นหน้าเปล่าเพิ่ม. ความสูง 272mm (พื้นที่พิมพ์จริง 276mm − เผื่อ 4mm กัน
-       Chromium ปัดขึ้นหน้าเปล่า). ช่องลงชื่อยังชิดล่างด้วย margin-top:auto ของ .doc-body */
+       Chromium ปัดขึ้นหน้าเปล่า). กลุ่มท้ายเอกสาร (.closing-group) ยังชิดล่างด้วย
+       margin-top:auto ภายใน .doc-body ที่เป็น flex column */
     .explicit-page { width: 184mm; height: 272mm; position: relative; display: flex; flex-direction: column; overflow: hidden; }
     .explicit-page > .doc-body { flex: 1 1 auto; min-height: 0; }
     .explicit-page .page-number { right: 0; bottom: 0; }
@@ -427,4 +448,34 @@ export function openQuotePrintWindow(quote, preparedWindow = null) {
   win.document.write(buildQuotePrintHTML(quote));
   win.document.close();
   return win;
+}
+
+function writeToPrintWindow(win, html) {
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  return win;
+}
+
+// พิมพ์ใบเสนอราคา = ถ้าเคยออกจริงแล้ว (อนุมัติ → Phase 7B ตรึง snapshot ไว้)
+// ต้อง "เล่นไฟล์ที่ตรึงไว้" ไม่ใช่สร้าง HTML ใหม่จากข้อมูลสด
+//
+// สำคัญ: ถ้าไม่ทำแบบนี้ การแก้กติกาแบ่งหน้าใน buildQuotePrintHTML จะทำให้ใบที่
+// อนุมัติไปแล้วพิมพ์ออกมาหน้าตาไม่เหมือนฉบับที่ลูกค้าได้รับ ซึ่งขัดกับ ADR 0011
+// (issued document ต้องไม่เปลี่ยน) — ฉบับที่ยังไม่อนุมัติไม่มี snapshot จึงสร้างสด
+export async function openQuotePrintWindowPreferIssued(quote, preparedWindow = null) {
+  const win = preparedWindow || prepareQuotePrintWindow();
+  if (!win) return undefined;
+  const id = quote?.id;
+  if (!id) return openQuotePrintWindow(quote, win);
+  try {
+    const res = await fetch(`/api/sales-planning/quotations/${encodeURIComponent(id)}/issued?render=latest`, {
+      cache: 'no-store',
+    });
+    // 404 = ยังไม่เคยออกจริง (ฉบับร่าง/รออนุมัติ) → สร้างจากข้อมูลสดตามปกติ
+    if (res.ok) return writeToPrintWindow(win, await res.text());
+  } catch {
+    // โหลดฉบับตรึงไม่ได้ = ไม่บล็อกการพิมพ์ ตกไปใช้ข้อมูลสดแทน
+  }
+  return openQuotePrintWindow(quote, win);
 }

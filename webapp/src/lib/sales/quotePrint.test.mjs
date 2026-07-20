@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildQuotePrintHTML,
   openQuotePrintWindow,
+  paginateCommercialLines,
   prepareQuotePrintWindow,
   showQuotePrintError,
 } from './quotePrint.js';
@@ -147,4 +148,60 @@ test('showQuotePrintError replaces the loading page with a safe error message', 
   assert.match(html, /ไม่สามารถพิมพ์ใบเสนอราคา/);
   assert.match(html, /&lt;โหลดไม่สำเร็จ&gt;/);
   assert.doesNotMatch(html, /<โหลดไม่สำเร็จ>/);
+});
+
+// ── กติกาแบ่งหน้า V4 บนตัวพิมพ์จริง (มติผู้ใช้ 2026-07-20) ──────────────────
+// เดิมไม่มีเทสต์ตรงของ paginateCommercialLines เลย ทั้งที่เป็นตัวกำหนดหน้าตาใบจริง
+
+const lineOf = (id, description = 'สินค้าทดสอบ') => ({ id, description });
+
+test('พิมพ์จริง: เติมรายการให้เต็มหน้าก่อนตัด ไม่เกลี่ยไปหน้าสุดท้าย', () => {
+  const lines = Array.from({ length: 30 }, (_, index) => lineOf(`L${index}`));
+  const pages = paginateCommercialLines(lines, 0);
+
+  // หน้าแรกความจุ 15 หน่วย — ของเดิมจงใจเติมไม่เต็มเพื่อดันงานไปหน้าท้าย
+  assert.equal(pages[0].length, 15, 'หน้าแรกต้องเต็มความจุ');
+  assert.equal(pages.flat().length, 30, 'ไม่มีรายการหาย');
+  assert.deepEqual(pages.flat().map((line) => line.id), lines.map((line) => line.id), 'ลำดับต้องคงเดิม');
+});
+
+test('พิมพ์จริง: ทุกหน้าต้องมีรายการสินค้า — ไม่มีหน้าที่มีแต่ยอดรวมกับช่องลงชื่อ', () => {
+  for (const count of [1, 2, 8, 16, 23, 40, 100]) {
+    for (const reserve of [0, 5, 12, 30]) {
+      const lines = Array.from({ length: count }, (_, index) => lineOf(`L${index}`));
+      const pages = paginateCommercialLines(lines, reserve);
+      for (const [index, page] of pages.entries()) {
+        assert.ok(page.length >= 1, `${count} รายการ/reserve ${reserve}: หน้า ${index + 1} ว่าง`);
+      }
+      assert.equal(pages.flat().length, count, `${count} รายการ/reserve ${reserve}`);
+    }
+  }
+});
+
+test('พิมพ์จริง: ไม่ผ่ากลางรายการ — รายการยาวยกทั้งข้อไปหน้าถัดไป', () => {
+  const long = { id: 'LONG', description: 'ก'.repeat(45 * 10) }; // ~10 หน่วย
+  const lines = [lineOf('A'), long, lineOf('B'), lineOf('C')];
+  const pages = paginateCommercialLines(lines, 0);
+  const ids = pages.map((page) => page.map((line) => line.id));
+  // รายการยาวต้องอยู่ครบในหน้าเดียว ไม่ถูกซอย
+  const pageWithLong = ids.find((page) => page.includes('LONG'));
+  assert.ok(pageWithLong, 'ต้องหารายการยาวเจอ');
+  assert.equal(ids.flat().filter((id) => id === 'LONG').length, 1, 'รายการยาวต้องไม่ถูกซ้ำ/ซอย');
+});
+
+test('พิมพ์จริง: หมายเหตุ เงื่อนไขชำระ และช่องลงชื่อ อยู่ในกลุ่มเดียวชิดล่าง', () => {
+  const html = buildQuotePrintHTML({
+    quoteNumber: 'QT-V4', quoteDate: '2026-07-20', customerName: 'ทดสอบ',
+    lines: [], subtotal: 0, totalAmount: 0, vatRate: 7, vatAmount: 0,
+    notes: 'หมายเหตุทดสอบ', paymentTerms: 'เงื่อนไขทดสอบ',
+  });
+
+  // กลุ่มเดียวกัน: commercial-info และ sign-sec ต้องอยู่ใน .closing-group เดียวกัน
+  assert.match(html, /class="closing-group">[\s\S]*?class="commercial-info"[\s\S]*?class="sign-sec"[\s\S]*?<\/section>/);
+  // ชิดล่าง = margin-top:auto ย้ายมาที่กลุ่ม ไม่ใช่ที่ช่องลงชื่อเดี่ยว ๆ
+  assert.match(html, /\.closing-group \{[^}]*margin-top: auto/);
+  assert.match(html, /\.closing-group \{[^}]*break-inside: avoid/);
+  assert.doesNotMatch(html, /\.sign-sec \{[^}]*margin-top: auto/);
+  // ยอดรวมผูกกับรายการสินค้า จึงอยู่นอกกลุ่มท้ายเอกสาร
+  assert.match(html, /class="commercial">[\s\S]*?class="totals-wrap"/);
 });
