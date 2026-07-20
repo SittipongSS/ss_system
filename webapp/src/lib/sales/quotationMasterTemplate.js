@@ -2,6 +2,10 @@ export const QUOTATION_MASTER_TEMPLATE_VERSIONS = Object.freeze([
   { id: 'v1', label: 'V1', templateVersion: 'quotation-balanced-controlled-v1' },
   { id: 'v2', label: 'V2', templateVersion: 'quotation-balanced-controlled-v2' },
   { id: 'v3', label: 'V3', templateVersion: 'quotation-balanced-controlled-v3' },
+  // V4 = หน้าตาแบบ V2 (accent น้อยสุด) แต่เปลี่ยนกติกาแบ่งหน้าตามมติผู้ใช้ 2026-07-20:
+  // รายการสินค้าเติมให้เต็มหน้าก่อนค่อยตัด (ไม่เกลี่ยสองหน้าแบบ V1–V3) และ
+  // เงื่อนไขชำระ/หมายเหตุ/ลงชื่อ เป็นกลุ่มเดียวชิดล่างเอกสาร
+  { id: 'v4', label: 'V4', templateVersion: 'quotation-balanced-controlled-v4' },
 ]);
 export const DEFAULT_QUOTATION_MASTER_VARIANT = 'v3';
 export const QUOTATION_MASTER_TEMPLATE_VERSION = QUOTATION_MASTER_TEMPLATE_VERSIONS
@@ -148,6 +152,40 @@ function balancedSplit(lines, leftCapacity, rightCapacity, rightReserve) {
   return best;
 }
 
+// V4: เติมรายการให้เต็มหน้าก่อนค่อยตัดไปหน้าถัดไป (ไม่เกลี่ยให้สองหน้าเท่ากันแบบ V1–V3)
+// กติกาที่ต้องคุม 2 ข้อ:
+//   1. ตัดตามข้อ — ไม่ผ่ากลางรายการ
+//   2. หน้าที่ถือ "มูลค่ารวม" ต้องมีรายการสินค้าด้านบนอย่างน้อย 1 รายการ
+//      → ตอนเติมหน้าจึงต้องเหลือรายการไว้ให้หน้าถัดไปเสมอ ไม่ใช่กวาดจนหมด
+function paginateFilled(remaining, { firstCapacity, continuationCapacity, totalsReserve }) {
+  const pages = [];
+  while (remaining.length) {
+    const isFirst = pages.length === 0;
+    const capacity = isFirst ? firstCapacity : continuationCapacity;
+    const finalCapacity = Math.max(1, capacity - totalsReserve);
+
+    // ที่เหลือทั้งหมดใส่หน้านี้ได้พร้อมบล็อกมูลค่ารวม → จบที่หน้านี้
+    if (pageUnits(remaining) <= finalCapacity) {
+      pages.push(remaining.splice(0));
+      break;
+    }
+
+    const page = [];
+    let used = 0;
+    // เงื่อนไข remaining.length > 1 = กันไม่ให้กวาดหมดจนหน้าถัดไปเหลือแต่ยอดรวมลอย ๆ
+    while (remaining.length > 1) {
+      const unitsForLine = rowUnits(remaining[0]);
+      if (page.length && used + unitsForLine > capacity) break;
+      page.push(remaining.shift());
+      used += unitsForLine;
+      if (used >= capacity) break;
+    }
+    if (page.length === 0) page.push(remaining.shift());
+    pages.push(page);
+  }
+  return pages;
+}
+
 export function paginateQuotationMasterLines(lines = [], options = {}) {
   if (!Array.isArray(lines) || lines.length === 0) return [[]];
 
@@ -155,7 +193,14 @@ export function paginateQuotationMasterLines(lines = [], options = {}) {
     firstCapacity = 14,
     continuationCapacity = 19,
     totalsReserve = 4,
+    mode = 'balanced',
   } = options;
+
+  if (mode === 'fill') {
+    return paginateFilled(lines.map((line) => ({ ...line })), {
+      firstCapacity, continuationCapacity, totalsReserve,
+    });
+  }
   const firstFinalCapacity = Math.max(1, firstCapacity - totalsReserve);
   const continuationFinalCapacity = Math.max(1, continuationCapacity - totalsReserve);
   const remaining = lines.map((line) => ({ ...line }));
@@ -212,6 +257,60 @@ function paymentContentUnits({ installments, paymentMethod, paymentTerms, remark
     + Math.max(1, Math.ceil(String(paymentMethod || '').length / 120))
     + Math.max(1, Math.ceil(String(paymentTerms || '').length / 140))
     + Math.max(1, Math.ceil(String(remarks || '').length / 140));
+}
+
+// พื้นที่ที่บล็อกลงนามกิน (3 กล่อง สูงคงที่) คิดเป็นหน่วยเดียวกับ rowUnits
+// ค่านี้ calibrate จากพฤติกรรมที่พิสูจน์แล้วของ V3 ไม่ใช่เดา: V3 รวมกลุ่มชำระเงิน
+// ไว้หน้าเดียวกับรายการได้เมื่อ paymentUnits <= 7 (canCombine) ซึ่ง scenario compact
+// ใช้อยู่จริงและพิมพ์ออกมาพอดีหน้า — ที่ 1 รายการ (2 units) เหลือที่ว่าง 8 units
+// จึงได้เพดานลายเซ็น = 3 เท่ากับว่าเกณฑ์รวมหน้าของ V4 เข้มกว่า V3 เล็กน้อย
+// (V4 รวมได้เมื่อ paymentUnits <= 5, V3 <= 7) = ปลอดภัยฝั่งไม่ล้นหน้า
+const SIGNATURE_UNITS = 3;
+
+// V4: เงื่อนไขชำระ + หมายเหตุ + ลงชื่อ = กลุ่มเดียว แยกกันไม่ได้ และชิดล่างเอกสาร
+// ถ้าท้ายหน้าสุดท้ายเหลือที่พอ → วางต่อจากมูลค่ารวมเลย (ไม่เปลืองหน้า)
+// ถ้าไม่พอ → ยกไปทั้งกลุ่มเป็นหน้าของตัวเอง (มติผู้ใช้: ยอมให้กลุ่มอยู่หน้าเดียวได้)
+function buildGroupedPages({
+  linePages,
+  installments,
+  paymentMethod,
+  paymentTerms,
+  remarks,
+  firstCapacity,
+  continuationCapacity,
+  totalsReserve,
+}) {
+  const groupUnits = paymentContentUnits({ installments, paymentMethod, paymentTerms, remarks })
+    + SIGNATURE_UNITS;
+  const lastIndex = linePages.length - 1;
+  const lastCapacity = lastIndex === 0 ? firstCapacity : continuationCapacity;
+  const lastFree = lastCapacity - totalsReserve - pageUnits(linePages[lastIndex]);
+  const groupFitsOnLastPage = groupUnits <= lastFree;
+
+  const pages = linePages.map((pageLines, index) => ({
+    id: `items-${index + 1}`,
+    kind: index === lastIndex && groupFitsOnLastPage ? 'combined' : 'items',
+    lines: pageLines,
+    showParty: index === 0,
+    showTotals: index === lastIndex,
+    showPayment: index === lastIndex && groupFitsOnLastPage,
+    showSignatures: index === lastIndex && groupFitsOnLastPage,
+  }));
+
+  if (!groupFitsOnLastPage) {
+    pages.push({
+      id: 'payment',
+      kind: 'payment',
+      lines: [],
+      showParty: false,
+      showTotals: false,
+      // กลุ่มไม่แตก — เงื่อนไขชำระและลงชื่ออยู่หน้าเดียวกันเสมอ
+      showPayment: true,
+      showSignatures: true,
+    });
+  }
+
+  return pages;
 }
 
 function buildSemanticPages({
@@ -342,18 +441,36 @@ export function buildQuotationMasterPreview(
   const paymentMethod = scenario.paymentMethod || BASE_QUOTE.paymentMethod;
   const paymentTerms = scenario.paymentTerms || BASE_QUOTE.paymentTerms;
   const remarks = scenario.remarks || BASE_QUOTE.remarks;
+  // V4 ใช้กติกาแบ่งหน้าคนละชุด (เติมเต็มหน้า + กลุ่มท้ายเอกสารไม่แตก)
+  // V1–V3 คงพฤติกรรมเดิมทุกประการ
+  const isFilledLayout = selectedTemplate.id === 'v4';
+  const firstCapacity = firstPageCapacity(customer);
+  const continuationCapacity = 19;
+  const totalsReserve = 4;
   const linePages = paginateQuotationMasterLines(lines, {
-    firstCapacity: firstPageCapacity(customer),
+    firstCapacity,
+    mode: isFilledLayout ? 'fill' : 'balanced',
   });
-  const pages = buildSemanticPages({
-    linePages,
-    lines,
-    installments,
-    paymentMethod,
-    paymentTerms,
-    remarks,
-    discountAmount,
-  });
+  const pages = isFilledLayout
+    ? buildGroupedPages({
+      linePages,
+      installments,
+      paymentMethod,
+      paymentTerms,
+      remarks,
+      firstCapacity,
+      continuationCapacity,
+      totalsReserve,
+    })
+    : buildSemanticPages({
+      linePages,
+      lines,
+      installments,
+      paymentMethod,
+      paymentTerms,
+      remarks,
+      discountAmount,
+    });
 
   return {
     ...BASE_QUOTE,
