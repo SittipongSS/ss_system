@@ -80,8 +80,11 @@ export default function AttachmentsPanel({
   const fetchItems = useCallback(async () => {
     if (!entityType || !entityId) return;
     try {
+      // no-store: กันเบราว์เซอร์ cache รายการไฟล์แนบ — ไม่งั้นคำตอบ [] ตอนเปิดหน้าครั้งแรก
+      // ถูก cache ไว้ แล้วหลังแนบไฟล์+refresh เบราว์เซอร์หยิบ [] เก่ามาแสดง = ไฟล์ "หาย"
       const res = await fetch(
         `/api/master/attachments?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
+        { cache: "no-store" },
       );
       if (res.ok) setItems(await res.json());
     } catch (err) {
