@@ -1,8 +1,16 @@
 # Phase 7B — Issued Document Snapshot และ Immutable PDF Foundation
 
-สถานะ: กำลังดำเนินการ
+สถานะ: รอตรวจ
 
 เริ่มร่าง: 20 กรกฎาคม 2026
+
+บันทึกสถานะ 20 กรกฎาคม 2026: โค้ด Merge เข้า main แล้วผ่าน PR #593
+(commit `38b7804c`, merge `3b67f665`) ครบทั้ง mig 0130, snapshot ตอนอนุมัติ
+และ route reprint จาก snapshot; ยังค้างการยืนยันรัน Migration 0130 บน
+ฐานข้อมูลจริงและ UAT ตาม Definition of Done ต่อมา PR #600 ทำให้ปุ่มพิมพ์
+ใบเสนอราคา production ใช้ snapshot ที่ออกแล้วก่อนเสมอ
+(`openQuotePrintWindowPreferIssued`) — การสลับ consumer ส่วนใบเสนอราคา
+จึงเกิดขึ้นแล้วก่อนเปิดเฟส 7C อย่างเป็นทางการ
 
 ผู้ใช้ยืนยันขอบเขต: 20 กรกฎาคม 2026 — (1) artifact เก็บเป็น **canonical HTML + fingerprint** (เลื่อน PDF binary ไป 7C), (2) ขอบเขตเอกสาร **quotation เท่านั้น** ในเฟสนี้, (3) trigger การออก snapshot = **ตอนอนุมัติ (approved)** จับคู่กับ signature evidence ของ Phase 5
 

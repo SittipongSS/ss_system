@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban, Users, Tag } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
+import Workspace from "@/components/ui/Workspace";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
@@ -247,29 +248,28 @@ export default function CustomerDetails() {
   const teamsLabel = (customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", ") || "-";
 
   return (
-    <>
+    <Workspace
+      hideHeader
+      back={{ href: "/database/customers", label: "กลับไปข้อมูลลูกค้า" }}
+      // action ระดับ entity (แก้ไข/พัก/ลบ) เป็นไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
+      backActions={canEdit ? (
+        <>
+          <ActionButton kind="edit" iconOnly label="แก้ไขข้อมูล" title="แก้ไขข้อมูล" onClick={() => setIsEditing(true)} />
+          {customer.isActive === false
+            ? <ActionButton kind="resume" iconOnly icon={ArchiveRestore} label="เปิดใช้อีกครั้ง" title="เปิดใช้อีกครั้ง" onClick={handleToggleActive} />
+            : <ActionButton kind="pause" iconOnly icon={Archive} label="พักใช้" title="พักใช้" onClick={handleToggleActive} />}
+          {canDelete && (
+            <ActionButton kind="delete" iconOnly label="ลบลูกค้า" title="ลบลูกค้า" onClick={handleDelete} />
+          )}
+        </>
+      ) : null}
+    >
       <Toast toast={toast} onClose={() => setToast(null)} />
-      <Link href="/database/customers" className="btn ghost topbar-back-btn" style={{ marginBottom: "14px" }}>
-        <ArrowLeft size={16} /> กลับไปข้อมูลลูกค้า
-      </Link>
       <SalesDetailOverview
         eyebrow={`CUSTOMER MASTER · ${customer.arCode || "NO AR CODE"}`}
         title={customer.name}
         description={<><span>{customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล"}</span><span>สร้างเมื่อ {fmtDate(customer.createdAt)}</span></>}
         badges={<SalesStateBadge label={customer.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={customer.isActive === false ? "var(--text-3)" : "var(--green)"} />}
-        actions={<>
-          {canEdit && (
-            <ActionButton kind="edit" label="แก้ไขข้อมูล" onClick={() => setIsEditing(true)} />
-          )}
-          {canEdit && (
-            customer.isActive === false
-              ? <ActionButton kind="resume" icon={ArchiveRestore} label="เปิดใช้อีกครั้ง" onClick={handleToggleActive} />
-              : <ActionButton kind="pause" icon={Archive} label="พักใช้" onClick={handleToggleActive} />
-          )}
-          {canEdit && canDelete && (
-            <ActionButton kind="delete" label="ลบลูกค้า" onClick={handleDelete} />
-          )}
-        </>}
         facts={[
           // ตัวเลขความสัมพันธ์อยู่ที่นี่ที่เดียว — รายการเต็มอยู่ในแท็บด้านล่าง
           { icon: Boxes, label: "สินค้า", value: `${products.length} รายการ` },
@@ -627,6 +627,6 @@ export default function CustomerDetails() {
         confirmLabel={confirmBox?.confirmLabel}
         danger={confirmBox?.danger !== false}
       />
-    </>
+    </Workspace>
   );
 }

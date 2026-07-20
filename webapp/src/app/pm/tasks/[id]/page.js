@@ -56,7 +56,14 @@ export default function TaskDetailPage() {
 
   const person = (userId) => task?.people?.[userId] || "-";
 
-  return <Workspace icon={<ListTodo size={22} />} title={task?.title || "รายละเอียดงาน"} subtitle="กำหนดการ ผู้รับผิดชอบ และงานที่เชื่อมโยง" back={{ href: "/sa/tasks", label: "กลับหน้ารายการงาน" }} hideHeader loading={loading}>
+  // ปุ่มแก้ไข = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
+  const backActions = task && (task.canManage || task.canChangeStatus) ? (
+    <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={openEdit} aria-label="แก้ไขงาน" title="แก้ไข">
+      <Pencil size={16} aria-hidden="true" />
+    </button>
+  ) : null;
+
+  return <Workspace icon={<ListTodo size={22} />} title={task?.title || "รายละเอียดงาน"} subtitle="กำหนดการ ผู้รับผิดชอบ และงานที่เชื่อมโยง" back={{ href: "/sa/tasks", label: "กลับหน้ารายการงาน" }} backActions={backActions} hideHeader loading={loading}>
     {error && <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>{error}</div>}
     {task && <div className={styles.page}>
         <SalesDetailOverview
@@ -64,9 +71,6 @@ export default function TaskDetailPage() {
           title={task.title}
           description={<><span>{task.category || "งานทั่วไป"}</span>{task.project && <><span>·</span><span>{task.project.name}</span></>}{task.deal && <><span>·</span><span>{task.deal.title}</span></>}</>}
           badges={<SalesStateBadge label={STATUS_LABELS[task.status] || task.status} color={STATUS_COLORS[task.status]} />}
-          actions={(task.canManage || task.canChangeStatus)
-            ? <button className="btn" onClick={openEdit}><Pencil size={14} /> แก้ไข</button>
-            : null}
           // ไม่มีช่อง "สถานะ" ในแถวนี้ — ป้ายข้างชื่องานบอกอยู่แล้ว (แบบเดียวกับหน้า
           // สอบถาม RD) เดิมโชว์ซ้ำสองที่ในการ์ดเดียวกัน
           facts={[

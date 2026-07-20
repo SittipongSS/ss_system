@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import Workspace from "@/components/ui/Workspace";
 import {
-  AlertTriangle, Archive, ArrowDown, ArrowUp, ChevronLeft, Clock3, Copy, Edit3,
+  AlertTriangle, Archive, ArrowDown, ArrowUp, Clock3, Copy, Edit3,
   Eye, FilePlus2, GitBranch, Milestone, Plus, Save, Send, Trash2, Workflow,
 } from "lucide-react";
 import RecordDrawer from "@/components/excise/RecordDrawer";
@@ -348,17 +348,12 @@ export default function WorkflowTemplatesPage() {
   const previewSummary = workflowTemplateSummary({ steps: previewSteps });
 
   return (
-    <>
+    // ปุ่มสร้างฉบับร่างไม่อยู่บนหัวหน้า — การ์ด "ยังไม่มีฉบับร่าง" ในเนื้อหามีปุ่มของมันเองแล้ว
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <header className="premium-header">
         <div className="header-content">
           <h1><span className="premium-header-icon"><Workflow size={22} /></span> Workflow และ Timeline Template</h1>
           <p>กำหนดขั้นตอน ระยะเวลา ผู้รับผิดชอบ และ dependency ที่ใช้สร้าง Timeline งานใหม่แบบมีเวอร์ชัน</p>
-        </div>
-        <div className={styles.headerActions}>
-          <Link href="/settings" className="btn ghost"><ChevronLeft size={16} /> กลับหน้าตั้งค่า</Link>
-          {!loading && selected && !selected.draft && (
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={createDraft}><FilePlus2 size={16} /> สร้างฉบับร่าง</button>
-          )}
         </div>
       </header>
 
@@ -551,6 +546,6 @@ export default function WorkflowTemplatesPage() {
         onConfirm={transitionDraft}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
-    </>
+    </Workspace>
   );
 }

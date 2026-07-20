@@ -154,6 +154,54 @@ function balancedSplit(lines, leftCapacity, rightCapacity, rightReserve) {
   return best;
 }
 
+// ── V4: โมเดลความสูงที่ calibrate จากการวัด DOM จริง (2026-07-20) ─────────────
+// วัดที่ /settings/document-standards/quotation-preview สเกล 1123px = A4 297mm:
+// พื้นที่เนื้อหาใต้หัวเอกสาร 888px · แถวสินค้า 1 บรรทัด 50px · บรรทัดข้อความเพิ่ม
+// +17px · party grid 134px (ที่อยู่ยาว 167) · หัวตาราง 32 · ป้าย "ต่อ" 15 ·
+// มูลค่ารวม 87 · ตารางงวด 27+25/งวด · กล่องเงื่อนไข ~118-175 · ลงชื่อ 145
+//
+// 1 หน่วย = 1 บรรทัดข้อความ = 17px — โมเดลเดิม (rowUnits ตรง ๆ + ความจุ 14)
+// เหมาว่าทุกหน่วยสูงเท่าแถวเต็ม 50px จึงตัดหน้าเร็วเกินจริงเกือบเท่าตัว
+// (บั๊กที่ผู้ใช้เห็น: "ไม่เต็มหน้าก็ตัดแล้ว") ต้องแยกต้นทุนฐานแถวออกจากบรรทัด
+const V4_PAGE_UNITS = 52; // 888px / 17
+const V4_ROW_BASE = 2; // padding+เส้นตารางต่อแถว ~33px
+const V4_THEAD = 2;
+const V4_PARTY = 8; // 134px
+const V4_BANNER = 1; // ป้าย "รายการต่อ" 15px
+const V4_TOTALS = 6; // 87px + ระยะห่าง
+const V4_SAFETY = 2; // กันประเมินความยาวข้อความพลาด — ห้ามล้นเพราะ overflow:hidden ตัดเงียบ
+const V4_SIGNATURES = 9; // 145px + ระยะห่าง
+const V4_TERMS_BASE = 6; // หัวข้อ+padding กล่องเงื่อนไข 3 กล่อง
+const V4_INSTALLMENT_BASE = 3; // หัวข้อ+หัวตารางงวด
+const V4_INSTALLMENT_ROW = 2; // 25px/งวด
+
+function v4RowCost(line) {
+  return V4_ROW_BASE + rowUnits(line);
+}
+
+function v4PageCost(lines = []) {
+  return lines.reduce((sum, line) => sum + v4RowCost(line), 0);
+}
+
+function v4FirstCapacity(customer) {
+  const customerCopy = `${customer?.name || ''} ${customer?.address || ''}`.trim();
+  const longCopyReserve = Math.min(4, Math.ceil(Math.max(0, customerCopy.length - 120) / 45));
+  return V4_PAGE_UNITS - V4_PARTY - longCopyReserve - V4_THEAD - V4_SAFETY;
+}
+
+const V4_CONTINUATION_CAPACITY = V4_PAGE_UNITS - V4_BANNER - V4_THEAD - V4_SAFETY;
+
+// ความสูงกลุ่มท้ายเอกสาร (งวดชำระ + เงื่อนไข + ลงชื่อ) — กล่องวิธีชำระกับเงื่อนไข
+// อยู่ข้างกันจึงคิดตามกล่องที่สูงกว่า หมายเหตุเต็มแถวคิดแยก
+function v4GroupUnits({ installments, paymentMethod, paymentTerms, remarks }) {
+  const methodLines = Math.max(1, Math.ceil(String(paymentMethod || '').length / 55));
+  const termsLines = Math.max(1, Math.ceil(String(paymentTerms || '').length / 65));
+  const remarksLines = Math.max(1, Math.ceil(String(remarks || '').length / 140));
+  return (installments.length ? V4_INSTALLMENT_BASE + V4_INSTALLMENT_ROW * installments.length : 0)
+    + V4_TERMS_BASE + Math.max(methodLines, termsLines) + remarksLines
+    + V4_SIGNATURES;
+}
+
 // V4: เติมรายการให้เต็มหน้าก่อนค่อยตัดไปหน้าถัดไป (ไม่เกลี่ยให้สองหน้าเท่ากันแบบ V1–V3)
 // กติกาที่ต้องคุม 2 ข้อ:
 //   1. ตัดตามข้อ — ไม่ผ่ากลางรายการ
@@ -167,7 +215,7 @@ function paginateFilled(remaining, { firstCapacity, continuationCapacity, totals
     const finalCapacity = Math.max(1, capacity - totalsReserve);
 
     // ที่เหลือทั้งหมดใส่หน้านี้ได้พร้อมบล็อกมูลค่ารวม → จบที่หน้านี้
-    if (pageUnits(remaining) <= finalCapacity) {
+    if (v4PageCost(remaining) <= finalCapacity) {
       pages.push(remaining.splice(0));
       break;
     }
@@ -176,7 +224,7 @@ function paginateFilled(remaining, { firstCapacity, continuationCapacity, totals
     let used = 0;
     // เงื่อนไข remaining.length > 1 = กันไม่ให้กวาดหมดจนหน้าถัดไปเหลือแต่ยอดรวมลอย ๆ
     while (remaining.length > 1) {
-      const unitsForLine = rowUnits(remaining[0]);
+      const unitsForLine = v4RowCost(remaining[0]);
       if (page.length && used + unitsForLine > capacity) break;
       page.push(remaining.shift());
       used += unitsForLine;
@@ -191,18 +239,25 @@ function paginateFilled(remaining, { firstCapacity, continuationCapacity, totals
 export function paginateQuotationMasterLines(lines = [], options = {}) {
   if (!Array.isArray(lines) || lines.length === 0) return [[]];
 
-  const {
-    firstCapacity = 14,
-    continuationCapacity = 19,
-    totalsReserve = 4,
-    mode = 'balanced',
-  } = options;
+  const { mode = 'balanced' } = options;
 
+  // โหมด fill (V4) ใช้สเกลหน่วยคนละชุดกับ balanced — ค่าตั้งต้นเป็นหน่วย px-calibrated
   if (mode === 'fill') {
+    const {
+      firstCapacity = V4_PAGE_UNITS - V4_PARTY - V4_THEAD - V4_SAFETY,
+      continuationCapacity = V4_CONTINUATION_CAPACITY,
+      totalsReserve = V4_TOTALS,
+    } = options;
     return paginateFilled(lines.map((line) => ({ ...line })), {
       firstCapacity, continuationCapacity, totalsReserve,
     });
   }
+
+  const {
+    firstCapacity = 14,
+    continuationCapacity = 19,
+    totalsReserve = 4,
+  } = options;
   const firstFinalCapacity = Math.max(1, firstCapacity - totalsReserve);
   const continuationFinalCapacity = Math.max(1, continuationCapacity - totalsReserve);
   const remaining = lines.map((line) => ({ ...line }));
@@ -261,17 +316,10 @@ function paymentContentUnits({ installments, paymentMethod, paymentTerms, remark
     + Math.max(1, Math.ceil(String(remarks || '').length / 140));
 }
 
-// พื้นที่ที่บล็อกลงนามกิน (3 กล่อง สูงคงที่) คิดเป็นหน่วยเดียวกับ rowUnits
-// ค่านี้ calibrate จากพฤติกรรมที่พิสูจน์แล้วของ V3 ไม่ใช่เดา: V3 รวมกลุ่มชำระเงิน
-// ไว้หน้าเดียวกับรายการได้เมื่อ paymentUnits <= 7 (canCombine) ซึ่ง scenario compact
-// ใช้อยู่จริงและพิมพ์ออกมาพอดีหน้า — ที่ 1 รายการ (2 units) เหลือที่ว่าง 8 units
-// จึงได้เพดานลายเซ็น = 3 เท่ากับว่าเกณฑ์รวมหน้าของ V4 เข้มกว่า V3 เล็กน้อย
-// (V4 รวมได้เมื่อ paymentUnits <= 5, V3 <= 7) = ปลอดภัยฝั่งไม่ล้นหน้า
-const SIGNATURE_UNITS = 3;
-
 // V4: เงื่อนไขชำระ + หมายเหตุ + ลงชื่อ = กลุ่มเดียว แยกกันไม่ได้ และชิดล่างเอกสาร
 // ถ้าท้ายหน้าสุดท้ายเหลือที่พอ → วางต่อจากมูลค่ารวมเลย (ไม่เปลืองหน้า)
 // ถ้าไม่พอ → ยกไปทั้งกลุ่มเป็นหน้าของตัวเอง (มติผู้ใช้: ยอมให้กลุ่มอยู่หน้าเดียวได้)
+// ทุกค่าคิดในหน่วย px-calibrated ชุดเดียวกับ paginateFilled
 function buildGroupedPages({
   linePages,
   installments,
@@ -282,11 +330,10 @@ function buildGroupedPages({
   continuationCapacity,
   totalsReserve,
 }) {
-  const groupUnits = paymentContentUnits({ installments, paymentMethod, paymentTerms, remarks })
-    + SIGNATURE_UNITS;
+  const groupUnits = v4GroupUnits({ installments, paymentMethod, paymentTerms, remarks });
   const lastIndex = linePages.length - 1;
   const lastCapacity = lastIndex === 0 ? firstCapacity : continuationCapacity;
-  const lastFree = lastCapacity - totalsReserve - pageUnits(linePages[lastIndex]);
+  const lastFree = lastCapacity - totalsReserve - v4PageCost(linePages[lastIndex]);
   const groupFitsOnLastPage = groupUnits <= lastFree;
 
   const pages = linePages.map((pageLines, index) => ({
@@ -443,12 +490,11 @@ export function buildQuotationMasterPreview(
   const paymentMethod = scenario.paymentMethod || BASE_QUOTE.paymentMethod;
   const paymentTerms = scenario.paymentTerms || BASE_QUOTE.paymentTerms;
   const remarks = scenario.remarks || BASE_QUOTE.remarks;
-  // V4 ใช้กติกาแบ่งหน้าคนละชุด (เติมเต็มหน้า + กลุ่มท้ายเอกสารไม่แตก)
+  // V4 ใช้กติกาแบ่งหน้าคนละชุด (เติมเต็มหน้า + กลุ่มท้ายเอกสารไม่แตก) และคนละสเกล
+  // หน่วย (px-calibrated) — ห้ามส่งความจุสเกล 14 ของ balanced เข้าโหมด fill
   // V1–V3 คงพฤติกรรมเดิมทุกประการ
   const isFilledLayout = selectedTemplate.id === 'v4';
-  const firstCapacity = firstPageCapacity(customer);
-  const continuationCapacity = 19;
-  const totalsReserve = 4;
+  const firstCapacity = isFilledLayout ? v4FirstCapacity(customer) : firstPageCapacity(customer);
   const linePages = paginateQuotationMasterLines(lines, {
     firstCapacity,
     mode: isFilledLayout ? 'fill' : 'balanced',
@@ -461,8 +507,8 @@ export function buildQuotationMasterPreview(
       paymentTerms,
       remarks,
       firstCapacity,
-      continuationCapacity,
-      totalsReserve,
+      continuationCapacity: V4_CONTINUATION_CAPACITY,
+      totalsReserve: V4_TOTALS,
     })
     : buildSemanticPages({
       linePages,

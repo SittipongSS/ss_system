@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { AlertTriangle, Archive, Building2, ChevronLeft, Edit3, Eye, FilePlus2, Send } from "lucide-react";
+import { AlertTriangle, Archive, Building2, Edit3, Eye, FilePlus2, Send } from "lucide-react";
+import Workspace from "@/components/ui/Workspace";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
@@ -152,19 +152,11 @@ export default function CompanySettingsPage() {
   const editing = drawer?.mode === "edit";
 
   return (
-    <>
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <header className="premium-header">
         <div className="header-content">
           <h1><span className="premium-header-icon"><Building2 size={22} /></span> ข้อมูลบริษัท</h1>
           <p>จัดการข้อมูลนิติบุคคลแบบมีเวอร์ชัน การเผยแพร่จะไม่แก้ข้อมูลย้อนหลังของเวอร์ชันเดิม</p>
-        </div>
-        <div className={styles.headerActions}>
-          <Link className="btn ghost" href="/settings"><ChevronLeft size={16} /> Admin Center</Link>
-          {!loading && !error && !data.draft && (
-            <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}>
-              <FilePlus2 size={16} /> สร้างฉบับร่าง
-            </button>
-          )}
         </div>
       </header>
 
@@ -177,7 +169,16 @@ export default function CompanySettingsPage() {
           </div>
         </section>
       ) : !data.published ? (
-        <EmptyState icon={Building2}>ยังไม่มีข้อมูลบริษัทเวอร์ชันที่เผยแพร่</EmptyState>
+        <EmptyState icon={Building2}>
+          ยังไม่มีข้อมูลบริษัทเวอร์ชันที่เผยแพร่
+          {!data.draft && (
+            <div style={{ marginTop: 10 }}>
+              <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}>
+                <FilePlus2 size={16} /> สร้างฉบับร่าง
+              </button>
+            </div>
+          )}
+        </EmptyState>
       ) : (
         <div className={styles.layout}>
           <section className={`glass-panel ${styles.publishedPanel}`} aria-labelledby="published-company-title">
@@ -223,9 +224,17 @@ export default function CompanySettingsPage() {
           )}
 
           <section className={`glass-panel ${styles.historyPanel}`} aria-labelledby="version-history-title">
-            <header className={styles.panelHeader}>
-              <h2 id="version-history-title">ประวัติเวอร์ชัน</h2>
-              <p>Published และ Archived เป็นหลักฐานถาวรและแก้ไขไม่ได้</p>
+            {/* ปุ่มสร้างฉบับร่าง = ปุ่มเพิ่มของเนื้อหาเวอร์ชัน — อยู่ขวาสุดของ card header ตามกติกา Page Header */}
+            <header className={styles.panelHeader} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <h2 id="version-history-title">ประวัติเวอร์ชัน</h2>
+                <p>Published และ Archived เป็นหลักฐานถาวรและแก้ไขไม่ได้</p>
+              </div>
+              {!data.draft && (
+                <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}>
+                  <FilePlus2 size={16} /> สร้างฉบับร่าง
+                </button>
+              )}
             </header>
             <div className={`premium-table-wrapper ${styles.historyTable}`}>
               <table className="premium-table">
@@ -365,6 +374,6 @@ export default function CompanySettingsPage() {
         onConfirm={transitionDraft}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
-    </>
+    </Workspace>
   );
 }

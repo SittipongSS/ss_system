@@ -138,6 +138,14 @@ export default function RegistrationDetailPage() {
       subtitle={s ? `${s.productName} (${brandLabel(s.metadata?.brandNameTh, s.metadata?.brandNameEn || s.brandName) || "-"})` : ""}
       headerRight={headerRight}
       back={back}
+      // แก้ไข/ขอแก้ไข/ลบ = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
+      backActions={s ? (
+        <>
+          {canEdit && s.status !== "approved" && <ActionButton kind="edit" iconOnly title="แก้ไข" onClick={() => setFormOpen(true)} />}
+          {canEdit && s.status === "approved" && <ActionButton kind="reedit" iconOnly title="ขอแก้ไข" onClick={() => setReviseOpen(true)} />}
+          {canEdit && s.status === "draft" && <ActionButton kind="delete" iconOnly title="ลบ" onClick={() => setDeleteOpen(true)} />}
+        </>
+      ) : null}
       loading={loading && !s}
     >
       {s && (
@@ -206,8 +214,8 @@ export default function RegistrationDetailPage() {
             </div>
           )}
 
-          {/* Actions */}
-          <ActionBar>
+          {/* Actions — เฉพาะปุ่ม workflow; แก้ไข/ลบ ย้ายไปแถวปุ่มย้อนกลับด้านบนแล้ว */}
+          {((canApprove && s.status === "pending_legal") || (canEdit && ["draft", "rejected"].includes(s.status))) && <ActionBar>
             {canApprove && s.status === "pending_legal" && (
               <>
                 <ActionButton kind="reject" onClick={() => setRejectOpen(true)} />
@@ -226,16 +234,7 @@ export default function RegistrationDetailPage() {
             {canEdit && s.status === "rejected" && (
               <ActionButton kind="submit" label="ส่งกลับให้ตรวจ" onClick={() => resubmit().catch((e) => alert(e.message))} />
             )}
-            {canEdit && s.status !== "approved" && (
-              <ActionButton kind="edit" onClick={() => setFormOpen(true)} />
-            )}
-            {canEdit && s.status === "approved" && (
-              <ActionButton kind="reedit" onClick={() => setReviseOpen(true)} />
-            )}
-            {canEdit && s.status === "draft" && (
-              <ActionButton kind="delete" onClick={() => setDeleteOpen(true)} />
-            )}
-          </ActionBar>
+          </ActionBar>}
         </div>
       )}
 

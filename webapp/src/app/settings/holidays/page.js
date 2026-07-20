@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
 import DateInput from "@/components/ui/DateInput";
 import SkeletonRows from "@/components/ui/Skeleton";
+import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import { useCan } from "@/lib/roleContext";
 
@@ -111,7 +112,7 @@ export default function HolidaysPage() {
   });
 
   return (
-    <>
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="header-content">
           <h1>
@@ -242,6 +243,6 @@ export default function HolidaysPage() {
           )}
         </>
       )}
-    </>
+    </Workspace>
   );
 }
