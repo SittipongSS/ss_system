@@ -252,7 +252,10 @@ const DOCUMENT_CSS = `
     gap: 20px;
     padding: 16px 0 40px;
     color: var(--doc-text);
-    font-family: var(--font-plex-sans), 'IBM Plex Sans Thai', 'Leelawadee UI', sans-serif;
+    /* เอกสาร standalone ไม่มี --font-plex-sans (ตัวแปร next/font ที่มีเฉพาะในแอป) —
+       ต้องอ้าง 'IBM Plex Sans Thai' ตรง ๆ + โหลดผ่าน <link> ไม่งั้น var ที่ไม่นิยาม
+       ทำให้ทั้ง font-family เสีย แล้วหล่นไปฟอนต์ default ของเบราว์เซอร์ (ฟอนต์ไม่ตรง V4) */
+    font-family: 'IBM Plex Sans Thai', 'Leelawadee UI', sans-serif;
     font-size: 9.5pt;
     line-height: 1.42;
     font-variant-numeric: tabular-nums;
