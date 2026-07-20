@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
 import { LEAD_STATUS_LABELS } from "@/lib/sales/leads";
+import { useCan } from "@/lib/roleContext";
 import styles from "./RdDashboardTab.module.css";
 
 const ACTIVITY_KIND_LABEL = {
@@ -65,6 +66,10 @@ export default function MyDashboardTab({ month }) {
   const shownFeed = feed.slice(0, visible);
 
   const target = Number(data?.target || 0);
+  // "ยังไม่ตั้งเป้า" (ไม่มี record) ≠ "เป้า = 0 จริง" — เคสแรกแสดง dash ตาม rulebook, เคสหลังแสดงตัวเลข
+  // ระหว่างโหลดรอบแรก (data ยังไม่มา) ก็แสดง dash ไปก่อน ไม่ใช่ ฿0.00
+  const hasTarget = !!data?.hasTarget;
+  const canSetTarget = useCan("salesplan:target");
   const actual = Number(data?.wonValue || 0);
   const gap = Number(data?.targetGap || 0);
   const targetPct = target > 0 ? (actual / target) * 100 : 0;
@@ -94,8 +99,9 @@ export default function MyDashboardTab({ month }) {
               </div>
             </div>
             <div className={styles.quickFacts}>
-              <QuickFact icon={<Target />} label="เป้าหมาย" value={fmtMoney(target)} note={`สำเร็จ ${fmtPercent(targetPct)}`} />
-              <QuickFact icon={<CheckCircle2 />} label="Actual" value={fmtMoney(actual)} note={`Gap ${fmtMoney(gap)}`} tone={actual >= target && target > 0 ? "good" : undefined} />
+              <QuickFact icon={<Target />} label="เป้าหมาย" value={hasTarget ? fmtMoney(target) : "—"} note={hasTarget ? `สำเร็จ ${fmtPercent(targetPct)}` : data ? "ยังไม่ตั้งเป้า" : ""} />
+              {/* Actual = ยอด Won จริง แสดง 0 ได้ (ศูนย์จริง) แต่ Gap มีความหมายก็ต่อเมื่อมีเป้า */}
+              <QuickFact icon={<CheckCircle2 />} label="Actual" value={fmtMoney(actual)} note={`Gap ${hasTarget ? fmtMoney(gap) : "—"}`} tone={actual >= target && target > 0 ? "good" : undefined} />
               <QuickFact icon={<FolderKanban />} label="ดีลที่เปิดอยู่" value={data?.openDealsCount || 0} note={`Pipeline ${fmtMoney(data?.pipelineValue || 0)}`} />
               <QuickFact icon={<AlertTriangle />} label="งานเลยกำหนด" value={tasks.overdue || 0} note={`งานค้าง ${tasks.total || 0}`} tone={tasks.overdue ? "danger" : "good"} />
             </div>
@@ -150,8 +156,16 @@ export default function MyDashboardTab({ month }) {
             <div className={styles.sectionTitle}><TrendingUp size={18} /><div><h3>เป้าหมายของฉัน</h3><span>เดือนนี้</span></div></div>
             <div style={{ marginTop: 12, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
               <strong style={{ fontSize: 22 }}>{fmtMoney(actual)}</strong>
-              <span style={{ color: "var(--text-3)", fontSize: 12 }}>/ {fmtMoney(target)} · {fmtPercent(targetPct)}</span>
+              <span style={{ color: "var(--text-3)", fontSize: 12 }}>
+                {hasTarget ? `/ ${fmtMoney(target)} · ${fmtPercent(targetPct)}` : data ? "/ — · ยังไม่ตั้งเป้า" : "/ —"}
+              </span>
             </div>
+            {/* ตั้งเป้าได้เฉพาะผู้ถือสิทธิ์ salesplan:target (admin/หัวหน้าทีม) — AE ทั่วไปไม่มีลิงก์เพราะเข้าหน้านั้นไม่ได้ */}
+            {data && !hasTarget && canSetTarget && (
+              <Link href="/sa/targets" className="btn ghost sm" style={{ width: "100%", marginTop: 12 }}>
+                ตั้งเป้าเดือนนี้ <ArrowUpRight size={13} />
+              </Link>
+            )}
             <Link
               href={data?.me?.id ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(data.me.id)}` : "/sa/dashboard?tab=performance"}
               className="btn ghost sm"
