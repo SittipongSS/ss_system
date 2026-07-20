@@ -116,7 +116,7 @@ export function formatDocumentStandardEffectiveDate(value) {
 
 export function documentStandardFormLine(version) {
   if (!version) return '-';
-  return `${version.formCode}: Rev. No.${version.revision} ${formatDocumentStandardEffectiveDate(version.effectiveDate)}`;
+  return `${version.formCode}: Rev. No.${version.revision}. ${formatDocumentStandardEffectiveDate(version.effectiveDate)}`;
 }
 
 export function numberingPatternExample(pattern, revision = '0') {

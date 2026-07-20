@@ -100,7 +100,7 @@ function roundMoney(value) {
 }
 
 export function controlledFormLine(standard = DEFAULT_STANDARD) {
-  return `${standard.formCode}: Rev. No.${standard.revision} ${standard.effectiveDate}`;
+  return `${standard.formCode}: Rev. No.${standard.revision}. ${standard.effectiveDate}`;
 }
 
 export function allocateInstallmentAmounts(total, installments = []) {
@@ -127,7 +127,10 @@ export function paginateQuotationMasterLines(lines = [], summaryReserve = 0) {
 
   const firstCapacity = 14;
   const continuationCapacity = 19;
-  const finalCapacity = Math.max(3, 9 - Math.max(0, summaryReserve));
+  // The final page also carries totals, payment schedule, terms and signatures.
+  // Keep only a small row budget there; otherwise a short quotation stays on
+  // page 1 (which also has the customer block) and silently grows beyond A4.
+  const finalCapacity = Math.max(1, 5 - Math.max(0, summaryReserve));
   const remaining = lines.map((line) => ({ ...line }));
   const pages = [];
   const remainingUnits = () => remaining.reduce((sum, line) => sum + rowUnits(line), 0);
