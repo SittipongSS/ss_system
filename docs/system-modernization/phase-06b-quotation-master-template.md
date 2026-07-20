@@ -157,6 +157,18 @@
 - Automated test ทั้ง repository ผ่าน 443/443, targeted ESLint, Next.js production build และ `git diff --check` ผ่าน
 - งานนี้ไม่เปลี่ยน pagination model, variant hierarchy, Production `quotePrint.js`/`salesOrderPrint.js`, permission, migration หรือข้อมูลจริง
 
+## บันทึกเพิ่มเติมหลังปิดเฟส — V4 และการนำไปใช้กับใบจริง (20 กรกฎาคม 2026)
+
+- PR #597 เพิ่ม variant ที่สี่ `quotation-balanced-controlled-v4`: หน้าตาเดียวกับ V2
+  แต่กติกาแบ่งหน้าใหม่ — เติมรายการให้เต็มหน้าก่อนตัด และกลุ่มท้ายเอกสาร
+  (ยอดรวม งวดชำระ เงื่อนไข ลายเซ็น) ไม่แตกข้ามหน้า; V4 เป็นค่าเริ่มต้นของ Preview
+- PR #600 นำกติกาแบ่งหน้า V4 ไปใช้กับ `quotePrint.js` ใบจริง และปุ่มพิมพ์
+  production ใช้ `openQuotePrintWindowPreferIssued` เพื่อพิมพ์จาก issued snapshot
+  (Phase 7B) ก่อนเสมอ — ข้อความ "ยังไม่เปลี่ยน Production Print authority"
+  ในบันทึกก่อนหน้าของเอกสารนี้จึงสิ้นสุดผลที่ PR #600
+- ข้อควรระวังถาวร: ตอนนี้กติกาแบ่งหน้ามีสองเครื่องยนต์ (`quotationMasterTemplate.js`
+  ฝั่ง Preview และ `quotePrint.js` ฝั่งใบจริง) การแก้กติกาแบ่งหน้าต้องแก้คู่กันเสมอ
+
 ## Known risks
 
 - Browser print engine อาจแบ่งหน้าไม่เหมือนกันตาม font readiness จึงต้องรอ `document.fonts.ready` ก่อน Print/PDF

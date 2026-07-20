@@ -29,7 +29,7 @@
 | signature_admin | view_status, revoke_emergency | all | ยังไม่ตัดสินใจ | 5/8 |
 | document_template | view, preview, edit_draft, publish, archive | module/all | Preview: Admin + AE Supervisor ผ่าน `canManageDocumentStandards`; edit/publish/archive: admin เดิม | 6B/7 |
 | commercial_preset | view, preview, edit_draft, publish, archive, resolve | document/team/deal/service/all | Admin + AE Supervisor ผ่าน temporary `canManageCommercialPresets`; consumer resolver เป็น server-only และยังไม่ต่อ Production ใน 7A | 7A/8 |
-| issued_document | view, print, download_pdf, verify | own/team/department/all | workflow เดิม | 7 |
+| issued_document | snapshot_on_approval, view, reprint_issued, download_pdf, verify | own/team/department/all | snapshot สร้างอัตโนมัติตอนอนุมัติผ่าน server-only RPC (mig 0130); reprint ใช้ snapshot ผ่านสิทธิ์พิมพ์เดิมของเอกสาร | 7B/7C |
 | user_access | view, invite, update_role, update_scope, deactivate | all | `users:view`/`users:manage` | 8 |
 | audit_log | view, export | own/team/department/all | `audit:view` | 8 |
 
