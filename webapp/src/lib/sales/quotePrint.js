@@ -1,5 +1,9 @@
 // พิมพ์ใบเสนอราคา FM-SA-01 — ใช้ design system เดียวกับเอกสาร Project Timeline.
+// หมายเหตุ Phase 7C (Direction B): การพิมพ์ "ใบเสนอราคา" สลับไปใช้เครื่องยนต์เอกสาร
+// Quotation Master V4 (quotationMasterDocument) แล้ว — buildQuotePrintHTML ที่เหลือในไฟล์นี้
+// ยังใช้กับ "ใบสั่งขาย" (salesOrderPrint.js, เฟส 7D) จึงคงไว้ ห้ามลบ
 import { fmtDate } from '@/lib/format';
+import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
 import {
   COMPANY_ADDRESS,
   COMPANY_LEGAL_NAME,
@@ -445,7 +449,9 @@ export function openQuotePrintWindow(quote, preparedWindow = null) {
   const win = preparedWindow || prepareQuotePrintWindow();
   if (!win) return;
   win.document.open();
-  win.document.write(buildQuotePrintHTML(quote));
+  // Phase 7C (Direction B): ใบเสนอราคาที่ยังไม่ตรึง snapshot ก็ต้องพิมพ์ด้วยหน้าตา V4
+  // (เครื่องยนต์เดียวกับฉบับที่ตรึง) เพื่อให้ทุกใบหน้าตาเดียวกัน
+  win.document.write(buildQuotationMasterHTML(quote));
   win.document.close();
   return win;
 }

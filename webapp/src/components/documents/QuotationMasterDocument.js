@@ -1,3 +1,8 @@
+// ⚠️ Phase 7C (Direction B, 2026-07-21): เอกสารใบเสนอราคาที่ "พิมพ์จริง + ตรึง snapshot +
+// หน้า preview" ย้ายไปเรนเดอร์ด้วย lib/sales/quotationMasterDocument.js (server string builder
+// ที่คัดลอกหน้าตา/CSS จาก component นี้) แล้ว. component React นี้ไม่ได้ถูกใช้ในแอปแล้ว —
+// เก็บไว้เป็นต้นฉบับหน้าตา V4 อ้างอิง. **ถ้าจะแก้หน้าตา V4 ต้องแก้ที่ quotationMasterDocument.js
+// (DOCUMENT_CSS + render*) ด้วย ไม่งั้นเอกสารจริงจะไม่เปลี่ยนตาม** (พิจารณาปลดระวาง component นี้ทีเดียว).
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import styles from './QuotationMasterDocument.module.css';
 

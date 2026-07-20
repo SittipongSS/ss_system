@@ -17,11 +17,23 @@
 .scenarioSummary span:last-child { margin-left: auto; font-variant-numeric: tabular-nums; }
 
 .previewStage {
-  overflow: hidden;
+  overflow: auto;
   padding: 20px;
   border-radius: var(--radius-lg);
   background: var(--panel-2);
   box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* iframe เรนเดอร์เอกสารด้วยเครื่องยนต์ตัวจริง (Quotation Master V4) — กว้างเต็มพื้นที่
+   (>900px บนเดสก์ท็อปจึงได้ layout A4 ไม่ใช่ mobile reflow); ความสูงปรับตามเนื้อหาผ่าน JS */
+.previewFrame {
+  display: block;
+  width: 100%;
+  min-height: 297mm;
+  border: 0;
+  border-radius: var(--radius);
+  background: #eceff3;
+  color-scheme: light;
 }
 
 @media (max-width: 900px) {

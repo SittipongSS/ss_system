@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { genId } from '@/lib/id';
 import { documentApprovalFingerprint } from '@/lib/documentApproval';
 import { quotationApprovalContent } from '@/lib/sales/quotationApprovalFingerprint';
-import { buildQuotePrintHTML } from '@/lib/sales/quotePrint';
+import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
 import {
   COMPANY_ADDRESS,
   COMPANY_LEGAL_NAME,
@@ -22,7 +22,9 @@ import {
 
 // Bump when the payload shape or the rendered artifact structure changes so old
 // snapshots stay identifiable by the generator that produced them.
-export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-html-v1';
+// v2 = Phase 7C Direction B: artifact ใช้เครื่องยนต์เอกสาร Quotation Master V4
+// (quotationMasterDocument) แทน quotePrint เดิม
+export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4';
 export const ISSUED_QUOTATION_LOCALE = 'th-TH';
 
 const trimOrNull = (value) => {
@@ -87,12 +89,12 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
   };
 }
 
-// The rendered artifact is the frozen HTML a reprint replays. buildQuotePrintHTML
+// The rendered artifact is the frozen HTML a reprint replays. buildQuotationMasterHTML
 // is a pure string builder (no DOM), so it runs unchanged on the server.
 export function buildIssuedQuotationArtifactHtml(quote = {}) {
-  return buildQuotePrintHTML(
+  return buildQuotationMasterHTML(
     { ...quote, approvalStatus: 'approved' },
-    { watermark: '', statusLabel: 'อนุมัติแล้ว' },
+    { watermark: '' },
   );
 }
 
