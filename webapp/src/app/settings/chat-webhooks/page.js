@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { BellRing, Info, Save, Send } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
+import Workspace from "@/components/ui/Workspace";
 import { useCan } from "@/lib/roleContext";
 import { fmtDateTime } from "@/lib/format";
 
@@ -77,7 +78,7 @@ export default function ChatWebhooksPage() {
   }
 
   return (
-    <>
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <div className="premium-header">
         <div className="header-content">
           <h1>
@@ -148,6 +149,6 @@ export default function ChatWebhooksPage() {
         </div>
       )}
       <Toast toast={toast} onClose={() => setToast(null)} />
-    </>
+    </Workspace>
   );
 }

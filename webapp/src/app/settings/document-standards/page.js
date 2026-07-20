@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { AlertTriangle, Archive, ChevronLeft, Edit3, Eye, FileBadge2, FilePlus2, Send } from "lucide-react";
+import { AlertTriangle, Archive, Edit3, Eye, FileBadge2, FilePlus2, Send } from "lucide-react";
+import Workspace from "@/components/ui/Workspace";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
@@ -217,17 +217,11 @@ export default function DocumentStandardsPage() {
   const versions = selectedStandard?.versions || [];
 
   return (
-    <>
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <header className="premium-header">
         <div className="header-content">
           <h1><span className="premium-header-icon"><FileBadge2 size={22} /></span> มาตรฐานเอกสาร</h1>
           <p>ควบคุมรหัสแบบฟอร์ม Revision วันที่มีผล สี Accent และรูปแบบเลขที่โดยไม่เปลี่ยนเอกสารย้อนหลัง</p>
-        </div>
-        <div className={base.headerActions}>
-          <Link className="btn ghost" href="/settings"><ChevronLeft size={16} /> กลับหน้าตั้งค่า</Link>
-          {!loading && !error && published && !draft && (
-            <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}><FilePlus2 size={16} /> สร้างฉบับร่าง</button>
-          )}
         </div>
       </header>
 
@@ -279,7 +273,13 @@ export default function DocumentStandardsPage() {
           )}
 
           <section className={`glass-panel ${base.historyPanel}`} aria-labelledby="version-history-title">
-            <header className={base.panelHeader}><h2 id="version-history-title">ประวัติเวอร์ชัน · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2><p>Published และ Archived เป็นหลักฐานถาวรและแก้ไขไม่ได้</p></header>
+            {/* ปุ่มสร้างฉบับร่าง = ปุ่มเพิ่มของเนื้อหาเวอร์ชัน — อยู่ขวาสุดของ card header ตามกติกา Page Header */}
+            <header className={base.panelHeader} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div><h2 id="version-history-title">ประวัติเวอร์ชัน · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2><p>Published และ Archived เป็นหลักฐานถาวรและแก้ไขไม่ได้</p></div>
+              {!draft && (
+                <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}><FilePlus2 size={16} /> สร้างฉบับร่าง</button>
+              )}
+            </header>
             <div className={`premium-table-wrapper ${base.historyTable}`}>
               <table className="premium-table"><thead><tr><th>Version</th><th>สถานะ</th><th>แบบฟอร์ม</th><th>Accent</th><th>หมายเหตุ</th><th>ผู้ดำเนินการ</th><th>วันที่</th><th aria-label="การทำงาน" /></tr></thead><tbody>
                 {versions.map((row) => <tr key={row.id}><td><strong>Version {row.versionNumber}</strong><small>{row.id}</small></td><td><StatusBadge status={row.status} /></td><td><span className="mono">{row.formCode}</span><small>Rev.{row.revision}</small></td><td><AccentMark accentKey={row.accentKey} label={false} /></td><td>{row.changeNote || "-"}</td><td>{actorOf(row)}</td><td>{formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</td><td><button type="button" className="btn ghost sm" onClick={() => openView(row)}><Eye size={14} /> ดูรายละเอียด</button></td></tr>)}
@@ -310,6 +310,6 @@ export default function DocumentStandardsPage() {
       <ConfirmDialog open={confirm?.action === "publish"} title="ยืนยันเผยแพร่มาตรฐานเอกสาร" description={`Version ${draft?.versionNumber || "-"} จะเป็นมาตรฐานของ ${DOCUMENT_STANDARD_LABELS[selectedKey]} ที่ใช้งานอยู่`} detail="Published เดิมจะถูกเก็บถาวร แต่ Production Print ยังไม่เปลี่ยนจนถึง Phase 7" confirmLabel="เผยแพร่เวอร์ชัน" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
       <ConfirmDialog open={confirm?.action === "archive"} title="เก็บฉบับร่างเป็นประวัติ" description={`Version ${draft?.versionNumber || "-"} จะถูกปิดและแก้ไขต่อไม่ได้`} detail="มาตรฐานเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง" confirmLabel="เก็บฉบับร่าง" tone="danger" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
       <Toast toast={toast} onClose={() => setToast(null)} />
-    </>
+    </Workspace>
   );
 }

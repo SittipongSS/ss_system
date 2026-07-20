@@ -1,5 +1,6 @@
 "use client";
 import Select from "@/components/ui/Select";
+import Workspace from "@/components/ui/Workspace";
 import { useEffect, useMemo, useState } from "react";
 import { History, Search, Eye } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
@@ -98,7 +99,7 @@ export default function AuditLogPage() {
   }
 
   return (
-    <>
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="header-content">
           <h1><span className="premium-header-icon"><History size={22} /></span> บันทึกการใช้งาน</h1>
@@ -203,7 +204,7 @@ export default function AuditLogPage() {
       )}
 
       <AuditDetailModal log={detail} onClose={() => setDetail(null)} />
-    </>
+    </Workspace>
   );
 }
 

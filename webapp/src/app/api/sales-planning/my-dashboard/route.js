@@ -153,6 +153,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     me: { id: user.id, name: user.name || null, team: user.team || null },
     userId: user.id,
     target,
+    // แยก "ยังไม่ตั้งเป้า" (ไม่มี record เดือนนี้) ออกจาก "เป้า = 0 จริง" — UI ใช้ตัดสินว่าจะแสดง dash แทน ฿0.00
+    hasTarget: !!targetRes.data,
     wonValue,
     pipelineValue,
     weightedForecast,

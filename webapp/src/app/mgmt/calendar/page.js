@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, Users, ListTodo } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
+import Workspace from "@/components/ui/Workspace";
 import { cachedFetchJson } from "@/lib/apiCache";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
@@ -71,7 +72,7 @@ export default function MgmtCalendarPage() {
   if (role && !canMgmt) return null;
 
   return (
-    <>
+    <Workspace hideHeader back={{ href: "/mgmt", label: "กลับหน้าภาพรวมงานบริหาร" }}>
       <div className="premium-header">
         <div className="header-content">
           <h1><span className="premium-header-icon"><CalendarDays size={22} /></span> ปฏิทิน</h1>
@@ -132,6 +133,6 @@ export default function MgmtCalendarPage() {
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 3, background: "color-mix(in srgb, var(--red) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 35%, transparent)" }} /> วันหยุด</span>
         </div>
       </div>
-    </>
+    </Workspace>
   );
 }

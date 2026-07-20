@@ -104,6 +104,13 @@ export default function FilingDetailPage() {
       subtitle={o?.customerName || ""}
       headerRight={headerRight}
       back={back}
+      // แก้ไข/ลบ = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
+      backActions={o ? (
+        <>
+          {canAct && o.status === "pending" && <ActionButton kind="edit" iconOnly title="แก้ไข" onClick={() => setFormOpen(true)} />}
+          {canDelete && <ActionButton kind="delete" iconOnly title="ลบ" onClick={() => setDeleteOpen(true)} />}
+        </>
+      ) : null}
       loading={loading && !o}
     >
       {o && (
@@ -184,10 +191,7 @@ export default function FilingDetailPage() {
               <Printer size={15} /> ออกใบวางบิลภาษี
             </button>
             {canAct && o.status === "pending" && (
-              <>
-                <ActionButton kind="edit" onClick={() => setFormOpen(true)} />
-                <ActionButton kind="submit" icon={Wallet} label={isExempt ? "ยืนยันรับเงิน" : "รับเงินแล้ว"} onClick={() => setReceiveOpen(true)} />
-              </>
+              <ActionButton kind="submit" icon={Wallet} label={isExempt ? "ยืนยันรับเงิน" : "รับเงินแล้ว"} onClick={() => setReceiveOpen(true)} />
             )}
             {canAct && o.status === "rejected" && (
               <ActionButton kind="submit" icon={Pencil} label="แก้ไขและส่งกลับ" onClick={() => setFormOpen(true)} />
@@ -205,9 +209,6 @@ export default function FilingDetailPage() {
                 <ActionButton kind="reject" onClick={() => setRejectOpen(true)} />
                 <ActionButton kind="submit" icon={FileCheck} label="บันทึกชำระภาษี" onClick={() => setFileOpen(true)} />
               </>
-            )}
-            {canDelete && (
-              <ActionButton kind="delete" onClick={() => setDeleteOpen(true)} />
             )}
           </ActionBar>
         </div>

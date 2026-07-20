@@ -177,32 +177,35 @@ export default function ProductDetails() {
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
-      <button
-        type="button"
-        className="btn ghost topbar-back-btn"
-        style={{ marginBottom: "14px" }}
-        onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/database/products"))}
-      >
-        <ArrowLeft size={16} /> กลับ
-      </button>
+      {/* แถวย้อนกลับ + action ระดับ entity (แก้ไข/พัก/ลบ) ตามกติกา Page Header
+          — ใช้ปุ่ม router.back() ไม่ใช่ Workspace.back เพราะหน้านี้เข้าได้จากหลายทาง */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "14px" }}>
+        <button
+          type="button"
+          className="btn ghost topbar-back-btn"
+          onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/database/products"))}
+        >
+          <ArrowLeft size={16} /> กลับ
+        </button>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          {canEditProducts && (
+            <ActionButton kind="edit" iconOnly label="แก้ไขข้อมูล" title="แก้ไขข้อมูล" disabled={isUpdating} onClick={() => setShowEdit(true)} />
+          )}
+          {canToggleActive && (
+            product.isActive === false
+              ? <ActionButton kind="resume" iconOnly icon={ArchiveRestore} label="เปิดใช้อีกครั้ง" title="เปิดใช้อีกครั้ง" disabled={isUpdating} onClick={handleToggleActive} />
+              : <ActionButton kind="pause" iconOnly icon={Archive} label="พักใช้" title="พักใช้" disabled={isUpdating} onClick={handleToggleActive} />
+          )}
+          {canDeleteProducts && (
+            <ActionButton kind="delete" iconOnly label="ลบสินค้า" title="ลบสินค้า" disabled={isUpdating} onClick={handleDelete} />
+          )}
+        </div>
+      </div>
       <SalesDetailOverview
         eyebrow={`PRODUCT MASTER · ${product.fgCode || "NO FG CODE"}`}
         title={product.productDescriptionEn || product.productDescription}
         description={<><span>{product.productDescriptionEn && product.productDescription ? product.productDescription : "ไม่มีชื่อภาษาไทย"}</span><span>แบรนด์ {brandBoth(product.brandName, product.brandNameEn) || "-"}</span><span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
         badges={<SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />}
-        actions={<>
-          {canEditProducts && (
-            <ActionButton kind="edit" label="แก้ไขข้อมูล" disabled={isUpdating} onClick={() => setShowEdit(true)} />
-          )}
-          {canToggleActive && (
-            product.isActive === false
-              ? <ActionButton kind="resume" icon={ArchiveRestore} label="เปิดใช้อีกครั้ง" disabled={isUpdating} onClick={handleToggleActive} />
-              : <ActionButton kind="pause" icon={Archive} label="พักใช้" disabled={isUpdating} onClick={handleToggleActive} />
-          )}
-          {canDeleteProducts && (
-            <ActionButton kind="delete" label="ลบสินค้า" disabled={isUpdating} onClick={handleDelete} />
-          )}
-        </>}
         facts={[
           // ตัวเลข "ความสัมพันธ์" เท่านั้น — ฟิลด์ตัวตน (ปริมาตร/ราคา/หมวด) อยู่บ้านเดียว
           // ที่การ์ดสเปคด้านล่าง ไม่โชว์ซ้ำบนแถบหัวอีก
