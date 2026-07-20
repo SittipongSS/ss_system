@@ -30,9 +30,9 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 5 | Electronic signature | เสร็จสมบูรณ์ | [Phase 5](./phase-05-electronic-signature.md) |
 | 6A | Versioned Document Standards | เสร็จสมบูรณ์ | [Phase 6A](./phase-06a-document-standards.md) |
 | 6B | Document Design System และ Quotation Master Template | เสร็จสมบูรณ์ | [Phase 6B](./phase-06b-quotation-master-template.md) |
-| 7A | Versioned Commercial Presets | กำลังดำเนินการ | [Phase 7A](./phase-07a-commercial-presets.md) |
-| 7B | Issued document snapshot และ immutable PDF | กำลังดำเนินการ | [Phase 7B](./phase-07b-issued-document-snapshot.md) |
-| 7C | Production Quotation Print replacement | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 7A | Versioned Commercial Presets | รอตรวจ | [Phase 7A](./phase-07a-commercial-presets.md) |
+| 7B | Issued document snapshot และ immutable PDF | รอตรวจ | [Phase 7B](./phase-07b-issued-document-snapshot.md) |
+| 7C | Production Quotation Print replacement | กำลังดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 7D | Sales Order document migration | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 8 | Permission redesign และ Migration | รอดำเนินการลำดับสุดท้าย | [Action inventory](./permission-action-inventory.md) |
 | 9 | Permission UAT, staged rollout และปิดโปรแกรม | รอดำเนินการ | [Release checklist](./release-checklist.md) |
@@ -48,6 +48,11 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - งานใหม่ของโปรแกรมนี้ต้องไม่ย้อนกลับไปเพิ่มบนสาขา PR #529
 - Phase 4 ส่งมอบผ่าน PR #552, #557, #558 และ #561; GitHub CI และ Vercel ผ่านทุก PR
 - Production smoke test ของ Home, Company Data และ Workflow Template ผ่านเมื่อ 19 กรกฎาคม 2026 โดยไม่เปลี่ยนข้อมูล
+- Phase 7A โค้ด Merge แล้วผ่าน PR #582 (mig 0128) และ Phase 7B ผ่าน PR #593 (mig 0130);
+  ทั้งสองเฟสอยู่สถานะ `รอตรวจ` เพราะ UAT กับการยืนยันการรัน Migration บนฐานข้อมูลจริงยังค้าง
+- แกนของ Phase 7C ส่วนใบเสนอราคาถูกส่งมอบผ่านสาย V4: PR #597 (แม่แบบ V4 ใน Preview)
+  และ PR #600 (ใช้กติกา V4 กับ `quotePrint.js` ใบจริง + ปุ่มพิมพ์ prefer issued snapshot);
+  งานที่เหลือของ 7C คือ PDF artifact ตาม Decision 0011 และรายการเอกสาร PDF pilot (D-006)
 
 ## Definition of Done ของทุกเฟส
 
