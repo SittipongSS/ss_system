@@ -272,7 +272,7 @@ const DOCUMENT_CSS = `
   .documentHeader { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(72mm, .9fr);
     gap: 8mm; padding-bottom: 4mm; border-bottom: 1.3px solid var(--doc-navy); }
   .brandBlock { display: flex; gap: 4mm; align-items: flex-start; }
-  .brandBlock img { width: 42mm; height: auto; object-fit: contain; }
+  .brandBlock img { width: 48mm; height: auto; object-fit: contain; }
   .brandBlock strong { display: block; color: var(--doc-navy); font-size: 10.5pt; line-height: 1.3; }
   .brandBlock span { display: block; margin-top: .5mm; color: var(--doc-muted); font-size: 7.7pt; letter-spacing: .02em; }
   .brandBlock p { margin: .7mm 0 0; color: var(--doc-muted); font-size: 7.7pt; line-height: 1.35; }
@@ -362,7 +362,7 @@ const DOCUMENT_CSS = `
     .sheet { width: 100%; height: auto; min-height: 0; aspect-ratio: auto;
       padding: 4.8vw 5vw 9vw; font-size: clamp(5px, 1.18vw, 9.5pt); }
     .documentHeader { grid-template-columns: 1.3fr .9fr; gap: 3vw; }
-    .brandBlock img { width: 22vw; }
+    .brandBlock img { width: 25vw; }
     .identityBlock h1 { font-size: clamp(12px, 3vw, 19pt); }
     .partyGrid { grid-template-columns: minmax(0, 1fr); }
     .partyGrid dl, .partyGrid dl div { min-width: 0; }
