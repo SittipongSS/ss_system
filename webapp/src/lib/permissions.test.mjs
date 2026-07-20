@@ -219,12 +219,26 @@ test('mgmt caps are grantable per-user (whitelist)', () => {
   assert.deepEqual(sanitizeExtraCaps(['mgmt:view', 'mgmt:edit', 'users:manage']), ['mgmt:view', 'mgmt:edit']);
 });
 
-test('secretary holds ONLY the mgmt caps (no tax/pm/master leak)', () => {
-  assert.deepEqual(capsFor('secretary'), ['mgmt:view', 'mgmt:edit']);
+test('secretary holds the mgmt caps + read-only products (no tax/pm/master leak)', () => {
+  assert.deepEqual(capsFor('secretary'), ['mgmt:view', 'mgmt:edit', 'products:view']);
   assert.equal(can('secretary', 'pm:view'), false);
   assert.equal(can('secretary', 'customers:view'), false);
   assert.equal(can('secretary', 'users:manage'), false);
   assert.equal(can('secretary', 'mgmt:edit'), true);
+  // มติ 2026-07-20: อ่านแคตตาล็อกสินค้าได้ แต่แก้ไม่ได้ และไม่เห็นต้นทุน/มาร์จิ้น
+  assert.equal(can('secretary', 'products:view'), true);
+  assert.equal(can('secretary', 'products:edit'), false);
+  assert.equal(can('secretary', 'products:margin'), false);
+});
+
+test('marketing holds the lead cap + read-only products, nothing else', () => {
+  assert.deepEqual(capsFor('marketing'), ['salesplan:lead', 'products:view']);
+  assert.equal(can('marketing', 'salesplan:view'), false);
+  assert.equal(can('marketing', 'customers:view'), false);
+  assert.equal(can('marketing', 'sales:view'), false);
+  assert.equal(can('marketing', 'products:view'), true);
+  assert.equal(can('marketing', 'products:edit'), false);
+  assert.equal(can('marketing', 'products:margin'), false);
 });
 
 test('sales targets are limited to admin and sales head', () => {

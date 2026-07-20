@@ -80,6 +80,18 @@ export async function proxy(request) {
     return withRefreshedCookies(NextResponse.redirect(new URL('/database', request.url)));
   }
 
+  // มติ 2026-07-20: secretary/marketing ได้ products:view (อ่านแคตตาล็อกอย่างเดียว)
+  // แต่ไม่มี customers:view — หน้าภาพรวม /database และหน้าลูกค้าโชว์ข้อมูลลูกค้า
+  // จึงต้องกันการเข้าตรงด้วย URL แล้วส่งไปหน้าสินค้าแทน
+  if (
+    user && !isApi &&
+    (path === '/database' || path.startsWith('/database/customers')) &&
+    !can(user.app_metadata?.role, 'customers:view') &&
+    can(user.app_metadata?.role, 'products:view')
+  ) {
+    return withRefreshedCookies(NextResponse.redirect(new URL('/database/products', request.url)));
+  }
+
   // Phase 4 versioned settings are system configuration. Keep these pages
   // aligned with their server API gates until the permission redesign in Phase 8.
   if (

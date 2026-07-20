@@ -14,16 +14,17 @@ test('system catalog keeps the agreed global order and role visibility', () => {
   assert.deepEqual(keysFor({ role: 'admin', team: null, extraCaps: [] }), SYSTEM_ORDER);
   assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'tax', 'master']);
   assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'tax', 'sahamit', 'master']);
-  assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['mgmt']);
+  // secretary/marketing ได้ products:view อ่านอย่างเดียว (มติ 2026-07-20) → เห็นการ์ด "ฐานข้อมูล" ด้วย
+  assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['master', 'mgmt']);
   assert.deepEqual(keysFor({ role: 'legal', team: null, extraCaps: [] }), ['tax', 'master']);
 });
 
 test('system visibility covers every supported role and sales team', () => {
   const cases = [
     ['admin', null, SYSTEM_ORDER],
-    ['secretary', null, ['mgmt']],
+    ['secretary', null, ['master', 'mgmt']],
     ['ae_supervisor', null, ['salesplan', 'tax', 'sahamit', 'master']],
-    ['marketing', null, ['salesplan']],
+    ['marketing', null, ['salesplan', 'master']],
     ['legal', null, ['tax', 'master']],
     ['rd', null, ['salesplan', 'master']],
     ['viewer', null, SYSTEM_ORDER],
@@ -48,10 +49,23 @@ test('specialized users land on the one workspace they can use', () => {
   const marketing = { role: 'marketing', team: null, extraCaps: [] };
   const staff = { role: 'staff', team: null, extraCaps: [] };
 
-  assert.deepEqual(keysFor(marketing), ['salesplan']);
+  assert.deepEqual(keysFor(marketing), ['salesplan', 'master']);
   assert.equal(systemLandingForUser('salesplan', marketing), '/sa/leads');
   assert.deepEqual(keysFor(staff), ['salesplan', 'master']);
   assert.equal(systemLandingForUser('salesplan', staff), '/sa/tasks');
+});
+
+test('ฐานข้อมูล lands on the product list when the user has no customers:view', () => {
+  // หน้าภาพรวม /database ผสมสถิติลูกค้า — บทบาทที่มีแค่ products:view ต้องข้ามไปหน้าสินค้า
+  const secretary = { role: 'secretary', team: null, extraCaps: [] };
+  const marketing = { role: 'marketing', team: null, extraCaps: [] };
+  assert.equal(systemLandingForUser('master', secretary), '/database/products');
+  assert.equal(systemLandingForUser('master', marketing), '/database/products');
+
+  // ส่วนบทบาทที่ดูลูกค้าได้ ยังลงหน้าภาพรวมเหมือนเดิม
+  for (const role of ['admin', 'ae_supervisor', 'ae', 'legal', 'viewer', 'staff', 'rd']) {
+    assert.equal(systemLandingForUser('master', { role, team: 'ODM', extraCaps: [] }), '/database', role);
+  }
 });
 
 test('recent system is accepted only while the current user can access it', () => {
