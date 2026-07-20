@@ -39,10 +39,16 @@ test('FC Total keeps Open, Won and Lost forecasts while remaining keeps Open onl
   assert.equal(result.forecastVariance, -45);
 });
 
-test('owner matching folds legacy ids by name+team like byOwner buckets', () => {
+test('owner matching: id ก่อน (ครอบดีลก่อน/หลังเปลี่ยนชื่อ) แล้วถอย name+team สำหรับ legacy', () => {
   const deal = { ownerId: 'old-id', ownerName: ' สมชาย  ใจดี ', team: 'KA' };
   assert.equal(dealMatchesOwner(deal, { ownerName: 'สมชาย ใจดี', team: 'KA' }), true);
   assert.equal(dealMatchesOwner(deal, { ownerName: 'สมชาย ใจดี', team: 'ODM' }), false);
   assert.equal(dealMatchesOwner(deal, { ownerId: 'old-id' }), true);
   assert.equal(dealMatchesOwner(deal, {}), true); // ไม่ระบุ = แถวสรุปรวม
+
+  // แถว byOwner ตอนนี้ใช้ชื่อ "ปัจจุบัน" จากบัญชี — ดีลเก่าชื่อ snapshot เดิม
+  // ต้องยังถูกจับด้วย id แม้ชื่อ/ทีมบน filter เปลี่ยนไปแล้ว
+  assert.equal(dealMatchesOwner(deal, { ownerId: 'old-id', ownerName: 'สมชาย นามใหม่', team: 'ODM' }), true);
+  // id ไม่ตรง → ตัดสินด้วยชื่อ+ทีมตามเดิม (คนละคน ห้าม match)
+  assert.equal(dealMatchesOwner(deal, { ownerId: 'other-id', ownerName: 'สมหญิง อื่น', team: 'KA' }), false);
 });

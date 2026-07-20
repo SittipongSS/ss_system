@@ -1,7 +1,9 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 import { cachedJson } from '@/lib/serverCache';
-import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, normalizedOwnerName, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { buildOwnerResolver } from '@/lib/sales/ownerIdentity';
+import { loadUserDirectory } from '@/lib/usersRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,32 +47,39 @@ async function loadAllDeals(supabase) {
   return deals || [];
 }
 
+// ตัวตน + ชื่อ/ทีมที่แสดง มาจากบัญชีผู้ใช้ปัจจุบัน ไม่ใช่ snapshot บนดีล/เป้า
+// (ดูเหตุผลใน lib/sales/ownerIdentity) — โหลดหนึ่งครั้งต่อรอบ rebuild cache (5 นาที)
+async function loadOwnerResolver(supabase) {
+  const directory = await loadUserDirectory(supabase);
+  return buildOwnerResolver(directory.values());
+}
+
 async function buildDashboard(supabase, month) {
-  const visibleDeals = await loadAllDeals(supabase);
-  const { data: targets, error: targetsError } = await supabase
-    .from('sales_targets')
-    .select('*')
-    .eq('targetMonth', month);
+  const [visibleDeals, resolveOwner, { data: targets, error: targetsError }] = await Promise.all([
+    loadAllDeals(supabase),
+    loadOwnerResolver(supabase),
+    supabase.from('sales_targets').select('*').eq('targetMonth', month),
+  ]);
   if (targetsError) throw new Error(targetsError.message);
-  return aggregateMonth(visibleDeals, targets || [], month);
+  return aggregateMonth(visibleDeals, targets || [], month, resolveOwner);
 }
 
 async function buildYearDashboards(supabase, year) {
   const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
-  const visibleDeals = await loadAllDeals(supabase);
-  const { data: targets, error: targetsError } = await supabase
-    .from('sales_targets')
-    .select('*')
-    .in('targetMonth', months);
+  const [visibleDeals, resolveOwner, { data: targets, error: targetsError }] = await Promise.all([
+    loadAllDeals(supabase),
+    loadOwnerResolver(supabase),
+    supabase.from('sales_targets').select('*').in('targetMonth', months),
+  ]);
   if (targetsError) throw new Error(targetsError.message);
   // shape ต่อเดือนเหมือน response โหมด ?month= ทุกประการ — client ใช้โค้ดเดิมได้เลย
   return {
     year,
-    months: months.map((m) => aggregateMonth(visibleDeals, (targets || []).filter((t) => t.targetMonth === m), m)),
+    months: months.map((m) => aggregateMonth(visibleDeals, (targets || []).filter((t) => t.targetMonth === m), m, resolveOwner)),
   };
 }
 
-function aggregateMonth(visibleDeals, targets, month) {
+function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null) {
 
   // กติกา Won/open/ยอด/เดือน — ใช้ชุดกลางร่วมกับ drill-down modal (lib/sales/dashboardMetrics)
   const isWon = isWonDeal;
@@ -146,14 +155,18 @@ function aggregateMonth(visibleDeals, targets, month) {
   // Per-SA breakdown: target (person-level rows) vs won vs weighted forecast.
   // Team-level target rows (ownerId null) are aggregated in byTeam, not here.
   const ownerMap = {};
-  const normalizedOwnerName = (name) => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
   const ownerBucket = (id, name, team) => {
-    // Prefer name+team over raw ownerId so legacy targets/deals with stale user
-    // ids do not render the same person twice on the overview.
+    // ตัวตนจริง = บัญชีผู้ใช้ปัจจุบัน (id ตรง หรือชื่อ snapshot ตรงบัญชีแบบไม่ชนกัน)
+    // → คนเดียวกันรวมถังเดียวเสมอ แม้ id เก่า/ใหม่ปน เปลี่ยนชื่อ หรือย้ายทีม และ
+    // ชื่อ/ทีมที่แสดง = ค่าปัจจุบันจากบัญชี. เดิม key ด้วยชื่อ+ทีม snapshot ล้วน —
+    // พอเปลี่ยนชื่อในบัญชี แถวเก่า/ใหม่แตกเป็นคนละถัง FC Total/คงเหลือกระจายจนดู
+    // "ของบางคนหาย" และชื่อบนหน้าไม่เคยตามบัญชี. จับไม่ได้ (เช่น คนลาออก id ก็
+    // stale) → ถอยไปถังชื่อ+ทีมเดิม — ประวัติยังโชว์ครบ ไม่หาย
+    const acc = resolveOwner(id, name);
     const cleanName = normalizedOwnerName(name);
-    const key = cleanName ? `${team || 'no-team'}|${cleanName}` : (id || 'unassigned');
+    const key = acc ? `u|${acc.id}` : (cleanName ? `${team || 'no-team'}|${cleanName}` : (id || 'unassigned'));
     if (!ownerMap[key]) {
-      ownerMap[key] = { ownerId: id || null, ownerName: name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
+      ownerMap[key] = { ownerId: acc?.id || id || null, ownerName: acc?.name || name || 'ไม่ระบุ', team: acc?.team || team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
     } else {
       ownerMap[key].ownerId ||= id || null;
       ownerMap[key].ownerName = ownerMap[key].ownerName === 'ไม่ระบุ' && name ? name : ownerMap[key].ownerName;

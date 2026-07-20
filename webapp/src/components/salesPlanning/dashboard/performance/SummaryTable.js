@@ -81,6 +81,23 @@ export default function SummaryTable({ matrix, prevMatrix, year, ytdCount, carry
   const opts = (lastYearActual) => ({ ytdCount, lastYearActual });
   const gapHead = carry ? "ยอดทบสะสม" : "ผลต่างสะสม";
 
+  // ตาข่ายกันคนหาย: byTeam ฝั่ง server ตัดถังทีม null ทิ้ง — คนที่ทีมไม่ตรงกับ
+  // กลุ่มทีมไหนเลย (ไม่มีทีมในบัญชี / แถว legacy ไม่ระบุทีม) เดิมถูก filter ราย
+  // กลุ่มเงียบ ๆ ทั้งที่อยู่ใน matrix.people ครบ → เก็บมาโชว์เป็นกลุ่มท้ายตาราง
+  const teamNames = new Set(matrix.teams.map((t) => t.team));
+  const orphans = matrix.people.filter((p) => !teamNames.has(p.team || "ไม่ระบุทีม"));
+  const orphanTotal = orphans.length
+    ? orphans.reduce((acc, p) => {
+      for (let i = 0; i < 12; i += 1) {
+        acc.target[i] += Number(p.target[i] || 0);
+        acc.fcTotal[i] += Number(p.fcTotal?.[i] || 0);
+        acc.forecast[i] += Number(p.forecast[i] || 0);
+        acc.actual[i] += Number(p.actual[i] || 0);
+      }
+      return acc;
+    }, { target: Array(12).fill(0), fcTotal: Array(12).fill(0), forecast: Array(12).fill(0), actual: Array(12).fill(0) })
+    : null;
+
   return (
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2 mb-1" style={{ flexWrap: "wrap" }}>
@@ -133,6 +150,23 @@ export default function SummaryTable({ matrix, prevMatrix, year, ytdCount, carry
                 </Fragment>
               );
             })}
+            {orphanTotal && (
+              <Fragment key="__orphans__">
+                <SummaryRow label="ไม่ระบุทีม" s={summarize(orphanTotal, opts(null))} tone="team" />
+                {orphans.map((p) => {
+                  const prevP = prevMatrix.people.find((x) => x.id === p.id);
+                  return (
+                    <SummaryRow
+                      key={p.id}
+                      label={p.name}
+                      sublabel={p.team || "ไม่ระบุทีม"}
+                      s={summarize(p, opts(prevP?.actual || null))}
+                      onClick={() => onDrill({ scope: "person", person: p.id })}
+                    />
+                  );
+                })}
+              </Fragment>
+            )}
           </tbody>
           <tfoot>
             <SummaryRow label="รวมทั้งบริษัท" s={summarize(matrix.company, opts(prevMatrix.company?.actual || null))} tone="total" />
