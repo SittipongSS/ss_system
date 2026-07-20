@@ -61,3 +61,15 @@ test('AE Supervisor can open commercial presets while other business roles canno
     );
   }
 });
+
+test('ae_supervisor สามารถเขียน /api/product-types ได้ (จัดการหมวดสินค้า Phase 2) — regression #587', () => {
+  const sup = { role: 'ae_supervisor', extraCaps: [] };
+  // เดิม /api/product-types ไม่อยู่ใน OPEN_WRITE_APIS → lockedOut คืน true ก่อนถึง
+  // apiWriteAllowed ทำให้ ae_supervisor โดน 403 ทั้งที่ canManageProductCategories อนุญาต
+  for (const method of ['POST', 'PATCH', 'DELETE']) {
+    assert.equal(lockedOut(sup, '/api/product-types', method, true), false, `product-types ${method}`);
+    assert.equal(lockedOut(sup, '/api/product-types/import/commit', method, true), false, `import ${method}`);
+  }
+  // role ที่ไม่ควรจัดการหมวด: lockdown ปล่อยผ่าน แต่ apiWriteAllowed (ชั้นถัดไป) ยังบล็อก
+  // — ตรงนี้ทดสอบแค่ว่า lockdown ไม่ได้บล็อก ae_supervisor อีกต่อไป
+});

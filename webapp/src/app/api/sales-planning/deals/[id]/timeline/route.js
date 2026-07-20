@@ -47,8 +47,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json().catch(() => ({}));
   const categoryCode = (body.categoryCode ?? deal.categoryCode ?? '').trim() || null;
-  const categoryError = await activeProductTypeError(categoryCode);
-  if (categoryError) return badRequest(categoryError);
+  // ตรวจ "หมวดพักใช้" เฉพาะตอน caller เปลี่ยนหมวด (ส่ง categoryCode ใหม่ที่ต่างจากเดิม)
+  // — ดีลเดิมที่หมวดถูกพักใช้ทีหลังต้องสร้างไทม์ไลน์ต่อได้ (กติกาเดียวกับ deal PATCH:
+  // historic deals may retain a category that was later deactivated).
+  const categoryChanged = body.categoryCode != null
+    && String(body.categoryCode).trim() !== (deal.categoryCode || '');
+  if (categoryChanged) {
+    const categoryError = await activeProductTypeError(categoryCode);
+    if (categoryError) return badRequest(categoryError);
+  }
   // anchor: body > วันที่เริ่มของดีล (mig 0095) > วันนี้
   const startDate = body.startDate || deal.startDate || todayStr();
   const now = new Date().toISOString();

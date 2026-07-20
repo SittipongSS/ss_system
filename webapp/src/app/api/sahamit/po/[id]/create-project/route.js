@@ -8,7 +8,6 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode, loadProject } from '@/lib/pm/projectsRepo';
-import { activeProductTypeError } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -85,8 +84,9 @@ export async function POST(request, { params }) {
   let projectError = null;
 
   const firstProduct = knownLines[0].product;
-  const categoryError = await activeProductTypeError(firstProduct.categoryCode || null);
-  if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
+  // หมวดมาจากสินค้าบน PO (ไม่ใช่การเลือกใหม่) — สินค้าเดิมที่หมวดถูกพักใช้ทีหลัง
+  // ต้องสร้างโครงการ re-order ต่อได้ จึงไม่บล็อกที่นี่ (กติกาเดียวกับ deal PATCH:
+  // historic products may retain a category that was later deactivated).
   const baseRow = {
     name: body.name || `RE-ORDER Sahamit PO ${po.poNumber}`,
     customerId: customer.id,
@@ -170,9 +170,14 @@ export async function POST(request, { params }) {
     });
   }
   const taskRows = applyAutoStatuses(buildProjectTasks(project, project.id, null, templateOptions));
-  const { data: tasks, error: taskError } = taskRows.length
-    ? await supabase.from('project_tasks').insert(taskRows).select()
-    : { data: [], error: null };
+  // 0 แถว = template RE-ORDER หลังกรองหมวดไม่เหลือขั้นตอน → กันสร้างโครงการเปล่าเงียบ ๆ:
+  // ถอนโครงการที่เพิ่งสร้าง (PO ยังไม่ถูกผูก projectId ที่ขั้นถัดไป) แล้วแจ้งสาเหตุ —
+  // rollback แบบเดียวกับกรณี template load ล้มด้านบน
+  if (!taskRows.length) {
+    await supabase.from('projects').delete().eq('id', project.id);
+    return Response.json({ error: 'Workflow Template RE-ORDER ที่เผยแพร่อยู่ไม่มีขั้นตอน — ตรวจการตั้งค่าที่ /settings/workflow-templates' }, { status: 400 });
+  }
+  const { data: tasks, error: taskError } = await supabase.from('project_tasks').insert(taskRows).select();
   if (taskError) {
     await supabase.from('projects').delete().eq('id', project.id);
     return Response.json({ error: `cannot create PM tasks: ${taskError.message}` }, { status: 500 });
