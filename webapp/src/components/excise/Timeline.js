@@ -30,7 +30,7 @@ export default function Timeline({ steps = [] }) {
                   flexShrink: 0,
                 }}
               >
-                {s.state === "done" && <Check size={11} color="#fff" />}
+                {s.state === "done" && <Check size={11} color="var(--accent-fg)" />}
               </span>
               {!last && (
                 <span style={{ flex: 1, width: 2, background: "var(--border-strong)", margin: "2px 0" }} />

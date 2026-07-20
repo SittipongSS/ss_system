@@ -1,6 +1,7 @@
 "use client";
 import Select from "@/components/ui/Select";
 import Workspace from "@/components/ui/Workspace";
+import SkeletonRows from "@/components/ui/Skeleton";
 import { useEffect, useMemo, useState } from "react";
 import { History, Search, Eye } from "lucide-react";
 import { useCan } from "@/lib/roleContext";
@@ -146,7 +147,7 @@ export default function AuditLogPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center p-12 text-[var(--text-3)]">กำลังโหลด...</div>
+        <SkeletonRows rows={7} />
       ) : (
         <div className="glass-panel">
           <div className="premium-table-wrapper border-none">

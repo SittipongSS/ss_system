@@ -772,10 +772,10 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
     const size = ROW_H - 16;
     const cx = sIdx * pxPerDay + pxPerDay / 2;
     const msBorder = kind === "custom"
-      ? "1.6px dashed color-mix(in srgb, var(--amber) 75%, #000)"
+      ? "1.6px dashed color-mix(in srgb, var(--amber) 75%, var(--text))"
       : kind === "edited"
         ? "2.5px solid var(--origin-edited)"
-        : "1.5px solid color-mix(in srgb, var(--amber) 60%, #000)";
+        : "1.5px solid color-mix(in srgb, var(--amber) 60%, var(--text))";
     return (
       <>
         <div
@@ -810,9 +810,9 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
   });
   const grip = { width: "2px", height: "45%", background: "rgba(255,255,255,0.75)", borderRadius: "2px" };
 
-  const solidBorderColor = isPending ? fill : `color-mix(in srgb, ${fill} 65%, #000)`;
+  const solidBorderColor = isPending ? fill : `color-mix(in srgb, ${fill} 65%, var(--text))`;
   const border = kind === "custom"
-    ? `1.6px dashed ${isPending ? fill : `color-mix(in srgb, ${fill} 80%, #000)`}`
+    ? `1.6px dashed ${isPending ? fill : `color-mix(in srgb, ${fill} 80%, var(--text))`}`
     : `${isPending ? "1.5px" : "1px"} solid ${solidBorderColor}`;
   const originNote = kind === "custom" ? " · เพิ่มใหม่" : kind === "edited" ? " · แก้ไขโดยผู้ใช้" : "";
 
@@ -838,11 +838,11 @@ function TaskBar({ task, rangeStartMs, totalDays, pxPerDay, canEdit, onCommit, o
       {canEdit && !saving && <div onPointerDown={begin("left")} style={handle("left")}><span style={grip} /></div>}
       <span style={{
         fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        color: isPending ? "var(--text-2)" : "#fff", pointerEvents: "none", flex: 1,
+        color: isPending ? "var(--text-2)" : "var(--accent-fg)", pointerEvents: "none", flex: 1,
       }}>
         {width > 44 ? task.name : ""}
       </span>
-      {saving && spinner(isPending ? "var(--text-2)" : "#fff")}
+      {saving && spinner(isPending ? "var(--text-2)" : "var(--accent-fg)")}
       {canEdit && !saving && <div onPointerDown={begin("right")} style={handle("right")}><span style={grip} /></div>}
     </div>
   );

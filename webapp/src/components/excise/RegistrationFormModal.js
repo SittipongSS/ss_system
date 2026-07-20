@@ -112,7 +112,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
                     search: `${c.arCode} ${c.name}`,
                   }))}
                 />
-                <div style={{ marginTop: 6, fontSize: 12, color: "var(--amber, #b45309)" }}>
+                <div style={{ marginTop: 6, fontSize: 12, color: "var(--amber)" }}>
                   FG นี้ยังไม่มีลูกค้าเจ้าของในฐานข้อมูล — ควรไปกำหนดที่สินค้าให้เรียบร้อย
                 </div>
               </>

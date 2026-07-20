@@ -67,22 +67,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "16px",
-      }}
-    >
-      <div className="glass-panel" style={{ padding: "32px", width: "100%", maxWidth: "420px" }}>
-        <div style={{ textAlign: "center", marginBottom: "28px" }}>
+    <main className="login-page">
+      <section className="glass-panel login-card">
+        <div className="login-brand">
           {/* โลโก้มี wordmark ในตัวแล้ว จึงไม่มีหัวข้อชื่อบริษัทซ้ำใต้ภาพ */}
           <BrandMark height={54} className="brand-mark" style={{ margin: "0 auto" }} />
         </div>
 
-        <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <form onSubmit={handleLogin} className="login-form">
           {error && (
             <div
               className="status-pill danger"
@@ -121,13 +113,12 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="btn btn-primary"
-            style={{ width: "100%", height: "38px", justifyContent: "center", marginTop: "6px", opacity: loading ? 0.7 : 1 }}
+            className="btn btn-primary login-submit"
           >
             {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
           </button>
         </form>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

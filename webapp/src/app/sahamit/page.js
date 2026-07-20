@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, LineChart, FileText, ChevronRight, AlertCircle, Clock } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import KpiCard from "@/components/excise/KpiCard";
+import KpiCard from "@/components/ui/KpiCard";
 import { useApiList } from "@/lib/excise/useApiList";
 import { poRollupStatus } from "@/lib/sahamit/po";
 import DashboardCharts from "@/components/sahamit/DashboardCharts";
