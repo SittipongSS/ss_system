@@ -67,6 +67,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     deal.id,
     templateOptions,
   ));
+  // 0 แถว = template หลังกรองหมวดสินค้าไม่เหลือขั้นตอนเลย (หมวดของดีลไม่ตรง step ไหน
+  // หรือ published template ของประเภทนี้ว่าง). เดิม insert([]) แล้วตอบ 201 เงียบ ๆ →
+  // หน้าโหลดใหม่เจอ 0 task โชว์ปุ่มเดิม = ผู้ใช้เห็นว่า "กดแล้วไม่ขึ้นอะไร". ปฏิเสธพร้อมบอกสาเหตุ
+  if (!rows.length) {
+    return badRequest(
+      categoryCode
+        ? `Workflow Template ${dealTypeOf(deal)} ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า ${categoryCode} — ตรวจ Template ที่ตั้งค่า หรือเปลี่ยนหมวดสินค้าบนดีล`
+        : `Workflow Template ${dealTypeOf(deal)} ที่เผยแพร่อยู่ไม่มีขั้นตอน — ตรวจการตั้งค่าที่ /settings/workflow-templates`,
+    );
+  }
   const { data: inserted, error: insErr } = await supabase.from('project_tasks').insert(rows).select();
   if (insErr) return fail(`สร้างไทม์ไลน์ไม่สำเร็จ: ${insErr.message}`, 500);
 
