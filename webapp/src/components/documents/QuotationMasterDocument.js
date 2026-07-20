@@ -172,7 +172,7 @@ function Signatures({ model }) {
       </div>
       <div>
         <h2>ผู้ยืนยันคำสั่งซื้อ <span>ลูกค้า</span></h2>
-        <div className={styles.signatureSpace}>ลงชื่อ / ประทับตรา</div>
+        <div className={styles.signatureSpace}>ลงชื่อ</div>
         <strong>(____________________________)</strong>
         <p>วันที่ ______ / ______ / ______</p>
       </div>
