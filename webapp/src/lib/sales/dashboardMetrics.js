@@ -48,9 +48,12 @@ export const wonMonthOf = (d) => monthKey(d?.metadata?.wonMonth)
 
 export const normalizedOwnerName = (name) => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
-// จับคู่ดีลกับแถว "รายบุคคล" บนภาพรวม — byOwner รวมคนด้วย name+team (id เก่า/ใหม่
-// ของคนเดียวกันปนกันได้) จึงต้องเทียบด้วยชื่อ+ทีมก่อน id
+// จับคู่ดีลกับแถว "รายบุคคล" บนภาพรวม — byOwner รวมคนด้วยบัญชีผู้ใช้ปัจจุบัน
+// (lib/sales/ownerIdentity) ชื่อบนแถวจึงเป็นชื่อ "ปัจจุบัน" ขณะที่ดีลเก่าเก็บชื่อ
+// snapshot เดิมไว้ → ต้องเทียบ id ก่อน (ครอบดีลก่อน/หลังเปลี่ยนชื่อ-ย้ายทีม)
+// แล้วค่อยถอยไปชื่อ+ทีม สำหรับแถว legacy ที่ id เก่า stale จับบัญชีไม่ได้
 export const dealMatchesOwner = (deal, { ownerId, ownerName, team } = {}) => {
+  if (ownerId && deal?.ownerId === ownerId) return true;
   if (ownerName) {
     return normalizedOwnerName(deal?.ownerName) === normalizedOwnerName(ownerName)
       && (deal?.team || null) === (team || null);
