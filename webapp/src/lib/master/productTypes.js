@@ -5,7 +5,7 @@
 //
 // Server-only: uses the service-role admin client.
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-export { categoryOf, isExciseCategory } from '@/lib/master/categoryOf';
+export { categoryOf, isExciseCategory, categoryFlags } from '@/lib/master/categoryOf';
 
 export async function listProductTypes() {
   const supabase = getSupabaseAdmin();
@@ -30,6 +30,14 @@ export async function getProductTypeByCode(categoryCode) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+// ธงกำกับดูแลของหมวด (mig 0131) ฉบับ server: อ่านแถวหมวดจาก DB ตรง ๆ —
+// ใช้ตอน gen ไทม์ไลน์/คำนวณภาษีฝั่ง API. หมวดไม่รู้จัก → ธง false ทุกตัว
+// (พฤติกรรมเดียวกับ categoryFlags ฝั่ง client).
+export async function categoryFlagsOf(categoryCode) {
+  const row = await getProductTypeByCode(categoryCode);
+  return { isExcise: !!row?.isExcise, requiresFdaNotice: !!row?.requiresFdaNotice };
 }
 
 export async function activeProductTypeError(categoryCode) {

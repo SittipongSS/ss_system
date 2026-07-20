@@ -35,6 +35,7 @@ import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@
 import { computeFinish, durationFromDates } from "@/lib/pm/stepSchedule";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
+import { isExciseCategory } from "@/lib/master/categoryOf";
 import { getComputedStatus, statusDotColor } from "@/lib/pm/derived";
 import { PROJECT_CLOSE_STATUS_LABELS, PROJECT_CLOSE_TYPE_LABELS, PROJECT_CLOSE_TYPES } from "@/lib/pm/projectClose";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -423,26 +424,28 @@ export default function ProjectDetailPage() {
       : { kind: "info", msg: `${label} เหมือนสถานะปัจจุบันอยู่แล้ว — ไม่มีอะไรเปลี่ยน` });
   };
 
-  // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", 01-002 ชนะ) เหมือนในโมดัล
-  // เพื่อให้ resync ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG 01-002 แล้วเงียบ
+  // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", หมวดสรรพสามิตชนะ —
+  // ตัดสินจาก flag isExcise ของหมวด, mig 0131) เหมือนในโมดัล เพื่อให้ resync
+  // ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG หมวดสรรพสามิตแล้วเงียบ
   const deriveCategoryFromProducts = (productIds) => {
     const fgs = productIds.map((pid) => allProducts.find((pr) => pr.id === pid)).filter(Boolean);
     if (!fgs.length) return null; // ไม่เหลือ FG → ไม่แตะหมวด
-    const code = fgs.some((f) => f.categoryCode === "01-002") ? "01-002" : (fgs[0].categoryCode || "");
+    const exciseFg = fgs.find((f) => isExciseCategory(f.categoryCode || "", categories));
+    const code = exciseFg ? (exciseFg.categoryCode || "") : (fgs[0].categoryCode || "");
     const [mc = "", tc = ""] = code ? code.split("-") : [];
     const sub = categories.find((c) => c.mainCategoryCode === mc && c.typeCode === tc)?.nameTh || "";
     return { productMainCategory: code, productSubCategory: sub };
   };
-  // ยืนยันก่อน resync ถ้าหมวดที่ derive พลิกสถานะสรรพสามิต (01-002)
+  // ยืนยันก่อน resync ถ้าหมวดที่ derive พลิกสถานะสรรพสามิต (flag isExcise)
   const confirmExciseFlip = (cat) => {
     if (!cat) return true;
-    const was = (data.productMainCategory || "") === "01-002";
-    const now = (cat.productMainCategory || "") === "01-002";
+    const was = isExciseCategory(data.productMainCategory || "", categories);
+    const now = isExciseCategory(cat.productMainCategory || "", categories);
     if (was === now) return true;
     return askConfirm({
       title: "ยืนยันการปรับขั้นตอนสรรพสามิต",
       message: now
-        ? "สินค้าที่ผูกเข้าข่ายสรรพสามิต (01-002) — ระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ ดำเนินการต่อหรือไม่?"
+        ? "สินค้าที่ผูกเข้าข่ายสรรพสามิต — ระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ ดำเนินการต่อหรือไม่?"
         : "สินค้าที่ผูกไม่เข้าข่ายสรรพสามิตแล้ว — ระบบจะลบขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ ดำเนินการต่อหรือไม่?",
       confirmLabel: "ดำเนินการต่อ",
       danger: false,
@@ -720,10 +723,10 @@ export default function ProjectDetailPage() {
   const canAddTimelineTask = canEdit && timelineDealFilters.length <= 1;
   const linkedIds = new Set((p.projectProducts || []).map((x) => x.productId));
   // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โครงการที่ไม่ได้มาจากดีล
-  // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต 01-002 อย่างน้อยหนึ่งตัว — ไม่งั้นไม่ต้องมี
-  // ทะเบียนภาษี.
+  // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต (ติ๊ก isExcise) อย่างน้อยหนึ่งตัว —
+  // ไม่งั้นไม่ต้องมีทะเบียนภาษี.
   const dealWon = !p.dealId || ["won", "in_project"].includes(p.dealStage);
-  const hasExciseFg = (p.projectProducts || []).some((x) => (x.product?.categoryCode || "") === "01-002");
+  const hasExciseFg = (p.projectProducts || []).some((x) => isExciseCategory(x.product?.categoryCode || "", categories));
   const recommendTaxReg = dealWon && hasExciseFg;
   const formPhases = [...new Set(processedTasks.map((t) => t.phase).filter(Boolean))];
 
@@ -993,7 +996,7 @@ export default function ProjectDetailPage() {
                   disabled={creatingTaxReg || !(p.projectProducts || []).length}
                   className="btn"
                   style={{ whiteSpace: "nowrap" }}
-                  title="สร้างทะเบียนภาษี draft จาก FG หมวดสรรพสามิต (01-002) ในโครงการนี้"
+                  title="สร้างทะเบียนภาษี draft จาก FG หมวดสรรพสามิตในโครงการนี้"
                 >
                   <ShieldCheck size={14} /> {creatingTaxReg ? "กำลังสร้าง..." : "สร้างทะเบียนภาษี"}
                 </button>

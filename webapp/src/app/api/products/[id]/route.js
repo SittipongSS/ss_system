@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSuperuser } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
-import { categoryOf, isExciseCategory, activeProductTypeError } from '@/lib/master/productTypes';
+import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { recordAudit } from '@/lib/audit';
@@ -167,11 +167,10 @@ export async function PATCH(request, { params }) {
     if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
   }
 
-  // Taxability is intrinsic to the category (auto rule), not re-parsed from
-  // fgCode — that caused the category and taxability flag to disagree when
-  // they drifted out of sync. LG override now lives on the registration, not
-  // the master product.
-  const isExciseTaxable = isExciseCategory(updated.categoryCode);
+  // Taxability is intrinsic to the category's isExcise flag (mig 0131 — auto
+  // rule, not re-parsed from fgCode and no hardcoded category code). LG
+  // override now lives on the registration, not the master product.
+  const isExciseTaxable = (await categoryFlagsOf(updated.categoryCode)).isExcise;
   updated.isExciseTaxable = isExciseTaxable;
   updated.retailPriceExVat = isExciseTaxable ? updated.retailPriceIncVat / 1.07 : 0;
   updated.exciseTax = isExciseTaxable ? updated.retailPriceExVat * 0.08 : 0;

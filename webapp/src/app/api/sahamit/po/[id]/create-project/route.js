@@ -8,6 +8,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode, loadProject } from '@/lib/pm/projectsRepo';
+import { categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -169,6 +170,8 @@ export async function POST(request, { params }) {
       status: templateError instanceof WorkflowTemplateError ? templateError.status : 500,
     });
   }
+  // ขั้นสรรพสามิตใน template ผูก token flag:excise (mig 0131) → ส่งธงของหมวดโครงการ
+  templateOptions.categoryFlags = await categoryFlagsOf(project.productMainCategory);
   const taskRows = applyAutoStatuses(buildProjectTasks(project, project.id, null, templateOptions));
   // 0 แถว = template RE-ORDER หลังกรองหมวดไม่เหลือขั้นตอน → กันสร้างโครงการเปล่าเงียบ ๆ:
   // ถอนโครงการที่เพิ่งสร้าง (PO ยังไม่ถูกผูก projectId ที่ขั้นถัดไป) แล้วแจ้งสาเหตุ —

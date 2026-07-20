@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
+  EXCISE_CATEGORY_TOKEN,
   normalizeWorkflowTemplateDraft,
   templateMatchesCategory,
   validateWorkflowTemplateSteps,
@@ -49,11 +50,37 @@ test('sequential dependency follows the previous visible row without storing a b
   assert.deepEqual(result.value.steps[1].dependsOnStepKeys, []);
 });
 
-test('category matching preserves only/exclude behavior', () => {
+test('category matching preserves only/exclude behavior (literal rules ของ version เก่า)', () => {
   assert.equal(templateMatchesCategory({ categoryOnly: '01-002' }, '01-002'), true);
   assert.equal(templateMatchesCategory({ categoryOnly: '01-002' }, '01-001'), false);
   assert.equal(templateMatchesCategory({ categoryExclude: '01-002' }, '01-002'), false);
   assert.equal(templateMatchesCategory({ categoryExclude: '01-002' }, '01-001'), true);
+});
+
+test('token flag:excise ตัดสินจากธง isExcise ของหมวด ไม่ใช่รหัสหมวด', () => {
+  const excise = { isExcise: true };
+  const plain = { isExcise: false };
+  // categoryOnly = token: match เฉพาะหมวดที่ติ๊ก isExcise — รหัสหมวดใดก็ได้
+  assert.equal(templateMatchesCategory({ categoryOnly: EXCISE_CATEGORY_TOKEN }, '01-002', excise), true);
+  assert.equal(templateMatchesCategory({ categoryOnly: EXCISE_CATEGORY_TOKEN }, '03-005', excise), true);
+  assert.equal(templateMatchesCategory({ categoryOnly: EXCISE_CATEGORY_TOKEN }, '01-002', plain), false);
+  // ไม่ส่ง flags → token ไม่ match (หมวดถือว่าไม่เสียสรรพสามิต)
+  assert.equal(templateMatchesCategory({ categoryOnly: EXCISE_CATEGORY_TOKEN }, '01-002'), false);
+  // categoryExclude = token: ตัดขั้นออกเมื่อหมวดติ๊ก isExcise
+  assert.equal(templateMatchesCategory({ categoryExclude: EXCISE_CATEGORY_TOKEN }, '03-005', excise), false);
+  assert.equal(templateMatchesCategory({ categoryExclude: EXCISE_CATEGORY_TOKEN }, '03-005', plain), true);
+  // literal เทียบก่อนเสมอ — validator ที่ iterate token เป็น pseudo-category ยังทำงานได้
+  assert.equal(templateMatchesCategory({ categoryOnly: EXCISE_CATEGORY_TOKEN }, EXCISE_CATEGORY_TOKEN), true);
+});
+
+test('validator ยอมรับคู่ either-or ที่ใช้ token flag:excise (แพตเทิร์น NPD v2)', () => {
+  const rows = [
+    { stepKey: 'bill-excise', name: 'วางบิล + สรรพสามิต', role: 'SA', durationDays: 1, dependencyMode: 'root', dependsOnStepKeys: [], categoryOnly: EXCISE_CATEGORY_TOKEN },
+    { stepKey: 'bill-plain', name: 'วางบิล (ไม่มีสรรพสามิต)', role: 'SA', durationDays: 1, dependencyMode: 'root', dependsOnStepKeys: [], categoryExclude: EXCISE_CATEGORY_TOKEN },
+    { stepKey: 'pay', name: 'รับชำระเงิน', role: 'SA', durationDays: 1, dependencyMode: 'custom', dependsOnStepKeys: ['bill-excise', 'bill-plain'] },
+  ];
+  const errors = validateWorkflowTemplateSteps(rows).join(' ');
+  assert.doesNotMatch(errors, /รับชำระเงิน/);
 });
 
 test('category validation rejects a visible step whose ONLY dependency is filtered out', () => {

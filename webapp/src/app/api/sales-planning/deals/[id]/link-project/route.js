@@ -9,6 +9,7 @@ import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
+import { categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -81,6 +82,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     } catch (templateError) {
       return fail(templateError.message || 'โหลด Workflow Template ไม่สำเร็จ', templateError instanceof WorkflowTemplateError ? templateError.status : 500);
     }
+    // ขั้นสรรพสามิตใน template ผูก token flag:excise (mig 0131) → ส่งธงของหมวดโครงการ
+    templateOptions.categoryFlags = await categoryFlagsOf(project.productMainCategory);
     const segTasks = applyAutoStatuses(buildAppendedTasks(project, {
       dealType: dealTypeOf(deal),
       dealId: deal.id,

@@ -126,6 +126,11 @@ export async function buildProductCategoryExportBuffer(rows = [], { now = new Da
     { key: 'nameEn', header: HEADERS.nameEn, width: 36 },
     { key: 'status', header: HEADERS.status, width: 14 },
     { key: 'note', header: HEADERS.note, width: 36 },
+    // ธงกำกับดูแล (mig 0131) — อ่านอย่างเดียวในไฟล์ export/ตรวจสอบ: แก้ได้เฉพาะ
+    // หน้าจอจัดการหมวดเท่านั้น (มติ 2026-07-20) จึงไม่อยู่ใน template นำเข้า
+    // (PC-IMPORT-1 ไม่ bump; parser ฝั่ง import อ่านตามชื่อหัวคอลัมน์ — คอลัมน์นี้ถูกเพิกเฉย)
+    { key: 'isExcise', header: 'เสียภาษีสรรพสามิต', width: 18 },
+    { key: 'requiresFdaNotice', header: 'ต้องจดแจ้ง อย.', width: 16 },
     { key: 'products', header: 'สินค้า', width: 12 },
     { key: 'deals', header: 'ดีล', width: 12 },
     { key: 'projects', header: 'โครงการ', width: 12 },
@@ -142,6 +147,8 @@ export async function buildProductCategoryExportBuffer(rows = [], { now = new Da
       nameEn: row.nameEn || '',
       status: row.isActive === false ? PRODUCT_CATEGORY_STATUS_LABELS.inactive : PRODUCT_CATEGORY_STATUS_LABELS.active,
       note: row.note || '',
+      isExcise: row.isExcise ? 'ใช่' : '',
+      requiresFdaNotice: row.requiresFdaNotice ? 'ใช่' : '',
       products: row.usage?.products || 0,
       deals: row.usage?.deals || 0,
       projects: row.usage?.projects || 0,
@@ -150,10 +157,10 @@ export async function buildProductCategoryExportBuffer(rows = [], { now = new Da
     });
     excelRow.font = { name: FONT, size: 11 };
     excelRow.alignment = { vertical: 'top', wrapText: true };
-    for (const column of [8, 9, 10]) excelRow.getCell(column).numFmt = '#,##0';
-    for (const column of [11, 12]) excelRow.getCell(column).numFmt = 'dd/mm/yyyy hh:mm';
+    for (const column of [10, 11, 12]) excelRow.getCell(column).numFmt = '#,##0';
+    for (const column of [13, 14]) excelRow.getCell(column).numFmt = 'dd/mm/yyyy hh:mm';
   }
-  sheet.autoFilter = { from: 'A1', to: 'L1' };
+  sheet.autoFilter = { from: 'A1', to: 'N1' };
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 

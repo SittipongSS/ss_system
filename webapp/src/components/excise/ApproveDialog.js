@@ -12,13 +12,23 @@ export default function ApproveDialog({ open, onClose, onDone, registration }) {
   const [taxable, setTaxable] = useState("auto"); // auto | taxable | exempt
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // หมวดสินค้า — ธง isExcise ตัดสินค่า "อัตโนมัติ" ของ taxability (mig 0131)
+  const [productTypes, setProductTypes] = useState([]);
 
   useEffect(() => {
     if (open) { setApprovalNumber(""); setTaxable("auto"); setError(null); }
   }, [open, registration?.id]);
 
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/product-types")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setProductTypes(d || []))
+      .catch(() => {});
+  }, [open]);
+
   if (!registration) return null;
-  const autoTaxable = isExciseCategory(categoryOf(registration.fgCode));
+  const autoTaxable = isExciseCategory(categoryOf(registration.fgCode), productTypes);
   const taxPerUnit = (registration.exciseTax || 0) + (registration.localTax || 0);
 
   const submit = async (e) => {

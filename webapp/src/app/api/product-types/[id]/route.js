@@ -65,10 +65,18 @@ export async function PATCH(request, { params }) {
 
   invalidateCache('product-types');
   const statusVerb = lifecycleOnly ? (updated.isActive ? 'เปิดใช้งาน' : 'พักใช้งาน') : 'แก้ไข';
+  // ธง isExcise ขับตรรกะภาษีทั้งระบบ (mig 0131) — การพลิกค่าต้องเห็นชัดใน audit trail
+  const complianceNotes = [
+    !!current.isExcise !== !!updated.isExcise
+      ? (updated.isExcise ? 'เปิดธงเสียภาษีสรรพสามิต' : 'ปิดธงเสียภาษีสรรพสามิต') : null,
+    !!current.requiresFdaNotice !== !!updated.requiresFdaNotice
+      ? (updated.requiresFdaNotice ? 'เปิดธงต้องจดแจ้ง อย.' : 'ปิดธงต้องจดแจ้ง อย.') : null,
+  ].filter(Boolean);
   await recordAudit({
     user, action: 'update', entityType: 'product_category', entityId: updated.id,
     before: current, after: updated,
-    summary: `${statusVerb}หมวดสินค้า ${productCategoryCode(updated)} ${updated.nameTh || updated.nameEn || ''}`.trim(), request,
+    summary: [`${statusVerb}หมวดสินค้า ${productCategoryCode(updated)} ${updated.nameTh || updated.nameEn || ''}`.trim(),
+      ...complianceNotes].join(' — '), request,
   });
   return Response.json(updated);
 }

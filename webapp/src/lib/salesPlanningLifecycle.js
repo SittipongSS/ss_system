@@ -29,9 +29,10 @@ export function dealFgCodes(deal, projectProducts = []) {
   return [...out];
 }
 
-// ดีลนี้มี FG ที่เข้าข่ายสรรพสามิต (หมวด 01-002) ไหม
-export function dealHasExciseFg(deal, projectProducts = []) {
-  return dealFgCodes(deal, projectProducts).some((fg) => isExciseCategory(categoryOf(fg)));
+// ดีลนี้มี FG ที่เข้าข่ายสรรพสามิตไหม — "เข้าข่าย" ตัดสินจากช่องติ๊ก isExcise ของ
+// หมวดสินค้า (product_types, mig 0131) จึงต้องส่งรายการหมวด (productTypes) เข้ามาด้วย
+export function dealHasExciseFg(deal, projectProducts = [], productTypes = []) {
+  return dealFgCodes(deal, projectProducts).some((fg) => isExciseCategory(categoryOf(fg), productTypes));
 }
 
 // nextAction ต่อ stage — label + hint (kind ใช้เลือกปุ่มหลักฝั่ง UI)
@@ -85,13 +86,13 @@ const REG_STATUS_HINT = {
   rejected: 'ถูกตีกลับ — แก้ไขแล้วส่งใหม่',
 };
 
-// รวมรายการ FG หมวด 01-002 ของดีล (ให้ productId ถ้ามีจาก project_products)
-function collectExciseFgEntries(deal, projectProducts) {
+// รวมรายการ FG หมวดสรรพสามิต (ติ๊ก isExcise) ของดีล (ให้ productId ถ้ามีจาก project_products)
+function collectExciseFgEntries(deal, projectProducts, productTypes) {
   const entries = [];
   const seen = new Set();
   for (const row of projectProducts || []) {
     const fg = row?.product?.fgCode || row?.fgCode;
-    if (!fg || !isExciseCategory(categoryOf(fg))) continue;
+    if (!fg || !isExciseCategory(categoryOf(fg), productTypes)) continue;
     const key = String(row.productId || fg);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -99,7 +100,7 @@ function collectExciseFgEntries(deal, projectProducts) {
   }
   if (!entries.length) {
     for (const fg of (deal?.metadata?.fgCodes || [])) {
-      if (!fg || !isExciseCategory(categoryOf(fg)) || seen.has(String(fg))) continue;
+      if (!fg || !isExciseCategory(categoryOf(fg), productTypes) || seen.has(String(fg))) continue;
       seen.add(String(fg));
       entries.push({ fgCode: String(fg), productId: null });
     }
@@ -117,9 +118,9 @@ function matchRegistration(entry, regs) {
 }
 
 // สรรพสามิตรายตัว FG: ยังไม่ขึ้น→สร้างทะเบียน, กำลังขึ้น→ไปทำต่อ, อนุมัติแล้ว→ไปยื่นชำระ
-function buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProject) {
-  const entries = collectExciseFgEntries(deal, projectProducts);
-  if (!entries.length) return []; // ไม่มี FG 01-002 → ไม่โชว์การ์ดสรรพสามิต
+function buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProject, productTypes) {
+  const entries = collectExciseFgEntries(deal, projectProducts, productTypes);
+  if (!entries.length) return []; // ไม่มี FG หมวดสรรพสามิต → ไม่โชว์การ์ดสรรพสามิต
   if (!hasProject) {
     return [{ kind: 'excise', label: 'ทะเบียนสรรพสามิต', status: 'locked', hint: 'สร้างโครงการ PM ก่อน', actionKind: null, href: null }];
   }
@@ -138,16 +139,18 @@ function buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProjec
   });
 }
 
-// routing: ส่งต่อไประบบที่ทำงานจริง. related = { projectProducts, exciseRegistrations, sahamitPo, shipmentPrep }
+// routing: ส่งต่อไประบบที่ทำงานจริง.
+// related = { projectProducts, exciseRegistrations, sahamitPo, shipmentPrep, productTypes }
+// (productTypes = แถวหมวดสินค้า — ใช้ตัดสินสรรพสามิตจาก flag isExcise, mig 0131)
 function buildRoutes(deal, related) {
-  const { projectProducts = [], exciseRegistrations = [], sahamitPo = null } = related || {};
+  const { projectProducts = [], exciseRegistrations = [], sahamitPo = null, productTypes = [] } = related || {};
   const hasProject = !!deal.projectId;
   const projectHref = hasProject ? `/sa/projects/${deal.projectId}` : null;
   const routes = [];
 
   // PM project route is now handled natively in the Timeline card in UI.
-  // 2) สรรพสามิต — รายตัว FG หมวด 01-002 ตามสถานะทะเบียน
-  for (const r of buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProject)) routes.push(r);
+  // 2) สรรพสามิต — รายตัว FG หมวดที่ติ๊กเสียภาษีสรรพสามิต ตามสถานะทะเบียน
+  for (const r of buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProject, productTypes)) routes.push(r);
 
   // 3) ส่งของ — เมื่อเปิด flag shipment เท่านั้น
   if (SALES_FEATURES.shipment) {

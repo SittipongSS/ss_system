@@ -22,6 +22,7 @@ import { brandBothOf, brandBoth } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
+import { apiCache } from "@/lib/apiCache";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
 
@@ -44,6 +45,8 @@ export default function CustomerDetails() {
 
   const [customer, setCustomer] = useState(null);
   const [products, setProducts] = useState([]);
+  // แถวหมวดสินค้า — ใช้ตัดสินธงสรรพสามิต/จดแจ้ง อย. ของหมวด (mig 0131)
+  const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
   const [orders, setOrders] = useState([]);
   const [regs, setRegs] = useState([]); // excise registrations for this customer (tax-gated)
   const [projects, setProjects] = useState([]); // PM projects for this customer (pm-gated)
@@ -87,6 +90,10 @@ export default function CustomerDetails() {
     if (id) {
       fetchCustomerData();
     }
+    fetch("/api/master/product-types")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { apiCache.set("/api/master/product-types", d || []); setProductTypes(d || []); })
+      .catch(() => {});
   }, [id]);
 
   // Cross-module relations (360-view): registrations + projects from one scoped
@@ -324,7 +331,7 @@ export default function CustomerDetails() {
               ) : isPortrait ? (
                 <div className="grid grid-cols-1 gap-3">
                   {products.map((p) => {
-                    const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode));
+                    const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode), productTypes);
                     const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
                     return (
                       <div key={p.id} onClick={() => router.push(`/database/products/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
@@ -337,7 +344,7 @@ export default function CustomerDetails() {
                         </div>
                         <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
                           <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"} · {fmtMoney(p.retailPriceIncVat)}</span>
-                          {/* ป้ายภาษีเฉพาะ 01-002 — สินค้าหมวดอื่น (ส่วนใหญ่) ไม่ต้องพูดถึงภาษี */}
+                          {/* ป้ายภาษีเฉพาะหมวดที่ติ๊กเสียภาษีสรรพสามิต — สินค้าหมวดอื่น (ส่วนใหญ่) ไม่ต้องพูดถึงภาษี */}
                           {canViewTax && isExciseCat && (
                             <span className="flex items-center gap-1.5">
                               {taxRate > 0 && <span className="font-mono text-[var(--text-2)]">{fmtMoney(taxRate)}</span>}
@@ -365,7 +372,7 @@ export default function CustomerDetails() {
                       </thead>
                       <tbody>
                         {products.map((p) => {
-                          const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode));
+                          const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode), productTypes);
                           const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
                           return (
                             <tr key={p.id} onClick={() => router.push(`/database/products/${p.id}`)} className="clickable-row">

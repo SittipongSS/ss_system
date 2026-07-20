@@ -13,6 +13,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import { useCan } from "@/lib/roleContext";
 import {
+  EXCISE_CATEGORY_TOKEN,
   WORKFLOW_TEMPLATE_KEYS,
   WORKFLOW_TEMPLATE_LIMITS,
   WORKFLOW_TEMPLATE_ROLES,
@@ -22,6 +23,8 @@ import {
   workflowTemplateStatusLabel,
   workflowTemplateSummary,
 } from "@/lib/workflowTemplates";
+import { categoryFlags } from "@/lib/master/categoryOf";
+import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
 const EMPTY_STEP = {
@@ -141,12 +144,13 @@ function StepFormFields({ value, onChange, steps, editIndex }) {
       <div className={`${styles.full} ${styles.categoryGrid}`}>
         <label>
           <span>ใช้เฉพาะหมวดสินค้า</span>
-          <input maxLength={WORKFLOW_TEMPLATE_LIMITS.categoryCode} value={value.categoryOnly} onChange={(event) => set("categoryOnly", event.target.value.trim())} placeholder="เช่น 01-002" />
+          <input maxLength={WORKFLOW_TEMPLATE_LIMITS.categoryCode} value={value.categoryOnly} onChange={(event) => set("categoryOnly", event.target.value.trim())} placeholder={`เช่น 01-002 หรือ ${EXCISE_CATEGORY_TOKEN}`} />
         </label>
         <label>
           <span>ยกเว้นหมวดสินค้า</span>
-          <input maxLength={WORKFLOW_TEMPLATE_LIMITS.categoryCode} value={value.categoryExclude} onChange={(event) => set("categoryExclude", event.target.value.trim())} placeholder="เช่น 01-002" />
+          <input maxLength={WORKFLOW_TEMPLATE_LIMITS.categoryCode} value={value.categoryExclude} onChange={(event) => set("categoryExclude", event.target.value.trim())} placeholder={`เช่น 01-002 หรือ ${EXCISE_CATEGORY_TOKEN}`} />
         </label>
+        <p className={styles.helpText}>ใส่รหัสหมวด (เช่น 01-002) หรือ <code>{EXCISE_CATEGORY_TOKEN}</code> = ทุกหมวดที่ติ๊ก &quot;เสียภาษีสรรพสามิต&quot; ในฐานข้อมูลหมวดสินค้า</p>
       </div>
       <label className={`${styles.full} ${styles.switchRow}`}>
         <input type="checkbox" checked={value.isMilestone} onChange={(event) => set("isMilestone", event.target.checked)} />
@@ -169,6 +173,11 @@ export default function WorkflowTemplatesPage() {
   const [versionDrawer, setVersionDrawer] = useState(null);
   const [previewDrawer, setPreviewDrawer] = useState(false);
   const [previewCategory, setPreviewCategory] = useState("01-002");
+  // แถวหมวดสินค้า — ให้ preview ตีความ rule แบบ token flag:excise ตามธงจริงของหมวด
+  const [productTypes, setProductTypes] = useState([]);
+  useEffect(() => {
+    cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
+  }, []);
   const [confirm, setConfirm] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -334,7 +343,8 @@ export default function WorkflowTemplatesPage() {
   const draftValidation = editor ? normalizeWorkflowTemplateDraft(editor) : null;
   const draftDirty = !!(editor && selected?.draft && JSON.stringify(editor) !== JSON.stringify(toEditor(selected.draft)));
   const selectedVersion = versionDrawer?.row;
-  const previewSteps = (editor?.steps || []).filter((step) => templateMatchesCategory(step, previewCategory));
+  const previewSteps = (editor?.steps || []).filter((step) =>
+    templateMatchesCategory(step, previewCategory, categoryFlags(previewCategory, productTypes)));
   const previewSummary = workflowTemplateSummary({ steps: previewSteps });
 
   return (
@@ -483,7 +493,7 @@ export default function WorkflowTemplatesPage() {
           <label className={styles.previewFilter}>
             <span>จำลองหมวดสินค้า</span>
             <input value={previewCategory} maxLength={WORKFLOW_TEMPLATE_LIMITS.categoryCode} onChange={(event) => setPreviewCategory(event.target.value.trim())} placeholder="เว้นว่าง = หมวดทั่วไป" />
-            <small>ใช้ 01-002 เพื่อตรวจขั้นตอนสรรพสามิต หรือเปลี่ยนเป็นหมวดอื่นเพื่อเทียบผล</small>
+            <small>ใส่รหัสหมวดที่ติ๊ก &quot;เสียภาษีสรรพสามิต&quot; เพื่อตรวจขั้นตอนสรรพสามิต หรือเปลี่ยนเป็นหมวดอื่นเพื่อเทียบผล</small>
           </label>
           <div className={styles.previewSummary}>
             <div><strong>{previewSummary.steps}</strong><span>ขั้นตอน</span></div>

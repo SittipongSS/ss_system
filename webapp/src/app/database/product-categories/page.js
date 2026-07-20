@@ -20,6 +20,10 @@ const EMPTY_FORM = {
   nameTh: "",
   nameEn: "",
   note: "",
+  // ช่องติ๊กกำกับดูแล (mig 0131): isExcise ขับตรรกะภาษีทั้งระบบ,
+  // requiresFdaNotice = ป้าย + เตือนตอนสร้างสินค้า (เฟสแรก)
+  isExcise: false,
+  requiresFdaNotice: false,
 };
 
 const usageText = (usage = {}) => [
@@ -40,6 +44,8 @@ export default function ProductCategoriesPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [confirmRow, setConfirmRow] = useState(null);
+  // ยืนยันก่อนบันทึกเมื่อธง "เสียภาษีสรรพสามิต" ถูกพลิก — กระทบตรรกะภาษี/ไทม์ไลน์ทั้งระบบ
+  const [exciseConfirm, setExciseConfirm] = useState(false);
   const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
@@ -118,6 +124,8 @@ export default function ProductCategoriesPage() {
       nameTh: row.nameTh || "",
       nameEn: row.nameEn || "",
       note: row.note || "",
+      isExcise: !!row.isExcise,
+      requiresFdaNotice: !!row.requiresFdaNotice,
     });
     setDrawer({ mode: "edit", row });
   };
@@ -136,13 +144,13 @@ export default function ProductCategoriesPage() {
     }));
   };
 
-  const save = async (event) => {
-    event.preventDefault();
+  const submitSave = async () => {
     setSaving(true);
     try {
       const editing = drawer?.mode === "edit";
+      const compliance = { isExcise: form.isExcise, requiresFdaNotice: form.requiresFdaNotice };
       const body = editing
-        ? { mainCategoryName: form.mainCategoryName, nameTh: form.nameTh, nameEn: form.nameEn, note: form.note }
+        ? { mainCategoryName: form.mainCategoryName, nameTh: form.nameTh, nameEn: form.nameEn, note: form.note, ...compliance }
         : {
             mainCategoryCode: form.mainCategoryCode,
             mainCategoryName: form.mainCategoryName,
@@ -150,6 +158,7 @@ export default function ProductCategoriesPage() {
             nameTh: form.nameTh,
             nameEn: form.nameEn,
             note: form.note,
+            ...compliance,
           };
       const response = await fetch(editing ? `/api/product-types/${drawer.row.id}` : "/api/product-types", {
         method: editing ? "PATCH" : "POST",
@@ -158,6 +167,7 @@ export default function ProductCategoriesPage() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "บันทึกหมวดสินค้าไม่สำเร็จ");
+      setExciseConfirm(false);
       setDrawer(null);
       setToast({ kind: "success", msg: editing ? "บันทึกการแก้ไขหมวดสินค้าแล้ว" : "เพิ่มหมวดสินค้าแล้ว" });
       await load();
@@ -166,6 +176,17 @@ export default function ProductCategoriesPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const save = async (event) => {
+    event.preventDefault();
+    // การพลิกธง "เสียภาษีสรรพสามิต" ของหมวดที่มีอยู่แล้วกระทบระบบภาษี/ไทม์ไลน์ —
+    // ต้องยืนยันก่อนบันทึก (มติ 2026-07-20) แล้วลง audit ฝั่ง API
+    if (drawer?.mode === "edit" && form.isExcise !== !!drawer.row.isExcise) {
+      setExciseConfirm(true);
+      return;
+    }
+    await submitSave();
   };
 
   const toggleStatus = async () => {
@@ -269,6 +290,7 @@ export default function ProductCategoriesPage() {
                         <div><strong>{row.code}</strong><span>{row.nameTh || row.nameEn || "ยังไม่ระบุชื่อ"}</span></div>
                         <StatusBadge active={row.isActive !== false} />
                       </div>
+                      <CompliancePills row={row} />
                       {row.nameEn && <p>{row.nameEn}</p>}
                       <small>{usageText(row.usage)}</small>
                       <div className={styles.cardActions}>
@@ -347,6 +369,33 @@ export default function ProductCategoriesPage() {
             <small>{form.note.length}/255</small>
           </label>
 
+          {/* ช่องติ๊กกำกับดูแล (mig 0131) — component เดียวใช้ทั้งโหมดเพิ่ม/แก้ไขตามกฎ AGENTS.md */}
+          <fieldset className={styles.complianceBox}>
+            <legend>การกำกับดูแล</legend>
+            <label className={styles.checkRow}>
+              <input
+                type="checkbox"
+                checked={form.isExcise}
+                onChange={(event) => setForm((current) => ({ ...current, isExcise: event.target.checked }))}
+              />
+              <span>
+                <strong>เสียภาษีสรรพสามิต</strong>
+                <small>ระบบจะคิดภาษีสรรพสามิตให้สินค้าในหมวดนี้ เตือนตอนสร้างสินค้า และเพิ่มขั้นตอนสรรพสามิตในไทม์ไลน์โครงการ</small>
+              </span>
+            </label>
+            <label className={styles.checkRow}>
+              <input
+                type="checkbox"
+                checked={form.requiresFdaNotice}
+                onChange={(event) => setForm((current) => ({ ...current, requiresFdaNotice: event.target.checked }))}
+              />
+              <span>
+                <strong>ต้องจดแจ้ง อย.</strong>
+                <small>แสดงป้ายบนหมวด/สินค้า และเตือนตอนสร้างสินค้าในหมวดนี้ (เฟสแรก — ยังไม่ผูกไทม์ไลน์หรือเอกสาร)</small>
+              </span>
+            </label>
+          </fieldset>
+
           {editing && (
             <section className={styles.usageBox}>
               <h3>การใช้งานปัจจุบัน</h3>
@@ -358,6 +407,21 @@ export default function ProductCategoriesPage() {
           )}
         </form>
       </RecordDrawer>
+
+      {/* ยืนยันการพลิกธงสรรพสามิต — กระทบการคิดภาษี/popup เตือน/ขั้นตอนไทม์ไลน์ทั้งระบบ */}
+      <ConfirmDialog
+        open={exciseConfirm}
+        title={form.isExcise ? "เปิดธงเสียภาษีสรรพสามิต" : "ปิดธงเสียภาษีสรรพสามิต"}
+        description={drawer?.row ? `${drawer.row.code} — ${form.nameTh || form.nameEn || drawer.row.nameTh || drawer.row.nameEn || "ไม่ระบุชื่อ"}` : ""}
+        detail={form.isExcise
+          ? "สินค้าในหมวดนี้จะถูกคิดภาษีสรรพสามิตอัตโนมัติ มีป้าย/คำเตือนด้านภาษี และไทม์ไลน์โครงการใหม่จะมีขั้นตอนสรรพสามิต — การเปลี่ยนแปลงถูกบันทึกใน audit log"
+          : "ระบบจะเลิกคิดภาษีสรรพสามิตให้สินค้าหมวดนี้ และไทม์ไลน์โครงการใหม่จะไม่มีขั้นตอนสรรพสามิต (โครงการเดิมไม่ถูกแก้อัตโนมัติ) — การเปลี่ยนแปลงถูกบันทึกใน audit log"}
+        confirmLabel="ยืนยันและบันทึก"
+        tone="danger"
+        busy={saving}
+        onConfirm={submitSave}
+        onClose={() => !saving && setExciseConfirm(false)}
+      />
 
       <ConfirmDialog
         open={!!confirmRow}
@@ -386,7 +450,11 @@ function CategoryGroupRows({ group, onEdit, onToggle }) {
       {group.rows.map((row) => (
         <tr key={row.id} className="premium-row">
           <td className="mono"><strong>{row.code}</strong></td>
-          <td><strong>{row.nameTh || row.nameEn || "ยังไม่ระบุชื่อ"}</strong>{row.note && <small className={styles.cellNote}>{row.note}</small>}</td>
+          <td>
+            <strong>{row.nameTh || row.nameEn || "ยังไม่ระบุชื่อ"}</strong>
+            <CompliancePills row={row} />
+            {row.note && <small className={styles.cellNote}>{row.note}</small>}
+          </td>
           <td>{row.nameEn || <span className={styles.muted}>—</span>}</td>
           <td><strong>{row.usage?.total || 0} รายการ</strong><small className={styles.cellNote}>{usageText(row.usage)}</small></td>
           <td><StatusBadge active={row.isActive !== false} /></td>
@@ -406,4 +474,15 @@ function CategoryGroupRows({ group, onEdit, onToggle }) {
 
 function StatusBadge({ active }) {
   return <span className={`${styles.statusBadge} ${active ? styles.active : styles.inactive}`}>{active ? "ใช้งาน" : "พักใช้"}</span>;
+}
+
+// ป้ายกำกับดูแลของหมวด (mig 0131) — โชว์เฉพาะหมวดที่ติ๊กธง (ส่วนน้อย) ไม่รกตาราง
+function CompliancePills({ row }) {
+  if (!row.isExcise && !row.requiresFdaNotice) return null;
+  return (
+    <span className={styles.compliancePills}>
+      {row.isExcise && <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>}
+      {row.requiresFdaNotice && <span className="status-pill info text-[10px]">จดแจ้ง อย.</span>}
+    </span>
+  );
 }

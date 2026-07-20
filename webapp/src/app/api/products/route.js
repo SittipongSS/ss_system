@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData, redactProductMargin } from '@/lib/permissions';
-import { categoryOf, isExciseCategory, activeProductTypeError } from '@/lib/master/productTypes';
+import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
@@ -80,10 +80,10 @@ export async function POST(request) {
   const categoryError = await activeProductTypeError(categoryCode);
   if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
 
-  // Taxability is auto-derived from the category (not re-parsed from fgCode —
-  // that caused the category and taxability flag to disagree when they drifted
-  // out of sync), but LG may override it.
-  const autoTaxable = isExciseCategory(categoryCode);
+  // Taxability is auto-derived from the category's isExcise flag (mig 0131 —
+  // not re-parsed from fgCode, and no hardcoded category code), but LG may
+  // override it.
+  const autoTaxable = (await categoryFlagsOf(categoryCode)).isExcise;
   const taxableOverride =
     typeof body.taxableOverride === 'boolean' ? body.taxableOverride : null;
   const isExciseTaxable = taxableOverride === null ? autoTaxable : taxableOverride;

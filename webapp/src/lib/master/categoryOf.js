@@ -6,11 +6,21 @@ export function categoryOf(fgCode) {
   return m ? `${m[1]}-${m[2]}` : null;
 }
 
-// '01-002' (body perfume) is the one category subject to excise tax.
-// Always derive this from categoryOf() — never re-check fgCode.includes(...)
-// separately, or the taxability flag can disagree with the stored category.
-export function isExciseCategory(categoryCode) {
-  return categoryCode === '01-002';
+// มติ 2026-07-20: ภาษีสรรพสามิต/จดแจ้ง อย. ยึด "ช่องติ๊กบนหมวดสินค้า"
+// (product_types.isExcise / requiresFdaNotice, mig 0131) — เลิก hardcode '01-002'.
+// ผู้เรียกต้องส่งรายการหมวด (productTypes rows) ที่โหลดมาแล้ว; ไม่รู้จักหมวด/ไม่ส่ง
+// รายการ → false ทุกธง (จงใจไม่มี fallback รหัสตายตัว เพื่อไม่ให้ค่าที่ติ๊กใน DB
+// ถูกทับเงียบ ๆ). categoryCode ต้องมาจาก categoryOf()/ค่าที่เก็บไว้ — อย่า parse
+// fgCode เองซ้ำ ไม่งั้นธงภาษีจะเพี้ยนจากหมวดที่เก็บจริง.
+export function categoryFlags(categoryCode, productTypes = []) {
+  const row = (productTypes || []).find(
+    (t) => `${t.mainCategoryCode}-${t.typeCode}` === categoryCode,
+  );
+  return { isExcise: !!row?.isExcise, requiresFdaNotice: !!row?.requiresFdaNotice };
+}
+
+export function isExciseCategory(categoryCode, productTypes = []) {
+  return categoryFlags(categoryCode, productTypes).isExcise;
 }
 
 // Resolve an fgCode against a productTypes list → { found, code, typeInfo }

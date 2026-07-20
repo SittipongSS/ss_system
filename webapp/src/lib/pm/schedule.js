@@ -170,7 +170,9 @@ const dependencyKeysOf = (row, type) => {
 export function buildProjectTasks(project, projectId, dealId = null, templateOptions = {}) {
   const cat = project.productMainCategory || '';
   const sourceTemplate = templateOptions.template || templateFor(project.type);
-  const template = sourceTemplate.filter((t) => templateMatchesCategory(t, cat));
+  // templateOptions.categoryFlags = ธงของหมวด cat ({ isExcise }) — จำเป็นตั้งแต่ mig 0131
+  // เพราะขั้นสรรพสามิตใน template ผูกกับ token flag:excise ไม่ใช่รหัสหมวดตายตัวแล้ว
+  const template = sourceTemplate.filter((t) => templateMatchesCategory(t, cat, templateOptions.categoryFlags));
 
   // gen id ก่อน เพื่ออ้างใน predecessors
   const raw = template.map((t, idx) => ({
@@ -224,9 +226,9 @@ export function buildProjectTasks(project, projectId, dealId = null, templateOpt
 // ตัวเอง ต่อท้าย stepOrder เดิม โดย anchor ที่วันเริ่มของ segment (ไม่ใช่วันเริ่มโครงการ):
 // task รากของ segment (ไม่มี predecessor) ถูก pin ด้วย startLocked เพื่อไม่ให้ถูกดูด
 // กลับไป anchor โครงการเวลา recalculateGraph ทั้งโครงการ (pin เลื่อนช้าได้ ไม่ถอย).
-export function buildAppendedTasks(project, { dealType, dealId, startDate, existingTasks = [], template, templateVersionId }) {
+export function buildAppendedTasks(project, { dealType, dealId, startDate, existingTasks = [], template, templateVersionId, categoryFlags }) {
   const segProject = { ...project, type: dealType, startDate: startDate || todayStr(), createdAt: null };
-  const rows = buildProjectTasks(segProject, project.id, dealId, { template, templateVersionId });
+  const rows = buildProjectTasks(segProject, project.id, dealId, { template, templateVersionId, categoryFlags });
   const baseOrder = (existingTasks || []).reduce((m, t) => Math.max(m, Number(t.stepOrder ?? 0)), -1) + 1;
   return rows.map((r, i) => ({
     ...r,
@@ -246,7 +248,7 @@ export function mergeTemplateTasks(project, existingTasks, templateOptions = {})
   // legacy-aware: โครงการ NPD เก่า (มี task ช่วงกลิ่นจากก่อนแยก template) ใช้ชุดเต็มเส้น
   // เพื่อไม่ลบงานช่วงกลิ่นทิ้งตอน resync (ดู templateForMerge ใน templates.js)
   const fullTemplate = templateOptions.template || templateForMerge(project.type, existingTasks);
-  const filtered = fullTemplate.filter((t) => templateMatchesCategory(t, cat));
+  const filtered = fullTemplate.filter((t) => templateMatchesCategory(t, cat, templateOptions.categoryFlags));
 
   // reuse เฉพาะแถวที่มาจาก template (origin !== 'custom') — กันแถวที่ผู้ใช้เพิ่มเอง
   // ที่บังเอิญชื่อชนกับ template มาถูกดูดเป็น template row (จะซ้ำกับ customRows)
