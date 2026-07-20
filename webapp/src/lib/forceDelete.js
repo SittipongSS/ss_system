@@ -131,13 +131,20 @@ export async function forceDeleteProjectExcise(supabase, projectId) {
 // .quotationId เป็น ON DELETE CASCADE → Sale Order (แหล่งยอด Actual) หายตามทันที
 // ที่ระดับ DB — โชว์ให้ผู้ดูแลเห็นชัดก่อน.
 export async function quotationForcePreview(supabase, quote) {
-  const salesOrders = await countBy(supabase, 'sales_orders', 'quotationId', quote.id);
+  const [salesOrders, evidence] = await Promise.all([
+    countBy(supabase, 'sales_orders', 'quotationId', quote.id),
+    countBy(supabase, 'document_signature_evidence', 'quotationId', quote.id),
+  ]);
   const cascade = [
     line('ใบสั่งขาย (Sale Order) ที่อ้างใบนี้ — แหล่งยอด Actual', salesOrders),
   ].filter((r) => r.count > 0);
   const notes = [];
+  // หลักฐานลายเซ็น immutable → ลบถาวรไม่ได้แม้ force (Decision 0008). เตือนก่อนกด
+  // ให้ตรงกับที่ DELETE จะตอบ 409 จริง — พรีวิว = สิ่งที่จะเกิดจริง.
+  const blocked = evidence > 0 || Boolean(quote.signatureEvidenceId);
+  if (blocked) notes.push('⚠️ ใบนี้มีหลักฐานลายเซ็น — ลบถาวรไม่ได้แม้บังคับลบ ต้องใช้ “ยกเลิก” แทน');
   if (quote.status === 'accepted') notes.push('ใบนี้ถูกรับแล้ว (accepted) = แหล่งยอด Actual ของดีล');
-  return { cascade, notes };
+  return { cascade, notes, blocked };
 }
 
 // เก็บกวาด logical ref ของใบเสนอราคาที่ไม่มี FK: metadata.acceptedQuotationId ของ
