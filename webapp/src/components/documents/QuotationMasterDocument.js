@@ -144,6 +144,19 @@ function Terms({ model }) {
   );
 }
 
+function SectionLead({ kind, documentNumber }) {
+  const isAcceptance = kind === 'acceptance';
+  return (
+    <div className={styles.sectionLead}>
+      <div>
+        <strong>{isAcceptance ? 'การยืนยันเอกสาร' : 'รายละเอียดการชำระเงิน'}</strong>
+        <span>{isAcceptance ? '/ DOCUMENT ACCEPTANCE' : '/ PAYMENT DETAILS'}</span>
+      </div>
+      <small>{documentNumber}</small>
+    </div>
+  );
+}
+
 function Signatures({ model }) {
   return (
     <section className={styles.signatures} aria-label="ส่วนลงนาม">
@@ -200,25 +213,40 @@ export default function QuotationMasterDocument({ model, grayscale = false }) {
       data-template-variant={templateVariant}
       data-template-version={model.templateVersion}
     >
-      {model.pages.map((pageLines, pageIndex) => {
+      {model.pages.map((page, pageIndex) => {
         const startIndex = lineOffset;
-        lineOffset += pageLines.length;
-        const isLast = pageIndex === model.pages.length - 1;
+        lineOffset += page.lines.length;
         return (
-          <article className={styles.sheet} key={`page-${pageIndex + 1}`} aria-label={`ตัวอย่างใบเสนอราคา หน้า ${pageIndex + 1}`}>
+          <article
+            className={styles.sheet}
+            key={page.id}
+            aria-label={`ตัวอย่างใบเสนอราคา หน้า ${pageIndex + 1}`}
+            data-page-kind={page.kind}
+          >
             {model.watermark && <div className={styles.watermark}>{model.watermark}</div>}
             <DocumentHeader model={model} />
-            {pageIndex === 0 && <PartyGrid model={model} />}
-            {pageIndex > 0 && <div className={styles.continuation}>รายการต่อ · {model.document.number}</div>}
-            <ItemTable lines={pageLines} startIndex={startIndex} />
-            {isLast && (
-              <div className={styles.finalContent}>
-                <Totals model={model} />
-                <InstallmentTable model={model} />
-                <Terms model={model} />
-                <Signatures model={model} />
-              </div>
-            )}
+            <div className={styles.sheetContent}>
+              {page.showParty && <PartyGrid model={model} />}
+              {page.kind === 'items' && pageIndex > 0 && (
+                <div className={styles.continuation}>รายการสินค้าและบริการต่อ · {model.document.number}</div>
+              )}
+              {(page.kind === 'payment' || page.kind === 'acceptance') && (
+                <SectionLead kind={page.kind} documentNumber={model.document.number} />
+              )}
+              {page.lines.length > 0 && <ItemTable lines={page.lines} startIndex={startIndex} />}
+              {page.showTotals && <Totals model={model} />}
+              {(page.showPayment || page.showSignatures) && (
+                <div className={styles.paymentContent}>
+                  {page.showPayment && (
+                    <div className={styles.paymentDetails}>
+                      <InstallmentTable model={model} />
+                      <Terms model={model} />
+                    </div>
+                  )}
+                  {page.showSignatures && <Signatures model={model} />}
+                </div>
+              )}
+            </div>
             <DocumentFooter model={model} pageNumber={pageIndex + 1} pageCount={model.pages.length} />
           </article>
         );

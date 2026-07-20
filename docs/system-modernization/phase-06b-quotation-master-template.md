@@ -132,6 +132,20 @@
 - Responsive QA ที่ 390 × 844 ไม่มี horizontal overflow, กระดาษสูงตามเนื้อหา, segmented control V1/V2/V3 มี touch target 40 px และ footer ไม่มีคำว่า `เอกสารควบคุม`
 - Visual contract ยืนยัน V1 ใช้ grand total/rail accent เดิม, V2 ใช้ white/navy/neutral และ V3 ใช้ item code navy, V2 totals/rails, accent-soft schedule header และ accent watermark โปร่ง 14%; grayscale filter ทำงาน
 
+## Semantic pagination refinement — 20 กรกฎาคม 2026
+
+- เปลี่ยน pagination จากการกันพื้นที่ให้ final content ก้อนเดียว เป็นการแบ่งตามความหมายของเอกสาร: หน้าสินค้าและมูลค่า, หน้ารายละเอียดการชำระเงิน และหน้าการยืนยันเมื่อเนื้อหายาวเกิน
+- ยอดรวม ส่วนลด และภาษีต้องอยู่ต่อจากตารางสินค้าหน้าสุดท้ายเสมอ; ห้ามย้ายยอดรวมไปอยู่ลำพังบนหน้าการชำระเงิน
+- Compact 1 รายการ/1 งวดสามารถรวมทุกส่วนไว้หน้าเดียวเมื่อผ่าน capacity rule โดยไม่บังคับสร้างหน้าว่างเพิ่ม
+- Standard แสดงสินค้า 4 รายการและยอดรวมในหน้าแรก จากนั้นแยกตารางงวด วิธีชำระ เงื่อนไข หมายเหตุ และลายเซ็นไว้หน้าสอง
+- Dense, Multi-page และ Long content ใช้ capacity จากความยาวแถวและข้อมูลลูกค้า พร้อม balance สองหน้าท้ายเพื่อไม่ให้เหลือหน้าสินค้าสุดท้ายเพียงเล็กน้อยโดยไม่จำเป็น
+- หน้าการชำระเงินใช้หัวข้อ `รายละเอียดการชำระเงิน / PAYMENT DETAILS`; หน้ารายการต่อใช้ข้อความ `รายการสินค้าและบริการต่อ`
+- ชุดลายเซ็นใช้ flexible spacer ดันลงชิดด้านล่างของพื้นที่เนื้อหา โดยเว้นระยะเหนือ footer และรักษาทั้งชุดไม่ให้ตัดกลางหน้า
+- หาก payment content เกินเกณฑ์ จะสร้างหน้า `การยืนยันเอกสาร / DOCUMENT ACCEPTANCE` และย้ายลายเซ็นทั้งชุดไปหน้าดังกล่าว
+- กติกานี้เป็น shared layout contract ของ V1/V2/V3 และยังไม่เปลี่ยน Production Print authority
+- Targeted Quotation Master tests ผ่าน 13/13, automated tests ทั้ง repository ผ่าน 441/441, targeted ESLint, `npm run build` และ `git diff --check` ผ่าน
+- Browser A4/Desktop/Mobile visual QA ยังค้าง เนื่องจาก local session กลับไปหน้า Login หลัง production build; ต้องตรวจระยะลายเซ็นกับ footer และ Print/Save as PDF ใน Draft PR ก่อน merge
+
 ## Known risks
 
 - Browser print engine อาจแบ่งหน้าไม่เหมือนกันตาม font readiness จึงต้องรอ `document.fonts.ready` ก่อน Print/PDF
