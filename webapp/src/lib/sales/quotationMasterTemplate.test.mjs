@@ -131,6 +131,20 @@ test('print stylesheet locks explicit sheets to A4 with legacy page-break fallba
   assert.match(css, /\.signatures \{[^}]*margin-top: auto;[^}]*padding-top: 3mm;/);
 });
 
+test('mobile document reflows party data and signatures instead of clipping them', () => {
+  const css = readFileSync(
+    new URL('../../components/documents/QuotationMasterDocument.module.css', import.meta.url),
+    'utf8',
+  );
+  const mobileRules = css.match(/@media screen and \(max-width: 900px\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.match(mobileRules, /\.partyGrid \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(mobileRules, /\.partyGrid dl div \{ grid-template-columns: minmax\(0, 34%\) minmax\(0, 1fr\); \}/);
+  assert.match(mobileRules, /\.partyGrid dd \{ overflow-wrap: anywhere; \}/);
+  assert.match(mobileRules, /\.itemTable \{ table-layout: fixed; \}/);
+  assert.match(mobileRules, /\.itemTable th:nth-child\(6\), \.itemTable td:nth-child\(6\) \{ width: 19%; \}/);
+  assert.match(mobileRules, /\.signatures \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+});
+
 test('V1, V2 and V3 preserve their approved accent hierarchy', () => {
   const css = readFileSync(
     new URL('../../components/documents/QuotationMasterDocument.module.css', import.meta.url),
