@@ -27,7 +27,7 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { canReviewSalesForecast, DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { openQuotePrintWindow, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
+import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -310,7 +310,7 @@ export default function QuotationEditorPage() {
       const res = await fetch(`/api/sales-planning/quotations/${id}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "ไม่สามารถโหลดข้อมูลใบเสนอราคาได้");
-      openQuotePrintWindow(data, printWindow);
+      await openQuotePrintWindowPreferIssued(data, printWindow);
     } catch (error) {
       showQuotePrintError(printWindow, error.message);
     }

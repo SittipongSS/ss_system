@@ -7,7 +7,9 @@ export const QUOTATION_MASTER_TEMPLATE_VERSIONS = Object.freeze([
   // เงื่อนไขชำระ/หมายเหตุ/ลงชื่อ เป็นกลุ่มเดียวชิดล่างเอกสาร
   { id: 'v4', label: 'V4', templateVersion: 'quotation-balanced-controlled-v4' },
 ]);
-export const DEFAULT_QUOTATION_MASTER_VARIANT = 'v3';
+// V4 เป็นค่าตั้งต้นตั้งแต่ 2026-07-20 — quotePrint.js (ตัวพิมพ์จริง) ใช้กติกาแบ่งหน้า
+// ชุดเดียวกันแล้ว preview จึงต้องตรงกับของจริง ไม่งั้นดูตัวอย่างแล้วพิมพ์ออกมาคนละแบบ
+export const DEFAULT_QUOTATION_MASTER_VARIANT = 'v4';
 export const QUOTATION_MASTER_TEMPLATE_VERSION = QUOTATION_MASTER_TEMPLATE_VERSIONS
   .find((item) => item.id === DEFAULT_QUOTATION_MASTER_VARIANT).templateVersion;
 

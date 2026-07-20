@@ -104,6 +104,9 @@ test('every scenario keeps totals with the final item page and payment after all
 });
 
 test('fixture page distributions stay balanced by semantic section', () => {
+  // ตรึงไว้ที่ v3 โดยตั้งใจ — นี่คือเทสต์ของ semantic pagination แบบ V1–V3
+  // ซึ่งต้องไม่เปลี่ยนแม้ค่าตั้งต้นของระบบจะย้ายไป V4 แล้ว (การกระจายหน้าของ V4
+  // มีเทสต์แยกด้านล่าง)
   const expected = {
     compact: [['combined', 1]],
     standard: [['items', 4], ['payment', 0]],
@@ -114,7 +117,7 @@ test('fixture page distributions stay balanced by semantic section', () => {
   };
 
   for (const [scenarioId, distribution] of Object.entries(expected)) {
-    const model = buildQuotationMasterPreview(scenarioId, 'approved');
+    const model = buildQuotationMasterPreview(scenarioId, 'approved', 'v3');
     assert.deepEqual(model.pages.map((page) => [page.kind, page.lines.length]), distribution);
   }
 });
@@ -185,13 +188,16 @@ test('document states map to watermark and signature evidence variants', () => {
 // V4 = หน้าตาแบบ V2 แต่ (1) เติมรายการให้เต็มหน้าก่อนค่อยตัด (2) หน้าที่ถือ
 // มูลค่ารวมต้องมีรายการอยู่ด้านบน (3) เงื่อนไขชำระ+หมายเหตุ+ลงชื่อ เป็นกลุ่มเดียว
 
-test('V4 อยู่ในทะเบียนแม่แบบ แต่ค่าตั้งต้นยังเป็น V3', () => {
+test('V4 เป็นค่าตั้งต้นของแม่แบบ — preview ต้องตรงกับตัวพิมพ์จริง', () => {
   const v4 = QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === 'v4');
   assert.ok(v4, 'ต้องมี v4 ในทะเบียน');
   assert.equal(v4.templateVersion, 'quotation-balanced-controlled-v4');
-  // V4 เป็นตัวเลือก preview เท่านั้น ยังไม่เปลี่ยนค่าตั้งต้นของระบบ
-  assert.equal(DEFAULT_QUOTATION_MASTER_VARIANT, 'v3');
-  assert.equal(QUOTATION_MASTER_TEMPLATE_VERSION, 'quotation-balanced-controlled-v3');
+  // quotePrint.js ใช้กติกาแบ่งหน้าชุด V4 แล้ว preview จึงต้องตั้งต้นที่ V4 ด้วย
+  // ไม่งั้นดูตัวอย่างแล้วพิมพ์ออกมาคนละแบบ
+  assert.equal(DEFAULT_QUOTATION_MASTER_VARIANT, 'v4');
+  assert.equal(QUOTATION_MASTER_TEMPLATE_VERSION, 'quotation-balanced-controlled-v4');
+  // V1–V3 ยังอยู่ครบให้เทียบย้อนหลังได้
+  assert.deepEqual(QUOTATION_MASTER_TEMPLATE_VERSIONS.map((item) => item.id), ['v1', 'v2', 'v3', 'v4']);
 });
 
 test('โหมด fill เติมหน้าให้เต็มก่อนตัด ไม่เกลี่ยสองหน้าแบบ balanced', () => {
