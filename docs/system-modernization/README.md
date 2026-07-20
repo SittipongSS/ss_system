@@ -32,7 +32,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 6B | Document Design System และ Quotation Master Template | เสร็จสมบูรณ์ | [Phase 6B](./phase-06b-quotation-master-template.md) |
 | 7A | Versioned Commercial Presets | รอตรวจ | [Phase 7A](./phase-07a-commercial-presets.md) |
 | 7B | Issued document snapshot และ immutable PDF | รอตรวจ | [Phase 7B](./phase-07b-issued-document-snapshot.md) |
-| 7C | Production Quotation Print replacement | กำลังดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 7C | Production Quotation Print replacement | กำลังดำเนินการ | [Phase 7C](./phase-07c-quotation-print-replacement.md) |
 | 7D | Sales Order document migration | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
 | 8 | Permission redesign และ Migration | รอดำเนินการลำดับสุดท้าย | [Action inventory](./permission-action-inventory.md) |
 | 9 | Permission UAT, staged rollout และปิดโปรแกรม | รอดำเนินการ | [Release checklist](./release-checklist.md) |
