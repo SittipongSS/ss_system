@@ -1,5 +1,6 @@
 "use client";
 import Select from "@/components/ui/Select";
+import Workspace from "@/components/ui/Workspace";
 import { useEffect, useState } from "react";
 import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft } from "lucide-react";
 import { nextMonthKey } from "@/lib/usersTransfer";
@@ -217,7 +218,7 @@ export default function UserManagement() {
   }
 
   return (
-    <>
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <div
         className="premium-header"
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
@@ -231,26 +232,28 @@ export default function UserManagement() {
           </h1>
           <p>เพิ่ม / แก้ไขสิทธิ์ Role และทีม Team ของผู้ใช้ในระบบ</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="pill ok">ทั้งหมด {users.length} คน</div>
-          {canManage && (
-            <button
-              onClick={() => {
-                setCreateForm(emptyForm);
-                setShowCreate(true);
-              }}
-              className="btn btn-accent flex items-center gap-1.5"
-            >
-              <Plus size={16} /> เพิ่มผู้ใช้
-            </button>
-          )}
-        </div>
+        <div className="pill ok">ทั้งหมด {users.length} คน</div>
       </div>
 
       {loading ? (
         <div className="flex justify-center p-12 text-[var(--text-3)]">กำลังโหลด...</div>
       ) : (
         <div className="glass-panel">
+          {/* ปุ่มเพิ่ม = action ของเนื้อหาในการ์ด อยู่ขวาสุดของ card header ตามกติกา Page Header */}
+          <div className="flex items-center justify-between gap-3" style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
+            <strong>รายชื่อผู้ใช้</strong>
+            {canManage && (
+              <button
+                onClick={() => {
+                  setCreateForm(emptyForm);
+                  setShowCreate(true);
+                }}
+                className="btn btn-accent flex items-center gap-1.5"
+              >
+                <Plus size={16} /> เพิ่มผู้ใช้
+              </button>
+            )}
+          </div>
           <div className="premium-table-wrapper border-none">
             <table className="premium-table">
               <thead>
@@ -465,7 +468,7 @@ export default function UserManagement() {
           </form>
         )}
       </Modal>
-    </>
+    </Workspace>
   );
 }
 

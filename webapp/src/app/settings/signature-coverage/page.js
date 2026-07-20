@@ -12,6 +12,7 @@ import { isGoLiveReady } from "@/lib/admin/signatureCoverage";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
+import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 
 const FILTERS = [
@@ -94,7 +95,7 @@ export default function SignatureCoveragePage() {
   const ready = isGoLiveReady(summary);
 
   return (
-    <>
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div className="header-content">
           <h1><span className="premium-header-icon"><Signature size={22} /></span> ความพร้อมลายเซ็น</h1>
@@ -185,6 +186,6 @@ export default function SignatureCoveragePage() {
           </table>
         </div>
       )}
-    </>
+    </Workspace>
   );
 }

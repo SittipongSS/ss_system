@@ -407,6 +407,18 @@ export default function PoDetailPage() {
       title={po ? `PO ${po.poNumber}` : "PO"}
       subtitle="รายละเอียดใบสั่งซื้อ (ลูกค้า AR-109)"
       back={{ href: "/sahamit/po", label: "Purchase Orders" }}
+      // แก้/ลบ ทั้งใบ = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
+      // ฟอร์มแก้เป็นตัวเดียวกับตอนสร้าง; ลบมี guard ฝั่ง server (PO ที่ผูกโครงการ/ดีล/แบ่งส่ง/วัสดุ จะตีกลับพร้อมบอกว่าติดอะไร)
+      backActions={po && canEdit ? (
+        <>
+          <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => router.push(`/sahamit/po/${id}/edit`)} aria-label="แก้ไข PO" title="แก้ไข PO">
+            <Pencil size={16} aria-hidden="true" />
+          </button>
+          <button type="button" className="btn-icon danger" onClick={deletePo} disabled={deleteBusy} aria-label="ลบ PO" title={deleteBusy ? "กำลังลบ..." : "ลบ PO"}>
+            <Trash2 size={16} aria-hidden="true" />
+          </button>
+        </>
+      ) : null}
     >
       <Toast toast={toast} onClose={() => setToast(null)} />
       {error && (
@@ -466,18 +478,6 @@ export default function PoDetailPage() {
                 </a>
               )}
 
-              {/* แก้/ลบ ทั้งใบ — ฟอร์มแก้เป็นตัวเดียวกับตอนสร้าง; ลบมี guard ฝั่ง server
-                  (PO ที่ผูกโครงการ/ดีล/แบ่งส่ง/วัสดุ จะตีกลับพร้อมบอกว่าติดอะไร) */}
-              {canEdit && (
-                <button type="button" className="btn ghost" onClick={() => router.push(`/sahamit/po/${id}/edit`)}>
-                  <Pencil size={14} /> แก้ไข PO
-                </button>
-              )}
-              {canEdit && (
-                <button type="button" className="btn ghost danger" onClick={deletePo} disabled={deleteBusy}>
-                  <Trash2 size={14} /> {deleteBusy ? "กำลังลบ..." : "ลบ PO"}
-                </button>
-              )}
             </div>
           </div>
 
