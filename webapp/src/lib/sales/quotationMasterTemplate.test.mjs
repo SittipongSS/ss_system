@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   QUOTATION_MASTER_TEMPLATE_VERSION,
   QUOTATION_PREVIEW_SCENARIOS,
@@ -10,7 +11,7 @@ import {
 } from './quotationMasterTemplate.js';
 
 test('controlled form line preserves the exact ISO punctuation and spacing', () => {
-  assert.equal(controlledFormLine(), 'FM-SA-01: Rev. No.00 08/05/2568');
+  assert.equal(controlledFormLine(), 'FM-SA-01: Rev. No.00. 08/05/2568');
 });
 
 test('every preview scenario builds a stable isolated master model', () => {
@@ -20,7 +21,7 @@ test('every preview scenario builds a stable isolated master model', () => {
     assert.ok(model.lines.length > 0, scenario.id);
     assert.ok(model.pages.length > 0, scenario.id);
     assert.equal(model.pages.flat().length, model.lines.length, scenario.id);
-    assert.equal(model.formLine, 'FM-SA-01: Rev. No.00 08/05/2568');
+    assert.equal(model.formLine, 'FM-SA-01: Rev. No.00. 08/05/2568');
   }
 });
 
@@ -50,6 +51,25 @@ test('pagination preserves order and does not mutate source lines', () => {
   assert.deepEqual(lines, before);
   assert.deepEqual(pages.flat().map((line) => line.id), lines.map((line) => line.id));
   assert.ok(pages.length > 1);
+});
+
+test('summary-heavy short quotations move final content to a continuation page', () => {
+  const standard = buildQuotationMasterPreview('standard', 'approved');
+  const installments = buildQuotationMasterPreview('installments', 'approved');
+  const compact = buildQuotationMasterPreview('compact', 'approved');
+  assert.ok(standard.pages.length > 1, 'standard must not grow page 1 beyond A4');
+  assert.ok(installments.pages.length > 1, 'four installments need a continuation page');
+  assert.equal(compact.pages.length, 1, 'a genuinely compact quotation still fits one page');
+});
+
+test('print stylesheet locks explicit sheets to A4 with legacy page-break fallback', () => {
+  const css = readFileSync(
+    new URL('../../components/documents/QuotationMasterDocument.module.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(css, /@media print[\s\S]*height: 297mm/);
+  assert.match(css, /page-break-after: always/);
+  assert.match(css, /\.sheet:last-child \{ break-after: auto; page-break-after: auto; \}/);
 });
 
 test('document states map to watermark and signature evidence variants', () => {

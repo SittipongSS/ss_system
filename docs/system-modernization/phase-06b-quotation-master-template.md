@@ -11,7 +11,7 @@
 - ใช้แนวทาง `Balanced Controlled`: Direction C เป็นโครงหลักและยกความชัดของ controlled metadata จาก Direction A
 - ไทยเป็นภาษาหลัก อังกฤษเป็นคำรองเฉพาะหัวข้อสำคัญ
 - ใช้ IBM Plex Sans Thai และกำหนด type scale สำหรับ A4 โดยเฉพาะ
-- แสดง controlled form line เป็น `FM-SA-01: Rev. No.00 08/05/2568` ตรงทุกอักขระ
+- แสดง controlled form line เป็น `FM-SA-01: Rev. No.00. 08/05/2568` ตรงทุกอักขระ
 - ใช้ document accent token แยกตามชนิดเอกสาร; Phase นี้ยืนยัน Quotation ก่อนและเตรียม contract สำหรับเอกสารอื่น
 - สร้างหน้า Preview ใน Settings โดยใช้ shared UI/token ของระบบและไม่เขียนข้อมูลจริง
 - Preview ต้องรองรับหนึ่งรายการ, ตารางเต็มหน้า, หลายหน้า, ชื่อลูกค้า/ที่อยู่ยาว, หมายเหตุยาว, มี/ไม่มีส่วนลด, หนึ่งงวด/หลายงวด, Draft/Approved/Cancelled และมี/ไม่มีลายเซ็น
@@ -99,6 +99,16 @@
 - ลบ route หน้า Preview, fixture และ Master Template V2 ที่ยังไม่ถูก Production เรียกใช้
 - คืน Settings card และเอกสารสถานะ
 - ไม่มี migration และไม่มีข้อมูล Production ต้องย้อน
+
+## Pagination hotfix validation — 20 กรกฎาคม 2026
+
+- แก้เกณฑ์แบ่งหน้าสำหรับเอกสารที่มีส่วนสรุป/ตารางงวดชำระ เพื่อไม่ให้ส่วนท้ายเอกสารล้นลงมาทับ footer ของหน้าแรก
+- กำหนดหน้ากระดาษ Print เป็น A4 `210mm × 297mm` และเพิ่ม `page-break-after` สำหรับ browser print engine รุ่นเดิม โดยยกเว้นหน้าสุดท้าย
+- Automated test ยืนยันว่า Compact ยังอยู่หน้าเดียว ส่วน Standard และ 4 งวดแยกเป็น 2 หน้า รวมถึงตรวจ print CSS contract
+- Browser QA ที่ viewport 1440 × 1000: Standard และ Installment มี 2 หน้า สูง 1,123 px เท่ากันทุกหน้า และไม่พบ final content ชน footer
+- Responsive QA ที่ viewport 390 × 844: ไม่มี horizontal overflow และกระดาษใช้ความสูงตามเนื้อหาแทนการบังคับ A4 บนหน้าจอเล็ก
+- `npm run build`, targeted test, ESLint และ `git diff --check` ผ่าน; Production `quotePrint.js`/`salesOrderPrint.js` และข้อมูลจริงไม่ถูกเปลี่ยน
+- ยังคงต้องให้ผู้ใช้ UAT ผ่าน Print/Save as PDF จริงอีกครั้งใน PR ก่อนอนุญาต merge
 
 ## Known risks
 

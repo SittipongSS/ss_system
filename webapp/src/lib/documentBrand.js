@@ -36,4 +36,4 @@ export const DOCUMENT_FORMS = Object.freeze({
 });
 
 export const documentFormLine = (form) =>
-  `${form.code}: Rev. No.${form.revision} ${form.effectiveDate}`;
+  `${form.code}: Rev. No.${form.revision}. ${form.effectiveDate}`;

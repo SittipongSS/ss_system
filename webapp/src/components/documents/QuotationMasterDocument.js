@@ -184,7 +184,7 @@ function DocumentFooter({ model, pageNumber, pageCount }) {
   return (
     <footer className={styles.footer}>
       <span>{model.company.website} · เอกสารควบคุม</span>
-      <span>{model.standard.formCode} · Rev.{model.standard.revision}</span>
+      <span>{model.formLine}</span>
       <span>หน้า {pageNumber} / {pageCount}</span>
     </footer>
   );

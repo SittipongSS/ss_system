@@ -52,5 +52,5 @@ test('builds stable preview and controlled form line', () => {
   assert.equal(numberingPatternExample('QT-{YY}{MM}{RUNNING:4}-{REVISION}', '2'), 'QT-26070001-2');
   assert.equal(formatDocumentStandardEffectiveDate('2025-05-08'), '08/05/2568');
   assert.equal(formatDocumentStandardEffectiveDate(''), '-');
-  assert.equal(documentStandardFormLine({ formCode: 'FM-SA-01', revision: '00', effectiveDate: '2025-05-08' }), 'FM-SA-01: Rev. No.00 08/05/2568');
+  assert.equal(documentStandardFormLine({ formCode: 'FM-SA-01', revision: '00', effectiveDate: '2025-05-08' }), 'FM-SA-01: Rev. No.00. 08/05/2568');
 });

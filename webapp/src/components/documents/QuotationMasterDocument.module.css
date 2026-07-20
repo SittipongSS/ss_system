@@ -24,6 +24,7 @@
 .sheet {
   position: relative;
   width: 210mm;
+  height: 297mm;
   min-height: 297mm;
   box-sizing: border-box;
   padding: 11mm 12mm 10mm;
@@ -158,6 +159,7 @@
 @media screen and (max-width: 900px) {
   .sheet {
     width: 100%;
+    height: auto;
     min-height: 0;
     aspect-ratio: auto;
     padding: 4.8vw 5vw 9vw;
@@ -172,5 +174,14 @@
 @media print {
   .document { display: block; filter: none; }
   .grayscale { filter: grayscale(1); }
-  .sheet { width: 210mm; min-height: 297mm; margin: 0; box-shadow: none; }
+  .sheet {
+    width: 210mm;
+    height: 297mm;
+    min-height: 297mm;
+    margin: 0;
+    box-shadow: none;
+    break-after: page;
+    page-break-after: always;
+  }
+  .sheet:last-child { break-after: auto; page-break-after: auto; }
 }
