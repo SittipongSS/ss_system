@@ -1,7 +1,7 @@
 // Lightweight auth-user lookups for server routes (task assignment / KPI).
 // Wraps supabase.auth.admin.listUsers paging so callers don't re-implement it.
 
-// user id → { id, name, role, team, department } for everyone with a real role.
+// user id → { id, name, email, role, team, department } for everyone with a real role.
 export async function loadUserDirectory(supabase) {
   const map = new Map();
   let page = 1;
@@ -16,6 +16,7 @@ export async function loadUserDirectory(supabase) {
       map.set(u.id, {
         id: u.id,
         name: u.user_metadata?.name || u.email,
+        email: u.email || null, // ใช้ตามคนที่ต้องทำอะไรต่อ (signature coverage)
         role,
         team: u.app_metadata?.team || null,
         department: u.app_metadata?.department || null, // ใช้กรองคนฝ่าย (rd-kpi)
