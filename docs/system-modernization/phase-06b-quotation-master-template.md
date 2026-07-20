@@ -146,6 +146,17 @@
 - Targeted Quotation Master tests ผ่าน 13/13, automated tests ทั้ง repository ผ่าน 441/441, targeted ESLint, `npm run build` และ `git diff --check` ผ่าน
 - Browser A4/Desktop/Mobile visual QA ยังค้าง เนื่องจาก local session กลับไปหน้า Login หลัง production build; ต้องตรวจระยะลายเซ็นกับ footer และ Print/Save as PDF ใน Draft PR ก่อน merge
 
+## Mobile overflow hotfix — 20 กรกฎาคม 2026
+
+- UAT หลัง merge พบว่า viewport 390 × 844 ไม่มี page-level overflow แต่เนื้อหาภายในกระดาษถูกตัด 22–53 px เพราะกล่องลูกค้า/ข้อมูลอ้างอิงยังเป็นสองคอลัมน์, label ใช้ความกว้างคงที่ และชุดลายเซ็นยังเป็นสามคอลัมน์
+- ปรับเฉพาะ screen breakpoint ไม่เกิน 900 px: กล่องข้อมูลและลายเซ็นเรียงหนึ่งคอลัมน์, label/value ใช้ responsive grid และข้อความยาวตัดบรรทัดได้ โดย print/A4 rules ไม่เปลี่ยน
+- ตารางรายการบนมือถือใช้ fixed layout พร้อมสัดส่วนคอลัมน์รวม 100% และลด horizontal cell padding เพื่อรองรับ Dense, Multi-page และ Installment โดยไม่ดันขอบกระดาษ
+- เพิ่ม CSS regression contract ครอบคลุม party grid, label/value, item table และ signature grid; targeted Quotation Master tests ผ่าน 14/14
+- Browser QA ที่ 390 × 844 ผ่านครบ Compact, Standard, Dense, Multi-page, Long content และ Installment: page overflow = 0, ทุก sheet มี overflow X/Y = 0, touch target V1/V2/V3 สูง 40 px และหน้าที่มีลายเซ็นเว้นเหนือ footer 10 px
+- Desktop regression ที่ 1440 × 1000 ผ่าน: Standard ยังเป็น A4 สองหน้า 794 × 1,123 px, หน้าแรกมีสินค้า 4 รายการและยอดรวม, หน้าสองเป็นรายละเอียดการชำระเงิน, overflow X/Y = 0 และลายเซ็นเว้นเหนือ footer 15 px
+- Automated test ทั้ง repository ผ่าน 443/443, targeted ESLint, Next.js production build และ `git diff --check` ผ่าน
+- งานนี้ไม่เปลี่ยน pagination model, variant hierarchy, Production `quotePrint.js`/`salesOrderPrint.js`, permission, migration หรือข้อมูลจริง
+
 ## Known risks
 
 - Browser print engine อาจแบ่งหน้าไม่เหมือนกันตาม font readiness จึงต้องรอ `document.fonts.ready` ก่อน Print/PDF

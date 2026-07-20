@@ -220,6 +220,20 @@
   .documentHeader { grid-template-columns: 1.3fr .9fr; gap: 3vw; }
   .brandBlock img { width: 18vw; }
   .identityBlock h1 { font-size: clamp(12px, 3vw, 19pt); }
+  .partyGrid { grid-template-columns: minmax(0, 1fr); }
+  .partyGrid dl, .partyGrid dl div { min-width: 0; }
+  .partyGrid dl div { grid-template-columns: minmax(0, 34%) minmax(0, 1fr); }
+  .partyGrid dd { overflow-wrap: anywhere; }
+  .itemTable { table-layout: fixed; }
+  .itemTable th, .itemTable td { padding-right: .6mm; padding-left: .6mm; overflow-wrap: anywhere; }
+  .itemTable th:nth-child(1), .itemTable td:nth-child(1) { width: 7%; }
+  .itemTable th:nth-child(2), .itemTable td:nth-child(2) { width: 39%; }
+  .itemTable th:nth-child(3), .itemTable td:nth-child(3) { width: 10%; }
+  .itemTable th:nth-child(4), .itemTable td:nth-child(4) { width: 9%; }
+  .itemTable th:nth-child(5), .itemTable td:nth-child(5) { width: 16%; }
+  .itemTable th:nth-child(6), .itemTable td:nth-child(6) { width: 19%; }
+  .signatures { grid-template-columns: minmax(0, 1fr); }
+  .signatures > div { min-width: 0; }
   .footer { right: 5vw; bottom: 2vw; left: 5vw; }
 }
 
