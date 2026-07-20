@@ -52,7 +52,20 @@ export default function LeadDetailPage() {
 
   const info = (label, value, wide = false) => <div className={`${styles.field} ${wide ? styles.wide : ""}`}><span className={styles.label}>{label}</span><div className={styles.value}>{value || "-"}</div></div>;
 
-  return <Workspace icon={<Inbox size={22} />} title={lead?.contactName || "รายละเอียดลีด"} subtitle="ข้อมูลต้นทาง ผู้ติดต่อ และประวัติการดำเนินการ" back={{ href: "/sa/leads", label: "กลับหน้าลีด" }} hideHeader loading={loading}>
+  // ปุ่มแก้ไข = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
+  // ระหว่างแก้ไข ปุ่มยกเลิก/บันทึกอยู่แถวเดียวกัน (แพตเทิร์นเดียวกับหน้าใบเสนอราคา)
+  const backActions = lead?.canEdit ? (!editing ? (
+    <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={() => setEditing(true)} aria-label="แก้ไขลีด" title="แก้ไข">
+      <Pencil size={16} aria-hidden="true" />
+    </button>
+  ) : (
+    <>
+      <button type="button" className="btn" onClick={() => { setEditing(false); setForm({ ...blank, ...lead, budget: lead.budget ?? "" }); }} disabled={busy}><X size={14} /> ยกเลิก</button>
+      <button type="button" className="btn btn-primary" onClick={save} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก"}</button>
+    </>
+  )) : null;
+
+  return <Workspace icon={<Inbox size={22} />} title={lead?.contactName || "รายละเอียดลีด"} subtitle="ข้อมูลต้นทาง ผู้ติดต่อ และประวัติการดำเนินการ" back={{ href: "/sa/leads", label: "กลับหน้าลีด" }} backActions={backActions} hideHeader loading={loading}>
     {error && <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)", marginBottom: 16 }}>{error}</div>}
     {lead && <div className={styles.page}>
         <SalesDetailOverview
@@ -60,7 +73,6 @@ export default function LeadDetailPage() {
           title={lead.contactName}
           description={<><span>{lead.company || "บุคคลทั่วไป"}</span><span>·</span><span>รับผ่าน {LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</span></>}
           badges={<SalesStateBadge label={LEAD_STATUS_LABELS[lead.status] || lead.status} color={LEAD_STATUS_COLORS[lead.status]} />}
-          actions={lead.canEdit ? (!editing ? <button className="btn" onClick={() => setEditing(true)}><Pencil size={14} /> แก้ไข</button> : <><button className="btn" onClick={() => { setEditing(false); setForm({ ...blank, ...lead, budget: lead.budget ?? "" }); }} disabled={busy}><X size={14} /> ยกเลิก</button><button className="btn btn-primary" onClick={save} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก"}</button></>) : null}
           facts={[
             { icon: Sparkles, label: "บริการที่สนใจ", value: SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest },
             { icon: CircleDollarSign, label: "งบประมาณ", value: lead.budget != null ? fmtMoney(lead.budget) : "ไม่ระบุ" },

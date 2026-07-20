@@ -211,7 +211,14 @@ export default function SalesOrderDetailPage() {
   ];
 
   return (
-    <Workspace hideHeader back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} backActions={<><SaveStatus status={saveState} /><button type="button" className="btn btn-primary" onClick={printDocument}><Printer size={14} /> ออกเอกสาร</button></>}>
+    <Workspace hideHeader back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} backActions={<>
+      <SaveStatus status={saveState} />
+      {/* ลบถาวร = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header */}
+      {role === "admin" && canHardDeleteSalesOrder(order) && (
+        <button type="button" className="btn-icon danger" disabled={!!busy} onClick={remove} aria-label="ลบฉบับร่างถาวร" title="ลบฉบับร่างถาวร"><Trash2 size={16} aria-hidden="true" /></button>
+      )}
+      <button type="button" className="btn btn-primary" onClick={printDocument}><Printer size={14} /> ออกเอกสาร</button>
+    </>}>
       <div className={styles.page}>
         <SalesDetailOverview
           eyebrow="SALE ORDER · COMMERCIAL APPROVAL"
@@ -272,7 +279,6 @@ export default function SalesOrderDetailPage() {
                 {reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>}
                 {approved && reviewer && <button type="button" className="btn danger" disabled={!!busy} onClick={openCancel}><XCircle size={15} /> ยกเลิก SO</button>}
                 {order.status === "cancelled" && role === "admin" && <button type="button" className="btn" disabled={!!busy} onClick={() => requestAction("restore")}><RotateCcw size={15} /> คืนเป็นฉบับร่าง</button>}
-                {role === "admin" && canHardDeleteSalesOrder(order) && <button type="button" className="btn danger" disabled={!!busy} onClick={remove}><Trash2 size={15} /> ลบฉบับร่างถาวร</button>}
               </div>
             </DetailCard>}
 

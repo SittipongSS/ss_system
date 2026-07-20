@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import PhoneInput from "@/components/ui/PhoneInput";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Workspace from "@/components/ui/Workspace";
 import Toast from "@/components/ui/Toast";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import SignatureVault from "@/components/account/SignatureVault";
@@ -109,7 +110,7 @@ export default function AccountPage() {
   const displayName = profile ? (fmtName(profile) || profile.email) : "";
 
   return (
-    <>
+    <Workspace hideHeader back={{ href: "/home", label: "กลับหน้าหลัก" }}>
       <div className="premium-header">
         <div className="header-content">
           <h1><span className="premium-header-icon"><UserRound size={22} /></span> บัญชีของฉัน</h1>
@@ -219,6 +220,6 @@ export default function AccountPage() {
       />
       <ChangePasswordModal open={passwordOpen} forced={false} onClose={() => setPasswordOpen(false)} />
       <Toast toast={toast} onClose={() => setToast(null)} />
-    </>
+    </Workspace>
   );
 }

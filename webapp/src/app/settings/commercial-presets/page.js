@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { AlertTriangle, Archive, ChevronLeft, Edit3, Eye, FilePlus2, Plus, Send, Trash2, WalletCards } from "lucide-react";
+import { AlertTriangle, Archive, Edit3, Eye, FilePlus2, Plus, Send, Trash2, WalletCards } from "lucide-react";
+import Workspace from "@/components/ui/Workspace";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
@@ -219,8 +219,12 @@ export default function CommercialPresetsPage() {
   const editing = drawer?.mode === "edit" || drawer?.mode === "create";
 
   return (
-    <>
-      <header className="premium-header"><div className="header-content"><h1><span className="premium-header-icon"><WalletCards size={22} /></span> Commercial Preset</h1><p>ตั้งค่าวิธีชำระ เงื่อนไข หมายเหตุ และงวดชำระตามทีมและประเภทดีลแบบมีเวอร์ชัน</p></div><div className={styles.headerActions}><Link className="btn ghost" href="/settings"><ChevronLeft size={16} /> กลับหน้าตั้งค่า</Link><button type="button" className="btn btn-accent" onClick={openCreate} disabled={busy}><FilePlus2 size={16} /> สร้าง Preset</button></div></header>
+    <Workspace
+      hideHeader
+      back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+      backActions={<button type="button" className="btn btn-accent" onClick={openCreate} disabled={busy}><FilePlus2 size={16} /> สร้าง Preset</button>}
+    >
+      <header className="premium-header"><div className="header-content"><h1><span className="premium-header-icon"><WalletCards size={22} /></span> Commercial Preset</h1><p>ตั้งค่าวิธีชำระ เงื่อนไข หมายเหตุ และงวดชำระตามทีมและประเภทดีลแบบมีเวอร์ชัน</p></div></header>
       <div className={styles.notice}><AlertTriangle size={17} /><p><strong>Phase 7A เป็นการตั้งค่าล่วงหน้า</strong> ยังไม่เลือก Preset ให้อัตโนมัติและยังไม่เปลี่ยน Production Print</p></div>
       {loading ? <SkeletonRows rows={8} /> : error ? <section className={`glass-panel ${styles.error}`} role="alert"><AlertTriangle size={26} /><p>{error}</p><button type="button" className="btn" onClick={load}>ลองอีกครั้ง</button></section> : presets.length === 0 ? <EmptyState icon={WalletCards}>ยังไม่มี Commercial Preset เริ่มต้นด้วยการสร้างฉบับร่างรายการแรก</EmptyState> : (
         <section className={`glass-panel ${styles.listPanel}`} aria-labelledby="preset-list-title"><header className={styles.panelHeader}><div><h2 id="preset-list-title">Preset ทั้งหมด</h2><p>เมื่อ scope ตรงกันหลายรายการ resolver จะเลือกความจำเพาะสูงสุด แล้วเรียง priority และ preset key</p></div><span className="ui-badge">{presets.length} รายการ</span></header>
@@ -235,6 +239,6 @@ export default function CommercialPresetsPage() {
       <ConfirmDialog open={confirm?.action === "publish"} title="ยืนยันเผยแพร่ Commercial Preset" description={`Version ${confirm?.draft?.versionNumber || "-"} จะเป็นเวอร์ชันใช้งานของ “${confirm?.draft?.title || "-"}”`} detail="Published เดิมจะถูกเก็บถาวร แต่ Quotation Production ยังไม่เปลี่ยนใน Phase 7A" confirmLabel="เผยแพร่เวอร์ชัน" busy={busy} onClose={() => setConfirm(null)} onConfirm={transition} />
       <ConfirmDialog open={confirm?.action === "archive"} title="เก็บฉบับร่างเป็นประวัติ" description={`Version ${confirm?.draft?.versionNumber || "-"} จะถูกปิดและแก้ไขต่อไม่ได้`} detail="เวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง" confirmLabel="เก็บฉบับร่าง" tone="danger" busy={busy} onClose={() => setConfirm(null)} onConfirm={transition} />
       <Toast toast={toast} onClose={() => setToast(null)} />
-    </>
+    </Workspace>
   );
 }

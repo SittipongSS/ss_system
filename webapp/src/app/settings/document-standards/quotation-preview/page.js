@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ChevronLeft, FileText, Palette, Printer, ShieldCheck } from 'lucide-react';
+import { FileText, Palette, Printer, ShieldCheck } from 'lucide-react';
+import Workspace from '@/components/ui/Workspace';
 import QuotationMasterDocument from '@/components/documents/QuotationMasterDocument';
 import {
   DEFAULT_QUOTATION_MASTER_VARIANT,
@@ -32,14 +32,18 @@ export default function QuotationMasterPreviewPage() {
 
   return (
     <div className={styles.previewPage}>
+      {/* แถวย้อนกลับ + action ระดับหน้า แยกเป็น screenOnly เพื่อไม่ติดไปกับงานพิมพ์ */}
+      <div className={styles.screenOnly}>
+        <Workspace
+          hideHeader
+          back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+          backActions={<button type="button" className="btn btn-accent" onClick={printPreview}><Printer size={16} /> พิมพ์ / Save PDF</button>}
+        />
+      </div>
       <div className={`premium-header ${styles.screenOnly}`}>
         <div className="header-content">
           <h1><span className="premium-header-icon"><FileText size={22} /></span> Quotation Master Template</h1>
           <p>ตัวอย่าง Balanced Controlled สำหรับตรวจ Layout ก่อนเชื่อม Production Document Engine ใน Phase 7</p>
-        </div>
-        <div className={styles.headerActions}>
-          <Link href="/settings" className="btn ghost"><ChevronLeft size={16} /> กลับหน้าตั้งค่า</Link>
-          <button type="button" className="btn btn-accent" onClick={printPreview}><Printer size={16} /> พิมพ์ / Save PDF</button>
         </div>
       </div>
 
