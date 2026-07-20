@@ -55,42 +55,36 @@ async function countBy(supabase, table, column, value, extra) {
 }
 
 // ── DEAL ──────────────────────────────────────────────────────────────
-// manifest ของสิ่งที่จะโดนลบ/ปลดเมื่อ force ลบดีลหนึ่งใบ. project = โครงการ PM
-// ที่ผูก (ถ้ามีและเป็นดีลสุดท้ายของโครงการ), lastOfProject = true เมื่อจะลบโครงการ
-// พ่วง (ไม่มีดีลพี่น้องเหลือ).
-export async function dealForcePreview(supabase, deal, { project = null, lastOfProject = false } = {}) {
+// manifest ของสิ่งที่จะโดนลบ/ปลดเมื่อ force ลบดีลหนึ่งใบ. นับเฉพาะลูก "ของดีลนี้"
+// (ใบเสนอราคา/SO/สอบถาม/งานส่วนตัว/timeline segment). โครงการ PM ที่ผูก (param project)
+// ไม่ถูกลบ — แค่แจ้งเป็น note ว่ายังอยู่ (เฟส B: ลบดีลไม่ลบโครงการ).
+export async function dealForcePreview(supabase, deal, { project = null } = {}) {
   const id = deal.id;
-  const [accepted, salesOrders, quotations, inquiries, personalTasks] = await Promise.all([
+  // นับเฉพาะลูก "ของดีลนี้" — โครงการ/ทะเบียนสรรพสามิต/งานผลิตส่วนที่เหลือไม่ถูกลบ
+  // เพราะลบดีลไม่ลบโครงการ (เฟส B). project_tasks นับด้วย dealId = segment ของดีลนี้.
+  const [accepted, salesOrders, quotations, inquiries, personalTasks, dealTasks] = await Promise.all([
     countBy(supabase, 'quotations', 'dealId', id, (q) => q.eq('status', 'accepted')),
     countBy(supabase, 'sales_orders', 'dealId', id),
     countBy(supabase, 'quotations', 'dealId', id),
     countBy(supabase, 'inquiries', 'dealId', id),
     countBy(supabase, 'personal_tasks', 'dealId', id),
+    countBy(supabase, 'project_tasks', 'dealId', id),
   ]);
-
-  let projectTasks = 0;
-  let excise = 0;
-  let projectInquiries = 0;
-  if (project && lastOfProject) {
-    [projectTasks, excise, projectInquiries] = await Promise.all([
-      countBy(supabase, 'project_tasks', 'projectId', project.id),
-      countBy(supabase, 'excise_registrations', 'projectId', project.id),
-      countBy(supabase, 'inquiries', 'projectId', project.id),
-    ]);
-  }
 
   const cascade = [
     line('ใบเสนอราคาที่รับแล้ว (Won) — แหล่งยอด Actual', accepted),
     line('ใบสั่งขาย (Sale Order) — แหล่งยอด Actual', salesOrders),
     line('ใบเสนอราคาทั้งหมด', quotations),
-    line('ทะเบียนสรรพสามิต', excise),
-    project && lastOfProject ? line(`โครงการผลิต ${project.code || project.id}`, 1) : line('โครงการผลิต', 0),
-    line('ขั้นตอนงานผลิต (task)', projectTasks),
-    line('เรื่องสอบถาม (inquiry)', inquiries + projectInquiries),
+    line('ขั้นตอนงานผลิต (task) ของดีลนี้', dealTasks),
+    line('เรื่องสอบถาม (inquiry) ที่ผูกดีล', inquiries),
     line('งานส่วนตัวที่ผูกดีล', personalTasks),
   ].filter((r) => r.count > 0);
 
   const notes = [];
+  // โครงการไม่ลบตามดีล (เฟส B) — บอกให้ผู้ดูแลเห็นชัดว่าโครงการและงานส่วนที่เหลือยังอยู่
+  if (project) {
+    notes.push(`โครงการผลิต ${project.code || project.id} จะยังอยู่ (ถอดเฉพาะงานของดีลนี้ออก) — ลบโครงการทำที่หน้าโครงการ`);
+  }
   if (deal.metadata?.sahamitPoId) notes.push('ดีลนี้มาจาก PO สหมิตร (settle เข้ายอดแล้ว)');
   if (['won', 'in_project'].includes(deal.stage)) notes.push('ดีลนี้ปิดการขาย (Won) แล้ว');
 

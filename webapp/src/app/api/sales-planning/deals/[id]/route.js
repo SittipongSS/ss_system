@@ -1,10 +1,10 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { canDeleteRecord, isSuperuser } from '@/lib/permissions';
-import { loadProject, deleteProjectDeep, projectHasExciseRegistrations } from '@/lib/pm/projectsRepo';
+import { isSuperuser } from '@/lib/permissions';
+import { loadProject } from '@/lib/pm/projectsRepo';
 import {
   isForceRequest, isDryRun, canForceDelete,
-  dealForcePreview, cleanupDealOrphans, forceDeleteProjectExcise,
+  dealForcePreview, cleanupDealOrphans,
 } from '@/lib/forceDelete';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
@@ -207,9 +207,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok(data);
 });
 
-// ลบโครงการ (ดีล) = ลบทั้งสาย: ดีล + PM project + ลูกทั้งหมด (Sales เป็นแม่).
-// ตารางลูกฝั่งขาย (activities/history/forecasts/quotations/forecast_lines) cascade
-// เองผ่าน FK; ฝั่ง project ลบผ่าน deleteProjectDeep. กันลบเคสที่จะทำให้ยอด/ประวัติหาย.
+// ลบดีล = ลบเฉพาะดีล + ลูกฝั่งขาย (activities/history/forecasts/quotations/
+// forecast_lines cascade เองผ่าน FK). โครงการ PM ที่ผูกอยู่ "ไม่ลบตาม" — โครงการเป็น
+// เอนทิตีใหญ่กว่าและมีได้หลายดีล (เฟส B) อาจมีดีลอื่นมาผูกแทน แม้เป็นดีลสุดท้ายก็ปล่อย
+// โครงการว่างดีลไว้ได้; ลบดีลจึงแค่ถอด timeline segment ของดีลนี้ออกจากโครงการ.
+// การลบโครงการเองทำที่ /api/pm/projects/[id]. กันลบเคสที่จะทำให้ยอด/ประวัติหาย.
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
@@ -224,23 +226,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const force = isForceRequest(req) && canForceDelete(user);
   const dryRun = isDryRun(req);
 
-  // หาโครงการ PM ที่ผูก + เป็นดีลสุดท้ายของโครงการไหม (มีผลต่อ cascade)
+  // โครงการ PM ที่ผูก (ถ้ามี) — โหลดไว้เพื่อข้อความ/พรีวิวเท่านั้น; ลบดีลไม่ลบโครงการ
   let project = null;
-  let lastOfProject = false;
-  if (before.projectId) {
-    project = await loadProject(supabase, before.projectId);
-    if (project) {
-      const { count: siblingCount } = await supabase
-        .from('sales_deals').select('id', { count: 'exact', head: true })
-        .eq('projectId', project.id).neq('id', id);
-      lastOfProject = (siblingCount || 0) === 0;
-    }
-  }
+  if (before.projectId) project = await loadProject(supabase, before.projectId);
 
   // พรีวิวสำหรับปุ่ม force ในหน้าเว็บ — ไม่ลบอะไร, เฉพาะ admin.
   if (dryRun) {
     if (!canForceDelete(user)) return forbidden();
-    const preview = await dealForcePreview(supabase, before, { project, lastOfProject });
+    const preview = await dealForcePreview(supabase, before, { project });
     return ok({ dryRun: true, ...preview });
   }
 
@@ -265,59 +258,34 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
-  // มีโครงการ PM ผูกอยู่ — เฟส B โครงการมีได้หลายดีล:
-  //   ดีลสุดท้ายของโครงการ → ลบโครงการพ่วง (ต้องมีสิทธิ์ลบ project + ไม่มีทะเบียนสรรพสามิต)
-  //   ยังมีดีลพี่น้องอยู่   → ลบเฉพาะ timeline segment ของดีลนี้ ห้ามแตะโครงการ/ดีลอื่น
-  let removed = null;
-  if (project && lastOfProject) {
-    if (!force) {
-      if (!canDeleteRecord(user, 'projects', project)) {
-        return forbidden('โครงการนี้มีงานผลิต (PM) ผูกอยู่ — ต้องมีสิทธิ์ลบโครงการผลิตด้วยจึงจะลบได้');
-      }
-      if (await projectHasExciseRegistrations(supabase, project.id)) {
-        return conflict('โครงการนี้มีทะเบียนสรรพสามิตผูกอยู่ — ยกเลิก/ลบทะเบียนก่อนจึงจะลบโครงการได้');
-      }
-    } else {
-      // force: ลบทะเบียนสรรพสามิตพ่วง (ไม่มี FK — ต้องเก็บเอง) ก่อนลบโครงการ
-      await forceDeleteProjectExcise(supabase, project.id);
-    }
-    removed = await deleteProjectDeep(supabase, project.id).catch((e) => { throw e; });
-  } else if (project) {
-    // ยังมีดีลพี่น้อง — ลบแค่ task ชุดของดีลนี้ (segment — mig 0090) แล้วปล่อยโครงการไว้
-    await supabase.from('project_tasks').delete().eq('projectId', project.id).eq('dealId', id);
-    project = null; // ไม่ลบโครงการ — audit ด้านล่างจะไม่บันทึกฝั่ง project
-  }
+  // เฟส B: โครงการมีได้หลายดีลและเป็นเอนทิตีอิสระที่อาจมีดีลอื่นมาผูกแทน — ลบดีลจึง
+  // "ไม่ลบโครงการตาม" แม้เป็นดีลสุดท้าย (ปล่อยโครงการว่างดีลไว้ รอดีลใหม่มาผูก).
+  // แค่ถอด timeline segment ของดีลนี้ออก; การลบโครงการทำที่หน้าโครงการโดยตรง.
+  const detachedFromProject = project?.id || null;
 
   // force: เก็บกวาดลูกดีลที่ไม่มี FK จริง (งานส่วนตัว/inquiry/parent-ref) ก่อนลบแม่
   if (force) await cleanupDealOrphans(supabase, id);
 
-  // DL1: เก็บกวาดไทม์ไลน์ลอยของดีล (projectId ว่าง) — FK dealId เป็น SET NULL
-  // ถ้าไม่ลบเองจะเหลือ task กำพร้าไร้เจ้าของ
-  await supabase.from('project_tasks').delete().eq('dealId', id).is('projectId', null);
+  // ลบ task ทั้งหมดของดีลนี้ — ทั้ง segment ใต้โครงการ (mig 0090) และไทม์ไลน์ลอย
+  // (projectId ว่าง). FK dealId เป็น SET NULL ถ้าไม่ลบเองจะเหลือ task ของดีลที่หายไป
+  // ค้างในโครงการ (แถวไร้เจ้าของ) — โครงการและ task ของดีลอื่นไม่ถูกแตะ.
+  await supabase.from('project_tasks').delete().eq('dealId', id);
 
   const { error } = await supabase.from('sales_deals').delete().eq('id', id);
   if (error) return fail(error.message, 500);
 
   const forceNote = force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : '';
-  if (project) {
-    await recordAudit({
-      user,
-      action: 'delete',
-      entityType: 'project',
-      entityId: project.id,
-      before: project,
-      summary: `ลบโครงการผลิต ${project.code || project.id} (พร้อมโครงการขาย ${dealAuditLabel(before)})${forceNote}`,
-      request: req,
-    });
-  }
+  const detachNote = detachedFromProject
+    ? ` (ถอดออกจากโครงการ ${project.code || project.id} — โครงการยังอยู่)`
+    : '';
   await recordAudit({
     user,
     action: 'delete',
     entityType: 'sales_deal',
     entityId: id,
     before,
-    summary: `ลบโครงการ ${dealAuditLabel(before)}${project ? ` + งานผลิต ${project.code || project.id}` : ''}${forceNote}`,
+    summary: `ลบดีล ${dealAuditLabel(before)}${detachNote}${forceNote}`,
     request: req,
   });
-  return ok({ ok: true, deletedProject: project?.id || null, removed, forced: force });
+  return ok({ ok: true, deletedProject: null, detachedFromProject, forced: force });
 });
