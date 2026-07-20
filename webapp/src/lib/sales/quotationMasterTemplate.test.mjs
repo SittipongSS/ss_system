@@ -272,3 +272,25 @@ test('V4 ใช้หน้าตาแบบ V2 (ไม่มี accent overrid
   assert.doesNotMatch(css, /\.v4 \.installmentTable/);
   assert.doesNotMatch(css, /\.v4 \.watermark/);
 });
+
+test('V4 px-calibrated: หน้าแรกอัดเต็มจริง — แก้บั๊ก "ไม่เต็มหน้าก็ตัดแล้ว" (2026-07-20)', () => {
+  // การกระจายหน้าชุดนี้ยืนยันด้วยการวัด DOM จริงแล้วว่าไม่ล้นหน้า (overflow = 0
+  // ทุก scenario) และหน้า items เหลือที่ว่างน้อย — ถ้าเทสต์นี้แตกเพราะไปลดความจุ
+  // ให้กลับไปอ่านคอมเมนต์ V4_PAGE_UNITS ก่อน: ค่าพวกนี้มาจากการวัด ไม่ใช่เดา
+  const expected = {
+    compact: [['combined', 1]],
+    standard: [['items', 4], ['payment', 0]],
+    dense: [['items', 10], ['combined', 1]], // เดิมตัดที่ 6 แถวทั้งที่ใส่ได้ 10
+    multipage: [['items', 12], ['items', 14], ['combined', 1]],
+    'long-content': [['items', 6], ['payment', 0]], // เดิมผ่าเป็น 3+3 สองหน้า
+    installments: [['items', 5], ['payment', 0]],
+  };
+  for (const [scenarioId, distribution] of Object.entries(expected)) {
+    const model = buildQuotationMasterPreview(scenarioId, 'approved', 'v4');
+    assert.deepEqual(
+      model.pages.map((page) => [page.kind, page.lines.length]),
+      distribution,
+      scenarioId,
+    );
+  }
+});
