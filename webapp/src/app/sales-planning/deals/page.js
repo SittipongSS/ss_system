@@ -268,8 +268,9 @@ export default function SalesPlanningPipelinePage() {
   };
 
   const deleteDeal = async (deal) => {
-    // Sales เป็นแม่ — ลบดีลจะลบโครงการ PM ที่ผูกอยู่พ่วงไปด้วย
-    const withPm = deal.projectId ? "\n\nโครงการ (PM) ที่ผูกอยู่จะถูกลบพ่วงไปด้วย" : "";
+    // เฟส B: ลบดีล "ไม่ลบโครงการ PM" ที่ผูกอยู่ — โครงการมีได้หลายดีลและอาจมีดีลอื่น
+    // มาผูกแทน; ลบดีลแค่ถอดงานของดีลนี้ออก โครงการยังอยู่ (ลบเองที่หน้าโครงการ)
+    const withPm = deal.projectId ? "\n\nโครงการ (PM) ที่ผูกอยู่จะยังอยู่ (ไม่ถูกลบ) — ถอดเฉพาะงานของดีลนี้ออก" : "";
     if (!window.confirm(`ลบดีล "${deal.title}"?${withPm}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
     try {

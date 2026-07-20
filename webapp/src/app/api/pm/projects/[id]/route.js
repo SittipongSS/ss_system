@@ -289,9 +289,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok({ ...data, ...(productWarning ? { productWarning } : {}) });
 });
 
-// DELETE /api/pm/projects/[id] — Sales เป็นแม่ (แผน merge M3): โครงการที่ผูกกับ
-// งานขายต้องลบที่หน้า "บริหารงานขาย" ที่เดียว (ลบทั้งสายพร้อมกัน). ที่นี่รับเฉพาะ
-// โครงการ "กำพร้า" (ยังไม่ผูกดีล — ข้อมูล PM เก่าก่อน backfill เฟส 5) เท่านั้น.
+// DELETE /api/pm/projects/[id] — เฟส B โครงการเป็นเอนทิตีอิสระ (มีได้หลายดีล และ
+// ลบดีลไม่ลบโครงการ). รับลบเฉพาะโครงการ "กำพร้า" (0 ดีล) — ไม่ว่าจะเป็นข้อมูล PM เก่า
+// หรือโครงการที่ดีลถูกลบออกไปหมดแล้ว. โครงการที่ยังผูกดีลต้องลบดีลออกก่อน (กันดีลกำพร้า).
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id: idOrCode } = await ctx.params;
 
@@ -307,13 +307,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // projectId→null ผ่าน FK SET NULL — ไม่กำพร้า) + ลบทะเบียนสรรพสามิตพ่วง.
   const force = isForceRequest(req) && canForceDelete(user);
 
-  // ผูกดีลอยู่ (กี่ใบก็ตาม — เฟส B หลายดีลต่อโครงการ) → ปฏิเสธ ให้ไปลบที่ฝั่งงานขาย
+  // ผูกดีลอยู่ (กี่ใบก็ตาม — เฟส B หลายดีลต่อโครงการ) → ปฏิเสธ ให้ไปลบดีลก่อน
   // กันการลบ project ทิ้งไว้ให้ดีลกำพร้า. โครงการกำพร้า (0 ดีล) เท่านั้นที่ลบตรงนี้ได้.
+  // การลบดีล "ไม่ลบโครงการให้อัตโนมัติ" — ลบดีลครบแล้วโครงการจะว่าง แล้วค่อยลบที่นี่.
   if (!force) {
     const { count: linkedCount } = await supabase
       .from('sales_deals').select('id', { count: 'exact', head: true }).eq('projectId', id);
     if ((linkedCount || 0) > 0) {
-      return conflict('โครงการนี้ผูกกับดีลอยู่ — ลบดีลที่หน้า "บริหารงานขาย" ก่อน (ดีลสุดท้ายจะลบโครงการพ่วงไปด้วย)');
+      return conflict('โครงการนี้ผูกกับดีลอยู่ — ลบดีลที่ผูกทั้งหมดที่หน้า "บริหารงานขาย" ก่อน แล้วจึงลบโครงการที่นี่ได้ (การลบดีลจะไม่ลบโครงการให้อัตโนมัติ)');
     }
   }
 

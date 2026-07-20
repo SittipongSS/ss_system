@@ -46,31 +46,32 @@ function stubCount(map) {
   };
 }
 
-test('dealForcePreview: แสดง cascade เฉพาะรายการที่ count>0 + note ตามสถานะ', async () => {
+test('dealForcePreview: cascade เฉพาะลูกของดีล + โครงการไม่ถูกลบ (เป็น note)', async () => {
   const supabase = stubCount({
     'quotations:dealId:extra': 1,   // accepted
     'sales_orders:dealId': 1,
     'quotations:dealId': 2,
     'inquiries:dealId': 3,
     'personal_tasks:dealId': 0,
-    'project_tasks:projectId': 5,
-    'excise_registrations:projectId': 1,
-    'inquiries:projectId': 0,
+    'project_tasks:dealId': 5,       // timeline segment ของดีลนี้
   });
   const deal = { id: 'D1', stage: 'won', metadata: { sahamitPoId: 'PO1' } };
   const project = { id: 'P1', code: 'PJ-1' };
-  const { cascade, notes } = await dealForcePreview(supabase, deal, { project, lastOfProject: true });
+  const { cascade, notes } = await dealForcePreview(supabase, deal, { project });
   const labels = cascade.map((c) => c.label);
-  // accepted + sale order + quotations + excise + project + tasks + inquiries รวม แต่ไม่มี personal_tasks (0)
+  // ลบเฉพาะลูกของดีล: accepted/SO + quotations + งานผลิตของดีล + inquiries (ไม่มี personal_tasks=0)
   assert.ok(labels.some((l) => l.includes('Actual')));
-  assert.ok(labels.some((l) => l.includes('ทะเบียนสรรพสามิต')));
-  assert.ok(labels.some((l) => l.includes('โครงการผลิต PJ-1')));
+  assert.ok(labels.some((l) => l.includes('ขั้นตอนงานผลิต')));
   assert.ok(!labels.some((l) => l.includes('งานส่วนตัว')));
-  // inquiries รวมของดีล (3) + ของโครงการ (0) = 3
+  // โครงการ/ทะเบียนสรรพสามิต "ไม่ถูกลบ" → ต้องไม่โผล่ใน cascade
+  assert.ok(!labels.some((l) => l.includes('ทะเบียนสรรพสามิต')));
+  assert.ok(!labels.some((l) => l.includes('โครงการผลิต')));
+  // inquiries เฉพาะของดีล = 3
   const inq = cascade.find((c) => c.label.includes('เรื่องสอบถาม'));
   assert.equal(inq.count, 3);
-  // note ทั้ง 2 (Won + PO สหมิตร)
-  assert.equal(notes.length, 2);
+  // note 3 รายการ: โครงการยังอยู่ + Won + PO สหมิตร
+  assert.equal(notes.length, 3);
+  assert.ok(notes.some((n) => n.includes('โครงการผลิต PJ-1') && n.includes('ยังอยู่')));
 });
 
 test('quotationForcePreview: โชว์ Sale Order ที่จะ cascade + note accepted', async () => {
