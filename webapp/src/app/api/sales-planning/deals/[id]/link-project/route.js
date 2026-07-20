@@ -88,11 +88,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       existingTasks: existing || [],
       ...templateOptions,
     }));
-    if (segTasks.length) {
-      const { data: taskRows, error: taskErr } = await supabase.from('project_tasks').insert(segTasks).select();
-      if (taskErr) return fail(`ต่อไทม์ไลน์ของดีลไม่สำเร็จ: ${taskErr.message}`, 500);
-      insertedTasks = taskRows || [];
+    // 0 แถว = template หลังกรองหมวดไม่เหลือขั้นตอน → กันผูกดีลเข้าโครงการแบบไม่มี
+    // segment เลย (ยังไม่ได้ผูกดีล ณ จุดนี้ จึงแค่แจ้งสาเหตุแล้วหยุด)
+    if (!segTasks.length) {
+      return badRequest(`Workflow Template ${dealTypeOf(deal)} ที่เผยแพร่อยู่ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า — ตรวจการตั้งค่าที่ /settings/workflow-templates`);
     }
+    const { data: taskRows, error: taskErr } = await supabase.from('project_tasks').insert(segTasks).select();
+    if (taskErr) return fail(`ต่อไทม์ไลน์ของดีลไม่สำเร็จ: ${taskErr.message}`, 500);
+    insertedTasks = taskRows || [];
   }
 
   // ผูกดีล (guard .is projectId null — กันยิงซ้ำ/แข่งกัน; แพ้ = ถอน task ที่เพิ่งต่อ)

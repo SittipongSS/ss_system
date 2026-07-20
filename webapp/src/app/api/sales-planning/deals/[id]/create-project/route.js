@@ -31,8 +31,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (deal.projectId) return conflict('ดีลนี้ผูกโครงการแล้ว');
 
   const body = await req.json().catch(() => ({}));
-  const categoryError = await activeProductTypeError(body.productMainCategory || deal.categoryCode || null);
-  if (categoryError) return badRequest(categoryError);
+  // ตรวจ "หมวดพักใช้" เฉพาะตอนโมดัลเปลี่ยนหมวด (ส่ง productMainCategory ใหม่ที่ต่างจากเดิม)
+  // — ดีลเดิมที่หมวดถูกพักใช้ทีหลังต้องสร้างโครงการต่อได้ (กติกาเดียวกับ deal PATCH).
+  const categoryChanged = body.productMainCategory != null
+    && String(body.productMainCategory).trim() !== (deal.categoryCode || '');
+  if (categoryChanged) {
+    const categoryError = await activeProductTypeError(body.productMainCategory || null);
+    if (categoryError) return badRequest(categoryError);
+  }
   // วันที่ต้องซิงค์กับดีล: โมดัลไม่ระบุ → ใช้วันเริ่ม/สิ้นสุดของดีล (mig 0095) ก่อนตกไปวันนี้
   const startDate = body.startDate || deal.startDate || todayStr();
   const dueDate = body.dueDate || deal.endDate || deal.expectedCloseDate || null;
@@ -146,14 +152,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       return fail(templateError.message || 'โหลด Workflow Template ไม่สำเร็จ', templateError instanceof WorkflowTemplateError ? templateError.status : 500);
     }
     const tasks = applyAutoStatuses(buildProjectTasks(project, project.id, deal.id, templateOptions));
-    if (tasks.length) {
-      const { data: taskRows, error: taskError } = await supabase
-        .from('project_tasks')
-        .insert(tasks)
-        .select();
-      if (taskError) return fail(`สร้างขั้นตอน PM ไม่สำเร็จ: ${taskError.message}`, 500);
-      insertedTasks = taskRows || [];
+    // 0 แถว = template หลังกรองหมวดไม่เหลือขั้นตอน → กันสร้างโครงการเปล่าเงียบ ๆ:
+    // ถอนโครงการที่เพิ่งสร้าง (ยังไม่ผูก FG/ดีล) แล้วแจ้งสาเหตุ (เหมือน timeline route)
+    if (!tasks.length) {
+      await supabase.from('projects').delete().eq('id', project.id);
+      return badRequest(`Workflow Template ${project.type} ที่เผยแพร่อยู่ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า — ตรวจการตั้งค่าที่ /settings/workflow-templates`);
     }
+    const { data: taskRows, error: taskError } = await supabase
+      .from('project_tasks')
+      .insert(tasks)
+      .select();
+    if (taskError) return fail(`สร้างขั้นตอน PM ไม่สำเร็จ: ${taskError.message}`, 500);
+    insertedTasks = taskRows || [];
   }
 
   // ผูก FG ที่เลือกในโมดัล (ถ้ามี) — non-fatal เหมือนหน้า PM
