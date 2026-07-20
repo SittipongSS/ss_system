@@ -22,6 +22,10 @@ export async function deleteWithForce(baseUrl, { isAdmin = false } = {}) {
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null);
 
+  // บาง entity ถูกบล็อกเด็ดขาดแม้บังคับลบ (เช่น ใบที่มีหลักฐานลายเซ็น immutable) —
+  // ไม่เสนอ confirm บังคับลบที่ยังไงก็ล้มเหลว แสดงเหตุผลแล้วหยุด (ให้ผู้ใช้ไปยกเลิกแทน)
+  if (preview?.blocked) throw new Error(blockedMsg);
+
   const notes = (preview?.notes || []).map((n) => `⚠ ${n}`).join('\n');
   const cascade = (preview?.cascade || []).map((c) => `   • ${c.label}: ${c.count}`).join('\n');
   const detail = [
