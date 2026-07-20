@@ -13,6 +13,7 @@ import { getSahamitContext, sahamitError, loadSahamitProducts, indexByFgCode } f
 import { canEditSalesPlanning, canViewSalesPlanning, forecastAmount, inSalesEditScope, monthKey, toMoney } from '@/lib/salesPlanning';
 import { monthGap } from '@/lib/salesPlanningForecast';
 import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
+import { resolveSettledLines } from '@/lib/sahamit/settleLines';
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 
@@ -38,19 +39,12 @@ async function loadPoWithLines(supabase, customerId, id) {
   return { ...po, lines: lines || [] };
 }
 
-// fg ที่ PO นี้เชื่อมไปแล้ว "กับดีลที่ยังไม่ตาย" — ดีลรวมที่ถูก mark lost (เช่น ลูกค้า
-// ปฏิเสธ QT แล้วทิ้งดีล หรือย้อน Won เป็น lost ผ่าน 0116) ไม่บล็อก ให้ settle ใหม่ได้
-// (ไม่งั้น PO ที่ยังเก็บเงินได้จริงจะตันถาวรจนต้องแก้ DB มือ)
-async function loadSettledFg(supabase, customerId, poId) {
+// บรรทัด PO ที่เชื่อมไปแล้ว — ตรรกะการตัดสินอยู่ที่ lib/sahamit/settleLines (มีเทสต์)
+async function loadSettledLines(supabase, customerId, poId) {
   const { data } = await supabase
     .from('sales_deals').select('id, stage, metadata')
     .eq('customerId', customerId).eq('metadata->>sahamitPoId', poId);
-  const byFg = new Map(); // normFg → dealId
-  for (const d of data || []) {
-    if (d.stage === 'lost') continue;
-    for (const fg of (d.metadata?.fgCodes || [])) byFg.set(norm(fg), d.id);
-  }
-  return byFg;
+  return resolveSettledLines(data || []);
 }
 
 // GET — จับคู่ราย "บรรทัด PO": แต่ละสินค้าใน PO เสนอดีลที่ fgCode ตรง เรียงตาม
@@ -70,10 +64,10 @@ export async function GET(request, { params }) {
 
   // ดีล open ที่มาจาก forecast — จับ fgCode จาก deal.metadata.fgCodes (เก็บบนตัวดีลเอง
   // ทุกดีล forecast มี ไม่พึ่ง junction ที่อาจหลุดตอนแก้/ลบรอบ) → map normFg → deals
-  const [{ data: deals }, settledByFg] = await Promise.all([
+  const [{ data: deals }, settled] = await Promise.all([
     supabase.from('sales_deals').select('*')
       .eq('customerId', customerId).is('projectId', null).eq('metadata->>source', 'sahamit-forecast'),
-    loadSettledFg(supabase, customerId, po.id),
+    loadSettledLines(supabase, customerId, po.id),
   ]);
   const allOpen = (deals || []).filter((d) => !CLOSED.includes(d.stage));
   const byFg = new Map(); // normFg → Map(dealId→deal)
@@ -116,17 +110,30 @@ export async function GET(request, { params }) {
       productName: line.productName,
       qty: toQty(line.qty),
       deliveryMonth: line.deliveryMonth || (line.dueDate || '').slice(0, 7) || null,
-      settledDealId: settledByFg.get(k) || null,
+      settledDealId: settled.dealFor(line),
       candidates: matched,
       suggestedDealId: matched[0]?.id || null,
     };
   });
+
+  // ใบเสนอราคาที่ออกจาก PO ใบนี้ไปแล้ว — UI ใช้พาไปดูใบเดิมแทนที่จะให้กดยืนยันซ้ำ
+  // (ปุ่ม "จัดการดีล / ใบเสนอราคา" เดิมเปิดโมดัลที่กดยืนยันไม่ได้แล้วขึ้น
+  //  "ไม่มีบรรทัดที่จะเชื่อม" ซึ่งอ่านเหมือน error ทั้งที่ใบออกไปเรียบร้อย)
+  const settledDealIds = [...new Set(lines.map((l) => l.settledDealId).filter(Boolean))];
+  const { data: quotes } = settledDealIds.length
+    ? await supabase.from('quotations')
+      .select('id, quoteNumber, status, approvalStatus, dealId, totalAmount, createdAt')
+      .in('dealId', settledDealIds).order('createdAt', { ascending: false })
+    : { data: [] };
 
   return Response.json({
     poNumber: po.poNumber,
     poReceivedMonth: receivedMonth,
     projectId: po.projectId || null, // ต้องมีก่อนถึงออก QT ได้ (UI ใช้เตือน)
     lines,
+    // ทุกบรรทัดเชื่อมครบแล้ว = ไม่มีอะไรให้ยืนยันอีก (UI ซ่อนปุ่มยืนยัน)
+    allSettled: lines.length > 0 && lines.every((l) => l.settledDealId),
+    quotations: quotes || [],
   });
 }
 
@@ -165,7 +172,7 @@ export async function POST(request, { params }) {
   // โรงงานอยู่แล้ว (มติ 2026-07-19, QUOTE_PRICE_FIELD) ยอด QT/SO จึงตรงยอด PO เสมอ
   const priceOf = (f) => Number(productIndex.get(lc(f))?.price ?? 0) || 0;
 
-  const settledByFg = await loadSettledFg(supabase, customerId, po.id);
+  const settled = await loadSettledLines(supabase, customerId, po.id);
 
   // ── pass 1: คัดบรรทัด + validate ทุกอย่างก่อน แล้วค่อยเขียน (all-or-nothing) ──────
   // dedup ด้วย poLineId (ไม่ใช่ fgCode — PO มีสินค้าเดียวกันสองบรรทัดได้ เช่น คนละ
@@ -178,7 +185,7 @@ export async function POST(request, { params }) {
     if (!line || seenLineIds.has(line.id)) continue;
     seenLineIds.add(line.id);
     if (!s.dealId && !s.createNew) continue; // ข้าม
-    if (settledByFg.has(norm(line.fgCode))) { skipped.push(line.id); continue; } // เชื่อมไปแล้ว
+    if (settled.dealFor(line)) { skipped.push(line.id); continue; } // เชื่อมไปแล้ว
     chosen.push({
       line,
       fg: String(line.fgCode || '').trim(),
@@ -267,6 +274,9 @@ export async function POST(request, { params }) {
       poReceivedDate: po.receivedDate || null,
       projectCode: project.code || null,
       fgCodes: fgList,
+      // กุญแจ "บรรทัดไหนถูก settle แล้ว" — ต้องเป็นราย poLineId ไม่ใช่ fgCode เพราะ PO
+      // มีสินค้าเดียวกันได้หลายบรรทัด (คนละเดือนส่ง) ดู loadSettledLines
+      poLineIds: chosen.map((c) => c.line.id),
       productNames: [...new Set(chosen.map((c) => c.line.productName || c.product?.name || c.fg))],
       mergedFromDealIds: [...sourceOps.keys()],
     },
