@@ -338,13 +338,8 @@ export default function WorkflowTemplatesPage() {
   const previewSummary = workflowTemplateSummary({ steps: previewSteps });
 
   return (
-    <Workspace
-      hideHeader
-      back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
-      backActions={!loading && selected && !selected.draft ? (
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={createDraft}><FilePlus2 size={16} /> สร้างฉบับร่าง</button>
-      ) : null}
-    >
+    // ปุ่มสร้างฉบับร่างไม่อยู่บนหัวหน้า — การ์ด "ยังไม่มีฉบับร่าง" ในเนื้อหามีปุ่มของมันเองแล้ว
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <header className="premium-header">
         <div className="header-content">
           <h1><span className="premium-header-icon"><Workflow size={22} /></span> Workflow และ Timeline Template</h1>

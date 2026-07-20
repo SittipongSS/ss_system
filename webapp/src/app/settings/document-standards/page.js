@@ -217,13 +217,7 @@ export default function DocumentStandardsPage() {
   const versions = selectedStandard?.versions || [];
 
   return (
-    <Workspace
-      hideHeader
-      back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
-      backActions={!loading && !error && published && !draft ? (
-        <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}><FilePlus2 size={16} /> สร้างฉบับร่าง</button>
-      ) : null}
-    >
+    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <header className="premium-header">
         <div className="header-content">
           <h1><span className="premium-header-icon"><FileBadge2 size={22} /></span> มาตรฐานเอกสาร</h1>
@@ -279,7 +273,13 @@ export default function DocumentStandardsPage() {
           )}
 
           <section className={`glass-panel ${base.historyPanel}`} aria-labelledby="version-history-title">
-            <header className={base.panelHeader}><h2 id="version-history-title">ประวัติเวอร์ชัน · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2><p>Published และ Archived เป็นหลักฐานถาวรและแก้ไขไม่ได้</p></header>
+            {/* ปุ่มสร้างฉบับร่าง = ปุ่มเพิ่มของเนื้อหาเวอร์ชัน — อยู่ขวาสุดของ card header ตามกติกา Page Header */}
+            <header className={base.panelHeader} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div><h2 id="version-history-title">ประวัติเวอร์ชัน · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2><p>Published และ Archived เป็นหลักฐานถาวรและแก้ไขไม่ได้</p></div>
+              {!draft && (
+                <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}><FilePlus2 size={16} /> สร้างฉบับร่าง</button>
+              )}
+            </header>
             <div className={`premium-table-wrapper ${base.historyTable}`}>
               <table className="premium-table"><thead><tr><th>Version</th><th>สถานะ</th><th>แบบฟอร์ม</th><th>Accent</th><th>หมายเหตุ</th><th>ผู้ดำเนินการ</th><th>วันที่</th><th aria-label="การทำงาน" /></tr></thead><tbody>
                 {versions.map((row) => <tr key={row.id}><td><strong>Version {row.versionNumber}</strong><small>{row.id}</small></td><td><StatusBadge status={row.status} /></td><td><span className="mono">{row.formCode}</span><small>Rev.{row.revision}</small></td><td><AccentMark accentKey={row.accentKey} label={false} /></td><td>{row.changeNote || "-"}</td><td>{actorOf(row)}</td><td>{formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</td><td><button type="button" className="btn ghost sm" onClick={() => openView(row)}><Eye size={14} /> ดูรายละเอียด</button></td></tr>)}
