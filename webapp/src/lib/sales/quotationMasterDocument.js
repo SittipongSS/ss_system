@@ -271,7 +271,7 @@ const DOCUMENT_CSS = `
   .sheetContent { display: flex; flex: 1; flex-direction: column; min-height: 0; padding-bottom: 4mm; }
   .documentHeader { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(72mm, .9fr);
     gap: 8mm; padding-bottom: 4mm; border-bottom: 1.3px solid var(--doc-navy); }
-  .brandBlock { display: flex; gap: 4mm; align-items: flex-start; }
+  .brandBlock { display: flex; flex-direction: column; gap: 2.5mm; align-items: flex-start; }
   .brandBlock img { width: 48mm; height: auto; object-fit: contain; }
   .brandBlock strong { display: block; color: var(--doc-navy); font-size: 10.5pt; line-height: 1.3; }
   .brandBlock span { display: block; margin-top: .5mm; color: var(--doc-muted); font-size: 7.7pt; letter-spacing: .02em; }
