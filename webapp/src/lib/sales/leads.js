@@ -87,6 +87,18 @@ export function canEditLead(user, lead) {
   return false;
 }
 
+// ขั้น "ทำงาน" ของคิวลีด (ติดต่อ/นัด/สร้างดีล) — ทีมเจ้าของงานเท่านั้น:
+// admin / senior_ae|ac ทีมเดียวกับลีด / ae ผู้รับมอบ
+// มติผู้ใช้ 2026-07-21: งานของ AE Supervisor จบที่คัดกรอง — หลังจากนั้นเหลือเฉพาะ
+// ปุ่มกำกับดูแล (ตีกลับ/ไม่ไปต่อ); admin คงทำได้ทุกขั้นตามธรรมเนียมทั้งระบบ
+export function canWorkLead(user, lead) {
+  const role = user?.role;
+  if (role === 'admin') return true;
+  if ((role === 'senior_ae' || role === 'ac') && lead.team === user?.team) return true;
+  if (role === 'ae' && !!user?.id && lead.assigneeId === user.id) return true;
+  return false;
+}
+
 // ลบ = เข้มกว่าแก้: เฉพาะ admin/supervisor/marketing (ฝ่ายขายใช้ "ไม่ไปต่อ" แทนการลบ)
 export function canDeleteLead(user, lead) {
   const role = user?.role;

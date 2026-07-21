@@ -24,7 +24,7 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, CHANNEL_GROUP_COLORS, CHANNEL_GROUP_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED,
-  MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS, canEditLead, canDeleteLead,
+  MEETING_MODES, MEETING_MODE_LABELS, LEAD_TRANSITIONS, canEditLead, canDeleteLead, canWorkLead,
 } from "@/lib/sales/leads";
 import { FORECAST_LEVELS, MonthPicker, thisMonth, initialDealForm, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { fmtDateTime, fmtMoney, fmtName, fmtPercent } from "@/lib/format";
@@ -255,8 +255,9 @@ export default function LeadsPage() {
 
   // สร้างดีลจากลีด (feedback ผู้ใช้): ติ้กประเภทที่จะเปิดได้หลายอันในครั้งเดียว —
   // ลดขั้นการกรอก (ลูกค้า/ทีม/ผู้ดูแล/มูลค่า ดึงจากลีดให้หมด)
-  // สร้างดีลได้เฉพาะ AE / Senior AE (+ superuser กำกับดูแล) — AC เปิดดีลไม่ได้ (มติผู้ใช้)
-  const canCreateDeals = superuser || role === "ae" || role === "senior_ae";
+  // สร้างดีลได้เฉพาะ AE / Senior AE (+ admin) — AC เปิดดีลไม่ได้ (มติผู้ใช้)
+  // มติผู้ใช้ 2026-07-21: AE Supervisor ไม่สร้างดีลจากคิวลีด (งานจบที่คัดกรอง)
+  const canCreateDeals = role === "admin" || role === "ae" || role === "senior_ae";
   const [dealModal, setDealModal] = useState(null); // lead
   const [dealsToCreate, setDealsToCreate] = useState([]);
   
@@ -355,19 +356,22 @@ export default function LeadsPage() {
   };
 
   // ปุ่ม action ต่อแถว ตามสถานะ + role (กติกาจริงบังคับซ้ำที่ API)
+  // มติผู้ใช้ 2026-07-21: หลังคัดกรอง supervisor เหลือเฉพาะปุ่มกำกับดูแล
+  // (ตีกลับ/ไม่ไปต่อ) — ขั้นทำงานใช้ canWorkLead (ทีมเจ้าของงาน + admin)
   const rowActions = (lead) => {
     const allowed = LEAD_TRANSITIONS[lead.status] || [];
     const inTeam = (role === "senior_ae" || role === "ac") && lead.team === team;
     const isAssignee = role === "ae" && meId != null && lead.assigneeId === meId;
-    const works = superuser || inTeam || isAssignee;
+    const oversees = superuser || inTeam || isAssignee;
+    const works = canWorkLead({ role, id: meId, team }, lead);
     const btns = [];
     if (allowed.includes("screen") && superuser) btns.push({ a: "screen", label: "คัดกรอง", icon: Filter, primary: true });
     if (allowed.includes("assign") && (role === "admin" || inTeam)) btns.push({ a: "assign", label: "มอบหมาย", icon: UsersIcon, primary: true });
     if (allowed.includes("contact") && works) btns.push({ a: "contact", label: "ติดต่อแล้ว", icon: PhoneCall, primary: true });
     if (allowed.includes("meeting") && works) btns.push({ a: "meeting", label: "นัดประชุม", icon: CalendarClock });
     if (allowed.includes("create_deal") && works && canCreateDeals && lead.status !== "qualified") btns.push({ a: "create_deal", label: "สร้างดีล", icon: FolderKanban, primary: true });
-    if (allowed.includes("bounce") && works) btns.push({ a: "bounce", label: "ตีกลับ", icon: Undo2 });
-    if (allowed.includes("disqualify") && works) btns.push({ a: "disqualify", label: "ไม่ไปต่อ", icon: Ban });
+    if (allowed.includes("bounce") && oversees) btns.push({ a: "bounce", label: "ตีกลับ", icon: Undo2 });
+    if (allowed.includes("disqualify") && oversees) btns.push({ a: "disqualify", label: "ไม่ไปต่อ", icon: Ban });
     return btns;
   };
 
