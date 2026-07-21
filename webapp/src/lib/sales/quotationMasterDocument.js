@@ -2,9 +2,9 @@
 // HTML ไฟล์เดียวจบในตัว (ฝัง CSS) ฝั่ง server ได้ ใช้ทั้งพิมพ์จริง + ตรึง snapshot 7B
 // + หน้า preview. Phase 7C (Direction B): V4 = เอกสารตัวจริง แทน quotePrint เดิม.
 //
-// markup ตรงกับ component React เดิม (QuotationMasterDocument) และ CSS ฝังด้านล่าง
-// คัดลอกจาก QuotationMasterDocument.module.css แบบ verbatim (ใช้ชื่อคลาสตรง ๆ ได้เพราะ
-// เอกสารนี้เป็นหน้าเดี่ยว self-contained ไม่ใช่ CSS Module ที่ต้อง hash).
+// ไฟล์นี้เป็น "แหล่งเดียว" ของหน้าตาเอกสารใบเสนอราคา V4 แล้ว (markup + CSS ฝังใน
+// DOCUMENT_CSS) — component React เดิม (QuotationMasterDocument) ถูกปลดระวางแล้ว
+// (Phase 7C 2026-07-21). ใช้ชื่อคลาสตรง ๆ ได้เพราะเป็นหน้าเดี่ยว self-contained.
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { buildQuotationMasterModelFromQuote } from '@/lib/sales/quotationMasterTemplate';
 
@@ -115,8 +115,6 @@ function installmentSection(model) {
   const rows = model.installments.map((row, index) => `
           <tr>
             <td><strong>${index + 1}. ${esc(row.label || '')}</strong>${row.note ? `<span>${esc(row.note)}</span>` : ''}</td>
-            <td>${val(row.trigger)}</td>
-            <td>${val(row.dueRule)}</td>
             <td class="number">${Number(row.percent || 0)}%</td>
             <td class="number">${money(row.amount)}</td>
           </tr>`).join('');
@@ -125,7 +123,7 @@ function installmentSection(model) {
         <h2>งวดชำระเงิน <span>/ PAYMENT SCHEDULE</span></h2>
         <table class="installmentTable">
           <thead>
-            <tr><th>งวด</th><th>ครบกำหนดเมื่อ</th><th>กำหนดชำระ</th><th class="number">%</th><th class="number">จำนวนเงิน</th></tr>
+            <tr><th>รายละเอียด</th><th class="number">%</th><th class="number">จำนวนเงิน</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
