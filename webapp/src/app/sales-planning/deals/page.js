@@ -187,6 +187,9 @@ export default function SalesPlanningPipelinePage() {
     try {
       for (const d of (createDeals || [])) {
         if (!d.title?.trim()) throw new Error("กรุณาระบุชื่อดีลให้ครบทุกรายการ");
+        // บังคับเลือกประเภทดีล — ตัวนี้เลือก template ไทม์ไลน์ ถ้าปล่อยว่างจะถูก default
+        // เป็น NPD เงียบ ๆ ที่ฝั่ง server (normalizeDealType) แล้วได้ template ผิดประเภท
+        if (!d.dealType) throw new Error(`กรุณาเลือกประเภทดีล (SCENT/NPD/RE-ORDER) ให้ครบทุกรายการ${d.title ? ` — "${d.title}"` : ""}`);
         const selectedCustomer = customers.find((c) => c.id === d.customerId);
         const payload = { ...d, customerName: selectedCustomer?.name || d.customerName || null };
         const res = await fetch("/api/sales-planning/deals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
