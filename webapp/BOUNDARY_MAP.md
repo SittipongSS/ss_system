@@ -107,7 +107,7 @@
 
 | action | หน้าเจ้าของ | ใครทำ (cap/scope) |
 |---|---|---|
-| สร้าง/แก้ไข/พักใช้ (isActive) ลูกค้า·สินค้า | `/database/customers`, `/database/products` | `*:edit` (AE/AC สร้าง = `pending`); ลบ = superuser |
+| สร้าง/แก้ไข/พักใช้ (isActive) ลูกค้า·สินค้า | `/database/customers`, `/database/products` | `*:edit` (AE/AC สร้าง = `pending`); แก้ = **ทีมที่ดูแลลูกค้า** (สินค้ายึดทีมของลูกค้าเจ้าของ ไม่ใช่คนสร้าง; teamless = ส่วนกลาง — มติ 2026-07-21) ทุกตำแหน่งในทีมรวม AE; ลบ = superuser |
 | อนุมัติ/ปฏิเสธ ลูกค้า·สินค้า | หน้า Database (`?manage=1`) | Senior AE+ (`canApproveMasterData`) |
 | ขึ้นทะเบียน / แก้ลิงก์ / ยื่น (submit) / ขอแก้ไข | `/tax/registrations` | SA (`products:edit`) |
 | อนุมัติ/ตีกลับ ทะเบียน | `/tax/registrations` | LG (`legal:approve`) |
