@@ -23,6 +23,7 @@ function DocumentHeader({ model }) {
           <span>{model.company.nameEn}</span>
           <p>{model.company.address}</p>
           <p>เลขประจำตัวผู้เสียภาษี {model.company.taxId}</p>
+          <p>โทร {model.company.phone} · Line {model.company.line}</p>
         </div>
       </div>
       <div className={styles.identityBlock}>
@@ -58,9 +59,7 @@ function PartyGrid({ model }) {
           <div><dt>ดีล</dt><dd>{model.references.deal}</dd></div>
           <div><dt>โครงการ</dt><dd>{model.references.project}</dd></div>
           <div><dt>ผู้เสนอราคา</dt><dd>{model.references.salesOwner}</dd></div>
-          {model.references.salesOwnerPhone && <div><dt>เบอร์ผู้เสนอราคา</dt><dd>{model.references.salesOwnerPhone}</dd></div>}
-          <div><dt>โทรบริษัท</dt><dd>{model.company.phone}</dd></div>
-          <div><dt>Line</dt><dd>{model.company.line}</dd></div>
+          {model.references.salesOwnerPhone && <div><dt>โทร</dt><dd>{model.references.salesOwnerPhone}</dd></div>}
         </dl>
       </div>
     </section>
