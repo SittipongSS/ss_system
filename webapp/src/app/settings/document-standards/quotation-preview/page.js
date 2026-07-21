@@ -7,15 +7,13 @@ import {
   QUOTATION_PREVIEW_SCENARIOS,
   QUOTATION_PREVIEW_STATES,
   buildQuotationMasterPreview,
-  buildQuotationPreviewPrintInput,
 } from '@/lib/sales/quotationMasterTemplate';
-import { buildQuotePrintHTML } from '@/lib/sales/quotePrint';
+import { renderQuotationMasterDocumentHTML } from '@/lib/sales/quotationMasterDocument';
 import styles from './page.module.css';
 
-// Phase 7C (Direction A): หน้า preview เรนเดอร์ผ่าน "เครื่องยนต์เดียวกับใบจริง"
-// (quotePrint.buildQuotePrintHTML) ใน iframe → ดูตัวอย่างตรงกับที่พิมพ์ออกมา 100%.
-// เดิมใช้ component แม่แบบแยก (QuotationMasterDocument) ซึ่งคนละ layout/pagination
-// กับใบจริง ทำให้ preview ≠ ใบพิมพ์ — ปลดระวางไปตามมติ 7C.
+// Phase 7C (Direction B): หน้า preview เรนเดอร์ด้วย "เครื่องยนต์เอกสารตัวจริง"
+// (quotationMasterDocument = Quotation Master V4) ใน iframe จึงตรงกับใบที่พิมพ์/ตรึง 100%.
+// fixture model มาจาก buildQuotationMasterPreview (คณิต+จัดหน้า V4 ชุดเดียวกับใบจริง).
 export default function QuotationMasterPreviewPage() {
   const [scenarioId, setScenarioId] = useState('standard');
   const [documentState, setDocumentState] = useState('approved');
@@ -24,13 +22,13 @@ export default function QuotationMasterPreviewPage() {
 
   const scenario = QUOTATION_PREVIEW_SCENARIOS.find((item) => item.id === scenarioId);
   const model = useMemo(
-    () => buildQuotationMasterPreview(scenarioId, documentState),
+    () => buildQuotationMasterPreview(scenarioId, documentState, 'v4'),
     [scenarioId, documentState],
   );
-  const html = useMemo(() => {
-    const { quote, options } = buildQuotationPreviewPrintInput(scenarioId, documentState);
-    return buildQuotePrintHTML(quote, options);
-  }, [scenarioId, documentState]);
+  const html = useMemo(
+    () => renderQuotationMasterDocumentHTML(model, { grayscale, toolbar: false }),
+    [model, grayscale],
+  );
 
   // ปรับความสูง iframe ให้เท่าเนื้อหาจริง (หน้า A4 หลายหน้า) ไม่ให้มี scrollbar ซ้อน
   useEffect(() => {
@@ -40,7 +38,7 @@ export default function QuotationMasterPreviewPage() {
       try {
         const doc = frame.contentDocument;
         if (doc?.body) frame.style.height = `${doc.body.scrollHeight}px`;
-      } catch { /* cross-origin ไม่เกิดกับ srcDoc เดียวกัน */ }
+      } catch { /* same-origin srcDoc — ไม่เกิด cross-origin */ }
     };
     frame.addEventListener('load', resize);
     const timer = setTimeout(resize, 300);
@@ -66,8 +64,8 @@ export default function QuotationMasterPreviewPage() {
       </div>
       <div className={`premium-header ${styles.screenOnly}`}>
         <div className="header-content">
-          <h1><span className="premium-header-icon"><FileText size={22} /></span> Quotation Master Template</h1>
-          <p>ตัวอย่างใบเสนอราคา FM-SA-01 — เรนเดอร์ด้วยเครื่องยนต์เดียวกับใบพิมพ์จริง จึงตรงกับที่พิมพ์ 100%</p>
+          <h1><span className="premium-header-icon"><FileText size={22} /></span> Quotation Master Template V4</h1>
+          <p>ตัวอย่างเรนเดอร์ด้วยเครื่องยนต์เอกสารตัวจริง จึงตรงกับใบที่พิมพ์และฉบับที่ตรึงไว้ 100%</p>
         </div>
       </div>
 
@@ -115,7 +113,7 @@ export default function QuotationMasterPreviewPage() {
         <div className={styles.scenarioSummary} aria-live="polite">
           <strong>{scenario?.label}</strong>
           <span>{scenario?.description}</span>
-          <span>{model.lines.length} รายการ · {model.installments.length} งวด</span>
+          <span>{model.lines.length} รายการ · {model.pages.length} หน้า · {model.installments.length} งวด</span>
         </div>
       </section>
 
@@ -125,7 +123,6 @@ export default function QuotationMasterPreviewPage() {
           className={styles.previewFrame}
           title="ตัวอย่างใบเสนอราคา"
           srcDoc={html}
-          style={grayscale ? { filter: 'grayscale(1)' } : undefined}
         />
       </section>
     </div>

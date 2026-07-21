@@ -1,3 +1,18 @@
+import { fmtDate } from '@/lib/format';
+import {
+  COMPANY_ADDRESS,
+  COMPANY_LEGAL_NAME,
+  COMPANY_LINE,
+  COMPANY_OFFICE_TEL,
+  COMPANY_TAX_ID,
+  COMPANY_WEBSITE,
+  DOCUMENT_FORMS,
+  documentFormLine,
+} from '@/lib/documentBrand';
+
+// ชื่อบริษัทภาษาอังกฤษ — documentBrand เก็บเฉพาะชื่อไทย จึงตั้งไว้ที่นี่ให้เอกสาร V4 ใช้
+const COMPANY_LEGAL_NAME_EN = 'SCENT AND SENSE LABORATORY CO., LTD.';
+
 export const QUOTATION_MASTER_TEMPLATE_VERSIONS = Object.freeze([
   { id: 'v1', label: 'V1', templateVersion: 'quotation-balanced-controlled-v1' },
   { id: 'v2', label: 'V2', templateVersion: 'quotation-balanced-controlled-v2' },
@@ -545,68 +560,124 @@ export function buildQuotationMasterPreview(
   };
 }
 
-// วันที่ตัวอย่าง (ISO) สำหรับ preview — ใช้ ISO เพราะ fmtDate ของตัวพิมพ์จริงแปลง
-// สตริงพ.ศ.แบบ '20/07/2569' ไม่ได้ ส่วน BASE_QUOTE.document เก็บสตริงพ.ศ.ไว้โชว์เฉย ๆ
-const PREVIEW_ISO_ISSUE_DATE = '2026-07-20';
-const PREVIEW_ISO_VALID_UNTIL = '2026-08-19';
-
-// Adapter (Phase 7C, Direction A): แปลง fixture model → รูป `quote` ที่ตัวพิมพ์จริง
-// (quotePrint.buildQuotePrintHTML) รับ เพื่อให้หน้า preview ใช้ "เครื่องยนต์เดียวกับใบจริง"
-// → ดูตัวอย่างแล้วตรงกับที่พิมพ์ 100%. คณิตศาสตร์ fixture (ยอดรวม/จัดสรรงวด) ใช้ซ้ำจาก
-// buildQuotationMasterPreview — เลิกใช้เฉพาะ pagination/React renderer ของแม่แบบเดิม.
-export function buildQuotationPreviewPrintInput(scenarioId = 'standard', state = 'approved') {
-  const model = buildQuotationMasterPreview(scenarioId, state);
-  const { totals } = model;
-  const isInstallment = model.installments.length > 1;
-  const quote = {
-    id: null,
-    quoteNumber: model.document.number,
-    quoteDate: PREVIEW_ISO_ISSUE_DATE,
-    validUntil: PREVIEW_ISO_VALID_UNTIL,
-    revisionNo: 0,
-    customerName: model.customer.name,
-    branchCode: null,
-    billingAddress: model.customer.address,
-    shippingAddress: model.customer.address,
-    contactName: model.customer.contactName,
-    contactPhone: model.customer.contactPhone,
-    lines: model.lines.map((line, index) => ({
+// ── Phase 7C (Direction B): สร้าง "model แบบ V4" จาก quotation จริง ────────────
+// ใช้ pagination V4 ชุดเดียวกับ preview (paginateQuotationMasterLines mode:'fill' +
+// buildGroupedPages) แล้วป้อนให้ renderer เอกสาร (quotationMasterDocument.js) เพื่อให้
+// ใบพิมพ์จริง + ฉบับตรึง snapshot ใช้หน้าตา/การจัดหน้าแบบ V4 เดียวกับที่เห็นใน preview.
+export function buildQuotationMasterModelFromQuote(quote, options = {}) {
+  const form = options.form || DOCUMENT_FORMS.quotation;
+  const lines = (Array.isArray(quote.lines) ? quote.lines : [])
+    .slice()
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    .map((line) => ({
       id: line.id,
-      sortOrder: index,
-      fgCode: line.fgCode,
-      description: line.description,
-      qty: line.qty,
-      unitPrice: line.unitPrice,
-      lineTotal: line.lineTotal,
-      metadata: line.note ? { note: line.note } : undefined,
-    })),
-    subtotal: totals.subtotal,
-    discountType: model.discount.type,
-    discountValue: model.discount.value,
-    discountAmount: totals.discountAmount,
-    vatRate: model.vatRate,
-    vatAmount: totals.vatAmount,
-    totalAmount: totals.totalAmount,
-    paymentPlan: isInstallment
-      ? {
-        type: 'installment',
-        paymentMethod: model.paymentMethod,
-        installments: model.installments.map((row) => ({
-          label: row.label, percent: row.percent, amount: row.amount, note: row.note,
-        })),
-      }
-      : { type: 'full', paymentMethod: model.paymentMethod },
-    paymentTerms: model.paymentTerms,
-    notes: model.remarks,
-    // draft → ลายน้ำ "ฉบับร่าง" อัตโนมัติผ่าน approvalStatus; cancelled → ส่ง watermark ตรง
-    approvalStatus: state === 'draft' ? 'pending' : 'approved',
-    approvedByName: model.references.salesOwner,
-    createdByName: model.references.salesOwner,
-    deal: { title: model.references.deal, ownerName: model.references.salesOwner },
-    project: { name: model.references.project },
-    metadata: { aeOwner: model.references.salesOwner },
+      fgCode: line.fgCode || '',
+      description: line.description || '',
+      note: line.metadata?.note || line.note || '',
+      qty: Number(line.qty || 0),
+      unit: line.unit || '',
+      unitPrice: Number(line.unitPrice || 0),
+      lineTotal: Number(line.lineTotal || 0),
+    }));
+
+  const paymentPlan = quote.paymentPlan || {};
+  const installments = paymentPlan.type === 'installment' && Array.isArray(paymentPlan.installments) && paymentPlan.installments.length
+    ? paymentPlan.installments.map((row) => ({
+      label: row.label || '',
+      note: row.note || '',
+      trigger: row.trigger || '-',
+      dueRule: row.dueRule || '-',
+      percent: Number(row.percent || 0),
+      amount: Number(row.amount || 0),
+    }))
+    : [{ label: 'ชำระเต็มจำนวน', note: '', trigger: '-', dueRule: '-', percent: 100, amount: Number(quote.totalAmount || 0) }];
+
+  const customer = {
+    name: quote.customerName || '-',
+    address: quote.billingAddress || '-',
+    taxId: quote.customerTaxId || '-',
+    branch: quote.branchCode ? `สาขา ${quote.branchCode}` : 'สำนักงานใหญ่',
+    contactName: quote.contactName || '-',
+    contactPhone: quote.contactPhone || '-',
   };
-  const options = {};
-  if (state === 'cancelled') options.watermark = 'ยกเลิก';
-  return { quote, options };
+
+  const subtotal = Number(quote.subtotal || 0);
+  const discountAmount = Number(quote.discountAmount || 0);
+  const totals = {
+    subtotal,
+    discountAmount,
+    afterDiscount: subtotal - discountAmount,
+    vatAmount: Number(quote.vatAmount || 0),
+    totalAmount: Number(quote.totalAmount || 0),
+  };
+
+  const paymentMethod = paymentPlan.paymentMethod || '-';
+  const paymentTerms = quote.paymentTerms || '-';
+  const remarks = quote.notes || '-';
+  const salesOwner = quote.createdByName || quote.metadata?.preparedBy || '-';
+
+  const firstCapacity = v4FirstCapacity(customer);
+  const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill' });
+  const pages = buildGroupedPages({
+    linePages,
+    installments,
+    paymentMethod,
+    paymentTerms,
+    remarks,
+    firstCapacity,
+    continuationCapacity: V4_CONTINUATION_CAPACITY,
+    totalsReserve: V4_TOTALS,
+  });
+
+  // ลายน้ำ: ฉบับร่าง (pending) หรือ override ผ่าน options (เช่น "ยกเลิก"); อนุมัติแล้วไม่มี
+  const watermark = options.watermark
+    || (quote.approvalStatus === 'pending' ? 'ฉบับร่าง' : '');
+  // ผู้อนุมัติ: แสดงบล็อกลายเซ็นเมื่อมีชื่อผู้อนุมัติจริง (ไม่ใช่ฉบับร่าง)
+  const signature = quote.approvalStatus !== 'pending' && quote.approvedByName
+    ? {
+      signerName: quote.approvedByName,
+      signerRole: quote.approvedByRole || 'ผู้อนุมัติ',
+      signedAt: quote.approvedAt ? fmtDate(quote.approvedAt) : '',
+      evidenceId: quote.signatureEvidenceId || '',
+    }
+    : null;
+
+  return {
+    templateVariant: 'v4',
+    templateVersion: QUOTATION_MASTER_TEMPLATE_VERSION,
+    company: {
+      nameTh: COMPANY_LEGAL_NAME,
+      nameEn: COMPANY_LEGAL_NAME_EN,
+      address: COMPANY_ADDRESS,
+      taxId: COMPANY_TAX_ID,
+      phone: COMPANY_OFFICE_TEL,
+      line: COMPANY_LINE,
+      website: COMPANY_WEBSITE,
+    },
+    standard: { titleTh: options.documentTitleTh || 'ใบเสนอราคา', titleEn: form.title },
+    formLine: documentFormLine(form),
+    document: {
+      number: options.documentNumber || quote.quoteNumber || '-',
+      issueDate: quote.quoteDate ? fmtDate(quote.quoteDate) : '-',
+      validUntil: quote.validUntil ? fmtDate(quote.validUntil) : '-',
+    },
+    customer,
+    references: {
+      deal: quote.deal?.title || quote.dealTitle || '-',
+      project: quote.project?.name || quote.projectName || '-',
+      salesOwner,
+    },
+    lines,
+    totals,
+    discount: { type: quote.discountType || 'amount', value: Number(quote.discountValue || 0) },
+    vatRate: Number(quote.vatRate || 0),
+    installments,
+    paymentMethod,
+    paymentTerms,
+    remarks,
+    signature,
+    watermark,
+    linePages,
+    pages,
+  };
 }

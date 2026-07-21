@@ -1,5 +1,9 @@
 // พิมพ์ใบเสนอราคา FM-SA-01 — ใช้ design system เดียวกับเอกสาร Project Timeline.
+// หมายเหตุ Phase 7C (Direction B): การพิมพ์ "ใบเสนอราคา" สลับไปใช้เครื่องยนต์เอกสาร
+// Quotation Master V4 (quotationMasterDocument) แล้ว — buildQuotePrintHTML ที่เหลือในไฟล์นี้
+// ยังใช้กับ "ใบสั่งขาย" (salesOrderPrint.js, เฟส 7D) จึงคงไว้ ห้ามลบ
 import { fmtDate } from '@/lib/format';
+import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
 import {
   COMPANY_ADDRESS,
   COMPANY_LEGAL_NAME,
@@ -59,22 +63,9 @@ const linePageUnits = (line) => {
 export function paginateCommercialLines(lines = [], reserveUnits = 0) {
   if (!Array.isArray(lines) || lines.length === 0) return [[]];
 
-  // ── px-calibrated จากการวัด DOM จริงของ *สไตล์ชีตนี้* (2026-07-21) ────────────
-  // สำคัญ: อย่าใช้ตัวเลขของแม่แบบ preview (V4_PAGE_UNITS ฯลฯ) — คนละ geometry.
-  // preview เดิมสูงแถวละ ~50px แต่ใบพิมพ์จริงนี้แถวละ ~24px จึงจุได้มากกว่าเกือบเท่าตัว.
-  // วัดที่ ._preview_tmp (เครื่องยนต์เดียวกับใบจริง): พื้นที่เนื้อหาใต้หัวเอกสารที่ซ้ำทุกหน้า
-  // ≈ 880px (หน้าพิมพ์ 272mm ≈ 1028px − หัวเอกสาร ~148px) · แถวสินค้า 1 บรรทัด 24px
-  // (+15px/บรรทัดที่ wrap เพิ่ม) · party grid 195px (หน้าแรกเท่านั้น) · หัวตาราง 21px ·
-  // มูลค่ารวม 96px · กลุ่มท้ายเอกสาร (หมายเหตุ+เงื่อนไข+ลงชื่อ) ~555px.
-  //   หน้าแรก(ไม่ใช่หน้าสุดท้าย): (880 − 195 − 21) / 24 ≈ 27 แถว → ตั้ง 24 เผื่อ safety
-  //   หน้าต่อ(ไม่ใช่สุดท้าย):     (880 − 21) / 24 ≈ 35 แถว → ตั้ง 32 เผื่อ safety
-  //   หน้าสุดท้าย: ต้องเหลือที่ให้ มูลค่ารวม(96)+กลุ่มท้าย(~555)+หัวตาราง = ~672px
-  //     → เหลือ ~208px ≈ 8 แถว (ค่าเดิม 8 คาลิเบรตถูกอยู่แล้ว จึงคงไว้ — reserveUnits
-  //       ยังหักเพิ่มตามงวดชำระ/หมายเหตุยาวที่ผู้เรียกส่งมา)
-  // เดิมตั้ง 15/22 ทำให้ "ไม่เต็มหน้าก็ตัดแล้ว" (หน้าแรกใช้จริง ~54% ของพื้นที่).
   const finalPageCapacity = Math.max(2, 8 - Math.max(0, reserveUnits));
-  const firstPageCapacity = 24;
-  const continuationCapacity = 32;
+  const firstPageCapacity = 15;
+  const continuationCapacity = 22;
   const pages = [];
   const remaining = lines.slice();
 
@@ -458,7 +449,9 @@ export function openQuotePrintWindow(quote, preparedWindow = null) {
   const win = preparedWindow || prepareQuotePrintWindow();
   if (!win) return;
   win.document.open();
-  win.document.write(buildQuotePrintHTML(quote));
+  // Phase 7C (Direction B): ใบเสนอราคาที่ยังไม่ตรึง snapshot ก็ต้องพิมพ์ด้วยหน้าตา V4
+  // (เครื่องยนต์เดียวกับฉบับที่ตรึง) เพื่อให้ทุกใบหน้าตาเดียวกัน
+  win.document.write(buildQuotationMasterHTML(quote));
   win.document.close();
   return win;
 }
