@@ -93,11 +93,30 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
 
 // The rendered artifact is the frozen HTML a reprint replays. buildQuotationMasterHTML
 // is a pure string builder (no DOM), so it runs unchanged on the server.
-export function buildIssuedQuotationArtifactHtml(quote = {}) {
+// options.approverSignatureImage = data URI ของรูปลายเซ็นผู้อนุมัติ ฝังลงในใบตรึง
+// ให้ self-contained (reprint แสดงรูปเดิมเสมอ แม้ลายเซ็นถูกเปลี่ยน/ยกเลิกภายหลัง)
+export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
   return buildQuotationMasterHTML(
     { ...quote, approvalStatus: 'approved' },
-    { watermark: '' },
+    { watermark: '', approverSignatureImage: options.approverSignatureImage || null },
   );
+}
+
+// ดึงไฟล์รูปลายเซ็นจาก storage (bucket private → ต้อง service-role client) แล้วแปลงเป็น
+// data URI base64. asset = signatureAssetSnapshot ที่ evidence ตรึงไว้ตอนอนุมัติ
+// (มี storageBucket/storagePath/mimeType). ล้มเหลว/ไม่มี → null (ใบยังออกได้ ไม่บล็อก)
+export async function loadSignatureImageDataUri(supabase, asset) {
+  if (!asset || !asset.storageBucket || !asset.storagePath) return null;
+  try {
+    const { data, error } = await supabase.storage.from(asset.storageBucket).download(asset.storagePath);
+    if (error || !data) return null;
+    const buffer = Buffer.from(await data.arrayBuffer());
+    if (!buffer.length) return null;
+    const mime = asset.mimeType || 'image/png';
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  } catch {
+    return null;
+  }
 }
 
 export function issuedContentFingerprint(payload) {
@@ -112,7 +131,9 @@ export function artifactSha256(html) {
 // with identical content returns the existing snapshot instead of duplicating.
 export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence, user }) {
   const payload = buildIssuedQuotationPayload(quote, evidence);
-  const html = buildIssuedQuotationArtifactHtml(quote);
+  // ฝังรูปลายเซ็นผู้อนุมัติจริงลงในใบตรึง (evidence-backed) — self-contained เหมือนฟอนต์
+  const approverSignatureImage = await loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot);
+  const html = buildIssuedQuotationArtifactHtml(quote, { approverSignatureImage });
   const { data, error } = await supabase.rpc('capture_issued_quotation_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
     p_artifact_id: genId('IDA'),
