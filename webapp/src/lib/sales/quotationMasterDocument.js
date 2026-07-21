@@ -7,6 +7,7 @@
 // (Phase 7C 2026-07-21). ใช้ชื่อคลาสตรง ๆ ได้เพราะเป็นหน้าเดี่ยว self-contained.
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { buildQuotationMasterModelFromQuote } from '@/lib/sales/quotationMasterTemplate';
+import { DOCUMENT_FONT_FACE_CSS } from '@/lib/sales/quotationDocumentFonts';
 
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -213,7 +214,8 @@ function renderPages(model) {
 const DOCUMENT_CSS = `
   * { box-sizing: border-box; }
   body { margin: 0; background: #eceff3; -webkit-font-smoothing: antialiased;
-         -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+         -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+         font-family: 'IBM Plex Sans Thai', 'Leelawadee UI', sans-serif; }
   .toolbar { display: flex; justify-content: space-between; align-items: center;
              width: 210mm; max-width: 100%; margin: 16px auto 0; padding: 0 4px;
              font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; }
@@ -240,8 +242,9 @@ const DOCUMENT_CSS = `
     padding: 16px 0 40px;
     color: var(--doc-text);
     /* เอกสาร standalone ไม่มี --font-plex-sans (ตัวแปร next/font ที่มีเฉพาะในแอป) —
-       ต้องอ้าง 'IBM Plex Sans Thai' ตรง ๆ + โหลดผ่าน <link> ไม่งั้น var ที่ไม่นิยาม
-       ทำให้ทั้ง font-family เสีย แล้วหล่นไปฟอนต์ default ของเบราว์เซอร์ (ฟอนต์ไม่ตรง V4) */
+       จึงฝัง IBM Plex Sans Thai เป็น @font-face base64 ในตัว (DOCUMENT_FONT_FACE_CSS)
+       = ฟอนต์เดียวกับที่ next/font เสิร์ฟให้แอป แสดงผลตรงกันทุกที่ แม้พิมพ์/ตรึง snapshot
+       ออฟไลน์ (ไม่พึ่ง Google CDN ที่โหลดไม่ทัน/ไม่ได้แล้วหล่นไป Leelawadee) */
     font-family: 'IBM Plex Sans Thai', 'Leelawadee UI', sans-serif;
     font-size: 9.5pt;
     line-height: 1.42;
@@ -416,7 +419,7 @@ export function renderQuotationMasterDocumentHTML(model, options = {}) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(number)} — ${esc(documentLabel)}</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>${DOCUMENT_FONT_FACE_CSS}</style>
 <style>${DOCUMENT_CSS}</style>
 </head>
 <body>
