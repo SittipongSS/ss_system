@@ -24,7 +24,11 @@ import {
 // snapshots stay identifiable by the generator that produced them.
 // v2 = Phase 7C Direction B: artifact ใช้เครื่องยนต์เอกสาร Quotation Master V4
 // (quotationMasterDocument) แทน quotePrint เดิม
-export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4';
+// v4.1 = สะสมการเปลี่ยนแปลงช่วง PR #618–#628: payload เพิ่ม taxId/phone ของลูกค้า,
+// artifact ฝังฟอนต์เป็น base64 + ฝังรูปลายเซ็นผู้อนุมัติ/ผู้เสนอราคา + accent เป็น
+// inline style — snapshot ที่ tag 'quote-master-v4' อาจมาจาก generator รุ่นใดรุ่นหนึ่ง
+// ในช่วงนั้น (tag ไม่เคยขยับตามสัญญาไว้ข้างบน)
+export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.1';
 export const ISSUED_QUOTATION_LOCALE = 'th-TH';
 
 const trimOrNull = (value) => {

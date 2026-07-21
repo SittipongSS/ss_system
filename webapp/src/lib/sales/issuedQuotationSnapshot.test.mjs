@@ -80,7 +80,7 @@ test('artifact sha256 is stable for identical HTML', () => {
 });
 
 test('layout version is tagged for regeneration tracking', () => {
-  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4');
+  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.1');
 });
 
 test('artifact embeds approver signature image when provided', () => {

@@ -396,12 +396,14 @@ const DOCUMENT_CSS = `
 
 // เรนเดอร์ model (จาก buildQuotationMasterModelFromQuote หรือ buildQuotationMasterPreview)
 // เป็น HTML เอกสารเต็มไฟล์เดียว. options.grayscale = โหมดขาวดำ; options.toolbar=false ปิดปุ่มพิมพ์
-// สี accent ต่อชนิดเอกสาร (ตาม DOCUMENT_ACCENT_KEYS/LABELS ใน documentStandards):
-// ใบเสนอราคา = terracotta, ใบสั่งขาย = teal, ฯลฯ. ค่าเป็น hex สำหรับเอกสารพิมพ์
+// สี accent ต่อชนิดเอกสาร: ใบเสนอราคา = terracotta, ใบสั่งขาย = steel
+// (มติผู้ใช้ 2026-07-21 — ดู salesOrderPrint.js). ค่าเป็น hex สำหรับเอกสารพิมพ์
 // (self-contained ใช้ตัวแปร theme ของแอปไม่ได้). --doc-accent คุมสีชื่อเอกสาร (h1).
 export const DOCUMENT_ACCENT_THEMES = Object.freeze({
   terracotta: { accent: '#ad5d43', soft: '#f5ebe7', watermark: 'rgb(173 93 67 / 14%)' },
   steel: { accent: '#1e6091', soft: '#e6eef4', watermark: 'rgb(30 96 145 / 14%)' },
+  // teal ยังไม่มีเอกสารชนิดไหนใช้ แต่เป็นคีย์ที่เลือกได้ใน DOCUMENT_ACCENT_KEYS
+  // (settings/document-standards) — คงไว้เผื่อเอกสารชนิดถัดไป
   teal: { accent: '#0f766e', soft: '#e6f2f0', watermark: 'rgb(15 118 110 / 14%)' },
   amber: { accent: '#b45309', soft: '#fdf1e3', watermark: 'rgb(180 83 9 / 13%)' },
   green: { accent: '#15803d', soft: '#e8f3ec', watermark: 'rgb(21 128 61 / 13%)' },
