@@ -13,7 +13,12 @@ const nextConfig = {
   // node_modules requires instead of bundling. Also stops Next from trying to
   // resolve @vercel/functions/oidc's optional dynamic import of the AWS SDK
   // (we only use getVercelOidcToken, never the AWS credentials provider).
-  serverExternalPackages: ['googleapis', 'google-auth-library', '@vercel/functions'],
+  // @sparticuz/chromium แตกไบนารี brotli ตอน runtime — ต้องไม่ให้ Next bundle (external
+  // เสมอ); puppeteer-core external ตามกันเพื่อกันปัญหา resolve ของ chromium runtime
+  serverExternalPackages: [
+    'googleapis', 'google-auth-library', '@vercel/functions',
+    '@sparticuz/chromium', 'puppeteer-core',
+  ],
   // Sales Management owns the /sa namespace. Keep legacy URLs working without
   // exposing the old system split in user-facing navigation.
   async rewrites() {

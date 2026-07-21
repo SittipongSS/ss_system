@@ -592,6 +592,10 @@ export default function QuotationEditorPage() {
                 {editable && quote.status === "draft" && !needsApproval && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}
                 {["sent", "draft"].includes(quote.status) && canEditCap && !needsApproval && <button type="button" className="btn btn-primary" onClick={doAccept} disabled={!!busy} title="ปิด Won ผ่านใบเสนอราคานี้"><CheckCircle2 size={15} aria-hidden="true" /> Won</button>}
                 <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={15} aria-hidden="true" /> พิมพ์ / PDF</button>
+                {/* PDF ถาวรจากฉบับที่ตรึงตอนอนุมัติ (Phase 7C) — โชว์เฉพาะใบที่อนุมัติแล้ว */}
+                {quote.approvalStatus === "approved" && (
+                  <a className="btn ghost" href={`/api/sales-planning/quotations/${quote.id}/issued/pdf?render=latest`} target="_blank" rel="noopener noreferrer"><FileText size={15} aria-hidden="true" /> ดาวน์โหลด PDF</a>
+                )}
               </div>
 
               {quote.deal && <Link href={`/sa/deals/${quote.deal.id}`} className={styles.relatedLink}>เปิดดีลที่เกี่ยวข้อง <span>→</span></Link>}

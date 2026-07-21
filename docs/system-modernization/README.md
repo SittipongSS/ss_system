@@ -32,7 +32,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 6B | Document Design System และ Quotation Master Template | เสร็จสมบูรณ์ | [Phase 6B](./phase-06b-quotation-master-template.md) |
 | 7A | Versioned Commercial Presets | รอตรวจ | [Phase 7A](./phase-07a-commercial-presets.md) |
 | 7B | Issued document snapshot และ immutable PDF | รอตรวจ | [Phase 7B](./phase-07b-issued-document-snapshot.md) |
-| 7C | Production Quotation Print replacement | กำลังดำเนินการ | [Phase 7C](./phase-07c-quotation-print-replacement.md) |
+| 7C | Production Quotation Print replacement + PDF artifact | รอตรวจ | [Phase 7C](./phase-07c-quotation-print-replacement.md) |
 | 7D | Sales Order document migration (V4 engine) | รอตรวจ | [Phase 7D](./phase-07d-salesorder-document.md) |
 | 8 | Permission redesign และ Migration | รอดำเนินการลำดับสุดท้าย | [Action inventory](./permission-action-inventory.md) |
 | 9 | Permission UAT, staged rollout และปิดโปรแกรม | รอดำเนินการ | [Release checklist](./release-checklist.md) |
@@ -61,8 +61,11 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
   `GET /api/commercial-presets/resolve` + prefill หน้าใหม่ + ตรึง
   `metadata.commercialPresetVersionId` + snapshot pin — `resolveCommercialPreset`
   ไม่เป็น dead code แล้ว (ไม่มี migration ใช้ `quotations.metadata` เดิม)
-- งานที่ยังค้างของ 7C เหลือข้อเดียว: PDF artifact ถาวรตาม Decision 0011
-  (D-7C-1 ยังไม่เคาะวิธี generate บน Vercel — เสนอ puppeteer-core + @sparticuz/chromium)
+- PDF artifact ถาวร (D-7C-1) โค้ดเสร็จแล้ว (2026-07-22): ตัดสินใจทิศ A —
+  puppeteer-core + @sparticuz/chromium เรนเดอร์จาก HTML ที่ตรึง, เก็บใน private bucket
+  `issued-quotation-pdf` (mig 0139), สร้างตอนอนุมัติแบบ best-effort + ดาวน์โหลด fallback
+  สร้างเอง; route `GET /api/sales-planning/quotations/[id]/issued/pdf` + ปุ่มดาวน์โหลดบน
+  หน้าใบที่อนุมัติแล้ว. **7C โค้ดครบทั้ง 2 ข้อแล้ว เหลือ UAT ใบจริงบน prod + รัน mig 0139**
 
 ## Definition of Done ของทุกเฟส
 
