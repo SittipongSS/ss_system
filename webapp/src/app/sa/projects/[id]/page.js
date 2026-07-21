@@ -864,10 +864,11 @@ export default function ProjectDetailPage() {
         {canEdit && (
           <div style={{ display: "flex", gap: "8px" }}>
             <button className="btn-icon" onClick={() => setShowEditProject(true)} aria-label="แก้ไขโครงการ" title="แก้ไขโครงการ"><Edit2 size={16} /></button>
-            {/* Sales เป็นแม่: โครงการที่ผูกงานขายต้องลบที่หน้าบริหารงานขาย (ลบทั้งสาย).
-                โครงการกำพร้า (ยังไม่ผูกดีล) ลบตรงนี้ได้ตามเดิม. */}
+            {/* เฟส B: ลบดีลไม่ลบโครงการ — โครงการที่ยังมีดีลผูก API ปฏิเสธการลบตรงนี้
+                (ให้ลบดีลทั้งหมดที่หน้าบริหารงานขายก่อน) แล้วโครงการกำพร้า (0 ดีล)
+                จึงลบที่หน้านี้ได้. */}
             {data.dealId ? (
-              <Link className="btn-icon" href={`/sales-planning/deals/${data.dealId}`} aria-label="จัดการที่หน้าบริหารงานขาย" title="โครงการนี้ผูกงานขาย — ลบ/จัดการที่หน้าบริหารงานขาย"><ExternalLink size={16} /></Link>
+              <Link className="btn-icon" href={`/sales-planning/deals/${data.dealId}`} aria-label="จัดการที่หน้าบริหารงานขาย" title="โครงการนี้ยังมีดีลผูกอยู่ — ลบดีลทั้งหมดที่หน้าบริหารงานขายก่อน แล้วจึงลบโครงการที่หน้านี้ได้"><ExternalLink size={16} /></Link>
             ) : (
               <button className="btn-icon danger" onClick={handleDeleteProject} aria-label="ลบโครงการ" title="ลบโครงการ"><Trash2 size={16} /></button>
             )}
