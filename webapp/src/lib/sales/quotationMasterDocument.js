@@ -2,9 +2,9 @@
 // HTML ไฟล์เดียวจบในตัว (ฝัง CSS) ฝั่ง server ได้ ใช้ทั้งพิมพ์จริง + ตรึง snapshot 7B
 // + หน้า preview. Phase 7C (Direction B): V4 = เอกสารตัวจริง แทน quotePrint เดิม.
 //
-// markup ตรงกับ component React เดิม (QuotationMasterDocument) และ CSS ฝังด้านล่าง
-// คัดลอกจาก QuotationMasterDocument.module.css แบบ verbatim (ใช้ชื่อคลาสตรง ๆ ได้เพราะ
-// เอกสารนี้เป็นหน้าเดี่ยว self-contained ไม่ใช่ CSS Module ที่ต้อง hash).
+// ไฟล์นี้เป็น "แหล่งเดียว" ของหน้าตาเอกสารใบเสนอราคา V4 แล้ว (markup + CSS ฝังใน
+// DOCUMENT_CSS) — component React เดิม (QuotationMasterDocument) ถูกปลดระวางแล้ว
+// (Phase 7C 2026-07-21). ใช้ชื่อคลาสตรง ๆ ได้เพราะเป็นหน้าเดี่ยว self-contained.
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { buildQuotationMasterModelFromQuote } from '@/lib/sales/quotationMasterTemplate';
 
