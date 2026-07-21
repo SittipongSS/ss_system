@@ -125,17 +125,47 @@ test('formula cells are reported and never become committable values', async () 
   assert.match(result.rows[0].errors.join(' '), /ห้ามใช้สูตร/);
 });
 
-test('read-only export carries numeric usage and date cells', async () => {
+test('read-only export carries compliance flags, numeric usage and date cells', async () => {
   const buffer = await buildProductCategoryExportBuffer([{
     ...current[0],
+    isExcise: true,
+    requiresFdaNotice: false,
     createdAt: '2026-07-18T01:00:00.000Z',
     usage: { products: 91, deals: 39, projects: 6 },
   }], { now: new Date('2026-07-19T02:00:00.000Z') });
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
   const sheet = workbook.getWorksheet('ข้อมูลปัจจุบัน');
-  assert.equal(sheet.getRow(2).getCell(8).value, 91);
-  assert.equal(sheet.getRow(2).getCell(9).value, 39);
-  assert.equal(sheet.getRow(2).getCell(10).value, 6);
-  assert.ok(sheet.getRow(2).getCell(11).value instanceof Date);
+  // ธงกำกับดูแล (mig 0131) โชว์แบบอ่านอย่างเดียวหลังคอลัมน์หมายเหตุ
+  assert.equal(sheet.getRow(1).getCell(8).value, 'เสียภาษีสรรพสามิต');
+  assert.equal(sheet.getRow(1).getCell(9).value, 'ต้องจดแจ้ง อย.');
+  assert.equal(sheet.getRow(2).getCell(8).value, 'ใช่');
+  assert.equal(sheet.getRow(2).getCell(9).value, ''); // ไม่ติ๊ก = ช่องว่าง
+  assert.equal(sheet.getRow(2).getCell(10).value, 91);
+  assert.equal(sheet.getRow(2).getCell(11).value, 39);
+  assert.equal(sheet.getRow(2).getCell(12).value, 6);
+  assert.ok(sheet.getRow(2).getCell(13).value instanceof Date);
+});
+
+test('import parser ignores extra compliance columns without bumping PC-IMPORT-1 (มติ: flag แก้ได้เฉพาะหน้าจอจัดการหมวด)', async () => {
+  const buffer = await buildProductCategoryTemplateBuffer(current, { now: new Date('2026-07-19T02:00:00.000Z') });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.getWorksheet('หมวดสินค้า');
+  // จำลองผู้ใช้ก๊อปคอลัมน์ธงจากไฟล์ export มาแปะท้ายชีตนำเข้า
+  const extra = sheet.columnCount + 1;
+  sheet.getRow(1).getCell(extra).value = 'เสียภาษีสรรพสามิต';
+  sheet.getRow(1).getCell(extra + 1).value = 'ต้องจดแจ้ง อย.';
+  sheet.getRow(2).getCell(extra).value = 'ใช่';
+  sheet.getRow(2).getCell(extra + 1).value = 'ใช่';
+  const modified = Buffer.from(await workbook.xlsx.writeBuffer());
+  const parsed = await parseProductCategoryWorkbook(modified);
+  assert.equal(parsed.templateVersion, 'PC-IMPORT-1');
+  assert.equal(parsed.rows.length, 2);
+  // ค่าธงต้องไม่หลุดเข้า row ที่ parse ได้ — นำเข้า flag ผ่านไฟล์ไม่ได้ในรอบนี้
+  assert.ok(!('isExcise' in parsed.rows[0]));
+  assert.ok(!('requiresFdaNotice' in parsed.rows[0]));
+  const plan = planProductCategoryImport(parsed.rows, current);
+  assert.equal(plan.summary.error, 0);
+  assert.equal(plan.summary.conflict, 0);
 });

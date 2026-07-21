@@ -242,6 +242,23 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return ok({ dryRun: true, ...preview });
   }
 
+  // หลักฐานลายเซ็น (mig 0125) เป็น immutable child ที่อ้างกลับมาใบนี้ — ใบที่เคย
+  // อนุมัติ+เซ็นห้าม hard-delete แม้ pointer บนใบถูกล้างหลังแก้/ยกเลิก (Decision 0008).
+  // FK RESTRICT + guard trigger บล็อกที่ DB อยู่แล้ว แต่ต้องแปลงเป็นข้อความแนะนำ
+  // "ยกเลิก" ไม่ให้ raw FK error หลุด — บล็อกทั้ง path ปกติและ ?force=1 (break-glass
+  // ก็ทำลายหลักฐานไม่ได้). เช็ก evidence table ตรง ๆ ไม่พึ่ง signatureEvidenceId บนใบ
+  // เพราะ pointer ถูกล้างเมื่อออกจากสถานะ approved แต่แถวหลักฐานยังอยู่.
+  const { data: evidence, error: evidenceError } = await supabase
+    .from('document_signature_evidence')
+    .select('id')
+    .eq('quotationId', id)
+    .limit(1)
+    .maybeSingle();
+  if (evidenceError) return fail(evidenceError.message, 500);
+  if (evidence?.id || before.signatureEvidenceId) {
+    return fail('ลบถาวรไม่ได้: ใบเสนอราคานี้มีหลักฐานลายเซ็นและต้องเก็บเป็นหลักฐาน — กรุณาใช้ “ยกเลิก” แทน', 409);
+  }
+
   if (!force) {
     if (before.status === 'accepted') {
       return badRequest('ใบเสนอราคานี้เป็นแหล่งยอด Actual ของดีล — ลบไม่ได้ ต้องใช้กระบวนการยกเลิก/ย้อนรายการ');

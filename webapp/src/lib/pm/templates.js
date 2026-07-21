@@ -3,8 +3,10 @@
 //   LG=Legal, WH=Warehouse, ALL=ทุกแผนก.
 // dependsOnSteps = step ที่ต้องเสร็จก่อน (แปลงเป็น predecessors ตอน gen).
 //   [] ว่าง = เริ่มที่จุดเริ่มโครงการ (ขนานกับแถวแรก), ไม่ใส่ = ต่อจากแถวก่อนหน้า.
-// categoryOnly / categoryExclude = แสดง step ตามหมวดสินค้า (productMainCategory),
-//   เช่น '01-002' = น้ำหอมฉีดผิวกาย (ต้องขึ้นทะเบียนสรรพสามิต).
+// categoryOnly / categoryExclude = แสดง step ตามหมวดสินค้า (productMainCategory).
+//   ขั้นสรรพสามิตใช้ token EXCISE_CATEGORY_TOKEN ('flag:excise') = หมวดที่ติ๊ก
+//   "เสียภาษีสรรพสามิต" (product_types.isExcise, mig 0131) — ไม่ hardcode รหัสหมวด.
+import { EXCISE_CATEGORY_TOKEN } from '../workflowTemplates';
 //
 // เฟส A (Sales Revamp): แยก template ตามประเภทดีล 3 ค่า —
 //   SCENT    = งานพัฒนากลิ่น (ขาย + ออกแบบกลิ่น — Phase 1–2 ของ template NPD เดิม)
@@ -40,7 +42,7 @@ export const NPD_TEMPLATE = [
   { step: 28, name: 'ใบสั่งขายผลิต',                        role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 29, name: 'FM-SA-04 เอกสารระบุรายละเอียดผลิตภัณฑ์', role: 'SA', durationDays: 1, phase: 'เตรียมการผลิต', dependsOnSteps: [28] },
   { step: 30, name: 'FM-SA-07 ใบรายงานติดตามคำสั่งซื้อ',    role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต', dependsOnSteps: [28] },
-  { step: 31, name: 'ขึ้นทะเบียนสรรพสามิต [Optional]',      role: 'LG',  durationDays: 7,  isMilestone: true, phase: 'เตรียมการผลิต', dependsOnSteps: [29, 30], categoryOnly: '01-002' },
+  { step: 31, name: 'ขึ้นทะเบียนสรรพสามิต [Optional]',      role: 'LG',  durationDays: 7,  isMilestone: true, phase: 'เตรียมการผลิต', dependsOnSteps: [29, 30], categoryOnly: EXCISE_CATEGORY_TOKEN },
   { step: 32, name: 'ส่ง Check list Planner',               role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 33, name: 'นัดประชุมระหว่างแผนก',                 role: 'ALL', durationDays: 1,  phase: 'เตรียมการผลิต' },
   // Phase 4.1: ผลิต — New Product
@@ -55,8 +57,8 @@ export const NPD_TEMPLATE = [
   { step: 41, name: 'ผลิตสินค้า',                           role: 'PD',  durationDays: 3,  phase: 'QC / ผลิตสินค้า' },
   { step: 42, name: 'ส่งมอบของให้คลัง',                     role: 'PD',  durationDays: 1,  isMilestone: true, phase: 'QC / ผลิตสินค้า' },
   // Phase 6: ส่งมอบสินค้า
-  { step: 43, name: 'วางบิลสินค้าก่อนส่ง + ค่าสรรพสามิต [Optional]', role: 'SA', durationDays: 7, phase: 'ส่งมอบสินค้า', dependsOnSteps: [42], categoryOnly: '01-002' },
-  { step: 44, name: 'วางบิลสินค้าก่อนส่ง (ไม่มีสรรพสามิต)', role: 'SA',  durationDays: 1,  phase: 'ส่งมอบสินค้า', dependsOnSteps: [42], categoryExclude: '01-002' },
+  { step: 43, name: 'วางบิลสินค้าก่อนส่ง + ค่าสรรพสามิต [Optional]', role: 'SA', durationDays: 7, phase: 'ส่งมอบสินค้า', dependsOnSteps: [42], categoryOnly: EXCISE_CATEGORY_TOKEN },
+  { step: 44, name: 'วางบิลสินค้าก่อนส่ง (ไม่มีสรรพสามิต)', role: 'SA',  durationDays: 1,  phase: 'ส่งมอบสินค้า', dependsOnSteps: [42], categoryExclude: EXCISE_CATEGORY_TOKEN },
   { step: 45, name: 'รับชำระเงิน / ยืนยันการโอน',           role: 'SA',  durationDays: 1,  isMilestone: true, phase: 'ส่งมอบสินค้า', dependsOnSteps: [43, 44] },
   { step: 46, name: 'ทำใบส่งของ (QD)',                      role: 'WH',  durationDays: 1,  phase: 'ส่งมอบสินค้า' },
   { step: 47, name: 'จัดส่งสินค้า',                         role: 'WH',  durationDays: 1,  isMilestone: true, phase: 'ส่งมอบสินค้า' },
@@ -70,7 +72,7 @@ export const REORDER_TEMPLATE = [
   { step: 4,  name: 'FM-SA-04 เอกสารระบุรายละเอียดผลิตภัณฑ์', role: 'SA', durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 5,  name: 'FM-SA-07 ใบรายงานติดตามคำสั่งซื้อ',    role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   // RE-ORDER ไม่มีขั้น "ขึ้นทะเบียนสรรพสามิต" — สินค้าขึ้นทะเบียนไว้แล้ว เหลือแค่
-  // ยื่นชำระค่าสรรพสามิตตอนวางบิล (step 16, categoryOnly 01-002). การขึ้นทะเบียนมีเฉพาะ NPD.
+  // ยื่นชำระค่าสรรพสามิตตอนวางบิล (step 16, categoryOnly flag:excise). การขึ้นทะเบียนมีเฉพาะ NPD.
   { step: 7,  name: 'ส่ง Check list Planner',               role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 8,  name: 'นัดประชุมระหว่างแผนก',                 role: 'ALL', durationDays: 1,  phase: 'เตรียมการผลิต' },
   // Phase 4.RE: ผลิต — Re-order
@@ -83,8 +85,8 @@ export const REORDER_TEMPLATE = [
   { step: 14, name: 'ผลิตสินค้า',                           role: 'PD',  durationDays: 3,  phase: 'QC / ผลิตสินค้า' },
   { step: 15, name: 'ส่งมอบของให้คลัง',                     role: 'PD',  durationDays: 1,  isMilestone: true, phase: 'QC / ผลิตสินค้า' },
   // Phase 6: ส่งมอบสินค้า
-  { step: 16, name: 'วางบิลสินค้าก่อนส่ง + ค่าสรรพสามิต [Optional]', role: 'SA', durationDays: 7, phase: 'ส่งมอบสินค้า', categoryOnly: '01-002' },
-  { step: 17, name: 'วางบิลสินค้าก่อนส่ง (ไม่มีสรรพสามิต)', role: 'SA',  durationDays: 1,  phase: 'ส่งมอบสินค้า', categoryExclude: '01-002' },
+  { step: 16, name: 'วางบิลสินค้าก่อนส่ง + ค่าสรรพสามิต [Optional]', role: 'SA', durationDays: 7, phase: 'ส่งมอบสินค้า', categoryOnly: EXCISE_CATEGORY_TOKEN },
+  { step: 17, name: 'วางบิลสินค้าก่อนส่ง (ไม่มีสรรพสามิต)', role: 'SA',  durationDays: 1,  phase: 'ส่งมอบสินค้า', categoryExclude: EXCISE_CATEGORY_TOKEN },
   { step: 18, name: 'รับชำระเงิน / ยืนยันการโอน',           role: 'SA',  durationDays: 1,  isMilestone: true, phase: 'ส่งมอบสินค้า' },
   { step: 19, name: 'ทำใบส่งของ (QD)',                      role: 'WH',  durationDays: 1,  phase: 'ส่งมอบสินค้า' },
   { step: 20, name: 'จัดส่งสินค้า',                         role: 'WH',  durationDays: 1,  isMilestone: true, phase: 'ส่งมอบสินค้า' },

@@ -268,14 +268,18 @@ export default function DealOverviewPage() {
   const role = useRole();
   const team = useTeam();
   const alreadyWon = ["won", "in_project"].includes(deal?.stage);
+  // หมวดสินค้า (ประกาศก่อน lc — useMemo ข้างล่างอ้างใน deps; ใช้ร่วมกับโมดัลแก้ดีล/สร้าง PM ด้วย)
+  const [categories, setCategories] = useState([]);
   const lc = useMemo(
     () => (deal ? dealLifecycle(deal, {
       projectProducts: data?.projectProducts,
       exciseRegistrations: data?.exciseRegistrations,
       sahamitPo: data?.sahamitPo,
       shipmentPrep: data?.shipmentPrep,
+      // หมวดสินค้า — ใช้ตัดสินการ์ดสรรพสามิตจาก flag isExcise (mig 0131)
+      productTypes: categories,
     }) : null),
-    [deal, data],
+    [deal, data, categories],
   );
 
   const [actionBusy, setActionBusy] = useState("");
@@ -324,7 +328,6 @@ export default function DealOverviewPage() {
 
   // โมดัลแก้ดีล + สร้าง PM
   const [customers, setCustomers] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [projects, setProjects] = useState([]);
   const dealBrand = useMemo(() => {
@@ -879,7 +882,7 @@ export default function DealOverviewPage() {
               style={{ padding: 16, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
               title="เปิดไทม์ไลน์ของดีล"
             >
-              <span style={{ background: "var(--accent)", color: "#fff", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
+              <span style={{ background: "var(--accent)", color: "var(--accent-fg)", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
                 <PackageCheck size={18} aria-hidden="true" />
               </span>
               <div style={{ minWidth: 150 }}>
@@ -1171,7 +1174,7 @@ export default function DealOverviewPage() {
                         <div key={i} style={{ position: "relative", width: 72, height: 72, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
                           <img src={f.url} alt={f.file.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                           <button type="button" onClick={() => removeFeedFile(i)} aria-label="เอารูปออก"
-                            style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,.6)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", lineHeight: 0 }}>
+                            style={{ position: "absolute", top: 2, right: 2, background: "color-mix(in srgb, var(--navy) 72%, transparent)", color: "var(--navy-fg)", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", lineHeight: 0 }}>
                             <X size={13} aria-hidden="true" />
                           </button>
                         </div>
@@ -1394,7 +1397,7 @@ export default function DealOverviewPage() {
           style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out" }}
         >
           <button type="button" onClick={() => setLightbox(null)} aria-label="ปิด"
-            style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,.15)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center" }}>
+            style={{ position: "absolute", top: 16, right: 16, background: "color-mix(in srgb, var(--navy-fg) 15%, transparent)", color: "var(--navy-fg)", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center" }}>
             <X size={20} aria-hidden="true" />
           </button>
           <img src={lightbox.src} alt={lightbox.name || "รูปแนบ"} onClick={(e) => e.stopPropagation()}

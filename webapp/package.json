@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "audit:ui": "node scripts/audit-ui.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
     "verify:organization-settings": "node scripts/verify-organization-settings.mjs",
     "db:bootstrap": "npm run check:migrations && node scripts/build-db-bootstrap.mjs",

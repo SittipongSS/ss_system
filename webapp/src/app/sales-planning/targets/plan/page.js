@@ -405,7 +405,7 @@ function StepNav({ step }) {
             <div style={{
               width: 26, height: 26, borderRadius: 999, display: "grid", placeItems: "center", flexShrink: 0,
               background: active ? "var(--accent)" : done ? "var(--green)" : "color-mix(in srgb, var(--text) 10%, transparent)",
-              color: active || done ? "#fff" : "var(--text-3)", fontWeight: 800, fontSize: 13,
+              color: active || done ? "var(--accent-fg)" : "var(--text-3)", fontWeight: 800, fontSize: 13,
             }}>
               {done ? <Check size={15} /> : s.n}
             </div>

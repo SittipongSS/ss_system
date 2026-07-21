@@ -8,6 +8,7 @@ import TaskFormModal from "@/components/mgmt/TaskFormModal";
 import TaskDrawer from "@/components/mgmt/TaskDrawer";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
 import { cachedFetchJson } from "@/lib/apiCache";
+import SkeletonRows from "@/components/ui/Skeleton";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -128,7 +129,7 @@ export default function MgmtTasksPage() {
 
       <div className="glass-panel" style={{ padding: 0, overflow: "hidden" }}>
         {loading ? (
-          <div style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>กำลังโหลด...</div>
+          <SkeletonRows rows={7} />
         ) : rows.length === 0 ? (
           <div style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีงานในปีนี้</div>
         ) : (

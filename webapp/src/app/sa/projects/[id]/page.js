@@ -35,6 +35,7 @@ import { setHolidays, countBusinessDays, isBusinessDay, toLocalISODate } from "@
 import { computeFinish, durationFromDates } from "@/lib/pm/stepSchedule";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
+import { isExciseCategory } from "@/lib/master/categoryOf";
 import { getComputedStatus, statusDotColor } from "@/lib/pm/derived";
 import { PROJECT_CLOSE_STATUS_LABELS, PROJECT_CLOSE_TYPE_LABELS, PROJECT_CLOSE_TYPES } from "@/lib/pm/projectClose";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -78,11 +79,11 @@ function resolveAssigneeName(task, users) {
   return task.assignee || "—";
 }
 
-const PHASE_COLORS = ["var(--accent)", "var(--purple)", "var(--blue)", "var(--amber)", "#f97316", "var(--green)", "var(--accent)"];
+const PHASE_COLORS = ["var(--accent)", "var(--violet)", "var(--blue)", "var(--amber)", "var(--teal)", "var(--green)", "var(--accent)"];
 
 const typeStyle = (type) => type === "NPD"
-  ? { background: "var(--purple)", color: "#fff" }
-  : { background: "var(--blue)", color: "#fff" };
+  ? { background: "var(--violet)", color: "var(--accent-fg)" }
+  : { background: "var(--blue)", color: "var(--accent-fg)" };
 
 // per-department badge colors (mirror ss-cj)
 const roleStyle = (role) => {
@@ -423,26 +424,28 @@ export default function ProjectDetailPage() {
       : { kind: "info", msg: `${label} เหมือนสถานะปัจจุบันอยู่แล้ว — ไม่มีอะไรเปลี่ยน` });
   };
 
-  // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", 01-002 ชนะ) เหมือนในโมดัล
-  // เพื่อให้ resync ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG 01-002 แล้วเงียบ
+  // บั๊ก B: ผูก/ถอด FG จากหน้านี้ต้องขับหมวด ("FG เป็นใหญ่", หมวดสรรพสามิตชนะ —
+  // ตัดสินจาก flag isExcise ของหมวด, mig 0131) เหมือนในโมดัล เพื่อให้ resync
+  // ขั้นตอนสรรพสามิตฝั่ง server ทำงาน — ไม่งั้นเพิ่ม FG หมวดสรรพสามิตแล้วเงียบ
   const deriveCategoryFromProducts = (productIds) => {
     const fgs = productIds.map((pid) => allProducts.find((pr) => pr.id === pid)).filter(Boolean);
     if (!fgs.length) return null; // ไม่เหลือ FG → ไม่แตะหมวด
-    const code = fgs.some((f) => f.categoryCode === "01-002") ? "01-002" : (fgs[0].categoryCode || "");
+    const exciseFg = fgs.find((f) => isExciseCategory(f.categoryCode || "", categories));
+    const code = exciseFg ? (exciseFg.categoryCode || "") : (fgs[0].categoryCode || "");
     const [mc = "", tc = ""] = code ? code.split("-") : [];
     const sub = categories.find((c) => c.mainCategoryCode === mc && c.typeCode === tc)?.nameTh || "";
     return { productMainCategory: code, productSubCategory: sub };
   };
-  // ยืนยันก่อน resync ถ้าหมวดที่ derive พลิกสถานะสรรพสามิต (01-002)
+  // ยืนยันก่อน resync ถ้าหมวดที่ derive พลิกสถานะสรรพสามิต (flag isExcise)
   const confirmExciseFlip = (cat) => {
     if (!cat) return true;
-    const was = (data.productMainCategory || "") === "01-002";
-    const now = (cat.productMainCategory || "") === "01-002";
+    const was = isExciseCategory(data.productMainCategory || "", categories);
+    const now = isExciseCategory(cat.productMainCategory || "", categories);
     if (was === now) return true;
     return askConfirm({
       title: "ยืนยันการปรับขั้นตอนสรรพสามิต",
       message: now
-        ? "สินค้าที่ผูกเข้าข่ายสรรพสามิต (01-002) — ระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ ดำเนินการต่อหรือไม่?"
+        ? "สินค้าที่ผูกเข้าข่ายสรรพสามิต — ระบบจะเพิ่มขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ ดำเนินการต่อหรือไม่?"
         : "สินค้าที่ผูกไม่เข้าข่ายสรรพสามิตแล้ว — ระบบจะลบขั้นตอนสรรพสามิตและคำนวณกำหนดการใหม่ ดำเนินการต่อหรือไม่?",
       confirmLabel: "ดำเนินการต่อ",
       danger: false,
@@ -720,10 +723,10 @@ export default function ProjectDetailPage() {
   const canAddTimelineTask = canEdit && timelineDealFilters.length <= 1;
   const linkedIds = new Set((p.projectProducts || []).map((x) => x.productId));
   // แนะนำสร้างทะเบียนภาษีเฉพาะเมื่อ (1) ดีลที่ผูก won แล้ว (โครงการที่ไม่ได้มาจากดีล
-  // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต 01-002 อย่างน้อยหนึ่งตัว — ไม่งั้นไม่ต้องมี
-  // ทะเบียนภาษี.
+  // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต (ติ๊ก isExcise) อย่างน้อยหนึ่งตัว —
+  // ไม่งั้นไม่ต้องมีทะเบียนภาษี.
   const dealWon = !p.dealId || ["won", "in_project"].includes(p.dealStage);
-  const hasExciseFg = (p.projectProducts || []).some((x) => (x.product?.categoryCode || "") === "01-002");
+  const hasExciseFg = (p.projectProducts || []).some((x) => isExciseCategory(x.product?.categoryCode || "", categories));
   const recommendTaxReg = dealWon && hasExciseFg;
   const formPhases = [...new Set(processedTasks.map((t) => t.phase).filter(Boolean))];
 
@@ -978,7 +981,7 @@ export default function ProjectDetailPage() {
                   : (p.revStale
                     ? `แก้ไขหลังออก Rev. ${p.currentRev} — เนื้อหาปัจจุบันต่างจากเวอร์ชันทางการ กรุณาออก Rev ใหม่เพื่อยืนยัน`
                     : `เวอร์ชันเอกสารล่าสุด: Rev. ${p.currentRev}`)}
-                style={{ whiteSpace: "nowrap", ...(p.currentRev != null && p.revStale ? { borderColor: "var(--warning, #c79a3a)", color: "var(--warning, #c79a3a)" } : {}) }}
+                style={{ whiteSpace: "nowrap", ...(p.currentRev != null && p.revStale ? { borderColor: "var(--amber)", color: "var(--amber)" } : {}) }}
               >
                 {p.currentRev == null ? "ฉบับร่าง" : (p.revStale ? `Rev. ${p.currentRev} • แก้แล้ว` : `Rev. ${p.currentRev}`)}
               </span>
@@ -993,7 +996,7 @@ export default function ProjectDetailPage() {
                   disabled={creatingTaxReg || !(p.projectProducts || []).length}
                   className="btn"
                   style={{ whiteSpace: "nowrap" }}
-                  title="สร้างทะเบียนภาษี draft จาก FG หมวดสรรพสามิต (01-002) ในโครงการนี้"
+                  title="สร้างทะเบียนภาษี draft จาก FG หมวดสรรพสามิตในโครงการนี้"
                 >
                   <ShieldCheck size={14} /> {creatingTaxReg ? "กำลังสร้าง..." : "สร้างทะเบียนภาษี"}
                 </button>
@@ -1080,7 +1083,7 @@ export default function ProjectDetailPage() {
             className="glass-panel"
             style={{ padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
           >
-            <span style={{ background: "var(--accent)", color: "#fff", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
+            <span style={{ background: "var(--accent)", color: "var(--accent-fg)", padding: 8, borderRadius: 10, display: "flex", flexShrink: 0 }}>
               <GanttChart size={18} />
             </span>
             <div style={{ minWidth: 160 }}>
@@ -1391,7 +1394,7 @@ export default function ProjectDetailPage() {
                     const mDone = m.status === "Completed";
                     const mProg = m.status === "In Progress";
                     const color = mDone ? "var(--green)" : (mProg ? "var(--accent)" : "var(--border-strong)");
-                    const icon = mDone ? <Check size={14} strokeWidth={3} color="#fff" /> : (mProg ? <Clock size={14} strokeWidth={2.5} color="#fff" /> : <span style={{ fontSize: "10px", color: "var(--text-3)" }}>{m.displayNumber || (i + 1)}</span>);
+                    const icon = mDone ? <Check size={14} strokeWidth={3} color="var(--accent-fg)" /> : (mProg ? <Clock size={14} strokeWidth={2.5} color="var(--accent-fg)" /> : <span style={{ fontSize: "10px", color: "var(--text-3)" }}>{m.displayNumber || (i + 1)}</span>);
                     return (
                       <Fragment key={m.id}>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", opacity: mDone || mProg ? 1 : 0.6 }}>
@@ -1470,7 +1473,7 @@ export default function ProjectDetailPage() {
                       {showConnector && <div className="pm-task-connector" style={{ background: isCompleted ? "var(--green)" : "var(--border)" }} />}
 
                       <div style={{ zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                        <button onClick={() => canEdit && handleToggleTask(task)} disabled={!canEdit || task.status === "Pending" || isEditing} style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--bg)"), border: `2px solid ${isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--border)")}`, color: "#fff", cursor: !canEdit || task.status === "Pending" || isEditing ? "not-allowed" : "pointer", padding: 0, boxShadow: isInProgress ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none", transition: "all 0.2s" }}>
+                        <button onClick={() => canEdit && handleToggleTask(task)} disabled={!canEdit || task.status === "Pending" || isEditing} style={{ width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--bg)"), border: `2px solid ${isCompleted ? "var(--green)" : (isInProgress ? "var(--accent)" : "var(--border)")}`, color: "var(--accent-fg)", cursor: !canEdit || task.status === "Pending" || isEditing ? "not-allowed" : "pointer", padding: 0, boxShadow: isInProgress ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none", transition: "all 0.2s" }}>
                           {isCompleted ? <Check size={16} strokeWidth={3} /> : (isInProgress ? <Clock size={15} strokeWidth={2.5} /> : <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-3)" }}>{task.displayNumber}</span>)}
                         </button>
                       </div>

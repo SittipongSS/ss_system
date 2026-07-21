@@ -12,7 +12,7 @@ import { rollupDeals } from '@/lib/sales/projectRollup';
 import { sortDealsByOrder } from '@/lib/pm/dealOrder';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { canApproveProjectClose } from '@/lib/pm/projectClose';
-import { activeProductTypeError } from '@/lib/master/productTypes';
+import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -175,15 +175,23 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return fail(error.message, 500);
   }
 
-  // ข้อ 2: หมวดสินค้าพลิกสถานะสรรพสามิต (01-002) → ปรับชุดขั้นตอนแบบ incremental
-  // (เพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต, คงความคืบหน้าเดิม + ขั้นตอนที่เพิ่มเอง).
+  // ข้อ 2: หมวดสินค้าพลิกสถานะสรรพสามิต (product_types.isExcise — mig 0131 เลิก
+  // hardcode 01-002) → ปรับชุดขั้นตอนแบบ incremental (เพิ่ม/ลบเฉพาะขั้นตอน
+  // สรรพสามิต, คงความคืบหน้าเดิม + ขั้นตอนที่เพิ่มเอง).
   const oldCat = project.productMainCategory || '';
   const newCat = updates.productMainCategory !== undefined ? (updates.productMainCategory || '') : oldCat;
+  let newCatFlags = null;
+  let exciseFlipped = false;
+  if (newCat !== oldCat) {
+    const [oldFlags, nextFlags] = await Promise.all([categoryFlagsOf(oldCat), categoryFlagsOf(newCat)]);
+    newCatFlags = nextFlags;
+    exciseFlipped = oldFlags.isExcise !== nextFlags.isExcise;
+  }
   // วันเริ่มเปลี่ยน → คำนวณ timeline ใหม่ (forward จากวันเริ่ม). dueDate เป็นแค่เป้าหมาย
   // (โชว์เป็นหมุดบน Gantt) ไม่ขับการคำนวณแล้ว — เปลี่ยน dueDate จึงไม่ต้องเลื่อนขั้นตอน.
   const dateChanged =
     ('startDate' in updates && (updates.startDate || null) !== (project.startDate || null));
-  if ((oldCat === '01-002') !== (newCat === '01-002')) {
+  if (exciseFlipped) {
     setHolidays([...(await holidaySet())]);
     const { data: existing } = await supabase
       .from('project_tasks').select('*').eq('projectId', id).order('stepOrder', { ascending: true });
@@ -212,6 +220,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     } else if (versionIds.length > 1) {
       return conflict('ขั้นตอนของ segment นี้อ้างหลาย Template version กรุณาตรวจข้อมูลก่อน resync');
     }
+    // ธงของหมวดใหม่ — ให้ template rule แบบ token flag:excise (mig 0131) กรองถูกชุด
+    templateOptions.categoryFlags = newCatFlags;
     const { templateRows, customRows, toDeleteIds, existingIds } = mergeTemplateTasks(data, existing || [], templateOptions);
 
     if (toDeleteIds.length) await supabase.from('project_tasks').delete().in('id', toDeleteIds);
@@ -279,9 +289,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok({ ...data, ...(productWarning ? { productWarning } : {}) });
 });
 
-// DELETE /api/pm/projects/[id] — Sales เป็นแม่ (แผน merge M3): โครงการที่ผูกกับ
-// งานขายต้องลบที่หน้า "บริหารงานขาย" ที่เดียว (ลบทั้งสายพร้อมกัน). ที่นี่รับเฉพาะ
-// โครงการ "กำพร้า" (ยังไม่ผูกดีล — ข้อมูล PM เก่าก่อน backfill เฟส 5) เท่านั้น.
+// DELETE /api/pm/projects/[id] — เฟส B โครงการเป็นเอนทิตีอิสระ (มีได้หลายดีล และ
+// ลบดีลไม่ลบโครงการ). รับลบเฉพาะโครงการ "กำพร้า" (0 ดีล) — ไม่ว่าจะเป็นข้อมูล PM เก่า
+// หรือโครงการที่ดีลถูกลบออกไปหมดแล้ว. โครงการที่ยังผูกดีลต้องลบดีลออกก่อน (กันดีลกำพร้า).
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id: idOrCode } = await ctx.params;
 
@@ -297,13 +307,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // projectId→null ผ่าน FK SET NULL — ไม่กำพร้า) + ลบทะเบียนสรรพสามิตพ่วง.
   const force = isForceRequest(req) && canForceDelete(user);
 
-  // ผูกดีลอยู่ (กี่ใบก็ตาม — เฟส B หลายดีลต่อโครงการ) → ปฏิเสธ ให้ไปลบที่ฝั่งงานขาย
+  // ผูกดีลอยู่ (กี่ใบก็ตาม — เฟส B หลายดีลต่อโครงการ) → ปฏิเสธ ให้ไปลบดีลก่อน
   // กันการลบ project ทิ้งไว้ให้ดีลกำพร้า. โครงการกำพร้า (0 ดีล) เท่านั้นที่ลบตรงนี้ได้.
+  // การลบดีล "ไม่ลบโครงการให้อัตโนมัติ" — ลบดีลครบแล้วโครงการจะว่าง แล้วค่อยลบที่นี่.
   if (!force) {
     const { count: linkedCount } = await supabase
       .from('sales_deals').select('id', { count: 'exact', head: true }).eq('projectId', id);
     if ((linkedCount || 0) > 0) {
-      return conflict('โครงการนี้ผูกกับดีลอยู่ — ลบดีลที่หน้า "บริหารงานขาย" ก่อน (ดีลสุดท้ายจะลบโครงการพ่วงไปด้วย)');
+      return conflict('โครงการนี้ผูกกับดีลอยู่ — ลบดีลที่ผูกทั้งหมดที่หน้า "บริหารงานขาย" ก่อน แล้วจึงลบโครงการที่นี่ได้ (การลบดีลจะไม่ลบโครงการให้อัตโนมัติ)');
     }
   }
 

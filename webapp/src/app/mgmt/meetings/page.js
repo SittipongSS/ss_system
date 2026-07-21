@@ -8,6 +8,7 @@ import MeetingFormModal from "@/components/mgmt/MeetingFormModal";
 import MeetingDrawer from "@/components/mgmt/MeetingDrawer";
 import { MEETING_FOLLOWUP_LABELS, toBuddhistYear } from "@/lib/mgmt/constants";
 import { cachedFetchJson } from "@/lib/apiCache";
+import SkeletonRows from "@/components/ui/Skeleton";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -77,7 +78,7 @@ export default function MgmtMeetingsPage() {
       </div>
 
       {loading ? (
-        <div style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>กำลังโหลด...</div>
+        <SkeletonRows rows={6} />
       ) : meetings.length === 0 ? (
         <div className="glass-panel" style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีการประชุมในปีนี้</div>
       ) : (

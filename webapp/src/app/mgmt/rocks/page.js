@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Target, Plus, Trash2, X, Check } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
 import { toBuddhistYear } from "@/lib/mgmt/constants";
+import SkeletonRows from "@/components/ui/Skeleton";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -148,7 +149,7 @@ export default function MgmtRocksPage() {
       )}
 
       {loading ? (
-        <div style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>กำลังโหลด...</div>
+        <SkeletonRows rows={6} />
       ) : rows.length === 0 ? (
         <div className="glass-panel" style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีข้อมูลในปีนี้ — เพิ่มแผนกเพื่อเริ่ม</div>
       ) : (

@@ -7,7 +7,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { generateProjectCode } from '@/lib/pm/projectsRepo';
-import { activeProductTypeError } from '@/lib/master/productTypes';
+import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
@@ -151,6 +151,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       await supabase.from('projects').delete().eq('id', project.id);
       return fail(templateError.message || 'โหลด Workflow Template ไม่สำเร็จ', templateError instanceof WorkflowTemplateError ? templateError.status : 500);
     }
+    // ขั้นสรรพสามิตใน template ผูก token flag:excise (mig 0131) → ส่งธงของหมวดโครงการ
+    templateOptions.categoryFlags = await categoryFlagsOf(project.productMainCategory);
     const tasks = applyAutoStatuses(buildProjectTasks(project, project.id, deal.id, templateOptions));
     // 0 แถว = template หลังกรองหมวดไม่เหลือขั้นตอน → กันสร้างโครงการเปล่าเงียบ ๆ:
     // ถอนโครงการที่เพิ่งสร้าง (ยังไม่ผูก FG/ดีล) แล้วแจ้งสาเหตุ (เหมือน timeline route)

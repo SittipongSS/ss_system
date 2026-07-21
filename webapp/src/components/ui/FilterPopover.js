@@ -94,7 +94,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
         <SlidersHorizontal size={14} />
         {label}
         {active && (
-          <span className="chip" style={{ background: "var(--accent)", color: "#fff", borderColor: "transparent", minWidth: "18px", justifyContent: "center" }}>{count}</span>
+          <span className="chip" style={{ background: "var(--accent)", color: "var(--accent-fg)", borderColor: "transparent", minWidth: "18px", justifyContent: "center" }}>{count}</span>
         )}
         <ChevronDown size={14} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
       </button>
@@ -133,7 +133,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                   >
                     {g.icon && <g.icon size={14} style={{ flexShrink: 0 }} />}
                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</span>
-                    {n > 0 && <span className="chip" style={{ background: "var(--accent)", color: "#fff", borderColor: "transparent", minWidth: "18px", justifyContent: "center" }}>{n}</span>}
+                    {n > 0 && <span className="chip" style={{ background: "var(--accent)", color: "var(--accent-fg)", borderColor: "transparent", minWidth: "18px", justifyContent: "center" }}>{n}</span>}
                   </button>
                 );
               })}
@@ -163,7 +163,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                       }}
                     >
                       <span style={{ width: "16px", height: "16px", borderRadius: round ? "50%" : "4px", border: checked ? "none" : "1.5px solid var(--border)", background: checked ? "var(--accent)" : "transparent", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {checked && (round ? <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fff" }} /> : <Check size={12} color="#fff" strokeWidth={3} />)}
+                        {checked && (round ? <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--accent-fg)" }} /> : <Check size={12} color="var(--accent-fg)" strokeWidth={3} />)}
                       </span>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opt.label}</span>
                     </button>

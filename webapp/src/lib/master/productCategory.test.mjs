@@ -28,6 +28,31 @@ test('product category requires fixed codes and at least one item name', () => {
   assert.ok(errors.includes('กรุณาระบุชื่อหมวดสินค้าอย่างน้อย 1 ภาษา'));
 });
 
+test('ช่องติ๊กกำกับดูแล (mig 0131): default false, รับเฉพาะ boolean, partial ไม่แตะค่าเดิม', () => {
+  // สร้างใหม่ไม่ส่งธง → default false ทั้งคู่ (ตรงกับ DB DEFAULT false)
+  const created = normalizeProductCategoryInput({
+    mainCategoryCode: '05', typeCode: '007', mainCategoryName: 'บริการ', nameTh: 'ค่าบริการ',
+  });
+  assert.equal(created.value.isExcise, false);
+  assert.equal(created.value.requiresFdaNotice, false);
+
+  const flagged = normalizeProductCategoryInput({
+    mainCategoryCode: '05', typeCode: '007', mainCategoryName: 'บริการ', nameTh: 'ค่าบริการ',
+    isExcise: true, requiresFdaNotice: true,
+  });
+  assert.equal(flagged.value.isExcise, true);
+  assert.equal(flagged.value.requiresFdaNotice, true);
+
+  // partial (PATCH) ไม่ส่งธง → ไม่อยู่ใน value (ไม่ทับค่าเดิมใน DB)
+  const partial = normalizeProductCategoryInput({ nameTh: 'ชื่อใหม่' }, { partial: true });
+  assert.ok(!('isExcise' in partial.value));
+  assert.ok(!('requiresFdaNotice' in partial.value));
+
+  // ค่าที่ไม่ใช่ boolean ถูกปฏิเสธ — กัน "true"/1 หลุดมาจาก client อื่น
+  const invalid = normalizeProductCategoryInput({ isExcise: 'true' }, { partial: true });
+  assert.ok(invalid.errors.some((error) => error.includes('isExcise')));
+});
+
 test('inactive category remains selectable only for its current historic value', () => {
   const row = { mainCategoryCode: '01', typeCode: '002', isActive: false };
   assert.equal(isProductCategorySelectable(row), false);

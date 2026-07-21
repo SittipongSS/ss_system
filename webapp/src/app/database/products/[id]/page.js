@@ -19,14 +19,15 @@ import { brandThList, brandBoth } from "@/lib/master/brands";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
-import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
+import { categoryOf, categoryFlags } from "@/lib/master/categoryOf";
+import { apiCache } from "@/lib/apiCache";
 
 // หน้า detail สินค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
 //   - แถบหัว = ตัวตน (ชื่อ/FG/แบรนด์/สร้างเมื่อ) + ตัวเลขความสัมพันธ์ (โครงการ/ใบสั่งซื้อ/ภาษี)
 //   - คอลัมน์หลักซ้าย = การ์ดรายละเอียดสเปค "พระเอกของหน้า" ตามด้วยต้นทุน/ใบสั่งซื้อ/
 //     โครงการ/เอกสาร — ไม่มีแถบ KPI (StatCards) กับแถวการ์ดโครงการ (ContextCard) ที่
 //     เคยโชว์ข้อมูลซ้ำ 2-3 รอบอีกแล้ว
-//   - rail ขวา = ของประกอบด้านภาษี (breakdown + ทะเบียน) — เฉพาะหมวด 01-002
+//   - rail ขวา = ของประกอบด้านภาษี (breakdown + ทะเบียน) — เฉพาะหมวดสรรพสามิต (ธง isExcise)
 export default function ProductDetails() {
   const params = useParams();
   const router = useRouter();
@@ -48,6 +49,8 @@ export default function ProductDetails() {
   const canViewTax = useCan("history:view");
 
   const [product, setProduct] = useState(null);
+  // แถวหมวดสินค้า — ใช้ตัดสินธงสรรพสามิต/จดแจ้ง อย. ของหมวด (mig 0131)
+  const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
   const [regs, setRegs] = useState([]);
   const [orders, setOrders] = useState([]);     // orders this product appears in (tax-gated)
   const [projects, setProjects] = useState([]); // PM projects this product is in (pm-gated)
@@ -89,6 +92,11 @@ export default function ProductDetails() {
 
   useEffect(() => {
     if (id) fetchProduct();
+    // หมวดสินค้า — เอาธง isExcise/requiresFdaNotice มาคุมการ์ดภาษี + ป้าย (mig 0131)
+    fetch("/api/master/product-types")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { apiCache.set("/api/master/product-types", d || []); setProductTypes(d || []); })
+      .catch(() => {});
     // แบรนด์เป็นของลูกค้า (customers.brands[]) — ใช้เป็นรายการแนะนำตอนแก้แบรนด์สินค้า
     fetch("/api/master/customers")
       .then((r) => (r.ok ? r.json() : []))
@@ -170,9 +178,11 @@ export default function ProductDetails() {
   }
 
   const isExempt = product.isExciseTaxable === false;
-  // การ์ดฝั่งภาษี (Excise breakdown + ทะเบียน) และต้นทุนโรงงาน คิดเฉพาะหมวด 01-002
-  // (พิกัดน้ำหอม — มติผู้ใช้ 2026-07-19); หมวดอื่นไม่เข้าข่ายสรรพสามิต ไม่โชว์เลย
-  const isExciseCat = isExciseCategory(product.categoryCode || categoryOf(product.fgCode));
+  // การ์ดฝั่งภาษี (Excise breakdown + ทะเบียน) และต้นทุนโรงงาน คิดเฉพาะหมวดที่ติ๊ก
+  // "เสียภาษีสรรพสามิต" (product_types.isExcise, mig 0131 — มติผู้ใช้ 2026-07-19);
+  // หมวดอื่นไม่เข้าข่ายสรรพสามิต ไม่โชว์เลย
+  const catFlags = categoryFlags(product.categoryCode || categoryOf(product.fgCode), productTypes);
+  const isExciseCat = catFlags.isExcise;
 
   return (
     <>
@@ -205,7 +215,12 @@ export default function ProductDetails() {
         eyebrow={`PRODUCT MASTER · ${product.fgCode || "NO FG CODE"}`}
         title={product.productDescriptionEn || product.productDescription}
         description={<><span>{product.productDescriptionEn && product.productDescription ? product.productDescription : "ไม่มีชื่อภาษาไทย"}</span><span>แบรนด์ {brandBoth(product.brandName, product.brandNameEn) || "-"}</span><span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
-        badges={<SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />}
+        badges={<>
+          <SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />
+          {isExciseCat && <SalesStateBadge label="ภาษีสรรพสามิต" color="var(--amber)" />}
+          {/* เฟสแรกของ "ต้องจดแจ้ง อย." (มติ 2026-07-20): ป้าย + เตือนตอนสร้าง เท่านั้น */}
+          {catFlags.requiresFdaNotice && <SalesStateBadge label="ต้องจดแจ้ง อย." color="var(--blue)" />}
+        </>}
         facts={[
           // ตัวเลข "ความสัมพันธ์" เท่านั้น — ฟิลด์ตัวตน (ปริมาตร/ราคา/หมวด) อยู่บ้านเดียว
           // ที่การ์ดสเปคด้านล่าง ไม่โชว์ซ้ำบนแถบหัวอีก
@@ -283,7 +298,7 @@ export default function ProductDetails() {
             </div>
           </DetailCard>
 
-          {/* Cost breakdown — เฉพาะหมวด 01-002 (มติ 2026-07-19); สิทธิ์เดิม: SA เห็น
+          {/* Cost breakdown — เฉพาะหมวดสรรพสามิต (ธง isExcise — มติ 2026-07-19); สิทธิ์เดิม: SA เห็น
               costPrice, LG + admin เห็น breakdown + กำไร. แผนกอื่นไม่เห็นเลย. */}
           {canSeeCost && isExciseCat && (
           <div className="glass-panel p-[20px]">
@@ -397,7 +412,7 @@ export default function ProductDetails() {
           )}
         </div>
 
-        {/* rail ขวา: ของประกอบด้านภาษี — เฉพาะหมวด 01-002 + tax-gated */}
+        {/* rail ขวา: ของประกอบด้านภาษี — เฉพาะหมวดสรรพสามิต (ธง isExcise) + tax-gated */}
         {canViewTax && isExciseCat && (
         <div className="space-y-6">
           <div className="glass-panel p-[20px]">
@@ -407,7 +422,7 @@ export default function ProductDetails() {
             {isExempt ? (
               <div className="bg-[var(--green-soft)] p-4 rounded-xl border border-[var(--border)] text-center text-xs">
                 <span className="font-bold text-[var(--green)] block text-sm">ได้รับการยกเว้นภาษีสรรพสามิต</span>
-                <p className="text-[10px] text-[var(--text-3)] mt-1">สินค้านี้ไม่เข้าข่ายพิกัด 01-002</p>
+                <p className="text-[10px] text-[var(--text-3)] mt-1">สินค้านี้ได้รับยกเว้น ไม่ต้องชำระภาษีสรรพสามิต</p>
               </div>
             ) : (
               <div className="space-y-4 text-xs">

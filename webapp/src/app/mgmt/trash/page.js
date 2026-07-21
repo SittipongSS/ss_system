@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, RotateCcw, ListTodo, Users, Target } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
+import SkeletonRows from "@/components/ui/Skeleton";
 import { fmtDateTime } from "@/lib/format";
 
 const fmt = (d) => (d ? fmtDateTime(d) : "");
@@ -77,7 +78,7 @@ export default function MgmtTrashPage() {
       </div>
 
       {loading ? (
-        <div style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>กำลังโหลด...</div>
+        <SkeletonRows rows={6} />
       ) : (
         <>
           <Section title="รายการงาน" icon={ListTodo} entity="task" items={data.tasks} label={(it) => it.title} />
