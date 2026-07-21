@@ -35,8 +35,8 @@ function documentHeader(model) {
         <div class="englishTitle">${val(model.standard.titleEn)}</div>
         <dl>
           <div><dt>เลขที่</dt><dd>${val(model.document.number)}</dd></div>
-          <div><dt>วันที่</dt><dd>${val(model.document.issueDate)}</dd></div>
-          <div><dt>ยืนราคาถึง</dt><dd>${val(model.document.validUntil)}</dd></div>
+          <div><dt>${esc(model.document.dateLabel)}</dt><dd>${val(model.document.dateValue)}</dd></div>
+          <div><dt>${esc(model.document.secondaryLabel)}</dt><dd>${val(model.document.secondaryValue)}</dd></div>
         </dl>
       </div>
     </header>`;
@@ -58,10 +58,7 @@ function partyGrid(model) {
       <div>
         <h2>ข้อมูลอ้างอิง <span>/ REFERENCE</span></h2>
         <dl>
-          <div><dt>ดีล</dt><dd>${val(model.references.deal)}</dd></div>
-          <div><dt>โครงการ</dt><dd>${val(model.references.project)}</dd></div>
-          <div><dt>ผู้เสนอราคา</dt><dd>${val(model.references.salesOwner)}</dd></div>
-          ${model.references.salesOwnerPhone ? `<div><dt>โทร</dt><dd>${esc(model.references.salesOwnerPhone)}</dd></div>` : ''}
+          ${(model.referenceRows || []).map((r) => `<div><dt>${esc(r.label)}</dt><dd>${val(r.value)}</dd></div>`).join('')}
         </dl>
       </div>
     </section>`;
@@ -151,35 +148,26 @@ function sectionLead(kind, documentNumber) {
       </div>`;
 }
 
-function signatures(model) {
-  const approver = model.signature
+function signBox(signer) {
+  const body = signer.esignature
     ? `
         <div class="signaturePreview" aria-label="ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์">ลายเซ็นอิเล็กทรอนิกส์</div>
-        <strong>${val(model.signature.signerName)}</strong>
-        <p>${val(model.signature.signerRole)}${model.signature.signedAt ? ` · ${esc(model.signature.signedAt)}` : ''}</p>
-        ${model.signature.evidenceId ? `<small>Evidence ${esc(model.signature.evidenceId)}</small>` : ''}`
+        <strong>${val(signer.esignature.signerName)}</strong>
+        <p>${val(signer.esignature.signerRole)}${signer.esignature.signedAt ? ` · ${esc(signer.esignature.signedAt)}` : ''}</p>
+        ${signer.esignature.evidenceId ? `<small>Evidence ${esc(signer.esignature.evidenceId)}</small>` : ''}`
     : `
         <div class="signatureSpace">ลงชื่อ</div>
-        <strong>(____________________________)</strong>
+        <strong>${signer.name ? `(${esc(signer.name)})` : '(____________________________)'}</strong>
         <p>วันที่ ______ / ______ / ______</p>`;
   return `
-      <section class="signatures" aria-label="ส่วนลงนาม">
-        <div>
-          <h2>ผู้เสนอราคา <span>พนักงานขาย</span></h2>
-          <div class="signatureSpace">ลงชื่อ</div>
-          <strong>(${val(model.references.salesOwner)})</strong>
-          <p>วันที่ ______ / ______ / ______</p>
-        </div>
-        <div class="${model.signature ? 'signed' : ''}">
-          <h2>ผู้อนุมัติ <span>Authorized signature</span></h2>${approver}
-        </div>
-        <div>
-          <h2>ผู้ยืนยันคำสั่งซื้อ <span>ลูกค้า</span></h2>
-          <div class="signatureSpace">ลงชื่อ</div>
-          <strong>(____________________________)</strong>
-          <p>วันที่ ______ / ______ / ______</p>
-        </div>
-      </section>`;
+        <div class="${signer.esignature ? 'signed' : ''}">
+          <h2>${esc(signer.label)}${signer.role ? ` <span>${esc(signer.role)}</span>` : ''}</h2>${body}
+        </div>`;
+}
+
+function signatures(model) {
+  return `
+      <section class="signatures" aria-label="ส่วนลงนาม">${(model.signers || []).map(signBox).join('')}</section>`;
 }
 
 function documentFooter(model, pageNumber, pageCount) {
