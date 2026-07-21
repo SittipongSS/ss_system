@@ -150,9 +150,14 @@ function sectionLead(kind, documentNumber) {
 }
 
 function signBox(signer) {
+  // มีรูปลายเซ็นจริง (data URI base64) → แสดงรูป; ไม่มี → กล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์"
+  // (data URI base64 ไม่มีอักขระ " ‹ › & จึงใส่ใน src ได้ตรง ๆ ไม่ต้อง esc)
+  const esigMark = signer.esignature?.imageDataUri
+    ? `<img class="signatureImage" src="${signer.esignature.imageDataUri}" alt="ลายเซ็น ${esc(signer.esignature.signerName || '')}" />`
+    : '<div class="signaturePreview" aria-label="ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์">ลายเซ็นอิเล็กทรอนิกส์</div>';
   const body = signer.esignature
     ? `
-        <div class="signaturePreview" aria-label="ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์">ลายเซ็นอิเล็กทรอนิกส์</div>
+        ${esigMark}
         <strong>${val(signer.esignature.signerName)}</strong>
         <p>${val(signer.esignature.signerRole)}${signer.esignature.signedAt ? ` · ${esc(signer.esignature.signedAt)}` : ''}</p>
         ${signer.esignature.evidenceId ? `<small>Evidence ${esc(signer.esignature.evidenceId)}</small>` : ''}`
@@ -335,6 +340,7 @@ const DOCUMENT_CSS = `
   .signatureSpace, .signaturePreview { display: grid; height: 12mm; color: var(--doc-line-strong); font-size: 7pt; }
   .signatureSpace { box-sizing: border-box; place-items: end start; padding: 0 1mm .8mm; }
   .signaturePreview { place-items: center; color: var(--doc-navy); font-size: 9pt; font-weight: 600; font-style: italic; }
+  .signatureImage { display: block; height: 12mm; max-width: 100%; margin: 0 auto; object-fit: contain; }
   .signatures strong { display: block; font-size: 7.8pt; }
   .signatures p { margin: .5mm 0 0; color: var(--doc-muted); font-size: 6.8pt; }
   .signatures small { display: block; margin-top: .5mm; color: var(--doc-muted); font-size: 6.3pt; }

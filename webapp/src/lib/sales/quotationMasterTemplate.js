@@ -52,6 +52,10 @@ const DEFAULT_STANDARD = Object.freeze({
   accentKey: 'quotation-warm',
 });
 
+// รูปลายเซ็นตัวอย่างสำหรับหน้า preview เท่านั้น (SVG ลายมือ จำลอง) — ใบจริงฝัง PNG จริง
+// ที่ผู้อนุมัติอัปโหลด (Phase 5B) ผ่าน options.approverSignatureImage ตอนตรึง snapshot
+const PREVIEW_SIGNATURE_IMAGE = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20320%20110'%3E%3Cpath%20d='M12%2078%20C28%2040%2040%2030%2046%2044%20C52%2058%2040%2084%2034%2086%20C28%2088%2034%2060%2054%2052%20C74%2044%2086%2066%2078%2078%20C70%2090%2064%2070%2084%2054%20C104%2038%20120%2044%20116%2062%20C112%2080%20100%2082%20104%2068%20C108%2054%20128%2044%20150%2052%20C140%2066%20132%2078%20142%2078%20C160%2078%20166%2040%20186%2034%20C206%2028%20196%2074%20190%2082%20M182%2060%20C210%2054%20236%2052%20262%2058%20C240%2062%20226%2070%20236%2072%20C256%2074%20286%2058%20306%2040'%20fill='none'%20stroke='%231a2b4a'%20stroke-width='3.2'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E";
+
 const BASE_QUOTE = Object.freeze({
   templateVersion: QUOTATION_MASTER_TEMPLATE_VERSION,
   locale: 'th-TH',
@@ -96,6 +100,7 @@ const BASE_QUOTE = Object.freeze({
     signedAt: '20/07/2569 14:30',
     evidenceId: 'DSE-PREVIEW-0001',
     fingerprint: 'sha256:preview-only-not-production',
+    imageDataUri: PREVIEW_SIGNATURE_IMAGE,
   },
 });
 
@@ -690,6 +695,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       signerRole: quote.approvedByRole || 'ผู้อนุมัติ',
       signedAt: quote.approvedAt ? fmtDate(quote.approvedAt) : '',
       evidenceId: quote.signatureEvidenceId || '',
+      // รูปลายเซ็นจริงของผู้อนุมัติ (ดึงจาก signature evidence ตอนตรึง snapshot ฝั่ง server)
+      // ไม่มี → signBox หล่นไปแสดงกล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์" แทน
+      imageDataUri: options.approverSignatureImage || null,
     }
     : null;
 

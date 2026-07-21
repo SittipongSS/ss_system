@@ -68,6 +68,21 @@ test('V4 doc: อนุมัติแล้วไม่มีลายน้ำ
   assert.ok(html.includes('ผู้อนุมัติ'), 'มีชื่อผู้อนุมัติ');
 });
 
+test('V4 doc: มีรูปลายเซ็นผู้อนุมัติ (imageDataUri) → ฝัง <img>, ไม่ใช้กล่องข้อความ', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), { approverSignatureImage: png });
+  assert.match(html, /<img class="signatureImage" src="data:image\/png;base64,/);
+  assert.ok(html.includes(png), 'ฝัง data URI ของรูปลายเซ็นจริง');
+  // มีรูปแล้วไม่ต้องมีกล่องข้อความ placeholder ในเอกสาร
+  assert.doesNotMatch(html, /ลายเซ็นอิเล็กทรอนิกส์/);
+});
+
+test('V4 doc: ไม่มีรูปลายเซ็น → fallback กล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์" (ไม่มี <img>)', () => {
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {});
+  assert.match(html, /ลายเซ็นอิเล็กทรอนิกส์/);
+  assert.doesNotMatch(html, /class="signatureImage"/);
+});
+
 test('V4 doc: ฉบับร่าง (pending) ขึ้นลายน้ำ "ฉบับร่าง"', () => {
   const q = { ...baseQuote([lineOf('1')]), approvalStatus: 'pending', approvedByName: null };
   const html = buildQuotationMasterHTML(q, {});
