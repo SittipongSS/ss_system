@@ -492,7 +492,7 @@ function toSalesOrderPreviewModel(model, state) {
   const qtNumber = model.document.number;
   return {
     ...model,
-    accentKey: 'teal',
+    accentKey: 'steel',
     standard: { titleTh: 'ใบสั่งขาย', titleEn: form.title },
     formLine: documentFormLine(form),
     document: {

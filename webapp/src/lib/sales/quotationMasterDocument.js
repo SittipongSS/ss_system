@@ -315,7 +315,11 @@ const DOCUMENT_CSS = `
   .installmentSection { margin-top: 3.5mm; break-inside: avoid; }
   .installmentTable th { padding: 1.5mm 1.2mm; color: var(--doc-navy); background: var(--doc-neutral-soft); border: 1px solid var(--doc-line); font-size: 7.8pt; }
   .installmentTable td { padding: 1.5mm 1.2mm; vertical-align: top; border: 1px solid var(--doc-line); font-size: 7.8pt; }
-  .installmentTable td:first-child { width: 45mm; }
+  /* ช่องรายละเอียด (คอลัมน์แรก) กว้างสุด: ให้ width:100% ดึงพื้นที่ที่เหลือทั้งหมด (auto layout
+     ไม่ยุบต่ำกว่าเนื้อหา จึงไม่พังบนจอแคบ) ส่วน % แคบ (ไม่เกิน 100%) + จำนวนเงินพอดีตัวเลข */
+  .installmentTable th:first-child, .installmentTable td:first-child { width: 100%; }
+  .installmentTable th:nth-child(2), .installmentTable td:nth-child(2) { width: 14mm; white-space: nowrap; }
+  .installmentTable th:nth-child(3), .installmentTable td:nth-child(3) { width: 30mm; white-space: nowrap; }
   .installmentTable span { display: block; color: var(--doc-muted); font-size: 7pt; }
   .termsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5mm; margin-top: 3mm; break-inside: avoid; }
   .termsGrid > div { padding: 2.2mm 2.6mm; background: var(--doc-neutral-soft); border-top: 1px solid var(--doc-line-strong); }
@@ -385,6 +389,7 @@ const DOCUMENT_CSS = `
 // (self-contained ใช้ตัวแปร theme ของแอปไม่ได้). --doc-accent คุมสีชื่อเอกสาร (h1).
 export const DOCUMENT_ACCENT_THEMES = Object.freeze({
   terracotta: { accent: '#ad5d43', soft: '#f5ebe7', watermark: 'rgb(173 93 67 / 14%)' },
+  steel: { accent: '#1e6091', soft: '#e6eef4', watermark: 'rgb(30 96 145 / 14%)' },
   teal: { accent: '#0f766e', soft: '#e6f2f0', watermark: 'rgb(15 118 110 / 14%)' },
   amber: { accent: '#b45309', soft: '#fdf1e3', watermark: 'rgb(180 83 9 / 13%)' },
   green: { accent: '#15803d', soft: '#e8f3ec', watermark: 'rgb(21 128 61 / 13%)' },
