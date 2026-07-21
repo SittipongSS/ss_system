@@ -60,6 +60,7 @@ export function buildSalesOrderPrintHTML(order) {
     form: DOCUMENT_FORMS.salesOrder,
     documentTitleTh: 'ใบสั่งขาย',
     documentLabel: 'ใบสั่งขาย',
+    accentKey: 'steel', // ใบสั่งขาย = Steel Blue (มติผู้ใช้ 2026-07-21); ใบเสนอราคา = Terracotta
     documentNumber: order.orderNumber,
     dateLabel: 'วันที่ SO',
     dateValue: order.orderDate ? fmtDate(order.orderDate) : '-',
