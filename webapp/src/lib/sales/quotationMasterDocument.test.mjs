@@ -35,6 +35,30 @@ test('V4 doc: เป็น HTML เต็มไฟล์ ใช้คลาส d
   assert.match(html, /@page \{ size: A4 portrait/);
 });
 
+test('V4 doc: บล็อกลูกค้า — โชว์เลขภาษี + ที่อยู่จัดส่ง, ไม่โชว์สาขา', () => {
+  const q = {
+    ...baseQuote([lineOf('1')]),
+    customerTaxId: '0105561000000',
+    billingAddress: 'ที่อยู่ออกบิล',
+    shippingAddress: 'ที่อยู่จัดส่งต่างหาก',
+    branchCode: '00001',
+  };
+  const html = buildQuotationMasterHTML(q, {});
+  assert.match(html, /เลขผู้เสียภาษี<\/dt><dd>0105561000000/);
+  assert.match(html, /ที่อยู่จัดส่ง<\/dt><dd>ที่อยู่จัดส่งต่างหาก/);
+  assert.doesNotMatch(html, /<dt>สาขา<\/dt>/);
+});
+
+test('V4 doc: เบอร์ผู้เสนอราคาโชว์ก่อนติดต่อบริษัท (เมื่อมี)', () => {
+  const withPhone = buildQuotationMasterHTML({ ...baseQuote([lineOf('1')]), createdByPhone: '089-123-4567' }, {});
+  assert.match(withPhone, /เบอร์ผู้เสนอราคา<\/dt><dd>089-123-4567/);
+  // ลำดับ: เบอร์ผู้เสนอราคา มาก่อน ติดต่อบริษัท
+  assert.ok(withPhone.indexOf('เบอร์ผู้เสนอราคา') < withPhone.indexOf('ติดต่อบริษัท'));
+  // ไม่มีเบอร์ → ไม่ขึ้นแถว
+  const noPhone = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {});
+  assert.doesNotMatch(noPhone, /เบอร์ผู้เสนอราคา/);
+});
+
 test('V4 doc: อนุมัติแล้วไม่มีลายน้ำ + โชว์บล็อกลายเซ็นผู้อนุมัติ', () => {
   const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {});
   assert.ok(!html.includes('>ฉบับร่าง<'), 'อนุมัติแล้วไม่มีลายน้ำร่าง');

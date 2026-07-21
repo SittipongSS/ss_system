@@ -667,6 +667,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       deal: quote.deal?.title || quote.dealTitle || '-',
       project: quote.project?.name || quote.projectName || '-',
       salesOwner,
+      salesOwnerPhone: quote.createdByPhone || '',
     },
     lines,
     totals,
