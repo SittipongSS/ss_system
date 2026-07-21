@@ -380,11 +380,28 @@ const DOCUMENT_CSS = `
 
 // เรนเดอร์ model (จาก buildQuotationMasterModelFromQuote หรือ buildQuotationMasterPreview)
 // เป็น HTML เอกสารเต็มไฟล์เดียว. options.grayscale = โหมดขาวดำ; options.toolbar=false ปิดปุ่มพิมพ์
+// สี accent ต่อชนิดเอกสาร (ตาม DOCUMENT_ACCENT_KEYS/LABELS ใน documentStandards):
+// ใบเสนอราคา = terracotta, ใบสั่งขาย = teal, ฯลฯ. ค่าเป็น hex สำหรับเอกสารพิมพ์
+// (self-contained ใช้ตัวแปร theme ของแอปไม่ได้). --doc-accent คุมสีชื่อเอกสาร (h1).
+export const DOCUMENT_ACCENT_THEMES = Object.freeze({
+  terracotta: { accent: '#ad5d43', soft: '#f5ebe7', watermark: 'rgb(173 93 67 / 14%)' },
+  teal: { accent: '#0f766e', soft: '#e6f2f0', watermark: 'rgb(15 118 110 / 14%)' },
+  amber: { accent: '#b45309', soft: '#fdf1e3', watermark: 'rgb(180 83 9 / 13%)' },
+  green: { accent: '#15803d', soft: '#e8f3ec', watermark: 'rgb(21 128 61 / 13%)' },
+  navy: { accent: '#1f3551', soft: '#eef1f5', watermark: 'rgb(31 53 81 / 13%)' },
+});
+
+function accentStyle(accentKey) {
+  const theme = DOCUMENT_ACCENT_THEMES[accentKey] || DOCUMENT_ACCENT_THEMES.terracotta;
+  return `--doc-accent:${theme.accent};--doc-accent-soft:${theme.soft};--doc-accent-watermark:${theme.watermark};`;
+}
+
 export function renderQuotationMasterDocumentHTML(model, options = {}) {
   const grayscale = options.grayscale === true;
   const showToolbar = options.toolbar !== false;
   const documentLabel = options.documentLabel || 'ใบเสนอราคา';
   const number = model.document?.number || '';
+  const styleAttr = accentStyle(model.accentKey);
   const toolbar = showToolbar
     ? `<div class="toolbar no-print"><h1>${esc(documentLabel)} ${esc(number)}</h1><button class="btn-print" type="button" onclick="window.print()">พิมพ์เอกสาร</button></div>`
     : '';
@@ -399,7 +416,7 @@ export function renderQuotationMasterDocumentHTML(model, options = {}) {
 </head>
 <body>
   ${toolbar}
-  <div class="document v4${grayscale ? ' grayscale' : ''}" data-template-version="${esc(model.templateVersion || '')}">
+  <div class="document v4${grayscale ? ' grayscale' : ''}" style="${styleAttr}" data-template-version="${esc(model.templateVersion || '')}">
     ${renderPages(model)}
   </div>
 </body>

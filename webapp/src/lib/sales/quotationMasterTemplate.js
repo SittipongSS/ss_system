@@ -483,10 +483,43 @@ function scenarioInput(id) {
   }
 }
 
+const PREVIEW_STATUS_LABELS = { draft: 'ฉบับร่าง', approved: 'อนุมัติแล้ว', cancelled: 'ยกเลิก' };
+
+// แปลง model ตัวอย่างใบเสนอราคา → ใบสั่งขาย (FM-SA-03) สำหรับหน้า preview:
+// ต่างที่ฟอร์ม/ชื่อ/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม/accent (teal) — ข้อมูลลูกค้า+รายการใช้ร่วม
+function toSalesOrderPreviewModel(model, state) {
+  const form = DOCUMENT_FORMS.salesOrder;
+  const qtNumber = model.document.number;
+  return {
+    ...model,
+    accentKey: 'teal',
+    standard: { titleTh: 'ใบสั่งขาย', titleEn: form.title },
+    formLine: documentFormLine(form),
+    document: {
+      ...model.document,
+      number: 'SO-26070028-0',
+      dateLabel: 'วันที่ SO',
+      secondaryLabel: 'กำหนดชำระ',
+    },
+    referenceRows: [
+      { label: 'อ้างอิง QT', value: qtNumber },
+      { label: 'สถานะเอกสาร', value: PREVIEW_STATUS_LABELS[state] || state },
+      { label: 'ดีล', value: model.references.deal },
+      { label: 'โครงการ', value: model.references.project },
+    ],
+    signers: [
+      { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: model.references.salesOwner },
+      { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: state === 'approved' ? (model.signature?.signerName || '') : '' },
+      { label: 'ฝ่ายบัญชี', role: 'Scent & Sense' },
+    ],
+  };
+}
+
 export function buildQuotationMasterPreview(
   scenarioId = 'standard',
   state = 'approved',
   templateVariant = DEFAULT_QUOTATION_MASTER_VARIANT,
+  docType = 'quotation',
 ) {
   const selectedTemplate = QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === templateVariant)
     || QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === DEFAULT_QUOTATION_MASTER_VARIANT);
@@ -535,9 +568,10 @@ export function buildQuotationMasterPreview(
       discountAmount,
     });
 
-  return {
+  const model = {
     ...BASE_QUOTE,
     ...scenario,
+    accentKey: 'terracotta',
     templateVariant: selectedTemplate.id,
     templateVersion: selectedTemplate.templateVersion,
     standard: { ...BASE_QUOTE.standard },
@@ -575,6 +609,7 @@ export function buildQuotationMasterPreview(
     watermark: state === 'draft' ? 'ฉบับร่าง' : state === 'cancelled' ? 'ยกเลิก' : '',
     formLine: controlledFormLine(BASE_QUOTE.standard),
   };
+  return docType === 'salesOrder' ? toSalesOrderPreviewModel(model, state) : model;
 }
 
 // ── Phase 7C (Direction B): สร้าง "model แบบ V4" จาก quotation จริง ────────────
@@ -661,6 +696,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   return {
     templateVariant: 'v4',
     templateVersion: QUOTATION_MASTER_TEMPLATE_VERSION,
+    accentKey: options.accentKey || 'terracotta',
     company: {
       nameTh: COMPANY_LEGAL_NAME,
       nameEn: COMPANY_LEGAL_NAME_EN,

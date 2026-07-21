@@ -15,6 +15,7 @@ import styles from './page.module.css';
 // (quotationMasterDocument = Quotation Master V4) ใน iframe จึงตรงกับใบที่พิมพ์/ตรึง 100%.
 // fixture model มาจาก buildQuotationMasterPreview (คณิต+จัดหน้า V4 ชุดเดียวกับใบจริง).
 export default function QuotationMasterPreviewPage() {
+  const [docType, setDocType] = useState('quotation');
   const [scenarioId, setScenarioId] = useState('standard');
   const [documentState, setDocumentState] = useState('approved');
   const [grayscale, setGrayscale] = useState(false);
@@ -22,8 +23,8 @@ export default function QuotationMasterPreviewPage() {
 
   const scenario = QUOTATION_PREVIEW_SCENARIOS.find((item) => item.id === scenarioId);
   const model = useMemo(
-    () => buildQuotationMasterPreview(scenarioId, documentState, 'v4'),
-    [scenarioId, documentState],
+    () => buildQuotationMasterPreview(scenarioId, documentState, 'v4', docType),
+    [scenarioId, documentState, docType],
   );
   const html = useMemo(
     () => renderQuotationMasterDocumentHTML(model, { grayscale, toolbar: false }),
@@ -77,6 +78,14 @@ export default function QuotationMasterPreviewPage() {
         </div>
 
         <div className={styles.controls}>
+          <div className="form-group">
+            <span>ชนิดเอกสาร</span>
+            <div className="segmented" aria-label="ชนิดเอกสาร">
+              <button type="button" aria-pressed={docType === 'quotation'} className={docType === 'quotation' ? 'active' : ''} onClick={() => setDocType('quotation')}>ใบเสนอราคา</button>
+              <button type="button" aria-pressed={docType === 'salesOrder'} className={docType === 'salesOrder' ? 'active' : ''} onClick={() => setDocType('salesOrder')}>ใบสั่งขาย</button>
+            </div>
+          </div>
+
           <label className="form-group">
             <span>กรณีทดสอบ</span>
             <select className="premium-select" value={scenarioId} onChange={(event) => setScenarioId(event.target.value)}>
