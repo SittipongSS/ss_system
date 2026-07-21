@@ -63,7 +63,7 @@
 | รหัส | เรื่อง | ข้อเสนอเริ่มต้น | สถานะ |
 |---|---|---|---|
 | D-7C-1 | วิธี generate PDF บน production (Vercel) | ตรวจทางเลือก serverless chromium vs external render service vs เก็บ canonical HTML ต่อ + พิมพ์ผ่าน browser; ต้องได้ผล deterministic ตรง fingerprint | รอตรวจทางเทคนิคก่อนตัดสินใจ |
-| D-7C-2 | สองเครื่องยนต์ (`quotationMasterTemplate.js` Preview / `quotePrint.js` ใบจริง) รวมเป็นหนึ่งหรือไม่ | คงสองเครื่องยนต์ใน 7C (ลดความเสี่ยง) และบันทึกภาระ "แก้กติกาแบ่งหน้าต้องแก้คู่กัน" ไว้ทบทวนหลัง 7D | เสนอคงไว้ก่อน |
+| D-7C-2 | สองเครื่องยนต์ (`quotationMasterTemplate.js` Preview / `quotePrint.js` ใบจริง) รวมเป็นหนึ่งหรือไม่ | ~~คงสองเครื่องยนต์~~ **ตัดสินใจแล้ว 21 ก.ค. 2026: รวม (ทิศทาง B)** — PR #612 ให้ server builder `quotationMasterDocument.js` (V4) เป็น renderer ของ snapshot/พิมพ์สด/preview ทั้งหมด; `quotePrint.js` เหลือหน้าที่เดียวคือใบสั่งขาย (7D) ห้ามลบจนกว่า 7D จบ; ทิศทาง A (PR #610) ถูกปฏิเสธและ revert | ตัดสินใจแล้ว — ส่งมอบผ่าน #612 |
 | D-7C-3 | รายการเอกสาร PDF pilot (ปิด D-006 จาก Phase 0) | ใบเสนอราคาใบเดียวก่อน แล้วขยาย Sale Order ตอน 7D | รอผู้ใช้ยืนยัน |
 
 ## Definition of Done
