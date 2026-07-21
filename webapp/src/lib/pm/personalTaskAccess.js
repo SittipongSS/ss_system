@@ -1,4 +1,4 @@
-import { can, isSuperuser, normalizeDepartment } from '@/lib/permissions';
+import { can, isSuperuser, normalizeDepartment, TEAM_ROLES } from '@/lib/permissions';
 
 async function userIdentity(supabase, id) {
   if (!id) return { team: null, department: null };
@@ -45,13 +45,21 @@ export async function canManagePersonalTask(supabase, task, user) {
 export async function canViewPersonalTask(supabase, task, user) {
   if (!task || !user || !can(user.role, 'pm:view')) return false;
   if (isSuperuser(user.role) || user.role === 'viewer') return true;
-  if (task.ownerId === user.id || task.assigneeId === user.id || task.proxyBy === user.id) return true;
+  // เจ้าของ / ผู้รับมอบ / ผู้ทำแทน / ผู้มอบหมาย — ทุกคนที่ผูกกับงานนี้โดยตรงเห็นได้.
+  // assignedBy สำคัญ: งานที่ฉัน "มอบให้คนอื่น" ก็โผล่ใน "งานของฉัน" (my-work byAssigner)
+  // เดิมไม่มีเงื่อนไขนี้ → กดเปิด detail แล้ว 403.
+  if (task.ownerId === user.id || task.assigneeId === user.id
+    || task.proxyBy === user.id || task.assignedBy === user.id) return true;
   if (user.role === 'rd') {
     const responsible = await personalTaskResponsibleIdentity(supabase, task);
     return !!normalizeDepartment(user.department)
       && normalizeDepartment(user.department) === normalizeDepartment(responsible.department);
   }
-  if (user.role !== 'senior_ae' || !user.team) return false;
+  // ทีมขาย (senior_ae/ac/ae) เห็นงานของ "ทีมตัวเอง" ได้ — ให้ตรงกับขอบเขตที่ my-work
+  // เปิดให้ (pmTaskScopes = ['mine','team'] ทั้งสามตำแหน่ง). เดิมจำกัดแค่ senior_ae →
+  // ac/ae เห็นงานทีมในลิสต์แต่กดเปิด detail แล้ว 403 (list/detail ไม่ตรงกัน, มติ 2026-07-21).
+  // นี่คือสิทธิ์ "ดู" อย่างเดียว; การจัดการงานของคนอื่นยังสงวนให้ senior_ae (canManagePersonalTask).
+  if (!TEAM_ROLES.includes(user.role) || !user.team) return false;
 
   const responsibleTeam = await personalTaskResponsibleTeam(supabase, task);
   if (responsibleTeam && responsibleTeam === user.team) return true;

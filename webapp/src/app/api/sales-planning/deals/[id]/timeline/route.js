@@ -5,7 +5,7 @@ import { buildProjectTasks, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
-import { canEditSalesPlanning, dealAuditLabel, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, dealAuditLabel, normalizeDealType, inSalesEditScope } from '@/lib/salesPlanning';
 import { genId } from '@/lib/id';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
@@ -46,6 +46,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if ((existing || 0) > 0) return conflict('ดีลนี้มีไทม์ไลน์แล้ว — ลบก่อนถ้าต้องการสร้างใหม่');
 
   const body = await req.json().catch(() => ({}));
+  // ประเภทดีล = ตัวเลือก template. caller (โมดัลยืนยันก่อนสร้าง) ส่ง type มาให้ยืนยัน/
+  // สลับได้ → ถ้าต่างจากที่เก็บ อัปเดต deal.dealType ให้ตรงไปเลย (กัน "ดึงผิดประเภท"
+  // เพราะ dealType เก่าค้างผิด — มติ 2026-07-21). ไม่ส่ง = ใช้ประเภทที่ดีลเก็บไว้เดิม.
+  const genType = normalizeDealType(body.type ?? deal.dealType ?? deal.metadata?.projectType);
   const categoryCode = (body.categoryCode ?? deal.categoryCode ?? '').trim() || null;
   // ตรวจ "หมวดพักใช้" เฉพาะตอน caller เปลี่ยนหมวด (ส่ง categoryCode ใหม่ที่ต่างจากเดิม)
   // — ดีลเดิมที่หมวดถูกพักใช้ทีหลังต้องสร้างไทม์ไลน์ต่อได้ (กติกาเดียวกับ deal PATCH:
@@ -63,15 +67,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   setHolidays([...(await holidaySet())]);
   let templateOptions;
   try {
-    templateOptions = await loadWorkflowTemplateForGeneration(supabase, dealTypeOf(deal));
+    templateOptions = await loadWorkflowTemplateForGeneration(supabase, genType);
   } catch (error) {
     return fail(error.message || 'โหลด Workflow Template ไม่สำเร็จ', error instanceof WorkflowTemplateError ? error.status : 500);
   }
   // ขั้นสรรพสามิตใน template ผูก token flag:excise (mig 0131) → ต้องส่งธงของหมวดดีล
   templateOptions.categoryFlags = await categoryFlagsOf(categoryCode);
   const rows = applyAutoStatuses(buildProjectTasks(
-    // เทียบ field โครงการ: type = ประเภทดีล, productMainCategory = หมวดบนดีล
-    { type: dealTypeOf(deal), productMainCategory: categoryCode || '', startDate, aeOwner: deal.ownerName || '' },
+    // เทียบ field โครงการ: type = ประเภทดีล (ที่ยืนยัน), productMainCategory = หมวดบนดีล
+    { type: genType, productMainCategory: categoryCode || '', startDate, aeOwner: deal.ownerName || '' },
     null,          // projectId ว่าง = ไทม์ไลน์ลอยของดีล
     deal.id,
     templateOptions,
@@ -82,16 +86,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!rows.length) {
     return badRequest(
       categoryCode
-        ? `Workflow Template ${dealTypeOf(deal)} ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า ${categoryCode} — ตรวจ Template ที่ตั้งค่า หรือเปลี่ยนหมวดสินค้าบนดีล`
-        : `Workflow Template ${dealTypeOf(deal)} ที่เผยแพร่อยู่ไม่มีขั้นตอน — ตรวจการตั้งค่าที่ /settings/workflow-templates`,
+        ? `Workflow Template ${genType} ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า ${categoryCode} — ตรวจ Template ที่ตั้งค่า หรือเปลี่ยนหมวดสินค้าบนดีล`
+        : `Workflow Template ${genType} ที่เผยแพร่อยู่ไม่มีขั้นตอน — ตรวจการตั้งค่าที่ /settings/workflow-templates`,
     );
   }
   const { data: inserted, error: insErr } = await supabase.from('project_tasks').insert(rows).select();
   if (insErr) return fail(`สร้างไทม์ไลน์ไม่สำเร็จ: ${insErr.message}`, 500);
 
-  // บันทึกหมวดที่ใช้ + ขยับ stage เป็น timeline_proposed (เหมือน flow ผูกโครงการ)
+  // บันทึกหมวดที่ใช้ + ประเภทที่ยืนยัน + ขยับ stage เป็น timeline_proposed (เหมือน flow ผูกโครงการ)
   const patch = { updatedAt: now };
   if (categoryCode !== (deal.categoryCode || null)) patch.categoryCode = categoryCode;
+  // ยืนยัน/สลับประเภทตอนสร้างไทม์ไลน์ → เขียนกลับให้ deal.dealType ตรงกับ template ที่ใช้จริง
+  // (เขียน metadata.projectType คู่ตาม transition mig 0088)
+  if (genType !== (deal.dealType || null)) {
+    patch.dealType = genType;
+    patch.metadata = { ...(deal.metadata || {}), projectType: genType };
+  }
   if (['lead', 'qualified', 'quotation'].includes(deal.stage)) patch.stage = 'timeline_proposed';
   const { data: updatedDeal, error: upErr } = await supabase
     .from('sales_deals').update(patch).eq('id', deal.id).select().single();
@@ -105,7 +115,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   await recordAudit({
     user, action: 'update', entityType: 'sales_deal', entityId: deal.id, before: deal, after: updatedDeal,
-    summary: `สร้างไทม์ไลน์ของดีล ${dealAuditLabel(deal)} (${dealTypeOf(deal)}${categoryCode ? ` · หมวด ${categoryCode}` : ''} · ${inserted.length} ขั้นตอน)`,
+    summary: `สร้างไทม์ไลน์ของดีล ${dealAuditLabel(deal)} (${genType}${categoryCode ? ` · หมวด ${categoryCode}` : ''} · ${inserted.length} ขั้นตอน)`,
     request: req,
   });
   return ok({ deal: updatedDeal, tasks: inserted }, 201);

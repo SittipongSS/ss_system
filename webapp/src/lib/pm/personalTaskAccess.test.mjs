@@ -56,3 +56,26 @@ test('senior AE can manage task files only inside the same team scope', async ()
   assert.equal(await canManagePersonalTask(sameTeam, task, senior), true);
   assert.equal(await canManagePersonalTask(otherTeam, task, senior), false);
 });
+
+// ── view ต้องตรงกับที่ my-work list เปิดให้ (มติ 2026-07-21) ──
+test('view: ทุกตำแหน่งในทีม (senior_ae/ac/ae) เห็นงานของทีมตัวเอง — กันงานทีมอื่น', async () => {
+  const sameTeam = fakeSupabase({ teams: { worker: 'KA' } });   // ผู้รับผิดชอบอยู่ KA
+  const otherTeam = fakeSupabase({ teams: { worker: 'ODM' } });
+  for (const role of ['senior_ae', 'ac', 'ae']) {
+    // อยู่ทีม KA → เห็นงานของทีม KA (ทั้งที่ไม่ใช่เจ้าของ/ผู้รับมอบ)
+    assert.equal(await canViewPersonalTask(sameTeam, task, { id: 'x', role, team: 'KA' }), true, `KA ${role}`);
+    // อยู่ทีม ODM → ไม่เห็นงานของทีม KA
+    assert.equal(await canViewPersonalTask(otherTeam, task, { id: 'x', role, team: 'KA' }), false, `cross ${role}`);
+    // ไม่มีทีม → เห็นไม่ได้ (กันงานเข้ามือคนไร้ทีม)
+    assert.equal(await canViewPersonalTask(sameTeam, task, { id: 'x', role, team: null }), false, `no-team ${role}`);
+  }
+});
+
+test('view: ผู้มอบหมาย (assignedBy) เห็นงานที่ตัวเองมอบให้คนอื่นได้เสมอ', async () => {
+  const db = fakeSupabase();
+  // งานที่ 'boss' มอบให้ 'worker' — boss ไม่ใช่เจ้าของ/ผู้รับมอบ แต่ต้องเห็น (โผล่ใน my-work)
+  const assigned = { ...task, ownerId: 'someoneElse', assigneeId: 'worker', assignedBy: 'boss' };
+  assert.equal(await canViewPersonalTask(db, assigned, { id: 'boss', role: 'ae', team: null }), true);
+  // คนนอกที่ไม่เกี่ยวข้องเลย ยังเห็นไม่ได้
+  assert.equal(await canViewPersonalTask(db, assigned, { id: 'stranger', role: 'ae', team: null }), false);
+});

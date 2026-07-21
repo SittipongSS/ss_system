@@ -10,14 +10,14 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ProjectFormModal from "@/components/pm/ProjectFormModal";
-import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
+import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, normalizeDealType } from "@/lib/salesPlanning";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
 import { useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
-import { FORECAST_LEVELS, dealTypeBadge, quoteStatusBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, dealTypeBadge, quoteStatusBadge, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
@@ -444,11 +444,21 @@ export default function DealOverviewPage() {
 
   // DL1: ไทม์ไลน์ของดีลเอง (ยังไม่ผูกโครงการ) — gen จาก template ตามประเภท+หมวด,
   // ลบเพื่อสร้างใหม่, และเปลี่ยนสถานะรายขั้น (auto-propagate ขั้นถัดไปที่ server)
-  const genOwnTimeline = () => runAction("gen-timeline", `/api/sales-planning/deals/${id}/timeline`, {
+  // ยืนยันก่อนสร้าง: เปิดโมดัลให้เห็น+เลือกประเภท (template) ก่อน gen — กัน "ดึงผิดประเภท"
+  // (เดิมยิงเลยด้วยประเภทที่ดีลเก็บ ซึ่งอาจ default NPD ค้างไว้). ส่ง type ไปให้ server
+  // อัปเดต deal.dealType ให้ตรงด้วย.
+  const [genOpen, setGenOpen] = useState(false);
+  const [genType, setGenType] = useState("");
+  const openGenTimeline = () => { setGenType(dealTypeOf(deal)); setGenOpen(true); };
+  const genOwnTimeline = (type) => runAction("gen-timeline", `/api/sales-planning/deals/${id}/timeline`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify(type ? { type } : {}),
   });
+  const confirmGenTimeline = async () => {
+    const done = await genOwnTimeline(genType);
+    if (done) setGenOpen(false);
+  };
   const dropOwnTimeline = () => {
     if (!window.confirm("ลบไทม์ไลน์ของดีลนี้ทั้งชุด (ความคืบหน้าหายด้วย) แล้วค่อยสร้างใหม่?")) return;
     return runAction("drop-timeline", `/api/sales-planning/deals/${id}/timeline`, { method: "DELETE" });
@@ -698,7 +708,7 @@ export default function DealOverviewPage() {
               <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
               {(dealBrand.en || dealBrand.th) && <span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? ` · ${dealBrand.th}` : ""}</span>}
             </>}
-            badges={<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} />}
+            badges={<>{dealTypeBadge(dealTypeOf(deal))}<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} /></>}
             actions={headerRight}
             facts={[
               { icon: FolderKanban, label: "ผู้ดูแล (AE)", value: deal.ownerName || "-" },
@@ -1023,8 +1033,8 @@ export default function DealOverviewPage() {
                 {canEdit && deal?.stage !== "lost" && (
                   <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
                     {/* DL1: ไทม์ไลน์ของดีลเอง — สร้างได้ตั้งแต่ยังไม่มีโครงการ (template ตามประเภท+หมวด) */}
-                    <button type="button" className="btn btn-primary" onClick={genOwnTimeline} disabled={!!actionBusy}
-                      title={`สร้างจาก template ${dealTypeOf(deal)}${deal.categoryCode ? ` หมวด ${deal.categoryCode}` : " (ยังไม่ระบุหมวด — แก้ที่ปุ่มแก้ไขดีล)"}`}>
+                    <button type="button" className="btn btn-primary" onClick={openGenTimeline} disabled={!!actionBusy}
+                      title={`เลือก/ยืนยัน template ก่อนสร้าง${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : " (ยังไม่ระบุหมวด — แก้ที่ปุ่มแก้ไขดีล)"}`}>
                       <Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์ของดีล
                     </button>
                     {['timeline_proposed', 'awaiting_confirm', 'deposit_pending', 'won', 'in_project'].includes(deal?.stage) && (
@@ -1301,6 +1311,41 @@ export default function DealOverviewPage() {
         onLinked={() => load()}
         onCreateProject={() => { setInquiryOpen(false); openCreatePM(); }}
       />
+
+      {/* ยืนยัน + เลือกประเภท (template) ก่อนสร้างไทม์ไลน์ของดีล — กัน "ดึงผิดประเภท" */}
+      <Modal open={genOpen} onClose={() => !actionBusy && setGenOpen(false)} title="สร้างไทม์ไลน์ของดีล" size="sm">
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6 }}>
+            ระบบจะสร้างขั้นตอนงานจาก <strong>Workflow Template</strong> ตาม “ประเภทดีล” ด้านล่าง
+            {deal?.categoryCode ? <> · หมวดสินค้า <strong>{deal.categoryCode}</strong></> : " (ยังไม่ระบุหมวดสินค้า — แก้ได้ที่ปุ่มแก้ไขดีล)"}
+          </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+            ประเภทดีล (Template ที่จะใช้)
+            <Select
+              className="premium-select"
+              value={genType}
+              onChange={(e) => setGenType(e.target.value)}
+              style={{ color: DEAL_TYPE_COLORS[normalizeDealType(genType)], fontWeight: 600 }}
+            >
+              {DEAL_TYPES.map((t) => (
+                <option key={t} value={t} style={{ color: DEAL_TYPE_COLORS[t], fontWeight: 600 }}>{t} · {DEAL_TYPE_LABELS[t]}</option>
+              ))}
+            </Select>
+          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-3)", flexWrap: "wrap" }}>
+            จะใช้ template: {dealTypeBadge(genType)}
+            {normalizeDealType(genType) !== dealTypeOf(deal) && (
+              <span style={{ color: "var(--amber)" }}>· จะอัปเดตประเภทของดีลเป็นค่านี้ให้ด้วย</span>
+            )}
+          </div>
+          <div className="form-action-bar">
+            <button type="button" className="btn" onClick={() => setGenOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
+            <button type="button" className="btn btn-primary" onClick={confirmGenTimeline} disabled={!!actionBusy}>
+              {actionBusy === "gen-timeline" ? "กำลังสร้าง…" : "สร้างไทม์ไลน์"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* เฟส B: โมดัลผูกดีลเข้าโครงการเดิมของลูกค้า — เลือกโครงการ + วันเริ่ม segment */}
       <Modal open={linkOpen} onClose={() => !actionBusy && setLinkOpen(false)} title="ผูกกับโครงการเดิม" size="sm">

@@ -31,6 +31,7 @@ const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 export default function CustomerDirectory() {
   const canEdit = useCan("customers:edit");
   const role = useRole();
+  const superuser = isSuperuser(role);
   const myTeam = useTeam();
   // May this user approve THIS record? Senior AE only own team; supervisor/admin
   // any team. Customers are a central registry (all teams shown in manage view),
@@ -109,6 +110,8 @@ export default function CustomerDirectory() {
       brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)
       contacts: formData.contacts || [],
       creditTerms: formData.creditTerms || null,
+      // ทีมดูแล: server รับเฉพาะเมื่อคนสร้างเป็น superuser (team-role ตั้งจากทีมตัวเอง)
+      teams: formData.teams || [],
     };
 
     try {
@@ -379,8 +382,15 @@ export default function CustomerDirectory() {
       >
         <form onSubmit={handleSubmit}>
           {/* ฟอร์มเดียวกับโมดัลแก้ไข (หน้า [id]) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.
-              ไม่มีช่อง "ทีมดูแล" ตอนสร้าง เพราะ server ตั้งทีมให้จากคนสร้าง */}
-          <CustomerForm form={formData} onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))} />
+              ช่อง "ทีมดูแล" โชว์เฉพาะ superuser (admin/AE Sup) เพราะพวกเขาไม่มีทีม
+              ของตัวเอง จึงต้องเลือกทีมดูแลตอนสร้าง ไม่งั้นลูกค้าไร้ทีม (มติ 2026-07-21);
+              team-role อื่น server ตั้งทีมให้จากทีมตัวเองอัตโนมัติ */}
+          <CustomerForm
+            form={formData}
+            onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))}
+            showTeams={superuser}
+            canEditTeams={superuser}
+          />
           <div className="form-action-bar">
             <button
               type="button"

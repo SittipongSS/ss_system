@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord, canViewRecord } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { listAttachments } from '@/lib/master/attachments';
+import { productCaretakerTeams } from '@/lib/master/productScope';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 
@@ -79,7 +80,14 @@ export async function POST(request) {
     ? canUser(user, 'mgmt:edit')
     : isPersonalTask(entityType)
       ? await canAttachToPersonalTask(supabase, parent, user)
-      : canEditRecord(user, RESOURCE[entityType], parent);
+      // product: edit scope follows the OWNING CUSTOMER's caretaker team (มติ
+      // 2026-07-20/21) — resolve it so this matches the product detail page.
+      : canEditRecord(
+          user,
+          RESOURCE[entityType],
+          parent,
+          entityType === 'product' ? await productCaretakerTeams(parent, supabase) : undefined,
+        );
   if (!allowedEdit) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }

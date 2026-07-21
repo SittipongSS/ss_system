@@ -1,87 +1,109 @@
-# Decision 0012 — Settings Lifecycle Standard
+# Decision 0012 — Settings Lifecycle Standard (ฉบับแก้ไขครั้งที่ 2)
 
 วันที่: 20 กรกฎาคม 2026 · แก้ไขครั้งที่ 2: 21 กรกฎาคม 2026
-สถานะ: ยืนยัน (ฉบับแก้ไขครั้งที่ 2 — แยกระดับ A/B, เพิ่ม discard/hide semantics)
+สถานะ: ยืนยันแล้วโดยผู้ใช้เจ้าของระบบ — ระดับ A ย้อนกลับแล้ว (PR #629, mig 0134); ระดับ B discard/hide ส่งมอบแล้ว (mig 0136)
 
-## บริบท
+## การแก้ไขครั้งที่ 2 — แยก lifecycle เป็นสองระดับ
 
-การตั้งค่าข้อมูลระบบหลายตัวถูกสร้างก่อนมาตรฐาน versioning ของโปรแกรมนี้
-(Decision 0003) จึงยังเป็นแบบ "แก้ตรง มีผลทันที": ไม่มีชั้นร่าง ไม่มีประวัติ
-เวอร์ชัน และแก้แล้วย้อนตรวจไม่ได้ ขณะที่ surface ที่สร้างตั้งแต่ Phase 4A
-เป็นต้นมา (ข้อมูลบริษัท, Workflow Template, Document Standards, Commercial
-Presets) ใช้แพตเทิร์นเดียวกันหมดและพิสูจน์แล้วว่าใช้งานได้จริง
+ฉบับแรกของ decision นี้บังคับ ร่าง→เผยแพร่→เก็บ กับการตั้งค่า "ทุกตัว"
+และ retrofit วันหยุด/Google Chat ไปแล้ว (PR #614, mig 0132/0133)
+ผู้ใช้ทบทวนหลังใช้งานจริงและตัดสินใจใหม่เมื่อ 21 กรกฎาคม 2026:
+พิธีกรรมร่าง/เผยแพร่**หนักเกินไปสำหรับข้อมูลปฏิบัติการ** ให้แยกเป็นสองระดับ
 
-## การตัดสินใจ (ฉบับแก้ไขครั้งที่ 2 — 2026-07-21)
+### ระดับ A — ข้อมูลปฏิบัติการ: CRUD ธรรมดา
 
-การตั้งค่าแบ่งเป็นสองระดับ:
+> เพิ่ม → แก้ไข → บันทึก → ลบ
 
-- **ระดับ A ปฏิบัติการ** (ปฏิทินวันหยุด, แจ้งเตือน Google Chat) — ใช้ CRUD
-  ธรรมดา ไม่ต้องมีชั้นร่าง/เวอร์ชัน; retrofit ตาม decision ฉบับแรก (mig
-  0132/0133) ถูกย้อนกลับในงานแยก
-- **ระดับ B ควบคุม** (ข้อมูลบริษัท, Workflow/Timeline Template, Document
-  Standards, Commercial Presets) — ใช้ lifecycle:
+- ใช้กับ: **ปฏิทินวันหยุด** (`/settings/holidays`), **แจ้งเตือน Google Chat**
+  (`/settings/chat-webhooks`)
+- ไม่มีชั้นร่าง ไม่มีเวอร์ชัน แก้แล้วมีผลทันที ลบได้จริง
+- ยังต้องมี Confirm ก่อนบันทึก/ลบ (กติกา no-auto-save เดิม) และบันทึก
+  central audit ทุกการเปลี่ยนแปลง — ความตรวจย้อนได้มาจาก audit log
+  ไม่ใช่จากตารางเวอร์ชัน
+- ผลตามมา: **ย้อน PR #614** — คืน UI/API แก้ตรงบนตารางเดิม (`holidays`,
+  `chat_webhooks` ซึ่งไม่เคยถูกแตะ) และเขียน **mig 0134 ถอนตาราง/function
+  ของ 0132+0133 ทิ้งให้สะอาด** (ผู้ใช้เลือกถอนทิ้ง ไม่เก็บกวาดทีหลัง)
+- ส่งมอบแล้วใน **PR #629**: ทุกการเพิ่ม/ลบ/บันทึกยืนยันผ่าน ConfirmDialog;
+  route วันหยุดได้ `recordAudit` ครบ create/update/delete (ของเดิมก่อน #614
+  ไม่มี); webhook URL ถูก mask token ก่อนลง audit; สิทธิ์ `master:manage`
+  เดิม ไม่ขยาย/ไม่หด
 
-> เพิ่ม/แก้ไข → บันทึกร่าง (Draft) → ยกเลิกร่างได้ถ้ายังไม่เผยแพร่ (Discard =
-> ลบจริง) → เผยแพร่ (Publish) → เผยแพร่แล้วลบไม่ได้ ซ่อนได้อย่างเดียว (Hide)
+### ระดับ B — ข้อมูลควบคุม: ร่าง → เผยแพร่ → ซ่อน
 
-กติกา discard/hide (mig `0136_settings_lifecycle_discard_hide.sql`):
+> เพิ่ม/แก้ไข → บันทึกร่าง → (ยกเลิกร่างได้ถ้ายังไม่เผยแพร่) → เผยแพร่ →
+> เวอร์ชันที่เผยแพร่แล้ว **ลบไม่ได้ ซ่อนได้อย่างเดียว**
 
-- **ยกเลิกร่าง = DELETE จริง** — ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน; guard
-  trigger เปิดช่อง DELETE เฉพาะแถว `status = 'draft'`; การยกเลิกบันทึกลง
-  audit log (หลักฐานเดียวที่เหลือ); UI ใช้ปุ่ม "ยกเลิกร่าง" พร้อม Confirm
-  ว่าจะหายถาวร
-- **"ซ่อน" (Hide)** — เวอร์ชันที่เผยแพร่แล้วและถูกเวอร์ชันใหม่แทน (= archived
-  เดิม): แถวคงอยู่ immutable แค่พ้นสถานะใช้งาน ดูย้อนหลังได้ในประวัติเวอร์ชัน;
-  เกิดอัตโนมัติตอน publish ทดแทนเท่านั้น ไม่มี action ซ่อนตรง
-- **ห้ามซ่อนเวอร์ชันที่กำลัง active** — guard trigger บล็อก published →
-  archived ขณะ root ยังชี้แถวนั้น (`*_hide_active_forbidden`); ระบบต้องมี
-  active เสมอ (Commercial Preset ใหม่ที่ยังไม่เคยเผยแพร่เป็นข้อยกเว้นเดิม —
-  ยกเลิกร่างแรกจะลบ preset ทั้งตัว ไม่ทิ้ง preset เปล่า)
+- ใช้กับ 4 ตัวหลัก: **ข้อมูลบริษัท** (mig 0120), **Workflow/Timeline
+  Template** (mig 0121), **Document Standards** (mig 0123),
+  **Commercial Presets** (mig 0128)
+- กติกาที่ผู้ใช้เคาะเมื่อ 21 กรกฎาคม 2026:
+  1. **ยกเลิกร่าง = ลบทิ้งจริง** — ร่างที่ยังไม่เคยเผยแพร่ไม่ใช่หลักฐาน
+     ลบหายไปเลย ไม่เก็บประวัติ
+  2. **เวอร์ชันที่เผยแพร่แล้วเป็น immutable ตลอดไป** — ห้ามลบทุกกรณี
+  3. **"ซ่อน" ได้เฉพาะเวอร์ชันที่ถูกแทนแล้ว** — เวอร์ชันที่กำลัง active
+     ซ่อนไม่ได้ ต้องเผยแพร่เวอร์ชันใหม่มาแทนก่อน (ระบบต้องมีเวอร์ชัน
+     active เสมอ เพราะไทม์ไลน์/เอกสารอ้างอิงอยู่)
+- โครงสร้างเทคนิคคงแพตเทิร์นเดิม (root + versions, partial unique index,
+  guard trigger, RPC atomic, RLS server-only) — สิ่งที่ต้องปรับจาก
+  พฤติกรรมปัจจุบัน: การยกเลิกร่างต้อง DELETE จริงแทน archive,
+  คำในหน้าจอใช้ "ซ่อน" สำหรับเวอร์ชันที่ถูกแทน และห้าม archive
+  เวอร์ชัน active
 
-ข้อบังคับของแพตเทิร์นระดับ B (ต้นแบบ: mig `0120_organization_settings.sql` +
-`lib/admin/organizationSettings.js`):
+**ส่งมอบแล้วใน mig `0136_settings_lifecycle_discard_hide.sql` (ครอบทั้ง 4 ชุด
+function ให้สอดคล้องกัน):**
 
-- แยก root record ออกจาก version records; root ชี้ Published version ที่ใช้งานอยู่
-- Draft และ Published มีได้อย่างละไม่เกินหนึ่งรายการต่อ root (partial unique index)
-- Published/ซ่อนแล้ว เป็น immutable ผ่าน guard trigger; เลิกใช้ = ซ่อน ไม่ลบ
-- Publish/Discard ทำผ่าน database function แบบ transaction เดียว (lock root,
-  ตรวจ `expectedUpdatedAt`, ห้าม client ส่ง payload ใหม่มากับคำสั่ง transition)
-- Publish ต้องมีหมายเหตุการเปลี่ยนแปลง (change note)
-- ตารางเปิด RLS ไม่มี browser-facing policy; ทุก read/write ผ่าน server API +
-  service role หลังตรวจ authorization
-- Migration seed ข้อมูลปัจจุบันเป็น Published Version 1 — พฤติกรรมของ consumer
-  ต้องไม่เปลี่ยนสำหรับข้อมูลเดิม
-- **Consumer อ่านจาก Published version เท่านั้น** — ฉบับร่างไม่มีผลกับระบบ
-  จนกว่าจะเผยแพร่
-- UI ตาม Page Header standard ใน [UX/UI Rulebook](../ux-ui-rulebook.md) +
-  Drawer house pattern; ไม่มี Auto-save
-
-## ตารางสถานะ surface
-
-| Surface | ระดับ | หน้า | Migration | สถานะ | หมายเหตุ |
-|---|---|---|---|---|---|
-| ข้อมูลบริษัท | B | `/settings/company` | 0120 + 0136 | เสร็จสมบูรณ์ | Phase 4A; discard/hide ตามฉบับแก้ไขครั้งที่ 2 |
-| Workflow/Timeline Template | B | `/settings/workflow-templates` | 0121 + 0136 | เสร็จสมบูรณ์ | Phase 4B; discard ลบ steps ของร่างก่อนแล้วลบเวอร์ชัน |
-| ลายเซ็นอิเล็กทรอนิกส์ | — | `/account` (own-scope) | 0122 | เสร็จสมบูรณ์ | Phase 5A — versioned + immutable ตามขอบเขตของ Decision 0006 (ไม่อยู่ใต้กติกา discard/hide) |
-| Document Standards | B | `/settings/document-standards` | 0123 + 0136 | เสร็จสมบูรณ์ | Phase 6A; discard/hide ตามฉบับแก้ไขครั้งที่ 2 |
-| Commercial Presets | B | `/settings/commercial-presets` | 0128 + 0136 | เสร็จสมบูรณ์ | Phase 7A; ยกเลิกร่างแรกของ preset ที่ไม่เคยเผยแพร่ = ลบ preset ทั้งตัว |
-| ปฏิทินวันหยุด | A | `/settings/holidays` | 0132 → ย้อนกลับ | งานแยก | ฉบับแก้ไขครั้งที่ 2 จัดเป็นระดับ A = CRUD ธรรมดา — งานย้อนกลับ (mig 0134) ดำเนินการใน branch แยก |
-| แจ้งเตือน Google Chat | A | `/settings/chat-webhooks` | 0133 → ย้อนกลับ | งานแยก | ฉบับแก้ไขครั้งที่ 2 จัดเป็นระดับ A = CRUD ธรรมดา — งานย้อนกลับ (mig 0134) ดำเนินการใน branch แยก |
-| Template หมายเหตุใบเสนอราคา (`quote_note_templates`) | B (ผ่าน presets) | ในหน้าใบเสนอราคา | — | รอดำเนินการ | ตัวสุดท้ายที่ยังแก้ตรง — **ไม่ retrofit แยก**: Decision 0010 สร้าง Commercial Presets (mig 0128, มี `legacyTemplateId` ไว้ map) เป็นตัวแทนแบบมีเวอร์ชันแล้ว; ปิดงานโดยสวิตช์ consumer ฝั่งออกใบ → migrate ข้อมูลเข้า presets → ถอด API แก้ตรง แล้วเก็บตารางเดิมเป็นหลักฐาน |
-
-สถานะ `เสร็จสมบูรณ์` ของ mig 0136 = โค้ด + migration ส่งมอบแล้ว รอรัน
-migration บนฐานข้อมูลจริงและ UAT (แพตเทิร์นเดียวกับ Phase 7A/7B)
-
-นอกขอบเขต decision นี้: ทะเบียน master data ที่มี approval workflow รายรายการ
-ของตัวเองอยู่แล้ว (ลูกค้า, สินค้า, หมวดสินค้า) — ใช้กติกา pending/approve เดิม
-
-## ผลตามมา (ฉบับแก้ไขครั้งที่ 2)
-
-- ระดับ B ทั้ง 4 surface: ปุ่ม "เก็บฉบับร่าง" เปลี่ยนเป็น "ยกเลิกร่าง"
-  (endpoint `/draft/[id]/discard`, RPC `discard_*_draft` ลบแถวจริง);
-  ป้ายสถานะ archived ใน UI ใช้คำว่า "ซ่อนแล้ว"; audit log ของการยกเลิก
-  (`action: delete`, before = แถวร่างเต็ม) เป็นหลักฐานเดียวที่เหลือ
+- RPC ใหม่ `discard_*_draft` ลบแถวร่างจริงภายใต้เงื่อนไข `status = 'draft'`
+  เท่านั้น (+ ตรวจ `expectedUpdatedAt`); ฟังก์ชัน `archive_*_draft_atomic`
+  ถูกถอดออกทั้ง 4 — ไม่มีเส้นทาง archive ร่างอีก
+- guard trigger เปิดช่อง DELETE เฉพาะแถว draft และบล็อก published →
+  archived ขณะ root ยังชี้แถวนั้น (`*_hide_active_forbidden`);
+  publish RPC เรียงลำดับใหม่ให้ปลด pointer ของ root ก่อนซ่อนเวอร์ชันเดิม —
+  ระบบมี active เสมอในทุกเส้นทาง; การซ่อนเกิดอัตโนมัติตอน publish
+  ทดแทนเท่านั้น ไม่มี action ซ่อนตรง
+- endpoint เปลี่ยนจาก `/draft/[id]/archive` เป็น `/draft/[id]/discard`;
+  audit log ของการยกเลิก (`action: delete`, `before` = แถวร่างเต็ม)
+  เป็นหลักฐานเดียวที่เหลือ
+- UI: ปุ่ม "ยกเลิกร่าง" + Confirm ว่าจะหายถาวร (ตำแหน่งปุ่มตาม Page Header
+  standard เดิม); ป้ายสถานะ archived ใช้คำว่า "ซ่อนแล้ว"
+- Commercial Preset ใหม่ที่ยกเลิกร่างแรกโดยไม่เคยเผยแพร่ = ลบ preset
+  ทั้งตัว ไม่ทิ้ง preset เปล่าค้างรายการ
 - แถว published/archived ที่มีอยู่ก่อน mig 0136 ไม่ถูกแตะ — เปลี่ยนเฉพาะ
-  พฤติกรรม action ต่อจากนี้; ฟังก์ชัน `archive_*_draft_atomic` ถูกถอดออก
-- วันหยุดปี 2027 (ops deadline ก่อนสิ้นปี 2026 — ดู timeline review):
-  กรอกผ่านหน้า CRUD ระดับ A ตามงานย้อนกลับใน branch แยก
+  พฤติกรรม action ต่อจากนี้
+
+### นอกขอบเขต
+
+- ทะเบียน master data ที่มี workflow ของตัวเอง (ลูกค้า, สินค้า, หมวดสินค้า
+  ที่ใช้ พักใช้/เปิดใช้) — คงกติกาเดิม
+- ลายเซ็นอิเล็กทรอนิกส์ — คงกติกา Decision 0006 (versioned + immutable
+  own-scope)
+- `quote_note_templates` — ไม่ retrofit; ปิดงานผ่าน Commercial Presets
+  (สวิตช์ consumer ฝั่งออกใบ → migrate ข้อมูล → ถอด API เก่า) ตามเดิม
+
+## ตารางสถานะ surface (หลังแก้ไขครั้งที่ 2)
+
+| Surface | ระดับ | สถานะ | หมายเหตุ |
+|---|---|---|---|
+| ข้อมูลบริษัท `/settings/company` | B | ปรับแล้ว (mig 0136) | ยกเลิกร่าง=ลบจริง, ซ่อนเฉพาะเวอร์ชันถูกแทน |
+| Workflow/Timeline Template | B | ปรับแล้ว (mig 0136) | เหมือนกัน; discard ลบ steps ของร่างก่อนแล้วลบเวอร์ชัน |
+| Document Standards | B | ปรับแล้ว (mig 0136) | เหมือนกัน |
+| Commercial Presets | B | ปรับแล้ว (mig 0136) | เหมือนกัน; ยกเลิกร่างแรกของ preset ที่ไม่เคยเผยแพร่ = ลบ preset ทั้งตัว |
+| ปฏิทินวันหยุด `/settings/holidays` | A | ย้อนกลับแล้ว | PR #629 — CRUD ตรงบนตาราง `holidays` (mig 0018) + Confirm + audit; ตัวคำนวณไทม์ไลน์อ่านตารางเดิมตรง ๆ; mig 0134 ถอน 0132 |
+| แจ้งเตือน Google Chat `/settings/chat-webhooks` | A | ย้อนกลับแล้ว | PR #629 — CRUD ตรงบนตาราง `chat_webhooks` (mig 0099) + Confirm + audit; env fallback เดิมคงอยู่; mig 0134 ถอน 0133 |
+| `quote_note_templates` | — | รอดำเนินการ | ปิดผ่าน Commercial Presets ไม่ retrofit |
+
+สถานะ `ย้อนกลับแล้ว` = โค้ดกลับเป็น CRUD ตรงแล้ว — **ค้างรัน mig 0134 มือบน
+Supabase production** (0132/0133 ถูกรันไปแล้ว ตาราง version มีแต่ seed
+DROP ได้ปลอดภัย ข้อมูลจริงอยู่ตารางเดิมครบ)
+
+สถานะ `ปรับแล้ว (mig 0136)` = โค้ด + migration ส่งมอบแล้ว — **ค้างรัน mig
+0136 มือบน Supabase production** และ UAT (ก่อนรัน ปุ่ม "ยกเลิกร่าง" จะ error
+เพราะ RPC `discard_*_draft` ยังไม่มีบนฐานข้อมูล)
+
+## เหตุผล
+
+- วันหยุดและ webhook เป็น**ข้อมูลปฏิบัติการ** ไม่ใช่เอกสารควบคุม — ค่าใช้จ่าย
+  ของพิธีกรรมร่าง/เผยแพร่ (คลิกหลายชั้นทุกครั้งที่แก้) สูงกว่าประโยชน์
+  central audit เพียงพอสำหรับการตรวจย้อน
+- ของควบคุม 4 ตัวผูกกับเอกสารการค้า/ไทม์ไลน์ที่ออกไปแล้ว — เวอร์ชันที่เคย
+  เผยแพร่ต้องอยู่ถาวรเป็นหลักฐาน จึงห้ามลบและซ่อนได้เฉพาะตัวที่พ้นหน้าที่
+- ร่างที่ยังไม่เผยแพร่ไม่เคยมีผลกับระบบ จึงลบจริงได้โดยไม่เสียหลักฐานใด

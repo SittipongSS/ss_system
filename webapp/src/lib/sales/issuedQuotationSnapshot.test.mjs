@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildIssuedQuotationPayload,
   buildIssuedQuotationArtifactHtml,
+  loadSignatureImageDataUri,
   issuedContentFingerprint,
   artifactSha256,
   ISSUED_QUOTATION_LAYOUT_VERSION,
@@ -80,4 +81,50 @@ test('artifact sha256 is stable for identical HTML', () => {
 
 test('layout version is tagged for regeneration tracking', () => {
   assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4');
+});
+
+test('artifact embeds approver signature image when provided', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
+  const html = buildIssuedQuotationArtifactHtml(baseQuote, { approverSignatureImage: png });
+  assert.match(html, /class="signatureImage"/);
+  assert.ok(html.includes(png), 'ฝัง data URI ลายเซ็นในใบตรึง');
+  // ไม่ส่งรูป → fallback ข้อความ ไม่มี <img>
+  const noImg = buildIssuedQuotationArtifactHtml(baseQuote);
+  assert.doesNotMatch(noImg, /class="signatureImage"/);
+  assert.match(noImg, /ลายเซ็นอิเล็กทรอนิกส์/);
+});
+
+test('artifact embeds both approver + proposer signature images', () => {
+  const approver = 'data:image/png;base64,QVBQ';
+  const proposer = 'data:image/png;base64,UFJPUA==';
+  const html = buildIssuedQuotationArtifactHtml(baseQuote, {
+    approverSignatureImage: approver,
+    proposerSignatureImage: proposer,
+  });
+  assert.ok(html.includes(approver), 'ฝังรูปผู้อนุมัติ');
+  assert.ok(html.includes(proposer), 'ฝังรูปผู้เสนอราคา');
+  assert.equal((html.match(/class="signatureImage"/g) || []).length, 2);
+});
+
+test('loadSignatureImageDataUri: downloads PNG → data URI; null on missing/failed', async () => {
+  const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]); // PNG magic
+  const okClient = {
+    storage: {
+      from: () => ({ download: async () => ({ data: { arrayBuffer: async () => bytes.buffer }, error: null }) }),
+    },
+  };
+  const asset = { storageBucket: 'signature-assets', storagePath: 'users/u1/sig.png', mimeType: 'image/png' };
+  const uri = await loadSignatureImageDataUri(okClient, asset);
+  assert.match(uri, /^data:image\/png;base64,/);
+  assert.ok(uri.length > 'data:image/png;base64,'.length, 'มี base64 payload');
+
+  // ไม่มี asset / ไม่มี path → null (ไม่บล็อกการออกใบ)
+  assert.equal(await loadSignatureImageDataUri(okClient, null), null);
+  assert.equal(await loadSignatureImageDataUri(okClient, { storageBucket: 'b' }), null);
+
+  // storage error → null
+  const errClient = {
+    storage: { from: () => ({ download: async () => ({ data: null, error: new Error('nope') }) }) },
+  };
+  assert.equal(await loadSignatureImageDataUri(errClient, asset), null);
 });

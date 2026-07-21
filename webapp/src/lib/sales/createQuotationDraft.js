@@ -37,7 +37,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   // แก้ข้อมูลลูกค้าต้องไปแก้ที่ฐานข้อมูลลูกค้า). เลือก "คน" ผู้ติดต่อได้ผ่าน contactIndex.
   const { data: customer } = await supabase
     .from('customers')
-    .select('address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
+    .select('taxId, address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
     .eq('id', deal.customerId)
     .maybeSingle();
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
@@ -79,6 +79,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       customerId: deal.customerId || null,
       customerName: deal.customerName || null,
       // snapshot ลูกค้า (read-only ในใบ)
+      customerTaxId: customer?.taxId || null,
       billingAddress: customer?.address || null,
       shippingAddress: customer?.shippingAddress || customer?.address || null,
       branchCode: customer?.branchCode || null,
@@ -111,6 +112,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       },
       createdBy: user.id || null,
       createdByName: user.name || null,
+      createdByPhone: user.phone || null, // snapshot เบอร์ผู้เสนอราคา → โชว์บนเอกสาร V4
     })
     .select()
     .single();

@@ -2,11 +2,12 @@
 // HTML ไฟล์เดียวจบในตัว (ฝัง CSS) ฝั่ง server ได้ ใช้ทั้งพิมพ์จริง + ตรึง snapshot 7B
 // + หน้า preview. Phase 7C (Direction B): V4 = เอกสารตัวจริง แทน quotePrint เดิม.
 //
-// markup ตรงกับ component React เดิม (QuotationMasterDocument) และ CSS ฝังด้านล่าง
-// คัดลอกจาก QuotationMasterDocument.module.css แบบ verbatim (ใช้ชื่อคลาสตรง ๆ ได้เพราะ
-// เอกสารนี้เป็นหน้าเดี่ยว self-contained ไม่ใช่ CSS Module ที่ต้อง hash).
+// ไฟล์นี้เป็น "แหล่งเดียว" ของหน้าตาเอกสารใบเสนอราคา V4 แล้ว (markup + CSS ฝังใน
+// DOCUMENT_CSS) — component React เดิม (QuotationMasterDocument) ถูกปลดระวางแล้ว
+// (Phase 7C 2026-07-21). ใช้ชื่อคลาสตรง ๆ ได้เพราะเป็นหน้าเดี่ยว self-contained.
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { buildQuotationMasterModelFromQuote } from '@/lib/sales/quotationMasterTemplate';
+import { DOCUMENT_FONT_FACE_CSS } from '@/lib/sales/quotationDocumentFonts';
 
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -26,6 +27,7 @@ function documentHeader(model) {
           <span>${val(model.company.nameEn)}</span>
           <p>${val(model.company.address)}</p>
           <p>เลขประจำตัวผู้เสียภาษี ${val(model.company.taxId)}</p>
+          <p>โทร ${val(model.company.phone)} · Line ${val(model.company.line)}</p>
         </div>
       </div>
       <div class="identityBlock">
@@ -34,8 +36,8 @@ function documentHeader(model) {
         <div class="englishTitle">${val(model.standard.titleEn)}</div>
         <dl>
           <div><dt>เลขที่</dt><dd>${val(model.document.number)}</dd></div>
-          <div><dt>วันที่</dt><dd>${val(model.document.issueDate)}</dd></div>
-          <div><dt>ยืนราคาถึง</dt><dd>${val(model.document.validUntil)}</dd></div>
+          <div><dt>${esc(model.document.dateLabel)}</dt><dd>${val(model.document.dateValue)}</dd></div>
+          <div><dt>${esc(model.document.secondaryLabel)}</dt><dd>${val(model.document.secondaryValue)}</dd></div>
         </dl>
       </div>
     </header>`;
@@ -50,17 +52,14 @@ function partyGrid(model) {
         <p>${val(model.customer.address)}</p>
         <dl>
           <div><dt>เลขผู้เสียภาษี</dt><dd>${val(model.customer.taxId)}</dd></div>
-          <div><dt>สาขา</dt><dd>${val(model.customer.branch)}</dd></div>
-          <div><dt>ผู้ติดต่อ</dt><dd>${val(model.customer.contactName)} · ${val(model.customer.contactPhone)}</dd></div>
+          <div><dt>ที่อยู่จัดส่ง</dt><dd>${val(model.customer.shippingAddress || model.customer.address)}</dd></div>
+          <div><dt>ผู้ติดต่อ</dt><dd>${val(model.customer.contactName)}${model.customer.contactPhone ? ` · ${esc(model.customer.contactPhone)}` : ''}</dd></div>
         </dl>
       </div>
       <div>
         <h2>ข้อมูลอ้างอิง <span>/ REFERENCE</span></h2>
         <dl>
-          <div><dt>ดีล</dt><dd>${val(model.references.deal)}</dd></div>
-          <div><dt>โครงการ</dt><dd>${val(model.references.project)}</dd></div>
-          <div><dt>ผู้เสนอราคา</dt><dd>${val(model.references.salesOwner)}</dd></div>
-          <div><dt>ติดต่อบริษัท</dt><dd>${val(model.company.phone)} · Line ${val(model.company.line)}</dd></div>
+          ${(model.referenceRows || []).map((r) => `<div><dt>${esc(r.label)}</dt><dd>${val(r.value)}</dd></div>`).join('')}
         </dl>
       </div>
     </section>`;
@@ -114,8 +113,6 @@ function installmentSection(model) {
   const rows = model.installments.map((row, index) => `
           <tr>
             <td><strong>${index + 1}. ${esc(row.label || '')}</strong>${row.note ? `<span>${esc(row.note)}</span>` : ''}</td>
-            <td>${val(row.trigger)}</td>
-            <td>${val(row.dueRule)}</td>
             <td class="number">${Number(row.percent || 0)}%</td>
             <td class="number">${money(row.amount)}</td>
           </tr>`).join('');
@@ -124,7 +121,7 @@ function installmentSection(model) {
         <h2>งวดชำระเงิน <span>/ PAYMENT SCHEDULE</span></h2>
         <table class="installmentTable">
           <thead>
-            <tr><th>งวด</th><th>ครบกำหนดเมื่อ</th><th>กำหนดชำระ</th><th class="number">%</th><th class="number">จำนวนเงิน</th></tr>
+            <tr><th>รายละเอียด</th><th class="number">%</th><th class="number">จำนวนเงิน</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
@@ -152,35 +149,34 @@ function sectionLead(kind, documentNumber) {
       </div>`;
 }
 
-function signatures(model) {
-  const approver = model.signature
+function signBox(signer) {
+  // มีรูปลายเซ็นจริง (data URI base64) → แสดงรูป; ไม่มี → กล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์"
+  // (data URI base64 ไม่มีอักขระ " ‹ › & จึงใส่ใน src ได้ตรง ๆ ไม่ต้อง esc)
+  const esigMark = signer.esignature?.imageDataUri
+    ? `<img class="signatureImage" src="${signer.esignature.imageDataUri}" alt="ลายเซ็น ${esc(signer.esignature.signerName || '')}" />`
+    : '<div class="signaturePreview" aria-label="ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์">ลายเซ็นอิเล็กทรอนิกส์</div>';
+  // แถวรายละเอียด: ตำแหน่ง + เวลาลงนาม (มีเฉพาะที่มีจริง) — ผู้อนุมัติ evidence-backed
+  // มีครบ; ผู้เสนอราคาเป็น stamp เชิงภาพ ส่ง role/เวลาว่าง → โชว์แค่รูป+ชื่อ ไม่มี Evidence
+  const esigMeta = [signer.esignature?.signerRole, signer.esignature?.signedAt].filter(Boolean).map(esc).join(' · ');
+  const body = signer.esignature
     ? `
-        <div class="signaturePreview" aria-label="ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์">ลายเซ็นอิเล็กทรอนิกส์</div>
-        <strong>${val(model.signature.signerName)}</strong>
-        <p>${val(model.signature.signerRole)}${model.signature.signedAt ? ` · ${esc(model.signature.signedAt)}` : ''}</p>
-        ${model.signature.evidenceId ? `<small>Evidence ${esc(model.signature.evidenceId)}</small>` : ''}`
+        ${esigMark}
+        <strong>${val(signer.esignature.signerName)}</strong>
+        ${esigMeta ? `<p>${esigMeta}</p>` : ''}
+        ${signer.esignature.evidenceId ? `<small>Evidence ${esc(signer.esignature.evidenceId)}</small>` : ''}`
     : `
         <div class="signatureSpace">ลงชื่อ</div>
-        <strong>(____________________________)</strong>
+        <strong>${signer.name ? `(${esc(signer.name)})` : '(____________________________)'}</strong>
         <p>วันที่ ______ / ______ / ______</p>`;
   return `
-      <section class="signatures" aria-label="ส่วนลงนาม">
-        <div>
-          <h2>ผู้เสนอราคา <span>พนักงานขาย</span></h2>
-          <div class="signatureSpace">ลงชื่อ</div>
-          <strong>(${val(model.references.salesOwner)})</strong>
-          <p>วันที่ ______ / ______ / ______</p>
-        </div>
-        <div class="${model.signature ? 'signed' : ''}">
-          <h2>ผู้อนุมัติ <span>Authorized signature</span></h2>${approver}
-        </div>
-        <div>
-          <h2>ผู้ยืนยันคำสั่งซื้อ <span>ลูกค้า</span></h2>
-          <div class="signatureSpace">ลงชื่อ</div>
-          <strong>(____________________________)</strong>
-          <p>วันที่ ______ / ______ / ______</p>
-        </div>
-      </section>`;
+        <div class="${signer.esignature ? 'signed' : ''}">
+          <h2>${esc(signer.label)}${signer.role ? ` <span>${esc(signer.role)}</span>` : ''}</h2>${body}
+        </div>`;
+}
+
+function signatures(model) {
+  return `
+      <section class="signatures" aria-label="ส่วนลงนาม">${(model.signers || []).map(signBox).join('')}</section>`;
 }
 
 function documentFooter(model, pageNumber, pageCount) {
@@ -226,7 +222,8 @@ function renderPages(model) {
 const DOCUMENT_CSS = `
   * { box-sizing: border-box; }
   body { margin: 0; background: #eceff3; -webkit-font-smoothing: antialiased;
-         -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+         -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+         font-family: 'IBM Plex Sans Thai', 'Leelawadee UI', sans-serif; }
   .toolbar { display: flex; justify-content: space-between; align-items: center;
              width: 210mm; max-width: 100%; margin: 16px auto 0; padding: 0 4px;
              font-family: 'IBM Plex Sans Thai', -apple-system, sans-serif; }
@@ -253,8 +250,9 @@ const DOCUMENT_CSS = `
     padding: 16px 0 40px;
     color: var(--doc-text);
     /* เอกสาร standalone ไม่มี --font-plex-sans (ตัวแปร next/font ที่มีเฉพาะในแอป) —
-       ต้องอ้าง 'IBM Plex Sans Thai' ตรง ๆ + โหลดผ่าน <link> ไม่งั้น var ที่ไม่นิยาม
-       ทำให้ทั้ง font-family เสีย แล้วหล่นไปฟอนต์ default ของเบราว์เซอร์ (ฟอนต์ไม่ตรง V4) */
+       จึงฝัง IBM Plex Sans Thai เป็น @font-face base64 ในตัว (DOCUMENT_FONT_FACE_CSS)
+       = ฟอนต์เดียวกับที่ next/font เสิร์ฟให้แอป แสดงผลตรงกันทุกที่ แม้พิมพ์/ตรึง snapshot
+       ออฟไลน์ (ไม่พึ่ง Google CDN ที่โหลดไม่ทัน/ไม่ได้แล้วหล่นไป Leelawadee) */
     font-family: 'IBM Plex Sans Thai', 'Leelawadee UI', sans-serif;
     font-size: 9.5pt;
     line-height: 1.42;
@@ -328,7 +326,11 @@ const DOCUMENT_CSS = `
   .installmentSection { margin-top: 3.5mm; break-inside: avoid; }
   .installmentTable th { padding: 1.5mm 1.2mm; color: var(--doc-navy); background: var(--doc-neutral-soft); border: 1px solid var(--doc-line); font-size: 7.8pt; }
   .installmentTable td { padding: 1.5mm 1.2mm; vertical-align: top; border: 1px solid var(--doc-line); font-size: 7.8pt; }
-  .installmentTable td:first-child { width: 45mm; }
+  /* ช่องรายละเอียด (คอลัมน์แรก) กว้างสุด: ให้ width:100% ดึงพื้นที่ที่เหลือทั้งหมด (auto layout
+     ไม่ยุบต่ำกว่าเนื้อหา จึงไม่พังบนจอแคบ) ส่วน % แคบ (ไม่เกิน 100%) + จำนวนเงินพอดีตัวเลข */
+  .installmentTable th:first-child, .installmentTable td:first-child { width: 100%; }
+  .installmentTable th:nth-child(2), .installmentTable td:nth-child(2) { width: 14mm; white-space: nowrap; }
+  .installmentTable th:nth-child(3), .installmentTable td:nth-child(3) { width: 30mm; white-space: nowrap; }
   .installmentTable span { display: block; color: var(--doc-muted); font-size: 7pt; }
   .termsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5mm; margin-top: 3mm; break-inside: avoid; }
   .termsGrid > div { padding: 2.2mm 2.6mm; background: var(--doc-neutral-soft); border-top: 1px solid var(--doc-line-strong); }
@@ -341,6 +343,7 @@ const DOCUMENT_CSS = `
   .signatureSpace, .signaturePreview { display: grid; height: 12mm; color: var(--doc-line-strong); font-size: 7pt; }
   .signatureSpace { box-sizing: border-box; place-items: end start; padding: 0 1mm .8mm; }
   .signaturePreview { place-items: center; color: var(--doc-navy); font-size: 9pt; font-weight: 600; font-style: italic; }
+  .signatureImage { display: block; height: 12mm; max-width: 100%; margin: 0 auto; object-fit: contain; }
   .signatures strong { display: block; font-size: 7.8pt; }
   .signatures p { margin: .5mm 0 0; color: var(--doc-muted); font-size: 6.8pt; }
   .signatures small { display: block; margin-top: .5mm; color: var(--doc-muted); font-size: 6.3pt; }
@@ -393,11 +396,29 @@ const DOCUMENT_CSS = `
 
 // เรนเดอร์ model (จาก buildQuotationMasterModelFromQuote หรือ buildQuotationMasterPreview)
 // เป็น HTML เอกสารเต็มไฟล์เดียว. options.grayscale = โหมดขาวดำ; options.toolbar=false ปิดปุ่มพิมพ์
+// สี accent ต่อชนิดเอกสาร (ตาม DOCUMENT_ACCENT_KEYS/LABELS ใน documentStandards):
+// ใบเสนอราคา = terracotta, ใบสั่งขาย = teal, ฯลฯ. ค่าเป็น hex สำหรับเอกสารพิมพ์
+// (self-contained ใช้ตัวแปร theme ของแอปไม่ได้). --doc-accent คุมสีชื่อเอกสาร (h1).
+export const DOCUMENT_ACCENT_THEMES = Object.freeze({
+  terracotta: { accent: '#ad5d43', soft: '#f5ebe7', watermark: 'rgb(173 93 67 / 14%)' },
+  steel: { accent: '#1e6091', soft: '#e6eef4', watermark: 'rgb(30 96 145 / 14%)' },
+  teal: { accent: '#0f766e', soft: '#e6f2f0', watermark: 'rgb(15 118 110 / 14%)' },
+  amber: { accent: '#b45309', soft: '#fdf1e3', watermark: 'rgb(180 83 9 / 13%)' },
+  green: { accent: '#15803d', soft: '#e8f3ec', watermark: 'rgb(21 128 61 / 13%)' },
+  navy: { accent: '#1f3551', soft: '#eef1f5', watermark: 'rgb(31 53 81 / 13%)' },
+});
+
+function accentStyle(accentKey) {
+  const theme = DOCUMENT_ACCENT_THEMES[accentKey] || DOCUMENT_ACCENT_THEMES.terracotta;
+  return `--doc-accent:${theme.accent};--doc-accent-soft:${theme.soft};--doc-accent-watermark:${theme.watermark};`;
+}
+
 export function renderQuotationMasterDocumentHTML(model, options = {}) {
   const grayscale = options.grayscale === true;
   const showToolbar = options.toolbar !== false;
   const documentLabel = options.documentLabel || 'ใบเสนอราคา';
   const number = model.document?.number || '';
+  const styleAttr = accentStyle(model.accentKey);
   const toolbar = showToolbar
     ? `<div class="toolbar no-print"><h1>${esc(documentLabel)} ${esc(number)}</h1><button class="btn-print" type="button" onclick="window.print()">พิมพ์เอกสาร</button></div>`
     : '';
@@ -407,19 +428,19 @@ export function renderQuotationMasterDocumentHTML(model, options = {}) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(number)} — ${esc(documentLabel)}</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>${DOCUMENT_FONT_FACE_CSS}</style>
 <style>${DOCUMENT_CSS}</style>
 </head>
 <body>
   ${toolbar}
-  <div class="document v4${grayscale ? ' grayscale' : ''}" data-template-version="${esc(model.templateVersion || '')}">
+  <div class="document v4${grayscale ? ' grayscale' : ''}" style="${styleAttr}" data-template-version="${esc(model.templateVersion || '')}">
     ${renderPages(model)}
   </div>
 </body>
 </html>`;
 }
 
-// สร้าง HTML เอกสารจาก quotation จริง (ใช้แทน buildQuotePrintHTML ในการพิมพ์ + ตรึง snapshot)
+// สร้าง HTML เอกสารจาก quotation จริง — เครื่องยนต์เอกสาร V4 เดียวสำหรับการพิมพ์ + ตรึง snapshot
 export function buildQuotationMasterHTML(quote, options = {}) {
   const model = buildQuotationMasterModelFromQuote(quote, options);
   return renderQuotationMasterDocumentHTML(model, options);

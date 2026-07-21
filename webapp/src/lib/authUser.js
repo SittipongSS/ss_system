@@ -63,6 +63,8 @@ export async function getCurrentUser() {
     // effective caps are role caps ∪ these — see capsForUser/canUser.
     extraCaps: sanitizeExtraCaps(user.app_metadata?.extraCaps),
     name: user.user_metadata?.name || user.email || 'user',
+    // เบอร์โทรผู้ใช้ (user_metadata.phone) — ใช้ snapshot เป็น "เบอร์ผู้เสนอราคา" บนใบเสนอราคา
+    phone: user.user_metadata?.phone || null,
   };
   if (cacheKey) {
     if (identityCache.size > 500) identityCache.clear(); // กัน Map โตไม่จำกัด (token rotation)

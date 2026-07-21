@@ -22,7 +22,7 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
 
 // จับช่องเป็นคู่ซ้าย-ขวาเองแทนปล่อยไหลตาม grid แม่ (มติผู้ใช้ 2026-07-17).
 // ปล่อยไหลแล้วคุมไม่ได้: จำนวนช่องเปลี่ยนตาม showProject และ ProductCategorySelect
@@ -117,11 +117,25 @@ export default function DealFormFields({
     </label>
   );
 
+  // ประเภทดีล = ตัวเลือก template ไทม์ไลน์ → ต้องเลือกให้ถูก. ใส่สีตัวอักษรตามชุดสี
+  // มาตรฐาน (DEAL_TYPE_COLORS: SCENT=amber, NPD=blue, RE-ORDER=teal) เหมือน badge
+  // ในหน้ารายการ เพื่อให้อ่านประเภทได้ด้วยตาเดียว + placeholder บังคับเลือกตอนสร้าง
+  // (ไม่มี default NPD เงียบ ๆ อีก — มติ 2026-07-21).
   const dealTypeField = (
     <label className="deal-field" key="dealType">
-      ประเภทดีล
-      <Select className="premium-select" value={form.dealType} onChange={(e) => set("dealType")(e.target.value)}>
-        {DEAL_TYPES.map((t) => <option key={t} value={t}>{t} · {DEAL_TYPE_LABELS[t]}</option>)}
+      ประเภทดีล <span style={{ color: "var(--red)" }}>*</span>
+      <Select
+        className="premium-select"
+        value={form.dealType || ""}
+        onChange={(e) => set("dealType")(e.target.value)}
+        style={{ color: form.dealType ? DEAL_TYPE_COLORS[form.dealType] : "var(--text-3)", fontWeight: form.dealType ? 600 : 400 }}
+      >
+        <option value="" disabled style={{ color: "var(--text-3)", fontWeight: 400 }}>— เลือกประเภทดีล —</option>
+        {DEAL_TYPES.map((t) => (
+          <option key={t} value={t} style={{ color: DEAL_TYPE_COLORS[t], fontWeight: 600 }}>
+            {t} · {DEAL_TYPE_LABELS[t]}
+          </option>
+        ))}
       </Select>
     </label>
   );

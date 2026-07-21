@@ -32,7 +32,13 @@ export default function TaskDetailPage() {
     try {
       const res = await fetch(`/api/pm/personal-tasks/${id}`, { cache: "no-store" });
       const body = await res.json();
-      if (!res.ok) throw new Error(body?.error || "ไม่สามารถโหลดงานได้");
+      if (!res.ok) {
+        // อย่าโชว์คำว่า "forbidden" ดิบ ๆ — แปลเป็นข้อความที่คนอ่านรู้เรื่อง
+        const msg = res.status === 403 ? "คุณไม่มีสิทธิ์ดูงานนี้ (อยู่นอกทีม/ขอบเขตของคุณ)"
+          : res.status === 404 ? "ไม่พบงานนี้ (อาจถูกลบไปแล้ว)"
+          : (body?.error === "forbidden" ? "คุณไม่มีสิทธิ์ดูงานนี้" : body?.error) || "ไม่สามารถโหลดงานได้";
+        throw new Error(msg);
+      }
       setTask(body);
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   }, [id]);
