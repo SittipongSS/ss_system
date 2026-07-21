@@ -2,7 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can, isSuperuser } from '@/lib/permissions';
-import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES } from '@/lib/sales/leads';
+import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead } from '@/lib/sales/leads';
 import { TEAMS, TEAM_LABELS } from '@/lib/permissions';
 import { sendChat, chatCard } from '@/lib/chat';
 
@@ -15,10 +15,11 @@ export const dynamic = 'force-dynamic';
 // กติกา role ต่อ action (เฟส C — ตามเส้นชีวิตในแผน):
 //   screen     = supervisor/admin (คัดกรอง เลือกทีม — SLA 1 วันทำการ)
 //   assign     = senior_ae/ac ของทีมนั้น + supervisor/admin (กระจายให้ AE)
-//   contact    = ผู้รับมอบ (AE) / senior ทีม / supervisor (SLA 1 วันทำการ)
+//   contact    = ผู้รับมอบ (AE) / senior ทีม / admin (SLA 1 วันทำการ) —
+//     มติผู้ใช้ 2026-07-21: supervisor จบงานที่คัดกรอง ไม่ทำขั้นทำงานแทนทีม
 //   meeting    = เดียวกับ contact (+ บันทึกรูปแบบนัด onsite/online — วัด KPI)
 //   qualify    = เดียวกับ contact — ต้องระบุ customerId (เปิดลูกค้าในฐานข้อมูลก่อน)
-//   disqualify = เดียวกับ contact + supervisor — ต้องมีเหตุผล
+//   disqualify = ขั้นกำกับดูแล: ทีมเจ้าของงาน + supervisor/admin — ต้องมีเหตุผล
 //   bounce     = ทีมไม่ตรง → กลับคิวคัดกรอง (ล้างทีม/ผู้รับ) — ต้องมีเหตุผล
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
@@ -40,7 +41,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const superuser = isSuperuser(role);
   const inTeam = (role === 'senior_ae' || role === 'ac') && lead.team === user.team;
   const isAssignee = role === 'ae' && lead.assigneeId === user.id;
-  const workScope = superuser || inTeam || isAssignee; // ผู้ที่ทำงานลีดใบนี้ได้
+  // สองระดับ (มติผู้ใช้ 2026-07-21): ปุ่มกำกับดูแล (ตีกลับ/ไม่ไปต่อ) = ทีม + supervisor;
+  // ขั้นทำงาน (ติดต่อ/นัด) = ทีมเจ้าของงานเท่านั้น — supervisor จบงานที่คัดกรอง
+  const oversightScope = superuser || inTeam || isAssignee;
+  const workScope = canWorkLead(user, lead);
 
   const now = new Date().toISOString();
   const patch = { updatedAt: now };
@@ -70,11 +74,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     event.assigneeId = body.assigneeId;
     event.assigneeName = body.assigneeName;
   } else if (action === 'contact') {
-    if (!workScope) return forbidden();
+    if (!workScope) return forbidden('ติดต่อกลับได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)');
     patch.firstContactAt = lead.firstContactAt || now;
     event.eventAt = body.eventAt || now;
   } else if (action === 'meeting') {
-    if (!workScope) return forbidden();
+    if (!workScope) return forbidden('บันทึกนัดประชุมได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)');
     if (body.meetingMode && !MEETING_MODES.includes(body.meetingMode)) return badRequest('รูปแบบนัดไม่ถูกต้อง');
     patch.meetingAt = body.eventAt || now;
     event.meetingMode = body.meetingMode || null;
@@ -85,13 +89,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     // "ไร้รหัส/ไร้ประวัติ" และซ้ำได้ ปิดทิ้งเพื่อไม่ให้แตกจากทางหลัก (ผลตรวจ 2026-07-16).
     return badRequest('สร้างดีลจากลีดผ่านปุ่ม "สร้างดีล" (ระบบดีล) เท่านั้น');
   } else if (action === 'disqualify') {
-    if (!workScope) return forbidden();
+    if (!oversightScope) return forbidden();
     if (!body.reason?.trim()) return badRequest('ต้องระบุเหตุผลที่ไม่ไปต่อ');
     patch.disqualifiedReason = body.reason.trim();
     patch.closedAt = now;
     event.reason = body.reason.trim();
   } else if (action === 'bounce') {
-    if (!workScope) return forbidden();
+    if (!oversightScope) return forbidden();
     if (!body.reason?.trim()) return badRequest('ต้องระบุเหตุผลที่ตีกลับ (เช่น ทีมไม่ตรง)');
     patch.team = null;
     patch.assigneeId = null;
