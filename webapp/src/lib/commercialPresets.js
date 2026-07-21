@@ -120,6 +120,28 @@ function specificity(preset) {
   return Number(!!preset.teamKey) + Number(!!preset.dealType) + Number(!!preset.serviceType);
 }
 
+// แปลงผลลัพธ์จาก resolveCommercialPreset → ค่าตั้งต้นสำหรับฟอร์มใบเสนอราคา (QT).
+// คืน null เมื่อไม่มี preset ที่ match หรือไม่มีเวอร์ชันเผยแพร่. งวดชำระของ preset มี
+// trigger/dueRule ที่ฟอร์ม QT ไม่มีช่องแยก → พับรวมเข้า note (QT มีแค่ label/percent/note).
+// versionId = เวอร์ชันที่ควบคุมใบนี้ ใช้ตรึงใน issued snapshot (Phase 7B).
+export function commercialPresetToQuotationDefaults(resolved) {
+  const version = resolved?.published;
+  if (!resolved || !version) return null;
+  const installments = (Array.isArray(version.installments) ? version.installments : []).map((row) => ({
+    label: trimOrNull(row?.label) || '',
+    percent: Number(row?.percent) || 0,
+    note: [row?.trigger, row?.dueRule, row?.note].map((text) => trimOrNull(text)).filter(Boolean).join(' · ') || '',
+  }));
+  return {
+    versionId: version.id,
+    title: trimOrNull(version.title),
+    paymentMethod: version.paymentMethod || '',
+    paymentTerms: version.paymentTerms || '',
+    remarks: version.remarks || '',
+    installments,
+  };
+}
+
 export function resolveCommercialPreset(candidates = [], input = {}) {
   const context = {
     documentKey: trimOrNull(input.documentKey),
