@@ -459,16 +459,58 @@ export function inScope(scope, user, record) {
 // API route handlers. `user` = { id, role, team }.
 
 export function canViewRecord(user, resource, record) {
-  // Customers are a central registry — any signed-in sales/legal user may view.
-  if (resource === 'customers') return true;
+  // Customers AND products are the shared central catalog — any signed-in user
+  // may VIEW the record (มติ 2026-07-20: แคตตาล็อกสินค้าเห็นทุกทีม, เหมือนลูกค้า).
+  // The confidential factory cost/margin is redacted separately
+  // (redactProductMargin); EDIT stays caretaker-team scoped (canEditRecord).
+  // Was product-team scoped, which 404'd a cross-team product's detail page even
+  // though the LIST (GET /api/products) already showed the row to every team —
+  // so the caretaker team could never reach the edit form on it.
+  if (resource === 'customers' || resource === 'products') return true;
   return inScope(viewScopeUser(user), user, record);
 }
 
-export function canEditRecord(user, resource, record) {
+// Caretaker teams of a master record (a customer, or any {teams,team} shape).
+// teams[] (migration 0037) is the source of truth; falls back to the legacy
+// single `team`. Empty [] = teamless → shared master data (every team may edit,
+// mirroring the GET catalog which shows teamless rows to all teams).
+export function caretakerTeamsOf(record) {
+  if (!record) return [];
+  if (Array.isArray(record.teams) && record.teams.length) return record.teams.filter(Boolean);
+  return record.team ? [record.team] : [];
+}
+
+export function canEditRecord(user, resource, record, caretakerTeams) {
   // Legal tax approval spans all teams (legal processes tax for everyone),
   // but legal does not edit the customer registry. Honours a per-user
   // legal:approve grant (an SA acting as LG) the same as the built-in role.
   if (resource !== 'customers' && canUser(user, 'legal:approve')) return true;
+
+  // ── Master data (customers / products): CARETAKER-TEAM scoped ────────
+  // Edit is gated by the team that CARES FOR the record, not who created it:
+  //   • customer — its own teams[] (migration 0037)
+  //   • product  — its OWNING CUSTOMER's teams[]. product.team only records the
+  //     creator (มติ 2026-07-20: "the owner is the customer"), so the caller must
+  //     resolve the owning customer's teams and pass them as `caretakerTeams`
+  //     (see productCaretakerTeams). An UNRESOLVED value (undefined) fails closed.
+  // EVERY sales role in that team may edit — AE included: a product/customer is
+  // the team's asset, not one AE's own record (มติ 2026-07-21). Teamless ([]) =
+  // shared master data: any holder of the edit cap may edit (mirrors GET).
+  if (resource === 'customers' || resource === 'products') {
+    if (isSuperuser(user?.role)) return true;
+    if (!canUser(user, `${resource}:edit`)) return false; // defense-in-depth vs the proxy cap gate
+    let teams;
+    if (resource === 'products') {
+      if (caretakerTeams == null) return false; // caller must resolve — fail closed
+      teams = caretakerTeams.filter(Boolean);
+    } else {
+      teams = caretakerTeamsOf(record);
+    }
+    if (teams.length === 0) return true;                  // teamless = shared
+    return !!user?.team && teams.includes(user.team);
+  }
+
+  // Orders / registrations / projects — creator/team/own scope (unchanged).
   return inScope(editScope(user?.role), user, record);
 }
 

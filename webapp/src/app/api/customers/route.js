@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canApproveMasterData, viewScopeUser } from '@/lib/permissions';
+import { canApproveMasterData, viewScopeUser, isSuperuser, TEAMS } from '@/lib/permissions';
 import { normalizeBrands } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
@@ -77,6 +77,15 @@ export async function POST(request) {
   const contacts = Array.isArray(body.contacts) ? body.contacts : [];
   const primary = contacts[0] || {};
 
+  // ทีมดูแล (migration 0037): team-role สร้าง = ตั้งเป็นทีมตัวเองอัตโนมัติ. superuser
+  // (admin / ae_supervisor) ไม่มีทีมของตัวเอง จึงเลือกทีมดูแลจากฟอร์มได้ (mirror การ
+  // ย้ายทีมใน PATCH ที่เปิดเฉพาะ superuser) — ถ้าไม่เลือก = ไร้ทีม = "ส่วนกลาง" ทุกทีม
+  // แก้ได้ (canEditRecord). สำคัญเพราะ edit ผูกกับ teams[] แล้ว (มติ 2026-07-21): ลูกค้า
+  // ที่ superuser สร้างโดยไม่ระบุทีมจะกลายเป็นกำพร้าถ้าไม่มี fallback นี้.
+  const pickedTeams = isSuperuser(user?.role) && Array.isArray(body.teams)
+    ? body.teams.filter((t) => TEAMS.includes(t))
+    : (user?.team ? [user.team] : []);
+
   const newCustomer = {
     // Collision-proof id. The old 'CUS-'+last-6-ms scheme repeated every ~16.7
     // min and the live DB has no unique on id — two customers could share one.
@@ -99,9 +108,9 @@ export async function POST(request) {
     email: primary.email || null,
     creditTerms: body.creditTerms || null,
     metadata: body.metadata || {},
-    // Managing team + owner come from the server-side identity.
-    team: user?.team ?? null,            // ทีมหลัก/ผู้สร้าง
-    teams: user?.team ? [user.team] : [], // ทีมดูแลทั้งหมด (migration 0037)
+    // Managing team + owner. team-role → ทีมตัวเอง; superuser → ทีมที่เลือก (หรือไร้ทีม).
+    team: pickedTeams[0] ?? user?.team ?? null, // ทีมหลัก (คอลัมน์เก่า) = ทีมแรกที่ดูแล
+    teams: pickedTeams,                          // ทีมดูแลทั้งหมด (migration 0037)
     ownerId: user?.id ?? null,
     // Approval workflow (migration 0027).
     approvalStatus: autoApprove ? 'approved' : 'pending',

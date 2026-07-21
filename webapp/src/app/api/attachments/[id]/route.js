@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
+import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 
 export const dynamic = 'force-dynamic';
@@ -31,9 +32,16 @@ export async function DELETE(request, { params }) {
   let parent = null;
   if (table) {
     ({ data: parent } = await supabase.from(table).select('*').eq('id', att.entityId).maybeSingle());
+    // product: edit scope follows the OWNING CUSTOMER's caretaker team (มติ
+    // 2026-07-20/21) — resolve it so the check matches the product detail page.
     const canEditParent = att.entityType === 'personal_task'
       ? await canAttachToPersonalTask(supabase, parent, user)
-      : canEditRecord(user, RESOURCE[att.entityType], parent);
+      : canEditRecord(
+          user,
+          RESOURCE[att.entityType],
+          parent,
+          att.entityType === 'product' ? await productCaretakerTeams(parent, supabase) : undefined,
+        );
     if (parent && !canEditParent) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }

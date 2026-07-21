@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSuperuser } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
+import { productCaretakerTeams } from '@/lib/master/productScope';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { recordAudit } from '@/lib/audit';
@@ -49,9 +50,12 @@ export async function PATCH(request, { params }) {
   if (findErr) return Response.json({ error: findErr.message }, { status: 500 });
   if (!product) return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
 
-  // Row-level scope: own-team (sa roles) / own record (ae) / all (supervisor,
-  // legal approval). The proxy already verified the coarse capability.
-  if (!canEditRecord(user, 'products', product)) {
+  // Row-level scope: the product is edited by the team that CARES FOR its owning
+  // customer (product.team only records who created it — มติ 2026-07-20), every
+  // sales role in that team incl. AE; teamless customer = shared. Superuser +
+  // legal-approval span all. The proxy already verified the coarse capability.
+  const caretakerTeams = await productCaretakerTeams(product, supabase);
+  if (!canEditRecord(user, 'products', product, caretakerTeams)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -59,8 +63,8 @@ export async function PATCH(request, { params }) {
 
   // ── Approval action (approve / reject a pending product) ─────────────
   // Setting approvalStatus is reserved for AE Supervisor — AE/AC/Senior hold products:edit
-  // but must not approve. Row-level team scope is already enforced above by
-  // canEditRecord (senior_ae = own team, supervisor/admin = all teams).
+  // but must not approve. Row-level scope is already enforced above by
+  // canEditRecord (caretaker team of the owning customer; supervisor = all teams).
   if (body.approvalStatus !== undefined) {
     if (!canApproveMasterData(user?.role)) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
