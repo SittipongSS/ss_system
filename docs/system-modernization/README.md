@@ -57,9 +57,12 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - Phase 7D (ใบสั่งขายใช้เครื่องยนต์ V4 ตัวเดียวกับใบเสนอราคา) ถูก Merge เข้า `main` แล้ว
   ผ่าน commit `87d05efc`, `bd587b08`, `21cfc473`; `salesOrderPrint.js` เรียก
   `buildQuotationMasterHTML` แทน `buildQuotePrintHTML`; สถานะ `รอตรวจ` เพราะยังรอ UAT ใบจริง
-- งานที่ยังค้างของ 7C: (1) PDF artifact ถาวรตาม Decision 0011 (D-7C-1 ยังไม่เคาะวิธี
-  generate บน Vercel) และ (2) เสียบ Commercial Preset เข้าการสร้างใบเสนอราคา —
-  `resolveCommercialPreset` ยังเป็น dead code ไม่มี consumer
+- Commercial Preset ถูกเสียบเข้าการสร้างใบเสนอราคาแล้ว (2026-07-22): endpoint
+  `GET /api/commercial-presets/resolve` + prefill หน้าใหม่ + ตรึง
+  `metadata.commercialPresetVersionId` + snapshot pin — `resolveCommercialPreset`
+  ไม่เป็น dead code แล้ว (ไม่มี migration ใช้ `quotations.metadata` เดิม)
+- งานที่ยังค้างของ 7C เหลือข้อเดียว: PDF artifact ถาวรตาม Decision 0011
+  (D-7C-1 ยังไม่เคาะวิธี generate บน Vercel — เสนอ puppeteer-core + @sparticuz/chromium)
 
 ## Definition of Done ของทุกเฟส
 
