@@ -81,7 +81,8 @@ export default function TaskDetailPage() {
           ]}
         />
 
-        <DetailPageLayout aside={<><TaskPeople task={task} person={person} /><AttachmentsPanel entityType="personal_task" entityId={task.id} canEdit={!!task.canManage} title="ไฟล์แนบงาน" /></>}>
+        <DetailPageLayout aside={<><TaskPeople task={task} person={person} />{/* rail ข้างแคบ — การ์ดแถวละใบ ไม่งั้นชื่อไทยไม่มีช่องว่างโดนหั่นกลางคำ (แพตเทิร์นเดียวกับหน้า tax) */}
+<AttachmentsPanel entityType="personal_task" entityId={task.id} canEdit={!!task.canManage} title="ไฟล์แนบงาน" cardColumns={1} /></>}>
 
         <DetailCard icon={ListTodo} eyebrow="Task information" title="ข้อมูลงาน" actions={!task.canManage ? <span className="ui-badge">แก้ได้เฉพาะสถานะ</span> : null}>
           <div className={styles.grid}>
