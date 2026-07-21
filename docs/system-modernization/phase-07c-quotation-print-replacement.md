@@ -22,6 +22,14 @@
 (resolver ไม่มี consumer), และการ validate การพิมพ์จาก snapshot กับใบจริง
 ยังไม่ได้ทำเป็นทางการ
 
+**อัปเดต 2026-07-22 — ขอบเขต #2 (Commercial Preset) ส่งมอบแล้ว:**
+`resolveCommercialPreset` มี consumer แล้ว — (ก) endpoint ผู้จัดทำใบ
+`GET /api/commercial-presets/resolve` (gate `salesplan:edit`) คืนค่าตั้งต้นของ preset
+ที่ match scope ดีล (Published เท่านั้น); (ข) หน้าสร้างใบเสนอราคาเติมค่าตั้งต้น
+วิธีชำระ/เงื่อนไข/หมายเหตุ/งวดชำระ เฉพาะช่องที่ยังว่าง (แก้ทับได้); (ค) server ตรึง
+`metadata.commercialPresetVersionId` ตอนสร้างใบแบบ authoritative; (ง) issued snapshot
+pin เวอร์ชันจาก metadata แทน hardcode null. เหลือของ 7C จริง ๆ = **PDF binary (D-7C-1)**
+
 ## ขอบเขตที่เสนอ (รอยืนยัน)
 
 ### 1. PDF Artifact ของใบเสนอราคาที่ออกจริง
@@ -70,7 +78,9 @@
 
 - [ ] ผู้ใช้ยืนยันขอบเขตและคำตอบ D-7C-1..3
 - [ ] Migration (ถ้ามี) + rollback บันทึกและตรวจ
-- [ ] Preset default ทำงานตอนสร้าง QT พร้อม unit tests
+- [x] Preset default ทำงานตอนสร้าง QT พร้อม unit tests (2026-07-22 — endpoint resolve +
+  prefill หน้าใหม่ + server stamp `metadata.commercialPresetVersionId` + snapshot pin;
+  `commercialPresetToQuotationDefaults` 9/9 tests เขียว)
 - [ ] PDF artifact เกิดตอนอนุมัติ, immutable, fingerprint ตรง พร้อม tests
 - [ ] UAT ใบจริง: snapshot + reprint + PDF ตรงฉบับ
 - [ ] อัปเดต Permission action inventory

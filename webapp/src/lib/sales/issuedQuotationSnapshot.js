@@ -175,7 +175,9 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
     p_artifact_html: html,
     p_artifact_sha256: artifactSha256(html),
     p_document_standard_version_id: evidence.documentStandardVersionId,
-    p_commercial_preset_version_id: null,
+    // เวอร์ชัน Commercial Preset ที่ควบคุมใบนี้ (ตรึงตอนสร้างใบใน metadata) — RPC จะ
+    // validate ว่ามีจริงถ้าไม่ว่าง (mig 0130); ใบเก่าก่อนฟีเจอร์นี้ = null (ข้ามได้)
+    p_commercial_preset_version_id: quote?.metadata?.commercialPresetVersionId || null,
     p_signature_evidence_id: evidence.id,
     p_layout_version: ISSUED_QUOTATION_LAYOUT_VERSION,
     p_locale: ISSUED_QUOTATION_LOCALE,
