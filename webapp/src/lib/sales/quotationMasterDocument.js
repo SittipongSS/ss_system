@@ -115,8 +115,6 @@ function installmentSection(model) {
   const rows = model.installments.map((row, index) => `
           <tr>
             <td><strong>${index + 1}. ${esc(row.label || '')}</strong>${row.note ? `<span>${esc(row.note)}</span>` : ''}</td>
-            <td>${val(row.trigger)}</td>
-            <td>${val(row.dueRule)}</td>
             <td class="number">${Number(row.percent || 0)}%</td>
             <td class="number">${money(row.amount)}</td>
           </tr>`).join('');
@@ -125,7 +123,7 @@ function installmentSection(model) {
         <h2>งวดชำระเงิน <span>/ PAYMENT SCHEDULE</span></h2>
         <table class="installmentTable">
           <thead>
-            <tr><th>งวด</th><th>ครบกำหนดเมื่อ</th><th>กำหนดชำระ</th><th class="number">%</th><th class="number">จำนวนเงิน</th></tr>
+            <tr><th>รายละเอียด</th><th class="number">%</th><th class="number">จำนวนเงิน</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>

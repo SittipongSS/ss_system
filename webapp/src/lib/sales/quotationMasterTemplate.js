@@ -585,12 +585,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     ? paymentPlan.installments.map((row) => ({
       label: row.label || '',
       note: row.note || '',
-      trigger: row.trigger || '-',
-      dueRule: row.dueRule || '-',
       percent: Number(row.percent || 0),
       amount: Number(row.amount || 0),
     }))
-    : [{ label: 'ชำระเต็มจำนวน', note: '', trigger: '-', dueRule: '-', percent: 100, amount: Number(quote.totalAmount || 0) }];
+    : [{ label: 'ชำระเต็มจำนวน', note: '', percent: 100, amount: Number(quote.totalAmount || 0) }];
 
   const customer = {
     name: quote.customerName || '-',
