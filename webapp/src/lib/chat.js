@@ -4,13 +4,15 @@
 //   - ส่งหลังตอบ response แล้วด้วย after() — ไม่เพิ่ม latency ให้ API
 //   - กลืน error ทุกชนิด (log อย่างเดียว) — ห้าม throw กลับไปหา caller
 //
-// แหล่ง webhook URL (เฟส 2): ตาราง chat_webhooks ก่อน (migration 0099, แก้ผ่านหน้า
-// /settings/chat-webhooks) — มี row ของ key = ยึดตาราง (enabled=false คือปิดจริง)
-// ไม่มี row → fallback env เดิม (CHAT_WEBHOOK_*)
+// แหล่ง webhook URL (Decision 0012, mig 0133): เวอร์ชันที่เผยแพร่ของ
+// chat_webhook_setting_versions — space ที่มี published version = ยึดค่านั้น
+// (enabled=false หรือ url ว่าง คือปิดจริง); ไม่มี published version → fallback
+// env เดิม (CHAT_WEBHOOK_*) เหมือนกติกา "ไม่มี row" ของตาราง chat_webhooks เดิม
+// ซึ่งยังคงเป็น fallback ระหว่างรอ migration 0133 ถูกรัน
 import { after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
-const SPACE_ENV = {
+export const SPACE_ENV = {
   approvals: 'CHAT_WEBHOOK_APPROVALS', // space หัวหน้า/ผู้อนุมัติ (AE Supervisor)
   sales: 'CHAT_WEBHOOK_SALES', // space ทีมขาย
   pm: 'CHAT_WEBHOOK_PM', // space โครงการ (ใช้ในเฟส 3 daily digest)
@@ -34,12 +36,27 @@ export function invalidateChatWebhookCache() {
   cache = { at: 0, rows: null };
 }
 
+// รายการ config ปัจจุบันต่อ space ในรูปเดียวกันทั้งสองแหล่ง: [{key, url, enabled}]
+// แหล่งหลัก = published versions (mig 0133); ยังไม่ migrate → ตาราง chat_webhooks เดิม
+async function loadWebhookRows() {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('chat_webhook_setting_versions')
+    .select('settingKey, url, enabled')
+    .eq('status', 'published');
+  if (!error) return (data || []).map((r) => ({ key: r.settingKey, url: r.url, enabled: r.enabled }));
+
+  const legacy = await supabase.from('chat_webhooks').select('key, url, enabled');
+  if (!legacy.error) return legacy.data || [];
+  return null;
+}
+
 async function webhookUrlFor(spaceKey) {
   try {
     const now = Date.now();
     if (!cache.rows || now - cache.at > 60_000) {
-      const { data, error } = await getSupabaseAdmin().from('chat_webhooks').select('key, url, enabled');
-      if (!error) cache = { at: now, rows: data || [] };
+      const rows = await loadWebhookRows();
+      if (rows) cache = { at: now, rows };
     }
     const row = (cache.rows || []).find((r) => r.key === spaceKey);
     if (row) return row.enabled && row.url ? row.url : null;
@@ -96,6 +113,13 @@ async function postCard(url, card) {
 export async function sendChatNow(spaceKey, card) {
   const url = await webhookUrlFor(spaceKey);
   if (!url) return { ok: false, error: 'ยังไม่ได้ตั้ง webhook ของ space นี้ (หรือถูกปิดใช้อยู่)' };
+  return postCard(url, card);
+}
+
+// ส่งการ์ดไปยัง URL ที่ระบุตรง ๆ — ใช้ทดสอบ "ฉบับร่าง" ก่อนเผยแพร่เท่านั้น
+// (caller ต้อง validate โดเมน chat.googleapis.com ก่อนเรียก)
+export async function sendChatToUrl(url, card) {
+  if (!url) return { ok: false, error: 'ฉบับร่างนี้ยังไม่ได้ใส่ webhook URL' };
   return postCard(url, card);
 }
 
