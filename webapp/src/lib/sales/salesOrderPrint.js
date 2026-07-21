@@ -1,5 +1,10 @@
+// พิมพ์ใบสั่งขาย FM-SA-03 — Phase 7D: ใช้เครื่องยนต์เอกสาร Quotation Master V4
+// (quotationMasterDocument) ตัวเดียวกับใบเสนอราคา ผ่าน options เฉพาะ SO
+// (ฟอร์ม/เลข/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม) — หน้าตาเดียวกัน ไม่มี CSS ซ้ำ.
+import { fmtDate } from '@/lib/format';
 import { DOCUMENT_FORMS } from '@/lib/documentBrand';
-import { buildQuotePrintHTML, prepareQuotePrintWindow, showQuotePrintError } from '@/lib/sales/quotePrint';
+import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
+import { prepareQuotePrintWindow, showQuotePrintError } from '@/lib/sales/quotePrint';
 
 const STATUS_LABELS = {
   draft: 'ฉบับร่าง',
@@ -20,8 +25,7 @@ export function showSalesOrderPrintError(printWindow, message = 'ไม่สา
 export function buildSalesOrderPrintHTML(order) {
   const quotation = order.quotation || {};
   const taxableAmount = Math.max(0, Number(order.totalAmount || 0) - Number(order.vatAmount || 0));
-  // อัตรา VAT คิดย้อนจากยอดเงิน (ที่ปัดเป็นสตางค์แล้ว) — ต้องปัดเป็น 2 ตำแหน่ง ไม่งั้น
-  // float noise โผล่บนเอกสาร เช่น "ภาษีมูลค่าเพิ่ม 7.000000000000001%"
+  // อัตรา VAT คิดย้อนจากยอดเงิน (ปัดเป็นสตางค์แล้ว) — ปัด 2 ตำแหน่งกัน float noise
   const vatRate = taxableAmount > 0
     ? Math.round((Number(order.vatAmount || 0) / taxableAmount) * 10000) / 100
     : 0;
@@ -29,10 +33,11 @@ export function buildSalesOrderPrintHTML(order) {
   const notes = [order.notes, order.approvalNote ? `หมายเหตุการอนุมัติ: ${order.approvalNote}` : null]
     .filter(Boolean)
     .join('\n');
+
+  // แมป order → รูป quote ที่ model builder V4 รับ (ข้อมูลลูกค้ามาจาก snapshot ในใบเสนอราคาที่ผูก)
   const printable = {
-    quoteNumber: order.orderNumber,
-    quoteDate: order.orderDate,
     customerName: order.customerName,
+    customerTaxId: quotation.customerTaxId,
     billingAddress: quotation.billingAddress,
     shippingAddress: quotation.shippingAddress,
     branchCode: quotation.branchCode,
@@ -40,6 +45,8 @@ export function buildSalesOrderPrintHTML(order) {
     contactPhone: quotation.contactPhone,
     lines: order.lines || [],
     subtotal: order.subtotal,
+    discountType: order.discountType,
+    discountValue: order.discountValue,
     discountAmount: order.discountAmount,
     vatAmount: order.vatAmount,
     vatRate,
@@ -47,35 +54,32 @@ export function buildSalesOrderPrintHTML(order) {
     paymentPlan: quotation.paymentPlan,
     paymentTerms: quotation.paymentTerms,
     notes,
-    deal: order.deal,
-    project: order.project,
-    metadata: { aeOwner: order.deal?.ownerName || '' },
   };
 
-  return buildQuotePrintHTML(printable, {
+  return buildQuotationMasterHTML(printable, {
     form: DOCUMENT_FORMS.salesOrder,
+    documentTitleTh: 'ใบสั่งขาย',
     documentLabel: 'ใบสั่งขาย',
     documentNumber: order.orderNumber,
-    documentDate: order.orderDate,
-    documentDateLabel: 'วันที่ SO',
-    secondaryDateLabel: 'กำหนดชำระ',
-    secondaryDateValue: order.paymentDueDate,
-    referenceLabel: 'อ้างอิง QT',
-    referenceValue: quotation.quoteNumber,
-    statusLabel,
-    // ลายน้ำใช้คำว่า "ฉบับร่าง" คำเดียวทั้ง QT/SO (มติผู้ใช้ 2026-07-18) — ยกเว้นใบยกเลิก
-    // คงคำว่า "เอกสารยกเลิก" ไว้ (ตีความเป็นร่างไม่ได้); สถานะละเอียดยังดูได้ที่หัวใบ
-    watermark: order.status === 'approved' ? ''
-      : (order.status === 'cancelled' ? `เอกสาร${statusLabel}` : 'ฉบับร่าง'),
-    paginatedPreview: true,
-    // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ = AE (พนักงานขาย) ·
-    // ผู้อนุมัติ = AE Supervisor (ผู้จัดการฝ่ายขาย) · ฝ่ายบัญชี (เว้นให้เซ็นรับเอกสาร).
-    // name = ชื่อผู้ทำจริง (createdByName/approvedByName); role = ตำแหน่งบนแบบฟอร์ม.
+    dateLabel: 'วันที่ SO',
+    dateValue: order.orderDate ? fmtDate(order.orderDate) : '-',
+    secondaryLabel: 'กำหนดชำระ',
+    secondaryValue: order.paymentDueDate ? fmtDate(order.paymentDueDate) : '-',
+    referenceRows: [
+      { label: 'อ้างอิง QT', value: quotation.quoteNumber || '-' },
+      { label: 'สถานะเอกสาร', value: statusLabel },
+      { label: 'ดีล', value: order.deal?.title || '-' },
+      { label: 'โครงการ', value: order.project?.name || '-' },
+    ],
+    // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ=AE · ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี
     signers: [
       { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: order.createdByName || '' },
       { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: order.approvedByName || '' },
       { label: 'ฝ่ายบัญชี', role: 'Scent & Sense', name: '' },
     ],
+    // ลายน้ำ: อนุมัติแล้วไม่มี · ยกเลิก = "เอกสารยกเลิก" · อื่น ๆ = "ฉบับร่าง" (มติ 2026-07-18)
+    watermark: order.status === 'approved' ? ''
+      : (order.status === 'cancelled' ? `เอกสาร${statusLabel}` : 'ฉบับร่าง'),
   });
 }
 
