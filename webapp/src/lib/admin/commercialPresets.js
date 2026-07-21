@@ -22,6 +22,7 @@ function mappedError(error) {
     ['commercial_preset_base_missing', 'ไม่พบเวอร์ชันต้นทางสำหรับสร้างฉบับร่าง', 409],
     ['commercial_preset_not_found', 'ไม่พบ Commercial Preset', 404],
     ['commercial_presets_presetKey_key', 'Preset key ซ้ำ กรุณาลองใหม่', 409],
+    ['commercial_preset_version_hide_active_forbidden', 'ซ่อนเวอร์ชันที่ใช้งานอยู่ไม่ได้ ต้องเผยแพร่เวอร์ชันใหม่แทนก่อน', 409],
   ];
   const match = mappings.find(([code]) => raw.includes(code));
   if (match) return new CommercialPresetError(match[1], match[2], match[0]);
@@ -135,12 +136,14 @@ export async function publishCommercialPresetDraft(supabase, id, expectedUpdated
   return data;
 }
 
-export async function archiveCommercialPresetDraft(supabase, id, expectedUpdatedAt, user) {
-  const { data, error } = await supabase.rpc('archive_commercial_preset_draft_atomic', {
+// ยกเลิกร่าง = ลบแถวจริง (Decision 0012 rev 2); ถ้าเป็นร่างแรกของ preset ใหม่ที่ยัง
+// ไม่เคยเผยแพร่ RPC จะลบ root preset ตามด้วย (presetDeleted) ไม่ทิ้ง preset เปล่า
+export async function discardCommercialPresetDraft(supabase, id, expectedUpdatedAt, user) {
+  const { data, error } = await supabase.rpc('discard_commercial_preset_draft', {
     p_version_id: id,
     p_expected_updated_at: expectedTimestamp(expectedUpdatedAt),
     ...actorArgs(user),
   });
   if (error) throw mappedError(error);
-  return data;
+  return { discarded: data?.discarded || null, presetDeleted: Boolean(data?.presetDeleted) };
 }

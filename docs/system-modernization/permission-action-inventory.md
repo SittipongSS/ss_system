@@ -21,14 +21,14 @@
 | account_password | change | own | signed-in + current password; API ผูก target จาก session เท่านั้น | 1 |
 | product_category | view, create, update, set_compliance_flags (isExcise/requiresFdaNotice — mig 0131), deactivate, reactivate, inspect_usage | all | signed-in read / AE Supervisor + Admin จัดการผ่าน `canManageProductCategories`; การพลิกธง isExcise มี Confirm ฝั่ง UI + audit summary ระบุการเปิด/ปิดธง | 2 |
 | product_category_import | download_template, export, preview, commit, view_history | all | AE Supervisor + Admin ผ่าน `canManageProductCategories` | 3 |
-| organization_settings | view, edit_draft, publish, archive | all | admin/`master:manage` | 4A |
-| workflow_timeline_template | view, preview, edit_draft, publish, archive | module/all | ยังไม่ตัดสินใจ; ห้ามขยายสิทธิ์ก่อน Phase 8 | 4B |
-| document_form_metadata | view, edit_draft, publish, archive | all | Admin + AE Supervisor ผ่าน `canManageDocumentStandards` | 6A |
+| organization_settings | view, edit_draft, discard_draft, publish, hide | all | admin/`master:manage`; discard_draft = ลบร่างถาวร (mig 0136, audit เป็นหลักฐานเดียว); hide = archive อัตโนมัติเมื่อถูกเวอร์ชันใหม่แทน ไม่มี action ซ่อนตรง | 4A + Decision 0012 rev 2 |
+| workflow_timeline_template | view, preview, edit_draft, discard_draft, publish, hide | module/all | ยังไม่ตัดสินใจ; ห้ามขยายสิทธิ์ก่อน Phase 8; discard_draft/hide ตาม Decision 0012 rev 2 (mig 0136) | 4B + Decision 0012 rev 2 |
+| document_form_metadata | view, edit_draft, discard_draft, publish, hide | all | Admin + AE Supervisor ผ่าน `canManageDocumentStandards`; discard_draft/hide ตาม Decision 0012 rev 2 (mig 0136) | 6A + Decision 0012 rev 2 |
 | signature | view_status, upload, replace, revoke | own | signed-in + owner | 5 |
 | signature_evidence | create_on_approval, view_status | own approval / scoped document | ผู้อนุมัติเดิมของ Quotation หรือ Sale Order และต้องมี Active Signature | 5B |
 | signature_admin | view_status, revoke_emergency | all | ยังไม่ตัดสินใจ | 5/8 |
 | document_template | view, preview, edit_draft, publish, archive | module/all | Preview: Admin + AE Supervisor ผ่าน `canManageDocumentStandards`; edit/publish/archive: admin เดิม | 6B/7 |
-| commercial_preset | view, preview, edit_draft, publish, archive, resolve | document/team/deal/service/all | Admin + AE Supervisor ผ่าน temporary `canManageCommercialPresets`; consumer resolver เป็น server-only และยังไม่ต่อ Production ใน 7A | 7A/8 |
+| commercial_preset | view, preview, edit_draft, discard_draft, publish, hide, resolve | document/team/deal/service/all | Admin + AE Supervisor ผ่าน temporary `canManageCommercialPresets`; consumer resolver เป็น server-only และยังไม่ต่อ Production ใน 7A; discard_draft ของ preset ที่ไม่เคยเผยแพร่จะลบ preset ทั้งตัว (mig 0136) | 7A/8 + Decision 0012 rev 2 |
 | issued_document | snapshot_on_approval, view, reprint_issued, download_pdf, verify | own/team/department/all | snapshot สร้างอัตโนมัติตอนอนุมัติผ่าน server-only RPC (mig 0130); reprint ใช้ snapshot ผ่านสิทธิ์พิมพ์เดิมของเอกสาร | 7B/7C |
 | holiday_calendar | view_published, view_versions, edit_draft, publish, archive | all | ทุก role ที่ลงชื่อเข้าใช้อ่าน published (ไทม์ไลน์อ้างอิง); จัดการ lifecycle ผ่าน `master:manage` เดิม | Decision 0012 |
 | chat_webhook_setting | view, edit_draft, publish, archive, send_test | all | `master:manage` เดิม (สิทธิ์เท่ากับหน้าแก้ตรงแบบเก่า ไม่ขยาย/ไม่หด) | Decision 0012 |

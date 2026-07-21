@@ -24,6 +24,7 @@ function mappedError(error) {
     ['workflow_template_step_key_duplicate', 'Step key ต้องไม่ซ้ำกัน', 400],
     ['workflow_template_dependency_invalid', 'Dependency ของ Template ไม่ถูกต้อง', 400],
     ['workflow_template_steps_invalid', 'รายการขั้นตอนของ Template ไม่ถูกต้อง', 400],
+    ['workflow_template_version_hide_active_forbidden', 'ซ่อนเวอร์ชันที่ใช้งานอยู่ไม่ได้ ต้องเผยแพร่เวอร์ชันใหม่แทนก่อน', 409],
   ];
   const match = mappings.find(([code]) => raw.includes(code));
   if (match) return new WorkflowTemplateError(match[1], match[2], match[0]);
@@ -178,9 +179,10 @@ export async function publishWorkflowTemplateDraft(supabase, id, expectedUpdated
   return data;
 }
 
-export async function archiveWorkflowTemplateDraft(supabase, id, expectedUpdatedAt, user) {
+// ยกเลิกร่าง = ลบแถวจริง (Decision 0012 rev 2); RPC ลบ steps ของร่างก่อนแล้วลบเวอร์ชัน
+export async function discardWorkflowTemplateDraft(supabase, id, expectedUpdatedAt, user) {
   const expected = assertExpectedUpdatedAt(expectedUpdatedAt);
-  const { data, error } = await supabase.rpc('archive_workflow_template_draft_atomic', {
+  const { data, error } = await supabase.rpc('discard_workflow_template_draft', {
     p_version_id: id,
     p_expected_updated_at: expected,
     p_actor_id: String(user.id),

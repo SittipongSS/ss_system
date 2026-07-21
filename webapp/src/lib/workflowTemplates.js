@@ -28,7 +28,7 @@ export function workflowTemplateKeyLabel(key) {
 
 export function workflowTemplateStatusLabel(status) {
   if (status === 'published') return 'เผยแพร่แล้ว';
-  if (status === 'archived') return 'เก็บถาวร';
+  if (status === 'archived') return 'ซ่อนแล้ว';
   return 'ฉบับร่าง';
 }
 

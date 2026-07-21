@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Archive, Edit3, Eye, FileBadge2, FilePlus2, Send } from "lucide-react";
+import { AlertTriangle, Edit3, Eye, FileBadge2, FilePlus2, Send, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -196,10 +196,10 @@ export default function DocumentStandardsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expectedUpdatedAt: row.updatedAt }),
-      }, action === "publish" ? "เผยแพร่มาตรฐานเอกสารไม่สำเร็จ" : "เก็บฉบับร่างไม่สำเร็จ");
+      }, action === "publish" ? "เผยแพร่มาตรฐานเอกสารไม่สำเร็จ" : "ยกเลิกฉบับร่างไม่สำเร็จ");
       setConfirm(null);
       setDrawer(null);
-      setToast({ kind: "success", msg: action === "publish" ? `เผยแพร่ Version ${row.versionNumber} แล้ว` : `เก็บ Version ${row.versionNumber} เป็นประวัติแล้ว` });
+      setToast({ kind: "success", msg: action === "publish" ? `เผยแพร่ Version ${row.versionNumber} แล้ว` : `ยกเลิก Version ${row.versionNumber} แล้ว (ลบร่างถาวร)` });
       await load();
     } catch (requestError) {
       setToast({ kind: "error", msg: requestError.message });
@@ -265,7 +265,7 @@ export default function DocumentStandardsPage() {
               <Edit3 size={20} aria-hidden="true" />
               <div className={base.draftCopy}><strong>Version {draft.versionNumber} กำลังเป็นฉบับร่าง</strong><p>บันทึกล่าสุด {formatDateTime(draft.updatedAt)} · ยังไม่มีผลจนกว่าจะยืนยันเผยแพร่</p></div>
               <div className={base.draftActions}>
-                <button type="button" className="btn ghost" onClick={() => setConfirm({ action: "archive" })} disabled={busy}><Archive size={15} /> เก็บฉบับร่าง</button>
+                <button type="button" className="btn ghost" onClick={() => setConfirm({ action: "discard" })} disabled={busy}><Trash2 size={15} /> ยกเลิกร่าง</button>
                 <button type="button" className="btn" onClick={() => setConfirm({ action: "publish" })} disabled={busy || !hasDocumentStandardChangeNote(draft)} title={!hasDocumentStandardChangeNote(draft) ? "บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่" : undefined}><Send size={15} /> เผยแพร่</button>
                 <button type="button" className="btn btn-accent" onClick={() => openEdit()} disabled={busy}><Edit3 size={15} /> แก้ไขฉบับร่าง</button>
               </div>
@@ -275,7 +275,7 @@ export default function DocumentStandardsPage() {
           <section className={`glass-panel ${base.historyPanel}`} aria-labelledby="version-history-title">
             {/* ปุ่มสร้างฉบับร่าง = ปุ่มเพิ่มของเนื้อหาเวอร์ชัน — อยู่ขวาสุดของ card header ตามกติกา Page Header */}
             <header className={base.panelHeader} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div><h2 id="version-history-title">ประวัติเวอร์ชัน · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2><p>Published และ Archived เป็นหลักฐานถาวรและแก้ไขไม่ได้</p></div>
+              <div><h2 id="version-history-title">ประวัติเวอร์ชัน · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2><p>เวอร์ชันที่เผยแพร่แล้วลบไม่ได้ — เมื่อถูกแทนที่จะถูกซ่อนและดูย้อนหลังได้ที่นี่</p></div>
               {!draft && (
                 <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}><FilePlus2 size={16} /> สร้างฉบับร่าง</button>
               )}
@@ -290,7 +290,7 @@ export default function DocumentStandardsPage() {
         </div>
       )}
 
-      <RecordDrawer open={!!drawer} onClose={() => !busy && setDrawer(null)} closeOnOverlay={false} title={editing ? `แก้ไข Version ${selected?.versionNumber}` : `${selected?.titleTh || "มาตรฐานเอกสาร"} Version ${selected?.versionNumber || "-"}`} subtitle={editing ? "บันทึกฉบับร่างก่อนเผยแพร่ ไม่มี Auto-save" : "เวอร์ชันที่เผยแพร่หรือเก็บถาวรจะแก้ไขไม่ได้"} badge={selected ? <StatusBadge status={selected.status} /> : null} footer={editing ? <><button type="button" className="btn ghost" onClick={() => setDrawer(null)} disabled={busy}>ยกเลิก</button><button type="submit" form="document-standard-form" className="btn btn-accent" disabled={busy}>{busy ? "กำลังบันทึก…" : "บันทึกฉบับร่าง"}</button></> : <button type="button" className="btn" onClick={() => setDrawer(null)}>ปิด</button>}>
+      <RecordDrawer open={!!drawer} onClose={() => !busy && setDrawer(null)} closeOnOverlay={false} title={editing ? `แก้ไข Version ${selected?.versionNumber}` : `${selected?.titleTh || "มาตรฐานเอกสาร"} Version ${selected?.versionNumber || "-"}`} subtitle={editing ? "บันทึกฉบับร่างก่อนเผยแพร่ ไม่มี Auto-save" : "เวอร์ชันที่เผยแพร่หรือซ่อนแล้วจะแก้ไขไม่ได้"} badge={selected ? <StatusBadge status={selected.status} /> : null} footer={editing ? <><button type="button" className="btn ghost" onClick={() => setDrawer(null)} disabled={busy}>ยกเลิก</button><button type="submit" form="document-standard-form" className="btn btn-accent" disabled={busy}>{busy ? "กำลังบันทึก…" : "บันทึกฉบับร่าง"}</button></> : <button type="button" className="btn" onClick={() => setDrawer(null)}>ปิด</button>}>
         {editing ? (
           <form id="document-standard-form" className={base.form} onSubmit={saveDraft}>
             <p className={base.note}>การบันทึกเปลี่ยนเฉพาะฉบับร่าง ส่วน Production Print ยังใช้ค่าปัจจุบันจนถึง Phase 7</p>
@@ -307,8 +307,8 @@ export default function DocumentStandardsPage() {
         ) : null}
       </RecordDrawer>
 
-      <ConfirmDialog open={confirm?.action === "publish"} title="ยืนยันเผยแพร่มาตรฐานเอกสาร" description={`Version ${draft?.versionNumber || "-"} จะเป็นมาตรฐานของ ${DOCUMENT_STANDARD_LABELS[selectedKey]} ที่ใช้งานอยู่`} detail="Published เดิมจะถูกเก็บถาวร แต่ Production Print ยังไม่เปลี่ยนจนถึง Phase 7" confirmLabel="เผยแพร่เวอร์ชัน" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
-      <ConfirmDialog open={confirm?.action === "archive"} title="เก็บฉบับร่างเป็นประวัติ" description={`Version ${draft?.versionNumber || "-"} จะถูกปิดและแก้ไขต่อไม่ได้`} detail="มาตรฐานเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง" confirmLabel="เก็บฉบับร่าง" tone="danger" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
+      <ConfirmDialog open={confirm?.action === "publish"} title="ยืนยันเผยแพร่มาตรฐานเอกสาร" description={`Version ${draft?.versionNumber || "-"} จะเป็นมาตรฐานของ ${DOCUMENT_STANDARD_LABELS[selectedKey]} ที่ใช้งานอยู่`} detail="เวอร์ชันที่เผยแพร่อยู่เดิมจะถูกซ่อน (ดูย้อนหลังได้ในประวัติเวอร์ชัน)" confirmLabel="เผยแพร่เวอร์ชัน" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
+      <ConfirmDialog open={confirm?.action === "discard"} title="ยกเลิกฉบับร่าง" description={`Version ${draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`} detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และมาตรฐานเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง" confirmLabel="ยกเลิกร่างถาวร" tone="danger" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );
