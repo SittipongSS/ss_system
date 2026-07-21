@@ -5,6 +5,7 @@ import {
 } from '@/lib/sahamit/server';
 import { monthOf, cleanDestination } from '@/lib/sahamit/po';
 import { insertPoLinesTolerant } from '@/lib/sahamit/poServer';
+import { resolveSettledLines } from '@/lib/sahamit/settleLines';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -24,16 +25,31 @@ export async function GET() {
 
   const ids = (pos || []).map((p) => p.id);
   const linesByPo = {};
+  const dealsByPo = new Map();
   if (ids.length) {
-    const { data: lines, error: lErr } = await supabase
-      .from('sahamit_po_lines')
-      .select('*')
-      .in('poId', ids);
+    // ดีลที่ settle จาก PO (metadata.sahamitPoId — JSON ไม่มี FK) โหลดคู่กันเพื่อบอก
+    // ว่าบรรทัดไหนเชื่อมดีล/ออก QT ไปแล้ว — หน้าแก้ใช้ล็อกบรรทัด (PATCH บังคับซ้ำ
+    // ฝั่ง server); เทียบราย poLineId ผ่าน resolveSettledLines ไม่ใช่ fgCode ล้วน
+    const [{ data: lines, error: lErr }, { data: deals }] = await Promise.all([
+      supabase.from('sahamit_po_lines').select('*').in('poId', ids),
+      supabase.from('sales_deals').select('id, stage, metadata')
+        .eq('customerId', customerId).in('metadata->>sahamitPoId', ids),
+    ]);
     if (lErr) return Response.json({ error: lErr.message }, { status: 500 });
     for (const l of lines || []) (linesByPo[l.poId] ||= []).push(l);
+    for (const d of deals || []) {
+      const poId = d.metadata?.sahamitPoId;
+      if (!poId) continue;
+      if (!dealsByPo.has(poId)) dealsByPo.set(poId, []);
+      dealsByPo.get(poId).push(d);
+    }
   }
 
-  return Response.json((pos || []).map((p) => ({ ...p, lines: linesByPo[p.id] || [] })));
+  return Response.json((pos || []).map((p) => {
+    const lines = linesByPo[p.id] || [];
+    const settled = resolveSettledLines(dealsByPo.get(p.id) || []);
+    return { ...p, lines, settledLineIds: lines.filter((l) => settled.dealFor(l)).map((l) => l.id) };
+  }));
 }
 
 // POST /api/sahamit/po — create a PO with its lines.

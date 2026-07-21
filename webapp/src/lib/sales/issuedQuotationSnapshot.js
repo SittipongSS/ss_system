@@ -74,7 +74,8 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
     },
     context: {
       dealTitle: trimOrNull(quote.deal?.title || quote.dealTitle),
-      projectName: trimOrNull(quote.project?.name || quote.projectName),
+      // โครงการผูกผ่านดีล (deal.project แนบจาก route ตอนโหลดใบ) — chain เดิมคงไว้เผื่อ caller เก่า
+      projectName: trimOrNull(quote.deal?.project?.name || quote.project?.name || quote.projectName),
       aeOwner: trimOrNull(quote.metadata?.aeOwner),
     },
     approval: {

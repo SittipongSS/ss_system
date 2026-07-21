@@ -1,8 +1,9 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, forbidden, notFound, unauthorized, badRequest } from '@/lib/http';
+import { withUser, ok, fail, forbidden, notFound, unauthorized, badRequest, conflict } from '@/lib/http';
 import { can, viewScope, pmEditScope, inScope } from '@/lib/permissions';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,6 +82,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const access = await requireProjectAccess({ user, supabase, id, edit: true });
   if (access.response) return access.response;
   const project = access.project;
+  // ด่านหลังปิด (เฟส F): โครงการ closed สร้างเอกสารเตรียมส่งของใหม่ไม่ได้ —
+  // ต้อง reopen ผ่าน /close ก่อน (GET อ่านเอกสารเดิมได้ตามปกติ)
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
 
   const existing = await loadPrep(supabase, project.id);
   if (existing) return ok({ ...existing, reused: true });

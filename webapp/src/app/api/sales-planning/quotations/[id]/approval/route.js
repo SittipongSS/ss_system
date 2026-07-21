@@ -23,12 +23,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { data: quote, error } = await supabase
     .from('quotations')
-    .select('*, lines:quotation_lines(*), deal:sales_deals(id, title, code, ownerId, ownerName, team, stage, customerName)')
+    .select('*, lines:quotation_lines(*), deal:sales_deals(id, title, code, ownerId, ownerName, team, stage, customerName, projectId)')
     .eq('id', id)
     .maybeSingle();
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal) return badRequest('ใบเสนอราคานี้ไม่มีดีลผูกอยู่');
+  // โครงการที่ผูกดีล — snapshot ตอนตรึงต้องมี deal.project ไม่งั้นแถว "โครงการ" ในใบ
+  // ออกเป็น '-' ถาวร (เหมือนที่ loadQuote ของ detail GET แนบ). โหลดไม่ได้ = แถวว่างตามเดิม.
+  if (quote.deal.projectId) {
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, code, name')
+      .eq('id', quote.deal.projectId)
+      .maybeSingle();
+    quote.deal.project = project || null;
+  }
 
   // ผู้อนุมัติ = เจ้าของดีล (ownerId) หรือ superuser เท่านั้น — ผู้สร้างที่ไม่ใช่เจ้าของ
   // (เช่น AC/AE ทีมเดียวกัน) อนุมัติไม่ได้; เจ้าของสร้างเอง = เซ็นเองได้.

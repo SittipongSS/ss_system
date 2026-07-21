@@ -11,6 +11,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
@@ -55,6 +56,9 @@ export async function POST(request, { params }) {
   // โครงการต้องมีจริงและเป็นของลูกค้าสหมิตรรายเดียวกัน (กันเชื่อมข้ามลูกค้า)
   const project = await loadProject(supabase, projectId);
   if (!project) return Response.json({ error: 'ไม่พบโครงการ' }, { status: 404 });
+  // โครงการที่ปิดแล้วห้ามรับ segment เพิ่ม — ด่านเดียวกับ route แก้ไขโครงการ
+  const closedMsg = projectWriteBlockedError(project);
+  if (closedMsg) return Response.json({ error: closedMsg }, { status: 409 });
   if (project.customerId !== customerId) {
     return Response.json({ error: 'โครงการนี้ไม่ใช่ของลูกค้าสหมิตร — เชื่อมข้ามลูกค้าไม่ได้' }, { status: 400 });
   }

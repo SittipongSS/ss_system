@@ -1,6 +1,7 @@
 import { viewScope, pmEditScope, inScope, can } from '@/lib/permissions';
-import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, forbidden, notFound, unauthorized, conflict } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!inScope(pmEditScope(user?.role), user, project)) {
     return forbidden();
   }
+  // ด่านหลังปิด (เฟส F): โครงการ closed ออก Rev/เซฟใหญ่ใหม่ไม่ได้ (เขียน currentRev) —
+  // ต้อง reopen ผ่าน /close ก่อน
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
 
   const body = await req.json().catch(() => ({}));
   const kind = body.kind === 'save' ? 'save' : 'rev';

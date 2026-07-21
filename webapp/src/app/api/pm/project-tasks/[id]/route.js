@@ -3,8 +3,9 @@ import { recalculateGraph, resolveSchedule, todayStr } from '@/lib/pm/schedule';
 import { setHolidays, countBusinessDays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
-import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
+import { withUser, ok, fail, forbidden, notFound, conflict } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +49,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const tier = pmTaskEditTier(user, task, scopeRow);
   if (tier === 'none') return forbidden();
   const workflowEdit = tier === 'workflow';
+
+  // ด่านหลังปิด (เฟส F): โครงการ closed ห้ามแก้ขั้นตอน (ทุก tier รวม workflow) —
+  // ต้อง reopen ผ่าน /close ก่อน; task ลอยของดีล (ไม่มี project) ไม่เข้าเงื่อนไขนี้
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
 
   const body = await req.json();
   // workflowEdit จำกัดเฉพาะ field งาน/สถานะ — กันไม่ให้พนักงานรื้อแผนหรือ reassign
@@ -155,6 +161,10 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
   if (!inScope(pmEditScope(user?.role), user, scopeRow || {})) {
     return forbidden();
   }
+
+  // ด่านหลังปิด (เฟส F): โครงการ closed ลบขั้นตอนไม่ได้ — ต้อง reopen ผ่าน /close ก่อน
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
 
   const { error } = await supabase.from('project_tasks').delete().eq('id', id);
   if (error) return fail(error.message, 500);

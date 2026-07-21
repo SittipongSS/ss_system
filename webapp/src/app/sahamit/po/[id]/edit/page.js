@@ -1,7 +1,7 @@
 "use client";
 // แก้ PO — หน้าเต็ม ใช้ฟอร์มตัวเดียวกับหน้าสร้าง (PoForm) ตามมติผู้ใช้ 2026-07-17
-// ต่างกันแค่: บรรทัดที่ผูกแล้ว (วัสดุ/แบ่งส่ง/ส่งของแล้ว) ถูกล็อก และกรอกได้เฉพาะ
-// หน่วยชิ้น (ค่าใน DB เป็นชิ้น — สลับเป็นลังจะทำให้เลขที่โหลดมาเปลี่ยนความหมาย)
+// ต่างกันแค่: บรรทัดที่ผูกแล้ว (เชื่อมดีล/วัสดุ/แบ่งส่ง/ส่งของแล้ว) ถูกล็อก และกรอกได้
+// เฉพาะหน่วยชิ้น (ค่าใน DB เป็นชิ้น — สลับเป็นลังจะทำให้เลขที่โหลดมาเปลี่ยนความหมาย)
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { FileText } from "lucide-react";
@@ -40,7 +40,8 @@ export default function PoEditPage() {
   }, [po, seeded]);
 
   // บรรทัดที่ผูกแล้ว = ล็อก. material ผูกด้วย poLineId; แบ่งส่งดูจาก splitFromPoLineId
-  // ของบรรทัดลูกใน PO ยอดเหลือ (กติกาเดียวกับฝั่ง server — server บังคับซ้ำอยู่ดี)
+  // ของบรรทัดลูกใน PO ยอดเหลือ; เชื่อมดีล/QT แล้วดูจาก settledLineIds ที่ API list
+  // คำนวณราย poLineId มาให้ (กติกาเดียวกับฝั่ง server — server บังคับซ้ำอยู่ดี)
   const materialLineIds = useMemo(
     () => new Set(material.filter((m) => m.tracking).map((m) => m.poLineId)),
     [material],
@@ -50,10 +51,15 @@ export default function PoEditPage() {
     for (const p of pos) for (const l of p.lines || []) if (l.splitFromPoLineId) s.add(l.splitFromPoLineId);
     return s;
   }, [pos]);
+  const settledLineIds = useMemo(() => new Set(po?.settledLineIds || []), [po]);
   const lockOf = (row) => (row.id
     ? lineLockReason(
         (po?.lines || []).find((l) => l.id === row.id) || row,
-        { hasMaterial: materialLineIds.has(row.id), isSplitParent: splitParentIds.has(row.id) },
+        {
+          hasMaterial: materialLineIds.has(row.id),
+          isSplitParent: splitParentIds.has(row.id),
+          isSettled: settledLineIds.has(row.id),
+        },
       )
     : null);
 
@@ -88,7 +94,7 @@ export default function PoEditPage() {
     <Workspace
       icon={<FileText size={22} />}
       title={po ? `แก้ไข PO ${po.poNumber}` : "แก้ไข PO"}
-      subtitle="ฟอร์มเดียวกับตอนสร้าง · รายการที่ผูกวัสดุ/แบ่งส่ง/ส่งของแล้วจะถูกล็อก"
+      subtitle="ฟอร์มเดียวกับตอนสร้าง · รายการที่เชื่อมดีล/ผูกวัสดุ/แบ่งส่ง/ส่งของแล้วจะถูกล็อก"
       back={{ href: `/sahamit/po/${id}`, label: "รายละเอียด PO" }}
     >
       {body}
