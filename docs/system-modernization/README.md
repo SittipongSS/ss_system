@@ -4,7 +4,7 @@
 Admin Center, ลายเซ็นอิเล็กทรอนิกส์, Document Design System และ Permission
 ของ SS System
 
-อัปเดตล่าสุด: 20 กรกฎาคม 2026
+อัปเดตล่าสุด: 21 กรกฎาคม 2026
 
 ## กติกาการทำงาน
 
@@ -33,7 +33,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 | 7A | Versioned Commercial Presets | รอตรวจ | [Phase 7A](./phase-07a-commercial-presets.md) |
 | 7B | Issued document snapshot และ immutable PDF | รอตรวจ | [Phase 7B](./phase-07b-issued-document-snapshot.md) |
 | 7C | Production Quotation Print replacement | กำลังดำเนินการ | [Phase 7C](./phase-07c-quotation-print-replacement.md) |
-| 7D | Sales Order document migration | รอดำเนินการ | สร้างเมื่อเริ่มเฟส |
+| 7D | Sales Order document migration (V4 engine) | รอตรวจ | [Phase 7D](./phase-07d-salesorder-document.md) |
 | 8 | Permission redesign และ Migration | รอดำเนินการลำดับสุดท้าย | [Action inventory](./permission-action-inventory.md) |
 | 9 | Permission UAT, staged rollout และปิดโปรแกรม | รอดำเนินการ | [Release checklist](./release-checklist.md) |
 
@@ -52,7 +52,14 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
   ทั้งสองเฟสอยู่สถานะ `รอตรวจ` เพราะ UAT กับการยืนยันการรัน Migration บนฐานข้อมูลจริงยังค้าง
 - แกนของ Phase 7C ส่วนใบเสนอราคาถูกส่งมอบผ่านสาย V4: PR #597 (แม่แบบ V4 ใน Preview)
   และ PR #600 (ใช้กติกา V4 กับ `quotePrint.js` ใบจริง + ปุ่มพิมพ์ prefer issued snapshot);
-  งานที่เหลือของ 7C คือ PDF artifact ตาม Decision 0011 และรายการเอกสาร PDF pilot (D-006)
+  ต่อมา PR #612 รวมเครื่องยนต์ (D-7C-2) ให้ server builder `quotationMasterDocument.js` (V4)
+  เป็น renderer เดียวของ snapshot/พิมพ์สด/preview
+- Phase 7D (ใบสั่งขายใช้เครื่องยนต์ V4 ตัวเดียวกับใบเสนอราคา) ถูก Merge เข้า `main` แล้ว
+  ผ่าน commit `87d05efc`, `bd587b08`, `21cfc473`; `salesOrderPrint.js` เรียก
+  `buildQuotationMasterHTML` แทน `buildQuotePrintHTML`; สถานะ `รอตรวจ` เพราะยังรอ UAT ใบจริง
+- งานที่ยังค้างของ 7C: (1) PDF artifact ถาวรตาม Decision 0011 (D-7C-1 ยังไม่เคาะวิธี
+  generate บน Vercel) และ (2) เสียบ Commercial Preset เข้าการสร้างใบเสนอราคา —
+  `resolveCommercialPreset` ยังเป็น dead code ไม่มี consumer
 
 ## Definition of Done ของทุกเฟส
 
@@ -80,6 +87,8 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Phase 6B — Quotation Master Template](./phase-06b-quotation-master-template.md)
 - [Phase 7A — Versioned Commercial Presets](./phase-07a-commercial-presets.md)
 - [Phase 7B — Issued Document Snapshot and Immutable PDF Foundation](./phase-07b-issued-document-snapshot.md)
+- [Phase 7C — Production Quotation Print Replacement](./phase-07c-quotation-print-replacement.md)
+- [Phase 7D — Sales Order Document (V4 engine)](./phase-07d-salesorder-document.md)
 - [UX/UI Rulebook](./ux-ui-rulebook.md)
 - [Document Design System](./document-design-system.md)
 - [Decision 0001 — Program governance](./decisions/0001-program-governance.md)
