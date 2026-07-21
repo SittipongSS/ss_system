@@ -663,7 +663,7 @@ export default function SalesPlanningPipelinePage() {
                           </button>
                         )}
                         {(role === "admin" || (deal.canEdit && (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId)) && (
-                          <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบดีล (ลบโครงการ PM ที่ผูกพ่วงด้วย)">
+                          <button type="button" className="btn-icon danger" onClick={() => deleteDeal(deal)} aria-label={`ลบ ${deal.title}`} title="ลบดีล (ไม่ลบโครงการ PM ที่ผูก)">
                             <Trash2 size={15} aria-hidden="true" />
                           </button>
                         )}

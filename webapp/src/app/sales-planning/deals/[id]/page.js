@@ -14,8 +14,8 @@ import { DEAL_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { dealLifecycle } from "@/lib/salesPlanningLifecycle";
-import { useRole, useTeam } from "@/lib/roleContext";
-import { canDeleteRecord, isSuperuser } from "@/lib/permissions";
+import { useRole } from "@/lib/roleContext";
+import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { FORECAST_LEVELS, dealTypeBadge, quoteStatusBadge, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
@@ -266,7 +266,6 @@ export default function DealOverviewPage() {
   const dealDocumentProject = dealTimelineDocument(deal, data || {});
   const canEdit = !!data?.canEdit;
   const role = useRole();
-  const team = useTeam();
   const alreadyWon = ["won", "in_project"].includes(deal?.stage);
   // หมวดสินค้า (ประกาศก่อน lc — useMemo ข้างล่างอ้างใน deps; ใช้ร่วมกับโมดัลแก้ดีล/สร้าง PM ด้วย)
   const [categories, setCategories] = useState([]);
@@ -568,13 +567,15 @@ export default function DealOverviewPage() {
   };
   const deleteDeal = async () => {
     if (!deal) return;
-    // ระบุให้ชัดว่าจะลบอะไรพ่วงไปบ้าง (Sales เป็นแม่ — ลบทั้งสาย)
-    const extras = [];
-    if (data?.project) extras.push(`ไทม์ไลน์ ${data.project.code || ""}`.trim());
-    if (data?.projectTasks?.length) extras.push(`${data.projectTasks.length} ขั้นตอน`);
-    if (data?.shipmentPrep) extras.push("เอกสารเตรียมส่งของ");
-    const extraText = extras.length ? `\n\nจะลบพ่วงด้วย: ${extras.join(" · ")}` : "";
-    if (!window.confirm(`ลบดีล "${deal.title}"?${extraText}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
+    // เฟส B: ลบดีล "ไม่ลบโครงการ PM" ที่ผูกอยู่ — โครงการมีได้หลายดีลและอาจมีดีลอื่น
+    // มาผูกแทน; ลบดีลแค่ถอดไทม์ไลน์ segment ของดีลนี้ออก (เอกสารส่งของ/ทะเบียนผูกกับ
+    // โครงการ จึงอยู่ต่อ) — ลบโครงการทำที่หน้าโครงการโดยตรง
+    // นับเฉพาะงานของดีลนี้ — projectTasks รวมงานกลางโครงการ (dealId ว่าง) ที่ไม่ถูกลบ
+    const ownTaskCount = (data?.projectTasks || []).filter((t) => t.dealId === deal.id).length;
+    const detachText = data?.project
+      ? `\n\nโครงการ (PM)${data.project.code ? ` ${data.project.code}` : ""} ที่ผูกอยู่จะยังอยู่ (ไม่ถูกลบ) — ถอดเฉพาะไทม์ไลน์ของดีลนี้ออก${ownTaskCount ? ` (${ownTaskCount} ขั้นตอน)` : ""}`
+      : ownTaskCount ? `\n\nไทม์ไลน์ของดีลนี้ (${ownTaskCount} ขั้นตอน) จะถูกลบด้วย` : "";
+    if (!window.confirm(`ลบดีล "${deal.title}"?${detachText}\n\nการลบนี้ย้อนกลับไม่ได้`)) return;
     setError("");
     try {
       // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
@@ -584,18 +585,16 @@ export default function DealOverviewPage() {
       setError(e.message || "ลบไม่สำเร็จ");
     }
   };
-  // ลบไม่ได้ถ้า: ปิด Won แล้ว / มาจาก PO สหมิตร (นับยอดแล้ว) / มีทะเบียนสรรพสามิตผูก /
-  // มี PM project ผูกแต่ผู้ใช้ไม่มีสิทธิ์ลบ project (AE/AC = 'none') — ตรงกับที่ API จะปฏิเสธ
-  // จึงไม่โชว์ปุ่มให้กดแล้วเจอ 403/409 (U3).
-  const linkedProject = data?.project || null;
-  const canDeleteLinkedProject = !deal?.projectId || (linkedProject && canDeleteRecord({ role, team }, "projects", linkedProject));
-  const hasExcise = (data?.exciseRegistrations?.length || 0) > 0;
+  // ลบไม่ได้ถ้า: ปิด Won/in_project (เว้น superuser) / มีใบเสนอราคา accepted (ยอด Actual —
+  // ห้ามแม้ superuser) / มาจาก PO สหมิตร (นับยอดแล้ว) — ตรงกับที่ API DELETE จะปฏิเสธ
+  // จึงไม่โชว์ปุ่มให้กดแล้วเจอ 409 (U3). เฟส B: ลบดีลไม่ลบโครงการที่ผูก — สิทธิ์ลบ project
+  // และทะเบียนสรรพสามิตของโครงการจึงไม่เกี่ยวกับการลบดีลอีกต่อไป.
   const superuser = isSuperuser(role);
   const isAdmin = role === "admin";
   // admin เห็นปุ่มลบเสมอ (บังคับลบผ่านพรีวิว) — คนอื่นซ่อนปุ่มในเคสที่ API จะปฏิเสธ (U3)
   const canDelete = deal && (isAdmin || (
-    (!["won", "in_project"].includes(deal.stage) || superuser) && !deal.metadata?.sahamitPoId
-    && canDeleteLinkedProject && !hasExcise
+    (!["won", "in_project"].includes(deal.stage) || superuser)
+    && !acceptedQuote && !deal.metadata?.sahamitPoId
   ));
 
   // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
@@ -664,7 +663,7 @@ export default function DealOverviewPage() {
         <Pencil size={16} aria-hidden="true" />
       </button>
       {canDelete && (
-        <button type="button" className="btn-icon danger" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบดีล" title="ลบดีล (ลบโครงการ PM พ่วงด้วย)">
+        <button type="button" className="btn-icon danger" onClick={deleteDeal} disabled={!!actionBusy} aria-label="ลบดีล" title="ลบดีล (ไม่ลบโครงการ PM ที่ผูก)">
           <Trash2 size={16} aria-hidden="true" />
         </button>
       )}
