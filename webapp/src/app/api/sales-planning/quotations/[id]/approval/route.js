@@ -8,6 +8,7 @@ import {
   signatureEvidenceErrorResponse,
 } from '@/lib/admin/signatureEvidence';
 import { captureIssuedQuotationSnapshot } from '@/lib/sales/issuedQuotationSnapshot';
+import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,15 +76,29 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // Phase 7B: capture the immutable issued-document snapshot from the frozen
   // approved state. Best-effort — approval already committed atomically; a failed
   // snapshot must not roll it back and can be regenerated (RPC is idempotent).
+  let snap = null;
   try {
     const snapshotQuote = { ...quote, ...data, lines: quote.lines, deal: quote.deal };
-    await captureIssuedQuotationSnapshot(supabase, {
+    snap = await captureIssuedQuotationSnapshot(supabase, {
       quote: snapshotQuote,
       evidence: result.evidence,
       user,
     });
   } catch (snapshotError) {
     console.error('issued quotation snapshot capture failed', id, snapshotError);
+  }
+
+  // Phase 7C (D-7C-1): สร้าง PDF ถาวรจาก HTML ที่ตรึง (best-effort, idempotent). แยก
+  // try จาก snapshot — chromium พลาด/ช้าต้องไม่กลบผลตรึง HTML และไม่กระทบการอนุมัติที่
+  // commit ไปแล้ว; ถ้าไม่เกิดตอนนี้ เส้นทางดาวน์โหลดจะ fallback สร้างเองภายหลัง
+  try {
+    const snapshotId = snap?.snapshot?.id;
+    const html = snap?.artifact?.content;
+    if (snapshotId && html) {
+      await captureIssuedQuotationPdf(supabase, { quotationId: id, snapshotId, html });
+    }
+  } catch (pdfError) {
+    console.error('issued quotation pdf capture failed', id, pdfError);
   }
 
   await recordAudit({
