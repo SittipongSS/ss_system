@@ -155,11 +155,14 @@ function signBox(signer) {
   const esigMark = signer.esignature?.imageDataUri
     ? `<img class="signatureImage" src="${signer.esignature.imageDataUri}" alt="ลายเซ็น ${esc(signer.esignature.signerName || '')}" />`
     : '<div class="signaturePreview" aria-label="ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์">ลายเซ็นอิเล็กทรอนิกส์</div>';
+  // แถวรายละเอียด: ตำแหน่ง + เวลาลงนาม (มีเฉพาะที่มีจริง) — ผู้อนุมัติ evidence-backed
+  // มีครบ; ผู้เสนอราคาเป็น stamp เชิงภาพ ส่ง role/เวลาว่าง → โชว์แค่รูป+ชื่อ ไม่มี Evidence
+  const esigMeta = [signer.esignature?.signerRole, signer.esignature?.signedAt].filter(Boolean).map(esc).join(' · ');
   const body = signer.esignature
     ? `
         ${esigMark}
         <strong>${val(signer.esignature.signerName)}</strong>
-        <p>${val(signer.esignature.signerRole)}${signer.esignature.signedAt ? ` · ${esc(signer.esignature.signedAt)}` : ''}</p>
+        ${esigMeta ? `<p>${esigMeta}</p>` : ''}
         ${signer.esignature.evidenceId ? `<small>Evidence ${esc(signer.esignature.evidenceId)}</small>` : ''}`
     : `
         <div class="signatureSpace">ลงชื่อ</div>

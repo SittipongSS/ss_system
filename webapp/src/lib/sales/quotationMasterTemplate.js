@@ -607,7 +607,9 @@ export function buildQuotationMasterPreview(
     installments,
     signature: state === 'approved' ? { ...BASE_QUOTE.signature } : null,
     signers: [
-      { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: BASE_QUOTE.references.salesOwner },
+      state === 'approved'
+        ? { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', esignature: { imageDataUri: PREVIEW_SIGNATURE_IMAGE, signerName: BASE_QUOTE.references.salesOwner, signerRole: '' } }
+        : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: BASE_QUOTE.references.salesOwner },
       { label: 'ผู้อนุมัติ', role: 'Authorized signature', esignature: state === 'approved' ? { ...BASE_QUOTE.signature } : null },
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
     ],
@@ -732,7 +734,11 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
     ],
     signers: options.signers || [
-      { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: salesOwner === '-' ? '' : salesOwner },
+      // ผู้เสนอราคา: มีรูปลายเซ็น (ดึงตอนตรึง snapshot) → stamp รูป+ชื่อ (ไม่มี Evidence
+      // เพราะไม่ได้ "เซ็น" แยกเหมือนผู้อนุมัติ); ไม่มีรูป → ช่องเซ็นเปล่าเดิม
+      options.proposerSignatureImage
+        ? { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', esignature: { imageDataUri: options.proposerSignatureImage, signerName: salesOwner === '-' ? '' : salesOwner, signerRole: '' } }
+        : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: salesOwner === '-' ? '' : salesOwner },
       { label: 'ผู้อนุมัติ', role: 'Authorized signature', esignature: signature },
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
     ],

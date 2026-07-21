@@ -94,6 +94,18 @@ test('artifact embeds approver signature image when provided', () => {
   assert.match(noImg, /ลายเซ็นอิเล็กทรอนิกส์/);
 });
 
+test('artifact embeds both approver + proposer signature images', () => {
+  const approver = 'data:image/png;base64,QVBQ';
+  const proposer = 'data:image/png;base64,UFJPUA==';
+  const html = buildIssuedQuotationArtifactHtml(baseQuote, {
+    approverSignatureImage: approver,
+    proposerSignatureImage: proposer,
+  });
+  assert.ok(html.includes(approver), 'ฝังรูปผู้อนุมัติ');
+  assert.ok(html.includes(proposer), 'ฝังรูปผู้เสนอราคา');
+  assert.equal((html.match(/class="signatureImage"/g) || []).length, 2);
+});
+
 test('loadSignatureImageDataUri: downloads PNG → data URI; null on missing/failed', async () => {
   const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]); // PNG magic
   const okClient = {
