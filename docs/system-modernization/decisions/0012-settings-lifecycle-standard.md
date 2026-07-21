@@ -1,64 +1,76 @@
-# Decision 0012 — Settings Lifecycle Standard
+# Decision 0012 — Settings Lifecycle Standard (ฉบับแก้ไขครั้งที่ 2)
 
-วันที่: 20 กรกฎาคม 2026
-สถานะ: ยืนยัน — retrofit สอง surface สุดท้ายส่งมอบแล้ว (mig 0132/0133)
+วันที่: 20 กรกฎาคม 2026 · แก้ไขครั้งที่ 2: 21 กรกฎาคม 2026
+สถานะ: ยืนยันแล้วโดยผู้ใช้เจ้าของระบบ
 
-## บริบท
+## การแก้ไขครั้งที่ 2 — แยก lifecycle เป็นสองระดับ
 
-การตั้งค่าข้อมูลระบบหลายตัวถูกสร้างก่อนมาตรฐาน versioning ของโปรแกรมนี้
-(Decision 0003) จึงยังเป็นแบบ "แก้ตรง มีผลทันที": ไม่มีชั้นร่าง ไม่มีประวัติ
-เวอร์ชัน และแก้แล้วย้อนตรวจไม่ได้ ขณะที่ surface ที่สร้างตั้งแต่ Phase 4A
-เป็นต้นมา (ข้อมูลบริษัท, Workflow Template, Document Standards, Commercial
-Presets) ใช้แพตเทิร์นเดียวกันหมดและพิสูจน์แล้วว่าใช้งานได้จริง
+ฉบับแรกของ decision นี้บังคับ ร่าง→เผยแพร่→เก็บ กับการตั้งค่า "ทุกตัว"
+และ retrofit วันหยุด/Google Chat ไปแล้ว (PR #614, mig 0132/0133)
+ผู้ใช้ทบทวนหลังใช้งานจริงและตัดสินใจใหม่เมื่อ 21 กรกฎาคม 2026:
+พิธีกรรมร่าง/เผยแพร่**หนักเกินไปสำหรับข้อมูลปฏิบัติการ** ให้แยกเป็นสองระดับ
 
-## การตัดสินใจ
+### ระดับ A — ข้อมูลปฏิบัติการ: CRUD ธรรมดา
 
-การตั้งค่าข้อมูลระบบ **ทุกตัว** ต้องใช้ lifecycle เดียวกัน:
+> เพิ่ม → แก้ไข → บันทึก → ลบ
 
-> เพิ่ม/แก้ไข → บันทึกร่าง (Draft) → เผยแพร่ (Publish) → พัก/ปิด/เก็บ (Archive)
+- ใช้กับ: **ปฏิทินวันหยุด** (`/settings/holidays`), **แจ้งเตือน Google Chat**
+  (`/settings/chat-webhooks`)
+- ไม่มีชั้นร่าง ไม่มีเวอร์ชัน แก้แล้วมีผลทันที ลบได้จริง
+- ยังต้องมี Confirm ก่อนบันทึก/ลบ (กติกา no-auto-save เดิม) และบันทึก
+  central audit ทุกการเปลี่ยนแปลง — ความตรวจย้อนได้มาจาก audit log
+  ไม่ใช่จากตารางเวอร์ชัน
+- ผลตามมา: **ย้อน PR #614** — คืน UI/API แก้ตรงบนตารางเดิม (`holidays`,
+  `chat_webhooks` ซึ่งไม่เคยถูกแตะ) และเขียน **mig 0134 ถอนตาราง/function
+  ของ 0132+0133 ทิ้งให้สะอาด** (ผู้ใช้เลือกถอนทิ้ง ไม่เก็บกวาดทีหลัง)
 
-ข้อบังคับของแพตเทิร์น (ต้นแบบ: mig `0120_organization_settings.sql` +
-`lib/admin/organizationSettings.js`):
+### ระดับ B — ข้อมูลควบคุม: ร่าง → เผยแพร่ → ซ่อน
 
-- แยก root record ออกจาก version records; root ชี้ Published version ที่ใช้งานอยู่
-- Draft และ Published มีได้อย่างละไม่เกินหนึ่งรายการต่อ root (partial unique index)
-- Published/Archived เป็น immutable ผ่าน guard trigger; เลิกใช้ = Archive ไม่ลบ
-- Publish/Archive ทำผ่าน database function แบบ transaction เดียว (lock root,
-  ตรวจ `expectedUpdatedAt`, ห้าม client ส่ง payload ใหม่มากับคำสั่ง transition)
-- Publish ต้องมีหมายเหตุการเปลี่ยนแปลง (change note)
-- ตารางเปิด RLS ไม่มี browser-facing policy; ทุก read/write ผ่าน server API +
-  service role หลังตรวจ authorization
-- Migration seed ข้อมูลปัจจุบันเป็น Published Version 1 — พฤติกรรมของ consumer
-  ต้องไม่เปลี่ยนสำหรับข้อมูลเดิม
-- **Consumer อ่านจาก Published version เท่านั้น** — ฉบับร่างไม่มีผลกับระบบ
-  จนกว่าจะเผยแพร่
-- UI ตาม Page Header standard ใน [UX/UI Rulebook](../ux-ui-rulebook.md) +
-  Drawer house pattern; ไม่มี Auto-save
+> เพิ่ม/แก้ไข → บันทึกร่าง → (ยกเลิกร่างได้ถ้ายังไม่เผยแพร่) → เผยแพร่ →
+> เวอร์ชันที่เผยแพร่แล้ว **ลบไม่ได้ ซ่อนได้อย่างเดียว**
 
-## ตารางสถานะ surface
+- ใช้กับ 4 ตัวหลัก: **ข้อมูลบริษัท** (mig 0120), **Workflow/Timeline
+  Template** (mig 0121), **Document Standards** (mig 0123),
+  **Commercial Presets** (mig 0128)
+- กติกาที่ผู้ใช้เคาะเมื่อ 21 กรกฎาคม 2026:
+  1. **ยกเลิกร่าง = ลบทิ้งจริง** — ร่างที่ยังไม่เคยเผยแพร่ไม่ใช่หลักฐาน
+     ลบหายไปเลย ไม่เก็บประวัติ
+  2. **เวอร์ชันที่เผยแพร่แล้วเป็น immutable ตลอดไป** — ห้ามลบทุกกรณี
+  3. **"ซ่อน" ได้เฉพาะเวอร์ชันที่ถูกแทนแล้ว** — เวอร์ชันที่กำลัง active
+     ซ่อนไม่ได้ ต้องเผยแพร่เวอร์ชันใหม่มาแทนก่อน (ระบบต้องมีเวอร์ชัน
+     active เสมอ เพราะไทม์ไลน์/เอกสารอ้างอิงอยู่)
+- โครงสร้างเทคนิคคงแพตเทิร์นเดิม (root + versions, partial unique index,
+  guard trigger, RPC atomic, RLS server-only) — สิ่งที่ต้องปรับจาก
+  พฤติกรรมปัจจุบัน: การยกเลิกร่างต้อง DELETE จริงแทน archive,
+  คำในหน้าจอใช้ "ซ่อน" สำหรับเวอร์ชันที่ถูกแทน และห้าม archive
+  เวอร์ชัน active
 
-| Surface | หน้า | Migration | สถานะ | หมายเหตุ |
-|---|---|---|---|---|
-| ข้อมูลบริษัท | `/settings/company` | 0120 | เสร็จสมบูรณ์ | Phase 4A |
-| Workflow/Timeline Template | `/settings/workflow-templates` | 0121 | เสร็จสมบูรณ์ | Phase 4B |
-| ลายเซ็นอิเล็กทรอนิกส์ | `/account` (own-scope) | 0122 | เสร็จสมบูรณ์ | Phase 5A — versioned + immutable ตามขอบเขตของ Decision 0006 |
-| Document Standards | `/settings/document-standards` | 0123 | เสร็จสมบูรณ์ | Phase 6A |
-| Commercial Presets | `/settings/commercial-presets` | 0128 | เสร็จสมบูรณ์ | Phase 7A |
-| ปฏิทินวันหยุด | `/settings/holidays` | 0132 | รอตรวจ | Retrofit ตาม decision นี้ — หนึ่งเวอร์ชัน = ชุดวันหยุดทั้งชุด (เผยแพร่วันหยุดปีใหม่ได้ในครั้งเดียว); ตัวคำนวณไทม์ไลน์อ่าน Published เท่านั้น; ตาราง `holidays` เดิมคงไว้เป็น seed/fallback |
-| แจ้งเตือน Google Chat | `/settings/chat-webhooks` | 0133 | รอตรวจ | Retrofit ตาม decision นี้ — root ต่อ space; space ที่ไม่เคยตั้งค่าไม่ seed Published เพื่อคง env fallback เดิม |
-| Template หมายเหตุใบเสนอราคา (`quote_note_templates`) | ในหน้าใบเสนอราคา | — | รอดำเนินการ | ตัวสุดท้ายที่ยังแก้ตรง — **ไม่ retrofit แยก**: Decision 0010 สร้าง Commercial Presets (mig 0128, มี `legacyTemplateId` ไว้ map) เป็นตัวแทนแบบมีเวอร์ชันแล้ว; ปิดงานโดยสวิตช์ consumer ฝั่งออกใบ → migrate ข้อมูลเข้า presets → ถอด API แก้ตรง แล้วเก็บตารางเดิมเป็นหลักฐาน |
+### นอกขอบเขต
 
-สถานะ `รอตรวจ` = โค้ด + migration ส่งมอบแล้ว รอรัน migration บนฐานข้อมูลจริง
-และ UAT (แพตเทิร์นเดียวกับ Phase 7A/7B)
+- ทะเบียน master data ที่มี workflow ของตัวเอง (ลูกค้า, สินค้า, หมวดสินค้า
+  ที่ใช้ พักใช้/เปิดใช้) — คงกติกาเดิม
+- ลายเซ็นอิเล็กทรอนิกส์ — คงกติกา Decision 0006 (versioned + immutable
+  own-scope)
+- `quote_note_templates` — ไม่ retrofit; ปิดงานผ่าน Commercial Presets
+  (สวิตช์ consumer ฝั่งออกใบ → migrate ข้อมูล → ถอด API เก่า) ตามเดิม
 
-นอกขอบเขต decision นี้: ทะเบียน master data ที่มี approval workflow รายรายการ
-ของตัวเองอยู่แล้ว (ลูกค้า, สินค้า, หมวดสินค้า) — ใช้กติกา pending/approve เดิม
+## ตารางสถานะ surface (หลังแก้ไขครั้งที่ 2)
 
-## ผลตามมา
+| Surface | ระดับ | สถานะ | หมายเหตุ |
+|---|---|---|---|
+| ข้อมูลบริษัท `/settings/company` | B | ใช้งานอยู่ | ปรับ: ยกเลิกร่าง=ลบจริง, ซ่อนเฉพาะเวอร์ชันถูกแทน |
+| Workflow/Timeline Template | B | ใช้งานอยู่ | ปรับแบบเดียวกัน |
+| Document Standards | B | ใช้งานอยู่ | ปรับแบบเดียวกัน |
+| Commercial Presets | B | ใช้งานอยู่ | ปรับแบบเดียวกัน |
+| ปฏิทินวันหยุด `/settings/holidays` | A | รอย้อนกลับ | ย้อน #614 + mig 0134 ถอน 0132 |
+| แจ้งเตือน Google Chat `/settings/chat-webhooks` | A | รอย้อนกลับ | ย้อน #614 + mig 0134 ถอน 0133 |
+| `quote_note_templates` | — | รอดำเนินการ | ปิดผ่าน Commercial Presets ไม่ retrofit |
 
-- วันหยุด: การกรอกวันหยุดปี 2027 (ops deadline ก่อนสิ้นปี 2026 — ดู
-  timeline review) ทำเป็นฉบับร่างชุดเดียว วางรายการทั้งปีจากประกาศ ครม.
-  แล้วเผยแพร่ครั้งเดียว มีหลักฐานผู้เผยแพร่และ diff เทียบฉบับเดิม
-- Webhook: เปลี่ยน space มีประวัติทุกครั้ง และทดสอบ URL ของฉบับร่างได้ก่อนเผยแพร่
-- API แก้ตรง (POST/DELETE `/api/holidays*`, PUT `/api/chat-webhooks`) ถูกถอดออก
-  — เขียนได้ผ่านเส้นทาง draft เท่านั้น สิทธิ์คงเดิม (`master:manage`) ไม่ขยาย/ไม่หด
+## เหตุผล
+
+- วันหยุดและ webhook เป็น**ข้อมูลปฏิบัติการ** ไม่ใช่เอกสารควบคุม — ค่าใช้จ่าย
+  ของพิธีกรรมร่าง/เผยแพร่ (คลิกหลายชั้นทุกครั้งที่แก้) สูงกว่าประโยชน์
+  central audit เพียงพอสำหรับการตรวจย้อน
+- ของควบคุม 4 ตัวผูกกับเอกสารการค้า/ไทม์ไลน์ที่ออกไปแล้ว — เวอร์ชันที่เคย
+  เผยแพร่ต้องอยู่ถาวรเป็นหลักฐาน จึงห้ามลบและซ่อนได้เฉพาะตัวที่พ้นหน้าที่
+- ร่างที่ยังไม่เผยแพร่ไม่เคยมีผลกับระบบ จึงลบจริงได้โดยไม่เสียหลักฐานใด
