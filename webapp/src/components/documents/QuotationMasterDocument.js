@@ -59,7 +59,8 @@ function PartyGrid({ model }) {
           <div><dt>โครงการ</dt><dd>{model.references.project}</dd></div>
           <div><dt>ผู้เสนอราคา</dt><dd>{model.references.salesOwner}</dd></div>
           {model.references.salesOwnerPhone && <div><dt>เบอร์ผู้เสนอราคา</dt><dd>{model.references.salesOwnerPhone}</dd></div>}
-          <div><dt>ติดต่อบริษัท</dt><dd>{model.company.phone} · Line {model.company.line}</dd></div>
+          <div><dt>โทรบริษัท</dt><dd>{model.company.phone}</dd></div>
+          <div><dt>Line</dt><dd>{model.company.line}</dd></div>
         </dl>
       </div>
     </section>

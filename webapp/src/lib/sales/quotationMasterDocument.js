@@ -61,7 +61,8 @@ function partyGrid(model) {
           <div><dt>โครงการ</dt><dd>${val(model.references.project)}</dd></div>
           <div><dt>ผู้เสนอราคา</dt><dd>${val(model.references.salesOwner)}</dd></div>
           ${model.references.salesOwnerPhone ? `<div><dt>เบอร์ผู้เสนอราคา</dt><dd>${esc(model.references.salesOwnerPhone)}</dd></div>` : ''}
-          <div><dt>ติดต่อบริษัท</dt><dd>${val(model.company.phone)} · Line ${val(model.company.line)}</dd></div>
+          <div><dt>โทรบริษัท</dt><dd>${val(model.company.phone)}</dd></div>
+          <div><dt>Line</dt><dd>${val(model.company.line)}</dd></div>
         </dl>
       </div>
     </section>`;
