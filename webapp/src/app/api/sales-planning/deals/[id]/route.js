@@ -246,12 +246,13 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
     // ใบเสนอราคา accepted = แหล่งยอด Actual — ห้ามลบแม้ superuser (กติกาเดียวกับ
     // DELETE quotation) เพราะ FK cascade จะพาใบ accepted + Sale Order หายเงียบ
-    // โดย audit ไม่บันทึกเอกสารการเงินที่ถูกทำลาย. ต้องยกเลิก/คืนสถานะใบก่อน.
+    // โดย audit ไม่บันทึกเอกสารการเงินที่ถูกทำลาย. ต้องย้อนการรับ (0138) หรือ
+    // ย้อน Won ผ่านยกเลิก SO (0116) ก่อน.
     const { count: acceptedCount } = await supabase
       .from('quotations').select('id', { count: 'exact', head: true })
       .eq('dealId', id).eq('status', 'accepted');
     if ((acceptedCount || 0) > 0) {
-      return conflict('ดีลนี้มีใบเสนอราคาที่รับแล้ว (Won) — ลบไม่ได้ เพราะเป็นหลักฐานยอด Actual; ยกเลิกใบเสนอราคาก่อน');
+      return conflict('ดีลนี้มีใบเสนอราคาที่รับแล้ว (Won) — ลบไม่ได้ เพราะเป็นหลักฐานยอด Actual: ถ้ามี SO อนุมัติแล้วใช้ “ยกเลิกใบสั่งขายพร้อมย้อนสถานะ”; ถ้ายังไม่มี SO ให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา');
     }
     if (before.metadata?.sahamitPoId) {
       return conflict('โครงการนี้มาจาก PO สหมิตร — ลบไม่ได้ (จัดการที่เอกสาร PO แทน)');

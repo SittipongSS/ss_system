@@ -222,8 +222,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 });
 
 // DELETE — คนทั่วไปลบได้เฉพาะ draft. Superuser ลบสถานะอื่นได้ ยกเว้น accepted:
-// accepted quotation เป็น canonical Actual source จึงห้าม hard-delete จนกว่าจะมี
-// explicit reversal flow ที่ย้อน deal/forecast/audit และหลักฐานพร้อมกัน.
+// accepted quotation เป็น canonical Actual source จึงห้าม hard-delete — เส้นทางย้อน
+// ที่ถูกต้องคือ "ย้อนการรับ" (mig 0138 — ยังไม่มี SO) หรือย้อน Won ผ่านยกเลิก SO (0116).
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
@@ -256,12 +256,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (evidenceError) return fail(evidenceError.message, 500);
   if (evidence?.id || before.signatureEvidenceId) {
-    return fail('ลบถาวรไม่ได้: ใบเสนอราคานี้มีหลักฐานลายเซ็นและต้องเก็บเป็นหลักฐาน — กรุณาใช้ “ยกเลิก” แทน', 409);
+    return fail('ลบถาวรไม่ได้: ใบเสนอราคานี้มีหลักฐานลายเซ็นและต้องเก็บเป็นหลักฐาน — ออก Revise แทน; ใบที่รับ (Won) แล้วให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา', 409);
   }
 
   if (!force) {
     if (before.status === 'accepted') {
-      return badRequest('ใบเสนอราคานี้เป็นแหล่งยอด Actual ของดีล — ลบไม่ได้ ต้องใช้กระบวนการยกเลิก/ย้อนรายการ');
+      return badRequest('ใบเสนอราคานี้เป็นแหล่งยอด Actual ของดีล — ลบไม่ได้: ถ้ามี SO อนุมัติแล้วใช้ “ยกเลิกใบสั่งขายพร้อมย้อนสถานะ” ที่หน้า SO; ถ้ายังไม่มี SO ให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา');
     }
     const elevated = isSuperuser(user.role);
     if (!elevated) {
@@ -269,7 +269,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
         return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ลบไม่ได้');
       }
       if (before.status !== 'draft') {
-        return badRequest('ลบได้เฉพาะฉบับร่าง — ใบที่ส่งแล้วให้ยกเลิก (cancel) หรือออก Revise แทน');
+        return badRequest('ลบได้เฉพาะฉบับร่าง — ใบที่ส่งแล้วให้ออก Revise แทน');
       }
     }
   }

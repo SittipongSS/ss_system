@@ -8,7 +8,7 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, FileText, MapPin, Pencil, Plus, Printer, Save, Send, Trash2, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, FileText, MapPin, Pencil, Plus, Printer, Save, Send, Trash2, Undo2, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import FormActions from "@/components/ui/FormActions";
 import DateInput from "@/components/ui/DateInput";
@@ -21,6 +21,7 @@ import QuotationLineItems, { newManualLine, newProductLine } from "@/components/
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
+import { UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from "@/lib/sales/quotationUnaccept";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -58,6 +59,8 @@ export default function QuotationEditorPage() {
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [wonOpen, setWonOpen] = useState(false);
+  // ย้อนการรับ (มติ 2026-07-21): null = ปิด; { reason } = เปิดฟอร์มเหตุผลบังคับ
+  const [unacceptForm, setUnacceptForm] = useState(null);
   const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
   const [products, setProducts] = useState([]);
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
@@ -226,6 +229,23 @@ export default function QuotationEditorPage() {
 
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบไฟล์ + วันที่เอกสาร — validate ใน dialog/route/RPC)
   const doAccept = () => setWonOpen(true);
+  // ย้อนการรับ = เครื่องมือ supervisor/แอดมินกรณีรับใบผิดก่อนมี SO — มี SO ที่ยังไม่
+  // ยกเลิกอยู่ต้องไปทางฝั่ง SO (route/RPC บล็อกซ้ำ); เหตุผลบังคับ 10–500 ตัวอักษร
+  const canUnaccept = quote?.status === "accepted" && canUnacceptQuotation(role)
+    && (!quote.salesOrder || quote.salesOrder.status === "cancelled");
+  const unacceptReasonValidation = unacceptForm ? unacceptReasonError(unacceptForm.reason) : "";
+  const doUnaccept = async () => {
+    if (unacceptReasonValidation) return;
+    const data = await act("unaccept", `/api/sales-planning/quotations/${id}/unaccept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: normalizeUnacceptReason(unacceptForm.reason) }),
+    });
+    if (data) {
+      setUnacceptForm(null);
+      await load();
+    }
+  };
   const createSalesOrder = async () => {
     setBusy("sales-order");
     setError("");
@@ -375,6 +395,12 @@ export default function QuotationEditorPage() {
             <Link href={`/sa/quotations/${id}?edit=1`} className="btn-icon" aria-label="แก้ไขใบเสนอราคา" title="แก้ไข">
               <Pencil size={16} aria-hidden="true" />
             </Link>
+          )}
+          {/* action ระดับ entity อยู่ขวาบนนอกการ์ด ตามกติกา Page Header */}
+          {canUnaccept && !editMode && (
+            <button type="button" className="btn ghost" onClick={() => setUnacceptForm({ reason: "" })} disabled={!!busy} title="ย้อนการรับใบเสนอราคา (หัวหน้าทีม/แอดมิน)">
+              <Undo2 size={14} aria-hidden="true" /> ย้อนการรับ
+            </button>
           )}
           {canDeleteDocument && !editMode && (
             <button type="button" className="btn-icon danger" onClick={doDelete} disabled={!!busy} aria-label="ลบใบเสนอราคา" title="ลบ">
@@ -659,6 +685,44 @@ export default function QuotationEditorPage() {
         customerName={quote?.customerName || quote?.deal?.customerName}
         onDone={async () => { setWonOpen(false); await load(); }}
       />
+
+      {/* ย้อนการรับ (มติ 2026-07-21) — เหตุผลบังคับ แบบเดียวกับ Admin Override ของ SO */}
+      {unacceptForm && (
+        <Modal open onClose={() => !busy && setUnacceptForm(null)} title="ย้อนการรับใบเสนอราคา" size="sm" dismissible={!busy}>
+          <div className="drawer-section" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="glass-panel" style={{ padding: "10px 12px", borderColor: "var(--red)", display: "flex", gap: 10 }}>
+              <Undo2 size={20} color="var(--red)" aria-hidden="true" />
+              <div style={{ color: "var(--text-2)", fontSize: 13 }}>
+                <strong style={{ color: "var(--text)" }}>เครื่องมือแก้กรณีรับใบผิด (ยังไม่มี Sale Order)</strong>
+                <p style={{ margin: "4px 0 0" }}>ใบ {quote?.quoteNumber} จะกลับเป็น &ldquo;ส่งลูกค้าแล้ว&rdquo; และดีลถอยออกจาก Won — หลักฐานการรับเดิมคงไว้เป็นประวัติ</p>
+              </div>
+            </div>
+            <label className="form-group" htmlFor="unaccept-reason">
+              <span>เหตุผลที่ย้อนการรับ</span>
+              <textarea
+                id="unaccept-reason"
+                className="textarea-premium"
+                rows={4}
+                required
+                maxLength={UNACCEPT_REASON_MAX}
+                value={unacceptForm.reason}
+                onChange={(event) => setUnacceptForm({ reason: event.target.value })}
+                aria-describedby="unaccept-reason-help"
+                placeholder="เช่น กดรับใบผิดฉบับ — ดีลนี้ต้องปิดด้วยใบเสนอราคาอีกใบ"
+              />
+              <small id="unaccept-reason-help" style={{ color: unacceptForm.reason && unacceptReasonValidation ? "var(--red)" : "var(--text-3)" }}>
+                {unacceptForm.reason && unacceptReasonValidation ? unacceptReasonValidation : `บังคับอย่างน้อย 10 ตัวอักษร · ${unacceptForm.reason.length}/${UNACCEPT_REASON_MAX}`}
+              </small>
+            </label>
+            <div className="action-bar" style={{ marginTop: 0 }}>
+              <button type="button" className="btn ghost" onClick={() => setUnacceptForm(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn danger" onClick={doUnaccept} disabled={!!busy || !!unacceptReasonValidation}>
+                <Undo2 size={15} aria-hidden="true" /> {busy === "unaccept" ? "กำลังย้อน…" : "ยืนยันย้อนการรับ"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <Modal open={saveChoiceOpen} onClose={() => !busy && setSaveChoiceOpen(false)} title="เลือกวิธีบันทึกใบเสนอราคา" size="sm">
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
