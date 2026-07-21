@@ -48,8 +48,8 @@ function PartyGrid({ model }) {
         <p>{model.customer.address}</p>
         <dl>
           <div><dt>เลขผู้เสียภาษี</dt><dd>{model.customer.taxId}</dd></div>
-          <div><dt>สาขา</dt><dd>{model.customer.branch}</dd></div>
-          <div><dt>ผู้ติดต่อ</dt><dd>{model.customer.contactName} · {model.customer.contactPhone}</dd></div>
+          <div><dt>ที่อยู่จัดส่ง</dt><dd>{model.customer.shippingAddress || model.customer.address}</dd></div>
+          <div><dt>ผู้ติดต่อ</dt><dd>{model.customer.contactName}{model.customer.contactPhone ? ` · ${model.customer.contactPhone}` : ''}</dd></div>
         </dl>
       </div>
       <div>
