@@ -20,7 +20,7 @@ import { fmtDate } from "@/lib/format";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { compactPersonName } from "@/lib/personName";
 import { useDepartment } from "@/lib/roleContext";
-import { addBusinessDays, countBusinessDays, isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
+import { addBusinessDays, countBusinessDays, isBusinessDay, setHolidays, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { recalculateGraph } from "@/lib/pm/schedule";
 import { cachedFetchJson } from "@/lib/apiCache";
 
@@ -105,6 +105,19 @@ export default function TimelineWorkspace({
   const matchStatus = (task) => !statusFilter.length || statusFilter.includes(statusKeyOf(task));
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
   const [drafts, setDrafts] = useState({});
+  // ปฏิทินวันหยุดจริงจาก DB ต้องเข้า module-global ของ dateHelpers ก่อนพรีวิว recalc —
+  // ไม่งั้นฝั่ง client คิดด้วย THAI_HOLIDAYS (hardcode) แล้วพรีวิว ≠ ผลที่ server บันทึกจริง.
+  // โหลดครั้งเดียวตอน mount (cachedFetchJson dedupe ข้าม mount); โหลดไม่ได้/ว่าง =
+  // คง fallback hardcode เงียบ ๆ เหมือนเดิม. holidaysVersion บังคับ recalc พรีวิวหลังโหลดเสร็จ.
+  const [holidaysVersion, setHolidaysVersion] = useState(0);
+  useEffect(() => {
+    cachedFetchJson("/api/holidays").then((d) => {
+      if (Array.isArray(d) && d.length) {
+        setHolidays(d.map((h) => h.date));
+        setHolidaysVersion((v) => v + 1);
+      }
+    }).catch(() => {});
+  }, []);
   const tasks = useMemo(
     () => {
       const merged = sourceTasks
@@ -123,7 +136,9 @@ export default function TimelineWorkspace({
         return merged; // ข้อมูลผิดรูป (เช่น dependency วน) — โชว์แบบไม่คำนวณดีกว่าตารางพัง
       }
     },
-    [sourceTasks, drafts],
+    // holidaysVersion: recalc พรีวิวใหม่เมื่อปฏิทินวันหยุด DB โหลดเสร็จ (เข้า module-global)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceTasks, drafts, holidaysVersion],
   );
 
   useEffect(() => {

@@ -6,15 +6,19 @@
 // มติผู้ใช้ 2026-07-17:
 //   • ลบ PO: ห้ามลบถ้ายังผูกอะไรอยู่ — บอกให้ชัดว่าติดอะไร (ไม่ใช่ 403 เปล่า ๆ)
 //   • แก้บรรทัด: ล็อกเฉพาะบรรทัดที่ผูกแล้ว บรรทัดอื่นในใบเดียวกันยังแก้/ลบ/เพิ่มได้
+// บรรทัดที่ settle แล้ว (เชื่อมดีลรวม + ออก QT ราย poLineId — ดู settleLines.js)
+// ต้องล็อกด้วย: แก้จำนวน = QT/ดีลเพี้ยนจาก PO เงียบ ๆ; ลบแล้วเพิ่ม fgCode เดิม =
+// ได้ id ใหม่ที่ดูยังไม่เชื่อม → settle ซ้ำเป็นดีล/QT ซ้ำซ้อน
 
 import { referencedBlock } from '@/lib/deletion';
 
 // เหตุผลที่บรรทัดนี้ถูกล็อก (null = แก้ได้). เรียงจากเหตุที่ผู้ใช้แก้ได้ยากสุดก่อน
 // เพื่อให้ข้อความบอกต้นตอจริง ไม่ใช่อาการปลายทาง.
-export function lineLockReason(line, { hasMaterial = false, isSplitParent = false } = {}) {
+export function lineLockReason(line, { hasMaterial = false, isSplitParent = false, isSettled = false } = {}) {
   if (!line) return null;
   if (line.splitFromPoLineId) return 'มาจากการแบ่งส่ง';
   if (isSplitParent) return 'ถูกแบ่งส่งไปแล้ว';
+  if (isSettled) return 'เชื่อมดีล/ออกใบเสนอราคาแล้ว';
   if (line.actualDeliveredDate) return 'ส่งของแล้ว';
   if (line.status && line.status !== 'open') return `สถานะ ${line.status}`;
   if (hasMaterial) return 'มีข้อมูลวัสดุแล้ว';

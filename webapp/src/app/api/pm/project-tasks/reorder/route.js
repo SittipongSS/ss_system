@@ -1,6 +1,7 @@
 import { pmEditScope, inScope } from '@/lib/permissions';
 import { reindexByOrder } from '@/lib/pm/reorder';
-import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
+import { withUser, ok, fail, forbidden, notFound, badRequest, conflict } from '@/lib/http';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!project) return notFound('ไม่พบโครงการ');
   // จัดลำดับ = แก้โครงแผน → ต้องมีสิทธิ์ full edit (team-scoped) เหมือนการเพิ่ม/ลบขั้น
   if (!inScope(pmEditScope(user?.role), user, project)) return forbidden();
+  // ด่านหลังปิด (เฟส F): โครงการ closed จัดลำดับขั้นตอนไม่ได้ — ต้อง reopen ผ่าน /close ก่อน
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
 
   const { data: tasks } = await supabase
     .from('project_tasks').select('id, stepOrder').eq('projectId', body.projectId);

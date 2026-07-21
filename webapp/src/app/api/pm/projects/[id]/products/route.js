@@ -1,6 +1,7 @@
 import { viewScope, pmEditScope, inScope, can, redactProductMargin } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, conflict, badRequest, unauthorized } from '@/lib/http';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { genId } from '@/lib/id';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +36,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!inScope(pmEditScope(user?.role), user, project)) {
     return forbidden();
   }
+  // ด่านหลังปิด (เฟส F): โครงการ closed แก้รายการ FG ไม่ได้ — ต้อง reopen ผ่าน /close ก่อน
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
 
   const body = await req.json();
   if (!body.productId) return badRequest('ต้องระบุ productId');
@@ -60,6 +64,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!inScope(pmEditScope(user?.role), user, project)) {
     return forbidden();
   }
+  // ด่านหลังปิด (เฟส F): โครงการ closed แก้รายการ FG ไม่ได้ — ต้อง reopen ผ่าน /close ก่อน
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
 
   const productId = new URL(req.url).searchParams.get('productId');
   if (!productId) return badRequest('ต้องระบุ productId');

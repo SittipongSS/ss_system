@@ -28,6 +28,17 @@ export function canApproveProjectClose(user) {
   return !!user && isSuperuser(user.role);
 }
 
+// ด่านกันเขียนหลังปิด (BOUNDARY_MAP §5.1 — ด่านจริงคือ server): โครงการ closed แล้ว
+// เนื้อหาทั้งหมด (หัวเอกสาร/ขั้นตอน/FG/ลำดับดีล/ย้อน snapshot/ลบ) ต้องผ่าน reopen
+// (อนุมัติที่ route /close) ก่อน — ไม่งั้นด่านอนุมัติปิดคุ้มแค่ธง closeStatus เอง.
+// คืนข้อความ error เมื่อเขียนไม่ได้ / null เมื่อเขียนได้ — route แปลงเป็น 409 เอง
+// (ไฟล์นี้ถูก import ฝั่ง client ด้วย ห้ามดึง @/lib/http เข้ามา).
+// ยกเว้นโดยเจตนา: route /close ไม่เรียกตัวนี้ (เป็นทางเข้า transition reopen เอง).
+export function projectWriteBlockedError(project) {
+  if ((project?.closeStatus || 'open') !== 'closed') return null;
+  return 'โครงการปิดแล้ว — ต้องขออนุมัติเปิดใหม่ (RE-ORDER) ก่อนแก้ไข';
+}
+
 // transition ที่ทำได้จากแต่ละ closeStatus (role/scope บังคับเพิ่มใน handler):
 //   request        = open → pending_close (ผู้ดูแลโครงการ)
 //   cancel_request = pending_close → open (ผู้ขอถอนคำขอ / approver)

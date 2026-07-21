@@ -11,7 +11,7 @@ import { recordAudit } from '@/lib/audit';
 import { rollupDeals } from '@/lib/sales/projectRollup';
 import { sortDealsByOrder } from '@/lib/pm/dealOrder';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
-import { canApproveProjectClose } from '@/lib/pm/projectClose';
+import { canApproveProjectClose, projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
@@ -154,6 +154,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!inPmProjectScope(user, project)) {
     return forbidden();
   }
+  // ด่านหลังปิด (เฟส F): closed แล้วห้ามแก้เนื้อหา — ต้อง reopen ผ่าน /close ก่อน
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
   // From here on use the resolved internal id for all DB keys/FK subqueries.
   const id = project.id;
 
@@ -302,6 +305,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!canDeleteRecord(user, 'projects', project)) {
     return forbidden();
   }
+  // ด่านหลังปิด (เฟส F): โครงการที่ปิดอนุมัติแล้วลบไม่ได้ (รวม force) — reopen ก่อน
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
 
   // force = ทางลัดผู้ดูแลระบบ (admin): ลบโครงการที่ยังผูกดีลได้ (ดีลจะถูกปลดลิงก์
   // projectId→null ผ่าน FK SET NULL — ไม่กำพร้า) + ลบทะเบียนสรรพสามิตพ่วง.

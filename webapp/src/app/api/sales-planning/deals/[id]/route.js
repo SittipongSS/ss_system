@@ -75,8 +75,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const patch = {
     updatedAt: new Date().toISOString(),
   };
-  for (const key of ['customerId', 'customerName', 'expectedCloseDate', 'depositPaid', 'lostReason', 'notes', 'ownerId', 'ownerName', 'team', 'metadata']) {
+  for (const key of ['customerId', 'customerName', 'expectedCloseDate', 'depositPaid', 'lostReason', 'notes', 'ownerId', 'ownerName', 'team']) {
     if (key in body) patch[key] = body[key] === '' ? null : body[key];
+  }
+  // metadata: merge ทับของเดิมเสมอ — ห้าม replace ทั้งก้อน เพราะกุญแจระบบที่ flow อื่น
+  // เขียนไว้ (acceptedQuotationId/wonDocType/wonMonth จาก accept_quotation RPC,
+  // sahamitPoId/poLineIds/sahamitMergedIntoDealId จาก settle สหมิตร) จะหลุดหายเงียบ ๆ
+  // — trigger 0110 กู้คืนแค่ actualSource/wonMonth/wonValueExVat. ค่าไม่ใช่ object
+  // (null/'') ไม่รับ: endpoint นี้ไม่มีเส้นทางล้าง metadata ทั้งก้อน
+  if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {
+    patch.metadata = { ...(before.metadata || {}), ...body.metadata };
   }
   if ('title' in body) patch.title = body.title.trim();
   if ('stage' in body) patch.stage = nextStage;
@@ -136,13 +144,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return forbidden('ย้ายดีลไปทีม/เจ้าของนอกขอบเขตของคุณไม่ได้');
   }
 
+  // optimistic lock ที่ stage (แนวเดียวกับ SO ที่ .eq('status', before.status)):
+  // guard ข้างบน (alreadyWon/transitioningToWon/confirmedAt=null) คิดจาก before —
+  // ถ้าใบเสนอราคาถูก accept (stage → won) ระหว่างฟอร์มเปิดค้าง การเขียนแบบไม่เช็ค
+  // จะทับ stage กลับและล้าง confirmedAt ทั้งที่ใบ accepted ค้างอยู่
   const { data, error } = await supabase
     .from('sales_deals')
     .update(patch)
     .eq('id', id)
+    .eq('stage', before.stage)
     .select(selectDeal)
-    .single();
+    .maybeSingle();
   if (error) return fail(error.message, 500);
+  if (!data) return conflict('ดีลถูกแก้ไขพร้อมกัน (สถานะเปลี่ยนระหว่างบันทึก) — รีเฟรชหน้าแล้วลองใหม่');
 
   // วันที่เริ่มดีลเปลี่ยน → เลื่อนไทม์ไลน์ลอยของดีลตาม (sync แบบเดียวกับฝั่งโครงการ
   // ที่ PATCH startDate แล้ว recalculateGraph ทุกขั้นตอน). เฉพาะดีลที่ยังไม่ผูกโครงการ —

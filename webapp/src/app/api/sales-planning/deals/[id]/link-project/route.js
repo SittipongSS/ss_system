@@ -7,6 +7,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { canEditSalesPlanning, dealAuditLabel, DEAL_STAGES, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
@@ -35,6 +36,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const project = await loadProject(supabase, body.projectId);
   if (!project) return notFound('ไม่พบโครงการ');
+  // โครงการที่ปิดแล้ว (RE-ORDER ต้องขออนุมัติเปิดใหม่) ห้ามรับ segment/task เพิ่ม —
+  // ด่านเดียวกับ route แก้ไขโครงการ ไม่งั้นผูกดีลใหม่ = มุดด่านปิดได้
+  const closedMsg = projectWriteBlockedError(project);
+  if (closedMsg) return conflict(closedMsg);
   // โครงการปลายทางต้องอยู่ใน edit-scope ของผู้ผูกด้วย (ทีมเดียวกัน/เจ้าของ) —
   // เดิมเช็คแค่ลูกค้าตรงกัน ทำให้ผูกเข้าโครงการทีมอื่นแล้วดูดข้อมูลภายในโครงการได้
   if (!inPmProjectScope(user, project)) return forbidden('โครงการนี้อยู่นอกขอบเขตทีมของคุณ');

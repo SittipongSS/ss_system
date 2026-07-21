@@ -1,6 +1,7 @@
-import { withUser, ok, fail, badRequest, forbidden, notFound } from "@/lib/http";
+import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from "@/lib/http";
 import { inPmProjectScope } from "@/lib/permissions";
 import { loadProject } from "@/lib/pm/projectsRepo";
+import { projectWriteBlockedError } from "@/lib/pm/projectClose";
 import { normalizeDealOrder, reindexTasksByDealOrder } from "@/lib/pm/dealOrder";
 import { recordAudit } from "@/lib/audit";
 
@@ -13,6 +14,9 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
   const project = await loadProject(supabase, idOrCode);
   if (!project) return notFound("ไม่พบโครงการ");
   if (!inPmProjectScope(user, project)) return forbidden();
+  // ด่านหลังปิด (เฟส F): โครงการ closed จัดลำดับดีล/ขั้นตอนไม่ได้ — ต้อง reopen ผ่าน /close ก่อน
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr) return conflict(closedErr);
 
   const body = await req.json().catch(() => ({}));
   if (!Array.isArray(body.dealIds)) return badRequest("ต้องระบุ dealIds เป็นรายการ");

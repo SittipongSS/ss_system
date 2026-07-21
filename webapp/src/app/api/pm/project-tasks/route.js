@@ -5,7 +5,8 @@ import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
-import { withUser, ok, fail, forbidden, notFound, badRequest, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, forbidden, notFound, badRequest, conflict, unauthorized } from '@/lib/http';
+import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (!inScope(pmEditScope(user?.role), user, project)) {
       return forbidden();
     }
+    // ด่านหลังปิด (เฟส F): โครงการ closed เพิ่มขั้นตอนไม่ได้ — ต้อง reopen ผ่าน /close ก่อน
+    const closedErr = projectWriteBlockedError(project);
+    if (closedErr) return conflict(closedErr);
   } else {
     // ไทม์ไลน์ลอยของดีล — scope จากทีม/AE ของดีล (pseudo-project เหมือน PATCH task ลอย)
     const { data: deal } = await supabase.from('sales_deals')

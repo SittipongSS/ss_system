@@ -6,6 +6,7 @@ import {
 import { monthOf, cleanDestination } from '@/lib/sahamit/po';
 import { insertPoLinesTolerant } from '@/lib/sahamit/poServer';
 import { blockedLinesMessage, diffPoLines, lineLockReason, poDeleteBlock } from '@/lib/sahamit/poEdit';
+import { resolveSettledLines } from '@/lib/sahamit/settleLines';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +27,7 @@ async function loadPoRefs(supabase, customerId, po) {
   const [{ data: lines }, { data: splitChildren }, { data: deals }] = await Promise.all([
     supabase.from('sahamit_po_lines').select('*').eq('poId', po.id).eq('customerId', customerId),
     supabase.from('sahamit_pos').select('id').eq('customerId', customerId).eq('splitFromPoId', po.id),
-    supabase.from('sales_deals').select('id').eq('customerId', customerId).eq('metadata->>sahamitPoId', po.id),
+    supabase.from('sales_deals').select('id, stage, metadata').eq('customerId', customerId).eq('metadata->>sahamitPoId', po.id),
   ]);
   const lineIds = (lines || []).map((l) => l.id);
   let materialLineIds = new Set();
@@ -42,9 +43,14 @@ async function loadPoRefs(supabase, customerId, po) {
       .from('sahamit_po_lines').select('splitFromPoLineId').in('splitFromPoLineId', lineIds);
     splitParentIds = new Set((children || []).map((c) => c.splitFromPoLineId));
   }
+  // บรรทัดที่ settle แล้ว (เชื่อมดีลรวม + QT) ล็อกด้วย — เทียบราย poLineId ผ่าน
+  // resolveSettledLines (ห้ามกลับไปเทียบ fgCode ล้วน): แก้จำนวน = QT/ดีลเพี้ยนจาก PO,
+  // ลบแล้วเพิ่ม fgCode เดิม = id ใหม่ดูยังไม่เชื่อม → settle ซ้ำเป็นดีล/QT ซ้ำซ้อน
+  const settled = resolveSettledLines(deals);
   const lockOf = (line) => lineLockReason(line, {
     hasMaterial: materialLineIds.has(line.id),
     isSplitParent: splitParentIds.has(line.id),
+    isSettled: Boolean(settled.dealFor(line)),
   });
   return { lines: lines || [], splitChildren: splitChildren || [], deals: deals || [], materialLineIds, lockOf };
 }
@@ -52,7 +58,7 @@ async function loadPoRefs(supabase, customerId, po) {
 // PATCH /api/sahamit/po/[id] — header fields, plus (optional) the full `lines`
 // array so the edit page can reuse the create form and save everything in one
 // go. ส่ง lines มา = ให้ diff กับของเดิม: เพิ่ม/แก้จำนวน/ลบ ในครั้งเดียว.
-// บรรทัดที่ผูกแล้ว (วัสดุ/แบ่งส่ง/ส่งของแล้ว) ถูกล็อก — แตะแล้ว 409 ทั้งคำขอ
+// บรรทัดที่ผูกแล้ว (เชื่อมดีล/วัสดุ/แบ่งส่ง/ส่งของแล้ว) ถูกล็อก — แตะแล้ว 409 ทั้งคำขอ
 // ไม่ใช่แก้ได้บางส่วนเงียบ ๆ. ไม่ส่ง lines = แก้หัวอย่างเดียวเหมือนเดิม.
 export async function PATCH(request, { params }) {
   const ctx = await getSahamitContext();

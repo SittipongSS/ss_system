@@ -729,7 +729,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     // referenceRows/signers ต่างกันตามชนิดเอกสาร — ผู้เรียก (เช่น SO) ส่ง options มา override ได้
     referenceRows: options.referenceRows || [
       { label: 'ดีล', value: quote.deal?.title || quote.dealTitle || '-' },
-      { label: 'โครงการ', value: quote.project?.name || quote.projectName || '-' },
+      // โครงการผูกผ่านดีล (deal.projectId) — API detail/approval แนบมาเป็น deal.project;
+      // quote.project/projectName ไม่มีใครตั้ง แต่คงไว้รองรับ snapshot/caller เก่า
+      { label: 'โครงการ', value: quote.deal?.project?.name || quote.project?.name || quote.projectName || '-' },
       { label: 'ผู้เสนอราคา', value: salesOwner },
       ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
     ],
