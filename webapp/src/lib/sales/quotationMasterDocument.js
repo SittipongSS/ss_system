@@ -406,7 +406,7 @@ export function renderQuotationMasterDocumentHTML(model, options = {}) {
 </html>`;
 }
 
-// สร้าง HTML เอกสารจาก quotation จริง (ใช้แทน buildQuotePrintHTML ในการพิมพ์ + ตรึง snapshot)
+// สร้าง HTML เอกสารจาก quotation จริง — เครื่องยนต์เอกสาร V4 เดียวสำหรับการพิมพ์ + ตรึง snapshot
 export function buildQuotationMasterHTML(quote, options = {}) {
   const model = buildQuotationMasterModelFromQuote(quote, options);
   return renderQuotationMasterDocumentHTML(model, options);
