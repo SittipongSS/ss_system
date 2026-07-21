@@ -1,57 +1,64 @@
-# Decision 0012 — ลำดับ Lifecycle มาตรฐานของการตั้งค่าข้อมูลระบบ
+# Decision 0012 — Settings Lifecycle Standard
 
 วันที่: 20 กรกฎาคม 2026
-สถานะ: ยืนยันแล้วโดยผู้ใช้เจ้าของระบบ
+สถานะ: ยืนยัน — retrofit สอง surface สุดท้ายส่งมอบแล้ว (mig 0132/0133)
 
-## มติ
+## บริบท
 
-การตั้งค่าข้อมูลระบบทุกชนิดต้องใช้ลำดับ lifecycle เดียวกัน:
+การตั้งค่าข้อมูลระบบหลายตัวถูกสร้างก่อนมาตรฐาน versioning ของโปรแกรมนี้
+(Decision 0003) จึงยังเป็นแบบ "แก้ตรง มีผลทันที": ไม่มีชั้นร่าง ไม่มีประวัติ
+เวอร์ชัน และแก้แล้วย้อนตรวจไม่ได้ ขณะที่ surface ที่สร้างตั้งแต่ Phase 4A
+เป็นต้นมา (ข้อมูลบริษัท, Workflow Template, Document Standards, Commercial
+Presets) ใช้แพตเทิร์นเดียวกันหมดและพิสูจน์แล้วว่าใช้งานได้จริง
 
-```
-เพิ่ม/แก้ไข → บันทึกร่าง → เผยแพร่ → พัก / ปิด / เก็บ (archive)
-```
+## การตัดสินใจ
 
-- การเพิ่มหรือแก้ไขเขียนลง **ฉบับร่าง** เสมอ ไม่มีผลกับระบบจนกว่าจะเผยแพร่
-- **เผยแพร่** เป็น action แยกที่ชัดเจน มี Confirm และบันทึกผู้ทำ/เวลา/เวอร์ชัน
-- การเลิกใช้เป็นการ **พัก/ปิด/เก็บ** ไม่ใช่การลบ — ข้อมูลย้อนหลังต้องอ่านได้เสมอ
-- เวอร์ชันที่เผยแพร่แล้วเป็น immutable; แก้ไข = สร้างร่างเวอร์ชันใหม่
+การตั้งค่าข้อมูลระบบ **ทุกตัว** ต้องใช้ lifecycle เดียวกัน:
 
-มตินี้ยกแพตเทิร์นของ Decision 0003 (organization settings) และ 0004
-(versioned operational templates) ขึ้นเป็น**กติกากลางของการตั้งค่าทุกตัว**
-ไม่ใช่เฉพาะรายเรื่องอีกต่อไป
+> เพิ่ม/แก้ไข → บันทึกร่าง (Draft) → เผยแพร่ (Publish) → พัก/ปิด/เก็บ (Archive)
 
-## เหตุผล
+ข้อบังคับของแพตเทิร์น (ต้นแบบ: mig `0120_organization_settings.sql` +
+`lib/admin/organizationSettings.js`):
 
-- การตั้งค่าที่มีผลทันทีตอนกดบันทึก (ไม่มีชั้นร่าง) เคยเป็นต้นเหตุความเสี่ยง
-  ที่เอกสารเฟสต่าง ๆ ต้องเลี่ยง เช่น ค่าที่ไทม์ไลน์/ภาษีอ้างอิงเปลี่ยนเงียบ ๆ
-- ระบบมีผู้ดูแลหลายคน ชั้นร่าง + เผยแพร่ทำให้ตรวจก่อนมีผลได้และตรวจย้อนกลับได้
-- สี่หน้าตั้งค่าหลัก (company, workflow templates, document standards,
-  commercial presets) ใช้แพตเทิร์นนี้แล้วและพิสูจน์ว่าใช้งานจริงได้
+- แยก root record ออกจาก version records; root ชี้ Published version ที่ใช้งานอยู่
+- Draft และ Published มีได้อย่างละไม่เกินหนึ่งรายการต่อ root (partial unique index)
+- Published/Archived เป็น immutable ผ่าน guard trigger; เลิกใช้ = Archive ไม่ลบ
+- Publish/Archive ทำผ่าน database function แบบ transaction เดียว (lock root,
+  ตรวจ `expectedUpdatedAt`, ห้าม client ส่ง payload ใหม่มากับคำสั่ง transition)
+- Publish ต้องมีหมายเหตุการเปลี่ยนแปลง (change note)
+- ตารางเปิด RLS ไม่มี browser-facing policy; ทุก read/write ผ่าน server API +
+  service role หลังตรวจ authorization
+- Migration seed ข้อมูลปัจจุบันเป็น Published Version 1 — พฤติกรรมของ consumer
+  ต้องไม่เปลี่ยนสำหรับข้อมูลเดิม
+- **Consumer อ่านจาก Published version เท่านั้น** — ฉบับร่างไม่มีผลกับระบบ
+  จนกว่าจะเผยแพร่
+- UI ตาม Page Header standard ใน [UX/UI Rulebook](../ux-ui-rulebook.md) +
+  Drawer house pattern; ไม่มี Auto-save
 
-## สถานะความสอดคล้อง ณ วันที่ตัดสินใจ
+## ตารางสถานะ surface
 
-| Surface | สถานะ |
-|---|---|
-| `/settings/company` | สอดคล้อง (mig 0120) |
-| `/settings/workflow-templates` | สอดคล้อง (mig 0121) |
-| `/settings/document-standards` | สอดคล้อง (mig 0123) |
-| `/settings/commercial-presets` | สอดคล้อง (mig 0128) |
-| `/settings/holidays` | ไม่สอดคล้อง — แก้ตรง มีผลทันที |
-| `/settings/chat-webhooks` | ไม่สอดคล้อง — แก้ตรง มีผลทันที |
-| `/database/product-categories` | บางส่วน — มี พักใช้/เปิดใช้ แต่แก้ไขมีผลทันที ไม่มีชั้นร่าง |
+| Surface | หน้า | Migration | สถานะ | หมายเหตุ |
+|---|---|---|---|---|
+| ข้อมูลบริษัท | `/settings/company` | 0120 | เสร็จสมบูรณ์ | Phase 4A |
+| Workflow/Timeline Template | `/settings/workflow-templates` | 0121 | เสร็จสมบูรณ์ | Phase 4B |
+| ลายเซ็นอิเล็กทรอนิกส์ | `/account` (own-scope) | 0122 | เสร็จสมบูรณ์ | Phase 5A — versioned + immutable ตามขอบเขตของ Decision 0006 |
+| Document Standards | `/settings/document-standards` | 0123 | เสร็จสมบูรณ์ | Phase 6A |
+| Commercial Presets | `/settings/commercial-presets` | 0128 | เสร็จสมบูรณ์ | Phase 7A |
+| ปฏิทินวันหยุด | `/settings/holidays` | 0132 | รอตรวจ | Retrofit ตาม decision นี้ — หนึ่งเวอร์ชัน = ชุดวันหยุดทั้งชุด (เผยแพร่วันหยุดปีใหม่ได้ในครั้งเดียว); ตัวคำนวณไทม์ไลน์อ่าน Published เท่านั้น; ตาราง `holidays` เดิมคงไว้เป็น seed/fallback |
+| แจ้งเตือน Google Chat | `/settings/chat-webhooks` | 0133 | รอตรวจ | Retrofit ตาม decision นี้ — root ต่อ space; space ที่ไม่เคยตั้งค่าไม่ seed Published เพื่อคง env fallback เดิม |
+| Template หมายเหตุใบเสนอราคา (`quote_note_templates`) | ในหน้าใบเสนอราคา | — | รอดำเนินการ | ตัวสุดท้ายที่ยังแก้ตรง — **ไม่ retrofit แยก**: Decision 0010 สร้าง Commercial Presets (mig 0128, มี `legacyTemplateId` ไว้ map) เป็นตัวแทนแบบมีเวอร์ชันแล้ว; ปิดงานโดยสวิตช์ consumer ฝั่งออกใบ → migrate ข้อมูลเข้า presets → ถอด API แก้ตรง แล้วเก็บตารางเดิมเป็นหลักฐาน |
 
-## ขอบเขตการบังคับใช้
+สถานะ `รอตรวจ` = โค้ด + migration ส่งมอบแล้ว รอรัน migration บนฐานข้อมูลจริง
+และ UAT (แพตเทิร์นเดียวกับ Phase 7A/7B)
 
-- หน้าตั้งค่าใหม่ทุกหน้าหลังวันนี้ต้องเป็นไปตามมตินี้ตั้งแต่แรก
-- Surface ที่ไม่สอดคล้อง (holidays, chat-webhooks) ต้อง retrofit เป็นงานแยก
-  พร้อม migration ของตัวเอง — บันทึกเป็นงานค้างของโปรแกรม ยังไม่ผูกกับเฟสใด
-- หมวดสินค้า: การเพิ่มชั้นร่างให้ master data ที่แก้บ่อยต้องชั่งน้ำหนัก UX
-  แยกต่างหาก ยังไม่บังคับในมตินี้ — ทบทวนอีกครั้งพร้อมการประเมิน Normalize
-  ที่ค้างจาก Phase 2/3
-- Permission ของ action เผยแพร่/เก็บ ยังใช้ temporary gate เดิมจนถึง Phase 8
+นอกขอบเขต decision นี้: ทะเบียน master data ที่มี approval workflow รายรายการ
+ของตัวเองอยู่แล้ว (ลูกค้า, สินค้า, หมวดสินค้า) — ใช้กติกา pending/approve เดิม
 
-## ผลต่อเอกสารอื่น
+## ผลตามมา
 
-- Rulebook และ phase doc ใหม่ให้อ้าง Decision นี้แทนการอ้าง 0003/0004 รายเรื่อง
-- Permission action inventory: action `edit_draft`, `publish`, `archive`
-  เป็นชุดมาตรฐานของ resource ประเภทการตั้งค่า
+- วันหยุด: การกรอกวันหยุดปี 2027 (ops deadline ก่อนสิ้นปี 2026 — ดู
+  timeline review) ทำเป็นฉบับร่างชุดเดียว วางรายการทั้งปีจากประกาศ ครม.
+  แล้วเผยแพร่ครั้งเดียว มีหลักฐานผู้เผยแพร่และ diff เทียบฉบับเดิม
+- Webhook: เปลี่ยน space มีประวัติทุกครั้ง และทดสอบ URL ของฉบับร่างได้ก่อนเผยแพร่
+- API แก้ตรง (POST/DELETE `/api/holidays*`, PUT `/api/chat-webhooks`) ถูกถอดออก
+  — เขียนได้ผ่านเส้นทาง draft เท่านั้น สิทธิ์คงเดิม (`master:manage`) ไม่ขยาย/ไม่หด
