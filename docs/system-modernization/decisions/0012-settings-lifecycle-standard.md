@@ -1,7 +1,7 @@
 # Decision 0012 — Settings Lifecycle Standard (ฉบับแก้ไขครั้งที่ 2)
 
 วันที่: 20 กรกฎาคม 2026 · แก้ไขครั้งที่ 2: 21 กรกฎาคม 2026
-สถานะ: ยืนยันแล้วโดยผู้ใช้เจ้าของระบบ
+สถานะ: ยืนยันแล้วโดยผู้ใช้เจ้าของระบบ — ระดับ A ย้อนกลับแล้ว (PR #629, mig 0134)
 
 ## การแก้ไขครั้งที่ 2 — แยก lifecycle เป็นสองระดับ
 
@@ -23,6 +23,10 @@
 - ผลตามมา: **ย้อน PR #614** — คืน UI/API แก้ตรงบนตารางเดิม (`holidays`,
   `chat_webhooks` ซึ่งไม่เคยถูกแตะ) และเขียน **mig 0134 ถอนตาราง/function
   ของ 0132+0133 ทิ้งให้สะอาด** (ผู้ใช้เลือกถอนทิ้ง ไม่เก็บกวาดทีหลัง)
+- ส่งมอบแล้วใน **PR #629**: ทุกการเพิ่ม/ลบ/บันทึกยืนยันผ่าน ConfirmDialog;
+  route วันหยุดได้ `recordAudit` ครบ create/update/delete (ของเดิมก่อน #614
+  ไม่มี); webhook URL ถูก mask token ก่อนลง audit; สิทธิ์ `master:manage`
+  เดิม ไม่ขยาย/ไม่หด
 
 ### ระดับ B — ข้อมูลควบคุม: ร่าง → เผยแพร่ → ซ่อน
 
@@ -62,9 +66,13 @@
 | Workflow/Timeline Template | B | ใช้งานอยู่ | ปรับแบบเดียวกัน |
 | Document Standards | B | ใช้งานอยู่ | ปรับแบบเดียวกัน |
 | Commercial Presets | B | ใช้งานอยู่ | ปรับแบบเดียวกัน |
-| ปฏิทินวันหยุด `/settings/holidays` | A | รอย้อนกลับ | ย้อน #614 + mig 0134 ถอน 0132 |
-| แจ้งเตือน Google Chat `/settings/chat-webhooks` | A | รอย้อนกลับ | ย้อน #614 + mig 0134 ถอน 0133 |
+| ปฏิทินวันหยุด `/settings/holidays` | A | ย้อนกลับแล้ว | PR #629 — CRUD ตรงบนตาราง `holidays` (mig 0018) + Confirm + audit; ตัวคำนวณไทม์ไลน์อ่านตารางเดิมตรง ๆ; mig 0134 ถอน 0132 |
+| แจ้งเตือน Google Chat `/settings/chat-webhooks` | A | ย้อนกลับแล้ว | PR #629 — CRUD ตรงบนตาราง `chat_webhooks` (mig 0099) + Confirm + audit; env fallback เดิมคงอยู่; mig 0134 ถอน 0133 |
 | `quote_note_templates` | — | รอดำเนินการ | ปิดผ่าน Commercial Presets ไม่ retrofit |
+
+สถานะ `ย้อนกลับแล้ว` = โค้ดกลับเป็น CRUD ตรงแล้ว — **ค้างรัน mig 0134 มือบน
+Supabase production** (0132/0133 ถูกรันไปแล้ว ตาราง version มีแต่ seed
+DROP ได้ปลอดภัย ข้อมูลจริงอยู่ตารางเดิมครบ)
 
 ## เหตุผล
 
