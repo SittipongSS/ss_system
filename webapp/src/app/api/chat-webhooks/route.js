@@ -8,9 +8,11 @@ export const dynamic = 'force-dynamic';
 
 const KNOWN_KEYS = new Set(CHAT_SPACES.map((s) => s.key));
 
-// ปิดท้าย token ใน URL ก่อนเก็บลง audit — audit เปิดให้ supervisor อ่านย้อนหลังได้
-// ไม่ควรทิ้ง webhook URL เต็ม ๆ (ใครมี URL ก็โพสต์เข้า space ได้)
-const maskUrl = (url) => (url ? String(url).replace(/token=[^&]+/, 'token=***') : url);
+// ปิดท้าย key/token ใน URL ก่อนเก็บลง audit — audit เปิดให้ supervisor อ่านย้อนหลังได้
+// ไม่ควรทิ้ง webhook URL เต็ม ๆ (ใครมี URL ก็โพสต์เข้า space ได้) — URL ของ Google Chat
+// มีทั้ง ?key=...&token=... และทั้งคู่เป็นความลับ
+const maskUrl = (url) =>
+  (url ? String(url).replace(/key=[^&]+/, 'key=***').replace(/token=[^&]+/, 'token=***') : url);
 const maskRow = (row) => (row ? { ...row, url: maskUrl(row.url) } : row);
 
 // GET /api/chat-webhooks — supervisor เท่านั้น: รายการ space มาตรฐานทั้ง 3
