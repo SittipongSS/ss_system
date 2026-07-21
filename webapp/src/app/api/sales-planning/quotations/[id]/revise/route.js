@@ -85,7 +85,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน
   // จะได้ค่าใหม่ ใบเก่าคงเดิม; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม.
   const { data: cust } = quote.customerId
-    ? await supabase.from('customers').select('address, shippingAddress, branchCode').eq('id', quote.customerId).maybeSingle()
+    ? await supabase.from('customers').select('address, shippingAddress, branchCode, taxId').eq('id', quote.customerId).maybeSingle()
     : { data: null };
   const { data: revised, error: insertErr } = await supabase
     .from('quotations')
@@ -105,6 +105,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       billingAddress: cust?.address ?? quote.billingAddress ?? null,
       shippingAddress: cust?.shippingAddress || cust?.address || quote.shippingAddress || null,
       branchCode: cust?.branchCode ?? quote.branchCode ?? null,
+      customerTaxId: cust?.taxId ?? quote.customerTaxId ?? null,
       contactName: quote.contactName,
       contactPhone: quote.contactPhone,
       contactEmail: quote.contactEmail,
@@ -135,6 +136,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       },
       createdBy: user.id || null,
       createdByName: user.name || null,
+      createdByPhone: user.phone || null, // snapshot เบอร์ผู้เสนอราคา → โชว์บนเอกสาร V4
+
     })
     .select()
     .single();
