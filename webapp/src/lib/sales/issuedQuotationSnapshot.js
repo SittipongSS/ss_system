@@ -61,6 +61,7 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
     content: quotationApprovalContent(quote, lines),
     customer: {
       customerName: trimOrNull(quote.customerName),
+      customerTaxId: trimOrNull(quote.customerTaxId),
       branchCode: trimOrNull(quote.branchCode),
       billingAddress: trimOrNull(quote.billingAddress),
       shippingAddress: trimOrNull(quote.shippingAddress),
@@ -76,6 +77,7 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
       approvedByName: trimOrNull(quote.approvedByName || quote.deal?.ownerName),
       approvedAt: quote.approvedAt || null,
       proposer: trimOrNull(quote.createdByName || quote.metadata?.preparedBy),
+      proposerPhone: trimOrNull(quote.createdByPhone),
     },
     company: companySnapshot(),
     standard: form
@@ -91,11 +93,52 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
 
 // The rendered artifact is the frozen HTML a reprint replays. buildQuotationMasterHTML
 // is a pure string builder (no DOM), so it runs unchanged on the server.
-export function buildIssuedQuotationArtifactHtml(quote = {}) {
+// options.approverSignatureImage = data URI ของรูปลายเซ็นผู้อนุมัติ ฝังลงในใบตรึง
+// ให้ self-contained (reprint แสดงรูปเดิมเสมอ แม้ลายเซ็นถูกเปลี่ยน/ยกเลิกภายหลัง)
+export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
   return buildQuotationMasterHTML(
     { ...quote, approvalStatus: 'approved' },
-    { watermark: '' },
+    {
+      watermark: '',
+      approverSignatureImage: options.approverSignatureImage || null,
+      proposerSignatureImage: options.proposerSignatureImage || null,
+    },
   );
+}
+
+// storage path ของลายเซ็น "ที่ใช้งานอยู่" ของ user (สำหรับผู้เสนอราคา = ผู้สร้างใบ).
+// ต่างจากผู้อนุมัติที่ path ถูกตรึงใน evidence — ผู้เสนอราคาใช้เวอร์ชัน active ณ เวลาตรึง.
+async function loadActiveSignatureAsset(supabase, userId) {
+  if (!userId) return null;
+  try {
+    const { data: root } = await supabase
+      .from('user_signatures').select('activeVersionId').eq('userId', userId).maybeSingle();
+    if (!root?.activeVersionId) return null;
+    const { data: version } = await supabase
+      .from('user_signature_versions')
+      .select('storageBucket, storagePath, mimeType')
+      .eq('id', root.activeVersionId).maybeSingle();
+    return version || null;
+  } catch {
+    return null;
+  }
+}
+
+// ดึงไฟล์รูปลายเซ็นจาก storage (bucket private → ต้อง service-role client) แล้วแปลงเป็น
+// data URI base64. asset = signatureAssetSnapshot ที่ evidence ตรึงไว้ตอนอนุมัติ
+// (มี storageBucket/storagePath/mimeType). ล้มเหลว/ไม่มี → null (ใบยังออกได้ ไม่บล็อก)
+export async function loadSignatureImageDataUri(supabase, asset) {
+  if (!asset || !asset.storageBucket || !asset.storagePath) return null;
+  try {
+    const { data, error } = await supabase.storage.from(asset.storageBucket).download(asset.storagePath);
+    if (error || !data) return null;
+    const buffer = Buffer.from(await data.arrayBuffer());
+    if (!buffer.length) return null;
+    const mime = asset.mimeType || 'image/png';
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  } catch {
+    return null;
+  }
 }
 
 export function issuedContentFingerprint(payload) {
@@ -110,7 +153,14 @@ export function artifactSha256(html) {
 // with identical content returns the existing snapshot instead of duplicating.
 export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence, user }) {
   const payload = buildIssuedQuotationPayload(quote, evidence);
-  const html = buildIssuedQuotationArtifactHtml(quote);
+  // ฝังรูปลายเซ็นลงในใบตรึง (self-contained เหมือนฟอนต์) — ผู้อนุมัติ = evidence-backed
+  // (path ตรึงใน evidence); ผู้เสนอราคา = stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง
+  const proposerAsset = await loadActiveSignatureAsset(supabase, quote.createdBy);
+  const [approverSignatureImage, proposerSignatureImage] = await Promise.all([
+    loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
+    loadSignatureImageDataUri(supabase, proposerAsset),
+  ]);
+  const html = buildIssuedQuotationArtifactHtml(quote, { approverSignatureImage, proposerSignatureImage });
   const { data, error } = await supabase.rpc('capture_issued_quotation_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
     p_artifact_id: genId('IDA'),

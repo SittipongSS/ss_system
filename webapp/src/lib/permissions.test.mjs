@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -409,4 +409,61 @@ test('canApproveMasterData: เฉพาะ AE Supervisor (+ admin break-glass)'
   for (const role of ['ae', 'ac', 'marketing', 'legal', 'rd', 'viewer', 'staff', 'secretary']) {
     assert.equal(canApproveMasterData(role), false, `${role} ต้องอนุมัติไม่ได้`);
   }
+});
+
+// ── แก้ไขข้อมูลหลัก: ยึด "ทีมที่ดูแลลูกค้า" (Option A, มติ 2026-07-21) ──
+test('caretakerTeamsOf: teams[] เป็นหลัก, fallback team เดี่ยว, ว่าง = teamless', () => {
+  assert.deepEqual(caretakerTeamsOf({ teams: ['KA', 'ODM'] }), ['KA', 'ODM']);
+  assert.deepEqual(caretakerTeamsOf({ teams: [], team: 'KA' }), ['KA']); // legacy pre-0037
+  assert.deepEqual(caretakerTeamsOf({ team: 'SV' }), ['SV']);
+  assert.deepEqual(caretakerTeamsOf({ teams: [], team: null }), []);      // teamless
+  assert.deepEqual(caretakerTeamsOf(null), []);
+});
+
+test('canViewRecord: ลูกค้า + สินค้า = แคตตาล็อกกลาง เห็นได้ทุก role/ทุกทีม', () => {
+  const odmAe = { role: 'ae', id: 'u1', team: 'ODM' };
+  // สินค้าที่ทีม KA เป็นคนสร้าง — ODM ต้องเปิดหน้าดูได้ (ไม่ 404) เหมือนลูกค้า
+  assert.equal(canViewRecord(odmAe, 'products', { team: 'KA', ownerId: 'x' }), true);
+  assert.equal(canViewRecord(odmAe, 'customers', { team: 'KA' }), true);
+  // teamless ก็เห็น
+  assert.equal(canViewRecord(odmAe, 'products', { team: null }), true);
+  // ทรัพยากรอื่น (orders) ยังคง team-scoped ตามเดิม
+  assert.equal(canViewRecord(odmAe, 'orders', { team: 'KA', ownerId: 'x' }), false);
+});
+
+test('canEditRecord (customers): ทั้งทีมที่ดูแลแก้ได้ รวม AE — กันข้ามทีม', () => {
+  const kaCustomer = { teams: ['KA'] };
+  for (const role of ['senior_ae', 'ac', 'ae']) {
+    // อยู่ทีม KA → แก้ลูกค้า KA ได้ (AE ก็ได้ ไม่จำกัดเฉพาะ ownerId ตัวเอง)
+    assert.equal(canEditRecord({ role, id: 'me', team: 'KA' }, 'customers', kaCustomer), true, `KA ${role}`);
+    // อยู่ทีม ODM → แก้ลูกค้า KA ไม่ได้ (กันข้ามทีม)
+    assert.equal(canEditRecord({ role, id: 'me', team: 'ODM' }, 'customers', kaCustomer), false, `ODM ${role}`);
+  }
+  // superuser ข้ามทีมได้
+  assert.equal(canEditRecord({ role: 'ae_supervisor', id: 's' }, 'customers', kaCustomer), true);
+  assert.equal(canEditRecord({ role: 'admin', id: 'a' }, 'customers', kaCustomer), true);
+  // ไม่มี cap edit → แก้ไม่ได้ (defense-in-depth)
+  assert.equal(canEditRecord({ role: 'viewer', id: 'v', team: 'KA' }, 'customers', kaCustomer), false);
+  assert.equal(canEditRecord({ role: 'marketing', id: 'm', team: 'KA' }, 'customers', kaCustomer), false);
+  // legal แก้ทะเบียนลูกค้าไม่ได้ (ไม่มี customers:edit; bypass legal:approve ไม่ครอบ customers)
+  assert.equal(canEditRecord({ role: 'legal', id: 'l', extraCaps: [] }, 'customers', kaCustomer), false);
+});
+
+test('canEditRecord (products): ยึดทีมของลูกค้าเจ้าของ (caller ส่ง caretakerTeams)', () => {
+  const product = { team: 'ODM', ownerId: 'creator' }; // product.team = คนสร้าง (ไม่ใช้)
+  // ลูกค้าเจ้าของดูแลโดย KA → KA ทุกตำแหน่งแก้ได้ (แม้ product.team = ODM)
+  for (const role of ['senior_ae', 'ac', 'ae']) {
+    assert.equal(canEditRecord({ role, id: 'me', team: 'KA' }, 'products', product, ['KA']), true, `KA ${role}`);
+    assert.equal(canEditRecord({ role, id: 'me', team: 'SV' }, 'products', product, ['KA']), false, `SV ${role}`);
+  }
+  // teamless (ลูกค้าไร้ทีม) = ส่วนกลาง → ใครมี cap ก็แก้ได้
+  assert.equal(canEditRecord({ role: 'ae', id: 'me', team: 'SV' }, 'products', product, []), true);
+  // UNRESOLVED (caller ลืมส่ง) → fail closed
+  assert.equal(canEditRecord({ role: 'senior_ae', id: 'me', team: 'KA' }, 'products', product), false);
+  assert.equal(canEditRecord({ role: 'senior_ae', id: 'me', team: 'KA' }, 'products', product, undefined), false);
+  // superuser + legal(approve) ข้ามได้เหมือนเดิม (ไม่ต้องพึ่ง caretakerTeams)
+  assert.equal(canEditRecord({ role: 'ae_supervisor', id: 's' }, 'products', product), true);
+  assert.equal(canEditRecord({ role: 'legal', id: 'l' }, 'products', product), true);
+  // viewer แก้ไม่ได้แม้ teamless
+  assert.equal(canEditRecord({ role: 'viewer', id: 'v', team: 'KA' }, 'products', product, []), false);
 });

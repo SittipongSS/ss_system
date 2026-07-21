@@ -52,6 +52,10 @@ const DEFAULT_STANDARD = Object.freeze({
   accentKey: 'quotation-warm',
 });
 
+// รูปลายเซ็นตัวอย่างสำหรับหน้า preview เท่านั้น (SVG ลายมือ จำลอง) — ใบจริงฝัง PNG จริง
+// ที่ผู้อนุมัติอัปโหลด (Phase 5B) ผ่าน options.approverSignatureImage ตอนตรึง snapshot
+const PREVIEW_SIGNATURE_IMAGE = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20320%20110'%3E%3Cpath%20d='M12%2078%20C28%2040%2040%2030%2046%2044%20C52%2058%2040%2084%2034%2086%20C28%2088%2034%2060%2054%2052%20C74%2044%2086%2066%2078%2078%20C70%2090%2064%2070%2084%2054%20C104%2038%20120%2044%20116%2062%20C112%2080%20100%2082%20104%2068%20C108%2054%20128%2044%20150%2052%20C140%2066%20132%2078%20142%2078%20C160%2078%20166%2040%20186%2034%20C206%2028%20196%2074%20190%2082%20M182%2060%20C210%2054%20236%2052%20262%2058%20C240%2062%20226%2070%20236%2072%20C256%2074%20286%2058%20306%2040'%20fill='none'%20stroke='%231a2b4a'%20stroke-width='3.2'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E";
+
 const BASE_QUOTE = Object.freeze({
   templateVersion: QUOTATION_MASTER_TEMPLATE_VERSION,
   locale: 'th-TH',
@@ -96,6 +100,7 @@ const BASE_QUOTE = Object.freeze({
     signedAt: '20/07/2569 14:30',
     evidenceId: 'DSE-PREVIEW-0001',
     fingerprint: 'sha256:preview-only-not-production',
+    imageDataUri: PREVIEW_SIGNATURE_IMAGE,
   },
 });
 
@@ -483,10 +488,43 @@ function scenarioInput(id) {
   }
 }
 
+const PREVIEW_STATUS_LABELS = { draft: 'ฉบับร่าง', approved: 'อนุมัติแล้ว', cancelled: 'ยกเลิก' };
+
+// แปลง model ตัวอย่างใบเสนอราคา → ใบสั่งขาย (FM-SA-03) สำหรับหน้า preview:
+// ต่างที่ฟอร์ม/ชื่อ/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม/accent (teal) — ข้อมูลลูกค้า+รายการใช้ร่วม
+function toSalesOrderPreviewModel(model, state) {
+  const form = DOCUMENT_FORMS.salesOrder;
+  const qtNumber = model.document.number;
+  return {
+    ...model,
+    accentKey: 'steel',
+    standard: { titleTh: 'ใบสั่งขาย', titleEn: form.title },
+    formLine: documentFormLine(form),
+    document: {
+      ...model.document,
+      number: 'SO-26070028-0',
+      dateLabel: 'วันที่ SO',
+      secondaryLabel: 'กำหนดชำระ',
+    },
+    referenceRows: [
+      { label: 'อ้างอิง QT', value: qtNumber },
+      { label: 'สถานะเอกสาร', value: PREVIEW_STATUS_LABELS[state] || state },
+      { label: 'ดีล', value: model.references.deal },
+      { label: 'โครงการ', value: model.references.project },
+    ],
+    signers: [
+      { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: model.references.salesOwner },
+      { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: state === 'approved' ? (model.signature?.signerName || '') : '' },
+      { label: 'ฝ่ายบัญชี', role: 'Scent & Sense' },
+    ],
+  };
+}
+
 export function buildQuotationMasterPreview(
   scenarioId = 'standard',
   state = 'approved',
   templateVariant = DEFAULT_QUOTATION_MASTER_VARIANT,
+  docType = 'quotation',
 ) {
   const selectedTemplate = QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === templateVariant)
     || QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === DEFAULT_QUOTATION_MASTER_VARIANT);
@@ -535,16 +573,29 @@ export function buildQuotationMasterPreview(
       discountAmount,
     });
 
-  return {
+  const model = {
     ...BASE_QUOTE,
     ...scenario,
+    accentKey: 'terracotta',
     templateVariant: selectedTemplate.id,
     templateVersion: selectedTemplate.templateVersion,
     standard: { ...BASE_QUOTE.standard },
     company: { ...BASE_QUOTE.company },
     customer,
     references: { ...BASE_QUOTE.references },
-    document: { ...BASE_QUOTE.document, state },
+    referenceRows: [
+      { label: 'ดีล', value: BASE_QUOTE.references.deal },
+      { label: 'โครงการ', value: BASE_QUOTE.references.project },
+      { label: 'ผู้เสนอราคา', value: BASE_QUOTE.references.salesOwner },
+    ],
+    document: {
+      ...BASE_QUOTE.document,
+      state,
+      dateLabel: 'วันที่',
+      dateValue: BASE_QUOTE.document.issueDate,
+      secondaryLabel: 'ยืนราคาถึง',
+      secondaryValue: BASE_QUOTE.document.validUntil,
+    },
     discount,
     lines,
     paymentMethod,
@@ -555,9 +606,17 @@ export function buildQuotationMasterPreview(
     totals: { subtotal, discountAmount, afterDiscount, vatAmount, totalAmount },
     installments,
     signature: state === 'approved' ? { ...BASE_QUOTE.signature } : null,
+    signers: [
+      state === 'approved'
+        ? { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', esignature: { imageDataUri: PREVIEW_SIGNATURE_IMAGE, signerName: BASE_QUOTE.references.salesOwner, signerRole: '' } }
+        : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: BASE_QUOTE.references.salesOwner },
+      { label: 'ผู้อนุมัติ', role: 'Authorized signature', esignature: state === 'approved' ? { ...BASE_QUOTE.signature } : null },
+      { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
+    ],
     watermark: state === 'draft' ? 'ฉบับร่าง' : state === 'cancelled' ? 'ยกเลิก' : '',
     formLine: controlledFormLine(BASE_QUOTE.standard),
   };
+  return docType === 'salesOrder' ? toSalesOrderPreviewModel(model, state) : model;
 }
 
 // ── Phase 7C (Direction B): สร้าง "model แบบ V4" จาก quotation จริง ────────────
@@ -585,16 +644,15 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     ? paymentPlan.installments.map((row) => ({
       label: row.label || '',
       note: row.note || '',
-      trigger: row.trigger || '-',
-      dueRule: row.dueRule || '-',
       percent: Number(row.percent || 0),
       amount: Number(row.amount || 0),
     }))
-    : [{ label: 'ชำระเต็มจำนวน', note: '', trigger: '-', dueRule: '-', percent: 100, amount: Number(quote.totalAmount || 0) }];
+    : [{ label: 'ชำระเต็มจำนวน', note: '', percent: 100, amount: Number(quote.totalAmount || 0) }];
 
   const customer = {
     name: quote.customerName || '-',
     address: quote.billingAddress || '-',
+    shippingAddress: quote.shippingAddress || quote.billingAddress || '-',
     taxId: quote.customerTaxId || '-',
     branch: quote.branchCode ? `สาขา ${quote.branchCode}` : 'สำนักงานใหญ่',
     contactName: quote.contactName || '-',
@@ -639,12 +697,16 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       signerRole: quote.approvedByRole || 'ผู้อนุมัติ',
       signedAt: quote.approvedAt ? fmtDate(quote.approvedAt) : '',
       evidenceId: quote.signatureEvidenceId || '',
+      // รูปลายเซ็นจริงของผู้อนุมัติ (ดึงจาก signature evidence ตอนตรึง snapshot ฝั่ง server)
+      // ไม่มี → signBox หล่นไปแสดงกล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์" แทน
+      imageDataUri: options.approverSignatureImage || null,
     }
     : null;
 
   return {
     templateVariant: 'v4',
     templateVersion: QUOTATION_MASTER_TEMPLATE_VERSION,
+    accentKey: options.accentKey || 'terracotta',
     company: {
       nameTh: COMPANY_LEGAL_NAME,
       nameEn: COMPANY_LEGAL_NAME_EN,
@@ -658,15 +720,28 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     formLine: documentFormLine(form),
     document: {
       number: options.documentNumber || quote.quoteNumber || '-',
-      issueDate: quote.quoteDate ? fmtDate(quote.quoteDate) : '-',
-      validUntil: quote.validUntil ? fmtDate(quote.validUntil) : '-',
+      dateLabel: options.dateLabel || 'วันที่',
+      dateValue: options.dateValue !== undefined ? options.dateValue : (quote.quoteDate ? fmtDate(quote.quoteDate) : '-'),
+      secondaryLabel: options.secondaryLabel || 'ยืนราคาถึง',
+      secondaryValue: options.secondaryValue !== undefined ? options.secondaryValue : (quote.validUntil ? fmtDate(quote.validUntil) : '-'),
     },
     customer,
-    references: {
-      deal: quote.deal?.title || quote.dealTitle || '-',
-      project: quote.project?.name || quote.projectName || '-',
-      salesOwner,
-    },
+    // referenceRows/signers ต่างกันตามชนิดเอกสาร — ผู้เรียก (เช่น SO) ส่ง options มา override ได้
+    referenceRows: options.referenceRows || [
+      { label: 'ดีล', value: quote.deal?.title || quote.dealTitle || '-' },
+      { label: 'โครงการ', value: quote.project?.name || quote.projectName || '-' },
+      { label: 'ผู้เสนอราคา', value: salesOwner },
+      ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
+    ],
+    signers: options.signers || [
+      // ผู้เสนอราคา: มีรูปลายเซ็น (ดึงตอนตรึง snapshot) → stamp รูป+ชื่อ (ไม่มี Evidence
+      // เพราะไม่ได้ "เซ็น" แยกเหมือนผู้อนุมัติ); ไม่มีรูป → ช่องเซ็นเปล่าเดิม
+      options.proposerSignatureImage
+        ? { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', esignature: { imageDataUri: options.proposerSignatureImage, signerName: salesOwner === '-' ? '' : salesOwner, signerRole: '' } }
+        : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: salesOwner === '-' ? '' : salesOwner },
+      { label: 'ผู้อนุมัติ', role: 'Authorized signature', esignature: signature },
+      { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
+    ],
     lines,
     totals,
     discount: { type: quote.discountType || 'amount', value: Number(quote.discountValue || 0) },

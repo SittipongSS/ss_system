@@ -16,7 +16,8 @@ export const initialDealForm = {
   customerName: "",
   projectId: "",
   stage: "lead",
-  dealType: "NPD",  // SCENT | NPD | RE-ORDER — คอลัมน์จริง (mig 0088) ส่งต่อเป็น template ตอนสร้างโครงการ PM
+  dealType: "",  // SCENT | NPD | RE-ORDER — บังคับเลือกตอนสร้าง (ห้าม default NPD เงียบ ๆ:
+                 // เดิม default NPD ทำให้คนกดสร้างโดยไม่เลือก → ได้ template ผิดประเภท มติ 2026-07-21)
   formulaName: "",  // ชื่อสูตรกลิ่น (SCENT — จุดปลั๊กอิน RD ในอนาคต)
   categoryCode: "", // หมวดสินค้า MM-TTT (DL1) — เลือก timeline template ตามหมวด
   categoryMainCode: "", // draft หมวดหลักระหว่างรอเลือกหมวดรองในฟอร์มกลาง

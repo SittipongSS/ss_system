@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, isSuperuser } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, isSuperuser, redactProductMargin } from '@/lib/permissions';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { normalizeBrands } from '@/lib/master/brands';
 import { listForCustomer } from '@/lib/excise/registrations';
@@ -51,9 +51,13 @@ export async function GET(request, { params }) {
 
   // Merge: master spec + (when present) the registration's status/tax snapshot.
   // No registration → fall back to the product's own master approval status.
+  // Strip the confidential cost breakdown/profit for non-margin roles — the
+  // catalog is now cross-team visible (canViewRecord products), so this endpoint
+  // must redact per-cap exactly like the products list GET, or it would leak
+  // other teams' factory margin.
   const products = catalog.map((p) => {
     const r = regByProduct.get(p.id);
-    return {
+    return redactProductMargin(user, {
       ...p,
       registrationId: r?.id ?? null,
       fgCode: r?.fgCode ?? p.fgCode,
@@ -63,7 +67,7 @@ export async function GET(request, { params }) {
       isExciseTaxable: r ? r.isExciseTaxable : p.isExciseTaxable,
       exciseTax: r ? r.exciseTax : p.exciseTax,
       localTax: r ? r.localTax : p.localTax,
-    };
+    });
   });
 
   // Collect this customer's orders: direct link (orders.customerId) +
@@ -121,8 +125,8 @@ export async function PATCH(request, { params }) {
 
   // ── Approval action (approve / reject a pending customer) ────────────
   // Setting approvalStatus is reserved for AE Supervisor — AE/AC/Senior hold customers:edit
-  // but must not approve. Row-level team scope is already enforced above by
-  // canEditRecord (senior_ae = own team, supervisor/admin = all teams).
+  // but must not approve. Row-level scope is already enforced above by
+  // canEditRecord (caretaker team = customer.teams[]; supervisor = all teams).
   if (body.approvalStatus !== undefined) {
     if (!canApproveMasterData(user?.role)) {
       return Response.json({ error: 'forbidden' }, { status: 403 });

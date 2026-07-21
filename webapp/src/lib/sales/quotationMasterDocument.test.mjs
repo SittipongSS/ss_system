@@ -35,11 +35,68 @@ test('V4 doc: เป็น HTML เต็มไฟล์ ใช้คลาส d
   assert.match(html, /@page \{ size: A4 portrait/);
 });
 
+test('V4 doc: บล็อกลูกค้า — โชว์เลขภาษี + ที่อยู่จัดส่ง, ไม่โชว์สาขา', () => {
+  const q = {
+    ...baseQuote([lineOf('1')]),
+    customerTaxId: '0105561000000',
+    billingAddress: 'ที่อยู่ออกบิล',
+    shippingAddress: 'ที่อยู่จัดส่งต่างหาก',
+    branchCode: '00001',
+  };
+  const html = buildQuotationMasterHTML(q, {});
+  assert.match(html, /เลขผู้เสียภาษี<\/dt><dd>0105561000000/);
+  assert.match(html, /ที่อยู่จัดส่ง<\/dt><dd>ที่อยู่จัดส่งต่างหาก/);
+  assert.doesNotMatch(html, /<dt>สาขา<\/dt>/);
+});
+
+test('V4 doc: โทรผู้เสนอราคาในบล็อกอ้างอิง (เมื่อมี) + ติดต่อบริษัทย้ายไปอยู่ในหัว', () => {
+  const withPhone = buildQuotationMasterHTML({ ...baseQuote([lineOf('1')]), createdByPhone: '089-123-4567' }, {});
+  // แถว "โทร" (เบอร์ผู้เสนอราคา) ในบล็อกอ้างอิง
+  assert.match(withPhone, /โทร<\/dt><dd>089-123-4567/);
+  // ติดต่อบริษัท (โทร + Line) อยู่ในหัวเอกสาร ไม่ใช่บล็อกอ้างอิง
+  assert.match(withPhone, /โทร 02-000-7722 · Line @perfumefactory/);
+  assert.doesNotMatch(withPhone, /โทรบริษัท/);
+  // ไม่มีเบอร์ผู้เสนอราคา → ไม่มีแถว "โทร" ในบล็อกอ้างอิง (หัวยังมี "โทร ..." แบบไม่มี </dt>)
+  const noPhone = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {});
+  assert.doesNotMatch(noPhone, /โทร<\/dt>/);
+});
+
 test('V4 doc: อนุมัติแล้วไม่มีลายน้ำ + โชว์บล็อกลายเซ็นผู้อนุมัติ', () => {
   const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {});
   assert.ok(!html.includes('>ฉบับร่าง<'), 'อนุมัติแล้วไม่มีลายน้ำร่าง');
   assert.match(html, /ลายเซ็นอิเล็กทรอนิกส์/);
   assert.ok(html.includes('ผู้อนุมัติ'), 'มีชื่อผู้อนุมัติ');
+});
+
+test('V4 doc: มีรูปลายเซ็นผู้อนุมัติ (imageDataUri) → ฝัง <img>, ไม่ใช้กล่องข้อความ', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), { approverSignatureImage: png });
+  assert.match(html, /<img class="signatureImage" src="data:image\/png;base64,/);
+  assert.ok(html.includes(png), 'ฝัง data URI ของรูปลายเซ็นจริง');
+  // มีรูปแล้วไม่ต้องมีกล่องข้อความ placeholder ในเอกสาร
+  assert.doesNotMatch(html, /ลายเซ็นอิเล็กทรอนิกส์/);
+});
+
+test('V4 doc: ไม่มีรูปลายเซ็น → fallback กล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์" (ไม่มี <img>)', () => {
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {});
+  assert.match(html, /ลายเซ็นอิเล็กทรอนิกส์/);
+  assert.doesNotMatch(html, /class="signatureImage"/);
+});
+
+test('V4 doc: รูปลายเซ็นผู้เสนอราคา (proposer) → stamp รูป ไม่มีบรรทัด Evidence', () => {
+  const proposer = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
+  const q = { ...baseQuote([lineOf('1')]), deal: { title: 'ดีล', ownerName: 'สมชาย ขายเก่ง' } };
+  const html = buildQuotationMasterHTML(q, { proposerSignatureImage: proposer });
+  assert.ok(html.includes(proposer), 'ฝังรูปผู้เสนอราคา');
+  // ผู้เสนอราคาเป็น stamp — ไม่มีคำว่า Evidence ในกล่องนี้ (ต่างจากผู้อนุมัติ evidence-backed)
+  assert.doesNotMatch(html, /Evidence/);
+});
+
+test('V4 doc: ทั้งผู้เสนอราคา + ผู้อนุมัติมีรูป → มี <img> 2 อัน', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), { approverSignatureImage: png, proposerSignatureImage: png });
+  const imgCount = (html.match(/class="signatureImage"/g) || []).length;
+  assert.equal(imgCount, 2, 'ผู้เสนอราคา + ผู้อนุมัติ');
 });
 
 test('V4 doc: ฉบับร่าง (pending) ขึ้นลายน้ำ "ฉบับร่าง"', () => {
