@@ -26,6 +26,7 @@ function documentHeader(model) {
           <span>${val(model.company.nameEn)}</span>
           <p>${val(model.company.address)}</p>
           <p>เลขประจำตัวผู้เสียภาษี ${val(model.company.taxId)}</p>
+          <p>โทร ${val(model.company.phone)} · Line ${val(model.company.line)}</p>
         </div>
       </div>
       <div class="identityBlock">
@@ -50,8 +51,8 @@ function partyGrid(model) {
         <p>${val(model.customer.address)}</p>
         <dl>
           <div><dt>เลขผู้เสียภาษี</dt><dd>${val(model.customer.taxId)}</dd></div>
-          <div><dt>สาขา</dt><dd>${val(model.customer.branch)}</dd></div>
-          <div><dt>ผู้ติดต่อ</dt><dd>${val(model.customer.contactName)} · ${val(model.customer.contactPhone)}</dd></div>
+          <div><dt>ที่อยู่จัดส่ง</dt><dd>${val(model.customer.shippingAddress || model.customer.address)}</dd></div>
+          <div><dt>ผู้ติดต่อ</dt><dd>${val(model.customer.contactName)}${model.customer.contactPhone ? ` · ${esc(model.customer.contactPhone)}` : ''}</dd></div>
         </dl>
       </div>
       <div>
@@ -60,7 +61,7 @@ function partyGrid(model) {
           <div><dt>ดีล</dt><dd>${val(model.references.deal)}</dd></div>
           <div><dt>โครงการ</dt><dd>${val(model.references.project)}</dd></div>
           <div><dt>ผู้เสนอราคา</dt><dd>${val(model.references.salesOwner)}</dd></div>
-          <div><dt>ติดต่อบริษัท</dt><dd>${val(model.company.phone)} · Line ${val(model.company.line)}</dd></div>
+          ${model.references.salesOwnerPhone ? `<div><dt>โทร</dt><dd>${esc(model.references.salesOwnerPhone)}</dd></div>` : ''}
         </dl>
       </div>
     </section>`;

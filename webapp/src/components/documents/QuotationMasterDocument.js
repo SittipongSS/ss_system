@@ -23,6 +23,7 @@ function DocumentHeader({ model }) {
           <span>{model.company.nameEn}</span>
           <p>{model.company.address}</p>
           <p>เลขประจำตัวผู้เสียภาษี {model.company.taxId}</p>
+          <p>โทร {model.company.phone} · Line {model.company.line}</p>
         </div>
       </div>
       <div className={styles.identityBlock}>
@@ -48,8 +49,8 @@ function PartyGrid({ model }) {
         <p>{model.customer.address}</p>
         <dl>
           <div><dt>เลขผู้เสียภาษี</dt><dd>{model.customer.taxId}</dd></div>
-          <div><dt>สาขา</dt><dd>{model.customer.branch}</dd></div>
-          <div><dt>ผู้ติดต่อ</dt><dd>{model.customer.contactName} · {model.customer.contactPhone}</dd></div>
+          <div><dt>ที่อยู่จัดส่ง</dt><dd>{model.customer.shippingAddress || model.customer.address}</dd></div>
+          <div><dt>ผู้ติดต่อ</dt><dd>{model.customer.contactName}{model.customer.contactPhone ? ` · ${model.customer.contactPhone}` : ''}</dd></div>
         </dl>
       </div>
       <div>
@@ -58,7 +59,7 @@ function PartyGrid({ model }) {
           <div><dt>ดีล</dt><dd>{model.references.deal}</dd></div>
           <div><dt>โครงการ</dt><dd>{model.references.project}</dd></div>
           <div><dt>ผู้เสนอราคา</dt><dd>{model.references.salesOwner}</dd></div>
-          <div><dt>ติดต่อบริษัท</dt><dd>{model.company.phone} · Line {model.company.line}</dd></div>
+          {model.references.salesOwnerPhone && <div><dt>โทร</dt><dd>{model.references.salesOwnerPhone}</dd></div>}
         </dl>
       </div>
     </section>

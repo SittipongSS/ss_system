@@ -595,6 +595,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const customer = {
     name: quote.customerName || '-',
     address: quote.billingAddress || '-',
+    shippingAddress: quote.shippingAddress || quote.billingAddress || '-',
     taxId: quote.customerTaxId || '-',
     branch: quote.branchCode ? `สาขา ${quote.branchCode}` : 'สำนักงานใหญ่',
     contactName: quote.contactName || '-',
@@ -666,6 +667,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       deal: quote.deal?.title || quote.dealTitle || '-',
       project: quote.project?.name || quote.projectName || '-',
       salesOwner,
+      salesOwnerPhone: quote.createdByPhone || '',
     },
     lines,
     totals,

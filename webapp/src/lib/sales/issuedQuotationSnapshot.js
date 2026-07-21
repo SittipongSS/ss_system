@@ -61,6 +61,7 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
     content: quotationApprovalContent(quote, lines),
     customer: {
       customerName: trimOrNull(quote.customerName),
+      customerTaxId: trimOrNull(quote.customerTaxId),
       branchCode: trimOrNull(quote.branchCode),
       billingAddress: trimOrNull(quote.billingAddress),
       shippingAddress: trimOrNull(quote.shippingAddress),
@@ -76,6 +77,7 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
       approvedByName: trimOrNull(quote.approvedByName || quote.deal?.ownerName),
       approvedAt: quote.approvedAt || null,
       proposer: trimOrNull(quote.createdByName || quote.metadata?.preparedBy),
+      proposerPhone: trimOrNull(quote.createdByPhone),
     },
     company: companySnapshot(),
     standard: form
