@@ -21,6 +21,7 @@ function mappedError(error) {
     ['document_standard_change_note_required', 'กรุณาระบุหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่', 400],
     ['document_standard_published_missing', 'ไม่พบมาตรฐานเอกสารเวอร์ชันที่เผยแพร่', 409],
     ['document_standard_not_found', 'ไม่พบชนิดเอกสาร', 404],
+    ['document_standard_version_hide_active_forbidden', 'ซ่อนเวอร์ชันที่ใช้งานอยู่ไม่ได้ ต้องเผยแพร่เวอร์ชันใหม่แทนก่อน', 409],
   ];
   const match = mappings.find(([code]) => raw.includes(code));
   if (match) return new DocumentStandardError(match[1], match[2], match[0]);
@@ -114,9 +115,10 @@ export async function publishDocumentStandardDraft(supabase, id, expectedUpdated
   return data;
 }
 
-export async function archiveDocumentStandardDraft(supabase, id, expectedUpdatedAt, user) {
+// ยกเลิกร่าง = ลบแถวจริง (Decision 0012 rev 2) — คืนข้อมูลแถวที่ถูกลบไว้บันทึก audit
+export async function discardDocumentStandardDraft(supabase, id, expectedUpdatedAt, user) {
   const expected = assertExpectedUpdatedAt(expectedUpdatedAt);
-  const { data, error } = await supabase.rpc('archive_document_standard_draft_atomic', {
+  const { data, error } = await supabase.rpc('discard_document_standard_draft', {
     p_version_id: id,
     p_expected_updated_at: expected,
     p_actor_id: String(user.id),

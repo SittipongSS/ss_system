@@ -19,6 +19,7 @@ function mappedError(error) {
     ['organization_settings_version_not_draft', 'เวอร์ชันนี้ไม่ใช่ฉบับร่างแล้ว', 409],
     ['organization_settings_change_note_required', 'กรุณาระบุหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่', 400],
     ['organization_settings_published_missing', 'ไม่พบข้อมูลบริษัทเวอร์ชันที่เผยแพร่', 409],
+    ['organization_setting_version_hide_active_forbidden', 'ซ่อนเวอร์ชันที่ใช้งานอยู่ไม่ได้ ต้องเผยแพร่เวอร์ชันใหม่แทนก่อน', 409],
   ];
   const match = mappings.find(([code]) => raw.includes(code));
   if (match) return new OrganizationSettingsError(match[1], match[2], match[0]);
@@ -106,9 +107,11 @@ export async function publishOrganizationSettingsDraft(supabase, id, expectedUpd
   return data;
 }
 
-export async function archiveOrganizationSettingsDraft(supabase, id, expectedUpdatedAt, user) {
+// ยกเลิกร่าง = ลบแถวจริง (Decision 0012 rev 2) — ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน;
+// คืนข้อมูลแถวที่ถูกลบเพื่อให้ caller บันทึก audit (หลักฐานเดียวที่เหลือ)
+export async function discardOrganizationSettingsDraft(supabase, id, expectedUpdatedAt, user) {
   const expected = assertExpectedUpdatedAt(expectedUpdatedAt);
-  const { data, error } = await supabase.rpc('archive_organization_settings_draft_atomic', {
+  const { data, error } = await supabase.rpc('discard_organization_settings_draft', {
     p_version_id: id,
     p_expected_updated_at: expected,
     p_actor_id: String(user.id),

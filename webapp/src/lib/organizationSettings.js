@@ -57,7 +57,7 @@ export function normalizeOrganizationSettingsInput(input = {}) {
 
 export function organizationSettingStatusLabel(status) {
   if (status === 'published') return 'เผยแพร่แล้ว';
-  if (status === 'archived') return 'เก็บถาวร';
+  if (status === 'archived') return 'ซ่อนแล้ว';
   return 'ฉบับร่าง';
 }
 

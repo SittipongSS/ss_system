@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Workspace from "@/components/ui/Workspace";
 import {
-  AlertTriangle, Archive, ArrowDown, ArrowUp, Clock3, Copy, Edit3,
+  AlertTriangle, ArrowDown, ArrowUp, Clock3, Copy, Edit3,
   Eye, FilePlus2, GitBranch, Milestone, Plus, Save, Send, Trash2, Workflow,
 } from "lucide-react";
 import RecordDrawer from "@/components/excise/RecordDrawer";
@@ -261,9 +261,9 @@ export default function WorkflowTemplatesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expectedUpdatedAt: selected.draft.updatedAt }),
-      }, action === "publish" ? "เผยแพร่ Template ไม่สำเร็จ" : "เก็บฉบับร่างไม่สำเร็จ");
+      }, action === "publish" ? "เผยแพร่ Template ไม่สำเร็จ" : "ยกเลิกฉบับร่างไม่สำเร็จ");
       setConfirm(null);
-      setToast({ kind: "success", msg: action === "publish" ? `เผยแพร่ Version ${selected.draft.versionNumber} แล้ว` : `เก็บ Version ${selected.draft.versionNumber} เป็นประวัติแล้ว` });
+      setToast({ kind: "success", msg: action === "publish" ? `เผยแพร่ Version ${selected.draft.versionNumber} แล้ว` : `ยกเลิก Version ${selected.draft.versionNumber} แล้ว (ลบร่างถาวร)` });
       await load();
     } catch (requestError) {
       setToast({ kind: "error", msg: requestError.message });
@@ -399,7 +399,7 @@ export default function WorkflowTemplatesPage() {
                   <p>การแก้ไขยังไม่กระทบงานใหม่จนกว่าจะเผยแพร่ และไม่เปลี่ยน Timeline ของงานที่สร้างไปแล้ว</p>
                 </div>
                 <div className={styles.editorActions}>
-                  <button type="button" className="btn ghost" disabled={busy} onClick={() => setConfirm({ action: "archive" })}><Archive size={16} /> เก็บฉบับร่าง</button>
+                  <button type="button" className="btn ghost" disabled={busy} onClick={() => setConfirm({ action: "discard" })}><Trash2 size={16} /> ยกเลิกร่าง</button>
                   <button type="button" className="btn ghost" disabled={busy} onClick={() => setPreviewDrawer(true)}><Eye size={16} /> Preview</button>
                   <button type="button" className="btn ghost" title={draftDirty ? "บันทึกฉบับร่างก่อนเผยแพร่" : undefined} disabled={busy || draftDirty || !editor.changeNote.trim() || draftValidation?.errors.length} onClick={() => setConfirm({ action: "publish" })}><Send size={16} /> เผยแพร่</button>
                   <button type="button" className="btn btn-primary" disabled={busy} onClick={saveDraft}><Save size={16} /> บันทึกฉบับร่าง</button>
@@ -460,7 +460,7 @@ export default function WorkflowTemplatesPage() {
           )}
 
           <section className={`glass-panel ${styles.historyPanel}`} aria-labelledby="history-title">
-            <header className={styles.panelHeader}><div><h2 id="history-title">ประวัติเวอร์ชัน</h2><p>Published และ Archived เป็นข้อมูลถาวร เปิดดูได้แต่แก้ไขไม่ได้</p></div></header>
+            <header className={styles.panelHeader}><div><h2 id="history-title">ประวัติเวอร์ชัน</h2><p>เวอร์ชันที่เผยแพร่แล้วลบไม่ได้ — เมื่อถูกแทนที่จะถูกซ่อนและเปิดดูย้อนหลังได้ที่นี่</p></div></header>
             <div className={styles.historyTableWrap}><table className={styles.historyTable}><thead><tr><th>Version</th><th>สถานะ</th><th>รายละเอียด</th><th>ผู้ดำเนินการ</th><th>เวลา</th><th><span className="sr-only">เปิดดู</span></th></tr></thead><tbody>{selected.versions.map((version) => <tr key={version.id}><td><strong>Version {version.versionNumber}</strong></td><td><StatusBadge status={version.status} /></td><td>{version.changeNote || version.description || "-"}<small>{version.steps?.length || 0} ขั้นตอน</small></td><td>{actorOf(version)}</td><td>{formatDate(version.publishedAt || version.archivedAt || version.updatedAt)}</td><td><button type="button" className="btn ghost" onClick={() => setVersionDrawer({ row: version })}><Eye size={15} /> ดู</button></td></tr>)}</tbody></table></div>
             <div className={styles.historyCards}>{selected.versions.map((version) => <article key={version.id} className={styles.historyCard}><div className={styles.cardHead}><strong>Version {version.versionNumber}</strong><StatusBadge status={version.status} /></div><p>{version.changeNote || version.description || "ไม่มีหมายเหตุ"}</p><small>{version.steps?.length || 0} ขั้นตอน · {formatDate(version.publishedAt || version.archivedAt || version.updatedAt)}</small><button type="button" className="btn ghost" onClick={() => setVersionDrawer({ row: version })}><Eye size={15} /> ดูรายละเอียด</button></article>)}</div>
           </section>
@@ -528,18 +528,18 @@ export default function WorkflowTemplatesPage() {
         open={confirm?.action === "publish"}
         title="ยืนยันเผยแพร่ Workflow Template"
         description={`Version ${selected?.draft?.versionNumber || "-"} จะถูกใช้สร้าง Timeline ของงาน ${selectedKey} ใหม่หลังจากนี้`}
-        detail="งานและ Timeline ที่สร้างไปแล้วจะคง version เดิมไว้ Published version ก่อนหน้าจะถูกเก็บถาวรและยังเปิดดูได้"
+        detail="งานและ Timeline ที่สร้างไปแล้วจะคง version เดิมไว้ Published version ก่อนหน้าจะถูกซ่อนและยังเปิดดูย้อนหลังได้"
         confirmLabel="เผยแพร่เวอร์ชัน"
         busy={busy}
         onClose={() => setConfirm(null)}
         onConfirm={transitionDraft}
       />
       <ConfirmDialog
-        open={confirm?.action === "archive"}
-        title="เก็บฉบับร่างเป็นประวัติ"
-        description={`Version ${selected?.draft?.versionNumber || "-"} จะถูกปิดและแก้ไขต่อไม่ได้`}
-        detail="Published version ที่ใช้งานอยู่จะไม่เปลี่ยนแปลง"
-        confirmLabel="เก็บฉบับร่าง"
+        open={confirm?.action === "discard"}
+        title="ยกเลิกฉบับร่าง"
+        description={`Version ${selected?.draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`}
+        detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และ Published version ที่ใช้งานอยู่จะไม่เปลี่ยนแปลง"
+        confirmLabel="ยกเลิกร่างถาวร"
         tone="danger"
         busy={busy}
         onClose={() => setConfirm(null)}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Archive, Building2, Edit3, Eye, FilePlus2, Send } from "lucide-react";
+import { AlertTriangle, Building2, Edit3, Eye, FilePlus2, Send, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -131,12 +131,12 @@ export default function CompanySettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expectedUpdatedAt: row.updatedAt }),
-      }, action === "publish" ? "เผยแพร่ข้อมูลบริษัทไม่สำเร็จ" : "เก็บฉบับร่างไม่สำเร็จ");
+      }, action === "publish" ? "เผยแพร่ข้อมูลบริษัทไม่สำเร็จ" : "ยกเลิกฉบับร่างไม่สำเร็จ");
       setConfirm(null);
       setDrawer(null);
       setToast({
         kind: "success",
-        msg: action === "publish" ? `เผยแพร่ Version ${row.versionNumber} แล้ว` : `เก็บ Version ${row.versionNumber} เป็นประวัติแล้ว`,
+        msg: action === "publish" ? `เผยแพร่ Version ${row.versionNumber} แล้ว` : `ยกเลิก Version ${row.versionNumber} แล้ว (ลบร่างถาวร)`,
       });
       await load();
     } catch (requestError) {
@@ -204,8 +204,8 @@ export default function CompanySettingsPage() {
                 <p>บันทึกล่าสุด {formatDate(data.draft.updatedAt)} · ข้อมูลยังไม่มีผลจนกว่าจะยืนยันเผยแพร่</p>
               </div>
               <div className={styles.draftActions}>
-                <button type="button" className="btn ghost" onClick={() => setConfirm({ action: "archive" })} disabled={busy}>
-                  <Archive size={15} /> เก็บฉบับร่าง
+                <button type="button" className="btn ghost" onClick={() => setConfirm({ action: "discard" })} disabled={busy}>
+                  <Trash2 size={15} /> ยกเลิกร่าง
                 </button>
                 <button
                   type="button"
@@ -228,7 +228,7 @@ export default function CompanySettingsPage() {
             <header className={styles.panelHeader} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
                 <h2 id="version-history-title">ประวัติเวอร์ชัน</h2>
-                <p>Published และ Archived เป็นหลักฐานถาวรและแก้ไขไม่ได้</p>
+                <p>เวอร์ชันที่เผยแพร่แล้วลบไม่ได้ — เมื่อถูกแทนที่จะถูกซ่อนและดูย้อนหลังได้ที่นี่</p>
               </div>
               {!data.draft && (
                 <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}>
@@ -272,7 +272,7 @@ export default function CompanySettingsPage() {
         onClose={() => !busy && setDrawer(null)}
         closeOnOverlay={false}
         title={editing ? `แก้ไข Version ${selected?.versionNumber}` : `ข้อมูลบริษัท Version ${selected?.versionNumber || "-"}`}
-        subtitle={editing ? "บันทึกฉบับร่างก่อนเผยแพร่ ไม่มี Auto-save" : "เวอร์ชันที่เผยแพร่หรือเก็บถาวรจะแก้ไขไม่ได้"}
+        subtitle={editing ? "บันทึกฉบับร่างก่อนเผยแพร่ ไม่มี Auto-save" : "เวอร์ชันที่เผยแพร่หรือซ่อนแล้วจะแก้ไขไม่ได้"}
         badge={selected ? <StatusBadge status={selected.status} /> : null}
         footer={editing ? (
           <>
@@ -356,18 +356,18 @@ export default function CompanySettingsPage() {
         open={confirm?.action === "publish"}
         title="ยืนยันเผยแพร่ข้อมูลบริษัท"
         description={`Version ${data.draft?.versionNumber || "-"} จะเป็นข้อมูลบริษัทเวอร์ชันที่ใช้งานอยู่`}
-        detail="Published version เดิมจะถูกเก็บถาวร การเปลี่ยนนี้ยังไม่กระทบเอกสาร Production จนกว่าจะดำเนิน Phase 7"
+        detail="เวอร์ชันที่เผยแพร่อยู่เดิมจะถูกซ่อน (ดูย้อนหลังได้ในประวัติเวอร์ชัน)"
         confirmLabel="เผยแพร่เวอร์ชัน"
         busy={busy}
         onClose={() => setConfirm(null)}
         onConfirm={transitionDraft}
       />
       <ConfirmDialog
-        open={confirm?.action === "archive"}
-        title="เก็บฉบับร่างเป็นประวัติ"
-        description={`Version ${data.draft?.versionNumber || "-"} จะถูกปิดและแก้ไขต่อไม่ได้`}
-        detail="ข้อมูลบริษัทเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง"
-        confirmLabel="เก็บฉบับร่าง"
+        open={confirm?.action === "discard"}
+        title="ยกเลิกฉบับร่าง"
+        description={`Version ${data.draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`}
+        detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง"
+        confirmLabel="ยกเลิกร่างถาวร"
         tone="danger"
         busy={busy}
         onClose={() => setConfirm(null)}

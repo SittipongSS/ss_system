@@ -15,6 +15,11 @@ register(
     const SRC = ${JSON.stringify(SRC)};
     export async function resolve(spec, ctx, next) {
       let s = spec;
+      // 'server-only' เป็น alias ภายในของ Next (ไม่มีใน node_modules) — stub เป็นโมดูลว่าง
+      // เพื่อให้ unit test import ไฟล์ใน lib/admin ได้ใต้ raw Node
+      if (s === 'server-only') {
+        return { url: 'data:text/javascript,', shortCircuit: true };
+      }
       if (s.startsWith('@/')) s = SRC + s.slice(2);
       // next/server ใน package exports ของ next ต้องลงท้าย .js เมื่อ resolve ด้วย Node ตรง ๆ
       if (s === 'next/server') s = 'next/server.js';
