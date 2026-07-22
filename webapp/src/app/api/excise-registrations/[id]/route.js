@@ -192,7 +192,7 @@ export async function DELETE(request, { params }) {
   // ae (own). Deliberately NOT canEditRecord — that would let legal + ac delete.
   if (!canDeleteRecord(user, 'registrations', reg)) {
     return Response.json({
-      error: 'ลบทะเบียนนี้ไม่ได้ — ลบได้เฉพาะเจ้าของทะเบียน (AE) ทะเบียนในทีม (Senior AE) หรือหัวหน้าฝ่ายขาย/แอดมิน',
+      error: 'ลบทะเบียนนี้ไม่ได้ — ลบได้เฉพาะทีมเจ้าของทะเบียน (ฝ่ายขาย) หรือหัวหน้าฝ่ายขาย/แอดมิน',
     }, { status: 403 });
   }
 
