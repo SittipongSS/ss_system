@@ -6,11 +6,20 @@
 // ตัวเลข "อนุมัติแล้ว x/y" และ "ราคา x/y" นับสดจากลูกทุกครั้ง ไม่ได้อ่านจาก
 // คอลัมน์ที่เก็บไว้ (มติ 2026-07-22 — กันเลขเพี้ยนจากของจริง)
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Calculator, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Calculator, Plus, RefreshCw } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Workspace from "@/components/ui/Workspace";
+import Modal from "@/components/Modal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Toast from "@/components/ui/Toast";
+import CostingRequestForm, {
+  costingFormFromRequest, costingPayloadFrom,
+} from "@/components/costing/CostingRequestForm";
+import { useCan } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import {
@@ -22,12 +31,23 @@ import {
 } from "@/lib/costing";
 
 export default function CostingListPage() {
+  const router = useRouter();
+  const canCreate = useCan("costing:edit");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [statusFilter, setStatusFilter] = useState([]);
   const [teamFilter, setTeamFilter] = useState([]);
   const [search, setSearch] = useState("");
+
+  // ฟอร์มเปิดใบใหม่ — component เดียวกับตอนแก้ (กฎ AGENTS.md) ต่างกันแค่ mode
+  const [form, setForm] = useState(null);
+  const [deals, setDeals] = useState([]);
+  const [productTypes, setProductTypes] = useState([]);
+  const [templateCategories, setTemplateCategories] = useState(new Set());
+  const [saving, setSaving] = useState(false);
+  const [pendingSave, setPendingSave] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,6 +64,44 @@ export default function CostingListPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // ข้อมูลของฟอร์มโหลดตอนกดเปิดใบ ไม่ใช่ตอนเข้าหน้า — คนส่วนใหญ่เข้ามาเพื่อดูคิว
+  const openCreate = async () => {
+    setForm(costingFormFromRequest(null));
+    try {
+      const [dealRes, typeRes, tplRes] = await Promise.all([
+        fetch("/api/sales-planning/deals", { cache: "no-store" }),
+        fetch("/api/product-types", { cache: "no-store" }),
+        fetch("/api/cost-templates", { cache: "no-store" }),
+      ]);
+      const dealRows = await dealRes.json().catch(() => []);
+      // เปิดใบได้เฉพาะดีลที่ตัวเองแก้ได้ — ตรงกับด่านฝั่ง server
+      setDeals((Array.isArray(dealRows) ? dealRows : []).filter((d) => d.canEdit));
+      setProductTypes(await typeRes.json().catch(() => []));
+      const templates = await tplRes.json().catch(() => []);
+      setTemplateCategories(new Set((Array.isArray(templates) ? templates : []).map((t) => t.categoryCode)));
+    } catch {
+      setToast({ kind: "error", msg: "โหลดข้อมูลสำหรับเปิดใบไม่สำเร็จ" });
+    }
+  };
+
+  const create = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/sa/costing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(costingPayloadFrom(form)),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "เปิดใบไม่สำเร็จ");
+      router.push(`/sa/costing/${d.id}`);
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+      setPendingSave(false);
+      setSaving(false);
+    }
+  };
 
   // กรองฝั่ง client: ชุดข้อมูลต่อผู้ใช้เล็ก (ใบขอราคาไม่ใช่ข้อมูลรายวันจำนวนมาก)
   // และทำให้สลับตัวกรองไม่ต้องรอ network
@@ -111,6 +169,11 @@ export default function CostingListPage() {
         <button type="button" className="btn" onClick={load} disabled={loading}>
           <RefreshCw size={14} /> รีเฟรช
         </button>
+        {canCreate && (
+          <button type="button" className="btn btn-accent" onClick={openCreate}>
+            <Plus size={16} /> เปิดใบขอราคา
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -144,10 +207,11 @@ export default function CostingListPage() {
                 const pricing = pricingProgress(items.flatMap((i) => i.components || []));
                 const productNames = items.map((i) => i.productLabel).filter(Boolean);
                 return (
-                  <tr key={row.id}>
-                    {/* หน้ารายละเอียดมาใน PR3b — ยังไม่ทำเป็นลิงก์ กันคลิกแล้ว 404 */}
-                    <td style={{ fontWeight: 600 }}>
-                      {row.docNo || <span style={{ color: "var(--text-3)", fontWeight: 400 }}>ร่าง</span>}
+                  <tr key={row.id} className="clickable-row">
+                    <td>
+                      <Link href={`/sa/costing/${row.id}`} style={{ fontWeight: 600 }}>
+                        {row.docNo || "ร่าง"}
+                      </Link>
                     </td>
                     <td>
                       <div style={{ fontWeight: 500 }}>{row.customerName || "—"}</div>
@@ -190,6 +254,57 @@ export default function CostingListPage() {
           </table>
         </div>
       )}
+
+      <Modal
+        open={!!form}
+        onClose={() => { setForm(null); setPendingSave(false); }}
+        title="เปิดใบขอราคาต้นทุน"
+        size="lg"
+        dismissible={!saving}
+      >
+        {form && (
+          <>
+            <CostingRequestForm
+              mode="create"
+              form={form}
+              setForm={setForm}
+              deals={deals}
+              productTypes={productTypes}
+              templateCategories={templateCategories}
+            />
+            <div className="action-bar" style={{ marginTop: 20 }}>
+              <button
+                type="button" className="btn ghost" disabled={saving}
+                onClick={() => { setForm(null); setPendingSave(false); }}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button" className="btn btn-accent" disabled={saving}
+                onClick={() => {
+                  if (!form.dealId) { setToast({ kind: "error", msg: "กรุณาเลือกดีล" }); return; }
+                  setPendingSave(true);
+                }}
+              >
+                เปิดใบ
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={pendingSave}
+        title="ยืนยันเปิดใบขอราคา"
+        description="ระบบจะกางบรรทัดต้นทุนจากแม่แบบของประเภทสินค้าที่เลือกให้อัตโนมัติ"
+        detail="ใบยังเป็นร่าง — เลขที่เอกสารจะออกตอนกดส่งขอราคาให้ RD/PC"
+        confirmLabel="เปิดใบ"
+        busy={saving}
+        onConfirm={create}
+        onClose={() => setPendingSave(false)}
+      />
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );
 }
