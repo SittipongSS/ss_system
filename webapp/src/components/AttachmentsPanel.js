@@ -18,10 +18,12 @@ import { fmtDate } from "@/lib/format";
 import {
   FileText, Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
 } from "lucide-react";
+import Modal from "@/components/Modal";
 import {
   ATTACHMENT_TYPES,
   ATTACHMENT_META_FIELDS,
   attachmentTypeLabel,
+  isPreviewableImage,
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_MB,
   UPLOAD_ACCEPT_ATTR,
@@ -76,6 +78,11 @@ export default function AttachmentsPanel({
   // ไฟล์อินพุตร่วม (card mode) — จำว่ากำลังอัปประเภทไหน
   const cardFileRef = useRef(null);
   const pendingTypeRef = useRef(null);
+
+  // รูปที่กำลังเปิดดูขยาย (lightbox) — null = ปิดอยู่
+  const [preview, setPreview] = useState(null);
+  // ลากไฟล์มาวางอยู่เหนือกล่องหรือเปล่า (ใช้เน้นขอบให้รู้ว่าวางได้)
+  const [dragOver, setDragOver] = useState(false);
 
   const fetchItems = useCallback(async () => {
     if (!entityType || !entityId) return;
@@ -172,6 +179,49 @@ export default function AttachmentsPanel({
     }
   };
 
+  // ── ลากมาวาง / วางจากคลิปบอร์ด ──
+  // เข้าประเภทเอกสารตัวแรกของ entity เสมอ (โหมดที่มีการ์ดแยกประเภทไม่เปิดใช้ทางนี้
+  // เพราะเดาไม่ได้ว่าผู้ใช้ตั้งใจวางลงการ์ดไหน)
+  const acceptFiles = useCallback(async (fileList) => {
+    const files = Array.from(fileList || []).filter(Boolean);
+    if (!files.length || !canEdit) return;
+    const typeKey = types[0]?.key || "other";
+    setUploadingType(typeKey);
+    try {
+      for (const f of files) {
+        if (tooLarge(f)) continue;
+        await upload(f, typeKey, {});
+      }
+      await fetchItems();
+    } catch (err) {
+      console.error(err);
+      alert("เกิดข้อผิดพลาดในการอัปโหลด");
+    } finally {
+      setUploadingType(null);
+    }
+    // upload ใช้ค่าจาก props/closure ที่คงที่ตลอดอายุ panel — ไม่ใส่ใน deps
+    // เพื่อไม่ให้ handler ถูกสร้างใหม่ทุก render จนตัว listener หลุด
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit, types, fetchItems]);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    acceptFiles(e.dataTransfer?.files);
+  };
+
+  // วางรูปจากคลิปบอร์ด (เช่น จับภาพหน้าจอสเปกมาแปะ) — ผูกที่กล่องนี้เท่านั้น
+  const handlePaste = (e) => {
+    const files = Array.from(e.clipboardData?.items || [])
+      .filter((i) => i.kind === "file")
+      .map((i) => i.getAsFile())
+      .filter(Boolean);
+    if (files.length) {
+      e.preventDefault();
+      acceptFiles(files);
+    }
+  };
+
   // ── detailed mode: บันทึกพร้อมรายละเอียด ──
   const handleDetailedSave = async () => {
     if (!file) {
@@ -234,18 +284,43 @@ export default function AttachmentsPanel({
 
   const FileRow = ({ it, compact }) => (
     <div className="flex items-center justify-between gap-2 text-xs py-1">
-      <a
-        href={fileHref(it)}
-        target="_blank"
-        rel="noreferrer"
-        className="flex items-center gap-1.5 min-w-0 text-[var(--text-2)] hover:text-[var(--accent)] hover:underline"
-      >
-        <FileText size={14} className="shrink-0" />
-        <span className="truncate">{it.fileName || "ไฟล์แนบ"}</span>
-        {!compact && it.sizeBytes != null && (
-          <span className="text-[10px] text-[var(--text-3)] shrink-0">({formatSize(it.sizeBytes)})</span>
-        )}
-      </a>
+      {/* รูปแสดงเป็นภาพย่อ คลิกแล้วขยายในหน้า — ไม่ต้องเปิดแท็บใหม่เพื่อดูว่าคือรูปอะไร */}
+      {isPreviewableImage(it) ? (
+        <button
+          type="button"
+          onClick={() => setPreview(it)}
+          className="flex items-center gap-1.5 min-w-0 text-[var(--text-2)] hover:text-[var(--accent)] bg-transparent border-0 p-0 text-left cursor-pointer"
+          title="คลิกเพื่อดูรูปขนาดเต็ม"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={fileHref(it)}
+            alt={it.fileName || "รูปแนบ"}
+            loading="lazy"
+            style={{
+              width: 32, height: 32, objectFit: "cover", borderRadius: 6,
+              border: "1px solid var(--border)", flexShrink: 0,
+            }}
+          />
+          <span className="truncate">{it.fileName || "ไฟล์แนบ"}</span>
+          {!compact && it.sizeBytes != null && (
+            <span className="text-[10px] text-[var(--text-3)] shrink-0">({formatSize(it.sizeBytes)})</span>
+          )}
+        </button>
+      ) : (
+        <a
+          href={fileHref(it)}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 min-w-0 text-[var(--text-2)] hover:text-[var(--accent)] hover:underline"
+        >
+          <FileText size={14} className="shrink-0" />
+          <span className="truncate">{it.fileName || "ไฟล์แนบ"}</span>
+          {!compact && it.sizeBytes != null && (
+            <span className="text-[10px] text-[var(--text-3)] shrink-0">({formatSize(it.sizeBytes)})</span>
+          )}
+        </a>
+      )}
       {canEdit && (
         <button
           type="button"
@@ -259,12 +334,51 @@ export default function AttachmentsPanel({
     </div>
   );
 
+  // กล่องดูรูปขนาดเต็ม — ใช้ Modal ของระบบ (จัดการ Escape/โฟกัสให้แล้ว)
+  const lightbox = (
+    <Modal
+      open={!!preview}
+      onClose={() => setPreview(null)}
+      title={preview?.fileName || "รูปแนบ"}
+      size="lg"
+      closeOnOverlay
+    >
+      {preview && (
+        <div style={{ textAlign: "center" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={fileHref(preview)}
+            alt={preview.fileName || "รูปแนบ"}
+            style={{ maxWidth: "100%", maxHeight: "70vh", borderRadius: "var(--radius)" }}
+          />
+          <div style={{ marginTop: 12 }}>
+            <a
+              href={fileHref(preview)} target="_blank" rel="noreferrer"
+              className="btn sm"
+            >
+              <Download size={13} /> เปิดไฟล์ต้นฉบับ
+            </a>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+
   if (inlineUpload) {
     const inlineType = types[0]?.key || "other";
     const busy = uploadingType === inlineType;
 
     return (
-      <div className="mt-1">
+      <div
+        className="mt-1"
+        onPaste={canEdit ? handlePaste : undefined}
+        onDragOver={canEdit ? (e) => { e.preventDefault(); setDragOver(true); } : undefined}
+        onDragLeave={canEdit ? () => setDragOver(false) : undefined}
+        onDrop={canEdit ? handleDrop : undefined}
+        style={dragOver ? {
+          outline: "2px dashed var(--accent)", outlineOffset: 4, borderRadius: "var(--radius)",
+        } : undefined}
+      >
         <div className="flex min-h-8 items-center justify-end gap-2">
           {canEdit && (
             <button
@@ -306,6 +420,12 @@ export default function AttachmentsPanel({
             className="hidden"
           />
         )}
+        {canEdit && (
+          <p className="mt-1 text-[10px] text-[var(--text-3)]">
+            ลากไฟล์มาวาง หรือวางรูปจากคลิปบอร์ด (Ctrl+V) ได้
+          </p>
+        )}
+        {lightbox}
       </div>
     );
   }
@@ -542,6 +662,7 @@ export default function AttachmentsPanel({
           )}
         </>
       )}
+      {lightbox}
     </div>
   );
 }

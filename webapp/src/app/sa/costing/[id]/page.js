@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Calculator, Pencil, Ban, Send, Check, Undo2 } from "lucide-react";
 import Modal from "@/components/Modal";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -385,6 +386,18 @@ export default function CostingDetailPage() {
                   </span>
                 ))}
               </div>
+            </div>
+
+            {/* รูปตัวอย่าง/สเปกของสินค้าตัวนี้ — RD/PC ดูประกอบตอนตอบราคา
+                แนบได้เฉพาะฝ่ายขายเจ้าของใบ (ฝ่ายอื่นเห็นอย่างเดียว) */}
+            <div style={{ marginTop: 12 }}>
+              <div className="toolbar-label">ไฟล์แนบของสินค้านี้</div>
+              <AttachmentsPanel
+                entityType="costing_item"
+                entityId={item.id}
+                canEdit={canEdit}
+                inlineUpload
+              />
             </div>
 
             {canDecideItem(me, request, item) && (

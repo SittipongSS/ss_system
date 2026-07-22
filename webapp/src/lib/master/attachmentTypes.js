@@ -89,6 +89,13 @@ export const ATTACHMENT_TYPES = {
   personal_task: [
     { key: "other", label: "ไฟล์แนบงาน", required: false },
   ],
+  // ระบบขอราคาต้นทุน — แนบที่ระดับ "สินค้าในใบ" ไม่ใช่ทั้งใบ เพราะรูปตัวอย่าง/
+  // สเปกบรรจุภัณฑ์เป็นของสินค้าตัวนั้น และ RD/PC ดูประกอบตอนตอบราคา
+  costing_item: [
+    { key: "reference_image", label: "รูปตัวอย่าง / ตัวอย่างงาน", required: false },
+    { key: "spec", label: "สเปก / แบบบรรจุภัณฑ์", required: false },
+    { key: "other", label: "ไฟล์แนบอื่นๆ", required: false },
+  ],
 };
 
 // ฟิลด์รายละเอียด (แท็ค) เพิ่มเติมต่อเอกสาร เก็บใน attachments.metadata (jsonb).
@@ -139,6 +146,17 @@ export const IMAGE_ACCEPT_ATTR = "image/png,image/jpeg,image/webp,.png,.jpg,.jpe
 export function requiredDocKeys(entityType, docTypes) {
   const list = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   return list.filter((t) => t.required).map((t) => t.key);
+}
+
+// ── พรีวิวรูปในหน้า ────────────────────────────────────────────────────
+// ไฟล์ที่แสดงเป็นภาพย่อ + คลิกขยายได้. ยึด mimeType เป็นหลัก แต่ไฟล์เก่าบางแถว
+// ไม่มี mimeType (อัปก่อนที่ระบบจะเก็บ) จึงเดาจากนามสกุลชื่อไฟล์เป็นทางสำรอง
+export function isPreviewableImage(item) {
+  if (!item) return false;
+  const mime = String(item.mimeType || '').toLowerCase();
+  if (mime) return ACCEPTED_IMAGE_MIME.includes(mime);
+  const ext = String(item.fileName || '').toLowerCase().split('.').pop();
+  return ACCEPTED_IMAGE_EXT.includes(ext);
 }
 
 // ป้ายชื่อภาษาไทยของ docType หนึ่งๆ (fallback: คืนค่า key เดิมถ้าไม่รู้จัก).
