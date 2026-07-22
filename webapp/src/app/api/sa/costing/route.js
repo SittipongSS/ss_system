@@ -12,6 +12,7 @@ import { canViewCostingRequest, resolveCostingDealContext } from '@/lib/costing'
 import {
   componentRowsFromTemplate, findCostingRequest, loadCostingRequests, tierRowsFor,
 } from '@/lib/costingAdmin';
+import { normalizeCostingItems, normalizeTierQuantities } from '@/lib/costingReconcile';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -67,38 +68,30 @@ export async function POST(request) {
     return Response.json({ error: 'MOQ ต้องเป็นตัวเลขมากกว่า 0' }, { status: 400 });
   }
 
-  const rawItems = Array.isArray(body.items) ? body.items : [];
-  if (rawItems.length === 0) {
-    return Response.json({ error: 'ต้องระบุสินค้าอย่างน้อย 1 รายการ' }, { status: 400 });
-  }
-  if (rawItems.length > MAX_ITEMS) {
-    return Response.json({ error: `สินค้าในใบเดียวมากเกินไป (สูงสุด ${MAX_ITEMS} รายการ)` }, { status: 400 });
-  }
+  // ตัวตรวจชุดเดียวกับตอนแก้ (PATCH) — ฟอร์มเป็น component เดียว กฎก็ต้องชุดเดียว
+  const { items: payloadItems, error: itemFormatError } = normalizeCostingItems(body.items, { maxItems: MAX_ITEMS });
+  if (itemFormatError) return Response.json({ error: itemFormatError }, { status: 400 });
 
+  const { quantities, error: tierFormatError } = normalizeTierQuantities(body.tierQuantities);
+  if (tierFormatError) return Response.json({ error: tierFormatError }, { status: 400 });
   // ชั้นจำนวนของทั้งใบ — ต้องมีชั้น MOQ เสมอ ไม่งั้นอนุมัติแล้วไม่มีช่องกรอกราคา
-  const tierQtys = Array.isArray(body.tierQuantities) && body.tierQuantities.length
-    ? [...body.tierQuantities, moq]
-    : [moq];
+  const tierQtys = [...quantities, moq];
 
   // ตรวจทุกรายการให้ผ่านก่อน แล้วค่อยเขียน — กันใบครึ่ง ๆ กลาง ๆ ค้างในระบบ
+  const templates = await loadCostTemplates(supabase, { includeHidden: false });
   const prepared = [];
-  for (let i = 0; i < rawItems.length; i += 1) {
-    const raw = rawItems[i] || {};
+  for (let i = 0; i < payloadItems.length; i += 1) {
+    const raw = payloadItems[i];
     const at = `รายการที่ ${i + 1}`;
 
-    const productLabel = String(raw.productLabel ?? '').trim();
-    if (!productLabel) return Response.json({ error: `${at}: ต้องระบุชื่อสินค้า` }, { status: 400 });
-
-    const categoryCode = String(raw.categoryCode || '').trim();
-    const categoryError = await activeProductTypeError(categoryCode);
+    const categoryError = await activeProductTypeError(raw.categoryCode);
     if (categoryError) return Response.json({ error: `${at}: ${categoryError}` }, { status: 400 });
 
     // กางบรรทัดจากแม่แบบที่ใช้งานอยู่ของประเภทนั้น
-    const [template] = await loadCostTemplates(supabase, { includeHidden: false })
-      .then((rows) => rows.filter((t) => t.categoryCode === categoryCode));
+    const template = templates.find((t) => t.categoryCode === raw.categoryCode);
     if (!template) {
       return Response.json({
-        error: `${at}: ประเภทสินค้า ${categoryCode} ยังไม่มีแม่แบบต้นทุน — ให้ผู้ดูแลระบบสร้างที่หน้าตั้งค่าก่อน`,
+        error: `${at}: ประเภทสินค้า ${raw.categoryCode} ยังไม่มีแม่แบบต้นทุน — ให้ผู้ดูแลระบบสร้างที่หน้าตั้งค่าก่อน`,
       }, { status: 400 });
     }
 
@@ -107,11 +100,11 @@ export async function POST(request) {
       item: {
         id: itemId,
         sortOrder: i + 1,
-        productId: raw.productId || null,
-        categoryCode,
+        productId: raw.productId,
+        categoryCode: raw.categoryCode,
         templateId: template.id,
-        productLabel: productLabel.slice(0, 300),
-        fragranceName: raw.fragranceName ? String(raw.fragranceName).trim().slice(0, 300) : null,
+        productLabel: raw.productLabel,
+        fragranceName: raw.fragranceName,
       },
       components: componentRowsFromTemplate(itemId, template.lines),
       tiers: tierRowsFor(itemId, tierQtys),
