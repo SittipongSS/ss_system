@@ -33,6 +33,15 @@
 //                   factory cost/margin is OFF by default; an admin may tick the
 //                   per-user grant (products:margin) to give one viewer LG-level
 //                   cost sight. Own department.
+//   executive     — ผู้บริหาร (ฝ่าย EX). Read-only observer like `viewer`, plus the
+//                   ONE authority that is exclusively theirs: approving the
+//                   production price on a costing request (costing:approve).
+//                   Sees the full cost breakdown INSIDE a costing request
+//                   (costing:view) — that is what they price from — but does NOT
+//                   hold products:margin: the factory margin split is a separate
+//                   system used only for excise-tax registration (มติ 2026-07-22).
+//                   Every other surface stays read-only; the proxy write-gate
+//                   blocks writes for lack of :edit/:act.
 //
 // Teams: ODM (New ODM) | KA (Key Account) | SV (Services).
 //
@@ -49,6 +58,10 @@
 //   pm:view        | pm:edit        (project management — SALES only)
 //   salesplan:view | salesplan:edit | salesplan:review | salesplan:target
 //     (Sales Planning commercial spine: pipeline / forecast / target / review)
+//   costing:view   | costing:edit   | costing:quote  | costing:approve
+//     (ระบบขอราคาต้นทุน — SA ประกอบใบ (edit), RD/PC เติมราคาฝ่ายตน (quote),
+//      ผู้บริหารอนุมัติราคาผลิต (approve). costing:view เปิดให้เห็นต้นทุนเต็มใบ
+//      ซึ่งแยกขาดจาก products:margin — คนละระบบ ดู canViewCosting.)
 //   sahamit:view   | sahamit:edit   (SAHAMIT Planning & Sales — FC/PO/Reconcile.
 //     Capability is held by every sales role, but ACCESS is further narrowed to
 //     team === 'KA' (+ admin / sales head oversight) via canAccessSahamit(). The
@@ -65,16 +78,17 @@
 // that only grants read access to Project Management. Codes are kept short
 // (matching the PM step-role codes SA/RD/PC/PD/QC/LG/WH) and shown as-is.
 //   AD = ผู้ดูแลระบบ · SEC = ฝ่ายเลขานุการ · SA = ฝ่ายขาย · LG = ฝ่ายกฎหมาย · Viewer = ผู้ดูข้อมูล
-//   PC = ฝ่ายจัดซื้อ · PD = ฝ่ายผลิต · WH = ฝ่ายคลัง · RD = ฝ่ายวิจัยและพัฒนา · QC = ฝ่ายควบคุมคุณภาพ
-export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'MK', 'LG', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC'];
+//   EX = ฝ่ายบริหาร · PC = ฝ่ายจัดซื้อ · PD = ฝ่ายผลิต · WH = ฝ่ายคลัง · RD = ฝ่ายวิจัยและพัฒนา · QC = ฝ่ายควบคุมคุณภาพ
+export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'MK', 'LG', 'EX', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC'];
 // Display label is the code itself (พนักงานคุ้นกับโค้ดบน timeline อยู่แล้ว).
 export const DEPARTMENT_LABELS = {
-  AD: 'Admin', SEC: 'SEC', SA: 'SA', MK: 'MK', LG: 'LG', Viewer: 'Viewer',
+  AD: 'Admin', SEC: 'SEC', SA: 'SA', MK: 'MK', LG: 'LG', EX: 'EX', Viewer: 'Viewer',
   PC: 'PC', PD: 'PD', WH: 'WH', RD: 'RD', QC: 'QC',
 };
 // Thai names — used only for tooltips/help text, not the primary display.
 export const DEPARTMENT_NAMES_TH = {
-  AD: 'ผู้ดูแลระบบ', SEC: 'ฝ่ายเลขานุการ', SA: 'ฝ่ายขาย', MK: 'ฝ่ายการตลาด', LG: 'ฝ่ายกฎหมาย', Viewer: 'ผู้ดูข้อมูล',
+  AD: 'ผู้ดูแลระบบ', SEC: 'ฝ่ายเลขานุการ', SA: 'ฝ่ายขาย', MK: 'ฝ่ายการตลาด', LG: 'ฝ่ายกฎหมาย',
+  EX: 'ฝ่ายบริหาร', Viewer: 'ผู้ดูข้อมูล',
   PC: 'ฝ่ายจัดซื้อ', PD: 'ฝ่ายผลิต', WH: 'ฝ่ายคลัง',
   RD: 'ฝ่ายวิจัยและพัฒนา', QC: 'ฝ่ายควบคุมคุณภาพ',
 };
@@ -96,6 +110,8 @@ const DEPARTMENT_ROLES = {
   // MK = ฝ่ายการตลาด (เฟส C มติ #2): กรอกลีดรายวัน — เห็นเฉพาะเมนูลีด
   MK: ['marketing'],
   LG: ['legal'],
+  // EX = ฝ่ายบริหาร — ผู้อนุมัติราคาผลิตในระบบขอราคาต้นทุน (ไม่มี operation อื่น)
+  EX: ['executive'],
   Viewer: ['viewer'],
   // RD ได้ role เฉพาะ (rd) — คู่คิดหลักของฝ่ายขาย เห็นดีล/โครงการทุกทีมเพื่อตอบ
   // ข้อสอบถาม; ยังอนุญาต staff ไว้สำหรับข้อมูลเก่า/คนที่ไม่ต้องเข้าระบบขาย.
@@ -110,7 +126,7 @@ const ROLE_DEFAULT_DEPARTMENT = {
   secretary: 'SEC',
   ae_supervisor: 'SA', senior_ae: 'SA', ac: 'SA', ae: 'SA',
   marketing: 'MK',
-  legal: 'LG', viewer: 'Viewer',
+  legal: 'LG', executive: 'EX', viewer: 'Viewer',
   rd: 'RD',
 };
 
@@ -127,7 +143,7 @@ export const TEAMS = ['ODM', 'KA', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'legal', 'rd', 'viewer', 'staff'];
+export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'legal', 'rd', 'executive', 'viewer', 'staff'];
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',
@@ -138,6 +154,7 @@ export const ROLE_LABELS = {
   marketing: 'การตลาด (Marketing)',
   legal: 'ฝ่ายกฎหมาย',
   rd: 'วิจัยและพัฒนา (RD)',
+  executive: 'ผู้บริหาร (Executive)',
   viewer: 'ผู้ดูข้อมูล (Viewer)',
   staff: 'พนักงาน (Staff)',
 };
@@ -159,6 +176,10 @@ const SALES_OPS = [
   'salesplan:lead',
   // SAHAMIT module — granted to every sales role; team===KA narrows actual access.
   'sahamit:view', 'sahamit:edit',
+  // ระบบขอราคาต้นทุน: ฝ่ายขายเป็นคนเปิดใบ + ประกอบต้นทุน. ไม่มี costing:approve
+  // (ราคาผลิตอนุมัติโดยผู้บริหารเท่านั้น — มติ 2026-07-22) และไม่มี costing:quote
+  // (ราคา RM/PM มาจาก RD/PC ฝ่ายขายกรอกแทนไม่ได้ ไม่งั้นที่มาของราคาหายไป).
+  'costing:view', 'costing:edit',
   'history:view',
 ];
 
@@ -174,6 +195,7 @@ const SUPERUSER_CAPS = [
   'pm:view', 'pm:edit',
   'salesplan:view', 'salesplan:edit', 'salesplan:review', 'salesplan:target', 'salesplan:lead',
   'sahamit:view', 'sahamit:edit',
+  'costing:view', 'costing:edit', 'costing:quote', 'costing:approve',
   'mgmt:view', 'mgmt:edit',   // งานบริหาร (Management/Executive Office) — admin + secretary only
 ];
 
@@ -189,11 +211,26 @@ const ADMIN_SYSTEM_CAPS = ['users:manage', 'master:manage', 'audit:view'];
 //     LG + admin; even the sales head sees only costPrice, not the margin split.
 //   - the งานบริหาร module caps (mgmt:*) — that module is admin + secretary only,
 //     the sales head has no role in it.
-const SALES_HEAD_EXCLUDED = [...ADMIN_SYSTEM_CAPS, 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit'];
+//   - costing:approve — ราคาผลิตอนุมัติโดยผู้บริหาร (executive) เท่านั้น มติ 2026-07-22
+//     (admin คงไว้ break-glass เหมือน legal:approve)
+//   - costing:quote — ราคา RM/PM เป็นคำตอบของ RD/PC หัวหน้าฝ่ายขายตอบแทนไม่ได้
+const SALES_HEAD_EXCLUDED = [
+  ...ADMIN_SYSTEM_CAPS, 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit',
+  'costing:approve', 'costing:quote',
+];
 
 // Sales head (ae_supervisor): every remaining sales/legal-view/PM capability
 // across ALL teams. Data scope stays 'all' via isSuperuser().
 const SALES_HEAD_CAPS = SUPERUSER_CAPS.filter((c) => !SALES_HEAD_EXCLUDED.includes(c));
+
+// Whole-system read-only observation: every :view cap, no writes anywhere.
+// Shared by `viewer` and `executive` so the two never drift apart — executive is
+// this set PLUS its costing authority (see ROLE_CAPS.executive).
+const OBSERVER_CAPS = [
+  'customers:view', 'products:view',
+  'sales:view', 'legal:view', 'history:view',
+  'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
+];
 
 const ROLE_CAPS = {
   // admin: system administrator — full capabilities, all teams (see isSuperuser).
@@ -226,22 +263,36 @@ const ROLE_CAPS = {
   // everywhere: the proxy's capability write-gate (apiWriteAllowed) blocks writes
   // for lack of the :edit/:act/:delete caps. Confidential factory cost/margin is
   // NOT here by default — it's grantable per-user (products:margin), same as LG.
-  viewer: [
-    'customers:view', 'products:view',
-    'sales:view', 'legal:view', 'history:view',
-    'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
-  ],
+  viewer: OBSERVER_CAPS,
+  // executive: ผู้บริหาร — observer เต็มระบบเหมือน viewer + อำนาจเดียวที่เป็นของเขา
+  // คนเดียว คืออนุมัติราคาผลิตในใบขอราคาต้นทุน. costing:view เปิดต้นทุนเต็มใบให้
+  // (ข้อมูลที่ใช้ตั้งราคา) แต่ไม่มี products:margin — กำไรโรงงานเป็นระบบสรรพสามิต
+  // คนละส่วนกัน (มติ 2026-07-22); ถ้าวันหน้าจำเป็นให้ grant รายคนได้ (GRANTABLE_CAPS).
+  // ไม่มี :edit/:act ใด ๆ → proxy write-gate บล็อกทุกการเขียนนอกเส้นอนุมัติให้เอง.
+  executive: [...OBSERVER_CAPS, 'costing:view', 'costing:approve'],
   // rd: ฝ่ายวิจัยและพัฒนา — คู่คิดหลักของฝ่ายขาย. อ่านดีล/โครงการ/ใบเสนอราคา
   // ทุกทีม (salesplan:view — scope 'all' ผ่าน salesPlanningViewScope) เพื่อเห็น
   // บริบทเต็มเวลาฝ่ายขายส่งข้อสอบถาม + ใช้ระบบงานของฉัน (workflow tier แบบ staff)
   // + ตอบข้อสอบถามของฝ่ายตน (inquiries:respond — ตาราง inquiries, mig 0104).
   // ไม่มีสิทธิ์แก้ดีล/แผนโครงการ (ไม่มี salesplan:edit / pm:edit / sales:act) และ
   // ไม่เห็นต้นทุน/มาร์จิ้น (ไม่มี products:margin — grant รายคนได้ถ้าจำเป็น).
-  rd: ['pm:view', 'products:view', 'customers:view', 'salesplan:view', 'inquiries:respond'],
+  // + costing:quote — ตอบราคา RM (หัวน้ำหอม/เนื้อสาร) บนบรรทัดของฝ่ายตนในใบขอราคา
+  //   ต้นทุน; เห็นใบผ่าน costing:view. บรรทัดของฝ่ายอื่นแก้ไม่ได้ (canQuoteCosting
+  //   + การกรอง sourceDept ใน handler).
+  rd: [
+    'pm:view', 'products:view', 'customers:view', 'salesplan:view', 'inquiries:respond',
+    'costing:view', 'costing:quote',
+  ],
   // staff: a member of a non-sales department (PC/PD/WH/RD/QC). Logs in to see
   // PM + the tasks assigned to them, and may READ the shared master data
   // (products/customers) — but never the cost margin (no products:margin).
-  staff: ['pm:view', 'products:view', 'customers:view'],
+  // costing:* is held at role level because ฝ่ายจัดซื้อ (PC) — the source of PM
+  // prices — has no role of its own; ACCESS is then narrowed to department
+  // RD/PC by canViewCosting/canQuoteCosting, the same "cap broad, gate narrow"
+  // shape as sahamit (cap on every sales role, team===KA narrows). PD/WH/QC hold
+  // the cap but reach nothing: always gate through those two helpers, never
+  // through can(role, 'costing:view') alone, or their cost data leaks.
+  staff: ['pm:view', 'products:view', 'customers:view', 'costing:view', 'costing:quote'],
 };
 
 // Unknown role: read-only viewer (sees registries + history, no actions).
@@ -308,6 +359,41 @@ export function isSuperuser(role) {
   return role === 'admin' || role === 'ae_supervisor';
 }
 
+// Whole-system READ-ONLY observers: `viewer` and `executive`. They see every
+// team's data (viewScope 'all') but own no operational workflow — no tasks of
+// their own, nothing to pull or be assigned. Every place that used to test
+// `role === 'viewer'` must use this instead, or executive silently gains an
+// operational surface it should not have.
+export function isReadOnlyObserver(role) {
+  return role === 'viewer' || role === 'executive';
+}
+
+// ── ระบบขอราคาต้นทุน (Costing Request) ────────────────────────────────
+// ฝ่ายที่เป็น "แหล่งราคา" ของบรรทัดในใบ — ตรงกับ costing_item_components.sourceDept
+export const COSTING_SOURCE_DEPARTMENTS = ['RD', 'PC'];
+
+// เห็นใบขอราคาต้นทุน (รวมต้นทุนเต็มใบ). staff ถือ cap ระดับ role เพราะฝ่ายจัดซื้อ
+// (PC) ไม่มี role ของตัวเอง จึงต้องแคบด้วยฝ่ายตรงนี้ ไม่งั้น PD/WH/QC เห็นต้นทุนไปด้วย
+export function canViewCosting(user) {
+  if (!canUser(user, 'costing:view')) return false;
+  if (user?.role !== 'staff') return true;
+  return COSTING_SOURCE_DEPARTMENTS.includes(departmentOf(user));
+}
+
+// ตอบราคาบนบรรทัดของฝ่ายตน (RD = RM, PC = PM). ตัว cap อย่างเดียวไม่พอ —
+// ต้องอยู่ฝ่าย RD/PC จริง; handler ยังต้องกรอง sourceDept รายบรรทัดซ้ำอีกชั้น
+export function canQuoteCosting(user) {
+  if (!canUser(user, 'costing:quote')) return false;
+  if (isSuperuser(user?.role)) return true; // admin break-glass
+  return COSTING_SOURCE_DEPARTMENTS.includes(departmentOf(user));
+}
+
+// อนุมัติราคาผลิต — ผู้บริหาร (executive) เท่านั้น + admin break-glass.
+// คนเดียวจบ ไม่มีอนุมัติซ้อน (มติ 2026-07-22)
+export function canApproveCosting(user) {
+  return canUser(user, 'costing:approve');
+}
+
 // ── Master-data approval authority ────────────────────────────────────
 // Org rule: AE / AC / Senior AE สร้างลูกค้า/สินค้าได้ แต่ของใหม่ค้างเป็น 'pending'
 // จนกว่า AE Supervisor จะอนุมัติ. ผู้อนุมัติ auto-approve ของที่ตัวเองสร้าง
@@ -354,7 +440,7 @@ export function canManageCommercialPresets(role) {
 //   user = { role, team }
 export function canAccessSahamit(role, team) {
   if (isSuperuser(role)) return true;           // admin + sales head: cross-team oversight
-  if (role === 'viewer') return true;           // read-only observer sees every module (writes still blocked by cap)
+  if (isReadOnlyObserver(role)) return true;    // viewer/executive see every module (writes still blocked by cap)
   return can(role, 'sahamit:view') && team === 'KA';
 }
 
@@ -376,7 +462,7 @@ export function canAccessMgmt(user) {
 // 'none' = may not write at all
 
 export function viewScope(role) {
-  if (isSuperuser(role) || role === 'legal' || role === 'viewer' || role === 'staff' || role === 'rd') return 'all';
+  if (isSuperuser(role) || role === 'legal' || isReadOnlyObserver(role) || role === 'staff' || role === 'rd') return 'all';
   return 'team'; // senior_ae, ac, ae, and unknown viewer
 }
 
@@ -528,18 +614,18 @@ export function canDeleteRecord(user, resource, record) {
 //   viewer                         → all teams (whole-system read-only monitor)
 // Single source of truth so the client toggle and the server guard never drift.
 export function canSeeTaskKpi(role) {
-  return isSuperuser(role) || role === 'senior_ae' || role === 'viewer';
+  return isSuperuser(role) || role === 'senior_ae' || isReadOnlyObserver(role);
 }
 
 export function canSeeLeadKpi(role) {
-  return isSuperuser(role) || role === 'marketing' || role === 'viewer';
+  return isSuperuser(role) || role === 'marketing' || isReadOnlyObserver(role);
 }
 
 // แดชบอร์ด/KPI ของฝ่าย RD (SLA ตอบข้อสอบถาม + งานฝ่าย) — วัดแยกจาก KPI ฝ่ายขาย
 // (มติผู้ใช้ 2026-07-15). rd เห็นของฝ่ายตัวเอง; ผู้บริหาร (superuser) + viewer
 // เห็นเพื่อกำกับดูแล; ฝ่ายขายทั่วไปไม่เห็น (คนละเส้นวัด).
 export function canSeeRdKpi(role) {
-  return isSuperuser(role) || role === 'viewer' || role === 'rd';
+  return isSuperuser(role) || isReadOnlyObserver(role) || role === 'rd';
 }
 
 export function pmTaskScopes(role) {
@@ -547,7 +633,7 @@ export function pmTaskScopes(role) {
   // viewer = whole-system read-only observer → sees every team's tasks. It has no
   // tasks of its own and no team, so 'all' is the only meaningful scope (giving
   // just this also keeps the My Work scope tabs clean — no empty 'mine'/'team').
-  if (role === 'viewer') return ['all'];
+  if (isReadOnlyObserver(role)) return ['all'];
   if (role === 'rd') return ['mine', 'team'];
   // AE manages the whole team's projects in PM (see pmEditScope) → may also
   // browse the team's tasks in My Work, alongside Senior AE / AC.
@@ -666,8 +752,9 @@ export function canChangeTaskStatus(user, task, manage) {
 //   'none'     — may not edit
 export function pmTaskEditTier(user, task, project) {
   if (inPmProjectScope(user, project || {})) return 'full';
-  // viewer is a pure read-only observer — never edits, even a task assigned to it.
-  if (user?.role === 'viewer') return 'none';
+  // viewer/executive are pure read-only observers — never edit, even a task
+  // assigned to them.
+  if (isReadOnlyObserver(user?.role)) return 'none';
   const ownsTask = !!user?.id && task?.assigneeId === user.id;
   // staff + rd: ขั้นตอนที่มอบให้ "ฝ่าย" ของเขา (task.role === department) นับเป็น
   // งานของเขา — rd คือ staff ฝ่าย RD ที่ได้สิทธิ์อ่านระบบขายเพิ่ม จึงได้ tier เดียวกัน

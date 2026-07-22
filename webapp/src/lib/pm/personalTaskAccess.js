@@ -1,4 +1,4 @@
-import { can, isSuperuser, normalizeDepartment, TEAM_ROLES } from '@/lib/permissions';
+import { can, isReadOnlyObserver, isSuperuser, normalizeDepartment, TEAM_ROLES } from '@/lib/permissions';
 
 async function userIdentity(supabase, id) {
   if (!id) return { team: null, department: null };
@@ -30,7 +30,7 @@ export async function canManagePersonalTask(supabase, task, user) {
   if (!task || !user) return false;
   // เจ้าของ/ผู้รับมอบจัดการงานของตัวเองได้เสมอ — ต้องมีแค่ pm:view (staff/rd ใช้
   // "งานของฉัน" ได้จริง); viewer เป็น observer อ่านอย่างเดียว ไม่มีงานของตัวเอง.
-  if (!can(user.role, 'pm:view') || user.role === 'viewer') return false;
+  if (!can(user.role, 'pm:view') || isReadOnlyObserver(user.role)) return false;
   if (task.ownerId === user.id || task.assigneeId === user.id) return true;
   // จัดการงานของ "คนอื่น" ยังสงวนให้สายบังคับบัญชาฝ่ายขาย (pm:edit) เหมือนเดิม
   if (!can(user.role, 'pm:edit')) return false;
@@ -44,7 +44,7 @@ export async function canManagePersonalTask(supabase, task, user) {
 
 export async function canViewPersonalTask(supabase, task, user) {
   if (!task || !user || !can(user.role, 'pm:view')) return false;
-  if (isSuperuser(user.role) || user.role === 'viewer') return true;
+  if (isSuperuser(user.role) || isReadOnlyObserver(user.role)) return true;
   // เจ้าของ / ผู้รับมอบ / ผู้ทำแทน / ผู้มอบหมาย — ทุกคนที่ผูกกับงานนี้โดยตรงเห็นได้.
   // assignedBy สำคัญ: งานที่ฉัน "มอบให้คนอื่น" ก็โผล่ใน "งานของฉัน" (my-work byAssigner)
   // เดิมไม่มีเงื่อนไขนี้ → กดเปิด detail แล้ว 403.

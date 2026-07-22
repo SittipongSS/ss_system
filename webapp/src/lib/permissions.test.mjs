@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -408,6 +408,107 @@ test('canApproveMasterData: เฉพาะ AE Supervisor (+ admin break-glass)'
   assert.equal(canApproveMasterData('senior_ae'), false);
   for (const role of ['ae', 'ac', 'marketing', 'legal', 'rd', 'viewer', 'staff', 'secretary']) {
     assert.equal(canApproveMasterData(role), false, `${role} ต้องอนุมัติไม่ได้`);
+  }
+});
+
+// ── role executive (ผู้บริหาร) — ระบบขอราคาต้นทุน PR1, มติ 2026-07-22 ──
+test('executive: อยู่ในทะเบียน role/ฝ่าย EX และผ่าน validateIdentity', () => {
+  assert.ok(ROLES.includes('executive'));
+  assert.ok(ROLE_LABELS.executive);
+  assert.ok(DEPARTMENTS.includes('EX'));
+  assert.deepEqual(rolesForDepartment('EX'), ['executive']);
+  assert.equal(departmentFor('executive'), 'EX');
+  // ไม่ใช่ role ที่ผูกทีม → ห้ามมีทีม, ฝ่ายต้องเป็น EX เท่านั้น
+  assert.equal(validateIdentity('executive', null, 'EX'), null);
+  assert.equal(validateIdentity('executive', null, null), null); // ใช้ฝ่ายตั้งต้น
+  assert.ok(validateIdentity('executive', 'KA', 'EX'));          // มีทีม = ผิด
+  assert.ok(validateIdentity('executive', null, 'SA'));          // ฝ่ายไม่ตรง = ผิด
+});
+
+test('executive: observer เต็มระบบเหมือน viewer + costing:approve เท่านั้น', () => {
+  const exec = { role: 'executive' };
+  // ได้ :view ครบเท่า viewer ทุกตัว
+  for (const cap of capsFor('viewer')) {
+    assert.ok(can('executive', cap), `executive ต้องมี ${cap} เหมือน viewer`);
+  }
+  assert.ok(can('executive', 'costing:view'));
+  assert.ok(can('executive', 'costing:approve'));
+  // เขียนอะไรไม่ได้เลยนอกเส้นอนุมัติ
+  for (const cap of ['customers:edit', 'products:edit', 'sales:act', 'pm:edit',
+    'salesplan:edit', 'sahamit:edit', 'mgmt:edit', 'costing:edit', 'costing:quote',
+    'users:manage', 'master:manage', 'legal:approve']) {
+    assert.equal(can('executive', cap), false, `executive ต้องไม่มี ${cap}`);
+  }
+  assert.equal(viewScope('executive'), 'all');
+  assert.equal(editScope('executive'), 'none');
+  assert.equal(pmEditScope('executive'), 'none');
+  assert.equal(deleteScope('executive', 'orders'), 'none');
+  assert.equal(canAccessSahamit('executive', null), true);
+  assert.equal(canAccessMgmt(exec), true);
+  assert.deepEqual(pmTaskScopes('executive'), ['all']);
+  // งานที่มอบให้ observer ก็ยังแก้ไม่ได้
+  assert.equal(pmTaskEditTier({ id: 'x', role: 'executive' }, { assigneeId: 'x' }, {}), 'none');
+});
+
+test('executive: ไม่มี products:margin — กำไรโรงงานเป็นระบบสรรพสามิต คนละส่วน', () => {
+  const exec = { role: 'executive' };
+  assert.equal(canUser(exec, 'products:margin'), false);
+  const redacted = redactProductMargin(exec, {
+    id: 'p1', costPrice: 100, materialCost: 65, laborCost: 5, shippingCost: 1, factoryProfit: 29,
+  });
+  for (const f of ['materialCost', 'laborCost', 'shippingCost', 'factoryProfit']) {
+    assert.equal(redacted[f], undefined, `${f} ต้องถูกตัด`);
+  }
+  assert.equal(redacted.costPrice, undefined); // ไม่มีทั้ง margin และ products:edit
+  // ยังเปิดให้ grant รายคนได้ถ้าวันหน้าจำเป็น
+  assert.ok(GRANTABLE_CAPS.includes('products:margin'));
+});
+
+test('isReadOnlyObserver: viewer + executive เท่านั้น', () => {
+  assert.equal(isReadOnlyObserver('viewer'), true);
+  assert.equal(isReadOnlyObserver('executive'), true);
+  for (const role of ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal', 'rd', 'staff', 'marketing', 'secretary']) {
+    assert.equal(isReadOnlyObserver(role), false, role);
+  }
+});
+
+test('costing: ใครเห็นใบ / ใครตอบราคา / ใครอนุมัติ', () => {
+  const exec = { role: 'executive' };
+  const sa = { role: 'ae', team: 'KA' };
+  const rd = { role: 'rd', department: 'RD' };
+  const pc = { role: 'staff', department: 'PC' };
+  const wh = { role: 'staff', department: 'WH' };
+
+  // เห็นใบ: ฝ่ายขาย + RD + PC + ผู้บริหาร; ฝ่ายอื่นที่ถือ cap ผ่าน role staff ต้องไม่เห็น
+  for (const u of [exec, sa, rd, pc]) assert.equal(canViewCosting(u), true, u.role + (u.department || ''));
+  assert.equal(canViewCosting(wh), false, 'staff ฝ่าย WH ต้องไม่เห็นต้นทุน');
+  assert.equal(canViewCosting({ role: 'staff', department: 'QC' }), false);
+  assert.equal(canViewCosting({ role: 'marketing' }), false);
+
+  // ตอบราคา: เฉพาะฝ่ายแหล่งราคา RD/PC — ฝ่ายขาย/ผู้บริหารกรอกแทนไม่ได้
+  assert.equal(canQuoteCosting(rd), true);
+  assert.equal(canQuoteCosting(pc), true);
+  assert.equal(canQuoteCosting(wh), false);
+  assert.equal(canQuoteCosting(sa), false);
+  assert.equal(canQuoteCosting(exec), false);
+
+  // อนุมัติราคาผลิต: ผู้บริหารคนเดียว + admin break-glass (มติ: ไม่มีอนุมัติซ้อน)
+  assert.equal(canApproveCosting(exec), true);
+  assert.equal(canApproveCosting({ role: 'admin' }), true);
+  for (const u of [sa, rd, pc, { role: 'ae_supervisor' }, { role: 'senior_ae' }, { role: 'viewer' }]) {
+    assert.equal(canApproveCosting(u), false, `${u.role} ต้องอนุมัติราคาผลิตไม่ได้`);
+  }
+});
+
+test('costing: หัวหน้าฝ่ายขายประกอบใบได้ แต่ไม่อนุมัติ/ไม่ตอบราคาแทนฝ่ายอื่น', () => {
+  assert.ok(can('ae_supervisor', 'costing:view'));
+  assert.ok(can('ae_supervisor', 'costing:edit'));
+  assert.equal(can('ae_supervisor', 'costing:approve'), false);
+  assert.equal(can('ae_supervisor', 'costing:quote'), false);
+  // ฝ่ายขายทุกระดับประกอบใบได้
+  for (const role of ['senior_ae', 'ac', 'ae']) {
+    assert.ok(can(role, 'costing:edit'), role);
+    assert.equal(can(role, 'costing:approve'), false, role);
   }
 });
 

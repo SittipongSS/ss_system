@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can, canUser, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories } from '@/lib/permissions';
+import { can, canUser, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -228,7 +228,7 @@ function apiWriteAllowed(method, path, role, extraCaps) {
     // เส้นที่ handler บังคับสิทธิ์รายแถวเองครบ: งานส่วนตัว (canAssignTask — มอบได้
     // เฉพาะตัวเอง) + อัปเดตขั้นตอนรายตัว (pmTaskEditTier 'workflow' — เฉพาะงานที่
     // มอบให้เขา/ฝ่ายเขา แก้ได้แค่สถานะ/โน้ต). viewer คงอ่านอย่างเดียวทุกเส้น.
-    if (can(role, 'pm:view') && role !== 'viewer') {
+    if (can(role, 'pm:view') && !isReadOnlyObserver(role)) {
       if (path.startsWith('/api/pm/personal-tasks')) return true;
       if (method === 'PATCH' && /^\/api\/pm\/project-tasks\/[^/]+$/.test(path)) return true;
     }
@@ -244,6 +244,18 @@ function apiWriteAllowed(method, path, role, extraCaps) {
     return can(role, 'salesplan:edit') || can(role, 'inquiries:respond');
   }
   if (path.startsWith('/api/sales-planning')) return can(role, 'salesplan:edit');
+  // ระบบขอราคาต้นทุน (/api/sa/costing) — ต้องมาก่อนกฎ /api/sa ด้านล่าง เพราะ
+  // สามเส้นนี้ถือคนละ cap: ผู้บริหารอนุมัติได้ทั้งที่ไม่มี salesplan:edit, และ
+  // RD/PC ตอบราคาได้ทั้งที่ไม่มีสิทธิ์แก้งานขายเลย. สิทธิ์รายแถว (บรรทัดของฝ่ายตน
+  // ผ่าน sourceDept, สถานะใบ) บังคับใน handler ซึ่ง proxy มองไม่เห็น.
+  if (path.startsWith('/api/sa/costing')) {
+    if (/\/approve$/.test(path)) return can(role, 'costing:approve');
+    if (/\/quote$/.test(path)) return can(role, 'costing:quote');
+    return can(role, 'costing:edit');
+  }
+  // แม่แบบต้นทุนต่อประเภทสินค้า — ข้อมูลหลักของระบบ ผู้ดูแลระบบเท่านั้น
+  // (มติ 2026-07-22: ผู้บริหารมีหน้าที่อนุมัติ ไม่ได้ดูแล master data)
+  if (path.startsWith('/api/cost-templates')) return can(role, 'master:manage');
   // Native /sa APIs are part of Sales Planning (for example, creating a
   // project container before deals are linked). Keep the same write gate.
   if (path.startsWith('/api/sa')) return can(role, 'salesplan:edit');
