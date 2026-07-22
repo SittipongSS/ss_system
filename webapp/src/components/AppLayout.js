@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound } from 'lucide-react';
+import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canManageProductCategories, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canManageProductCategories, canViewCosting, departmentFor, normalizeDepartment, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -213,6 +213,10 @@ export default function AppLayout({ children }) {
         { href: '/sa/sales-orders', name: 'Sale Order', icon: ClipboardList, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
         // เรื่องสอบถาม Sale ↔ RD (mig 0104) — ฝั่งขายเห็นตาม scope ดีล, rd เห็นของฝ่ายตน
         { href: '/sa/inquiries', name: 'สอบถาม RD', icon: MessageCircleQuestion, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/inquiries') },
+        // ใบขอราคาต้นทุน (mig 0141) — ฝ่ายขาย/RD/PC/ผู้บริหารใช้หน้าเดียวกัน
+        // cap costing:view กว้างเกินจริง (role staff ถือทั้ง PD/WH/QC ด้วย) จึงต้อง
+        // แคบด้วยฝ่ายผ่าน canViewCosting ไม่งั้นฝ่ายที่ไม่เกี่ยวเห็นเมนูต้นทุน
+        { href: '/sa/costing', name: 'ขอราคาต้นทุน', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },
@@ -239,7 +243,9 @@ export default function AppLayout({ children }) {
     },
   ];
 
-  const userContext = { role, team, extraCaps };
+  // department จำเป็นสำหรับเมนูที่ cap อย่างเดียวกว้างเกิน แล้วต้องแคบด้วยฝ่าย
+  // (เช่น ใบขอราคาต้นทุน — ฝ่ายจัดซื้อใช้ role staff ร่วมกับ PD/WH/QC)
+  const userContext = { role, team, department, extraCaps };
   const activeSystemDefinition = getSystemByKey(activeSystem);
   const systemSubtitle = activeSystem === 'settings'
     ? 'การตั้งค่าระบบ'
@@ -261,7 +267,9 @@ export default function AppLayout({ children }) {
         items: group.items.filter((item) => {
           const caps = item.caps || [item.cap];
           return caps.some((cap) => canUser(userContext, cap)) &&
-            (!item.managerOnly || canManageProductCategories(role));
+            (!item.managerOnly || canManageProductCategories(role)) &&
+            // ด่านเพิ่มสำหรับเมนูที่ cap กว้างกว่าผู้ใช้จริง (ดู costing:view)
+            (!item.visible || item.visible(userContext));
         }),
       };
     })

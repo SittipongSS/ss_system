@@ -1,0 +1,204 @@
+// ── ระบบขอราคาต้นทุน (Costing Request, mig 0141) ────────────────────────
+// ฝ่ายขายเปิดใบผูกดีล → กางบรรทัดต้นทุนจากแม่แบบของประเภทสินค้า (mig 0140) →
+// RD ตอบราคาวัตถุดิบ / PC ตอบราคาบรรจุภัณฑ์ → ผู้บริหารอนุมัติราคาผลิต
+// **รายสินค้า** → ป้อนกลับเป็นต้นทุน FG
+//
+// มติที่ฝังอยู่ในไฟล์นี้ (2026-07-22):
+//   • อนุมัติรายสินค้า — สถานะใบคำนวณจากลูกทุกครั้ง ไม่มีใครกดเปลี่ยนตรง ๆ
+//   • ตัวนับ "อนุมัติแล้ว x/y" นับสดเสมอ ไม่เก็บเป็นคอลัมน์ (กันเลขเพี้ยนจากของจริง)
+//   • ชั้น MOQ ดูจากการเทียบ qty กับ moq ของใบ ไม่เก็บธงซ้ำ
+import { canApproveCosting, canQuoteCosting, canViewCosting, isSuperuser } from '@/lib/permissions';
+import { inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { businessMonthKey } from '@/lib/businessDate';
+
+export const COSTING_STATUSES = [
+  'draft', 'pricing', 'assembling', 'pending_exec', 'returned', 'approved', 'linked', 'cancelled',
+];
+
+export const COSTING_STATUS_LABELS = {
+  draft: 'ร่าง',
+  pricing: 'รอราคา RD/PC',
+  assembling: 'กำลังประกอบต้นทุน',
+  pending_exec: 'รอผู้บริหารอนุมัติ',
+  returned: 'ตีกลับให้แก้',
+  approved: 'อนุมัติครบแล้ว',
+  linked: 'ป้อนต้นทุนแล้ว',
+  cancelled: 'ยกเลิก',
+};
+
+// สีของ pill ตามระบบ token (ห้ามใส่ hex ตรง ๆ — ดู material-design skill)
+export const COSTING_STATUS_TONES = {
+  draft: 'var(--text-3)',
+  pricing: 'var(--blue)',
+  assembling: 'var(--teal)',
+  pending_exec: 'var(--amber)',
+  returned: 'var(--red)',
+  approved: 'var(--green)',
+  linked: 'var(--violet)',
+  cancelled: 'var(--text-3)',
+};
+
+// สถานะที่ถือว่า "ใบยังเดินอยู่" — ใช้กรองคิวและเตือนตอนดีลหลุด
+export const COSTING_OPEN_STATUSES = ['draft', 'pricing', 'assembling', 'pending_exec', 'returned'];
+
+export const ITEM_APPROVAL_STATUSES = ['pending', 'approved', 'returned'];
+export const ITEM_APPROVAL_LABELS = {
+  pending: 'รออนุมัติ',
+  approved: 'อนุมัติแล้ว',
+  returned: 'ตีกลับ',
+};
+
+export function normalizeCostingStatus(value) {
+  return COSTING_STATUSES.includes(value) ? value : 'draft';
+}
+
+// ── ตัวนับความคืบหน้า — นับสดจากลูกเสมอ ────────────────────────────────
+export function approvalProgress(items = []) {
+  const total = items.length;
+  let approved = 0;
+  let returned = 0;
+  for (const item of items) {
+    if (item?.approvalStatus === 'approved') approved += 1;
+    else if (item?.approvalStatus === 'returned') returned += 1;
+  }
+  return { total, approved, returned, pending: total - approved - returned };
+}
+
+export function pricingProgress(components = []) {
+  // บรรทัดค่าดำเนินการคิดภายใน ไม่ต้องรอใครตอบ — ไม่นับเข้าตัวหารของคิวขอราคา
+  const asked = components.filter((c) => c?.sourceDept);
+  const quoted = asked.filter((c) => c?.priceStatus === 'quoted');
+  return { total: asked.length, quoted: quoted.length, pending: asked.length - quoted.length };
+}
+
+// ── สถานะใบ: คำนวณจากสถานะอนุมัติของลูกเสมอ ───────────────────────────
+// เรียกทุกครั้งหลังอนุมัติ/ตีกลับรายสินค้า ในทรานแซกชันเดียวกับ action นั้น
+// (ไม่มีปุ่ม "ปิดใบ" แยกให้ใครลืมกด). ใช้เฉพาะช่วงอนุมัติ — ก่อนหน้านั้นสถานะ
+// ถูกขับด้วยเหตุการณ์อื่น (ส่งขอราคา/ราคาครบ) จึงคืนค่าเดิมไป
+export function deriveRequestStatusAfterApproval(items = [], currentStatus = 'pending_exec') {
+  if (currentStatus === 'cancelled' || currentStatus === 'linked') return currentStatus;
+  if (!['pending_exec', 'returned', 'approved'].includes(currentStatus)) return currentStatus;
+  if (items.length === 0) return currentStatus;
+
+  const { total, approved, returned } = approvalProgress(items);
+  // ตีกลับแม้รายการเดียว = ใบกลับไปอยู่ในมือฝ่ายขาย (รายการที่อนุมัติแล้วไม่หลุด)
+  if (returned > 0) return 'returned';
+  if (approved === total) return 'approved';
+  return 'pending_exec';
+}
+
+// ราคาครบทุกบรรทัดที่ต้องถามหรือยัง → ใบพร้อมให้ฝ่ายขายประกอบต้นทุน
+export function deriveRequestStatusAfterQuote(components = [], currentStatus = 'pricing') {
+  if (currentStatus !== 'pricing') return currentStatus;
+  const { total, pending } = pricingProgress(components);
+  return total > 0 && pending === 0 ? 'assembling' : 'pricing';
+}
+
+// ── สูตรต้นทุนต่อชิ้น ──────────────────────────────────────────────────
+// วัตถุดิบซื้อเป็นกิโล ต้องแปลงด้วยกรัม/ชิ้น; บรรจุภัณฑ์/ค่าดำเนินการเป็นบาท/ชิ้นอยู่แล้ว
+// คืน null เมื่อยังไม่มีข้อมูลพอ (ยังไม่ตอบราคา / ยังไม่ระบุกรัม) — อย่าคืน 0
+// เพราะ 0 แปลว่า "ฟรี" ซึ่งคนละความหมายกับ "ยังไม่รู้"
+// null/undefined/'' = ยังไม่กรอก → null. ห้ามใช้ Number() ตรง ๆ เพราะ Number(null)
+// และ Number('') คืน 0 ซึ่งจะกลายเป็น "ราคา 0 บาท" ทั้งที่แปลว่ายังไม่รู้ราคา
+function numberOrNull(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function componentUnitCost(component) {
+  if (!component) return null;
+  if (component.unitBasis === 'per_kg') {
+    const pricePerKg = numberOrNull(component.pricePerKg);
+    const grams = numberOrNull(component.gramsPerUnit);
+    if (pricePerKg == null || grams == null || grams <= 0) return null;
+    return (pricePerKg * grams) / 1000;
+  }
+  return numberOrNull(component.pricePerUnit);
+}
+
+// ต้นทุนรวมต่อชิ้นของสินค้าหนึ่งตัว
+// complete = false แปลว่ายังมีบรรทัด "บังคับ" ที่ยังไม่มีราคา → ตัวเลขยังไม่ใช่ของจริง
+export function itemUnitCost(components = []) {
+  let total = 0;
+  let complete = true;
+  for (const component of components) {
+    const cost = componentUnitCost(component);
+    if (cost == null) {
+      if (component?.required !== false) complete = false;
+      continue;
+    }
+    total += cost;
+  }
+  return { total, complete };
+}
+
+// ── ชั้นจำนวน ──────────────────────────────────────────────────────────
+export function isMoqTier(tier, moq) {
+  return Number(tier?.qty) === Number(moq);
+}
+
+// ชั้นที่ใช้ป้อนต้นทุนกลับ FG (PR6) = ชั้น MOQ ถ้ามี ไม่งั้นชั้นน้อยสุดที่มีราคา
+export function baselineTier(tiers = [], moq) {
+  const priced = tiers.filter((t) => t?.approvedUnitPrice != null);
+  if (!priced.length) return null;
+  return priced.find((t) => isMoqTier(t, moq))
+    || [...priced].sort((a, b) => Number(a.qty) - Number(b.qty))[0];
+}
+
+// ── สิทธิ์รายใบ ────────────────────────────────────────────────────────
+// เห็นใบ: ฝ่ายขายตาม scope ดีลเดิม (viewer/executive ได้ 'all' อยู่แล้ว);
+// RD/PC เห็นทุกใบที่มีบรรทัดของฝ่ายตน — คิวเป็นของทั้งฝ่ายเหมือน inquiries
+export function canViewCostingRequest(user, request) {
+  if (!user || !request) return false;
+  if (!canViewCosting(user)) return false;
+  if (canQuoteCosting(user) || canApproveCosting(user)) return true;
+  return inSalesViewScope(user, { team: request.team, ownerId: request.requestedById });
+}
+
+// แก้ใบ (ประกอบต้นทุน/เพิ่มสินค้า): ฝ่ายขายเจ้าของใบตาม scope แก้ไขเดิม
+// ใบที่จบแล้วหรือยกเลิกแล้วแก้ไม่ได้
+export function canEditCostingRequest(user, request) {
+  if (!user || !request) return false;
+  if (['approved', 'linked', 'cancelled'].includes(request.status)) return false;
+  if (isSuperuser(user.role)) return true;
+  return inSalesEditScope(user, { team: request.team, ownerId: request.requestedById });
+}
+
+// ── เลขที่เอกสาร: CR-YYMMXXXX (เลขรัน atomic ต่อเดือน — RPC เดิม mig 0096) ──
+export async function generateCostingDocNo(supabase, now = new Date()) {
+  const month = businessMonthKey(now);
+  const { data, error } = await supabase.rpc('next_entity_number', { p_scope: 'CR', p_month: month });
+  if (error) throw new Error(`ออกเลขที่ใบขอราคาไม่สำเร็จ: ${error.message}`);
+  return `CR-${month}${String(data).padStart(4, '0')}`;
+}
+
+// ── บริบทจากดีล ────────────────────────────────────────────────────────
+// ใบขอราคาผูกดีลเสมอ (ขอราคา = มียอดอนาคต ต้องมีดีลรองรับ). ลูกค้า/ทีมอ่านจาก
+// ดีลจริงเสมอ ไม่เชื่อค่าที่ client ส่งมา — กัน UI ค้างส่งคู่ที่ไม่ตรงกัน
+// แล้วใบไปโผล่ใต้ลูกค้าผิดตัว (แพตเทิร์นเดียวกับ resolveInquiryContext)
+export async function resolveCostingDealContext(supabase, user, dealId) {
+  if (!dealId) return { error: 'ต้องเลือกดีล' };
+  const { data: deal } = await supabase
+    .from('sales_deals')
+    .select('id, code, title, customerId, customerName, projectId, team, ownerId, status')
+    .eq('id', dealId)
+    .maybeSingle();
+  if (!deal) return { error: 'ไม่พบดีล' };
+  if (!isSuperuser(user?.role) && !inSalesEditScope(user, deal)) {
+    return { error: 'ไม่มีสิทธิ์เปิดใบขอราคาในนามดีลนี้', status: 403 };
+  }
+  if (!deal.customerId) {
+    return { error: 'ดีลนี้ยังไม่ได้ระบุลูกค้า — ระบุลูกค้าที่หน้าดีลก่อน' };
+  }
+  return {
+    deal,
+    context: {
+      dealId: deal.id,
+      projectId: deal.projectId ?? null,
+      customerId: deal.customerId,
+      customerName: deal.customerName ?? null,
+      team: deal.team ?? user?.team ?? null,
+    },
+  };
+}
