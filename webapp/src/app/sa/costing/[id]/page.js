@@ -3,8 +3,9 @@
 // เจ้าของใบ (ตาม canEditCostingRequest). การตอบราคา RD/PC และการอนุมัติของ
 // ผู้บริหารมาใน PR4 — หน้านี้แสดงบรรทัดต้นทุนแบบอ่านอย่างเดียวไปก่อน
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Calculator, Pencil, Ban, Send, Check, Undo2 } from "lucide-react";
+import { Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink } from "lucide-react";
 import Modal from "@/components/Modal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -18,9 +19,9 @@ import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
   COSTING_STATUS_LABELS, COSTING_STATUS_TONES, ITEM_APPROVAL_LABELS,
-  approvalProgress, canDecideItem, canEditCostingRequest, canQuoteComponent, canQuoteOnRequest,
-  componentUnitCost, isMoqTier, itemUnitCost, pricingProgress,
-  submitForPricingError, submitToExecError,
+  approvalProgress, canDecideItem, canEditCostingRequest, canFeedCostFromRequest,
+  canQuoteComponent, canQuoteOnRequest, componentUnitCost, feedCostError, feedCostValue,
+  isMoqTier, itemUnitCost, pricingProgress, submitForPricingError, submitToExecError,
 } from "@/lib/costing";
 import { COST_LINE_KIND_LABELS } from "@/lib/master/costTemplate";
 
@@ -51,6 +52,8 @@ export default function CostingDetailPage() {
   const [decision, setDecision] = useState(null);
   const [tierDraft, setTierDraft] = useState({});
   const [returnReason, setReturnReason] = useState("");
+  // รายการที่รอยืนยันก่อนป้อนต้นทุนกลับสินค้า
+  const [pendingFeed, setPendingFeed] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,6 +82,10 @@ export default function CostingDetailPage() {
   // ใช้ role/team/department ที่ context ให้มา; server กันซ้ำอยู่แล้ว)
   const canEdit = useMemo(
     () => !!request && canEditCostingRequest({ role, team, department, id: request.requestedById }, request),
+    [request, role, team, department],
+  );
+  const canFeed = useMemo(
+    () => !!request && canFeedCostFromRequest({ role, team, department, id: request.requestedById }, request),
     [request, role, team, department],
   );
 
@@ -265,6 +272,13 @@ export default function CostingDetailPage() {
           <span style={{ fontSize: 12, color: "var(--text-3)" }}>
             ผู้ขอ {request.requestedByName || "—"}
           </span>
+          {/* ลิงก์กลับดีลต้นทาง — ใบขอราคาผูกดีลเสมอ */}
+          <Link
+            href={`/sa/deals/${request.dealId}`}
+            style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            <ExternalLink size={12} /> เปิดดีลต้นทาง
+          </Link>
         </div>
         {request.note && (
           <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-2)" }}>{request.note}</p>
@@ -399,6 +413,28 @@ export default function CostingDetailPage() {
                 inlineUpload
               />
             </div>
+
+            {/* ป้อนต้นทุนกลับสินค้า — โผล่หลังอนุมัติ และหายเมื่อป้อนแล้ว */}
+            {item.costFedAt ? (
+              <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--green)" }}>
+                ป้อนต้นทุน {money(item.costFedPrice)} ฿/ชิ้น เข้าสินค้าแล้ว
+                {item.costFedTierQty ? ` (อ้างชั้น ${Number(item.costFedTierQty).toLocaleString("th-TH")} ชิ้น)` : ""}
+                {item.costFedByName ? ` โดย ${item.costFedByName}` : ""}
+              </p>
+            ) : canFeed && item.approvalStatus === "approved" && (
+              <div className="action-bar" style={{ marginTop: 12 }}>
+                <span style={{ marginRight: "auto", fontSize: 12, color: "var(--text-3)" }}>
+                  {feedCostError(item, request.moq)
+                    || `จะเขียนต้นทุน ${money(feedCostValue(item, request.moq))} ฿/ชิ้น ลงสินค้าที่ผูกไว้`}
+                </span>
+                <button
+                  type="button" className="btn btn-accent" disabled={saving || !!feedCostError(item, request.moq)}
+                  onClick={() => setPendingFeed(item)}
+                >
+                  <ArrowDownToLine size={14} /> ป้อนเป็นต้นทุน FG
+                </button>
+              </div>
+            )}
 
             {canDecideItem(me, request, item) && (
               <div className="action-bar" style={{ marginTop: 12 }}>
@@ -570,6 +606,21 @@ export default function CostingDetailPage() {
           );
         })()}
       </Modal>
+
+      <ConfirmDialog
+        open={!!pendingFeed}
+        title="ป้อนต้นทุนเข้าสินค้า"
+        description={pendingFeed
+          ? `เขียนต้นทุน ${money(feedCostValue(pendingFeed, request.moq))} บาท/ชิ้น ลงสินค้าที่ผูกกับ "${pendingFeed.productLabel}"`
+          : ""}
+        detail="ราคาเดิมของสินค้าจะถูกแทนที่ และบันทึกไว้ในประวัติราคาว่ามาจากใบขอราคาใบนี้ — สถานะอนุมัติของสินค้าไม่เปลี่ยน เพราะราคาผ่านการอนุมัติของผู้บริหารมาแล้ว"
+        confirmLabel="ป้อนต้นทุน"
+        busy={saving}
+        onConfirm={() => runAction("/feed-cost", {
+          method: "POST", body: JSON.stringify({ itemId: pendingFeed.id }),
+        }, "ป้อนต้นทุนเข้าสินค้าแล้ว").then((ok) => { if (ok) setPendingFeed(null); })}
+        onClose={() => setPendingFeed(null)}
+      />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
