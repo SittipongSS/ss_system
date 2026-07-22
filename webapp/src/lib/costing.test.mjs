@@ -4,8 +4,12 @@ import assert from 'node:assert/strict';
 import {
   approvalProgress,
   baselineTier,
+  allApprovedItemsLinked,
   canDecideItem,
   canEditCostingRequest,
+  canFeedCostFromRequest,
+  feedCostError,
+  feedCostValue,
   canQuoteComponent,
   canQuoteOnRequest,
   canViewCostingRequest,
@@ -261,6 +265,67 @@ test('อนุมัติรายการ: เฉพาะผู้บริ
     assert.equal(canDecideItem({ role }, req, { approvalStatus: 'pending' }), false, role);
   }
   assert.equal(canDecideItem({ role: 'admin' }, req, { approvalStatus: 'pending' }), true);
+});
+
+// ── ป้อนต้นทุนกลับสินค้า FG (PR6) ─────────────────────────────────────
+const approvedItem = (extra = {}) => ({
+  approvalStatus: 'approved',
+  productId: 'PRD-1',
+  tiers: [{ qty: 500, approvedUnitPrice: 120 }, { qty: 1000, approvedUnitPrice: 100 }],
+  ...extra,
+});
+
+test('ป้อนต้นทุน: ต้องอนุมัติแล้ว ผูก FG แล้ว และมีราคาในชั้นอ้างอิง', () => {
+  assert.equal(feedCostError(approvedItem(), 1000), null);
+  assert.match(feedCostError(approvedItem({ approvalStatus: 'pending' }), 1000), /ต้องอนุมัติ/);
+  assert.match(feedCostError(approvedItem({ productId: null }), 1000), /ยังไม่ได้ผูกกับสินค้า/);
+  assert.match(
+    feedCostError(approvedItem({ tiers: [{ qty: 1000, approvedUnitPrice: null }] }), 1000),
+    /ยังไม่มีราคาที่อนุมัติ/,
+  );
+  assert.match(feedCostError(null, 1000), /ไม่พบรายการ/);
+});
+
+test('ป้อนต้นทุน: ใช้ราคาชั้น MOQ ก่อน ไม่มีค่อยตกไปชั้นน้อยสุดที่มีราคา', () => {
+  assert.equal(feedCostValue(approvedItem(), 1000), 100);
+  // MOQ 3000 ไม่มีชั้นตรง → ตกไปชั้นน้อยสุดที่มีราคา (500)
+  assert.equal(feedCostValue(approvedItem(), 3000), 120);
+  assert.equal(feedCostValue({ tiers: [] }, 1000), null);
+});
+
+test('ใบจบสมบูรณ์เมื่อรายการที่อนุมัติทุกตัวถูกป้อนกลับแล้ว', () => {
+  assert.equal(allApprovedItemsLinked([
+    { approvalStatus: 'approved', costFedAt: '2026-07-23T00:00:00Z' },
+    { approvalStatus: 'approved', costFedAt: '2026-07-23T00:00:00Z' },
+  ]), true);
+  // ยังเหลือตัวที่ยังไม่ป้อน
+  assert.equal(allApprovedItemsLinked([
+    { approvalStatus: 'approved', costFedAt: '2026-07-23T00:00:00Z' },
+    { approvalStatus: 'approved', costFedAt: null },
+  ]), false);
+  // รายการที่ถูกตีกลับแล้วเลิกทำ ไม่ควรค้างใบไว้ตลอดกาล
+  assert.equal(allApprovedItemsLinked([
+    { approvalStatus: 'approved', costFedAt: '2026-07-23T00:00:00Z' },
+    { approvalStatus: 'returned', costFedAt: null },
+  ]), true);
+  // ไม่มีรายการที่อนุมัติเลย = ยังไม่จบ
+  assert.equal(allApprovedItemsLinked([{ approvalStatus: 'pending' }]), false);
+  assert.equal(allApprovedItemsLinked([]), false);
+});
+
+test('สิทธิ์ป้อนต้นทุน: ต้องมี products:edit ด้วย และเฉพาะใบที่อนุมัติแล้ว', () => {
+  const req = { status: 'approved', team: 'KA', requestedById: 'u-ae' };
+  const ae = { id: 'u-ae', role: 'ae', team: 'KA' };
+  assert.equal(canFeedCostFromRequest(ae, req), true);
+  // ใบยังไม่อนุมัติ
+  assert.equal(canFeedCostFromRequest(ae, { ...req, status: 'pending_exec' }), false);
+  // ใบที่ป้อนไปแล้วบางส่วน (linked) ยังป้อนตัวที่เหลือได้
+  assert.equal(canFeedCostFromRequest(ae, { ...req, status: 'linked' }), true);
+  // ผู้บริหาร/RD ไม่มี products:edit → ป้อนไม่ได้
+  assert.equal(canFeedCostFromRequest({ role: 'executive' }, req), false);
+  assert.equal(canFeedCostFromRequest({ role: 'rd', department: 'RD' }, req), false);
+  // AE ทีมอื่นไม่ใช่เจ้าของใบ
+  assert.equal(canFeedCostFromRequest({ id: 'u-x', role: 'ae', team: 'ODM' }, req), false);
 });
 
 test('แก้ใบ: ปิดตายเมื่ออนุมัติครบ/ป้อนต้นทุนแล้ว/ยกเลิก', () => {

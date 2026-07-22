@@ -8,7 +8,7 @@
 //   • ตัวนับ "อนุมัติแล้ว x/y" นับสดเสมอ ไม่เก็บเป็นคอลัมน์ (กันเลขเพี้ยนจากของจริง)
 //   • ชั้น MOQ ดูจากการเทียบ qty กับ moq ของใบ ไม่เก็บธงซ้ำ
 import {
-  canApproveCosting, canQuoteCosting, canViewCosting, isSuperuser, normalizeDepartment,
+  canApproveCosting, canQuoteCosting, canUser, canViewCosting, isSuperuser, normalizeDepartment,
 } from '@/lib/permissions';
 import { inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { businessMonthKey } from '@/lib/businessDate';
@@ -148,6 +148,31 @@ export function baselineTier(tiers = [], moq) {
     || [...priced].sort((a, b) => Number(a.qty) - Number(b.qty))[0];
 }
 
+// ── ป้อนต้นทุนกลับสินค้า FG (PR6) ──────────────────────────────────────
+// รายการที่พร้อมป้อนกลับ: อนุมัติราคาแล้ว + ผูก FG แล้ว + มีชั้นอ้างอิงที่มีราคา
+export function feedCostError(item, moq) {
+  if (!item) return 'ไม่พบรายการสินค้า';
+  if (item.approvalStatus !== 'approved') return 'ต้องอนุมัติราคาผลิตของรายการนี้ก่อน';
+  if (!item.productId) return 'รายการนี้ยังไม่ได้ผูกกับสินค้า (FG) ในระบบ';
+  const tier = baselineTier(item.tiers || [], moq);
+  if (!tier) return 'ยังไม่มีราคาที่อนุมัติในชั้นจำนวนใดเลย';
+  return null;
+}
+
+// ต้นทุนที่จะเขียนลง products.costPrice = ราคาผลิตที่อนุมัติ ณ ชั้นอ้างอิง
+// (ชั้น MOQ ก่อน ไม่มีก็ชั้นน้อยสุดที่มีราคา — ดู baselineTier)
+export function feedCostValue(item, moq) {
+  const tier = baselineTier(item?.tiers || [], moq);
+  return tier ? Number(tier.approvedUnitPrice) : null;
+}
+
+// ใบจบสมบูรณ์เมื่อรายการที่อนุมัติทุกตัวถูกป้อนกลับ FG แล้ว
+// (รายการที่ไม่ได้อนุมัติไม่นับ — ใบอาจมีบางตัวที่ถูกตีกลับแล้วเลิกทำ)
+export function allApprovedItemsLinked(items = []) {
+  const approved = items.filter((i) => i?.approvalStatus === 'approved');
+  return approved.length > 0 && approved.every((i) => !!i.costFedAt);
+}
+
 // ── สิทธิ์รายใบ ────────────────────────────────────────────────────────
 // เห็นใบ: ฝ่ายขายตาม scope ดีลเดิม (viewer/executive ได้ 'all' อยู่แล้ว);
 // RD/PC เห็นทุกใบที่มีบรรทัดของฝ่ายตน — คิวเป็นของทั้งฝ่ายเหมือน inquiries
@@ -156,6 +181,17 @@ export function canViewCostingRequest(user, request) {
   if (!canViewCosting(user)) return false;
   if (canQuoteCosting(user) || canApproveCosting(user)) return true;
   return inSalesViewScope(user, { team: request.team, ownerId: request.requestedById });
+}
+
+// ป้อนต้นทุนกลับ FG: ฝ่ายขายเจ้าของใบ + ต้องถือสิทธิ์แก้สินค้าด้วย (เพราะปลายทาง
+// คือการเขียนราคาลง products). ทำได้เฉพาะตอนใบอนุมัติแล้ว — คนละด่านกับ
+// canEditCostingRequest ซึ่งปิดตายหลังอนุมัติโดยตั้งใจ
+export function canFeedCostFromRequest(user, request) {
+  if (!user || !request) return false;
+  if (!['approved', 'linked'].includes(request.status)) return false;
+  if (!canUser(user, 'products:edit')) return false;
+  if (isSuperuser(user.role)) return true;
+  return inSalesEditScope(user, { team: request.team, ownerId: request.requestedById });
 }
 
 // แก้ใบ (ประกอบต้นทุน/เพิ่มสินค้า): ฝ่ายขายเจ้าของใบตาม scope แก้ไขเดิม
