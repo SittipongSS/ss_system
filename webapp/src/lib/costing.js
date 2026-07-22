@@ -7,7 +7,9 @@
 //   • อนุมัติรายสินค้า — สถานะใบคำนวณจากลูกทุกครั้ง ไม่มีใครกดเปลี่ยนตรง ๆ
 //   • ตัวนับ "อนุมัติแล้ว x/y" นับสดเสมอ ไม่เก็บเป็นคอลัมน์ (กันเลขเพี้ยนจากของจริง)
 //   • ชั้น MOQ ดูจากการเทียบ qty กับ moq ของใบ ไม่เก็บธงซ้ำ
-import { canApproveCosting, canQuoteCosting, canViewCosting, isSuperuser } from '@/lib/permissions';
+import {
+  canApproveCosting, canQuoteCosting, canViewCosting, isSuperuser, normalizeDepartment,
+} from '@/lib/permissions';
 import { inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { businessMonthKey } from '@/lib/businessDate';
 
@@ -163,6 +165,58 @@ export function canEditCostingRequest(user, request) {
   if (['approved', 'linked', 'cancelled'].includes(request.status)) return false;
   if (isSuperuser(user.role)) return true;
   return inSalesEditScope(user, { team: request.team, ownerId: request.requestedById });
+}
+
+// ── ขั้นตอนการเดินใบ (PR4) ─────────────────────────────────────────────
+// ส่งขอราคาได้เมื่อยังเป็นร่าง และมีบรรทัดที่ต้องถามฝ่ายอื่นจริง ๆ
+// (ใบที่มีแต่ค่าดำเนินการภายในไม่ต้องรบกวน RD/PC — ข้ามไปประกอบต้นทุนเลย)
+export function submitForPricingError(request) {
+  if (!request) return 'ไม่พบใบขอราคา';
+  if (request.status !== 'draft') return 'ส่งขอราคาได้เฉพาะใบที่ยังเป็นร่าง';
+  if (!(request.items || []).length) return 'ใบนี้ยังไม่มีรายการสินค้า';
+  return null;
+}
+
+// ส่งให้ผู้บริหารได้เมื่อราคาที่ต้องถามครบแล้ว และต้นทุนของทุกรายการคำนวณได้จริง
+// — ส่งไปทั้งที่ยังไม่มีราคา = ผู้บริหารตั้งราคาบนตัวเลขที่ไม่ครบ
+export function submitToExecError(request) {
+  if (!request) return 'ไม่พบใบขอราคา';
+  if (!['assembling', 'returned', 'pricing'].includes(request.status)) {
+    return 'ใบนี้ยังไม่อยู่ในขั้นตอนที่ส่งให้ผู้บริหารได้';
+  }
+  const items = request.items || [];
+  if (!items.length) return 'ใบนี้ยังไม่มีรายการสินค้า';
+
+  const pricing = pricingProgress(items.flatMap((i) => i.components || []));
+  if (pricing.pending > 0) {
+    return `ยังมีบรรทัดที่รอราคาอยู่ ${pricing.pending} รายการ`;
+  }
+  const incomplete = items.find((item) => !itemUnitCost(item.components || []).complete);
+  if (incomplete) {
+    return `ต้นทุนของ "${incomplete.productLabel}" ยังคำนวณไม่ครบ — ตรวจกรัม/ชิ้นและราคาให้ครบก่อน`;
+  }
+  return null;
+}
+
+// บรรทัดที่ผู้ใช้คนนี้ตอบราคาได้: ต้องถือ costing:quote และเป็นฝ่ายเจ้าของบรรทัด
+// (admin ตอบแทนได้เป็น break-glass ผ่าน canQuoteCosting)
+export function canQuoteComponent(user, component) {
+  if (!component?.sourceDept) return false;      // ค่าดำเนินการภายใน ไม่มีใครต้องตอบ
+  if (!canQuoteCosting(user)) return false;
+  if (isSuperuser(user?.role)) return true;
+  return normalizeDepartment(user?.department) === component.sourceDept;
+}
+
+// ใบนี้อยู่ในสถานะที่ให้ตอบราคาได้ไหม (ตอบตอนยังร่าง/อนุมัติแล้ว = ผิดจังหวะ)
+export function canQuoteOnRequest(request) {
+  return ['pricing', 'assembling', 'returned'].includes(request?.status);
+}
+
+// ผู้บริหารอนุมัติ/ตีกลับได้เฉพาะตอนใบรออนุมัติอยู่ และเฉพาะรายการที่ยังไม่ตัดสิน
+export function canDecideItem(user, request, item) {
+  if (!canApproveCosting(user)) return false;
+  if (!['pending_exec', 'returned'].includes(request?.status)) return false;
+  return item?.approvalStatus === 'pending';
 }
 
 // ── เลขที่เอกสาร: CR-YYMMXXXX (เลขรัน atomic ต่อเดือน — RPC เดิม mig 0096) ──
