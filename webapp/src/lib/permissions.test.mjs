@@ -180,11 +180,22 @@ test('canDeleteRegistrationRole ตรงกับ deleteScope ของ registr
   assert.equal(canDeleteRegistrationRole('ae_supervisor'), true);
   assert.equal(canDeleteRegistrationRole('senior_ae'), true);
   assert.equal(canDeleteRegistrationRole('ae'), true);
-  assert.equal(canDeleteRegistrationRole('ac'), false);
+  assert.equal(canDeleteRegistrationRole('ac'), true);
+  // LG ตรวจอนุมัติ/ตีกลับ ไม่ลบงานฝ่ายขาย; observer ลบไม่ได้อยู่แล้ว
   assert.equal(canDeleteRegistrationRole('legal'), false);
-  // ae ลบได้เฉพาะทะเบียนของตัวเอง (ด่านจริงราย record)
-  assert.equal(canDeleteRecord({ role: 'ae', id: 'u1' }, 'registrations', { ownerId: 'u1' }), true);
-  assert.equal(canDeleteRecord({ role: 'ae', id: 'u1' }, 'registrations', { ownerId: 'u2' }), false);
+  assert.equal(canDeleteRegistrationRole('viewer'), false);
+});
+
+// มติ 2026-07-22: ทะเบียนร่าง = งานยังไม่เข้าระบบ ทีมจัดการกันเองได้ (ไม่ต้องเป็น
+// เจ้าของ) แต่ยังข้ามทีมไม่ได้ — "ลบได้เฉพาะร่าง" บังคับที่ registrationDeleteBlock
+test('ลบทะเบียน: ทุก role ฝ่ายขายลบของทีมตัวเองได้ ข้ามทีมไม่ได้', () => {
+  const reg = { team: 'KA', ownerId: 'u1' };
+  for (const role of ['ae', 'ac', 'senior_ae']) {
+    assert.equal(canDeleteRecord({ role, id: 'u2', team: 'KA' }, 'registrations', reg), true, role);
+    assert.equal(canDeleteRecord({ role, id: 'u2', team: 'ODM' }, 'registrations', reg), false, role);
+  }
+  assert.equal(canDeleteRecord({ role: 'admin', team: null }, 'registrations', reg), true);
+  assert.equal(canDeleteRecord({ role: 'legal', team: 'KA' }, 'registrations', reg), false);
 });
 
 test('pmTaskEditTier: full edit for admin / scoped sales', () => {

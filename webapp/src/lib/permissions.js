@@ -504,17 +504,18 @@ export function inPmProjectScope(user, project) {
 // Delete is stricter than edit:
 //   customers / products — superuser only (org rule)
 //   orders / projects    — superuser (all teams) + senior_ae (own team)
-//   registrations        — superuser (all) + senior_ae (own team) + ae (own draft).
-//     NOTE: registration delete must NOT fall back to canEditRecord — that would
-//     leak the legal (legal:approve bypass) and ac ("no delete") roles into the
-//     delete path. Keep the authority here so it stays consistent with orders.
+//   registrations        — superuser (all) + ทุก role ฝ่ายขายในทีมตัวเอง
+//     มติผู้ใช้ 2026-07-22: เกณฑ์คือ "ยังเป็นร่าง" ไม่ใช่ "ใครสร้าง" — ทะเบียนร่าง
+//     คืองานที่ยังไม่เข้าระบบ (ยังไม่ส่งนิติกรรมตรวจ) ทีมจัดการกันเองได้ ไม่งั้น
+//     สร้างผิดแล้วต้องรอเจ้าของ/หัวหน้ามาลบ. เหตุผลเดียวกับ pmEditScope ที่ยก AE
+//     เป็นระดับทีมเพราะเป็นงานร่วม. เงื่อนไข "ลบได้เฉพาะร่าง + ไม่มีบรรทัดใบสั่ง
+//     อ้างถึง" ไม่ได้อยู่ที่นี่ — บังคับที่ registrationDeleteBlock (lib/deletion).
+//     NOTE: ยังห้าม fallback ไป canEditRecord — legal (legal:approve bypass) ต้อง
+//     ไม่หลุดเข้ามาในเส้นทางลบ หน้าที่ LG คือตรวจอนุมัติ/ตีกลับ ไม่ใช่ลบงานฝ่ายขาย.
 export function deleteScope(role, resource) {
   if (isSuperuser(role)) return 'all';
   if ((resource === 'orders' || resource === 'projects') && role === 'senior_ae') return 'team';
-  if (resource === 'registrations') {
-    if (role === 'senior_ae') return 'team';
-    if (role === 'ae') return 'own';
-  }
+  if (resource === 'registrations' && ['senior_ae', 'ac', 'ae'].includes(role)) return 'team';
   return 'none';
 }
 
