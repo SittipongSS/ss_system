@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive } from "lucide-react";
+import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, FileCheck2 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
@@ -48,6 +48,9 @@ export default function ProductRegistry() {
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด
   const [statusFilter, setStatusFilter] = useState([]);
+  // การขึ้นทะเบียนสรรพสามิต ('none'|'in_progress'|'approved') — มีความหมายเฉพาะ
+  // หมวดสรรพสามิต: เลือกแล้วสินค้าหมวดอื่นถูกตัดออกทั้งหมด
+  const [regFilter, setRegFilter] = useState([]);
   const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
@@ -214,9 +217,17 @@ export default function ProductRegistry() {
     taxable: products.filter((p) => p.isExciseTaxable !== false).length,
     inactive: products.filter((p) => p.isActive === false).length,
   };
+  // registrationStatus แนบมาจาก server เฉพาะผู้ที่เห็นระบบภาษี (history:view) —
+  // การมี field เป็นสัญญาณเปิดตัวกรอง "การขึ้นทะเบียน"; role อื่นไม่เห็นตัวกรองเลย
+  const hasRegData = products.some((p) => p.registrationStatus !== undefined);
   const filteredProducts = products.filter((p) => {
     if (!showInactive && p.isActive === false) return false;
     if (statusFilter.length && !statusFilter.includes(approvalStatusOf(p))) return false;
+    // ตัวกรองขึ้นทะเบียนใช้ได้กับหมวดสรรพสามิตเท่านั้น — เลือกแล้วหมวดอื่นตัดออก
+    if (regFilter.length) {
+      const excise = categoryFlags(p.categoryCode || categoryOf(p.fgCode), productTypes).isExcise;
+      if (!excise || !regFilter.includes(p.registrationStatus || "none")) return false;
+    }
     if (!q) return true;
     return [p.fgCode, p.productDescription, p.productDescriptionEn, p.brandName, p.brandNameEn].some((v) => (v || "").toLowerCase().includes(q));
   });
@@ -240,7 +251,7 @@ export default function ProductRegistry() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
-      resetKey: `${q}|${statusFilter.join(",")}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
+      resetKey: `${q}|${statusFilter.join(",")}|${regFilter.join(",")}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
     });
 
   const open = (p) => (window.location.href = `/database/products/${p.id}`);
@@ -266,8 +277,8 @@ export default function ProductRegistry() {
       {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
           ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}
       <FilterPopover
-        count={statusFilter.length + (showInactive ? 1 : 0)}
-        onClear={() => { setStatusFilter([]); setShowInactive(false); }}
+        count={statusFilter.length + regFilter.length + (showInactive ? 1 : 0)}
+        onClear={() => { setStatusFilter([]); setRegFilter([]); setShowInactive(false); }}
         groups={[
           {
             key: "status", label: "สถานะอนุมัติ", icon: ClipboardCheck,
@@ -278,6 +289,17 @@ export default function ProductRegistry() {
             ],
             selected: statusFilter, onChange: setStatusFilter,
           },
+          // เฉพาะผู้เห็นระบบภาษี (server แนบ registrationStatus มาให้เท่านั้น) —
+          // มิติกรองเฉพาะหมวดสรรพสามิต: เลือกแล้วหมวดอื่นไม่แสดง
+          ...(hasRegData ? [{
+            key: "registration", label: "การขึ้นทะเบียน", icon: FileCheck2,
+            options: [
+              { value: "none", label: "ยังไม่ขึ้นทะเบียน" },
+              { value: "in_progress", label: "มีทะเบียน (รอ/ร่าง)" },
+              { value: "approved", label: "อนุมัติแล้ว" },
+            ],
+            selected: regFilter, onChange: setRegFilter,
+          }] : []),
           ...(counts.inactive > 0 ? [{
             key: "inactive", label: "ที่เลิกใช้", icon: Archive,
             options: [{ value: "show", label: `รวมสินค้าที่เลิกใช้ (${counts.inactive})` }],
@@ -324,7 +346,7 @@ export default function ProductRegistry() {
     >
       {sort.sorted.length === 0 ? (
         <EmptyState icon={Package}>
-          {q || statusFilter.length ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
+          {q || statusFilter.length || regFilter.length ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
         </EmptyState>
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
