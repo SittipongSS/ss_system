@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScopeUser } from '@/lib/permissions';
+import { canDeleteRecord, viewScopeUser } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 
@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 // ?slim=1: เฉพาะคอลัมน์ที่จอสรุป (/tax) ใช้ — ตัด snapshot ภาษี/metadata/เอกสาร
 // ออกจาก payload (ลด traffic); โหมดเต็มพฤติกรรมเดิม.
 const REGISTRATION_SELECT_SLIM =
-  'id, status, createdAt, fgCode, productName, customerName, rejectionReason, team';
+  'id, status, createdAt, fgCode, productName, customerName, rejectionReason, team, ownerId';
 
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
@@ -25,7 +25,10 @@ export async function GET(request) {
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json(data);
+  // canDelete ต่อแถว: หน้ารายละเอียดทะเบียนอ่านข้อมูลจาก "ลิสต์นี้" แล้ว find(id)
+  // (ไม่ได้ยิง endpoint รายตัว) — ถ้าไม่แนบที่นี่ ปุ่มลบจะไม่ขึ้นกับใครเลย.
+  // ownerId จึงต้องอยู่ในชุดคอลัมน์ slim ด้วย เผื่อ scope กลับไปเป็น 'own' วันหน้า
+  return Response.json((data || []).map((r) => ({ ...r, canDelete: canDeleteRecord(user, 'registrations', r) })));
 }
 
 // POST /api/excise-registrations — SA submits a master FG product for excise

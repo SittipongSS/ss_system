@@ -1,53 +1,77 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { fmtMoney } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { productSelectOptions } from "@/components/master/productOption";
 
-// Create or edit an excise registration (master FG product × customer). The
-// customer is NOT picked freely: every FG already belongs to one customer via
-// products.customerId (master-data FK), so selecting the FG derives its owner
-// customer automatically. Only FG with no owner fall back to a manual picker.
+// Create or edit an excise registration (master FG product × customer).
+// ลำดับกรอก = ลูกค้า → FG (มติผู้ใช้ 2026-07-22): ผู้ใช้คิดจาก "ขึ้นทะเบียนให้ลูกค้า
+// รายไหน" ก่อนเสมอ และรายการ FG ทั้งระบบยาวเกินกว่าจะไล่หาโดยไม่กรอง.
+// ความจริงของข้อมูลไม่เปลี่ยน: FG ผูกลูกค้าเจ้าของอยู่แล้วผ่าน products.customerId
+// จึงกรองลิสต์ FG ด้วยลูกค้าที่เลือก (FG ที่ยังไม่มีเจ้าของโชว์ท้ายลิสต์ให้ผูกได้
+// เหมือนทางเลือกเดิม แต่ต้องรู้ตัวว่ากำลังผูกของที่ยังไม่มีเจ้าของ).
+// 1 FG ขึ้นทะเบียนให้ลูกค้ารายหนึ่งได้ครั้งเดียว (unique productId+customerId) →
+// ตัวที่ขึ้นแล้วถูกซ่อนพร้อมบอกจำนวน กันผู้ใช้เลือกไปชน 409.
 // Create → POST; edit (registration prop set) → PATCH the link fields.
-export default function RegistrationFormModal({ open, onClose, onSaved, registration, products = [], customers = [], userName }) {
+export default function RegistrationFormModal({ open, onClose, onSaved, registration, products = [], customers = [], registrations = [], userName }) {
   const editing = !!registration;
-  const [productId, setProductId] = useState("");
   const [customerId, setCustomerId] = useState("");
+  const [productId, setProductId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   const selected = products.find((p) => p.id === productId);
-  const ownerId = selected?.customerId || "";
-  const owner = customers.find((c) => c.id === ownerId);
-  const ownerName = owner?.name || selected?.customerName || "";
-  const ownerArCode = owner?.arCode || "";
-  // FG with no master owner → fall back to a manual customer picker.
-  const needsManualCustomer = !!selected && !ownerId;
+  const customer = customers.find((c) => c.id === customerId);
 
   useEffect(() => {
     if (open) {
       const pid = registration?.productId || "";
       const p = products.find((x) => x.id === pid);
       setProductId(pid);
-      // Prefer the FG's master owner; fall back to the registration's customer.
-      setCustomerId(p?.customerId || registration?.customerId || "");
+      setCustomerId(registration?.customerId || p?.customerId || "");
       setError(null);
     }
   }, [open, registration?.id]);
 
-  // Selecting an FG derives its owner customer (cleared when the FG has none).
-  const handleProduct = (id) => {
-    setProductId(id);
-    const p = products.find((x) => x.id === id);
-    setCustomerId(p?.customerId || "");
+  // FG ที่ขึ้นทะเบียนกับลูกค้ารายนี้ไปแล้ว (ยกเว้นใบที่กำลังแก้อยู่)
+  const takenProductIds = useMemo(() => new Set(
+    (registrations || [])
+      .filter((r) => r.customerId === customerId && r.id !== registration?.id)
+      .map((r) => r.productId),
+  ), [registrations, customerId, registration?.id]);
+
+  // FG ของลูกค้าที่เลือก + FG ที่ยังไม่มีเจ้าของ (ผูกให้ลูกค้ารายนี้ได้)
+  const { ownedOptions, orphanOptions, hiddenCount } = useMemo(() => {
+    if (!customerId) return { ownedOptions: [], orphanOptions: [], hiddenCount: 0 };
+    // FG ของใบที่กำลังแก้ต้องอยู่ในลิสต์เสมอ แม้ถูกพักใช้งานไปแล้ว — ไม่งั้นช่อง
+    // สินค้าจะว่างทั้งที่ใบมีค่าอยู่ แล้วผู้ใช้เผลอบันทึกทับด้วยค่าว่าง
+    const usable = products.filter((p) => p.isActive !== false || p.id === registration?.productId);
+    const mine = usable.filter((p) => p.customerId === customerId);
+    const orphans = usable.filter((p) => !p.customerId);
+    const visible = [...mine, ...orphans].filter((p) => !takenProductIds.has(p.id));
+    return {
+      ownedOptions: productSelectOptions(visible.filter((p) => p.customerId === customerId)),
+      orphanOptions: productSelectOptions(visible.filter((p) => !p.customerId)),
+      hiddenCount: [...mine, ...orphans].length - visible.length,
+    };
+  }, [products, customerId, takenProductIds, registration?.productId]);
+
+  const productOptions = [...ownedOptions, ...orphanOptions];
+  const isOrphanPick = !!selected && !selected.customerId;
+
+  const handleCustomer = (id) => {
+    setCustomerId(id);
+    // FG ที่เลือกไว้ไม่ใช่ของลูกค้ารายใหม่ → ล้าง กันบันทึกคู่ที่ไม่ตรงกัน
+    const p = products.find((x) => x.id === productId);
+    if (p && p.customerId && p.customerId !== id) setProductId("");
   };
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!customerId) { setError(`กรุณาเลือก${CUSTOMER_NAME_LABEL}`); return; }
     if (!productId) { setError("กรุณาเลือกสินค้า (FG)"); return; }
-    if (!customerId) { setError(needsManualCustomer ? "FG นี้ยังไม่มีลูกค้าเจ้าของ กรุณาเลือกลูกค้า" : "กรุณาเลือกสินค้า (FG)"); return; }
     setBusy(true);
     setError(null);
     try {
@@ -75,52 +99,57 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-4">
           <div className="form-group">
-            <label>สินค้า (Master FG) <span style={{ color: "var(--red)" }}>*</span></label>
+            <label>{CUSTOMER_NAME_LABEL} <span style={{ color: "var(--red)" }}>*</span></label>
             <SearchableSelect
-              entity="product"
-              value={productId}
-              onChange={handleProduct}
-              placeholder="ค้นหา FG / ชื่อสินค้า / แบรนด์..."
-              options={productSelectOptions(products)}
-              emptyText="ไม่พบสินค้า — สร้างที่ฐานข้อมูลก่อน"
+              entity="customer"
+              value={customerId}
+              onChange={handleCustomer}
+              placeholder="ค้นหารหัส / ชื่อลูกค้า..."
+              options={customers.map((c) => ({
+                value: c.id,
+                label: `${c.arCode} : ${c.name}`,
+                search: `${c.arCode} ${c.name}`,
+              }))}
+              emptyText="ไม่พบลูกค้า — สร้างที่ฐานข้อมูลก่อน"
             />
-            {selected && (
-              <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }} className="font-mono flex gap-4 flex-wrap">
-                <span>ปริมาตร: {selected.volume} {selected.volumeUnit || "ml"}</span>
-                <span>ราคาขายปลีก: {fmtMoney(selected.retailPriceIncVat || 0)}</span>
-                <span>ภาษี/ชิ้น: {selected.isExciseTaxable === false ? "ยกเว้น" : fmtMoney((selected.exciseTax || 0) + (selected.localTax || 0))}</span>
-              </div>
-            )}
           </div>
 
           <div className="form-group">
-            <label>{CUSTOMER_NAME_LABEL} (เจ้าของ FG) <span style={{ color: "var(--red)" }}>*</span></label>
-            {!selected ? (
+            <label>สินค้า (Master FG) <span style={{ color: "var(--red)" }}>*</span></label>
+            {!customerId ? (
               <div style={{ fontSize: 13 }} className="text-[var(--text-3)] bg-[var(--panel-2)] rounded p-2">
-                เลือก FG ก่อน — ลูกค้าจะถูกกำหนดตามเจ้าของสินค้าโดยอัตโนมัติ
+                เลือก{CUSTOMER_NAME_LABEL}ก่อน — รายการ FG จะกรองเฉพาะของลูกค้ารายนั้น
               </div>
-            ) : needsManualCustomer ? (
+            ) : (
               <>
                 <SearchableSelect
-                  entity="customer"
-                  value={customerId}
-                  onChange={setCustomerId}
-                  placeholder="ค้นหารหัส / ชื่อลูกค้า..."
-                  options={customers.map((c) => ({
-                    value: c.id,
-                    label: `${c.arCode} : ${c.name}`,
-                    search: `${c.arCode} ${c.name}`,
-                  }))}
+                  entity="product"
+                  value={productId}
+                  onChange={setProductId}
+                  placeholder="ค้นหา FG / ชื่อสินค้า / แบรนด์..."
+                  options={productOptions}
+                  emptyText={hiddenCount
+                    ? "FG ของลูกค้ารายนี้ขึ้นทะเบียนครบแล้ว"
+                    : "ลูกค้ารายนี้ยังไม่มี FG — สร้างที่ฐานข้อมูลก่อน"}
                 />
-                <div style={{ marginTop: 6, fontSize: 12, color: "var(--amber)" }}>
-                  FG นี้ยังไม่มีลูกค้าเจ้าของในฐานข้อมูล — ควรไปกำหนดที่สินค้าให้เรียบร้อย
-                </div>
+                {hiddenCount > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }}>
+                    ซ่อน {hiddenCount} FG ที่ขึ้นทะเบียนกับลูกค้ารายนี้แล้ว (1 FG ขึ้นทะเบียนต่อลูกค้าได้ครั้งเดียว)
+                  </div>
+                )}
+                {isOrphanPick && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "var(--amber)" }}>
+                    FG นี้ยังไม่มีลูกค้าเจ้าของในฐานข้อมูล — จะผูกกับ{customer?.name || "ลูกค้ารายนี้"} ควรไปกำหนดเจ้าของที่ข้อมูลสินค้าให้เรียบร้อย
+                  </div>
+                )}
+                {selected && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }} className="font-mono flex gap-4 flex-wrap">
+                    <span>ปริมาตร: {selected.volume} {selected.volumeUnit || "ml"}</span>
+                    <span>ราคาขายปลีก: {fmtMoney(selected.retailPriceIncVat || 0)}</span>
+                    <span>ภาษี/ชิ้น: {selected.isExciseTaxable === false ? "ยกเว้น" : fmtMoney((selected.exciseTax || 0) + (selected.localTax || 0))}</span>
+                  </div>
+                )}
               </>
-            ) : (
-              <div style={{ fontSize: 14 }} className="font-medium text-[var(--text)] bg-[var(--panel-2)] rounded p-2 flex items-center gap-2">
-                {ownerArCode && <span className="font-mono text-[var(--text-3)]">{ownerArCode}</span>}
-                <span>{ownerName}</span>
-              </div>
             )}
           </div>
 
