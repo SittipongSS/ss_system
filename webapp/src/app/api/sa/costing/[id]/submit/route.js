@@ -41,7 +41,7 @@ export async function POST(request, { params }) {
     const after = await findCostingRequest(supabase, id);
     await recordAudit({
       user, action: 'update', entityType: 'costing_request', entityId: id, before, after,
-      summary: `ส่งขอราคาต้นทุน ${docNo} ให้ RD/PC`, request,
+      summary: `ส่งใบขอราคาผลิต ${docNo} ให้ RD/PC ตอบราคาวัตถุดิบ/บรรจุภัณฑ์`, request,
     });
 
     // แจ้งเฉพาะฝ่ายที่มีบรรทัดต้องตอบจริง — ไม่รบกวนฝ่ายที่ไม่เกี่ยวกับใบนี้
@@ -51,7 +51,7 @@ export async function POST(request, { params }) {
       const pending = countFor(dept);
       if (!pending) continue;
       sendChat(space, chatCard({
-        title: `ขอราคาต้นทุน ${docNo}`,
+        title: `ขอราคา ${docNo}`,
         subtitle: after.customerName || '',
         rows: [
           { label: 'สินค้า', value: (after.items || []).map((i) => i.productLabel).join(', ') },

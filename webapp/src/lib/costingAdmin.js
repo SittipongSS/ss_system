@@ -1,4 +1,4 @@
-// ── ระบบขอราคาต้นทุน — ชั้นเข้าถึงข้อมูล (server only) ──────────────────
+// ── ระบบขอราคาผลิต — ชั้นเข้าถึงข้อมูล (server only) ──────────────────
 // แยกจาก lib/costing.js (logic ล้วน) เพราะไฟล์นี้แตะ DB จริง
 import { randomUUID } from 'crypto';
 import { sourceDeptForKind } from '@/lib/master/costTemplate';

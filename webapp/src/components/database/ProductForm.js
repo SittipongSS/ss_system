@@ -9,7 +9,7 @@
 // ต่างกันได้แค่ "โหมด" ผ่าน props:
 //   creatorName    — ป้าย "ผู้สร้าง" มีเฉพาะตอนสร้าง
 //   factoryPrice   — "input" (สร้าง: กรอกได้) | "readonly" (แก้: ดูอย่างเดียว
-//                    ต้องกดปุ่มอัปเดตราคาโรงงานแยก เพราะกระทบประวัติราคา/ต้นทุน)
+//                    ต้องกดปุ่มอัปเดตราคาผลิตแยก เพราะกระทบประวัติราคา/ต้นทุน)
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import Select from "@/components/ui/Select";
@@ -212,7 +212,7 @@ export default function ProductForm({
             <input type="number" name="piecesPerCase" value={form.piecesPerCase ?? ""} onChange={set("piecesPerCase")} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
           </div>
           <div className="form-group">
-            <label>ราคาโรงงาน (บาท)</label>
+            <label>ราคาผลิต (บาท)</label>
             {factoryPrice === "readonly" ? (
               <>
                 <input
@@ -224,7 +224,7 @@ export default function ProductForm({
                   aria-describedby="factory-price-readonly-help"
                 />
                 <span id="factory-price-readonly-help" className="text-xs text-[var(--text-3)] mt-1">
-                  ช่องนี้ดูอย่างเดียว ต้องกด “อัปเดตราคาโรงงาน” ด้านล่างเพื่อแก้ราคา
+                  ช่องนี้ดูอย่างเดียว ต้องกด “อัปเดตราคาผลิต” ด้านล่างเพื่อแก้ราคา
                 </span>
               </>
             ) : (

@@ -35,7 +35,7 @@ test('พรีวิวรูป: mimeType ที่ระบุมาชนะ
   assert.equal(isPreviewableImage({ mimeType: 'application/pdf', fileName: 'a.png' }), false);
 });
 
-test('ระบบรู้จัก entity ไฟล์แนบของใบขอราคาต้นทุน', () => {
+test('ระบบรู้จัก entity ไฟล์แนบของใบขอราคาผลิต', () => {
   assert.ok(ATTACHMENT_ENTITY_TYPES.includes('costing_item'));
   const keys = ATTACHMENT_TYPES.costing_item.map((t) => t.key);
   assert.deepEqual(keys, ['reference_image', 'spec', 'other']);

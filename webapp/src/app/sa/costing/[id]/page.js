@@ -1,5 +1,5 @@
 "use client";
-// หน้ารายละเอียดใบขอราคาต้นทุน — อ่านได้ทุกฝ่ายที่เกี่ยวข้อง, แก้ได้เฉพาะฝ่ายขาย
+// หน้ารายละเอียดใบขอราคาผลิต — อ่านได้ทุกฝ่ายที่เกี่ยวข้อง, แก้ได้เฉพาะฝ่ายขาย
 // เจ้าของใบ (ตาม canEditCostingRequest). การตอบราคา RD/PC และการอนุมัติของ
 // ผู้บริหารมาใน PR4 — หน้านี้แสดงบรรทัดต้นทุนแบบอ่านอย่างเดียวไปก่อน
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -417,21 +417,24 @@ export default function CostingDetailPage() {
             {/* ป้อนต้นทุนกลับสินค้า — โผล่หลังอนุมัติ และหายเมื่อป้อนแล้ว */}
             {item.costFedAt ? (
               <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--green)" }}>
-                ป้อนต้นทุน {money(item.costFedPrice)} ฿/ชิ้น เข้าสินค้าแล้ว
+                ป้อนราคาผลิต {money(item.costFedPrice)} ฿/ชิ้น เข้าสินค้าแล้ว
                 {item.costFedTierQty ? ` (อ้างชั้น ${Number(item.costFedTierQty).toLocaleString("th-TH")} ชิ้น)` : ""}
                 {item.costFedByName ? ` โดย ${item.costFedByName}` : ""}
+                <span style={{ color: "var(--text-3)" }}>
+                  {" "}— ฝ่ายขายปรับราคาเพิ่มได้ที่ฐานข้อมูลสินค้า
+                </span>
               </p>
             ) : canFeed && item.approvalStatus === "approved" && (
               <div className="action-bar" style={{ marginTop: 12 }}>
                 <span style={{ marginRight: "auto", fontSize: 12, color: "var(--text-3)" }}>
                   {feedCostError(item, request.moq)
-                    || `จะเขียนต้นทุน ${money(feedCostValue(item, request.moq))} ฿/ชิ้น ลงสินค้าที่ผูกไว้`}
+                    || `จะเขียนราคาผลิต ${money(feedCostValue(item, request.moq))} ฿/ชิ้น ลงสินค้าที่ผูกไว้`}
                 </span>
                 <button
                   type="button" className="btn btn-accent" disabled={saving || !!feedCostError(item, request.moq)}
                   onClick={() => setPendingFeed(item)}
                 >
-                  <ArrowDownToLine size={14} /> ป้อนเป็นต้นทุน FG
+                  <ArrowDownToLine size={14} /> ป้อนราคาผลิตเข้า FG
                 </button>
               </div>
             )}
@@ -609,16 +612,16 @@ export default function CostingDetailPage() {
 
       <ConfirmDialog
         open={!!pendingFeed}
-        title="ป้อนต้นทุนเข้าสินค้า"
+        title="ป้อนราคาผลิตเข้าสินค้า"
         description={pendingFeed
-          ? `เขียนต้นทุน ${money(feedCostValue(pendingFeed, request.moq))} บาท/ชิ้น ลงสินค้าที่ผูกกับ "${pendingFeed.productLabel}"`
+          ? `เขียนราคาผลิต ${money(feedCostValue(pendingFeed, request.moq))} บาท/ชิ้น ลงสินค้าที่ผูกกับ "${pendingFeed.productLabel}"`
           : ""}
-        detail="ราคาเดิมของสินค้าจะถูกแทนที่ และบันทึกไว้ในประวัติราคาว่ามาจากใบขอราคาใบนี้ — สถานะอนุมัติของสินค้าไม่เปลี่ยน เพราะราคาผ่านการอนุมัติของผู้บริหารมาแล้ว"
-        confirmLabel="ป้อนต้นทุน"
+        detail="นี่คือราคาตั้งต้นจากผู้บริหาร — ฝ่ายขายปรับเพิ่ม (บวก margin) ได้ภายหลังที่ฐานข้อมูลสินค้า ซึ่งจะผ่านการอนุมัติของหัวหน้าฝ่ายขายตามปกติ; ราคาที่ผู้บริหารอนุมัติยังถูกตรึงไว้ในใบนี้ให้ย้อนดูได้เสมอ"
+        confirmLabel="ป้อนราคาผลิต"
         busy={saving}
         onConfirm={() => runAction("/feed-cost", {
           method: "POST", body: JSON.stringify({ itemId: pendingFeed.id }),
-        }, "ป้อนต้นทุนเข้าสินค้าแล้ว").then((ok) => { if (ok) setPendingFeed(null); })}
+        }, "ป้อนราคาผลิตเข้าสินค้าแล้ว").then((ok) => { if (ok) setPendingFeed(null); })}
         onClose={() => setPendingFeed(null)}
       />
 

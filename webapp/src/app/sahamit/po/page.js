@@ -91,7 +91,7 @@ export default function PoPage() {
   const canEdit = useCan("sahamit:edit");
   const q = search.trim().toLowerCase();
 
-  // ราคาโรงงาน (costPrice, ก่อน VAT) ต่อ fgCode — สำหรับยอดรวมมูลค่า PO
+  // ราคาผลิต (costPrice, ก่อน VAT) ต่อ fgCode — สำหรับยอดรวมมูลค่า PO
   const priceByFg = useMemo(() => {
     const m = new Map();
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p.price == null ? null : Number(p.price));

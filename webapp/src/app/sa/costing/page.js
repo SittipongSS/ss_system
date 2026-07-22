@@ -1,5 +1,5 @@
 "use client";
-// หน้ารายการใบขอราคาต้นทุน (mig 0141) — ทุกฝ่ายที่เกี่ยวข้องใช้หน้าเดียวกัน
+// หน้ารายการใบขอราคาผลิต (mig 0141) — ทุกฝ่ายที่เกี่ยวข้องใช้หน้าเดียวกัน
 // แต่เห็นคนละชุด: ฝ่ายขายเห็นตาม scope ดีล, RD/PC เห็นคิวทั้งฝ่ายตน,
 // ผู้บริหาร/viewer เห็นทั้งหมด (กรองจริงที่ API ผ่าน canViewCostingRequest)
 //
@@ -128,7 +128,7 @@ export default function CostingListPage() {
         <div className="header-content">
           <h1>
             <span className="premium-header-icon"><Calculator size={22} /></span>{" "}
-            ใบขอราคาต้นทุน
+            ใบขอราคาผลิต
           </h1>
           <p>
             รวมราคาวัตถุดิบจาก RD และบรรจุภัณฑ์จาก PC ตามแม่แบบของประเภทสินค้า
@@ -183,7 +183,7 @@ export default function CostingListPage() {
       ) : visible.length === 0 ? (
         <EmptyState icon={Calculator}>
           {rows.length === 0
-            ? "ยังไม่มีใบขอราคาต้นทุน — เปิดใบจากหน้าดีลที่ต้องการขอราคา"
+            ? "ยังไม่มีใบขอราคาผลิต — เปิดใบแรกจากปุ่มด้านบน"
             : "ไม่มีใบที่ตรงกับตัวกรอง"}
         </EmptyState>
       ) : (
@@ -258,7 +258,7 @@ export default function CostingListPage() {
       <Modal
         open={!!form}
         onClose={() => { setForm(null); setPendingSave(false); }}
-        title="เปิดใบขอราคาต้นทุน"
+        title="เปิดใบขอราคาผลิต"
         size="lg"
         dismissible={!saving}
       >

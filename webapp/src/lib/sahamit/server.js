@@ -95,7 +95,7 @@ export async function loadSahamitProducts(supabase, customerId) {
         ownerId: p.ownerId || null,
         categoryCode: categoryCode ?? null,
         category: (categoryCode && typeName.get(categoryCode)) || categoryCode || null,
-        // มูลค่า = qty × ราคาโรงงาน (factory price = costPrice ใน master; ดู products
+        // มูลค่า = qty × ราคาผลิต (factory price = costPrice ใน master; ดู products
         // route: `const factoryPrice = costPrice`). ใช้ร่วมทั้งกระทบยอด + รายงานมูลค่า.
         price: p.costPrice ?? null,
       };

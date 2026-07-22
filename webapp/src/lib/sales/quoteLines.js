@@ -24,7 +24,7 @@ function qtyFromProjectProduct(row) {
 }
 
 // seed บรรทัดจาก FG ที่ผูกในโครงการของดีล — ราคา freeze จาก master ณ ตอนสร้าง
-// (ราคาโรงงาน — กติกาเดียวกับ enforceMasterPrices)
+// (ราคาผลิต — กติกาเดียวกับ enforceMasterPrices)
 export async function seedLinesFromProject(supabase, deal) {
   if (!deal.projectId) return [];
   const { data } = await supabase
@@ -52,12 +52,12 @@ export async function seedLinesFromProject(supabase, deal) {
   });
 }
 
-// ราคาขายในใบเสนอราคาทั้งระบบ = "ราคาโรงงาน" (costPrice) — มติผู้ใช้ 2026-07-19.
+// ราคาขายในใบเสนอราคาทั้งระบบ = "ราคาผลิต" (costPrice) — มติผู้ใช้ 2026-07-19.
 // retailPriceIncVat ไม่ใช่ราคาขาย: มีไว้คำนวณภาษีสรรพสามิต (โมดูล tax) เท่านั้น.
 export const QUOTE_PRICE_FIELD = 'costPrice';
 
 // ข้อมูลบรรทัด FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี
-// productId ถูกทับทั้ง "ราคา" (ราคาโรงงาน — QUOTE_PRICE_FIELD) และ "คำอธิบาย"
+// productId ถูกทับทั้ง "ราคา" (ราคาผลิต — QUOTE_PRICE_FIELD) และ "คำอธิบาย"
 // (แบรนด์ · ชื่อสินค้า · ปริมาตร) + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ —
 // **ห้ามกำหนดราคาจากใบเสนอราคาทุกกรณี** flow คือไปตั้งราคาที่ฐานข้อมูลสินค้าแล้วกลับมาบันทึกใบ.
 // - master ยังไม่ตั้งราคา (0/ว่าง) = ไม่มีข้อมูล ไม่ใช่ราคา 0 → คงราคาที่บันทึกไว้เดิม

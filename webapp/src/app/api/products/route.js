@@ -86,7 +86,7 @@ export async function POST(request) {
   }
 
   const { fgCode, volume, costPrice, retailPriceIncVat } = body;
-  // ราคาโรงงาน/ราคาขายปลีก เป็น optional — เก็บ null ไว้ตามจริง แต่ในการคำนวณ
+  // ราคาผลิต/ราคาขายปลีก เป็น optional — เก็บ null ไว้ตามจริง แต่ในการคำนวณ
   // ภาษี/ต้นทุน ให้ถือว่า 0 เพื่อกัน NaN เมื่อยังไม่ได้กรอกราคา.
   const costPriceNum = costPrice == null || costPrice === '' ? 0 : Number(costPrice);
   const retailPriceIncVatNum =

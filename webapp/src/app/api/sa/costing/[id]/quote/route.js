@@ -98,7 +98,7 @@ export async function PATCH(request, { params }) {
   // แจ้งฝ่ายขายเมื่อราคาครบแล้วเท่านั้น — ตอบทีละบรรทัดไม่ต้องเด้งทุกครั้ง
   if (nextStatus === 'assembling' && afterWrite.status !== 'assembling') {
     sendChat('sales', chatCard({
-      title: `ราคาต้นทุนครบแล้ว ${after.docNo || ''}`,
+      title: `ราคา RD/PC ครบแล้ว ${after.docNo || ''}`,
       subtitle: after.customerName || '',
       rows: [
         { label: 'สินค้า', value: `${(after.items || []).length} รายการ` },

@@ -64,7 +64,7 @@ export default function ReconcilePage() {
   const predictions = useMemo(() => predictShifts(rounds, pos, { today, locks }), [rounds, pos, today, locks]);
   const ackSet = useMemo(() => new Set((predAcks || []).map((a) => `${a.fgCode}||${a.month}`)), [predAcks]);
 
-  // fgCode → product (แบรนด์/ปริมาตร/ราคาโรงงาน) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
+  // fgCode → product (แบรนด์/ปริมาตร/ราคาผลิต) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
   const productByFg = useMemo(() => {
     const m = new Map();
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
@@ -112,7 +112,7 @@ export default function ReconcilePage() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [filteredRows, productByFg]);
 
-  // มูลค่ารายเดือน (ราคา×จำนวน) — คิดตามแถวที่แสดง (หลังกรอง). ราคา = ราคาโรงงาน
+  // มูลค่ารายเดือน (ราคา×จำนวน) — คิดตามแถวที่แสดง (หลังกรอง). ราคา = ราคาผลิต
   // (costPrice) จาก products — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
   const valueSummary = useMemo(() => {
     const byMonth = {};

@@ -65,7 +65,7 @@ export default function QuotationLineItems({
       ].filter(Boolean).join(" · "),
     };
   };
-  // ราคาขายในใบ = ราคาโรงงาน (costPrice) ทั้งระบบ (มติ 2026-07-19) — ตรงกับที่
+  // ราคาขายในใบ = ราคาผลิต (costPrice) ทั้งระบบ (มติ 2026-07-19) — ตรงกับที่
   // server enforce ตอนบันทึก; retailPriceIncVat มีไว้คำนวณสรรพสามิตเท่านั้น
   const masterPriceFor = (productId) => {
     const product = products.find((item) => item.id === productId);

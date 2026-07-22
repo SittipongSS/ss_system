@@ -22,7 +22,7 @@ export class QuotationDraftError extends Error {
 
 export async function createQuotationDraft({ supabase, user, deal, body = {}, request }) {
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
-  // ราคาขายในใบ = ราคาโรงงานทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
+  // ราคาขายในใบ = ราคาผลิตทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
   let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []));
   // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
   if (!lines.length && body.seedFromProject) lines = await seedLinesFromProject(supabase, deal);
@@ -50,7 +50,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   // ส่วนลดท้ายใบ + VAT (เฟส D — FM-SA-01): default vatRate 0 = ราคารวม VAT แล้ว
   const discountType = ['percent', 'amount'].includes(body.discountType) ? body.discountType : null;
   const discountValue = discountType ? toMoney(body.discountValue) : 0;
-  // default +VAT 7% ท้ายใบ (มติ 2026-07-19): ราคาบรรทัด = ราคาโรงงานไม่รวม VAT →
+  // default +VAT 7% ท้ายใบ (มติ 2026-07-19): ราคาบรรทัด = ราคาผลิตไม่รวม VAT →
   // ท้ายใบเห็นยอด ex-VAT แล้วบวก VAT ให้ยอดจบเทียบกับเอกสารจริงของลูกค้า (เช่น PO
   // สหมิตรที่ยอดรวม VAT) ได้; ผู้ใช้สลับเป็น "รวม VAT แล้ว" (0) ในใบได้เสมอ
   const vatRate = toMoney(body.vatRate, 7);

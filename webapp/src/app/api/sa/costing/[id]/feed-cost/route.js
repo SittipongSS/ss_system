@@ -30,7 +30,7 @@ export async function POST(request, { params }) {
   if (!before) return Response.json({ error: 'ไม่พบใบขอราคา' }, { status: 404 });
   if (!canFeedCostFromRequest(user, before)) {
     return Response.json({
-      error: 'ป้อนต้นทุนได้เฉพาะเจ้าของใบที่มีสิทธิ์แก้สินค้า และใบต้องอนุมัติแล้ว',
+      error: 'ป้อนราคาผลิตได้เฉพาะเจ้าของใบที่มีสิทธิ์แก้สินค้า และใบต้องอนุมัติแล้ว',
     }, { status: 403 });
   }
 
@@ -38,7 +38,7 @@ export async function POST(request, { params }) {
   const item = (before.items || []).find((i) => i.id === body.itemId);
   if (!item) return Response.json({ error: 'ไม่พบรายการสินค้าที่ระบุ' }, { status: 404 });
   if (item.costFedAt) {
-    return Response.json({ error: 'รายการนี้ป้อนต้นทุนไปแล้ว' }, { status: 409 });
+    return Response.json({ error: 'รายการนี้ป้อนราคาผลิตไปแล้ว' }, { status: 409 });
   }
 
   const blocked = feedCostError(item, before.moq);
@@ -119,7 +119,7 @@ export async function POST(request, { params }) {
   const after = await findCostingRequest(supabase, id);
   await recordAudit({
     user, action: 'update', entityType: 'costing_request', entityId: id, before, after,
-    summary: `ป้อนต้นทุน ${costPrice} บาท/ชิ้น เข้าสินค้า ${savedProduct.fgCode} จากใบ ${before.docNo || id}`,
+    summary: `ป้อนราคาผลิต ${costPrice} บาท/ชิ้น เข้าสินค้า ${savedProduct.fgCode} จากใบ ${before.docNo || id}`,
     request,
   });
 
