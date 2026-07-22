@@ -23,11 +23,15 @@ const nextConfig = {
   // file tracing มองไม่เห็นและตัด bin/ ทิ้งตอน deploy (ฟ้อง "input directory does not
   // exist" บน Lambda). ต้องสั่ง include ให้ route ที่เรนเดอร์ PDF โดยตรง
   // — serverExternalPackages ข้างบนกันแค่การ bundle ไม่ได้ทำให้ไฟล์ถูกก๊อปไปด้วย
+  // ⚠️ key เป็น glob ไม่ใช่ path ตรง ๆ — ต้อง escape เป็น \[id\] ไม่งั้นวงเล็บถูกอ่านเป็น
+  // character class แล้วไม่แมตช์ route จริง "เงียบ ๆ" (build ผ่าน ไม่มี warning ไปตายที่ prod).
+  // ตรวจว่าได้ผลจริงโดยดูไฟล์ .br ใน .next/server/app/<route>/route.js.nft.json หลัง build
+  // ระบุเจาะจง 2 route ที่เรนเดอร์ PDF เพราะ bin/ หนัก ~70MB ไม่ควรพองไปทุกฟังก์ชัน
   outputFileTracingIncludes: {
-    '/api/sales-planning/quotations/[id]/issued/pdf': [
+    '/api/sales-planning/quotations/\\[id\\]/issued/pdf': [
       'node_modules/@sparticuz/chromium/bin/**/*',
     ],
-    '/api/sales-planning/quotations/[id]/approval': [
+    '/api/sales-planning/quotations/\\[id\\]/approval': [
       'node_modules/@sparticuz/chromium/bin/**/*',
     ],
   },
