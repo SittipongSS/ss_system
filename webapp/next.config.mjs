@@ -19,6 +19,18 @@ const nextConfig = {
     'googleapis', 'google-auth-library', '@vercel/functions',
     '@sparticuz/chromium', 'puppeteer-core',
   ],
+  // ไบนารี brotli ของ @sparticuz/chromium ถูกอ่านด้วย fs ตอน runtime ไม่ใช่ require →
+  // file tracing มองไม่เห็นและตัด bin/ ทิ้งตอน deploy (ฟ้อง "input directory does not
+  // exist" บน Lambda). ต้องสั่ง include ให้ route ที่เรนเดอร์ PDF โดยตรง
+  // — serverExternalPackages ข้างบนกันแค่การ bundle ไม่ได้ทำให้ไฟล์ถูกก๊อปไปด้วย
+  outputFileTracingIncludes: {
+    '/api/sales-planning/quotations/[id]/issued/pdf': [
+      'node_modules/@sparticuz/chromium/bin/**/*',
+    ],
+    '/api/sales-planning/quotations/[id]/approval': [
+      'node_modules/@sparticuz/chromium/bin/**/*',
+    ],
+  },
   // Sales Management owns the /sa namespace. Keep legacy URLs working without
   // exposing the old system split in user-facing navigation.
   async rewrites() {
