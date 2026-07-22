@@ -136,6 +136,8 @@ export default function RegistrationsPage() {
         emptyIcon={ClipboardCheck}
       />
 
+      {/* registrations = ชุดเต็ม (ไม่ใช่ rows ที่ผ่านตัวกรองจอ) — โมดัลใช้เช็คว่า
+          FG ไหนขึ้นทะเบียนกับลูกค้าที่เลือกไปแล้ว จะได้ไม่ให้เลือกไปชน 409 */}
       <RegistrationFormModal
         open={formOpen}
         onClose={() => setFormOpen(false)}
@@ -143,6 +145,7 @@ export default function RegistrationsPage() {
         registration={null}
         products={products}
         customers={customers}
+        registrations={regs}
         userName={userName}
       />
     </Workspace>

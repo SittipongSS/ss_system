@@ -247,6 +247,7 @@ export default function RegistrationDetailPage() {
         registration={s}
         products={products}
         customers={customers}
+        registrations={regs}
       />
       <ApproveDialog open={approveOpen} onClose={() => setApproveOpen(false)} onDone={reload} registration={s} />
       <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={rejectReg} title="ตีกลับการขึ้นทะเบียน" entityLabel="ทะเบียนนี้" />
