@@ -420,6 +420,9 @@ export default function CostingDetailPage() {
                 ป้อนต้นทุน {money(item.costFedPrice)} ฿/ชิ้น เข้าสินค้าแล้ว
                 {item.costFedTierQty ? ` (อ้างชั้น ${Number(item.costFedTierQty).toLocaleString("th-TH")} ชิ้น)` : ""}
                 {item.costFedByName ? ` โดย ${item.costFedByName}` : ""}
+                <span style={{ color: "var(--text-3)" }}>
+                  {" "}— ฝ่ายขายปรับราคาเพิ่มได้ที่ฐานข้อมูลสินค้า
+                </span>
               </p>
             ) : canFeed && item.approvalStatus === "approved" && (
               <div className="action-bar" style={{ marginTop: 12 }}>
@@ -613,7 +616,7 @@ export default function CostingDetailPage() {
         description={pendingFeed
           ? `เขียนต้นทุน ${money(feedCostValue(pendingFeed, request.moq))} บาท/ชิ้น ลงสินค้าที่ผูกกับ "${pendingFeed.productLabel}"`
           : ""}
-        detail="ราคาเดิมของสินค้าจะถูกแทนที่ และบันทึกไว้ในประวัติราคาว่ามาจากใบขอราคาใบนี้ — สถานะอนุมัติของสินค้าไม่เปลี่ยน เพราะราคาผ่านการอนุมัติของผู้บริหารมาแล้ว"
+        detail="นี่คือราคาตั้งต้นจากผู้บริหาร — ฝ่ายขายปรับเพิ่ม (บวก margin) ได้ภายหลังที่ฐานข้อมูลสินค้า ซึ่งจะผ่านการอนุมัติของหัวหน้าฝ่ายขายตามปกติ; ราคาที่ผู้บริหารอนุมัติยังถูกตรึงไว้ในใบนี้ให้ย้อนดูได้เสมอ"
         confirmLabel="ป้อนต้นทุน"
         busy={saving}
         onConfirm={() => runAction("/feed-cost", {
