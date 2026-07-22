@@ -59,7 +59,7 @@
 //   salesplan:view | salesplan:edit | salesplan:review | salesplan:target
 //     (Sales Planning commercial spine: pipeline / forecast / target / review)
 //   costing:view   | costing:edit   | costing:quote  | costing:approve
-//     (ระบบขอราคาต้นทุน — SA ประกอบใบ (edit), RD/PC เติมราคาฝ่ายตน (quote),
+//     (ระบบขอราคาผลิต — SA ประกอบใบ (edit), RD/PC เติมราคาฝ่ายตน (quote),
 //      ผู้บริหารอนุมัติราคาผลิต (approve). costing:view เปิดให้เห็นต้นทุนเต็มใบ
 //      ซึ่งแยกขาดจาก products:margin — คนละระบบ ดู canViewCosting.)
 //   sahamit:view   | sahamit:edit   (SAHAMIT Planning & Sales — FC/PO/Reconcile.
@@ -110,7 +110,7 @@ const DEPARTMENT_ROLES = {
   // MK = ฝ่ายการตลาด (เฟส C มติ #2): กรอกลีดรายวัน — เห็นเฉพาะเมนูลีด
   MK: ['marketing'],
   LG: ['legal'],
-  // EX = ฝ่ายบริหาร — ผู้อนุมัติราคาผลิตในระบบขอราคาต้นทุน (ไม่มี operation อื่น)
+  // EX = ฝ่ายบริหาร — ผู้อนุมัติราคาผลิตในระบบขอราคาผลิต (ไม่มี operation อื่น)
   EX: ['executive'],
   Viewer: ['viewer'],
   // RD ได้ role เฉพาะ (rd) — คู่คิดหลักของฝ่ายขาย เห็นดีล/โครงการทุกทีมเพื่อตอบ
@@ -176,7 +176,7 @@ const SALES_OPS = [
   'salesplan:lead',
   // SAHAMIT module — granted to every sales role; team===KA narrows actual access.
   'sahamit:view', 'sahamit:edit',
-  // ระบบขอราคาต้นทุน: ฝ่ายขายเป็นคนเปิดใบ + ประกอบต้นทุน. ไม่มี costing:approve
+  // ระบบขอราคาผลิต: ฝ่ายขายเป็นคนเปิดใบ + ประกอบต้นทุน. ไม่มี costing:approve
   // (ราคาผลิตอนุมัติโดยผู้บริหารเท่านั้น — มติ 2026-07-22) และไม่มี costing:quote
   // (ราคา RM/PM มาจาก RD/PC ฝ่ายขายกรอกแทนไม่ได้ ไม่งั้นที่มาของราคาหายไป).
   'costing:view', 'costing:edit',
@@ -265,7 +265,7 @@ const ROLE_CAPS = {
   // NOT here by default — it's grantable per-user (products:margin), same as LG.
   viewer: OBSERVER_CAPS,
   // executive: ผู้บริหาร — observer เต็มระบบเหมือน viewer + อำนาจเดียวที่เป็นของเขา
-  // คนเดียว คืออนุมัติราคาผลิตในใบขอราคาต้นทุน. costing:view เปิดต้นทุนเต็มใบให้
+  // คนเดียว คืออนุมัติราคาผลิตในใบขอราคาผลิต. costing:view เปิดต้นทุนเต็มใบให้
   // (ข้อมูลที่ใช้ตั้งราคา) แต่ไม่มี products:margin — กำไรโรงงานเป็นระบบสรรพสามิต
   // คนละส่วนกัน (มติ 2026-07-22); ถ้าวันหน้าจำเป็นให้ grant รายคนได้ (GRANTABLE_CAPS).
   // ไม่มี :edit/:act ใด ๆ → proxy write-gate บล็อกทุกการเขียนนอกเส้นอนุมัติให้เอง.
@@ -368,11 +368,11 @@ export function isReadOnlyObserver(role) {
   return role === 'viewer' || role === 'executive';
 }
 
-// ── ระบบขอราคาต้นทุน (Costing Request) ────────────────────────────────
+// ── ระบบขอราคาผลิต (Costing Request) ────────────────────────────────
 // ฝ่ายที่เป็น "แหล่งราคา" ของบรรทัดในใบ — ตรงกับ costing_item_components.sourceDept
 export const COSTING_SOURCE_DEPARTMENTS = ['RD', 'PC'];
 
-// เห็นใบขอราคาต้นทุน (รวมต้นทุนเต็มใบ). staff ถือ cap ระดับ role เพราะฝ่ายจัดซื้อ
+// เห็นใบขอราคาผลิต (รวมต้นทุนเต็มใบ). staff ถือ cap ระดับ role เพราะฝ่ายจัดซื้อ
 // (PC) ไม่มี role ของตัวเอง จึงต้องแคบด้วยฝ่ายตรงนี้ ไม่งั้น PD/WH/QC เห็นต้นทุนไปด้วย
 export function canViewCosting(user) {
   if (!canUser(user, 'costing:view')) return false;

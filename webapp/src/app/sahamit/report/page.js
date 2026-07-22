@@ -48,7 +48,7 @@ export default function ReportPage() {
     <Workspace
       icon={<BarChart3 size={22} />}
       title="รายงานมูลค่า FC / PO"
-      subtitle="มูลค่าตามแผนเทียบยอดสั่งจริง สถานะ และ PO ที่ยังแบ่งส่งได้ · ราคา = ราคาโรงงาน จากข้อมูลสินค้า (AR-109)"
+      subtitle="มูลค่าตามแผนเทียบยอดสั่งจริง สถานะ และ PO ที่ยังแบ่งส่งได้ · ราคา = ราคาผลิต จากข้อมูลสินค้า (AR-109)"
     >
       {error && (
         <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
@@ -71,7 +71,7 @@ export default function ReportPage() {
           {rep.unpricedCount > 0 && (
             <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--amber)", display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
               <TriangleAlert size={16} style={{ color: "var(--amber)" }} />
-              มี {rep.unpricedCount} สินค้าที่ยังไม่ได้ตั้งราคาโรงงาน — มูลค่าจะต่ำกว่าจริง (ตั้งราคาได้ที่ ข้อมูลสินค้า → ราคาโรงงาน/ต้นทุน)
+              มี {rep.unpricedCount} สินค้าที่ยังไม่ได้ตั้งราคาผลิต — มูลค่าจะต่ำกว่าจริง (ตั้งราคาได้ที่ ข้อมูลสินค้า → ราคาผลิต)
             </div>
           )}
 

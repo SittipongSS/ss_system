@@ -244,7 +244,7 @@ function apiWriteAllowed(method, path, role, extraCaps) {
     return can(role, 'salesplan:edit') || can(role, 'inquiries:respond');
   }
   if (path.startsWith('/api/sales-planning')) return can(role, 'salesplan:edit');
-  // ระบบขอราคาต้นทุน (/api/sa/costing) — ต้องมาก่อนกฎ /api/sa ด้านล่าง เพราะ
+  // ระบบขอราคาผลิต (/api/sa/costing) — ต้องมาก่อนกฎ /api/sa ด้านล่าง เพราะ
   // สามเส้นนี้ถือคนละ cap: ผู้บริหารอนุมัติได้ทั้งที่ไม่มี salesplan:edit, และ
   // RD/PC ตอบราคาได้ทั้งที่ไม่มีสิทธิ์แก้งานขายเลย. สิทธิ์รายแถว (บรรทัดของฝ่ายตน
   // ผ่าน sourceDept, สถานะใบ) บังคับใน handler ซึ่ง proxy มองไม่เห็น.

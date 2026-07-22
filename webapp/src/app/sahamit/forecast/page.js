@@ -66,7 +66,7 @@ export default function ForecastPage() {
   );
   const matrix = useMemo(() => (selectedRound ? roundMatrix(selectedRound) : { months: [], rows: [] }), [selectedRound]);
 
-  // fgCode → product (หมวด + ราคาโรงงาน) จาก master — สำหรับ group หมวด + แถวรวมมูลค่า
+  // fgCode → product (หมวด + ราคาผลิต) จาก master — สำหรับ group หมวด + แถวรวมมูลค่า
   const productByFg = useMemo(() => {
     const m = new Map();
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
@@ -105,7 +105,7 @@ export default function ForecastPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matrix, productByFg, q, catSel]);
 
-  // แถวรวมมูลค่า (ราคาโรงงาน × จำนวน) ต่อเดือน + รวม — คิดตามแถวที่แสดง (หลังกรอง)
+  // แถวรวมมูลค่า (ราคาผลิต × จำนวน) ต่อเดือน + รวม — คิดตามแถวที่แสดง (หลังกรอง)
   const matrixValue = useMemo(() => {
     const byMonth = {};
     for (const m of matrix.months) byMonth[m] = 0;
@@ -197,7 +197,7 @@ export default function ForecastPage() {
   const selectableLines = useMemo(() => lineList.filter((r) => !r.mapped), [lineList]);
   const allLinesSelected = selectableLines.length > 0 && selectableLines.every((r) => selectedLines.has(r.id));
 
-  // สรุป line ที่เลือก (จำนวน + มูลค่าราคาโรงงาน) สำหรับแถบสร้างโครงการ
+  // สรุป line ที่เลือก (จำนวน + มูลค่าราคาผลิต) สำหรับแถบสร้างโครงการ
   const selection = useMemo(() => {
     let qty = 0, value = 0, unpriced = 0;
     for (const r of lineList) {

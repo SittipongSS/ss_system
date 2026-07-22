@@ -1,4 +1,4 @@
-// ระบบขอราคาต้นทุน (mig 0141) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
+// ระบบขอราคาผลิต (mig 0141) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {

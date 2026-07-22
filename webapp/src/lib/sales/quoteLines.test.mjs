@@ -22,7 +22,7 @@ const fgLine = (over = {}) => normalizeManualLines([{
   discountType: null, discountValue: 0, ...over,
 }])[0];
 
-// ราคาขายในใบ = ราคาโรงงาน (costPrice) ทั้งระบบ (มติ 2026-07-19);
+// ราคาขายในใบ = ราคาผลิต (costPrice) ทั้งระบบ (มติ 2026-07-19);
 // retailPriceIncVat มีไว้คำนวณสรรพสามิตเท่านั้น — ห้ามหลุดมาเป็นราคาใบ
 test('FG line price is overridden by factory price (client + retail ignored)', async () => {
   const lines = await enforceMasterPrices(fakeSupabase([{ id: 'P1', costPrice: 150, retailPriceIncVat: 999 }]), [fgLine()]);

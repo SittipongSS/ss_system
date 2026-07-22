@@ -1,4 +1,4 @@
-// ── API ใบขอราคาต้นทุน — รายการ + สร้างใบ (mig 0141) ────────────────────
+// ── API ใบขอราคาผลิต — รายการ + สร้างใบ (mig 0141) ────────────────────
 // สิทธิ์: อ่านตาม canViewCostingRequest (ฝ่ายขายตาม scope ดีล, RD/PC เห็นคิว
 // ทั้งฝ่าย, ผู้บริหาร/viewer เห็นหมด); สร้างต้องมี costing:edit = ฝ่ายขาย
 // proxy กันชั้นแรกที่ /api/sa/costing แล้ว (ดู apiWriteAllowed)
@@ -147,7 +147,7 @@ export async function POST(request) {
   const created = await findCostingRequest(supabase, requestId);
   await recordAudit({
     user, action: 'create', entityType: 'costing_request', entityId: requestId, after: created,
-    summary: `เปิดใบขอราคาต้นทุน ${prepared.length} รายการ (ดีล ${resolved.deal.code || resolved.deal.id})`,
+    summary: `เปิดใบขอราคาผลิต ${prepared.length} รายการ (ดีล ${resolved.deal.code || resolved.deal.id})`,
     request,
   });
   return Response.json(created, { status: 201 });

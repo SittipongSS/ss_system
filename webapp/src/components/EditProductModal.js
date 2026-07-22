@@ -105,11 +105,11 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   const submitFactoryPrice = async () => {
     const nextPrice = factoryPriceDraft === "" ? NaN : Number(factoryPriceDraft);
     if (!Number.isFinite(nextPrice) || nextPrice < 0) {
-      setPriceError("กรุณาระบุราคาโรงงานใหม่เป็นตัวเลข 0 หรือมากกว่า");
+      setPriceError("กรุณาระบุราคาผลิตใหม่เป็นตัวเลข 0 หรือมากกว่า");
       return;
     }
     if (!priceConfirmed) {
-      setPriceError("กรุณายืนยันว่ากำลังอัปเดตราคาโรงงาน");
+      setPriceError("กรุณายืนยันว่ากำลังอัปเดตราคาผลิต");
       return;
     }
 
@@ -129,7 +129,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
         onSaved?.();
       } else {
         const d = await res.json().catch(() => ({}));
-        setPriceError(d.error || "อัปเดตราคาโรงงานไม่สำเร็จ");
+        setPriceError(d.error || "อัปเดตราคาผลิตไม่สำเร็จ");
       }
     } catch {
       setPriceError("เกิดข้อผิดพลาดในการเชื่อมต่อ");
@@ -148,7 +148,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     <Modal open={open} onClose={() => !(submitting || priceSubmitting) && onClose()} title={`แก้ไขสินค้า — ${product.fgCode}`} size="lg">
       <form onSubmit={submit}>
         {/* ฟอร์มเดียวกับโมดัลเพิ่มสินค้า (/database/products) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.
-            ต่างแค่โหมด: ไม่มีป้ายผู้สร้าง และราคาโรงงานดูอย่างเดียว (แก้ผ่านแผงด้านล่าง) */}
+            ต่างแค่โหมด: ไม่มีป้ายผู้สร้าง และราคาผลิตดูอย่างเดียว (แก้ผ่านแผงด้านล่าง) */}
         <ProductForm
           form={form}
           onForm={(patch) => setForm((f) => ({ ...f, ...patch }))}
@@ -160,7 +160,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           onCustomerChange={handleCustomerChange}
         />
 
-        {/* แผงอัปเดตราคาโรงงาน — action แยกจากการบันทึกสเปค (กระทบประวัติราคา/ต้นทุน) */}
+        {/* แผงอัปเดตราคาผลิต — action แยกจากการบันทึกสเปค (กระทบประวัติราคา/ต้นทุน) */}
         <div className="mb-[22px]">
           <div className="glass-panel mt-5" style={{ padding: "16px 18px", borderLeft: "3px solid var(--amber)" }}>
             <div className="flex items-start gap-3 flex-wrap">
@@ -169,11 +169,11 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
               </div>
               <div style={{ flex: "1 1 260px", minWidth: 0 }}>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--text)" }}>ราคาโรงงาน</h4>
+                  <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--text)" }}>ราคาผลิต</h4>
                   <span className="ui-badge" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>อัปเดตแยก</span>
                 </div>
                 <p style={{ margin: "6px 0 0", color: "var(--text-3)", fontSize: 13, lineHeight: 1.65 }}>
-                  ราคานี้คือราคาโรงงานต่อหน่วยและมีผลต่อประวัติราคา/ต้นทุนสินค้า จึงต้องอัปเดตผ่าน action แยกเท่านั้น
+                  ราคานี้คือราคาผลิตต่อหน่วยและมีผลต่อประวัติราคา/ต้นทุนสินค้า จึงต้องอัปเดตผ่าน action แยกเท่านั้น
                 </p>
               </div>
               <div style={{ textAlign: "right", minWidth: 150 }}>
@@ -189,7 +189,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
                 <div className="flex items-center gap-2" style={{ minHeight: 32 }}>
                   {priceSaved && (
                     <span className="flex items-center gap-1.5 text-[13px]" style={{ color: "var(--green)" }}>
-                      <CheckCircle2 size={15} aria-hidden="true" /> บันทึกราคาโรงงานแล้ว
+                      <CheckCircle2 size={15} aria-hidden="true" /> บันทึกราคาผลิตแล้ว
                     </span>
                   )}
                 </div>
@@ -204,14 +204,14 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
                     setPriceSaved(false);
                   }}
                 >
-                  อัปเดตราคาโรงงาน
+                  อัปเดตราคาผลิต
                 </button>
               </div>
             ) : (
               <div className="mt-4" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div className="form-grid cols-2">
                   <div className="form-group">
-                    <label htmlFor="factory-price-update">ราคาโรงงานใหม่ (บาท)</label>
+                    <label htmlFor="factory-price-update">ราคาผลิตใหม่ (บาท)</label>
                     <MoneyInput
                       id="factory-price-update"
                       value={factoryPriceDraft}
@@ -221,7 +221,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
                       aria-invalid={!!priceError}
                     />
                     <span id="factory-price-help" className="text-xs text-[var(--text-3)] mt-1">
-                      ช่องนี้อัปเดตเฉพาะราคาโรงงาน ไม่ใช่ราคาขายปลีกหรือข้อมูลสเปคสินค้า
+                      ช่องนี้อัปเดตเฉพาะราคาผลิต ไม่ใช่ราคาขายปลีกหรือข้อมูลสเปคสินค้า
                     </span>
                   </div>
                   <div style={{ padding: "12px 14px", background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
@@ -235,7 +235,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
                         onChange={(e) => setPriceConfirmed(e.target.checked)}
                         style={{ marginTop: 3 }}
                       />
-                      <span>ฉันยืนยันว่ากำลังอัปเดต <strong>ราคาโรงงาน</strong> ของสินค้านี้</span>
+                      <span>ฉันยืนยันว่ากำลังอัปเดต <strong>ราคาผลิต</strong> ของสินค้านี้</span>
                     </label>
                   </div>
                 </div>
@@ -259,7 +259,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
                     ยกเลิกอัปเดตราคา
                   </button>
                   <button type="button" className="btn btn-warning" disabled={priceSubmitting || !priceConfirmed} onClick={submitFactoryPrice}>
-                    {priceSubmitting ? "กำลังบันทึกราคา..." : "บันทึกราคาโรงงานใหม่"}
+                    {priceSubmitting ? "กำลังบันทึกราคา..." : "บันทึกราคาผลิตใหม่"}
                   </button>
                 </div>
               </div>

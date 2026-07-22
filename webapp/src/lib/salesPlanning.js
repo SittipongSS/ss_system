@@ -250,7 +250,7 @@ export function quoteLineNet(line = {}) {
 }
 
 // รวมทั้งใบ (FM-SA-01): subtotal(หลังลดรายบรรทัด) − ส่วนลดท้ายใบ = ฐานภาษี → + VAT
-// vatRate default 0 = "ราคารวม VAT แล้ว" (ราคาบรรทัด = ราคาโรงงานจาก master — มติ
+// vatRate default 0 = "ราคารวม VAT แล้ว" (ราคาบรรทัด = ราคาผลิตจาก master — มติ
 // 2026-07-19); เลือก 7 เมื่อต้องการบวก VAT แยกท้ายใบ. ทุกยอดปัดสตางค์ก่อนคืน.
 export function quoteTotals(lines = [], { discountType = null, discountValue = 0, vatRate = 0 } = {}) {
   const subtotal = round2(lines.reduce((sum, line) => sum + quoteLineNet(line).lineTotal, 0));

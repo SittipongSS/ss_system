@@ -32,7 +32,7 @@ export default function ProductRegistry() {
   const canMargin = useCan("products:margin");
   const role = useRole();
   const myTeam = useTeam();
-  // ราคาโรงงานเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin หรือผู้ที่ได้รับสิทธิ์
+  // ราคาผลิตเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin หรือผู้ที่ได้รับสิทธิ์
   // products:margin (เช่น SA ที่ทำรายงานผู้บริหาร). ใช้ useCan เพื่อให้ตรงกับ redactProductMargin
   // ฝั่ง server (รวม per-user grant) — ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์.
   const canSeeCost = canEdit || canMargin;
@@ -376,7 +376,7 @@ export default function ProductRegistry() {
                 </div>
                 {canSeeCost && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--text-3)]">ราคาโรงงาน</span>
+                    <span className="text-[var(--text-3)]">ราคาผลิต</span>
                     <span className="font-mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</span>
                   </div>
                 )}
@@ -418,7 +418,7 @@ export default function ProductRegistry() {
                   <SortTh label="หมวดหมู่" sortKey="category" sort={sort} />
                   <SortTh label="แบรนด์" sortKey="brand" sort={sort} />
                   <SortTh label="ปริมาตร" sortKey="volume" sort={sort} className="num" />
-                  {canSeeCost && <SortTh label="ราคาโรงงาน" sortKey="cost" sort={sort} className="num" />}
+                  {canSeeCost && <SortTh label="ราคาผลิต" sortKey="cost" sort={sort} className="num" />}
                   <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
                   <th>สถานะ</th>
                 </tr>
