@@ -16,6 +16,8 @@ const SPACE_ENV = {
   pm: 'CHAT_WEBHOOK_PM', // space โครงการ (ใช้ในเฟส 3 daily digest)
   rd: 'CHAT_WEBHOOK_RD', // space ฝ่าย RD (ข้อสอบถามใหม่จากฝ่ายขาย)
   leads: 'CHAT_WEBHOOK_LEADS', // space คิวลีด (แจ้งจุดส่งมอบ + ลีดค้างเช้า)
+  pc: 'CHAT_WEBHOOK_PC', // space ฝ่ายจัดซื้อ (ขอราคาบรรจุภัณฑ์ — mig 0142)
+  executive: 'CHAT_WEBHOOK_EXECUTIVE', // space ผู้บริหาร (ใบขอราคารออนุมัติ — mig 0142)
 };
 
 // รายการ space มาตรฐาน — ใช้ร่วมกันทั้ง validation ฝั่ง API และหน้า UI ตั้งค่า
@@ -25,6 +27,8 @@ export const CHAT_SPACES = [
   { key: 'pm', label: 'โครงการ (PM)', hint: 'สรุปงานใกล้ครบกำหนดประจำวัน (เริ่มใช้เฟส daily digest)' },
   { key: 'rd', label: 'ฝ่าย RD', hint: 'ข้อสอบถามใหม่/ถามต่อจากฝ่ายขาย — คนใน space คือฝ่าย RD' },
   { key: 'leads', label: 'คิวลีด', hint: 'ลีดใหม่รอคัดกรอง · คัดแล้วรอกระจาย · มอบให้ AE — คนใน space คือทีมขายที่ทำคิวลีด (SLA 1 วันทำการ)' },
+  { key: 'pc', label: 'ฝ่ายจัดซื้อ (PC)', hint: 'คำขอราคาบรรจุภัณฑ์จากฝ่ายขาย — คนใน space คือฝ่ายจัดซื้อ' },
+  { key: 'executive', label: 'ผู้บริหาร', hint: 'ใบขอราคาต้นทุนที่รออนุมัติราคาผลิต — คนใน space คือผู้บริหารที่อนุมัติราคา' },
 ];
 
 // cache รายการ webhook จากตาราง ~60 วิ — event ถี่ ๆ ไม่ต้อง query ทุกครั้ง
