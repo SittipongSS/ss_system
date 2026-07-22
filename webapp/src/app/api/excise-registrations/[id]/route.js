@@ -20,7 +20,9 @@ export async function GET(request, { params }) {
   if (!canViewRecord(user, 'registrations', data)) {
     return Response.json({ error: 'ไม่พบทะเบียนนี้' }, { status: 404 });
   }
-  return Response.json(data);
+  // canDelete = อำนาจลบราย record คำนวณฝั่ง server (scope 'own' ต้องเทียบ user.id
+  // ซึ่ง client ไม่มี) — จอใช้ค่านี้ซ่อนปุ่มลบ ไม่ต้องเดาสิทธิ์ซ้ำแล้วเพี้ยนจาก server
+  return Response.json({ ...data, canDelete: canDeleteRecord(user, 'registrations', data) });
 }
 
 // PATCH /api/excise-registrations/[id] — LG approves/rejects; SA resubmits.
@@ -189,7 +191,9 @@ export async function DELETE(request, { params }) {
   // Authority lives entirely in deleteScope: superuser (all) / senior_ae (team) /
   // ae (own). Deliberately NOT canEditRecord — that would let legal + ac delete.
   if (!canDeleteRecord(user, 'registrations', reg)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+    return Response.json({
+      error: 'ลบทะเบียนนี้ไม่ได้ — ลบได้เฉพาะเจ้าของทะเบียน (AE) ทะเบียนในทีม (Senior AE) หรือหัวหน้าฝ่ายขาย/แอดมิน',
+    }, { status: 403 });
   }
 
   // Deletion policy (Phase 2): a registration is a workflow record — hard delete

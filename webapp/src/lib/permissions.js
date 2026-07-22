@@ -518,6 +518,14 @@ export function deleteScope(role, resource) {
   return 'none';
 }
 
+// role มีอำนาจลบทะเบียนสรรพสามิตในหลักการหรือไม่ (ยังไม่ดูตัวแถว) — ด่านหยาบของ
+// proxy ต้องใช้ตัวนี้ ห้ามใช้ products:delete ของแคตตาล็อกสินค้า: cap นั้นมีแค่
+// admin/หัวหน้าฝ่ายขาย ทำให้สาย senior_ae/ae ใน deleteScope กลายเป็นโค้ดตาย
+// (ปุ่มลบโผล่แต่ยิงแล้ว 403 ทุกครั้ง). ด่านจริงราย record ยังเป็น canDeleteRecord.
+export function canDeleteRegistrationRole(role) {
+  return deleteScope(role, 'registrations') !== 'none';
+}
+
 // Decide if `user` (role + team + id) may act on a record with the given
 // {team, ownerId}, at the required scope level. Used by API routes for
 // row-level checks the proxy can't do (it doesn't see the record).
