@@ -16,8 +16,12 @@ const SPACE_ENV = {
   pm: 'CHAT_WEBHOOK_PM', // space โครงการ (ใช้ในเฟส 3 daily digest)
   rd: 'CHAT_WEBHOOK_RD', // space ฝ่าย RD (ข้อสอบถามใหม่จากฝ่ายขาย)
   leads: 'CHAT_WEBHOOK_LEADS', // space คิวลีด (แจ้งจุดส่งมอบ + ลีดค้างเช้า)
-  pc: 'CHAT_WEBHOOK_PC', // space ฝ่ายจัดซื้อ (ขอราคาบรรจุภัณฑ์ — mig 0142)
-  executive: 'CHAT_WEBHOOK_EXECUTIVE', // space ผู้บริหาร (ใบขอราคารออนุมัติ — mig 0142)
+  // ระบบขอราคาต้นทุน (2026-07-22) — เพิ่ม space ใหม่ได้โดยไม่ต้อง migration:
+  // ตาราง chat_webhooks (mig 0099) ไม่มี CHECK บน key และแถวถูกสร้างตอนผู้ดูแล
+  // กดบันทึก URL ครั้งแรก. รายการ space ที่ระบบรู้จักคุมด้วย CHAT_SPACES ข้างล่างนี้
+  // (ตาราง chat_webhook_settings ที่เคยมี CHECK ถูกถอนไปแล้วใน mig 0134)
+  pc: 'CHAT_WEBHOOK_PC', // space ฝ่ายจัดซื้อ (ขอราคาบรรจุภัณฑ์)
+  executive: 'CHAT_WEBHOOK_EXECUTIVE', // space ผู้บริหาร (ใบขอราคารออนุมัติ)
 };
 
 // รายการ space มาตรฐาน — ใช้ร่วมกันทั้ง validation ฝั่ง API และหน้า UI ตั้งค่า
