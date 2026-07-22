@@ -143,7 +143,9 @@ export default function RegistrationDetailPage() {
         <>
           {canEdit && s.status !== "approved" && <ActionButton kind="edit" iconOnly title="แก้ไข" onClick={() => setFormOpen(true)} />}
           {canEdit && s.status === "approved" && <ActionButton kind="reedit" iconOnly title="ขอแก้ไข" onClick={() => setReviseOpen(true)} />}
-          {canEdit && s.status === "draft" && <ActionButton kind="delete" iconOnly title="ลบ" onClick={() => setDeleteOpen(true)} />}
+          {/* ลบ: ยึด s.canDelete จาก server (อำนาจราย record — scope 'own' เทียบ
+              user.id ที่ client ไม่มี) ไม่ใช่ products:edit ซึ่งกว้างกว่าจริง */}
+          {s.canDelete && s.status === "draft" && <ActionButton kind="delete" iconOnly title="ลบ" onClick={() => setDeleteOpen(true)} />}
         </>
       ) : null}
       loading={loading && !s}

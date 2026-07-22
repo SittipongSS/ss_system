@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can, canUser, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver } from '@/lib/permissions';
+import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -272,7 +272,9 @@ function apiWriteAllowed(method, path, role, extraCaps) {
   if (path.startsWith('/api/holidays')) return can(role, 'master:manage');
   // Excise registrations: SA submits/edits the link, LG approves (PATCH).
   if (path.startsWith('/api/excise-registrations')) {
-    if (method === 'DELETE') return can(role, 'products:delete');
+    // ลบทะเบียน = อำนาจของโมดูลภาษี (superuser / senior_ae ในทีม / ae ของตัวเอง)
+    // ไม่ใช่ products:delete ของแคตตาล็อกสินค้า — ด่านจริงราย record อยู่ที่ handler
+    if (method === 'DELETE') return canDeleteRegistrationRole(role);
     if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'legal:approve');
     return can(role, 'products:edit'); // create
   }

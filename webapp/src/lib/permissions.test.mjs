@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessSahamit, canSeeTaskKpi, canSeeRdKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -171,6 +171,20 @@ test('deleteScope for projects (superuser=all, senior_ae=own team, else none)', 
   assert.equal(deleteScope('senior_ae', 'projects'), 'team');
   assert.equal(deleteScope('ac', 'projects'), 'none');
   assert.equal(deleteScope('ae', 'projects'), 'none');
+});
+
+// ด่าน proxy ของ DELETE ทะเบียนต้องยึดตัวนี้ ไม่ใช่ products:delete (มีแค่
+// admin/หัวหน้าฝ่ายขาย) — ไม่งั้นสาย senior_ae/ae ใน deleteScope เป็นโค้ดตาย
+test('canDeleteRegistrationRole ตรงกับ deleteScope ของ registrations', () => {
+  assert.equal(canDeleteRegistrationRole('admin'), true);
+  assert.equal(canDeleteRegistrationRole('ae_supervisor'), true);
+  assert.equal(canDeleteRegistrationRole('senior_ae'), true);
+  assert.equal(canDeleteRegistrationRole('ae'), true);
+  assert.equal(canDeleteRegistrationRole('ac'), false);
+  assert.equal(canDeleteRegistrationRole('legal'), false);
+  // ae ลบได้เฉพาะทะเบียนของตัวเอง (ด่านจริงราย record)
+  assert.equal(canDeleteRecord({ role: 'ae', id: 'u1' }, 'registrations', { ownerId: 'u1' }), true);
+  assert.equal(canDeleteRecord({ role: 'ae', id: 'u1' }, 'registrations', { ownerId: 'u2' }), false);
 });
 
 test('pmTaskEditTier: full edit for admin / scoped sales', () => {
