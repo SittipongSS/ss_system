@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { viewScopeUser } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
+import { genId } from '@/lib/id';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +71,8 @@ export async function POST(request) {
   const isExciseTaxable = product.isExciseTaxable !== false;
 
   const newReg = {
-    id: 'REG-' + Date.now().toString().slice(-6),
+    // id กันชนกัน (มาตรฐานเดียวกับ from-project) — เดิม 'REG-'+ms 6 หลักท้าย วนซ้ำได้
+    id: genId('REG'),
     productId: product.id,
     customerId: customer.id,
     projectId: body.projectId || null,

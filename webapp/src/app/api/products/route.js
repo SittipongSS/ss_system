@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canApproveMasterData, redactProductMargin } from '@/lib/permissions';
+import { canApproveMasterData, canUser, redactProductMargin } from '@/lib/permissions';
+import { registrationStatusOf } from '@/lib/excise/recommendation';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
@@ -42,6 +43,23 @@ export async function GET(request) {
   // the management view. Filtered in JS so it stays resilient before migration
   // 0036 runs (missing column reads as undefined → treated as active).
   const rows = manage ? (data || []) : (data || []).filter((p) => p.isActive !== false);
+  // สถานะขึ้นทะเบียนสรรพสามิตสรุปราย FG ('none'|'in_progress'|'approved') สำหรับ
+  // ตัวกรองหน้า list — ข้อมูลทะเบียนเป็นความลับของระบบภาษี จึงแนบเฉพาะผู้ที่เห็น
+  // ระบบภาษี (history:view เหมือน lib/master/relations); role อื่นไม่ได้ field นี้เลย
+  // (UI ใช้การมี field เป็นสัญญาณซ่อนตัวกรอง). โหลดชุดเดียวด้วย .in() — ห้าม N+1.
+  if (rows.length && canUser(user, 'history:view')) {
+    const { data: regRows, error: regError } = await supabase
+      .from('excise_registrations')
+      .select('id, productId, status')
+      .in('productId', rows.map((p) => p.id));
+    if (regError) return Response.json({ error: regError.message }, { status: 500 });
+    const byProduct = new Map();
+    for (const r of regRows || []) {
+      if (!byProduct.has(r.productId)) byProduct.set(r.productId, []);
+      byProduct.get(r.productId).push(r);
+    }
+    for (const p of rows) p.registrationStatus = registrationStatusOf(byProduct.get(p.id));
+  }
   // Strip the confidential cost breakdown/profit for non-margin roles.
   return Response.json(rows.map((p) => redactProductMargin(user, p)));
 }

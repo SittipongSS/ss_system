@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban } from "lucide-react";
+import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban, AlertTriangle, Clock, Send } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -20,6 +20,8 @@ import { fmtMoney, fmtDate } from "@/lib/format";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { categoryOf, categoryFlags } from "@/lib/master/categoryOf";
+import { exciseRecommendationState } from "@/lib/excise/recommendation";
+import { statusMeta } from "@/lib/excise/workflow";
 import { apiCache } from "@/lib/apiCache";
 
 // หน้า detail สินค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
@@ -62,6 +64,7 @@ export default function ProductDetails() {
   const [customers, setCustomers] = useState([]);
   const [toast, setToast] = useState(null);
   const [confirmBox, setConfirmBox] = useState(null); // { title, message, confirmLabel, danger, onConfirm }
+  const [sendingExcise, setSendingExcise] = useState(false);
 
   const fetchProduct = async () => {
     try {
@@ -142,6 +145,27 @@ export default function ProductDetails() {
     }
   };
 
+  // ส่ง FG นี้เข้าระบบภาษีเป็นทะเบียนร่าง แล้วพาไปหน้าทะเบียนให้แนบเอกสารต่อ —
+  // ลูกค้าเจ้าของถูก derive ฝั่ง server จาก products.customerId จึงส่งแค่ productId
+  // (409 = มีทะเบียนอยู่แล้ว เช่น ทะเบียนข้ามทีมที่ผู้ใช้มองไม่เห็น — โชว์ข้อความ server ตรง ๆ)
+  const sendToExcise = async () => {
+    setSendingExcise(true);
+    try {
+      const res = await fetch("/api/excise-registrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: id }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "ส่งขึ้นทะเบียนไม่สำเร็จ");
+      router.push(`/tax/registrations/${payload.id}`);
+      return; // นำทางออกจากหน้า — คงสถานะ busy ไว้กันกดซ้ำระหว่างเปลี่ยนหน้า
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message || "ส่งขึ้นทะเบียนไม่สำเร็จ" });
+      setSendingExcise(false);
+    }
+  };
+
   const handleDelete = () => setConfirmBox({
     title: "ลบรหัสสินค้านี้?",
     message: "ข้อมูลสินค้าจะถูกลบออกจากระบบและกู้คืนไม่ได้",
@@ -183,6 +207,35 @@ export default function ProductDetails() {
   // หมวดอื่นไม่เข้าข่ายสรรพสามิต ไม่โชว์เลย
   const catFlags = categoryFlags(product.categoryCode || categoryOf(product.fgCode), productTypes);
   const isExciseCat = catFlags.isExcise;
+
+  // แบนเนอร์แนะนำขึ้นทะเบียนสรรพสามิต — เฉพาะผู้เห็นระบบภาษี; helper คืน null เอง
+  // เมื่อไม่เข้าข่าย (หมวดอื่น/พักใช้/ยกเว้นรายตัว/approved แล้ว — rail ขวาโชว์อยู่)
+  const exciseRec = canViewTax ? exciseRecommendationState(product, catFlags, regs) : null;
+  const exciseBanner = exciseRec && {
+    unregistered: {
+      tone: "amber",
+      title: "สินค้าหมวดสรรพสามิต — ยังไม่ขึ้นทะเบียน",
+      detail: "FG นี้ต้องขึ้นทะเบียนสรรพสามิตให้ลูกค้าเจ้าของก่อนเริ่มขาย/ยื่นชำระภาษี — ส่งเข้าระบบภาษีเพื่อเริ่มแนบเอกสารได้เลย",
+    },
+    incomplete: {
+      tone: "amber",
+      title: "ทะเบียนสรรพสามิตยังทำไม่เสร็จ",
+      detail: `สถานะ: ${statusMeta(exciseRec.reg?.status).label} — แนบเอกสารให้ครบแล้วส่งให้ฝ่ายกฎหมายตรวจ`,
+      linkLabel: "ไปทำต่อ",
+    },
+    rejected: {
+      tone: "amber",
+      title: "ทะเบียนสรรพสามิตยังทำไม่เสร็จ — ถูกตีกลับ ต้องแก้ไข",
+      detail: `สถานะ: ${statusMeta("rejected").label} — แก้ไขตามเหตุผลที่ฝ่ายกฎหมายแจ้ง แล้วส่งตรวจใหม่`,
+      linkLabel: "ไปแก้ไข",
+    },
+    pending: {
+      tone: "blue",
+      title: "ทะเบียนอยู่ระหว่างนิติกรรมตรวจ",
+      detail: `สถานะ: ${statusMeta("pending_legal").label} — ฝ่ายกฎหมายกำลังตรวจทะเบียนนี้`,
+      linkLabel: "ดูสถานะ",
+    },
+  }[exciseRec.kind];
 
   return (
     <>
@@ -237,6 +290,40 @@ export default function ProductDetails() {
         <div className="my-[18px] rounded-xl px-4 py-3 flex items-center gap-2 text-sm" style={{ background: "var(--panel-2)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
           <Archive size={16} className="text-[var(--text-3)]" />
           สินค้านี้ถูกพักใช้งาน — ไม่แสดงในรายการเลือกของระบบอื่น (กด “เปิดใช้อีกครั้ง” เพื่อนำกลับมา)
+        </div>
+      )}
+
+      {/* แบนเนอร์แนะนำขึ้นทะเบียนสรรพสามิต (ช่องเดียวกับ callout พักใช้งาน) —
+          amber = มีงานต้องลงมือ, blue = รอฝ่ายกฎหมาย; approved ไม่มีแบนเนอร์ */}
+      {exciseBanner && (
+        <div
+          className="my-[18px] rounded-xl px-4 py-3 flex flex-wrap items-center gap-3 text-sm"
+          style={{
+            background: exciseBanner.tone === "blue" ? "var(--blue-soft)" : "var(--amber-soft)",
+            border: `1px solid ${exciseBanner.tone === "blue" ? "var(--blue)" : "var(--amber)"}`,
+            color: "var(--text)",
+          }}
+        >
+          {exciseBanner.tone === "blue"
+            ? <Clock size={16} className="shrink-0" style={{ color: "var(--blue)" }} />
+            : <AlertTriangle size={16} className="shrink-0" style={{ color: "var(--amber)" }} />}
+          <div className="min-w-0">
+            <div className="font-semibold">{exciseBanner.title}</div>
+            <div className="text-xs text-[var(--text-2)] mt-0.5">{exciseBanner.detail}</div>
+          </div>
+          <div className="ml-auto shrink-0">
+            {exciseRec.kind === "unregistered" ? (
+              canEditProducts && (
+                <button type="button" className="btn btn-warning flex items-center gap-1.5" disabled={sendingExcise} onClick={sendToExcise}>
+                  <Send size={14} /> {sendingExcise ? "กำลังส่ง..." : "ส่งขึ้นทะเบียนสรรพสามิต"}
+                </button>
+              )
+            ) : (
+              <Link href={`/tax/registrations/${exciseRec.reg?.id}`} className="btn flex items-center gap-1.5">
+                {exciseBanner.linkLabel}
+              </Link>
+            )}
+          </div>
         </div>
       )}
 
@@ -455,7 +542,18 @@ export default function ProductDetails() {
               การขึ้นทะเบียนภาษีของสินค้านี้ ({regs.length})
             </h3>
             {regs.length === 0 ? (
-              <p className="text-xs text-[var(--text-3)] italic">ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — ยื่นได้ที่เมนู “ยื่นขึ้นทะเบียนสินค้า”</p>
+              // ผู้แก้สินค้าได้ (products:edit) ส่งขึ้นทะเบียนจากตรงนี้ได้เลย (handler
+              // เดียวกับแบนเนอร์); tax viewer อ่านอย่างเดียวยังได้ข้อความชี้ทางเดิม
+              canEditProducts && exciseRec?.kind === "unregistered" ? (
+                <div className="text-xs">
+                  <p className="text-[var(--text-3)] italic">ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด</p>
+                  <button type="button" className="btn btn-warning flex items-center gap-1.5 mt-3" disabled={sendingExcise} onClick={sendToExcise}>
+                    <Send size={14} /> {sendingExcise ? "กำลังส่ง..." : "ส่งขึ้นทะเบียนสรรพสามิต"}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--text-3)] italic">ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — ยื่นได้ที่เมนู “ยื่นขึ้นทะเบียนสินค้า”</p>
+              )
             ) : (
               <div className="space-y-2">
                 {regs.map((r) => (
