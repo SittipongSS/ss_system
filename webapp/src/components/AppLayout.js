@@ -337,7 +337,7 @@ export default function AppLayout({ children }) {
               userName={userName}
               userInitials={userInitials}
               roleLabel={team ? `${ROLE_LABELS[role] || role} · ${TEAM_LABELS[team] || team}` : (ROLE_LABELS[role] || role)}
-              roleTone={role === 'admin' || role === 'ae_supervisor' || role === 'legal' || role === 'secretary' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}
+              roleTone={role === 'admin' || role === 'ae_supervisor' || role === 'legal' || role === 'secretary' || role === 'executive' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}
               isDark={isDark}
               canChangePassword={SUPABASE_CONFIGURED}
               onToggleTheme={toggleTheme}

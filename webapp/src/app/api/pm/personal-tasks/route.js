@@ -1,7 +1,7 @@
 import { withUser, ok, fail, unauthorized, badRequest, forbidden } from '@/lib/http';
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { can, canAssignTask } from '@/lib/permissions';
+import { can, canAssignTask, isReadOnlyObserver } from '@/lib/permissions';
 import { normalizeDifficulty } from '@/lib/pm/tasks';
 import { canAcknowledgeInquiryMessage, canViewInquiry } from '@/lib/inquiries';
 import { canLinkTaskToDeal } from '@/lib/pm/taskDealScope';
@@ -30,7 +30,7 @@ export const GET = withUser(async ({ user, supabase }) => {
 //  - ผูกได้ทั้งดีล (dealId) และ/หรือโครงการ (projectId) — nullable ทั้งคู่.
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!can(user.role, 'pm:view') || user.role === 'viewer') return forbidden();
+  if (!can(user.role, 'pm:view') || isReadOnlyObserver(user.role)) return forbidden();
 
   const body = await req.json();
   if (!body.title || !body.title.trim()) {

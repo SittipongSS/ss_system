@@ -1,4 +1,4 @@
-import { can, inScope, isSuperuser } from '@/lib/permissions';
+import { can, inScope, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import { businessMonthKey } from '@/lib/businessDate';
 
 export const DEAL_STAGES = [
@@ -52,7 +52,7 @@ export function salesPlanningViewScope(role) {
   if (isSuperuser(role)) return 'all';
   // viewer = whole-system read-only observer → sees every team's deals/pipeline,
   // exactly like a superuser's view (edit stays 'none' via salesPlanningEditScope).
-  if (role === 'viewer') return 'all';
+  if (isReadOnlyObserver(role)) return 'all';
   // rd (ฝ่ายวิจัยและพัฒนา) ต้องเห็นดีล/โครงการทุกทีมเพื่อมีบริบทเต็มตอนตอบ
   // ข้อสอบถามจากฝ่ายขาย — อ่านอย่างเดียวเหมือน viewer (edit ยัง 'none').
   if (role === 'rd') return 'all';

@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { can, isSuperuser } from '@/lib/permissions';
+import { can, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf,
   LEAD_CHANNEL_LABELS,
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 export function applyLeadScope(query, user) {
   const role = user?.role;
   // supervisor sees all leads (to screen them)
-  if (isSuperuser(role) || role === 'viewer' || role === 'marketing') return query;
+  if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return query;
   if (role === 'senior_ae' || role === 'ac') {
     // Senior/AC only see leads that have been screened to their team.
     return query.eq('team', user?.team ?? '__no_team__');
@@ -31,7 +31,7 @@ export function applyLeadScope(query, user) {
 // scope รายใบ — กติกาเดียวกับ applyLeadScope (ใช้กับ GET /leads/[id] ที่โหลดมาแล้ว)
 export function inLeadScope(user, lead) {
   const role = user?.role;
-  if (isSuperuser(role) || role === 'viewer' || role === 'marketing') return true;
+  if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return true;
   if (role === 'senior_ae' || role === 'ac') return !!lead.team && lead.team === user?.team;
   if (role === 'ae') return lead.assigneeId === user?.id || lead.createdBy === user?.id;
   return false;
