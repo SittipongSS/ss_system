@@ -1,7 +1,7 @@
 "use client";
 import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
-import { Upload, Download, AlertTriangle, Plus, X, Pencil, Copy } from "lucide-react";
+import { Upload, Download, AlertTriangle, Plus, X, Pencil, Copy, History } from "lucide-react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { roundMatrix } from "@/lib/sahamit/forecastClient";
@@ -217,6 +217,14 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   // Duplicate received-date guard (create mode only): flag if another round was
   // already logged on this date — likely a re-entry of data already captured.
   const dupRound = !editRound && existingRounds.find((r) => String(r.receivedDate || "").slice(0, 10) === receivedDate);
+  // Backfill hint (create mode): a received date older than the latest round is
+  // slotted into the chronology by the server — show where it will land.
+  const backfillPos = useMemo(() => {
+    if (editRound || !existingRounds.length || !receivedDate) return null;
+    const dates = existingRounds.map((r) => String(r.receivedDate || "").slice(0, 10));
+    if (receivedDate >= dates.reduce((a, b) => (b > a ? b : a))) return null;
+    return dates.filter((d) => d <= receivedDate).length + 1;
+  }, [editRound, existingRounds, receivedDate]);
 
   return (
     <Modal open={open} onClose={onClose} title={editRound ? `แก้ FC รอบที่ ${editRound.roundNo}` : "นำเข้ารอบ FC ใหม่"} size="lg">
@@ -288,6 +296,15 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
                 <Pencil size={14} /> ไปแก้รอบ {dupRound.roundNo}
               </button>
             )}
+          </div>
+        )}
+
+        {backfillPos != null && (
+          <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <History size={16} style={{ color: "var(--blue)" }} />
+            <span style={{ fontSize: 13 }}>
+              วันที่รับนี้เก่ากว่ารอบล่าสุด — จะแทรกเป็น<strong> รอบที่ {backfillPos} </strong>ตามลำดับวันที่รับ (เลขรอบหลังจากนั้นขยับขึ้นให้อัตโนมัติ)
+            </span>
           </div>
         )}
 
