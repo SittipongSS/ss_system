@@ -13,6 +13,8 @@ import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
+import Pager from "@/components/excise/Pager";
+import { usePagination } from "@/lib/usePagination";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 // มูลค่า PO โชว์เต็ม 2 ตำแหน่ง (ไม่ย่อ) — formatter กลาง fmtMoney
@@ -135,6 +137,9 @@ export default function PoPage() {
   const filterCount = statusSel.length + destSel.length;
   const clearFilters = () => { setStatusSel([]); setDestSel([]); };
 
+  // แบ่งหน้ามุมมอง "รายใบ" (รีเซ็ตกลับหน้า 1 เมื่อค้น/กรองเปลี่ยน)
+  const grouped = usePagination(filteredPos, { resetKey: `${q}|${statusSel.join(",")}|${destSel.join(",")}` });
+
   // material lines grouped by PO number (คัดเฉพาะบรรทัด active แล้วจาก API)
   const matByPo = useMemo(() => {
     const m = new Map();
@@ -228,7 +233,7 @@ export default function PoPage() {
                   {filteredPos.length === 0 ? (
                     <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มี PO ตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
                   ) : (
-                    filteredPos.map((po) => (
+                    grouped.pageRows.map((po) => (
                       <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} canEdit={canEdit} />
                     ))
                   )}
@@ -237,6 +242,9 @@ export default function PoPage() {
             </div>
           ) : (
             <PoLinesTable pos={filteredPos} priceByFg={priceByFg} prodIdx={prodIdx} q={q} sort={sort} onSort={onSort} />
+          )}
+          {view === "grouped" && (
+            <Pager page={grouped.page} pageCount={grouped.pageCount} total={grouped.total} onPage={grouped.setPage} pageSize={grouped.pageSize} onPageSize={grouped.setPageSize} />
           )}
         </>
       )}
@@ -364,13 +372,15 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
     return out;
   }, [pos, q, priceByFg, prodIdx, sort]);
 
-  const totalExVat = rows.reduce((s, r) => s + (r.value || 0), 0);
+  const totalExVat = rows.reduce((s, r) => s + (r.value || 0), 0); // รวมทุกหน้า (ไม่ใช่เฉพาะหน้าปัจจุบัน)
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: `${q}|${sort.col}|${sort.dir}` });
   const arrow = (col) => (sort.col === col ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
   const Th = ({ col, children, align = "left" }) => (
     <th style={{ textAlign: align, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }} onClick={() => onSort(col)}>{children}{arrow(col)}</th>
   );
 
   return (
+    <>
     <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
       <table className="premium-table">
         <thead>
@@ -387,7 +397,7 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มีรายการตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
-          ) : rows.map((r, i) => {
+          ) : pageRows.map((r, i) => {
             const product = prodIdx.get(String(r.l.fgCode).trim().toLowerCase());
             return (
               <tr key={`${r.po.id}-${r.l.id || i}`} className="clickable-row" style={{ cursor: "pointer", opacity: r.cancelled ? 0.55 : 1 }} onClick={() => router.push(`/sahamit/po/${r.po.id}`)}>
@@ -427,5 +437,7 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
         )}
       </table>
     </div>
+    <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
+    </>
   );
 }
