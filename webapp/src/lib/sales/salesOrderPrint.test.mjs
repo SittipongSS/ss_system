@@ -31,12 +31,13 @@ test('Sale Order print ใช้เครื่องยนต์ V4 + FM-SA-03 
   assert.doesNotMatch(html, /class="watermark"/);
 });
 
+const DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
 test('approved Sale Order stamps the approver e-signature image when the server embeds it', () => {
-  const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   const html = buildSalesOrderPrintHTML({
     ...order,
     approverSignature: {
-      imageDataUri: dataUri,
+      imageDataUri: DATA_URI,
       signerName: 'สมชาย ผู้อนุมัติ',
       signedAt: '2026-07-16T03:00:00.000Z',
       evidenceId: 'DSE-0001',
@@ -50,10 +51,22 @@ test('approved Sale Order stamps the approver e-signature image when the server 
   assert.doesNotMatch(html, /ผู้อนุมัติ <span>ผู้จัดการฝ่ายขาย<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
 });
 
-test('approved Sale Order without an embedded image falls back to the blank sign box', () => {
+test('approved Sale Order stamps the proposer (salesperson) e-signature image', () => {
+  const html = buildSalesOrderPrintHTML({
+    ...order,
+    proposerSignature: { imageDataUri: DATA_URI, signerName: 'อารีย์ พนักงานขาย' },
+  });
+  assert.match(html, /<img class="signatureImage" src="data:image\/png;base64,/);
+  assert.match(html, /ลายเซ็น อารีย์ พนักงานขาย/);
+  // ผู้จัดทำไม่หล่นไปช่องเซ็นเปล่า
+  assert.doesNotMatch(html, /ผู้จัดทำ <span>พนักงานขาย<\/span>[\s\S]*?\(ผู้จัดทำ\)/);
+});
+
+test('approved Sale Order without embedded images falls back to blank sign boxes for both signers', () => {
   const html = buildSalesOrderPrintHTML(order);
   // ไม่มี <img> ลายเซ็น (CSS .signatureImage ยังอยู่เสมอ จึงเช็คเฉพาะ tag รูป)
   assert.doesNotMatch(html, /<img class="signatureImage"/);
+  assert.match(html, /ผู้จัดทำ <span>พนักงานขาย<\/span>[\s\S]*?\(ผู้จัดทำ\)/);
   assert.match(html, /ผู้อนุมัติ <span>ผู้จัดการฝ่ายขาย<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
 });
 
