@@ -2,7 +2,6 @@
 import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { Upload, Download, AlertTriangle, Plus, X, Pencil, Copy, History } from "lucide-react";
-import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { roundMatrix } from "@/lib/sahamit/forecastClient";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -10,10 +9,10 @@ import { productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
 import { ppcOf, convertEntryUnit } from "@/lib/sahamit/units";
 
-// Create one FC round. The month columns run from a start month to an end month
-// (the round's last month) and the grid updates live when either changes. Rows
-// are the products the user explicitly adds (search + add) — no need to pull the
-// whole catalog. An .xlsx upload can also fill the grid (parsed server-side).
+// ฟอร์มลง/แก้รอบ FC — ใช้ร่วม 2 หน้า: สร้าง (/sahamit/forecast/new) กับแก้
+// (/sahamit/forecast/[id]/edit) ตามกฎ component เดียวสองโหมด (เหมือน PoForm).
+// คอลัมน์เดือนวิ่งจากเดือนเริ่มต้น→เดือนสุดท้ายของรอบ กริดอัปเดตสด; แถวคือสินค้าที่
+// ผู้ใช้กดเพิ่ม (หรืออัปโหลด Excel / ใช้ FC รอบก่อนหน้า). โหมดแก้ = โหลดจากบรรทัดของรอบ.
 
 function thisMonth() {
   const d = new Date();
@@ -40,7 +39,9 @@ function monthsBetween(start, end) {
   return out;
 }
 
-export default function ForecastImportModal({ open, onClose, onCreated, products = [], editRound = null, existingRounds = [], onEditExisting }) {
+// onDone(json): บันทึกสำเร็จ (ส่ง response กลับให้หน้าไป redirect/refresh)
+// onCancel(): กดยกเลิก · onEditExisting(round): ไปแก้รอบที่ลงวันซ้ำ (หน้า new → navigate)
+export default function ForecastForm({ products = [], editRound = null, existingRounds = [], onDone, onCancel, onEditExisting }) {
   const [receivedDate, setReceivedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [startMonth, setStartMonth] = useState(thisMonth);
@@ -90,10 +91,9 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     setRows(next);
   };
 
-  // Reset (create) or prefill (edit) when the modal is (re)opened or the target
-  // round changes. In edit mode the grid is loaded from the round's lines.
+  // Init once on mount / when the target round changes. In edit mode the grid is
+  // loaded from the round's lines; in create mode it starts blank.
   useEffect(() => {
-    if (!open) return;
     setUnknown([]); setPick(""); setError(""); setBusy(false); setEntryUnit("piece");
     if (editRound) {
       setReceivedDate(String(editRound.receivedDate || "").slice(0, 10) || new Date().toISOString().slice(0, 10));
@@ -105,7 +105,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
       setMonthsOverride(null); setRows([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editRound]);
+  }, [editRound]);
 
   // Month columns run from start to end (independent from/to pickers). Changing
   // either clears any upload-pinned months; the grid columns update live.
@@ -231,12 +231,11 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
           body: JSON.stringify({ receivedDate, note, coverMonths: months, lines }),
         },
       );
-      onCreated?.(json);
-      onClose?.();
+      onDone?.(json);
     } catch (e) {
       setError(e.message);
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const hasGrid = months.length > 0 && rows.length > 0;
@@ -253,172 +252,170 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   }, [editRound, existingRounds, receivedDate]);
 
   return (
-    <Modal open={open} onClose={onClose} title={editRound ? `แก้ FC รอบที่ ${editRound.roundNo}` : "นำเข้ารอบ FC ใหม่"} size="lg">
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        {/* Round meta + month range (start → last month; grid updates live) */}
-        <div className="form-grid cols-3">
-          <div className="form-group">
-            <label>วันที่รับ FC <span style={{ color: "var(--red)" }}>*</span></label>
-            <DateInput value={receivedDate} onChange={setReceivedDate} />
-          </div>
-          <div className="form-group">
-            <label>เดือนเริ่มต้น</label>
-            <input type="month" className="premium-input" value={startMonth} onChange={(e) => onStart(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label>เดือนสุดท้ายของรอบ</label>
-            <input type="month" className="premium-input" value={endMonth} min={startMonth} onChange={(e) => onEnd(e.target.value)} />
-          </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* Round meta + month range (start → last month; grid updates live) */}
+      <div className="form-grid cols-3">
+        <div className="form-group">
+          <label>วันที่รับ FC <span style={{ color: "var(--red)" }}>*</span></label>
+          <DateInput value={receivedDate} onChange={setReceivedDate} />
         </div>
         <div className="form-group">
-          <label>หมายเหตุ</label>
-          <input type="text" className="premium-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="(ไม่บังคับ)" />
+          <label>เดือนเริ่มต้น</label>
+          <input type="month" className="premium-input" value={startMonth} onChange={(e) => onStart(e.target.value)} />
         </div>
-
-        {/* Pick products to add + template/upload */}
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div className="form-group" style={{ flex: "1 1 280px", minWidth: 220 }}>
-            <label>เพิ่มสินค้าเข้ากริด</label>
-            <div style={{ display: "flex", gap: "6px" }}>
-              <div style={{ flex: 1 }}>
-                <SearchableSelect
-                  entity="product"
-                  size="sm"
-                  allowFreeText
-                  options={productSelectOptions(products, (p) => p.fgCode)}
-                  value={pick}
-                  onChange={setPick}
-                  placeholder="ค้นหารหัส / ชื่อสินค้า แล้วกดเพิ่ม"
-                />
-              </div>
-              <button type="button" className="btn" onClick={() => addRow(pick)} style={{ height: "30px", flexShrink: 0 }}><Plus size={15} /> เพิ่ม</button>
-            </div>
-          </div>
-          {latestRound && (
-            <button type="button" className="btn ghost" onClick={seedFromLatest} title={`ดึงสินค้า เดือน และจำนวนจากรอบที่ ${latestRound.roundNo} มาเป็นตั้งต้น`}>
-              <Copy size={15} /> ใช้ FC รอบก่อนหน้า (#{latestRound.roundNo})
-            </button>
-          )}
-          <button type="button" className="btn ghost" onClick={addAllProducts} disabled={!products.length}>
-            เพิ่มทุกสินค้า ({products.length})
-          </button>
-          <button type="button" className="btn ghost" onClick={downloadTemplate}>
-            <Download size={15} /> เทมเพลต
-          </button>
-          <label className="btn ghost" style={{ cursor: "pointer" }}>
-            <Upload size={15} /> อัปโหลด Excel
-            <input type="file" accept=".xlsx" hidden onChange={(e) => onUpload(e.target.files?.[0])} />
-          </label>
-        </div>
-
-        {dupRound && (
-          <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--amber)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <AlertTriangle size={16} style={{ color: "var(--amber)" }} />
-            <span style={{ fontSize: 13 }}>
-              วันที่รับนี้เคยลง<strong> รอบที่ {dupRound.roundNo} </strong>แล้ว — อาจลงข้อมูลซ้ำ
-            </span>
-            {onEditExisting && (
-              <button type="button" className="btn sm" style={{ marginLeft: "auto" }} onClick={() => onEditExisting(dupRound)}>
-                <Pencil size={14} /> ไปแก้รอบ {dupRound.roundNo}
-              </button>
-            )}
-          </div>
-        )}
-
-        {backfillPos != null && (
-          <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <History size={16} style={{ color: "var(--blue)" }} />
-            <span style={{ fontSize: 13 }}>
-              วันที่รับนี้เก่ากว่ารอบล่าสุด — จะแทรกเป็น<strong> รอบที่ {backfillPos} </strong>ตามลำดับวันที่รับ (เลขรอบหลังจากนั้นขยับขึ้นให้อัตโนมัติ)
-            </span>
-          </div>
-        )}
-
-        {unknown.length > 0 && (
-          <div className="ui-badge" style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--amber)", borderColor: "var(--amber)" }}>
-            <AlertTriangle size={14} /> รหัสไม่รู้จัก {unknown.length} รายการ: {unknown.join(", ")} (บันทึกได้ แต่ยังไม่ผูกสินค้า)
-          </div>
-        )}
-
-        {error && <div style={{ color: "var(--red)", fontSize: "13px" }}>{error}</div>}
-
-        {/* หน่วยที่กรอกในกริด — สหมิตรคุยเป็นลัง แต่ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลังตอนบันทึก) */}
-        {hasGrid && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13, color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
-            <div className="segmented">
-              <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => changeEntryUnit("piece")}>ชิ้น</button>
-              <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => changeEntryUnit("case")}>ลัง</button>
-            </div>
-            <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-              {entryUnit === "case"
-                ? "สลับหน่วยแล้วเลขในกริดแปลงตามอัตโนมัติ · ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลัง)"
-                : "เก็บตามที่กรอก (ชิ้น)"}
-            </span>
-          </div>
-        )}
-
-        {/* Grid */}
-        {hasGrid ? (
-          <div className="premium-table-wrapper" style={{ maxHeight: "44vh", overflow: "auto" }}>
-            <table className="premium-table sticky-col1">
-              <thead>
-                <tr>
-                  <th style={{ minWidth: 120 }}>รหัสสินค้า</th>
-                  <th style={{ minWidth: 150 }}>ชื่อสินค้า</th>
-                  {months.map((m) => <th key={m} style={{ textAlign: "center" }}>{m}</th>)}
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, ri) => (
-                  <tr key={`${r.fgCode}-${ri}`}>
-                    <td className="font-mono" style={{ fontWeight: 600 }}>
-                      {r.fgCode}{!r.known && <span title="ไม่รู้จัก" style={{ color: "var(--amber)", marginLeft: 4 }}>⚠</span>}
-                    </td>
-                    <td style={{ color: r.known ? "inherit" : "var(--amber)" }}>
-                      {r.productName || "— ไม่รู้จัก —"}
-                      {r.productMeta && <span style={{ color: "var(--text-3)", fontSize: 12 }}> ({r.productMeta})</span>}
-                    </td>
-                    {months.map((m) => (
-                      <td key={m} style={{ padding: "2px" }}>
-                        <input
-                          type="number" min={0}
-                          className="premium-input"
-                          style={{ width: 76, textAlign: "right", height: 30 }}
-                          value={r.qty[m] ?? ""}
-                          onChange={(e) => setQty(ri, m, e.target.value)}
-                        />
-                      </td>
-                    ))}
-                    <td style={{ textAlign: "center" }}>
-                      <button type="button" className="btn-icon" title="ลบแถวนี้" onClick={() => removeRow(ri)}><X size={14} /></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="empty-state dashed" style={{ padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
-            เลือกช่วงเดือน แล้วเพิ่มสินค้าเข้ากริด (หรืออัปโหลด Excel{latestRound ? " / ใช้ FC รอบก่อนหน้า" : ""})
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="form-action-bar">
-          <span className="text-[13px] text-[var(--text-3)]">
-            {months.length ? `${months.length} เดือน` : "ช่วงเดือนไม่ถูกต้อง"}
-            {hasGrid ? ` · ${rows.length} สินค้า · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : ""}
-          </span>
-          <div className="flex gap-2">
-            <button type="button" className="btn" onClick={onClose} disabled={busy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || !hasGrid}>
-              {busy ? "กำลังบันทึก..." : editRound ? "บันทึกการแก้ไข" : "บันทึกรอบ FC"}
-            </button>
-          </div>
+        <div className="form-group">
+          <label>เดือนสุดท้ายของรอบ</label>
+          <input type="month" className="premium-input" value={endMonth} min={startMonth} onChange={(e) => onEnd(e.target.value)} />
         </div>
       </div>
-    </Modal>
+      <div className="form-group">
+        <label>หมายเหตุ</label>
+        <input type="text" className="premium-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="(ไม่บังคับ)" />
+      </div>
+
+      {/* Pick products to add + template/upload */}
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div className="form-group" style={{ flex: "1 1 280px", minWidth: 220 }}>
+          <label>เพิ่มสินค้าเข้ากริด</label>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <div style={{ flex: 1 }}>
+              <SearchableSelect
+                entity="product"
+                size="sm"
+                allowFreeText
+                options={productSelectOptions(products, (p) => p.fgCode)}
+                value={pick}
+                onChange={setPick}
+                placeholder="ค้นหารหัส / ชื่อสินค้า แล้วกดเพิ่ม"
+              />
+            </div>
+            <button type="button" className="btn" onClick={() => addRow(pick)} style={{ height: "30px", flexShrink: 0 }}><Plus size={15} /> เพิ่ม</button>
+          </div>
+        </div>
+        {latestRound && (
+          <button type="button" className="btn ghost" onClick={seedFromLatest} title={`ดึงสินค้า เดือน และจำนวนจากรอบที่ ${latestRound.roundNo} มาเป็นตั้งต้น`}>
+            <Copy size={15} /> ใช้ FC รอบก่อนหน้า (#{latestRound.roundNo})
+          </button>
+        )}
+        <button type="button" className="btn ghost" onClick={addAllProducts} disabled={!products.length}>
+          เพิ่มทุกสินค้า ({products.length})
+        </button>
+        <button type="button" className="btn ghost" onClick={downloadTemplate}>
+          <Download size={15} /> เทมเพลต
+        </button>
+        <label className="btn ghost" style={{ cursor: "pointer" }}>
+          <Upload size={15} /> อัปโหลด Excel
+          <input type="file" accept=".xlsx" hidden onChange={(e) => onUpload(e.target.files?.[0])} />
+        </label>
+      </div>
+
+      {dupRound && (
+        <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--amber)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <AlertTriangle size={16} style={{ color: "var(--amber)" }} />
+          <span style={{ fontSize: 13 }}>
+            วันที่รับนี้เคยลง<strong> รอบที่ {dupRound.roundNo} </strong>แล้ว — อาจลงข้อมูลซ้ำ
+          </span>
+          {onEditExisting && (
+            <button type="button" className="btn sm" style={{ marginLeft: "auto" }} onClick={() => onEditExisting(dupRound)}>
+              <Pencil size={14} /> ไปแก้รอบ {dupRound.roundNo}
+            </button>
+          )}
+        </div>
+      )}
+
+      {backfillPos != null && (
+        <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <History size={16} style={{ color: "var(--blue)" }} />
+          <span style={{ fontSize: 13 }}>
+            วันที่รับนี้เก่ากว่ารอบล่าสุด — จะแทรกเป็น<strong> รอบที่ {backfillPos} </strong>ตามลำดับวันที่รับ (เลขรอบหลังจากนั้นขยับขึ้นให้อัตโนมัติ)
+          </span>
+        </div>
+      )}
+
+      {unknown.length > 0 && (
+        <div className="ui-badge" style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--amber)", borderColor: "var(--amber)" }}>
+          <AlertTriangle size={14} /> รหัสไม่รู้จัก {unknown.length} รายการ: {unknown.join(", ")} (บันทึกได้ แต่ยังไม่ผูกสินค้า)
+        </div>
+      )}
+
+      {error && <div style={{ color: "var(--red)", fontSize: "13px" }}>{error}</div>}
+
+      {/* หน่วยที่กรอกในกริด — สหมิตรคุยเป็นลัง แต่ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลังตอนบันทึก) */}
+      {hasGrid && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
+          <div className="segmented">
+            <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => changeEntryUnit("piece")}>ชิ้น</button>
+            <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => changeEntryUnit("case")}>ลัง</button>
+          </div>
+          <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+            {entryUnit === "case"
+              ? "สลับหน่วยแล้วเลขในกริดแปลงตามอัตโนมัติ · ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลัง)"
+              : "เก็บตามที่กรอก (ชิ้น)"}
+          </span>
+        </div>
+      )}
+
+      {/* Grid */}
+      {hasGrid ? (
+        <div className="premium-table-wrapper" style={{ maxHeight: "56vh", overflow: "auto" }}>
+          <table className="premium-table sticky-col1">
+            <thead>
+              <tr>
+                <th style={{ minWidth: 120 }}>รหัสสินค้า</th>
+                <th style={{ minWidth: 150 }}>ชื่อสินค้า</th>
+                {months.map((m) => <th key={m} style={{ textAlign: "center" }}>{m}</th>)}
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={`${r.fgCode}-${ri}`}>
+                  <td className="font-mono" style={{ fontWeight: 600 }}>
+                    {r.fgCode}{!r.known && <span title="ไม่รู้จัก" style={{ color: "var(--amber)", marginLeft: 4 }}>⚠</span>}
+                  </td>
+                  <td style={{ color: r.known ? "inherit" : "var(--amber)" }}>
+                    {r.productName || "— ไม่รู้จัก —"}
+                    {r.productMeta && <span style={{ color: "var(--text-3)", fontSize: 12 }}> ({r.productMeta})</span>}
+                  </td>
+                  {months.map((m) => (
+                    <td key={m} style={{ padding: "2px" }}>
+                      <input
+                        type="number" min={0}
+                        className="premium-input"
+                        style={{ width: 76, textAlign: "right", height: 30 }}
+                        value={r.qty[m] ?? ""}
+                        onChange={(e) => setQty(ri, m, e.target.value)}
+                      />
+                    </td>
+                  ))}
+                  <td style={{ textAlign: "center" }}>
+                    <button type="button" className="btn-icon" title="ลบแถวนี้" onClick={() => removeRow(ri)}><X size={14} /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="empty-state dashed" style={{ padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
+          เลือกช่วงเดือน แล้วเพิ่มสินค้าเข้ากริด (หรืออัปโหลด Excel{latestRound ? " / ใช้ FC รอบก่อนหน้า" : ""})
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="form-action-bar page">
+        <span className="text-[13px] text-[var(--text-3)]">
+          {months.length ? `${months.length} เดือน` : "ช่วงเดือนไม่ถูกต้อง"}
+          {hasGrid ? ` · ${rows.length} สินค้า · รวม ${totalQty.toLocaleString("th-TH")} ${entryUnit === "case" ? "ลัง" : "ชิ้น"}` : ""}
+        </span>
+        <div className="flex gap-2">
+          <button type="button" className="btn" onClick={onCancel} disabled={busy}>ยกเลิก</button>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || !hasGrid}>
+            {busy ? "กำลังบันทึก..." : editRound ? "บันทึกการแก้ไข" : "บันทึกรอบ FC"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
