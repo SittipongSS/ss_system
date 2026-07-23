@@ -13,7 +13,7 @@ import {
   approveSalesOrderWithSignatureEvidence,
   signatureEvidenceErrorResponse,
 } from '@/lib/admin/signatureEvidence';
-import { loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
+import { loadActiveSignatureAsset, loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
@@ -73,6 +73,18 @@ async function loadApproverSignature(supabase, order) {
   };
 }
 
+// รูปลายเซ็นผู้จัดทำ (พนักงานขาย = ผู้สร้างใบ): stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง
+// ณ ปัจจุบัน (ไม่ตรึงเหมือนผู้อนุมัติ) — เหมือนช่องผู้เสนอราคาในใบเสนอราคา. ใช้ admin ทั้ง
+// อ่าน metadata และโหลดไฟล์ เพราะลายเซ็นเป็น private ต่อเจ้าของ (ผู้ดูเอกสารไม่ใช่เจ้าของ).
+async function loadProposerSignature(order) {
+  if (order.status !== 'approved' || !order.createdBy) return null;
+  const admin = getSupabaseAdmin();
+  const asset = await loadActiveSignatureAsset(admin, order.createdBy);
+  const imageDataUri = await loadSignatureImageDataUri(admin, asset);
+  if (!imageDataUri) return null;
+  return { imageDataUri, signerName: order.createdByName || '' };
+}
+
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
@@ -82,14 +94,17 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!order) return notFound('ไม่พบ Sale Order');
   if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
-  // รูปลายเซ็นผู้อนุมัติ (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังออกได้ ตกไปช่องเซ็นเปล่า)
+  // รูปลายเซ็นผู้จัดทำ + ผู้อนุมัติ (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังออกได้ ตกช่องเซ็นเปล่า)
   let approverSignature = null;
+  let proposerSignature = null;
   if (!user.devBypass) {
     try { approverSignature = await loadApproverSignature(supabase, order); }
     catch { approverSignature = null; }
+    try { proposerSignature = await loadProposerSignature(order); }
+    catch { proposerSignature = null; }
   }
   // meId ให้หน้าเว็บซ่อนปุ่มอนุมัติของ SO ที่ตัวเองสร้าง/ยื่น (แบ่งแยกหน้าที่)
-  return ok({ ...order, meId: user.id || null, approverSignature });
+  return ok({ ...order, meId: user.id || null, approverSignature, proposerSignature });
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {

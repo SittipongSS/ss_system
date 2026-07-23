@@ -48,6 +48,17 @@ export function buildSalesOrderPrintHTML(order) {
     }
     : null;
 
+  // ลายเซ็นผู้จัดทำ (พนักงานขาย): stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง — ไม่ใช่
+  // evidence-backed จึงไม่มี role/เวลา/Evidence (เหมือนช่องผู้เสนอราคาในใบเสนอราคา).
+  const proposerSig = order.proposerSignature;
+  const proposerEsignature = proposerSig?.imageDataUri
+    ? {
+      imageDataUri: proposerSig.imageDataUri,
+      signerName: proposerSig.signerName || order.createdByName || '',
+      signerRole: '',
+    }
+    : null;
+
   // แมป order → รูป quote ที่ model builder V4 รับ (ข้อมูลลูกค้ามาจาก snapshot ในใบเสนอราคาที่ผูก)
   const printable = {
     customerName: order.customerName,
@@ -88,7 +99,9 @@ export function buildSalesOrderPrintHTML(order) {
     ],
     // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ=AE · ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี
     signers: [
-      { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: order.createdByName || '' },
+      proposerEsignature
+        ? { label: 'ผู้จัดทำ', role: 'พนักงานขาย', esignature: proposerEsignature }
+        : { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: order.createdByName || '' },
       approverEsignature
         ? { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', esignature: approverEsignature }
         : { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: order.approvedByName || '' },

@@ -113,7 +113,7 @@ export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
 
 // storage path ของลายเซ็น "ที่ใช้งานอยู่" ของ user (สำหรับผู้เสนอราคา = ผู้สร้างใบ).
 // ต่างจากผู้อนุมัติที่ path ถูกตรึงใน evidence — ผู้เสนอราคาใช้เวอร์ชัน active ณ เวลาตรึง.
-async function loadActiveSignatureAsset(supabase, userId) {
+export async function loadActiveSignatureAsset(supabase, userId) {
   if (!userId) return null;
   try {
     const { data: root } = await supabase
