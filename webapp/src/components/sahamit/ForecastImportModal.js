@@ -1,7 +1,7 @@
 "use client";
 import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
-import { Upload, Download, AlertTriangle, Plus, X, Pencil } from "lucide-react";
+import { Upload, Download, AlertTriangle, Plus, X, Pencil, Copy, History } from "lucide-react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { roundMatrix } from "@/lib/sahamit/forecastClient";
@@ -66,22 +66,28 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     return m;
   }, [products]);
 
+  // Load a round's lines into the grid (months pinned to the round's span).
+  // Shared by edit-prefill and "seed create grid from the previous round".
+  const loadRoundIntoGrid = (round) => {
+    const matrix = roundMatrix(round);
+    const months = (round.coverMonths || []).length ? [...round.coverMonths].sort() : matrix.months;
+    setMonthsOverride(months);
+    if (months.length) { setStartMonth(months[0]); setEndMonth(months[months.length - 1]); }
+    setRows(matrix.rows.map((r) => {
+      const hit = productIndex.get(String(r.fgCode || "").trim().toLowerCase());
+      return { fgCode: r.fgCode, productName: r.productName || hit?.name || null, productMeta: hit ? productMeta(hit) : "", known: !!hit, qty: { ...r.qty } };
+    }));
+  };
+
   // Reset (create) or prefill (edit) when the modal is (re)opened or the target
   // round changes. In edit mode the grid is loaded from the round's lines.
   useEffect(() => {
     if (!open) return;
     setUnknown([]); setPick(""); setError(""); setBusy(false); setEntryUnit("piece");
     if (editRound) {
-      const matrix = roundMatrix(editRound);
-      const months = (editRound.coverMonths || []).length ? [...editRound.coverMonths].sort() : matrix.months;
       setReceivedDate(String(editRound.receivedDate || "").slice(0, 10) || new Date().toISOString().slice(0, 10));
       setNote(editRound.note || "");
-      setMonthsOverride(months);
-      if (months.length) { setStartMonth(months[0]); setEndMonth(months[months.length - 1]); }
-      setRows(matrix.rows.map((r) => {
-        const hit = productIndex.get(String(r.fgCode || "").trim().toLowerCase());
-        return { fgCode: r.fgCode, productName: r.productName || hit?.name || null, productMeta: hit ? productMeta(hit) : "", known: !!hit, qty: { ...r.qty } };
-      }));
+      loadRoundIntoGrid(editRound);
     } else {
       setReceivedDate(new Date().toISOString().slice(0, 10));
       setNote(""); setStartMonth(thisMonth()); setEndMonth(addMonths(thisMonth(), 3));
@@ -110,6 +116,22 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
       .filter((p) => !existing.has(String(p.fgCode).toLowerCase()))
       .map((p) => ({ fgCode: p.fgCode, productName: p.name, productMeta: productMeta(p), known: true, qty: {} }));
     setRows((prev) => [...prev, ...add]);
+  };
+
+  // "ใช้ FC รอบก่อนหน้า" (create mode): seed the grid from the latest existing
+  // round — same products/months/quantities as a starting point, then the user
+  // adjusts and saves as a genuinely new round. Quantities are canonical pieces,
+  // so the entry unit is reset to "ชิ้น" to avoid re-multiplying on save.
+  const latestRound = useMemo(() => {
+    if (editRound || !existingRounds.length) return null;
+    return existingRounds.reduce((a, b) => (Number(b.roundNo) >= Number(a.roundNo) ? b : a));
+  }, [editRound, existingRounds]);
+
+  const seedFromLatest = () => {
+    if (!latestRound) return;
+    if (rows.length && !confirm(`แทนที่ข้อมูลในกริดด้วย FC รอบที่ ${latestRound.roundNo}?`)) return;
+    setUnknown([]); setError(""); setEntryUnit("piece");
+    loadRoundIntoGrid(latestRound);
   };
 
   const removeRow = (ri) => setRows((prev) => prev.filter((_, i) => i !== ri));
@@ -195,6 +217,14 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   // Duplicate received-date guard (create mode only): flag if another round was
   // already logged on this date — likely a re-entry of data already captured.
   const dupRound = !editRound && existingRounds.find((r) => String(r.receivedDate || "").slice(0, 10) === receivedDate);
+  // Backfill hint (create mode): a received date older than the latest round is
+  // slotted into the chronology by the server — show where it will land.
+  const backfillPos = useMemo(() => {
+    if (editRound || !existingRounds.length || !receivedDate) return null;
+    const dates = existingRounds.map((r) => String(r.receivedDate || "").slice(0, 10));
+    if (receivedDate >= dates.reduce((a, b) => (b > a ? b : a))) return null;
+    return dates.filter((d) => d <= receivedDate).length + 1;
+  }, [editRound, existingRounds, receivedDate]);
 
   return (
     <Modal open={open} onClose={onClose} title={editRound ? `แก้ FC รอบที่ ${editRound.roundNo}` : "นำเข้ารอบ FC ใหม่"} size="lg">
@@ -238,6 +268,11 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
               <button type="button" className="btn" onClick={() => addRow(pick)} style={{ height: "30px", flexShrink: 0 }}><Plus size={15} /> เพิ่ม</button>
             </div>
           </div>
+          {latestRound && (
+            <button type="button" className="btn ghost" onClick={seedFromLatest} title={`ดึงสินค้า เดือน และจำนวนจากรอบที่ ${latestRound.roundNo} มาเป็นตั้งต้น`}>
+              <Copy size={15} /> ใช้ FC รอบก่อนหน้า (#{latestRound.roundNo})
+            </button>
+          )}
           <button type="button" className="btn ghost" onClick={addAllProducts} disabled={!products.length}>
             เพิ่มทุกสินค้า ({products.length})
           </button>
@@ -261,6 +296,15 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
                 <Pencil size={14} /> ไปแก้รอบ {dupRound.roundNo}
               </button>
             )}
+          </div>
+        )}
+
+        {backfillPos != null && (
+          <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <History size={16} style={{ color: "var(--blue)" }} />
+            <span style={{ fontSize: 13 }}>
+              วันที่รับนี้เก่ากว่ารอบล่าสุด — จะแทรกเป็น<strong> รอบที่ {backfillPos} </strong>ตามลำดับวันที่รับ (เลขรอบหลังจากนั้นขยับขึ้นให้อัตโนมัติ)
+            </span>
           </div>
         )}
 
@@ -331,7 +375,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
           </div>
         ) : (
           <div className="empty-state dashed" style={{ padding: "28px", textAlign: "center", color: "var(--text-3)", fontSize: "13px" }}>
-            เลือกช่วงเดือน แล้วเพิ่มสินค้าเข้ากริด (หรืออัปโหลด Excel)
+            เลือกช่วงเดือน แล้วเพิ่มสินค้าเข้ากริด (หรืออัปโหลด Excel{latestRound ? " / ใช้ FC รอบก่อนหน้า" : ""})
           </div>
         )}
 

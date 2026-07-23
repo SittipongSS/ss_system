@@ -5,6 +5,7 @@ import {
 } from '@/lib/sahamit/server';
 import { recordAudit } from '@/lib/audit';
 import { detectFlags } from '@/lib/sahamit/flags';
+import { renumberRoundsByDate } from '@/lib/sahamit/roundOrder';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,8 +41,10 @@ export async function GET() {
 
 // POST /api/sahamit/forecast/rounds — create a round + its lines.
 // Body: { receivedDate, coverMonths?, note?, lines:[{fgCode, month, qty}] }
-// roundNo auto-increments per customer. fgCodes are resolved against AR-109's
-// catalog; unknown codes are stored anyway (productId=null) and reported back.
+// roundNo = chronological order by receivedDate (a backfilled historical round
+// slots in between and later rounds shift up — see lib/sahamit/roundOrder).
+// fgCodes are resolved against AR-109's catalog; unknown codes are stored
+// anyway (productId=null) and reported back.
 export async function POST(request) {
   const ctx = await getSahamitContext();
   if (!ctx.ok) return sahamitError(ctx);
@@ -70,7 +73,9 @@ export async function POST(request) {
   const index = indexByFgCode(products);
   const unknown = new Set();
 
-  // Next round number for this customer.
+  // Insert at the end (max+1 never collides with the unique index); the round
+  // is then renumbered into its chronological slot by receivedDate below, so a
+  // backfilled historical round doesn't get read as the "latest" round.
   const { data: last } = await supabase
     .from('sahamit_forecast_rounds')
     .select('roundNo')
@@ -125,9 +130,19 @@ export async function POST(request) {
     return Response.json({ error: lErr.message }, { status: 500 });
   }
 
+  // Slot the round into chronological order by receivedDate (backfill support).
+  // Best-effort: a failure leaves valid append-order numbering, never a broken write.
+  try {
+    const changes = await renumberRoundsByDate(supabase, customerId);
+    const mine = changes.find((c) => c.id === roundId);
+    if (mine) round.roundNo = mine.to;
+  } catch (e) {
+    console.error('[sahamit] round renumber failed', e?.message || e);
+  }
+
   await recordAudit({
     user, action: 'create', entityType: 'sahamit_forecast_round', entityId: roundId,
-    after: round, summary: `สร้าง FC รอบที่ ${roundNo} (${lineRows.length} รายการ)`, request,
+    after: round, summary: `สร้าง FC รอบที่ ${round.roundNo} (${lineRows.length} รายการ)`, request,
   });
 
   // Shift/cut audit (เฟส 5b): raise flags for drops/shifts vs the previous round

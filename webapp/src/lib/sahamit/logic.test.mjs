@@ -13,6 +13,7 @@ import { buildReconMatrix, cellDetail } from './reconcileClient.js';
 import { leadDaysFor, recommendedReadyDate, materialView, LEAD_IN_FC, LEAD_OUT_FC } from './material.js';
 import { detectFlags } from './flags.js';
 import { avgShiftForSku, predictShifts, suggestCoverage, suggestCoverageTargets, addMonths, urgencyOf } from './predict.js';
+import { desiredRoundNumbers } from './roundOrder.js';
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -391,4 +392,47 @@ test('suggestCoverageTargets: month has FC>PO (spare) → send FC to months with
   assert.deepEqual(t, [{ targetMonth: '2026-09', use: 200 }]);
   // Sep has no spare FC → nothing to send.
   assert.deepEqual(suggestCoverageTargets(matrix, 'A', '2026-09'), []);
+});
+
+// roundOrder: roundNo must equal chronological order by receivedDate (backfill).
+test('desiredRoundNumbers: already chronological → no changes', () => {
+  const rounds = [
+    { id: 'a', roundNo: 1, receivedDate: '2026-05-01' },
+    { id: 'b', roundNo: 2, receivedDate: '2026-06-01' },
+  ];
+  assert.deepEqual(desiredRoundNumbers(rounds), []);
+});
+
+test('desiredRoundNumbers: backfilled older round slots in front, later rounds shift up', () => {
+  const rounds = [
+    { id: 'a', roundNo: 1, receivedDate: '2026-05-01' },
+    { id: 'b', roundNo: 2, receivedDate: '2026-06-01' },
+    { id: 'old', roundNo: 3, receivedDate: '2026-03-01' }, // typed in last, happened first
+  ];
+  assert.deepEqual(desiredRoundNumbers(rounds), [
+    { id: 'old', from: 3, to: 1 },
+    { id: 'a', from: 1, to: 2 },
+    { id: 'b', from: 2, to: 3 },
+  ]);
+});
+
+test('desiredRoundNumbers: same receivedDate keeps entry order (stable tie-break)', () => {
+  const rounds = [
+    { id: 'a', roundNo: 1, receivedDate: '2026-05-01' },
+    { id: 'b', roundNo: 2, receivedDate: '2026-05-01' },
+    { id: 'c', roundNo: 3, receivedDate: '2026-04-01' },
+  ];
+  assert.deepEqual(desiredRoundNumbers(rounds), [
+    { id: 'c', from: 3, to: 1 },
+    { id: 'a', from: 1, to: 2 },
+    { id: 'b', from: 2, to: 3 },
+  ]);
+});
+
+test('desiredRoundNumbers: closes the gap a deleted round leaves', () => {
+  const rounds = [
+    { id: 'a', roundNo: 1, receivedDate: '2026-04-01' },
+    { id: 'c', roundNo: 4, receivedDate: '2026-06-01' }, // rounds 2–3 deleted
+  ];
+  assert.deepEqual(desiredRoundNumbers(rounds), [{ id: 'c', from: 4, to: 2 }]);
 });

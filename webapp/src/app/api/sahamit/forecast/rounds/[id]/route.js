@@ -5,6 +5,7 @@ import {
 } from '@/lib/sahamit/server';
 import { recordAudit } from '@/lib/audit';
 import { detectFlags } from '@/lib/sahamit/flags';
+import { renumberRoundsByDate } from '@/lib/sahamit/roundOrder';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,10 +107,23 @@ export async function PATCH(request, { params }) {
   }
 
   const after = { ...round, receivedDate, note, coverMonths, updatedAt: nowIso };
+
+  // A changed receivedDate can move the round in the chronology — renumber so
+  // roundNo keeps matching date order (best-effort, same policy as POST).
+  if (receivedDate !== round.receivedDate) {
+    try {
+      const changes = await renumberRoundsByDate(supabase, customerId);
+      const mine = changes.find((c) => c.id === id);
+      if (mine) after.roundNo = mine.to;
+    } catch (e) {
+      console.error('[sahamit] round renumber failed', e?.message || e);
+    }
+  }
+
   await recordAudit({
     user, action: 'update', entityType: 'sahamit_forecast_round', entityId: id,
     before: round, after,
-    summary: `แก้ FC รอบที่ ${round.roundNo} (${lineRows.length} รายการ)`, request,
+    summary: `แก้ FC รอบที่ ${after.roundNo} (${lineRows.length} รายการ)`, request,
   });
 
   await refreshFlags(supabase, customerId, nowIso);
@@ -140,6 +154,17 @@ export async function DELETE(request, { params }) {
     .eq('id', id)
     .eq('customerId', customerId);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  // Drop the round's flag rows before renumbering — they point at its roundNo,
+  // which another round will take over once the gap closes. Then renumber so
+  // roundNo stays 1..N in receivedDate order (best-effort, same policy as POST).
+  await supabase.from('sahamit_fc_flags')
+    .delete().eq('customerId', customerId).eq('roundNo', round.roundNo);
+  try {
+    await renumberRoundsByDate(supabase, customerId);
+  } catch (e) {
+    console.error('[sahamit] round renumber failed', e?.message || e);
+  }
 
   await recordAudit({
     user, action: 'delete', entityType: 'sahamit_forecast_round', entityId: id,
