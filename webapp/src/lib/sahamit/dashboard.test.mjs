@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
   fgCodeFilterSet, filterRoundsByFg, filterPosByFg,
   categoryOptions, volumeOptions, yearOptions, priceMap, unitMultiplier, dashboardKpis,
-  fcEvolution, roundTotals, fcVsPoByMonth, matchReport,
+  fcEvolution, roundTotals, fcVsPoByMonth, matchReport, poGrowth,
 } from './dashboard.js';
 
 const PRODUCTS = [
@@ -208,6 +208,48 @@ test('matchReport: year filter narrows months + splittable', () => {
   assert.equal(rep.rows[0].fcQty, 100);  // 2025-12 hidden
   assert.equal(rep.splittable.length, 1); // only the 2026 PO line
   assert.equal(rep.splittable[0].deliveryMonth, '2026-01');
+});
+
+// ── แท็บ การเติบโต ────────────────────────────────────────────────
+const GROWTH_POS = [
+  { id: 'p1', lines: [{ fgCode: 'A', qty: 100, status: 'open', expectedDate: '2026-01-15' }] },
+  { id: 'p2', lines: [{ fgCode: 'A', qty: 150, status: 'open', expectedDate: '2026-02-15' }] },
+  { id: 'p3', lines: [{ fgCode: 'A', qty: 90, status: 'open', expectedDate: '2026-04-15' }] }, // Q2
+  { id: 'p4', lines: [{ fgCode: 'A', qty: 50, status: 'cancelled', expectedDate: '2026-02-15' }] }, // ignored
+];
+
+test('poGrowth month: buckets by delivery month + seqGrowth vs prev', () => {
+  const g = poGrowth(GROWTH_POS, { level: 'month' });
+  assert.deepEqual(g.rows.map((r) => r.period), ['2026-01', '2026-02', '2026-04']);
+  assert.equal(g.rows[0].total, 100);
+  assert.equal(g.rows[1].total, 150);          // cancelled excluded
+  assert.equal(g.rows[0].seqGrowth, null);
+  assert.equal(Math.round(g.rows[1].seqGrowth), 50);  // (150-100)/100
+  assert.equal(g.rows[0].yoyGrowth, null);      // no prior year
+  assert.deepEqual(g.years, ['2026']);
+});
+
+test('poGrowth quarter: groups months into Qn', () => {
+  const g = poGrowth(GROWTH_POS, { level: 'quarter' });
+  assert.deepEqual(g.rows.map((r) => r.period), ['2026-Q1', '2026-Q2']);
+  assert.equal(g.rows[0].total, 250);          // Jan100 + Feb150
+  assert.equal(g.rows[1].total, 90);
+});
+
+test('poGrowth yoy: fills when prior-year same period exists', () => {
+  const pos = [
+    { id: 'a', lines: [{ fgCode: 'A', qty: 80, status: 'open', expectedDate: '2025-01-15' }] },
+    { id: 'b', lines: [{ fgCode: 'A', qty: 100, status: 'open', expectedDate: '2026-01-15' }] },
+  ];
+  const g = poGrowth(pos, { level: 'month' });
+  const jan26 = g.rows.find((r) => r.period === '2026-01');
+  assert.equal(Math.round(jan26.yoyGrowth), 25); // (100-80)/80
+  assert.deepEqual(g.years, ['2025', '2026']);
+});
+
+test('poGrowth value + year filter', () => {
+  const g = poGrowth(GROWTH_POS, { level: 'month', mult: () => 10, years: ['2026'] });
+  assert.equal(g.rows[0].total, 1000);
 });
 
 test('dashboardKpis year filter: only counts months in selected years', () => {

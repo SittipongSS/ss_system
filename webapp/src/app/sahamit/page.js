@@ -13,6 +13,7 @@ import DashboardCharts from "@/components/sahamit/DashboardCharts";
 import FcRoundsView from "@/components/sahamit/FcRoundsView";
 import FcVsPoView from "@/components/sahamit/FcVsPoView";
 import PoVsFcView from "@/components/sahamit/PoVsFcView";
+import GrowthView from "@/components/sahamit/GrowthView";
 
 // SAHAMIT command center — ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109), เฉพาะทีม Key Account.
 // แดชบอร์ดติดตาม FC/PO + การเติบโต. ทุกตัวเลข/กราฟต่อจาก peak engine เดิม
@@ -112,7 +113,7 @@ export default function SahamitOverview() {
       title="ภาพรวม (Dashboard)"
       subtitle="ติดตาม FC / PO และการเติบโต · ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109) — เฉพาะทีม Key Account"
       loading={l1 || l2 || l3 || l4}
-      actions={
+      headerRight={
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <FilterPopover groups={filterGroups} count={filterCount} onClear={clearFilters} />
           <UnitToggle unit={unit} onChange={setUnit} />
@@ -223,25 +224,9 @@ export default function SahamitOverview() {
 
         {tab === "match" && <PoVsFcView rounds={fRounds} pos={fPos} coverages={coverages} products={products} unit={unit} years={years} />}
 
-        {!["overview", "rounds", "fcpo", "match"].includes(tab) && <ComingSoon tab={TABS.find((t) => t.key === tab)} />}
+        {tab === "growth" && <GrowthView pos={fPos} products={products} unit={unit} years={years} />}
       </div>
     </Workspace>
   );
 }
 
-function ComingSoon({ tab }) {
-  const Icon = tab?.icon || LayoutDashboard;
-  const NEXT = {
-    rounds: "เส้นวิวัฒนาการ FC แต่ละรอบต่อเดือน + ยอดรวมรอบ + %เปลี่ยนรอบต่อรอบ",
-    fcpo: "กราฟซ้อน: PO ที่มาแล้ว + FC ที่ยังรอ PO + เส้น FC แต่ละรอบ รายเดือน",
-    match: "PO เทียบ FC รายสินค้า×เดือน ระบายสีตามสถานะ + ตารางเจาะลึกกาง PO ย่อย",
-    growth: "ยอด PO จริงรายเดือน/ไตรมาส + %เติบโต (YoY เปิดเมื่อมีข้อมูลปีก่อน)",
-  };
-  return (
-    <div className="glass-panel" style={{ padding: "48px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-      <Icon size={30} style={{ color: "var(--text-3)" }} />
-      <div style={{ fontSize: 15, fontWeight: 600 }}>{tab?.label} — กำลังพัฒนา</div>
-      <div style={{ fontSize: 13, color: "var(--text-3)", maxWidth: 460 }}>{NEXT[tab?.key] || "เร็ว ๆ นี้"}</div>
-    </div>
-  );
-}
