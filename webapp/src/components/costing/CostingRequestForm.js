@@ -18,12 +18,13 @@ export function emptyCostingItem() {
 // ค่าเริ่มต้นของฟอร์ม — ใบใหม่ หรือแปลงจากใบที่โหลดมา
 export function costingFormFromRequest(request) {
   if (!request) {
-    return { dealId: "", moq: "1000", note: "", tierQuantities: "", items: [emptyCostingItem()] };
+    return { dealId: "", customerName: "", moq: "1000", note: "", tierQuantities: "", items: [emptyCostingItem()] };
   }
   // ชั้นจำนวนเก็บที่ระดับสินค้า แต่ทั้งใบใช้ชุดเดียวกัน — หยิบจากรายการแรกมาแสดง
   const tiers = request.items?.[0]?.tiers || [];
   return {
     dealId: request.dealId || "",
+    customerName: request.customerName || "",
     moq: String(request.moq ?? "1000"),
     note: request.note || "",
     tierQuantities: tiers.map((t) => Number(t.qty)).join(", "),
@@ -39,7 +40,9 @@ export function costingFormFromRequest(request) {
 // แปลงค่าในฟอร์มเป็น payload ของ API (รูปเดียวกันทั้ง POST และ PATCH)
 export function costingPayloadFrom(form) {
   return {
-    dealId: form.dealId,
+    dealId: form.dealId || null,
+    // ลูกค้าที่พิมพ์เอง — ใช้เฉพาะใบที่ไม่ผูกดีล (มีดีล = ลูกค้าจากดีล)
+    customerName: form.dealId ? undefined : (form.customerName || null),
     moq: form.moq,
     note: form.note,
     tierQuantities: String(form.tierQuantities || "")
@@ -91,23 +94,39 @@ export default function CostingRequestForm({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="form-grid">
-        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-          <label htmlFor="cr-deal">ดีล</label>
+        <div className="form-group">
+          <label htmlFor="cr-deal">ดีล (ไม่บังคับ)</label>
           {isCreate ? (
             <SearchableSelect
               value={form.dealId}
               onChange={(value) => setForm((f) => ({ ...f, dealId: value }))}
               options={dealOptions}
-              placeholder="เลือกดีลที่ต้องการขอราคา"
+              placeholder="เลือกดีล (เว้นว่าง = ใบสำรวจ)"
               ariaLabel="เลือกดีล"
+              allowFreeText={false}
             />
           ) : (
             <input className="premium-input" value={dealLabel} readOnly disabled />
           )}
           <small style={{ color: "var(--text-3)" }}>
-            ลูกค้าและทีมของใบยึดตามดีลเสมอ {isCreate ? "" : "— ดีลของใบที่สร้างแล้วเปลี่ยนไม่ได้"}
+            มีดีล = ลูกค้า/ทีมยึดตามดีล · เว้นว่าง = ใบสำรวจ (สินค้าอาจยังไม่ไปต่อ)
           </small>
         </div>
+        {/* ลูกค้าพิมพ์เอง — เฉพาะตอนสร้างใบที่ไม่ผูกดีล */}
+        {isCreate && !form.dealId && (
+          <div className="form-group">
+            <label htmlFor="cr-customer">ลูกค้า (ถ้ามี)</label>
+            <input
+              id="cr-customer" className="premium-input"
+              placeholder="พิมพ์ชื่อลูกค้า หรือเว้นว่าง"
+              value={form.customerName || ""}
+              onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))}
+            />
+            <small style={{ color: "var(--text-3)" }}>
+              ใบไม่ผูกดีล — ราคาวัสดุจะใช้ราคากลางจากคลัง (ไม่ใช่ราคาทับรายลูกค้า)
+            </small>
+          </div>
+        )}
 
         <div className="form-group">
           <label htmlFor="cr-moq">MOQ (ชิ้น)</label>

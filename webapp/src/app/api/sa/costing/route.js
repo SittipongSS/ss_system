@@ -57,8 +57,12 @@ export async function POST(request) {
 
   const body = await request.json().catch(() => ({}));
 
-  // ลูกค้า/ทีม อ่านจากดีลจริงเสมอ ไม่เชื่อค่าที่ client ส่ง
-  const resolved = await resolveCostingDealContext(supabase, user, body.dealId);
+  // ดีลไม่บังคับ (มติ 2026-07-23): มีดีล = ลูกค้า/ทีมจากดีลจริง; ไม่มีดีล = ใบสำรวจ
+  // ลูกค้าพิมพ์เอง (customerName) หรือว่างไว้
+  const resolved = await resolveCostingDealContext(supabase, user, body.dealId, {
+    customerName: body.customerName,
+    customerId: body.customerId,
+  });
   if (resolved.error) {
     return Response.json({ error: resolved.error }, { status: resolved.status || 400 });
   }
@@ -95,6 +99,14 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
+    // ถ้าผูก FG มาแล้วตั้งแต่เปิดใบ (เช่น re-order) — snapshot สูตรจากสินค้า (mig 0112)
+    let formula = { formulaName: null, formulaCode: null, formulaDate: null };
+    if (raw.productId) {
+      const { data: product } = await supabase
+        .from('products').select('formulaName, formulaCode, formulaDate').eq('id', raw.productId).maybeSingle();
+      if (product) formula = product;
+    }
+
     const itemId = `CRI-${randomUUID()}`;
     prepared.push({
       item: {
@@ -105,6 +117,9 @@ export async function POST(request) {
         templateId: template.id,
         productLabel: raw.productLabel,
         fragranceName: raw.fragranceName,
+        formulaName: formula.formulaName ?? null,
+        formulaCode: formula.formulaCode ?? null,
+        formulaDate: formula.formulaDate ?? null,
       },
       components: componentRowsFromTemplate(itemId, template.lines),
       tiers: tierRowsFor(itemId, tierQtys),
