@@ -467,3 +467,25 @@ test('convertEntryUnit: round-trip กับ ppc หลายค่า ได้
     }
   }
 });
+
+// ── display unit toggle (Matrix/กระทบยอด) ─────────────────────────────
+import { displayQty, counterpartText } from './units.js';
+
+test('displayQty: ชิ้น=ตามเดิม, ลัง=หารชิ้นต่อลัง (เศษ 2 ตำแหน่ง)', () => {
+  assert.equal(displayQty(1440, 12, 'piece'), '1,440');
+  assert.equal(displayQty(1440, 12, 'case'), '120');
+  assert.equal(displayQty(100, 12, 'case'), '8.33'); // เศษลัง
+});
+
+test('displayQty: ค่า 0/ว่าง → · เมื่อ dot, ไม่รู้ชิ้นต่อลัง → คงเป็นชิ้น', () => {
+  assert.equal(displayQty(0, 12, 'case', { dot: true }), '·');
+  assert.equal(displayQty(0, 12, 'piece'), '0');
+  assert.equal(displayQty(500, null, 'case'), '500'); // ไม่มี ppc → โชว์ชิ้น
+});
+
+test('counterpartText: piece→ลัง, case→ชิ้น, null เมื่อแปลงไม่ได้/0', () => {
+  assert.equal(counterpartText(1440, 12, 'piece'), '120 ลัง');
+  assert.equal(counterpartText(1440, 12, 'case'), '1,440 ชิ้น');
+  assert.equal(counterpartText(500, null, 'piece'), null);
+  assert.equal(counterpartText(0, 12, 'piece'), null);
+});

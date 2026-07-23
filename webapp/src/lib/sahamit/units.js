@@ -62,6 +62,28 @@ export function convertEntryUnit(value, fromUnit, toUnit, ppc) {
   return value;
 }
 
+// แสดงจำนวน (ชิ้น canonical) ตามหน่วยที่เลือก — สำหรับ toggle "แสดงผล" อ่านอย่างเดียว
+// ในตาราง Matrix/กระทบยอด. unit='case' → หารชิ้นต่อลัง (เศษลัง 2 ตำแหน่ง); ไม่รู้
+// ชิ้นต่อลัง → คงเป็นชิ้น (กันช่องหาย). ค่า 0/ว่าง → '·' ถ้า dot=true ไม่งั้น '0'.
+export function displayQty(pieces, ppc, unit = "piece", { dot = false } = {}) {
+  const n = Number(pieces || 0);
+  if (!n) return dot ? "·" : NF(0);
+  if (unit === "case") {
+    const c = casesFromPieces(n, ppc);
+    if (c != null) return Number.isInteger(c) ? NF(c) : c.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+  }
+  return NF(n);
+}
+
+// ข้อความหน่วยตรงข้าม ไว้โชว์กำกับใต้ยอดรวม: piece → "x ลัง", case → "y ชิ้น".
+// null ถ้าแปลงไม่ได้/เป็น 0.
+export function counterpartText(pieces, ppc, unit = "piece") {
+  const n = Number(pieces || 0);
+  if (!n) return null;
+  if (unit === "case") return `${NF(n)} ชิ้น`;
+  return casesText(n, ppc); // piece mode → กำกับเป็น "ลัง"
+}
+
 // จำนวนแบบเต็ม: ชิ้นเป็นหลัก + ลังในวงเล็บ (ถ้ารู้ชิ้นต่อลัง).
 //   fmtQty(1440, 12) → "1,440 ชิ้น (120 ลัง)"
 //   fmtQty(1440, null) → "1,440 ชิ้น"

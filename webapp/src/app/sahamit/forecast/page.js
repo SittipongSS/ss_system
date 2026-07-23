@@ -11,7 +11,7 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
-import { ppcOf, casesText } from "@/lib/sahamit/units";
+import { ppcOf, casesText, displayQty, counterpartText } from "@/lib/sahamit/units";
 import RoundComparison from "@/components/sahamit/RoundComparison";
 import ForecastImportModal from "@/components/sahamit/ForecastImportModal";
 import { useCan } from "@/lib/roleContext";
@@ -38,6 +38,7 @@ export default function ForecastPage() {
   const canEdit = useCan("sahamit:edit");
   const [selectedNo, setSelectedNo] = useState(null);
   const [tab, setTab] = useState("matrix");
+  const [matrixUnit, setMatrixUnit] = useState("piece"); // หน่วยแสดงผลตาราง Matrix (ชิ้น/ลัง)
   const [search, setSearch] = useState("");
   const [catSel, setCatSel] = useState([]); // หมวดสินค้าที่เลือกกรอง
   const q = search.trim().toLowerCase();
@@ -358,9 +359,13 @@ export default function ForecastPage() {
                 )}
                 {canEdit && <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>}
                 {matrix.rows.length > 0 && (
-                  <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
-                    ไปแท็บ “รายเดือน (สร้างดีล)” เพื่อเลือกรายการส่งเข้าแผนการขาย
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+                    <span style={{ fontSize: 12, color: "var(--text-3)" }}>หน่วย:</span>
+                    <div className="segmented">
+                      <button className={matrixUnit === "piece" ? "active" : ""} onClick={() => setMatrixUnit("piece")}>ชิ้น</button>
+                      <button className={matrixUnit === "case" ? "active" : ""} onClick={() => setMatrixUnit("case")}>ลัง</button>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -396,11 +401,11 @@ export default function ForecastPage() {
                               {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
                             </td>
                             {matrix.months.map((m) => (
-                              <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{r.qty[m] ? nf(r.qty[m]) : "·"}</td>
+                              <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{displayQty(r.qty[m], ppcFor(r.fgCode), matrixUnit, { dot: true })}</td>
                             ))}
                             <td style={{ textAlign: "right", fontWeight: 700 }}>
-                              {nf(r.total)}
-                              {casesSub(r.fgCode, r.total) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{casesSub(r.fgCode, r.total)}</div>}
+                              {displayQty(r.total, ppcFor(r.fgCode), matrixUnit)}
+                              {counterpartText(r.total, ppcFor(r.fgCode), matrixUnit) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{counterpartText(r.total, ppcFor(r.fgCode), matrixUnit)}</div>}
                             </td>
                           </tr>
                           );
