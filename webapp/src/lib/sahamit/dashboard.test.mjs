@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
   fgCodeFilterSet, filterRoundsByFg, filterPosByFg,
   categoryOptions, volumeOptions, yearOptions, priceMap, unitMultiplier, dashboardKpis,
-  fcEvolution, roundTotals,
+  fcEvolution, roundTotals, fcVsPoByMonth,
 } from './dashboard.js';
 
 const PRODUCTS = [
@@ -141,6 +141,34 @@ test('roundTotals: totals sorted by roundNo + %change vs prev', () => {
   assert.equal(t[1].total, 100);          // R2: 60+40
   assert.equal(t[0].prevPct, null);
   assert.equal(Math.round(t[1].prevPct), -33); // (100-150)/150
+});
+
+// ── แท็บ FC ซ้อน PO ───────────────────────────────────────────────
+test('fcVsPoByMonth: PO + waiting (fcActive−PO) + round lines per month', () => {
+  const rounds = [{ roundNo: 1, receivedDate: '2026-01-01', lines: [
+    { fgCode: 'A', month: '2026-01', qty: 100 }, { fgCode: 'A', month: '2026-02', qty: 80 },
+  ] }];
+  const pos = [{ id: 'p1', lines: [
+    { fgCode: 'A', qty: 60, status: 'open', expectedDate: '2026-01-20' },  // Jan: PO 60 < FC 100
+    { fgCode: 'A', qty: 90, status: 'open', expectedDate: '2026-02-20' },  // Feb: PO 90 > FC 80
+  ] }];
+  const r = fcVsPoByMonth(rounds, pos, [], {});
+  const byM = Object.fromEntries(r.data.map((d) => [d.month, d]));
+  assert.equal(byM['2026-01'].PO, 60);
+  assert.equal(byM['2026-01'].fcActive, 100);
+  assert.equal(byM['2026-01'].waiting, 40);   // still awaiting PO
+  assert.equal(byM['2026-01'].r1, 100);       // round-1 FC line overlay
+  assert.equal(byM['2026-02'].waiting, -10);  // PO เกิน FC → ติดลบ
+});
+
+test('fcVsPoByMonth: value unit multiplies both PO and FC', () => {
+  const rounds = [{ roundNo: 1, lines: [{ fgCode: 'A', month: '2026-01', qty: 100 }] }];
+  const pos = [{ id: 'p1', lines: [{ fgCode: 'A', qty: 60, status: 'open', expectedDate: '2026-01-20' }] }];
+  const r = fcVsPoByMonth(rounds, pos, [], { mult: () => 10 });
+  const jan = r.data.find((d) => d.month === '2026-01');
+  assert.equal(jan.PO, 600);
+  assert.equal(jan.fcActive, 1000);
+  assert.equal(jan.waiting, 400);
 });
 
 test('dashboardKpis year filter: only counts months in selected years', () => {

@@ -110,6 +110,44 @@ export function roundTotals(rounds, { mult = () => 1, years = [] } = {}) {
   }));
 }
 
+// ── แท็บ "FC ซ้อน PO รายเดือน" (pure) ───────────────────────────────
+// รวมเป็นรายเดือน: PO (มาแล้ว) + FC ที่ยังรอ PO (waiting) + เส้น FC แต่ละรอบ.
+// ต่อจาก peak engine: fcActive = ผลรวม effective FC (peak) ต่อเดือน, po = ผลรวม
+// PO ที่จับคู่เดือนนั้น, waiting = fcActive − po (ติดลบ = PO เกิน FC). เส้นรอบมา
+// จาก fcEvolution รวมเข้าแถวเดียวกัน (ต่อ recharts ComposedChart).
+// รับ rounds/pos ที่กรองสินค้าแล้ว (filterRoundsByFg/filterPosByFg) + mult + years.
+// คืน { months, rounds:[{roundNo,key}], data:[{month, PO, waiting, fcActive, r<n>}] }.
+export function fcVsPoByMonth(rounds, pos, coverages, { mult = () => 1, years = [] } = {}) {
+  const yrOk = (m) => !years.length || years.includes(yearOf(m));
+  const matrix = buildReconMatrix(rounds, pos, coverages || []);
+  const evo = fcEvolution(rounds, { mult, years });
+
+  const agg = new Map(); // month -> { fcActive, po }
+  for (const row of matrix.rows) {
+    const m = mult(row.fgCode);
+    for (const mo of matrix.months) {
+      if (!yrOk(mo)) continue;
+      const c = row.cells[mo];
+      if (!c) continue;
+      const a = agg.get(mo) || { fcActive: 0, po: 0 };
+      a.fcActive += (c.fcQty || 0) * m;
+      a.po += (c.poQty || 0) * m;
+      agg.set(mo, a);
+    }
+  }
+
+  const months = matrix.months.filter(yrOk).slice().sort();
+  const evoByMonth = new Map(evo.data.map((d) => [d.month, d]));
+  const data = months.map((mo) => {
+    const a = agg.get(mo) || { fcActive: 0, po: 0 };
+    const row = { month: mo, PO: a.po, waiting: a.fcActive - a.po, fcActive: a.fcActive };
+    const ev = evoByMonth.get(mo);
+    for (const r of evo.rounds) row[r.key] = ev ? (ev[r.key] ?? null) : null;
+    return row;
+  });
+  return { months, rounds: evo.rounds, data };
+}
+
 // ── KPI สรุป (จาก peak engine, หลังกรอง) ─────────────────────────────
 // opts: { unit:'qty'|'value', filter:{cats,vols,skus}, years:[] }
 //   years ว่าง = ทุกปี. ปีกรองแค่ "คอลัมน์เดือนที่แสดง" ไม่แตะตรรกะจับคู่ —
