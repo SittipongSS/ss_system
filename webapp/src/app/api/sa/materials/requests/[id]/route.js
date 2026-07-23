@@ -17,6 +17,35 @@ function canEditRequest(user, req) {
   return inSalesEditScope(user, { team: req.team, ownerId: req.requestedById });
 }
 
+// DELETE — ลบใบร่างที่ยังไม่ส่ง (guard 0143 เปิดช่องเฉพาะ draft + submittedAt null)
+// ร่างที่ยังไม่ส่งไม่ใช่หลักฐาน จึงลบจริงได้ (แพตเทิร์นเดียวกับใบขอราคาผลิต/settings)
+export async function DELETE(request, { params }) {
+  const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+  const { id } = await params;
+  if (!can(user?.role, 'costing:edit')) return Response.json({ error: 'forbidden' }, { status: 403 });
+
+  const before = await findMaterialRequest(supabase, id);
+  if (!before) return Response.json({ error: 'ไม่พบใบขอราคาวัสดุ' }, { status: 404 });
+  if (!canEditRequest(user, before)) {
+    return Response.json({ error: 'ไม่มีสิทธิ์ลบใบนี้' }, { status: 403 });
+  }
+  if (before.status !== 'draft' || before.submittedAt) {
+    return Response.json({ error: 'ลบได้เฉพาะใบร่างที่ยังไม่ส่งขอราคา' }, { status: 409 });
+  }
+
+  // ลบลูกก่อน (items) แล้วค่อยลบใบ — guard ยอมให้ลบใบ draft ที่ยังไม่ส่ง
+  await supabase.from('material_price_request_items').delete().eq('requestId', id);
+  const { error } = await supabase.from('material_price_requests').delete().eq('id', id);
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  await recordAudit({
+    user, action: 'delete', entityType: 'material_price_request', entityId: id, before,
+    summary: `ลบใบขอราคาวัสดุร่าง (${(before.items || []).length} รายการ)`, request,
+  });
+  return Response.json({ ok: true });
+}
+
 export async function GET(request, { params }) {
   try {
     const user = await getCurrentUser();

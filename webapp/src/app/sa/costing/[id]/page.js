@@ -314,13 +314,15 @@ export default function CostingDetailPage() {
           <span style={{ fontSize: 12, color: "var(--text-3)" }}>
             ผู้ขอ {request.requestedByName || "—"}
           </span>
-          {/* ลิงก์กลับดีลต้นทาง — ใบขอราคาผูกดีลเสมอ */}
-          <Link
-            href={`/sa/deals/${request.dealId}`}
-            style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}
-          >
-            <ExternalLink size={12} /> เปิดดีลต้นทาง
-          </Link>
+          {/* ลิงก์กลับดีลต้นทาง — เฉพาะใบที่ผูกดีล (ใบสำรวจไม่มีดีล) */}
+          {request.dealId && (
+            <Link
+              href={`/sa/deals/${request.dealId}`}
+              style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
+              <ExternalLink size={12} /> เปิดดีลต้นทาง
+            </Link>
+          )}
         </div>
         {request.note && (
           <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-2)" }}>{request.note}</p>
