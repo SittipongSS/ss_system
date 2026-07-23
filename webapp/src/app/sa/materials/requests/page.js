@@ -8,6 +8,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { useCan } from "@/lib/roleContext";
@@ -27,6 +28,7 @@ export default function MaterialRequestsPage() {
   const [loadError, setLoadError] = useState("");
   const [form, setForm] = useState(null); // { customerName, note, items }
   const [saving, setSaving] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null); // ใบร่างที่รอยืนยันลบ
   const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
@@ -63,6 +65,20 @@ export default function MaterialRequestsPage() {
   const patchRow = (idx, patch) => setForm((f) => ({
     ...f, items: f.items.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
   }));
+
+  // ลบใบร่างที่ยังไม่ส่ง — ยืนยันก่อน (ConfirmDialog)
+  const removeDraft = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/sa/materials/requests/${pendingDelete.id}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "ลบไม่สำเร็จ");
+      setToast({ kind: "success", msg: "ลบใบร่างแล้ว" });
+      setPendingDelete(null);
+      await load();
+    } catch (e) { setToast({ kind: "error", msg: e.message }); }
+    setSaving(false);
+  };
 
   const progress = (r) => {
     const items = r.items || [];
@@ -111,6 +127,7 @@ export default function MaterialRequestsPage() {
                 <th style={{ width: 150 }}>สถานะ</th>
                 <th style={{ width: 100 }}>ตอบแล้ว</th>
                 <th style={{ width: 110 }}>สร้างเมื่อ</th>
+                <th style={{ width: 50 }} aria-label="จัดการ" />
               </tr>
             </thead>
             <tbody>
@@ -131,6 +148,17 @@ export default function MaterialRequestsPage() {
                   </td>
                   <td>{progress(r)}</td>
                   <td>{fmtDate(r.createdAt)}</td>
+                  <td>
+                    {/* ลบได้เฉพาะร่างที่ยังไม่ส่ง (ส่งแล้วเป็นหลักฐาน) */}
+                    {canCreate && r.status === "draft" && !r.submittedAt && (
+                      <button
+                        type="button" className="btn-icon danger" aria-label="ลบใบร่าง"
+                        onClick={() => setPendingDelete(r)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -217,6 +245,20 @@ export default function MaterialRequestsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title="ลบใบขอราคาวัสดุร่างนี้?"
+        description={pendingDelete
+          ? `${(pendingDelete.items || []).length} รายการ${pendingDelete.customerName ? ` · ${pendingDelete.customerName}` : ""}`
+          : ""}
+        detail="ใบร่างที่ยังไม่ส่งขอราคาไม่ใช่หลักฐาน ลบได้จริง — ถ้าส่งขอราคาไปแล้วให้ใช้ยกเลิกแทน"
+        confirmLabel="ลบใบร่าง"
+        tone="danger"
+        busy={saving}
+        onConfirm={removeDraft}
+        onClose={() => setPendingDelete(null)}
+      />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
