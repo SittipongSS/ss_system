@@ -84,7 +84,14 @@ export async function loadSahamitProducts(supabase, customerId) {
       return {
         id: p.id,
         fgCode: p.fgCode,
-        name: p.productDescriptionEn || p.productDescription || p.fgCode,
+        // ชื่อหลักเป็นภาษาไทยก่อน (ระบบไทย) แล้วค่อย EN — สินค้าสหมิตรส่วนใหญ่มีแต่
+        // ชื่อไทย และผู้ใช้ค้น/อ่านเป็นไทย. เดิมเลือก EN ก่อน ทำให้ 6 ตัวที่มีชื่อ EN
+        // โผล่เป็นอังกฤษและค้นภาษาไทยไม่เจอ.
+        name: p.productDescription || p.productDescriptionEn || p.fgCode,
+        // เก็บทั้งชื่อไทย+อังกฤษดิบไว้ให้ dropdown สินค้า (productOptionDisplay) ค้นได้
+        // สองภาษา และแสดงไทยก่อน — จุดเดียวที่ทั้งโมดูลใช้ค้น/แสดงสินค้า.
+        productDescription: p.productDescription || null,
+        productDescriptionEn: p.productDescriptionEn || null,
         brandName: brandLabel(p.brandName, p.brandNameEn) || null,
         brandNameTh: p.brandName || null,
         brandNameEn: p.brandNameEn || null,

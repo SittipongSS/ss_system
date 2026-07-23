@@ -73,6 +73,15 @@ export async function POST(request) {
   const destination = cleanDestination(body?.destination); // หัว PO
   const deliveryMonth = monthOf(dueDate);
 
+  // บันทึกย้อนหลัง: PO ที่ส่งของครบไปแล้ว — ให้ทุกบรรทัดเป็น 'delivered' พร้อมวันที่
+  // ส่งมอบจริง (เว้นว่าง = ใช้กำหนดรับของ/วันที่รับ PO) เพื่อให้สถานะ/แดชบอร์ดตรงกับ
+  // ความจริง ไม่ค้างเป็น 'รอส่ง'. ค่าเริ่มต้น = ยังไม่ส่ง (open) เหมือนเดิม.
+  const backfillDelivered = body?.delivered === true;
+  const deliveredDate = backfillDelivered
+    ? (body?.deliveredDate || dueDate || body?.receivedDate || null)
+    : null;
+  const lineStatus = backfillDelivered ? 'delivered' : 'open';
+
   const cleaned = (Array.isArray(body?.lines) ? body.lines : [])
     .map((l) => ({ fgCode: String(l.fgCode || '').trim(), qty: Number(l.qty) }))
     .filter((l) => l.fgCode && Number.isFinite(l.qty) && l.qty > 0);
@@ -125,10 +134,10 @@ export async function POST(request) {
       expectedDate: null,
       destination,          // denormalize จากหัว PO
       expectedHistory: [],
-      actualDeliveredDate: null,
+      actualDeliveredDate: deliveredDate,
       deliveryMonth,        // = เดือนของ dueDate หัว PO
       splitFromPoLineId: null,
-      status: 'open',
+      status: lineStatus,
       createdAt: nowIso,
     };
   });
@@ -141,7 +150,9 @@ export async function POST(request) {
 
   await recordAudit({
     user, action: 'create', entityType: 'sahamit_po', entityId: poId,
-    after: po, summary: `สร้าง PO ${poNumber} (${lineRows.length} รายการ)`, request,
+    after: po,
+    summary: `สร้าง PO ${poNumber} (${lineRows.length} รายการ)${backfillDelivered ? ` · บันทึกย้อนหลัง: ส่งครบ ${deliveredDate || ''}`.trimEnd() : ''}`,
+    request,
   });
 
   return Response.json({ ...po, lines: lineRows, unknownFgCodes: [...unknown] }, { status: 201 });
