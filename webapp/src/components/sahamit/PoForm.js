@@ -41,6 +41,9 @@ export default function PoForm({
   // สลับหน่วยได้เฉพาะตอนสร้าง: DB เก็บเป็นชิ้น ถ้าหน้าแก้โหลด 120 (ชิ้น) มาแล้วผู้ใช้
   // กดเป็น "ลัง" เลขเดิมจะถูกตีความใหม่เป็น 120 ลัง = ข้อมูลเพี้ยนเงียบ ๆ
   allowUnitToggle = true,
+  // บันทึกย้อนหลัง (เฉพาะหน้าสร้าง): { delivered, deliveredDate } + onBackfill(patch).
+  // ส่ง null = ไม่โชว์ (หน้าแก้สถานะทำรายบรรทัดที่หน้ารายละเอียด PO อยู่แล้ว)
+  backfill = null, onBackfill = () => {},
   lockOf = () => null,       // (row) => เหตุผลที่ล็อก | null — หน้าสร้างไม่ส่ง = แก้ได้หมด
   disabled = false,
 }) {
@@ -136,6 +139,27 @@ export default function PoForm({
           <button type="button" className="btn" onClick={() => addRow(pick)} disabled={disabled} style={{ height: 30, flexShrink: 0 }}><Plus size={15} /> เพิ่ม</button>
         </div>
       </div>
+
+      {backfill && (
+        <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", flexDirection: "column", gap: 10 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: disabled ? "default" : "pointer" }}>
+            <input
+              type="checkbox"
+              checked={!!backfill.delivered}
+              disabled={disabled}
+              onChange={(e) => onBackfill({ delivered: e.target.checked })}
+            />
+            บันทึกย้อนหลัง — PO นี้ส่งของครบแล้ว (ทุกบรรทัดขึ้นสถานะ “ส่งแล้ว”)
+          </label>
+          {backfill.delivered && (
+            <div className="form-group" style={{ maxWidth: 240, margin: 0 }}>
+              <label>วันที่ส่งมอบจริง</label>
+              <DateInput value={backfill.deliveredDate || ""} onChange={(v) => onBackfill({ deliveredDate: v })} disabled={disabled} />
+              <span style={{ fontSize: 11, color: "var(--text-3)" }}>เว้นว่าง = ใช้กำหนดรับของ หรือวันที่รับ PO</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {rows.length > 0 && allowUnitToggle && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
