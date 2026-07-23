@@ -1,6 +1,7 @@
 "use client";
 import Select from "@/components/ui/Select";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -13,7 +14,6 @@ import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sah
 import { productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText, displayQty, counterpartText } from "@/lib/sahamit/units";
 import RoundComparison from "@/components/sahamit/RoundComparison";
-import ForecastImportModal from "@/components/sahamit/ForecastImportModal";
 import { useCan } from "@/lib/roleContext";
 
 const TABS = [
@@ -26,7 +26,7 @@ const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 const nfBaht = (n) => fmtMoneyCompact(n);
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 
-export default function ForecastPage() {
+function ForecastPageInner() {
   const { data: rounds, loading, error, reload } = useApiList("/api/sahamit/forecast/rounds");
   const { data: products } = useApiList("/api/sahamit/products");
   const { data: assignables } = useApiList("/api/pm/assignable-users");
@@ -36,14 +36,14 @@ export default function ForecastPage() {
   // ผู้ดูแลดีลสหมิตร = AE ทีม KA เท่านั้น (server เช็คซ้ำใน create-sales-deal)
   const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae" && u.team === "KA"), [assignables]);
   const canEdit = useCan("sahamit:edit");
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedNo, setSelectedNo] = useState(null);
   const [tab, setTab] = useState("matrix");
   const [matrixUnit, setMatrixUnit] = useState("piece"); // หน่วยแสดงผลตาราง Matrix (ชิ้น/ลัง)
   const [search, setSearch] = useState("");
   const [catSel, setCatSel] = useState([]); // หมวดสินค้าที่เลือกกรอง
   const q = search.trim().toLowerCase();
-  const [showImport, setShowImport] = useState(false);
-  const [editRound, setEditRound] = useState(null); // round being edited, or null = create
   // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 โครงการ" เข้าแผนการขาย
   const [selectedLines, setSelectedLines] = useState(() => new Set());
   const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
@@ -51,10 +51,13 @@ export default function ForecastPage() {
   const [creating, setCreating] = useState(false);
   const [dealModalOpen, setDealModalOpen] = useState(false); // modal ยืนยันสร้างแผนการขาย
 
-  // Default selection = the latest round, kept in sync as rounds load/change.
+  // Default selection = ?round= (กลับมาจากหน้าลง/แก้รอบ) ถ้ามี ไม่งั้นรอบล่าสุด.
   useEffect(() => {
-    if (rounds.length && selectedNo == null) setSelectedNo(rounds[rounds.length - 1].roundNo);
-  }, [rounds, selectedNo]);
+    if (!rounds.length || selectedNo != null) return;
+    const wanted = Number(searchParams.get("round"));
+    const hit = wanted && rounds.find((r) => r.roundNo === wanted);
+    setSelectedNo(hit ? wanted : rounds[rounds.length - 1].roundNo);
+  }, [rounds, selectedNo, searchParams]);
 
   const selectedIndex = useMemo(
     () => rounds.findIndex((r) => r.roundNo === selectedNo),
@@ -143,9 +146,8 @@ export default function ForecastPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rounds, q, catSel, productByFg]);
 
-  const openCreate = () => { setEditRound(null); setShowImport(true); };
-  const openEdit = (r) => { setEditRound(r); setShowImport(true); };
-  const closeModal = () => { setShowImport(false); setEditRound(null); };
+  const openCreate = () => router.push("/sahamit/forecast/new");
+  const openEdit = (r) => router.push(`/sahamit/forecast/${r.id}/edit`);
 
   const closeMonthOptions = useMemo(() => {
     const months = new Set([thisMonth(), ...matrix.months]);
@@ -619,16 +621,15 @@ export default function ForecastPage() {
           </div>
         </div>
       </Modal>
-
-      <ForecastImportModal
-        open={showImport}
-        onClose={closeModal}
-        onCreated={(json) => { setShowImport(false); setEditRound(null); if (json?.roundNo) setSelectedNo(json.roundNo); reload(); }}
-        products={products}
-        editRound={editRound}
-        existingRounds={rounds}
-        onEditExisting={(r) => setEditRound(r)}
-      />
     </Workspace>
+  );
+}
+
+// useSearchParams (อ่าน ?round=) ต้องอยู่ใต้ Suspense boundary ตอน build (แพตเทิร์นเดียวกับหน้าอื่นในระบบ)
+export default function ForecastPage() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      <ForecastPageInner />
+    </Suspense>
   );
 }
