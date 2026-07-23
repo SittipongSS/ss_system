@@ -217,6 +217,9 @@ export default function AppLayout({ children }) {
         // cap costing:view กว้างเกินจริง (role staff ถือทั้ง PD/WH/QC ด้วย) จึงต้อง
         // แคบด้วยฝ่ายผ่าน canViewCosting ไม่งั้นฝ่ายที่ไม่เกี่ยวเห็นเมนูต้นทุน
         { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
+        // คลังราคาวัสดุ + ใบขอราคาวัสดุ (mig 0143) — cap เดียวกับขอราคาผลิต
+        // (เห็นได้ทั้งฝ่ายขาย/RD/PC/ผู้บริหาร) แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
+        { href: '/sa/materials', name: 'คลังราคาวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/materials') },
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },
