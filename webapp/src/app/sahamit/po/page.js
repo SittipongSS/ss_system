@@ -1,12 +1,13 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
-import { fmtDate, fmtMoneyCompact } from "@/lib/format";
+import { fmtDate, fmtMoney } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
@@ -14,7 +15,8 @@ import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destination
 import { useCan } from "@/lib/roleContext";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
-const baht = (n) => fmtMoneyCompact(n);
+// มูลค่า PO โชว์เต็ม 2 ตำแหน่ง (ไม่ย่อ) — formatter กลาง fmtMoney
+const baht = (n) => fmtMoney(n);
 const VAT = 1.07;
 const C = { amber: "var(--amber)", blue: "var(--blue)", violet: "var(--violet)", green: "var(--green)", "text-3": "var(--text-3)" };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -232,6 +234,7 @@ export default function PoPage() {
 }
 
 function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, canEdit }) {
+  const router = useRouter();
   let unpriced = 0;
   const exVat = (po.lines || []).reduce((s, l) => {
     if (l.status === "cancelled") return s;
@@ -254,8 +257,9 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
 
   return (
     <>
-      <tr className="clickable-row" style={{ cursor: "pointer" }} onClick={onToggle}>
-        <td><button className="btn-icon" title={isOpen ? "ย่อ" : "ขยาย"}>{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
+      {/* กดที่แถว = เข้าหน้ารายละเอียด; ปุ่มลูกศร = ขยายดูรายการในแถว (ไม่เข้าหน้า) */}
+      <tr className="clickable-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/sahamit/po/${po.id}`)}>
+        <td onClick={(e) => e.stopPropagation()}><button className="btn-icon" title={isOpen ? "ย่อ" : "ขยาย"} onClick={onToggle}>{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
         <td className="font-mono" style={{ fontWeight: 600 }}>{po.poNumber}</td>
         <td>{po.docDate ? fmtDate(po.docDate) : "—"}</td>
         <td>{po.receivedDate ? fmtDate(po.receivedDate) : "—"}</td>
@@ -278,7 +282,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
         </td>
         <td><span className="ui-badge" style={{ color: stageColor, borderColor: stageColor }}>{stageLabel}</span></td>
         <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
-          <Link href={`/sahamit/po/${po.id}`} className="btn-icon" title="แก้ไข PO"><Pencil size={15} /></Link>
+          {canEdit && <Link href={`/sahamit/po/${po.id}/edit`} className="btn-icon" title="แก้ไข PO"><Pencil size={15} /></Link>}
         </td>
       </tr>
       {isOpen && (
