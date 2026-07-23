@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
   fgCodeFilterSet, filterRoundsByFg, filterPosByFg,
   categoryOptions, volumeOptions, yearOptions, priceMap, unitMultiplier, dashboardKpis,
-  fcEvolution, roundTotals, fcVsPoByMonth,
+  fcEvolution, roundTotals, fcVsPoByMonth, matchReport,
 } from './dashboard.js';
 
 const PRODUCTS = [
@@ -169,6 +169,45 @@ test('fcVsPoByMonth: value unit multiplies both PO and FC', () => {
   assert.equal(jan.PO, 600);
   assert.equal(jan.fcActive, 1000);
   assert.equal(jan.waiting, 400);
+});
+
+// ── แท็บ PO เทียบ FC (ยุบ report) ─────────────────────────────────
+test('matchReport: per-SKU FC/PO qty + value + status + drill cells', () => {
+  const rounds = [{ roundNo: 1, lines: [
+    { fgCode: 'A', month: '2026-01', qty: 100, productName: 'A' },
+    { fgCode: 'B', month: '2026-01', qty: 50, productName: 'B' },
+  ] }];
+  const pos = [{ id: 'p1', poNumber: 'PO-1', lines: [
+    { id: 'l1', fgCode: 'A', qty: 100, status: 'open', expectedDate: '2026-01-15' },
+    { id: 'l2', fgCode: 'B', qty: 40, status: 'open', expectedDate: '2026-01-15' },
+  ] }];
+  const products = [{ fgCode: 'A', price: 10 }, { fgCode: 'B', price: 20 }];
+  const rep = matchReport(rounds, pos, [], products, {});
+  const A = rep.rows.find((r) => r.fgCode === 'A');
+  const B = rep.rows.find((r) => r.fgCode === 'B');
+  assert.equal(A.fcQty, 100); assert.equal(A.poQty, 100);
+  assert.equal(A.fcValue, 1000); assert.equal(A.poValue, 1000);
+  assert.equal(A.statuses.match, 1);
+  assert.equal(B.statuses.discrepancy, 1); // fc50>po40
+  assert.equal(A.cells[0].month, '2026-01');
+  assert.equal(rep.totals.poValue, 1000 + 40 * 20);
+  assert.equal(rep.splittable.length, 2); // both open, not delivered
+});
+
+test('matchReport: year filter narrows months + splittable', () => {
+  const rounds = [{ roundNo: 1, lines: [
+    { fgCode: 'A', month: '2025-12', qty: 30, productName: 'A' },
+    { fgCode: 'A', month: '2026-01', qty: 100, productName: 'A' },
+  ] }];
+  const pos = [{ id: 'p1', poNumber: 'PO-1', lines: [
+    { id: 'l1', fgCode: 'A', qty: 100, status: 'open', expectedDate: '2026-01-10' },
+    { id: 'l2', fgCode: 'A', qty: 30, status: 'open', expectedDate: '2025-12-10' },
+  ] }];
+  const products = [{ fgCode: 'A', price: 10 }];
+  const rep = matchReport(rounds, pos, [], products, { years: ['2026'] });
+  assert.equal(rep.rows[0].fcQty, 100);  // 2025-12 hidden
+  assert.equal(rep.splittable.length, 1); // only the 2026 PO line
+  assert.equal(rep.splittable[0].deliveryMonth, '2026-01');
 });
 
 test('dashboardKpis year filter: only counts months in selected years', () => {
