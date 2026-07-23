@@ -1,14 +1,14 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, LineChart, FileText, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Boxes } from "lucide-react";
+import { LayoutDashboard, LineChart, FileText, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Boxes, Ruler, Package, CalendarRange } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import KpiCard from "@/components/ui/KpiCard";
-import Select from "@/components/ui/Select";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { poRollupStatus } from "@/lib/sahamit/po";
 import { fmtNumber, fmtMoneyCompact } from "@/lib/format";
-import { dashboardKpis, categoryOptions, volumeOptions, fgCodeFilterSet, filterRoundsByFg, filterPosByFg } from "@/lib/sahamit/dashboard";
+import { dashboardKpis, categoryOptions, volumeOptions, yearOptions, fgCodeFilterSet, filterRoundsByFg, filterPosByFg } from "@/lib/sahamit/dashboard";
 import DashboardCharts from "@/components/sahamit/DashboardCharts";
 
 // SAHAMIT command center — ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109), เฉพาะทีม Key Account.
@@ -57,32 +57,43 @@ export default function SahamitOverview() {
 
   const [tab, setTab] = useState("overview");
   const [unit, setUnit] = useState("qty"); // 'qty' | 'value'
-  const [fCat, setFCat] = useState("All");
-  const [fVol, setFVol] = useState("All");
-  const [fSku, setFSku] = useState("All");
-  const filter = { category: fCat, volume: fVol, fgCode: fSku };
-  const hasFilter = fCat !== "All" || fVol !== "All" || fSku !== "All";
+  // ตัวกรอง multi-select (มาตรฐาน FilterPopover ทั้งระบบ): หมวด/ปริมาตร/สินค้า/ปี
+  const [cats, setCats] = useState([]);
+  const [vols, setVols] = useState([]);
+  const [skus, setSkus] = useState([]);
+  const [years, setYears] = useState([]);
+  const filterCount = cats.length + vols.length + skus.length + years.length;
 
-  // ตัวเลือกตัวกรองจากรายการสินค้า
+  // ตัวเลือกตัวกรองจากข้อมูลจริง
   const catOpts = useMemo(() => categoryOptions(products), [products]);
   const volOpts = useMemo(() => volumeOptions(products), [products]);
+  const yrOpts = useMemo(() => yearOptions(rounds, pos), [rounds, pos]);
   const volUnitOf = useMemo(() => {
     const m = new Map();
     for (const p of products || []) if (p.volume != null && !m.has(String(p.volume))) m.set(String(p.volume), p.volumeUnit || "");
     return m;
   }, [products]);
-  // ตัวเลือกสินค้าขึ้นกับหมวด/ปริมาตรที่เลือก
-  const skuOpts = useMemo(() => (products || []).filter((p) =>
-    (fCat === "All" || p.category === fCat) && (fVol === "All" || String(p.volume ?? "") === String(fVol))
-  ), [products, fCat, fVol]);
 
-  // ข้อมูลหลังกรอง (ใช้กับกราฟในทุกแท็บ)
-  const fgSet = useMemo(() => fgCodeFilterSet(products, filter), [products, fCat, fVol, fSku]);
+  const filterGroups = useMemo(() => [
+    { key: "cat", label: "ประเภทสินค้า", icon: Boxes, selected: cats, onChange: setCats,
+      options: catOpts.map((c) => ({ value: c, label: c })) },
+    { key: "vol", label: "ปริมาตร", icon: Ruler, selected: vols, onChange: setVols,
+      options: volOpts.map((v) => ({ value: String(v), label: `${v}${volUnitOf.get(String(v)) || ""}` })) },
+    { key: "sku", label: "สินค้า", icon: Package, selected: skus, onChange: setSkus,
+      options: (products || []).map((p) => ({ value: p.fgCode, label: p.name || p.fgCode })) },
+    { key: "year", label: "ปี", icon: CalendarRange, selected: years, onChange: setYears,
+      options: yrOpts.map((y) => ({ value: y, label: y })) },
+  ], [catOpts, volOpts, yrOpts, volUnitOf, products, cats, vols, skus, years]);
+
+  const clearFilters = () => { setCats([]); setVols([]); setSkus([]); setYears([]); };
+
+  // ข้อมูลหลังกรองสินค้า (ใช้กับกราฟ). ปีกรองแค่คอลัมน์เดือนใน KPI/กราฟ ไม่ตัดบรรทัด.
+  const fgSet = useMemo(() => fgCodeFilterSet(products, { cats, vols, skus }), [products, cats, vols, skus]);
   const fRounds = useMemo(() => filterRoundsByFg(rounds, fgSet), [rounds, fgSet]);
   const fPos = useMemo(() => filterPosByFg(pos, fgSet), [pos, fgSet]);
 
-  const kpi = useMemo(() => dashboardKpis(rounds, pos, coverages, products, { unit, filter }),
-    [rounds, pos, coverages, products, unit, fCat, fVol, fSku]);
+  const kpi = useMemo(() => dashboardKpis(rounds, pos, coverages, products, { unit, filter: { cats, vols, skus }, years }),
+    [rounds, pos, coverages, products, unit, cats, vols, skus, years]);
 
   const latestRound = rounds.reduce((m, r) => Math.max(m, r.roundNo || 0), 0);
   const fmtTotal = (n) => (unit === "value" ? fmtMoneyCompact(n) : fmtNumber(n));
@@ -98,32 +109,14 @@ export default function SahamitOverview() {
       title="ภาพรวม (Dashboard)"
       subtitle="ติดตาม FC / PO และการเติบโต · ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109) — เฉพาะทีม Key Account"
       loading={l1 || l2 || l3 || l4}
-      actions={<UnitToggle unit={unit} onChange={setUnit} />}
+      actions={
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <FilterPopover groups={filterGroups} count={filterCount} onClear={clearFilters} />
+          <UnitToggle unit={unit} onChange={setUnit} />
+        </div>
+      }
     >
       <div className="flex flex-col gap-5">
-        {/* Filter bar */}
-        <div className="glass-panel" style={{ padding: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", alignSelf: "center", display: "flex", alignItems: "center", gap: 6 }}><Boxes size={14} /> กรอง</span>
-          <FilterField label="ประเภทสินค้า">
-            <Select value={fCat} onChange={(e) => { setFCat(e.target.value); setFSku("All"); }}
-              options={catOpts.map((c) => ({ value: c, label: c === "All" ? "ทั้งหมด" : c }))} compact />
-          </FilterField>
-          <FilterField label="ปริมาตร">
-            <Select value={String(fVol)} onChange={(e) => { setFVol(e.target.value); setFSku("All"); }}
-              options={volOpts.map((v) => ({ value: String(v), label: v === "All" ? "ทั้งหมด" : `${v}${volUnitOf.get(String(v)) || ""}` }))} compact />
-          </FilterField>
-          <FilterField label="สินค้า">
-            <Select value={fSku} onChange={(e) => setFSku(e.target.value)}
-              options={[{ value: "All", label: "สินค้าทั้งหมด" }, ...skuOpts.map((p) => ({ value: p.fgCode, label: p.name || p.fgCode }))]} compact />
-          </FilterField>
-          {hasFilter && (
-            <button onClick={() => { setFCat("All"); setFVol("All"); setFSku("All"); }}
-              style={{ marginLeft: "auto", border: "none", background: "transparent", color: "var(--red)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-              ล้างตัวกรอง ✕
-            </button>
-          )}
-        </div>
-
         {/* KPI row (unit-aware) */}
         <section>
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
@@ -152,7 +145,7 @@ export default function SahamitOverview() {
         </section>
 
         {/* Tab bar */}
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
           {TABS.map(({ key, label, icon: Icon }) => (
             <button key={key} type="button" onClick={() => setTab(key)}
               style={{
@@ -224,15 +217,6 @@ export default function SahamitOverview() {
         {tab !== "overview" && <ComingSoon tab={TABS.find((t) => t.key === tab)} />}
       </div>
     </Workspace>
-  );
-}
-
-function FilterField({ label, children }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <span style={{ fontSize: 10, color: "var(--text-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</span>
-      {children}
-    </div>
   );
 }
 

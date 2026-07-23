@@ -4,20 +4,22 @@
 // (buildReconMatrix / reconcileClient). ห้าม re-implement แบบ owner-round
 // (findActiveFC = รอบล่าสุดก่อนวัน PO) ที่เราทิ้งไปแล้ว เพราะจะ regress โมเดล peak.
 import { buildReconMatrix } from './reconcileClient';
+import { deliveryMonthOf } from './po';
 
 const lc = (s) => String(s || '').trim().toLowerCase();
+const yearOf = (ym) => (/^\d{4}/.test(String(ym || '')) ? String(ym).slice(0, 4) : null);
 
-// ── ตัวกรอง (หมวด / ปริมาตร / รหัสสินค้า) ─────────────────────────────
-// คืน Set ของ fgCode (lowercase) ที่ผ่านตัวกรอง หรือ null = ไม่มีตัวกรองเลย
-// (= ทั้งหมด รวม fgCode ที่ไม่อยู่ใน master ด้วย — จะไม่ถูกกรองทิ้ง). ตัวกรอง
-// ทำงานบน product meta ที่มากับ /api/sahamit/products (category/volume/fgCode).
-export function fgCodeFilterSet(products, { category = 'All', volume = 'All', fgCode = 'All' } = {}) {
-  if (category === 'All' && volume === 'All' && fgCode === 'All') return null;
+// ── ตัวกรองสินค้า (หมวด / ปริมาตร / รหัส) — multi-select ──────────────
+// รับ arrays (เลือกได้หลายค่า). ว่างทุกช่อง = ไม่มีตัวกรอง → คืน null (= ทั้งหมด
+// รวม fgCode ที่ไม่อยู่ใน master ด้วย จะไม่ถูกกรองทิ้ง). ค่า volume เทียบเป็น string
+// (FilterPopover ส่งค่าเป็น string). แต่ละมิติที่มีค่า = AND ระหว่างมิติ, OR ในมิติ.
+export function fgCodeFilterSet(products, { cats = [], vols = [], skus = [] } = {}) {
+  if (!cats.length && !vols.length && !skus.length) return null;
   const set = new Set();
   for (const p of products || []) {
-    if (category !== 'All' && p.category !== category) continue;
-    if (volume !== 'All' && String(p.volume ?? '') !== String(volume)) continue;
-    if (fgCode !== 'All' && p.fgCode !== fgCode) continue;
+    if (cats.length && !cats.includes(p.category)) continue;
+    if (vols.length && !vols.includes(String(p.volume ?? ''))) continue;
+    if (skus.length && !skus.includes(p.fgCode)) continue;
     if (p.fgCode) set.add(lc(p.fgCode));
   }
   return set;
@@ -36,20 +38,24 @@ export function filterPosByFg(pos, set) {
   return (pos || []).map((p) => ({ ...p, lines: (p.lines || []).filter((l) => inSet(set, l.fgCode)) }));
 }
 
-// ตัวเลือกหมวด/ปริมาตรจากรายการสินค้า (ไม่ซ้ำ, เรียง, 'All' นำหน้า).
+// ── ตัวเลือกตัวกรอง ───────────────────────────────────────────────────
 export function categoryOptions(products) {
-  const c = [...new Set((products || []).map((p) => p.category).filter(Boolean))].sort((a, b) => String(a).localeCompare(b));
-  return ['All', ...c];
+  return [...new Set((products || []).map((p) => p.category).filter(Boolean))].sort((a, b) => String(a).localeCompare(b));
 }
 export function volumeOptions(products) {
   const v = [...new Set((products || []).map((p) => p.volume).filter((x) => x != null && x !== ''))];
-  v.sort((a, b) => Number(a) - Number(b));
-  return ['All', ...v];
+  return v.sort((a, b) => Number(a) - Number(b));
+}
+// ปีที่มีข้อมูลจริง (จากเดือนเป้าหมาย FC + เดือนส่ง PO) — ใช้ตั้งตัวเลือกตัวกรองปี.
+// "ปี" = ปีของเดือนที่กราฟ plot (แกนเดือนเป้าหมาย/ส่ง) ไม่ใช่วันรับเอกสาร.
+export function yearOptions(rounds, pos) {
+  const ys = new Set();
+  for (const r of rounds || []) for (const l of r.lines || []) { const y = yearOf(l.month); if (y) ys.add(y); }
+  for (const po of pos || []) for (const l of po.lines || []) { const y = yearOf(l.deliveryMonth || deliveryMonthOf(l)); if (y) ys.add(y); }
+  return [...ys].sort();
 }
 
 // ── หน่วยที่แสดง: ชิ้น (qty) / มูลค่า (value = qty × ราคาผลิต) ─────────
-// price = costPrice จาก products (map ที่ loadSahamitProducts). ราคา null →
-// ตัวคูณ 0 (สินค้ายังไม่ตั้งราคา ไม่นับมูลค่า) — ตรงกับ reportClient.
 export function priceMap(products) {
   const m = new Map();
   for (const p of products || []) if (p.fgCode) m.set(lc(p.fgCode), p.price == null ? null : Number(p.price));
@@ -61,27 +67,34 @@ export function unitMultiplier(products, unit) {
 }
 
 // ── KPI สรุป (จาก peak engine, หลังกรอง) ─────────────────────────────
-// unit: 'qty' | 'value'. คืน { fcTotal, poTotal, coveragePct, statusCounts,
-//   overCount, pendingCount, unforecastedCount, discrepancyCount, alertCount,
-//   unpricedCount, unit }.
-export function dashboardKpis(rounds, pos, coverages, products, { unit = 'qty', filter } = {}) {
+// opts: { unit:'qty'|'value', filter:{cats,vols,skus}, years:[] }
+//   years ว่าง = ทุกปี. ปีกรองแค่ "คอลัมน์เดือนที่แสดง" ไม่แตะตรรกะจับคู่ —
+//   PO ที่รับปลายปีแล้วส่งข้ามปียังกระทบยอดถูก แค่ซ่อน/โชว์เดือนตามปีที่เลือก.
+// คืน { fcTotal, poTotal, coveragePct, statusCounts, overCount, pendingCount,
+//   discrepancyCount, unforecastedCount, alertCount, unpricedCount, unit }.
+export function dashboardKpis(rounds, pos, coverages, products, { unit = 'qty', filter, years = [] } = {}) {
   const set = fgCodeFilterSet(products, filter || {});
   const matrix = buildReconMatrix(filterRoundsByFg(rounds, set), filterPosByFg(pos, set), coverages || []);
   const prices = priceMap(products);
   const mult = (fg) => (unit === 'value' ? (prices.get(lc(fg)) ?? 0) : 1);
+  const monthOk = (mo) => !years || years.length === 0 || years.includes(yearOf(mo));
 
   let fcTotal = 0, poTotal = 0, unpricedCount = 0;
   const statusCounts = {};
   for (const row of matrix.rows) {
     const price = prices.get(lc(row.fgCode));
-    if (unit === 'value' && price == null && (row.fcTotal > 0 || row.poTotal > 0)) unpricedCount += 1;
     const m = mult(row.fgCode);
-    fcTotal += row.fcTotal * m;
-    poTotal += row.poTotal * m;
+    let rowHasQty = false;
     for (const mo of matrix.months) {
-      const st = row.cells[mo]?.status;
-      if (st && st !== 'none') statusCounts[st] = (statusCounts[st] || 0) + 1;
+      if (!monthOk(mo)) continue;
+      const c = row.cells[mo];
+      if (!c) continue;
+      fcTotal += (c.fcQty || 0) * m;
+      poTotal += (c.poQty || 0) * m;
+      if ((c.fcQty || 0) > 0 || (c.poQty || 0) > 0) rowHasQty = true;
+      if (c.status && c.status !== 'none') statusCounts[c.status] = (statusCounts[c.status] || 0) + 1;
     }
+    if (unit === 'value' && price == null && rowHasQty) unpricedCount += 1;
   }
   const coveragePct = fcTotal > 0 ? Math.round((poTotal / fcTotal) * 100) : (poTotal > 0 ? 100 : 0);
   const pendingCount = statusCounts.pending || 0;
