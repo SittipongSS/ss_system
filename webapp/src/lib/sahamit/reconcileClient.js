@@ -22,38 +22,45 @@ export { RECON_STATUS_COLOR };
 //
 // Fallback: a round with no coverMonths (legacy) is treated as owning the months
 // its lines mention, degrading gracefully to the old line behavior.
-function effectiveFc(rounds) {
-  const ever = new Set();   // (fg,month) ever forecast with qty>0 (history)
+// effective FC per (fgCode, month) — PEAK-matching model (มติ 2026-07-23).
+//
+// เดิมใช้ "รอบล่าสุดที่ครอบเดือน" เป็นเจ้าของ → พอรอบใหม่ครอบเดือนแคบลง/ตัดสินค้า
+// ออกจากเดือนอดีต FC กลายเป็น 0 ทั้งที่ PO มาชนแล้ว → PO ดูเป็น "นอก FC".
+//
+// โมเดลใหม่: ยึด **FC สูงสุดที่เคยพยากรณ์ (peak)** ต่อ (สินค้า×เดือน) เป็นดีมานด์ที่
+// ลูกค้า commit ไว้ แล้วให้ PO มาจับคู่ในกระทบยอด (ล็อกส่วนที่แมช เหลือรอ PO).
+// FC ไม่หายเองเพราะรอบใหม่ไม่พูดถึง — จะลดลงก็ต่อเมื่อ "คนยืนยันว่าตัด/เลื่อนจริง"
+// (confirmedCuts: Map "fg||month" -> qty ที่ยืนยันตัด/เลื่อนออก จากธง status
+// confirmed_cut / confirmed_shift). ที่หายเพราะ PO มา = ยังคง peak ไว้ให้ PO จับคู่.
+function effectiveFc(rounds, confirmedCuts) {
+  const ever = new Set();       // (fg,month) ever forecast with qty>0 (history)
   const names = new Map();
-  const ownerRoundNo = new Map();   // month -> latest roundNo that covers it
-  const roundQty = new Map();       // "roundNo||fg||month" -> summed qty
-
-  const claim = (month, rn) => {
-    const cur = ownerRoundNo.get(month);
-    if (cur === undefined || rn > cur) ownerRoundNo.set(month, rn);
-  };
+  const peakQty = new Map();    // "fg||month" -> max summed qty across rounds
+  const months = new Set();     // ทุกเดือนที่เคยมี FC (สำหรับตั้งคอลัมน์)
 
   for (const r of rounds || []) {
-    const rn = r.roundNo || 0;
-    for (const m of Array.isArray(r.coverMonths) ? r.coverMonths : []) claim(m, rn);
+    const agg = new Map();      // สรุป qty ต่อ (fg,month) ในรอบนี้
     for (const l of r.lines || []) {
       const q = Number(l.qty || 0);
       if (l.productName && !names.get(l.fgCode)) names.set(l.fgCode, l.productName);
       else if (!names.has(l.fgCode)) names.set(l.fgCode, null);
-      if (q > 0) ever.add(`${l.fgCode}||${l.month}`);
-      const k = `${rn}||${l.fgCode}||${l.month}`;
-      roundQty.set(k, (roundQty.get(k) || 0) + q);
-      claim(l.month, rn); // fallback when coverMonths is absent
+      const k = `${l.fgCode}||${l.month}`;
+      agg.set(k, (agg.get(k) || 0) + q);
+      months.add(l.month);
+    }
+    for (const [k, q] of agg) {
+      if (q > 0) ever.add(k);
+      if (q > (peakQty.get(k) || 0)) peakQty.set(k, q); // peak = สูงสุดข้ามรอบ
     }
   }
 
   const fcQtyOf = (fg, month) => {
-    const rn = ownerRoundNo.get(month);
-    if (rn === undefined) return 0;
-    return roundQty.get(`${rn}||${fg}||${month}`) || 0;
+    const k = `${fg}||${month}`;
+    const cut = Number((confirmedCuts && confirmedCuts.get(k)) || 0);
+    return Math.max(0, (peakQty.get(k) || 0) - cut); // peak − ที่ยืนยันตัด/เลื่อน
   };
 
-  return { fcQtyOf, ever, names, ownerRoundNo };
+  return { fcQtyOf, ever, names, months };
 }
 
 // PO qty per (fgCode, month) — active lines only (cancelled excluded), matched
@@ -76,8 +83,10 @@ function poByMonth(pos, names) {
 
 // Returns { months:[...], rows:[{ fgCode, productName, fcTotal, poTotal,
 //   cells:{ month: { status, label, fcQty, poQty, excess } } }] }.
-export function buildReconMatrix(rounds, pos, coverages = []) {
-  const { fcQtyOf, ever, names, ownerRoundNo } = effectiveFc(rounds);
+// confirmedCuts (optional): Map "fg||month" -> qty ที่ยืนยันตัด/เลื่อนออก (จากธง)
+// — ลดจาก peak FC. ไม่ส่ง = ไม่มีการยืนยันตัด (FC = peak เต็ม).
+export function buildReconMatrix(rounds, pos, coverages = [], confirmedCuts = null) {
+  const { fcQtyOf, ever, names, months: fcMonths } = effectiveFc(rounds, confirmedCuts);
   const poAgg = poByMonth(pos, names);
 
   // Cross-month coverage — ย้าย "FC" (ไม่ใช่ PO). PO = ของจริงที่สั่งแล้ว (สิ้นสุด)
@@ -94,8 +103,8 @@ export function buildReconMatrix(rounds, pos, coverages = []) {
     extraMonths.add(c.sourceMonth); extraMonths.add(c.targetMonth);
   }
 
-  // months = every owned (forecast) month + every PO delivery month + coverage months.
-  const months = new Set([...ownerRoundNo.keys(), ...extraMonths]);
+  // months = ทุกเดือนที่เคยมี FC (peak) + เดือนส่ง PO + เดือนชดเชย.
+  const months = new Set([...fcMonths, ...extraMonths]);
   const skus = new Set();
   for (const r of rounds || []) for (const l of r.lines || []) skus.add(l.fgCode);
   for (const c of coverages || []) skus.add(c.fgCode);
