@@ -10,6 +10,7 @@ import { poRollupStatus } from "@/lib/sahamit/po";
 import { fmtNumber, fmtMoneyCompact } from "@/lib/format";
 import { dashboardKpis, categoryOptions, volumeOptions, yearOptions, fgCodeFilterSet, filterRoundsByFg, filterPosByFg } from "@/lib/sahamit/dashboard";
 import DashboardCharts from "@/components/sahamit/DashboardCharts";
+import FcRoundsView from "@/components/sahamit/FcRoundsView";
 
 // SAHAMIT command center — ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109), เฉพาะทีม Key Account.
 // แดชบอร์ดติดตาม FC/PO + การเติบโต. ทุกตัวเลข/กราฟต่อจาก peak engine เดิม
@@ -214,7 +215,9 @@ export default function SahamitOverview() {
           </div>
         )}
 
-        {tab !== "overview" && <ComingSoon tab={TABS.find((t) => t.key === tab)} />}
+        {tab === "rounds" && <FcRoundsView rounds={fRounds} products={products} unit={unit} years={years} />}
+
+        {!["overview", "rounds"].includes(tab) && <ComingSoon tab={TABS.find((t) => t.key === tab)} />}
       </div>
     </Workspace>
   );

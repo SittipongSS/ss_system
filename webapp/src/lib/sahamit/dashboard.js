@@ -66,6 +66,50 @@ export function unitMultiplier(products, unit) {
   return (fg) => (unit === 'value' ? (prices.get(lc(fg)) ?? 0) : 1);
 }
 
+// ── แท็บ "FC แต่ละรอบ" (pure) ────────────────────────────────────────
+// วิวัฒนาการ FC: แต่ละรอบมองเดือนเป้าหมายไว้เท่าไร (เส้นละรอบ). รับ rounds ที่
+// กรองสินค้าแล้ว (filterRoundsByFg) + mult(fg) จาก unitMultiplier + years (กรอง
+// เดือน). คืนรูปที่ recharts กินตรง: { months, rounds:[{roundNo,key,receivedDate}],
+// data:[{month, r<roundNo>:qty|null}] }. เดือนที่รอบไม่ครอบ = null (เว้นเส้น).
+export function fcEvolution(rounds, { mult = () => 1, years = [] } = {}) {
+  const yrOk = (m) => !years.length || years.includes(yearOf(m));
+  const monthSet = new Set();
+  const perRound = (rounds || []).map((r) => {
+    const byMonth = new Map();
+    for (const l of r.lines || []) {
+      if (!yrOk(l.month)) continue;
+      const q = Number(l.qty || 0) * mult(l.fgCode);
+      byMonth.set(l.month, (byMonth.get(l.month) || 0) + q);
+      monthSet.add(l.month);
+    }
+    return { roundNo: r.roundNo, receivedDate: r.receivedDate, byMonth };
+  }).sort((a, b) => (a.roundNo || 0) - (b.roundNo || 0));
+
+  const months = [...monthSet].sort();
+  const roundsMeta = perRound.map((p) => ({ roundNo: p.roundNo, key: `r${p.roundNo}`, receivedDate: p.receivedDate }));
+  const data = months.map((m) => {
+    const row = { month: m };
+    for (const p of perRound) { const v = p.byMonth.get(m); row[`r${p.roundNo}`] = v == null ? null : v; }
+    return row;
+  });
+  return { months, rounds: roundsMeta, data };
+}
+
+// ยอดรวมต่อรอบ + %เปลี่ยนเทียบรอบก่อนหน้า (เรียงตาม roundNo). prevPct = null ที่รอบแรก
+// หรือเมื่อรอบก่อนหน้ายอด 0. รับ rounds ที่กรองสินค้าแล้ว + mult + years.
+export function roundTotals(rounds, { mult = () => 1, years = [] } = {}) {
+  const yrOk = (m) => !years.length || years.includes(yearOf(m));
+  const arr = (rounds || []).map((r) => {
+    let total = 0;
+    for (const l of r.lines || []) { if (!yrOk(l.month)) continue; total += Number(l.qty || 0) * mult(l.fgCode); }
+    return { roundNo: r.roundNo, receivedDate: r.receivedDate, total };
+  }).sort((a, b) => (a.roundNo || 0) - (b.roundNo || 0));
+  return arr.map((r, i) => ({
+    ...r,
+    prevPct: i > 0 && arr[i - 1].total > 0 ? ((r.total - arr[i - 1].total) / arr[i - 1].total) * 100 : null,
+  }));
+}
+
 // ── KPI สรุป (จาก peak engine, หลังกรอง) ─────────────────────────────
 // opts: { unit:'qty'|'value', filter:{cats,vols,skus}, years:[] }
 //   years ว่าง = ทุกปี. ปีกรองแค่ "คอลัมน์เดือนที่แสดง" ไม่แตะตรรกะจับคู่ —
