@@ -1,10 +1,12 @@
-// ส่งใบขอราคาเดินหน้า — ฝ่ายขายเป็นคนกด (costing:edit, proxy กันชั้นแรกแล้ว)
-//   stage 'pricing' → ส่งขอราคา RD/PC (ออกเลขที่เอกสารครั้งแรกที่นี่)
-//   stage 'exec'    → ส่งผู้บริหารอนุมัติราคาผลิต
+// ส่งใบขอราคาผลิตให้ผู้บริหาร (costing:edit, proxy กันชั้นแรกแล้ว)
+// PR-B: ราคาวัสดุมาจากคลัง (เซลดึงเอง) — ไม่มีขั้น "ส่งขอราคา RD/PC" ในใบผลิตแล้ว
+// เลขที่เอกสารออกครั้งแรกที่นี่ (ส่งออกจากมือฝ่ายขาย = ร่างที่ทิ้งไม่กินเลข)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canEditCostingRequest, generateCostingDocNo, submitForPricingError, submitToExecError } from '@/lib/costing';
+import { canEditCostingRequest, generateCostingDocNo, submitToExecError } from '@/lib/costing';
+import { libraryPricingBlocker } from '@/lib/costingLibrary';
 import { findCostingRequest } from '@/lib/costingAdmin';
+import { loadMaterials } from '@/lib/materialPricesAdmin';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -21,52 +23,18 @@ export async function POST(request, { params }) {
     return Response.json({ error: 'ไม่มีสิทธิ์ส่งใบนี้' }, { status: 403 });
   }
 
-  const body = await request.json().catch(() => ({}));
-  const stage = body.stage === 'exec' ? 'exec' : 'pricing';
   const nowIso = new Date().toISOString();
 
-  if (stage === 'pricing') {
-    const blocked = submitForPricingError(before);
-    if (blocked) return Response.json({ error: blocked }, { status: 409 });
-
-    // เลขที่เอกสารออก "ครั้งแรกที่ส่งออกจากมือฝ่ายขาย" — ร่างที่ถูกทิ้งจะได้ไม่กิน
-    // เลขจนเลขขาดช่วง. ออกครั้งเดียวตลอดอายุใบ (guard 0141 ห้ามเปลี่ยนทีหลัง)
-    const docNo = before.docNo || await generateCostingDocNo(supabase);
-
-    const { error } = await supabase.from('costing_requests').update({
-      docNo, status: 'pricing', submittedAt: before.submittedAt || nowIso, updatedAt: nowIso,
-    }).eq('id', id);
-    if (error) return Response.json({ error: error.message }, { status: 500 });
-
-    const after = await findCostingRequest(supabase, id);
-    await recordAudit({
-      user, action: 'update', entityType: 'costing_request', entityId: id, before, after,
-      summary: `ส่งใบขอราคาผลิต ${docNo} ให้ RD/PC ตอบราคาวัตถุดิบ/บรรจุภัณฑ์`, request,
-    });
-
-    // แจ้งเฉพาะฝ่ายที่มีบรรทัดต้องตอบจริง — ไม่รบกวนฝ่ายที่ไม่เกี่ยวกับใบนี้
-    const components = (after.items || []).flatMap((i) => i.components || []);
-    const countFor = (dept) => components.filter((c) => c.sourceDept === dept && c.priceStatus === 'pending').length;
-    for (const [dept, space] of [['RD', 'rd'], ['PC', 'pc']]) {
-      const pending = countFor(dept);
-      if (!pending) continue;
-      sendChat(space, chatCard({
-        title: `ขอราคา ${docNo}`,
-        subtitle: after.customerName || '',
-        rows: [
-          { label: 'สินค้า', value: (after.items || []).map((i) => i.productLabel).join(', ') },
-          { label: 'รายการที่รอราคา', value: `${pending} บรรทัด` },
-          { label: 'ผู้ขอ', value: after.requestedByName || '' },
-        ],
-        linkPath: `/sa/costing/${id}`,
-        linkLabel: 'เปิดใบขอราคา',
-      }));
-    }
-    return Response.json(after);
-  }
-
-  const blocked = submitToExecError(before);
+  // เช็คด่านส่งผู้บริหาร + บรรทัดคลังที่เกินอายุยังไม่ยืนยัน
+  const materials = await loadMaterials(supabase);
+  const libBlocker = libraryPricingBlocker(before.items || [], materials, {
+    customerId: before.customerId || null, todayIso: nowIso.slice(0, 10),
+  });
+  const blocked = submitToExecError(before, libBlocker);
   if (blocked) return Response.json({ error: blocked }, { status: 409 });
+
+  // ออกเลขที่เอกสารครั้งแรกที่ส่งผู้บริหาร (guard 0141 ห้ามเปลี่ยนทีหลัง)
+  const docNo = before.docNo || await generateCostingDocNo(supabase);
 
   // ตีกลับแล้วส่งใหม่: รายการที่เคยถูกตีกลับกลับไปรออนุมัติอีกครั้ง
   // (รายการที่อนุมัติผ่านแล้วไม่ถูกแตะ — ไม่ต้องอนุมัติซ้ำ)
@@ -76,13 +44,14 @@ export async function POST(request, { params }) {
   if (resetError) return Response.json({ error: resetError.message }, { status: 500 });
 
   const { error } = await supabase.from('costing_requests')
-    .update({ status: 'pending_exec', updatedAt: nowIso }).eq('id', id);
+    .update({ docNo, status: 'pending_exec', submittedAt: before.submittedAt || nowIso, updatedAt: nowIso })
+    .eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   const after = await findCostingRequest(supabase, id);
   await recordAudit({
     user, action: 'update', entityType: 'costing_request', entityId: id, before, after,
-    summary: `ส่งใบขอราคา ${after.docNo || id} ให้ผู้บริหารอนุมัติ`, request,
+    summary: `ส่งใบขอราคาผลิต ${after.docNo || id} ให้ผู้บริหารอนุมัติ`, request,
   });
 
   sendChat('executive', chatCard({
