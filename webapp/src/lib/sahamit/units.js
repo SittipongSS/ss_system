@@ -39,6 +39,29 @@ export function casesText(pieces, ppc) {
   return `${t} ลัง`;
 }
 
+// แปลงค่าที่กรอกในช่อง เมื่อ "สลับหน่วย" ชิ้น⇄ลัง โดยคงจำนวนชิ้นจริงไว้เท่าเดิม —
+// ให้เลขในกริดสลับตามหน่วยที่เลือก (ไม่ใช่แค่เปลี่ยนป้ายหน่วยแล้วตีความใหม่ = ข้อมูลเพี้ยน).
+//   piece→case: หารด้วยชิ้นต่อลัง (เศษลังทศนิยม 4 ตำแหน่ง กัน float เพี้ยนตอนสลับกลับ)
+//   case→piece: คูณชิ้นต่อลัง ปัดเป็นจำนวนชิ้นเต็ม
+// คืนค่าเป็น string (ใส่ใน input ได้ตรง). ช่องว่าง/ค่าไม่ถูกต้อง/ยังไม่รู้ชิ้นต่อลัง →
+// คืนค่าเดิม (แปลงไม่ได้ — ผู้เรียกกันไว้ด้วย missingPpc ตอนบันทึกอยู่แล้ว).
+export function convertEntryUnit(value, fromUnit, toUnit, ppc) {
+  if (fromUnit === toUnit) return value;
+  if (value === "" || value == null) return value;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return value;
+  const k = Number(ppc);
+  if (!Number.isFinite(k) || k <= 0) return value; // แปลงไม่ได้ถ้าไม่รู้ชิ้นต่อลัง
+  if (fromUnit === "piece" && toUnit === "case") {
+    const c = n / k;
+    return String(Number.isInteger(c) ? c : Number(c.toFixed(4)));
+  }
+  if (fromUnit === "case" && toUnit === "piece") {
+    return String(Math.round(n * k));
+  }
+  return value;
+}
+
 // จำนวนแบบเต็ม: ชิ้นเป็นหลัก + ลังในวงเล็บ (ถ้ารู้ชิ้นต่อลัง).
 //   fmtQty(1440, 12) → "1,440 ชิ้น (120 ลัง)"
 //   fmtQty(1440, null) → "1,440 ชิ้น"

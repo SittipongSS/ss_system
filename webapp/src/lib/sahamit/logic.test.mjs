@@ -436,3 +436,34 @@ test('desiredRoundNumbers: closes the gap a deleted round leaves', () => {
   ];
   assert.deepEqual(desiredRoundNumbers(rounds), [{ id: 'c', from: 4, to: 2 }]);
 });
+
+// ── unit toggle ชิ้น⇄ลัง: สลับหน่วยแล้วเลขต้องแปลงตาม (คงจำนวนชิ้นจริง) ──────
+import { convertEntryUnit } from './units.js';
+
+test('convertEntryUnit: piece→case หารชิ้นต่อลัง, case→piece คูณกลับ', () => {
+  assert.equal(convertEntryUnit('120', 'piece', 'case', 12), '10');
+  assert.equal(convertEntryUnit('10', 'case', 'piece', 12), '120');
+});
+
+test('convertEntryUnit: เศษลังเก็บทศนิยม แล้วสลับกลับได้จำนวนชิ้นเดิม (round-trip)', () => {
+  const asCase = convertEntryUnit('100', 'piece', 'case', 12); // 8.3333
+  assert.equal(asCase, '8.3333');
+  assert.equal(convertEntryUnit(asCase, 'case', 'piece', 12), '100'); // กลับมาเท่าเดิม
+});
+
+test('convertEntryUnit: หน่วยเดิม/ค่าว่าง/ศูนย์/ไม่รู้ชิ้นต่อลัง → คงค่าเดิม', () => {
+  assert.equal(convertEntryUnit('120', 'piece', 'piece', 12), '120');
+  assert.equal(convertEntryUnit('', 'piece', 'case', 12), '');
+  assert.equal(convertEntryUnit('0', 'piece', 'case', 12), '0');
+  assert.equal(convertEntryUnit('120', 'piece', 'case', null), '120'); // ไม่รู้ ppc → ไม่แปลง
+  assert.equal(convertEntryUnit('120', 'piece', 'case', 0), '120');
+});
+
+test('convertEntryUnit: round-trip กับ ppc หลายค่า ได้ชิ้นเดิมเสมอ', () => {
+  for (const ppc of [3, 6, 7, 13, 24]) {
+    for (const pieces of [100, 250, 1000, 999999]) {
+      const back = convertEntryUnit(convertEntryUnit(String(pieces), 'piece', 'case', ppc), 'case', 'piece', ppc);
+      assert.equal(back, String(pieces), `ppc=${ppc} pieces=${pieces}`);
+    }
+  }
+});

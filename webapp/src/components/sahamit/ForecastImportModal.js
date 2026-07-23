@@ -8,7 +8,7 @@ import { roundMatrix } from "@/lib/sahamit/forecastClient";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
-import { ppcOf } from "@/lib/sahamit/units";
+import { ppcOf, convertEntryUnit } from "@/lib/sahamit/units";
 
 // Create one FC round. The month columns run from a start month to an end month
 // (the round's last month) and the grid updates live when either changes. Rows
@@ -149,6 +149,20 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   const removeRow = (ri) => setRows((prev) => prev.filter((_, i) => i !== ri));
   const setQty = (ri, month, val) =>
     setRows((prev) => prev.map((r, i) => (i === ri ? { ...r, qty: { ...r.qty, [month]: val } } : r)));
+
+  // สลับหน่วยกรอก ชิ้น⇄ลัง แล้ว "แปลงตัวเลขทุกช่องตาม" (คงจำนวนชิ้นจริง) — ไม่ใช่แค่
+  // เปลี่ยนป้ายหน่วยแล้วตีความใหม่ (เดิมทำให้เลขเพี้ยนตอนแก้/สลับหลังกรอก). SKU ที่ยัง
+  // ไม่รู้ชิ้นต่อลังจะแปลงไม่ได้ (คงค่าเดิม) — ตัว missingPpc ตอนบันทึกกันไว้อยู่แล้ว.
+  const changeEntryUnit = (next) => {
+    if (next === entryUnit) return;
+    setRows((prev) => prev.map((r) => {
+      const ppc = ppcOf(productIndex.get(String(r.fgCode).trim().toLowerCase()));
+      const qty = {};
+      for (const [m, v] of Object.entries(r.qty)) qty[m] = convertEntryUnit(v, entryUnit, next, ppc);
+      return { ...r, qty };
+    }));
+    setEntryUnit(next);
+  };
 
   // Upload: parse server-side and load the returned grid (pins months to file).
   const onUpload = async (file) => {
@@ -333,12 +347,12 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ fontSize: 13, color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
             <div className="segmented">
-              <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => setEntryUnit("piece")}>ชิ้น</button>
-              <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => setEntryUnit("case")}>ลัง</button>
+              <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => changeEntryUnit("piece")}>ชิ้น</button>
+              <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => changeEntryUnit("case")}>ลัง</button>
             </div>
             <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
               {entryUnit === "case"
-                ? "ระบบจะคูณ “ชิ้นต่อลัง” ของแต่ละสินค้าแล้วเก็บเป็นชิ้น"
+                ? "สลับหน่วยแล้วเลขในกริดแปลงตามอัตโนมัติ · ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลัง)"
                 : "เก็บตามที่กรอก (ชิ้น)"}
             </span>
           </div>

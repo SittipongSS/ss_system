@@ -11,7 +11,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { DestinationToggle } from "@/components/sahamit/destinations";
 import { productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
-import { ppcOf, casesText } from "@/lib/sahamit/units";
+import { ppcOf, casesText, convertEntryUnit } from "@/lib/sahamit/units";
 
 export const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -65,6 +65,14 @@ export default function PoForm({
   };
   const setQty = (ri, v) => onRows(rows.map((r, i) => (i === ri ? { ...r, qty: v } : r)));
   const removeRow = (ri) => onRows(rows.filter((_, i) => i !== ri));
+
+  // สลับหน่วยกรอก ชิ้น⇄ลัง แล้วแปลงตัวเลขทุกแถวตาม (คงจำนวนชิ้นจริง) — ไม่ใช่แค่
+  // เปลี่ยนป้ายหน่วยแล้วตีความใหม่. SKU ที่ยังไม่รู้ชิ้นต่อลังคงค่าเดิม (missingPpc กันตอนบันทึก).
+  const changeUnit = (next) => {
+    if (next === entryUnit) return;
+    onRows(rows.map((r) => ({ ...r, qty: convertEntryUnit(r.qty, entryUnit, next, ppcForRow(r)) })));
+    onEntryUnit(next);
+  };
 
   const hasUnknown = rows.some((r) => !r.known);
   const lockedCount = rows.filter((r) => lockOf(r)).length;
@@ -133,11 +141,11 @@ export default function PoForm({
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
           <div className="segmented">
-            <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => onEntryUnit("piece")}>ชิ้น</button>
-            <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => onEntryUnit("case")}>ลัง</button>
+            <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => changeUnit("piece")}>ชิ้น</button>
+            <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => changeUnit("case")}>ลัง</button>
           </div>
           <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-            {entryUnit === "case" ? "ระบบจะคูณ “ชิ้นต่อลัง” แล้วเก็บเป็นชิ้น" : "เก็บตามที่กรอก (ชิ้น)"}
+            {entryUnit === "case" ? "สลับหน่วยแล้วเลขแปลงตามอัตโนมัติ · ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลัง)" : "เก็บตามที่กรอก (ชิ้น)"}
           </span>
         </div>
       )}
