@@ -17,11 +17,11 @@ import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 
 export const newProductLine = () => ({
-  _lineKind: "product", productId: null, fgCode: null, description: "", qty: 1, unitPrice: 0,
+  _lineKind: "product", productId: null, fgCode: null, description: "", qty: 1, unit: "ชิ้น", unitPrice: 0,
   discountType: null, discountValue: 0, source: "manual",
 });
 export const newManualLine = () => ({
-  _lineKind: "manual", productId: null, fgCode: null, description: "", qty: 1, unitPrice: 0,
+  _lineKind: "manual", productId: null, fgCode: null, description: "", qty: 1, unit: "ชิ้น", unitPrice: 0,
   discountType: null, discountValue: 0, source: "manual",
 });
 
@@ -80,6 +80,8 @@ export default function QuotationLineItems({
       fgCode: product.fgCode || null,
       // คำอธิบายมาตรฐาน แบรนด์ · ชื่อสินค้า · ปริมาตร (รหัสแสดงเป็นป้าย FG แยก)
       description: fgLineDescription(product),
+      // หน่วยขายผูกกับสินค้า (มติ 2026-07-23) — server enforce ทับด้วย master.saleUnit ตอนบันทึก
+      unit: product.saleUnit || "ชิ้น",
       unitPrice: Number(product.costPrice || 0),
     });
   };
@@ -146,7 +148,11 @@ export default function QuotationLineItems({
                       : (line.metadata?.note && <div className={styles.noteReadonly}>หมายเหตุ: {line.metadata.note}</div>)}
                   </div>
                 </td>
-                <td><MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} /></td>
+                <td>
+                  <MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} />
+                  {/* หน่วยขาย = read-only จากฐานข้อมูลสินค้า (ล็อกเหมือนราคา) */}
+                  {line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>}
+                </td>
                 <td>
                   <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />
                   {/* เตือนเฉพาะตอน master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ
