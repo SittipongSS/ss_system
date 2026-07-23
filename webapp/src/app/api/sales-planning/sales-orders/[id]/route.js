@@ -13,6 +13,8 @@ import {
   approveSalesOrderWithSignatureEvidence,
   signatureEvidenceErrorResponse,
 } from '@/lib/admin/signatureEvidence';
+import { loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 
@@ -47,6 +49,30 @@ async function loadOrder(supabase, id) {
   };
 }
 
+// รูปลายเซ็นผู้อนุมัติสำหรับออกเอกสาร SO: ต้องอ่านจาก evidence (mig 0125) แล้วโหลด
+// ไฟล์จาก bucket ส่วนตัวด้วย service-role (RLS บล็อก client ปกติ) ฝังเป็น data URI ให้
+// ฝั่งพิมพ์ใช้ตรง ๆ — เหมือนใบเสนอราคาที่ฝังรูปตอนตรึง snapshot. ล้มเหลว/dev = null.
+async function loadApproverSignature(supabase, order) {
+  if (order.status !== 'approved') return null;
+  const { data: ev } = await supabase
+    .from('document_signature_evidence')
+    .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot')
+    .eq('salesOrderId', order.id)
+    .order('approvalSequence', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!ev?.signatureAssetSnapshot) return null;
+  const imageDataUri = await loadSignatureImageDataUri(getSupabaseAdmin(), ev.signatureAssetSnapshot);
+  if (!imageDataUri) return null;
+  return {
+    imageDataUri,
+    signerName: ev.signerName || order.approvedByName || '',
+    signerRole: ev.signerRole || '',
+    signedAt: ev.signedAt || order.approvedAt || null,
+    evidenceId: ev.id || order.signatureEvidenceId || '',
+  };
+}
+
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
@@ -56,8 +82,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!order) return notFound('ไม่พบ Sale Order');
   if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
+  // รูปลายเซ็นผู้อนุมัติ (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังออกได้ ตกไปช่องเซ็นเปล่า)
+  let approverSignature = null;
+  if (!user.devBypass) {
+    try { approverSignature = await loadApproverSignature(supabase, order); }
+    catch { approverSignature = null; }
+  }
   // meId ให้หน้าเว็บซ่อนปุ่มอนุมัติของ SO ที่ตัวเองสร้าง/ยื่น (แบ่งแยกหน้าที่)
-  return ok({ ...order, meId: user.id || null });
+  return ok({ ...order, meId: user.id || null, approverSignature });
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
