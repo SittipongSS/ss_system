@@ -40,6 +40,26 @@ test('unapproved Sale Order print carries a visible status watermark', () => {
   assert.match(buildSalesOrderPrintHTML({ ...order, status: 'cancelled' }), /class="watermark">เอกสารยกเลิก/);
 });
 
+test('Sale Order แสดงข้อมูลลูกค้าครบ รวมเลขผู้เสียภาษี (snapshot จากใบเสนอราคาที่ผูก)', () => {
+  const html = buildSalesOrderPrintHTML({
+    ...order,
+    customerName: 'บริษัท ลูกค้า จำกัด',
+    quotation: {
+      ...order.quotation,
+      customerTaxId: '0105551234567',
+      billingAddress: '123 ถนนสุขุมวิท',
+      shippingAddress: '456 คลังสินค้า',
+      contactName: 'คุณสมชาย',
+      contactPhone: '021234567',
+    },
+  });
+  assert.match(html, /บริษัท ลูกค้า จำกัด/);
+  assert.match(html, /เลขผู้เสียภาษี<\/dt><dd>0105551234567/);
+  assert.match(html, /123 ถนนสุขุมวิท/);
+  assert.match(html, /456 คลังสินค้า/);
+  assert.match(html, /คุณสมชาย · 021234567/);
+});
+
 test('Sale Order VAT rate is rounded — no float noise like 7.000000000000001%', () => {
   // 76.23 / 1089 * 100 = 7.000000000000001 บนเลขทศนิยม IEEE — เอกสารต้องโชว์ 7%
   const html = buildSalesOrderPrintHTML({ ...order, subtotal: 1089, vatAmount: 76.23, totalAmount: 1165.23 });
