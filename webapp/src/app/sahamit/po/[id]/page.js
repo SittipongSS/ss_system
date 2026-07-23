@@ -96,6 +96,11 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
         <td style={{ textAlign: "right" }}>
           <div>เต็ม {nf(line.qty)}</div>
           {casesText(line.qty, ppcOf(product)) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{casesText(line.qty, ppcOf(product))}</div>}
+          {Number(product?.price) > 0 && (
+            <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+              @ ฿{Number(product.price).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = ฿{(Number(line.qty || 0) * Number(product.price)).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+          )}
           {line.shippedQty != null && (
             <div style={{ fontSize: 11 }}>
               <span style={{ color: "var(--green)" }}>ส่งแล้ว {nf(line.shippedQty)}</span>
@@ -440,6 +445,22 @@ export default function PoDetailPage() {
           <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>จำนวนรายการ</div><div style={{ fontSize: 20, fontWeight: 700 }}>{poLineCount(po)}</div></div>
             <div><div style={{ fontSize: 12, color: "var(--text-3)" }}>ยอดรวม (ชิ้น)</div><div style={{ fontSize: 20, fontWeight: 700 }}>{nf(poTotalQty(po))}</div></div>
+            {(() => {
+              // มูลค่า = จำนวน × ราคาผลิต (costPrice) จาก master — อ่านอย่างเดียว
+              const sub = (po.lines || []).reduce((s, l) => {
+                const p = Number(prodIdx.get(String(l.fgCode).trim().toLowerCase())?.price);
+                return s + (Number.isFinite(p) && p > 0 ? Number(l.qty || 0) * p : 0);
+              }, 0);
+              if (sub <= 0) return null;
+              const b = (n) => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              return (
+                <div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)" }}>มูลค่ารวม (รวม VAT)</div>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>฿{b(sub * 1.07)}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>ก่อน VAT ฿{b(sub)} · VAT 7% ฿{b(sub * 0.07)}</div>
+                </div>
+              );
+            })()}
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               {/* ท่อขายเต็ม (มติ §7): 1) สร้างโครงการ PM → 2) ยืนยันดีล + ออก QT
                   → จากนั้น Won/SO ไปทำในสายขายมาตรฐาน (เซ็น → ส่ง → accept → SO) */}

@@ -33,6 +33,11 @@ export const poToForm = (po) => ({
   })),
 });
 
+// ราคา/มูลค่าบน PO อ่านอย่างเดียว — ยึดราคาผลิต (costPrice) จาก master แก้ไม่ได้
+// (มติ: ห้ามแก้ราคาในสหมิตร). มูลค่า = จำนวนชิ้น × ราคา/ชิ้น; VAT 7% ท้ายเอกสาร.
+const VAT_RATE = 0.07;
+const nfBaht = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export default function PoForm({
   header, onHeader,          // {poNumber,...}, (patch) => void
   rows, onRows,              // [{id?, fgCode, qty, ...}], (nextRows) => void
@@ -55,6 +60,22 @@ export default function PoForm({
     return m;
   }, [products]);
   const ppcForRow = (r) => ppcOf(r.known ? productIndex.get(String(r.fgCode).trim().toLowerCase()) : null);
+
+  // ราคา/ชิ้น จาก master (costPrice) — อ่านอย่างเดียว; มูลค่าบรรทัด = จำนวนชิ้น × ราคา
+  const masterPrice = (r) => {
+    const v = Number(productIndex.get(String(r.fgCode).trim().toLowerCase())?.price);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  };
+  const piecesOf = (r) => {
+    const n = Number(r.qty);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (entryUnit === "case") { const ppc = ppcForRow(r); return ppc ? n * ppc : 0; }
+    return n;
+  };
+  const lineValue = (r) => piecesOf(r) * masterPrice(r);
+  const subtotal = useMemo(() => rows.reduce((s, r) => s + lineValue(r), 0), [rows, entryUnit, productIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  const vat = subtotal * VAT_RATE;
+  const grand = subtotal + vat;
 
   const set = (k) => (v) => onHeader({ [k]: v });
 
@@ -189,7 +210,13 @@ export default function PoForm({
         <div className="premium-table-wrapper">
           <table className="premium-table">
             <thead>
-              <tr><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style={{ textAlign: "right" }}>จำนวน ({entryUnit === "case" ? "ลัง" : "ชิ้น"})</th><th></th></tr>
+              <tr>
+                <th>รหัสสินค้า</th><th>ชื่อสินค้า</th>
+                <th style={{ textAlign: "right" }}>จำนวน ({entryUnit === "case" ? "ลัง" : "ชิ้น"})</th>
+                <th style={{ textAlign: "right" }}>ราคา/ชิ้น (฿)</th>
+                <th style={{ textAlign: "right" }}>มูลค่า (฿)</th>
+                <th></th>
+              </tr>
             </thead>
             <tbody>
               {rows.map((r, ri) => {
@@ -217,6 +244,10 @@ export default function PoForm({
                         return hint ? <div style={{ fontSize: 10, color: "var(--text-3)" }}>{hint}</div> : null;
                       })()}
                     </td>
+                    <td style={{ textAlign: "right", color: masterPrice(r) ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>
+                      {masterPrice(r) ? nfBaht(masterPrice(r)) : "—"}
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{lineValue(r) ? nfBaht(lineValue(r)) : "—"}</td>
                     <td style={{ textAlign: "center" }}>
                       {lock
                         ? <Lock size={13} style={{ color: "var(--text-3)" }} aria-label={`ล็อก: ${lock}`} />
@@ -226,6 +257,13 @@ export default function PoForm({
                 );
               })}
             </tbody>
+            {subtotal > 0 && (
+              <tfoot>
+                <tr><td colSpan={4} style={{ textAlign: "right", color: "var(--text-2)" }}>รวมก่อน VAT</td><td style={{ textAlign: "right", fontWeight: 600 }}>{nfBaht(subtotal)}</td><td /></tr>
+                <tr><td colSpan={4} style={{ textAlign: "right", color: "var(--text-2)" }}>VAT 7%</td><td style={{ textAlign: "right" }}>{nfBaht(vat)}</td><td /></tr>
+                <tr><td colSpan={4} style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>ยอดสุทธิ (รวม VAT)</td><td style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(grand)}</td><td style={{ borderTop: "2px solid var(--border)" }} /></tr>
+              </tfoot>
+            )}
           </table>
         </div>
       )}
