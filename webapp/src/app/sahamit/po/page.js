@@ -2,8 +2,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search } from "lucide-react";
+import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import Select from "@/components/ui/Select";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
@@ -22,6 +23,12 @@ const baht = (n) => fmtMoney(n);
 const VAT = 1.07;
 const C = { amber: "var(--amber)", blue: "var(--blue)", violet: "var(--violet)", green: "var(--green)", "text-3": "var(--text-3)" };
 const today = () => new Date().toISOString().slice(0, 10);
+// มูลค่าก่อน VAT ของ PO (ตัดบรรทัดยกเลิก) — ใช้เรียงมุมมองรายใบ
+const poExVat = (po, priceByFg) => (po.lines || []).reduce((s, l) => {
+  if (l.status === "cancelled") return s;
+  const price = priceByFg.get(String(l.fgCode).trim().toLowerCase());
+  return price == null ? s : s + effectivePoQty(l) * price;
+}, 0);
 
 // สถานะวัสดุ 1 ช่อง (อ่านอย่างเดียว): มาแล้ว / กำหนดถึง / —  (แก้ที่เมนูวัสดุเท่านั้น)
 function matCell(dueDate, arrivedAt) {
@@ -95,7 +102,10 @@ export default function PoPage() {
   const canEdit = useCan("sahamit:edit");
   const [view, setView] = useState("grouped"); // grouped (รายใบ) | table (รายบรรทัด)
   const [sort, setSort] = useState({ col: null, dir: "asc" });
-  const onSort = (col) => setSort((s) => (s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" }));
+  const onSort = (col) => setSort((s) => (s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" })); // กดหัวตาราง
+  const pickSort = (col) => setSort((s) => ({ col: col || null, dir: s.dir })); // เลือกจาก dropdown
+  const toggleDir = () => setSort((s) => ({ ...s, dir: s.dir === "asc" ? "desc" : "asc" }));
+  const gArrow = (col) => (sort.col === col ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
   const q = search.trim().toLowerCase();
 
   // ราคาผลิต (costPrice, ก่อน VAT) ต่อ fgCode — สำหรับยอดรวมมูลค่า PO
@@ -138,7 +148,17 @@ export default function PoPage() {
   const clearFilters = () => { setStatusSel([]); setDestSel([]); };
 
   // แบ่งหน้ามุมมอง "รายใบ" (รีเซ็ตกลับหน้า 1 เมื่อค้น/กรองเปลี่ยน)
-  const grouped = usePagination(filteredPos, { resetKey: `${q}|${statusSel.join(",")}|${destSel.join(",")}` });
+  // เรียงมุมมองรายใบก่อนแบ่งหน้า (sort เดียวกับปุ่ม/หัวตาราง)
+  const sortedGroupedPos = useMemo(() => {
+    if (!sort.col) return filteredPos;
+    const s = sort.dir === "asc" ? 1 : -1;
+    const key = (po) => ({
+      po: po.poNumber || "", doc: po.docDate || "", recv: po.receivedDate || "", due: po.dueDate || "",
+      qty: poTotalQty(po), value: poExVat(po, priceByFg), status: poRollupStatus(po),
+    }[sort.col]);
+    return [...filteredPos].sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * s; });
+  }, [filteredPos, sort, priceByFg]);
+  const grouped = usePagination(sortedGroupedPos, { resetKey: `${q}|${statusSel.join(",")}|${destSel.join(",")}|${sort.col}|${sort.dir}` });
 
   // material lines grouped by PO number (คัดเฉพาะบรรทัด active แล้วจาก API)
   const matByPo = useMemo(() => {
@@ -205,9 +225,26 @@ export default function PoPage() {
               ]}
             />
             {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredPos.length} จาก {pos.length} ใบ</span>}
+            {(() => {
+              const fields = view === "grouped"
+                ? [["po", "เลข PO"], ["doc", "วันที่เอกสาร"], ["recv", "วันรับ PO"], ["due", "กำหนดส่ง"], ["qty", "จำนวนรวม"], ["value", "มูลค่า"], ["status", "สถานะ"]]
+                : [["po", "เลข PO"], ["month", "เดือนส่ง"], ["fg", "สินค้า"], ["qty", "จำนวน"], ["value", "มูลค่า"], ["status", "สถานะ"]];
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 13, color: "var(--text-3)" }}>เรียงตาม</span>
+                  <Select className="premium-select" style={{ height: 32 }} value={sort.col || ""} onChange={(e) => pickSort(e.target.value)}>
+                    <option value="">— ไม่เรียง —</option>
+                    {fields.map(([col, label]) => <option key={col} value={col}>{label}</option>)}
+                  </Select>
+                  <button type="button" className="btn-icon" title="สลับทิศเรียง (น้อย→มาก / มาก→น้อย)" disabled={!sort.col} onClick={toggleDir}>
+                    {sort.dir === "asc" ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
+                  </button>
+                </div>
+              );
+            })()}
             <div className="segmented" style={{ marginLeft: "auto" }} title="สลับมุมมอง">
-              <button className={view === "grouped" ? "active" : ""} onClick={() => setView("grouped")}>รายใบ</button>
-              <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>ตาราง</button>
+              <button className={view === "grouped" ? "active" : ""} onClick={() => { setView("grouped"); setSort({ col: null, dir: "asc" }); }}>รายใบ</button>
+              <button className={view === "table" ? "active" : ""} onClick={() => { setView("table"); setSort({ col: null, dir: "asc" }); }}>ตาราง</button>
             </div>
           </div>
 
@@ -217,15 +254,15 @@ export default function PoPage() {
                 <thead>
                   <tr>
                     <th style={{ width: 32 }}></th>
-                    <th>เลขที่ PO</th>
-                    <th>วันที่เอกสาร</th>
-                    <th>วันรับ PO</th>
-                    <th>กำหนดส่ง</th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("po")}>เลขที่ PO{gArrow("po")}</th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("doc")}>วันที่เอกสาร{gArrow("doc")}</th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("recv")}>วันรับ PO{gArrow("recv")}</th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("due")}>กำหนดส่ง{gArrow("due")}</th>
                     <th>สถานที่ส่ง</th>
                     <th style={{ textAlign: "right" }}>รายการ</th>
-                    <th style={{ textAlign: "right" }}>จำนวนรวม</th>
-                    <th style={{ textAlign: "right" }}>มูลค่า PO</th>
-                    <th>สถานะ</th>
+                    <th style={{ textAlign: "right", cursor: "pointer", userSelect: "none" }} onClick={() => onSort("qty")}>จำนวนรวม{gArrow("qty")}</th>
+                    <th style={{ textAlign: "right", cursor: "pointer", userSelect: "none" }} onClick={() => onSort("value")}>มูลค่า PO{gArrow("value")}</th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("status")}>สถานะ{gArrow("status")}</th>
                     <th></th>
                   </tr>
                 </thead>
