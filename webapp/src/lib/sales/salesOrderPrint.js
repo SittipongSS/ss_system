@@ -59,8 +59,10 @@ export function buildSalesOrderPrintHTML(order) {
     contactPhone: quotation.contactPhone,
     lines: order.lines || [],
     subtotal: order.subtotal,
-    discountType: order.discountType,
-    discountValue: order.discountValue,
+    // ส่วนลดระดับหัวเก็บที่ใบเสนอราคา (sales_orders ไม่มี discountType/Value) — ดึงจาก
+    // quotation ที่ผูก เพื่อให้ป้าย "ส่วนลด X%" แสดงถูก; ยอดเงินใช้ order.discountAmount เดิม
+    discountType: quotation.discountType,
+    discountValue: quotation.discountValue,
     discountAmount: order.discountAmount,
     vatAmount: order.vatAmount,
     vatRate,

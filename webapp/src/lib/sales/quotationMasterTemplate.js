@@ -654,7 +654,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     address: quote.billingAddress || '-',
     shippingAddress: quote.shippingAddress || quote.billingAddress || '-',
     taxId: quote.customerTaxId || '-',
-    branch: quote.branchCode ? `สาขา ${quote.branchCode}` : 'สำนักงานใหญ่',
+    branch: quote.branchCode ? `สาขาที่ ${quote.branchCode}` : 'สำนักงานใหญ่',
     contactName: quote.contactName || '-',
     contactPhone: quote.contactPhone || '-',
   };
