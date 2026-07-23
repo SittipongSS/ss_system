@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { LayoutDashboard, LineChart, FileText, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Boxes, Ruler, Package, CalendarRange } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import KpiCard from "@/components/ui/KpiCard";
+import Tabs from "@/components/ui/Tabs";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { poRollupStatus } from "@/lib/sahamit/po";
@@ -34,19 +35,12 @@ const TABS = [
   { key: "growth", label: "การเติบโต", icon: TrendingUp },
 ];
 
-// ปุ่มสลับหน่วย ชิ้น ↔ มูลค่า(฿) — segmented control ตามโทเคนระบบ
+// ปุ่มสลับหน่วย ชิ้น ↔ มูลค่า(฿) — ใช้ .segmented กลาง (สลับโหมด/กรอง = segmented)
 function UnitToggle({ unit, onChange }) {
   return (
-    <div style={{ display: "inline-flex", background: "var(--panel-2)", padding: 3, borderRadius: 9, gap: 2 }}>
+    <div className="segmented" role="group" aria-label="หน่วยที่แสดง">
       {[["qty", "ชิ้น"], ["value", "มูลค่า (฿)"]].map(([k, lbl]) => (
-        <button key={k} type="button" onClick={() => onChange(k)}
-          style={{
-            border: "none", cursor: "pointer", padding: "6px 14px", borderRadius: 7, fontSize: 13, fontWeight: 600,
-            fontFamily: "inherit", transition: "all .15s",
-            background: unit === k ? "var(--bg)" : "transparent",
-            color: unit === k ? "var(--text)" : "var(--text-3)",
-            boxShadow: unit === k ? "0 1px 3px rgba(0,0,0,.12)" : "none",
-          }}>{lbl}</button>
+        <button key={k} type="button" className={unit === k ? "active" : ""} aria-pressed={unit === k} onClick={() => onChange(k)}>{lbl}</button>
       ))}
     </div>
   );
@@ -83,8 +77,8 @@ export default function SahamitOverview() {
       options: catOpts.map((c) => ({ value: c, label: c })) },
     { key: "vol", label: "ปริมาตร", icon: Ruler, selected: vols, onChange: setVols,
       options: volOpts.map((v) => ({ value: String(v), label: `${v}${volUnitOf.get(String(v)) || ""}` })) },
-    { key: "sku", label: "สินค้า", icon: Package, selected: skus, onChange: setSkus,
-      options: (products || []).map((p) => ({ value: p.fgCode, label: p.name || p.fgCode })) },
+    { key: "sku", label: "สินค้า", icon: Package, selected: skus, onChange: setSkus, searchable: true,
+      options: (products || []).map((p) => ({ value: p.fgCode, label: p.name || p.fgCode, search: `${p.name || ""} ${p.productDescriptionEn || ""} ${p.fgCode}` })) },
     { key: "year", label: "ปี", icon: CalendarRange, selected: years, onChange: setYears,
       options: yrOpts.map((y) => ({ value: y, label: y })) },
   ], [catOpts, volOpts, yrOpts, volUnitOf, products, cats, vols, skus, years]);
@@ -148,21 +142,16 @@ export default function SahamitOverview() {
           </div>
         </section>
 
-        {/* Tab bar */}
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button key={key} type="button" onClick={() => setTab(key)}
-              style={{
-                display: "flex", alignItems: "center", gap: 6, border: "none", cursor: "pointer",
-                background: "transparent", fontFamily: "inherit", fontSize: 13.5, fontWeight: 600,
-                padding: "10px 14px", marginBottom: -1, borderRadius: "8px 8px 0 0",
-                color: tab === key ? "var(--accent)" : "var(--text-3)",
-                borderBottom: tab === key ? "2px solid var(--accent)" : "2px solid transparent",
-              }}>
-              <Icon size={15} /> {label}
-            </button>
-          ))}
-        </div>
+        {/* Tab bar (component กลาง Tabs — สลับหน้า/มุมมอง) */}
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          ariaLabel="มุมมองแดชบอร์ด"
+          tabs={TABS.map(({ key, label, icon: Icon }) => ({
+            key,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon size={15} /> {label}</span>,
+          }))}
+        />
 
         {/* Tab content */}
         {tab === "overview" && (

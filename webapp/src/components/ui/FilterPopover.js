@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { SlidersHorizontal, ChevronDown, X, Check } from "lucide-react";
+import { SlidersHorizontal, ChevronDown, X, Check, Search } from "lucide-react";
 
 // ปุ่มเดียวยุบตัวกรองหลายตัวไว้ในแผงแบบ two-pane (ซ้าย=หมวด, ขวา=ตัวเลือก)
 // props:
@@ -12,6 +12,7 @@ import { SlidersHorizontal, ChevronDown, X, Check } from "lucide-react";
 export default function FilterPopover({ groups = [], count = 0, onClear, label = "ตัวกรอง" }) {
   const [open, setOpen] = useState(false);
   const [activeKey, setActiveKey] = useState(groups[0]?.key);
+  const [query, setQuery] = useState("");
   const ref = useRef(null);
   const panelRef = useRef(null);
   const [panelStyle, setPanelStyle] = useState({});
@@ -70,6 +71,15 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
 
   const active = count > 0;
   const activeGroup = groups.find((g) => g.key === activeKey) || groups[0];
+  // ค้นหาในตัวเลือกของกลุ่ม: เปิดเองเมื่อ options เยอะ (>8) หรือ group.searchable
+  const searchable = !!activeGroup && (activeGroup.searchable ?? (activeGroup.options?.length || 0) > 8);
+  const needle = query.trim().toLocaleLowerCase("th");
+  const shownOptions = (activeGroup?.options || []).filter(
+    (o) => !searchable || !needle || String(o.search ?? o.label ?? "").toLocaleLowerCase("th").includes(needle),
+  );
+
+  // ล้างคำค้นเมื่อสลับกลุ่ม/ปิดแผง — กันคำค้นค้างข้ามกลุ่ม
+  useEffect(() => { setQuery(""); }, [activeKey, open]);
 
   const toggle = (group, value) => {
     const sel = group.selected;
@@ -141,10 +151,29 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
 
             {/* ขวา: ตัวเลือกของหมวดที่เลือก */}
             <div style={{ flex: 1, maxHeight: "300px", overflowY: "auto", padding: "6px", display: "flex", flexDirection: "column", gap: "2px" }}>
-              {!activeGroup || activeGroup.options.length === 0 ? (
-                <div style={{ padding: "10px", fontSize: "12px", color: "var(--text-3)" }}>ไม่มีตัวเลือก</div>
+              {searchable && (
+                <div style={{ position: "sticky", top: 0, background: "var(--panel)", padding: "2px 2px 6px", zIndex: 1 }}>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <Search size={14} style={{ position: "absolute", left: 9, color: "var(--text-3)", pointerEvents: "none" }} />
+                    <input
+                      autoFocus
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="ค้นหา..."
+                      style={{ width: "100%", padding: "7px 9px 7px 30px", fontSize: 13, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}
+                    />
+                    {query && (
+                      <button type="button" onClick={() => setQuery("")} style={{ position: "absolute", right: 6, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-3)", display: "flex" }} aria-label="ล้างคำค้น">
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!activeGroup || shownOptions.length === 0 ? (
+                <div style={{ padding: "10px", fontSize: "12px", color: "var(--text-3)" }}>{needle ? "ไม่พบตัวเลือกที่ค้น" : "ไม่มีตัวเลือก"}</div>
               ) : (
-                activeGroup.options.map((opt) => {
+                shownOptions.map((opt) => {
                   const checked = activeGroup.selected.includes(opt.value);
                   const round = activeGroup.single;
                   return (
