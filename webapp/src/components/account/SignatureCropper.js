@@ -9,6 +9,7 @@ import {
   SIGNATURE_CROP_OUTPUT_HEIGHT,
   SIGNATURE_CROP_OUTPUT_WIDTH,
   signatureCropDrawRect,
+  signatureCropMinZoom,
   signatureCropTransform,
 } from "@/lib/signatureCrop";
 import { SIGNATURE_MAX_BYTES } from "@/lib/signatures";
@@ -22,6 +23,7 @@ function croppedFileName(name) {
 const SignatureCropper = forwardRef(function SignatureCropper({ file, onReadyChange }, ref) {
   const viewportRef = useRef(null);
   const dragRef = useRef(null);
+  const fittedRef = useRef(null);
   const [sourceUrl, setSourceUrl] = useState("");
   const [image, setImage] = useState(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
@@ -79,7 +81,23 @@ const SignatureCropper = forwardRef(function SignatureCropper({ file, onReadyCha
   }, [offset, transform]);
 
   const ready = !!transform && !loadError;
+  const minZoom = transform?.minZoom ?? SIGNATURE_CROP_MIN_ZOOM;
   useEffect(() => { onReadyChange?.(ready); }, [onReadyChange, ready]);
+
+  // On first load of each image, start zoomed out to fit the whole signature inside
+  // the frame (contain) so nothing overflows — the user can zoom back in to fill.
+  useEffect(() => {
+    if (!image || !viewport.width || !viewport.height) return;
+    if (fittedRef.current === image.element) return;
+    fittedRef.current = image.element;
+    setZoom(signatureCropMinZoom({
+      imageWidth: image.width,
+      imageHeight: image.height,
+      viewportWidth: viewport.width,
+      viewportHeight: viewport.height,
+    }));
+    setOffset({ x: 0, y: 0 });
+  }, [image, viewport]);
 
   const moveBy = useCallback((dx, dy) => {
     if (!image || !viewport.width || !viewport.height) return;
@@ -167,10 +185,10 @@ const SignatureCropper = forwardRef(function SignatureCropper({ file, onReadyCha
       setZoom((value) => Math.min(SIGNATURE_CROP_MAX_ZOOM, value + 0.05));
     } else if (event.key === "-") {
       event.preventDefault();
-      setZoom((value) => Math.max(SIGNATURE_CROP_MIN_ZOOM, value - 0.05));
+      setZoom((value) => Math.max(minZoom, value - 0.05));
     } else if (event.key === "Home") {
       event.preventDefault();
-      setZoom(1);
+      setZoom(minZoom);
       setOffset({ x: 0, y: 0 });
     }
   };
@@ -221,14 +239,14 @@ const SignatureCropper = forwardRef(function SignatureCropper({ file, onReadyCha
         <input
           id="signature-crop-zoom"
           type="range"
-          min={SIGNATURE_CROP_MIN_ZOOM}
+          min={minZoom}
           max={SIGNATURE_CROP_MAX_ZOOM}
           step="0.01"
           value={zoom}
           onChange={(event) => setZoom(Number(event.target.value))}
           disabled={!ready}
         />
-        <button type="button" className="btn ghost sm" onClick={() => { setZoom(1); setOffset({ x: 0, y: 0 }); }} disabled={!ready}>
+        <button type="button" className="btn ghost sm" onClick={() => { setZoom(minZoom); setOffset({ x: 0, y: 0 }); }} disabled={!ready}>
           <RotateCcw size={14} aria-hidden="true" /> รีเซ็ต
         </button>
       </div>
