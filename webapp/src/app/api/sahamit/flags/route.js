@@ -4,8 +4,8 @@ import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
-const STATUSES = ['open', 'confirmed_shift', 'confirmed_cut', 'ignored'];
-const KINDS = ['drop', 'shift_suspect', 'lockedBreak'];
+const STATUSES = ['open', 'confirmed_shift', 'confirmed_filled', 'confirmed_cut', 'ignored'];
+const KINDS = ['drop', 'po_filled', 'shift_suspect', 'lockedBreak'];
 
 // GET /api/sahamit/flags[?status=open] — the shift/cut audit queue for AR-109.
 export async function GET(request) {

@@ -39,6 +39,16 @@ export default function ReconcilePage() {
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
   const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
   const { data: products } = useApiList("/api/sahamit/products");
+  const { data: flags } = useApiList("/api/sahamit/flags");
+  // (สินค้า||เดือน) ที่มีธง "เติมเต็มด้วย PO" (เสนอ po_filled หรือยืนยัน confirmed_filled)
+  // — ใช้เปลี่ยนช่องที่จะขึ้น "ยกเลิกแล้ว" ให้เป็น "เติมเต็มด้วย PO" แทน
+  const filledSet = useMemo(() => {
+    const s = new Set();
+    for (const f of flags || []) {
+      if (f.kind === "po_filled" || f.status === "confirmed_filled") s.add(`${f.fgCode}||${f.month}`);
+    }
+    return s;
+  }, [flags]);
   const canEdit = useCan("sahamit:edit");
   const [view, setView] = useState("recon");
   const [unit, setUnit] = useState("piece"); // หน่วยแสดงผล (ชิ้น/ลัง)
@@ -132,6 +142,11 @@ export default function ReconcilePage() {
     }
     const ppc = ppcOf(productOf(fg)); // สำหรับแปลงหน่วยแสดงผล ชิ้น/ลัง
     const hasCov = cell.coverageIn > 0 || cell.coverageOut > 0;
+    // ช่องที่จะขึ้น "ยกเลิกแล้ว" แต่มีธง "เติมเต็มด้วย PO" → แสดงเป็นเติมเต็ม (เขียว)
+    // แทน — FC ที่หายเพราะ PO มารับ ไม่ใช่ลูกค้ายกเลิก (ใช้สไตล์ 'covered').
+    const isFilled = cell.status === "cancelled" && filledSet.has(`${fg}||${m}`);
+    const dispStatus = isFilled ? "covered" : cell.status;
+    const dispLabel = isFilled ? "เติมเต็มด้วย PO" : cell.label;
     const badges = hasCov ? (
       <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชย FC ข้ามเดือน (รับ FC ${nf(cell.coverageIn)} / ส่ง FC ${nf(cell.coverageOut)}) · PO อยู่กับที่`}>⇄</span>
     ) : null;
@@ -141,10 +156,10 @@ export default function ReconcilePage() {
       const val = view === "fc" ? cell.fcQty : cell.poQty;
       return (
         <td key={m} style={{ padding: "5px 5px" }}>
-          <div className={`grid-cell-box ${cell.status}`} onClick={() => openCell(fg, m)} title={cell.label} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
+          <div className={`grid-cell-box ${dispStatus}`} onClick={() => openCell(fg, m)} title={dispLabel} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
             {badges}
             <span className="cell-val fc" style={{ fontSize: 14, fontWeight: 600 }}>{displayQty(val, ppc, unit, { dot: true })}</span>
-            <span className="cell-status-tag">{cell.label}</span>
+            <span className="cell-status-tag">{dispLabel}</span>
           </div>
         </td>
       );
@@ -153,9 +168,9 @@ export default function ReconcilePage() {
     return (
       <td key={m} style={{ padding: "5px 5px" }}>
         <div
-          className={`grid-cell-box ${cell.status}`}
+          className={`grid-cell-box ${dispStatus}`}
           onClick={() => openCell(fg, m)}
-          title={cell.label}
+          title={dispLabel}
           style={{ position: "relative" }}
         >
           {badges}
@@ -169,7 +184,7 @@ export default function ReconcilePage() {
             </span>
           </div>
           <div className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{displayQty(cell.poQty, ppc, unit)}</span></div>
-          <span className="cell-status-tag">{cell.label}</span>
+          <span className="cell-status-tag">{dispLabel}</span>
         </div>
       </td>
     );
