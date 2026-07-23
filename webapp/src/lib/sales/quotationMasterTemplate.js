@@ -634,7 +634,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       description: line.description || '',
       note: line.metadata?.note || line.note || '',
       qty: Number(line.qty || 0),
-      unit: line.unit || '',
+      unit: line.unit || 'ชิ้น',
       unitPrice: Number(line.unitPrice || 0),
       lineTotal: Number(line.lineTotal || 0),
     }));

@@ -154,6 +154,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     fgCode: l.fgCode,
     description: l.description,
     qty: l.qty,
+    unit: l.unit || 'ชิ้น',
     unitPrice: l.unitPrice,
     discountType: l.discountType,
     discountValue: l.discountValue,
