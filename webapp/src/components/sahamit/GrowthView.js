@@ -38,15 +38,10 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ตัวเลือกระดับ */}
-      <div style={{ display: "inline-flex", background: "var(--panel-2)", padding: 3, borderRadius: 9, gap: 2, width: "fit-content" }}>
+      {/* ตัวเลือกระดับ — .segmented กลาง (สลับโหมด/กรอง) */}
+      <div className="segmented" role="group" aria-label="ระดับการเติบโต" style={{ width: "fit-content" }}>
         {LEVELS.map(([k, lbl]) => (
-          <button key={k} type="button" onClick={() => setLevel(k)}
-            style={{
-              border: "none", cursor: "pointer", padding: "6px 16px", borderRadius: 7, fontSize: 13, fontWeight: 600, fontFamily: "inherit",
-              background: level === k ? "var(--bg)" : "transparent", color: level === k ? "var(--text)" : "var(--text-3)",
-              boxShadow: level === k ? "0 1px 3px rgba(0,0,0,.12)" : "none",
-            }}>{lbl}</button>
+          <button key={k} type="button" className={level === k ? "active" : ""} aria-pressed={level === k} onClick={() => setLevel(k)}>{lbl}</button>
         ))}
       </div>
 
