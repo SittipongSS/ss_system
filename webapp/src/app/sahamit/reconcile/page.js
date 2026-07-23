@@ -9,7 +9,7 @@ import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
 import { predictShifts } from "@/lib/sahamit/predict";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
-import { ppcOf, casesText } from "@/lib/sahamit/units";
+import { ppcOf, displayQty, counterpartText } from "@/lib/sahamit/units";
 import { fmtMoneyCompact, fmtYearMonth } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 
@@ -48,6 +48,7 @@ export default function ReconcilePage() {
   const { data: products } = useApiList("/api/sahamit/products");
   const canEdit = useCan("sahamit:edit");
   const [view, setView] = useState("recon");
+  const [unit, setUnit] = useState("piece"); // หน่วยแสดงผล (ชิ้น/ลัง)
   const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
   const [search, setSearch] = useState("");
   const [brands, setBrands] = useState([]);
@@ -153,6 +154,7 @@ export default function ReconcilePage() {
     if (!cell || cell.status === "none") {
       return <td key={m} style={{ textAlign: "center", color: "var(--text-3)", padding: "6px 5px" }}>·</td>;
     }
+    const ppc = ppcOf(productOf(fg)); // สำหรับแปลงหน่วยแสดงผล ชิ้น/ลัง
     const hasCov = cell.coverageIn > 0 || cell.coverageOut > 0;
     const pred = predictions.get(`${fg}||${m}`);
     const acked = pred && ackSet.has(`${fg}||${m}`);
@@ -175,7 +177,7 @@ export default function ReconcilePage() {
         <td key={m} style={{ padding: "5px 5px" }}>
           <div className={`grid-cell-box ${cell.status}`} onClick={() => openCell(fg, m)} title={cell.label} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
             {badges}
-            <span className="cell-val fc" style={{ fontSize: 14, fontWeight: 600 }}>{val ? nf(val) : "·"}</span>
+            <span className="cell-val fc" style={{ fontSize: 14, fontWeight: 600 }}>{displayQty(val, ppc, unit, { dot: true })}</span>
             <span className="cell-status-tag">{cell.label}</span>
             {view === "fc" && predBadge}
           </div>
@@ -195,13 +197,13 @@ export default function ReconcilePage() {
           <div className="cell-value-line">
             <span className="cell-lbl">FC</span>
             <span className="cell-val fc">
-              {nf(cell.fcQty)}
+              {displayQty(cell.fcQty, ppc, unit)}
               {cell.originalFc != null && cell.originalFc !== cell.fcQty && (
-                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 10, marginLeft: 3 }}>{nf(cell.originalFc)}</span>
+                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 10, marginLeft: 3 }}>{displayQty(cell.originalFc, ppc, unit)}</span>
               )}
             </span>
           </div>
-          <div className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{nf(cell.poQty)}</span></div>
+          <div className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{displayQty(cell.poQty, ppc, unit)}</span></div>
           <span className="cell-status-tag">{cell.label}</span>
           {predBadge}
         </div>
@@ -220,6 +222,10 @@ export default function ReconcilePage() {
             {VIEWS.map((v) => (
               <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
             ))}
+          </div>
+          <div className="segmented" title="หน่วยแสดงผล">
+            <button className={unit === "piece" ? "active" : ""} onClick={() => setUnit("piece")}>ชิ้น</button>
+            <button className={unit === "case" ? "active" : ""} onClick={() => setUnit("case")}>ลัง</button>
           </div>
           <button className="btn ghost" onClick={() => {
             const p = new URLSearchParams({ view: "reconcile" });
@@ -311,8 +317,8 @@ export default function ReconcilePage() {
                         </td>
                         {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
                         <td style={{ textAlign: "right", verticalAlign: "middle" }}>
-                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {nf(r.fcTotal)}{casesText(r.fcTotal, ppcOf(p)) ? ` · ${casesText(r.fcTotal, ppcOf(p))}` : ""}</div>
-                          <div style={{ fontWeight: 700 }}>PO {nf(r.poTotal)}{casesText(r.poTotal, ppcOf(p)) ? ` · ${casesText(r.poTotal, ppcOf(p))}` : ""}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {displayQty(r.fcTotal, ppcOf(p), unit)}{counterpartText(r.fcTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.fcTotal, ppcOf(p), unit)}` : ""}</div>
+                          <div style={{ fontWeight: 700 }}>PO {displayQty(r.poTotal, ppcOf(p), unit)}{counterpartText(r.poTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.poTotal, ppcOf(p), unit)}` : ""}</div>
                         </td>
                       </tr>
                     );
