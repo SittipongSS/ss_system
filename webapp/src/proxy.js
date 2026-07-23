@@ -253,6 +253,13 @@ function apiWriteAllowed(method, path, role, extraCaps) {
     if (/\/quote$/.test(path)) return can(role, 'costing:quote');
     return can(role, 'costing:edit');
   }
+  // คลังราคาวัสดุ + ใบขอราคาวัสดุ (mig 0143) — เซลเปิดใบถาม (costing:edit),
+  // RD/PC ตอบราคา/แก้ราคาในคลัง (costing:quote). สิทธิ์รายแถว (ฝ่ายเจ้าของบรรทัด
+  // ผ่าน sourceDept) บังคับใน handler. เส้น /answer = ตอบราคา, ที่เหลือ = เปิด/แก้ใบ
+  if (path.startsWith('/api/sa/materials')) {
+    if (/\/(answer|revise)$/.test(path)) return can(role, 'costing:quote');
+    return can(role, 'costing:edit');
+  }
   // แม่แบบต้นทุนต่อประเภทสินค้า — ข้อมูลหลักของระบบ ผู้ดูแลระบบเท่านั้น
   // (มติ 2026-07-22: ผู้บริหารมีหน้าที่อนุมัติ ไม่ได้ดูแล master data)
   if (path.startsWith('/api/cost-templates')) return can(role, 'master:manage');
