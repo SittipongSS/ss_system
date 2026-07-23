@@ -35,35 +35,43 @@ export async function refreshSahamitFlags(supabase, customerId) {
   await syncFlags(supabase, customerId, desired, validRoundNos);
 }
 
+// ทำเป็น batch (upsert ครั้งเดียว + delete ครั้งเดียว) — ห้ามวน query ทีละแถว
+// เพราะ refreshSahamitFlags ถูกเรียกทุกครั้งที่เซฟ FC/PO; พอธงสะสมหลายสิบตัว การ
+// วนทีละแถว = หลายสิบ round-trip ต่อการเซฟ → ช้าจน timeout (เซฟ PO ไม่ได้).
 async function syncFlags(supabase, customerId, desired, validRoundNos) {
   const { data: existing } = await supabase
     .from('sahamit_fc_flags').select('*').eq('customerId', customerId);
   const exByKey = new Map((existing || []).map((f) => [keyOf(f), f]));
-  const desByKey = new Map(desired.map((f) => [keyOf(f), f]));
+  const desiredKeys = new Set(desired.map(keyOf));
   const now = new Date().toISOString();
 
-  // insert/refresh ตามชุดที่ควรมี
-  for (const [k, f] of desByKey) {
-    const ex = exByKey.get(k);
-    if (ex) {
-      await supabase.from('sahamit_fc_flags')
-        .update({ prevQty: f.prevQty || 0, newQty: f.newQty || 0, drop: f.drop || 0, shiftToMonth: f.shiftToMonth || null })
-        .eq('id', ex.id).eq('customerId', customerId);
-    } else {
-      await supabase.from('sahamit_fc_flags').insert({
-        id: 'FCF-' + randomUUID(), customerId, fgCode: f.fgCode, month: f.month, roundNo: f.roundNo,
-        prevQty: f.prevQty || 0, newQty: f.newQty || 0, drop: f.drop || 0, kind: f.kind, status: 'open',
-        shiftToMonth: f.shiftToMonth || null, createdAt: now,
-      });
-    }
+  // upsert ทั้งชุดในครั้งเดียว. สำหรับ key ที่มีอยู่แล้ว: คงสถานะ/ผู้เคลียร์เดิม
+  // (status = ของเดิม; ไม่ส่ง resolvedBy/note/customerResponse จึงไม่ถูกทับ) แล้ว
+  // รีเฟรชเฉพาะตัวเลข. key ใหม่: status 'open'.
+  const rows = desired.map((f) => {
+    const ex = exByKey.get(keyOf(f));
+    return {
+      id: ex?.id || ('FCF-' + randomUUID()),
+      customerId, fgCode: f.fgCode, month: f.month, roundNo: f.roundNo, kind: f.kind,
+      prevQty: f.prevQty || 0, newQty: f.newQty || 0, drop: f.drop || 0,
+      shiftToMonth: f.shiftToMonth || null,
+      status: ex?.status || 'open',
+      createdAt: ex?.createdAt || now,
+    };
+  });
+  if (rows.length) {
+    const { error } = await supabase
+      .from('sahamit_fc_flags')
+      .upsert(rows, { onConflict: 'customerId,fgCode,month,roundNo,kind' });
+    if (error) throw new Error(error.message);
   }
 
-  // ลบธงเดิมที่ไม่อยู่ในชุดใหม่: 'open' ลบเสมอ; ที่คนเคลียร์แล้วลบเฉพาะเมื่อรอบนั้นหายไป
-  for (const [k, ex] of exByKey) {
-    if (desByKey.has(k)) continue;
-    const roundGone = !validRoundNos.has(ex.roundNo);
-    if (ex.status === 'open' || roundGone) {
-      await supabase.from('sahamit_fc_flags').delete().eq('id', ex.id).eq('customerId', customerId);
-    }
+  // ลบธงเดิมที่ไม่อยู่ในชุดใหม่ ในครั้งเดียว: 'open' ลบเสมอ; ที่คนเคลียร์แล้วลบเฉพาะ
+  // เมื่อรอบนั้นหายไป (roundNo ไม่มีในรอบปัจจุบัน).
+  const toDelete = (existing || [])
+    .filter((e) => !desiredKeys.has(keyOf(e)) && (e.status === 'open' || !validRoundNos.has(e.roundNo)))
+    .map((e) => e.id);
+  if (toDelete.length) {
+    await supabase.from('sahamit_fc_flags').delete().in('id', toDelete).eq('customerId', customerId);
   }
 }
