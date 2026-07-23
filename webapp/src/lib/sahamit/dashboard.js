@@ -4,7 +4,7 @@
 // (buildReconMatrix / reconcileClient). ห้าม re-implement แบบ owner-round
 // (findActiveFC = รอบล่าสุดก่อนวัน PO) ที่เราทิ้งไปแล้ว เพราะจะ regress โมเดล peak.
 import { buildReconMatrix } from './reconcileClient';
-import { deliveryMonthOf } from './po';
+import { deliveryMonthOf, effectivePoQty } from './po';
 
 const lc = (s) => String(s || '').trim().toLowerCase();
 const yearOf = (ym) => (/^\d{4}/.test(String(ym || '')) ? String(ym).slice(0, 4) : null);
@@ -202,6 +202,50 @@ export function matchReport(rounds, pos, coverages, products, { years = [] } = {
   splittable.sort((a, b) => String(a.deliveryMonth || '').localeCompare(b.deliveryMonth || '') || String(a.poNumber).localeCompare(b.poNumber));
 
   return { months, rows, totals, unpricedCount, coveragePct, splittable };
+}
+
+// ── แท็บ "การเติบโต" (pure) ──────────────────────────────────────────
+// ยอด PO จริง (ของที่สั่งแล้ว) ต่อช่วงเวลา + %เติบโต. บักเก็ตตามเดือนส่ง PO
+// (deliveryMonth/expectedDate/dueDate). ตัดบรรทัดยกเลิก; แบ่งส่งนับยอดส่งจริง.
+//   level: 'month' → YYYY-MM · 'quarter' → YYYY-Qn · 'year' → YYYY
+//   seqGrowth = %เทียบช่วงก่อนหน้า; yoyGrowth = %เทียบช่วงเดียวกันปีก่อน
+//   (month/quarter เท่านั้น — ต้องมีข้อมูลปีก่อน ไม่งั้น null).
+// รับ pos ที่กรองสินค้าแล้ว + mult (unit) + years (กรองปี). คืน
+//   { rows:[{period,total,seqGrowth,yoyGrowth}], years:[...] }.
+export function poGrowth(pos, { level = 'month', mult = () => 1, years = [] } = {}) {
+  const yrOk = (y) => !years.length || years.includes(y);
+  const bucketOf = (ym) => {
+    const [y, m] = ym.split('-');
+    if (level === 'year') return y;
+    if (level === 'quarter') return `${y}-Q${Math.ceil(Number(m) / 3)}`;
+    return ym;
+  };
+  const map = new Map();
+  const yearSet = new Set();
+  for (const po of pos || []) {
+    for (const l of po.lines || []) {
+      if (l.status === 'cancelled') continue;
+      const dm = l.deliveryMonth || deliveryMonthOf(l);
+      const y = yearOf(dm);
+      if (!y || !yrOk(y)) continue;
+      yearSet.add(y);
+      const key = bucketOf(dm);
+      map.set(key, (map.get(key) || 0) + effectivePoQty(l) * mult(l.fgCode));
+    }
+  }
+  const keys = [...map.keys()].sort();
+  const rows = keys.map((k, i) => {
+    const total = map.get(k);
+    const prev = i > 0 ? map.get(keys[i - 1]) : null;
+    const seqGrowth = prev ? ((total - prev) / prev) * 100 : null;
+    // ช่วงเดียวกันปีก่อน: ลดปีนำหน้า 1 (month "YYYY-MM" / quarter "YYYY-Qn")
+    let yoyKey = null;
+    if (level === 'month' || level === 'quarter') yoyKey = `${Number(k.slice(0, 4)) - 1}${k.slice(4)}`;
+    const yoyPrev = yoyKey != null ? map.get(yoyKey) : null;
+    const yoyGrowth = yoyPrev ? ((total - yoyPrev) / yoyPrev) * 100 : null;
+    return { period: k, total, seqGrowth, yoyGrowth };
+  });
+  return { rows, years: [...yearSet].sort() };
 }
 
 // ── KPI สรุป (จาก peak engine, หลังกรอง) ─────────────────────────────
