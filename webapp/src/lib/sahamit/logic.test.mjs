@@ -280,26 +280,43 @@ test('buildReconMatrix: effective FC = latest round per month; PO matched by del
   assert.equal(a.cells['2026-08'].status, 'unforecasted'); // PO 50, no FC
 });
 
-test('buildReconMatrix coverMonths: round2 covers a month but drops the SKU → 0 (cancelled)', () => {
-  const rounds = [
-    { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
-    // round 2's window includes Apr but does NOT list A for Apr → A/Apr is cut to 0
-    { roundNo: 2, coverMonths: ['2026-04', '2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 100 }] },
-  ];
-  const m = buildReconMatrix(rounds, []);
-  const a = m.rows.find((r) => r.fgCode === 'A');
-  assert.equal(a.cells['2026-04'].fcQty, 0);
-  assert.equal(a.cells['2026-04'].status, 'cancelled'); // had FC in round 1, dropped, no PO
-  assert.equal(a.cells['2026-05'].fcQty, 100);
-});
-
-test('buildReconMatrix coverMonths: a shift is NOT double-counted (total preserved)', () => {
+// โมเดล peak-matching (มติ 2026-07-23): FC ไม่หายเองเพราะรอบใหม่ไม่พูดถึง —
+// ยึด peak ที่เคยพยากรณ์ ให้ PO มาจับคู่; ลดเมื่อคนยืนยันตัด/เลื่อน (confirmedCuts).
+test('buildReconMatrix peak: รอบใหม่ตัด SKU ออกจากเดือน → ยึด peak FC (รอ PO) ไม่ auto-cancel', () => {
   const rounds = [
     { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
     { roundNo: 2, coverMonths: ['2026-04', '2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 100 }] },
   ];
   const a = buildReconMatrix(rounds, []).rows.find((r) => r.fgCode === 'A');
-  assert.equal(a.fcTotal, 100); // Apr 0 + May 100 — NOT 200
+  assert.equal(a.cells['2026-04'].fcQty, 100);         // peak คงไว้ — ไม่หายเพราะรอบ2 ไม่พูดถึง
+  assert.equal(a.cells['2026-04'].status, 'pending');  // FC100 PO0 → รอ PO
+  assert.equal(a.cells['2026-05'].fcQty, 100);
+});
+
+test('buildReconMatrix peak: PO มาชน FC อดีตที่รอบใหม่ตัดออก → "ครบ" ไม่ใช่ "นอก FC"', () => {
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
+    { roundNo: 2, coverMonths: ['2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 50 }] }, // Apr หายเพราะ PO มา
+  ];
+  const pos = [{ poNumber: 'P1', lines: [{ fgCode: 'A', deliveryMonth: '2026-04', qty: 100, status: 'open' }] }];
+  const a = buildReconMatrix(rounds, pos).rows.find((r) => r.fgCode === 'A');
+  assert.equal(a.cells['2026-04'].fcQty, 100);       // ยึด FC เดิม (peak) ไม่ใช่ 0
+  assert.equal(a.cells['2026-04'].poQty, 100);
+  assert.equal(a.cells['2026-04'].status, 'match');  // ล็อกคู่ FC=PO → ครบ
+});
+
+test('buildReconMatrix peak: confirmedCuts ลด peak (คนยืนยันตัด/เลื่อน)', () => {
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
+    { roundNo: 2, coverMonths: ['2026-04', '2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 100 }] },
+  ];
+  // ยังไม่ยืนยัน: Apr ยึด peak 100 (รอ PO) → รวม 200
+  assert.equal(buildReconMatrix(rounds, []).rows.find((r) => r.fgCode === 'A').fcTotal, 200);
+  // ยืนยัน Apr ตัด/เลื่อนออก 100 → Apr=0, รวม=100
+  const cuts = new Map([['A||2026-04', 100]]);
+  const a = buildReconMatrix(rounds, [], [], cuts).rows.find((r) => r.fgCode === 'A');
+  assert.equal(a.cells['2026-04'].fcQty, 0);
+  assert.equal(a.fcTotal, 100);
 });
 
 test('buildReconMatrix coverage: move FC (PO fixed) — source becomes covered, target matches', () => {

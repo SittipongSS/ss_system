@@ -49,6 +49,18 @@ export default function ReconcilePage() {
     }
     return s;
   }, [flags]);
+  // ยอดที่ "ยืนยันตัด/เลื่อนออก" ราย (สินค้า||เดือน) → ลดจาก peak FC ในกระทบยอด
+  // (FC ไม่หายเองเพราะรอบใหม่ไม่พูดถึง — ลดเมื่อคนยืนยันตัด/เลื่อนเท่านั้น)
+  const confirmedCuts = useMemo(() => {
+    const m = new Map();
+    for (const f of flags || []) {
+      if (f.status === "confirmed_cut" || f.status === "confirmed_shift") {
+        const k = `${f.fgCode}||${f.month}`;
+        m.set(k, (m.get(k) || 0) + Number(f.drop || 0));
+      }
+    }
+    return m;
+  }, [flags]);
   const canEdit = useCan("sahamit:edit");
   const [view, setView] = useState("recon");
   const [unit, setUnit] = useState("piece"); // หน่วยแสดงผล (ชิ้น/ลัง)
@@ -61,7 +73,7 @@ export default function ReconcilePage() {
 
   const loading = l1 || l2;
   const error = e1 || e2;
-  const matrix = useMemo(() => buildReconMatrix(rounds, pos, coverages), [rounds, pos, coverages]);
+  const matrix = useMemo(() => buildReconMatrix(rounds, pos, coverages, confirmedCuts), [rounds, pos, coverages, confirmedCuts]);
 
   // fgCode → product (แบรนด์/ปริมาตร/ราคาผลิต) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
   const productByFg = useMemo(() => {
