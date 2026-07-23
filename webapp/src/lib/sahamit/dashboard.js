@@ -148,6 +148,62 @@ export function fcVsPoByMonth(rounds, pos, coverages, { mult = () => 1, years = 
   return { months, rounds: evo.rounds, data };
 }
 
+// ── แท็บ "PO เทียบ FC" + งานมูลค่า (ยุบจากหน้า /report) ───────────────
+// รายสินค้า: FC/PO (ชิ้น) + มูลค่า (× ราคาผลิต) + สถานะรายเดือน (drill-down) +
+// รายการ PO ที่ยังแบ่งส่ง/ค้างส่ง. ต่อ peak engine (buildReconMatrix). รับ
+// rounds/pos ที่กรองสินค้าแล้ว + products (ราคา) + unit + years (กรองเดือน).
+export function matchReport(rounds, pos, coverages, products, { years = [] } = {}) {
+  const yrOk = (m) => !years.length || years.includes(yearOf(m));
+  const matrix = buildReconMatrix(rounds, pos, coverages || []);
+  const prices = priceMap(products);
+  const months = matrix.months.filter(yrOk);
+
+  const rows = matrix.rows.map((r) => {
+    const price = prices.get(lc(r.fgCode));
+    let fcQty = 0, poQty = 0;
+    const statuses = {};
+    const cells = [];
+    for (const mo of months) {
+      const c = r.cells[mo];
+      if (!c) continue;
+      fcQty += c.fcQty || 0;
+      poQty += c.poQty || 0;
+      if (c.status && c.status !== 'none') statuses[c.status] = (statuses[c.status] || 0) + 1;
+      if ((c.fcQty || 0) > 0 || (c.poQty || 0) > 0) cells.push({ month: mo, status: c.status, fcQty: c.fcQty || 0, poQty: c.poQty || 0 });
+    }
+    return {
+      fgCode: r.fgCode, productName: r.productName || null, price: price ?? null,
+      fcQty, poQty, fcValue: price == null ? 0 : fcQty * price, poValue: price == null ? 0 : poQty * price,
+      statuses, cells,
+    };
+  }).filter((r) => r.fcQty > 0 || r.poQty > 0);
+  rows.sort((a, b) => String(a.fgCode).localeCompare(b.fgCode));
+
+  const totals = rows.reduce((t, r) => ({
+    fcQty: t.fcQty + r.fcQty, poQty: t.poQty + r.poQty, fcValue: t.fcValue + r.fcValue, poValue: t.poValue + r.poValue,
+  }), { fcQty: 0, poQty: 0, fcValue: 0, poValue: 0 });
+  const unpricedCount = rows.filter((r) => r.price == null).length;
+  const coveragePct = totals.fcValue > 0 ? Math.round((totals.poValue / totals.fcValue) * 100) : (totals.poValue > 0 ? 100 : 0);
+
+  // PO ที่ยังแบ่งส่งได้ / ค้างส่ง (ตัดยกเลิก/ส่งแล้ว) — กรองปีตามเดือนส่ง.
+  const splittable = [];
+  for (const po of pos || []) {
+    for (const l of po.lines || []) {
+      if (l.status === 'cancelled' || l.status === 'delivered' || l.actualDeliveredDate) continue;
+      const dm = l.deliveryMonth || deliveryMonthOf(l);
+      if (years.length && dm && !yrOk(dm)) continue;
+      splittable.push({
+        poId: po.id, poNumber: po.poNumber, lineId: l.id, fgCode: l.fgCode, productName: l.productName || null,
+        qty: Number(l.qty || 0), status: l.status, deliveryMonth: dm, dueDate: l.dueDate || null, expectedDate: l.expectedDate || null,
+        isBalance: !!l.splitFromPoLineId,
+      });
+    }
+  }
+  splittable.sort((a, b) => String(a.deliveryMonth || '').localeCompare(b.deliveryMonth || '') || String(a.poNumber).localeCompare(b.poNumber));
+
+  return { months, rows, totals, unpricedCount, coveragePct, splittable };
+}
+
 // ── KPI สรุป (จาก peak engine, หลังกรอง) ─────────────────────────────
 // opts: { unit:'qty'|'value', filter:{cats,vols,skus}, years:[] }
 //   years ว่าง = ทุกปี. ปีกรองแค่ "คอลัมน์เดือนที่แสดง" ไม่แตะตรรกะจับคู่ —
