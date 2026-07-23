@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   fgCodeFilterSet, filterRoundsByFg, filterPosByFg,
   categoryOptions, volumeOptions, yearOptions, priceMap, unitMultiplier, dashboardKpis,
+  fcEvolution, roundTotals,
 } from './dashboard.js';
 
 const PRODUCTS = [
@@ -103,6 +104,43 @@ test('dashboardKpis respects fg filter (Lotion 250 → only A)', () => {
   assert.equal(k.poTotal, 100);
   assert.equal(k.statusCounts.match, 1);
   assert.equal(k.statusCounts.discrepancy, undefined);
+});
+
+// ── แท็บ FC แต่ละรอบ ──────────────────────────────────────────────
+const EVO_ROUNDS = [
+  { roundNo: 2, receivedDate: '2026-03-01', lines: [
+    { fgCode: 'A', month: '2026-02', qty: 60 }, { fgCode: 'A', month: '2026-03', qty: 40 },
+  ] },
+  { roundNo: 1, receivedDate: '2026-01-01', lines: [
+    { fgCode: 'A', month: '2026-01', qty: 100 }, { fgCode: 'A', month: '2026-02', qty: 50 },
+  ] },
+];
+
+test('fcEvolution: months sorted, one column per round, gap=null when uncovered', () => {
+  const e = fcEvolution(EVO_ROUNDS);
+  assert.deepEqual(e.months, ['2026-01', '2026-02', '2026-03']);
+  assert.deepEqual(e.rounds.map((r) => r.key), ['r1', 'r2']); // sorted by roundNo
+  const byMonth = Object.fromEntries(e.data.map((d) => [d.month, d]));
+  assert.equal(byMonth['2026-01'].r1, 100);
+  assert.equal(byMonth['2026-01'].r2, null);   // round 2 doesn't cover Jan → gap
+  assert.equal(byMonth['2026-02'].r1, 50);
+  assert.equal(byMonth['2026-02'].r2, 60);
+  assert.equal(byMonth['2026-03'].r2, 40);
+  assert.equal(byMonth['2026-03'].r1, null);
+});
+
+test('fcEvolution: mult applies value; years filters months', () => {
+  const e = fcEvolution(EVO_ROUNDS, { mult: () => 2, years: ['2026'] });
+  assert.equal(Object.fromEntries(e.data.map((d) => [d.month, d]))['2026-01'].r1, 200);
+});
+
+test('roundTotals: totals sorted by roundNo + %change vs prev', () => {
+  const t = roundTotals(EVO_ROUNDS);
+  assert.deepEqual(t.map((r) => r.roundNo), [1, 2]);
+  assert.equal(t[0].total, 150);          // R1: 100+50
+  assert.equal(t[1].total, 100);          // R2: 60+40
+  assert.equal(t[0].prevPct, null);
+  assert.equal(Math.round(t[1].prevPct), -33); // (100-150)/150
 });
 
 test('dashboardKpis year filter: only counts months in selected years', () => {
