@@ -250,7 +250,8 @@ function apiWriteAllowed(method, path, role, extraCaps) {
   // ผ่าน sourceDept, สถานะใบ) บังคับใน handler ซึ่ง proxy มองไม่เห็น.
   if (path.startsWith('/api/sa/costing')) {
     if (/\/approve$/.test(path)) return can(role, 'costing:approve');
-    if (/\/quote$/.test(path)) return can(role, 'costing:quote');
+    // ยืนยันราคาที่เกินอายุ (RD/PC) — ราคาวัสดุมาจากคลังแล้ว (PR-B)
+    if (/\/confirm-price$/.test(path)) return can(role, 'costing:quote');
     return can(role, 'costing:edit');
   }
   // คลังราคาวัสดุ + ใบขอราคาวัสดุ (mig 0143) — เซลเปิดใบถาม (costing:edit),

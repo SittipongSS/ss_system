@@ -1,11 +1,12 @@
 "use client";
 // หน้ารายละเอียดใบขอราคาผลิต — อ่านได้ทุกฝ่ายที่เกี่ยวข้อง, แก้ได้เฉพาะฝ่ายขาย
-// เจ้าของใบ (ตาม canEditCostingRequest). การตอบราคา RD/PC และการอนุมัติของ
-// ผู้บริหารมาใน PR4 — หน้านี้แสดงบรรทัดต้นทุนแบบอ่านอย่างเดียวไปก่อน
+// เจ้าของใบ (canEditCostingRequest). PR-B: ราคาวัสดุมาจากคลัง — เซลกด "ดึงราคา
+// จากคลัง" (fill-prices), RD/PC ยืนยันเฉพาะบรรทัดเกินอายุ (confirm-price);
+// ผู้บริหารอนุมัติราคาผลิตรายสินค้า
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink } from "lucide-react";
+import { Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink, Boxes } from "lucide-react";
 import Modal from "@/components/Modal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -20,9 +21,10 @@ import { fmtDate } from "@/lib/format";
 import {
   COSTING_STATUS_LABELS, COSTING_STATUS_TONES, ITEM_APPROVAL_LABELS,
   approvalProgress, canDecideItem, canEditCostingRequest, canFeedCostFromRequest,
-  canQuoteComponent, canQuoteOnRequest, componentUnitCost, feedCostError, feedCostValue,
-  isMoqTier, itemUnitCost, pricingProgress, submitForPricingError, submitToExecError,
+  componentUnitCost, feedCostError, feedCostValue,
+  isMoqTier, itemUnitCost, pricingProgress, submitToExecError,
 } from "@/lib/costing";
+import { canQuoteMaterial } from "@/lib/materialPrices";
 import { COST_LINE_KIND_LABELS } from "@/lib/master/costTemplate";
 
 const money = (value) => (value == null
@@ -46,8 +48,6 @@ export default function CostingDetailPage() {
   const [pendingCancel, setPendingCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [toast, setToast] = useState(null);
-  // ราคาที่ RD/PC กำลังกรอก (ยังไม่บันทึก) — key = componentId
-  const [quoteDraft, setQuoteDraft] = useState({});
   // การตัดสินของผู้บริหารต่อรายการ — { itemId, mode: 'approve'|'return' }
   const [decision, setDecision] = useState(null);
   const [tierDraft, setTierDraft] = useState({});
@@ -175,29 +175,19 @@ export default function CostingDetailPage() {
   const approval = approvalProgress(request.items || []);
   const pricing = pricingProgress((request.items || []).flatMap((i) => i.components || []));
 
-  // บรรทัดที่ผู้ใช้คนนี้ตอบราคาได้จริง (ฝ่ายตน + ใบอยู่ในจังหวะที่ตอบได้)
-  const quotableIds = new Set(
-    canQuoteOnRequest(request)
-      ? (request.items || []).flatMap((item) => (item.components || [])
-        .filter((c) => canQuoteComponent(me, c))
-        .map((c) => c.id))
-      : [],
-  );
-  const draftEntries = Object.entries(quoteDraft)
-    .filter(([componentId, value]) => quotableIds.has(componentId) && value !== "" && value != null);
+  // PR-B: ราคาวัสดุมาจากคลัง — เซลกด "ดึงราคาจากคลัง" (fill-prices),
+  // RD/PC ยืนยันเฉพาะบรรทัดที่เกินอายุ (confirm-price)
+  const fillFromLibrary = () => runAction("/fill-prices", { method: "PATCH", body: "{}" },
+    "ดึงราคาจากคลังแล้ว");
 
-  const saveQuotes = () => runAction("/quote", {
-    method: "PATCH",
-    body: JSON.stringify({
-      prices: draftEntries.map(([componentId, price]) => ({ componentId, price })),
-    }),
-  }, "บันทึกราคาแล้ว").then((ok) => { if (ok) setQuoteDraft({}); });
+  const confirmLine = (componentId) => runAction("/confirm-price", {
+    method: "PATCH", body: JSON.stringify({ componentId }),
+  }, "ยืนยันราคาแล้ว");
 
-  const submit = (stage) => {
-    const blocked = stage === "pricing" ? submitForPricingError(request) : submitToExecError(request);
+  const submit = () => {
+    const blocked = submitToExecError(request);
     if (blocked) { setToast({ kind: "error", msg: blocked }); return; }
-    runAction("/submit", { method: "POST", body: JSON.stringify({ stage }) },
-      stage === "pricing" ? "ส่งขอราคาให้ RD/PC แล้ว" : "ส่งให้ผู้บริหารแล้ว");
+    runAction("/submit", { method: "POST", body: JSON.stringify({ stage: "exec" }) }, "ส่งให้ผู้บริหารแล้ว");
   };
 
   const sendDecision = () => {
@@ -238,16 +228,16 @@ export default function CostingDetailPage() {
             <button type="button" className="btn" onClick={() => setPendingCancel(true)} disabled={saving}>
               <Ban size={14} /> ยกเลิกใบ
             </button>
-            {/* ปุ่มเดินใบมีได้ทีละอันตามสถานะ — action หลักเดียวต่อหน้า */}
-            {request.status === "draft" && (
-              <button type="button" className="btn btn-accent" onClick={() => submit("pricing")} disabled={saving}>
-                <Send size={14} /> ส่งขอราคา RD/PC
-              </button>
-            )}
-            {["assembling", "returned"].includes(request.status) && (
-              <button type="button" className="btn btn-accent" onClick={() => submit("exec")} disabled={saving}>
-                <Send size={14} /> ส่งผู้บริหารอนุมัติ
-              </button>
+            {/* PR-B: ราคาวัสดุมาจากคลัง — เซลดึงราคา แล้วส่งผู้บริหารได้เลย */}
+            {["draft", "assembling", "returned", "pricing"].includes(request.status) && (
+              <>
+                <button type="button" className="btn" onClick={fillFromLibrary} disabled={saving}>
+                  <Boxes size={14} /> ดึงราคาจากคลัง
+                </button>
+                <button type="button" className="btn btn-accent" onClick={submit} disabled={saving}>
+                  <Send size={14} /> ส่งผู้บริหารอนุมัติ
+                </button>
+              </>
             )}
           </div>
         )}
@@ -327,7 +317,7 @@ export default function CostingDetailPage() {
                     <th style={{ width: 130 }}>ชนิด</th>
                     <th style={{ width: 110 }}>ขอจาก</th>
                     <th style={{ width: 110 }}>กรัม/ชิ้น</th>
-                    <th style={{ width: 130 }}>ราคาที่ตอบ</th>
+                    <th style={{ width: 190 }}>ราคาวัสดุ (จากคลัง)</th>
                     <th style={{ width: 120 }}>ต้นทุน/ชิ้น</th>
                   </tr>
                 </thead>
@@ -350,19 +340,30 @@ export default function CostingDetailPage() {
                         </td>
                         <td>{component.gramsPerUnit ?? <span style={{ color: "var(--text-3)" }}>—</span>}</td>
                         <td>
-                          {quotableIds.has(component.id) ? (
-                            <input
-                              className="premium-input"
-                              type="number" min="0" step="0.01"
-                              placeholder={component.unitBasis === "per_kg" ? "บาท/กก." : "บาท/ชิ้น"}
-                              aria-label={`ราคาของ ${component.label}`}
-                              value={quoteDraft[component.id]
-                                ?? (component.pricePerKg ?? component.pricePerUnit ?? "")}
-                              onChange={(e) => setQuoteDraft((d) => ({ ...d, [component.id]: e.target.value }))}
-                            />
-                          ) : component.priceStatus === "quoted"
-                            ? `${money(component.pricePerKg ?? component.pricePerUnit)} ${component.unitBasis === "per_kg" ? "฿/กก." : "฿/ชิ้น"}`
-                            : <span style={{ color: "var(--text-3)" }}>ยังไม่ตอบ</span>}
+                          {!component.sourceDept ? (
+                            <span style={{ color: "var(--text-3)" }}>คิดภายใน</span>
+                          ) : component.priceStatus === "quoted" ? (
+                            <div>
+                              <span>
+                                {money(component.pricePerKg ?? component.pricePerUnit)} {component.unitBasis === "per_kg" ? "฿/กก." : "฿/ชิ้น"}
+                              </span>
+                              {component.confirmStatus === "pending" && (
+                                <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 2 }}>
+                                  ⚠️ ราคาเกินอายุ รอ {component.sourceDept} ยืนยัน
+                                  {canQuoteMaterial(me, component.kind) && (
+                                    <button
+                                      type="button" className="btn sm" style={{ marginLeft: 6 }}
+                                      disabled={saving} onClick={() => confirmLine(component.id)}
+                                    >
+                                      ยืนยันราคา
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ color: "var(--text-3)" }}>ยังไม่ดึงราคา</span>
+                          )}
                         </td>
                         <td>{unit == null ? <span style={{ color: "var(--text-3)" }}>—</span> : money(unit)}</td>
                       </tr>
@@ -462,22 +463,6 @@ export default function CostingDetailPage() {
           </div>
         );
       })}
-
-      {draftEntries.length > 0 && (
-        <div className="glass-panel" style={{ padding: 16, position: "sticky", bottom: 12 }}>
-          <div className="action-bar">
-            <span style={{ marginRight: "auto", color: "var(--text-2)" }}>
-              กรอกราคาไว้ {draftEntries.length} บรรทัด — ยังไม่บันทึก
-            </span>
-            <button type="button" className="btn ghost" onClick={() => setQuoteDraft({})} disabled={saving}>
-              ล้าง
-            </button>
-            <button type="button" className="btn btn-accent" onClick={saveQuotes} disabled={saving}>
-              บันทึกราคา
-            </button>
-          </div>
-        </div>
-      )}
 
       <Modal open={!!form} onClose={closeEdit} title="แก้ไขใบขอราคา" size="lg" dismissible={!saving}>
         {form && (

@@ -89,13 +89,6 @@ export function deriveRequestStatusAfterApproval(items = [], currentStatus = 'pe
   return 'pending_exec';
 }
 
-// ราคาครบทุกบรรทัดที่ต้องถามหรือยัง → ใบพร้อมให้ฝ่ายขายประกอบต้นทุน
-export function deriveRequestStatusAfterQuote(components = [], currentStatus = 'pricing') {
-  if (currentStatus !== 'pricing') return currentStatus;
-  const { total, pending } = pricingProgress(components);
-  return total > 0 && pending === 0 ? 'assembling' : 'pricing';
-}
-
 // ── สูตรต้นทุนต่อชิ้น ──────────────────────────────────────────────────
 // วัตถุดิบซื้อเป็นกิโล ต้องแปลงด้วยกรัม/ชิ้น; บรรจุภัณฑ์/ค่าดำเนินการเป็นบาท/ชิ้นอยู่แล้ว
 // คืน null เมื่อยังไม่มีข้อมูลพอ (ยังไม่ตอบราคา / ยังไม่ระบุกรัม) — อย่าคืน 0
@@ -203,21 +196,15 @@ export function canEditCostingRequest(user, request) {
   return inSalesEditScope(user, { team: request.team, ownerId: request.requestedById });
 }
 
-// ── ขั้นตอนการเดินใบ (PR4) ─────────────────────────────────────────────
-// ส่งขอราคาได้เมื่อยังเป็นร่าง และมีบรรทัดที่ต้องถามฝ่ายอื่นจริง ๆ
-// (ใบที่มีแต่ค่าดำเนินการภายในไม่ต้องรบกวน RD/PC — ข้ามไปประกอบต้นทุนเลย)
-export function submitForPricingError(request) {
-  if (!request) return 'ไม่พบใบขอราคา';
-  if (request.status !== 'draft') return 'ส่งขอราคาได้เฉพาะใบที่ยังเป็นร่าง';
-  if (!(request.items || []).length) return 'ใบนี้ยังไม่มีรายการสินค้า';
-  return null;
-}
-
-// ส่งให้ผู้บริหารได้เมื่อราคาที่ต้องถามครบแล้ว และต้นทุนของทุกรายการคำนวณได้จริง
+// ── ขั้นตอนการเดินใบ ───────────────────────────────────────────────────
+// ส่งให้ผู้บริหารได้เมื่อราคาครบและต้นทุนคำนวณได้จริง
 // — ส่งไปทั้งที่ยังไม่มีราคา = ผู้บริหารตั้งราคาบนตัวเลขที่ไม่ครบ
-export function submitToExecError(request) {
+// PR-B: ราคาวัสดุมาจากคลัง (เซลดึงเอง) — รับ status 'draft' ด้วย (ไม่มีขั้น pricing
+// ที่รอ RD/PC ตอบในใบอีก). ส่ง libraryBlocker (จาก libraryPricingBlocker) มาเพื่อ
+// บล็อกบรรทัดที่เกินอายุแล้วยังไม่ยืนยัน — ถ้าไม่ส่งมาจะข้ามการเช็คคลัง (เทสต์เดิม)
+export function submitToExecError(request, libraryBlocker = null) {
   if (!request) return 'ไม่พบใบขอราคา';
-  if (!['assembling', 'returned', 'pricing'].includes(request.status)) {
+  if (!['draft', 'assembling', 'returned', 'pricing'].includes(request.status)) {
     return 'ใบนี้ยังไม่อยู่ในขั้นตอนที่ส่งให้ผู้บริหารได้';
   }
   const items = request.items || [];
@@ -231,21 +218,9 @@ export function submitToExecError(request) {
   if (incomplete) {
     return `ต้นทุนของ "${incomplete.productLabel}" ยังคำนวณไม่ครบ — ตรวจกรัม/ชิ้นและราคาให้ครบก่อน`;
   }
+  // บรรทัดที่ดึงจากคลังแต่ราคาเกินอายุและยังไม่ยืนยัน (ส่งผลลัพธ์สำเร็จรูปมา)
+  if (libraryBlocker) return libraryBlocker;
   return null;
-}
-
-// บรรทัดที่ผู้ใช้คนนี้ตอบราคาได้: ต้องถือ costing:quote และเป็นฝ่ายเจ้าของบรรทัด
-// (admin ตอบแทนได้เป็น break-glass ผ่าน canQuoteCosting)
-export function canQuoteComponent(user, component) {
-  if (!component?.sourceDept) return false;      // ค่าดำเนินการภายใน ไม่มีใครต้องตอบ
-  if (!canQuoteCosting(user)) return false;
-  if (isSuperuser(user?.role)) return true;
-  return normalizeDepartment(user?.department) === component.sourceDept;
-}
-
-// ใบนี้อยู่ในสถานะที่ให้ตอบราคาได้ไหม (ตอบตอนยังร่าง/อนุมัติแล้ว = ผิดจังหวะ)
-export function canQuoteOnRequest(request) {
-  return ['pricing', 'assembling', 'returned'].includes(request?.status);
 }
 
 // ผู้บริหารอนุมัติ/ตีกลับได้เฉพาะตอนใบรออนุมัติอยู่ และเฉพาะรายการที่ยังไม่ตัดสิน
