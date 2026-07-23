@@ -145,6 +145,27 @@ export default function ProductRegistry() {
     setShowForm(true);
   };
 
+  // prefill จากใบขอราคาผลิต (มติ 2026-07-23 — "ไปต่อ" กรอกฟอร์มให้เกือบหมด):
+  // หน้า costing stash ข้อมูลไว้ใน sessionStorage แล้วส่ง ?prefill=costing มา
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("prefill") !== "costing") return;
+    let data = null;
+    try { data = JSON.parse(sessionStorage.getItem("costingFgPrefill") || "null"); } catch { data = null; }
+    sessionStorage.removeItem("costingFgPrefill");
+    if (!data) return;
+    // เติมเฉพาะช่องที่ฟอร์มสินค้ามีจริง — ชื่อสินค้าจากรายการในใบขอราคา
+    // (ประกอบกลิ่นเข้าไปในชื่อถ้ามี ช่วยให้ไม่ต้องพิมพ์ซ้ำ) เซลเติมรหัส FG + ลูกค้าเอง
+    const desc = [data.productDescription, data.fragranceName].filter(Boolean).join(" · ");
+    setFormData({ ...emptyForm, productDescription: desc });
+    setShowForm(true);
+    // ล้าง query ออกจาก URL กัน prefill ซ้ำตอน refresh
+    window.history.replaceState({}, "", window.location.pathname);
+    // emptyForm คงที่ตลอดอายุหน้า — รันครั้งเดียวตอน mount พอ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่

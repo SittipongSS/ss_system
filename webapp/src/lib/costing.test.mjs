@@ -13,10 +13,12 @@ import {
   canViewCostingRequest,
   componentUnitCost,
   deriveRequestStatusAfterApproval,
+  formulaDrift,
   isMoqTier,
   itemUnitCost,
   normalizeCostingStatus,
   pricingProgress,
+  reviseError,
   submitToExecError,
 } from './costing.js';
 
@@ -215,6 +217,31 @@ test('อนุมัติรายการ: เฉพาะผู้บริ
     assert.equal(canDecideItem({ role }, req, { approvalStatus: 'pending' }), false, role);
   }
   assert.equal(canDecideItem({ role: 'admin' }, req, { approvalStatus: 'pending' }), true);
+});
+
+// ── revise + สูตร (PR-C) ──────────────────────────────────────────────
+test('revise: เฉพาะใบที่อนุมัติ/จบแล้ว', () => {
+  assert.equal(reviseError({ status: 'approved' }), null);
+  assert.equal(reviseError({ status: 'linked' }), null);
+  for (const status of ['draft', 'pricing', 'assembling', 'pending_exec', 'returned', 'cancelled']) {
+    assert.match(reviseError({ status }), /เฉพาะใบที่อนุมัติแล้ว/, status);
+  }
+  assert.match(reviseError(null), /ไม่พบใบขอราคา/);
+});
+
+test('formulaDrift: เตือนเมื่อรหัสสูตรบนใบต่างจากสินค้าปัจจุบัน', () => {
+  // ตรงกัน = ไม่เตือน
+  assert.equal(formulaDrift({ productId: 'p1', formulaCode: 'F-1' }, { formulaCode: 'F-1' }), null);
+  // ต่างกัน = เตือน
+  assert.deepEqual(
+    formulaDrift({ productId: 'p1', formulaCode: 'F-1' }, { formulaCode: 'F-2' }),
+    { snapshot: 'F-1', current: 'F-2' },
+  );
+  // ไม่ผูก FG / ไม่มีข้อมูลสูตร = ไม่เตือน
+  assert.equal(formulaDrift({ productId: null, formulaCode: 'F-1' }, { formulaCode: 'F-2' }), null);
+  assert.equal(formulaDrift({ productId: 'p1', formulaCode: '' }, { formulaCode: 'F-2' }), null);
+  assert.equal(formulaDrift({ productId: 'p1', formulaCode: 'F-1' }, { formulaCode: '' }), null);
+  assert.equal(formulaDrift({ productId: 'p1', formulaCode: 'F-1' }, null), null);
 });
 
 // ── ป้อนต้นทุนกลับสินค้า FG (PR6) ─────────────────────────────────────

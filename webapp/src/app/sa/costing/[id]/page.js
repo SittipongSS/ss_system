@@ -5,10 +5,11 @@
 // ผู้บริหารอนุมัติราคาผลิตรายสินค้า
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink, Boxes } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink, Boxes, Copy } from "lucide-react";
 import Modal from "@/components/Modal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -33,6 +34,7 @@ const money = (value) => (value == null
 
 export default function CostingDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const role = useRole();
   const team = useTeam();
   const department = useDepartment();
@@ -54,6 +56,9 @@ export default function CostingDetailPage() {
   const [returnReason, setReturnReason] = useState("");
   // รายการที่รอยืนยันก่อนป้อนต้นทุนกลับสินค้า
   const [pendingFeed, setPendingFeed] = useState(null);
+  // รายการที่กำลังผูก FG เดิม — { item, products } (โหลดตอนเปิด)
+  const [pendingLink, setPendingLink] = useState(null);
+  const [linkProducts, setLinkProducts] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,7 +115,7 @@ export default function CostingDetailPage() {
       if (!res.ok) throw new Error(d.error || "ทำรายการไม่สำเร็จ");
       setToast({ kind: "success", msg: successMsg });
       await load();
-      return true;
+      return d || true;
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
       return false;
@@ -190,6 +195,42 @@ export default function CostingDetailPage() {
     runAction("/submit", { method: "POST", body: JSON.stringify({ stage: "exec" }) }, "ส่งให้ผู้บริหารแล้ว");
   };
 
+  // ออกฉบับแก้ไข (rev.2) — สร้างใบใหม่แล้วพาไปที่ใบนั้น
+  const revise = () => runAction("/revise", { method: "POST", body: "{}" }, "ออกฉบับแก้ไขแล้ว")
+    .then((ok) => { if (ok?.id) router.push(`/sa/costing/${ok.id}`); });
+
+  const linkFg = (itemId, productId) => runAction("/link-fg", {
+    method: "PATCH", body: JSON.stringify({ itemId, productId }),
+  }, "ผูกสินค้าแล้ว").then((ok) => { if (ok) setPendingLink(null); });
+
+  // "ไปต่อ → ขึ้นทะเบียน FG": stash ข้อมูลรายการไว้ให้หน้าสินค้า prefill (มีในมือ
+  // อยู่แล้ว ไม่ต้อง fetch) แล้วพาไปหน้าเพิ่มสินค้า — กลับมากด "ผูก FG เดิม" ทีหลัง
+  const registerFg = (item) => {
+    try {
+      sessionStorage.setItem("costingFgPrefill", JSON.stringify({
+        productDescription: item.productLabel,
+        fragranceName: item.fragranceName || "",
+        customerName: request.customerName || "",
+        note: `จากใบขอราคาผลิต ${request.docNo || id}`,
+      }));
+    } catch { /* sessionStorage อาจถูกปิด — ไปหน้าเพิ่มสินค้าเปล่าแทน */ }
+    router.push("/database/products?prefill=costing");
+  };
+
+  // เปิดโมดัลผูก FG เดิม — โหลดสินค้าของลูกค้าใบนี้ (ถ้ามี) ให้เลือก
+  const openLinkFg = async (item) => {
+    setPendingLink({ item });
+    try {
+      const res = await fetch("/api/products", { cache: "no-store" });
+      const rows = await res.json().catch(() => []);
+      const list = Array.isArray(rows) ? rows : (rows.items || rows.data || []);
+      // กรองเฉพาะสินค้าของลูกค้าใบนี้ ถ้าใบผูกลูกค้าไว้
+      setLinkProducts(request.customerId ? list.filter((p) => p.customerId === request.customerId) : list);
+    } catch {
+      setToast({ kind: "error", msg: "โหลดรายการสินค้าไม่สำเร็จ" });
+    }
+  };
+
   const sendDecision = () => {
     const item = (request.items || []).find((i) => i.id === decision.itemId);
     const payload = decision.mode === "return"
@@ -217,30 +258,41 @@ export default function CostingDetailPage() {
             <span className="premium-header-icon"><Calculator size={22} /></span>{" "}
             {request.docNo || "ใบขอราคา (ร่าง)"}
           </h1>
-          <p>{request.customerName || "ไม่ระบุลูกค้า"} · สร้างเมื่อ {fmtDate(request.createdAt)}</p>
+          <p>
+            {request.customerName || "ใบสำรวจ (ไม่ผูกดีล)"} · สร้างเมื่อ {fmtDate(request.createdAt)}
+            {request.revisionNo > 1 ? ` · ฉบับแก้ไขที่ ${request.revisionNo}` : ""}
+          </p>
         </div>
         {/* action ของ entity อยู่ขวาบนนอกการ์ด ตาม page-header standard */}
-        {canEdit && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="btn" onClick={openEdit} disabled={saving}>
-              <Pencil size={14} /> แก้ไข
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {canEdit && (
+            <>
+              <button type="button" className="btn" onClick={openEdit} disabled={saving}>
+                <Pencil size={14} /> แก้ไข
+              </button>
+              <button type="button" className="btn" onClick={() => setPendingCancel(true)} disabled={saving}>
+                <Ban size={14} /> ยกเลิกใบ
+              </button>
+              {/* PR-B: ราคาวัสดุมาจากคลัง — เซลดึงราคา แล้วส่งผู้บริหารได้เลย */}
+              {["draft", "assembling", "returned", "pricing"].includes(request.status) && (
+                <>
+                  <button type="button" className="btn" onClick={fillFromLibrary} disabled={saving}>
+                    <Boxes size={14} /> ดึงราคาจากคลัง
+                  </button>
+                  <button type="button" className="btn btn-accent" onClick={submit} disabled={saving}>
+                    <Send size={14} /> ส่งผู้บริหารอนุมัติ
+                  </button>
+                </>
+              )}
+            </>
+          )}
+          {/* revise = ออกใบใหม่ (เฉพาะใบที่อนุมัติ/จบแล้ว) — canEdit เป็น false ตอนนี้ */}
+          {canFeed && ["approved", "linked"].includes(request.status) && (
+            <button type="button" className="btn" onClick={revise} disabled={saving}>
+              <Copy size={14} /> ออกฉบับแก้ไข (rev.{(request.revisionNo || 1) + 1})
             </button>
-            <button type="button" className="btn" onClick={() => setPendingCancel(true)} disabled={saving}>
-              <Ban size={14} /> ยกเลิกใบ
-            </button>
-            {/* PR-B: ราคาวัสดุมาจากคลัง — เซลดึงราคา แล้วส่งผู้บริหารได้เลย */}
-            {["draft", "assembling", "returned", "pricing"].includes(request.status) && (
-              <>
-                <button type="button" className="btn" onClick={fillFromLibrary} disabled={saving}>
-                  <Boxes size={14} /> ดึงราคาจากคลัง
-                </button>
-                <button type="button" className="btn btn-accent" onClick={submit} disabled={saving}>
-                  <Send size={14} /> ส่งผู้บริหารอนุมัติ
-                </button>
-              </>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
@@ -290,6 +342,9 @@ export default function CostingDetailPage() {
                 {item.categoryCode}
               </span>
               {item.fragranceName && <span className="chip">{item.fragranceName}</span>}
+              {item.formulaCode && (
+                <span className="chip" style={{ color: "var(--violet)" }}>สูตร {item.formulaCode}</span>
+              )}
               <span className="spacer" style={{ flex: 1 }} />
               <span
                 className="status-pill"
@@ -301,6 +356,27 @@ export default function CostingDetailPage() {
               >
                 {ITEM_APPROVAL_LABELS[item.approvalStatus] || item.approvalStatus}
               </span>
+            </div>
+
+            {/* สถานะการผูก FG — ไปต่อ = กดขึ้นทะเบียน/ผูก FG เดิม */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+              {item.productId ? (
+                <span style={{ fontSize: 12, color: "var(--green)" }}>ผูกสินค้าแล้ว (FG)</span>
+              ) : (
+                <>
+                  <span style={{ fontSize: 12, color: "var(--text-3)" }}>ยังไม่ผูกสินค้า (FG)</span>
+                  {canEdit || ["approved", "linked"].includes(request.status) ? (
+                    <>
+                      <button type="button" className="btn sm" onClick={() => registerFg(item)}>
+                        ขึ้นทะเบียน FG จากรายการนี้
+                      </button>
+                      <button type="button" className="btn sm" disabled={saving} onClick={() => openLinkFg(item)}>
+                        ผูก FG เดิม
+                      </button>
+                    </>
+                  ) : null}
+                </>
+              )}
             </div>
 
             {item.approvalStatus === "returned" && item.returnReason && (
@@ -609,6 +685,35 @@ export default function CostingDetailPage() {
         }, "ป้อนราคาผลิตเข้าสินค้าแล้ว").then((ok) => { if (ok) setPendingFeed(null); })}
         onClose={() => setPendingFeed(null)}
       />
+
+      <Modal open={!!pendingLink} onClose={() => setPendingLink(null)} title="ผูกสินค้า (FG) เดิม" size="sm" dismissible={!saving}>
+        {pendingLink && (
+          <>
+            <p style={{ marginTop: 0, color: "var(--text-2)" }}>{pendingLink.item.productLabel}</p>
+            <div className="form-group">
+              <label htmlFor="link-fg">เลือกสินค้าในระบบ</label>
+              <SearchableSelect
+                value=""
+                onChange={(value) => value && linkFg(pendingLink.item.id, value)}
+                options={linkProducts.map((p) => ({
+                  value: p.id,
+                  label: `${p.fgCode || p.id}${p.productDescription ? ` — ${p.productDescription}` : ""}`,
+                  search: [p.fgCode, p.productDescription, p.brandName].filter(Boolean).join(" "),
+                }))}
+                placeholder="ค้นหาด้วยรหัส FG หรือชื่อสินค้า"
+                ariaLabel="เลือกสินค้า"
+              />
+              <small style={{ color: "var(--text-3)" }}>
+                {request.customerId ? "แสดงเฉพาะสินค้าของลูกค้าเจ้าของใบนี้" : "ใบไม่ผูกลูกค้า — แสดงสินค้าทั้งหมด"}
+                {" · "}เลือกแล้วผูกทันที
+              </small>
+            </div>
+            <div className="action-bar" style={{ marginTop: 12 }}>
+              <button type="button" className="btn ghost" onClick={() => setPendingLink(null)} disabled={saving}>ปิด</button>
+            </div>
+          </>
+        )}
+      </Modal>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>

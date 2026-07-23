@@ -238,12 +238,23 @@ export async function generateCostingDocNo(supabase, now = new Date()) {
   return `CR-${month}${String(data).padStart(4, '0')}`;
 }
 
-// ── บริบทจากดีล ────────────────────────────────────────────────────────
-// ใบขอราคาผูกดีลเสมอ (ขอราคา = มียอดอนาคต ต้องมีดีลรองรับ). ลูกค้า/ทีมอ่านจาก
-// ดีลจริงเสมอ ไม่เชื่อค่าที่ client ส่งมา — กัน UI ค้างส่งคู่ที่ไม่ตรงกัน
-// แล้วใบไปโผล่ใต้ลูกค้าผิดตัว (แพตเทิร์นเดียวกับ resolveInquiryContext)
-export async function resolveCostingDealContext(supabase, user, dealId) {
-  if (!dealId) return { error: 'ต้องเลือกดีล' };
+// ── บริบทจากดีล (optional — มติ 2026-07-23) ────────────────────────────
+// ดีลไม่บังคับแล้ว: บางสินค้าที่ขอราคาผลิตอาจไม่ได้ไปต่อ. ถ้าเลือกดีล ลูกค้า/ทีม
+// อ่านจากดีลจริงเสมอ (ไม่เชื่อ client — กันใบโผล่ใต้ลูกค้าผิดตัว); ไม่เลือกดีล =
+// ใบสำรวจ ลูกค้า/ทีมมาจากที่ client ส่ง (customerName พิมพ์เอง) หรือว่างไว้ได้
+export async function resolveCostingDealContext(supabase, user, dealId, fallback = {}) {
+  if (!dealId) {
+    return {
+      deal: null,
+      context: {
+        dealId: null,
+        projectId: null,
+        customerId: fallback.customerId || null,
+        customerName: fallback.customerName ? String(fallback.customerName).trim().slice(0, 300) : null,
+        team: user?.team ?? null,
+      },
+    };
+  }
   const { data: deal } = await supabase
     .from('sales_deals')
     .select('id, code, title, customerId, customerName, projectId, team, ownerId, status')
@@ -266,4 +277,26 @@ export async function resolveCostingDealContext(supabase, user, dealId) {
       team: deal.team ?? user?.team ?? null,
     },
   };
+}
+
+// ── revise (ออกใบใหม่อ้างใบเดิม rev.2 — มติ 2026-07-23) ─────────────────
+// revise ได้เฉพาะใบที่จบขั้นตอนแล้ว (อนุมัติ/ป้อนต้นทุน) — ใบที่ยังแก้ได้ให้แก้ในใบ
+// เดิม ไม่ต้อง revise. คืนข้อความ error หรือ null
+export function reviseError(request) {
+  if (!request) return 'ไม่พบใบขอราคา';
+  if (!['approved', 'linked'].includes(request.status)) {
+    return 'ออกฉบับแก้ไขได้เฉพาะใบที่อนุมัติแล้ว — ใบที่ยังไม่จบให้แก้ในใบเดิม';
+  }
+  return null;
+}
+
+// สูตรบนรายการต่างจากสูตรปัจจุบันของสินค้าที่ผูกไว้ไหม — เตือน ไม่บล็อก
+// item = { formulaCode, productId }, product = ข้อมูลสินค้าล่าสุด (อาจ null)
+export function formulaDrift(item, product) {
+  if (!item?.productId || !product) return null;
+  const snap = String(item.formulaCode || '').trim();
+  const current = String(product.formulaCode || '').trim();
+  if (!snap || !current) return null;         // ไม่มีข้อมูลพอ = ไม่เตือน
+  if (snap === current) return null;
+  return { snapshot: snap, current };
 }
