@@ -14,6 +14,7 @@ import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,10 +52,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const quote = await loadQuote(supabase, id);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal || !inSalesViewScope(user, quote.deal)) return forbidden();
+  // ข้อมูลลูกค้าบนใบเป็น snapshot — ใบเก่าที่ snapshot ไม่ครบ (ผู้ติดต่อ/เลขภาษี) เติม
+  // เฉพาะช่องว่างจากทะเบียนลูกค้าสด เพื่อให้หน้ารายละเอียด/เอกสารแสดงครบโดยไม่ต้อง Revise
+  const filledQuote = await fillCustomerSnapshotFromMaster(supabase, quote);
   // บรรทัด FG โชว์คำอธิบายสดจาก master (แบรนด์ · ชื่อสินค้า · ปริมาตร) เฉพาะใบที่ยัง
   // แก้ได้ — ใบเก่าที่ snapshot แค่ชื่อจะแสดง/พิมพ์ครบโดยไม่ต้องบันทึกใหม่
-  await refreshFgLinesForDisplay(supabase, [quote]);
-  const baseNumber = quote.baseNumber || quote.quoteNumber;
+  await refreshFgLinesForDisplay(supabase, [filledQuote]);
+  const baseNumber = filledQuote.baseNumber || filledQuote.quoteNumber;
   const { data: revisionHistory, error: revisionError } = await supabase
     .from('quotations')
     .select('id, quoteNumber, revisionNo, status, quoteDate, createdAt, totalAmount')
@@ -62,7 +66,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .order('revisionNo', { ascending: false });
   if (revisionError) return fail(revisionError.message, 500);
   // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
-  return ok({ ...quote, revisionHistory: revisionHistory || [], canApprove: canApproveQuotation(user, quote.deal) });
+  return ok({ ...filledQuote, revisionHistory: revisionHistory || [], canApprove: canApproveQuotation(user, filledQuote.deal) });
 });
 
 // PATCH — แก้เนื้อหาใบ (lines/ส่วนลด/VAT/เงื่อนไขชำระ/หมายเหตุ/วันหมดอายุ/สถานะ draft↔sent)

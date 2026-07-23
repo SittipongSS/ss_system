@@ -15,6 +15,7 @@ import {
 } from '@/lib/admin/signatureEvidence';
 import { loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 
@@ -33,7 +34,7 @@ async function loadOrder(supabase, id) {
 
   const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }] = await Promise.all([
     supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
-    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms').eq('id', order.quotationId).maybeSingle(),
+    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, customerId, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms').eq('id', order.quotationId).maybeSingle(),
     order.projectId
       ? supabase.from('projects').select('id, code, name').eq('id', order.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -82,6 +83,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!order) return notFound('ไม่พบ Sale Order');
   if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
+  // ข้อมูลลูกค้าบนเอกสารมาจาก snapshot ในใบเสนอราคาที่ผูก — ใบเก่าที่ snapshot ไม่ครบ
+  // (ผู้ติดต่อ/เลขภาษี) เติมเฉพาะช่องว่างจากทะเบียนลูกค้าสด เพื่อให้เอกสารแสดงครบ
+  if (order.quotation) {
+    order.quotation = await fillCustomerSnapshotFromMaster(supabase, order.quotation);
+  }
   // รูปลายเซ็นผู้อนุมัติ (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังออกได้ ตกไปช่องเซ็นเปล่า)
   let approverSignature = null;
   if (!user.devBypass) {
