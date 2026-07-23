@@ -84,9 +84,16 @@ export default function ForecastPage() {
     return [...s].sort((a, b) => String(a).localeCompare(String(b))).map((c) => ({ value: c, label: c }));
   }, [products]);
 
-  // เงื่อนไขผ่านคำค้น (รหัส/ชื่อ) + หมวด — ใช้ร่วมทุกแท็บที่เป็นรายการสินค้า
+  // เงื่อนไขผ่านคำค้น (รหัส/ชื่อ) + หมวด — ใช้ร่วมทุกแท็บที่เป็นรายการสินค้า.
+  // ค้นได้ทั้งไทย+อังกฤษ: นอกจากชื่อ snapshot (productName) ยังเทียบชื่อไทย/อังกฤษ
+  // สดจาก master ด้วย — รอบเก่าที่ snapshot ไว้เป็นอังกฤษก็ยังค้นด้วยชื่อไทยเจอ.
   const passFg = (fgCode, productName) => {
-    if (q && !String(fgCode).toLowerCase().includes(q) && !String(productName || "").toLowerCase().includes(q)) return false;
+    if (q) {
+      const p = productByFg.get(String(fgCode).trim().toLowerCase());
+      const hay = [fgCode, productName, p?.productDescription, p?.productDescriptionEn, p?.name, p?.brandName]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     if (catSel.length && !catSel.includes(catOf(fgCode))) return false;
     return true;
   };

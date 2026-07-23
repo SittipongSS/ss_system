@@ -68,15 +68,26 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
 
   // Load a round's lines into the grid (months pinned to the round's span).
   // Shared by edit-prefill and "seed create grid from the previous round".
-  const loadRoundIntoGrid = (round) => {
+  // withFullCatalog: a round only stores lines with qty > 0, so seeding from it
+  // would show just the SKUs that round happened to have — append the rest of
+  // the catalog as blank rows (blank cells are dropped on save anyway).
+  const loadRoundIntoGrid = (round, { withFullCatalog = false } = {}) => {
     const matrix = roundMatrix(round);
     const months = (round.coverMonths || []).length ? [...round.coverMonths].sort() : matrix.months;
     setMonthsOverride(months);
     if (months.length) { setStartMonth(months[0]); setEndMonth(months[months.length - 1]); }
-    setRows(matrix.rows.map((r) => {
+    let next = matrix.rows.map((r) => {
       const hit = productIndex.get(String(r.fgCode || "").trim().toLowerCase());
       return { fgCode: r.fgCode, productName: r.productName || hit?.name || null, productMeta: hit ? productMeta(hit) : "", known: !!hit, qty: { ...r.qty } };
-    }));
+    });
+    if (withFullCatalog) {
+      const have = new Set(next.map((r) => String(r.fgCode).toLowerCase()));
+      const rest = products
+        .filter((p) => !have.has(String(p.fgCode).toLowerCase()))
+        .map((p) => ({ fgCode: p.fgCode, productName: p.name, productMeta: productMeta(p), known: true, qty: {} }));
+      next = [...next, ...rest].sort((a, b) => String(a.fgCode).localeCompare(String(b.fgCode)));
+    }
+    setRows(next);
   };
 
   // Reset (create) or prefill (edit) when the modal is (re)opened or the target
@@ -119,7 +130,8 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
   };
 
   // "ใช้ FC รอบก่อนหน้า" (create mode): seed the grid from the latest existing
-  // round — same products/months/quantities as a starting point, then the user
+  // round PLUS the rest of the catalog as blank rows — the previous round only
+  // has SKUs it had quantities for, but the new round may add others. The user
   // adjusts and saves as a genuinely new round. Quantities are canonical pieces,
   // so the entry unit is reset to "ชิ้น" to avoid re-multiplying on save.
   const latestRound = useMemo(() => {
@@ -131,7 +143,7 @@ export default function ForecastImportModal({ open, onClose, onCreated, products
     if (!latestRound) return;
     if (rows.length && !confirm(`แทนที่ข้อมูลในกริดด้วย FC รอบที่ ${latestRound.roundNo}?`)) return;
     setUnknown([]); setError(""); setEntryUnit("piece");
-    loadRoundIntoGrid(latestRound);
+    loadRoundIntoGrid(latestRound, { withFullCatalog: true });
   };
 
   const removeRow = (ri) => setRows((prev) => prev.filter((_, i) => i !== ri));
