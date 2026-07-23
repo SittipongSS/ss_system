@@ -4,33 +4,18 @@ import {
   loadSahamitProducts, indexByFgCode, resolveFgCode,
 } from '@/lib/sahamit/server';
 import { recordAudit } from '@/lib/audit';
-import { detectFlags } from '@/lib/sahamit/flags';
+import { refreshSahamitFlags } from '@/lib/sahamit/flagsSync';
 import { renumberRoundsByDate } from '@/lib/sahamit/roundOrder';
 
 export const dynamic = 'force-dynamic';
 
-// Re-detect shift/cut flags across all rounds after a create/edit. Best-effort —
+// Re-detect flags across all rounds after a create/edit/delete. Best-effort —
 // never let it break the write. (Same routine POST uses.)
-async function refreshFlags(supabase, customerId, nowIso) {
+async function refreshFlags(supabase, customerId) {
   try {
-    const { data: allRounds } = await supabase
-      .from('sahamit_forecast_rounds').select('*').eq('customerId', customerId);
-    const ids = (allRounds || []).map((r) => r.id);
-    let allLines = [];
-    if (ids.length) ({ data: allLines } = await supabase.from('sahamit_forecast_lines').select('*').in('roundId', ids));
-    const roundsWithLines = (allRounds || []).map((r) => ({ ...r, lines: (allLines || []).filter((l) => l.roundId === r.id) }));
-    const { data: locks } = await supabase.from('sahamit_fc_locks').select('*').eq('customerId', customerId);
-    const flags = detectFlags(roundsWithLines, locks || []);
-    if (flags.length) {
-      const flagRows = flags.map((f) => ({
-        id: 'FCF-' + randomUUID(), customerId, fgCode: f.fgCode, month: f.month, roundNo: f.roundNo,
-        prevQty: f.prevQty, newQty: f.newQty, drop: f.drop, kind: f.kind, status: 'open',
-        shiftToMonth: f.shiftToMonth || null, createdAt: nowIso,
-      }));
-      await supabase.from('sahamit_fc_flags').upsert(flagRows, { onConflict: 'customerId,fgCode,month,roundNo,kind', ignoreDuplicates: true });
-    }
+    await refreshSahamitFlags(supabase, customerId);
   } catch (e) {
-    console.error('[sahamit] flag detection failed', e?.message || e);
+    console.error('[sahamit] flag refresh failed', e?.message || e);
   }
 }
 
@@ -126,7 +111,7 @@ export async function PATCH(request, { params }) {
     summary: `แก้ FC รอบที่ ${after.roundNo} (${lineRows.length} รายการ)`, request,
   });
 
-  await refreshFlags(supabase, customerId, nowIso);
+  await refreshFlags(supabase, customerId);
 
   return Response.json({ ...after, lines: lineRows, unknownFgCodes: [...unknown] });
 }
@@ -165,6 +150,10 @@ export async function DELETE(request, { params }) {
   } catch (e) {
     console.error('[sahamit] round renumber failed', e?.message || e);
   }
+
+  // Recompute flags for the surviving rounds — deleting a middle round changes
+  // its successor's previous-neighbour, so its drop/fill flags must be redone.
+  await refreshFlags(supabase, customerId);
 
   await recordAudit({
     user, action: 'delete', entityType: 'sahamit_forecast_round', entityId: id,

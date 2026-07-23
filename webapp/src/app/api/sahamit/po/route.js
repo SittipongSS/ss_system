@@ -6,6 +6,7 @@ import {
 import { monthOf, cleanDestination } from '@/lib/sahamit/po';
 import { insertPoLinesTolerant } from '@/lib/sahamit/poServer';
 import { resolveSettledLines } from '@/lib/sahamit/settleLines';
+import { refreshSahamitFlags } from '@/lib/sahamit/flagsSync';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -154,6 +155,9 @@ export async function POST(request) {
     summary: `สร้าง PO ${poNumber} (${lineRows.length} รายการ)${backfillDelivered ? ` · บันทึกย้อนหลัง: ส่งครบ ${deliveredDate || ''}`.trimEnd() : ''}`,
     request,
   });
+
+  // PO ใหม่อาจอธิบายยอด FC ที่เคยลด (drop → po_filled) — รีเฟรชธง. Best-effort.
+  try { await refreshSahamitFlags(supabase, customerId); } catch (e) { console.error('[sahamit] flag refresh failed', e?.message || e); }
 
   return Response.json({ ...po, lines: lineRows, unknownFgCodes: [...unknown] }, { status: 201 });
 }

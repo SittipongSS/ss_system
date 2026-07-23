@@ -3,7 +3,7 @@ import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
-const STATUSES = ['open', 'confirmed_shift', 'confirmed_cut', 'ignored'];
+const STATUSES = ['open', 'confirmed_shift', 'confirmed_filled', 'confirmed_cut', 'ignored'];
 
 // PATCH /api/sahamit/flags/[id] — resolve a flag (confirm shift / cut / ignore).
 // Body: { status, shiftToMonth?, note?, customerResponse? }
