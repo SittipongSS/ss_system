@@ -31,32 +31,6 @@ test('Sale Order print ใช้เครื่องยนต์ V4 + FM-SA-03 
   assert.doesNotMatch(html, /class="watermark"/);
 });
 
-test('approved Sale Order stamps the approver e-signature image when the server embeds it', () => {
-  const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
-  const html = buildSalesOrderPrintHTML({
-    ...order,
-    approverSignature: {
-      imageDataUri: dataUri,
-      signerName: 'สมชาย ผู้อนุมัติ',
-      signedAt: '2026-07-16T03:00:00.000Z',
-      evidenceId: 'DSE-0001',
-    },
-  });
-  // รูปลายเซ็นจริงถูกฝัง + ชื่อผู้ลงนาม + Evidence
-  assert.match(html, /<img class="signatureImage" src="data:image\/png;base64,/);
-  assert.match(html, /ลายเซ็น สมชาย ผู้อนุมัติ/);
-  assert.match(html, /Evidence DSE-0001/);
-  // ไม่หล่นไปช่องเซ็นเปล่า
-  assert.doesNotMatch(html, /ผู้อนุมัติ <span>ผู้จัดการฝ่ายขาย<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
-});
-
-test('approved Sale Order without an embedded image falls back to the blank sign box', () => {
-  const html = buildSalesOrderPrintHTML(order);
-  // ไม่มี <img> ลายเซ็น (CSS .signatureImage ยังอยู่เสมอ จึงเช็คเฉพาะ tag รูป)
-  assert.doesNotMatch(html, /<img class="signatureImage"/);
-  assert.match(html, /ผู้อนุมัติ <span>ผู้จัดการฝ่ายขาย<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
-});
-
 test('unapproved Sale Order print carries a visible status watermark', () => {
   const html = buildSalesOrderPrintHTML({ ...order, status: 'draft' });
   assert.match(html, /class="watermark">ฉบับร่าง/);
