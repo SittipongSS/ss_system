@@ -11,21 +11,19 @@ import { productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 
 // รายละเอียดช่องกระทบยอด (SKU × เดือน) แบบ modal — แทนการเด้งไปหน้าเต็ม.
-// รับ matrix/rounds/pos/coverages/prediction ที่หน้ากระทบยอดมีอยู่แล้ว ไม่โหลดซ้ำ.
+// รับ matrix/rounds/pos/coverages ที่หน้ากระทบยอดมีอยู่แล้ว ไม่โหลดซ้ำ.
 const C = {
   green: "var(--green)", teal: "var(--teal)", amber: "var(--amber)",
   red: "var(--red)", violet: "var(--violet)", blue: "var(--blue)", "text-3": "var(--text-3)",
 };
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
-const URGENCY_LABEL = { high: "เร่งด่วน", medium: "ปานกลาง", low: "ยังมีเวลา" };
-const URGENCY_COLOR = { high: "var(--red)", medium: "var(--amber)", low: "var(--violet)" };
 const TABS = [
   { key: "overview", label: "ภาพรวม" },
   { key: "docs", label: "เอกสารอ้างอิง" },
   { key: "coverage", label: "ชดเชยยอดข้ามเดือน" },
 ];
 
-export default function CellDetailModal({ open, onClose, fgCode, month, matrix, rounds, pos, coverages, prediction, product, acked, canEdit = true, onToggleAck, onCoverageChanged }) {
+export default function CellDetailModal({ open, onClose, fgCode, month, matrix, rounds, pos, coverages, product, canEdit = true, onCoverageChanged }) {
   const [tab, setTab] = useState("overview");
 
   const row = useMemo(() => (matrix?.rows || []).find((r) => r.fgCode === fgCode), [matrix, fgCode]);
@@ -98,28 +96,6 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                   </div>
                 )}
               </div>
-
-              {prediction && (
-                <div className="glass-panel" style={{ padding: 16, borderLeft: `3px solid ${URGENCY_COLOR[prediction.urgency]}`, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                    ✨ ระบบคาดว่าจะเลื่อนไป {prediction.toMonth}
-                    <span className="ui-badge" style={{ color: URGENCY_COLOR[prediction.urgency], borderColor: URGENCY_COLOR[prediction.urgency] }}>
-                      {URGENCY_LABEL[prediction.urgency]}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--text-2)" }}>
-                    ยังไม่มี PO ({prediction.pattern} · เหลือ {prediction.daysLeft} วันถึงสิ้นเดือน) — จัดการชดเชยข้ามเดือนได้ในแท็บ “ชดเชยยอดข้ามเดือน”
-                  </div>
-                  {canEdit && (
-                    <div>
-                      <button className="btn ghost sm" onClick={onToggleAck}>
-                        {acked ? "🔔 เปิดเตือนอีกครั้ง" : "👁 ดูแล้ว (ปิดเตือน)"}
-                      </button>
-                      {acked && <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: 8 }}>ปิดเตือนช่องนี้แล้ว (ป้ายในกริดจะจางลง)</span>}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
 
