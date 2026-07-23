@@ -34,6 +34,20 @@ export function buildSalesOrderPrintHTML(order) {
     .filter(Boolean)
     .join('\n');
 
+  // ลายเซ็นผู้อนุมัติ: server ฝังรูปมาให้เป็น data URI (order.approverSignature) → stamp
+  // รูปจริง; ไม่มี (ยังไม่อนุมัติ/โหลดไม่ได้) → หล่นไปช่องเซ็นเปล่าเดิม. role ปล่อยว่างกัน
+  // ซ้ำกับหัวช่อง "ผู้จัดการฝ่ายขาย"; โชว์วันที่ลงนามจาก evidence.
+  const sig = order.approverSignature;
+  const approverEsignature = sig?.imageDataUri
+    ? {
+      imageDataUri: sig.imageDataUri,
+      signerName: sig.signerName || order.approvedByName || '',
+      signerRole: '',
+      signedAt: sig.signedAt ? fmtDate(sig.signedAt) : '',
+      evidenceId: sig.evidenceId || '',
+    }
+    : null;
+
   // แมป order → รูป quote ที่ model builder V4 รับ (ข้อมูลลูกค้ามาจาก snapshot ในใบเสนอราคาที่ผูก)
   const printable = {
     customerName: order.customerName,
@@ -75,7 +89,9 @@ export function buildSalesOrderPrintHTML(order) {
     // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ=AE · ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี
     signers: [
       { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: order.createdByName || '' },
-      { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: order.approvedByName || '' },
+      approverEsignature
+        ? { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', esignature: approverEsignature }
+        : { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: order.approvedByName || '' },
       { label: 'ฝ่ายบัญชี', role: 'Scent & Sense', name: '' },
     ],
     // ลายน้ำ: อนุมัติแล้วไม่มี · ยกเลิก = "เอกสารยกเลิก" · อื่น ๆ = "ฉบับร่าง" (มติ 2026-07-18)
