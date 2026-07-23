@@ -33,7 +33,7 @@ async function loadOrder(supabase, id) {
 
   const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }] = await Promise.all([
     supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
-    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms').eq('id', order.quotationId).maybeSingle(),
+    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms').eq('id', order.quotationId).maybeSingle(),
     order.projectId
       ? supabase.from('projects').select('id, code, name').eq('id', order.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
