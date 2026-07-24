@@ -1509,6 +1509,32 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Reconciliation Grid Matrix */
+/* กริดกระทบยอดแบบเต็มจอ (ปุ่ม "เต็มจอ") — overlay เต็ม viewport ทับทุกอย่าง */
+.recon-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: var(--bg);
+  padding: 14px 18px 18px;
+  overflow: auto;
+  animation: fadeIn 0.15s forwards;
+}
+.recon-fs-bar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 2px 0 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  z-index: 2;
+}
+/* เต็มจอ: ให้กริดใช้ความสูงเกือบเต็ม (หักแถบเครื่องมือ+เลเจนด์) */
+.recon-fs .reconciliation-container { max-height: calc(100dvh - 150px); }
+
 .reconciliation-container {
   overflow: auto;
   /* max-height (not fixed height) so the box shrinks to content on short grids
