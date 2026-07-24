@@ -1,13 +1,16 @@
 "use client";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { ClipboardCheck, AlertCircle, Download, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import CellDetailModal from "@/components/sahamit/CellDetailModal";
 import FilterPopover from "@/components/ui/FilterPopover";
+import Select from "@/components/ui/Select";
 import { useApiList } from "@/lib/excise/useApiList";
-import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
+import { buildReconMatrix, posByRound } from "@/lib/sahamit/reconcileClient";
 import { ppcOf, displayQty, counterpartText } from "@/lib/sahamit/units";
-import { fmtMoneyCompact } from "@/lib/format";
+import { deliveryMonthOf, poRollupStatus, PO_STATUS_LABEL } from "@/lib/sahamit/po";
+import { fmtMoneyCompact, fmtDate } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 
 // token → CSS var
@@ -66,6 +69,7 @@ export default function ReconcilePage() {
   const [unit, setUnit] = useState("piece"); // หน่วยแสดงผล (ชิ้น/ลัง)
   const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
   const [search, setSearch] = useState("");
+  const [roundSel, setRoundSel] = useState("all"); // ดูการรับ PO ในรอบ FC ที่เลือก
   const [brands, setBrands] = useState([]);
   const [volumes, setVolumes] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -74,6 +78,11 @@ export default function ReconcilePage() {
   const loading = l1 || l2;
   const error = e1 || e2;
   const matrix = useMemo(() => buildReconMatrix(rounds, pos, coverages, confirmedCuts), [rounds, pos, coverages, confirmedCuts]);
+
+  // PO จัดกลุ่มตามรอบ FC (ยึดวันรับ PO อยู่ในช่วงระหว่างรอบ) — สำหรับดรอปดาวน์ "ดูการรับ PO ในรอบ"
+  const roundData = useMemo(() => posByRound(rounds, pos), [rounds, pos]);
+  const selectedWindow = roundSel !== "all" ? roundData.windows.find((w) => String(w.roundNo) === String(roundSel)) : null;
+  const selectedPos = roundSel !== "all" ? (roundData.byRound.get(Number(roundSel))?.pos || []) : [];
 
   // fgCode → product (แบรนด์/ปริมาตร/ราคาผลิต) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
   const productByFg = useMemo(() => {
@@ -246,8 +255,27 @@ export default function ReconcilePage() {
               { key: "category", label: "หมวดสินค้า", options: filterOptions.categories, selected: categories, onChange: setCategories },
             ]}
           />
+          {roundData.windows.length > 0 && (
+            <Select
+              value={roundSel}
+              onChange={(e) => setRoundSel(e.target.value)}
+              title="ดูการรับ PO ในรอบ FC"
+              options={[
+                { value: "all", label: "ทุกรอบ FC" },
+                ...[...roundData.windows].sort((a, b) => (b.roundNo || 0) - (a.roundNo || 0)).map((w) => ({
+                  value: String(w.roundNo),
+                  label: `รอบ #${w.roundNo} · รับ ${fmtDate(w.start, { short: true })}`,
+                })),
+              ]}
+            />
+          )}
           {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
         </div>
+      )}
+
+      {/* พาเนล: PO ที่รับในรอบ FC ที่เลือก */}
+      {!loading && !error && selectedWindow && (
+        <RoundPoPanel window={selectedWindow} pos={selectedPos} unit={unit} productOf={productOf} onClose={() => setRoundSel("all")} />
       )}
       {error && (
         <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
@@ -353,6 +381,7 @@ export default function ReconcilePage() {
         </>
       )}
 
+      {/* panel component ประกาศท้ายไฟล์ */}
       <CellDetailModal
         open={!!cellSel}
         onClose={() => setCellSel(null)}
@@ -367,5 +396,67 @@ export default function ReconcilePage() {
         onCoverageChanged={reloadCoverages}
       />
     </Workspace>
+  );
+}
+
+// พาเนลสรุป PO ที่ "รับ" ในช่วงรอบ FC ที่เลือก (ยึดวันรับ PO). โชว์ราย PO + บรรทัด
+// สินค้า×จำนวน + เดือนส่ง + สถานะ. อ่านอย่างเดียว (คลิกเลข PO ไปหน้ารายละเอียดได้).
+function RoundPoPanel({ window: win, pos, unit, productOf, onClose }) {
+  const totalQty = (pos || []).reduce((s, p) => s + (p.lines || []).reduce((a, l) => a + Number(l.qty || 0), 0), 0);
+  return (
+    <div className="glass-panel" style={{ padding: 0, marginBottom: 14, overflow: "hidden" }}>
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "color-mix(in srgb, var(--panel-2) 50%, transparent)" }}>
+        <ClipboardCheck size={16} style={{ color: "var(--accent)" }} />
+        <div style={{ fontWeight: 700, fontSize: 14 }}>PO ที่รับในรอบ FC #{win.roundNo}</div>
+        <span style={{ fontSize: 12, color: "var(--text-3)" }}>
+          ช่วงรับ {fmtDate(win.start)} – {win.end ? fmtDate(win.end) : "ปัจจุบัน"}{win.end ? " (ก่อนรอบถัดไป)" : ""}
+        </span>
+        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)" }}>{(pos || []).length} ใบ · รวม {Number(totalQty).toLocaleString("th-TH")} ชิ้น</span>
+        <button className="btn ghost sm" onClick={onClose} title="ล้างตัวเลือกรอบ">✕</button>
+      </div>
+      {(!pos || pos.length === 0) ? (
+        <div className="empty-state" style={{ padding: 28, fontSize: 13, textAlign: "center", color: "var(--text-3)" }}>ไม่มี PO ที่รับในรอบนี้</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="premium-table" style={{ borderTop: "none" }}>
+            <thead>
+              <tr>
+                <th style={{ paddingLeft: 16 }}>เลขที่ PO</th>
+                <th>วันที่รับ PO</th>
+                <th>สินค้าในใบ</th>
+                <th>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pos.map((p) => (
+                <tr key={p.id || p.poNumber}>
+                  <td style={{ paddingLeft: 16 }}>
+                    <Link href={`/sahamit/po/${p.id}`} className="font-mono" style={{ fontWeight: 600, color: "var(--accent)" }}>{p.poNumber}</Link>
+                  </td>
+                  <td>{p.receivedDate ? fmtDate(p.receivedDate) : "-"}</td>
+                  <td>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      {(p.lines || []).filter((l) => l.status !== "cancelled").map((l, i) => {
+                        const ppc = ppcOf(productOf(l.fgCode));
+                        const dm = l.deliveryMonth || deliveryMonthOf(l);
+                        return (
+                          <div key={l.id || i} style={{ fontSize: 12.5 }}>
+                            <span className="font-mono" style={{ color: "var(--text-3)" }}>{l.fgCode}</span>
+                            <span style={{ color: l.productName ? "var(--text-2)" : "var(--amber)" }}> {l.productName || "ไม่รู้จัก"}</span>
+                            <b style={{ marginLeft: 6 }}>{displayQty(l.qty, ppc, unit)}</b> {unit === "case" ? "ลัง" : "ชิ้น"}
+                            {dm && <span style={{ color: "var(--text-3)" }}> · ส่ง {dm}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </td>
+                  <td><span className="status-pill">{PO_STATUS_LABEL[poRollupStatus(p)] || poRollupStatus(p)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

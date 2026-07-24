@@ -35,12 +35,13 @@ const TABS = [
   { key: "growth", label: "การเติบโต", icon: TrendingUp },
 ];
 
-// ปุ่มสลับหน่วย ชิ้น ↔ มูลค่า(฿) — ใช้ .segmented กลาง (สลับโหมด/กรอง = segmented)
+// ปุ่มสลับหน่วย ชิ้น ↔ มูลค่า(฿) — ใช้ .segmented กลาง (สลับโหมด/กรอง = segmented).
+// สูง = --ctl-h (34px) ให้เท่าปุ่ม "ตัวกรอง" ในแถว header เดียวกัน (แนวเรียบเสมอกัน).
 function UnitToggle({ unit, onChange }) {
   return (
-    <div className="segmented" role="group" aria-label="หน่วยที่แสดง">
+    <div className="segmented" role="group" aria-label="หน่วยที่แสดง" style={{ height: "var(--ctl-h)" }}>
       {[["qty", "ชิ้น"], ["value", "มูลค่า (฿)"]].map(([k, lbl]) => (
-        <button key={k} type="button" className={unit === k ? "active" : ""} aria-pressed={unit === k} onClick={() => onChange(k)}>{lbl}</button>
+        <button key={k} type="button" className={unit === k ? "active" : ""} aria-pressed={unit === k} onClick={() => onChange(k)} style={{ height: "100%" }}>{lbl}</button>
       ))}
     </div>
   );
