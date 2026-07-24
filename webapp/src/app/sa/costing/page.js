@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Calculator, Plus, RefreshCw } from "lucide-react";
+import { Calculator, Plus, RefreshCw, Trash2 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -47,7 +47,9 @@ export default function CostingListPage() {
   const [templateCategories, setTemplateCategories] = useState(new Set());
   const [saving, setSaving] = useState(false);
   const [pendingSave, setPendingSave] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null); // ใบที่ admin รอยืนยันลบ
   const [toast, setToast] = useState(null);
+  const isAdmin = useCan("users:manage"); // admin เท่านั้น (แพตเทิร์นเดียวกับ force-delete เดิม)
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,6 +66,20 @@ export default function CostingListPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // admin ลบใบได้ทุกสถานะ (break-glass ?force=1) — ลบข้อมูลทดสอบ/ขยะ
+  const adminDelete = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/sa/costing/${pendingDelete.id}?force=1`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "ลบไม่สำเร็จ");
+      setToast({ kind: "success", msg: "ลบใบแล้ว" });
+      setPendingDelete(null);
+      await load();
+    } catch (e) { setToast({ kind: "error", msg: e.message }); }
+    setSaving(false);
+  };
 
   // ข้อมูลของฟอร์มโหลดตอนกดเปิดใบ ไม่ใช่ตอนเข้าหน้า — คนส่วนใหญ่เข้ามาเพื่อดูคิว
   const openCreate = async () => {
@@ -198,6 +214,7 @@ export default function CostingListPage() {
                 <th style={{ width: 120 }}>อนุมัติแล้ว</th>
                 <th style={{ width: 100 }}>MOQ</th>
                 <th style={{ width: 110 }}>สร้างเมื่อ</th>
+                {isAdmin && <th style={{ width: 50 }} aria-label="จัดการ" />}
               </tr>
             </thead>
             <tbody>
@@ -247,6 +264,17 @@ export default function CostingListPage() {
                     </td>
                     <td>{Number(row.moq).toLocaleString("th-TH")}</td>
                     <td>{fmtDate(row.createdAt)}</td>
+                    {isAdmin && (
+                      <td>
+                        <button
+                          type="button" className="btn-icon danger" aria-label="ลบใบ (admin)"
+                          title="ลบถาวร (ผู้ดูแลระบบ)"
+                          onClick={() => setPendingDelete(row)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -307,6 +335,20 @@ export default function CostingListPage() {
         busy={saving}
         onConfirm={create}
         onClose={() => setPendingSave(false)}
+      />
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title="ลบใบขอราคาผลิต (ผู้ดูแลระบบ)"
+        description={pendingDelete
+          ? `${pendingDelete.docNo || "ร่าง"}${pendingDelete.customerName ? ` · ${pendingDelete.customerName}` : ""} — สถานะ ${COSTING_STATUS_LABELS[pendingDelete.status] || pendingDelete.status}`
+          : ""}
+        detail="ลบถาวรทั้งใบ (รายการ/บรรทัดต้นทุน/ราคาที่อนุมัติ) — กู้คืนไม่ได้ ใช้เฉพาะข้อมูลทดสอบ/ขยะ ราคาวัสดุในคลังไม่ถูกลบ"
+        confirmLabel="ลบถาวร"
+        tone="danger"
+        busy={saving}
+        onConfirm={adminDelete}
+        onClose={() => setPendingDelete(null)}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />

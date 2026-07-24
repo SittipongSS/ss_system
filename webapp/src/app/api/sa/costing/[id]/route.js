@@ -13,9 +13,51 @@ import {
   blockingChangeError, blockingTierError, normalizeCostingItems, normalizeTierQuantities,
   planItemChanges, planTierChanges,
 } from '@/lib/costingReconcile';
+import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
+import { can } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
+
+// DELETE — ปกติลบได้เฉพาะร่างที่ยังไม่ส่ง (guard 0141). ?force=1 (admin, mig 0147):
+// break-glass ลบได้ทุกสถานะผ่าน RPC ข้าม guard (ลูก cascade เอง). ทำลายหลักฐาน
+export async function DELETE(request, { params }) {
+  const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+  const { id } = await params;
+  if (!can(user?.role, 'costing:edit')) return Response.json({ error: 'forbidden' }, { status: 403 });
+
+  const before = await findCostingRequest(supabase, id);
+  if (!before) return Response.json({ error: 'ไม่พบใบขอราคา' }, { status: 404 });
+
+  if (isForceRequest(request)) {
+    if (!canForceDelete(user)) {
+      return Response.json({ error: 'ลบใบที่ส่งแล้วต้องเป็นผู้ดูแลระบบ (admin)' }, { status: 403 });
+    }
+    const { error } = await supabase.rpc('force_delete_costing_request', { p_id: id });
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    await recordAudit({
+      user, action: 'delete', entityType: 'costing_request', entityId: id, before,
+      summary: `[admin force] ลบใบขอราคาผลิต ${before.docNo || id} (สถานะ ${before.status})`, request,
+    });
+    return Response.json({ ok: true });
+  }
+
+  // เส้นปกติ: ร่างที่ยังไม่ส่งเท่านั้น (เจ้าของใบ)
+  if (!canEditCostingRequest(user, before)) {
+    return Response.json({ error: 'ไม่มีสิทธิ์ลบใบนี้' }, { status: 403 });
+  }
+  if (before.status !== 'draft' || before.submittedAt) {
+    return Response.json({ error: 'ลบได้เฉพาะใบร่างที่ยังไม่ส่ง — ใบที่ส่งแล้วใช้ยกเลิกแทน' }, { status: 409 });
+  }
+  const { error } = await supabase.from('costing_requests').delete().eq('id', id);
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+  await recordAudit({
+    user, action: 'delete', entityType: 'costing_request', entityId: id, before,
+    summary: `ลบใบขอราคาผลิตร่าง (${(before.items || []).length} รายการ)`, request,
+  });
+  return Response.json({ ok: true });
+}
 
 export async function GET(request, { params }) {
   try {

@@ -23,6 +23,7 @@ function emptyRow() { return { kind: "PM", label: "" }; }
 export default function MaterialRequestsPage() {
   const router = useRouter();
   const canCreate = useCan("costing:edit");
+  const isAdmin = useCan("users:manage"); // admin เท่านั้น (force-delete ทุกสถานะ)
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -66,14 +67,16 @@ export default function MaterialRequestsPage() {
     ...f, items: f.items.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
   }));
 
-  // ลบใบร่างที่ยังไม่ส่ง — ยืนยันก่อน (ConfirmDialog)
+  // ลบใบ — ร่างยังไม่ส่ง (ทุกคนที่มีสิทธิ์) หรือ admin force ทุกสถานะ (?force=1)
   const removeDraft = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/materials/requests/${pendingDelete.id}`, { method: "DELETE" });
+      const isDraft = pendingDelete.status === "draft" && !pendingDelete.submittedAt;
+      const url = `/api/sa/materials/requests/${pendingDelete.id}${isDraft ? "" : "?force=1"}`;
+      const res = await fetch(url, { method: "DELETE" });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ลบไม่สำเร็จ");
-      setToast({ kind: "success", msg: "ลบใบร่างแล้ว" });
+      setToast({ kind: "success", msg: "ลบใบแล้ว" });
       setPendingDelete(null);
       await load();
     } catch (e) { setToast({ kind: "error", msg: e.message }); }
@@ -149,10 +152,12 @@ export default function MaterialRequestsPage() {
                   <td>{progress(r)}</td>
                   <td>{fmtDate(r.createdAt)}</td>
                   <td>
-                    {/* ลบได้เฉพาะร่างที่ยังไม่ส่ง (ส่งแล้วเป็นหลักฐาน) */}
-                    {canCreate && r.status === "draft" && !r.submittedAt && (
+                    {/* ร่างที่ยังไม่ส่ง = ลบได้ทั่วไป; ใบที่ส่งแล้ว = เฉพาะ admin (force) */}
+                    {((canCreate && r.status === "draft" && !r.submittedAt) || isAdmin) && (
                       <button
-                        type="button" className="btn-icon danger" aria-label="ลบใบร่าง"
+                        type="button" className="btn-icon danger"
+                        aria-label={r.status === "draft" && !r.submittedAt ? "ลบใบร่าง" : "ลบใบ (admin)"}
+                        title={r.status === "draft" && !r.submittedAt ? "ลบใบร่าง" : "ลบถาวร (ผู้ดูแลระบบ)"}
                         onClick={() => setPendingDelete(r)}
                       >
                         <Trash2 size={14} />
@@ -248,12 +253,16 @@ export default function MaterialRequestsPage() {
 
       <ConfirmDialog
         open={!!pendingDelete}
-        title="ลบใบขอราคาวัสดุร่างนี้?"
+        title={pendingDelete && pendingDelete.status === "draft" && !pendingDelete.submittedAt
+          ? "ลบใบขอราคาวัสดุร่างนี้?"
+          : "ลบใบขอราคาวัสดุ (ผู้ดูแลระบบ)"}
         description={pendingDelete
-          ? `${(pendingDelete.items || []).length} รายการ${pendingDelete.customerName ? ` · ${pendingDelete.customerName}` : ""}`
+          ? `${pendingDelete.docNo || "ร่าง"} · ${(pendingDelete.items || []).length} รายการ${pendingDelete.customerName ? ` · ${pendingDelete.customerName}` : ""}`
           : ""}
-        detail="ใบร่างที่ยังไม่ส่งขอราคาไม่ใช่หลักฐาน ลบได้จริง — ถ้าส่งขอราคาไปแล้วให้ใช้ยกเลิกแทน"
-        confirmLabel="ลบใบร่าง"
+        detail={pendingDelete && pendingDelete.status === "draft" && !pendingDelete.submittedAt
+          ? "ใบร่างที่ยังไม่ส่งขอราคาไม่ใช่หลักฐาน ลบได้จริง"
+          : "ลบถาวรทั้งใบ — กู้คืนไม่ได้ ใช้เฉพาะข้อมูลทดสอบ/ขยะ ราคาที่ตอบไว้ในคลังวัสดุไม่ถูกลบ"}
+        confirmLabel="ลบถาวร"
         tone="danger"
         busy={saving}
         onConfirm={removeDraft}
