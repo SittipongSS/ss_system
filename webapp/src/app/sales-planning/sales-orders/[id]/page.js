@@ -25,7 +25,7 @@ import {
 } from "@/lib/sales/salesOrderApprovalOverride";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { openSalesOrderPrintWindow, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
+import { openSalesOrderPrintWindowPreferIssued, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
 import styles from "./page.module.css";
 
 const STATUS = {
@@ -179,7 +179,7 @@ export default function SalesOrderDetailPage() {
       const res = await fetch(`/api/sales-planning/sales-orders/${id}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "ไม่สามารถโหลดข้อมูลใบสั่งขายได้");
-      openSalesOrderPrintWindow(data, printWindow);
+      await openSalesOrderPrintWindowPreferIssued(data, printWindow);
     } catch (printError) {
       showSalesOrderPrintError(printWindow, printError.message);
     }

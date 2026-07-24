@@ -48,6 +48,13 @@ export function buildSalesOrderPrintHTML(order) {
     }
     : null;
 
+  // ลายเซ็นผู้จัดทำ (ผู้เสนอราคา) — ใช้ตอนตรึง snapshot (ฝังรูป active signature ของผู้สร้าง);
+  // live print ไม่ส่งมา → หล่นไปช่องชื่อเปล่าเดิม. stamp เชิงภาพ ไม่มี evidence
+  const proposerSig = order.proposerSignature;
+  const proposerEsignature = proposerSig?.imageDataUri
+    ? { imageDataUri: proposerSig.imageDataUri, signerName: order.createdByName || '', signerRole: '' }
+    : null;
+
   // แมป order → รูป quote ที่ model builder V4 รับ (ข้อมูลลูกค้ามาจาก snapshot ในใบเสนอราคาที่ผูก)
   const printable = {
     customerName: order.customerName,
@@ -90,7 +97,9 @@ export function buildSalesOrderPrintHTML(order) {
     ],
     // ช่องลงชื่อ SO (มติผู้ใช้ 2026-07-18): ผู้จัดทำ=AE · ผู้อนุมัติ=AE Supervisor · ฝ่ายบัญชี
     signers: [
-      { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: order.createdByName || '' },
+      proposerEsignature
+        ? { label: 'ผู้จัดทำ', role: 'พนักงานขาย', esignature: proposerEsignature }
+        : { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: order.createdByName || '' },
       approverEsignature
         ? { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', esignature: approverEsignature }
         : { label: 'ผู้อนุมัติ', role: 'ผู้จัดการฝ่ายขาย', name: order.approvedByName || '' },
@@ -109,4 +118,28 @@ export function openSalesOrderPrintWindow(order, preparedWindow = null) {
   win.document.write(buildSalesOrderPrintHTML(order));
   win.document.close();
   return win;
+}
+
+// พิมพ์โดยเลือกฉบับตรึง (issued snapshot) ก่อนถ้ามี — SO ที่อนุมัติแล้วเล่นฉบับที่ตรึงตอน
+// อนุมัติ (หน้าตา + รูปลายเซ็นคงที่ ไม่เปลี่ยนตามข้อมูลสด); ยังไม่อนุมัติ/ไม่มี snapshot
+// (404) หรือสถานะเปลี่ยนหลังอนุมัติ (409) → เรนเดอร์สดตามปกติ. คู่ขนานกับ QT prefer-issued.
+export async function openSalesOrderPrintWindowPreferIssued(order, preparedWindow = null) {
+  const win = preparedWindow || prepareSalesOrderPrintWindow();
+  if (!win) return undefined;
+  const id = order?.id;
+  if (!id) return openSalesOrderPrintWindow(order, win);
+  try {
+    const res = await fetch(`/api/sales-planning/sales-orders/${encodeURIComponent(id)}/issued?render=latest`, {
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      win.document.open();
+      win.document.write(await res.text());
+      win.document.close();
+      return win;
+    }
+  } catch {
+    // โหลดฉบับตรึงไม่ได้ = ไม่บล็อกการพิมพ์ ตกไปใช้ข้อมูลสดแทน
+  }
+  return openSalesOrderPrintWindow(order, win);
 }

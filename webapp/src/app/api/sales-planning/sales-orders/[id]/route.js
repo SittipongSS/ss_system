@@ -14,6 +14,7 @@ import {
   signatureEvidenceErrorResponse,
 } from '@/lib/admin/signatureEvidence';
 import { loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
+import { captureIssuedSalesOrderSnapshot } from '@/lib/sales/issuedSalesOrderSnapshot';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { sendChat, chatCard } from '@/lib/chat';
@@ -191,6 +192,22 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return signatureEvidenceErrorResponse(approvalError);
     }
     const data = result.document;
+
+    // Phase 7D+: ตรึง issued snapshot ของ SO จากสถานะที่อนุมัติแล้ว (best-effort — อนุมัติ
+    // commit ไปแล้ว snapshot ล้มต้องไม่ roll back; RPC idempotent regenerate ได้ภายหลัง).
+    // ใช้ service-role: RPC เป็น service_role + ต้องดึงรูปลายเซ็นจาก bucket ส่วนตัว
+    try {
+      const snapshotOrder = {
+        ...before, ...data,
+        lines: before.lines, deal: before.deal, quotation: before.quotation, project: before.project,
+      };
+      await captureIssuedSalesOrderSnapshot(getSupabaseAdmin(), {
+        order: snapshotOrder, evidence: result.evidence, user,
+      });
+    } catch (snapshotError) {
+      console.error('issued sales order snapshot capture failed', id, snapshotError);
+    }
+
     await recordAudit({
       user,
       action: 'update',
