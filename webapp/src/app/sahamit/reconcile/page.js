@@ -1,6 +1,6 @@
 "use client";
-import { useMemo, useState } from "react";
-import { ClipboardCheck, AlertCircle, Download, Search } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import { ClipboardCheck, AlertCircle, Download, Search, Maximize2, Minimize2 } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import CellDetailModal from "@/components/sahamit/CellDetailModal";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -68,6 +68,7 @@ export default function ReconcilePage() {
   const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
   const [search, setSearch] = useState("");
   const [roundSel, setRoundSel] = useState("all"); // ดูการรับ PO ในรอบ FC ที่เลือก
+  const [expanded, setExpanded] = useState(false); // ขยายกริดเต็มจอ (overlay)
   const [brands, setBrands] = useState([]);
   const [volumes, setVolumes] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -216,6 +217,31 @@ export default function ReconcilePage() {
     );
   };
 
+  // ปิดโหมดเต็มจอด้วย Esc + ล็อกสกรอลล์พื้นหลังระหว่างเต็มจอ
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e) => { if (e.key === "Escape") setExpanded(false); };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [expanded]);
+
+  // ตัวสลับมุมมอง FC/PO + หน่วย ชิ้น/ลัง — ใช้ทั้งใน header และแถบเครื่องมือตอนเต็มจอ
+  const viewUnitControls = (
+    <>
+      <div className="segmented">
+        {VIEWS.map((v) => (
+          <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
+        ))}
+      </div>
+      <div className="segmented" title="หน่วยแสดงผล">
+        <button className={unit === "piece" ? "active" : ""} onClick={() => setUnit("piece")}>ชิ้น</button>
+        <button className={unit === "case" ? "active" : ""} onClick={() => setUnit("case")}>ลัง</button>
+      </div>
+    </>
+  );
+
   return (
     <Workspace
       icon={<ClipboardCheck size={22} />}
@@ -223,15 +249,12 @@ export default function ReconcilePage() {
       subtitle="สถานะ FC / PO รายสินค้า × เดือน (ลูกค้า AR-109)"
       headerRight={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div className="segmented">
-            {VIEWS.map((v) => (
-              <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
-            ))}
-          </div>
-          <div className="segmented" title="หน่วยแสดงผล">
-            <button className={unit === "piece" ? "active" : ""} onClick={() => setUnit("piece")}>ชิ้น</button>
-            <button className={unit === "case" ? "active" : ""} onClick={() => setUnit("case")}>ลัง</button>
-          </div>
+          {viewUnitControls}
+          {matrix.rows.length > 0 && (
+            <button className="btn ghost" onClick={() => setExpanded(true)} title="ขยายกริดเต็มจอ">
+              <Maximize2 size={16} /> เต็มจอ
+            </button>
+          )}
           <button className="btn ghost" onClick={() => {
             const p = new URLSearchParams({ view: "reconcile" });
             if (brands.length) p.set("brands", brands.join(","));
@@ -298,7 +321,20 @@ export default function ReconcilePage() {
           <div style={{ fontSize: 13, marginTop: 6 }}>เพิ่มรอบ FC หรือ PO ก่อน</div>
         </div>
       ) : (
-        <>
+        <div className={expanded ? "recon-fs" : undefined}>
+          {expanded && (
+            <div className="recon-fs-bar">
+              <ClipboardCheck size={18} style={{ color: "var(--accent)" }} />
+              <strong style={{ fontSize: 14 }}>กระทบยอด</strong>
+              {selectedWindow && (
+                <span className="ui-badge" style={{ fontSize: 12, color: "var(--accent)", borderColor: "var(--accent)" }}>รอบ #{selectedWindow.roundNo}</span>
+              )}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
+                {viewUnitControls}
+                <button className="btn ghost" onClick={() => setExpanded(false)} title="ย่อ (Esc)"><Minimize2 size={16} /> ย่อ</button>
+              </div>
+            </div>
+          )}
           {/* Legend */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14, fontSize: 12 }}>
             {LEGEND.map((x) => (
@@ -384,7 +420,7 @@ export default function ReconcilePage() {
               </tfoot>
             </table>
           </div>
-        </>
+        </div>
       )}
 
       <CellDetailModal
