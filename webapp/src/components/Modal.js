@@ -22,7 +22,11 @@ const FOCUSABLE_SELECTOR = [
 // is always deliberate — the X button, Escape, or the modal's own buttons. Pass
 // `closeOnOverlay` (true) for the rare case where outside-click-to-dismiss is
 // genuinely wanted.
-export default function Modal({ open, onClose, title, children, size = "md", dismissible = true, closeOnOverlay = false }) {
+// `side="right"` renders as a full-height panel that slides in from the right
+// (drawer) instead of a centered dialog — for detail/inspector surfaces where a
+// tall, scrollable side panel reads better than a centered box. Default (unset)
+// keeps the centered-modal behavior; existing callers are unaffected.
+export default function Modal({ open, onClose, title, children, size = "md", side, dismissible = true, closeOnOverlay = false }) {
   const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
   const dismissibleRef = useRef(dismissible);
@@ -84,11 +88,12 @@ export default function Modal({ open, onClose, title, children, size = "md", dis
 
   if (!open) return null;
   const overlayClose = dismissible && closeOnOverlay ? onClose : undefined;
+  const isSide = side === "right";
   return (
-    <div className="overlay" onClick={overlayClose}>
+    <div className={`overlay${isSide ? " to-right" : ""}`} onClick={overlayClose}>
       <div
         ref={dialogRef}
-        className={`drawer ${size}`}
+        className={`drawer ${size}${isSide ? " side-right" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

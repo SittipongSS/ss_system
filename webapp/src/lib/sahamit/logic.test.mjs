@@ -380,6 +380,17 @@ test('cellDetail lists contributing FC rounds and active PO lines', () => {
   assert.equal(d.poLines.length, 1);                      // cancelled excluded? no — detail shows all; but only 1 Jul PO exists
 });
 
+test('cellDetail poLines carry PO doc date + received date (for docs tab)', () => {
+  const pos = [{ poNumber: 'PO-9', id: 'p9', docDate: '2026-06-20', receivedDate: '2026-06-25', lines: [
+    { fgCode: 'A', deliveryMonth: '2026-07', qty: 100, status: 'open', dueDate: '2026-07-10' },
+  ] }];
+  const d = cellDetail([], pos, 'A', '2026-07');
+  assert.equal(d.poLines.length, 1);
+  assert.equal(d.poLines[0].docDate, '2026-06-20');
+  assert.equal(d.poLines[0].receivedDate, '2026-06-25');
+  assert.equal(d.poLines[0].poId, 'p9');
+});
+
 // ── predict.js (shift prediction & coverage suggestion) ─────────────────────
 
 test('addMonths / urgencyOf helpers', () => {
