@@ -195,7 +195,7 @@ export function cellDetail(rounds, pos, fgCode, month) {
     for (const l of po.lines || []) {
       const m = l.deliveryMonth || deliveryMonthOf(l);
       if (l.fgCode === fgCode && m === month) {
-        poLines.push({ poNumber: po.poNumber, qty: Number(l.qty || 0), dueDate: l.dueDate, expectedDate: l.expectedDate, actualDeliveredDate: l.actualDeliveredDate, status: l.status });
+        poLines.push({ poNumber: po.poNumber, poId: po.id, docDate: po.docDate || null, receivedDate: po.receivedDate || null, qty: Number(l.qty || 0), dueDate: l.dueDate, expectedDate: l.expectedDate, actualDeliveredDate: l.actualDeliveredDate, status: l.status });
       }
     }
   }

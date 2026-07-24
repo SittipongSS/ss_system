@@ -1874,6 +1874,26 @@ h1, h2, h3, h4, h5, h6 {
 .drawer.lg { max-width: 820px; }
 .drawer.md { max-width: 600px; }
 
+/* Right-side drawer variant (Modal side="right"): overlay pins the panel to the
+   right edge, panel fills full height and slides in from the right. */
+.overlay.to-right { align-items: stretch; justify-content: flex-end; padding: 0; }
+.overlay.to-right > .drawer.side-right {
+  height: 100%;
+  max-height: 100%;
+  border-radius: 0;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  animation: drawerInRight 0.24s forwards cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes drawerInRight {
+  from { opacity: 0.4; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@media (max-width: 640px) {
+  .overlay.to-right > .drawer.side-right { max-width: 100%; }
+}
+
 @keyframes modalIn {
   from { opacity: 0; transform: translateY(8px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0) scale(1); }

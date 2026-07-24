@@ -51,11 +51,11 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
   const title = `${row?.productName || fgCode} · ${fgCode} · เดือน ${month}${meta ? ` · ${meta}` : ""}`;
 
   return (
-    <Modal open={open} onClose={onClose} title={title} size="lg" closeOnOverlay>
+    <Modal open={open} onClose={onClose} title={title} size="lg" side="right" closeOnOverlay>
       {!cell ? (
         <div style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>ไม่พบข้อมูลช่องนี้</div>
       ) : (
-        <div style={{ padding: "4px 2px", maxHeight: "70vh", overflow: "auto" }}>
+        <div style={{ padding: "4px 2px", flex: 1, minHeight: 0, overflow: "auto" }}>
           <Tabs tabs={TABS} value={tab} onChange={setTab} />
 
           {tab === "overview" && (
@@ -125,11 +125,13 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                 ) : (
                   <div className="premium-table-wrapper">
                     <table className="premium-table">
-                      <thead><tr><th>เลขที่ PO</th><th style={{ textAlign: "right" }}>จำนวน</th><th>กำหนดส่ง</th><th>คาดส่ง</th><th>ส่งจริง</th><th>สถานะ</th></tr></thead>
+                      <thead><tr><th>เลขที่ PO</th><th>วันที่ PO</th><th>วันที่รับ PO</th><th style={{ textAlign: "right" }}>จำนวน</th><th>กำหนดส่ง</th><th>คาดส่ง</th><th>ส่งจริง</th><th>สถานะ</th></tr></thead>
                       <tbody>
                         {detail.poLines.map((p, i) => (
                           <tr key={i}>
                             <td className="font-mono">{p.poNumber}</td>
+                            <td>{p.docDate ? fmtDate(p.docDate) : "—"}</td>
+                            <td>{p.receivedDate ? fmtDate(p.receivedDate) : "—"}</td>
                             <td style={{ textAlign: "right" }}>{nf(p.qty)}{casesText(p.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: 11 }}> ({casesText(p.qty, ppc)})</span>}</td>
                             <td>{p.dueDate ? fmtDate(p.dueDate) : "—"}</td>
                             <td>{p.expectedDate ? fmtDate(p.expectedDate) : "—"}</td>
