@@ -8,6 +8,7 @@ import Select from "@/components/ui/Select";
 import { useApiList } from "@/lib/excise/useApiList";
 import { buildReconMatrix, posByRound } from "@/lib/sahamit/reconcileClient";
 import { ppcOf, displayQty, counterpartText } from "@/lib/sahamit/units";
+import { deliveryMonthOf } from "@/lib/sahamit/po";
 import { fmtMoneyCompact, fmtDate } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 
@@ -76,19 +77,29 @@ export default function ReconcilePage() {
 
   const loading = l1 || l2;
   const error = e1 || e2;
-  // PO จัดกลุ่มตามรอบ FC (ยึดวันรับ PO อยู่ในช่วงระหว่างรอบ) — สำหรับดรอปดาวน์กรองตามรอบ
+
+  // ★ กระทบยอด = มุมมอง "สะสม" ชุดเดียวเสมอ (แหล่งความจริง): FC = peak − ยืนยันตัด/เลื่อน,
+  // PO = ทั้งหมด. ไม่ re-scope ตามรอบ เพราะ FC/PO คาสเคดข้ามรอบ การกระทบรายรอบจะเพี้ยน
+  // และตัวเลข "เด้ง". ตัวเลขในกริดจึงนิ่งเสมอ — การยืนยันตัด/เลื่อนอยู่ครบตลอด.
+  const matrix = useMemo(() => buildReconMatrix(rounds, pos, coverages, confirmedCuts), [rounds, pos, coverages, confirmedCuts]);
+
+  // ดรอปดาวน์ "รอบ FC" = ไฮไลต์อย่างเดียว (ไม่แตะตัวเลข): เลือกรอบแล้วตีกรอบช่องที่ PO
+  // "รับในรอบนั้น" มาลง (จับด้วยวันรับ PO อยู่ในช่วงระหว่างรอบ). ตอบ "รอบนี้มี PO อะไรเข้า".
   const roundData = useMemo(() => posByRound(rounds, pos), [rounds, pos]);
   const selectedWindow = roundSel !== "all" ? roundData.windows.find((w) => String(w.roundNo) === String(roundSel)) : null;
-
-  // เลือกรอบ FC = กรอง "ข้อมูลที่ป้อนกริด" ให้เป็นมุมมองของรอบนั้น (เหมือนตัวกรองอื่น):
-  //   FC = พยากรณ์ของรอบที่เลือก · PO = เฉพาะใบที่รับในช่วงรอบนั้น (byRound).
-  // ไม่ใช้ confirmedCuts ตอนเจาะรอบ — ดู FC ดิบของรอบเทียบ PO ที่เข้ามาในรอบ.
-  const scopedRounds = roundSel === "all" ? rounds : (rounds || []).filter((r) => String(r.roundNo) === String(roundSel));
-  const scopedPos = roundSel === "all" ? pos : (roundData.byRound.get(Number(roundSel))?.pos || []);
-  const matrix = useMemo(
-    () => buildReconMatrix(scopedRounds, scopedPos, coverages, roundSel === "all" ? confirmedCuts : null),
-    [scopedRounds, scopedPos, coverages, confirmedCuts, roundSel],
-  );
+  const selectedPos = roundSel !== "all" ? (roundData.byRound.get(Number(roundSel))?.pos || []) : [];
+  const highlightCells = useMemo(() => {
+    const s = new Set();
+    if (roundSel === "all") return s;
+    for (const po of roundData.byRound.get(Number(roundSel))?.pos || []) {
+      for (const l of po.lines || []) {
+        if (l.status === "cancelled") continue;
+        const m = l.deliveryMonth || deliveryMonthOf(l);
+        if (m) s.add(`${l.fgCode}||${m}`);
+      }
+    }
+    return s;
+  }, [roundSel, roundData]);
 
   // fgCode → product (แบรนด์/ปริมาตร/ราคาผลิต) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
   const productByFg = useMemo(() => {
@@ -177,14 +188,18 @@ export default function ReconcilePage() {
     const badges = hasCov ? (
       <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชย FC ข้ามเดือน (รับ FC ${nf(cell.coverageIn)} / ส่ง FC ${nf(cell.coverageOut)}) · PO อยู่กับที่`}>⇄</span>
     ) : null;
+    // ไฮไลต์: ช่องที่ PO "รับในรอบ FC ที่เลือก" มาลง (ตีกรอบสีส้ม + จุด) — ไม่แตะตัวเลข
+    const isHl = highlightCells.has(`${fg}||${m}`);
+    const hlStyle = isHl ? { outline: "2px solid var(--accent)", outlineOffset: "-2px", borderRadius: 6 } : null;
+    const hlBadge = isHl ? <span style={{ position: "absolute", top: 3, right: 4, width: 7, height: 7, borderRadius: "50%", background: "var(--accent)" }} title="PO ที่รับในรอบที่เลือก" /> : null;
     // Single-value views (FC / PO): one number, but colored by reconcile status
     // (เขียว=ครบ / แดง=รอ PO / เหลือง=ไม่ครบ ฯลฯ) เหมือนมุมมอง FC vs PO.
     if (view === "fc" || view === "po") {
       const val = view === "fc" ? cell.fcQty : cell.poQty;
       return (
         <td key={m} style={{ padding: "5px 5px" }}>
-          <div className={`grid-cell-box ${dispStatus}`} onClick={() => openCell(fg, m)} title={dispLabel} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
-            {badges}
+          <div className={`grid-cell-box ${dispStatus}`} onClick={() => openCell(fg, m)} title={dispLabel} style={{ position: "relative", alignItems: "center", minWidth: 84, ...hlStyle }}>
+            {badges}{hlBadge}
             <span className="cell-val fc" style={{ fontSize: 14, fontWeight: 600 }}>{displayQty(val, ppc, unit, { dot: true })}</span>
             <span className="cell-status-tag">{dispLabel}</span>
           </div>
@@ -198,9 +213,9 @@ export default function ReconcilePage() {
           className={`grid-cell-box ${dispStatus}`}
           onClick={() => openCell(fg, m)}
           title={dispLabel}
-          style={{ position: "relative" }}
+          style={{ position: "relative", ...hlStyle }}
         >
-          {badges}
+          {badges}{hlBadge}
           <div className="cell-value-line">
             <span className="cell-lbl">FC</span>
             <span className="cell-val fc">
@@ -287,9 +302,9 @@ export default function ReconcilePage() {
             <Select
               value={roundSel}
               onChange={(e) => setRoundSel(e.target.value)}
-              title="ดูการรับ PO ในรอบ FC"
+              title="ไฮไลต์ช่องที่ PO รับในรอบ FC (ไม่เปลี่ยนตัวเลข)"
               options={[
-                { value: "all", label: "ทุกรอบ FC" },
+                { value: "all", label: "ไฮไลต์ตามรอบ…" },
                 ...[...roundData.windows].sort((a, b) => (b.roundNo || 0) - (a.roundNo || 0)).map((w) => ({
                   value: String(w.roundNo),
                   label: `รอบ #${w.roundNo} · รับ ${fmtDate(w.start, { short: true })}`,
@@ -299,8 +314,8 @@ export default function ReconcilePage() {
           )}
           {selectedWindow && (
             <span className="ui-badge" style={{ fontSize: 12, color: "var(--accent)", borderColor: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 6 }}>
-              รอบ #{selectedWindow.roundNo} · PO ที่รับ {fmtDate(selectedWindow.start, { short: true })}–{selectedWindow.end ? fmtDate(selectedWindow.end, { short: true }) : "ปัจจุบัน"} ({scopedPos.length} ใบ)
-              <button onClick={() => setRoundSel("all")} title="ล้างตัวเลือกรอบ" style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", display: "flex", padding: 0 }}>✕</button>
+              ◻ ไฮไลต์รอบ #{selectedWindow.roundNo} · PO ที่รับ {fmtDate(selectedWindow.start, { short: true })}–{selectedWindow.end ? fmtDate(selectedWindow.end, { short: true }) : "ปัจจุบัน"} ({selectedPos.length} ใบ)
+              <button onClick={() => setRoundSel("all")} title="ล้างไฮไลต์" style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", display: "flex", padding: 0 }}>✕</button>
             </span>
           )}
           {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
@@ -344,6 +359,12 @@ export default function ReconcilePage() {
               </span>
             ))}
             {view === "recon" && <span style={{ color: "var(--text-3)" }}>· แต่ละช่อง: บน=FC ล่าง=PO · คลิกเพื่อดูรายละเอียด</span>}
+            {selectedWindow && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--accent)" }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, border: "2px solid var(--accent)" }} />
+                PO ที่รับในรอบ #{selectedWindow.roundNo}
+              </span>
+            )}
           </div>
 
           <div className="reconciliation-container">
