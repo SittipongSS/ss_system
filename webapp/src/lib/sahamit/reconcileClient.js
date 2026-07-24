@@ -148,6 +148,35 @@ export function buildReconMatrix(rounds, pos, coverages = [], confirmedCuts = nu
   return { months: monthList, rows };
 }
 
+// จัดกลุ่ม PO ตาม "รอบ FC ที่ active ตอนรับ PO" — รอบ = ช่วงตั้งแต่วันรับรอบนี้ ถึง
+// ก่อนวันรับรอบถัดไป (ยึดวันรับ PO). ใช้ในหน้ากระทบยอด: เลือกรอบแล้วดูว่ารอบนั้นมี
+// PO เข้ามารับอะไรบ้าง. รอบเรียงตามวันรับ; PO ที่รับก่อนรอบแรก/ไม่มีวันรับ = unassigned.
+// คืน { windows:[{roundNo,start,end}], byRound:Map<roundNo,{roundNo,start,end,pos:[]}>,
+//   unassigned:[] } (end = วันรับรอบถัดไป, exclusive; รอบล่าสุด end=null = ต่อเนื่อง).
+export function posByRound(rounds, pos) {
+  const sorted = [...(rounds || [])]
+    .filter((r) => r.receivedDate)
+    .sort((a, b) => String(a.receivedDate).localeCompare(String(b.receivedDate)));
+  const windows = sorted.map((r, i) => ({
+    roundNo: r.roundNo,
+    start: r.receivedDate,
+    end: i + 1 < sorted.length ? sorted[i + 1].receivedDate : null,
+  }));
+  const byRound = new Map(windows.map((w) => [w.roundNo, { ...w, pos: [] }]));
+  const unassigned = [];
+  for (const po of pos || []) {
+    const d = po.receivedDate;
+    if (!d) { unassigned.push(po); continue; }
+    let placed = null;
+    for (const w of windows) {
+      if (String(d) >= String(w.start) && (w.end == null || String(d) < String(w.end))) { placed = w.roundNo; break; }
+    }
+    if (placed == null) unassigned.push(po);       // รับก่อนรอบแรก (ยังไม่มี FC)
+    else byRound.get(placed).pos.push(po);
+  }
+  return { windows, byRound, unassigned };
+}
+
 // Per-(sku,month) drill-down: which FC rounds contributed and which PO lines
 // deliver in that month. Pure — feed it the raw rounds/pos.
 export function cellDetail(rounds, pos, fgCode, month) {

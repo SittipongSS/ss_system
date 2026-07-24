@@ -9,11 +9,30 @@ import { diffSnapshots } from './diff.js';
 import { computeSkuFcWarning } from './peak.js';
 import { reconcileCell } from './reconcile.js';
 import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
-import { buildReconMatrix, cellDetail } from './reconcileClient.js';
+import { buildReconMatrix, cellDetail, posByRound } from './reconcileClient.js';
 import { leadDaysFor, recommendedReadyDate, materialView, LEAD_IN_FC, LEAD_OUT_FC } from './material.js';
 import { detectFlags } from './flags.js';
 import { avgShiftForSku, predictShifts, suggestCoverage, suggestCoverageTargets, addMonths, urgencyOf } from './predict.js';
 import { desiredRoundNumbers } from './roundOrder.js';
+
+test('posByRound groups POs into the FC round active when received', () => {
+  const rounds = [
+    { roundNo: 1, receivedDate: '2026-01-01' },
+    { roundNo: 2, receivedDate: '2026-03-01' },
+  ];
+  const pos = [
+    { poNumber: 'PO-A', receivedDate: '2026-01-15' }, // in round 1 window
+    { poNumber: 'PO-B', receivedDate: '2026-03-10' }, // in round 2 window (open end)
+    { poNumber: 'PO-C', receivedDate: '2026-02-28' }, // still round 1 (before round 2)
+    { poNumber: 'PO-D', receivedDate: '2025-12-20' }, // before first round → unassigned
+    { poNumber: 'PO-E' },                              // no date → unassigned
+  ];
+  const { byRound, unassigned, windows } = posByRound(rounds, pos);
+  assert.deepEqual(windows.map((w) => [w.roundNo, w.start, w.end]), [[1, '2026-01-01', '2026-03-01'], [2, '2026-03-01', null]]);
+  assert.deepEqual(byRound.get(1).pos.map((p) => p.poNumber).sort(), ['PO-A', 'PO-C']);
+  assert.deepEqual(byRound.get(2).pos.map((p) => p.poNumber), ['PO-B']);
+  assert.deepEqual(unassigned.map((p) => p.poNumber).sort(), ['PO-D', 'PO-E']);
+});
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
