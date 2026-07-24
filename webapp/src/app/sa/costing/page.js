@@ -282,7 +282,12 @@ export default function CostingListPage() {
               <button
                 type="button" className="btn btn-accent" disabled={saving}
                 onClick={() => {
-                  if (!form.dealId) { setToast({ kind: "error", msg: "กรุณาเลือกดีล" }); return; }
+                  // ดีลไม่บังคับแล้ว (PR-C) — ไม่มีดีล = ใบสำรวจ. ต้องมีสินค้าอย่างน้อย 1
+                  // รายการที่กรอกชื่อ + เลือกประเภท (server ตรวจซ้ำอีกชั้น)
+                  if (form.items.every((it) => !it.productLabel.trim() || !it.categoryCode)) {
+                    setToast({ kind: "error", msg: "กรุณากรอกสินค้าอย่างน้อย 1 รายการ (ชื่อ + ประเภท)" });
+                    return;
+                  }
                   setPendingSave(true);
                 }}
               >
