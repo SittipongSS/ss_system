@@ -756,6 +756,12 @@ export default function LeadsPage() {
                 <DateTimeInput value={actAt} onChange={setActAt} />
               </label>
             )}
+            {actionModal.action === "contact" && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+                หมายเหตุการติดต่อ *
+                <textarea className="premium-input" rows={2} value={actReason} onChange={(e) => setActReason(e.target.value)} placeholder="เช่น โทรคุยแล้ว ลูกค้าขอใบเสนอราคา / ติดต่อไม่ได้ นัดโทรใหม่พรุ่งนี้" />
+              </label>
+            )}
             {actionModal.action === "meeting" && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                 รูปแบบนัด
@@ -776,7 +782,7 @@ export default function LeadsPage() {
                 disabled={!!busy
                   || (actionModal.action === "screen" && !actTeam)
                   || (actionModal.action === "assign" && !actAssignee)
-                  || (["disqualify", "bounce"].includes(actionModal.action) && !actReason.trim())}>
+                  || (["contact", "disqualify", "bounce"].includes(actionModal.action) && !actReason.trim())}>
                 {busy === "action" ? "กำลังบันทึก…" : "ยืนยัน"}
               </button>
             </div>
