@@ -5,6 +5,7 @@ import { can, canViewCosting, isSuperuser } from '@/lib/permissions';
 import { inSalesEditScope } from '@/lib/salesPlanning';
 import { generateMaterialRequestDocNo } from '@/lib/materialPrices';
 import { findMaterialRequest } from '@/lib/materialPricesAdmin';
+import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -18,7 +19,8 @@ function canEditRequest(user, req) {
 }
 
 // DELETE — ลบใบร่างที่ยังไม่ส่ง (guard 0143 เปิดช่องเฉพาะ draft + submittedAt null)
-// ร่างที่ยังไม่ส่งไม่ใช่หลักฐาน จึงลบจริงได้ (แพตเทิร์นเดียวกับใบขอราคาผลิต/settings)
+// ?force=1 (admin เท่านั้น, mig 0147): break-glass ลบได้ทุกสถานะ — ผ่าน RPC ที่ตั้ง
+// flag ข้าม guard (ลูก cascade เอง). ทำลายหลักฐาน จึงจำกัด role=admin
 export async function DELETE(request, { params }) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
@@ -27,14 +29,28 @@ export async function DELETE(request, { params }) {
 
   const before = await findMaterialRequest(supabase, id);
   if (!before) return Response.json({ error: 'ไม่พบใบขอราคาวัสดุ' }, { status: 404 });
+
+  const force = isForceRequest(request);
+  if (force) {
+    if (!canForceDelete(user)) {
+      return Response.json({ error: 'ลบใบที่ส่งแล้วต้องเป็นผู้ดูแลระบบ (admin)' }, { status: 403 });
+    }
+    const { error } = await supabase.rpc('force_delete_material_request', { p_id: id });
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    await recordAudit({
+      user, action: 'delete', entityType: 'material_price_request', entityId: id, before,
+      summary: `[admin force] ลบใบขอราคาวัสดุ ${before.docNo || id} (สถานะ ${before.status})`, request,
+    });
+    return Response.json({ ok: true });
+  }
+
+  // เส้นปกติ: ลบได้เฉพาะร่างที่ยังไม่ส่ง
   if (!canEditRequest(user, before)) {
     return Response.json({ error: 'ไม่มีสิทธิ์ลบใบนี้' }, { status: 403 });
   }
   if (before.status !== 'draft' || before.submittedAt) {
     return Response.json({ error: 'ลบได้เฉพาะใบร่างที่ยังไม่ส่งขอราคา' }, { status: 409 });
   }
-
-  // ลบลูกก่อน (items) แล้วค่อยลบใบ — guard ยอมให้ลบใบ draft ที่ยังไม่ส่ง
   await supabase.from('material_price_request_items').delete().eq('requestId', id);
   const { error } = await supabase.from('material_price_requests').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
