@@ -1,17 +1,6 @@
 import { fmtDate } from '@/lib/format';
-import {
-  COMPANY_ADDRESS,
-  COMPANY_LEGAL_NAME,
-  COMPANY_LINE,
-  COMPANY_OFFICE_TEL,
-  COMPANY_TAX_ID,
-  COMPANY_WEBSITE,
-  DOCUMENT_FORMS,
-  documentFormLine,
-} from '@/lib/documentBrand';
-
-// ชื่อบริษัทภาษาอังกฤษ — documentBrand เก็บเฉพาะชื่อไทย จึงตั้งไว้ที่นี่ให้เอกสาร V4 ใช้
-const COMPANY_LEGAL_NAME_EN = 'SCENT AND SENSE LABORATORY CO., LTD.';
+import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
+import { resolveCompanyBlock } from '@/lib/companyProfile';
 
 export const QUOTATION_MASTER_TEMPLATE_VERSIONS = Object.freeze([
   { id: 'v1', label: 'V1', templateVersion: 'quotation-balanced-controlled-v1' },
@@ -703,18 +692,21 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     }
     : null;
 
+  // บล็อกบริษัท: ใช้ข้อมูลที่เผยแพร่ (options.company) ถ้ามี — ไม่งั้น fallback constants
+  const company = resolveCompanyBlock(options.company);
+
   return {
     templateVariant: 'v4',
     templateVersion: QUOTATION_MASTER_TEMPLATE_VERSION,
     accentKey: options.accentKey || 'terracotta',
     company: {
-      nameTh: COMPANY_LEGAL_NAME,
-      nameEn: COMPANY_LEGAL_NAME_EN,
-      address: COMPANY_ADDRESS,
-      taxId: COMPANY_TAX_ID,
-      phone: COMPANY_OFFICE_TEL,
-      line: COMPANY_LINE,
-      website: COMPANY_WEBSITE,
+      nameTh: company.legalNameTh,
+      nameEn: company.legalNameEn,
+      address: company.address,
+      taxId: company.taxId,
+      phone: company.phone,
+      line: company.line,
+      website: company.website,
     },
     standard: { titleTh: options.documentTitleTh || 'ใบเสนอราคา', titleEn: form.title },
     formLine: documentFormLine(form),

@@ -22,7 +22,7 @@ export function showSalesOrderPrintError(printWindow, message = 'ไม่สา
   return showQuotePrintError(printWindow, message, 'ใบสั่งขาย');
 }
 
-export function buildSalesOrderPrintHTML(order) {
+export function buildSalesOrderPrintHTML(order, company = null) {
   const quotation = order.quotation || {};
   const taxableAmount = Math.max(0, Number(order.totalAmount || 0) - Number(order.vatAmount || 0));
   // อัตรา VAT คิดย้อนจากยอดเงิน (ปัดเป็นสตางค์แล้ว) — ปัด 2 ตำแหน่งกัน float noise
@@ -84,6 +84,7 @@ export function buildSalesOrderPrintHTML(order) {
   };
 
   return buildQuotationMasterHTML(printable, {
+    company,
     form: DOCUMENT_FORMS.salesOrder,
     documentTitleTh: 'ใบสั่งขาย',
     documentLabel: 'ใบสั่งขาย',
@@ -115,11 +116,11 @@ export function buildSalesOrderPrintHTML(order) {
   });
 }
 
-export function openSalesOrderPrintWindow(order, preparedWindow = null) {
+export function openSalesOrderPrintWindow(order, preparedWindow = null, company = null) {
   const win = preparedWindow || prepareSalesOrderPrintWindow();
   if (!win) return;
   win.document.open();
-  win.document.write(buildSalesOrderPrintHTML(order));
+  win.document.write(buildSalesOrderPrintHTML(order, company));
   win.document.close();
   return win;
 }

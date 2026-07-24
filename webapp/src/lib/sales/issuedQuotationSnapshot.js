@@ -11,14 +11,7 @@ import { genId } from '@/lib/id';
 import { documentApprovalFingerprint } from '@/lib/documentApproval';
 import { quotationApprovalContent } from '@/lib/sales/quotationApprovalFingerprint';
 import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
-import {
-  COMPANY_ADDRESS,
-  COMPANY_LEGAL_NAME,
-  COMPANY_LINE,
-  COMPANY_OFFICE_TEL,
-  COMPANY_TAX_ID,
-  COMPANY_WEBSITE,
-} from '@/lib/documentBrand';
+import { resolveCompanyBlock } from '@/lib/companyProfile';
 
 // Bump when the payload shape or the rendered artifact structure changes so old
 // snapshots stay identifiable by the generator that produced them.
@@ -36,25 +29,14 @@ const trimOrNull = (value) => {
   return text || null;
 };
 
-// Snapshot of the company block exactly as printed at issue time. The print
-// engine reads these constants live, so pinning them keeps a reprint faithful
-// even if the constants change later.
-function companySnapshot() {
-  return {
-    legalName: COMPANY_LEGAL_NAME,
-    address: COMPANY_ADDRESS,
-    taxId: COMPANY_TAX_ID,
-    officeTel: COMPANY_OFFICE_TEL,
-    line: COMPANY_LINE,
-    website: COMPANY_WEBSITE,
-  };
-}
-
 // Deterministic structured payload behind the rendered artifact. Any change here
 // changes the content fingerprint, which marks a new issue of the document.
-export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
+// `company` = บล็อกบริษัทที่เผยแพร่ ณ เวลาอนุมัติ (ตรึงลง payload ให้ reprint ตรงเดิม
+// แม้ข้อมูลบริษัทถูกแก้ภายหลัง); ไม่ส่ง → fallback constants
+export function buildIssuedQuotationPayload(quote = {}, evidence = {}, company) {
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
   const form = evidence.controlledFormSnapshot || null;
+  const co = resolveCompanyBlock(company);
   return {
     document: {
       quoteNumber: trimOrNull(quote.quoteNumber),
@@ -84,7 +66,16 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
       proposer: trimOrNull(quote.createdByName || quote.metadata?.preparedBy),
       proposerPhone: trimOrNull(quote.createdByPhone),
     },
-    company: companySnapshot(),
+    // คงรูป payload.company เดิม (fingerprint semantics ไม่เปลี่ยน) แต่ค่าดึงจากบริษัท
+    // ที่เผยแพร่ ณ เวลาอนุมัติ — บริษัทคนละชุด = คนละ issue ตามเจตนา
+    company: {
+      legalName: co.legalNameTh,
+      address: co.address,
+      taxId: co.taxId,
+      officeTel: co.phone,
+      line: co.line,
+      website: co.website,
+    },
     standard: form
       ? {
         versionId: form.versionId || null,
@@ -105,6 +96,7 @@ export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
     { ...quote, approvalStatus: 'approved' },
     {
       watermark: '',
+      company: options.company || null,
       approverSignatureImage: options.approverSignatureImage || null,
       proposerSignatureImage: options.proposerSignatureImage || null,
     },
@@ -156,8 +148,8 @@ export function artifactSha256(html) {
 
 // Captures the snapshot + artifact through the atomic, idempotent RPC. Retrying
 // with identical content returns the existing snapshot instead of duplicating.
-export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence, user }) {
-  const payload = buildIssuedQuotationPayload(quote, evidence);
+export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence, user, company }) {
+  const payload = buildIssuedQuotationPayload(quote, evidence, company);
   // ฝังรูปลายเซ็นลงในใบตรึง (self-contained เหมือนฟอนต์) — ผู้อนุมัติ = evidence-backed
   // (path ตรึงใน evidence); ผู้เสนอราคา = stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง
   const proposerAsset = await loadActiveSignatureAsset(supabase, quote.createdBy);
@@ -165,7 +157,7 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),
   ]);
-  const html = buildIssuedQuotationArtifactHtml(quote, { approverSignatureImage, proposerSignatureImage });
+  const html = buildIssuedQuotationArtifactHtml(quote, { company, approverSignatureImage, proposerSignatureImage });
   const { data, error } = await supabase.rpc('capture_issued_quotation_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
     p_artifact_id: genId('IDA'),

@@ -7,16 +7,8 @@ import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from './weekGr
 import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
 import { brandLabel } from '@/lib/master/brands';
 import { entityCodeDisplay } from '@/lib/entityCode';
-import {
-  COMPANY_ADDRESS,
-  COMPANY_LEGAL_NAME,
-  COMPANY_LINE,
-  COMPANY_OFFICE_TEL,
-  COMPANY_TAX_ID,
-  COMPANY_WEBSITE,
-  DOCUMENT_FORMS,
-  SYSTEM_DOCUMENT_LOGO_URL,
-} from '@/lib/documentBrand';
+import { DOCUMENT_FORMS, SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
+import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 
 // วันที่: ใช้มาตรฐานการแสดงผลกลาง (§2). thai day-month-year = "25 ก.ค. 26",
 // คอลัมน์ Start/Finish ในตาราง = DD/MM/YY (พื้นที่แคบ).
@@ -83,7 +75,8 @@ export function paginateTimelineGroups(groups = [], firstPageCapacity = 14, cont
   return pages.length > 0 ? pages : [[]];
 }
 
-export function buildGanttPrintHTML(project) {
+export function buildGanttPrintHTML(project, company) {
+  const co = resolveCompanyBlock(company);
   const tasks = Array.isArray(project.tasks) ? project.tasks : [];
 
   const starts = tasks.map(t => new Date(t.startDate).getTime()).filter(t => !isNaN(t));
@@ -184,11 +177,11 @@ export function buildGanttPrintHTML(project) {
       <div class="brand">
         <div class="logo-wrap"><img src="${SYSTEM_DOCUMENT_LOGO_URL}" alt="Scent &amp; Sense" /></div>
         <div>
-          <h2>${esc(COMPANY_LEGAL_NAME)}</h2>
+          <h2>${esc(co.legalNameTh)}</h2>
           <div class="company-info">
-            <div>${esc(COMPANY_ADDRESS)}</div>
-            <div>เลขประจำตัวผู้เสียภาษี ${esc(COMPANY_TAX_ID)}</div>
-            <div>โทร. ${COMPANY_OFFICE_TEL} · Line ${esc(COMPANY_LINE)} · ${esc(COMPANY_WEBSITE)}</div>
+            <div>${esc(co.address)}</div>
+            <div>เลขประจำตัวผู้เสียภาษี ${esc(co.taxId)}</div>
+            <div>โทร. ${esc(co.phone)} · Line ${esc(co.line)} · ${esc(co.website)}</div>
           </div>
         </div>
       </div>
@@ -426,13 +419,18 @@ export function buildGanttPrintHTML(project) {
 </html>`;
 }
 
-export function openGanttPrintWindow(project) {
-  const html = buildGanttPrintHTML(project);
+export async function openGanttPrintWindow(project) {
+  // เปิดหน้าต่างก่อน (ยังไม่ await) กัน popup blocker แล้วค่อยดึงข้อมูลบริษัทที่เผยแพร่
   const w = window.open('', '_blank');
   if (!w) {
     alert('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้');
     return;
   }
+  w.document.open();
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Project Timeline</title></head><body style="font-family:sans-serif;padding:24px;color:#334">กำลังเตรียมเอกสาร…</body></html>');
+  w.document.close();
+  const company = await getCompanyProfileForPrint();
+  const html = buildGanttPrintHTML(project, company);
   w.document.open();
   w.document.write(html);
   w.document.close();
