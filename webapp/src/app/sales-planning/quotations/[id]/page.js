@@ -190,6 +190,7 @@ export default function QuotationEditorPage() {
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
       await load();
+      router.replace(`/sa/quotations/${id}`);
       return true;
     } catch (e) {
       setError(e.message || "บันทึกไม่สำเร็จ");
