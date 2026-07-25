@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import SaWorkspace, { SaPageShell } from "@/components/salesPlanning/SaWorkspace";
 import Modal from "@/components/Modal";
+import ReadableText from "@/components/ui/ReadableText";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import InquiryRequestFields, { inquiryToRequestForm, isInquiryRequestComplete } from "@/components/salesPlanning/InquiryRequestFields";
@@ -324,7 +325,7 @@ export default function InquiryThreadPage() {
                     {m.acknowledgedAt && <span className="ui-badge" style={{ color: "var(--green)" }}>รับทราบแล้ว</span>}
                   </div>
                   {m.deletedAt ? <div style={{ margin: "4px 0", color: "var(--text-3)", fontStyle: "italic", fontSize: 13 }}>ข้อความถูกลบ</div>
-                    : m.body && <div style={{ margin: "4px 0 2px", fontSize: 13.5, whiteSpace: "pre-wrap" }}>{m.body}</div>}
+                    : m.body && <ReadableText text={m.body} lines={5} style={{ margin: "4px 0 2px", fontSize: 13.5 }} />}
                   {!!(m.attachments || []).length && (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                       {m.attachments.map((att, i) => (

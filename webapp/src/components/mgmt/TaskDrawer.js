@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/Modal";
 import DocsPanel from "@/components/mgmt/DocsPanel";
+import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send } from "lucide-react";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
 import { fmtDate as formatDate, fmtDateTime } from "@/lib/format";
@@ -99,7 +100,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
         {task.notes && (
           <div style={{ fontSize: 13 }}>
             <div style={{ color: "var(--text-3)", fontSize: 12, marginBottom: 4 }}>หมายเหตุ</div>
-            <div style={{ whiteSpace: "pre-wrap" }}>{task.notes}</div>
+            <ReadableText text={task.notes} lines={5} />
           </div>
         )}
 
@@ -121,7 +122,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {updates.map((u) => (
                 <div key={u.id} style={{ fontSize: 12.5, borderLeft: "2px solid var(--border)", paddingLeft: 10 }}>
-                  <div style={{ color: "var(--text-2)" }}>{u.body}</div>
+                  <ReadableText text={u.body} lines={4} style={{ color: "var(--text-2)" }} />
                   <div style={{ color: "var(--text-3)", fontSize: 11, marginTop: 2 }}>
                     {u.authorName || "ระบบ"} · {u.createdAt ? fmtDateTime(u.createdAt) : ""}
                   </div>

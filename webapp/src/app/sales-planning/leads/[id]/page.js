@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { BriefcaseBusiness, Building2, CalendarClock, CircleDollarSign, Contact, Inbox, Mail, Pencil, Phone, Save, Sparkles, UserRound, Users, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import ReadableText from "@/components/ui/ReadableText";
 import Select from "@/components/ui/Select";
 import MoneyInput from "@/components/ui/MoneyInput";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
@@ -50,7 +51,7 @@ export default function LeadDetailPage() {
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
 
-  const info = (label, value, wide = false) => <div className={`${styles.field} ${wide ? styles.wide : ""}`}><span className={styles.label}>{label}</span><div className={styles.value}>{value || "-"}</div></div>;
+  const info = (label, value, wide = false) => <div className={`${styles.field} ${wide ? styles.wide : ""}`}><span className={styles.label}>{label}</span><div className={styles.value}>{typeof value === "string" ? <ReadableText text={value || "-"} lines={wide ? 5 : 3} /> : value || "-"}</div></div>;
 
   // ปุ่มแก้ไข = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
   // ระหว่างแก้ไข ปุ่มยกเลิก/บันทึกอยู่แถวเดียวกัน (แพตเทิร์นเดียวกับหน้าใบเสนอราคา)
@@ -111,7 +112,7 @@ export default function LeadDetailPage() {
         </ContextGrid></DetailCard>}
 
         <DetailCard icon={CalendarClock} eyebrow="Lead history" title="ประวัติการดำเนินการ" meta={`${lead.events?.length || 0} รายการ`}>
-          {lead.events?.length ? <div className={styles.timeline}>{lead.events.map((event) => <div className={styles.event} key={event.id}><div className={styles.rail}><span className={styles.dot} /></div><div className={styles.eventBody}><strong>{EVENT_LABELS[event.kind] || event.kind || "อัปเดตลีด"}</strong><p>{[event.createdByName, event.reason, event.assigneeName, fmtDateTime(event.createdAt)].filter(Boolean).join(" · ")}</p></div></div>)}</div> : <div className={styles.empty}>ยังไม่มีประวัติเพิ่มเติม</div>}
+          {lead.events?.length ? <div className={styles.timeline}>{lead.events.map((event) => <div className={styles.event} key={event.id}><div className={styles.rail}><span className={styles.dot} /></div><div className={styles.eventBody}><strong>{EVENT_LABELS[event.kind] || event.kind || "อัปเดตลีด"}</strong><ReadableText className={styles.eventMeta} text={[event.createdByName, event.reason, event.assigneeName, fmtDateTime(event.createdAt)].filter(Boolean).join(" · ")} lines={3} /></div></div>)}</div> : <div className={styles.empty}>ยังไม่มีประวัติเพิ่มเติม</div>}
         </DetailCard>
         </DetailPageLayout>
     </div>}

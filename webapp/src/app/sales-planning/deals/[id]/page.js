@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Paperclip, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -852,7 +853,7 @@ export default function DealOverviewPage() {
                       <tr key={task.id} className="premium-row">
                         <td style={{ fontWeight: 700 }}>
                           {task.title}
-                          {task.note && <div style={{ marginTop: 2, color: "var(--text-3)", fontSize: 12, fontWeight: 500 }}>{task.note}</div>}
+                          {task.note && <ReadableText text={task.note} lines={2} style={{ marginTop: 2, color: "var(--text-3)", fontSize: 12, fontWeight: 500 }} />}
                         </td>
                         <td><TaskStatusBadge status={task.status} /></td>
                         <td>{task.assigneeName || task.ownerName || "-"}</td>
@@ -1274,7 +1275,7 @@ export default function DealOverviewPage() {
                             </span>
                           )}
                         </div>
-                        {act.body && <div style={{ margin: "4px 0 2px", fontSize: 13.5, whiteSpace: "pre-wrap" }}>{act.body}</div>}
+                        {act.body && <ReadableText text={act.body} lines={4} style={{ margin: "4px 0 2px", fontSize: 13.5 }} />}
                         {!!act.attachments?.length && (
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "6px 0 2px" }}>
                             {act.attachments.map((att, i) => {

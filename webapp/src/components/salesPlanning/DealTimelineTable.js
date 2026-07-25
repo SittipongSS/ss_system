@@ -10,6 +10,7 @@ import SortControl from "@/components/ui/SortControl";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
+import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import StepFormFields, { EMPTY_STEP_FORM, stepToForm } from "@/components/pm/StepFormFields";
@@ -464,7 +465,7 @@ export default function TimelineWorkspace({
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={14} /> {fmtDate(task.startDate)} - {fmtDate(task.finishDate)}</span>
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }} title={task.assignee || undefined}><User size={14} /> {task.assignee ? compactPersonName(task.assignee) : "ยังไม่ระบุผู้รับผิดชอบ"}</span>
                             </div>
-                            {task.note && <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 8, background: "var(--panel-2)", padding: "6px 8px", borderRadius: 6 }}><strong style={{ color: "var(--text-3)" }}>หมายเหตุ:</strong> {task.note}</div>}
+                            {task.note && <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 8, background: "var(--panel-2)", padding: "6px 8px", borderRadius: "var(--radius)" }}><strong style={{ color: "var(--text-3)" }}>หมายเหตุ:</strong><ReadableText text={task.note} lines={3} /></div>}
                           </div>
                           {active && canEdit && <button type="button" className="btn btn-primary sm" onClick={() => patch(task, { status: "Completed" })}>✔ ทำเสร็จแล้ว</button>}
                         </div>

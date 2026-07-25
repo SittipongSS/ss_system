@@ -206,6 +206,57 @@ button, select, input, textarea {
   font-size: inherit;
 }
 
+/* Long user-entered copy: readable measure + progressive disclosure.
+   Used by activity feeds, notes, summaries, and detail views system-wide. */
+.readable-text-block {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.readable-text {
+  max-inline-size: 78ch;
+  color: inherit;
+  font: inherit;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.readable-text.is-collapsed {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--readable-lines, 4);
+}
+
+.readable-text-toggle {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+
+.readable-text-toggle:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.readable-text-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .numeric-input,
 .num,
 .tabular-nums {
