@@ -12,6 +12,7 @@ import { documentApprovalFingerprint } from '@/lib/documentApproval';
 import { quotationApprovalContent } from '@/lib/sales/quotationApprovalFingerprint';
 import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
+import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh } from '@/lib/documentStandards';
 
 // Bump when the payload shape or the rendered artifact structure changes so old
@@ -155,15 +156,21 @@ export function artifactSha256(html) {
 // Captures the snapshot + artifact through the atomic, idempotent RPC. Retrying
 // with identical content returns the existing snapshot instead of duplicating.
 export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence, user, company }) {
-  const payload = buildIssuedQuotationPayload(quote, evidence, company);
+  // ข้อมูลลูกค้าบนใบเป็น snapshot ณ วันสร้าง — ใบที่สร้างก่อนฟีเจอร์ snapshot ครบ
+  // (ผู้ติดต่อ 2026-07-19 / เลขผู้เสียภาษี 2026-07-21) หรือใบที่ตอนสร้างทะเบียนลูกค้ายังไม่มี
+  // ค่านั้น จะมีช่องว่าง. หน้ารายละเอียดเติมจากทะเบียนลูกค้าตอนอ่าน (GET) อยู่แล้ว แต่
+  // **ฉบับตรึงไม่เคยเติม** → เอกสารที่ออกจริงแสดง '-' ทั้งที่หน้าเว็บแสดงครบ (บั๊กที่ผู้ใช้เจอ
+  // 2026-07-26). เติมที่ชั้น capture = ทุก caller ได้เหมือนกัน ไม่ต้องจำไปเรียกเองทีละที่
+  const filledQuote = await fillCustomerSnapshotFromMaster(supabase, quote);
+  const payload = buildIssuedQuotationPayload(filledQuote, evidence, company);
   // ฝังรูปลายเซ็นลงในใบตรึง (self-contained เหมือนฟอนต์) — ผู้อนุมัติ = evidence-backed
   // (path ตรึงใน evidence); ผู้เสนอราคา = stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง
-  const proposerAsset = await loadActiveSignatureAsset(supabase, quote.createdBy);
+  const proposerAsset = await loadActiveSignatureAsset(supabase, filledQuote.createdBy);
   const [approverSignatureImage, proposerSignatureImage] = await Promise.all([
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),
   ]);
-  const html = buildIssuedQuotationArtifactHtml(quote, {
+  const html = buildIssuedQuotationArtifactHtml(filledQuote, {
     company,
     standard: evidence?.controlledFormSnapshot || null,
     approverSignatureImage,
@@ -172,7 +179,7 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
   const { data, error } = await supabase.rpc('capture_issued_quotation_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
     p_artifact_id: genId('IDA'),
-    p_quotation_id: quote.id,
+    p_quotation_id: filledQuote.id,
     p_content_fingerprint: issuedContentFingerprint(payload),
     p_resolved_payload: payload,
     p_artifact_html: html,
@@ -182,8 +189,8 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
     // validate ว่ามีจริงถ้าไม่ว่าง (mig 0130); ใบเก่าก่อนฟีเจอร์นี้ = null (ข้ามได้).
     // คอลัมน์นี้มีช่องเดียว จึงตรึง "ชุดการชำระ" เพราะเป็นเงื่อนไขที่มีผลทางการเงิน
     // ส่วน id ของชุดหมายเหตุติดไปกับ metadata ใน payload ที่ตรึงอยู่แล้ว
-    p_commercial_preset_version_id: quote?.metadata?.paymentPresetVersionId
-      || quote?.metadata?.commercialPresetVersionId || null,
+    p_commercial_preset_version_id: filledQuote?.metadata?.paymentPresetVersionId
+      || filledQuote?.metadata?.commercialPresetVersionId || null,
     p_signature_evidence_id: evidence.id,
     p_layout_version: ISSUED_QUOTATION_LAYOUT_VERSION,
     p_locale: ISSUED_QUOTATION_LOCALE,
