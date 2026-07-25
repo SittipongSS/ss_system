@@ -28,7 +28,7 @@ const soSubmitMigration = readFileSync(
 );
 
 const qtSubmitMigration = readFileSync(
-  new URL('../../../supabase/migrations/0155_quotation_submit_step.sql', import.meta.url),
+  new URL('../../../supabase/migrations/0156_quotation_submit_step.sql', import.meta.url),
   'utf8',
 );
 
