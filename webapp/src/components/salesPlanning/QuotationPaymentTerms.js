@@ -1,31 +1,18 @@
 "use client";
 
-import { CircleDollarSign, Plus, Trash2 } from "lucide-react";
-import {
-  MAX_INSTALLMENTS,
-  computeInstallments,
-  evenPercents,
-  paymentPlanSummary,
-} from "@/lib/sales/paymentPlan";
+import { CircleDollarSign } from "lucide-react";
+import ReadableText from "@/components/ui/ReadableText";
 import {
   isEmptyPaymentValue,
   matchesPaymentPreset,
   paymentPresetToFormValue,
 } from "@/lib/commercialPresets";
-import { fmtMoney } from "@/lib/format";
 import CommercialPresetPicker from "./CommercialPresetPicker";
 import styles from "./QuotationPaymentTerms.module.css";
-
-const DEFAULT_INSTALLMENTS = () => evenPercents(2).map((percent, index) => ({
-  label: index === 0 ? "มัดจำ" : "งวดสุดท้าย",
-  percent,
-  note: "",
-}));
 
 export default function QuotationPaymentTerms({
   value,
   onChange,
-  totalAmount,
   disabled = false,
 }) {
   const payment = {
@@ -33,50 +20,19 @@ export default function QuotationPaymentTerms({
     paymentMethod: value?.paymentMethod || "",
     paymentTerms: value?.paymentTerms || "",
     installments: Array.isArray(value?.installments) ? value.installments : [],
-    // เวอร์ชันชุดการชำระที่หยิบมาเป็นค่าตั้งต้นของใบนี้ (ตรึงเป็นหลักฐานตอนบันทึก)
     presetVersionId: value?.presetVersionId || null,
   };
-  const pctSum = Math.round(payment.installments.reduce((sum, row) => sum + (Number(row.percent) || 0), 0) * 100) / 100;
-  const amounts = computeInstallments(totalAmount, payment.installments);
 
   const update = (patch) => {
     if (!disabled) onChange?.({ ...payment, ...patch });
   };
-  const updateInstallment = (index, patch) => update({
-    installments: payment.installments.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)),
-  });
-  const switchType = () => {
-    const type = payment.type === "installment" ? "full" : "installment";
-    update({
-      type,
-      // มีแถวอยู่แล้วให้คงไว้ (รวมกรณี 1 แถว 100% ที่มาจากชุดในคลัง) — เริ่มจากศูนย์ค่อยแจก 2 งวด
-      installments: type === "installment" && payment.installments.length < 1
-        ? DEFAULT_INSTALLMENTS()
-        : payment.installments,
-    });
-  };
-  const addInstallment = () => update({
-    installments: payment.installments.length >= MAX_INSTALLMENTS
-      ? payment.installments
-      : [...payment.installments, { label: "", percent: 0, note: "" }],
-  });
-  const removeInstallment = (index) => update({
-    installments: payment.installments.length <= 2
-      ? payment.installments
-      : payment.installments.filter((_, rowIndex) => rowIndex !== index),
-  });
-  const recalcEven = () => {
-    // evenPercents ตั้งขั้นต่ำไว้ 2 งวด — งวดเดียวต้องเป็น 100% ไม่ใช่ 50%
-    const percents = payment.installments.length === 1 ? [100] : evenPercents(payment.installments.length);
-    update({ installments: payment.installments.map((row, index) => ({ ...row, percent: percents[index] })) });
-  };
-  const fillTerms = () => update({
-    paymentTerms: paymentPlanSummary({ type: "installment", installments: payment.installments }, totalAmount),
-  });
-  // เลือกชุดจากคลัง = ทับทั้งการ์ด (วิธีชำระ + ข้อความเงื่อนไข + ตารางงวด) แล้วแก้ต่อได้
+
   const applyPreset = (option) => {
     const next = paymentPresetToFormValue(option);
-    if (!next) { update({ presetVersionId: null }); return; }
+    if (!next) {
+      update({ presetVersionId: null });
+      return;
+    }
     update({ ...next, presetVersionId: option.versionId });
   };
 
@@ -85,7 +41,7 @@ export default function QuotationPaymentTerms({
       <div className={styles.paymentHeading}>
         <div className={styles.paymentTitle}>
           <CircleDollarSign size={17} aria-hidden="true" />
-          <h2>เงื่อนไขการชำระเงิน</h2>
+          <h2>เงื่อนไขการชำระ</h2>
         </div>
         <div className="spacer" />
         <CommercialPresetPicker
@@ -96,57 +52,45 @@ export default function QuotationPaymentTerms({
           matchesCurrent={(option) => matchesPaymentPreset(payment, option)}
           onApply={applyPreset}
         />
-        <button
-          type="button"
-          role="switch"
-          aria-checked={payment.type === "installment"}
-          className={`${styles.installmentToggle} ${payment.type === "installment" ? styles.installmentOn : ""}`.trim()}
-          disabled={disabled}
-          onClick={switchType}
-        >
-          <span className={styles.toggleTrack}><span /></span>
-          {/* ชุดการชำระแบบเต็มจำนวนจากคลังมาเป็นตาราง 1 งวด 100% — ป้ายต้องไม่อ่านว่า "แบ่งงวด" */}
-          <span><strong>แบ่งชำระเป็นงวด</strong><small>{payment.type !== "installment" ? "ชำระเต็มจำนวน" : payment.installments.length === 1 ? "งวดเดียว (เต็มจำนวน)" : "เปิดใช้งาน"}</small></span>
-        </button>
       </div>
 
       <div className={styles.paymentTermsGrid}>
-        <label>วิธีการชำระเงิน
-          <input className="premium-input" value={payment.paymentMethod} disabled={disabled} placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด" onChange={(event) => update({ paymentMethod: event.target.value })} />
-        </label>
-        <label>ข้อความเงื่อนไขชำระ
-          <textarea className="premium-input" rows={3} value={payment.paymentTerms} disabled={disabled} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ" onChange={(event) => update({ paymentTerms: event.target.value })} />
-          {!disabled && payment.type === "installment" && <button type="button" className={styles.fillTermsButton} onClick={fillTerms}>สร้างข้อความจากงวด</button>}
-        </label>
+        {disabled ? (
+          <div className={styles.paymentField}>
+            <span className={styles.paymentFieldLabel}>วิธีการชำระ</span>
+            <div className="readable-field">
+              <ReadableText text={payment.paymentMethod} lines={3} empty={<span className="readable-field-empty">ไม่ได้ระบุ</span>} />
+            </div>
+          </div>
+        ) : (
+          <label>วิธีการชำระ
+            <input
+              className="premium-input"
+              value={payment.paymentMethod}
+              placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด"
+              onChange={(event) => update({ paymentMethod: event.target.value })}
+            />
+          </label>
+        )}
+        {disabled ? (
+          <div className={styles.paymentField}>
+            <span className={styles.paymentFieldLabel}>ข้อความเงื่อนไขการชำระ</span>
+            <div className="readable-field">
+              <ReadableText text={payment.paymentTerms} lines={5} empty={<span className="readable-field-empty">ไม่ได้ระบุ</span>} />
+            </div>
+          </div>
+        ) : (
+          <label>ข้อความเงื่อนไขการชำระ
+            <textarea
+              className="textarea-premium"
+              rows={3}
+              value={payment.paymentTerms}
+              placeholder="เช่น เครดิต 30 วันนับจากวันส่งมอบ"
+              onChange={(event) => update({ paymentTerms: event.target.value })}
+            />
+          </label>
+        )}
       </div>
-
-      {payment.type === "installment" && (
-        <div className={styles.installmentPanel}>
-          <div className="toolbar" style={{ marginBottom: 10, gap: 8 }}>
-            {!disabled && <button type="button" className="btn ghost sm" disabled={payment.installments.length >= MAX_INSTALLMENTS} onClick={addInstallment}><Plus size={13} aria-hidden="true" /> เพิ่มงวด</button>}
-            {!disabled && <button type="button" className="btn ghost sm" onClick={recalcEven}>เกลี่ย % เท่ากัน</button>}
-            <div className="spacer" />
-            <span className="ui-badge" style={{ color: Math.abs(pctSum - 100) < 0.01 ? "var(--green)" : "var(--red)" }}>รวม {pctSum}%{Math.abs(pctSum - 100) < 0.01 ? "" : " (ต้อง 100%)"}</span>
-          </div>
-          <div className="premium-glass-table table-responsive">
-            <table className="w-full text-sm">
-              <thead><tr><th style={{ width: 40 }}>งวด</th><th>รายละเอียด</th><th style={{ width: 90 }}>%</th><th className="num" style={{ width: 120 }}>จำนวนเงิน</th><th>หมายเหตุ</th>{!disabled && <th style={{ width: 40 }}></th>}</tr></thead>
-              <tbody>
-                {payment.installments.map((row, index) => (
-                  <tr key={index} className="premium-row">
-                    <td className={styles.rowNumber}>{index + 1}</td>
-                    <td><input className="premium-input" value={row.label} disabled={disabled} placeholder={`งวดที่ ${index + 1}`} onChange={(event) => updateInstallment(index, { label: event.target.value })} /></td>
-                    <td><input type="number" min="0" max="100" step="0.01" className="premium-input mono" value={row.percent} disabled={disabled} onChange={(event) => updateInstallment(index, { percent: event.target.value })} /></td>
-                    <td className="num mono">{fmtMoney(amounts[index]?.amount || 0)}</td>
-                    <td><input className="premium-input" value={row.note} disabled={disabled} placeholder="เช่น ก่อนเริ่มงาน" onChange={(event) => updateInstallment(index, { note: event.target.value })} /></td>
-                    {!disabled && <td><button type="button" className="btn-icon danger" disabled={payment.installments.length <= 2} onClick={() => removeInstallment(index)} aria-label={`ลบงวด ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </>
   );
 }

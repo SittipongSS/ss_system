@@ -3,6 +3,7 @@ import Modal from "@/components/Modal";
 import { fmtMoney, fmtDate, fmtDateNumeric } from "@/lib/format";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import ReadableText from "@/components/ui/ReadableText";
 import { useCan } from "@/lib/roleContext";
 
 // Read-only detail of one PO (orders row) and its line items.
@@ -67,13 +68,21 @@ export default function OrderDetailModal({ order, open, onClose }) {
               <div className="text-[var(--text-2)]">{fmtDate(order.taxDueDate)}</div>
             </div>
           )}
+          {order.remarks && order.remarks !== "-" && (
+            <div className="col-span-2">
+              <div className="text-[var(--text-3)] text-xs">หมายเหตุ</div>
+              <div className="readable-field mt-1">
+                <ReadableText text={order.remarks} lines={4} />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Rejection reason */}
         {order.status === "rejected" && order.rejectionReason && (
           <div className="text-xs bg-[var(--red-soft)] border border-[var(--border)] rounded-lg p-3">
             <div className="text-[var(--red)] font-semibold mb-1">เหตุผลที่ตีกลับ</div>
-            <div className="text-[var(--text-2)]">{order.rejectionReason}</div>
+            <ReadableText className="text-[var(--text-2)]" text={order.rejectionReason} lines={4} />
           </div>
         )}
 
@@ -133,7 +142,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
                       {it.product?.fgCode || "-"}
                     </td>
                     <td className="text-xs text-[var(--text-2)]">
-                      {it.product?.productDescriptionEn || it.product?.productDescription || "-"}
+                      <ReadableText text={it.product?.productDescriptionEn || it.product?.productDescription} lines={3} empty="-" />
                     </td>
                     <td className="text-center font-mono font-semibold">{it.quantity}</td>
                     <td className="num font-mono font-bold text-[var(--text)]">

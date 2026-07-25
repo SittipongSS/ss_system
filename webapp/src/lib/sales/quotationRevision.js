@@ -1,6 +1,6 @@
 import { quoteTotals, toMoney } from '@/lib/salesPlanning';
 import { normalizeManualLines } from '@/lib/sales/quoteLines';
-import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
+import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 
 export function buildQuotationRevisionContent(quote, body = {}) {
   const lines = 'lines' in body
@@ -25,7 +25,7 @@ export function buildQuotationRevisionContent(quote, body = {}) {
     totals.totalAmount,
   );
   const paymentTerms = 'paymentTerms' in body
-    ? (body.paymentTerms || '').trim() || paymentPlanSummary(paymentPlan, totals.totalAmount)
+    ? (body.paymentTerms || '').trim() || null
     : quote.paymentTerms;
 
   return {

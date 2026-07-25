@@ -46,7 +46,7 @@ export default function SettingsPage() {
           href: "/settings/commercial-presets",
           icon: WalletCards,
           title: "คลังเงื่อนไขการค้า",
-          desc: "ชุดการชำระและชุดหมายเหตุที่คนทำใบเสนอราคาเลือกใช้จาก dropdown แบบมีเวอร์ชัน",
+          desc: "เทมเพลตเงื่อนไขการชำระและชุดหมายเหตุที่คนทำใบเสนอราคาเลือกใช้จาก dropdown แบบมีเวอร์ชัน",
           show: canCommercial,
         },
       ],

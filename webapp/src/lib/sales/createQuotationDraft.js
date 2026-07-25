@@ -8,7 +8,7 @@ import { recordAudit } from '@/lib/audit';
 import { dealAuditLabel, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
-import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
+import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 
@@ -55,7 +55,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   // สหมิตรที่ยอดรวม VAT) ได้; ผู้ใช้สลับเป็น "รวม VAT แล้ว" (0) ในใบได้เสมอ
   const vatRate = toMoney(body.vatRate, 7);
   const totals = quoteTotals(lines, { discountType, discountValue, vatRate });
-  // งวดชำระ: เติมยอดจาก % ของยอดรวม + สรุปเป็นข้อความ paymentTerms (แก้ทับได้)
+  // งวดชำระ: เติมยอดจาก % ของยอดรวม โดยไม่สร้างหรือแก้ข้อความเงื่อนไขการชำระ
   const paymentPlan = normalizePaymentPlan(body.paymentPlan, totals.totalAmount);
   // ใบใหม่เริ่มเป็น "ร่าง + รออนุมัติ" เสมอ (มติ 2026-07-18): ส่งลูกค้าตอนสร้างไม่ได้
   // เพราะต้องให้เจ้าของดีลอนุมัติก่อน (flow: ร่าง → อนุมัติ → ส่ง). ไม่รับ status='sent'.
@@ -95,7 +95,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       discountValue,
       vatRate,
       paymentPlan,
-      paymentTerms: (body.paymentTerms || '').trim() || paymentPlanSummary(paymentPlan, totals.totalAmount),
+      paymentTerms: (body.paymentTerms || '').trim() || null,
       // ใบใหม่เริ่มที่ "ร่าง ยังไม่ยื่น" (mig 0155) — ต้องกดยื่นอนุมัติเองก่อนเข้าคิวเจ้าของดีล
       // (เดิมเกิดมาเป็น 'pending' ทันที = อนุมัติใบที่ยังกรอกไม่เสร็จได้ และไม่มีจุดลงนามผู้เสนอราคา)
       // ใบเดิม grandfather เป็น not_required ไว้ที่ mig 0114

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Edit3, Eye, FilePlus2, Plus, Send, Trash2, WalletCards } from "lucide-react";
+import { AlertTriangle, Edit3, Eye, FilePlus2, Send, Trash2, WalletCards } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
+import ReadableText from "@/components/ui/ReadableText";
 import { useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { canManageCommercialPresets } from "@/lib/permissions";
@@ -18,14 +19,11 @@ import {
   COMMERCIAL_PRESET_LIMITS,
   commercialPresetStatusLabel,
   commercialPresetSummary,
-  fullPaymentInstallment,
-  installmentPercentTotal,
-  isFullPaymentPlan,
 } from "@/lib/commercialPresets";
 import styles from "./page.module.css";
 
 const KIND_HINTS = Object.freeze({
-  payment: "วิธีชำระ รายละเอียด และตารางงวด — คนทำใบเลือกทีละชุด",
+  payment: "วิธีชำระและข้อความเงื่อนไข — ไม่รวมงวดการชำระของใบ",
   remarks: "ข้อความหมายเหตุที่พิมพ์บนใบเสนอราคา เช่น หมายเหตุ SCENT / NPD",
 });
 
@@ -34,11 +32,9 @@ const EMPTY_FORM = Object.freeze({
   paymentMethod: "",
   paymentTerms: "",
   remarks: "",
-  installments: [],
   changeNote: "",
 });
 
-const EMPTY_INSTALLMENT = { label: "", percent: "", trigger: "", dueRule: "", note: "" };
 const dateTime = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" });
 const formatDateTime = (value) => value ? dateTime.format(new Date(value)) : "-";
 const actorOf = (row) => row?.publishedByName || row?.archivedByName || row?.updatedByName || row?.createdByName || "ระบบ";
@@ -53,68 +49,8 @@ function formFrom(row) {
     paymentMethod: row?.paymentMethod || "",
     paymentTerms: row?.paymentTerms || "",
     remarks: row?.remarks || "",
-    installments: Array.isArray(row?.installments) && row.installments.length
-      ? row.installments.map((item) => ({ ...item, percent: String(item.percent) }))
-      : [{ ...fullPaymentInstallment(), percent: "100" }],
     changeNote: row?.changeNote || "",
   };
-}
-
-// ตารางงวดมีเสมอ: ปิดสวิตช์ = 1 แถว 100% (แก้ได้เฉพาะชื่อ/เงื่อนไข/หมายเหตุ)
-function InstallmentEditor({ rows, setRows }) {
-  const split = rows.length > 1;
-  const total = installmentPercentTotal(rows);
-  const update = (index, field, value) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
-  const toggleSplit = () => setRows((current) => split
-    ? [{ ...current[0], label: current[0]?.label || "ชำระเต็มจำนวน", percent: "100" }]
-    : [{ ...current[0], label: current[0]?.label || "มัดจำ", percent: "50" }, { ...EMPTY_INSTALLMENT, label: "งวดสุดท้าย", percent: "50" }]);
-
-  return (
-    <section className={styles.formSection}>
-      <div className={styles.sectionTitle}>
-        <div>
-          <h4>ตารางงวดชำระ</h4>
-          <p>{split ? `แบ่งได้ถึง ${COMMERCIAL_PRESET_LIMITS.installmentCount} งวด ผลรวมต้องเท่ากับ 100%` : "ชำระเต็มจำนวน = 1 งวด 100% (ยังกรอกเงื่อนไข/กำหนดชำระได้)"}</p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={split}
-          className={`${styles.planToggle} ${split ? styles.on : ""}`.trim()}
-          onClick={toggleSplit}
-        >
-          <span className={styles.track}><span /></span>
-          <b>แบ่งชำระเป็นงวด</b>
-        </button>
-      </div>
-
-      <div className={styles.installmentList}>
-        {rows.map((row, index) => (
-          <article key={index} className={styles.installmentCard}>
-            <header>
-              <strong>{split ? `งวดที่ ${index + 1}` : "การชำระ"}</strong>
-              {split && rows.length > 2 && (
-                <button type="button" className="btn-icon danger" aria-label={`ลบงวดที่ ${index + 1}`} onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}><Trash2 size={14} /></button>
-              )}
-            </header>
-            <div className={styles.formGrid}>
-              <label>ชื่อรายการ <b>*</b><input className="premium-input" required maxLength={COMMERCIAL_PRESET_LIMITS.installmentLabel} value={row.label} onChange={(event) => update(index, "label", event.target.value)} /></label>
-              <label>เปอร์เซ็นต์ <b>*</b><input className="premium-input" required type="number" min="0.01" max="100" step="0.01" value={row.percent} disabled={!split} onChange={(event) => update(index, "percent", event.target.value)} /></label>
-              <label className={styles.full}>เงื่อนไขเริ่มชำระ<input className="premium-input" maxLength={COMMERCIAL_PRESET_LIMITS.installmentRule} value={row.trigger || ""} placeholder="เช่น เมื่อยืนยันคำสั่งซื้อ" onChange={(event) => update(index, "trigger", event.target.value)} /></label>
-              <label className={styles.full}>กำหนดชำระ<input className="premium-input" maxLength={COMMERCIAL_PRESET_LIMITS.installmentRule} value={row.dueRule || ""} placeholder="เช่น ภายใน 7 วัน" onChange={(event) => update(index, "dueRule", event.target.value)} /></label>
-              <label className={styles.full}>หมายเหตุ<input className="premium-input" maxLength={COMMERCIAL_PRESET_LIMITS.installmentNote} value={row.note || ""} onChange={(event) => update(index, "note", event.target.value)} /></label>
-            </div>
-          </article>
-        ))}
-        {split && (
-          <>
-            <button type="button" className="btn sm" onClick={() => setRows((current) => [...current, { ...EMPTY_INSTALLMENT }])} disabled={rows.length >= COMMERCIAL_PRESET_LIMITS.installmentCount}><Plus size={14} /> เพิ่มงวด</button>
-            <div className={`${styles.total} ${Math.abs(total - 100) <= 0.001 ? styles.valid : styles.invalid}`}><span>รวม</span><strong>{total.toFixed(2)}%</strong></div>
-          </>
-        )}
-      </div>
-    </section>
-  );
 }
 
 function PresetFields({ kind, form, setForm }) {
@@ -122,7 +58,7 @@ function PresetFields({ kind, form, setForm }) {
   return (
     <>
       <section className={styles.formSection}>
-        <h4>{kind === "payment" ? "ชุดการชำระ" : "ชุดหมายเหตุ"}</h4>
+        <h4>{kind === "payment" ? "เทมเพลตเงื่อนไขการชำระ" : "ชุดหมายเหตุ"}</h4>
         <label>ชื่อชุด <b>*</b>
           <input className="premium-input" required maxLength={COMMERCIAL_PRESET_LIMITS.title} value={form.title} placeholder={kind === "payment" ? "เช่น โอน · เครดิต 30 วัน" : "เช่น หมายเหตุ SCENT"} onChange={(event) => update("title", event.target.value)} />
         </label>
@@ -132,16 +68,10 @@ function PresetFields({ kind, form, setForm }) {
             <label className={styles.full}>วิธีชำระเงิน <b>*</b><input className="premium-input" required maxLength={COMMERCIAL_PRESET_LIMITS.paymentMethod} value={form.paymentMethod} placeholder="เช่น โอนเงินเข้าบัญชีบริษัท" onChange={(event) => update("paymentMethod", event.target.value)} /></label>
             <label className={styles.full}>รายละเอียดการชำระ<textarea className="textarea-premium" rows={4} maxLength={COMMERCIAL_PRESET_LIMITS.paymentTerms} value={form.paymentTerms} placeholder="เช่น ธนาคารกสิกรไทย เลขที่บัญชี xxx-x-xxxxx-x · เครดิต 30 วันนับจากวันส่งมอบ" onChange={(event) => update("paymentTerms", event.target.value)} /></label>
           </div>
-        ) : (
+          ) : (
           <label>รายละเอียดหมายเหตุ <b>*</b><textarea className="textarea-premium" rows={8} maxLength={COMMERCIAL_PRESET_LIMITS.remarks} value={form.remarks} placeholder="ข้อความที่จะพิมพ์ในช่องหมายเหตุของใบเสนอราคา" onChange={(event) => update("remarks", event.target.value)} /></label>
         )}
       </section>
-      {kind === "payment" && (
-        <InstallmentEditor
-          rows={form.installments}
-          setRows={(updater) => setForm((current) => ({ ...current, installments: typeof updater === "function" ? updater(current.installments) : updater }))}
-        />
-      )}
       <section className={styles.formSection}>
         <h4>หลักฐานการเปลี่ยนแปลง</h4>
         <label>หมายเหตุการเปลี่ยนแปลง <b>* ก่อนเผยแพร่</b><textarea className="textarea-premium" maxLength={COMMERCIAL_PRESET_LIMITS.changeNote} value={form.changeNote} placeholder="ระบุเหตุผลหรือสิ่งที่เปลี่ยน" onChange={(event) => update("changeNote", event.target.value)} /></label>
@@ -151,7 +81,6 @@ function PresetFields({ kind, form, setForm }) {
 }
 
 function PresetPreview({ kind, row }) {
-  const installments = Array.isArray(row?.installments) ? row.installments : [];
   return (
     <div className={styles.preview}>
       <header>
@@ -160,22 +89,12 @@ function PresetPreview({ kind, row }) {
         <small>{commercialPresetStatusLabel(row?.status)}</small>
       </header>
       {kind === "payment" ? (
-        <>
-          <dl>
-            <div><dt>วิธีชำระเงิน</dt><dd>{row?.paymentMethod || "-"}</dd></div>
-            <div><dt>รายละเอียดการชำระ</dt><dd>{row?.paymentTerms || "-"}</dd></div>
-          </dl>
-          {installments.length > 0 && (
-            <div className={styles.previewTable}>
-              <table>
-                <thead><tr><th>{isFullPaymentPlan(installments) ? "การชำระ" : "งวด"}</th><th>%</th><th>เงื่อนไข / กำหนดชำระ</th></tr></thead>
-                <tbody>{installments.map((item, index) => <tr key={index}><td>{item.label}</td><td>{Number(item.percent).toFixed(2)}</td><td>{[item.trigger, item.dueRule, item.note].filter(Boolean).join(" · ") || "-"}</td></tr>)}</tbody>
-              </table>
-            </div>
-          )}
-        </>
+        <dl>
+          <div><dt>วิธีชำระเงิน</dt><dd><ReadableText text={row?.paymentMethod} lines={3} empty="-" /></dd></div>
+          <div><dt>รายละเอียดการชำระ</dt><dd><ReadableText text={row?.paymentTerms} lines={5} empty="-" /></dd></div>
+        </dl>
       ) : (
-        <dl><div><dt>รายละเอียดหมายเหตุ</dt><dd>{row?.remarks || "-"}</dd></div></dl>
+        <dl><div><dt>รายละเอียดหมายเหตุ</dt><dd><ReadableText text={row?.remarks} lines={5} empty="-" /></dd></div></dl>
       )}
     </div>
   );
@@ -232,9 +151,7 @@ export default function CommercialPresetsPage() {
         ...form,
         kind: drawerKind,
         documentKey: "quotation",
-        installments: drawerKind === "payment"
-          ? form.installments.map((row) => ({ ...row, percent: Number(row.percent) }))
-          : [],
+        installments: [],
       };
       const saved = await request(creating ? "/api/commercial-presets" : `/api/commercial-presets/draft/${drawerRow.id}`, {
         method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" },
@@ -309,7 +226,7 @@ export default function CommercialPresetsPage() {
 
   return (
     <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
-      <header className="premium-header"><div className="header-content"><h1><span className="premium-header-icon"><WalletCards size={22} /></span> คลังเงื่อนไขการค้า</h1><p>ชุดการชำระและชุดหมายเหตุที่คนทำใบเสนอราคาเลือกใช้จาก dropdown</p></div></header>
+      <header className="premium-header"><div className="header-content"><h1><span className="premium-header-icon"><WalletCards size={22} /></span> คลังเงื่อนไขการค้า</h1><p>เทมเพลตเงื่อนไขการชำระและชุดหมายเหตุที่คนทำใบเสนอราคาเลือกใช้จาก dropdown</p></div></header>
 
       <div className={styles.notice}>
         <AlertTriangle size={17} />
@@ -431,7 +348,7 @@ export default function CommercialPresetsPage() {
                 <div><dt>สถานะ</dt><dd>{commercialPresetStatusLabel(drawerRow.status)}</dd></div>
                 <div><dt>ผู้ดำเนินการ</dt><dd>{actorOf(drawerRow)}</dd></div>
                 <div><dt>เวลาล่าสุด</dt><dd>{formatDateTime(drawerRow.publishedAt || drawerRow.archivedAt || drawerRow.updatedAt)}</dd></div>
-                <div><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd>{drawerRow.changeNote || "-"}</dd></div>
+                <div><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd><ReadableText text={drawerRow.changeNote} lines={4} empty="-" /></dd></div>
               </dl>
             </section>
             <section className={styles.historySection}>

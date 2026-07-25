@@ -1,6 +1,7 @@
 import { fmtDate } from '@/lib/format';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
+import { paymentScheduleRows } from '@/lib/sales/paymentPlan';
 import {
   DEFAULT_NUMBERING_PATTERNS,
   formatDocumentNumber,
@@ -233,7 +234,7 @@ const V4_BANNER = 1; // ป้าย "รายการต่อ" 15px
 const V4_TOTALS = 6; // 87px + ระยะห่าง
 const V4_SAFETY = 2; // กันประเมินความยาวข้อความพลาด — ห้ามล้นเพราะ overflow:hidden ตัดเงียบ
 const V4_SIGNATURES = 9; // 145px + ระยะห่าง
-const V4_TERMS_BASE = 6; // หัวข้อ+padding กล่องเงื่อนไข 3 กล่อง
+const V4_TERMS_BASE = 8; // หัวข้อสองภาษา+padding กล่องเงื่อนไข 3 กล่อง (typography อ่านง่าย)
 const V4_INSTALLMENT_BASE = 3; // หัวข้อ+หัวตารางงวด
 const V4_INSTALLMENT_ROW = 2; // 25px/งวด
 
@@ -256,9 +257,14 @@ const V4_CONTINUATION_CAPACITY = V4_PAGE_UNITS - V4_BANNER - V4_THEAD - V4_SAFET
 // ความสูงกลุ่มท้ายเอกสาร (งวดชำระ + เงื่อนไข + ลงชื่อ) — กล่องวิธีชำระกับเงื่อนไข
 // อยู่ข้างกันจึงคิดตามกล่องที่สูงกว่า หมายเหตุเต็มแถวคิดแยก
 function v4GroupUnits({ installments, paymentMethod, paymentTerms, remarks }) {
-  const methodLines = Math.max(1, Math.ceil(String(paymentMethod || '').length / 55));
-  const termsLines = Math.max(1, Math.ceil(String(paymentTerms || '').length / 65));
-  const remarksLines = Math.max(1, Math.ceil(String(remarks || '').length / 140));
+  const estimatedLines = (value, charsPerLine) => String(value || '')
+    .split(/\r?\n/)
+    .reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+  // ค่าต่อบรรทัดสอดคล้องกับสัดส่วนคอลัมน์ .85/1.15 และ remarks กว้างไม่เกิน 168mm
+  // ต้องนับ newline จากผู้ใช้เป็นบรรทัดจริง เพราะ CSS ใช้ white-space: pre-wrap.
+  const methodLines = estimatedLines(paymentMethod, 45);
+  const termsLines = estimatedLines(paymentTerms, 62);
+  const remarksLines = estimatedLines(remarks, 112);
   return (installments.length ? V4_INSTALLMENT_BASE + V4_INSTALLMENT_ROW * installments.length : 0)
     + V4_TERMS_BASE + Math.max(methodLines, termsLines) + remarksLines
     + V4_SIGNATURES;
@@ -690,14 +696,15 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     }));
 
   const paymentPlan = quote.paymentPlan || {};
-  const installments = paymentPlan.type === 'installment' && Array.isArray(paymentPlan.installments) && paymentPlan.installments.length
-    ? paymentPlan.installments.map((row) => ({
+  const installments = paymentScheduleRows(paymentPlan)
+    .map((row) => ({
       label: row.label || '',
       note: row.note || '',
       percent: Number(row.percent || 0),
-      amount: Number(row.amount || 0),
-    }))
-    : [{ label: 'ชำระเต็มจำนวน', note: '', percent: 100, amount: Number(quote.totalAmount || 0) }];
+      amount: paymentPlan.type === 'installment'
+        ? Number(row.amount || 0)
+        : Number(quote.totalAmount || 0),
+    }));
 
   const customer = {
     name: quote.customerName || '-',

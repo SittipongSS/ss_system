@@ -3,6 +3,7 @@
 // การ์ด "หมายเหตุ" ของใบเสนอราคา — component เดียวใช้ทั้งหน้าสร้างและหน้าแก้ (กฎ AGENTS.md)
 // เลือกชุดหมายเหตุจากคลังได้ 1 ชุด เลือกแล้วทับทั้งช่อง แล้วแก้ทับได้เฉพาะใบนี้
 import { FileText } from "lucide-react";
+import ReadableText from "@/components/ui/ReadableText";
 import { matchesRemarksPreset, remarksPresetToFormValue } from "@/lib/commercialPresets";
 import CommercialPresetPicker from "./CommercialPresetPicker";
 import styles from "./QuotationNotes.module.css";
@@ -37,15 +38,24 @@ export default function QuotationNotes({
           onApply={applyPreset}
         />
       </div>
-      <textarea
-        className="premium-input"
-        rows={4}
-        value={value}
-        disabled={disabled}
-        placeholder="หมายเหตุที่ต้องการแสดงในใบเสนอราคา"
-        onChange={(event) => onChange?.(event.target.value)}
-        style={{ width: "100%" }}
-      />
+      {disabled ? (
+        <div className="readable-field">
+          <ReadableText
+            text={value}
+            lines={5}
+            empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>}
+          />
+        </div>
+      ) : (
+        <textarea
+          className="premium-input"
+          rows={4}
+          value={value}
+          placeholder="หมายเหตุที่ต้องการแสดงในใบเสนอราคา"
+          onChange={(event) => onChange?.(event.target.value)}
+          style={{ width: "100%" }}
+        />
+      )}
     </>
   );
 }

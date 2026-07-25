@@ -257,6 +257,33 @@ button, select, input, textarea {
   outline-offset: 2px;
 }
 
+/* Read-only counterpart of form controls. Long values should remain readable
+   after a document is locked instead of being trapped inside disabled inputs. */
+.readable-field {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel-2) 78%, transparent);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 450;
+}
+
+.readable-field.is-compact {
+  padding: 7px 9px;
+  font-size: 12.5px;
+}
+
+.readable-field .readable-text {
+  max-inline-size: none;
+}
+
+.readable-field-empty {
+  color: var(--text-3);
+  font-weight: 450;
+}
+
 .numeric-input,
 .num,
 .tabular-nums {

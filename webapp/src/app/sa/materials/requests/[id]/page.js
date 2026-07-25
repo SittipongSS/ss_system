@@ -7,6 +7,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import Toast from "@/components/ui/Toast";
+import ReadableText from "@/components/ui/ReadableText";
 import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { inSalesEditScope } from "@/lib/salesPlanning";
@@ -115,9 +116,9 @@ export default function MaterialRequestDetailPage() {
         <span className="status-pill" style={{ color: STATUS_TONES[req.status], borderColor: "currentColor" }}>
           {STATUS_LABELS[req.status] || req.status}
         </span>
-        {req.note && <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-2)" }}>{req.note}</p>}
+        {req.note && <ReadableText text={req.note} lines={4} style={{ marginTop: 12, fontSize: 13, color: "var(--text-2)" }} />}
         {req.status === "cancelled" && req.cancelReason && (
-          <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--red)" }}>เหตุผลที่ยกเลิก: {req.cancelReason}</p>
+          <div style={{ marginTop: 8, fontSize: 13, color: "var(--red)" }}><strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={req.cancelReason} lines={4} /></div>
         )}
       </div>
 

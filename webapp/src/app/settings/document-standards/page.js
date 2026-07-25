@@ -10,6 +10,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
+import ReadableText from "@/components/ui/ReadableText";
 import { useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { canManageDocumentStandards } from "@/lib/permissions";
@@ -307,10 +308,10 @@ export default function DocumentStandardsPage() {
             </header>
             <div className={`premium-table-wrapper ${base.historyTable}`}>
               <table className="premium-table"><thead><tr><th>Version</th><th>สถานะ</th><th>แบบฟอร์ม</th><th>Accent</th><th>หมายเหตุ</th><th>ผู้ดำเนินการ</th><th>วันที่</th><th aria-label="การทำงาน" /></tr></thead><tbody>
-                {versions.map((row) => <tr key={row.id}><td><strong>Version {row.versionNumber}</strong><small>{row.id}</small></td><td><StatusBadge status={row.status} /></td><td><span className="mono">{row.formCode}</span><small>Rev.{row.revision}</small></td><td><AccentMark accentKey={row.accentKey} label={false} /></td><td>{row.changeNote || "-"}</td><td>{actorOf(row)}</td><td>{formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</td><td><button type="button" className="btn ghost sm" onClick={() => openView(row)}><Eye size={14} /> ดูรายละเอียด</button></td></tr>)}
+                {versions.map((row) => <tr key={row.id}><td><strong>Version {row.versionNumber}</strong><small>{row.id}</small></td><td><StatusBadge status={row.status} /></td><td><span className="mono">{row.formCode}</span><small>Rev.{row.revision}</small></td><td><AccentMark accentKey={row.accentKey} label={false} /></td><td><ReadableText text={row.changeNote} lines={3} empty="-" /></td><td>{actorOf(row)}</td><td>{formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</td><td><button type="button" className="btn ghost sm" onClick={() => openView(row)}><Eye size={14} /> ดูรายละเอียด</button></td></tr>)}
               </tbody></table>
             </div>
-            <div className={base.historyCards}>{versions.map((row) => <article key={row.id} className={base.card}><div className={base.cardHead}><strong>Version {row.versionNumber} · {row.formCode}</strong><StatusBadge status={row.status} /></div><p>{row.changeNote || "ไม่มีหมายเหตุ"}</p><small>{actorOf(row)} · {formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</small><button type="button" className="btn ghost" onClick={() => openView(row)}><Eye size={15} /> ดูรายละเอียด</button></article>)}</div>
+            <div className={base.historyCards}>{versions.map((row) => <article key={row.id} className={base.card}><div className={base.cardHead}><strong>Version {row.versionNumber} · {row.formCode}</strong><StatusBadge status={row.status} /></div><ReadableText text={row.changeNote} lines={3} empty="ไม่มีหมายเหตุ" style={{ margin: "10px 0", color: "var(--text-2)", fontSize: 12.5 }} /><small>{actorOf(row)} · {formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</small><button type="button" className="btn ghost" onClick={() => openView(row)}><Eye size={15} /> ดูรายละเอียด</button></article>)}</div>
             </section>
           </div>
 
@@ -343,7 +344,7 @@ export default function DocumentStandardsPage() {
             <LiveDocumentPreview documentKey={selected.documentKey || selectedKey} standard={selected} className={styles.previewInDrawer} />
             <section className={base.drawerSection}><h4>ตัวตนของเอกสารควบคุม</h4><div className={base.detailGrid}><div className={base.full}><span>ชื่อภาษาไทย</span><strong>{selected.titleTh}</strong></div><div className={base.full}><span>ชื่อภาษาอังกฤษ</span><strong>{selected.titleEn || "-"}</strong></div><div><span>รหัสแบบฟอร์ม</span><strong className="mono">{selected.formCode}</strong></div><div><span>Revision</span><strong className="mono">{selected.revision}</strong></div><div><span>วันที่มีผล</span><strong>{formatEffectiveDate(selected.effectiveDate)}</strong></div><div><span>สี Accent</span><strong><AccentMark accentKey={selected.accentKey} /></strong></div></div></section>
             <section className={base.drawerSection}><h4>เลขที่เอกสาร</h4><div className={base.detailGrid}><div className={base.full}><span>Numbering pattern</span><strong className="mono">{selected.numberingPattern}</strong></div><div className={base.full}><span>ตัวอย่าง</span><strong className="mono">{numberingPatternExample(selected.numberingPattern, "0")}</strong></div></div></section>
-            <section className={base.drawerSection}><h4>ประวัติเวอร์ชัน</h4><div className={base.detailGrid}><div className={base.full}><span>หมายเหตุ</span><strong>{selected.changeNote || "-"}</strong></div><div><span>สร้างโดย</span><strong>{selected.createdByName || "ระบบ"}</strong></div><div><span>สร้างเมื่อ</span><strong>{formatDateTime(selected.createdAt)}</strong></div><div><span>ดำเนินการล่าสุดโดย</span><strong>{actorOf(selected)}</strong></div><div><span>เวลาล่าสุด</span><strong>{formatDateTime(selected.publishedAt || selected.archivedAt || selected.updatedAt)}</strong></div></div></section>
+            <section className={base.drawerSection}><h4>ประวัติเวอร์ชัน</h4><div className={base.detailGrid}><div className={base.full}><span>หมายเหตุ</span><ReadableText text={selected.changeNote} lines={4} empty="-" /></div><div><span>สร้างโดย</span><strong>{selected.createdByName || "ระบบ"}</strong></div><div><span>สร้างเมื่อ</span><strong>{formatDateTime(selected.createdAt)}</strong></div><div><span>ดำเนินการล่าสุดโดย</span><strong>{actorOf(selected)}</strong></div><div><span>เวลาล่าสุด</span><strong>{formatDateTime(selected.publishedAt || selected.archivedAt || selected.updatedAt)}</strong></div></div></section>
           </div>
         ) : null}
       </RecordDrawer>
