@@ -96,6 +96,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const ownerId = item.ownerId || null;
     if (ownerId && !team) return badRequest('ประวัติรายบุคคลต้องมีทีม');
 
+    // เขียนทับเฉพาะยอดที่ผู้เรียก "ส่งมาจริง" — ไม่ส่ง = ไม่แตะ ไม่ใช่ตั้งเป็น 0
+    // (หน้ายอดขายย้อนหลังส่งแค่ actual ของแถวรายปี ถ้าเหมาว่าไม่ส่ง = 0 เป้าที่ตัวช่วย
+    //  วางเป้าบันทึกไว้ในแถวเดียวกันจะถูกล้างทิ้งเงียบ ๆ)
+    const hasTarget = Object.hasOwn(item, 'targetAmount');
+    const hasActual = Object.hasOwn(item, 'actualAmount');
     const targetAmount = toMoney(item.targetAmount);
     const actualAmount = toMoney(item.actualAmount);
     const source = ['manual', 'system', 'mixed'].includes(item.source) ? item.source : 'manual';
@@ -111,9 +116,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (findErr) return fail(findErr.message, 500);
 
     if (existing) {
+      const patch = { source, notes: item.notes || null, updatedAt: new Date().toISOString() };
+      if (hasTarget) patch.targetAmount = targetAmount;
+      if (hasActual) patch.actualAmount = actualAmount;
       const { data, error } = await supabase
         .from('sales_history')
-        .update({ targetAmount, actualAmount, source, notes: item.notes || null, updatedAt: new Date().toISOString() })
+        .update(patch)
         .eq('id', existing.id)
         .select()
         .single();

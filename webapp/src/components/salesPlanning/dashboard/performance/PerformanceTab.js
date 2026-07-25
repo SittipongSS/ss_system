@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCan, useRole } from "@/lib/roleContext";
 import { buildMatrix, closedMonths, ytdMonths } from "@/lib/sales/performanceMath";
 import { apiCache } from "@/lib/apiCache";
 import { SALES_TEAMS } from "@/components/salesPlanning/ui";
@@ -30,15 +29,41 @@ async function fetchYear(year) {
   return months;
 }
 
+function fetchHistory(year) {
+  return fetch(`/api/sales-planning/history?monthsOf=${encodeURIComponent(year)}`)
+    .then((r) => (r.ok ? r.json() : { rows: [] }))
+    .catch(() => ({ rows: [] })); // ไม่มีประวัติ = กราฟใช้ยอดระบบล้วน ไม่ใช่ error
+}
+
+// ทับเส้น Actual ด้วยยอดที่กรอกย้อนหลัง (ระดับบริษัท/ทีม — รายคนไม่รับ)
+function overlayHistory(matrix, rows) {
+  for (const row of rows || []) {
+    const mi = Number(String(row.period || "").slice(5, 7)) - 1;
+    if (mi < 0 || mi > 11 || row.ownerId) continue;
+    const amt = Number(row.actualAmount || 0);
+    if (!row.team) matrix.company.actual[mi] = amt;
+    else {
+      const team = matrix.teams.find((x) => x.team === row.team);
+      if (team) team.actual[mi] = amt;
+      else {
+        matrix.teams.push({
+          team: row.team,
+          target: Array(12).fill(0),
+          fcTotal: Array(12).fill(0),
+          forecast: Array(12).fill(0),
+          actual: Object.assign(Array(12).fill(0), { [mi]: amt }),
+        });
+      }
+    }
+  }
+  // ทับระดับทีมแล้วยอดบริษัทต้องตาม — ถ้ามีแถวบริษัทกรอกเองก็ใช้ค่านั้นอยู่แล้ว
+  return matrix;
+}
+
 export default function PerformanceTab({ year }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  // ลิงก์หน้ากรอกยอดรายเดือนปีก่อน — สิทธิ์เดียวกับตัวช่วยวางเป้า (Supervisor/admin)
-  const canTarget = useCan("salesplan:target");
-  const role = useRole();
-  const canEditHistory = canTarget && (role === "admin" || role === "ae_supervisor");
-
   const yearNum = Number(year);
   const prevYear = String(yearNum - 1);
   const now = useMemo(() => {
@@ -52,6 +77,7 @@ export default function PerformanceTab({ year }) {
   const [yearMonths, setYearMonths] = useState(() => apiCache.get(`/api/sales-planning/dashboard?year=${year}`) || null);
   const [prevMonths, setPrevMonths] = useState(null);
   const [historyRows, setHistoryRows] = useState([]);
+  const [currentHistoryRows, setCurrentHistoryRows] = useState([]);
   const [loading, setLoading] = useState(!yearMonths);
   const [error, setError] = useState("");
 
@@ -65,16 +91,18 @@ export default function PerformanceTab({ year }) {
     }
     setError("");
     try {
-      const [cur, prev, hist] = await Promise.all([
+      const [cur, prev, hist, curHist] = await Promise.all([
         fetchYear(year),
         fetchYear(prevYear).catch(() => []), // ปีก่อนไม่มีข้อมูล = กราฟ YoY ว่าง ไม่ใช่ error
-        fetch(`/api/sales-planning/history?monthsOf=${encodeURIComponent(prevYear)}`)
-          .then((r) => (r.ok ? r.json() : { rows: [] }))
-          .catch(() => ({ rows: [] })),
+        fetchHistory(prevYear),
+        // ปีปัจจุบันก็มียอดที่กรอกย้อนหลังได้ (เดือนต้นปีที่ยังไม่ได้ใช้ระบบ) — ไม่โหลด
+        // มาทับ เส้น Actual ของเดือนเหล่านั้นจะเป็น 0 ทั้งที่ขายจริง
+        fetchHistory(year),
       ]);
       setYearMonths(cur);
       setPrevMonths(prev);
       setHistoryRows(hist.rows || []);
+      setCurrentHistoryRows(curHist.rows || []);
     } catch (e) {
       setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
@@ -84,26 +112,18 @@ export default function PerformanceTab({ year }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const matrix = useMemo(() => buildMatrix(yearMonths || []), [yearMonths]);
+  // เส้น Actual: เริ่มจากยอด won ในระบบ แล้วทับด้วยแถวรายเดือนที่กรอกเองใน
+  // sales_history (periodType='month') — ใช้ทั้งปีปัจจุบันและปีก่อน เพราะช่วงที่ยังไม่ได้
+  // ใช้ระบบมีได้ทั้งสองปี · เดือนที่ไม่มีแถวกรอกเองยังใช้ยอดจากดีลตามเดิม
+  const matrix = useMemo(
+    () => overlayHistory(buildMatrix(yearMonths || []), currentHistoryRows),
+    [yearMonths, currentHistoryRows],
+  );
 
-  // Actual ปีก่อน: เริ่มจากยอด won ในระบบ แล้วทับด้วยแถวรายเดือนที่กรอกเอง
-  // (sales_history periodType='month') — กรอกได้ระดับบริษัท/ทีม (ownerId null)
-  const prevMatrix = useMemo(() => {
-    const m = buildMatrix(prevMonths || []);
-    for (const row of historyRows) {
-      const mi = Number(String(row.period || "").slice(5, 7)) - 1;
-      if (mi < 0 || mi > 11 || row.ownerId) continue;
-      const amt = Number(row.actualAmount || 0);
-      if (!row.team) m.company.actual[mi] = amt;
-      else {
-        const t = m.teams.find((x) => x.team === row.team);
-        if (t) t.actual[mi] = amt;
-        else m.teams.push({ team: row.team, target: Array(12).fill(0), fcTotal: Array(12).fill(0), forecast: Array(12).fill(0), actual: Object.assign(Array(12).fill(0), { [mi]: amt }) });
-      }
-    }
-    // ทับระดับทีมแล้วยอดบริษัทต้องตาม — ถ้ามีแถวบริษัทกรอกเองใช้ค่านั้นอยู่แล้ว
-    return m;
-  }, [prevMonths, historyRows]);
+  const prevMatrix = useMemo(
+    () => overlayHistory(buildMatrix(prevMonths || []), historyRows),
+    [prevMonths, historyRows],
+  );
 
   // ---- URL state (แชร์มุมมองได้) ----
   // ค่าเริ่มต้น = มุมมองประชุมเช้า: เดือนปัจจุบัน · เป้าปกติ (ไม่ทบยอด) · รวมทั้งบริษัท
@@ -153,7 +173,9 @@ export default function PerformanceTab({ year }) {
         </div>
       )}
 
-      <YearProgressBar {...common} carryOn={view.carry} onCarryChange={(carry) => update({ carry })} historyHref={canEditHistory ? "/sa/targets/history" : null} />
+      {/* ทางเข้าหน้ากรอกยอดย้อนหลังอยู่ที่หน้าวางเป้าที่เดียว (มติผู้ใช้ 2026-07-26) —
+          แท็บนี้เป็นหน้าอ่านผล ไม่ใช่หน้ากรอกข้อมูล */}
+      <YearProgressBar {...common} carryOn={view.carry} onCarryChange={(carry) => update({ carry })} />
 
       <MorningBoard
         {...common}
