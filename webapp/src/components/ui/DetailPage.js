@@ -1,8 +1,12 @@
 import styles from "./DetailPage.module.css";
 import Link from "next/link";
 
-export function DetailPageLayout({ children, aside, className = "" }) {
-  return <div className={`${styles.layout} ${className}`.trim()}><main className={styles.main}>{children}</main>{aside ? <aside className={styles.aside}>{aside}</aside> : null}</div>;
+export function ContextualRightRail({ children, label = "ข้อมูลสรุปและการดำเนินการ", className = "" }) {
+  return <aside className={`${styles.aside} ${className}`.trim()} aria-label={label}>{children}</aside>;
+}
+
+export function DetailPageLayout({ children, aside, asideLabel, className = "" }) {
+  return <div className={`${styles.layout} ${className}`.trim()}><main className={styles.main}>{children}</main>{aside ? <ContextualRightRail label={asideLabel}>{aside}</ContextualRightRail> : null}</div>;
 }
 
 export function ContextGrid({ children, className = "" }) {

@@ -1,0 +1,316 @@
+.panel {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--glass-shadow);
+}
+
+.summaryCard::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 35%, var(--navy)));
+  content: "";
+}
+
+.summaryLabel {
+  margin-top: 3px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.totalAmount {
+  margin: 6px 0 18px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: clamp(25px, 3vw, 34px);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+}
+
+.summaryRows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 15px 0 17px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.summaryRows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.summaryRows dt {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.summaryRows dd {
+  margin: 0;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.documentStatus,
+.controlStatus {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.documentStatus {
+  margin-top: 17px;
+}
+
+.controlStatus {
+  margin-bottom: 14px;
+}
+
+.statusDot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  margin-top: 4px;
+  border: 2px solid color-mix(in srgb, var(--state-color) 24%, transparent);
+  border-radius: var(--radius-full);
+  background: var(--state-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-color) 10%, transparent);
+}
+
+.documentStatus small {
+  display: block;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.documentStatus strong,
+.controlStatus strong {
+  display: block;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.workflowRail {
+  display: flex;
+  flex-direction: column;
+  margin: 0 -18px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.workflowStep {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workflowStep:last-child {
+  border-bottom: 0;
+}
+
+.stepMarker {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stepCopy {
+  min-width: 0;
+}
+
+.stepCopy strong,
+.stepCopy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepCopy strong {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.stepCopy small {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.done .stepMarker {
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+}
+
+.current {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.current .stepMarker {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.cancelled {
+  opacity: 0.55;
+}
+
+.notices,
+.evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.readinessList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.readinessList li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: var(--text-3);
+}
+
+.readinessList li > span:last-child {
+  min-width: 0;
+}
+
+.readinessList strong,
+.readinessList small {
+  display: block;
+  line-height: 1.4;
+}
+
+.readinessList strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.readinessList small {
+  margin-top: 2px;
+  font-size: 10.5px;
+}
+
+.readinessMarker {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-3);
+}
+
+.readinessReady {
+  color: var(--text-2) !important;
+}
+
+.readinessReady .readinessMarker {
+  border-color: color-mix(in srgb, var(--green) 42%, transparent);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+}
+
+.actionStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.action {
+  width: 100%;
+  min-height: 40px;
+  justify-content: center;
+}
+
+.action[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.dangerDivider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.footer,
+.relatedActions {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.footer {
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.relatedBody {
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.relatedActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.relatedActions :global(.btn) {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+@media (max-width: 680px) {
+  .panel {
+    padding: 18px;
+  }
+
+  .workflowRail {
+    margin-inline: -18px;
+  }
+}

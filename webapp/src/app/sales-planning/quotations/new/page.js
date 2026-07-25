@@ -7,11 +7,14 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CircleDollarSign, ClipboardList, ExternalLink, FileText, MapPin, Plus, Save, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CircleDollarSign, ClipboardList, ExternalLink, FileText, MapPin, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import { DetailPageLayout } from "@/components/ui/DetailPage";
+import { DocumentControlCard, DocumentReadinessList, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationPeopleFields from "@/components/salesPlanning/QuotationPeopleFields";
@@ -248,6 +251,71 @@ function NewQuotationInner() {
     );
   }
 
+  const overviewDescription = (
+    <>
+      <span>โครงการ: {selectedProject?.name || selectedProject?.code || "ยังไม่เลือก"}</span>
+      {" · "}
+      <span>ดีล: {selectedDeal?.title || "ยังไม่เลือก"}</span>
+      {selectedDealType ? <>{" · "}<span>ประเภท: {selectedDealType} · {DEAL_TYPE_LABELS[selectedDealType]}</span></> : null}
+    </>
+  );
+  const summaryRows = [
+    { id: "subtotal", label: "รวมรายการ", value: fmtMoney(totals.subtotal) },
+    { id: "discount", label: "ส่วนลด", value: totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : "-" },
+    ...(vatRate > 0 ? [{ id: "vat", label: `VAT ${vatRate}%`, value: fmtMoney(totals.vatAmount) }] : []),
+  ];
+  const readinessItems = [
+    {
+      id: "source",
+      label: "เลือกดีล",
+      detail: dealId ? selectedDeal?.title : "เลือกลูกค้า โครงการ และดีลตามลำดับ",
+      ready: Boolean(dealId),
+    },
+    {
+      id: "items",
+      label: "เพิ่มรายการสินค้า/บริการ",
+      detail: lines.length ? `${lines.length} รายการ` : "ยังบันทึกฉบับร่างได้ และเพิ่มรายการภายหลังได้",
+      ready: Boolean(lines.length),
+    },
+  ];
+  const rightRail = (
+    <>
+      <DocumentSummaryCard
+        title="ยอดสุทธิใบเสนอราคา"
+        total={fmtMoney(totals.totalAmount)}
+        rows={summaryRows}
+        status="ฉบับใหม่"
+        statusColor="var(--accent)"
+      />
+      <DocumentControlCard
+        eyebrow="QUOTATION CONTROL"
+        title="จัดการใบเสนอราคา"
+        status="ฉบับใหม่"
+        statusColor="var(--accent)"
+        statusDescription="ตรวจความพร้อมและบันทึกเป็นฉบับร่าง"
+        notices={<DocumentReadinessList items={readinessItems} />}
+        primaryAction={{
+          id: "save",
+          kind: "save",
+          label: creating ? "กำลังบันทึก…" : "บันทึก",
+          disabled: !dealId,
+          disabledReason: !dealId ? "เลือกดีลก่อนบันทึก" : undefined,
+          onClick: create,
+        }}
+        secondaryActions={[{
+          id: "cancel",
+          kind: "open",
+          icon: null,
+          label: "ยกเลิก",
+          variant: "ghost",
+          href: "/sa/quotations",
+        }]}
+        busy={creating}
+        footer="เลขที่ใบเสนอราคาจะสร้างอัตโนมัติเมื่อบันทึก · ส่งลูกค้าได้หลังเจ้าของดีลอนุมัติ"
+      />
+    </>
+  );
+
   return (
     <Workspace
       icon={<FileText size={22} />}
@@ -260,28 +328,22 @@ function NewQuotationInner() {
         <div className={styles.emptyPanel}>ยังไม่มีดีลที่พร้อมออกใบเสนอราคา — ดีลต้องผูกโครงการ มีลูกค้า และยังไม่มีใบเสนอราคาที่ใช้งานอยู่ <Link href="/sa/deals" className="btn ghost sm"><ExternalLink size={13} /> ไปหน้าดีล</Link></div>
       )}
 
-      <div className={styles.detailLayout}>
-        <div className={styles.documentColumn}>
-          <section className={`${styles.card} ${styles.overviewCard}`}>
-            <div className={styles.overviewHeading}>
-              <div>
-                <span className={styles.eyebrow}>FM-SA-01 · NEW QUOTATION</span>
-                <h2>{selectedDeal?.customerName || "เลือกข้อมูลเพื่อเริ่มสร้างใบเสนอราคา"}</h2>
-                <p>
-                  <span>โครงการ: {selectedProject?.name || selectedProject?.code || "ยังไม่เลือก"}</span>
-                  <span>ดีล: {selectedDeal?.title || "ยังไม่เลือก"}</span>
-                  {selectedDealType && <span>ประเภท: {selectedDealType} · {DEAL_TYPE_LABELS[selectedDealType]}</span>}
-                </p>
-              </div>
-              <span className={styles.newBadge}>ฉบับใหม่</span>
-            </div>
-            <div className={styles.quickFacts}>
-              <div><CalendarDays size={16} /><span><small>วันที่ออกใบ</small>{fmtDate(quoteDate)}</span></div>
-              <div><CalendarDays size={16} /><span><small>ยืนราคาถึง</small>{validUntil ? fmtDate(validUntil) : "-"}</span></div>
-              <div><CircleDollarSign size={16} /><span><small>ภาษี</small>{vatRate > 0 ? `+ VAT ${vatRate}%` : "รวม VAT แล้ว"}</span></div>
-              <div><ClipboardList size={16} /><span><small>รายการ</small>{lines.length} รายการ</span></div>
-            </div>
-          </section>
+      <DetailPageLayout
+        aside={rightRail}
+        asideLabel="สรุปและจัดการใบเสนอราคาใหม่"
+      >
+          <SalesDetailOverview
+            eyebrow="FM-SA-01 · NEW QUOTATION"
+            title={selectedDeal?.customerName || "เลือกข้อมูลเพื่อเริ่มสร้างใบเสนอราคา"}
+            description={overviewDescription}
+            badges={<SalesStateBadge label="ฉบับใหม่" color="var(--accent)" />}
+            facts={[
+              { key: "quote-date", icon: CalendarDays, label: "วันที่ออกใบ", value: fmtDate(quoteDate) },
+              { key: "valid-until", icon: CalendarDays, label: "ยืนราคาถึง", value: validUntil ? fmtDate(validUntil) : "-" },
+              { key: "tax", icon: CircleDollarSign, label: "ภาษี", value: vatRate > 0 ? `+ VAT ${vatRate}%` : "รวม VAT แล้ว" },
+              { key: "items", icon: ClipboardList, label: "รายการ", value: `${lines.length} รายการ` },
+            ]}
+          />
 
           <section className={styles.card}>
             <div className={styles.sectionHeading}><Building2 size={17} /><h2>ที่มาของใบเสนอราคา</h2><span>เลือกตามลำดับ ลูกค้า → โครงการ → ดีล</span></div>
@@ -344,18 +406,7 @@ function NewQuotationInner() {
               onPresetVersionIdChange={setNotesPresetVersionId}
             />
           </section>
-        </div>
-
-        <aside className={styles.sidebar}>
-          <section className={`${styles.card} ${styles.summaryCard}`}>
-            <div className={styles.summaryLabel}>ยอดสุทธิใบเสนอราคา</div><div className={styles.totalAmount}>{fmtMoney(totals.totalAmount)}</div>
-            <div className={styles.totalRows}><div><span>รวมรายการ</span><strong>{fmtMoney(totals.subtotal)}</strong></div><div><span>ส่วนลด</span><strong>{totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : "-"}</strong></div>{vatRate > 0 && <div><span>VAT {vatRate}%</span><strong>{fmtMoney(totals.vatAmount)}</strong></div>}</div>
-            <div className={styles.readiness}><div className={dealId ? styles.ready : ""}><span />เลือกดีล</div><div className={lines.length ? styles.ready : ""}><span />เพิ่มรายการสินค้า/บริการ</div></div>
-            <div className={styles.workflowActions}><button type="button" className="btn btn-primary" onClick={create} disabled={!dealId || creating}><Save size={14} /> {creating ? "กำลังบันทึก…" : "บันทึก"}</button><Link href="/sa/quotations" className="btn ghost">ยกเลิก</Link></div>
-            <p className={styles.autoNumberNote}>เลขที่ใบเสนอราคาจะสร้างอัตโนมัติเมื่อบันทึก · ส่งลูกค้าได้หลังเจ้าของดีลอนุมัติ</p>
-          </section>
-        </aside>
-      </div>
+      </DetailPageLayout>
     </Workspace>
   );
 }

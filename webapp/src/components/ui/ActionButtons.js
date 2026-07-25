@@ -5,6 +5,7 @@
 // ใช้ <ActionBar> ครอบกลุ่มปุ่ม แล้ววางปุ่มด้วย <ActionButton kind="...">.
 import {
   Check, Undo2, Pencil, Unlock, Pause, Play, Trash2, Send, ExternalLink, Ban, ArrowRight,
+  Download, Printer, RotateCcw, Save, XCircle,
 } from "lucide-react";
 
 // แต่ละ kind ผูกสี (คลาส .btn-*) + ไอคอน + ข้อความเริ่มต้นไว้ที่เดียว — แก้ที่นี่
@@ -22,6 +23,11 @@ const KINDS = {
   open: { cls: "btn-secondary", Icon: ExternalLink, label: "เปิด" },
   goto: { cls: "btn-secondary", Icon: ArrowRight, label: "ไปที่" },
   submit: { cls: "btn-primary", Icon: Send, label: "ยื่น" },
+  save: { cls: "btn-primary", Icon: Save, label: "บันทึก" },
+  print: { cls: "btn-secondary", Icon: Printer, label: "ออกเอกสาร" },
+  download: { cls: "btn-secondary", Icon: Download, label: "ดาวน์โหลด" },
+  restore: { cls: "btn-secondary", Icon: RotateCcw, label: "คืนเป็นฉบับร่าง" },
+  cancel: { cls: "btn-danger", Icon: XCircle, label: "ยกเลิก" },
 };
 
 // กล่องครอบกลุ่มปุ่ม action — จัดชิดขวา, ระยะห่างเท่ากัน, ตัดบรรทัดเมื่อแคบ.
@@ -35,18 +41,20 @@ export function ActionBar({ children, className = "", ...props }) {
 
 // ปุ่ม action เดี่ยว. kind = ความหมาย (กำหนดสี+ไอคอน+ข้อความเริ่มต้น).
 // label/icon ส่ง override ได้ (คงสีตาม kind), icon={null} = ซ่อนไอคอน.
-export function ActionButton({ kind, label, icon, variant = "filled", iconOnly = false, className = "", children, ...props }) {
+export function ActionButton({ as: Component = "button", kind, label, icon, variant = "filled", iconOnly = false, className = "", children, ...props }) {
   const k = KINDS[kind] || {};
   const Icon = icon === undefined ? k.Icon : icon;
   const text = children ?? label ?? k.label;
+  const defaultProps = Component === "button" && props.type === undefined ? { type: "button" } : {};
   return (
-    <button
+    <Component
       className={`${iconOnly ? "btn-icon" : "btn"} ${k.cls || "btn-secondary"} action-${variant} flex items-center gap-1.5 ${className}`.trim()}
       aria-label={props["aria-label"] || (iconOnly ? text : undefined)}
+      {...defaultProps}
       {...props}
     >
       {Icon ? <Icon size={15} /> : null}
       {iconOnly ? null : text}
-    </button>
+    </Component>
   );
 }
