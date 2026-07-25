@@ -35,6 +35,21 @@ test('V4 doc: เป็น HTML เต็มไฟล์ ใช้คลาส d
   assert.match(html, /@page \{ size: A4 portrait/);
 });
 
+test('V4 doc: ข้อความยาวในเอกสารอ่านง่ายและรักษาการขึ้นบรรทัดของผู้ใช้', () => {
+  const q = {
+    ...baseQuote([lineOf('1', { description: 'หัวข้อสินค้า\nรายละเอียดบรรทัดถัดไป', note: 'หมายเหตุสินค้า\nบรรทัดสอง' })]),
+    paymentPlan: { type: 'full', paymentMethod: 'โอนผ่านบัญชีบริษัท\nพร้อมส่งหลักฐานการชำระเงิน' },
+    paymentTerms: 'ชำระเงินเต็มจำนวน\nก่อนเริ่มผลิต',
+    notes: 'เงื่อนไขข้อแรก\nเงื่อนไขข้อที่สอง',
+  };
+  const html = buildQuotationMasterHTML(q, {});
+  assert.match(html, /\.termsGrid p \{[^}]*font-size: 8\.5pt;[^}]*line-height: 1\.65;[^}]*white-space: pre-wrap;/);
+  assert.match(html, /\.termsGrid h2 span \{[^}]*display: block;/);
+  assert.match(html, /\.itemTable strong \{[^}]*white-space: pre-wrap;/);
+  assert.ok(html.includes('เงื่อนไขข้อแรก\nเงื่อนไขข้อที่สอง'), 'ไม่ยุบ newline ในหมายเหตุ');
+  assert.ok(html.includes('หัวข้อสินค้า\nรายละเอียดบรรทัดถัดไป'), 'ไม่ยุบ newline ในรายละเอียดสินค้า');
+});
+
 test('V4 doc: บล็อกลูกค้า — โชว์เลขภาษี + ที่อยู่จัดส่ง, ไม่โชว์สาขา', () => {
   const q = {
     ...baseQuote([lineOf('1')]),
