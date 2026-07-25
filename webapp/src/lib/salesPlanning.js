@@ -1,5 +1,6 @@
 import { can, inScope, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import { businessMonthKey } from '@/lib/businessDate';
+import { documentNumberParts, publishedNumberingPattern } from '@/lib/documentStandards';
 
 export const DEAL_STAGES = [
   'lead',
@@ -219,15 +220,17 @@ export function dealAuditLabel(deal) {
   return `${deal?.title || 'deal'}${deal?.customerName ? ` · ${deal.customerName}` : ''}`;
 }
 
-// เลขใบเสนอราคา FM-SA-01: QT-YYMMXXXX-R (YY ค.ศ. · MM เดือน · XXXX เลขรันรีเซ็ต
-// ต่อเดือน — มติ #3 · R = revision เริ่ม 0). เลขรันออกจาก DB แบบ atomic
-// (RPC next_quote_number — mig 0092) กันเลขซ้ำเมื่อสร้างพร้อมกัน.
+// เลขใบเสนอราคา: รูปแบบมาจาก "มาตรฐานเอกสารที่เผยแพร่" (หน้าตั้งค่า → mig 0123)
+// ค่าตั้งต้น QT-{YY}{MM}{RUNNING:4}-{REVISION} = QT-YYMMXXXX-R เท่าเดิมทุกตัวอักษร.
+// เลขรันยังออกจาก DB แบบ atomic (RPC next_quote_number — mig 0092) กันเลขซ้ำเมื่อ
+// สร้างพร้อมกัน และยังรีเซ็ตต่อเดือน — ที่เปลี่ยนคือ "การประกอบสตริง" อย่างเดียว.
 export async function generateQuoteNumber(supabase, now = new Date()) {
   const month = businessMonthKey(now);
   const { data, error } = await supabase.rpc('next_quote_number', { p_month: month });
   if (error) throw new Error(`ออกเลขใบเสนอราคาไม่สำเร็จ: ${error.message}`);
-  const base = `QT-${month}${String(data).padStart(4, '0')}`;
-  return { base, quoteNumber: `${base}-0` };
+  const pattern = await publishedNumberingPattern(supabase, 'quotation');
+  const { base, separator } = documentNumberParts(pattern, { date: now, running: data });
+  return { base, quoteNumber: `${base}${separator}0` };
 }
 
 // ปัดเงินเป็น 2 ตำแหน่ง (สตางค์) — กันทศนิยมลอย (เช่น 99.999) หลุดลง DB/เอกสาร/ยอด Won
@@ -250,7 +253,7 @@ export function quoteLineNet(line = {}) {
 }
 
 // รวมทั้งใบ (FM-SA-01): subtotal(หลังลดรายบรรทัด) − ส่วนลดท้ายใบ = ฐานภาษี → + VAT
-// vatRate default 0 = "ราคารวม VAT แล้ว" (ราคาบรรทัด = ราคาโรงงานจาก master — มติ
+// vatRate default 0 = "ราคารวม VAT แล้ว" (ราคาบรรทัด = ราคาผลิตจาก master — มติ
 // 2026-07-19); เลือก 7 เมื่อต้องการบวก VAT แยกท้ายใบ. ทุกยอดปัดสตางค์ก่อนคืน.
 export function quoteTotals(lines = [], { discountType = null, discountValue = 0, vatRate = 0 } = {}) {
   const subtotal = round2(lines.reduce((sum, line) => sum + quoteLineNet(line).lineTotal, 0));

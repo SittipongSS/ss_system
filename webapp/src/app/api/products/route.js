@@ -86,7 +86,7 @@ export async function POST(request) {
   }
 
   const { fgCode, volume, costPrice, retailPriceIncVat } = body;
-  // ราคาโรงงาน/ราคาขายปลีก เป็น optional — เก็บ null ไว้ตามจริง แต่ในการคำนวณ
+  // ราคาผลิต/ราคาขายปลีก เป็น optional — เก็บ null ไว้ตามจริง แต่ในการคำนวณ
   // ภาษี/ต้นทุน ให้ถือว่า 0 เพื่อกัน NaN เมื่อยังไม่ได้กรอกราคา.
   const costPriceNum = costPrice == null || costPrice === '' ? 0 : Number(costPrice);
   const retailPriceIncVatNum =
@@ -140,6 +140,8 @@ export async function POST(request) {
     formulaDate: body.formulaDate || null,
     volume,
     volumeUnit: body.volumeUnit || 'ml',
+    // หน่วยขายที่แสดงบนใบเสนอราคา/ใบสั่งขาย (0146) — ต่างจาก volumeUnit (ปริมาตรบรรจุ)
+    saleUnit: body.saleUnit?.trim() || 'ชิ้น',
     // ชิ้นต่อลัง (ตัวแปลงหน่วยฝั่งสหมิตร, migration 0075) — optional, null = ยังไม่ตั้ง.
     piecesPerCase:
       body.piecesPerCase == null || body.piecesPerCase === '' ? null : Number(body.piecesPerCase),

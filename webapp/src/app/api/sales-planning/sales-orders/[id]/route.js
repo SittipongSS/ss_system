@@ -12,7 +12,14 @@ import {
 import {
   approveSalesOrderWithSignatureEvidence,
   signatureEvidenceErrorResponse,
+  submitSalesOrderWithSignatureEvidence,
 } from '@/lib/admin/signatureEvidence';
+import { loadActiveSignatureAsset, loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
+import { captureIssuedSalesOrderSnapshot } from '@/lib/sales/issuedSalesOrderSnapshot';
+import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { isDryRun, isForceRequest, salesOrderForcePreview } from '@/lib/forceDelete';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 
@@ -31,7 +38,7 @@ async function loadOrder(supabase, id) {
 
   const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }] = await Promise.all([
     supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
-    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms').eq('id', order.quotationId).maybeSingle(),
+    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonAttachments, customerId, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
     order.projectId
       ? supabase.from('projects').select('id, code, name').eq('id', order.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -47,6 +54,70 @@ async function loadOrder(supabase, id) {
   };
 }
 
+// รูปลายเซ็นผู้อนุมัติสำหรับออกเอกสาร SO: ต้องอ่านจาก evidence (mig 0125) แล้วโหลด
+// ไฟล์จาก bucket ส่วนตัวด้วย service-role (RLS บล็อก client ปกติ) ฝังเป็น data URI ให้
+// ฝั่งพิมพ์ใช้ตรง ๆ — เหมือนใบเสนอราคาที่ฝังรูปตอนตรึง snapshot. ล้มเหลว/dev = null.
+async function loadApproverSignature(supabase, order) {
+  if (order.status !== 'approved') return null;
+  // ต้องกรอง signingRole (mig 0151) — เอกสารหนึ่งใบมีหลักฐานหลายบทบาทได้ (ผู้ยื่น/ผู้อนุมัติ)
+  // ถ้าเรียงด้วย approvalSequence ล้วน แถวของผู้ยื่นที่เกิดหลังสุด (เช่น approved → ยกเลิก →
+  // คืนร่าง → ยื่นใหม่) จะถูกหยิบมาแสดงในช่องผู้อนุมัติ = ลายเซ็นผิดคนบนเอกสาร
+  const { data: ev } = await supabase
+    .from('document_signature_evidence')
+    .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot')
+    .eq('salesOrderId', order.id)
+    .eq('signingRole', 'approver')
+    .order('approvalSequence', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!ev?.signatureAssetSnapshot) return null;
+  const imageDataUri = await loadSignatureImageDataUri(getSupabaseAdmin(), ev.signatureAssetSnapshot);
+  if (!imageDataUri) return null;
+  return {
+    imageDataUri,
+    signerName: ev.signerName || order.approvedByName || '',
+    signerRole: ev.signerRole || '',
+    signedAt: ev.signedAt || order.approvedAt || null,
+    evidenceId: ev.id || order.signatureEvidenceId || '',
+  };
+}
+
+// รูปลายเซ็นผู้จัดทำ (พนักงานขาย = ผู้สร้างใบ): stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง
+// ณ ปัจจุบัน (ไม่ตรึงเหมือนผู้อนุมัติ) — เหมือนช่องผู้เสนอราคาในใบเสนอราคา. ใช้ admin ทั้ง
+// อ่าน metadata และโหลดไฟล์ เพราะลายเซ็นเป็น private ต่อเจ้าของ (ผู้ดูเอกสารไม่ใช่เจ้าของ).
+async function loadProposerSignature(supabase, order) {
+  const admin = getSupabaseAdmin();
+
+  // ใบที่ยื่นตั้งแต่ mig 0153: อ่านจากหลักฐานที่ตรึงตอนยื่น → ได้วันที่ลงนาม + Evidence id
+  // และรูปเป็นเวอร์ชันที่ตรึงไว้จริง (ไม่ใช่ลายเซ็นสดที่อาจถูกเปลี่ยนภายหลัง)
+  if (order.proposerSignatureEvidenceId) {
+    const { data: ev } = await supabase
+      .from('document_signature_evidence')
+      .select('id, signerName, signedAt, signatureAssetSnapshot')
+      .eq('id', order.proposerSignatureEvidenceId)
+      .maybeSingle();
+    if (ev?.signatureAssetSnapshot) {
+      const imageDataUri = await loadSignatureImageDataUri(admin, ev.signatureAssetSnapshot);
+      if (imageDataUri) {
+        return {
+          imageDataUri,
+          signerName: ev.signerName || order.createdByName || '',
+          signedAt: ev.signedAt || order.submittedAt || null,
+          evidenceId: ev.id,
+        };
+      }
+    }
+  }
+
+  // ใบเก่าที่ยื่นก่อนมีหลักฐานผู้จัดทำ: คงพฤติกรรมเดิม (stamp เชิงภาพ ไม่มีวันที่/Evidence)
+  // ไม่ให้ช่องลงนามหายไปจากเอกสารที่เคยออกแล้ว
+  if (order.status !== 'approved' || !order.createdBy) return null;
+  const asset = await loadActiveSignatureAsset(admin, order.createdBy);
+  const imageDataUri = await loadSignatureImageDataUri(admin, asset);
+  if (!imageDataUri) return null;
+  return { imageDataUri, signerName: order.createdByName || '' };
+}
+
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
@@ -56,8 +127,22 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!order) return notFound('ไม่พบ Sale Order');
   if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
+  // ข้อมูลลูกค้าบนเอกสารมาจาก snapshot ในใบเสนอราคาที่ผูก — ใบเก่าที่ snapshot ไม่ครบ
+  // (ผู้ติดต่อ/เลขภาษี) เติมเฉพาะช่องว่างจากทะเบียนลูกค้าสด เพื่อให้เอกสารแสดงครบ
+  if (order.quotation) {
+    order.quotation = await fillCustomerSnapshotFromMaster(supabase, order.quotation);
+  }
+  // รูปลายเซ็นผู้จัดทำ + ผู้อนุมัติ (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังออกได้ ตกช่องเซ็นเปล่า)
+  let approverSignature = null;
+  let proposerSignature = null;
+  if (!user.devBypass) {
+    try { approverSignature = await loadApproverSignature(supabase, order); }
+    catch { approverSignature = null; }
+    try { proposerSignature = await loadProposerSignature(supabase, order); }
+    catch { proposerSignature = null; }
+  }
   // meId ให้หน้าเว็บซ่อนปุ่มอนุมัติของ SO ที่ตัวเองสร้าง/ยื่น (แบ่งแยกหน้าที่)
-  return ok({ ...order, meId: user.id || null });
+  return ok({ ...order, meId: user.id || null, approverSignature, proposerSignature });
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
@@ -101,12 +186,23 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
       return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล, โครงการ และลูกค้า');
     }
-    const now = new Date().toISOString();
-    const patch = { status: 'pending_approval', submittedAt: now, submittedBy: user.id || null, submittedByName: user.name || null, rejectedAt: null, rejectedBy: null, rejectedByName: null, rejectionReason: null, updatedAt: now };
-    const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
-    if (error) return fail(error.message, 500);
-    if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
-    await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `submit ${before.orderNumber} for approval`, request: req });
+    // การยื่น = การลงนามของผู้จัดทำ (mig 0153) — สถานะ + หลักฐาน proposer ต้อง commit
+    // พร้อมกันในทรานแซกชันเดียว จึงยกจาก plain UPDATE มาเป็น RPC; ผู้ยื่นที่ไม่มีลายเซ็นจะ
+    // ได้ 409 + ลิงก์ /account และสถานะไม่เปลี่ยนเลย (rollback ทั้งก้อน)
+    let submitResult;
+    try {
+      submitResult = await submitSalesOrderWithSignatureEvidence(supabase, {
+        documentId: id,
+        evidenceId: genId('DSE'),
+        expectedUpdatedAt: before.updatedAt,
+        documentFingerprint: salesOrderApprovalFingerprint(before, before.lines),
+        user,
+      });
+    } catch (submitError) {
+      return signatureEvidenceErrorResponse(submitError, { action: 'submit' });
+    }
+    const data = submitResult.document;
+    await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `submit ${before.orderNumber} for approval (ลงนามผู้จัดทำ)`, request: req });
     // แจ้ง space ผู้อนุมัติ: มี SO รออนุมัติ (จุด clear ยอด Actual — เดิมเงียบ)
     sendChat('approvals', chatCard({
       title: 'Sale Order รออนุมัติ',
@@ -153,6 +249,24 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return signatureEvidenceErrorResponse(approvalError);
     }
     const data = result.document;
+
+    // Phase 7D+: ตรึง issued snapshot ของ SO จากสถานะที่อนุมัติแล้ว (best-effort — อนุมัติ
+    // commit ไปแล้ว snapshot ล้มต้องไม่ roll back; RPC idempotent regenerate ได้ภายหลัง).
+    // ใช้ service-role: RPC เป็น service_role + ต้องดึงรูปลายเซ็นจาก bucket ส่วนตัว
+    try {
+      const snapshotOrder = {
+        ...before, ...data,
+        lines: before.lines, deal: before.deal, quotation: before.quotation, project: before.project,
+      };
+      // company profile ที่เผยแพร่ ณ เวลาอนุมัติ — ตรึงลง artifact ให้ reprint ตรงเดิม (เหมือน QT)
+      const company = await getPublishedCompanyProfile(supabase).catch(() => null);
+      await captureIssuedSalesOrderSnapshot(getSupabaseAdmin(), {
+        order: snapshotOrder, evidence: result.evidence, user, company,
+      });
+    } catch (snapshotError) {
+      console.error('issued sales order snapshot capture failed', id, snapshotError);
+    }
+
     await recordAudit({
       user,
       action: 'update',
@@ -316,7 +430,16 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   try { before = await loadOrder(supabase, id); }
   catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!before) return notFound('ไม่พบ Sale Order');
-  if (!canHardDeleteSalesOrder(before)) {
+
+  // ?dryRun=1 = พรีวิวว่าจะทำลายอะไร (หลักฐาน/ฉบับตรึง) — ใช้เส้นทางเดียวกับตอนลบจริง
+  if (isDryRun(req)) {
+    const preview = await salesOrderForcePreview(supabase, before);
+    return ok({ dryRun: true, ...preview });
+  }
+  // ?force=1 = break-glass ผู้ดูแลระบบ (mig 0152) ลบใบที่มีหลักฐาน/ฉบับตรึงได้ — มติผู้ใช้
+  // 2026-07-25; เส้นทางปกติยังยอมเฉพาะร่างที่ไม่เคยเข้า workflow เหมือนเดิม
+  const force = isForceRequest(req);
+  if (!force && !canHardDeleteSalesOrder(before)) {
     return fail(
       before.hasSignatureEvidence || before.signatureEvidenceId
         ? 'ลบถาวรไม่ได้: SO นี้มี Signature Evidence และต้องเก็บเป็นหลักฐาน — กรุณาใช้ “ยกเลิก SO” แทน'
@@ -324,8 +447,16 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       409,
     );
   }
-  const { error } = await supabase.from('sales_orders').delete().eq('id', id);
+  const { error } = force
+    ? await supabase.rpc('force_delete_sales_order', { p_id: id })
+    : await supabase.from('sales_orders').delete().eq('id', id);
   if (error) return fail(error.message, 500);
-  await recordAudit({ user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null, summary: `delete ${before.orderNumber}`, request: req });
-  return ok({ deleted: true });
+  await recordAudit({
+    user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null,
+    summary: force
+      ? `delete ${before.orderNumber} (บังคับลบพร้อมหลักฐาน/ฉบับตรึง — สิทธิ์ผู้ดูแลระบบ)`
+      : `delete ${before.orderNumber}`,
+    request: req,
+  });
+  return ok({ deleted: true, forced: force });
 });

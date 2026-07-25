@@ -8,8 +8,8 @@ import { FLAG_KIND_LABEL, FLAG_STATUS_LABEL } from "@/lib/sahamit/flags";
 import { useCan } from "@/lib/roleContext";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
-const KIND_COLOR = { drop: "var(--red)", shift_suspect: "var(--blue)", lockedBreak: "var(--amber)" };
-const STATUS_COLOR = { open: "var(--red)", confirmed_shift: "var(--blue)", confirmed_cut: "var(--amber)", ignored: "var(--text-3)" };
+const KIND_COLOR = { drop: "var(--red)", po_filled: "var(--green)", shift_suspect: "var(--blue)", lockedBreak: "var(--amber)" };
+const STATUS_COLOR = { open: "var(--red)", confirmed_shift: "var(--blue)", confirmed_filled: "var(--green)", confirmed_cut: "var(--amber)", ignored: "var(--text-3)" };
 
 function FlagRow({ flag, onSaved, canEdit }) {
   const [open, setOpen] = useState(false);
@@ -62,6 +62,7 @@ function FlagRow({ flag, onSaved, canEdit }) {
                 <label>หมายเหตุ</label>
                 <input className="premium-input" style={{ height: 30 }} value={d.note} onChange={(e) => setD({ ...d, note: e.target.value })} />
               </div>
+              <button className="btn btn-primary sm" onClick={() => save("confirmed_filled")} disabled={busy}>ยืนยัน: PO มาเติม</button>
               <button className="btn btn-primary sm" onClick={() => save("confirmed_shift")} disabled={busy}>ยืนยันเลื่อน</button>
               <button className="btn btn-warning sm" onClick={() => save("confirmed_cut")} disabled={busy}>ลูกค้าตัดจริง</button>
               <button className="btn sm" onClick={() => save("open")} disabled={busy}><Save size={13} /> รอลูกค้าตอบ</button>
@@ -86,7 +87,7 @@ export default function ReviewPage() {
     <Workspace
       icon={<Flag size={22} />}
       title="ตรวจการเปลี่ยน FC"
-      subtitle="เลื่อนจริงหรือแอบตัด — เคลียร์ + เก็บหลักฐาน (ลูกค้า AR-109)"
+      subtitle="PO มาเติม / เลื่อน / ตัดจริง — ระบบเสนอ คนยืนยัน (ลูกค้า AR-109)"
       back={{ href: "/sahamit", label: "กลับหน้าภาพรวมสหมิตร" }}
       headerRight={
         <div className="segmented">
@@ -103,7 +104,7 @@ export default function ReviewPage() {
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <Flag size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: 600, fontSize: 15 }}>{tab === "open" ? "ไม่มีรายการต้องตรวจ 🎉" : "ยังไม่มีธง"}</div>
-          <div style={{ fontSize: 13, marginTop: 6 }}>ระบบจะตั้งธงให้อัตโนมัติเมื่อ FC ลด/หาย/แก้ช่องที่ล็อก ตอนนำเข้ารอบใหม่</div>
+          <div style={{ fontSize: 13, marginTop: 6 }}>ระบบตั้งธงอัตโนมัติเมื่อ FC ลด/เลื่อน — ถ้ามี PO มารับจะเสนอเป็น “น่าจะเติมเต็มด้วย PO” ให้ยืนยัน</div>
         </div>
       ) : (
         <div className="premium-table-wrapper">

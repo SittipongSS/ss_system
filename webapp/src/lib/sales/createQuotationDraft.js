@@ -5,8 +5,8 @@
 // เลขรันจาก DB, บรรทัด (rollback ถ้าพลาด), ดีล lead/qualified → quotation, audit.
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { dealAuditLabel, dealTypeOf, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
-import { resolvePublishedCommercialPreset } from '@/lib/admin/commercialPresets';
+import { dealAuditLabel, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
+import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
@@ -22,7 +22,7 @@ export class QuotationDraftError extends Error {
 
 export async function createQuotationDraft({ supabase, user, deal, body = {}, request }) {
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
-  // ราคาขายในใบ = ราคาโรงงานทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
+  // ราคาขายในใบ = ราคาผลิตทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
   let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []));
   // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
   if (!lines.length && body.seedFromProject) lines = await seedLinesFromProject(supabase, deal);
@@ -50,7 +50,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   // ส่วนลดท้ายใบ + VAT (เฟส D — FM-SA-01): default vatRate 0 = ราคารวม VAT แล้ว
   const discountType = ['percent', 'amount'].includes(body.discountType) ? body.discountType : null;
   const discountValue = discountType ? toMoney(body.discountValue) : 0;
-  // default +VAT 7% ท้ายใบ (มติ 2026-07-19): ราคาบรรทัด = ราคาโรงงานไม่รวม VAT →
+  // default +VAT 7% ท้ายใบ (มติ 2026-07-19): ราคาบรรทัด = ราคาผลิตไม่รวม VAT →
   // ท้ายใบเห็นยอด ex-VAT แล้วบวก VAT ให้ยอดจบเทียบกับเอกสารจริงของลูกค้า (เช่น PO
   // สหมิตรที่ยอดรวม VAT) ได้; ผู้ใช้สลับเป็น "รวม VAT แล้ว" (0) ในใบได้เสมอ
   const vatRate = toMoney(body.vatRate, 7);
@@ -63,14 +63,8 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   const peoplePick = await validateQuotationPeople(supabase, body.metadata || {}, { require: false });
   if (!peoplePick.ok) throw new QuotationDraftError(peoplePick.error);
 
-  // ตรึงเวอร์ชัน Commercial Preset (Published) ที่ "ควบคุม" ใบนี้ตาม scope ของดีล ณ ตอนสร้าง
-  // — ใช้เป็น commercialPresetVersionId ตอนตรึง issued snapshot (Phase 7B). server เป็น
-  // ผู้ตัดสิน (ไม่เชื่อค่าจาก client) และเป็น best-effort: preset พังต้องไม่ทำให้สร้างใบไม่ได้.
-  const governingPreset = await resolvePublishedCommercialPreset(supabase, {
-    documentKey: 'quotation',
-    teamKey: deal.team,
-    dealType: dealTypeOf(deal),
-  }).catch(() => null);
+  // ชุดเงื่อนไขการค้าที่คนทำใบเลือก — ตรวจฝั่ง server ก่อนตรึง (client ส่งอะไรมาก็ได้)
+  const pinnedPresets = await resolvePinnedPresetVersionIds(supabase, body.metadata || {});
 
   // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
   const { base, quoteNumber } = await generateQuoteNumber(supabase);
@@ -102,8 +96,10 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       vatRate,
       paymentPlan,
       paymentTerms: (body.paymentTerms || '').trim() || paymentPlanSummary(paymentPlan, totals.totalAmount),
-      // รออนุมัติจากเจ้าของดีลก่อนส่ง (มติ 2026-07-18) — ใบเดิม grandfather ไว้ที่ mig 0114
-      approvalStatus: 'pending',
+      // ใบใหม่เริ่มที่ "ร่าง ยังไม่ยื่น" (mig 0155) — ต้องกดยื่นอนุมัติเองก่อนเข้าคิวเจ้าของดีล
+      // (เดิมเกิดมาเป็น 'pending' ทันที = อนุมัติใบที่ยังกรอกไม่เสร็จได้ และไม่มีจุดลงนามผู้เสนอราคา)
+      // ใบเดิม grandfather เป็น not_required ไว้ที่ mig 0114
+      approvalStatus: 'not_submitted',
       approvalReason: null,
       approvalRequestedAt: null,
       approvalRequestedBy: null,
@@ -114,13 +110,14 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       approvedByName: null,
       notes: body.notes || null,
       // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ = ผู้ใช้จริง+role ตรง)
+      // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจเองว่ามีจริง+เผยแพร่+ชนิดตรง
       metadata: {
         ...(body.metadata || {}),
         aeOwner: peoplePick.people.aeOwner || null,
         preparedBy: peoplePick.people.preparedBy || null,
         aeSupervisor: peoplePick.people.aeSupervisor || null,
-        // server เป็นผู้ตัดสิน — เขียนทับค่าจาก client เสมอ (forensic ของ snapshot)
-        commercialPresetVersionId: governingPreset?.published?.id || null,
+        paymentPresetVersionId: pinnedPresets.payment,
+        remarksPresetVersionId: pinnedPresets.remarks,
       },
       createdBy: user.id || null,
       createdByName: user.name || null,

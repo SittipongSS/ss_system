@@ -9,10 +9,30 @@ import { diffSnapshots } from './diff.js';
 import { computeSkuFcWarning } from './peak.js';
 import { reconcileCell } from './reconcile.js';
 import { compareRounds, roundTotal, roundSkuCount } from './forecastClient.js';
-import { buildReconMatrix, cellDetail } from './reconcileClient.js';
+import { buildReconMatrix, cellDetail, posByRound } from './reconcileClient.js';
 import { leadDaysFor, recommendedReadyDate, materialView, LEAD_IN_FC, LEAD_OUT_FC } from './material.js';
 import { detectFlags } from './flags.js';
 import { avgShiftForSku, predictShifts, suggestCoverage, suggestCoverageTargets, addMonths, urgencyOf } from './predict.js';
+import { desiredRoundNumbers } from './roundOrder.js';
+
+test('posByRound groups POs into the FC round active when received', () => {
+  const rounds = [
+    { roundNo: 1, receivedDate: '2026-01-01' },
+    { roundNo: 2, receivedDate: '2026-03-01' },
+  ];
+  const pos = [
+    { poNumber: 'PO-A', receivedDate: '2026-01-15' }, // in round 1 window
+    { poNumber: 'PO-B', receivedDate: '2026-03-10' }, // in round 2 window (open end)
+    { poNumber: 'PO-C', receivedDate: '2026-02-28' }, // still round 1 (before round 2)
+    { poNumber: 'PO-D', receivedDate: '2025-12-20' }, // before first round → unassigned
+    { poNumber: 'PO-E' },                              // no date → unassigned
+  ];
+  const { byRound, unassigned, windows } = posByRound(rounds, pos);
+  assert.deepEqual(windows.map((w) => [w.roundNo, w.start, w.end]), [[1, '2026-01-01', '2026-03-01'], [2, '2026-03-01', null]]);
+  assert.deepEqual(byRound.get(1).pos.map((p) => p.poNumber).sort(), ['PO-A', 'PO-C']);
+  assert.deepEqual(byRound.get(2).pos.map((p) => p.poNumber), ['PO-B']);
+  assert.deepEqual(unassigned.map((p) => p.poNumber).sort(), ['PO-D', 'PO-E']);
+});
 
 test('snapshotForSku aggregates one round, one SKU, sums same-month lines', () => {
   const lines = [
@@ -102,25 +122,68 @@ test('reconcileCell core statuses match ss-cj labels', () => {
 
 function pick(r) { return { status: r.status, label: r.label }; }
 
-// ── flag detection (shift/cut audit) ──────────────────────────────────
-test('detectFlags: a decrease vs previous round → drop flag', () => {
-  const rounds = [
-    { roundNo: 1, lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 100 }] },
-    { roundNo: 2, lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 60 }] },
-  ];
-  const flags = detectFlags(rounds, []);
+// ── flag detection (shift/cut audit + PO-aware) ───────────────────────
+const R1 = { roundNo: 1, receivedDate: '2026-05-01', lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 100 }] };
+
+test('detectFlags: a decrease with NO PO → drop flag (peak ลดจริง)', () => {
+  const rounds = [R1, { roundNo: 2, receivedDate: '2026-06-01', lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 60 }] }];
+  const flags = detectFlags(rounds, [], []);
   const jul = flags.find((f) => f.month === '2026-07');
   assert.equal(jul.kind, 'drop');
   assert.equal(jul.drop, 40);
   assert.equal(jul.roundNo, 2);
 });
 
+test('detectFlags: FC ลดพอดีกับ PO ที่มาใหม่ → po_filled ไม่ใช่ drop (peak ไม่ลด)', () => {
+  const rounds = [R1, { roundNo: 2, receivedDate: '2026-06-01', lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 60 }] }];
+  // PO 40 ของ A รับเข้า 20 พ.ค. (หลังรอบ 1, ก่อนรอบ 2) — อธิบายยอดที่ลด 40
+  const pos = [{ receivedDate: '2026-05-20', lines: [{ fgCode: 'A', qty: 40, status: 'open' }] }];
+  const flags = detectFlags(rounds, pos, []);
+  const jul = flags.filter((f) => f.month === '2026-07');
+  assert.equal(jul.length, 1);
+  assert.equal(jul[0].kind, 'po_filled');
+  assert.equal(jul[0].drop, 40);
+});
+
+test('detectFlags: ลด 40 แต่ PO มาแค่ 30 → po_filled 30 + drop 10 (peak ลด 10)', () => {
+  const rounds = [R1, { roundNo: 2, receivedDate: '2026-06-01', lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 60 }] }];
+  const pos = [{ receivedDate: '2026-05-20', lines: [{ fgCode: 'A', qty: 30, status: 'open' }] }];
+  const flags = detectFlags(rounds, pos, []);
+  const jul = flags.filter((f) => f.month === '2026-07');
+  assert.equal(jul.find((f) => f.kind === 'po_filled').drop, 30);
+  assert.equal(jul.find((f) => f.kind === 'drop').drop, 10);
+});
+
+test('detectFlags: PO เก่า (ก่อนรอบก่อนหน้า) ไม่ถูกนับกลบ → ยังเป็น drop', () => {
+  const rounds = [R1, { roundNo: 2, receivedDate: '2026-06-01', lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 60 }] }];
+  const pos = [{ receivedDate: '2026-04-15', lines: [{ fgCode: 'A', qty: 40, status: 'open' }] }]; // ก่อนรอบ 1
+  const flags = detectFlags(rounds, pos, []);
+  assert.equal(flags.find((f) => f.month === '2026-07').kind, 'drop');
+});
+
+test('detectFlags: PO ที่ถูกยกเลิก ไม่ถูกนับกลบ', () => {
+  const rounds = [R1, { roundNo: 2, receivedDate: '2026-06-01', lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }, { fgCode: 'A', month: '2026-07', qty: 60 }] }];
+  const pos = [{ receivedDate: '2026-05-20', lines: [{ fgCode: 'A', qty: 40, status: 'cancelled' }] }];
+  assert.equal(detectFlags(rounds, pos, []).find((f) => f.month === '2026-07').kind, 'drop');
+});
+
+test('detectFlags: ทำทุกคู่รอบ (backfill รอบกลางแล้วออกธงของทรานสิชันที่เกี่ยว)', () => {
+  const rounds = [
+    { roundNo: 1, receivedDate: '2026-05-01', lines: [{ fgCode: 'A', month: '2026-07', qty: 100 }] },
+    { roundNo: 2, receivedDate: '2026-06-01', lines: [{ fgCode: 'A', month: '2026-07', qty: 30 }] }, // ลด 70 (ไม่มี PO)
+    { roundNo: 3, receivedDate: '2026-07-01', lines: [{ fgCode: 'A', month: '2026-07', qty: 40 }] }, // เพิ่ม
+  ];
+  const flags = detectFlags(rounds, [], []);
+  const r2drop = flags.find((f) => f.roundNo === 2 && f.kind === 'drop');
+  assert.equal(r2drop.drop, 70); // ทรานสิชัน 1→2 ออกธง (เดิมออกแค่รอบล่าสุด)
+});
+
 test('detectFlags: month vanished + reappeared elsewhere → shift_suspect', () => {
   const rounds = [
-    { roundNo: 1, lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }] },
-    { roundNo: 2, lines: [{ fgCode: 'A', month: '2026-07', qty: 100 }] },
+    { roundNo: 1, receivedDate: '2026-05-01', lines: [{ fgCode: 'A', month: '2026-06', qty: 100 }] },
+    { roundNo: 2, receivedDate: '2026-06-01', lines: [{ fgCode: 'A', month: '2026-07', qty: 100 }] },
   ];
-  const flags = detectFlags(rounds, []);
+  const flags = detectFlags(rounds, [], []);
   assert.equal(flags.length, 1);
   assert.equal(flags[0].kind, 'shift_suspect');
   assert.deepEqual([flags[0].month, flags[0].shiftToMonth], ['2026-06', '2026-07']);
@@ -128,7 +191,7 @@ test('detectFlags: month vanished + reappeared elsewhere → shift_suspect', () 
 
 test('detectFlags: locked cell whose effective FC differs → lockedBreak', () => {
   const rounds = [{ roundNo: 1, coverMonths: ['2026-06'], lines: [{ fgCode: 'A', month: '2026-06', qty: 80 }] }];
-  const flags = detectFlags(rounds, [{ fgCode: 'A', month: '2026-06', lockedQty: 100 }]);
+  const flags = detectFlags(rounds, [], [{ fgCode: 'A', month: '2026-06', lockedQty: 100 }]);
   const lb = flags.find((f) => f.kind === 'lockedBreak');
   assert.equal(lb.prevQty, 100);
   assert.equal(lb.newQty, 80);
@@ -236,26 +299,43 @@ test('buildReconMatrix: effective FC = latest round per month; PO matched by del
   assert.equal(a.cells['2026-08'].status, 'unforecasted'); // PO 50, no FC
 });
 
-test('buildReconMatrix coverMonths: round2 covers a month but drops the SKU → 0 (cancelled)', () => {
-  const rounds = [
-    { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
-    // round 2's window includes Apr but does NOT list A for Apr → A/Apr is cut to 0
-    { roundNo: 2, coverMonths: ['2026-04', '2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 100 }] },
-  ];
-  const m = buildReconMatrix(rounds, []);
-  const a = m.rows.find((r) => r.fgCode === 'A');
-  assert.equal(a.cells['2026-04'].fcQty, 0);
-  assert.equal(a.cells['2026-04'].status, 'cancelled'); // had FC in round 1, dropped, no PO
-  assert.equal(a.cells['2026-05'].fcQty, 100);
-});
-
-test('buildReconMatrix coverMonths: a shift is NOT double-counted (total preserved)', () => {
+// โมเดล peak-matching (มติ 2026-07-23): FC ไม่หายเองเพราะรอบใหม่ไม่พูดถึง —
+// ยึด peak ที่เคยพยากรณ์ ให้ PO มาจับคู่; ลดเมื่อคนยืนยันตัด/เลื่อน (confirmedCuts).
+test('buildReconMatrix peak: รอบใหม่ตัด SKU ออกจากเดือน → ยึด peak FC (รอ PO) ไม่ auto-cancel', () => {
   const rounds = [
     { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
     { roundNo: 2, coverMonths: ['2026-04', '2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 100 }] },
   ];
   const a = buildReconMatrix(rounds, []).rows.find((r) => r.fgCode === 'A');
-  assert.equal(a.fcTotal, 100); // Apr 0 + May 100 — NOT 200
+  assert.equal(a.cells['2026-04'].fcQty, 100);         // peak คงไว้ — ไม่หายเพราะรอบ2 ไม่พูดถึง
+  assert.equal(a.cells['2026-04'].status, 'pending');  // FC100 PO0 → รอ PO
+  assert.equal(a.cells['2026-05'].fcQty, 100);
+});
+
+test('buildReconMatrix peak: PO มาชน FC อดีตที่รอบใหม่ตัดออก → "ครบ" ไม่ใช่ "นอก FC"', () => {
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
+    { roundNo: 2, coverMonths: ['2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 50 }] }, // Apr หายเพราะ PO มา
+  ];
+  const pos = [{ poNumber: 'P1', lines: [{ fgCode: 'A', deliveryMonth: '2026-04', qty: 100, status: 'open' }] }];
+  const a = buildReconMatrix(rounds, pos).rows.find((r) => r.fgCode === 'A');
+  assert.equal(a.cells['2026-04'].fcQty, 100);       // ยึด FC เดิม (peak) ไม่ใช่ 0
+  assert.equal(a.cells['2026-04'].poQty, 100);
+  assert.equal(a.cells['2026-04'].status, 'match');  // ล็อกคู่ FC=PO → ครบ
+});
+
+test('buildReconMatrix peak: confirmedCuts ลด peak (คนยืนยันตัด/เลื่อน)', () => {
+  const rounds = [
+    { roundNo: 1, coverMonths: ['2026-04'], lines: [{ fgCode: 'A', month: '2026-04', qty: 100 }] },
+    { roundNo: 2, coverMonths: ['2026-04', '2026-05'], lines: [{ fgCode: 'A', month: '2026-05', qty: 100 }] },
+  ];
+  // ยังไม่ยืนยัน: Apr ยึด peak 100 (รอ PO) → รวม 200
+  assert.equal(buildReconMatrix(rounds, []).rows.find((r) => r.fgCode === 'A').fcTotal, 200);
+  // ยืนยัน Apr ตัด/เลื่อนออก 100 → Apr=0, รวม=100
+  const cuts = new Map([['A||2026-04', 100]]);
+  const a = buildReconMatrix(rounds, [], [], cuts).rows.find((r) => r.fgCode === 'A');
+  assert.equal(a.cells['2026-04'].fcQty, 0);
+  assert.equal(a.fcTotal, 100);
 });
 
 test('buildReconMatrix coverage: move FC (PO fixed) — source becomes covered, target matches', () => {
@@ -298,6 +378,17 @@ test('cellDetail lists contributing FC rounds and active PO lines', () => {
   const d = cellDetail(RC_ROUNDS, RC_POS, 'A', '2026-07');
   assert.deepEqual(d.fcs.map((f) => f.roundNo), [1, 2]); // both rounds had Jul
   assert.equal(d.poLines.length, 1);                      // cancelled excluded? no — detail shows all; but only 1 Jul PO exists
+});
+
+test('cellDetail poLines carry PO doc date + received date (for docs tab)', () => {
+  const pos = [{ poNumber: 'PO-9', id: 'p9', docDate: '2026-06-20', receivedDate: '2026-06-25', lines: [
+    { fgCode: 'A', deliveryMonth: '2026-07', qty: 100, status: 'open', dueDate: '2026-07-10' },
+  ] }];
+  const d = cellDetail([], pos, 'A', '2026-07');
+  assert.equal(d.poLines.length, 1);
+  assert.equal(d.poLines[0].docDate, '2026-06-20');
+  assert.equal(d.poLines[0].receivedDate, '2026-06-25');
+  assert.equal(d.poLines[0].poId, 'p9');
 });
 
 // ── predict.js (shift prediction & coverage suggestion) ─────────────────────
@@ -391,4 +482,100 @@ test('suggestCoverageTargets: month has FC>PO (spare) → send FC to months with
   assert.deepEqual(t, [{ targetMonth: '2026-09', use: 200 }]);
   // Sep has no spare FC → nothing to send.
   assert.deepEqual(suggestCoverageTargets(matrix, 'A', '2026-09'), []);
+});
+
+// roundOrder: roundNo must equal chronological order by receivedDate (backfill).
+test('desiredRoundNumbers: already chronological → no changes', () => {
+  const rounds = [
+    { id: 'a', roundNo: 1, receivedDate: '2026-05-01' },
+    { id: 'b', roundNo: 2, receivedDate: '2026-06-01' },
+  ];
+  assert.deepEqual(desiredRoundNumbers(rounds), []);
+});
+
+test('desiredRoundNumbers: backfilled older round slots in front, later rounds shift up', () => {
+  const rounds = [
+    { id: 'a', roundNo: 1, receivedDate: '2026-05-01' },
+    { id: 'b', roundNo: 2, receivedDate: '2026-06-01' },
+    { id: 'old', roundNo: 3, receivedDate: '2026-03-01' }, // typed in last, happened first
+  ];
+  assert.deepEqual(desiredRoundNumbers(rounds), [
+    { id: 'old', from: 3, to: 1 },
+    { id: 'a', from: 1, to: 2 },
+    { id: 'b', from: 2, to: 3 },
+  ]);
+});
+
+test('desiredRoundNumbers: same receivedDate keeps entry order (stable tie-break)', () => {
+  const rounds = [
+    { id: 'a', roundNo: 1, receivedDate: '2026-05-01' },
+    { id: 'b', roundNo: 2, receivedDate: '2026-05-01' },
+    { id: 'c', roundNo: 3, receivedDate: '2026-04-01' },
+  ];
+  assert.deepEqual(desiredRoundNumbers(rounds), [
+    { id: 'c', from: 3, to: 1 },
+    { id: 'a', from: 1, to: 2 },
+    { id: 'b', from: 2, to: 3 },
+  ]);
+});
+
+test('desiredRoundNumbers: closes the gap a deleted round leaves', () => {
+  const rounds = [
+    { id: 'a', roundNo: 1, receivedDate: '2026-04-01' },
+    { id: 'c', roundNo: 4, receivedDate: '2026-06-01' }, // rounds 2–3 deleted
+  ];
+  assert.deepEqual(desiredRoundNumbers(rounds), [{ id: 'c', from: 4, to: 2 }]);
+});
+
+// ── unit toggle ชิ้น⇄ลัง: สลับหน่วยแล้วเลขต้องแปลงตาม (คงจำนวนชิ้นจริง) ──────
+import { convertEntryUnit } from './units.js';
+
+test('convertEntryUnit: piece→case หารชิ้นต่อลัง, case→piece คูณกลับ', () => {
+  assert.equal(convertEntryUnit('120', 'piece', 'case', 12), '10');
+  assert.equal(convertEntryUnit('10', 'case', 'piece', 12), '120');
+});
+
+test('convertEntryUnit: เศษลังเก็บทศนิยม แล้วสลับกลับได้จำนวนชิ้นเดิม (round-trip)', () => {
+  const asCase = convertEntryUnit('100', 'piece', 'case', 12); // 8.3333
+  assert.equal(asCase, '8.3333');
+  assert.equal(convertEntryUnit(asCase, 'case', 'piece', 12), '100'); // กลับมาเท่าเดิม
+});
+
+test('convertEntryUnit: หน่วยเดิม/ค่าว่าง/ศูนย์/ไม่รู้ชิ้นต่อลัง → คงค่าเดิม', () => {
+  assert.equal(convertEntryUnit('120', 'piece', 'piece', 12), '120');
+  assert.equal(convertEntryUnit('', 'piece', 'case', 12), '');
+  assert.equal(convertEntryUnit('0', 'piece', 'case', 12), '0');
+  assert.equal(convertEntryUnit('120', 'piece', 'case', null), '120'); // ไม่รู้ ppc → ไม่แปลง
+  assert.equal(convertEntryUnit('120', 'piece', 'case', 0), '120');
+});
+
+test('convertEntryUnit: round-trip กับ ppc หลายค่า ได้ชิ้นเดิมเสมอ', () => {
+  for (const ppc of [3, 6, 7, 13, 24]) {
+    for (const pieces of [100, 250, 1000, 999999]) {
+      const back = convertEntryUnit(convertEntryUnit(String(pieces), 'piece', 'case', ppc), 'case', 'piece', ppc);
+      assert.equal(back, String(pieces), `ppc=${ppc} pieces=${pieces}`);
+    }
+  }
+});
+
+// ── display unit toggle (Matrix/กระทบยอด) ─────────────────────────────
+import { displayQty, counterpartText } from './units.js';
+
+test('displayQty: ชิ้น=ตามเดิม, ลัง=หารชิ้นต่อลัง (เศษ 2 ตำแหน่ง)', () => {
+  assert.equal(displayQty(1440, 12, 'piece'), '1,440');
+  assert.equal(displayQty(1440, 12, 'case'), '120');
+  assert.equal(displayQty(100, 12, 'case'), '8.33'); // เศษลัง
+});
+
+test('displayQty: ค่า 0/ว่าง → · เมื่อ dot, ไม่รู้ชิ้นต่อลัง → คงเป็นชิ้น', () => {
+  assert.equal(displayQty(0, 12, 'case', { dot: true }), '·');
+  assert.equal(displayQty(0, 12, 'piece'), '0');
+  assert.equal(displayQty(500, null, 'case'), '500'); // ไม่มี ppc → โชว์ชิ้น
+});
+
+test('counterpartText: piece→ลัง, case→ชิ้น, null เมื่อแปลงไม่ได้/0', () => {
+  assert.equal(counterpartText(1440, 12, 'piece'), '120 ลัง');
+  assert.equal(counterpartText(1440, 12, 'case'), '1,440 ชิ้น');
+  assert.equal(counterpartText(500, null, 'piece'), null);
+  assert.equal(counterpartText(0, 12, 'piece'), null);
 });

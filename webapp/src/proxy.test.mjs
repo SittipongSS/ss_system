@@ -93,6 +93,35 @@ test('รายงานความพร้อมลายเซ็นเป�
   assert.equal(lockedOut(granted, '/api/admin/users', 'GET', true), true);
 });
 
+test('บล็อกข้อมูลบริษัทที่เผยแพร่อ่านได้ทุก role — เอกสารที่ AE พิมพ์ต้องไม่ตกไปใช้ค่าสำรอง', () => {
+  // เกิดจากบั๊กจริง: PR #693 เปิด /api/company-profile โดยไม่ลงทะเบียนใน proxy ด่าน
+  // lockdown เป็น allowlist (default deny) ทุก role ที่ไม่ใช่ admin จึงได้ 403 แล้ว
+  // getCompanyProfileForPrint กลืน error ไปใช้ constant สำรองเงียบ ๆ
+  for (const role of ['ae_supervisor', 'ae', 'ac', 'rd', 'legal', 'secretary', 'marketing', 'executive', 'pc', 'sa']) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/company-profile', 'GET', true), false, `${role} อ่านบล็อกบริษัทไม่ได้`);
+    // อ่านอย่างเดียว — ไม่มี route เขียนอยู่แล้ว และ lockdown ต้องไม่เปิดเผื่อไว้
+    for (const method of ['POST', 'PATCH', 'PUT', 'DELETE']) {
+      assert.equal(lockedOut(user, '/api/company-profile', method, true), true, `${role} ${method}`);
+    }
+    // ทางเขียนจริงของข้อมูลบริษัทยังปิดสนิทสำหรับ non-admin (master:manage เท่านั้น)
+    assert.equal(lockedOut(user, '/api/organization-settings', 'GET', true), true, `${role} organization-settings`);
+    assert.equal(lockedOut(user, '/settings/company', 'GET', false), true, `${role} หน้าตั้งค่าบริษัท`);
+  }
+});
+
+test('มาตรฐานเอกสารที่เผยแพร่อ่านได้ทุก role — เอกสารที่พิมพ์สดต้องได้รหัสแบบฟอร์มจริง', () => {
+  // /api/document-standards/active = ค่าที่พิมพ์บนใบถึงลูกค้า (formCode/Revision/accent)
+  // ต้องเปิดอ่านให้คนออกเอกสาร ไม่งั้นใบร่างจะตกไปใช้ค่าสำรองใน documentBrand เงียบ ๆ
+  // แบบเดียวกับที่ /api/company-profile เคยหลุด (PR #694)
+  for (const role of ['ae_supervisor', 'ae', 'ac', 'rd', 'legal', 'secretary', 'pc', 'sa']) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/document-standards/active', 'GET', true), false, `${role} อ่านมาตรฐานไม่ได้`);
+  }
+  // หน้าจัดการ (เห็นร่าง + ประวัติ) ยังเป็นของหัวหน้าฝ่ายขาย/แอดมินตามเดิม
+  assert.equal(lockedOut({ role: 'ae', extraCaps: [] }, '/settings/document-standards', 'GET', false), true);
+});
+
 test('secretary/marketing เปิดหน้ารายการสินค้าและอ่าน API สินค้าได้ (มติ 2026-07-20)', () => {
   // ทั้งสอง role ได้ products:view อ่านอย่างเดียว — ชั้น lockdown ต้องไม่บล็อก
   for (const role of ['secretary', 'marketing']) {

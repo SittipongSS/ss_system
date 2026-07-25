@@ -10,14 +10,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Layers, Plus, Pencil, EyeOff, Trash2, GripVertical } from "lucide-react";
 import Modal from "@/components/Modal";
+import AccessDenied from "@/components/ui/AccessDenied";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import Select from "@/components/ui/Select";
 import EmptyState from "@/components/ui/EmptyState";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
+import { accessState } from "@/lib/accessGate";
 import { fmtDateTime } from "@/lib/format";
+
+const BACK_TO_SETTINGS = { href: "/settings", label: "กลับหน้าตั้งค่า" };
 import {
   COST_LINE_KINDS,
   COST_LINE_KIND_LABELS,
@@ -233,6 +237,7 @@ function CostTemplateForm({ mode, form, setForm, productTypes, takenCategories }
 }
 
 export default function CostTemplatesPage() {
+  const role = useRole();
   const canManage = useCan("master:manage");
   const [templates, setTemplates] = useState([]);
   const [productTypes, setProductTypes] = useState([]);
@@ -359,16 +364,21 @@ export default function CostTemplatesPage() {
     setSaving(false);
   };
 
-  if (!canManage) {
+  const gate = accessState(role, canManage);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
     return (
-      <div className="glass-panel" style={{ padding: 40, textAlign: "center", color: "var(--text-3)" }}>
-        หน้านี้สำหรับผู้ดูแลระบบเท่านั้น
-      </div>
+      <AccessDenied
+        icon={<Layers size={22} />}
+        title="แม่แบบต้นทุนตามประเภทสินค้า"
+        message="หน้านี้สำหรับผู้ดูแลระบบเท่านั้น"
+        back={BACK_TO_SETTINGS}
+      />
     );
   }
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
+    <Workspace hideHeader back={BACK_TO_SETTINGS}>
       <div className="premium-header">
         <div className="header-content">
           <h1>

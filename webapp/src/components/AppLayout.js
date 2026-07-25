@@ -213,10 +213,13 @@ export default function AppLayout({ children }) {
         { href: '/sa/sales-orders', name: 'Sale Order', icon: ClipboardList, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
         // เรื่องสอบถาม Sale ↔ RD (mig 0104) — ฝั่งขายเห็นตาม scope ดีล, rd เห็นของฝ่ายตน
         { href: '/sa/inquiries', name: 'สอบถาม RD', icon: MessageCircleQuestion, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/inquiries') },
-        // ใบขอราคาต้นทุน (mig 0141) — ฝ่ายขาย/RD/PC/ผู้บริหารใช้หน้าเดียวกัน
+        // ใบขอราคาผลิต (mig 0141) — ฝ่ายขาย/RD/PC/ผู้บริหารใช้หน้าเดียวกัน
         // cap costing:view กว้างเกินจริง (role staff ถือทั้ง PD/WH/QC ด้วย) จึงต้อง
         // แคบด้วยฝ่ายผ่าน canViewCosting ไม่งั้นฝ่ายที่ไม่เกี่ยวเห็นเมนูต้นทุน
-        { href: '/sa/costing', name: 'ขอราคาต้นทุน', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
+        { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
+        // คลังราคาวัสดุ + ใบขอราคาวัสดุ (mig 0143) — cap เดียวกับขอราคาผลิต
+        // (เห็นได้ทั้งฝ่ายขาย/RD/PC/ผู้บริหาร) แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
+        { href: '/sa/materials', name: 'คลังราคาวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/materials') },
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },
@@ -238,13 +241,12 @@ export default function AppLayout({ children }) {
         { href: '/sahamit/po', name: 'Purchase Orders', icon: FileText, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
         { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },
         { href: '/sahamit/material', name: 'วัสดุ / Lead time', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
-        { href: '/sahamit/report', name: 'รายงานมูลค่า', icon: BarChart3, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/report') },
       ],
     },
   ];
 
   // department จำเป็นสำหรับเมนูที่ cap อย่างเดียวกว้างเกิน แล้วต้องแคบด้วยฝ่าย
-  // (เช่น ใบขอราคาต้นทุน — ฝ่ายจัดซื้อใช้ role staff ร่วมกับ PD/WH/QC)
+  // (เช่น ใบขอราคาผลิต — ฝ่ายจัดซื้อใช้ role staff ร่วมกับ PD/WH/QC)
   const userContext = { role, team, department, extraCaps };
   const activeSystemDefinition = getSystemByKey(activeSystem);
   const systemSubtitle = activeSystem === 'settings'

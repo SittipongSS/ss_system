@@ -1,11 +1,15 @@
 "use client";
-// หน้ารายละเอียดใบขอราคาต้นทุน — อ่านได้ทุกฝ่ายที่เกี่ยวข้อง, แก้ได้เฉพาะฝ่ายขาย
-// เจ้าของใบ (ตาม canEditCostingRequest). การตอบราคา RD/PC และการอนุมัติของ
-// ผู้บริหารมาใน PR4 — หน้านี้แสดงบรรทัดต้นทุนแบบอ่านอย่างเดียวไปก่อน
+// หน้ารายละเอียดใบขอราคาผลิต — อ่านได้ทุกฝ่ายที่เกี่ยวข้อง, แก้ได้เฉพาะฝ่ายขาย
+// เจ้าของใบ (canEditCostingRequest). PR-B: ราคาวัสดุมาจากคลัง — เซลกด "ดึงราคา
+// จากคลัง" (fill-prices), RD/PC ยืนยันเฉพาะบรรทัดเกินอายุ (confirm-price);
+// ผู้บริหารอนุมัติราคาผลิตรายสินค้า
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { Calculator, Pencil, Ban } from "lucide-react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink, Boxes, Copy } from "lucide-react";
 import Modal from "@/components/Modal";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -17,9 +21,11 @@ import { useDepartment, useRole, useTeam } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import {
   COSTING_STATUS_LABELS, COSTING_STATUS_TONES, ITEM_APPROVAL_LABELS,
-  approvalProgress, canEditCostingRequest, componentUnitCost, isMoqTier, itemUnitCost,
-  pricingProgress,
+  approvalProgress, canDecideItem, canEditCostingRequest, canFeedCostFromRequest,
+  componentUnitCost, feedCostError, feedCostValue,
+  isMoqTier, itemUnitCost, pricingProgress, submitToExecError,
 } from "@/lib/costing";
+import { canQuoteMaterial } from "@/lib/materialPrices";
 import { COST_LINE_KIND_LABELS } from "@/lib/master/costTemplate";
 
 const money = (value) => (value == null
@@ -28,6 +34,7 @@ const money = (value) => (value == null
 
 export default function CostingDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const role = useRole();
   const team = useTeam();
   const department = useDepartment();
@@ -43,6 +50,15 @@ export default function CostingDetailPage() {
   const [pendingCancel, setPendingCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [toast, setToast] = useState(null);
+  // การตัดสินของผู้บริหารต่อรายการ — { itemId, mode: 'approve'|'return' }
+  const [decision, setDecision] = useState(null);
+  const [tierDraft, setTierDraft] = useState({});
+  const [returnReason, setReturnReason] = useState("");
+  // รายการที่รอยืนยันก่อนป้อนต้นทุนกลับสินค้า
+  const [pendingFeed, setPendingFeed] = useState(null);
+  // รายการที่กำลังผูก FG เดิม — { item, products } (โหลดตอนเปิด)
+  const [pendingLink, setPendingLink] = useState(null);
+  const [linkProducts, setLinkProducts] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +89,10 @@ export default function CostingDetailPage() {
     () => !!request && canEditCostingRequest({ role, team, department, id: request.requestedById }, request),
     [request, role, team, department],
   );
+  const canFeed = useMemo(
+    () => !!request && canFeedCostFromRequest({ role, team, department, id: request.requestedById }, request),
+    [request, role, team, department],
+  );
 
   // รายการที่มีราคาที่ฝ่ายอื่นตอบแล้ว หรือมีราคาอนุมัติแล้ว = ลบ/เปลี่ยนประเภทไม่ได้
   const lockedItemIds = useMemo(() => new Set(
@@ -81,6 +101,28 @@ export default function CostingDetailPage() {
         || (item.tiers || []).some((t) => t.approvedUnitPrice != null))
       .map((item) => item.id),
   ), [request]);
+
+  const me = useMemo(() => ({ role, team, department }), [role, team, department]);
+
+  // เรียก endpoint แล้วโหลดใบใหม่ — ใช้ร่วมทุก action (ส่ง/ตอบราคา/อนุมัติ)
+  const runAction = useCallback(async (path, init, successMsg) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/sa/costing/${id}${path}`, {
+        headers: { "Content-Type": "application/json" }, ...init,
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "ทำรายการไม่สำเร็จ");
+      setToast({ kind: "success", msg: successMsg });
+      await load();
+      return d || true;
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [id, load]);
 
   const openEdit = () => setForm(costingFormFromRequest(request));
   const closeEdit = () => { setForm(null); setPendingSave(false); };
@@ -138,6 +180,76 @@ export default function CostingDetailPage() {
   const approval = approvalProgress(request.items || []);
   const pricing = pricingProgress((request.items || []).flatMap((i) => i.components || []));
 
+  // PR-B: ราคาวัสดุมาจากคลัง — เซลกด "ดึงราคาจากคลัง" (fill-prices),
+  // RD/PC ยืนยันเฉพาะบรรทัดที่เกินอายุ (confirm-price)
+  const fillFromLibrary = () => runAction("/fill-prices", { method: "PATCH", body: "{}" },
+    "ดึงราคาจากคลังแล้ว");
+
+  const confirmLine = (componentId) => runAction("/confirm-price", {
+    method: "PATCH", body: JSON.stringify({ componentId }),
+  }, "ยืนยันราคาแล้ว");
+
+  const submit = () => {
+    const blocked = submitToExecError(request);
+    if (blocked) { setToast({ kind: "error", msg: blocked }); return; }
+    runAction("/submit", { method: "POST", body: JSON.stringify({ stage: "exec" }) }, "ส่งให้ผู้บริหารแล้ว");
+  };
+
+  // ออกฉบับแก้ไข (rev.2) — สร้างใบใหม่แล้วพาไปที่ใบนั้น
+  const revise = () => runAction("/revise", { method: "POST", body: "{}" }, "ออกฉบับแก้ไขแล้ว")
+    .then((ok) => { if (ok?.id) router.push(`/sa/costing/${ok.id}`); });
+
+  const linkFg = (itemId, productId) => runAction("/link-fg", {
+    method: "PATCH", body: JSON.stringify({ itemId, productId }),
+  }, "ผูกสินค้าแล้ว").then((ok) => { if (ok) setPendingLink(null); });
+
+  // "ไปต่อ → ขึ้นทะเบียน FG": stash ข้อมูลรายการไว้ให้หน้าสินค้า prefill (มีในมือ
+  // อยู่แล้ว ไม่ต้อง fetch) แล้วพาไปหน้าเพิ่มสินค้า — กลับมากด "ผูก FG เดิม" ทีหลัง
+  const registerFg = (item) => {
+    try {
+      sessionStorage.setItem("costingFgPrefill", JSON.stringify({
+        productDescription: item.productLabel,
+        fragranceName: item.fragranceName || "",
+        customerName: request.customerName || "",
+        note: `จากใบขอราคาผลิต ${request.docNo || id}`,
+      }));
+    } catch { /* sessionStorage อาจถูกปิด — ไปหน้าเพิ่มสินค้าเปล่าแทน */ }
+    router.push("/database/products?prefill=costing");
+  };
+
+  // เปิดโมดัลผูก FG เดิม — โหลดสินค้าของลูกค้าใบนี้ (ถ้ามี) ให้เลือก
+  const openLinkFg = async (item) => {
+    setPendingLink({ item });
+    try {
+      const res = await fetch("/api/products", { cache: "no-store" });
+      const rows = await res.json().catch(() => []);
+      const list = Array.isArray(rows) ? rows : (rows.items || rows.data || []);
+      // กรองเฉพาะสินค้าของลูกค้าใบนี้ ถ้าใบผูกลูกค้าไว้
+      setLinkProducts(request.customerId ? list.filter((p) => p.customerId === request.customerId) : list);
+    } catch {
+      setToast({ kind: "error", msg: "โหลดรายการสินค้าไม่สำเร็จ" });
+    }
+  };
+
+  const sendDecision = () => {
+    const item = (request.items || []).find((i) => i.id === decision.itemId);
+    const payload = decision.mode === "return"
+      ? { itemId: decision.itemId, decision: "return", returnReason }
+      : {
+        itemId: decision.itemId,
+        decision: "approve",
+        tierPrices: (item?.tiers || []).map((t) => ({
+          tierId: t.id,
+          price: tierDraft[t.id] ?? t.approvedUnitPrice,
+        })),
+      };
+    runAction("/approve", { method: "POST", body: JSON.stringify(payload) },
+      decision.mode === "return" ? "ตีกลับรายการแล้ว" : "อนุมัติราคาผลิตแล้ว")
+      .then((ok) => {
+        if (ok) { setDecision(null); setTierDraft({}); setReturnReason(""); }
+      });
+  };
+
   return (
     <Workspace hideHeader back={{ href: "/sa/costing", label: "กลับรายการ" }}>
       <div className="premium-header">
@@ -146,19 +258,41 @@ export default function CostingDetailPage() {
             <span className="premium-header-icon"><Calculator size={22} /></span>{" "}
             {request.docNo || "ใบขอราคา (ร่าง)"}
           </h1>
-          <p>{request.customerName || "ไม่ระบุลูกค้า"} · สร้างเมื่อ {fmtDate(request.createdAt)}</p>
+          <p>
+            {request.customerName || "ใบสำรวจ (ไม่ผูกดีล)"} · สร้างเมื่อ {fmtDate(request.createdAt)}
+            {request.revisionNo > 1 ? ` · ฉบับแก้ไขที่ ${request.revisionNo}` : ""}
+          </p>
         </div>
         {/* action ของ entity อยู่ขวาบนนอกการ์ด ตาม page-header standard */}
-        {canEdit && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn" onClick={openEdit}>
-              <Pencil size={14} /> แก้ไข
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {canEdit && (
+            <>
+              <button type="button" className="btn" onClick={openEdit} disabled={saving}>
+                <Pencil size={14} /> แก้ไข
+              </button>
+              <button type="button" className="btn" onClick={() => setPendingCancel(true)} disabled={saving}>
+                <Ban size={14} /> ยกเลิกใบ
+              </button>
+              {/* PR-B: ราคาวัสดุมาจากคลัง — เซลดึงราคา แล้วส่งผู้บริหารได้เลย */}
+              {["draft", "assembling", "returned", "pricing"].includes(request.status) && (
+                <>
+                  <button type="button" className="btn" onClick={fillFromLibrary} disabled={saving}>
+                    <Boxes size={14} /> ดึงราคาจากคลัง
+                  </button>
+                  <button type="button" className="btn btn-accent" onClick={submit} disabled={saving}>
+                    <Send size={14} /> ส่งผู้บริหารอนุมัติ
+                  </button>
+                </>
+              )}
+            </>
+          )}
+          {/* revise = ออกใบใหม่ (เฉพาะใบที่อนุมัติ/จบแล้ว) — canEdit เป็น false ตอนนี้ */}
+          {canFeed && ["approved", "linked"].includes(request.status) && (
+            <button type="button" className="btn" onClick={revise} disabled={saving}>
+              <Copy size={14} /> ออกฉบับแก้ไข (rev.{(request.revisionNo || 1) + 1})
             </button>
-            <button type="button" className="btn" onClick={() => setPendingCancel(true)}>
-              <Ban size={14} /> ยกเลิกใบ
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
@@ -180,6 +314,15 @@ export default function CostingDetailPage() {
           <span style={{ fontSize: 12, color: "var(--text-3)" }}>
             ผู้ขอ {request.requestedByName || "—"}
           </span>
+          {/* ลิงก์กลับดีลต้นทาง — เฉพาะใบที่ผูกดีล (ใบสำรวจไม่มีดีล) */}
+          {request.dealId && (
+            <Link
+              href={`/sa/deals/${request.dealId}`}
+              style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
+              <ExternalLink size={12} /> เปิดดีลต้นทาง
+            </Link>
+          )}
         </div>
         {request.note && (
           <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-2)" }}>{request.note}</p>
@@ -201,6 +344,9 @@ export default function CostingDetailPage() {
                 {item.categoryCode}
               </span>
               {item.fragranceName && <span className="chip">{item.fragranceName}</span>}
+              {item.formulaCode && (
+                <span className="chip" style={{ color: "var(--violet)" }}>สูตร {item.formulaCode}</span>
+              )}
               <span className="spacer" style={{ flex: 1 }} />
               <span
                 className="status-pill"
@@ -212,6 +358,27 @@ export default function CostingDetailPage() {
               >
                 {ITEM_APPROVAL_LABELS[item.approvalStatus] || item.approvalStatus}
               </span>
+            </div>
+
+            {/* สถานะการผูก FG — ไปต่อ = กดขึ้นทะเบียน/ผูก FG เดิม */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+              {item.productId ? (
+                <span style={{ fontSize: 12, color: "var(--green)" }}>ผูกสินค้าแล้ว (FG)</span>
+              ) : (
+                <>
+                  <span style={{ fontSize: 12, color: "var(--text-3)" }}>ยังไม่ผูกสินค้า (FG)</span>
+                  {canEdit || ["approved", "linked"].includes(request.status) ? (
+                    <>
+                      <button type="button" className="btn sm" onClick={() => registerFg(item)}>
+                        ขึ้นทะเบียน FG จากรายการนี้
+                      </button>
+                      <button type="button" className="btn sm" disabled={saving} onClick={() => openLinkFg(item)}>
+                        ผูก FG เดิม
+                      </button>
+                    </>
+                  ) : null}
+                </>
+              )}
             </div>
 
             {item.approvalStatus === "returned" && item.returnReason && (
@@ -228,7 +395,7 @@ export default function CostingDetailPage() {
                     <th style={{ width: 130 }}>ชนิด</th>
                     <th style={{ width: 110 }}>ขอจาก</th>
                     <th style={{ width: 110 }}>กรัม/ชิ้น</th>
-                    <th style={{ width: 130 }}>ราคาที่ตอบ</th>
+                    <th style={{ width: 190 }}>ราคาวัสดุ (จากคลัง)</th>
                     <th style={{ width: 120 }}>ต้นทุน/ชิ้น</th>
                   </tr>
                 </thead>
@@ -251,9 +418,30 @@ export default function CostingDetailPage() {
                         </td>
                         <td>{component.gramsPerUnit ?? <span style={{ color: "var(--text-3)" }}>—</span>}</td>
                         <td>
-                          {component.priceStatus === "quoted"
-                            ? `${money(component.pricePerKg ?? component.pricePerUnit)} ${component.unitBasis === "per_kg" ? "฿/กก." : "฿/ชิ้น"}`
-                            : <span style={{ color: "var(--text-3)" }}>ยังไม่ตอบ</span>}
+                          {!component.sourceDept ? (
+                            <span style={{ color: "var(--text-3)" }}>คิดภายใน</span>
+                          ) : component.priceStatus === "quoted" ? (
+                            <div>
+                              <span>
+                                {money(component.pricePerKg ?? component.pricePerUnit)} {component.unitBasis === "per_kg" ? "฿/กก." : "฿/ชิ้น"}
+                              </span>
+                              {component.confirmStatus === "pending" && (
+                                <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 2 }}>
+                                  ⚠️ ราคาเกินอายุ รอ {component.sourceDept} ยืนยัน
+                                  {canQuoteMaterial(me, component.kind) && (
+                                    <button
+                                      type="button" className="btn sm" style={{ marginLeft: 6 }}
+                                      disabled={saving} onClick={() => confirmLine(component.id)}
+                                    >
+                                      ยืนยันราคา
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ color: "var(--text-3)" }}>ยังไม่ดึงราคา</span>
+                          )}
                         </td>
                         <td>{unit == null ? <span style={{ color: "var(--text-3)" }}>—</span> : money(unit)}</td>
                       </tr>
@@ -292,6 +480,64 @@ export default function CostingDetailPage() {
                 ))}
               </div>
             </div>
+
+            {/* รูปตัวอย่าง/สเปกของสินค้าตัวนี้ — RD/PC ดูประกอบตอนตอบราคา
+                แนบได้เฉพาะฝ่ายขายเจ้าของใบ (ฝ่ายอื่นเห็นอย่างเดียว) */}
+            <div style={{ marginTop: 12 }}>
+              <div className="toolbar-label">ไฟล์แนบของสินค้านี้</div>
+              <AttachmentsPanel
+                entityType="costing_item"
+                entityId={item.id}
+                canEdit={canEdit}
+                inlineUpload
+              />
+            </div>
+
+            {/* ป้อนต้นทุนกลับสินค้า — โผล่หลังอนุมัติ และหายเมื่อป้อนแล้ว */}
+            {item.costFedAt ? (
+              <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--green)" }}>
+                ป้อนราคาผลิต {money(item.costFedPrice)} ฿/ชิ้น เข้าสินค้าแล้ว
+                {item.costFedTierQty ? ` (อ้างชั้น ${Number(item.costFedTierQty).toLocaleString("th-TH")} ชิ้น)` : ""}
+                {item.costFedByName ? ` โดย ${item.costFedByName}` : ""}
+                <span style={{ color: "var(--text-3)" }}>
+                  {" "}— ฝ่ายขายปรับราคาเพิ่มได้ที่ฐานข้อมูลสินค้า
+                </span>
+              </p>
+            ) : canFeed && item.approvalStatus === "approved" && (
+              <div className="action-bar" style={{ marginTop: 12 }}>
+                <span style={{ marginRight: "auto", fontSize: 12, color: "var(--text-3)" }}>
+                  {feedCostError(item, request.moq)
+                    || `จะเขียนราคาผลิต ${money(feedCostValue(item, request.moq))} ฿/ชิ้น ลงสินค้าที่ผูกไว้`}
+                </span>
+                <button
+                  type="button" className="btn btn-accent" disabled={saving || !!feedCostError(item, request.moq)}
+                  onClick={() => setPendingFeed(item)}
+                >
+                  <ArrowDownToLine size={14} /> ป้อนราคาผลิตเข้า FG
+                </button>
+              </div>
+            )}
+
+            {canDecideItem(me, request, item) && (
+              <div className="action-bar" style={{ marginTop: 12 }}>
+                <button
+                  type="button" className="btn" disabled={saving}
+                  onClick={() => { setDecision({ itemId: item.id, mode: "return" }); setReturnReason(""); }}
+                >
+                  <Undo2 size={14} /> ตีกลับให้แก้
+                </button>
+                <button
+                  type="button" className="btn btn-success" disabled={saving}
+                  onClick={() => {
+                    setDecision({ itemId: item.id, mode: "approve" });
+                    setTierDraft(Object.fromEntries((item.tiers || [])
+                      .map((t) => [t.id, t.approvedUnitPrice ?? ""])));
+                  }}
+                >
+                  <Check size={14} /> อนุมัติราคาผลิต
+                </button>
+              </div>
+            )}
           </div>
         );
       })}
@@ -353,6 +599,122 @@ export default function CostingDetailPage() {
             ยกเลิกใบนี้
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        open={!!decision}
+        onClose={() => setDecision(null)}
+        title={decision?.mode === "return" ? "ตีกลับรายการนี้" : "อนุมัติราคาผลิต"}
+        size="sm"
+        dismissible={!saving}
+      >
+        {decision && (() => {
+          const item = (request.items || []).find((i) => i.id === decision.itemId);
+          if (!item) return null;
+          const cost = itemUnitCost(item.components || []);
+          return (
+            <>
+              <p style={{ marginTop: 0, color: "var(--text-2)" }}>{item.productLabel}</p>
+              {decision.mode === "return" ? (
+                <div className="form-group">
+                  <label htmlFor="cr-return-reason">เหตุผลที่ตีกลับ</label>
+                  <textarea
+                    id="cr-return-reason" className="textarea-premium" rows={3} maxLength={500}
+                    placeholder="เช่น ต้นทุนบรรจุภัณฑ์สูงผิดปกติ ให้ตรวจสอบราคาใหม่"
+                    value={returnReason}
+                    onChange={(e) => setReturnReason(e.target.value)}
+                  />
+                  <small style={{ color: "var(--text-3)" }}>
+                    ฝ่ายขายจะเห็นเหตุผลนี้ และรายการอื่นที่อนุมัติแล้วจะไม่ถูกกระทบ
+                  </small>
+                </div>
+              ) : (
+                <>
+                  <p style={{ fontSize: 13, color: "var(--text-2)" }}>
+                    ต้นทุนรวมต่อชิ้น <strong>{money(cost.total)} ฿</strong>
+                    {!cost.complete && (
+                      <span style={{ color: "var(--amber)" }}> (ยังไม่ครบ)</span>
+                    )}
+                  </p>
+                  {(item.tiers || []).map((tier) => (
+                    <div className="form-group" key={tier.id}>
+                      <label htmlFor={`tier-${tier.id}`}>
+                        ราคาผลิตที่ {Number(tier.qty).toLocaleString("th-TH")} ชิ้น
+                        {isMoqTier(tier, request.moq) ? " (MOQ)" : ""}
+                      </label>
+                      <input
+                        id={`tier-${tier.id}`} className="premium-input"
+                        type="number" min="0" step="0.01" placeholder="บาท/ชิ้น"
+                        value={tierDraft[tier.id] ?? ""}
+                        onChange={(e) => setTierDraft((d) => ({ ...d, [tier.id]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                  <small style={{ color: "var(--text-3)" }}>
+                    ต้องกรอกครบทุกชั้น — การอนุมัติจะถูกบันทึกพร้อมลายเซ็นอิเล็กทรอนิกส์ของคุณ
+                  </small>
+                </>
+              )}
+              <div className="action-bar" style={{ marginTop: 16 }}>
+                <button type="button" className="btn ghost" onClick={() => setDecision(null)} disabled={saving}>
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  className={decision.mode === "return" ? "btn btn-danger" : "btn btn-success"}
+                  disabled={saving || (decision.mode === "return" && !returnReason.trim())}
+                  onClick={sendDecision}
+                >
+                  {decision.mode === "return" ? "ตีกลับ" : "อนุมัติ"}
+                </button>
+              </div>
+            </>
+          );
+        })()}
+      </Modal>
+
+      <ConfirmDialog
+        open={!!pendingFeed}
+        title="ป้อนราคาผลิตเข้าสินค้า"
+        description={pendingFeed
+          ? `เขียนราคาผลิต ${money(feedCostValue(pendingFeed, request.moq))} บาท/ชิ้น ลงสินค้าที่ผูกกับ "${pendingFeed.productLabel}"`
+          : ""}
+        detail="นี่คือราคาตั้งต้นจากผู้บริหาร — ฝ่ายขายปรับเพิ่ม (บวก margin) ได้ภายหลังที่ฐานข้อมูลสินค้า ซึ่งจะผ่านการอนุมัติของหัวหน้าฝ่ายขายตามปกติ; ราคาที่ผู้บริหารอนุมัติยังถูกตรึงไว้ในใบนี้ให้ย้อนดูได้เสมอ"
+        confirmLabel="ป้อนราคาผลิต"
+        busy={saving}
+        onConfirm={() => runAction("/feed-cost", {
+          method: "POST", body: JSON.stringify({ itemId: pendingFeed.id }),
+        }, "ป้อนราคาผลิตเข้าสินค้าแล้ว").then((ok) => { if (ok) setPendingFeed(null); })}
+        onClose={() => setPendingFeed(null)}
+      />
+
+      <Modal open={!!pendingLink} onClose={() => setPendingLink(null)} title="ผูกสินค้า (FG) เดิม" size="sm" dismissible={!saving}>
+        {pendingLink && (
+          <>
+            <p style={{ marginTop: 0, color: "var(--text-2)" }}>{pendingLink.item.productLabel}</p>
+            <div className="form-group">
+              <label htmlFor="link-fg">เลือกสินค้าในระบบ</label>
+              <SearchableSelect
+                value=""
+                onChange={(value) => value && linkFg(pendingLink.item.id, value)}
+                options={linkProducts.map((p) => ({
+                  value: p.id,
+                  label: `${p.fgCode || p.id}${p.productDescription ? ` — ${p.productDescription}` : ""}`,
+                  search: [p.fgCode, p.productDescription, p.brandName].filter(Boolean).join(" "),
+                }))}
+                placeholder="ค้นหาด้วยรหัส FG หรือชื่อสินค้า"
+                ariaLabel="เลือกสินค้า"
+              />
+              <small style={{ color: "var(--text-3)" }}>
+                {request.customerId ? "แสดงเฉพาะสินค้าของลูกค้าเจ้าของใบนี้" : "ใบไม่ผูกลูกค้า — แสดงสินค้าทั้งหมด"}
+                {" · "}เลือกแล้วผูกทันที
+              </small>
+            </div>
+            <div className="action-bar" style={{ marginTop: 12 }}>
+              <button type="button" className="btn ghost" onClick={() => setPendingLink(null)} disabled={saving}>ปิด</button>
+            </div>
+          </>
+        )}
       </Modal>
 
       <Toast toast={toast} onClose={() => setToast(null)} />

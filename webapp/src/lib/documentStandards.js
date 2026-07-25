@@ -1,3 +1,7 @@
+import { cachedFetchJson } from './apiCache';
+import { businessDate } from './businessDate';
+import { DOCUMENT_FORMS } from './documentBrand';
+
 export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder']);
 
 export const DOCUMENT_STANDARD_LABELS = Object.freeze({
@@ -5,15 +9,19 @@ export const DOCUMENT_STANDARD_LABELS = Object.freeze({
   salesOrder: 'ใบสั่งขาย',
 });
 
-export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'teal', 'amber', 'green', 'navy']);
+// เปิดให้เลือกเฉพาะสีที่มีเอกสารใช้จริงตอนนี้ (มติ 2026-07-25) — เครื่องยนต์เอกสาร
+// (DOCUMENT_ACCENT_THEMES) รองรับมากกว่านี้ แต่ตัวเลือกที่ไม่มีเอกสารชนิดไหนใช้
+// ก็เป็นปุ่มที่กดแล้วไม่เกิดอะไร · เพิ่มคีย์ที่นี่ตอนมีเอกสารชนิดใหม่จริง
+export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel']);
 
 export const DOCUMENT_ACCENT_LABELS = Object.freeze({
   terracotta: 'Terracotta · ใบเสนอราคา',
-  teal: 'Teal · ใบสั่งขาย',
-  amber: 'Amber · ใบแจ้งหนี้',
-  green: 'Green · ใบเสร็จรับเงิน',
-  navy: 'Navy · มาตรฐานกลาง',
+  steel: 'Steel · ใบสั่งขาย',
 });
+
+// สีตั้งต้นต่อชนิดเอกสาร ใช้ทั้งตอนยังไม่มีมาตรฐานเผยแพร่ และตอนมาตรฐานถือคีย์เก่า
+// ที่เลิกให้เลือกแล้ว (teal/amber/green/navy) — map ที่ resolver ไม่ต้องแตะข้อมูลใน DB
+const DEFAULT_ACCENT_BY_KEY = Object.freeze({ quotation: 'terracotta', salesOrder: 'steel' });
 
 export const DOCUMENT_STANDARD_LIMITS = Object.freeze({
   titleTh: 150,
@@ -56,6 +64,16 @@ export function validateNumberingPattern(pattern) {
   }
   if (!tokens.some((token) => token.startsWith('RUNNING:'))) {
     return { ok: false, error: 'รูปแบบเลขที่ต้องมี token เลขรัน {RUNNING:3}, {RUNNING:4} หรือ {RUNNING:5}' };
+  }
+  // {REVISION} ต้องปิดท้าย — ระบบตัดตรงนี้เพื่อเอาส่วนหน้าเป็น "เลขฐาน" ของสายฉบับแก้ไข
+  // (quotations.baseNumber) ถ้าอยู่กลางสตริงจะแยกเลขฐานไม่ได้ แล้ว Revise จะออกเลขมั่ว
+  if (!text.endsWith('{REVISION}')) {
+    return { ok: false, error: 'รูปแบบเลขที่ต้องปิดท้ายด้วย {REVISION} — ระบบใช้ส่วนหน้าเป็นเลขฐานของฉบับแก้ไข' };
+  }
+  // ตัวนับเลขรันใน DB รีเซ็ตทุกเดือน (quote_number_counters.month = 'YYMM') — ถ้ารูปแบบ
+  // ไม่มีเดือน+ปี เลขจะวนซ้ำข้ามเดือน/ข้ามปีแล้วไปชน UNIQUE ตอนบันทึกใบ
+  if (!tokens.includes('MM') || !tokens.some((token) => token === 'YY' || token === 'YYYY')) {
+    return { ok: false, error: 'รูปแบบเลขที่ต้องมี {MM} และ {YY} หรือ {YYYY} — ตัวนับเลขรันรีเซ็ตทุกเดือน ถ้าไม่มีเดือน/ปีเลขจะซ้ำ' };
   }
   return { ok: true, value: text };
 }
@@ -119,15 +137,134 @@ export function documentStandardFormLine(version) {
   return `${version.formCode}: Rev. No.${version.revision}. ${formatDocumentStandardEffectiveDate(version.effectiveDate)}`;
 }
 
-export function numberingPatternExample(pattern, revision = '0') {
+// ── มาตรฐานที่เผยแพร่ → ค่าที่เอกสารใช้ ────────────────────────────────────────
+// documentBrand.DOCUMENT_FORMS เป็น "ค่าสำรองที่เดียว" เหมือน companyProfile —
+// เอกสารต้องพิมพ์ได้เสมอแม้โหลดมาตรฐานไม่ได้ แต่ถ้ามีมาตรฐานเผยแพร่ต้องใช้ค่านั้น
+
+// แถวเวอร์ชันที่เผยแพร่ → รูป form เดียวกับ DOCUMENT_FORMS ที่ตัวสร้างเอกสารกินอยู่แล้ว
+export function documentStandardToForm(version) {
+  if (!version) return null;
+  const code = String(version.formCode || '').trim();
+  const revision = String(version.revision || '').trim();
+  if (!code || !revision) return null;
+  return {
+    code,
+    revision,
+    effectiveDate: formatDocumentStandardEffectiveDate(version.effectiveDate),
+    title: String(version.titleEn || '').trim() || null,
+  };
+}
+
+// เติมช่องที่ขาดจากค่าสำรองของเอกสารชนิดนั้น — คืนรูป form ที่ใช้ได้เสมอ
+export function resolveDocumentForm(version, documentKey) {
+  const fallback = DOCUMENT_FORMS[documentKey] || DOCUMENT_FORMS.quotation;
+  const form = documentStandardToForm(version);
+  if (!form) return fallback;
+  return {
+    code: form.code,
+    revision: form.revision,
+    effectiveDate: form.effectiveDate !== '-' ? form.effectiveDate : fallback.effectiveDate,
+    title: form.title || fallback.title,
+  };
+}
+
+export function resolveDocumentAccentKey(version, documentKey) {
+  const fallback = DEFAULT_ACCENT_BY_KEY[documentKey] || 'terracotta';
+  const accentKey = String(version?.accentKey || '').trim();
+  return DOCUMENT_ACCENT_KEYS.includes(accentKey) ? accentKey : fallback;
+}
+
+// ชื่อไทยของเอกสารที่พิมพ์บนหัวใบ — มาตรฐานคุมได้ ไม่งั้นใช้ป้ายมาตรฐานของชนิดนั้น
+export function resolveDocumentTitleTh(version, documentKey) {
+  return String(version?.titleTh || '').trim() || DOCUMENT_STANDARD_LABELS[documentKey] || 'เอกสาร';
+}
+
+// ── client only ──────────────────────────────────────────────────────────────
+// ดึงมาตรฐานที่เผยแพร่มาใช้ตอนพิมพ์สด (cache แบบ SWR ผ่าน apiCache) — ล้มเมื่อไร
+// คืน {} ให้ resolveDocumentForm ตกไปใช้ค่าสำรอง เอกสารจะได้พิมพ์ได้เสมอ
+export async function getDocumentStandardsForPrint() {
+  try {
+    const data = await cachedFetchJson('/api/document-standards/active');
+    return data?.standards || {};
+  } catch (error) {
+    console.warn('[documentStandards] โหลด /api/document-standards/active ไม่สำเร็จ — ใช้ค่าสำรองจาก documentBrand', error);
+    return {};
+  }
+}
+
+// ── รูปแบบเลขที่ → เลขเอกสารจริง ─────────────────────────────────────────────
+// ตัวจัดรูปแบบตัวกลางที่ใบเสนอราคา (JS) และตัวอย่างในหน้าตั้งค่าใช้ร่วมกัน
+// ⚠ ใบสั่งขายประกอบเลขใน SQL (create_sales_order_draft — mig 0155) เพราะตัวนับกับ
+//   การ INSERT ต้องอยู่ทรานแซกชันเดียวกัน · เพิ่ม/แก้ token ที่นี่ต้องแก้ที่นั่นคู่กันเสมอ
+
+export const DEFAULT_NUMBERING_PATTERNS = Object.freeze({
+  quotation: 'QT-{YY}{MM}{RUNNING:4}-{REVISION}',
+  salesOrder: 'SO-{YY}{MM}{RUNNING:4}-{REVISION}',
+});
+
+const REVISION_TOKEN = '{REVISION}';
+// ตัวคั่นระหว่างเลขฐานกับเลข revision — จำกัดชุดเดียวกับที่ validator ยอมให้เป็น literal
+const SEPARATOR_TAIL = /[-._/]+$/;
+
+// วันที่ของเลขตัวอย่างในหน้าตั้งค่า — ตรงกับวันที่บนเอกสารตัวอย่าง (20/07/2569)
+const EXAMPLE_DATE = new Date('2026-07-20T12:00:00+07:00');
+
+export function formatDocumentNumber(pattern, { date = new Date(), running = 0, revision = 0 } = {}) {
+  // เดือน/ปีต้องเป็นเวลาไทยให้ตรงกับตัวนับใน DB (to_char(timezone('Asia/Bangkok', …)))
+  const [year, month, day] = businessDate(date).split('-');
+  const values = { YYYY: year, YY: year.slice(-2), MM: month, DD: day };
+  const runningNo = Math.max(0, Math.trunc(Number(running) || 0));
+  return String(pattern || '').replace(/\{([^{}]+)\}/g, (token, name) => {
+    if (name === 'REVISION') return String(revision ?? 0);
+    const width = /^RUNNING:(\d+)$/.exec(name);
+    // pad อย่างเดียว ห้ามตัด — เลขรันที่ยาวเกินความกว้างต้องยาวขึ้น ไม่ใช่ทับเลขเดิม
+    if (width) return String(runningNo).padStart(Number(width[1]), '0');
+    return values[name] ?? token; // token ที่ไม่รู้จักปล่อยไว้ ดีกว่าออกเลขไม่ได้
+  });
+}
+
+// แยก "เลขฐาน" (ส่วนหน้า {REVISION}) กับตัวคั่น — เลขฐานใช้ผูกสายฉบับแก้ไข
+export function documentNumberParts(pattern, { date = new Date(), running = 0 } = {}) {
   const text = String(pattern || '');
-  return text
-    .replaceAll('{YYYY}', '2026')
-    .replaceAll('{YY}', '26')
-    .replaceAll('{MM}', '07')
-    .replaceAll('{DD}', '20')
-    .replaceAll('{RUNNING:3}', '001')
-    .replaceAll('{RUNNING:4}', '0001')
-    .replaceAll('{RUNNING:5}', '00001')
-    .replaceAll('{REVISION}', String(revision || '0'));
+  const cut = text.indexOf(REVISION_TOKEN);
+  // รูปแบบที่ไม่มี {REVISION} (เผยแพร่ไว้ก่อนกฎใหม่ — published แก้ย้อนหลังไม่ได้):
+  // ทั้งก้อนคือเลขฐาน แล้วต่อ R ด้วย '-' ตามรูปแบบเดิมของระบบ
+  if (cut < 0) return { base: formatDocumentNumber(text, { date, running }), separator: '-' };
+  const head = formatDocumentNumber(text.slice(0, cut), { date, running });
+  const separator = SEPARATOR_TAIL.exec(head)?.[0] || '';
+  return { base: separator ? head.slice(0, -separator.length) : head, separator };
+}
+
+// ตัวคั่นก่อนเลข revision ของ "ใบต้นทางเอง" — ใบที่ออกด้วยรูปแบบเก่าต้องต่อ R ด้วย
+// ตัวคั่นของตัวเอง ไม่ใช่ของรูปแบบปัจจุบันที่อาจถูกเปลี่ยนไปแล้วหลังใบนั้นออก
+export function revisionSeparatorOf(fullNumber, baseNumber) {
+  const full = String(fullNumber || '');
+  const base = String(baseNumber || '');
+  if (!base || !full.startsWith(base)) return '-';
+  const tail = full.slice(base.length).replace(/\d+$/, '');
+  return /^[-._/]*$/.test(tail) ? tail : '-';
+}
+
+// รูปแบบที่เผยแพร่อยู่ (ฝั่ง server — ผู้เรียกส่ง supabase client เข้ามา) · ล้มเมื่อไร
+// คืนค่าสำรอง ไม่ throw: ตารางตั้งค่าล่มต้องไม่ทำให้ออกเอกสารไม่ได้
+export async function publishedNumberingPattern(supabase, documentKey) {
+  const fallback = DEFAULT_NUMBERING_PATTERNS[documentKey] || DEFAULT_NUMBERING_PATTERNS.quotation;
+  try {
+    const { data, error } = await supabase
+      .from('document_standard_versions')
+      .select('numberingPattern')
+      .eq('documentKey', documentKey)
+      .eq('status', 'published')
+      .maybeSingle();
+    if (error) throw error;
+    return String(data?.numberingPattern || '').trim() || fallback;
+  } catch (error) {
+    console.warn('[documentStandards] อ่านรูปแบบเลขที่ที่เผยแพร่ไม่สำเร็จ — ใช้รูปแบบสำรอง', error);
+    return fallback;
+  }
+}
+
+export function numberingPatternExample(pattern, revision = '0') {
+  if (!String(pattern || '').trim()) return '';
+  return formatDocumentNumber(pattern, { date: EXAMPLE_DATE, running: 1, revision: revision || '0' });
 }

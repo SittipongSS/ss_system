@@ -9,6 +9,7 @@ import {
 } from '@/lib/admin/signatureEvidence';
 import { captureIssuedQuotationSnapshot } from '@/lib/sales/issuedQuotationSnapshot';
 import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
+import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return badRequest(`ใบสถานะ "${quote.status}" อนุมัติไม่ได้`);
   }
   if (quote.approvalStatus === 'approved') return badRequest('ใบเสนอราคานี้อนุมัติแล้ว');
+  // mig 0155: ต้องผ่านขั้น "ยื่นอนุมัติ" ก่อน — การยื่นคือจุดที่ผู้เสนอราคาลงนาม ถ้าอนุมัติ
+  // ข้ามขั้นได้ เอกสารจะไม่มีหลักฐาน/วันที่ของผู้เสนอราคาเลย
+  if (quote.approvalStatus === 'not_submitted') {
+    return badRequest('ใบเสนอราคานี้ยังไม่ได้ยื่นอนุมัติ — ผู้จัดทำต้องกด "ยื่นอนุมัติ" ก่อน');
+  }
   if (quote.approvalStatus !== 'pending') {
     return badRequest('ใบเสนอราคานี้ไม่อยู่ในสถานะรออนุมัติ');
   }
@@ -78,11 +84,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // snapshot must not roll it back and can be regenerated (RPC is idempotent).
   let snap = null;
   try {
+    // ข้อมูลบริษัทที่เผยแพร่ ณ เวลาอนุมัติ — ตรึงลง snapshot ให้ reprint ตรงเดิมเสมอ
+    const company = await getPublishedCompanyProfile(supabase);
     const snapshotQuote = { ...quote, ...data, lines: quote.lines, deal: quote.deal };
     snap = await captureIssuedQuotationSnapshot(supabase, {
       quote: snapshotQuote,
       evidence: result.evidence,
       user,
+      company,
     });
   } catch (snapshotError) {
     console.error('issued quotation snapshot capture failed', id, snapshotError);

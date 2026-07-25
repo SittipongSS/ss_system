@@ -11,14 +11,9 @@ import { genId } from '@/lib/id';
 import { documentApprovalFingerprint } from '@/lib/documentApproval';
 import { quotationApprovalContent } from '@/lib/sales/quotationApprovalFingerprint';
 import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
-import {
-  COMPANY_ADDRESS,
-  COMPANY_LEGAL_NAME,
-  COMPANY_LINE,
-  COMPANY_OFFICE_TEL,
-  COMPANY_TAX_ID,
-  COMPANY_WEBSITE,
-} from '@/lib/documentBrand';
+import { resolveCompanyBlock } from '@/lib/companyProfile';
+import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh } from '@/lib/documentStandards';
 
 // Bump when the payload shape or the rendered artifact structure changes so old
 // snapshots stay identifiable by the generator that produced them.
@@ -28,7 +23,9 @@ import {
 // artifact ฝังฟอนต์เป็น base64 + ฝังรูปลายเซ็นผู้อนุมัติ/ผู้เสนอราคา + accent เป็น
 // inline style — snapshot ที่ tag 'quote-master-v4' อาจมาจาก generator รุ่นใดรุ่นหนึ่ง
 // ในช่วงนั้น (tag ไม่เคยขยับตามสัญญาไว้ข้างบน)
-export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.1';
+// v4.2 = ช่องผู้เสนอราคาเป็น evidence-backed (วันที่ลงนาม + Evidence id ฝังในใบตรึง, mig 0155)
+//        + ข้อมูลลูกค้าที่ว่างถูกเติมจากทะเบียนก่อนตรึง (#710)
+export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.2';
 export const ISSUED_QUOTATION_LOCALE = 'th-TH';
 
 const trimOrNull = (value) => {
@@ -36,25 +33,14 @@ const trimOrNull = (value) => {
   return text || null;
 };
 
-// Snapshot of the company block exactly as printed at issue time. The print
-// engine reads these constants live, so pinning them keeps a reprint faithful
-// even if the constants change later.
-function companySnapshot() {
-  return {
-    legalName: COMPANY_LEGAL_NAME,
-    address: COMPANY_ADDRESS,
-    taxId: COMPANY_TAX_ID,
-    officeTel: COMPANY_OFFICE_TEL,
-    line: COMPANY_LINE,
-    website: COMPANY_WEBSITE,
-  };
-}
-
 // Deterministic structured payload behind the rendered artifact. Any change here
 // changes the content fingerprint, which marks a new issue of the document.
-export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
+// `company` = บล็อกบริษัทที่เผยแพร่ ณ เวลาอนุมัติ (ตรึงลง payload ให้ reprint ตรงเดิม
+// แม้ข้อมูลบริษัทถูกแก้ภายหลัง); ไม่ส่ง → fallback constants
+export function buildIssuedQuotationPayload(quote = {}, evidence = {}, company) {
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
   const form = evidence.controlledFormSnapshot || null;
+  const co = resolveCompanyBlock(company);
   return {
     document: {
       quoteNumber: trimOrNull(quote.quoteNumber),
@@ -84,7 +70,16 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}) {
       proposer: trimOrNull(quote.createdByName || quote.metadata?.preparedBy),
       proposerPhone: trimOrNull(quote.createdByPhone),
     },
-    company: companySnapshot(),
+    // คงรูป payload.company เดิม (fingerprint semantics ไม่เปลี่ยน) แต่ค่าดึงจากบริษัท
+    // ที่เผยแพร่ ณ เวลาอนุมัติ — บริษัทคนละชุด = คนละ issue ตามเจตนา
+    company: {
+      legalName: co.legalNameTh,
+      address: co.address,
+      taxId: co.taxId,
+      officeTel: co.phone,
+      line: co.line,
+      website: co.website,
+    },
     standard: form
       ? {
         versionId: form.versionId || null,
@@ -105,15 +100,23 @@ export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
     { ...quote, approvalStatus: 'approved' },
     {
       watermark: '',
+      company: options.company || null,
+      // มาตรฐานเอกสารที่ตรึงไว้ใน evidence ตอนอนุมัติ — ใบที่ออกไปแล้วต้องคงรหัสแบบฟอร์ม
+      // เดิมเสมอ ไม่วิ่งตามมาตรฐานที่เผยแพร่ทีหลัง (ADR 0011)
+      form: resolveDocumentForm(options.standard, 'quotation'),
+      accentKey: resolveDocumentAccentKey(options.standard, 'quotation'),
+      documentTitleTh: resolveDocumentTitleTh(options.standard, 'quotation'),
       approverSignatureImage: options.approverSignatureImage || null,
       proposerSignatureImage: options.proposerSignatureImage || null,
+      // มีหลักฐานการยื่น (mig 0155) → ฝังวันที่ลงนาม + Evidence id ของผู้เสนอราคาลงในใบตรึง
+      proposerEvidence: options.proposerEvidence || null,
     },
   );
 }
 
 // storage path ของลายเซ็น "ที่ใช้งานอยู่" ของ user (สำหรับผู้เสนอราคา = ผู้สร้างใบ).
 // ต่างจากผู้อนุมัติที่ path ถูกตรึงใน evidence — ผู้เสนอราคาใช้เวอร์ชัน active ณ เวลาตรึง.
-async function loadActiveSignatureAsset(supabase, userId) {
+export async function loadActiveSignatureAsset(supabase, userId) {
   if (!userId) return null;
   try {
     const { data: root } = await supabase
@@ -156,28 +159,58 @@ export function artifactSha256(html) {
 
 // Captures the snapshot + artifact through the atomic, idempotent RPC. Retrying
 // with identical content returns the existing snapshot instead of duplicating.
-export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence, user }) {
-  const payload = buildIssuedQuotationPayload(quote, evidence);
+export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence, user, company }) {
+  // ข้อมูลลูกค้าบนใบเป็น snapshot ณ วันสร้าง — ใบที่สร้างก่อนฟีเจอร์ snapshot ครบ
+  // (ผู้ติดต่อ 2026-07-19 / เลขผู้เสียภาษี 2026-07-21) หรือใบที่ตอนสร้างทะเบียนลูกค้ายังไม่มี
+  // ค่านั้น จะมีช่องว่าง. หน้ารายละเอียดเติมจากทะเบียนลูกค้าตอนอ่าน (GET) อยู่แล้ว แต่
+  // **ฉบับตรึงไม่เคยเติม** → เอกสารที่ออกจริงแสดง '-' ทั้งที่หน้าเว็บแสดงครบ (บั๊กที่ผู้ใช้เจอ
+  // 2026-07-26). เติมที่ชั้น capture = ทุก caller ได้เหมือนกัน ไม่ต้องจำไปเรียกเองทีละที่
+  const filledQuote = await fillCustomerSnapshotFromMaster(supabase, quote);
+  const payload = buildIssuedQuotationPayload(filledQuote, evidence, company);
   // ฝังรูปลายเซ็นลงในใบตรึง (self-contained เหมือนฟอนต์) — ผู้อนุมัติ = evidence-backed
-  // (path ตรึงใน evidence); ผู้เสนอราคา = stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง
-  const proposerAsset = await loadActiveSignatureAsset(supabase, quote.createdBy);
+  // (path ตรึงใน evidence); ผู้เสนอราคา = evidence ที่ตรึงตอน "ยื่น" (mig 0155) ถ้ามี →
+  // ได้รูปเวอร์ชันที่ลงนามจริง + วันที่ + Evidence id; ใบที่ยื่นก่อนมีหลักฐาน (หรือ
+  // grandfather not_required) fallback เป็นลายเซ็น active เดิม = stamp เชิงภาพไม่มีวันที่
+  let proposerAsset = null;
+  let proposerEvidence = null;
+  if (filledQuote.proposerSignatureEvidenceId) {
+    const { data: ev } = await supabase
+      .from('document_signature_evidence')
+      .select('id, signerName, signedAt, signatureAssetSnapshot')
+      .eq('id', filledQuote.proposerSignatureEvidenceId)
+      .maybeSingle();
+    if (ev?.signatureAssetSnapshot) {
+      proposerAsset = ev.signatureAssetSnapshot;
+      proposerEvidence = ev;
+    }
+  }
+  if (!proposerAsset) proposerAsset = await loadActiveSignatureAsset(supabase, filledQuote.createdBy);
   const [approverSignatureImage, proposerSignatureImage] = await Promise.all([
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),
   ]);
-  const html = buildIssuedQuotationArtifactHtml(quote, { approverSignatureImage, proposerSignatureImage });
+  const html = buildIssuedQuotationArtifactHtml(filledQuote, {
+    company,
+    standard: evidence?.controlledFormSnapshot || null,
+    approverSignatureImage,
+    proposerSignatureImage,
+    proposerEvidence,
+  });
   const { data, error } = await supabase.rpc('capture_issued_quotation_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
     p_artifact_id: genId('IDA'),
-    p_quotation_id: quote.id,
+    p_quotation_id: filledQuote.id,
     p_content_fingerprint: issuedContentFingerprint(payload),
     p_resolved_payload: payload,
     p_artifact_html: html,
     p_artifact_sha256: artifactSha256(html),
     p_document_standard_version_id: evidence.documentStandardVersionId,
-    // เวอร์ชัน Commercial Preset ที่ควบคุมใบนี้ (ตรึงตอนสร้างใบใน metadata) — RPC จะ
-    // validate ว่ามีจริงถ้าไม่ว่าง (mig 0130); ใบเก่าก่อนฟีเจอร์นี้ = null (ข้ามได้)
-    p_commercial_preset_version_id: quote?.metadata?.commercialPresetVersionId || null,
+    // เวอร์ชันชุดเงื่อนไขการค้าที่ควบคุมใบนี้ (ตรึงตอนสร้าง/แก้ใบใน metadata) — RPC จะ
+    // validate ว่ามีจริงถ้าไม่ว่าง (mig 0130); ใบเก่าก่อนฟีเจอร์นี้ = null (ข้ามได้).
+    // คอลัมน์นี้มีช่องเดียว จึงตรึง "ชุดการชำระ" เพราะเป็นเงื่อนไขที่มีผลทางการเงิน
+    // ส่วน id ของชุดหมายเหตุติดไปกับ metadata ใน payload ที่ตรึงอยู่แล้ว
+    p_commercial_preset_version_id: filledQuote?.metadata?.paymentPresetVersionId
+      || filledQuote?.metadata?.commercialPresetVersionId || null,
     p_signature_evidence_id: evidence.id,
     p_layout_version: ISSUED_QUOTATION_LAYOUT_VERSION,
     p_locale: ISSUED_QUOTATION_LOCALE,

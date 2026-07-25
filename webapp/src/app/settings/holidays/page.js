@@ -1,137 +1,183 @@
 "use client";
 // ปฏิทินวันหยุด — ข้อมูลปฏิบัติการ แก้ตรงบนตารางเดิม (Decision 0012 ฉบับแก้ไขครั้งที่ 2:
-// ไม่ใช้ชั้นร่าง/เผยแพร่) — ทุกการเพิ่ม/ลบยืนยันผ่าน ConfirmDialog ก่อนเสมอ (no-auto-save)
-import { useState, useEffect, useMemo } from "react";
-import { CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
+// ไม่ใช้ชั้นร่าง/เผยแพร่) — เพิ่มผ่าน Modal ทางเดียว ส่วนการลบยืนยันผ่าน ConfirmDialog (no-auto-save)
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { AlertTriangle, CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DateInput from "@/components/ui/DateInput";
+import Select from "@/components/ui/Select";
+import Modal from "@/components/Modal";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import Toast from "@/components/ui/Toast";
 import { useCan } from "@/lib/roleContext";
+import { defaultHolidayYear, missingHolidayYears } from "@/lib/master/holidayCoverage";
+import styles from "./page.module.css";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
 const pad = (n) => String(n).padStart(2, "0");
 const toISO = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
-const fmt = (d) => {
-  const dt = new Date(d + "T00:00:00");
-  if (isNaN(dt.getTime())) return d;
+const dateParts = (iso) => {
+  const dt = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+};
+const fmt = (iso) => {
+  const dt = dateParts(iso);
+  if (!dt) return iso;
   return `${WEEKDAYS_TH[dt.getDay()]} ${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`;
+};
+const fmtLong = (iso) => {
+  const dt = dateParts(iso);
+  if (!dt) return iso;
+  return `${dt.getDate()} ${MONTHS_TH[dt.getMonth()]} ${dt.getFullYear()}`;
 };
 
 export default function HolidaysPage() {
   const canManage = useCan("master:manage");
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState("calendar"); // calendar | list
-  const [date, setDate] = useState("");
-  const [name, setName] = useState("");
-  // การเขียนทุกครั้งผ่าน dialog นี้: { type: 'add'|'delete', date, name }
-  const [pending, setPending] = useState(null);
+  // ปีที่แท็บรายการกำลังโชว์: null = ยังไม่เลือกเอง (ใช้ปีตั้งต้น) · "all" = ทุกปี
+  const [listYear, setListYear] = useState(null);
+  // ฟอร์มเพิ่ม: null = ปิด; { date, name, lockDate } = เปิด Modal
+  const [addForm, setAddForm] = useState(null);
+  // การลบผ่าน dialog ยืนยัน: { date, name }
+  const [pendingDelete, setPendingDelete] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
   const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const todayISO = toISO(now.getFullYear(), now.getMonth(), now.getDate());
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       const res = await fetch("/api/holidays");
-      const d = res.ok ? await res.json() : [];
-      setHolidays(Array.isArray(d) ? d : []);
-    } catch { /* ignore */ }
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, []);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "โหลดปฏิทินวันหยุดไม่สำเร็จ");
+      setHolidays(Array.isArray(data) ? data : []);
+    } catch (error) {
+      // เดิมกลืน error แล้วโชว์ "ยังไม่มีวันหยุดในระบบ" — ปฏิทินว่างเพราะโหลดพัง
+      // กับปฏิทินที่ยังไม่ได้ตั้ง หน้าตาเหมือนกันจนแยกไม่ออก
+      setLoadError(error.message || "โหลดปฏิทินวันหยุดไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const holidayMap = useMemo(() => {
-    const m = new Map();
-    for (const h of holidays) m.set(h.date, h.name || "");
-    return m;
+    const map = new Map();
+    for (const holiday of holidays) map.set(holiday.date, holiday.name || "");
+    return map;
   }, [holidays]);
 
+  // ปีล่าสุดอยู่บนสุด — ปีที่กำลังใช้งานสำคัญกว่าปีที่ผ่านไปแล้ว
   const byYear = useMemo(() => {
-    const m = {};
-    for (const h of holidays) (m[(h.date || "").slice(0, 4)] ??= []).push(h);
-    return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]));
+    const map = {};
+    for (const holiday of holidays) (map[(holiday.date || "").slice(0, 4)] ??= []).push(holiday);
+    return Object.entries(map)
+      .map(([year, items]) => [year, items.slice().sort((a, b) => a.date.localeCompare(b.date))])
+      .sort((a, b) => b[0].localeCompare(a[0]));
   }, [holidays]);
 
-  // ── API helpers ──
-  const addHoliday = async (d, nm) => {
+  // ปีที่โชว์อยู่จริง — ยังไม่ได้เลือกเอง = ปีปัจจุบัน (ถอยไปปีล่าสุดที่มีข้อมูลถ้าปีนี้ยังว่าง)
+  const activeYear = listYear ?? defaultHolidayYear(holidays, now);
+  const visibleYears = useMemo(
+    () => (activeYear === "all" ? byYear : byYear.filter(([year]) => year === activeYear)),
+    [byYear, activeYear],
+  );
+
+  // ปีที่ยังไม่มีวันหยุดเลยทั้งที่ควรมีแล้ว → ไทม์ไลน์ที่ข้ามไปปีนั้นจะนับวันหยุดเป็นวันทำการ
+  const missingYears = useMemo(
+    () => missingHolidayYears(holidays, now, tab === "calendar" ? cursor.y : null),
+    [holidays, now, tab, cursor.y],
+  );
+
+  const addHoliday = async (date, name) => {
     const res = await fetch("/api/holidays", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date: d, name: nm || "" }),
+      body: JSON.stringify({ date, name: name || "" }),
     });
-    if (res.ok) { const h = await res.json(); setHolidays((p) => [...p, h].sort((a, b) => a.date.localeCompare(b.date))); return true; }
+    if (res.ok) {
+      const saved = await res.json();
+      setHolidays((prev) => [...prev, saved].sort((a, b) => a.date.localeCompare(b.date)));
+      return true;
+    }
     setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "เพิ่มไม่สำเร็จ" });
     return false;
   };
-  const removeHoliday = async (d) => {
-    const res = await fetch(`/api/holidays/${d}`, { method: "DELETE" });
-    if (res.ok) { setHolidays((p) => p.filter((x) => x.date !== d)); return true; }
+
+  const removeHoliday = async (date) => {
+    const res = await fetch(`/api/holidays/${date}`, { method: "DELETE" });
+    if (res.ok) {
+      setHolidays((prev) => prev.filter((holiday) => holiday.date !== date));
+      return true;
+    }
     setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ" });
     return false;
   };
 
-  const runPending = async () => {
-    if (!pending) return;
+  // เพิ่มแล้ว Modal ค้างไว้ เคลียร์ช่องให้กรอกวันถัดไปต่อได้ทันที (กรอกทั้งปีรวดเดียว)
+  const submitAdd = async (event) => {
+    event.preventDefault();
+    if (!addForm || !/^\d{4}-\d{2}-\d{2}$/.test(addForm.date)) {
+      setToast({ kind: "error", msg: "กรุณาเลือกวันที่" });
+      return;
+    }
     setBusy(true);
-    if (pending.type === "add") {
-      if (await addHoliday(pending.date, pending.name)) {
-        setToast({ kind: "success", msg: `เพิ่มวันหยุด ${fmt(pending.date)} แล้ว` });
-        setDate(""); setName("");
-      }
-    } else if (await removeHoliday(pending.date)) {
-      setToast({ kind: "success", msg: `ลบวันหยุด ${fmt(pending.date)} แล้ว` });
+    if (await addHoliday(addForm.date, addForm.name)) {
+      setToast({ kind: "success", msg: `เพิ่มวันหยุด ${fmt(addForm.date)} แล้ว` });
+      if (addForm.lockDate) setAddForm(null); // มาจากการคลิกวันบนปฏิทิน = จบเป็นรายวัน
+      else setAddForm({ date: "", name: "", lockDate: false });
     }
     setBusy(false);
-    setPending(null);
   };
 
-  const submitForm = (e) => {
-    e.preventDefault();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { setToast({ kind: "error", msg: "กรุณาเลือกวันที่" }); return; }
-    setPending({ type: "add", date, name });
-  };
-
-  // คลิกวันบนปฏิทิน (supervisor): วันหยุด→ลบ, วันทำการ→เพิ่ม (เสาร์-อาทิตย์หยุดอยู่แล้ว ข้าม)
-  // prompt = กรอกชื่อเท่านั้น — การบันทึกจริงยังต้องผ่าน ConfirmDialog อีกชั้น
-  const onDayClick = (iso, isWeekend) => {
-    if (!canManage || isWeekend) return;
-    if (holidayMap.has(iso)) {
-      setPending({ type: "delete", date: iso, name: holidayMap.get(iso) });
-    } else {
-      const nm = prompt(`เพิ่มวันหยุด ${fmt(iso)}\nชื่อวันหยุด (เว้นว่างได้):`, "");
-      if (nm !== null) setPending({ type: "add", date: iso, name: nm });
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setBusy(true);
+    if (await removeHoliday(pendingDelete.date)) {
+      setToast({ kind: "success", msg: `ลบวันหยุด ${fmt(pendingDelete.date)} แล้ว` });
     }
+    setBusy(false);
+    setPendingDelete(null);
   };
 
-  // สร้างเซลล์ปฏิทิน (รวมช่องว่างต้นเดือน)
+  // คลิกวันบนปฏิทิน: วันหยุด → ยืนยันลบ, วันทำการ → เปิดฟอร์มเพิ่มโดยล็อกวันที่ไว้
+  const onDayClick = (iso) => {
+    if (!canManage) return;
+    if (holidayMap.has(iso)) setPendingDelete({ date: iso, name: holidayMap.get(iso) });
+    else setAddForm({ date: iso, name: "", lockDate: true });
+  };
+
   const cells = useMemo(() => {
-    const first = new Date(cursor.y, cursor.m, 1);
-    const startPad = first.getDay(); // 0=อา.
+    const startPad = new Date(cursor.y, cursor.m, 1).getDay();
     const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
-    const arr = [];
-    for (let i = 0; i < startPad; i++) arr.push(null);
-    for (let d = 1; d <= daysInMonth; d++) arr.push(d);
+    const arr = Array.from({ length: startPad }, () => null);
+    for (let day = 1; day <= daysInMonth; day += 1) arr.push(day);
     while (arr.length % 7 !== 0) arr.push(null);
     return arr;
   }, [cursor]);
 
   const monthHolidayCount = useMemo(
-    () => holidays.filter((h) => h.date.startsWith(`${cursor.y}-${pad(cursor.m + 1)}`)).length,
+    () => holidays.filter((holiday) => holiday.date.startsWith(`${cursor.y}-${pad(cursor.m + 1)}`)).length,
     [holidays, cursor],
   );
 
-  const goMonth = (delta) => setCursor((c) => {
-    const m = c.m + delta;
-    if (m < 0) return { y: c.y - 1, m: 11 };
-    if (m > 11) return { y: c.y + 1, m: 0 };
-    return { y: c.y, m };
+  const goMonth = (delta) => setCursor((current) => {
+    const month = current.m + delta;
+    if (month < 0) return { y: current.y - 1, m: 11 };
+    if (month > 11) return { y: current.y + 1, m: 0 };
+    return { y: current.y, m: month };
   });
+
+  const openAdd = () => setAddForm({ date: "", name: "", lockDate: false });
 
   return (
     <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
@@ -143,10 +189,10 @@ export default function HolidaysPage() {
           </h1>
           <p>วันหยุดบริษัท/นักขัตฤกษ์ที่ระบบใช้นับ &quot;วันทำการ&quot; ของไทม์ไลน์โครงการ</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div className={styles.headerRight}>
           <div className="segmented">
-            <button onClick={() => setTab("calendar")} className={tab === "calendar" ? "active" : ""}><CalendarRange size={14} /> ปฏิทิน</button>
-            <button onClick={() => setTab("list")} className={tab === "list" ? "active" : ""}><List size={14} /> รายการ</button>
+            <button type="button" onClick={() => setTab("calendar")} className={tab === "calendar" ? "active" : ""}><CalendarRange size={14} /> ปฏิทิน</button>
+            <button type="button" onClick={() => setTab("list")} className={tab === "list" ? "active" : ""}><List size={14} /> รายการ</button>
           </div>
           <div className="pill ok">ทั้งหมด {holidays.length} วัน</div>
         </div>
@@ -157,131 +203,205 @@ export default function HolidaysPage() {
         <div>เสาร์–อาทิตย์ถือเป็นวันหยุดเสมอโดยอัตโนมัติ — ที่นี่ใส่เฉพาะ<b>วันหยุดเพิ่มเติม</b> (นักขัตฤกษ์/วันหยุดบริษัท){canManage && tab === "calendar" && " · คลิกที่วัน (จันทร์–ศุกร์) เพื่อเพิ่ม/ลบวันหยุด"} การเปลี่ยนแปลงมีผลกับโครงการ<b>ที่สร้าง/แก้ไขหลังจากนี้</b></div>
       </div>
 
+      {missingYears.map((year) => (
+        <div key={year} className={styles.coverageWarning}>
+          <AlertTriangle size={17} />
+          <p>
+            <strong>ยังไม่มีวันหยุดปี {year} ในระบบ</strong> — ไทม์ไลน์โครงการที่กินเวลาข้ามไปปี {year} จะนับวันหยุดของปีนั้นเป็น<b>วันทำการทั้งหมด</b> กำหนดส่งงานจะเร็วกว่าความจริง
+            {canManage && " · กรอกวันหยุดปีนั้นล่วงหน้าก่อนเริ่มวางแผนงานข้ามปี"}
+          </p>
+        </div>
+      ))}
+
       {loading ? (
         <SkeletonRows rows={8} />
+      ) : loadError ? (
+        <section className={`glass-panel ${styles.errorPanel}`} role="alert">
+          <AlertTriangle size={26} />
+          <p>{loadError}</p>
+          <button type="button" className="btn" onClick={load}>ลองอีกครั้ง</button>
+        </section>
       ) : tab === "calendar" ? (
-        <div className="glass-panel" style={{ padding: "18px 20px" }}>
-          {/* month nav */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-            <button onClick={() => goMonth(-1)} className="btn-icon" aria-label="เดือนก่อนหน้า" title="เดือนก่อนหน้า"><ChevronLeft size={16} /></button>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "17px", fontWeight: 700 }}>{MONTHS_TH[cursor.m]} {cursor.y}</div>
-              <div style={{ fontSize: "11px", color: "var(--text-3)" }}>{monthHolidayCount} วันหยุดในเดือนนี้</div>
+        <div className={`glass-panel ${styles.calendarPanel}`}>
+          <div className={styles.monthNav}>
+            <button type="button" onClick={() => goMonth(-1)} className="btn-icon" aria-label="เดือนก่อนหน้า" title="เดือนก่อนหน้า"><ChevronLeft size={16} /></button>
+            <div className={styles.monthTitle}>
+              <strong>{MONTHS_TH[cursor.m]} {cursor.y}</strong>
+              <small>{monthHolidayCount} วันหยุดในเดือนนี้</small>
             </div>
-            <div style={{ display: "flex", gap: "6px" }}>
-              <button onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })} className="btn sm">วันนี้</button>
-              <button onClick={() => goMonth(1)} className="btn-icon" aria-label="เดือนถัดไป" title="เดือนถัดไป"><ChevronRight size={16} /></button>
+            <div>
+              <button type="button" onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })} className="btn sm">วันนี้</button>
+              <button type="button" onClick={() => goMonth(1)} className="btn-icon" aria-label="เดือนถัดไป" title="เดือนถัดไป"><ChevronRight size={16} /></button>
             </div>
           </div>
 
-          {/* weekday header */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "6px", marginBottom: "6px" }}>
-            {WEEKDAYS_TH.map((w, i) => (
-              <div key={w} style={{ textAlign: "center", fontSize: "12px", fontWeight: 600, color: i === 0 || i === 6 ? "var(--red)" : "var(--text-3)", padding: "4px 0" }}>{w}</div>
+          <div className={styles.weekHead} aria-hidden="true">
+            {WEEKDAYS_TH.map((day, index) => (
+              <span key={day} className={index === 0 || index === 6 ? styles.weekend : undefined}>{day}</span>
             ))}
           </div>
 
-          {/* day grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "6px" }}>
-            {cells.map((d, i) => {
-              if (d === null) return <div key={`e${i}`} />;
-              const iso = toISO(cursor.y, cursor.m, d);
-              const dow = new Date(cursor.y, cursor.m, d).getDay();
+          <div className={styles.dayGrid}>
+            {cells.map((day, index) => {
+              if (day === null) return <div key={`blank-${index}`} className={styles.dayBlank} />;
+              const iso = toISO(cursor.y, cursor.m, day);
+              const dow = new Date(cursor.y, cursor.m, day).getDay();
               const isWeekend = dow === 0 || dow === 6;
-              const hol = holidayMap.has(iso);
-              const holName = holidayMap.get(iso);
+              const isHoliday = holidayMap.has(iso);
+              const holidayName = holidayMap.get(iso);
               const isToday = iso === todayISO;
+              // เสาร์–อาทิตย์หยุดอยู่แล้ว ไม่ต้องเพิ่ม/ลบ — ปุ่ม disabled ไม่กินตำแหน่ง tab
               const clickable = canManage && !isWeekend;
-              const bg = hol ? "color-mix(in srgb, var(--red) 14%, transparent)" : isWeekend ? "var(--panel-2)" : "var(--panel)";
-              const borderColor = isToday ? "var(--accent)" : hol ? "color-mix(in srgb, var(--red) 40%, transparent)" : "var(--border)";
+              const state = isHoliday ? `วันหยุด: ${holidayName || "ไม่ระบุชื่อ"}` : isWeekend ? "วันหยุดสุดสัปดาห์" : "วันทำการ";
+              const action = !clickable ? "" : isHoliday ? " · กดเพื่อลบวันหยุด" : " · กดเพื่อเพิ่มวันหยุด";
               return (
-                <div
+                <button
                   key={iso}
-                  onClick={() => onDayClick(iso, isWeekend)}
-                  title={hol ? (holName || "วันหยุด") : isWeekend ? "วันหยุดสุดสัปดาห์" : clickable ? "คลิกเพื่อเพิ่มวันหยุด" : ""}
-                  style={{
-                    minHeight: "74px", borderRadius: "10px", padding: "6px 8px",
-                    background: bg, border: `${isToday ? "2px" : "1px"} solid ${borderColor}`,
-                    cursor: clickable ? "pointer" : "default", display: "flex", flexDirection: "column", gap: "2px",
-                    transition: "all 0.15s", position: "relative",
-                  }}
+                  type="button"
+                  disabled={!clickable}
+                  onClick={() => onDayClick(iso)}
+                  aria-label={`${fmtLong(iso)}${isToday ? " (วันนี้)" : ""} · ${state}${action}`}
+                  title={isHoliday ? (holidayName || "วันหยุด") : isWeekend ? "วันหยุดสุดสัปดาห์" : clickable ? "คลิกเพื่อเพิ่มวันหยุด" : ""}
+                  className={[
+                    styles.day,
+                    isHoliday && styles.holidayDay,
+                    isWeekend && !isHoliday && styles.weekendDay,
+                    isToday && styles.today,
+                  ].filter(Boolean).join(" ")}
                 >
-                  <span style={{ fontSize: "13px", fontWeight: isToday ? 700 : 500, color: isWeekend && !hol ? "var(--text-3)" : hol ? "var(--red)" : "var(--text)" }}>{d}</span>
-                  {hol && <span style={{ fontSize: "10.5px", color: "var(--red)", lineHeight: 1.2, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{holName || "วันหยุด"}</span>}
-                  {isWeekend && !hol && <span style={{ fontSize: "10px", color: "var(--text-3)" }}>หยุด</span>}
-                </div>
+                  <strong>{day}</strong>
+                  {isHoliday && <small>{holidayName || "วันหยุด"}</small>}
+                  {isWeekend && !isHoliday && <small>หยุด</small>}
+                </button>
               );
             })}
           </div>
 
-          {/* legend */}
-          <div style={{ display: "flex", gap: "16px", marginTop: "14px", fontSize: "11.5px", color: "var(--text-3)", flexWrap: "wrap" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}><span style={{ width: "12px", height: "12px", borderRadius: "3px", background: "color-mix(in srgb, var(--red) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 40%, transparent)" }} /> วันหยุดนักขัตฤกษ์/บริษัท</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}><span style={{ width: "12px", height: "12px", borderRadius: "3px", background: "var(--panel-2)", border: "1px solid var(--border)" }} /> เสาร์-อาทิตย์ (หยุดประจำ)</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}><span style={{ width: "12px", height: "12px", borderRadius: "3px", border: "2px solid var(--accent)" }} /> วันนี้</span>
+          <div className={styles.legend}>
+            <span><i className={styles.legendHoliday} /> วันหยุดนักขัตฤกษ์/บริษัท</span>
+            <span><i className={styles.legendWeekend} /> เสาร์-อาทิตย์ (หยุดประจำ)</span>
+            <span><i className={styles.legendToday} /> วันนี้</span>
           </div>
         </div>
+      ) : holidays.length === 0 ? (
+        <EmptyState icon={CalendarDays} dashed={canManage} onClick={canManage ? openAdd : undefined}>
+          {canManage ? "ยังไม่มีวันหยุดในระบบ — กดเพื่อเพิ่มวันแรก" : "ยังไม่มีวันหยุดในระบบ"}
+        </EmptyState>
       ) : (
         <>
-          {canManage && (
-            <form onSubmit={submitForm} className="glass-panel" style={{ padding: "16px 18px", marginBottom: "20px", display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>วันที่ <span className="text-[var(--red)]">*</span></label>
-                <DateInput value={date} onChange={setDate} style={{ width: "180px" }} />
-              </div>
-              <div className="form-group" style={{ margin: 0, flex: 1, minWidth: "200px" }}>
-                <label>ชื่อวันหยุด</label>
-                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น วันสงกรานต์, หยุดบริษัท" className="premium-input w-full" />
-              </div>
-              <button type="submit" disabled={busy} className="btn btn-primary flex items-center gap-1.5" style={{ height: "38px" }}>
-                <Plus size={16} /> เพิ่มวันหยุด
-              </button>
-            </form>
-          )}
-
-          {holidays.length === 0 ? (
-            <EmptyState icon={CalendarDays}>ยังไม่มีวันหยุดในระบบ</EmptyState>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* เลือกปีที่โชว์ (ตั้งต้นปีปัจจุบัน) · ปุ่มเพิ่มขวาสุดตามกติกา Page Header
+              ใช้ dropdown ไม่ใช่ปุ่มเรียง เพราะจำนวนปีโตขึ้นทุกปี — ตัวเลือกที่กว้างขึ้น
+              เรื่อย ๆ จะเบียดแถวเครื่องมือแตกในอีกไม่กี่ปี */}
+          <div className="toolbar">
+            <span className="toolbar-label">ปี</span>
+            <Select value={activeYear || ""} onChange={(event) => setListYear(event.target.value)} aria-label="เลือกปีที่แสดง" className={styles.yearPicker}>
               {byYear.map(([year, items]) => (
-                <div key={year} className="glass-panel" style={{ padding: "16px 18px" }}>
-                  <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "12px", color: "var(--accent)" }}>ปี {year} <span style={{ color: "var(--text-3)", fontWeight: 400 }}>({items.length} วัน)</span></div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "8px" }}>
-                    {items.map((h) => (
-                      <div key={h.date} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: "8px", padding: "8px 12px" }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: "13px", fontWeight: 600, fontFamily: "monospace" }}>{fmt(h.date)}</div>
-                          <div style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.name || "-"}</div>
-                        </div>
-                        {canManage && (
-                          <button className="btn-icon danger" onClick={() => setPending({ type: "delete", date: h.date, name: h.name })} aria-label="ลบวันหยุด" title="ลบ" style={{ flexShrink: 0 }}><Trash2 size={15} /></button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <option key={year} value={year}>{year} ({items.length} วัน)</option>
               ))}
-            </div>
-          )}
+              {byYear.length > 1 && <option value="all">ทุกปี ({holidays.length} วัน)</option>}
+            </Select>
+            <span className={styles.listSummary}>{byYear.length} ปีในระบบ</span>
+            <span className="spacer" />
+            {canManage && (
+              <button type="button" className="btn btn-accent" onClick={openAdd}><Plus size={16} /> เพิ่มวันหยุด</button>
+            )}
+          </div>
+
+          <div className={styles.yearList}>
+            {visibleYears.map(([year, items]) => (
+              <section key={year} className={`glass-panel ${styles.yearPanel}`} aria-labelledby={`holiday-year-${year}`}>
+                <header className={styles.yearHeader}>
+                  <h2 id={`holiday-year-${year}`}>ปี {year}</h2>
+                  <span className="ui-badge">{items.length} วัน</span>
+                  {Number(year) === now.getFullYear() && <span className={`ui-badge ${styles.currentYear}`}>ปีนี้</span>}
+                </header>
+
+                <div className={`premium-table-wrapper ${styles.tableWrap}`}>
+                  <table className="premium-table">
+                    <thead>
+                      <tr><th>วันที่</th><th>วัน</th><th>ชื่อวันหยุด</th>{canManage && <th aria-label="การทำงาน" />}</tr>
+                    </thead>
+                    <tbody>
+                      {items.map((holiday) => {
+                        const dt = dateParts(holiday.date);
+                        return (
+                          <tr key={holiday.date} className={holiday.date < todayISO ? styles.past : undefined}>
+                            <td className={styles.dateCell}>{holiday.date}</td>
+                            <td>{dt ? WEEKDAYS_TH[dt.getDay()] : "-"}</td>
+                            <td>{holiday.name || "-"}</td>
+                            {canManage && (
+                              <td>
+                                <div className={styles.rowActions}>
+                                  <button type="button" className="btn-icon danger" onClick={() => setPendingDelete({ date: holiday.date, name: holiday.name })} aria-label={`ลบวันหยุด ${fmtLong(holiday.date)}`} title="ลบ"><Trash2 size={15} /></button>
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className={styles.cards}>
+                  {items.map((holiday) => (
+                    <div key={holiday.date} className={`${styles.card} ${holiday.date < todayISO ? styles.cardPast : ""}`.trim()}>
+                      <div>
+                        <strong>{fmt(holiday.date)}</strong>
+                        <small>{holiday.name || "-"}</small>
+                      </div>
+                      {canManage && (
+                        <button type="button" className="btn-icon danger" onClick={() => setPendingDelete({ date: holiday.date, name: holiday.name })} aria-label={`ลบวันหยุด ${fmtLong(holiday.date)}`} title="ลบ"><Trash2 size={15} /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         </>
       )}
 
+      {/* ทางเพิ่มวันหยุดทางเดียวของหน้า — คลิกวันบนปฏิทินก็มาโผล่ที่นี่ (ฟอร์มชุดเดียว) */}
+      <Modal open={!!addForm} onClose={() => !busy && setAddForm(null)} title="เพิ่มวันหยุด" size="sm" dismissible={!busy}>
+        <form className={styles.addForm} onSubmit={submitAdd}>
+          <label>
+            วันที่ <b>*</b>
+            {addForm?.lockDate
+              ? <input className="premium-input" value={fmtLong(addForm.date)} readOnly />
+              : <DateInput value={addForm?.date || ""} onChange={(value) => setAddForm((current) => ({ ...current, date: value }))} />}
+          </label>
+          <label>
+            ชื่อวันหยุด
+            <input
+              type="text"
+              className="premium-input"
+              value={addForm?.name || ""}
+              placeholder="เช่น วันสงกรานต์, หยุดบริษัท"
+              onChange={(event) => setAddForm((current) => ({ ...current, name: event.target.value }))}
+            />
+          </label>
+          <p className={styles.addHint}>
+            มีผลกับไทม์ไลน์โครงการที่สร้าง/แก้ไขหลังจากนี้
+            {!addForm?.lockDate && " · บันทึกแล้วช่องจะว่างให้กรอกวันถัดไปต่อได้เลย"}
+          </p>
+          <div className={styles.addActions}>
+            <button type="button" className="btn ghost" onClick={() => setAddForm(null)} disabled={busy}>ปิด</button>
+            <button type="submit" className="btn btn-accent" disabled={busy}>{busy ? "กำลังบันทึก…" : "เพิ่มวันหยุด"}</button>
+          </div>
+        </form>
+      </Modal>
+
       <ConfirmDialog
-        open={!!pending}
-        tone={pending?.type === "delete" ? "danger" : "default"}
-        title={pending?.type === "delete" ? "ยืนยันลบวันหยุด" : "ยืนยันเพิ่มวันหยุด"}
-        description={pending
-          ? pending.type === "delete"
-            ? `ลบวันหยุด ${fmt(pending.date)}${pending.name ? ` (${pending.name})` : ""} ออกจากปฏิทินทำการ?`
-            : `เพิ่มวันหยุด ${fmt(pending.date)}${pending.name ? ` (${pending.name})` : ""} ลงปฏิทินทำการ?`
-          : ""}
-        detail={pending?.type === "delete"
-          ? "ลบแล้ววันนี้กลับเป็นวันทำการทันทีและกู้คืนไม่ได้ — ไทม์ไลน์โครงการที่สร้าง/แก้ไขหลังจากนี้จะนับวันนี้เป็นวันทำการ"
-          : "มีผลกับไทม์ไลน์โครงการที่สร้าง/แก้ไขหลังจากนี้"}
-        confirmLabel={pending?.type === "delete" ? "ลบวันหยุด" : "เพิ่มวันหยุด"}
+        open={!!pendingDelete}
+        tone="danger"
+        title="ยืนยันลบวันหยุด"
+        description={pendingDelete ? `ลบวันหยุด ${fmt(pendingDelete.date)}${pendingDelete.name ? ` (${pendingDelete.name})` : ""} ออกจากปฏิทินทำการ?` : ""}
+        detail="ลบแล้ววันนี้กลับเป็นวันทำการทันทีและกู้คืนไม่ได้ — ไทม์ไลน์โครงการที่สร้าง/แก้ไขหลังจากนี้จะนับวันนี้เป็นวันทำการ"
+        confirmLabel="ลบวันหยุด"
         busy={busy}
-        onConfirm={runPending}
-        onClose={() => { if (!busy) setPending(null); }}
+        onConfirm={confirmDelete}
+        onClose={() => { if (!busy) setPendingDelete(null); }}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>

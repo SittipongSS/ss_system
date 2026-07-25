@@ -436,7 +436,7 @@ test('canApproveMasterData: เฉพาะ AE Supervisor (+ admin break-glass)'
   }
 });
 
-// ── role executive (ผู้บริหาร) — ระบบขอราคาต้นทุน PR1, มติ 2026-07-22 ──
+// ── role executive (ผู้บริหาร) — ระบบขอราคาผลิต PR1, มติ 2026-07-22 ──
 test('executive: อยู่ในทะเบียน role/ฝ่าย EX และผ่าน validateIdentity', () => {
   assert.ok(ROLES.includes('executive'));
   assert.ok(ROLE_LABELS.executive);

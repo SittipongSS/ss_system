@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { getSahamitContext, sahamitError } from '@/lib/sahamit/server';
 import { deliveryMonthOf, cleanDestination } from '@/lib/sahamit/po';
 import { insertPoLinesTolerant, updatePoLineTolerant } from '@/lib/sahamit/poServer';
+import { refreshSahamitFlags } from '@/lib/sahamit/flagsSync';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -119,6 +120,10 @@ export async function PATCH(request, { params }) {
     user, action: 'update', entityType: 'sahamit_po_line', entityId: lineId,
     before: line, after: updated, summary: `แก้ไข PO line ${updated.fgCode}`, request,
   });
+
+  // แก้จำนวน/ยกเลิกบรรทัด กระทบยอด PO ที่หักยอด FC ลด — รีเฟรชธง. Best-effort.
+  try { await refreshSahamitFlags(supabase, customerId); } catch (e) { console.error('[sahamit] flag refresh failed', e?.message || e); }
+
   return Response.json(updated);
 }
 
@@ -135,6 +140,8 @@ export async function DELETE(request, { params }) {
   const { error } = await supabase
     .from('sahamit_po_lines').delete().eq('id', lineId).eq('customerId', customerId);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  try { await refreshSahamitFlags(supabase, customerId); } catch (e) { console.error('[sahamit] flag refresh failed', e?.message || e); }
 
   await recordAudit({
     user, action: 'delete', entityType: 'sahamit_po_line', entityId: lineId,

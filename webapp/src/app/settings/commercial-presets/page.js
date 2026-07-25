@@ -3,35 +3,40 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Edit3, Eye, FilePlus2, Plus, Send, Trash2, WalletCards } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import { useRole } from "@/lib/roleContext";
+import { accessState } from "@/lib/accessGate";
 import { canManageCommercialPresets } from "@/lib/permissions";
 import {
-  COMMERCIAL_DEAL_TYPES,
-  COMMERCIAL_TEAM_LABELS,
-  commercialPresetScopeLabel,
+  COMMERCIAL_PRESET_KINDS,
+  COMMERCIAL_PRESET_KIND_LABELS,
+  COMMERCIAL_PRESET_LIMITS,
   commercialPresetStatusLabel,
+  commercialPresetSummary,
+  fullPaymentInstallment,
   installmentPercentTotal,
+  isFullPaymentPlan,
 } from "@/lib/commercialPresets";
 import styles from "./page.module.css";
 
-const EMPTY_FORM = {
-  documentKey: "quotation",
-  teamKey: "",
-  dealType: "",
-  serviceType: "",
-  priority: 0,
+const KIND_HINTS = Object.freeze({
+  payment: "วิธีชำระ รายละเอียด และตารางงวด — คนทำใบเลือกทีละชุด",
+  remarks: "ข้อความหมายเหตุที่พิมพ์บนใบเสนอราคา เช่น หมายเหตุ SCENT / NPD",
+});
+
+const EMPTY_FORM = Object.freeze({
   title: "",
   paymentMethod: "",
   paymentTerms: "",
   remarks: "",
   installments: [],
   changeNote: "",
-};
+});
 
 const EMPTY_INSTALLMENT = { label: "", percent: "", trigger: "", dueRule: "", note: "" };
 const dateTime = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" });
@@ -42,95 +47,136 @@ function StatusBadge({ status }) {
   return <span className={`${styles.badge} ${styles[status] || styles.draft}`}>{commercialPresetStatusLabel(status)}</span>;
 }
 
-function formFrom(preset, row) {
+function formFrom(row) {
   return {
-    documentKey: preset?.documentKey || "quotation",
-    teamKey: preset?.teamKey || "",
-    dealType: preset?.dealType || "",
-    serviceType: preset?.serviceType || "",
-    priority: preset?.priority ?? 0,
     title: row?.title || "",
     paymentMethod: row?.paymentMethod || "",
     paymentTerms: row?.paymentTerms || "",
     remarks: row?.remarks || "",
-    installments: Array.isArray(row?.installments) ? row.installments.map((item) => ({ ...item, percent: String(item.percent) })) : [],
+    installments: Array.isArray(row?.installments) && row.installments.length
+      ? row.installments.map((item) => ({ ...item, percent: String(item.percent) }))
+      : [{ ...fullPaymentInstallment(), percent: "100" }],
     changeNote: row?.changeNote || "",
   };
 }
 
-function ScopeFields({ form, setForm, disabled }) {
-  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+// ตารางงวดมีเสมอ: ปิดสวิตช์ = 1 แถว 100% (แก้ได้เฉพาะชื่อ/เงื่อนไข/หมายเหตุ)
+function InstallmentEditor({ rows, setRows }) {
+  const split = rows.length > 1;
+  const total = installmentPercentTotal(rows);
+  const update = (index, field, value) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+  const toggleSplit = () => setRows((current) => split
+    ? [{ ...current[0], label: current[0]?.label || "ชำระเต็มจำนวน", percent: "100" }]
+    : [{ ...current[0], label: current[0]?.label || "มัดจำ", percent: "50" }, { ...EMPTY_INSTALLMENT, label: "งวดสุดท้าย", percent: "50" }]);
+
   return (
     <section className={styles.formSection}>
-      <h4>ขอบเขตการใช้งาน</h4>
-      {disabled && <p className={styles.help}>ขอบเขตเป็น identity ถาวร หากต้องใช้ขอบเขตอื่นให้สร้าง Preset ใหม่</p>}
-      <div className={styles.formGrid}>
-        <label>ชนิดเอกสาร<select className="premium-select" value={form.documentKey} disabled={disabled} onChange={(event) => update("documentKey", event.target.value)}><option value="quotation">ใบเสนอราคา</option></select></label>
-        <label>ทีม<select className="premium-select" value={form.teamKey} disabled={disabled} onChange={(event) => update("teamKey", event.target.value)}><option value="">ทุกทีม</option>{Object.entries(COMMERCIAL_TEAM_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-        <label>ประเภทดีล<select className="premium-select" value={form.dealType} disabled={disabled} onChange={(event) => update("dealType", event.target.value)}><option value="">ทุกประเภทดีล</option>{COMMERCIAL_DEAL_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-        <label>ประเภทบริการ<input className="premium-input" value={form.serviceType} disabled={disabled} maxLength={80} placeholder="ไม่ระบุ = ใช้ได้ทุกบริการ" onChange={(event) => update("serviceType", event.target.value)} /></label>
-        <label>ลำดับความสำคัญ<input className="premium-input" type="number" min="0" max="9999" value={form.priority} disabled={disabled} onChange={(event) => update("priority", event.target.value)} /></label>
+      <div className={styles.sectionTitle}>
+        <div>
+          <h4>ตารางงวดชำระ</h4>
+          <p>{split ? `แบ่งได้ถึง ${COMMERCIAL_PRESET_LIMITS.installmentCount} งวด ผลรวมต้องเท่ากับ 100%` : "ชำระเต็มจำนวน = 1 งวด 100% (ยังกรอกเงื่อนไข/กำหนดชำระได้)"}</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={split}
+          className={`${styles.planToggle} ${split ? styles.on : ""}`.trim()}
+          onClick={toggleSplit}
+        >
+          <span className={styles.track}><span /></span>
+          <b>แบ่งชำระเป็นงวด</b>
+        </button>
+      </div>
+
+      <div className={styles.installmentList}>
+        {rows.map((row, index) => (
+          <article key={index} className={styles.installmentCard}>
+            <header>
+              <strong>{split ? `งวดที่ ${index + 1}` : "การชำระ"}</strong>
+              {split && rows.length > 2 && (
+                <button type="button" className="btn-icon danger" aria-label={`ลบงวดที่ ${index + 1}`} onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}><Trash2 size={14} /></button>
+              )}
+            </header>
+            <div className={styles.formGrid}>
+              <label>ชื่อรายการ <b>*</b><input className="premium-input" required maxLength={COMMERCIAL_PRESET_LIMITS.installmentLabel} value={row.label} onChange={(event) => update(index, "label", event.target.value)} /></label>
+              <label>เปอร์เซ็นต์ <b>*</b><input className="premium-input" required type="number" min="0.01" max="100" step="0.01" value={row.percent} disabled={!split} onChange={(event) => update(index, "percent", event.target.value)} /></label>
+              <label className={styles.full}>เงื่อนไขเริ่มชำระ<input className="premium-input" maxLength={COMMERCIAL_PRESET_LIMITS.installmentRule} value={row.trigger || ""} placeholder="เช่น เมื่อยืนยันคำสั่งซื้อ" onChange={(event) => update(index, "trigger", event.target.value)} /></label>
+              <label className={styles.full}>กำหนดชำระ<input className="premium-input" maxLength={COMMERCIAL_PRESET_LIMITS.installmentRule} value={row.dueRule || ""} placeholder="เช่น ภายใน 7 วัน" onChange={(event) => update(index, "dueRule", event.target.value)} /></label>
+              <label className={styles.full}>หมายเหตุ<input className="premium-input" maxLength={COMMERCIAL_PRESET_LIMITS.installmentNote} value={row.note || ""} onChange={(event) => update(index, "note", event.target.value)} /></label>
+            </div>
+          </article>
+        ))}
+        {split && (
+          <>
+            <button type="button" className="btn sm" onClick={() => setRows((current) => [...current, { ...EMPTY_INSTALLMENT }])} disabled={rows.length >= COMMERCIAL_PRESET_LIMITS.installmentCount}><Plus size={14} /> เพิ่มงวด</button>
+            <div className={`${styles.total} ${Math.abs(total - 100) <= 0.001 ? styles.valid : styles.invalid}`}><span>รวม</span><strong>{total.toFixed(2)}%</strong></div>
+          </>
+        )}
       </div>
     </section>
   );
 }
 
-function InstallmentEditor({ rows, setRows }) {
-  const update = (index, field, value) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
-  const total = installmentPercentTotal(rows);
-  return (
-    <section className={styles.formSection}>
-      <div className={styles.sectionTitle}><div><h4>ตารางงวดชำระ</h4><p>ไม่บังคับ หากระบุผลรวมต้องเท่ากับ 100%</p></div><button type="button" className="btn sm" onClick={() => setRows((current) => [...current, { ...EMPTY_INSTALLMENT }])} disabled={rows.length >= 12}><Plus size={14} /> เพิ่มงวด</button></div>
-      {rows.length === 0 ? <div className={styles.miniEmpty}>ยังไม่มีงวดชำระ Preset นี้สามารถใช้เงื่อนไขแบบข้อความอย่างเดียวได้</div> : (
-        <div className={styles.installmentList}>
-          {rows.map((row, index) => (
-            <article key={index} className={styles.installmentCard}>
-              <header><strong>งวดที่ {index + 1}</strong><button type="button" className="btn-icon danger" aria-label={`ลบงวดที่ ${index + 1}`} onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}><Trash2 size={14} /></button></header>
-              <div className={styles.formGrid}>
-                <label>ชื่อรายการ <b>*</b><input className="premium-input" required maxLength={120} value={row.label} onChange={(event) => update(index, "label", event.target.value)} /></label>
-                <label>เปอร์เซ็นต์ <b>*</b><input className="premium-input" required type="number" min="0.01" max="100" step="0.01" value={row.percent} onChange={(event) => update(index, "percent", event.target.value)} /></label>
-                <label className={styles.full}>Trigger / เหตุการณ์เริ่ม<input className="premium-input" maxLength={300} value={row.trigger || ""} placeholder="เช่น เมื่ออนุมัติใบเสนอราคา" onChange={(event) => update(index, "trigger", event.target.value)} /></label>
-                <label className={styles.full}>Due rule / กำหนดชำระ<input className="premium-input" maxLength={300} value={row.dueRule || ""} placeholder="เช่น ภายใน 7 วัน" onChange={(event) => update(index, "dueRule", event.target.value)} /></label>
-                <label className={styles.full}>หมายเหตุ<input className="premium-input" maxLength={500} value={row.note || ""} onChange={(event) => update(index, "note", event.target.value)} /></label>
-              </div>
-            </article>
-          ))}
-          <div className={`${styles.total} ${Math.abs(total - 100) <= 0.001 ? styles.valid : styles.invalid}`}><span>รวม</span><strong>{total.toFixed(2)}%</strong></div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ContentFields({ form, setForm }) {
+function PresetFields({ kind, form, setForm }) {
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   return (
     <>
       <section className={styles.formSection}>
-        <h4>เงื่อนไขการค้า</h4>
-        <div className={styles.formGrid}>
-          <label className={styles.full}>ชื่อ Preset <b>*</b><input className="premium-input" required maxLength={150} value={form.title} onChange={(event) => update("title", event.target.value)} /></label>
-          <label className={styles.full}>วิธีชำระเงิน<textarea className="textarea-premium" maxLength={300} value={form.paymentMethod} placeholder="เช่น โอนเงินเข้าบัญชีบริษัท" onChange={(event) => update("paymentMethod", event.target.value)} /></label>
-          <label className={styles.full}>เงื่อนไขการชำระ<textarea className="textarea-premium" maxLength={1500} value={form.paymentTerms} placeholder="เช่น เครดิต 30 วัน" onChange={(event) => update("paymentTerms", event.target.value)} /></label>
-          <label className={styles.full}>หมายเหตุในเอกสาร<textarea className="textarea-premium" rows={5} maxLength={6000} value={form.remarks} onChange={(event) => update("remarks", event.target.value)} /></label>
-        </div>
+        <h4>{kind === "payment" ? "ชุดการชำระ" : "ชุดหมายเหตุ"}</h4>
+        <label>ชื่อชุด <b>*</b>
+          <input className="premium-input" required maxLength={COMMERCIAL_PRESET_LIMITS.title} value={form.title} placeholder={kind === "payment" ? "เช่น โอน · เครดิต 30 วัน" : "เช่น หมายเหตุ SCENT"} onChange={(event) => update("title", event.target.value)} />
+        </label>
+        <p className={styles.help}>ชื่อนี้คือสิ่งที่คนทำใบเสนอราคาเห็นใน dropdown ตั้งให้อ่านแล้วรู้ทันทีว่าใช้ตอนไหน</p>
+        {kind === "payment" ? (
+          <div className={styles.formGrid}>
+            <label className={styles.full}>วิธีชำระเงิน <b>*</b><input className="premium-input" required maxLength={COMMERCIAL_PRESET_LIMITS.paymentMethod} value={form.paymentMethod} placeholder="เช่น โอนเงินเข้าบัญชีบริษัท" onChange={(event) => update("paymentMethod", event.target.value)} /></label>
+            <label className={styles.full}>รายละเอียดการชำระ<textarea className="textarea-premium" rows={4} maxLength={COMMERCIAL_PRESET_LIMITS.paymentTerms} value={form.paymentTerms} placeholder="เช่น ธนาคารกสิกรไทย เลขที่บัญชี xxx-x-xxxxx-x · เครดิต 30 วันนับจากวันส่งมอบ" onChange={(event) => update("paymentTerms", event.target.value)} /></label>
+          </div>
+        ) : (
+          <label>รายละเอียดหมายเหตุ <b>*</b><textarea className="textarea-premium" rows={8} maxLength={COMMERCIAL_PRESET_LIMITS.remarks} value={form.remarks} placeholder="ข้อความที่จะพิมพ์ในช่องหมายเหตุของใบเสนอราคา" onChange={(event) => update("remarks", event.target.value)} /></label>
+        )}
       </section>
-      <InstallmentEditor rows={form.installments} setRows={(updater) => setForm((current) => ({ ...current, installments: typeof updater === "function" ? updater(current.installments) : updater }))} />
+      {kind === "payment" && (
+        <InstallmentEditor
+          rows={form.installments}
+          setRows={(updater) => setForm((current) => ({ ...current, installments: typeof updater === "function" ? updater(current.installments) : updater }))}
+        />
+      )}
       <section className={styles.formSection}>
         <h4>หลักฐานการเปลี่ยนแปลง</h4>
-        <label>หมายเหตุการเปลี่ยนแปลง <b>* ก่อนเผยแพร่</b><textarea className="textarea-premium" maxLength={500} value={form.changeNote} placeholder="ระบุเหตุผลหรือสิ่งที่เปลี่ยน" onChange={(event) => update("changeNote", event.target.value)} /></label>
+        <label>หมายเหตุการเปลี่ยนแปลง <b>* ก่อนเผยแพร่</b><textarea className="textarea-premium" maxLength={COMMERCIAL_PRESET_LIMITS.changeNote} value={form.changeNote} placeholder="ระบุเหตุผลหรือสิ่งที่เปลี่ยน" onChange={(event) => update("changeNote", event.target.value)} /></label>
       </section>
     </>
   );
 }
 
-function PresetPreview({ preset, row }) {
+function PresetPreview({ kind, row }) {
   const installments = Array.isArray(row?.installments) ? row.installments : [];
   return (
     <div className={styles.preview}>
-      <header><span>COMMERCIAL PRESET · VERSION {row?.versionNumber || "-"}</span><strong>{row?.title || "ยังไม่ระบุชื่อ"}</strong><small>{commercialPresetScopeLabel(preset)}</small></header>
-      <dl><div><dt>วิธีชำระเงิน</dt><dd>{row?.paymentMethod || "-"}</dd></div><div><dt>เงื่อนไขการชำระ</dt><dd>{row?.paymentTerms || "-"}</dd></div><div><dt>หมายเหตุ</dt><dd>{row?.remarks || "-"}</dd></div></dl>
-      {installments.length > 0 && <div className={styles.previewTable}><table><thead><tr><th>งวด</th><th>%</th><th>Trigger / Due rule</th></tr></thead><tbody>{installments.map((item, index) => <tr key={index}><td>{item.label}</td><td>{Number(item.percent).toFixed(2)}</td><td>{[item.trigger, item.dueRule, item.note].filter(Boolean).join(" · ") || "-"}</td></tr>)}</tbody></table></div>}
+      <header>
+        <span>{COMMERCIAL_PRESET_KIND_LABELS[kind]?.toUpperCase()} · VERSION {row?.versionNumber || "-"}</span>
+        <strong>{row?.title || "ยังไม่ระบุชื่อ"}</strong>
+        <small>{commercialPresetStatusLabel(row?.status)}</small>
+      </header>
+      {kind === "payment" ? (
+        <>
+          <dl>
+            <div><dt>วิธีชำระเงิน</dt><dd>{row?.paymentMethod || "-"}</dd></div>
+            <div><dt>รายละเอียดการชำระ</dt><dd>{row?.paymentTerms || "-"}</dd></div>
+          </dl>
+          {installments.length > 0 && (
+            <div className={styles.previewTable}>
+              <table>
+                <thead><tr><th>{isFullPaymentPlan(installments) ? "การชำระ" : "งวด"}</th><th>%</th><th>เงื่อนไข / กำหนดชำระ</th></tr></thead>
+                <tbody>{installments.map((item, index) => <tr key={index}><td>{item.label}</td><td>{Number(item.percent).toFixed(2)}</td><td>{[item.trigger, item.dueRule, item.note].filter(Boolean).join(" · ") || "-"}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : (
+        <dl><div><dt>รายละเอียดหมายเหตุ</dt><dd>{row?.remarks || "-"}</dd></div></dl>
+      )}
     </div>
   );
 }
@@ -139,6 +185,7 @@ export default function CommercialPresetsPage() {
   const role = useRole();
   const canManage = canManageCommercialPresets(role);
   const [presets, setPresets] = useState([]);
+  const [kind, setKind] = useState("payment");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -152,16 +199,20 @@ export default function CommercialPresetsPage() {
     try {
       const response = await fetch("/api/commercial-presets", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || "โหลด Commercial Preset ไม่สำเร็จ");
+      if (!response.ok) throw new Error(payload.error || "โหลดคลังเงื่อนไขการค้าไม่สำเร็จ");
       setPresets(Array.isArray(payload.presets) ? payload.presets : []);
-    } catch (loadError) { setError(loadError.message || "โหลด Commercial Preset ไม่สำเร็จ"); }
+    } catch (loadError) { setError(loadError.message || "โหลดคลังเงื่อนไขการค้าไม่สำเร็จ"); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { if (canManage) load(); }, [canManage, load]);
 
+  const visible = useMemo(() => presets.filter((preset) => preset.kind === kind), [presets, kind]);
+  const countOf = useCallback((value) => presets.filter((preset) => preset.kind === value).length, [presets]);
   const drawerPreset = useMemo(() => presets.find((item) => item.id === drawer?.presetId) || drawer?.preset || null, [drawer, presets]);
   const drawerRow = drawer?.rowId ? drawerPreset?.versions?.find((item) => item.id === drawer.rowId) || drawer?.row : drawer?.row;
+  const drawerKind = drawer?.kind || drawerPreset?.kind || kind;
+
   const request = async (url, options, fallback) => {
     const response = await fetch(url, options);
     const payload = await response.json().catch(() => ({}));
@@ -169,19 +220,26 @@ export default function CommercialPresetsPage() {
     return payload;
   };
 
-  const openCreate = () => { setForm({ ...EMPTY_FORM, installments: [] }); setDrawer({ mode: "create" }); };
-  const openEdit = (preset, row) => { setForm(formFrom(preset, row)); setDrawer({ mode: "edit", presetId: preset.id, rowId: row.id, row }); };
-  const openView = (preset, row) => setDrawer({ mode: "view", presetId: preset.id, rowId: row.id, row });
+  const openCreate = () => { setForm(formFrom(null)); setDrawer({ mode: "create", kind }); };
+  const openEdit = (preset, row) => { setForm(formFrom(row)); setDrawer({ mode: "edit", kind: preset.kind, presetId: preset.id, rowId: row.id, row }); };
+  const openView = (preset, row) => setDrawer({ mode: "view", kind: preset.kind, presetId: preset.id, rowId: row.id, row });
 
   const submitForm = async (event) => {
     event.preventDefault(); setBusy(true);
     try {
       const creating = drawer?.mode === "create";
-      const payload = { ...form, priority: Number(form.priority), installments: form.installments.map((row) => ({ ...row, percent: Number(row.percent) })) };
+      const payload = {
+        ...form,
+        kind: drawerKind,
+        documentKey: "quotation",
+        installments: drawerKind === "payment"
+          ? form.installments.map((row) => ({ ...row, percent: Number(row.percent) }))
+          : [],
+      };
       const saved = await request(creating ? "/api/commercial-presets" : `/api/commercial-presets/draft/${drawerRow.id}`, {
         method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(creating ? payload : { ...payload, expectedUpdatedAt: drawerRow.updatedAt }),
-      }, creating ? "สร้าง Commercial Preset ไม่สำเร็จ" : "บันทึกฉบับร่างไม่สำเร็จ");
+      }, creating ? "สร้างชุดใหม่ไม่สำเร็จ" : "บันทึกฉบับร่างไม่สำเร็จ");
       setDrawer(null);
       setToast({ kind: "success", msg: creating ? `สร้าง “${saved.draft.title}” Version 1 ฉบับร่างแล้ว` : `บันทึก “${saved.title}” Version ${saved.versionNumber} แล้ว` });
       await load();
@@ -194,8 +252,8 @@ export default function CommercialPresetsPage() {
     try {
       const draft = await request(`/api/commercial-presets/${preset.id}/draft`, { method: "POST" }, "สร้างฉบับร่างไม่สำเร็จ");
       await load();
-      setForm(formFrom(preset, draft));
-      setDrawer({ mode: "edit", presetId: preset.id, rowId: draft.id, row: draft });
+      setForm(formFrom(draft));
+      setDrawer({ mode: "edit", kind: preset.kind, presetId: preset.id, rowId: draft.id, row: draft });
       setToast({ kind: "success", msg: `สร้าง Version ${draft.versionNumber} ฉบับร่างแล้ว` });
     } catch (requestError) { setToast({ kind: "error", msg: requestError.message }); }
     finally { setBusy(false); }
@@ -207,7 +265,7 @@ export default function CommercialPresetsPage() {
     try {
       await request(`/api/commercial-presets/draft/${confirm.draft.id}/${confirm.action}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedUpdatedAt: confirm.draft.updatedAt }),
-      }, confirm.action === "publish" ? "เผยแพร่ Commercial Preset ไม่สำเร็จ" : "ยกเลิกฉบับร่างไม่สำเร็จ");
+      }, confirm.action === "publish" ? "เผยแพร่ไม่สำเร็จ" : "ยกเลิกฉบับร่างไม่สำเร็จ");
       setConfirm(null); setDrawer(null);
       setToast({ kind: "success", msg: confirm.action === "publish" ? `เผยแพร่ Version ${confirm.draft.versionNumber} แล้ว` : `ยกเลิก Version ${confirm.draft.versionNumber} แล้ว (ลบร่างถาวร)` });
       await load();
@@ -215,33 +273,195 @@ export default function CommercialPresetsPage() {
     finally { setBusy(false); }
   };
 
-  if (!canManage) return null;
+  // เดิม return null = จอขาวสนิท ไม่มีทั้งคำอธิบายและทางกลับ
+  const gate = accessState(role, canManage);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
+    return (
+      <AccessDenied
+        icon={<WalletCards size={22} />}
+        title="คลังเงื่อนไขการค้า"
+        message="หน้านี้สำหรับหัวหน้าฝ่ายขายและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+      />
+    );
+  }
+
   const editing = drawer?.mode === "edit" || drawer?.mode === "create";
+  const kindLabel = COMMERCIAL_PRESET_KIND_LABELS[kind];
 
   return (
     <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
-      <header className="premium-header"><div className="header-content"><h1><span className="premium-header-icon"><WalletCards size={22} /></span> Commercial Preset</h1><p>ตั้งค่าวิธีชำระ เงื่อนไข หมายเหตุ และงวดชำระตามทีมและประเภทดีลแบบมีเวอร์ชัน</p></div></header>
-      <div className={styles.notice}><AlertTriangle size={17} /><p><strong>Phase 7A เป็นการตั้งค่าล่วงหน้า</strong> ยังไม่เลือก Preset ให้อัตโนมัติและยังไม่เปลี่ยน Production Print</p></div>
-      {loading ? <SkeletonRows rows={8} /> : error ? <section className={`glass-panel ${styles.error}`} role="alert"><AlertTriangle size={26} /><p>{error}</p><button type="button" className="btn" onClick={load}>ลองอีกครั้ง</button></section> : presets.length === 0 ? (
+      <header className="premium-header"><div className="header-content"><h1><span className="premium-header-icon"><WalletCards size={22} /></span> คลังเงื่อนไขการค้า</h1><p>ชุดการชำระและชุดหมายเหตุที่คนทำใบเสนอราคาเลือกใช้จาก dropdown</p></div></header>
+
+      <div className={styles.notice}>
+        <AlertTriangle size={17} />
+        <p><strong>ชุดที่เผยแพร่พร้อมให้เลือกใช้บนใบเสนอราคาทันที</strong> คนทำใบเป็นผู้เลือกเองและแก้ทับได้เสมอ — ระบบไม่เลือกให้อัตโนมัติ · ใบที่ออกไปแล้วไม่เปลี่ยนย้อนหลัง เพราะค่าถูกคัดลอกลงใบตั้งแต่ตอนสร้าง</p>
+      </div>
+
+      <div className={styles.kindTabs} role="group" aria-label="เลือกคลัง">
+        {COMMERCIAL_PRESET_KINDS.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={`${styles.kindTab} ${kind === value ? styles.active : ""}`.trim()}
+            aria-pressed={kind === value}
+            disabled={loading}
+            onClick={() => { setKind(value); setDrawer(null); }}
+          >
+            <span>{COMMERCIAL_PRESET_KIND_LABELS[value]}</span>
+            <small>{loading ? "กำลังโหลด…" : `${countOf(value)} ชุด`}</small>
+          </button>
+        ))}
+      </div>
+
+      {loading ? <SkeletonRows rows={8} /> : error ? (
+        <section className={`glass-panel ${styles.error}`} role="alert"><AlertTriangle size={26} /><p>{error}</p><button type="button" className="btn" onClick={load}>ลองอีกครั้ง</button></section>
+      ) : visible.length === 0 ? (
         <EmptyState icon={WalletCards}>
-          ยังไม่มี Commercial Preset เริ่มต้นด้วยการสร้างฉบับร่างรายการแรก
+          ยังไม่มี{kindLabel} — {KIND_HINTS[kind]}
           <div style={{ marginTop: 10 }}>
-            <button type="button" className="btn btn-accent" onClick={openCreate} disabled={busy}><FilePlus2 size={16} /> สร้าง Preset</button>
+            <button type="button" className="btn btn-accent" onClick={openCreate} disabled={busy}><FilePlus2 size={16} /> สร้าง{kindLabel}</button>
           </div>
         </EmptyState>
       ) : (
-        // ปุ่มสร้าง Preset = ปุ่มเพิ่มของรายการในการ์ด — อยู่ขวาสุดของ card header ตามกติกา Page Header
-        <section className={`glass-panel ${styles.listPanel}`} aria-labelledby="preset-list-title"><header className={styles.panelHeader}><div><h2 id="preset-list-title">Preset ทั้งหมด</h2><p>เมื่อ scope ตรงกันหลายรายการ resolver จะเลือกความจำเพาะสูงสุด แล้วเรียง priority และ preset key</p></div><div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}><span className="ui-badge">{presets.length} รายการ</span><button type="button" className="btn btn-accent" onClick={openCreate} disabled={busy}><FilePlus2 size={16} /> สร้าง Preset</button></div></header>
-          <div className={`premium-table-wrapper ${styles.tableWrap}`}><table className="premium-table"><thead><tr><th>Preset</th><th>ขอบเขต</th><th>เวอร์ชัน</th><th>วิธีชำระ / งวด</th><th>อัปเดต</th><th aria-label="การทำงาน" /></tr></thead><tbody>{presets.map((preset) => { const current = preset.draft || preset.published || preset.versions?.[0]; return <tr key={preset.id}><td><strong>{current?.title || "ไม่มีชื่อ"}</strong><small className="mono">{preset.presetKey}</small></td><td>{commercialPresetScopeLabel(preset)}<small>Priority {preset.priority}</small></td><td><div className={styles.versionCell}>{preset.published && <span>V{preset.published.versionNumber} <StatusBadge status="published" /></span>}{preset.draft && <span>V{preset.draft.versionNumber} <StatusBadge status="draft" /></span>}{!preset.published && !preset.draft && <span>ไม่มีเวอร์ชันใช้งาน</span>}</div></td><td>{current?.paymentMethod || "-"}<small>{current?.installments?.length || 0} งวด</small></td><td>{formatDateTime(current?.updatedAt)}</td><td><div className={styles.rowActions}>{current && <button type="button" className="btn ghost sm" onClick={() => openView(preset, current)}><Eye size={14} /> ดู</button>}{preset.draft ? <button type="button" className="btn sm" onClick={() => openEdit(preset, preset.draft)}><Edit3 size={14} /> แก้ Draft</button> : <button type="button" className="btn sm" onClick={() => createDraft(preset)} disabled={busy}><FilePlus2 size={14} /> สร้าง Draft</button>}</div></td></tr>; })}</tbody></table></div>
-          <div className={styles.cards}>{presets.map((preset) => { const current = preset.draft || preset.published || preset.versions?.[0]; return <article key={preset.id} className={styles.card}><header><div><strong>{current?.title || "ไม่มีชื่อ"}</strong><small>{commercialPresetScopeLabel(preset)}</small></div>{current && <StatusBadge status={current.status} />}</header><p>{current?.paymentMethod || "ยังไม่ระบุวิธีชำระ"} · {current?.installments?.length || 0} งวด</p><div className={styles.cardActions}>{current && <button type="button" className="btn ghost" onClick={() => openView(preset, current)}><Eye size={15} /> ดู</button>}{preset.draft ? <button type="button" className="btn" onClick={() => openEdit(preset, preset.draft)}><Edit3 size={15} /> แก้ Draft</button> : <button type="button" className="btn" onClick={() => createDraft(preset)} disabled={busy}><FilePlus2 size={15} /> สร้าง Draft</button>}</div></article>; })}</div>
+        // ปุ่มสร้าง = ปุ่มเพิ่มของรายการในการ์ด — อยู่ขวาสุดของ card header ตามกติกา Page Header
+        <section className={`glass-panel ${styles.listPanel}`} aria-labelledby="preset-list-title">
+          <header className={styles.panelHeader}>
+            <div><h2 id="preset-list-title">{kindLabel}</h2><p>{KIND_HINTS[kind]}</p></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span className="ui-badge">{visible.length} ชุด</span>
+              <button type="button" className="btn btn-accent" onClick={openCreate} disabled={busy}><FilePlus2 size={16} /> สร้าง{kindLabel}</button>
+            </div>
+          </header>
+
+          <div className={`premium-table-wrapper ${styles.tableWrap}`}>
+            <table className="premium-table">
+              <thead><tr><th>ชื่อชุด</th><th>เวอร์ชัน</th><th>สรุป</th><th>อัปเดต</th><th aria-label="การทำงาน" /></tr></thead>
+              <tbody>
+                {visible.map((preset) => {
+                  const current = preset.draft || preset.published || preset.versions?.[0];
+                  return (
+                    <tr key={preset.id}>
+                      <td><strong>{current?.title || "ไม่มีชื่อ"}</strong></td>
+                      <td>
+                        <div className={styles.versionCell}>
+                          {preset.published && <span>V{preset.published.versionNumber} <StatusBadge status="published" /></span>}
+                          {preset.draft && <span>V{preset.draft.versionNumber} <StatusBadge status="draft" /></span>}
+                          {!preset.published && !preset.draft && <span>ไม่มีเวอร์ชันใช้งาน</span>}
+                        </div>
+                      </td>
+                      <td>{commercialPresetSummary(preset.kind, current)}</td>
+                      <td>{formatDateTime(current?.updatedAt)}</td>
+                      <td>
+                        <div className={styles.rowActions}>
+                          {current && <button type="button" className="btn ghost sm" onClick={() => openView(preset, current)}><Eye size={14} /> ดู</button>}
+                          {preset.draft
+                            ? <button type="button" className="btn sm" onClick={() => openEdit(preset, preset.draft)}><Edit3 size={14} /> แก้ร่าง</button>
+                            : <button type="button" className="btn sm" onClick={() => createDraft(preset)} disabled={busy}><FilePlus2 size={14} /> สร้างร่าง</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className={styles.cards}>
+            {visible.map((preset) => {
+              const current = preset.draft || preset.published || preset.versions?.[0];
+              return (
+                <article key={preset.id} className={styles.card}>
+                  <header>
+                    <div><strong>{current?.title || "ไม่มีชื่อ"}</strong><small>{commercialPresetSummary(preset.kind, current)}</small></div>
+                    {current && <StatusBadge status={current.status} />}
+                  </header>
+                  <div className={styles.cardActions}>
+                    {current && <button type="button" className="btn ghost" onClick={() => openView(preset, current)}><Eye size={15} /> ดู</button>}
+                    {preset.draft
+                      ? <button type="button" className="btn" onClick={() => openEdit(preset, preset.draft)}><Edit3 size={15} /> แก้ร่าง</button>
+                      : <button type="button" className="btn" onClick={() => createDraft(preset)} disabled={busy}><FilePlus2 size={15} /> สร้างร่าง</button>}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </section>
       )}
 
-      <RecordDrawer open={!!drawer} onClose={() => !busy && setDrawer(null)} closeOnOverlay={false} opaqueSurface title={drawer?.mode === "create" ? "สร้าง Commercial Preset" : drawerRow ? `${drawerRow.title} · Version ${drawerRow.versionNumber}` : "Commercial Preset"} subtitle={editing ? "บันทึกฉบับร่างแบบ explicit ไม่มี Auto-save" : "รายละเอียดและ Preview แบบอ่านอย่างเดียว"} badge={drawerRow ? <StatusBadge status={drawerRow.status} /> : null} footer={editing ? <><button type="button" className="btn ghost" onClick={() => setDrawer(null)} disabled={busy}>ยกเลิก</button><button type="submit" form="commercial-preset-form" className="btn btn-accent" disabled={busy}>{busy ? "กำลังบันทึก…" : drawer?.mode === "create" ? "สร้างฉบับร่าง" : "บันทึกฉบับร่าง"}</button></> : <><button type="button" className="btn" onClick={() => setDrawer(null)}>ปิด</button>{drawerPreset?.draft?.id === drawerRow?.id && <button type="button" className="btn" onClick={() => openEdit(drawerPreset, drawerRow)}><Edit3 size={15} /> แก้ไข</button>}</>}>
-        {editing ? <form id="commercial-preset-form" className={styles.form} onSubmit={submitForm}><ScopeFields form={form} setForm={setForm} disabled={drawer?.mode !== "create"} /><ContentFields form={form} setForm={setForm} /></form> : drawerPreset && drawerRow ? <div className={styles.drawerBody}><PresetPreview preset={drawerPreset} row={drawerRow} /><section className={styles.detailSection}><h4>เวอร์ชันและหลักฐาน</h4><dl><div><dt>สถานะ</dt><dd>{commercialPresetStatusLabel(drawerRow.status)}</dd></div><div><dt>ผู้ดำเนินการ</dt><dd>{actorOf(drawerRow)}</dd></div><div><dt>เวลาล่าสุด</dt><dd>{formatDateTime(drawerRow.publishedAt || drawerRow.archivedAt || drawerRow.updatedAt)}</dd></div><div><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd>{drawerRow.changeNote || "-"}</dd></div></dl></section><section className={styles.historySection}><h4>ประวัติเวอร์ชัน</h4><div>{drawerPreset.versions?.map((version) => <button key={version.id} type="button" className={version.id === drawerRow.id ? styles.historyActive : ""} aria-pressed={version.id === drawerRow.id} onClick={() => setDrawer((current) => ({ ...current, rowId: version.id, row: version }))}><span><strong>Version {version.versionNumber}</strong><small>{version.changeNote || "ไม่มีหมายเหตุ"}</small></span><StatusBadge status={version.status} /></button>)}</div></section>{drawerRow.status === "draft" && <div className={styles.transitionActions}><button type="button" className="btn ghost" onClick={() => setConfirm({ action: "discard", preset: drawerPreset, draft: drawerRow })} disabled={busy}><Trash2 size={15} /> ยกเลิกร่าง</button><button type="button" className="btn" onClick={() => setConfirm({ action: "publish", preset: drawerPreset, draft: drawerRow })} disabled={busy || !String(drawerRow.changeNote || "").trim()} title={!String(drawerRow.changeNote || "").trim() ? "บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่" : undefined}><Send size={15} /> เผยแพร่</button></div>}</div> : null}
+      <RecordDrawer
+        open={!!drawer}
+        onClose={() => !busy && setDrawer(null)}
+        closeOnOverlay={false}
+        opaqueSurface
+        title={drawer?.mode === "create" ? `สร้าง${COMMERCIAL_PRESET_KIND_LABELS[drawerKind]}` : drawerRow ? `${drawerRow.title} · Version ${drawerRow.versionNumber}` : COMMERCIAL_PRESET_KIND_LABELS[drawerKind]}
+        subtitle={editing ? "บันทึกฉบับร่างแบบ explicit ไม่มี Auto-save" : "รายละเอียดและ Preview แบบอ่านอย่างเดียว"}
+        badge={drawerRow ? <StatusBadge status={drawerRow.status} /> : null}
+        footer={editing
+          ? <><button type="button" className="btn ghost" onClick={() => setDrawer(null)} disabled={busy}>ยกเลิก</button><button type="submit" form="commercial-preset-form" className="btn btn-accent" disabled={busy}>{busy ? "กำลังบันทึก…" : drawer?.mode === "create" ? "สร้างฉบับร่าง" : "บันทึกฉบับร่าง"}</button></>
+          : <><button type="button" className="btn" onClick={() => setDrawer(null)}>ปิด</button>{drawerPreset?.draft?.id === drawerRow?.id && <button type="button" className="btn" onClick={() => openEdit(drawerPreset, drawerRow)}><Edit3 size={15} /> แก้ไข</button>}</>}
+      >
+        {editing ? (
+          <form id="commercial-preset-form" className={styles.form} onSubmit={submitForm}>
+            <PresetFields kind={drawerKind} form={form} setForm={setForm} />
+          </form>
+        ) : drawerPreset && drawerRow ? (
+          <div className={styles.drawerBody}>
+            <PresetPreview kind={drawerKind} row={drawerRow} />
+            <section className={styles.detailSection}>
+              <h4>เวอร์ชันและหลักฐาน</h4>
+              <dl>
+                <div><dt>สถานะ</dt><dd>{commercialPresetStatusLabel(drawerRow.status)}</dd></div>
+                <div><dt>ผู้ดำเนินการ</dt><dd>{actorOf(drawerRow)}</dd></div>
+                <div><dt>เวลาล่าสุด</dt><dd>{formatDateTime(drawerRow.publishedAt || drawerRow.archivedAt || drawerRow.updatedAt)}</dd></div>
+                <div><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd>{drawerRow.changeNote || "-"}</dd></div>
+              </dl>
+            </section>
+            <section className={styles.historySection}>
+              <h4>ประวัติเวอร์ชัน</h4>
+              <div>
+                {drawerPreset.versions?.map((version) => (
+                  <button key={version.id} type="button" className={version.id === drawerRow.id ? styles.historyActive : ""} aria-pressed={version.id === drawerRow.id} onClick={() => setDrawer((current) => ({ ...current, rowId: version.id, row: version }))}>
+                    <span><strong>Version {version.versionNumber}</strong><small>{version.changeNote || "ไม่มีหมายเหตุ"}</small></span>
+                    <StatusBadge status={version.status} />
+                  </button>
+                ))}
+              </div>
+            </section>
+            {drawerRow.status === "draft" && (
+              <div className={styles.transitionActions}>
+                <button type="button" className="btn ghost" onClick={() => setConfirm({ action: "discard", preset: drawerPreset, draft: drawerRow })} disabled={busy}><Trash2 size={15} /> ยกเลิกร่าง</button>
+                <button type="button" className="btn" onClick={() => setConfirm({ action: "publish", preset: drawerPreset, draft: drawerRow })} disabled={busy || !String(drawerRow.changeNote || "").trim()} title={!String(drawerRow.changeNote || "").trim() ? "บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่" : undefined}><Send size={15} /> เผยแพร่</button>
+              </div>
+            )}
+          </div>
+        ) : null}
       </RecordDrawer>
-      <ConfirmDialog open={confirm?.action === "publish"} title="ยืนยันเผยแพร่ Commercial Preset" description={`Version ${confirm?.draft?.versionNumber || "-"} จะเป็นเวอร์ชันใช้งานของ “${confirm?.draft?.title || "-"}”`} detail="เวอร์ชันที่เผยแพร่อยู่เดิมจะถูกซ่อน (ดูย้อนหลังได้ในประวัติเวอร์ชัน) — Quotation Production ยังไม่เปลี่ยนใน Phase 7A" confirmLabel="เผยแพร่เวอร์ชัน" busy={busy} onClose={() => setConfirm(null)} onConfirm={transition} />
-      <ConfirmDialog open={confirm?.action === "discard"} title="ยกเลิกฉบับร่าง" description={confirm?.preset && !confirm.preset.publishedVersionId ? `Version ${confirm?.draft?.versionNumber || "-"} จะถูกลบถาวร และ Preset “${confirm?.draft?.title || "-"}” ที่ยังไม่เคยเผยแพร่จะถูกลบทั้งตัว` : `Version ${confirm?.draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`} detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง" confirmLabel="ยกเลิกร่างถาวร" tone="danger" busy={busy} onClose={() => setConfirm(null)} onConfirm={transition} />
+
+      <ConfirmDialog
+        open={confirm?.action === "publish"}
+        title="ยืนยันเผยแพร่"
+        description={`Version ${confirm?.draft?.versionNumber || "-"} จะเป็นเวอร์ชันใช้งานของ “${confirm?.draft?.title || "-"}”`}
+        detail="เวอร์ชันที่เผยแพร่อยู่เดิมจะถูกซ่อน (ดูย้อนหลังได้ในประวัติเวอร์ชัน) · ใบเสนอราคาที่สร้างหลังจากนี้จะเลือกชุดนี้ได้ ส่วนใบที่ออกไปแล้วไม่เปลี่ยน"
+        confirmLabel="เผยแพร่เวอร์ชัน"
+        busy={busy}
+        onClose={() => setConfirm(null)}
+        onConfirm={transition}
+      />
+      <ConfirmDialog
+        open={confirm?.action === "discard"}
+        title="ยกเลิกฉบับร่าง"
+        description={confirm?.preset && !confirm.preset.publishedVersionId
+          ? `Version ${confirm?.draft?.versionNumber || "-"} จะถูกลบถาวร และชุด “${confirm?.draft?.title || "-"}” ที่ยังไม่เคยเผยแพร่จะถูกลบทั้งตัว`
+          : `Version ${confirm?.draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`}
+        detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง"
+        confirmLabel="ยกเลิกร่างถาวร"
+        tone="danger"
+        busy={busy}
+        onClose={() => setConfirm(null)}
+        onConfirm={transition}
+      />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );

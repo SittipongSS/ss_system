@@ -7,6 +7,7 @@ import { monthOf, cleanDestination } from '@/lib/sahamit/po';
 import { insertPoLinesTolerant } from '@/lib/sahamit/poServer';
 import { blockedLinesMessage, diffPoLines, lineLockReason, poDeleteBlock } from '@/lib/sahamit/poEdit';
 import { resolveSettledLines } from '@/lib/sahamit/settleLines';
+import { refreshSahamitFlags } from '@/lib/sahamit/flagsSync';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -152,6 +153,10 @@ export async function PATCH(request, { params }) {
     user, action: 'update', entityType: 'sahamit_po', entityId: id,
     before, after: updated, summary: `แก้ไข PO ${updated.poNumber}${lineNote}`, request,
   });
+
+  // แก้ PO (จำนวน/วันที่รับ/บรรทัด) กระทบการหักยอด FC ที่ลด — รีเฟรชธง. Best-effort.
+  try { await refreshSahamitFlags(supabase, customerId); } catch (e) { console.error('[sahamit] flag refresh failed', e?.message || e); }
+
   return Response.json(updated);
 }
 
@@ -181,6 +186,9 @@ export async function DELETE(request, { params }) {
   const { error } = await supabase
     .from('sahamit_pos').delete().eq('id', id).eq('customerId', customerId);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  // ลบ PO ทำให้ยอด PO ที่เคยหักหายไป — รีเฟรชธง. Best-effort.
+  try { await refreshSahamitFlags(supabase, customerId); } catch (e) { console.error('[sahamit] flag refresh failed', e?.message || e); }
 
   await recordAudit({
     user, action: 'delete', entityType: 'sahamit_po', entityId: id,

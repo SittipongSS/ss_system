@@ -24,12 +24,12 @@ function qtyFromProjectProduct(row) {
 }
 
 // seed บรรทัดจาก FG ที่ผูกในโครงการของดีล — ราคา freeze จาก master ณ ตอนสร้าง
-// (ราคาโรงงาน — กติกาเดียวกับ enforceMasterPrices)
+// (ราคาผลิต — กติกาเดียวกับ enforceMasterPrices)
 export async function seedLinesFromProject(supabase, deal) {
   if (!deal.projectId) return [];
   const { data } = await supabase
     .from('project_products')
-    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, costPrice)')
+    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice)')
     .eq('projectId', deal.projectId);
   return (data || []).map((row, index) => {
     const qty = qtyFromProjectProduct(row);
@@ -40,6 +40,7 @@ export async function seedLinesFromProject(supabase, deal) {
       fgCode: row.product?.fgCode || null,
       description: fgLineDescription(row.product),
       qty,
+      unit: row.product?.saleUnit || 'ชิ้น',
       unitPrice,
       discountType: null,
       discountValue: 0,
@@ -52,12 +53,12 @@ export async function seedLinesFromProject(supabase, deal) {
   });
 }
 
-// ราคาขายในใบเสนอราคาทั้งระบบ = "ราคาโรงงาน" (costPrice) — มติผู้ใช้ 2026-07-19.
+// ราคาขายในใบเสนอราคาทั้งระบบ = "ราคาผลิต" (costPrice) — มติผู้ใช้ 2026-07-19.
 // retailPriceIncVat ไม่ใช่ราคาขาย: มีไว้คำนวณภาษีสรรพสามิต (โมดูล tax) เท่านั้น.
 export const QUOTE_PRICE_FIELD = 'costPrice';
 
 // ข้อมูลบรรทัด FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี
-// productId ถูกทับทั้ง "ราคา" (ราคาโรงงาน — QUOTE_PRICE_FIELD) และ "คำอธิบาย"
+// productId ถูกทับทั้ง "ราคา" (ราคาผลิต — QUOTE_PRICE_FIELD) และ "คำอธิบาย"
 // (แบรนด์ · ชื่อสินค้า · ปริมาตร) + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ —
 // **ห้ามกำหนดราคาจากใบเสนอราคาทุกกรณี** flow คือไปตั้งราคาที่ฐานข้อมูลสินค้าแล้วกลับมาบันทึกใบ.
 // - master ยังไม่ตั้งราคา (0/ว่าง) = ไม่มีข้อมูล ไม่ใช่ราคา 0 → คงราคาที่บันทึกไว้เดิม
@@ -69,7 +70,7 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
   if (!ids.length) return lines;
   const { data, error } = await supabase
     .from('products')
-    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, costPrice')
+    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice')
     .in('id', ids);
   if (error) throw error;
   const productById = new Map((data || []).map((p) => [p.id, p]));
@@ -86,9 +87,11 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
       : toMoney(prev?.unitPrice ?? (master ? 0 : line.unitPrice));
     const description = master ? fgLineDescription(master) : (prev?.description || line.description);
     const fgCode = master ? (master.fgCode || null) : (prev?.fgCode ?? line.fgCode);
-    if (unitPrice === line.unitPrice && description === line.description && fgCode === line.fgCode) return line;
+    // หน่วยผูก master เช่นกัน (มติ 2026-07-23) — freeze จากสินค้าตอนบันทึก; สินค้าถูกลบ = คงเดิม
+    const unit = master ? (master.saleUnit || 'ชิ้น') : (prev?.unit ?? line.unit ?? 'ชิ้น');
+    if (unitPrice === line.unitPrice && description === line.description && fgCode === line.fgCode && unit === line.unit) return line;
     const net = quoteLineNet({ qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue });
-    return { ...line, unitPrice, description, fgCode, discountAmount: net.discountAmount, lineTotal: net.lineTotal };
+    return { ...line, unitPrice, description, fgCode, unit, discountAmount: net.discountAmount, lineTotal: net.lineTotal };
   });
 }
 
@@ -103,14 +106,14 @@ export async function refreshFgLinesForDisplay(supabase, quotes = []) {
   if (!ids.length) return quotes;
   const { data, error } = await supabase
     .from('products')
-    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit')
+    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit')
     .in('id', ids);
   if (error) return quotes; // เสริมการแสดงผลเท่านั้น — อย่าให้ GET ล้มเพราะ join นี้
   const byId = new Map((data || []).map((p) => [p.id, p]));
   for (const q of targets) {
     q.lines = q.lines.map((l) => {
       const p = l?.productId ? byId.get(l.productId) : null;
-      return p ? { ...l, description: fgLineDescription(p), fgCode: p.fgCode || l.fgCode } : l;
+      return p ? { ...l, description: fgLineDescription(p), fgCode: p.fgCode || l.fgCode, unit: p.saleUnit || l.unit || 'ชิ้น' } : l;
     });
   }
   return quotes;
@@ -132,6 +135,7 @@ export function normalizeManualLines(lines = []) {
         fgCode: line.fgCode || null,
         description: line.description || line.fgCode || `รายการ ${index + 1}`,
         qty,
+        unit: line.unit || 'ชิ้น',
         unitPrice,
         discountType,
         discountValue,

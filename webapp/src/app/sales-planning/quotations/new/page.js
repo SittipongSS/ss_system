@@ -13,6 +13,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
+import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationPeopleFields from "@/components/salesPlanning/QuotationPeopleFields";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import { useCan } from "@/lib/roleContext";
@@ -55,7 +56,7 @@ function NewQuotationInner() {
   const [vatRate, setVatRate] = useState(7);
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
   const [notes, setNotes] = useState("");
-  const [presetHint, setPresetHint] = useState(null); // ชื่อ Commercial Preset ที่เติมค่าตั้งต้น
+  const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
   // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
   const [people, setPeople] = useState({ aeOwner: "", preparedBy: "", aeSupervisor: "" });
 
@@ -164,36 +165,6 @@ function NewQuotationInner() {
     setPeople({ aeOwner: p?.aeOwner || "", preparedBy: "", aeSupervisor: p?.aeSupervisor || "" });
   }, [projectId, projectsById]);
 
-  // เติมค่าตั้งต้นด้านการค้าจาก Commercial Preset ที่ match scope ของดีล (Published เท่านั้น)
-  // — เฉพาะช่องที่ยังว่าง ไม่ทับสิ่งที่ผู้ใช้กรอกเอง (Phase 7C: preset = ค่าตั้งต้น ไม่บังคับ)
-  useEffect(() => {
-    if (!selectedDeal) { setPresetHint(null); return; }
-    let alive = true;
-    (async () => {
-      const query = new URLSearchParams({ documentKey: "quotation" });
-      if (selectedDeal.team) query.set("team", selectedDeal.team);
-      if (selectedDealType) query.set("dealType", selectedDealType);
-      const res = await fetch(`/api/commercial-presets/resolve?${query}`).catch(() => null);
-      if (!alive || !res?.ok) return;
-      const { defaults } = await res.json().catch(() => ({}));
-      if (!alive || !defaults) { setPresetHint(null); return; }
-      setPayment((cur) => {
-        const next = { ...cur };
-        if (!cur.paymentMethod && defaults.paymentMethod) next.paymentMethod = defaults.paymentMethod;
-        if (!cur.paymentTerms && defaults.paymentTerms) next.paymentTerms = defaults.paymentTerms;
-        const noRows = !Array.isArray(cur.installments) || cur.installments.length === 0;
-        if (cur.type === "full" && noRows && defaults.installments.length >= 2) {
-          next.type = "installment";
-          next.installments = defaults.installments;
-        }
-        return next;
-      });
-      setNotes((cur) => cur || defaults.remarks || "");
-      setPresetHint(defaults.title || "พรีเซ็ตการค้า");
-    })();
-    return () => { alive = false; };
-  }, [selectedDeal, selectedDealType]);
-
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
   const billingAddress = customer?.address || "";
   const shippingAddress = customer?.shippingAddress || customer?.address || "";
@@ -247,7 +218,12 @@ function NewQuotationInner() {
           paymentTerms: payment.paymentTerms,
           notes,
           paymentPlan,
-          metadata: { ...people },
+          // ชุดเงื่อนไขการค้าที่หยิบมาเป็นค่าตั้งต้น — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
+          metadata: {
+            ...people,
+            paymentPresetVersionId: payment.presetVersionId || null,
+            remarksPresetVersionId: notesPresetVersionId || null,
+          },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -262,7 +238,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, people, router]);
+  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, notesPresetVersionId, people, router]);
 
   if (!canEdit) {
     return (
@@ -358,10 +334,16 @@ function NewQuotationInner() {
 
           <section className={styles.card}>
             <QuotationPaymentTerms value={payment} onChange={setPayment} totalAmount={totals.totalAmount} />
-            {presetHint && <p className={styles.autoNumberNote}>เติมค่าตั้งต้นจากพรีเซ็ต «{presetHint}» แล้ว — แก้ทับได้ตามต้องการ</p>}
           </section>
 
-          <section className={styles.card}><div className={styles.sectionHeading}><FileText size={17} /><h2>หมายเหตุ</h2></div><textarea className="premium-input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="หมายเหตุที่ต้องการแสดงในใบเสนอราคา" /></section>
+          <section className={styles.card}>
+            <QuotationNotes
+              value={notes}
+              onChange={setNotes}
+              presetVersionId={notesPresetVersionId}
+              onPresetVersionIdChange={setNotesPresetVersionId}
+            />
+          </section>
         </div>
 
         <aside className={styles.sidebar}>

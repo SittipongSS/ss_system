@@ -1,5 +1,5 @@
 "use client";
-// หน้ารายการใบขอราคาต้นทุน (mig 0141) — ทุกฝ่ายที่เกี่ยวข้องใช้หน้าเดียวกัน
+// หน้ารายการใบขอราคาผลิต (mig 0141) — ทุกฝ่ายที่เกี่ยวข้องใช้หน้าเดียวกัน
 // แต่เห็นคนละชุด: ฝ่ายขายเห็นตาม scope ดีล, RD/PC เห็นคิวทั้งฝ่ายตน,
 // ผู้บริหาร/viewer เห็นทั้งหมด (กรองจริงที่ API ผ่าน canViewCostingRequest)
 //
@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Calculator, Plus, RefreshCw } from "lucide-react";
+import { Calculator, Plus, RefreshCw, Trash2 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -47,7 +47,9 @@ export default function CostingListPage() {
   const [templateCategories, setTemplateCategories] = useState(new Set());
   const [saving, setSaving] = useState(false);
   const [pendingSave, setPendingSave] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null); // ใบที่ admin รอยืนยันลบ
   const [toast, setToast] = useState(null);
+  const isAdmin = useCan("users:manage"); // admin เท่านั้น (แพตเทิร์นเดียวกับ force-delete เดิม)
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,6 +66,20 @@ export default function CostingListPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // admin ลบใบได้ทุกสถานะ (break-glass ?force=1) — ลบข้อมูลทดสอบ/ขยะ
+  const adminDelete = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/sa/costing/${pendingDelete.id}?force=1`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "ลบไม่สำเร็จ");
+      setToast({ kind: "success", msg: "ลบใบแล้ว" });
+      setPendingDelete(null);
+      await load();
+    } catch (e) { setToast({ kind: "error", msg: e.message }); }
+    setSaving(false);
+  };
 
   // ข้อมูลของฟอร์มโหลดตอนกดเปิดใบ ไม่ใช่ตอนเข้าหน้า — คนส่วนใหญ่เข้ามาเพื่อดูคิว
   const openCreate = async () => {
@@ -128,7 +144,7 @@ export default function CostingListPage() {
         <div className="header-content">
           <h1>
             <span className="premium-header-icon"><Calculator size={22} /></span>{" "}
-            ใบขอราคาต้นทุน
+            ใบขอราคาผลิต
           </h1>
           <p>
             รวมราคาวัตถุดิบจาก RD และบรรจุภัณฑ์จาก PC ตามแม่แบบของประเภทสินค้า
@@ -183,7 +199,7 @@ export default function CostingListPage() {
       ) : visible.length === 0 ? (
         <EmptyState icon={Calculator}>
           {rows.length === 0
-            ? "ยังไม่มีใบขอราคาต้นทุน — เปิดใบจากหน้าดีลที่ต้องการขอราคา"
+            ? "ยังไม่มีใบขอราคาผลิต — เปิดใบแรกจากปุ่มด้านบน"
             : "ไม่มีใบที่ตรงกับตัวกรอง"}
         </EmptyState>
       ) : (
@@ -198,6 +214,7 @@ export default function CostingListPage() {
                 <th style={{ width: 120 }}>อนุมัติแล้ว</th>
                 <th style={{ width: 100 }}>MOQ</th>
                 <th style={{ width: 110 }}>สร้างเมื่อ</th>
+                {isAdmin && <th style={{ width: 50 }} aria-label="จัดการ" />}
               </tr>
             </thead>
             <tbody>
@@ -247,6 +264,17 @@ export default function CostingListPage() {
                     </td>
                     <td>{Number(row.moq).toLocaleString("th-TH")}</td>
                     <td>{fmtDate(row.createdAt)}</td>
+                    {isAdmin && (
+                      <td>
+                        <button
+                          type="button" className="btn-icon danger" aria-label="ลบใบ (admin)"
+                          title="ลบถาวร (ผู้ดูแลระบบ)"
+                          onClick={() => setPendingDelete(row)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -258,7 +286,7 @@ export default function CostingListPage() {
       <Modal
         open={!!form}
         onClose={() => { setForm(null); setPendingSave(false); }}
-        title="เปิดใบขอราคาต้นทุน"
+        title="เปิดใบขอราคาผลิต"
         size="lg"
         dismissible={!saving}
       >
@@ -282,7 +310,12 @@ export default function CostingListPage() {
               <button
                 type="button" className="btn btn-accent" disabled={saving}
                 onClick={() => {
-                  if (!form.dealId) { setToast({ kind: "error", msg: "กรุณาเลือกดีล" }); return; }
+                  // ดีลไม่บังคับแล้ว (PR-C) — ไม่มีดีล = ใบสำรวจ. ต้องมีสินค้าอย่างน้อย 1
+                  // รายการที่กรอกชื่อ + เลือกประเภท (server ตรวจซ้ำอีกชั้น)
+                  if (form.items.every((it) => !it.productLabel.trim() || !it.categoryCode)) {
+                    setToast({ kind: "error", msg: "กรุณากรอกสินค้าอย่างน้อย 1 รายการ (ชื่อ + ประเภท)" });
+                    return;
+                  }
                   setPendingSave(true);
                 }}
               >
@@ -302,6 +335,20 @@ export default function CostingListPage() {
         busy={saving}
         onConfirm={create}
         onClose={() => setPendingSave(false)}
+      />
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title="ลบใบขอราคาผลิต (ผู้ดูแลระบบ)"
+        description={pendingDelete
+          ? `${pendingDelete.docNo || "ร่าง"}${pendingDelete.customerName ? ` · ${pendingDelete.customerName}` : ""} — สถานะ ${COSTING_STATUS_LABELS[pendingDelete.status] || pendingDelete.status}`
+          : ""}
+        detail="ลบถาวรทั้งใบ (รายการ/บรรทัดต้นทุน/ราคาที่อนุมัติ) — กู้คืนไม่ได้ ใช้เฉพาะข้อมูลทดสอบ/ขยะ ราคาวัสดุในคลังไม่ถูกลบ"
+        confirmLabel="ลบถาวร"
+        tone="danger"
+        busy={saving}
+        onConfirm={adminDelete}
+        onClose={() => setPendingDelete(null)}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildIssuedQuotationPayload,
   buildIssuedQuotationArtifactHtml,
+  captureIssuedQuotationSnapshot,
   loadSignatureImageDataUri,
   issuedContentFingerprint,
   artifactSha256,
@@ -79,8 +80,105 @@ test('artifact sha256 is stable for identical HTML', () => {
   assert.equal(artifactSha256(html), artifactSha256(html));
 });
 
+// mock supabase สำหรับ capture: ทะเบียนลูกค้า + user_signatures (ไม่มีลายเซ็น = ข้าม storage)
+// + จับ args ที่ส่งเข้า RPC ไว้ตรวจ
+function captureClient(customer, sink) {
+  return {
+    from(table) {
+      const q = {
+        select: () => q,
+        eq: () => q,
+        maybeSingle: async () => ({ data: table === 'customers' ? customer : null }),
+      };
+      return q;
+    },
+    async rpc(name, args) {
+      sink.name = name;
+      sink.args = args;
+      return { data: { snapshot: { id: 'ISD-1' } }, error: null };
+    },
+  };
+}
+
+test('capture เติมข้อมูลลูกค้าที่ว่างจากทะเบียนก่อนตรึง — ฉบับตรึงต้องไม่แสดง "-"', async () => {
+  // บั๊กจริง 2026-07-26: หน้ารายละเอียดเติมช่องว่างตอนอ่าน (GET) แต่ชั้น capture ไม่เติม
+  // → เอกสารที่ "ออกจริง" (เล่นฉบับตรึง) แสดงเลขผู้เสียภาษี/ผู้ติดต่อเป็น '-'
+  const sink = {};
+  const client = captureClient({
+    taxId: '0105561000000',
+    address: null,
+    shippingAddress: null,
+    branchCode: '00001',
+    contacts: [{ name: 'คุณบี', phone: '021112222' }],
+  }, sink);
+  await captureIssuedQuotationSnapshot(client, {
+    quote: { ...baseQuote, customerId: 'C1', customerTaxId: null, contactName: null, contactPhone: null },
+    evidence,
+    user: { id: 'U1', name: 'ผู้อนุมัติ' },
+  });
+  assert.equal(sink.name, 'capture_issued_quotation_snapshot_atomic');
+  assert.equal(sink.args.p_quotation_id, 'QT-1');
+  assert.equal(sink.args.p_resolved_payload.customer.customerTaxId, '0105561000000');
+  assert.equal(sink.args.p_resolved_payload.customer.contactName, 'คุณบี');
+  assert.equal(sink.args.p_resolved_payload.customer.contactPhone, '021112222');
+  // ต้องไปถึง HTML ที่ตรึงด้วย ไม่ใช่แค่ payload — HTML คือสิ่งที่ reprint เล่นซ้ำ
+  assert.match(sink.args.p_artifact_html, /0105561000000/);
+  assert.match(sink.args.p_artifact_html, /คุณบี/);
+});
+
+test('capture ใช้หลักฐานการยื่นที่ตรึงไว้ → ใบตรึงมีวันที่ + Evidence ของผู้เสนอราคา', async () => {
+  // mig 0155: การยื่น = ลงนามผู้เสนอราคา → ฉบับตรึงต้องฝังรูปเวอร์ชันที่ลงนามจริง
+  // (ไม่ใช่ลายเซ็นสดที่อาจถูกเปลี่ยนภายหลัง) พร้อมวันที่และ Evidence id
+  const sink = {};
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const client = {
+    from(table) {
+      const q = {
+        select: () => q,
+        eq: () => q,
+        maybeSingle: async () => ({
+          data: table === 'document_signature_evidence'
+            ? {
+              id: 'DSE-SUBMIT',
+              signerName: 'ผู้ยื่นจริง',
+              signedAt: '2026-07-26T04:00:00.000Z',
+              signatureAssetSnapshot: { storageBucket: 'sig', storagePath: 'p.png', mimeType: 'image/png' },
+            }
+            : null,
+        }),
+      };
+      return q;
+    },
+    storage: {
+      from: () => ({ download: async () => ({ data: { arrayBuffer: async () => png.buffer }, error: null }) }),
+    },
+    async rpc(name, args) { sink.args = args; return { data: {}, error: null }; },
+  };
+  await captureIssuedQuotationSnapshot(client, {
+    quote: { ...baseQuote, proposerSignatureEvidenceId: 'DSE-SUBMIT' },
+    evidence,
+    user: { id: 'U1' },
+  });
+  assert.match(sink.args.p_artifact_html, /ผู้ยื่นจริง/);
+  assert.match(sink.args.p_artifact_html, /Evidence DSE-SUBMIT/);
+  assert.match(sink.args.p_artifact_html, /26\/07\/2026/);
+});
+
+test('capture ไม่ทับค่าที่ตรึงไว้แล้วด้วยทะเบียนลูกค้าปัจจุบัน', async () => {
+  const sink = {};
+  const client = captureClient({ taxId: 'ใหม่', contacts: [{ name: 'คนใหม่', phone: '099' }] }, sink);
+  await captureIssuedQuotationSnapshot(client, {
+    // ใบนี้ตรึงผู้ติดต่อไว้แล้ว (baseQuote) — ขาดแค่เลขภาษี
+    quote: { ...baseQuote, customerId: 'C1', customerTaxId: null },
+    evidence,
+    user: { id: 'U1' },
+  });
+  assert.equal(sink.args.p_resolved_payload.customer.contactName, 'คุณเอ');
+  assert.equal(sink.args.p_resolved_payload.customer.customerTaxId, 'ใหม่');
+});
+
 test('layout version is tagged for regeneration tracking', () => {
-  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.1');
+  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.2');
 });
 
 test('artifact embeds approver signature image when provided', () => {
@@ -127,4 +225,25 @@ test('loadSignatureImageDataUri: downloads PNG → data URI; null on missing/fai
     storage: { from: () => ({ download: async () => ({ data: null, error: new Error('nope') }) }) },
   };
   assert.equal(await loadSignatureImageDataUri(errClient, asset), null);
+});
+
+test('ใบที่ตรึงใช้มาตรฐานเอกสารที่ตรึงไว้ใน evidence ไม่ใช่ค่าสำรอง', () => {
+  // controlledFormSnapshot = ค่าที่ RPC ตรึงตอนอนุมัติ (mig 0125) — ใบที่ออกไปแล้วต้องคง
+  // รหัสแบบฟอร์มเดิมเสมอ แม้มาตรฐานที่เผยแพร่จะถูกแก้ทีหลัง (ADR 0011)
+  const html = buildIssuedQuotationArtifactHtml(baseQuote, {
+    standard: {
+      formCode: 'FM-SA-77',
+      revision: '05',
+      effectiveDate: '2026-01-15',
+      titleTh: 'ใบเสนอราคา (ควบคุม)',
+      titleEn: 'CONTROLLED QUOTATION',
+      accentKey: 'terracotta',
+    },
+  });
+  assert.match(html, /FM-SA-77/);
+  assert.match(html, /Rev\. No\.05/);
+  assert.match(html, /15\/01\/2569/);
+  assert.match(html, /ใบเสนอราคา \(ควบคุม\)/);
+  // ไม่มีมาตรฐานส่งมา → ตกไปใช้ค่าสำรองเดิม เอกสารยังออกได้
+  assert.match(buildIssuedQuotationArtifactHtml(baseQuote), /FM-SA-01/);
 });

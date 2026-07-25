@@ -164,7 +164,10 @@ const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers',
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
-const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit'];
+// /api/company-profile = บล็อกบริษัทที่เผยแพร่ ซึ่งพิมพ์อยู่บนเอกสารถึงลูกค้าอยู่แล้ว
+// ทุกคนที่ล็อกอินจึงอ่านได้ (ไม่งั้นใบที่ AE พิมพ์จะตกไปใช้ constant สำรองเงียบ ๆ) —
+// ทางเขียนยังอยู่ที่ /api/organization-settings ซึ่ง gate ด้วย master:manage ตามเดิม
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile'];
 
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).
@@ -244,13 +247,21 @@ function apiWriteAllowed(method, path, role, extraCaps) {
     return can(role, 'salesplan:edit') || can(role, 'inquiries:respond');
   }
   if (path.startsWith('/api/sales-planning')) return can(role, 'salesplan:edit');
-  // ระบบขอราคาต้นทุน (/api/sa/costing) — ต้องมาก่อนกฎ /api/sa ด้านล่าง เพราะ
+  // ระบบขอราคาผลิต (/api/sa/costing) — ต้องมาก่อนกฎ /api/sa ด้านล่าง เพราะ
   // สามเส้นนี้ถือคนละ cap: ผู้บริหารอนุมัติได้ทั้งที่ไม่มี salesplan:edit, และ
   // RD/PC ตอบราคาได้ทั้งที่ไม่มีสิทธิ์แก้งานขายเลย. สิทธิ์รายแถว (บรรทัดของฝ่ายตน
   // ผ่าน sourceDept, สถานะใบ) บังคับใน handler ซึ่ง proxy มองไม่เห็น.
   if (path.startsWith('/api/sa/costing')) {
     if (/\/approve$/.test(path)) return can(role, 'costing:approve');
-    if (/\/quote$/.test(path)) return can(role, 'costing:quote');
+    // ยืนยันราคาที่เกินอายุ (RD/PC) — ราคาวัสดุมาจากคลังแล้ว (PR-B)
+    if (/\/confirm-price$/.test(path)) return can(role, 'costing:quote');
+    return can(role, 'costing:edit');
+  }
+  // คลังราคาวัสดุ + ใบขอราคาวัสดุ (mig 0143) — เซลเปิดใบถาม (costing:edit),
+  // RD/PC ตอบราคา/แก้ราคาในคลัง (costing:quote). สิทธิ์รายแถว (ฝ่ายเจ้าของบรรทัด
+  // ผ่าน sourceDept) บังคับใน handler. เส้น /answer = ตอบราคา, ที่เหลือ = เปิด/แก้ใบ
+  if (path.startsWith('/api/sa/materials')) {
+    if (/\/(answer|revise)$/.test(path)) return can(role, 'costing:quote');
     return can(role, 'costing:edit');
   }
   // แม่แบบต้นทุนต่อประเภทสินค้า — ข้อมูลหลักของระบบ ผู้ดูแลระบบเท่านั้น

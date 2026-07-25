@@ -27,7 +27,7 @@ function documentHeader(model) {
           <span>${val(model.company.nameEn)}</span>
           <p>${val(model.company.address)}</p>
           <p>เลขประจำตัวผู้เสียภาษี ${val(model.company.taxId)}</p>
-          <p>โทร ${val(model.company.phone)} · Line ${val(model.company.line)}</p>
+          <p>โทร ${val(model.company.phone)} · Line ${val(model.company.line)}${model.company.website ? ` · ${esc(model.company.website)}` : ''}</p>
         </div>
       </div>
       <div class="identityBlock">
@@ -52,6 +52,7 @@ function partyGrid(model) {
         <p>${val(model.customer.address)}</p>
         <dl>
           <div><dt>เลขผู้เสียภาษี</dt><dd>${val(model.customer.taxId)}</dd></div>
+          ${model.customer.branch ? `<div><dt>สำนักงาน</dt><dd>${val(model.customer.branch)}</dd></div>` : ''}
           <div><dt>ที่อยู่จัดส่ง</dt><dd>${val(model.customer.shippingAddress || model.customer.address)}</dd></div>
           <div><dt>ผู้ติดต่อ</dt><dd>${val(model.customer.contactName)}${model.customer.contactPhone ? ` · ${esc(model.customer.contactPhone)}` : ''}</dd></div>
         </dl>
@@ -179,10 +180,12 @@ function signatures(model) {
       <section class="signatures" aria-label="ส่วนลงนาม">${(model.signers || []).map(signBox).join('')}</section>`;
 }
 
+// ท้ายกระดาษ: ชื่อบริษัท · รหัสแบบฟอร์ม · เลขหน้า
+// (เว็บไซต์ย้ายขึ้นไปอยู่แถวเดียวกับ โทร/Line บนหัวเอกสารแล้ว — มติผู้ใช้ 2026-07-26)
 function documentFooter(model, pageNumber, pageCount) {
   return `
     <footer class="footer">
-      <span>${val(model.company.website)}</span>
+      <span>${val(model.company.nameTh)}</span>
       <span>${val(model.formLine)}</span>
       <span>หน้า ${pageNumber} / ${pageCount}</span>
     </footer>`;
@@ -328,9 +331,13 @@ const DOCUMENT_CSS = `
   .installmentTable td { padding: 1.5mm 1.2mm; vertical-align: top; border: 1px solid var(--doc-line); font-size: 7.8pt; }
   /* ช่องรายละเอียด (คอลัมน์แรก) กว้างสุด: ให้ width:100% ดึงพื้นที่ที่เหลือทั้งหมด (auto layout
      ไม่ยุบต่ำกว่าเนื้อหา จึงไม่พังบนจอแคบ) ส่วน % แคบ (ไม่เกิน 100%) + จำนวนเงินพอดีตัวเลข */
-  .installmentTable th:first-child, .installmentTable td:first-child { width: 100%; }
-  .installmentTable th:nth-child(2), .installmentTable td:nth-child(2) { width: 14mm; white-space: nowrap; }
-  .installmentTable th:nth-child(3), .installmentTable td:nth-child(3) { width: 30mm; white-space: nowrap; }
+  /* รายละเอียดกินที่เหลือทั้งหมด ส่วน % กับจำนวนเงินกว้างขึ้นให้ตัวเลขไม่อึดอัด
+     (มติผู้ใช้ 2026-07-26) — ต้องใช้ table-layout: fixed ไม่งั้นความกว้างที่ตั้งไว้
+     ไม่มีผล: คอลัมน์แรกที่ขอ 100% จะบีบอีกสองคอลัมน์ให้เหลือเท่าความกว้างเนื้อหา */
+  .installmentTable { table-layout: fixed; }
+  .installmentTable th:first-child, .installmentTable td:first-child { width: auto; }
+  .installmentTable th:nth-child(2), .installmentTable td:nth-child(2) { width: 18mm; white-space: nowrap; }
+  .installmentTable th:nth-child(3), .installmentTable td:nth-child(3) { width: 34mm; white-space: nowrap; }
   .installmentTable span { display: block; color: var(--doc-muted); font-size: 7pt; }
   .termsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5mm; margin-top: 3mm; break-inside: avoid; }
   .termsGrid > div { padding: 2.2mm 2.6mm; background: var(--doc-neutral-soft); border-top: 1px solid var(--doc-line-strong); }
@@ -360,29 +367,23 @@ const DOCUMENT_CSS = `
   .v4 .signatures { margin-top: 3mm; }
 
   @page { size: A4 portrait; margin: 0; }
-  @media screen and (max-width: 900px) {
-    .toolbar { width: 100%; }
-    .sheet { width: 100%; height: auto; min-height: 0; aspect-ratio: auto;
-      padding: 4.8vw 5vw 9vw; font-size: clamp(5px, 1.18vw, 9.5pt); }
-    .documentHeader { grid-template-columns: 1.3fr .9fr; gap: 3vw; }
-    .brandBlock img { width: 21vw; }
-    .identityBlock h1 { font-size: clamp(12px, 3vw, 19pt); }
-    .partyGrid { grid-template-columns: minmax(0, 1fr); }
-    .partyGrid dl, .partyGrid dl div { min-width: 0; }
-    .partyGrid dl div { grid-template-columns: minmax(0, 34%) minmax(0, 1fr); }
-    .partyGrid dd { overflow-wrap: anywhere; }
-    .itemTable { table-layout: fixed; }
-    .itemTable th, .itemTable td { padding-right: .6mm; padding-left: .6mm; overflow-wrap: anywhere; }
-    .itemTable th:nth-child(1), .itemTable td:nth-child(1) { width: 7%; }
-    .itemTable th:nth-child(2), .itemTable td:nth-child(2) { width: 39%; }
-    .itemTable th:nth-child(3), .itemTable td:nth-child(3) { width: 10%; }
-    .itemTable th:nth-child(4), .itemTable td:nth-child(4) { width: 9%; }
-    .itemTable th:nth-child(5), .itemTable td:nth-child(5) { width: 16%; }
-    .itemTable th:nth-child(6), .itemTable td:nth-child(6) { width: 19%; }
-    .signatures { grid-template-columns: minmax(0, 1fr); }
-    .signatures > div { min-width: 0; }
-    .footer { right: 5vw; bottom: 2vw; left: 5vw; }
-  }
+  /* จอแคบกว่ากระดาษ: "ย่อทั้งแผ่น" ไม่ใช่จัดหน้าใหม่ (มติผู้ใช้ 2026-07-26)
+     ของเดิมพอจอ < 900px จะเปลี่ยน .sheet เป็น width:100% + height:auto + คิดคอลัมน์
+     ตารางใหม่เป็น % → พรีวิวออกมาคนละสัดส่วนกับที่พิมพ์จริง ดูแล้วตัดสินใจไม่ได้
+     ตอนนี้ .sheet คงเป็น 210×297mm เสมอ แล้วใช้ zoom ย่อทั้งกล่องตามความกว้างจอ
+     (794px = 210mm ที่ 96dpi) — สัดส่วน/การขึ้นหน้าตรงกับที่พิมพ์จริง 100%
+     ใช้ขั้นบันไดแทนการคำนวณจาก vw เพราะ zoom ต้องการ "ตัวเลขไม่มีหน่วย" ซึ่ง
+     calc(100vw / n) ให้ค่าเป็นความยาว ไม่ใช่อัตราส่วน */
+  @media screen and (max-width: 900px) { .toolbar { width: 100%; } }
+  @media screen and (max-width: 820px) { .document { zoom: .95; } }
+  @media screen and (max-width: 760px) { .document { zoom: .88; } }
+  @media screen and (max-width: 700px) { .document { zoom: .82; } }
+  @media screen and (max-width: 640px) { .document { zoom: .74; } }
+  @media screen and (max-width: 580px) { .document { zoom: .68; } }
+  @media screen and (max-width: 520px) { .document { zoom: .60; } }
+  @media screen and (max-width: 460px) { .document { zoom: .54; } }
+  @media screen and (max-width: 400px) { .document { zoom: .46; } }
+  @media screen and (max-width: 350px) { .document { zoom: .40; } }
   @media print {
     body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .no-print { display: none !important; }

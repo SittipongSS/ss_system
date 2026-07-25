@@ -31,6 +31,45 @@ test('Sale Order print ใช้เครื่องยนต์ V4 + FM-SA-03 
   assert.doesNotMatch(html, /class="watermark"/);
 });
 
+const DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+test('approved Sale Order stamps the approver e-signature image when the server embeds it', () => {
+  const html = buildSalesOrderPrintHTML({
+    ...order,
+    approverSignature: {
+      imageDataUri: DATA_URI,
+      signerName: 'สมชาย ผู้อนุมัติ',
+      signedAt: '2026-07-16T03:00:00.000Z',
+      evidenceId: 'DSE-0001',
+    },
+  });
+  // รูปลายเซ็นจริงถูกฝัง + ชื่อผู้ลงนาม + Evidence
+  assert.match(html, /<img class="signatureImage" src="data:image\/png;base64,/);
+  assert.match(html, /ลายเซ็น สมชาย ผู้อนุมัติ/);
+  assert.match(html, /Evidence DSE-0001/);
+  // ไม่หล่นไปช่องเซ็นเปล่า
+  assert.doesNotMatch(html, /ผู้อนุมัติ <span>ผู้จัดการฝ่ายขาย<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
+});
+
+test('approved Sale Order stamps the proposer (salesperson) e-signature image', () => {
+  const html = buildSalesOrderPrintHTML({
+    ...order,
+    proposerSignature: { imageDataUri: DATA_URI, signerName: 'อารีย์ พนักงานขาย' },
+  });
+  assert.match(html, /<img class="signatureImage" src="data:image\/png;base64,/);
+  assert.match(html, /ลายเซ็น อารีย์ พนักงานขาย/);
+  // ผู้จัดทำไม่หล่นไปช่องเซ็นเปล่า
+  assert.doesNotMatch(html, /ผู้จัดทำ <span>พนักงานขาย<\/span>[\s\S]*?\(ผู้จัดทำ\)/);
+});
+
+test('approved Sale Order without embedded images falls back to blank sign boxes for both signers', () => {
+  const html = buildSalesOrderPrintHTML(order);
+  // ไม่มี <img> ลายเซ็น (CSS .signatureImage ยังอยู่เสมอ จึงเช็คเฉพาะ tag รูป)
+  assert.doesNotMatch(html, /<img class="signatureImage"/);
+  assert.match(html, /ผู้จัดทำ <span>พนักงานขาย<\/span>[\s\S]*?\(ผู้จัดทำ\)/);
+  assert.match(html, /ผู้อนุมัติ <span>ผู้จัดการฝ่ายขาย<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
+});
+
 test('unapproved Sale Order print carries a visible status watermark', () => {
   const html = buildSalesOrderPrintHTML({ ...order, status: 'draft' });
   assert.match(html, /class="watermark">ฉบับร่าง/);
@@ -38,6 +77,26 @@ test('unapproved Sale Order print carries a visible status watermark', () => {
   // รออนุมัติก็นับเป็นร่าง (คำเดียวทั้ง QT/SO) — แต่ใบยกเลิกคงคำว่า ยกเลิก
   assert.match(buildSalesOrderPrintHTML({ ...order, status: 'pending_approval' }), /class="watermark">ฉบับร่าง/);
   assert.match(buildSalesOrderPrintHTML({ ...order, status: 'cancelled' }), /class="watermark">เอกสารยกเลิก/);
+});
+
+test('Sale Order แสดงข้อมูลลูกค้าครบ รวมเลขผู้เสียภาษี (snapshot จากใบเสนอราคาที่ผูก)', () => {
+  const html = buildSalesOrderPrintHTML({
+    ...order,
+    customerName: 'บริษัท ลูกค้า จำกัด',
+    quotation: {
+      ...order.quotation,
+      customerTaxId: '0105551234567',
+      billingAddress: '123 ถนนสุขุมวิท',
+      shippingAddress: '456 คลังสินค้า',
+      contactName: 'คุณสมชาย',
+      contactPhone: '021234567',
+    },
+  });
+  assert.match(html, /บริษัท ลูกค้า จำกัด/);
+  assert.match(html, /เลขผู้เสียภาษี<\/dt><dd>0105551234567/);
+  assert.match(html, /123 ถนนสุขุมวิท/);
+  assert.match(html, /456 คลังสินค้า/);
+  assert.match(html, /คุณสมชาย · 021234567/);
 });
 
 test('Sale Order VAT rate is rounded — no float noise like 7.000000000000001%', () => {

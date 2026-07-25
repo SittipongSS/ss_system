@@ -8,9 +8,12 @@
 // cohort = role ที่มีโอกาสชนด่านนี้:
 //   admin / ae_supervisor  — อนุมัติได้ทั้งใบเสนอราคา (superuser) และ SO (reviewer)
 //   senior_ae / ae         — อนุมัติใบเสนอราคาได้เมื่อเป็น "เจ้าของดีล" (canApproveQuotation)
-// ac สร้างใบได้แต่อนุมัติไม่ได้เลย → ไม่อยู่ใน cohort
+//   ac                     — อนุมัติไม่ได้ แต่ "ยื่นอนุมัติ" ได้ และการยื่นจะบันทึกหลักฐาน
+//                            ลายเซ็นเช่นกัน (mig 0151+) → ไม่มีลายเซ็น = ยื่นไม่ได้
+// เดิมตัด ac ออกเพราะด่านลายเซ็นมีแค่ตอนอนุมัติ — เจตนานั้นหมดอายุเมื่อการกดยื่นกลายเป็น
+// explicit signing action; AC เป็นกลุ่มที่ยื่น SO บ่อยสุด ถ้าไม่อยู่ในรายงานจะถูกบล็อกเงียบ
 
-export const SIGNATURE_COHORT_ROLES = ['admin', 'ae_supervisor', 'senior_ae', 'ae'];
+export const SIGNATURE_COHORT_ROLES = ['admin', 'ae_supervisor', 'senior_ae', 'ae', 'ac'];
 
 // role ที่อนุมัติได้เสมอไม่ว่าจะถือดีลหรือไม่ — ขาดลายเซ็นเมื่อไหร่คือความเสี่ยงทันที
 const ALWAYS_APPROVER_ROLES = ['admin', 'ae_supervisor'];
@@ -19,30 +22,39 @@ export function isSignatureCohortRole(role) {
   return SIGNATURE_COHORT_ROLES.includes(role);
 }
 
-// AE/Senior AE จะชนด่านก็ต่อเมื่อถือดีลอยู่จริง — แยก "ต้องมีแน่ ๆ" ออกจาก
-// "ยังไม่ต้องรีบ" เพื่อไม่ให้รายชื่อค้างเต็มไปด้วยคนที่ไม่ได้อนุมัติอะไรเลย
-export function signatureRequirement(role, openDealCount) {
+// แยก "ต้องมีแน่ ๆ" ออกจาก "ยังไม่ต้องรีบ" เพื่อไม่ให้รายชื่อค้างเต็มไปด้วยคนที่ไม่ได้แตะเอกสารเลย
+// มี 2 เส้นที่ทำให้ต้องมีลายเซ็น: เส้นผู้อนุมัติ (ถือดีลเปิด) และเส้นผู้ยื่น (มีเอกสารค้างในมือ)
+// — AC มาทางเส้นที่สองเท่านั้นเพราะไม่ถือดีล
+export function signatureRequirement(role, openDealCount, submittableDocs = 0) {
   if (ALWAYS_APPROVER_ROLES.includes(role)) return 'required';
-  return openDealCount > 0 ? 'required' : 'optional';
+  if (openDealCount > 0 || submittableDocs > 0) return 'required';
+  return 'optional';
 }
 
-// จัดอันดับความเร่งด่วน: ใบที่รออนุมัติอยู่ตอนนี้ = บล็อกงานจริงแล้ว
+// จัดอันดับความเร่งด่วน: งานที่ค้างอยู่ตอนนี้ = บล็อกจริงแล้ว ไม่ใช่ความเสี่ยงอนาคต
+// (ใบรออนุมัติของเส้นผู้อนุมัติ · เอกสารค้างยื่นของเส้นผู้ยื่น)
 export function coverageSeverity(row) {
   if (row.hasSignature) return 'ready';
-  if (row.pendingQuotations > 0) return 'blocking';
+  if (row.pendingQuotations > 0 || row.submittableDocs > 0) return 'blocking';
   if (row.requirement === 'required') return 'at_risk';
   return 'optional';
 }
 
 // users: [{ id, name, email, role, team }] จาก auth directory
 // activeSignatureUserIds: Set ของ userId ที่มี activeVersionId
-// dealCounts / pendingCounts: Map userId → number
-export function buildSignatureCoverage({ users, activeSignatureUserIds, dealCounts, pendingCounts }) {
+// dealCounts / pendingCounts / submittableCounts: Map userId → number
+//   dealCounts       = ดีลเปิดที่ถือ (เส้นผู้อนุมัติ)
+//   pendingCounts    = ใบเสนอราคารออนุมัติของดีลที่ถือ (เส้นผู้อนุมัติ — บล็อกอยู่ตอนนี้)
+//   submittableCounts = เอกสารที่ตัวเองสร้างและยังค้างต้องยื่น (เส้นผู้ยื่น — บล็อกอยู่ตอนนี้)
+export function buildSignatureCoverage({
+  users, activeSignatureUserIds, dealCounts, pendingCounts, submittableCounts,
+}) {
   const rows = users
     .filter((user) => isSignatureCohortRole(user.role))
     .map((user) => {
       const openDeals = dealCounts.get(user.id) || 0;
       const pendingQuotations = pendingCounts.get(user.id) || 0;
+      const submittableDocs = submittableCounts?.get(user.id) || 0;
       const row = {
         id: user.id,
         name: user.name,
@@ -52,7 +64,8 @@ export function buildSignatureCoverage({ users, activeSignatureUserIds, dealCoun
         hasSignature: activeSignatureUserIds.has(user.id),
         openDeals,
         pendingQuotations,
-        requirement: signatureRequirement(user.role, openDeals),
+        submittableDocs,
+        requirement: signatureRequirement(user.role, openDeals, submittableDocs),
       };
       return { ...row, severity: coverageSeverity(row) };
     });
@@ -66,6 +79,8 @@ export function buildSignatureCoverage({ users, activeSignatureUserIds, dealCoun
       requiredReady: required.filter((row) => row.hasSignature).length,
       blocking: rows.filter((row) => row.severity === 'blocking').length,
       blockedQuotations: rows.reduce((sum, row) => (row.hasSignature ? sum : sum + row.pendingQuotations), 0),
+      // เอกสารที่ค้างเพราะผู้สร้างยังไม่มีลายเซ็น (จะยื่นไม่ได้เมื่อด่านตอนยื่นเปิดใช้)
+      blockedSubmissions: rows.reduce((sum, row) => (row.hasSignature ? sum : sum + row.submittableDocs), 0),
     },
   };
 }

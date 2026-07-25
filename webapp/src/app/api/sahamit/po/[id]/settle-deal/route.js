@@ -168,7 +168,7 @@ export async function POST(request, { params }) {
   const products = await loadSahamitProducts(supabase, customerId);
   const productIndex = indexByFgCode(products);
   const now = new Date().toISOString();
-  // ราคาโรงงาน (costPrice) ทั้งมูลค่าดีลและราคาใน QT — ราคาขายในใบทั้งระบบเป็นราคา
+  // ราคาผลิต (costPrice) ทั้งมูลค่าดีลและราคาใน QT — ราคาขายในใบทั้งระบบเป็นราคา
   // โรงงานอยู่แล้ว (มติ 2026-07-19, QUOTE_PRICE_FIELD) ยอด QT/SO จึงตรงยอด PO เสมอ
   const priceOf = (f) => Number(productIndex.get(lc(f))?.price ?? 0) || 0;
 
@@ -443,7 +443,7 @@ export async function POST(request, { params }) {
     title: merged.title,
     quotationId: quote.id,
     quoteNumber: quote.quoteNumber,
-    // ราคาใบ = ราคาโรงงาน (costPrice) จาก master — ยอดรวม 0/ไม่ครบ = master ยังไม่ตั้งราคา
+    // ราคาใบ = ราคาผลิต (costPrice) จาก master — ยอดรวม 0/ไม่ครบ = master ยังไม่ตั้งราคา
     priceMissing: !(Number(quote.totalAmount) > 0) || chosen.some((c) => !c.product?.id),
     mergedFrom: mergedSourceIds.length,
     partialFrom: partialSourceIds.length,

@@ -14,6 +14,10 @@ import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
+import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +48,28 @@ async function loadQuote(supabase, id) {
 // สถานะที่ยังแก้เนื้อหาได้ — accepted/revised/cancelled = read-only (หลักฐานการค้า)
 const EDITABLE_STATUSES = new Set(['draft', 'sent', 'rejected']);
 
+// ลายเซ็นผู้เสนอราคาสำหรับพิมพ์สด: อ่านจากหลักฐานที่ตรึงตอนยื่น (mig 0155) แล้วโหลดไฟล์รูป
+// จาก bucket ส่วนตัวด้วย service-role (RLS บล็อก client) ฝังเป็น data URI — ใบที่ยังไม่ยื่น/
+// ไม่มีหลักฐาน (grandfather) คืน null แล้วเอกสารหล่นไปช่องเซ็นเปล่าเหมือนเดิม.
+// ฉบับตรึง snapshot มีเส้นทางของตัวเอง (captureIssuedQuotationSnapshot) ไม่ผ่านทางนี้
+async function loadProposerSignature(supabase, quote) {
+  if (!quote?.proposerSignatureEvidenceId) return null;
+  const { data: ev } = await supabase
+    .from('document_signature_evidence')
+    .select('id, signerName, signedAt, signatureAssetSnapshot')
+    .eq('id', quote.proposerSignatureEvidenceId)
+    .maybeSingle();
+  if (!ev?.signatureAssetSnapshot) return null;
+  const imageDataUri = await loadSignatureImageDataUri(getSupabaseAdmin(), ev.signatureAssetSnapshot);
+  if (!imageDataUri) return null;
+  return {
+    imageDataUri,
+    signerName: ev.signerName || quote.createdByName || '',
+    signedAt: ev.signedAt || quote.approvalRequestedAt || null,
+    evidenceId: ev.id,
+  };
+}
+
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
@@ -51,18 +77,32 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const quote = await loadQuote(supabase, id);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal || !inSalesViewScope(user, quote.deal)) return forbidden();
+  // ข้อมูลลูกค้าบนใบเป็น snapshot — ใบเก่าที่ snapshot ไม่ครบ (ผู้ติดต่อ/เลขภาษี) เติม
+  // เฉพาะช่องว่างจากทะเบียนลูกค้าสด เพื่อให้หน้ารายละเอียด/เอกสารแสดงครบโดยไม่ต้อง Revise
+  const filledQuote = await fillCustomerSnapshotFromMaster(supabase, quote);
   // บรรทัด FG โชว์คำอธิบายสดจาก master (แบรนด์ · ชื่อสินค้า · ปริมาตร) เฉพาะใบที่ยัง
   // แก้ได้ — ใบเก่าที่ snapshot แค่ชื่อจะแสดง/พิมพ์ครบโดยไม่ต้องบันทึกใหม่
-  await refreshFgLinesForDisplay(supabase, [quote]);
-  const baseNumber = quote.baseNumber || quote.quoteNumber;
+  await refreshFgLinesForDisplay(supabase, [filledQuote]);
+  const baseNumber = filledQuote.baseNumber || filledQuote.quoteNumber;
   const { data: revisionHistory, error: revisionError } = await supabase
     .from('quotations')
     .select('id, quoteNumber, revisionNo, status, quoteDate, createdAt, totalAmount')
     .eq('baseNumber', baseNumber)
     .order('revisionNo', { ascending: false });
   if (revisionError) return fail(revisionError.message, 500);
+  // รูปลายเซ็นผู้เสนอราคา (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังพิมพ์ได้ ตกช่องเซ็นเปล่า)
+  let proposerSignature = null;
+  if (!user.devBypass) {
+    try { proposerSignature = await loadProposerSignature(supabase, filledQuote); }
+    catch { proposerSignature = null; }
+  }
   // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
-  return ok({ ...quote, revisionHistory: revisionHistory || [], canApprove: canApproveQuotation(user, quote.deal) });
+  return ok({
+    ...filledQuote,
+    revisionHistory: revisionHistory || [],
+    canApprove: canApproveQuotation(user, filledQuote.deal),
+    proposerSignature,
+  });
 });
 
 // PATCH — แก้เนื้อหาใบ (lines/ส่วนลด/VAT/เงื่อนไขชำระ/หมายเหตุ/วันหมดอายุ/สถานะ draft↔sent)
@@ -111,13 +151,26 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     };
     const peoplePick = await validateQuotationPeople(supabase, effectivePeople, { require: willSend });
     if (!peoplePick.ok) return badRequest(peoplePick.error);
-    const { aeOwner: _o, preparedBy: _p, aeSupervisor: _s, ...editableMeta } = src;
+    const {
+      aeOwner: _o, preparedBy: _p, aeSupervisor: _s,
+      // ชุดเงื่อนไขการค้าเป็นหลักฐาน — ห้ามรับค่าจาก client ตรง ๆ ต้องผ่านการตรวจก่อน
+      paymentPresetVersionId: _pay, remarksPresetVersionId: _rem,
+      ...editableMeta
+    } = src;
+    const pinnedPresets = hasMetaPatch
+      ? await resolvePinnedPresetVersionIds(supabase, src)
+      : {
+        payment: before.metadata?.paymentPresetVersionId || null,
+        remarks: before.metadata?.remarksPresetVersionId || null,
+      };
     patch.metadata = {
       ...(before.metadata || {}),
       ...editableMeta,
       aeOwner: peoplePick.people.aeOwner || null,
       preparedBy: peoplePick.people.preparedBy || null,
       aeSupervisor: peoplePick.people.aeSupervisor || null,
+      paymentPresetVersionId: pinnedPresets.payment,
+      remarksPresetVersionId: pinnedPresets.remarks,
     };
   }
   if ('status' in body) {
@@ -166,12 +219,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // Editing document content after it was sent creates a new draft state.
   const contentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
     || 'notes' in body || 'quoteDate' in body || 'validUntil' in body;
-  // แก้เนื้อหาที่กระทบเอกสาร/ยอด → ต้องอนุมัติใหม่ (มติ 2026-07-18): ล้างการอนุมัติเดิม
-  // กลับเป็น 'pending' + ตัด fingerprint/ผู้อนุมัติ. ใบ grandfather (not_required) ก็ถูก
-  // ดันเข้าสู่ระบบอนุมัติเมื่อถูกแก้เนื้อหา (สอดคล้องกับใบใหม่). ยกเว้น: ไม่แตะสถานะอนุมัติ
-  // เมื่อแก้เฉพาะช่องที่ไม่ใช่เนื้อหา (ผู้รับผิดชอบ ฯลฯ).
+  // แก้เนื้อหาที่กระทบเอกสาร/ยอด → ต้องยื่นและอนุมัติใหม่ (มติ 2026-07-18 + ข้อ 7 ของ
+  // มติ 2026-07-25): ล้างการอนุมัติเดิม กลับเป็น **'not_submitted' = ร่างที่ต้องยื่นใหม่**
+  // ไม่ใช่ 'pending' — หลักฐานการยื่นรอบก่อนผูกกับ fingerprint ของเนื้อหาที่เปลี่ยนไปแล้ว
+  // จึงสิ้นผล (trigger 0151 ล้าง proposer pointer ให้เองที่ระดับ DB).
+  // ใบ grandfather (not_required) ก็ถูกดันเข้าสู่ระบบอนุมัติเมื่อถูกแก้เนื้อหา (สอดคล้องกับ
+  // ใบใหม่). ยกเว้น: ไม่แตะสถานะอนุมัติเมื่อแก้เฉพาะช่องที่ไม่ใช่เนื้อหา (ผู้รับผิดชอบ ฯลฯ).
   if (contentChanged) {
-    patch.approvalStatus = 'pending';
+    patch.approvalStatus = 'not_submitted';
     patch.approvalFingerprint = null;
     patch.approvedAt = null;
     patch.approvedBy = null;
@@ -200,6 +255,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       currentFingerprint: quotationApprovalFingerprint(finalQuote, finalLines),
     });
     if (!readiness.ok) {
+      // แยกข้อความ 2 ขั้น (mig 0155): ยังไม่ยื่น ≠ ยื่นแล้วรอเจ้าของดีล — ผู้ใช้ต้องรู้ว่า
+      // ต้องกดปุ่มไหนต่อ ไม่ใช่รอเฉย ๆ
+      if (effApprovalStatus === 'not_submitted') {
+        return badRequest('ใบเสนอราคานี้ยังไม่ได้ยื่นอนุมัติ — กด "ยื่นอนุมัติ" ก่อนจึงจะส่งลูกค้าได้');
+      }
       return badRequest(effApprovalStatus === 'pending'
         ? 'ใบเสนอราคานี้ยังไม่ได้รับการอนุมัติจากเจ้าของดีล — อนุมัติก่อนจึงจะส่งลูกค้าได้'
         : readiness.error);
@@ -255,7 +315,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     .limit(1)
     .maybeSingle();
   if (evidenceError) return fail(evidenceError.message, 500);
-  if (evidence?.id || before.signatureEvidenceId) {
+  const hasEvidence = Boolean(evidence?.id || before.signatureEvidenceId);
+  // path ปกติยังห้ามลบเด็ดขาด (แปลง FK RESTRICT เป็นข้อความแนะนำ ไม่ให้ raw error หลุด);
+  // ?force=1 ของผู้ดูแลระบบผ่านได้แล้ว (mig 0152 break-glass) — มติผู้ใช้ 2026-07-25
+  if (hasEvidence && !force) {
     return fail('ลบถาวรไม่ได้: ใบเสนอราคานี้มีหลักฐานลายเซ็นและต้องเก็บเป็นหลักฐาน — ออก Revise แทน; ใบที่รับ (Won) แล้วให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา', 409);
   }
 
@@ -278,7 +341,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // sales_orders.quotationId เป็น ON DELETE CASCADE จึงหายเองที่ระดับ DB.
   if (force) await cleanupQuotationOrphans(supabase, before);
 
-  const { error } = await supabase.from('quotations').delete().eq('id', id);
+  // ใบที่มีหลักฐาน/ฉบับตรึงต้องลบผ่าน RPC break-glass (mig 0152) — มันตั้ง session flag ให้
+  // guard ยอม DELETE แล้วเก็บกวาดตามลำดับ FK: SO ลูก (ซึ่ง cascade เองไม่ได้เพราะลูกของมัน
+  // เป็น RESTRICT) → ฉบับตรึง+ไฟล์แนบ → หลักฐาน → ตัวใบ. เส้นทางปกติยังลบตรงเหมือนเดิม
+  const { error } = hasEvidence
+    ? await supabase.rpc('force_delete_quotation', { p_id: id })
+    : await supabase.from('quotations').delete().eq('id', id);
   if (error) return fail(error.message, 500);
   const summary = force
     ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — บังคับลบ สิทธิ์ผู้ดูแลระบบ)`

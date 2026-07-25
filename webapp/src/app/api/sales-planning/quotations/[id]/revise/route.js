@@ -3,6 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { businessDate } from '@/lib/businessDate';
+import { revisionSeparatorOf } from '@/lib/documentStandards';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
@@ -67,6 +68,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .limit(1)
     .maybeSingle();
   const nextRev = (maxRow?.revisionNo ?? quote.revisionNo ?? 0) + 1;
+  // ตัวคั่นก่อนเลข R อ่านจากใบต้นทางเอง ไม่ใช่จากรูปแบบปัจจุบัน — ใบที่ออกไว้ก่อน
+  // มีการเปลี่ยนรูปแบบเลขที่ในหน้าตั้งค่า จะได้ต่อ R ด้วยตัวคั่นเดิมของสายตัวเอง
+  const revSeparator = revisionSeparatorOf(quote.quoteNumber, base);
   const now = new Date().toISOString();
 
   // ผู้รับผิดชอบเอกสาร: สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise — ต้องเป็นผู้ใช้จริง
@@ -92,7 +96,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .insert({
       id: newId,
       dealId: quote.dealId,
-      quoteNumber: `${base}-${nextRev}`,
+      quoteNumber: `${base}${revSeparator}${nextRev}`,
       baseNumber: base,
       revisionNo: nextRev,
       revisedFromId: quote.id,
@@ -115,7 +119,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       discountValue,
       vatRate,
       paymentTerms,
-      approvalStatus: 'pending', // ฉบับ revise ใหม่ต้องให้เจ้าของดีลอนุมัติก่อนส่ง (มติ 2026-07-18)
+      // ฉบับ revise = ร่างใหม่ ต้องกดยื่นอนุมัติเองอีกครั้ง (mig 0155) ไม่สืบทอดการยื่น/อนุมัติเดิม
+      approvalStatus: 'not_submitted',
       approvalReason: null,
       approvalRequestedAt: null,
       approvalRequestedBy: null,
@@ -154,6 +159,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     fgCode: l.fgCode,
     description: l.description,
     qty: l.qty,
+    unit: l.unit || 'ชิ้น',
     unitPrice: l.unitPrice,
     discountType: l.discountType,
     discountValue: l.discountValue,

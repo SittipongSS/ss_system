@@ -6,12 +6,14 @@ import {
   AlertTriangle, ArrowDown, ArrowUp, Clock3, Copy, Edit3,
   Eye, FilePlus2, GitBranch, Milestone, Plus, Save, Send, Trash2, Workflow,
 } from "lucide-react";
+import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
+import { accessState } from "@/lib/accessGate";
 import {
   EXCISE_CATEGORY_TOKEN,
   WORKFLOW_TEMPLATE_KEYS,
@@ -161,6 +163,7 @@ function StepFormFields({ value, onChange, steps, editIndex }) {
 }
 
 export default function WorkflowTemplatesPage() {
+  const role = useRole();
   const canManage = useCan("master:manage");
   const [templates, setTemplates] = useState([]);
   const [selectedKey, setSelectedKey] = useState(WORKFLOW_TEMPLATE_KEYS[0]);
@@ -337,7 +340,19 @@ export default function WorkflowTemplatesPage() {
     return { ...current, steps };
   });
 
-  if (!canManage) return null;
+  // เดิม return null = จอขาวสนิท ไม่มีทั้งคำอธิบายและทางกลับ
+  const gate = accessState(role, canManage);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
+    return (
+      <AccessDenied
+        icon={<Workflow size={22} />}
+        title="Workflow และ Timeline Template"
+        message="หน้านี้สำหรับผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+      />
+    );
+  }
 
   const publishedSummary = workflowTemplateSummary(selected?.published);
   const draftValidation = editor ? normalizeWorkflowTemplateDraft(editor) : null;

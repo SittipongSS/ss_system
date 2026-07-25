@@ -1,6 +1,7 @@
 "use client";
 import Select from "@/components/ui/Select";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -11,9 +12,8 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoneyCompact } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
-import { ppcOf, casesText } from "@/lib/sahamit/units";
+import { ppcOf, casesText, displayQty, counterpartText } from "@/lib/sahamit/units";
 import RoundComparison from "@/components/sahamit/RoundComparison";
-import ForecastImportModal from "@/components/sahamit/ForecastImportModal";
 import { useCan } from "@/lib/roleContext";
 
 const TABS = [
@@ -26,7 +26,7 @@ const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 const nfBaht = (n) => fmtMoneyCompact(n);
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 
-export default function ForecastPage() {
+function ForecastPageInner() {
   const { data: rounds, loading, error, reload } = useApiList("/api/sahamit/forecast/rounds");
   const { data: products } = useApiList("/api/sahamit/products");
   const { data: assignables } = useApiList("/api/pm/assignable-users");
@@ -36,13 +36,14 @@ export default function ForecastPage() {
   // ผู้ดูแลดีลสหมิตร = AE ทีม KA เท่านั้น (server เช็คซ้ำใน create-sales-deal)
   const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae" && u.team === "KA"), [assignables]);
   const canEdit = useCan("sahamit:edit");
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedNo, setSelectedNo] = useState(null);
   const [tab, setTab] = useState("matrix");
+  const [matrixUnit, setMatrixUnit] = useState("piece"); // หน่วยแสดงผลตาราง Matrix (ชิ้น/ลัง)
   const [search, setSearch] = useState("");
   const [catSel, setCatSel] = useState([]); // หมวดสินค้าที่เลือกกรอง
   const q = search.trim().toLowerCase();
-  const [showImport, setShowImport] = useState(false);
-  const [editRound, setEditRound] = useState(null); // round being edited, or null = create
   // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 โครงการ" เข้าแผนการขาย
   const [selectedLines, setSelectedLines] = useState(() => new Set());
   const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
@@ -50,10 +51,13 @@ export default function ForecastPage() {
   const [creating, setCreating] = useState(false);
   const [dealModalOpen, setDealModalOpen] = useState(false); // modal ยืนยันสร้างแผนการขาย
 
-  // Default selection = the latest round, kept in sync as rounds load/change.
+  // Default selection = ?round= (กลับมาจากหน้าลง/แก้รอบ) ถ้ามี ไม่งั้นรอบล่าสุด.
   useEffect(() => {
-    if (rounds.length && selectedNo == null) setSelectedNo(rounds[rounds.length - 1].roundNo);
-  }, [rounds, selectedNo]);
+    if (!rounds.length || selectedNo != null) return;
+    const wanted = Number(searchParams.get("round"));
+    const hit = wanted && rounds.find((r) => r.roundNo === wanted);
+    setSelectedNo(hit ? wanted : rounds[rounds.length - 1].roundNo);
+  }, [rounds, selectedNo, searchParams]);
 
   const selectedIndex = useMemo(
     () => rounds.findIndex((r) => r.roundNo === selectedNo),
@@ -66,7 +70,7 @@ export default function ForecastPage() {
   );
   const matrix = useMemo(() => (selectedRound ? roundMatrix(selectedRound) : { months: [], rows: [] }), [selectedRound]);
 
-  // fgCode → product (หมวด + ราคาโรงงาน) จาก master — สำหรับ group หมวด + แถวรวมมูลค่า
+  // fgCode → product (หมวด + ราคาผลิต) จาก master — สำหรับ group หมวด + แถวรวมมูลค่า
   const productByFg = useMemo(() => {
     const m = new Map();
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
@@ -84,9 +88,16 @@ export default function ForecastPage() {
     return [...s].sort((a, b) => String(a).localeCompare(String(b))).map((c) => ({ value: c, label: c }));
   }, [products]);
 
-  // เงื่อนไขผ่านคำค้น (รหัส/ชื่อ) + หมวด — ใช้ร่วมทุกแท็บที่เป็นรายการสินค้า
+  // เงื่อนไขผ่านคำค้น (รหัส/ชื่อ) + หมวด — ใช้ร่วมทุกแท็บที่เป็นรายการสินค้า.
+  // ค้นได้ทั้งไทย+อังกฤษ: นอกจากชื่อ snapshot (productName) ยังเทียบชื่อไทย/อังกฤษ
+  // สดจาก master ด้วย — รอบเก่าที่ snapshot ไว้เป็นอังกฤษก็ยังค้นด้วยชื่อไทยเจอ.
   const passFg = (fgCode, productName) => {
-    if (q && !String(fgCode).toLowerCase().includes(q) && !String(productName || "").toLowerCase().includes(q)) return false;
+    if (q) {
+      const p = productByFg.get(String(fgCode).trim().toLowerCase());
+      const hay = [fgCode, productName, p?.productDescription, p?.productDescriptionEn, p?.name, p?.brandName]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     if (catSel.length && !catSel.includes(catOf(fgCode))) return false;
     return true;
   };
@@ -105,7 +116,7 @@ export default function ForecastPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matrix, productByFg, q, catSel]);
 
-  // แถวรวมมูลค่า (ราคาโรงงาน × จำนวน) ต่อเดือน + รวม — คิดตามแถวที่แสดง (หลังกรอง)
+  // แถวรวมมูลค่า (ราคาผลิต × จำนวน) ต่อเดือน + รวม — คิดตามแถวที่แสดง (หลังกรอง)
   const matrixValue = useMemo(() => {
     const byMonth = {};
     for (const m of matrix.months) byMonth[m] = 0;
@@ -135,9 +146,8 @@ export default function ForecastPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rounds, q, catSel, productByFg]);
 
-  const openCreate = () => { setEditRound(null); setShowImport(true); };
-  const openEdit = (r) => { setEditRound(r); setShowImport(true); };
-  const closeModal = () => { setShowImport(false); setEditRound(null); };
+  const openCreate = () => router.push("/sahamit/forecast/new");
+  const openEdit = (r) => router.push(`/sahamit/forecast/${r.id}/edit`);
 
   const closeMonthOptions = useMemo(() => {
     const months = new Set([thisMonth(), ...matrix.months]);
@@ -197,7 +207,7 @@ export default function ForecastPage() {
   const selectableLines = useMemo(() => lineList.filter((r) => !r.mapped), [lineList]);
   const allLinesSelected = selectableLines.length > 0 && selectableLines.every((r) => selectedLines.has(r.id));
 
-  // สรุป line ที่เลือก (จำนวน + มูลค่าราคาโรงงาน) สำหรับแถบสร้างโครงการ
+  // สรุป line ที่เลือก (จำนวน + มูลค่าราคาผลิต) สำหรับแถบสร้างโครงการ
   const selection = useMemo(() => {
     let qty = 0, value = 0, unpriced = 0;
     for (const r of lineList) {
@@ -351,9 +361,13 @@ export default function ForecastPage() {
                 )}
                 {canEdit && <button className="btn ghost sm" onClick={openCreate}><Plus size={14} /> ลงรอบใหม่</button>}
                 {matrix.rows.length > 0 && (
-                  <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: "auto" }}>
-                    ไปแท็บ “รายเดือน (สร้างดีล)” เพื่อเลือกรายการส่งเข้าแผนการขาย
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+                    <span style={{ fontSize: 12, color: "var(--text-3)" }}>หน่วย:</span>
+                    <div className="segmented">
+                      <button className={matrixUnit === "piece" ? "active" : ""} onClick={() => setMatrixUnit("piece")}>ชิ้น</button>
+                      <button className={matrixUnit === "case" ? "active" : ""} onClick={() => setMatrixUnit("case")}>ลัง</button>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -389,11 +403,11 @@ export default function ForecastPage() {
                               {meta && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{meta}</div>}
                             </td>
                             {matrix.months.map((m) => (
-                              <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{r.qty[m] ? nf(r.qty[m]) : "·"}</td>
+                              <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{displayQty(r.qty[m], ppcFor(r.fgCode), matrixUnit, { dot: true })}</td>
                             ))}
                             <td style={{ textAlign: "right", fontWeight: 700 }}>
-                              {nf(r.total)}
-                              {casesSub(r.fgCode, r.total) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{casesSub(r.fgCode, r.total)}</div>}
+                              {displayQty(r.total, ppcFor(r.fgCode), matrixUnit)}
+                              {counterpartText(r.total, ppcFor(r.fgCode), matrixUnit) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{counterpartText(r.total, ppcFor(r.fgCode), matrixUnit)}</div>}
                             </td>
                           </tr>
                           );
@@ -607,16 +621,15 @@ export default function ForecastPage() {
           </div>
         </div>
       </Modal>
-
-      <ForecastImportModal
-        open={showImport}
-        onClose={closeModal}
-        onCreated={(json) => { setShowImport(false); setEditRound(null); if (json?.roundNo) setSelectedNo(json.roundNo); reload(); }}
-        products={products}
-        editRound={editRound}
-        existingRounds={rounds}
-        onEditExisting={(r) => setEditRound(r)}
-      />
     </Workspace>
+  );
+}
+
+// useSearchParams (อ่าน ?round=) ต้องอยู่ใต้ Suspense boundary ตอน build (แพตเทิร์นเดียวกับหน้าอื่นในระบบ)
+export default function ForecastPage() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      <ForecastPageInner />
+    </Suspense>
   );
 }

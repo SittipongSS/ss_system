@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 // กติกา role ต่อ action (เฟส C — ตามเส้นชีวิตในแผน):
 //   screen     = supervisor/admin (คัดกรอง เลือกทีม — SLA 1 วันทำการ)
 //   assign     = senior_ae/ac ของทีมนั้น + supervisor/admin (กระจายให้ AE)
-//   contact    = ผู้รับมอบ (AE) / senior ทีม / admin (SLA 1 วันทำการ) —
+//   contact    = ผู้รับมอบ (AE) / senior ทีม / admin (SLA 1 วันทำการ) — ต้องระบุหมายเหตุการติดต่อ (เก็บใน event.reason)
 //     มติผู้ใช้ 2026-07-21: supervisor จบงานที่คัดกรอง ไม่ทำขั้นทำงานแทนทีม
 //   meeting    = เดียวกับ contact (+ บันทึกรูปแบบนัด onsite/online — วัด KPI)
 //   qualify    = เดียวกับ contact — ต้องระบุ customerId (เปิดลูกค้าในฐานข้อมูลก่อน)
@@ -75,8 +75,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     event.assigneeName = body.assigneeName;
   } else if (action === 'contact') {
     if (!workScope) return forbidden('ติดต่อกลับได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)');
+    if (!body.reason?.trim()) return badRequest('ต้องระบุหมายเหตุการติดต่อ');
     patch.firstContactAt = lead.firstContactAt || now;
     event.eventAt = body.eventAt || now;
+    event.reason = body.reason.trim();
   } else if (action === 'meeting') {
     if (!workScope) return forbidden('บันทึกนัดประชุมได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)');
     if (body.meetingMode && !MEETING_MODES.includes(body.meetingMode)) return badRequest('รูปแบบนัดไม่ถูกต้อง');

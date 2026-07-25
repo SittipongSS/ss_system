@@ -9,7 +9,7 @@
 // ต่างกันได้แค่ "โหมด" ผ่าน props:
 //   creatorName    — ป้าย "ผู้สร้าง" มีเฉพาะตอนสร้าง
 //   factoryPrice   — "input" (สร้าง: กรอกได้) | "readonly" (แก้: ดูอย่างเดียว
-//                    ต้องกดปุ่มอัปเดตราคาโรงงานแยก เพราะกระทบประวัติราคา/ต้นทุน)
+//                    ต้องกดปุ่มอัปเดตราคาผลิตแยก เพราะกระทบประวัติราคา/ต้นทุน)
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import Select from "@/components/ui/Select";
@@ -23,14 +23,14 @@ export const EMPTY_PRODUCT = {
   customerId: "", fgCode: "", productDescription: "", productDescriptionEn: "",
   brandName: "", brandNameEn: "",
   formulaName: "", formulaCode: "", formulaDate: "",
-  volume: "", volumeUnit: "ml", piecesPerCase: "", costPrice: "", retailPriceIncVat: "",
+  volume: "", volumeUnit: "ml", saleUnit: "ชิ้น", piecesPerCase: "", costPrice: "", retailPriceIncVat: "",
 };
 
 // ช่องที่โมดัลแก้ดึงจากสินค้าเดิม (costPrice ไม่อยู่ในนี้ — อัปเดตผ่าน action แยก)
 export const PRODUCT_EDIT_FIELDS = [
   "customerId", "fgCode", "productDescription", "productDescriptionEn",
   "brandName", "brandNameEn", "formulaName", "formulaCode", "formulaDate",
-  "volume", "volumeUnit", "piecesPerCase", "retailPriceIncVat",
+  "volume", "volumeUnit", "saleUnit", "piecesPerCase", "retailPriceIncVat",
 ];
 
 export const productToForm = (p) => {
@@ -212,7 +212,22 @@ export default function ProductForm({
             <input type="number" name="piecesPerCase" value={form.piecesPerCase ?? ""} onChange={set("piecesPerCase")} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
           </div>
           <div className="form-group">
-            <label>ราคาโรงงาน (บาท)</label>
+            {/* หน่วยขาย = หน่วยที่แสดงบนใบเสนอราคา/ใบสั่งขาย (คนละอย่างกับปริมาตรบรรจุ) */}
+            <label>หน่วยขาย</label>
+            <Select name="saleUnit" value={form.saleUnit || "ชิ้น"} onChange={set("saleUnit")} className="premium-input w-full">
+              <option value="ชิ้น">ชิ้น</option>
+              <option value="ขวด">ขวด</option>
+              <option value="หลอด">หลอด</option>
+              <option value="กระปุก">กระปุก</option>
+              <option value="ชุด">ชุด</option>
+              <option value="กล่อง">กล่อง</option>
+              <option value="แพ็ค">แพ็ค</option>
+              <option value="โหล">โหล</option>
+              <option value="งาน">งาน</option>
+            </Select>
+          </div>
+          <div className="form-group">
+            <label>ราคาผลิต (บาท)</label>
             {factoryPrice === "readonly" ? (
               <>
                 <input
@@ -224,7 +239,7 @@ export default function ProductForm({
                   aria-describedby="factory-price-readonly-help"
                 />
                 <span id="factory-price-readonly-help" className="text-xs text-[var(--text-3)] mt-1">
-                  ช่องนี้ดูอย่างเดียว ต้องกด “อัปเดตราคาโรงงาน” ด้านล่างเพื่อแก้ราคา
+                  ช่องนี้ดูอย่างเดียว ต้องกด “อัปเดตราคาผลิต” ด้านล่างเพื่อแก้ราคา
                 </span>
               </>
             ) : (

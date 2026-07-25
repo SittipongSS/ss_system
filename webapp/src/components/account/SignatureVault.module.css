@@ -90,11 +90,13 @@
   background: var(--panel);
 }
 
+/* Keep the frame exactly 3:1 at every width. A min-height here would win over
+   aspect-ratio on narrow screens, breaking the ratio, and the export (a fixed
+   1200×400 canvas) would then be stretched relative to what was on screen. */
 .cropViewport {
   position: relative;
   width: 100%;
   aspect-ratio: 3 / 1;
-  min-height: 112px;
   overflow: hidden;
   border: 2px solid var(--border-strong);
   border-radius: var(--radius-lg);

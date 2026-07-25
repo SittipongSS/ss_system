@@ -18,6 +18,8 @@ export default function PoCreatePage() {
   const [header, setHeader] = useState(emptyPoHeader);
   const [rows, setRows] = useState([]);
   const [entryUnit, setEntryUnit] = useState("piece");
+  // บันทึกย้อนหลัง: PO ที่ส่งของครบไปแล้ว → ทุกบรรทัดขึ้น 'delivered' + วันที่ส่งมอบจริง
+  const [backfill, setBackfill] = useState({ delivered: false, deliveredDate: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -43,7 +45,11 @@ export default function PoCreatePage() {
       await sahamitFetch("/api/sahamit/po", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...header, poNumber: header.poNumber.trim(), dueDate: header.dueDate || null, lines }),
+        body: JSON.stringify({
+          ...header, poNumber: header.poNumber.trim(), dueDate: header.dueDate || null, lines,
+          delivered: backfill.delivered,
+          deliveredDate: backfill.delivered ? (backfill.deliveredDate || null) : null,
+        }),
       });
       router.push("/sahamit/po");
     } catch (e) { setError(e.message); setBusy(false); }
@@ -83,6 +89,8 @@ export default function PoCreatePage() {
           products={products}
           entryUnit={entryUnit}
           onEntryUnit={setEntryUnit}
+          backfill={backfill}
+          onBackfill={(patch) => setBackfill((b) => ({ ...b, ...patch }))}
           disabled={busy}
         />
         {error && <div style={{ color: "var(--red)", fontSize: 13 }}>{error}</div>}

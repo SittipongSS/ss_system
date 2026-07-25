@@ -99,9 +99,9 @@ export async function registrationReport(filter = {}) {
     };
     if (margin) {
       // Factory cost broken down into its components + profit (cost = วัตถุดิบ +
-      // ค่าแรง + ค่าจัดส่ง). Rendered as a main line (ราคาโรงงาน) + sub lines.
+      // ค่าแรง + ค่าจัดส่ง). Rendered as a main line (ราคาผลิต) + sub lines.
       row.factory = [
-        `ราคาโรงงาน ${money(p.costPrice)}`,
+        `ราคาผลิต ${money(p.costPrice)}`,
         `· วัตถุดิบ ${money(p.materialCost)}`,
         `· ค่าแรง ${money(p.laborCost)}`,
         `· ค่าจัดส่ง ${money(p.shippingCost)}`,
@@ -115,7 +115,7 @@ export async function registrationReport(filter = {}) {
     { key: 'product', label: 'รหัสสินค้า / สินค้า / แบรนด์', multiline: true },
     { key: 'size', label: 'ขนาด' },
     { key: 'customer', label: 'ลูกค้า / เลขผู้เสียภาษี', multiline: true },
-    ...(margin ? [{ key: 'factory', label: 'ราคาโรงงาน (แจกแจง) / กำไร', multiline: true }] : []),
+    ...(margin ? [{ key: 'factory', label: 'ราคาผลิต (แจกแจง) / กำไร', multiline: true }] : []),
     { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
     { key: 'owner', label: 'ผู้รับผิดชอบ / ทีม', multiline: true },
     { key: 'status', label: 'สถานะ' },

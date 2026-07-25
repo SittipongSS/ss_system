@@ -1,23 +1,34 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import Select from "@/components/ui/Select";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
-import { fmtDate, fmtMoneyCompact } from "@/lib/format";
+import { fmtDate, fmtMoney } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
+import Pager from "@/components/excise/Pager";
+import { usePagination } from "@/lib/usePagination";
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
-const baht = (n) => fmtMoneyCompact(n);
+// มูลค่า PO โชว์เต็ม 2 ตำแหน่ง (ไม่ย่อ) — formatter กลาง fmtMoney
+const baht = (n) => fmtMoney(n);
 const VAT = 1.07;
 const C = { amber: "var(--amber)", blue: "var(--blue)", violet: "var(--violet)", green: "var(--green)", "text-3": "var(--text-3)" };
 const today = () => new Date().toISOString().slice(0, 10);
+// มูลค่าก่อน VAT ของ PO (ตัดบรรทัดยกเลิก) — ใช้เรียงมุมมองรายใบ
+const poExVat = (po, priceByFg) => (po.lines || []).reduce((s, l) => {
+  if (l.status === "cancelled") return s;
+  const price = priceByFg.get(String(l.fgCode).trim().toLowerCase());
+  return price == null ? s : s + effectivePoQty(l) * price;
+}, 0);
 
 // สถานะวัสดุ 1 ช่อง (อ่านอย่างเดียว): มาแล้ว / กำหนดถึง / —  (แก้ที่เมนูวัสดุเท่านั้น)
 function matCell(dueDate, arrivedAt) {
@@ -89,9 +100,15 @@ export default function PoPage() {
   const [statusSel, setStatusSel] = useState([]);  // poRollupStatus keys
   const [destSel, setDestSel] = useState([]);       // destination keys
   const canEdit = useCan("sahamit:edit");
+  const [view, setView] = useState("grouped"); // grouped (รายใบ) | table (รายบรรทัด)
+  const [sort, setSort] = useState({ col: null, dir: "asc" });
+  const onSort = (col) => setSort((s) => (s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" })); // กดหัวตาราง
+  const pickSort = (col) => setSort((s) => ({ col: col || null, dir: s.dir })); // เลือกจาก dropdown
+  const toggleDir = () => setSort((s) => ({ ...s, dir: s.dir === "asc" ? "desc" : "asc" }));
+  const gArrow = (col) => (sort.col === col ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
   const q = search.trim().toLowerCase();
 
-  // ราคาโรงงาน (costPrice, ก่อน VAT) ต่อ fgCode — สำหรับยอดรวมมูลค่า PO
+  // ราคาผลิต (costPrice, ก่อน VAT) ต่อ fgCode — สำหรับยอดรวมมูลค่า PO
   const priceByFg = useMemo(() => {
     const m = new Map();
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p.price == null ? null : Number(p.price));
@@ -129,6 +146,19 @@ export default function PoPage() {
 
   const filterCount = statusSel.length + destSel.length;
   const clearFilters = () => { setStatusSel([]); setDestSel([]); };
+
+  // แบ่งหน้ามุมมอง "รายใบ" (รีเซ็ตกลับหน้า 1 เมื่อค้น/กรองเปลี่ยน)
+  // เรียงมุมมองรายใบก่อนแบ่งหน้า (sort เดียวกับปุ่ม/หัวตาราง)
+  const sortedGroupedPos = useMemo(() => {
+    if (!sort.col) return filteredPos;
+    const s = sort.dir === "asc" ? 1 : -1;
+    const key = (po) => ({
+      po: po.poNumber || "", doc: po.docDate || "", recv: po.receivedDate || "", due: po.dueDate || "",
+      qty: poTotalQty(po), value: poExVat(po, priceByFg), status: poRollupStatus(po),
+    }[sort.col]);
+    return [...filteredPos].sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * s; });
+  }, [filteredPos, sort, priceByFg]);
+  const grouped = usePagination(sortedGroupedPos, { resetKey: `${q}|${statusSel.join(",")}|${destSel.join(",")}|${sort.col}|${sort.dir}` });
 
   // material lines grouped by PO number (คัดเฉพาะบรรทัด active แล้วจาก API)
   const matByPo = useMemo(() => {
@@ -195,36 +225,64 @@ export default function PoPage() {
               ]}
             />
             {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredPos.length} จาก {pos.length} ใบ</span>}
+            {(() => {
+              const fields = view === "grouped"
+                ? [["po", "เลข PO"], ["doc", "วันที่เอกสาร"], ["recv", "วันรับ PO"], ["due", "กำหนดส่ง"], ["qty", "จำนวนรวม"], ["value", "มูลค่า"], ["status", "สถานะ"]]
+                : [["po", "เลข PO"], ["month", "เดือนส่ง"], ["fg", "สินค้า"], ["qty", "จำนวน"], ["value", "มูลค่า"], ["status", "สถานะ"]];
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 13, color: "var(--text-3)" }}>เรียงตาม</span>
+                  <Select className="premium-select" style={{ height: 32 }} value={sort.col || ""} onChange={(e) => pickSort(e.target.value)}>
+                    <option value="">— ไม่เรียง —</option>
+                    {fields.map(([col, label]) => <option key={col} value={col}>{label}</option>)}
+                  </Select>
+                  <button type="button" className="btn-icon" title="สลับทิศเรียง (น้อย→มาก / มาก→น้อย)" disabled={!sort.col} onClick={toggleDir}>
+                    {sort.dir === "asc" ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
+                  </button>
+                </div>
+              );
+            })()}
+            <div className="segmented" style={{ marginLeft: "auto" }} title="สลับมุมมอง">
+              <button className={view === "grouped" ? "active" : ""} onClick={() => { setView("grouped"); setSort({ col: null, dir: "asc" }); }}>รายใบ</button>
+              <button className={view === "table" ? "active" : ""} onClick={() => { setView("table"); setSort({ col: null, dir: "asc" }); }}>ตาราง</button>
+            </div>
           </div>
 
-          <div className="premium-table-wrapper">
-            <table className="premium-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 32 }}></th>
-                  <th>เลขที่ PO</th>
-                  <th>วันที่เอกสาร</th>
-                  <th>วันรับ PO</th>
-                  <th>กำหนดส่ง</th>
-                  <th>สถานที่ส่ง</th>
-                  <th style={{ textAlign: "right" }}>รายการ</th>
-                  <th style={{ textAlign: "right" }}>จำนวนรวม</th>
-                  <th style={{ textAlign: "right" }}>มูลค่า PO</th>
-                  <th>สถานะ</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPos.length === 0 ? (
-                  <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มี PO ตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
-                ) : (
-                  filteredPos.map((po) => (
-                    <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} canEdit={canEdit} />
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {view === "grouped" ? (
+            <div className="premium-table-wrapper">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 32 }}></th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("po")}>เลขที่ PO{gArrow("po")}</th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("doc")}>วันที่เอกสาร{gArrow("doc")}</th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("recv")}>วันรับ PO{gArrow("recv")}</th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("due")}>กำหนดส่ง{gArrow("due")}</th>
+                    <th>สถานที่ส่ง</th>
+                    <th style={{ textAlign: "right" }}>รายการ</th>
+                    <th style={{ textAlign: "right", cursor: "pointer", userSelect: "none" }} onClick={() => onSort("qty")}>จำนวนรวม{gArrow("qty")}</th>
+                    <th style={{ textAlign: "right", cursor: "pointer", userSelect: "none" }} onClick={() => onSort("value")}>มูลค่า PO{gArrow("value")}</th>
+                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("status")}>สถานะ{gArrow("status")}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPos.length === 0 ? (
+                    <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มี PO ตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
+                  ) : (
+                    grouped.pageRows.map((po) => (
+                      <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} canEdit={canEdit} />
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <PoLinesTable pos={filteredPos} priceByFg={priceByFg} prodIdx={prodIdx} q={q} sort={sort} onSort={onSort} />
+          )}
+          {view === "grouped" && (
+            <Pager page={grouped.page} pageCount={grouped.pageCount} total={grouped.total} onPage={grouped.setPage} pageSize={grouped.pageSize} onPageSize={grouped.setPageSize} />
+          )}
         </>
       )}
     </Workspace>
@@ -232,6 +290,7 @@ export default function PoPage() {
 }
 
 function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, canEdit }) {
+  const router = useRouter();
   let unpriced = 0;
   const exVat = (po.lines || []).reduce((s, l) => {
     if (l.status === "cancelled") return s;
@@ -254,8 +313,9 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
 
   return (
     <>
-      <tr className="clickable-row" style={{ cursor: "pointer" }} onClick={onToggle}>
-        <td><button className="btn-icon" title={isOpen ? "ย่อ" : "ขยาย"}>{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
+      {/* กดที่แถว = เข้าหน้ารายละเอียด; ปุ่มลูกศร = ขยายดูรายการในแถว (ไม่เข้าหน้า) */}
+      <tr className="clickable-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/sahamit/po/${po.id}`)}>
+        <td onClick={(e) => e.stopPropagation()}><button className="btn-icon" title={isOpen ? "ย่อ" : "ขยาย"} onClick={onToggle}>{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
         <td className="font-mono" style={{ fontWeight: 600 }}>{po.poNumber}</td>
         <td>{po.docDate ? fmtDate(po.docDate) : "—"}</td>
         <td>{po.receivedDate ? fmtDate(po.receivedDate) : "—"}</td>
@@ -278,7 +338,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
         </td>
         <td><span className="ui-badge" style={{ color: stageColor, borderColor: stageColor }}>{stageLabel}</span></td>
         <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
-          <Link href={`/sahamit/po/${po.id}`} className="btn-icon" title="แก้ไข PO"><Pencil size={15} /></Link>
+          {canEdit && <Link href={`/sahamit/po/${po.id}/edit`} className="btn-icon" title="แก้ไข PO"><Pencil size={15} /></Link>}
         </td>
       </tr>
       {isOpen && (
@@ -311,6 +371,110 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
           </td>
         </tr>
       )}
+    </>
+  );
+}
+
+// สถานะบรรทัด PO → ป้ายภาษาไทย (รวมสองชุด stage + rollup)
+const lineStatusLabel = (s) => STAGE_LABEL[s] || PO_STATUS_LABEL[s] || s || "—";
+const lineStatusColor = (s) => C[STAGE_COLOR[s]] || (s === "cancelled" ? C["text-3"] : "var(--text-3)");
+
+// มุมมอง "ตาราง (รายบรรทัด)": ทุกบรรทัดสินค้าในทุก PO = 1 แถว (สเปรดชีต) เรียง/รวมมูลค่าได้.
+// ราคา/มูลค่าอ่านอย่างเดียวจากราคาผลิต master (เหมือนหน้ารายละเอียด/รายการ).
+function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
+  const router = useRouter();
+  const rows = useMemo(() => {
+    const out = [];
+    for (const po of pos) {
+      for (const l of po.lines || []) {
+        if (q) {
+          const name = prodIdx.get(String(l.fgCode).trim().toLowerCase())?.name;
+          const hay = [po.poNumber, l.fgCode, l.productName, name].filter(Boolean).join(" ").toLowerCase();
+          if (!hay.includes(q)) continue;
+        }
+        const cancelled = l.status === "cancelled";
+        const price = priceByFg.get(String(l.fgCode).trim().toLowerCase());
+        const value = !cancelled && price != null ? Number(l.qty || 0) * price : null;
+        out.push({ po, l, price, value, cancelled });
+      }
+    }
+    if (sort.col) {
+      const s = sort.dir === "asc" ? 1 : -1;
+      const key = (r) => ({
+        po: r.po.poNumber || "", fg: r.l.fgCode || "", qty: Number(r.l.qty || 0),
+        value: Number(r.value || 0), month: r.l.deliveryMonth || "", status: r.l.status || "",
+      }[sort.col]);
+      out.sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * s; });
+    }
+    return out;
+  }, [pos, q, priceByFg, prodIdx, sort]);
+
+  const totalExVat = rows.reduce((s, r) => s + (r.value || 0), 0); // รวมทุกหน้า (ไม่ใช่เฉพาะหน้าปัจจุบัน)
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: `${q}|${sort.col}|${sort.dir}` });
+  const arrow = (col) => (sort.col === col ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
+  const Th = ({ col, children, align = "left" }) => (
+    <th style={{ textAlign: align, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }} onClick={() => onSort(col)}>{children}{arrow(col)}</th>
+  );
+
+  return (
+    <>
+    <div className="premium-table-wrapper" style={{ overflowX: "auto" }}>
+      <table className="premium-table">
+        <thead>
+          <tr>
+            <Th col="po">เลขที่ PO</Th>
+            <Th col="month">กำหนดส่ง</Th>
+            <Th col="fg">สินค้า</Th>
+            <Th col="qty" align="right">จำนวน</Th>
+            <th style={{ textAlign: "right", whiteSpace: "nowrap" }}>ราคา/ชิ้น</th>
+            <Th col="value" align="right">มูลค่า</Th>
+            <Th col="status">สถานะ</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มีรายการตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
+          ) : pageRows.map((r, i) => {
+            const product = prodIdx.get(String(r.l.fgCode).trim().toLowerCase());
+            return (
+              <tr key={`${r.po.id}-${r.l.id || i}`} className="clickable-row" style={{ cursor: "pointer", opacity: r.cancelled ? 0.55 : 1 }} onClick={() => router.push(`/sahamit/po/${r.po.id}`)}>
+                <td className="font-mono" style={{ fontWeight: 600, color: "var(--accent)", whiteSpace: "nowrap" }}>{r.po.poNumber}</td>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  {r.l.dueDate ? fmtDate(r.l.dueDate) : (r.po.dueDate ? fmtDate(r.po.dueDate) : "—")}
+                  <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{r.l.deliveryMonth || "—"}</div>
+                </td>
+                <td>
+                  <span className="font-mono" style={{ fontWeight: 600 }}>{r.l.fgCode}</span>
+                  <div style={{ fontSize: 11, color: r.l.productName ? "var(--text-2)" : "var(--amber)" }}>{r.l.productName || "— ไม่รู้จัก —"}</div>
+                  {productMetaText(product) && <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{productMetaText(product)}</div>}
+                </td>
+                <td style={{ textAlign: "right", fontWeight: 600 }}>
+                  {nf(r.l.qty)}
+                  {casesText(r.l.qty, ppcOf(product)) && <div style={{ fontSize: 10, fontWeight: 400, color: "var(--text-3)" }}>{casesText(r.l.qty, ppcOf(product))}</div>}
+                </td>
+                <td style={{ textAlign: "right", color: r.price != null ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>{r.price != null ? baht(r.price) : "—"}</td>
+                <td style={{ textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{r.cancelled ? "ยกเลิก" : (r.value != null ? baht(r.value) : "—")}</td>
+                <td><span className="ui-badge" style={{ color: lineStatusColor(r.l.status), borderColor: lineStatusColor(r.l.status) }}>{lineStatusLabel(r.l.status)}</span></td>
+              </tr>
+            );
+          })}
+        </tbody>
+        {totalExVat > 0 && (
+          <tfoot>
+            <tr>
+              <td colSpan={5} style={{ textAlign: "right", color: "var(--text-2)" }}>รวมก่อน VAT</td>
+              <td style={{ textAlign: "right", fontWeight: 600 }}>{baht(totalExVat)}</td><td />
+            </tr>
+            <tr>
+              <td colSpan={5} style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>ยอดสุทธิ (รวม VAT)</td>
+              <td style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{baht(totalExVat * VAT)}</td>
+              <td style={{ borderTop: "2px solid var(--border)" }} />
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+    <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
     </>
   );
 }

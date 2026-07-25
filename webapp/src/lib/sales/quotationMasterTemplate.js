@@ -1,17 +1,12 @@
 import { fmtDate } from '@/lib/format';
+import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
+import { resolveCompanyBlock } from '@/lib/companyProfile';
 import {
-  COMPANY_ADDRESS,
-  COMPANY_LEGAL_NAME,
-  COMPANY_LINE,
-  COMPANY_OFFICE_TEL,
-  COMPANY_TAX_ID,
-  COMPANY_WEBSITE,
-  DOCUMENT_FORMS,
-  documentFormLine,
-} from '@/lib/documentBrand';
-
-// ชื่อบริษัทภาษาอังกฤษ — documentBrand เก็บเฉพาะชื่อไทย จึงตั้งไว้ที่นี่ให้เอกสาร V4 ใช้
-const COMPANY_LEGAL_NAME_EN = 'SCENT AND SENSE LABORATORY CO., LTD.';
+  DEFAULT_NUMBERING_PATTERNS,
+  formatDocumentNumber,
+  formatDocumentStandardEffectiveDate,
+  resolveDocumentAccentKey,
+} from '@/lib/documentStandards';
 
 export const QUOTATION_MASTER_TEMPLATE_VERSIONS = Object.freeze([
   { id: 'v1', label: 'V1', templateVersion: 'quotation-balanced-controlled-v1' },
@@ -49,8 +44,33 @@ const DEFAULT_STANDARD = Object.freeze({
   effectiveDate: '08/05/2568',
   titleTh: 'ใบเสนอราคา',
   titleEn: 'QUOTATION',
-  accentKey: 'quotation-warm',
+  accentKey: 'terracotta',
+  numberingPattern: DEFAULT_NUMBERING_PATTERNS.quotation,
 });
+
+const DEFAULT_SALES_ORDER_STANDARD = Object.freeze({
+  formCode: DOCUMENT_FORMS.salesOrder.code,
+  revision: DOCUMENT_FORMS.salesOrder.revision,
+  effectiveDate: DOCUMENT_FORMS.salesOrder.effectiveDate,
+  titleTh: 'ใบสั่งขาย',
+  titleEn: DOCUMENT_FORMS.salesOrder.title,
+  accentKey: 'steel',
+  numberingPattern: DEFAULT_NUMBERING_PATTERNS.salesOrder,
+});
+
+// วันที่/เลขรันของเอกสารตัวอย่าง — ตรึงไว้ให้พรีวิวนิ่ง (ตรงกับ 20/07/2569 บนใบ)
+const PREVIEW_NUMBER_DATE = new Date('2026-07-20T12:00:00+07:00');
+const PREVIEW_RUNNING_NO = 28;
+
+// เลขที่บนเอกสารตัวอย่าง = ประกอบจากรูปแบบที่กำลังตั้งจริง — เปลี่ยนรูปแบบในหน้าตั้งค่า
+// แล้วต้องเห็นเลขใหม่บนหัวใบทันที ไม่งั้นช่อง "รูปแบบเลขที่" ก็ยังเป็นช่องที่หลอกตา
+function previewDocumentNumber(standard) {
+  return formatDocumentNumber(standard.numberingPattern, {
+    date: PREVIEW_NUMBER_DATE,
+    running: PREVIEW_RUNNING_NO,
+    revision: 0,
+  });
+}
 
 // รูปลายเซ็นตัวอย่างสำหรับหน้า preview เท่านั้น (SVG ลายมือ จำลอง) — ใบจริงฝัง PNG จริง
 // ที่ผู้อนุมัติอัปโหลด (Phase 5B) ผ่าน options.approverSignatureImage ตอนตรึง snapshot
@@ -134,6 +154,28 @@ function roundMoney(value) {
 
 export function controlledFormLine(standard = DEFAULT_STANDARD) {
   return `${standard.formCode}: Rev. No.${standard.revision}. ${standard.effectiveDate}`;
+}
+
+// แถวมาตรฐานจาก DB (document_standard_versions) → รูปที่ preview model ใช้.
+// รับได้ทั้งร่างที่ยังกรอกไม่ครบ (ช่องว่างตกไปใช้ค่าตัวอย่าง) และ null
+export function previewStandardOf(standard, docType = 'quotation') {
+  const fallback = docType === 'salesOrder'
+    ? { ...DEFAULT_STANDARD, ...DEFAULT_SALES_ORDER_STANDARD }
+    : DEFAULT_STANDARD;
+  if (!standard) return { ...fallback };
+  const effectiveDate = String(standard.effectiveDate || '');
+  return {
+    formCode: String(standard.formCode || '').trim() || fallback.formCode,
+    revision: String(standard.revision || '').trim() || fallback.revision,
+    // ร่างเก็บวันที่เป็น YYYY-MM-DD ส่วนเอกสารพิมพ์เป็น พ.ศ. — แปลงให้ตรงกับใบจริง
+    effectiveDate: /^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)
+      ? formatDocumentStandardEffectiveDate(effectiveDate)
+      : (effectiveDate || fallback.effectiveDate),
+    titleTh: String(standard.titleTh || '').trim() || fallback.titleTh,
+    titleEn: String(standard.titleEn || '').trim() || fallback.titleEn,
+    accentKey: resolveDocumentAccentKey(standard, docType),
+    numberingPattern: String(standard.numberingPattern || '').trim() || fallback.numberingPattern,
+  };
 }
 
 export function allocateInstallmentAmounts(total, installments = []) {
@@ -491,18 +533,18 @@ function scenarioInput(id) {
 const PREVIEW_STATUS_LABELS = { draft: 'ฉบับร่าง', approved: 'อนุมัติแล้ว', cancelled: 'ยกเลิก' };
 
 // แปลง model ตัวอย่างใบเสนอราคา → ใบสั่งขาย (FM-SA-03) สำหรับหน้า preview:
-// ต่างที่ฟอร์ม/ชื่อ/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม/accent (teal) — ข้อมูลลูกค้า+รายการใช้ร่วม
-function toSalesOrderPreviewModel(model, state) {
-  const form = DOCUMENT_FORMS.salesOrder;
+// ต่างที่ฟอร์ม/ชื่อ/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม/accent (steel) — ข้อมูลลูกค้า+รายการใช้ร่วม
+// standard = มาตรฐานใบสั่งขายที่ป้อนเข้ามา (ร่างที่กำลังแก้) ไม่ใช่ค่าตายตัวอีกต่อไป
+function toSalesOrderPreviewModel(model, state, standard) {
   const qtNumber = model.document.number;
   return {
     ...model,
-    accentKey: 'steel',
-    standard: { titleTh: 'ใบสั่งขาย', titleEn: form.title },
-    formLine: documentFormLine(form),
+    accentKey: standard.accentKey,
+    standard,
+    formLine: controlledFormLine(standard),
     document: {
       ...model.document,
-      number: 'SO-26070028-0',
+      number: previewDocumentNumber(standard),
       dateLabel: 'วันที่ SO',
       secondaryLabel: 'กำหนดชำระ',
     },
@@ -520,11 +562,14 @@ function toSalesOrderPreviewModel(model, state) {
   };
 }
 
+// options.standard = แถวมาตรฐานเอกสาร (ร่างที่กำลังแก้หรือฉบับที่เผยแพร่) — ป้อนเข้ามา
+// เพื่อให้พรีวิวสะท้อน "ค่าที่กำลังตั้ง" จริง ๆ ไม่ใช่ค่าตัวอย่างตายตัว; ไม่ส่ง = ใช้ค่าเดิม
 export function buildQuotationMasterPreview(
   scenarioId = 'standard',
   state = 'approved',
   templateVariant = DEFAULT_QUOTATION_MASTER_VARIANT,
   docType = 'quotation',
+  options = {},
 ) {
   const selectedTemplate = QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === templateVariant)
     || QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === DEFAULT_QUOTATION_MASTER_VARIANT);
@@ -573,13 +618,17 @@ export function buildQuotationMasterPreview(
       discountAmount,
     });
 
+  // มาตรฐานที่ป้อนเข้ามา (ร่างที่กำลังแก้) ทับค่าตัวอย่าง — พิมพ์รหัสแบบฟอร์มในหน้าตั้งค่า
+  // แล้วต้องเห็นผลบนหัวเอกสารทันที ไม่งั้นพรีวิวกับสิ่งที่กำลังตั้งเป็นคนละเรื่อง
+  const previewStandard = previewStandardOf(options.standard, docType);
+
   const model = {
     ...BASE_QUOTE,
     ...scenario,
-    accentKey: 'terracotta',
+    accentKey: previewStandard.accentKey,
     templateVariant: selectedTemplate.id,
     templateVersion: selectedTemplate.templateVersion,
-    standard: { ...BASE_QUOTE.standard },
+    standard: previewStandard,
     company: { ...BASE_QUOTE.company },
     customer,
     references: { ...BASE_QUOTE.references },
@@ -590,6 +639,7 @@ export function buildQuotationMasterPreview(
     ],
     document: {
       ...BASE_QUOTE.document,
+      number: previewDocumentNumber(previewStandard),
       state,
       dateLabel: 'วันที่',
       dateValue: BASE_QUOTE.document.issueDate,
@@ -614,9 +664,9 @@ export function buildQuotationMasterPreview(
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
     ],
     watermark: state === 'draft' ? 'ฉบับร่าง' : state === 'cancelled' ? 'ยกเลิก' : '',
-    formLine: controlledFormLine(BASE_QUOTE.standard),
+    formLine: controlledFormLine(previewStandard),
   };
-  return docType === 'salesOrder' ? toSalesOrderPreviewModel(model, state) : model;
+  return docType === 'salesOrder' ? toSalesOrderPreviewModel(model, state, previewStandard) : model;
 }
 
 // ── Phase 7C (Direction B): สร้าง "model แบบ V4" จาก quotation จริง ────────────
@@ -634,7 +684,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       description: line.description || '',
       note: line.metadata?.note || line.note || '',
       qty: Number(line.qty || 0),
-      unit: line.unit || '',
+      unit: line.unit || 'ชิ้น',
       unitPrice: Number(line.unitPrice || 0),
       lineTotal: Number(line.lineTotal || 0),
     }));
@@ -654,7 +704,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     address: quote.billingAddress || '-',
     shippingAddress: quote.shippingAddress || quote.billingAddress || '-',
     taxId: quote.customerTaxId || '-',
-    branch: quote.branchCode ? `สาขา ${quote.branchCode}` : 'สำนักงานใหญ่',
+    branch: quote.branchCode ? `สาขาที่ ${quote.branchCode}` : 'สำนักงานใหญ่',
     contactName: quote.contactName || '-',
     contactPhone: quote.contactPhone || '-',
   };
@@ -687,11 +737,12 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     totalsReserve: V4_TOTALS,
   });
 
-  // ลายน้ำ: ฉบับร่าง (pending) หรือ override ผ่าน options (เช่น "ยกเลิก"); อนุมัติแล้วไม่มี
-  const watermark = options.watermark
-    || (quote.approvalStatus === 'pending' ? 'ฉบับร่าง' : '');
+  // ลายน้ำ: ฉบับร่าง = ยังไม่ยื่น (not_submitted, mig 0155) หรือยื่นแล้วรออนุมัติ (pending)
+  // หรือ override ผ่าน options (เช่น "ยกเลิก"); อนุมัติแล้วไม่มีลายน้ำ
+  const preApproval = ['not_submitted', 'pending'].includes(quote.approvalStatus);
+  const watermark = options.watermark || (preApproval ? 'ฉบับร่าง' : '');
   // ผู้อนุมัติ: แสดงบล็อกลายเซ็นเมื่อมีชื่อผู้อนุมัติจริง (ไม่ใช่ฉบับร่าง)
-  const signature = quote.approvalStatus !== 'pending' && quote.approvedByName
+  const signature = !preApproval && quote.approvedByName
     ? {
       signerName: quote.approvedByName,
       signerRole: quote.approvedByRole || 'ผู้อนุมัติ',
@@ -703,18 +754,21 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     }
     : null;
 
+  // บล็อกบริษัท: ใช้ข้อมูลที่เผยแพร่ (options.company) ถ้ามี — ไม่งั้น fallback constants
+  const company = resolveCompanyBlock(options.company);
+
   return {
     templateVariant: 'v4',
     templateVersion: QUOTATION_MASTER_TEMPLATE_VERSION,
     accentKey: options.accentKey || 'terracotta',
     company: {
-      nameTh: COMPANY_LEGAL_NAME,
-      nameEn: COMPANY_LEGAL_NAME_EN,
-      address: COMPANY_ADDRESS,
-      taxId: COMPANY_TAX_ID,
-      phone: COMPANY_OFFICE_TEL,
-      line: COMPANY_LINE,
-      website: COMPANY_WEBSITE,
+      nameTh: company.legalNameTh,
+      nameEn: company.legalNameEn,
+      address: company.address,
+      taxId: company.taxId,
+      phone: company.phone,
+      line: company.line,
+      website: company.website,
     },
     standard: { titleTh: options.documentTitleTh || 'ใบเสนอราคา', titleEn: form.title },
     formLine: documentFormLine(form),
@@ -736,10 +790,22 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
     ],
     signers: options.signers || [
-      // ผู้เสนอราคา: มีรูปลายเซ็น (ดึงตอนตรึง snapshot) → stamp รูป+ชื่อ (ไม่มี Evidence
-      // เพราะไม่ได้ "เซ็น" แยกเหมือนผู้อนุมัติ); ไม่มีรูป → ช่องเซ็นเปล่าเดิม
+      // ผู้เสนอราคา: ใบที่ยื่นตั้งแต่ mig 0155 มีหลักฐานการลงนามของผู้เสนอราคา →
+      // โชว์วันที่ + Evidence เหมือนช่องผู้อนุมัติ (options.proposerEvidence);
+      // ใบเก่าที่ไม่มีหลักฐาน = stamp เชิงภาพ → signBox ข้าม 2 บรรทัดนั้นให้เอง;
+      // ไม่มีรูปเลย → ช่องเซ็นเปล่าเดิม
       options.proposerSignatureImage
-        ? { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', esignature: { imageDataUri: options.proposerSignatureImage, signerName: salesOwner === '-' ? '' : salesOwner, signerRole: '' } }
+        ? {
+          label: 'ผู้เสนอราคา',
+          role: 'พนักงานขาย',
+          esignature: {
+            imageDataUri: options.proposerSignatureImage,
+            signerName: options.proposerEvidence?.signerName || (salesOwner === '-' ? '' : salesOwner),
+            signerRole: '',
+            signedAt: options.proposerEvidence?.signedAt ? fmtDate(options.proposerEvidence.signedAt) : '',
+            evidenceId: options.proposerEvidence?.id || '',
+          },
+        }
         : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: salesOwner === '-' ? '' : salesOwner },
       { label: 'ผู้อนุมัติ', role: 'Authorized signature', esignature: signature },
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },

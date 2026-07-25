@@ -9,11 +9,15 @@ import { Signature, AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-reac
 import { useCan, useRole } from "@/lib/roleContext";
 import { can, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
 import { isGoLiveReady } from "@/lib/admin/signatureCoverage";
+import { accessState } from "@/lib/accessGate";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import AccessDenied from "@/components/ui/AccessDenied";
 import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
+
+const BACK_TO_SETTINGS = { href: "/settings", label: "กลับหน้าตั้งค่า" };
 
 const FILTERS = [
   { v: "all", label: "ทั้งหมด" },
@@ -28,7 +32,7 @@ const SEVERITY_PILL = {
   ready: { cls: "success", label: "พร้อม" },
 };
 
-const EMPTY_SUMMARY = { cohort: 0, required: 0, requiredReady: 0, blocking: 0, blockedQuotations: 0 };
+const EMPTY_SUMMARY = { cohort: 0, required: 0, requiredReady: 0, blocking: 0, blockedQuotations: 0, blockedSubmissions: 0 };
 
 export default function SignatureCoveragePage() {
   const role = useRole();
@@ -78,24 +82,27 @@ export default function SignatureCoveragePage() {
     team: (r) => r.team || "",
     openDeals: (r) => r.openDeals,
     pendingQuotations: (r) => r.pendingQuotations,
+    submittableDocs: (r) => r.submittableDocs || 0,
     hasSignature: (r) => (r.hasSignature ? 1 : 0),
   });
 
-  if (!canView) {
+  const gate = accessState(role, canView);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
     return (
-      <div className="premium-header">
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><Signature size={22} /></span> ความพร้อมลายเซ็น</h1>
-          <p>คุณไม่มีสิทธิ์เข้าถึงรายงานนี้ (เฉพาะผู้ดูแลระบบ)</p>
-        </div>
-      </div>
+      <AccessDenied
+        icon={<Signature size={22} />}
+        title="ความพร้อมลายเซ็น"
+        message="รายงานนี้สำหรับผู้ดูแลระบบเท่านั้น"
+        back={BACK_TO_SETTINGS}
+      />
     );
   }
 
   const ready = isGoLiveReady(summary);
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
+    <Workspace hideHeader back={BACK_TO_SETTINGS}>
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div className="header-content">
           <h1><span className="premium-header-icon"><Signature size={22} /></span> ความพร้อมลายเซ็น</h1>
@@ -113,6 +120,7 @@ export default function SignatureCoveragePage() {
         <KpiCard label="พร้อมแล้ว" value={summary.requiredReady} icon={CheckCircle2} tone="success" hint={`จากทั้งหมด ${summary.required} คน`} />
         <KpiCard label="บล็อกงานอยู่ตอนนี้" value={summary.blocking} icon={AlertTriangle} tone="danger" hint="มีใบรออนุมัติแต่เซ็นไม่ได้" />
         <KpiCard label="ใบเสนอราคาที่ค้าง" value={summary.blockedQuotations} icon={AlertTriangle} tone="warning" hint="รออนุมัติจากคนที่ยังไม่มีลายเซ็น" />
+        <KpiCard label="เอกสารรอยื่น" value={summary.blockedSubmissions} icon={AlertTriangle} tone="warning" hint="ผู้สร้างยังไม่มีลายเซ็น จะยื่นอนุมัติไม่ได้" />
       </div>
 
       {/* ทำไมไม่มีปุ่ม "เพิ่มลายเซ็นให้" — กันคนเข้าใจผิดว่าหน้านี้ยังทำไม่เสร็จ */}
@@ -160,6 +168,9 @@ export default function SignatureCoveragePage() {
                 <SortTh sort={sort} sortKey="team">ทีม</SortTh>
                 <SortTh sort={sort} sortKey="openDeals" style={{ textAlign: "right" }}>ดีลที่ถืออยู่</SortTh>
                 <SortTh sort={sort} sortKey="pendingQuotations" style={{ textAlign: "right" }}>ใบรออนุมัติ</SortTh>
+                {/* เส้นผู้ยื่น: เอกสารที่ตัวเองสร้างและยังค้างต้องยื่น — การกดยื่นบันทึกหลักฐาน
+                    ลายเซ็นเช่นกัน คนไม่มีลายเซ็นจะยื่นไม่ได้ */}
+                <SortTh sort={sort} sortKey="submittableDocs" style={{ textAlign: "right" }}>เอกสารรอยื่น</SortTh>
                 <SortTh sort={sort} sortKey="hasSignature">สถานะ</SortTh>
               </tr>
             </thead>
@@ -177,6 +188,9 @@ export default function SignatureCoveragePage() {
                     <td style={{ textAlign: "right" }}>{row.openDeals || "—"}</td>
                     <td style={{ textAlign: "right", fontWeight: row.pendingQuotations && !row.hasSignature ? 700 : 400, color: row.pendingQuotations && !row.hasSignature ? "var(--red)" : undefined }}>
                       {row.pendingQuotations || "—"}
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: row.submittableDocs && !row.hasSignature ? 700 : 400, color: row.submittableDocs && !row.hasSignature ? "var(--red)" : undefined }}>
+                      {row.submittableDocs || "—"}
                     </td>
                     <td><span className={`status-pill ${pill.cls}`}>{pill.label}</span></td>
                   </tr>

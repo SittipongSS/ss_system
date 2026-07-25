@@ -1,16 +1,15 @@
 "use client";
-import { useMemo, useState } from "react";
-import { ClipboardCheck, AlertCircle, Download, Search } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import { ClipboardCheck, AlertCircle, Download, Search, Maximize2, Minimize2 } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import CellDetailModal from "@/components/sahamit/CellDetailModal";
 import FilterPopover from "@/components/ui/FilterPopover";
+import Select from "@/components/ui/Select";
 import { useApiList } from "@/lib/excise/useApiList";
-import { buildReconMatrix } from "@/lib/sahamit/reconcileClient";
-import { predictShifts } from "@/lib/sahamit/predict";
-import { sahamitFetch } from "@/lib/sahamit/apiClient";
-import { toLocalISODate } from "@/lib/pm/dateHelpers";
-import { ppcOf, casesText } from "@/lib/sahamit/units";
-import { fmtMoneyCompact, fmtYearMonth } from "@/lib/format";
+import { buildReconMatrix, posByRound } from "@/lib/sahamit/reconcileClient";
+import { ppcOf, displayQty, counterpartText } from "@/lib/sahamit/units";
+import { deliveryMonthOf } from "@/lib/sahamit/po";
+import { fmtMoneyCompact, fmtDate } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 
 // token → CSS var
@@ -35,21 +34,42 @@ const VIEWS = [
 
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
 const nfBaht = (n) => fmtMoneyCompact(n);
-const URGENCY_COLOR = { high: "var(--red)", medium: "var(--amber)", low: "var(--violet)" };
-const shortMonth = (ym) => fmtYearMonth(ym);
 const volLabel = (p) => (p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "");
 
 export default function ReconcilePage() {
   const { data: rounds, loading: l1, error: e1 } = useApiList("/api/sahamit/forecast/rounds");
   const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
-  const { data: locks } = useApiList("/api/sahamit/locks");
   const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
-  const { data: predAcks, reload: reloadAcks } = useApiList("/api/sahamit/pred-ack");
   const { data: products } = useApiList("/api/sahamit/products");
+  const { data: flags } = useApiList("/api/sahamit/flags");
+  // (สินค้า||เดือน) ที่มีธง "เติมเต็มด้วย PO" (เสนอ po_filled หรือยืนยัน confirmed_filled)
+  // — ใช้เปลี่ยนช่องที่จะขึ้น "ยกเลิกแล้ว" ให้เป็น "เติมเต็มด้วย PO" แทน
+  const filledSet = useMemo(() => {
+    const s = new Set();
+    for (const f of flags || []) {
+      if (f.kind === "po_filled" || f.status === "confirmed_filled") s.add(`${f.fgCode}||${f.month}`);
+    }
+    return s;
+  }, [flags]);
+  // ยอดที่ "ยืนยันตัด/เลื่อนออก" ราย (สินค้า||เดือน) → ลดจาก peak FC ในกระทบยอด
+  // (FC ไม่หายเองเพราะรอบใหม่ไม่พูดถึง — ลดเมื่อคนยืนยันตัด/เลื่อนเท่านั้น)
+  const confirmedCuts = useMemo(() => {
+    const m = new Map();
+    for (const f of flags || []) {
+      if (f.status === "confirmed_cut" || f.status === "confirmed_shift") {
+        const k = `${f.fgCode}||${f.month}`;
+        m.set(k, (m.get(k) || 0) + Number(f.drop || 0));
+      }
+    }
+    return m;
+  }, [flags]);
   const canEdit = useCan("sahamit:edit");
   const [view, setView] = useState("recon");
+  const [unit, setUnit] = useState("piece"); // หน่วยแสดงผล (ชิ้น/ลัง)
   const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
   const [search, setSearch] = useState("");
+  const [roundSel, setRoundSel] = useState("all"); // ดูการรับ PO ในรอบ FC ที่เลือก
+  const [expanded, setExpanded] = useState(false); // ขยายกริดเต็มจอ (overlay)
   const [brands, setBrands] = useState([]);
   const [volumes, setVolumes] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -57,14 +77,31 @@ export default function ReconcilePage() {
 
   const loading = l1 || l2;
   const error = e1 || e2;
-  const matrix = useMemo(() => buildReconMatrix(rounds, pos, coverages), [rounds, pos, coverages]);
-  // Proactive shift prediction (เฟส S1): pending cells (FC, no PO) get a "✨ →month"
-  // hint colored by urgency (days to month-end). Pure — logic lives in predict.js.
-  const today = useMemo(() => toLocalISODate(new Date()), []);
-  const predictions = useMemo(() => predictShifts(rounds, pos, { today, locks }), [rounds, pos, today, locks]);
-  const ackSet = useMemo(() => new Set((predAcks || []).map((a) => `${a.fgCode}||${a.month}`)), [predAcks]);
 
-  // fgCode → product (แบรนด์/ปริมาตร/ราคาโรงงาน) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
+  // ★ กระทบยอด = มุมมอง "สะสม" ชุดเดียวเสมอ (แหล่งความจริง): FC = peak − ยืนยันตัด/เลื่อน,
+  // PO = ทั้งหมด. ไม่ re-scope ตามรอบ เพราะ FC/PO คาสเคดข้ามรอบ การกระทบรายรอบจะเพี้ยน
+  // และตัวเลข "เด้ง". ตัวเลขในกริดจึงนิ่งเสมอ — การยืนยันตัด/เลื่อนอยู่ครบตลอด.
+  const matrix = useMemo(() => buildReconMatrix(rounds, pos, coverages, confirmedCuts), [rounds, pos, coverages, confirmedCuts]);
+
+  // ดรอปดาวน์ "รอบ FC" = ไฮไลต์อย่างเดียว (ไม่แตะตัวเลข): เลือกรอบแล้วตีกรอบช่องที่ PO
+  // "รับในรอบนั้น" มาลง (จับด้วยวันรับ PO อยู่ในช่วงระหว่างรอบ). ตอบ "รอบนี้มี PO อะไรเข้า".
+  const roundData = useMemo(() => posByRound(rounds, pos), [rounds, pos]);
+  const selectedWindow = roundSel !== "all" ? roundData.windows.find((w) => String(w.roundNo) === String(roundSel)) : null;
+  const selectedPos = roundSel !== "all" ? (roundData.byRound.get(Number(roundSel))?.pos || []) : [];
+  const highlightCells = useMemo(() => {
+    const s = new Set();
+    if (roundSel === "all") return s;
+    for (const po of roundData.byRound.get(Number(roundSel))?.pos || []) {
+      for (const l of po.lines || []) {
+        if (l.status === "cancelled") continue;
+        const m = l.deliveryMonth || deliveryMonthOf(l);
+        if (m) s.add(`${l.fgCode}||${m}`);
+      }
+    }
+    return s;
+  }, [roundSel, roundData]);
+
+  // fgCode → product (แบรนด์/ปริมาตร/ราคาผลิต) จาก master; ใช้ทั้งคอลัมน์สินค้า + แถวมูลค่า.
   const productByFg = useMemo(() => {
     const m = new Map();
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
@@ -112,7 +149,7 @@ export default function ReconcilePage() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [filteredRows, productByFg]);
 
-  // มูลค่ารายเดือน (ราคา×จำนวน) — คิดตามแถวที่แสดง (หลังกรอง). ราคา = ราคาโรงงาน
+  // มูลค่ารายเดือน (ราคา×จำนวน) — คิดตามแถวที่แสดง (หลังกรอง). ราคา = ราคาผลิต
   // (costPrice) จาก products — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
   const valueSummary = useMemo(() => {
     const byMonth = {};
@@ -137,47 +174,34 @@ export default function ReconcilePage() {
   // Click a cell → open the detail modal (แทนการเด้งไปหน้าเต็ม).
   const openCell = (fg, m) => setCellSel({ fg, m });
 
-  // "ดูแล้ว" ป้ายคาดการณ์ (ปิด/เปิดเตือน) — S4
-  const toggleAck = async (fg, m, isAcked) => {
-    try {
-      await sahamitFetch("/api/sahamit/pred-ack", {
-        method: isAcked ? "DELETE" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fgCode: fg, month: m }),
-      });
-      reloadAcks();
-    } catch (e) { alert(e.message); }
-  };
-
   const renderCell = (cell, fg, m) => {
     if (!cell || cell.status === "none") {
       return <td key={m} style={{ textAlign: "center", color: "var(--text-3)", padding: "6px 5px" }}>·</td>;
     }
+    const ppc = ppcOf(productOf(fg)); // สำหรับแปลงหน่วยแสดงผล ชิ้น/ลัง
     const hasCov = cell.coverageIn > 0 || cell.coverageOut > 0;
-    const pred = predictions.get(`${fg}||${m}`);
-    const acked = pred && ackSet.has(`${fg}||${m}`);
-    const predBadge = pred ? (
-      <div
-        style={{ fontSize: 9.5, fontWeight: acked ? 400 : 600, color: acked ? "var(--text-3)" : URGENCY_COLOR[pred.urgency], display: "flex", alignItems: "center", justifyContent: "center", gap: 2, marginTop: 2, whiteSpace: "nowrap", opacity: acked ? 0.7 : 1 }}
-        title={acked ? `ดูแล้ว (ปิดเตือน) · คาดว่าจะเลื่อนไป ${pred.toMonth}` : `ระบบคาดว่าจะเลื่อนไป ${pred.toMonth} (${pred.pattern}) · เหลือ ${pred.daysLeft} วันถึงสิ้นเดือน · ยังไม่มี PO`}
-      >
-        <span style={{ fontSize: 10 }}>{acked ? "👁" : "✨"}</span> →{shortMonth(pred.toMonth)}
-      </div>
-    ) : null;
+    // ช่องที่จะขึ้น "ยกเลิกแล้ว" แต่มีธง "เติมเต็มด้วย PO" → แสดงเป็นเติมเต็ม (เขียว)
+    // แทน — FC ที่หายเพราะ PO มารับ ไม่ใช่ลูกค้ายกเลิก (ใช้สไตล์ 'covered').
+    const isFilled = cell.status === "cancelled" && filledSet.has(`${fg}||${m}`);
+    const dispStatus = isFilled ? "covered" : cell.status;
+    const dispLabel = isFilled ? "เติมเต็มด้วย PO" : cell.label;
     const badges = hasCov ? (
       <span style={{ position: "absolute", top: 3, left: 4, fontSize: 9, lineHeight: 1, color: "var(--blue)" }} title={`ชดเชย FC ข้ามเดือน (รับ FC ${nf(cell.coverageIn)} / ส่ง FC ${nf(cell.coverageOut)}) · PO อยู่กับที่`}>⇄</span>
     ) : null;
+    // ไฮไลต์: ช่องที่ PO "รับในรอบ FC ที่เลือก" มาลง (ตีกรอบสีส้ม + จุด) — ไม่แตะตัวเลข
+    const isHl = highlightCells.has(`${fg}||${m}`);
+    const hlStyle = isHl ? { outline: "2px solid var(--accent)", outlineOffset: "-2px", borderRadius: 6 } : null;
+    const hlBadge = isHl ? <span style={{ position: "absolute", top: 3, right: 4, width: 7, height: 7, borderRadius: "50%", background: "var(--accent)" }} title="PO ที่รับในรอบที่เลือก" /> : null;
     // Single-value views (FC / PO): one number, but colored by reconcile status
     // (เขียว=ครบ / แดง=รอ PO / เหลือง=ไม่ครบ ฯลฯ) เหมือนมุมมอง FC vs PO.
     if (view === "fc" || view === "po") {
       const val = view === "fc" ? cell.fcQty : cell.poQty;
       return (
         <td key={m} style={{ padding: "5px 5px" }}>
-          <div className={`grid-cell-box ${cell.status}`} onClick={() => openCell(fg, m)} title={cell.label} style={{ position: "relative", alignItems: "center", minWidth: 84 }}>
-            {badges}
-            <span className="cell-val fc" style={{ fontSize: 14, fontWeight: 600 }}>{val ? nf(val) : "·"}</span>
-            <span className="cell-status-tag">{cell.label}</span>
-            {view === "fc" && predBadge}
+          <div className={`grid-cell-box ${dispStatus}`} onClick={() => openCell(fg, m)} title={dispLabel} style={{ position: "relative", alignItems: "center", minWidth: 84, ...hlStyle }}>
+            {badges}{hlBadge}
+            <span className="cell-val fc" style={{ fontSize: 14, fontWeight: 600 }}>{displayQty(val, ppc, unit, { dot: true })}</span>
+            <span className="cell-status-tag">{dispLabel}</span>
           </div>
         </td>
       );
@@ -186,28 +210,52 @@ export default function ReconcilePage() {
     return (
       <td key={m} style={{ padding: "5px 5px" }}>
         <div
-          className={`grid-cell-box ${cell.status}`}
+          className={`grid-cell-box ${dispStatus}`}
           onClick={() => openCell(fg, m)}
-          title={cell.label}
-          style={{ position: "relative" }}
+          title={dispLabel}
+          style={{ position: "relative", ...hlStyle }}
         >
-          {badges}
+          {badges}{hlBadge}
           <div className="cell-value-line">
             <span className="cell-lbl">FC</span>
             <span className="cell-val fc">
-              {nf(cell.fcQty)}
+              {displayQty(cell.fcQty, ppc, unit)}
               {cell.originalFc != null && cell.originalFc !== cell.fcQty && (
-                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 10, marginLeft: 3 }}>{nf(cell.originalFc)}</span>
+                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: 400, fontSize: 10, marginLeft: 3 }}>{displayQty(cell.originalFc, ppc, unit)}</span>
               )}
             </span>
           </div>
-          <div className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{nf(cell.poQty)}</span></div>
-          <span className="cell-status-tag">{cell.label}</span>
-          {predBadge}
+          <div className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{displayQty(cell.poQty, ppc, unit)}</span></div>
+          <span className="cell-status-tag">{dispLabel}</span>
         </div>
       </td>
     );
   };
+
+  // ปิดโหมดเต็มจอด้วย Esc + ล็อกสกรอลล์พื้นหลังระหว่างเต็มจอ
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e) => { if (e.key === "Escape") setExpanded(false); };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [expanded]);
+
+  // ตัวสลับมุมมอง FC/PO + หน่วย ชิ้น/ลัง — ใช้ทั้งใน header และแถบเครื่องมือตอนเต็มจอ
+  const viewUnitControls = (
+    <>
+      <div className="segmented">
+        {VIEWS.map((v) => (
+          <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
+        ))}
+      </div>
+      <div className="segmented" title="หน่วยแสดงผล">
+        <button className={unit === "piece" ? "active" : ""} onClick={() => setUnit("piece")}>ชิ้น</button>
+        <button className={unit === "case" ? "active" : ""} onClick={() => setUnit("case")}>ลัง</button>
+      </div>
+    </>
+  );
 
   return (
     <Workspace
@@ -216,11 +264,12 @@ export default function ReconcilePage() {
       subtitle="สถานะ FC / PO รายสินค้า × เดือน (ลูกค้า AR-109)"
       headerRight={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div className="segmented">
-            {VIEWS.map((v) => (
-              <button key={v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
-            ))}
-          </div>
+          {viewUnitControls}
+          {matrix.rows.length > 0 && (
+            <button className="btn ghost" onClick={() => setExpanded(true)} title="ขยายกริดเต็มจอ">
+              <Maximize2 size={16} /> เต็มจอ
+            </button>
+          )}
           <button className="btn ghost" onClick={() => {
             const p = new URLSearchParams({ view: "reconcile" });
             if (brands.length) p.set("brands", brands.join(","));
@@ -249,6 +298,26 @@ export default function ReconcilePage() {
               { key: "category", label: "หมวดสินค้า", options: filterOptions.categories, selected: categories, onChange: setCategories },
             ]}
           />
+          {roundData.windows.length > 0 && (
+            <Select
+              value={roundSel}
+              onChange={(e) => setRoundSel(e.target.value)}
+              title="ไฮไลต์ช่องที่ PO รับในรอบ FC (ไม่เปลี่ยนตัวเลข)"
+              options={[
+                { value: "all", label: "ไฮไลต์ตามรอบ…" },
+                ...[...roundData.windows].sort((a, b) => (b.roundNo || 0) - (a.roundNo || 0)).map((w) => ({
+                  value: String(w.roundNo),
+                  label: `รอบ #${w.roundNo} · รับ ${fmtDate(w.start, { short: true })}`,
+                })),
+              ]}
+            />
+          )}
+          {selectedWindow && (
+            <span className="ui-badge" style={{ fontSize: 12, color: "var(--accent)", borderColor: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              ◻ ไฮไลต์รอบ #{selectedWindow.roundNo} · PO ที่รับ {fmtDate(selectedWindow.start, { short: true })}–{selectedWindow.end ? fmtDate(selectedWindow.end, { short: true }) : "ปัจจุบัน"} ({selectedPos.length} ใบ)
+              <button onClick={() => setRoundSel("all")} title="ล้างไฮไลต์" style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", display: "flex", padding: 0 }}>✕</button>
+            </span>
+          )}
           {(filterCount > 0 || q) && <span style={{ fontSize: 12, color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
         </div>
       )}
@@ -267,7 +336,20 @@ export default function ReconcilePage() {
           <div style={{ fontSize: 13, marginTop: 6 }}>เพิ่มรอบ FC หรือ PO ก่อน</div>
         </div>
       ) : (
-        <>
+        <div className={expanded ? "recon-fs" : undefined}>
+          {expanded && (
+            <div className="recon-fs-bar">
+              <ClipboardCheck size={18} style={{ color: "var(--accent)" }} />
+              <strong style={{ fontSize: 14 }}>กระทบยอด</strong>
+              {selectedWindow && (
+                <span className="ui-badge" style={{ fontSize: 12, color: "var(--accent)", borderColor: "var(--accent)" }}>รอบ #{selectedWindow.roundNo}</span>
+              )}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
+                {viewUnitControls}
+                <button className="btn ghost" onClick={() => setExpanded(false)} title="ย่อ (Esc)"><Minimize2 size={16} /> ย่อ</button>
+              </div>
+            </div>
+          )}
           {/* Legend */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14, fontSize: 12 }}>
             {LEGEND.map((x) => (
@@ -277,6 +359,12 @@ export default function ReconcilePage() {
               </span>
             ))}
             {view === "recon" && <span style={{ color: "var(--text-3)" }}>· แต่ละช่อง: บน=FC ล่าง=PO · คลิกเพื่อดูรายละเอียด</span>}
+            {selectedWindow && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--accent)" }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, border: "2px solid var(--accent)" }} />
+                PO ที่รับในรอบ #{selectedWindow.roundNo}
+              </span>
+            )}
           </div>
 
           <div className="reconciliation-container">
@@ -311,8 +399,8 @@ export default function ReconcilePage() {
                         </td>
                         {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
                         <td style={{ textAlign: "right", verticalAlign: "middle" }}>
-                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {nf(r.fcTotal)}{casesText(r.fcTotal, ppcOf(p)) ? ` · ${casesText(r.fcTotal, ppcOf(p))}` : ""}</div>
-                          <div style={{ fontWeight: 700 }}>PO {nf(r.poTotal)}{casesText(r.poTotal, ppcOf(p)) ? ` · ${casesText(r.poTotal, ppcOf(p))}` : ""}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>FC {displayQty(r.fcTotal, ppcOf(p), unit)}{counterpartText(r.fcTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.fcTotal, ppcOf(p), unit)}` : ""}</div>
+                          <div style={{ fontWeight: 700 }}>PO {displayQty(r.poTotal, ppcOf(p), unit)}{counterpartText(r.poTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.poTotal, ppcOf(p), unit)}` : ""}</div>
                         </td>
                       </tr>
                     );
@@ -353,7 +441,7 @@ export default function ReconcilePage() {
               </tfoot>
             </table>
           </div>
-        </>
+        </div>
       )}
 
       <CellDetailModal
@@ -365,11 +453,8 @@ export default function ReconcilePage() {
         rounds={rounds}
         pos={pos}
         coverages={coverages}
-        prediction={cellSel ? predictions.get(`${cellSel.fg}||${cellSel.m}`) || null : null}
         product={cellSel ? productOf(cellSel.fg) : null}
-        acked={cellSel ? ackSet.has(`${cellSel.fg}||${cellSel.m}`) : false}
         canEdit={canEdit}
-        onToggleAck={() => cellSel && toggleAck(cellSel.fg, cellSel.m, ackSet.has(`${cellSel.fg}||${cellSel.m}`))}
         onCoverageChanged={reloadCoverages}
       />
     </Workspace>

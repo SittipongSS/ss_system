@@ -32,7 +32,7 @@ export default function ProductRegistry() {
   const canMargin = useCan("products:margin");
   const role = useRole();
   const myTeam = useTeam();
-  // ราคาโรงงานเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin หรือผู้ที่ได้รับสิทธิ์
+  // ราคาผลิตเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin หรือผู้ที่ได้รับสิทธิ์
   // products:margin (เช่น SA ที่ทำรายงานผู้บริหาร). ใช้ useCan เพื่อให้ตรงกับ redactProductMargin
   // ฝั่ง server (รวม per-user grant) — ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์.
   const canSeeCost = canEdit || canMargin;
@@ -144,6 +144,27 @@ export default function ProductRegistry() {
     setFormData(emptyForm);
     setShowForm(true);
   };
+
+  // prefill จากใบขอราคาผลิต (มติ 2026-07-23 — "ไปต่อ" กรอกฟอร์มให้เกือบหมด):
+  // หน้า costing stash ข้อมูลไว้ใน sessionStorage แล้วส่ง ?prefill=costing มา
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("prefill") !== "costing") return;
+    let data = null;
+    try { data = JSON.parse(sessionStorage.getItem("costingFgPrefill") || "null"); } catch { data = null; }
+    sessionStorage.removeItem("costingFgPrefill");
+    if (!data) return;
+    // เติมเฉพาะช่องที่ฟอร์มสินค้ามีจริง — ชื่อสินค้าจากรายการในใบขอราคา
+    // (ประกอบกลิ่นเข้าไปในชื่อถ้ามี ช่วยให้ไม่ต้องพิมพ์ซ้ำ) เซลเติมรหัส FG + ลูกค้าเอง
+    const desc = [data.productDescription, data.fragranceName].filter(Boolean).join(" · ");
+    setFormData({ ...emptyForm, productDescription: desc });
+    setShowForm(true);
+    // ล้าง query ออกจาก URL กัน prefill ซ้ำตอน refresh
+    window.history.replaceState({}, "", window.location.pathname);
+    // emptyForm คงที่ตลอดอายุหน้า — รันครั้งเดียวตอน mount พอ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -376,7 +397,7 @@ export default function ProductRegistry() {
                 </div>
                 {canSeeCost && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--text-3)]">ราคาโรงงาน</span>
+                    <span className="text-[var(--text-3)]">ราคาผลิต</span>
                     <span className="font-mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</span>
                   </div>
                 )}
@@ -418,7 +439,7 @@ export default function ProductRegistry() {
                   <SortTh label="หมวดหมู่" sortKey="category" sort={sort} />
                   <SortTh label="แบรนด์" sortKey="brand" sort={sort} />
                   <SortTh label="ปริมาตร" sortKey="volume" sort={sort} className="num" />
-                  {canSeeCost && <SortTh label="ราคาโรงงาน" sortKey="cost" sort={sort} className="num" />}
+                  {canSeeCost && <SortTh label="ราคาผลิต" sortKey="cost" sort={sort} className="num" />}
                   <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
                   <th>สถานะ</th>
                 </tr>

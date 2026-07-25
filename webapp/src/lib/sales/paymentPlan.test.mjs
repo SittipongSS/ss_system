@@ -22,12 +22,15 @@ test('computeInstallments: ยอดรวมทุกงวด = total พอ�
   assert.equal(r2.reduce((s, r) => s + r.amount, 0), 100);
 });
 
-test('validatePaymentPlan: full ผ่านเสมอ / installment ต้องรวม 100 + 2–6 งวด', () => {
+test('validatePaymentPlan: full ผ่านเสมอ / installment ต้องรวม 100 + 1–6 งวด', () => {
   assert.equal(validatePaymentPlan(null).ok, true);
   assert.equal(validatePaymentPlan({ type: 'full' }).ok, true);
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: 50 }, { percent: 50 }] }).ok, true);
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: 50 }, { percent: 40 }] }).ok, false); // รวม 90
-  assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: 100 }] }).ok, false); // 1 งวด
+  // 1 งวด 100% ใช้ได้แล้ว — ชุดการชำระแบบ "ชำระเต็มจำนวน" ในคลังมาในรูปนี้ และแถวเดียว
+  // ยังพาเงื่อนไขเริ่มชำระ/กำหนดชำระไปโผล่บนเอกสารได้ ต่างจาก type:'full' ที่ไม่เก็บแถว
+  assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: 100 }] }).ok, true);
+  assert.equal(validatePaymentPlan({ type: 'installment', installments: [] }).ok, false); // ไม่มีงวดเลย
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: -10 }, { percent: 110 }] }).ok, false); // ติดลบ
   assert.equal(validatePaymentPlan({ type: 'weird' }).ok, false);
 });

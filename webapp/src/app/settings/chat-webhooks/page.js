@@ -4,14 +4,19 @@
 // ไม่ใช้ชั้นร่าง/เผยแพร่) — บันทึกต่อ space ผ่าน ConfirmDialog เสมอ (ไม่มี auto-save)
 import { useEffect, useState } from "react";
 import { BellRing, Info, Save, Send } from "lucide-react";
+import AccessDenied from "@/components/ui/AccessDenied";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
+import { accessState } from "@/lib/accessGate";
 import { fmtDateTime } from "@/lib/format";
 
+const BACK_TO_SETTINGS = { href: "/settings", label: "กลับหน้าตั้งค่า" };
+
 export default function ChatWebhooksPage() {
+  const role = useRole();
   const canManage = useCan("master:manage");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -73,16 +78,23 @@ export default function ChatWebhooksPage() {
     setBusyKey("");
   };
 
-  if (!canManage) {
+  // proxy เปิด URL นี้ให้ทุก role (คงสิทธิ์เดิมตอนย้ายมาจาก /database) — คนที่ไม่ใช่
+  // ผู้ดูแลระบบจึงเปิดเข้ามาได้จริง ต้องมีทางกลับเสมอ ไม่ใช่กล่องข้อความลอย ๆ
+  const gate = accessState(role, canManage);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
     return (
-      <div className="glass-panel" style={{ padding: 40, textAlign: "center", color: "var(--text-3)" }}>
-        หน้านี้สำหรับผู้ดูแลระบบ (supervisor) เท่านั้น
-      </div>
+      <AccessDenied
+        icon={<BellRing size={22} />}
+        title="แจ้งเตือน Google Chat"
+        message="หน้านี้สำหรับผู้ดูแลระบบเท่านั้น"
+        back={BACK_TO_SETTINGS}
+      />
     );
   }
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
+    <Workspace hideHeader back={BACK_TO_SETTINGS}>
       <div className="premium-header">
         <div className="header-content">
           <h1>

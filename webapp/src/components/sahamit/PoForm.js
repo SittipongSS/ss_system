@@ -11,7 +11,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { DestinationToggle } from "@/components/sahamit/destinations";
 import { productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
-import { ppcOf, casesText } from "@/lib/sahamit/units";
+import { ppcOf, casesText, convertEntryUnit } from "@/lib/sahamit/units";
 
 export const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -33,6 +33,11 @@ export const poToForm = (po) => ({
   })),
 });
 
+// ราคา/มูลค่าบน PO อ่านอย่างเดียว — ยึดราคาผลิต (costPrice) จาก master แก้ไม่ได้
+// (มติ: ห้ามแก้ราคาในสหมิตร). มูลค่า = จำนวนชิ้น × ราคา/ชิ้น; VAT 7% ท้ายเอกสาร.
+const VAT_RATE = 0.07;
+const nfBaht = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export default function PoForm({
   header, onHeader,          // {poNumber,...}, (patch) => void
   rows, onRows,              // [{id?, fgCode, qty, ...}], (nextRows) => void
@@ -41,6 +46,9 @@ export default function PoForm({
   // สลับหน่วยได้เฉพาะตอนสร้าง: DB เก็บเป็นชิ้น ถ้าหน้าแก้โหลด 120 (ชิ้น) มาแล้วผู้ใช้
   // กดเป็น "ลัง" เลขเดิมจะถูกตีความใหม่เป็น 120 ลัง = ข้อมูลเพี้ยนเงียบ ๆ
   allowUnitToggle = true,
+  // บันทึกย้อนหลัง (เฉพาะหน้าสร้าง): { delivered, deliveredDate } + onBackfill(patch).
+  // ส่ง null = ไม่โชว์ (หน้าแก้สถานะทำรายบรรทัดที่หน้ารายละเอียด PO อยู่แล้ว)
+  backfill = null, onBackfill = () => {},
   lockOf = () => null,       // (row) => เหตุผลที่ล็อก | null — หน้าสร้างไม่ส่ง = แก้ได้หมด
   disabled = false,
 }) {
@@ -52,6 +60,22 @@ export default function PoForm({
     return m;
   }, [products]);
   const ppcForRow = (r) => ppcOf(r.known ? productIndex.get(String(r.fgCode).trim().toLowerCase()) : null);
+
+  // ราคา/ชิ้น จาก master (costPrice) — อ่านอย่างเดียว; มูลค่าบรรทัด = จำนวนชิ้น × ราคา
+  const masterPrice = (r) => {
+    const v = Number(productIndex.get(String(r.fgCode).trim().toLowerCase())?.price);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  };
+  const piecesOf = (r) => {
+    const n = Number(r.qty);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (entryUnit === "case") { const ppc = ppcForRow(r); return ppc ? n * ppc : 0; }
+    return n;
+  };
+  const lineValue = (r) => piecesOf(r) * masterPrice(r);
+  const subtotal = useMemo(() => rows.reduce((s, r) => s + lineValue(r), 0), [rows, entryUnit, productIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  const vat = subtotal * VAT_RATE;
+  const grand = subtotal + vat;
 
   const set = (k) => (v) => onHeader({ [k]: v });
 
@@ -65,6 +89,14 @@ export default function PoForm({
   };
   const setQty = (ri, v) => onRows(rows.map((r, i) => (i === ri ? { ...r, qty: v } : r)));
   const removeRow = (ri) => onRows(rows.filter((_, i) => i !== ri));
+
+  // สลับหน่วยกรอก ชิ้น⇄ลัง แล้วแปลงตัวเลขทุกแถวตาม (คงจำนวนชิ้นจริง) — ไม่ใช่แค่
+  // เปลี่ยนป้ายหน่วยแล้วตีความใหม่. SKU ที่ยังไม่รู้ชิ้นต่อลังคงค่าเดิม (missingPpc กันตอนบันทึก).
+  const changeUnit = (next) => {
+    if (next === entryUnit) return;
+    onRows(rows.map((r) => ({ ...r, qty: convertEntryUnit(r.qty, entryUnit, next, ppcForRow(r)) })));
+    onEntryUnit(next);
+  };
 
   const hasUnknown = rows.some((r) => !r.known);
   const lockedCount = rows.filter((r) => lockOf(r)).length;
@@ -129,15 +161,36 @@ export default function PoForm({
         </div>
       </div>
 
+      {backfill && (
+        <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", flexDirection: "column", gap: 10 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: disabled ? "default" : "pointer" }}>
+            <input
+              type="checkbox"
+              checked={!!backfill.delivered}
+              disabled={disabled}
+              onChange={(e) => onBackfill({ delivered: e.target.checked })}
+            />
+            บันทึกย้อนหลัง — PO นี้ส่งของครบแล้ว (ทุกบรรทัดขึ้นสถานะ “ส่งแล้ว”)
+          </label>
+          {backfill.delivered && (
+            <div className="form-group" style={{ maxWidth: 240, margin: 0 }}>
+              <label>วันที่ส่งมอบจริง</label>
+              <DateInput value={backfill.deliveredDate || ""} onChange={(v) => onBackfill({ deliveredDate: v })} disabled={disabled} />
+              <span style={{ fontSize: 11, color: "var(--text-3)" }}>เว้นว่าง = ใช้กำหนดรับของ หรือวันที่รับ PO</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {rows.length > 0 && allowUnitToggle && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "var(--text-2)" }}>กรอกจำนวนเป็น:</span>
           <div className="segmented">
-            <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => onEntryUnit("piece")}>ชิ้น</button>
-            <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => onEntryUnit("case")}>ลัง</button>
+            <button type="button" className={entryUnit === "piece" ? "active" : ""} onClick={() => changeUnit("piece")}>ชิ้น</button>
+            <button type="button" className={entryUnit === "case" ? "active" : ""} onClick={() => changeUnit("case")}>ลัง</button>
           </div>
           <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-            {entryUnit === "case" ? "ระบบจะคูณ “ชิ้นต่อลัง” แล้วเก็บเป็นชิ้น" : "เก็บตามที่กรอก (ชิ้น)"}
+            {entryUnit === "case" ? "สลับหน่วยแล้วเลขแปลงตามอัตโนมัติ · ระบบเก็บเป็นชิ้น (คูณชิ้นต่อลัง)" : "เก็บตามที่กรอก (ชิ้น)"}
           </span>
         </div>
       )}
@@ -157,7 +210,13 @@ export default function PoForm({
         <div className="premium-table-wrapper">
           <table className="premium-table">
             <thead>
-              <tr><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style={{ textAlign: "right" }}>จำนวน ({entryUnit === "case" ? "ลัง" : "ชิ้น"})</th><th></th></tr>
+              <tr>
+                <th>รหัสสินค้า</th><th>ชื่อสินค้า</th>
+                <th style={{ textAlign: "right" }}>จำนวน ({entryUnit === "case" ? "ลัง" : "ชิ้น"})</th>
+                <th style={{ textAlign: "right" }}>ราคา/ชิ้น (฿)</th>
+                <th style={{ textAlign: "right" }}>มูลค่า (฿)</th>
+                <th></th>
+              </tr>
             </thead>
             <tbody>
               {rows.map((r, ri) => {
@@ -185,6 +244,10 @@ export default function PoForm({
                         return hint ? <div style={{ fontSize: 10, color: "var(--text-3)" }}>{hint}</div> : null;
                       })()}
                     </td>
+                    <td style={{ textAlign: "right", color: masterPrice(r) ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>
+                      {masterPrice(r) ? nfBaht(masterPrice(r)) : "—"}
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{lineValue(r) ? nfBaht(lineValue(r)) : "—"}</td>
                     <td style={{ textAlign: "center" }}>
                       {lock
                         ? <Lock size={13} style={{ color: "var(--text-3)" }} aria-label={`ล็อก: ${lock}`} />
@@ -194,6 +257,13 @@ export default function PoForm({
                 );
               })}
             </tbody>
+            {subtotal > 0 && (
+              <tfoot>
+                <tr><td colSpan={4} style={{ textAlign: "right", color: "var(--text-2)" }}>รวมก่อน VAT</td><td style={{ textAlign: "right", fontWeight: 600 }}>{nfBaht(subtotal)}</td><td /></tr>
+                <tr><td colSpan={4} style={{ textAlign: "right", color: "var(--text-2)" }}>VAT 7%</td><td style={{ textAlign: "right" }}>{nfBaht(vat)}</td><td /></tr>
+                <tr><td colSpan={4} style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>ยอดสุทธิ (รวม VAT)</td><td style={{ textAlign: "right", fontWeight: 700, borderTop: "2px solid var(--border)" }}>{nfBaht(grand)}</td><td style={{ borderTop: "2px solid var(--border)" }} /></tr>
+              </tfoot>
+            )}
           </table>
         </div>
       )}
