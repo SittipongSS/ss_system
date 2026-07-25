@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
+import ReadableText from "@/components/ui/ReadableText";
 import { useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { canManageCommercialPresets } from "@/lib/permissions";
@@ -162,20 +163,20 @@ function PresetPreview({ kind, row }) {
       {kind === "payment" ? (
         <>
           <dl>
-            <div><dt>วิธีชำระเงิน</dt><dd>{row?.paymentMethod || "-"}</dd></div>
-            <div><dt>รายละเอียดการชำระ</dt><dd>{row?.paymentTerms || "-"}</dd></div>
+            <div><dt>วิธีชำระเงิน</dt><dd><ReadableText text={row?.paymentMethod} lines={3} empty="-" /></dd></div>
+            <div><dt>รายละเอียดการชำระ</dt><dd><ReadableText text={row?.paymentTerms} lines={5} empty="-" /></dd></div>
           </dl>
           {installments.length > 0 && (
             <div className={styles.previewTable}>
               <table>
                 <thead><tr><th>{isFullPaymentPlan(installments) ? "การชำระ" : "งวด"}</th><th>%</th><th>เงื่อนไข / กำหนดชำระ</th></tr></thead>
-                <tbody>{installments.map((item, index) => <tr key={index}><td>{item.label}</td><td>{Number(item.percent).toFixed(2)}</td><td>{[item.trigger, item.dueRule, item.note].filter(Boolean).join(" · ") || "-"}</td></tr>)}</tbody>
+                <tbody>{installments.map((item, index) => <tr key={index}><td><ReadableText text={item.label} lines={2} empty="-" /></td><td>{Number(item.percent).toFixed(2)}</td><td><ReadableText text={[item.trigger, item.dueRule, item.note].filter(Boolean).join(" · ")} lines={3} empty="-" /></td></tr>)}</tbody>
               </table>
             </div>
           )}
         </>
       ) : (
-        <dl><div><dt>รายละเอียดหมายเหตุ</dt><dd>{row?.remarks || "-"}</dd></div></dl>
+        <dl><div><dt>รายละเอียดหมายเหตุ</dt><dd><ReadableText text={row?.remarks} lines={5} empty="-" /></dd></div></dl>
       )}
     </div>
   );
@@ -432,7 +433,7 @@ export default function CommercialPresetsPage() {
                 <div><dt>สถานะ</dt><dd>{commercialPresetStatusLabel(drawerRow.status)}</dd></div>
                 <div><dt>ผู้ดำเนินการ</dt><dd>{actorOf(drawerRow)}</dd></div>
                 <div><dt>เวลาล่าสุด</dt><dd>{formatDateTime(drawerRow.publishedAt || drawerRow.archivedAt || drawerRow.updatedAt)}</dd></div>
-                <div><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd>{drawerRow.changeNote || "-"}</dd></div>
+                <div><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd><ReadableText text={drawerRow.changeNote} lines={4} empty="-" /></dd></div>
               </dl>
             </section>
             <section className={styles.historySection}>

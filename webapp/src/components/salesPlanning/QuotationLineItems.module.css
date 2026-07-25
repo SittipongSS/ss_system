@@ -85,9 +85,17 @@
 }
 
 .noteReadonly {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 5px;
   color: var(--text-3);
   font-size: 12.5px;
-  white-space: pre-wrap;
+}
+
+.noteReadonly strong {
+  font-weight: 650;
 }
 
 .totalsWrap {

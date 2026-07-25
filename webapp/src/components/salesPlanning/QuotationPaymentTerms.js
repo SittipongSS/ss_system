@@ -1,6 +1,7 @@
 "use client";
 
 import { CircleDollarSign, Plus, Trash2 } from "lucide-react";
+import ReadableText from "@/components/ui/ReadableText";
 import {
   MAX_INSTALLMENTS,
   computeInstallments,
@@ -113,13 +114,31 @@ export default function QuotationPaymentTerms({
       </div>
 
       <div className={styles.paymentTermsGrid}>
-        <label>วิธีการชำระเงิน
-          <input className="premium-input" value={payment.paymentMethod} disabled={disabled} placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด" onChange={(event) => update({ paymentMethod: event.target.value })} />
-        </label>
-        <label>ข้อความเงื่อนไขชำระ
-          <textarea className="premium-input" rows={3} value={payment.paymentTerms} disabled={disabled} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ" onChange={(event) => update({ paymentTerms: event.target.value })} />
-          {!disabled && payment.type === "installment" && <button type="button" className={styles.fillTermsButton} onClick={fillTerms}>สร้างข้อความจากงวด</button>}
-        </label>
+        {disabled ? (
+          <div className={styles.paymentField}>
+            <span className={styles.paymentFieldLabel}>วิธีการชำระเงิน</span>
+            <div className="readable-field">
+              <ReadableText text={payment.paymentMethod} lines={3} empty={<span className="readable-field-empty">ไม่ได้ระบุ</span>} />
+            </div>
+          </div>
+        ) : (
+          <label>วิธีการชำระเงิน
+            <input className="premium-input" value={payment.paymentMethod} placeholder="เช่น โอนเงินเข้าบัญชีธนาคาร / เช็ค / เงินสด" onChange={(event) => update({ paymentMethod: event.target.value })} />
+          </label>
+        )}
+        {disabled ? (
+          <div className={styles.paymentField}>
+            <span className={styles.paymentFieldLabel}>ข้อความเงื่อนไขชำระ</span>
+            <div className="readable-field">
+              <ReadableText text={payment.paymentTerms} lines={5} empty={<span className="readable-field-empty">ไม่ได้ระบุ</span>} />
+            </div>
+          </div>
+        ) : (
+          <label>ข้อความเงื่อนไขชำระ
+            <textarea className="premium-input" rows={3} value={payment.paymentTerms} placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน · ส่วนที่เหลือก่อนส่งมอบ" onChange={(event) => update({ paymentTerms: event.target.value })} />
+            {payment.type === "installment" && <button type="button" className={styles.fillTermsButton} onClick={fillTerms}>สร้างข้อความจากงวด</button>}
+          </label>
+        )}
       </div>
 
       {payment.type === "installment" && (
@@ -137,10 +156,14 @@ export default function QuotationPaymentTerms({
                 {payment.installments.map((row, index) => (
                   <tr key={index} className="premium-row">
                     <td className={styles.rowNumber}>{index + 1}</td>
-                    <td><input className="premium-input" value={row.label} disabled={disabled} placeholder={`งวดที่ ${index + 1}`} onChange={(event) => updateInstallment(index, { label: event.target.value })} /></td>
+                    <td>{disabled
+                      ? <div className="readable-field is-compact"><ReadableText text={row.label} lines={2} empty={<span className="readable-field-empty">งวดที่ {index + 1}</span>} /></div>
+                      : <input className="premium-input" value={row.label} placeholder={`งวดที่ ${index + 1}`} onChange={(event) => updateInstallment(index, { label: event.target.value })} />}</td>
                     <td><input type="number" min="0" max="100" step="0.01" className="premium-input mono" value={row.percent} disabled={disabled} onChange={(event) => updateInstallment(index, { percent: event.target.value })} /></td>
                     <td className="num mono">{fmtMoney(amounts[index]?.amount || 0)}</td>
-                    <td><input className="premium-input" value={row.note} disabled={disabled} placeholder="เช่น ก่อนเริ่มงาน" onChange={(event) => updateInstallment(index, { note: event.target.value })} /></td>
+                    <td>{disabled
+                      ? <div className="readable-field is-compact"><ReadableText text={row.note} lines={3} empty={<span className="readable-field-empty">—</span>} /></div>
+                      : <input className="premium-input" value={row.note} placeholder="เช่น ก่อนเริ่มงาน" onChange={(event) => updateInstallment(index, { note: event.target.value })} />}</td>
                     {!disabled && <td><button type="button" className="btn-icon danger" disabled={payment.installments.length <= 2} onClick={() => removeInstallment(index)} aria-label={`ลบงวด ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>}
                   </tr>
                 ))}

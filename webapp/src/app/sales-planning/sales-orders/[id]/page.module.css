@@ -4,16 +4,17 @@
 .alertError { border-color: color-mix(in srgb, var(--red) 40%, var(--border)); background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--red); }
 .alertSuccess { border-color: color-mix(in srgb, var(--green) 40%, var(--border)); background: color-mix(in srgb, var(--green) 8%, transparent); color: var(--green); }
 .rejection { display: flex; gap: 10px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--red) 7%, var(--panel)); color: var(--red); }
-.rejection p { margin: 4px 0 0; color: var(--text-2); font-size: 13px; }
+.rejection :global(.readable-text-block) { margin-top: 4px; color: var(--text-2); font-size: 13px; }
 .formStack { display: flex; flex-direction: column; gap: 12px; }
-.formStack label > span { display: block; margin-bottom: 5px; color: var(--text-3); font-size: 11.5px; font-weight: 650; }
+.formStack label > span, .readonlyFormField > span { display: block; margin-bottom: 5px; color: var(--text-3); font-size: 11.5px; font-weight: 650; }
 .formStack input, .formStack textarea { width: 100%; }
 .formStack textarea { resize: vertical; }
 .auditList { display: grid; gap: 9px; margin: 0; }
 .auditList > div { display: flex; justify-content: space-between; gap: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .auditList > div:last-child { padding-bottom: 0; border-bottom: 0; }
 .auditList dt { color: var(--text-3); font-size: 11.5px; }
-.auditList dd { margin: 0; color: var(--text-2); font-size: 12px; font-weight: 650; text-align: right; }
+.auditList dd { min-width: 0; margin: 0; color: var(--text-2); font-size: 12px; font-weight: 650; text-align: right; }
+.auditList dd :global(.readable-text) { margin-left: auto; }
 .tableWrap { overflow-x: auto; }
 .linesTable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .linesTable th { padding: 10px 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--panel-2) 70%, transparent); color: var(--text-3); font-size: 10.5px; letter-spacing: .02em; text-align: left; white-space: nowrap; }
@@ -22,7 +23,7 @@
 .num { text-align: right !important; white-space: nowrap; }
 .lineDescription { display: flex; min-width: 240px; flex-direction: column; gap: 3px; }
 .lineDescription small { color: var(--accent); font-family: var(--font-mono); font-size: 10.5px; }
-.lineDescription strong { color: var(--text-2); font-size: 12.5px; font-weight: 650; }
+.lineText { color: var(--text-2); font-size: 12.5px; font-weight: 650; }
 .totals { width: min(100%, 390px); margin: 18px 0 0 auto; padding-top: 14px; border-top: 1px solid var(--border); }
 .totals > div { display: flex; justify-content: space-between; gap: 20px; padding: 5px 2px; color: var(--text-2); font-size: 12.5px; }
 .totals strong { font-family: var(--font-mono); }

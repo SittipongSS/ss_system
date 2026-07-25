@@ -11,6 +11,7 @@ import {
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -317,7 +318,7 @@ export default function SalesOrderDetailPage() {
 
         {error && <div className={styles.alertError} role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}><span>{error}</span>{errorActionUrl && <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link>}</div>}
         {notice && <div className={styles.alertSuccess} role="status">{notice}</div>}
-        {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><p>{order.rejectionReason}</p></div></div>}
+        {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><ReadableText text={order.rejectionReason} lines={4} /></div></div>}
 
         <ContextGrid>
           <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={order.customerName || "-"} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "สถานะ SO", value: status.label }]} />
@@ -368,7 +369,9 @@ export default function SalesOrderDetailPage() {
               <div className={styles.formStack}>
                 <label><span>วันที่ SO</span><input className="premium-input" type="date" value={form.orderDate} disabled={!editable} onChange={(event) => updateField("orderDate", event.target.value)} /></label>
                 <label><span>กำหนดชำระ</span><input className="premium-input" type="date" value={form.paymentDueDate} disabled={!editable} onChange={(event) => updateField("paymentDueDate", event.target.value)} /></label>
-                <label><span>หมายเหตุ</span><textarea className="premium-input" rows={4} value={form.notes} disabled={!editable} onChange={(event) => updateField("notes", event.target.value)} /></label>
+                {editable
+                  ? <label><span>หมายเหตุ</span><textarea className="premium-input" rows={4} value={form.notes} onChange={(event) => updateField("notes", event.target.value)} /></label>
+                  : <div className={styles.readonlyFormField}><span>หมายเหตุ</span><div className="readable-field"><ReadableText text={form.notes} lines={5} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div></div>}
               </div>
             </DetailCard>
 
@@ -378,9 +381,9 @@ export default function SalesOrderDetailPage() {
                 <div><dt>ผู้ยื่น</dt><dd>{order.submittedByName || "-"}</dd></div>
                 <div><dt>ผู้อนุมัติ</dt><dd>{order.approvedByName || "-"}</dd></div>
                 {order.approvalMode === "admin_override" && <div><dt>รูปแบบอนุมัติ</dt><dd><span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>Admin Override</span></dd></div>}
-                {order.approvalOverrideReason && <div><dt>เหตุผล Override</dt><dd>{order.approvalOverrideReason}</dd></div>}
+                {order.approvalOverrideReason && <div><dt>เหตุผล Override</dt><dd><ReadableText text={order.approvalOverrideReason} lines={3} /></dd></div>}
                 <div><dt>กำหนดชำระ</dt><dd>{fmtDate(order.paymentDueDate)}</dd></div>
-                {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd>{cancelReasonLabel(order.cancelReasonCode)}{order.cancelReason ? ` — ${order.cancelReason}` : ""}</dd></div>}
+                {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd><ReadableText text={`${cancelReasonLabel(order.cancelReasonCode)}${order.cancelReason ? ` — ${order.cancelReason}` : ""}`} lines={3} /></dd></div>}
               </dl>
             </DetailCard>
           </>}
@@ -391,7 +394,7 @@ export default function SalesOrderDetailPage() {
                 {/* คอลัมน์หน่วยแยกจากจำนวน (ไม่ต่อท้ายตัวเลข) — ช่องจำนวนเป็น tabular-nums
                     ชิดขวา ต่อข้อความแล้วเลขจะเลิกตรงแนว · ลำดับตรงกับใบที่พิมพ์ */}
                 <thead><tr><th>#</th><th>รหัส / รายละเอียด</th><th className={styles.num}>จำนวน</th><th>หน่วย</th><th className={styles.num}>ราคาต่อหน่วย</th><th className={styles.num}>ส่วนลด</th><th className={styles.num}>รวม</th></tr></thead>
-                <tbody>{sortedLines.map((line, index) => <tr key={line.id}><td>{index + 1}</td><td><div className={styles.lineDescription}>{line.fgCode ? <small>{line.fgCode}</small> : null}<strong>{line.description || "-"}</strong></div></td><td className={`${styles.num} mono`}>{line.qty}</td><td>{line.unit || "-"}</td><td className={`${styles.num} mono`}>{fmtMoney(line.unitPrice)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.discountAmount)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.lineTotal)}</td></tr>)}</tbody>
+                <tbody>{sortedLines.map((line, index) => <tr key={line.id}><td>{index + 1}</td><td><div className={styles.lineDescription}>{line.fgCode ? <small>{line.fgCode}</small> : null}<ReadableText className={styles.lineText} text={line.description} lines={3} empty="-" /></div></td><td className={`${styles.num} mono`}>{line.qty}</td><td>{line.unit || "-"}</td><td className={`${styles.num} mono`}>{fmtMoney(line.unitPrice)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.discountAmount)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.lineTotal)}</td></tr>)}</tbody>
               </table>
             </div>
             <div className={styles.totals}>

@@ -1,5 +1,6 @@
 "use client";
 import { Check } from "lucide-react";
+import ReadableText from "@/components/ui/ReadableText";
 import { fmtDateTime } from "@/lib/format";
 
 // Vertical workflow timeline for the record drawer. `steps` is an ordered list
@@ -46,7 +47,7 @@ export default function Timeline({ steps = [] }) {
                 </div>
               )}
               {s.note && (
-                <div style={{ fontSize: 12.5, color: "var(--red)", marginTop: 2 }}>{s.note}</div>
+                <ReadableText text={s.note} lines={3} style={{ fontSize: 12.5, color: "var(--red)", marginTop: 2 }} />
               )}
             </div>
           </li>

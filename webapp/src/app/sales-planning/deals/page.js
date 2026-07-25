@@ -21,6 +21,7 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
 import DetailRow from "@/components/ui/DetailRow";
+import ReadableText from "@/components/ui/ReadableText";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/excise/Pager";
@@ -793,7 +794,9 @@ export default function SalesPlanningPipelinePage() {
                         <ul style={{ margin: 0, paddingLeft: 18 }}>
                           {(quote.lines || []).slice(0, 3).map((line) => (
                             <li key={line.id}>
-                              {line.fgCode ? <span className="mono">{line.fgCode} · </span> : null}{line.description} · <span className="mono">{line.qty}</span> x <span className="mono">{money(line.unitPrice)}</span>
+                              {line.fgCode ? <span className="mono">{line.fgCode}</span> : null}
+                              <ReadableText text={line.description} lines={2} empty="ไม่มีรายละเอียด" />
+                              <span className="mono">{line.qty} x {money(line.unitPrice)}</span>
                             </li>
                           ))}
                         </ul>

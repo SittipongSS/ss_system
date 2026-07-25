@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { Lock, Plus, X, AlertTriangle } from "lucide-react";
 import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import ReadableText from "@/components/ui/ReadableText";
 import { DestinationToggle } from "@/components/sahamit/destinations";
 import { productMeta } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
@@ -136,8 +137,14 @@ export default function PoForm({
         </div>
         <div className="form-group" style={{ marginTop: 12 }}>
           <label>หมายเหตุ</label>
-          <input className="premium-input" value={header.note} disabled={disabled}
-            onChange={(e) => onHeader({ note: e.target.value })} placeholder="(ไม่บังคับ)" />
+          {disabled ? (
+            <div className="readable-field">
+              <ReadableText text={header.note} lines={4} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} />
+            </div>
+          ) : (
+            <textarea className="premium-input" rows={2} value={header.note}
+              onChange={(e) => onHeader({ note: e.target.value })} placeholder="(ไม่บังคับ)" />
+          )}
         </div>
       </div>
 
