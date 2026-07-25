@@ -17,6 +17,11 @@ const adminOverrideMigration = readFileSync(
   'utf8',
 );
 
+const signingRoleMigration = readFileSync(
+  new URL('../../../supabase/migrations/0151_evidence_signing_role.sql', import.meta.url),
+  'utf8',
+);
+
 test('signature evidence migration keeps evidence append-only and does not backfill approvals', () => {
   assert.match(migration, /BEFORE UPDATE OR DELETE ON public\.document_signature_evidence/);
   assert.doesNotMatch(migration, /INSERT INTO public\.document_signature_evidence\s+SELECT/i);
@@ -65,4 +70,31 @@ test('admin self-approval is a reasoned, immutable exception without weakening n
   assert.match(adminOverrideMigration, /public\.capture_document_signature_evidence/);
   assert.match(adminOverrideMigration, /'approvalMode', 'admin_override'/);
   assert.doesNotMatch(adminOverrideMigration, /UPDATE public\.document_signature_evidence_overrides/);
+});
+
+test('signing-role migration adds the role additively and never backfills through UPDATE', () => {
+  // guard ของตาราง evidence RAISE ทุก UPDATE → คอลัมน์ใหม่ต้องมาด้วย DEFAULT เท่านั้น
+  assert.match(signingRoleMigration, /ADD COLUMN IF NOT EXISTS "signingRole" text NOT NULL DEFAULT 'approver'/);
+  assert.doesNotMatch(signingRoleMigration, /UPDATE public\.document_signature_evidence\b(?!_overrides)/);
+  assert.match(signingRoleMigration, /CHECK \("signingRole" IN \('approver', 'proposer'\)\)/);
+});
+
+test('capture RPC records the signing role and keeps every existing pin', () => {
+  assert.match(signingRoleMigration, /p_signing_role text DEFAULT 'approver'/);
+  assert.match(signingRoleMigration, /signature_evidence_signing_role_invalid/);
+  assert.match(signingRoleMigration, /"approvalSequence", "signingRole", "signatureVersionId"/);
+  // การตรึงเดิมต้องอยู่ครบ: ลายเซ็น active + มาตรฐานที่เผยแพร่ + fingerprint
+  assert.match(signingRoleMigration, /v_signature\."activeVersionId"/);
+  assert.match(signingRoleMigration, /v_standard\."publishedVersionId"/);
+  assert.match(signingRoleMigration, /signature_evidence_signature_required/);
+  assert.match(signingRoleMigration, /signature_evidence_standard_required/);
+});
+
+test('pointer cleanup keeps proposer evidence through submitted and approved states only', () => {
+  assert.match(signingRoleMigration, /"proposerSignatureEvidenceId" text/);
+  assert.match(signingRoleMigration, /NEW\."approvalStatus" NOT IN \('pending', 'approved'\)/);
+  assert.match(signingRoleMigration, /NEW\.status NOT IN \('pending_approval', 'approved'\)/);
+  // SO trigger ต้องลอกจาก 0127 (มี projection ของ admin override) ไม่ใช่ 0126
+  assert.match(signingRoleMigration, /NEW\."approvalMode" := 'standard'/);
+  assert.match(signingRoleMigration, /NEW\."approvalOverrideReason" := NULL/);
 });
