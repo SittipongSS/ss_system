@@ -8,11 +8,16 @@ export class SignatureEvidenceError extends Error {
   }
 }
 
-export function signatureEvidenceRpcError(error) {
+// action = 'approve' (ค่าเดิม) หรือ 'submit' — ใช้เลือกคำในข้อความให้ตรงกับปุ่มที่ผู้ใช้กด
+// (ตั้งแต่ mig 0153 การยื่นก็ต้องมีลายเซ็น ข้อความ "ก่อนอนุมัติ" จะทำให้ผู้ใช้สับสน)
+export function signatureEvidenceRpcError(error, { action = 'approve' } = {}) {
   const raw = String(error?.message || error || '');
+  const act = action === 'submit' ? 'ยื่นอนุมัติ' : 'อนุมัติ';
   const mappings = [
-    ['signature_evidence_signature_required', 'กรุณาเพิ่มลายเซ็นอิเล็กทรอนิกส์ในบัญชีของฉันก่อนอนุมัติ', 409, 'signature_required', { accountUrl: '/account' }],
+    ['signature_evidence_signature_required', `กรุณาเพิ่มลายเซ็นอิเล็กทรอนิกส์ในบัญชีของฉันก่อน${act}`, 409, 'signature_required', { accountUrl: '/account' }],
     ['signature_evidence_signature_missing', 'ไม่พบลายเซ็นเวอร์ชันที่ใช้งาน กรุณาตรวจสอบบัญชีของฉัน', 409, 'signature_required', { accountUrl: '/account' }],
+    ['signature_evidence_submit_state_invalid', 'สถานะเอกสารเปลี่ยนแล้ว — ยื่นอนุมัติได้เฉพาะฉบับร่างหรือใบที่ถูกตีกลับ', 409, 'submit_state_invalid', {}],
+    ['signature_evidence_signing_role_invalid', 'บทบาทการลงนามไม่ถูกต้อง', 500, 'signing_role_invalid', {}],
     ['signature_evidence_standard_required', 'ยังไม่มีมาตรฐานเอกสารที่เผยแพร่ กรุณาติดต่อผู้ดูแลระบบ', 409, 'document_standard_required', {}],
     ['signature_evidence_standard_missing', 'มาตรฐานเอกสารที่เผยแพร่ไม่สมบูรณ์ กรุณาติดต่อผู้ดูแลระบบ', 409, 'document_standard_required', {}],
     ['signature_evidence_approval_stale', 'เอกสารถูกแก้ไขจากอีกหน้าต่าง กรุณาโหลดข้อมูลล่าสุดแล้วตรวจอีกครั้ง', 409, 'approval_stale', {}],
@@ -71,7 +76,20 @@ export function approveSalesOrderWithSignatureEvidence(supabase, input) {
   });
 }
 
-export function signatureEvidenceErrorResponse(error) {
-  const mapped = error instanceof SignatureEvidenceError ? error : signatureEvidenceRpcError(error);
+export function submitSalesOrderWithSignatureEvidence(supabase, input) {
+  return approveWithEvidence(supabase, 'submit_sales_order_with_signature_evidence_atomic', {
+    p_order_id: input.documentId,
+    p_evidence_id: input.evidenceId,
+    p_expected_updated_at: input.expectedUpdatedAt,
+    p_document_fingerprint: input.documentFingerprint,
+    p_actor_id: input.user.id,
+    p_actor_name: input.user.name || null,
+    p_actor_role: input.user.role || null,
+    p_actor_team: input.user.team || null,
+  });
+}
+
+export function signatureEvidenceErrorResponse(error, options) {
+  const mapped = error instanceof SignatureEvidenceError ? error : signatureEvidenceRpcError(error, options);
   return Response.json({ error: mapped.message, code: mapped.code, ...mapped.extra }, { status: mapped.status });
 }
