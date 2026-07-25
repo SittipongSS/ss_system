@@ -79,6 +79,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     currentFingerprint,
   });
   if (!readiness.ok) {
+    // แยก "ยังไม่ยื่น" ออกจาก "ยื่นแล้วรออนุมัติ" (mig 0155) — คนละปุ่มที่ต้องกดต่อ
+    if (quote.approvalStatus === 'not_submitted') {
+      return badRequest('ใบเสนอราคานี้ยังไม่ได้ยื่นอนุมัติ — กด "ยื่นอนุมัติ" แล้วให้เจ้าของดีลอนุมัติก่อนจึงจะปิด Won ได้');
+    }
     return badRequest(quote.approvalStatus === 'pending'
       ? 'ใบเสนอราคานี้ยังไม่ได้รับการอนุมัติจากเจ้าของดีล — อนุมัติก่อนจึงจะปิด Won ได้'
       : readiness.error);

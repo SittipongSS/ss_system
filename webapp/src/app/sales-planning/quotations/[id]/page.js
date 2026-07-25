@@ -109,9 +109,13 @@ export default function QuotationEditorPage() {
   }, []);
 
   const canEditDocument = !!quote && canEditCap && EDITABLE.has(quote.status);
-  // ใบที่ยังต้องอนุมัติ (มติ 2026-07-18) — บล็อกปุ่มส่ง/Won จนกว่าเจ้าของดีลอนุมัติ.
-  // ใบ grandfather (not_required) และใบที่อนุมัติแล้ว (approved) ไม่บล็อก.
-  const needsApproval = !!quote && quote.approvalStatus === "pending";
+  // สองขั้นแยกกัน (mig 0155): needsSubmit = ร่างที่ผู้จัดทำยังไม่กดยื่น ·
+  // awaitingApproval = ยื่นแล้วรอเจ้าของดีล. ทั้งคู่บล็อกปุ่มส่ง/Won เหมือนกัน แต่ปุ่มที่
+  // ต้องกดต่อคนละตัว — เดิมมีสถานะเดียว (pending) ทำให้อนุมัติใบที่ยังกรอกไม่เสร็จได้
+  const needsSubmit = !!quote && quote.approvalStatus === "not_submitted";
+  const awaitingApproval = !!quote && quote.approvalStatus === "pending";
+  // ใบ grandfather (not_required) และใบที่อนุมัติแล้ว (approved) ไม่บล็อก
+  const needsApproval = needsSubmit || awaitingApproval;
   // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
     && (quote.status === "draft" || isSuperuser(role))));
@@ -184,6 +188,17 @@ export default function QuotationEditorPage() {
     } finally {
       setBusy("");
     }
+  };
+
+  // ยื่นอนุมัติ (ผู้จัดทำ) — not_submitted → pending + ลงนามผู้เสนอราคา (mig 0155).
+  // ต้องบันทึกก่อนเหมือนการอนุมัติ เพราะหลักฐานผูก fingerprint ของเนื้อหาที่บันทึกแล้ว
+  const submitForApproval = async () => {
+    if (dirty) { setError("บันทึกการแก้ไขก่อนยื่นอนุมัติ"); return; }
+    if (!window.confirm(`ยืนยันยื่นอนุมัติใบเสนอราคา ${quote.quoteNumber}?\n\nการยื่นถือเป็นการลงนามของผู้เสนอราคา — ระบบจะบันทึกลายเซ็นและวันที่ลงบนเอกสาร ถ้าแก้เนื้อหาภายหลังต้องยื่นใหม่`)) return;
+    const data = await act("submit", `/api/sales-planning/quotations/${id}/submit`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    });
+    if (data) await load();
   };
 
   // อนุมัติใบ (เจ้าของดีล/superuser) — pending → approved. ต้องบันทึกก่อน (ไม่ค้าง dirty)
@@ -531,10 +546,16 @@ export default function QuotationEditorPage() {
                 <span className={styles.statusDot} style={{ "--state-color": statusMeta.color }} />
                 <div><small>สถานะเอกสาร</small><strong>{statusMeta.label}</strong></div>
               </div>
-              {/* สถานะการอนุมัติ (มติ 2026-07-18): ใบต้องให้เจ้าของดีลอนุมัติก่อนส่ง */}
-              {needsApproval && (
+              {/* สถานะการอนุมัติ 2 ขั้น (mig 0155): ยังไม่ยื่น → รออนุมัติ → อนุมัติแล้ว */}
+              {needsSubmit && (
+                <div className="glass-panel" style={{ padding: "10px 12px", margin: "0 0 10px", borderColor: "var(--text-3)", color: "var(--text-2)", fontSize: 13 }}>
+                  ร่าง — ยังไม่ได้ยื่นอนุมัติ กด &ldquo;ยื่นอนุมัติ&rdquo; เพื่อลงนามผู้เสนอราคาและส่งให้เจ้าของดีลอนุมัติ
+                </div>
+              )}
+              {awaitingApproval && (
                 <div className="glass-panel" style={{ padding: "10px 12px", margin: "0 0 10px", borderColor: "var(--amber)", color: "var(--amber)", fontSize: 13 }}>
                   รออนุมัติจากเจ้าของดีล — ยังส่งลูกค้า/ปิด Won ไม่ได้จนกว่าจะอนุมัติ
+                  {quote.approvalRequestedByName ? ` (ยื่นโดย ${quote.approvalRequestedByName})` : ""}
                 </div>
               )}
               {quote.approvalStatus === "approved" && quote.approvedByName && (
@@ -542,16 +563,28 @@ export default function QuotationEditorPage() {
                   อนุมัติแล้วโดย {quote.approvedByName}
                 </div>
               )}
-              {quote.signatureEvidenceId && (
-                <div style={{ margin: "0 0 10px" }}><span className="ui-badge" style={{ color: "var(--green)" }}>บันทึกหลักฐานลายเซ็นแล้ว</span></div>
+              {(quote.proposerSignatureEvidenceId || quote.signatureEvidenceId) && (
+                <div style={{ margin: "0 0 10px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {quote.proposerSignatureEvidenceId && (
+                    <span className="ui-badge" style={{ color: "var(--teal)" }}>ลงนามผู้เสนอราคาแล้ว</span>
+                  )}
+                  {quote.signatureEvidenceId && (
+                    <span className="ui-badge" style={{ color: "var(--green)" }}>บันทึกหลักฐานลายเซ็นแล้ว</span>
+                  )}
+                </div>
               )}
-              {/* รู้ตั้งแต่เปิดหน้าว่าเซ็นไม่ได้ ดีกว่าไปเจอ 409 ตอนกดอนุมัติ */}
+              {/* รู้ตั้งแต่เปิดหน้าว่าเซ็นไม่ได้ ดีกว่าไปเจอ 409 ตอนกดยื่น/อนุมัติ — ตั้งแต่
+                  mig 0155 การยื่นก็ต้องมีลายเซ็น จึงเตือนผู้ยื่น (คนที่แก้ใบได้) ด้วย */}
               <SignatureReadyNotice
-                active={!!needsApproval && !!quote.canApprove && ["draft", "sent", "rejected"].includes(quote.status)}
+                active={["draft", "sent", "rejected"].includes(quote.status)
+                  && ((needsSubmit && canEditDocument) || (awaitingApproval && !!quote.canApprove))}
                 docLabel="ใบเสนอราคานี้"
               />
               <div className={styles.workflowActions}>
-                {needsApproval && quote.canApprove && ["draft", "sent", "rejected"].includes(quote.status) && (
+                {needsSubmit && canEditDocument && (
+                  <button type="button" className="btn btn-primary" onClick={submitForApproval} disabled={!!busy || dirty} title={dirty ? "บันทึกก่อนยื่นอนุมัติ" : "ยื่นให้เจ้าของดีลอนุมัติ (ถือเป็นการลงนามผู้เสนอราคา)"}><Send size={15} aria-hidden="true" /> ยื่นอนุมัติ</button>
+                )}
+                {awaitingApproval && quote.canApprove && ["draft", "sent", "rejected"].includes(quote.status) && (
                   <button type="button" className="btn btn-primary" onClick={approve} disabled={!!busy || dirty} title={dirty ? "บันทึกก่อนอนุมัติ" : "อนุมัติใบเสนอราคานี้ (เจ้าของดีล)"}><CheckCircle2 size={15} aria-hidden="true" /> อนุมัติ</button>
                 )}
                 {editable && quote.status === "draft" && !needsApproval && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}

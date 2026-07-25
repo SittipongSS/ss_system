@@ -115,7 +115,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       discountValue,
       vatRate,
       paymentTerms,
-      approvalStatus: 'pending', // ฉบับ revise ใหม่ต้องให้เจ้าของดีลอนุมัติก่อนส่ง (มติ 2026-07-18)
+      // ฉบับ revise = ร่างใหม่ ต้องกดยื่นอนุมัติเองอีกครั้ง (mig 0155) ไม่สืบทอดการยื่น/อนุมัติเดิม
+      approvalStatus: 'not_submitted',
       approvalReason: null,
       approvalRequestedAt: null,
       approvalRequestedBy: null,

@@ -714,11 +714,12 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     totalsReserve: V4_TOTALS,
   });
 
-  // ลายน้ำ: ฉบับร่าง (pending) หรือ override ผ่าน options (เช่น "ยกเลิก"); อนุมัติแล้วไม่มี
-  const watermark = options.watermark
-    || (quote.approvalStatus === 'pending' ? 'ฉบับร่าง' : '');
+  // ลายน้ำ: ฉบับร่าง = ยังไม่ยื่น (not_submitted, mig 0155) หรือยื่นแล้วรออนุมัติ (pending)
+  // หรือ override ผ่าน options (เช่น "ยกเลิก"); อนุมัติแล้วไม่มีลายน้ำ
+  const preApproval = ['not_submitted', 'pending'].includes(quote.approvalStatus);
+  const watermark = options.watermark || (preApproval ? 'ฉบับร่าง' : '');
   // ผู้อนุมัติ: แสดงบล็อกลายเซ็นเมื่อมีชื่อผู้อนุมัติจริง (ไม่ใช่ฉบับร่าง)
-  const signature = quote.approvalStatus !== 'pending' && quote.approvedByName
+  const signature = !preApproval && quote.approvedByName
     ? {
       signerName: quote.approvedByName,
       signerRole: quote.approvedByRole || 'ผู้อนุมัติ',
@@ -766,10 +767,22 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       ...(quote.createdByPhone ? [{ label: 'โทร', value: quote.createdByPhone }] : []),
     ],
     signers: options.signers || [
-      // ผู้เสนอราคา: มีรูปลายเซ็น (ดึงตอนตรึง snapshot) → stamp รูป+ชื่อ (ไม่มี Evidence
-      // เพราะไม่ได้ "เซ็น" แยกเหมือนผู้อนุมัติ); ไม่มีรูป → ช่องเซ็นเปล่าเดิม
+      // ผู้เสนอราคา: ใบที่ยื่นตั้งแต่ mig 0155 มีหลักฐานการลงนามของผู้เสนอราคา →
+      // โชว์วันที่ + Evidence เหมือนช่องผู้อนุมัติ (options.proposerEvidence);
+      // ใบเก่าที่ไม่มีหลักฐาน = stamp เชิงภาพ → signBox ข้าม 2 บรรทัดนั้นให้เอง;
+      // ไม่มีรูปเลย → ช่องเซ็นเปล่าเดิม
       options.proposerSignatureImage
-        ? { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', esignature: { imageDataUri: options.proposerSignatureImage, signerName: salesOwner === '-' ? '' : salesOwner, signerRole: '' } }
+        ? {
+          label: 'ผู้เสนอราคา',
+          role: 'พนักงานขาย',
+          esignature: {
+            imageDataUri: options.proposerSignatureImage,
+            signerName: options.proposerEvidence?.signerName || (salesOwner === '-' ? '' : salesOwner),
+            signerRole: '',
+            signedAt: options.proposerEvidence?.signedAt ? fmtDate(options.proposerEvidence.signedAt) : '',
+            evidenceId: options.proposerEvidence?.id || '',
+          },
+        }
         : { label: 'ผู้เสนอราคา', role: 'พนักงานขาย', name: salesOwner === '-' ? '' : salesOwner },
       { label: 'ผู้อนุมัติ', role: 'Authorized signature', esignature: signature },
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },

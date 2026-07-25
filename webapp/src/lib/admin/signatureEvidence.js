@@ -38,9 +38,12 @@ export function signatureEvidenceRpcError(error, { action = 'approve' } = {}) {
   return new SignatureEvidenceError('บันทึกหลักฐานลายเซ็นไม่สำเร็จ');
 }
 
-async function approveWithEvidence(supabase, rpc, params) {
+// action ต้องไหลถึง mapper ตรงนี้: ผู้เรียกที่ catch แล้วส่ง { action } ให้
+// signatureEvidenceErrorResponse ไม่ทันแล้ว เพราะ error ถูกแปลงเป็น SignatureEvidenceError
+// ที่นี่ก่อน (mapper ถัดไปจะข้ามไป) → ข้อความจะเป็น "ก่อนอนุมัติ" ทั้งที่ผู้ใช้กดยื่น
+async function approveWithEvidence(supabase, rpc, params, action = 'approve') {
   const { data, error } = await supabase.rpc(rpc, params);
-  if (error) throw signatureEvidenceRpcError(error);
+  if (error) throw signatureEvidenceRpcError(error, { action });
   if (!data?.document || !data?.evidence) {
     throw new SignatureEvidenceError('บันทึกหลักฐานลายเซ็นไม่สำเร็จ');
   }
@@ -86,7 +89,21 @@ export function submitSalesOrderWithSignatureEvidence(supabase, input) {
     p_actor_name: input.user.name || null,
     p_actor_role: input.user.role || null,
     p_actor_team: input.user.team || null,
-  });
+  }, 'submit');
+}
+
+// ยื่นอนุมัติใบเสนอราคา (mig 0155) — not_submitted → pending + หลักฐานผู้เสนอราคา
+export function submitQuotationWithSignatureEvidence(supabase, input) {
+  return approveWithEvidence(supabase, 'submit_quotation_with_signature_evidence_atomic', {
+    p_quote_id: input.documentId,
+    p_evidence_id: input.evidenceId,
+    p_expected_updated_at: input.expectedUpdatedAt,
+    p_document_fingerprint: input.documentFingerprint,
+    p_actor_id: input.user.id,
+    p_actor_name: input.user.name || null,
+    p_actor_role: input.user.role || null,
+    p_actor_team: input.user.team || null,
+  }, 'submit');
 }
 
 export function signatureEvidenceErrorResponse(error, options) {

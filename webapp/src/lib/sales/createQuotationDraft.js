@@ -96,8 +96,10 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       vatRate,
       paymentPlan,
       paymentTerms: (body.paymentTerms || '').trim() || paymentPlanSummary(paymentPlan, totals.totalAmount),
-      // รออนุมัติจากเจ้าของดีลก่อนส่ง (มติ 2026-07-18) — ใบเดิม grandfather ไว้ที่ mig 0114
-      approvalStatus: 'pending',
+      // ใบใหม่เริ่มที่ "ร่าง ยังไม่ยื่น" (mig 0155) — ต้องกดยื่นอนุมัติเองก่อนเข้าคิวเจ้าของดีล
+      // (เดิมเกิดมาเป็น 'pending' ทันที = อนุมัติใบที่ยังกรอกไม่เสร็จได้ และไม่มีจุดลงนามผู้เสนอราคา)
+      // ใบเดิม grandfather เป็น not_required ไว้ที่ mig 0114
+      approvalStatus: 'not_submitted',
       approvalReason: null,
       approvalRequestedAt: null,
       approvalRequestedBy: null,
