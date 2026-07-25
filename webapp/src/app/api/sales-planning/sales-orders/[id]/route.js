@@ -57,10 +57,14 @@ async function loadOrder(supabase, id) {
 // ฝั่งพิมพ์ใช้ตรง ๆ — เหมือนใบเสนอราคาที่ฝังรูปตอนตรึง snapshot. ล้มเหลว/dev = null.
 async function loadApproverSignature(supabase, order) {
   if (order.status !== 'approved') return null;
+  // ต้องกรอง signingRole (mig 0151) — เอกสารหนึ่งใบมีหลักฐานหลายบทบาทได้ (ผู้ยื่น/ผู้อนุมัติ)
+  // ถ้าเรียงด้วย approvalSequence ล้วน แถวของผู้ยื่นที่เกิดหลังสุด (เช่น approved → ยกเลิก →
+  // คืนร่าง → ยื่นใหม่) จะถูกหยิบมาแสดงในช่องผู้อนุมัติ = ลายเซ็นผิดคนบนเอกสาร
   const { data: ev } = await supabase
     .from('document_signature_evidence')
     .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot')
     .eq('salesOrderId', order.id)
+    .eq('signingRole', 'approver')
     .order('approvalSequence', { ascending: false })
     .limit(1)
     .maybeSingle();
