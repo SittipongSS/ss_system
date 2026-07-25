@@ -21,7 +21,6 @@ export default function CommercialPresetPicker({
   matchesCurrent,
   hasContent = false,
   disabled = false,
-  disabledReason = "",
 }) {
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -87,9 +86,6 @@ export default function CommercialPresetPicker({
         </select>
       </label>
       {edited && <span className={styles.edited}>แก้เพิ่มเติมแล้ว</span>}
-      {disabled && disabledReason && (
-        <span className={styles.disabledHint}>{disabledReason}</span>
-      )}
       {!loading && loadError && (
         <span className={styles.loadError} role="alert">
           {loadError}

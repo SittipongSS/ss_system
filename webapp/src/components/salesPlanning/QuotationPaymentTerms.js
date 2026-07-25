@@ -27,7 +27,6 @@ export default function QuotationPaymentTerms({
   onChange,
   totalAmount,
   disabled = false,
-  disabledReason = "",
 }) {
   const payment = {
     type: value?.type === "installment" ? "installment" : "full",
@@ -93,7 +92,6 @@ export default function QuotationPaymentTerms({
           kind="payment"
           selectedVersionId={payment.presetVersionId}
           disabled={disabled}
-          disabledReason={disabledReason}
           hasContent={!isEmptyPaymentValue(payment)}
           matchesCurrent={(option) => matchesPaymentPreset(payment, option)}
           onApply={applyPreset}

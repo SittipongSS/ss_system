@@ -314,7 +314,7 @@ export default function ProductCategoriesPage() {
         onClose={() => !saving && setDrawer(null)}
         closeOnOverlay={false}
         title={editing ? "แก้ไขหมวดสินค้า" : "เพิ่มหมวดสินค้า"}
-        subtitle={editing ? `${drawer?.row?.code} · รหัสถูกล็อกเพื่อรักษาข้อมูลอ้างอิง` : "สร้างหมวดรองภายใต้หมวดหลักเดิมหรือหมวดหลักใหม่"}
+        subtitle={editing ? drawer?.row?.code : "สร้างหมวดรองภายใต้หมวดหลักเดิมหรือหมวดหลักใหม่"}
         badge={editing ? <StatusBadge active={drawer?.row?.isActive !== false} /> : null}
         footer={(
           <>

@@ -413,7 +413,6 @@ export default function CommercialPresetsPage() {
         closeOnOverlay={false}
         opaqueSurface
         title={drawer?.mode === "create" ? `สร้าง${COMMERCIAL_PRESET_KIND_LABELS[drawerKind]}` : drawerRow ? `${drawerRow.title} · Version ${drawerRow.versionNumber}` : COMMERCIAL_PRESET_KIND_LABELS[drawerKind]}
-        subtitle={editing ? "บันทึกฉบับร่างแบบ explicit ไม่มี Auto-save" : "รายละเอียดและ Preview แบบอ่านอย่างเดียว"}
         badge={drawerRow ? <StatusBadge status={drawerRow.status} /> : null}
         footer={editing
           ? <><button type="button" className="btn ghost" onClick={() => setDrawer(null)} disabled={busy}>ยกเลิก</button><button type="submit" form="commercial-preset-form" className="btn btn-accent" disabled={busy}>{busy ? "กำลังบันทึก…" : drawer?.mode === "create" ? "สร้างฉบับร่าง" : "บันทึกฉบับร่าง"}</button></>
