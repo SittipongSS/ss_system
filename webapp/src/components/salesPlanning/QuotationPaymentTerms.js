@@ -22,7 +22,13 @@ const DEFAULT_INSTALLMENTS = () => evenPercents(2).map((percent, index) => ({
   note: "",
 }));
 
-export default function QuotationPaymentTerms({ value, onChange, totalAmount, disabled = false }) {
+export default function QuotationPaymentTerms({
+  value,
+  onChange,
+  totalAmount,
+  disabled = false,
+  disabledReason = "",
+}) {
   const payment = {
     type: value?.type === "installment" ? "installment" : "full",
     paymentMethod: value?.paymentMethod || "",
@@ -87,6 +93,7 @@ export default function QuotationPaymentTerms({ value, onChange, totalAmount, di
           kind="payment"
           selectedVersionId={payment.presetVersionId}
           disabled={disabled}
+          disabledReason={disabledReason}
           hasContent={!isEmptyPaymentValue(payment)}
           matchesCurrent={(option) => matchesPaymentPreset(payment, option)}
           onApply={applyPreset}

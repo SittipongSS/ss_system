@@ -240,7 +240,24 @@ export default function CommercialPresetsPage() {
         method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(creating ? payload : { ...payload, expectedUpdatedAt: drawerRow.updatedAt }),
       }, creating ? "สร้างชุดใหม่ไม่สำเร็จ" : "บันทึกฉบับร่างไม่สำเร็จ");
-      setDrawer(null);
+      if (creating) {
+        setDrawer({
+          mode: "view",
+          kind: drawerKind,
+          presetId: saved.preset.id,
+          rowId: saved.draft.id,
+          row: saved.draft,
+          preset: {
+            ...saved.preset,
+            kind: drawerKind,
+            draft: saved.draft,
+            published: null,
+            versions: [saved.draft],
+          },
+        });
+      } else {
+        setDrawer(null);
+      }
       setToast({ kind: "success", msg: creating ? `สร้าง “${saved.draft.title}” Version 1 ฉบับร่างแล้ว` : `บันทึก “${saved.title}” Version ${saved.versionNumber} แล้ว` });
       await load();
     } catch (requestError) { setToast({ kind: "error", msg: requestError.message }); }
