@@ -28,7 +28,7 @@ const SEVERITY_PILL = {
   ready: { cls: "success", label: "พร้อม" },
 };
 
-const EMPTY_SUMMARY = { cohort: 0, required: 0, requiredReady: 0, blocking: 0, blockedQuotations: 0 };
+const EMPTY_SUMMARY = { cohort: 0, required: 0, requiredReady: 0, blocking: 0, blockedQuotations: 0, blockedSubmissions: 0 };
 
 export default function SignatureCoveragePage() {
   const role = useRole();
@@ -78,6 +78,7 @@ export default function SignatureCoveragePage() {
     team: (r) => r.team || "",
     openDeals: (r) => r.openDeals,
     pendingQuotations: (r) => r.pendingQuotations,
+    submittableDocs: (r) => r.submittableDocs || 0,
     hasSignature: (r) => (r.hasSignature ? 1 : 0),
   });
 
@@ -113,6 +114,7 @@ export default function SignatureCoveragePage() {
         <KpiCard label="พร้อมแล้ว" value={summary.requiredReady} icon={CheckCircle2} tone="success" hint={`จากทั้งหมด ${summary.required} คน`} />
         <KpiCard label="บล็อกงานอยู่ตอนนี้" value={summary.blocking} icon={AlertTriangle} tone="danger" hint="มีใบรออนุมัติแต่เซ็นไม่ได้" />
         <KpiCard label="ใบเสนอราคาที่ค้าง" value={summary.blockedQuotations} icon={AlertTriangle} tone="warning" hint="รออนุมัติจากคนที่ยังไม่มีลายเซ็น" />
+        <KpiCard label="เอกสารรอยื่น" value={summary.blockedSubmissions} icon={AlertTriangle} tone="warning" hint="ผู้สร้างยังไม่มีลายเซ็น จะยื่นอนุมัติไม่ได้" />
       </div>
 
       {/* ทำไมไม่มีปุ่ม "เพิ่มลายเซ็นให้" — กันคนเข้าใจผิดว่าหน้านี้ยังทำไม่เสร็จ */}
@@ -160,6 +162,9 @@ export default function SignatureCoveragePage() {
                 <SortTh sort={sort} sortKey="team">ทีม</SortTh>
                 <SortTh sort={sort} sortKey="openDeals" style={{ textAlign: "right" }}>ดีลที่ถืออยู่</SortTh>
                 <SortTh sort={sort} sortKey="pendingQuotations" style={{ textAlign: "right" }}>ใบรออนุมัติ</SortTh>
+                {/* เส้นผู้ยื่น: เอกสารที่ตัวเองสร้างและยังค้างต้องยื่น — การกดยื่นบันทึกหลักฐาน
+                    ลายเซ็นเช่นกัน คนไม่มีลายเซ็นจะยื่นไม่ได้ */}
+                <SortTh sort={sort} sortKey="submittableDocs" style={{ textAlign: "right" }}>เอกสารรอยื่น</SortTh>
                 <SortTh sort={sort} sortKey="hasSignature">สถานะ</SortTh>
               </tr>
             </thead>
@@ -177,6 +182,9 @@ export default function SignatureCoveragePage() {
                     <td style={{ textAlign: "right" }}>{row.openDeals || "—"}</td>
                     <td style={{ textAlign: "right", fontWeight: row.pendingQuotations && !row.hasSignature ? 700 : 400, color: row.pendingQuotations && !row.hasSignature ? "var(--red)" : undefined }}>
                       {row.pendingQuotations || "—"}
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: row.submittableDocs && !row.hasSignature ? 700 : 400, color: row.submittableDocs && !row.hasSignature ? "var(--red)" : undefined }}>
+                      {row.submittableDocs || "—"}
                     </td>
                     <td><span className={`status-pill ${pill.cls}`}>{pill.label}</span></td>
                   </tr>
