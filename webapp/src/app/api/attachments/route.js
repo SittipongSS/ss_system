@@ -1,6 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord, canViewRecord } from '@/lib/permissions';
+import {
+  COSTING_ATTACHMENT_TABLE, canAttachToCosting, canViewCostingAttachment, isCostingAttachment,
+} from '@/lib/master/costingAttachmentAccess';
 import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { listAttachments } from '@/lib/master/attachments';
 import { productCaretakerTeams } from '@/lib/master/productScope';
@@ -23,7 +26,9 @@ const isMgmt = (entityType) => !!MGMT_TABLE[entityType];
 const isPersonalTask = (entityType) => entityType === 'personal_task';
 
 async function loadParent(supabase, entityType, entityId) {
-  const table = PARENT_TABLE[entityType] || MGMT_TABLE[entityType];
+  const table = PARENT_TABLE[entityType]
+    || MGMT_TABLE[entityType]
+    || COSTING_ATTACHMENT_TABLE[entityType];
   if (!table) return null;
   const { data } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
   return data || null;
@@ -46,7 +51,9 @@ export async function GET(request) {
     ? canUser(user, 'mgmt:view')
     : isPersonalTask(entityType)
       ? await canViewPersonalTask(supabase, parent, user)
-      : canViewRecord(user, RESOURCE[entityType], parent);
+      : isCostingAttachment(entityType)
+        ? canViewCostingAttachment(user)
+        : canViewRecord(user, RESOURCE[entityType], parent);
   if (!allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
@@ -80,6 +87,8 @@ export async function POST(request) {
     ? canUser(user, 'mgmt:edit')
     : isPersonalTask(entityType)
       ? await canAttachToPersonalTask(supabase, parent, user)
+      : isCostingAttachment(entityType)
+        ? await canAttachToCosting(supabase, entityType, parent, user)
       // product: edit scope follows the OWNING CUSTOMER's caretaker team (มติ
       // 2026-07-20/21) — resolve it so this matches the product detail page.
       : canEditRecord(

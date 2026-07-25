@@ -96,6 +96,14 @@ export const ATTACHMENT_TYPES = {
     { key: "spec", label: "สเปก / แบบบรรจุภัณฑ์", required: false },
     { key: "other", label: "ไฟล์แนบอื่นๆ", required: false },
   ],
+  // เคสขอราคาวัสดุ (mig 0158) — แนบที่ระดับ "รายการในเคส" ไม่ใช่ทั้งเคส ด้วยเหตุผล
+  // เดียวกับ costing_item: รูปขวด/แบบสกรีนเป็นของวัสดุตัวนั้น และ RD/PC เปิดดู
+  // ประกอบตอนตอบราคารายบรรทัด
+  material_ask_item: [
+    { key: "reference_image", label: "รูปตัวอย่าง", required: false },
+    { key: "spec", label: "สเปก / แบบงาน", required: false },
+    { key: "other", label: "ไฟล์แนบอื่นๆ", required: false },
+  ],
 };
 
 // ฟิลด์รายละเอียด (แท็ค) เพิ่มเติมต่อเอกสาร เก็บใน attachments.metadata (jsonb).

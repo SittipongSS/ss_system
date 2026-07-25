@@ -231,8 +231,8 @@ export default function MaterialRegistryPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href="/sa/materials/requests" className="btn">
-            <FileText size={14} /> ใบขอราคาวัสดุ
+          <Link href="/sa/materials/asks" className="btn">
+            <FileText size={14} /> เคสขอราคา
           </Link>
           <button type="button" className="btn btn-accent" onClick={() => setForm({ mode: "create", value: emptyMaterialForm() })}>
             <Plus size={14} /> เพิ่มวัสดุ

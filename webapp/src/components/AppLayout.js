@@ -219,7 +219,10 @@ export default function AppLayout({ children }) {
         { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/costing') },
         // ทะเบียนวัสดุ (mig 0143 + 0157) — cap เดียวกับขอราคาผลิต
         // (เห็นได้ทั้งฝ่ายขาย/RD/PC/ผู้บริหาร) แคบด้วยฝ่ายผ่าน canViewCosting เหมือนกัน
-        { href: '/sa/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/materials') },
+        { href: '/sa/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, match: (p) => p === '/sa/materials' },
+        // เคสขอราคาวัสดุ (mig 0158) — แยกเมนูเพราะเป็นคิวงานประจำวันของ RD/PC
+        // (ทะเบียนเป็นข้อมูลหลักที่เปิดดูเป็นครั้งคราว คนละจังหวะการใช้)
+        { href: '/sa/materials/asks', name: 'เคสขอราคา', icon: ClipboardList, cap: 'costing:view', visible: canViewCosting, match: (p) => p.startsWith('/sa/materials/asks') },
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
     },

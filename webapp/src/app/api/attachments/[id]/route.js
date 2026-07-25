@@ -5,6 +5,9 @@ import { resetApprovalOnEdit } from '@/lib/master/approval';
 import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
+import {
+  COSTING_ATTACHMENT_TABLE, canAttachToCosting, canViewCostingAttachment, isCostingAttachment,
+} from '@/lib/master/costingAttachmentAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +15,8 @@ const PARENT_TABLE = { customer: 'customers', product: 'products', order: 'order
 const RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 // โมดูล "งานบริหาร": สิทธิ์ลบ = mgmt:edit (admin+เลขา) — ไม่มี parent customer/product.
 const isMgmt = (entityType) => entityType === 'mgmt_task' || entityType === 'mgmt_meeting';
+// ระบบขอราคา: ไม่มี parent ใน PARENT_TABLE เหมือนกัน → ถ้าไม่ดักตรงนี้ บล็อกสิทธิ์
+// ข้างล่างจะถูกข้ามทั้งก้อน (`if (table)`) แปลว่าใครก็ลบไฟล์แนบของใบ/เคสได้
 
 // DELETE /api/attachments/[id] — ลบ row + best-effort ลบไฟล์ใน storage.
 export async function DELETE(request, { params }) {
@@ -25,6 +30,16 @@ export async function DELETE(request, { params }) {
   // mgmt: gate ด้วย cap ของโมดูล (ไม่ผ่าน parent customer/product).
   if (isMgmt(att.entityType) && !canUser(user, 'mgmt:edit')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  // ระบบขอราคา: สิทธิ์ลบ = สิทธิ์แนบของ entity นั้น (cap ระบบขอราคา + ฝ่าย/ผู้เปิดเคส)
+  if (isCostingAttachment(att.entityType)) {
+    const { data: parentRow } = await supabase
+      .from(COSTING_ATTACHMENT_TABLE[att.entityType]).select('*').eq('id', att.entityId).maybeSingle();
+    const allowed = parentRow
+      ? await canAttachToCosting(supabase, att.entityType, parentRow, user)
+      : canViewCostingAttachment(user); // ระเบียนแม่ถูกลบไปแล้ว — เก็บกวาดไฟล์ค้างได้
+    if (!allowed) return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
   // สิทธิ์ลบ = สิทธิ์แก้ entity แม่ (team scope จาก canEditRecord).
