@@ -74,6 +74,10 @@ const nextConfig = {
       // bookmark/ลิงก์ในการ์ดแจ้งเตือนเก่ายังใช้ได้
       { source: '/database/holidays', destination: '/settings/holidays', permanent: false },
       { source: '/database/chat-webhooks', destination: '/settings/chat-webhooks', permanent: false },
+      // ใบขอราคาวัสดุ MR- ถูกยุบเป็น "เคสขอราคา" (mig 0158) — ลิงก์เก่าในแชท/bookmark
+      // ต้องไม่ตายกลางอากาศ (ตัวใบเก่าไม่มีข้อมูลบน prod จึงส่งไปหน้ารายการเคสพอ)
+      { source: '/sa/materials/requests', destination: '/sa/materials/asks', permanent: false },
+      { source: '/sa/materials/requests/:path*', destination: '/sa/materials/asks', permanent: false },
     ];
   },
 };
