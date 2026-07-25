@@ -79,6 +79,14 @@ test('signing-role migration adds the role additively and never backfills throug
   assert.match(signingRoleMigration, /CHECK \("signingRole" IN \('approver', 'proposer'\)\)/);
 });
 
+test('capture RPC stays re-runnable: DROP old signature then CREATE OR REPLACE the new one', () => {
+  // เคยพลาด: DROP (11 params) + CREATE เปล่า → รันซ้ำพัง
+  // "function already exists with same argument types" เพราะรอบสองไม่มี 11-param ให้ DROP
+  assert.match(signingRoleMigration, /DROP FUNCTION IF EXISTS public\.capture_document_signature_evidence\(/);
+  assert.match(signingRoleMigration, /CREATE OR REPLACE FUNCTION public\.capture_document_signature_evidence\(/);
+  assert.doesNotMatch(signingRoleMigration, /\nCREATE FUNCTION public\.capture_document_signature_evidence\(/);
+});
+
 test('capture RPC records the signing role and keeps every existing pin', () => {
   assert.match(signingRoleMigration, /p_signing_role text DEFAULT 'approver'/);
   assert.match(signingRoleMigration, /signature_evidence_signing_role_invalid/);
