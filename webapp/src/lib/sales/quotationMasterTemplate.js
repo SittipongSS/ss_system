@@ -1,6 +1,7 @@
 import { fmtDate } from '@/lib/format';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
+import { formatDocumentStandardEffectiveDate, resolveDocumentAccentKey } from '@/lib/documentStandards';
 
 export const QUOTATION_MASTER_TEMPLATE_VERSIONS = Object.freeze([
   { id: 'v1', label: 'V1', templateVersion: 'quotation-balanced-controlled-v1' },
@@ -38,7 +39,16 @@ const DEFAULT_STANDARD = Object.freeze({
   effectiveDate: '08/05/2568',
   titleTh: 'ใบเสนอราคา',
   titleEn: 'QUOTATION',
-  accentKey: 'quotation-warm',
+  accentKey: 'terracotta',
+});
+
+const DEFAULT_SALES_ORDER_STANDARD = Object.freeze({
+  formCode: DOCUMENT_FORMS.salesOrder.code,
+  revision: DOCUMENT_FORMS.salesOrder.revision,
+  effectiveDate: DOCUMENT_FORMS.salesOrder.effectiveDate,
+  titleTh: 'ใบสั่งขาย',
+  titleEn: DOCUMENT_FORMS.salesOrder.title,
+  accentKey: 'steel',
 });
 
 // รูปลายเซ็นตัวอย่างสำหรับหน้า preview เท่านั้น (SVG ลายมือ จำลอง) — ใบจริงฝัง PNG จริง
@@ -123,6 +133,27 @@ function roundMoney(value) {
 
 export function controlledFormLine(standard = DEFAULT_STANDARD) {
   return `${standard.formCode}: Rev. No.${standard.revision}. ${standard.effectiveDate}`;
+}
+
+// แถวมาตรฐานจาก DB (document_standard_versions) → รูปที่ preview model ใช้.
+// รับได้ทั้งร่างที่ยังกรอกไม่ครบ (ช่องว่างตกไปใช้ค่าตัวอย่าง) และ null
+export function previewStandardOf(standard, docType = 'quotation') {
+  const fallback = docType === 'salesOrder'
+    ? { ...DEFAULT_STANDARD, ...DEFAULT_SALES_ORDER_STANDARD }
+    : DEFAULT_STANDARD;
+  if (!standard) return { ...fallback };
+  const effectiveDate = String(standard.effectiveDate || '');
+  return {
+    formCode: String(standard.formCode || '').trim() || fallback.formCode,
+    revision: String(standard.revision || '').trim() || fallback.revision,
+    // ร่างเก็บวันที่เป็น YYYY-MM-DD ส่วนเอกสารพิมพ์เป็น พ.ศ. — แปลงให้ตรงกับใบจริง
+    effectiveDate: /^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)
+      ? formatDocumentStandardEffectiveDate(effectiveDate)
+      : (effectiveDate || fallback.effectiveDate),
+    titleTh: String(standard.titleTh || '').trim() || fallback.titleTh,
+    titleEn: String(standard.titleEn || '').trim() || fallback.titleEn,
+    accentKey: resolveDocumentAccentKey(standard, docType),
+  };
 }
 
 export function allocateInstallmentAmounts(total, installments = []) {
@@ -480,15 +511,15 @@ function scenarioInput(id) {
 const PREVIEW_STATUS_LABELS = { draft: 'ฉบับร่าง', approved: 'อนุมัติแล้ว', cancelled: 'ยกเลิก' };
 
 // แปลง model ตัวอย่างใบเสนอราคา → ใบสั่งขาย (FM-SA-03) สำหรับหน้า preview:
-// ต่างที่ฟอร์ม/ชื่อ/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม/accent (teal) — ข้อมูลลูกค้า+รายการใช้ร่วม
-function toSalesOrderPreviewModel(model, state) {
-  const form = DOCUMENT_FORMS.salesOrder;
+// ต่างที่ฟอร์ม/ชื่อ/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม/accent (steel) — ข้อมูลลูกค้า+รายการใช้ร่วม
+// standard = มาตรฐานใบสั่งขายที่ป้อนเข้ามา (ร่างที่กำลังแก้) ไม่ใช่ค่าตายตัวอีกต่อไป
+function toSalesOrderPreviewModel(model, state, standard) {
   const qtNumber = model.document.number;
   return {
     ...model,
-    accentKey: 'steel',
-    standard: { titleTh: 'ใบสั่งขาย', titleEn: form.title },
-    formLine: documentFormLine(form),
+    accentKey: standard.accentKey,
+    standard,
+    formLine: controlledFormLine(standard),
     document: {
       ...model.document,
       number: 'SO-26070028-0',
@@ -509,11 +540,14 @@ function toSalesOrderPreviewModel(model, state) {
   };
 }
 
+// options.standard = แถวมาตรฐานเอกสาร (ร่างที่กำลังแก้หรือฉบับที่เผยแพร่) — ป้อนเข้ามา
+// เพื่อให้พรีวิวสะท้อน "ค่าที่กำลังตั้ง" จริง ๆ ไม่ใช่ค่าตัวอย่างตายตัว; ไม่ส่ง = ใช้ค่าเดิม
 export function buildQuotationMasterPreview(
   scenarioId = 'standard',
   state = 'approved',
   templateVariant = DEFAULT_QUOTATION_MASTER_VARIANT,
   docType = 'quotation',
+  options = {},
 ) {
   const selectedTemplate = QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === templateVariant)
     || QUOTATION_MASTER_TEMPLATE_VERSIONS.find((item) => item.id === DEFAULT_QUOTATION_MASTER_VARIANT);
@@ -562,13 +596,17 @@ export function buildQuotationMasterPreview(
       discountAmount,
     });
 
+  // มาตรฐานที่ป้อนเข้ามา (ร่างที่กำลังแก้) ทับค่าตัวอย่าง — พิมพ์รหัสแบบฟอร์มในหน้าตั้งค่า
+  // แล้วต้องเห็นผลบนหัวเอกสารทันที ไม่งั้นพรีวิวกับสิ่งที่กำลังตั้งเป็นคนละเรื่อง
+  const previewStandard = previewStandardOf(options.standard, docType);
+
   const model = {
     ...BASE_QUOTE,
     ...scenario,
-    accentKey: 'terracotta',
+    accentKey: previewStandard.accentKey,
     templateVariant: selectedTemplate.id,
     templateVersion: selectedTemplate.templateVersion,
-    standard: { ...BASE_QUOTE.standard },
+    standard: previewStandard,
     company: { ...BASE_QUOTE.company },
     customer,
     references: { ...BASE_QUOTE.references },
@@ -603,9 +641,9 @@ export function buildQuotationMasterPreview(
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
     ],
     watermark: state === 'draft' ? 'ฉบับร่าง' : state === 'cancelled' ? 'ยกเลิก' : '',
-    formLine: controlledFormLine(BASE_QUOTE.standard),
+    formLine: controlledFormLine(previewStandard),
   };
-  return docType === 'salesOrder' ? toSalesOrderPreviewModel(model, state) : model;
+  return docType === 'salesOrder' ? toSalesOrderPreviewModel(model, state, previewStandard) : model;
 }
 
 // ── Phase 7C (Direction B): สร้าง "model แบบ V4" จาก quotation จริง ────────────
