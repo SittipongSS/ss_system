@@ -11,6 +11,7 @@ import { genId } from '@/lib/id';
 import { documentApprovalFingerprint } from '@/lib/documentApproval';
 import { buildSalesOrderPrintHTML } from '@/lib/sales/salesOrderPrint';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
+import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import {
   loadSignatureImageDataUri,
   loadActiveSignatureAsset,
@@ -122,7 +123,13 @@ export function artifactSha256(html) {
 }
 
 // ตรึง snapshot + artifact ผ่าน RPC atomic idempotent. เนื้อหาเดิมคืนของเดิม ไม่ซ้ำ.
-export async function captureIssuedSalesOrderSnapshot(supabase, { order, evidence, user, company }) {
+export async function captureIssuedSalesOrderSnapshot(supabase, { order: rawOrder, evidence, user, company }) {
+  // ข้อมูลลูกค้าบนใบสั่งขายอ่านจาก snapshot ของใบเสนอราคาที่ผูก — ช่องที่ว่าง (ผู้ติดต่อ/
+  // เลขผู้เสียภาษี) เคยถูกเติมจากทะเบียนลูกค้าเฉพาะตอนอ่านหน้ารายละเอียด (GET) ทำให้
+  // **ฉบับตรึงแสดง '-' ทั้งที่หน้าเว็บแสดงครบ**. เติมที่ชั้น capture เหมือนฝั่ง QT
+  const order = rawOrder?.quotation
+    ? { ...rawOrder, quotation: await fillCustomerSnapshotFromMaster(supabase, rawOrder.quotation) }
+    : rawOrder;
   const payload = buildIssuedSalesOrderPayload(order, company);
   // ผู้อนุมัติ = รูปจาก evidence ที่ตรึงตอนอนุมัติ
   // ผู้จัดทำ = รูปจาก evidence ที่ตรึงตอน "ยื่น" (mig 0153) ถ้ามี — ตรึงเวอร์ชันลายเซ็นจริง

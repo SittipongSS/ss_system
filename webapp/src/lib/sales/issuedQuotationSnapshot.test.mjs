@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildIssuedQuotationPayload,
   buildIssuedQuotationArtifactHtml,
+  captureIssuedQuotationSnapshot,
   loadSignatureImageDataUri,
   issuedContentFingerprint,
   artifactSha256,
@@ -77,6 +78,65 @@ test('artifact renders approved HTML without draft watermark', () => {
 test('artifact sha256 is stable for identical HTML', () => {
   const html = buildIssuedQuotationArtifactHtml(baseQuote);
   assert.equal(artifactSha256(html), artifactSha256(html));
+});
+
+// mock supabase สำหรับ capture: ทะเบียนลูกค้า + user_signatures (ไม่มีลายเซ็น = ข้าม storage)
+// + จับ args ที่ส่งเข้า RPC ไว้ตรวจ
+function captureClient(customer, sink) {
+  return {
+    from(table) {
+      const q = {
+        select: () => q,
+        eq: () => q,
+        maybeSingle: async () => ({ data: table === 'customers' ? customer : null }),
+      };
+      return q;
+    },
+    async rpc(name, args) {
+      sink.name = name;
+      sink.args = args;
+      return { data: { snapshot: { id: 'ISD-1' } }, error: null };
+    },
+  };
+}
+
+test('capture เติมข้อมูลลูกค้าที่ว่างจากทะเบียนก่อนตรึง — ฉบับตรึงต้องไม่แสดง "-"', async () => {
+  // บั๊กจริง 2026-07-26: หน้ารายละเอียดเติมช่องว่างตอนอ่าน (GET) แต่ชั้น capture ไม่เติม
+  // → เอกสารที่ "ออกจริง" (เล่นฉบับตรึง) แสดงเลขผู้เสียภาษี/ผู้ติดต่อเป็น '-'
+  const sink = {};
+  const client = captureClient({
+    taxId: '0105561000000',
+    address: null,
+    shippingAddress: null,
+    branchCode: '00001',
+    contacts: [{ name: 'คุณบี', phone: '021112222' }],
+  }, sink);
+  await captureIssuedQuotationSnapshot(client, {
+    quote: { ...baseQuote, customerId: 'C1', customerTaxId: null, contactName: null, contactPhone: null },
+    evidence,
+    user: { id: 'U1', name: 'ผู้อนุมัติ' },
+  });
+  assert.equal(sink.name, 'capture_issued_quotation_snapshot_atomic');
+  assert.equal(sink.args.p_quotation_id, 'QT-1');
+  assert.equal(sink.args.p_resolved_payload.customer.customerTaxId, '0105561000000');
+  assert.equal(sink.args.p_resolved_payload.customer.contactName, 'คุณบี');
+  assert.equal(sink.args.p_resolved_payload.customer.contactPhone, '021112222');
+  // ต้องไปถึง HTML ที่ตรึงด้วย ไม่ใช่แค่ payload — HTML คือสิ่งที่ reprint เล่นซ้ำ
+  assert.match(sink.args.p_artifact_html, /0105561000000/);
+  assert.match(sink.args.p_artifact_html, /คุณบี/);
+});
+
+test('capture ไม่ทับค่าที่ตรึงไว้แล้วด้วยทะเบียนลูกค้าปัจจุบัน', async () => {
+  const sink = {};
+  const client = captureClient({ taxId: 'ใหม่', contacts: [{ name: 'คนใหม่', phone: '099' }] }, sink);
+  await captureIssuedQuotationSnapshot(client, {
+    // ใบนี้ตรึงผู้ติดต่อไว้แล้ว (baseQuote) — ขาดแค่เลขภาษี
+    quote: { ...baseQuote, customerId: 'C1', customerTaxId: null },
+    evidence,
+    user: { id: 'U1' },
+  });
+  assert.equal(sink.args.p_resolved_payload.customer.contactName, 'คุณเอ');
+  assert.equal(sink.args.p_resolved_payload.customer.customerTaxId, 'ใหม่');
 });
 
 test('layout version is tagged for regeneration tracking', () => {
