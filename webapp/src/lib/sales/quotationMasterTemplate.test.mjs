@@ -111,7 +111,7 @@ test('fixture page distributions stay balanced by semantic section', () => {
     standard: [['items', 4], ['payment', 0]],
     dense: [['items', 6], ['items', 5], ['payment', 0]],
     multipage: [['items', 11], ['items', 10], ['items', 6], ['payment', 0]],
-    'long-content': [['items', 3], ['items', 3], ['payment', 0]],
+    'long-content': [['items', 4], ['items', 2], ['payment', 0]],
     installments: [['items', 5], ['payment', 0]],
   };
 

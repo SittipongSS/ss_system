@@ -9,6 +9,7 @@ import { purgeAttachments } from '@/lib/master/attachments';
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
+import { productDisplayName } from '@/lib/master/productIdentity';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -86,7 +87,7 @@ export async function PATCH(request, { params }) {
     await recordAudit({
       user, action: 'update', entityType: 'product', entityId: id,
       before: product, after: decided,
-      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${decided.productDescriptionEn || decided.productDescription || id}`,
+      summary: `${body.approvalStatus === 'approved' ? 'อนุมัติ' : body.approvalStatus === 'rejected' ? 'ปฏิเสธ' : 'รีเซ็ตสถานะ'}สินค้า ${productDisplayName(decided) || id}`,
       request,
     });
     // แจ้งทีมขายเมื่อมีคำตัดสิน (reset เป็น pending = งานภายใน ไม่ต้องแจ้ง)
@@ -94,7 +95,7 @@ export async function PATCH(request, { params }) {
       const approvedNow = body.approvalStatus === 'approved';
       sendChat('sales', chatCard({
         title: approvedNow ? '✅ สินค้าได้รับอนุมัติ' : '⛔ สินค้าถูกปฏิเสธ',
-        subtitle: decided.productDescriptionEn || decided.productDescription || decided.fgCode,
+        subtitle: productDisplayName(decided) || decided.fgCode,
         rows: [
           { label: 'FG Code', value: decided.fgCode },
           { label: approvedNow ? 'ผู้อนุมัติ' : 'ผู้ปฏิเสธ', value: user?.name },

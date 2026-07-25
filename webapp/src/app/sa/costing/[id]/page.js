@@ -28,6 +28,7 @@ import {
 } from "@/lib/costing";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { COST_LINE_KIND_LABELS } from "@/lib/master/costTemplate";
+import { productSelectOptions } from "@/components/master/productOption";
 
 const money = (value) => (value == null
   ? "—"
@@ -698,11 +699,7 @@ export default function CostingDetailPage() {
               <SearchableSelect
                 value=""
                 onChange={(value) => value && linkFg(pendingLink.item.id, value)}
-                options={linkProducts.map((p) => ({
-                  value: p.id,
-                  label: `${p.fgCode || p.id}${p.productDescription ? ` — ${p.productDescription}` : ""}`,
-                  search: [p.fgCode, p.productDescription, p.brandName].filter(Boolean).join(" "),
-                }))}
+                options={productSelectOptions(linkProducts)}
                 placeholder="ค้นหาด้วยรหัส FG หรือชื่อสินค้า"
                 ariaLabel="เลือกสินค้า"
               />

@@ -1,5 +1,6 @@
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
+import { productIdentity } from '@/lib/master/productIdentity';
 
 // Print-ready A4 (portrait) excise-tax BILLING document for a customer, built
 // from a filing order (+ the customer record). Bills the EXCISE TAX ONLY
@@ -50,10 +51,16 @@ export function buildBillPrintHTML(order, customer = {}, company) {
     const exVat = p.retailPriceExVat != null ? Number(p.retailPriceExVat) : (incVat ? incVat / (1 + VAT_RATE) : 0);
     const rawPerUnit = qty ? (Number(it.totalTax) || 0) / qty : 0;   // ภาษี/ชิ้น (สรรพสามิต + ท้องถิ่น)
     const perUnit = r2(rawPerUnit);
+    const identity = productIdentity({
+      ...(it.registration || {}),
+      ...p,
+      metadata: { ...(it.registration?.metadata || {}), ...(p.metadata || {}) },
+    });
     return {
       i: i + 1,
-      fgCode: p.fgCode || it.registration?.fgCode || "-",
-      name: p.productDescriptionEn || p.productDescription || it.registration?.productName || "-",
+      fgCode: identity.code || "-",
+      brand: identity.brand,
+      name: identity.detail || "-",
       qty, incVat, exVat, perUnit,
       tax: r2(perUnit * qty),         // line total from the rounded per-unit
     };
@@ -66,7 +73,7 @@ export function buildBillPrintHTML(order, customer = {}, company) {
   const rowsForLines = (pageLines) => pageLines.map((l) => `<tr>
     <td class="c-no">${l.i}</td>
     <td class="c-desc">
-      <div class="fg-code">${esc(l.fgCode)}</div>
+      <div class="fg-code">${esc([l.fgCode, l.brand].filter(Boolean).join(" · "))}</div>
       <div class="p-name">${esc(l.name)}</div>
       <div class="c-sub">ราคาขาย/หน่วย: ${fmtMoney(l.incVat)} (รวม VAT) · ${fmtMoney(l.exVat)} (ถอด VAT)</div>
     </td>

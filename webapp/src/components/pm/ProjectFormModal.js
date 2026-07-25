@@ -9,6 +9,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { productOptionDisplay } from "@/components/master/productOption";
 import { brandSelectOptions } from "@/lib/master/brands";
+import { productDisplayName, productIdentity } from "@/lib/master/productIdentity";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { isExciseCategory } from "@/lib/master/categoryOf";
@@ -140,7 +141,7 @@ export default function ProjectFormModal({
           // FG-first flow: เติมแบรนด์จาก FG ให้ด้วย (เฉพาะตอนยังว่าง) — สอดคล้อง
           // กฎ ลูกค้า›แบรนด์›สินค้า และทำให้ตัวกรอง FG ตามแบรนด์เข้าที่เอง
           brand: f.brand || firstFg.brandName || firstFg.brandNameEn || "",
-          name: f.name || firstFg.brandNameEn || firstFg.brandName || firstFg.productDescriptionEn || firstFg.productDescription || "",
+          name: f.name || productDisplayName(firstFg),
         };
       }
       return { ...f, projectProducts: newProducts };
@@ -319,6 +320,7 @@ export default function ProjectFormModal({
                   {form.projectProducts.map(pp => {
                     const p = effectiveProducts.find(x => x.id === pp.productId);
                     if (!p) return null;
+                    const identity = productIdentity(p);
                     const cat = categories.find(c => c.mainCategoryCode === p.categoryCode?.split("-")[0] && c.typeCode === p.categoryCode?.split("-")[1]);
                     return (
                       <div key={pp.productId} style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", background: "var(--panel-2)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: "6px" }}>
@@ -330,7 +332,7 @@ export default function ProjectFormModal({
                               {cat ? cat.nameTh : p.categoryCode || "ไม่มีหมวด"}
                             </span>
                           </div>
-                          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{p.productDescriptionEn || p.productDescription || p.brandNameEn || p.brandName || "-"}</div>
+                          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{identity.detail || "-"}</div>
                         </div>
                         <div style={{ display: "flex", gap: "8px", width: "240px", maxWidth: "100%" }}>
                           <input type="text" placeholder="สั่งซื้อ" value={pp.orderQty} onChange={(e) => updateFgQty(pp.productId, "orderQty", e.target.value)} className="premium-input w-full text-[12px] h-[32px]" />

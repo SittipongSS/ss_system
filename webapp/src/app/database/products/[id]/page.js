@@ -18,6 +18,7 @@ import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
 import { fmtMoney, fmtDate } from "@/lib/format";
+import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { categoryOf, categoryFlags } from "@/lib/master/categoryOf";
@@ -267,8 +268,8 @@ export default function ProductDetails() {
       </div>
       <SalesDetailOverview
         eyebrow={`PRODUCT MASTER · ${product.fgCode || "NO FG CODE"}`}
-        title={product.productDescriptionEn || product.productDescription}
-        description={<><span>{product.productDescriptionEn && product.productDescription ? product.productDescription : "ไม่มีชื่อภาษาไทย"}</span><span>แบรนด์ {brandBoth(product.brandName, product.brandNameEn) || "-"}</span><span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
+        title={productDisplayName(product)}
+        description={<><span>แบรนด์ {brandBoth(product.brandName, product.brandNameEn) || "-"}</span><span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
         badges={<>
           <SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />
           {isExciseCat && <SalesStateBadge label="ภาษีสรรพสามิต" color="var(--amber)" />}

@@ -14,6 +14,7 @@ import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell } from "recharts";
 import { brandLabel } from "@/lib/master/brands";
+import { productIdentity } from "@/lib/master/productIdentity";
 
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
@@ -125,7 +126,7 @@ export default function DatabaseOverview() {
       if (canApprove && !mine) return;
       q.push({
         id: `p-${x.id}`, tone: "warning", badge: "สินค้า",
-        title: `${x.fgCode || "-"} · ${x.productDescriptionEn || x.productDescription || brandLabel(x.brandName, x.brandNameEn) || ""}`.trim(),
+        title: productIdentity(x).text,
         subtitle: x.customerName || brandLabel(x.brandName, x.brandNameEn) || "รออนุมัติสินค้า",
         cta: mine ? "อนุมัติ" : "ดู", onClick: () => router.push("/database/products"),
       });

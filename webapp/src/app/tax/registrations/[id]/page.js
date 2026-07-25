@@ -17,6 +17,7 @@ import RejectDialog from "@/components/excise/RejectDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { brandLabel } from "@/lib/master/brands";
+import { productDisplayName } from "@/lib/master/productIdentity";
 
 const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
 
@@ -135,7 +136,7 @@ export default function RegistrationDetailPage() {
     <Workspace
       icon={<ClipboardCheck size={22} />}
       title={s?.fgCode || "..."}
-      subtitle={s ? `${s.productName} (${brandLabel(s.metadata?.brandNameTh, s.metadata?.brandNameEn || s.brandName) || "-"})` : ""}
+      subtitle={s ? `${productDisplayName(s)} (${brandLabel(s.metadata?.brandNameTh, s.metadata?.brandNameEn || s.brandName) || "-"})` : ""}
       headerRight={headerRight}
       back={back}
       // แก้ไข/ขอแก้ไข/ลบ = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header

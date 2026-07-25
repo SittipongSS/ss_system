@@ -7,6 +7,7 @@ import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/maste
 import { recordAudit } from '@/lib/audit';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
+import { productDisplayName } from '@/lib/master/productIdentity';
 
 export const dynamic = 'force-dynamic';
 // Approval gate: by default GET returns only APPROVED products, so downstream
@@ -196,7 +197,7 @@ export async function POST(request) {
   if (data.approvalStatus === 'pending') {
     sendChat('approvals', chatCard({
       title: '📦 สินค้าใหม่รออนุมัติ',
-      subtitle: data.productDescriptionEn || data.productDescription || data.fgCode,
+      subtitle: productDisplayName(data) || data.fgCode,
       rows: [
         { label: 'FG Code', value: data.fgCode },
         { label: 'ลูกค้า', value: data.customerName },

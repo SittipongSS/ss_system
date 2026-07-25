@@ -13,6 +13,7 @@ import { google } from 'googleapis';
 import { ExternalAccountClient } from 'google-auth-library';
 import { getVercelOidcToken } from '@vercel/functions/oidc';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { productDisplayName } from '@/lib/master/productIdentity';
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -125,7 +126,7 @@ export async function ensureProductFolder(product, customer) {
   if (product.driveFolderId) return product.driveFolderId;
   const parentId = await ensureCustomerFolder(customer);
   const label = product.fgCode || product.id;
-  const folderId = await ensureFolder(`${product.productDescriptionEn || product.productDescription || product.id} (${label})`, parentId);
+  const folderId = await ensureFolder(`${productDisplayName(product) || product.id} (${label})`, parentId);
   await getSupabaseAdmin().from('products').update({ driveFolderId: folderId }).eq('id', product.id);
   return folderId;
 }

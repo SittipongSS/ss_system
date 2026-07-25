@@ -3,19 +3,26 @@
 import { genId } from '@/lib/id';
 import { quoteLineNet, toMoney } from '@/lib/salesPlanning';
 import { DEFAULT_SALE_UNIT, saleUnitOf } from '@/lib/master/units';
+import {
+  productBrandName,
+  productDisplayName,
+  productVolumeLabel,
+} from '@/lib/master/productIdentity';
 
 export function productLabel(product) {
-  return product?.productDescription || product?.productDescriptionEn || product?.fgCode || 'สินค้า';
+  return productDisplayName(product) || product?.fgCode || 'สินค้า';
 }
 
-// คำอธิบายบรรทัด FG มาตรฐานเดียวทั้งระบบ (มติผู้ใช้ 2026-07-15): แบรนด์ · ชื่อสินค้า ·
-// ปริมาตร — ส่วน "รหัส" แสดงแยกเป็นป้าย FG นำหน้าทั้งในโปรแกรมและเอกสารพิมพ์
-// (ไม่ฝังรหัสใน description กันซ้ำซ้อน). ใช้ตอน seed จากโครงการ + ตอนเลือกสินค้าใน editor.
+// คำอธิบายหลักเก็บเฉพาะ "ชื่อสินค้า · ปริมาตร"; รหัสและแบรนด์อยู่ใน metadata
+// เพื่อให้หน้าจอ/เอกสารจัดลำดับชั้นเป็น รหัส · แบรนด์ / ชื่อสินค้า · ปริมาตร.
 export function fgLineDescription(product) {
-  const brand = product?.brandName || product?.brandNameEn || '';
-  const name = product?.productDescription || product?.productDescriptionEn || '';
-  const volume = product?.volume ? `${product.volume} ${product.volumeUnit || 'ml'}` : '';
-  return [brand, name, volume].filter(Boolean).join(' · ') || productLabel(product);
+  return [productDisplayName(product), productVolumeLabel(product)]
+    .filter(Boolean)
+    .join(' · ') || productLabel(product);
+}
+
+export function fgLineBrand(product) {
+  return productBrandName(product);
 }
 
 function qtyFromProjectProduct(row) {
@@ -49,7 +56,10 @@ export async function seedLinesFromProject(supabase, deal) {
       lineTotal: qty * unitPrice,
       source: 'project_products',
       sortOrder: index,
-      metadata: { projectProductId: row.id },
+      metadata: {
+        projectProductId: row.id,
+        productBrand: fgLineBrand(row.product),
+      },
     };
   });
 }
@@ -60,7 +70,7 @@ export const QUOTE_PRICE_FIELD = 'costPrice';
 
 // ข้อมูลบรรทัด FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี
 // productId ถูกทับทั้ง "ราคา" (ราคาผลิต — QUOTE_PRICE_FIELD) และ "คำอธิบาย"
-// (แบรนด์ · ชื่อสินค้า · ปริมาตร) + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ —
+// (ชื่อสินค้า · ปริมาตร) + snapshot แบรนด์ + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ —
 // **ห้ามกำหนดราคาจากใบเสนอราคาทุกกรณี** flow คือไปตั้งราคาที่ฐานข้อมูลสินค้าแล้วกลับมาบันทึกใบ.
 // - master ยังไม่ตั้งราคา (0/ว่าง) = ไม่มีข้อมูล ไม่ใช่ราคา 0 → คงราคาที่บันทึกไว้เดิม
 //   ในใบ (previousLines); บรรทัดใหม่ = 0 จนกว่าจะตั้งราคาใน master (ส่ง/Won มี guard
@@ -88,11 +98,30 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
       : toMoney(prev?.unitPrice ?? (master ? 0 : line.unitPrice));
     const description = master ? fgLineDescription(master) : (prev?.description || line.description);
     const fgCode = master ? (master.fgCode || null) : (prev?.fgCode ?? line.fgCode);
+    const productBrand = master
+      ? fgLineBrand(master)
+      : (prev?.metadata?.productBrand ?? line.metadata?.productBrand ?? '');
+    const metadata = { ...(line.metadata || {}), productBrand };
     // หน่วยผูก master เช่นกัน (มติ 2026-07-23) — freeze จากสินค้าตอนบันทึก; สินค้าถูกลบ = คงเดิม
     const unit = master ? (master.saleUnit || DEFAULT_SALE_UNIT) : (prev?.unit ?? line.unit ?? DEFAULT_SALE_UNIT);
-    if (unitPrice === line.unitPrice && description === line.description && fgCode === line.fgCode && unit === line.unit) return line;
+    if (
+      unitPrice === line.unitPrice
+      && description === line.description
+      && fgCode === line.fgCode
+      && unit === line.unit
+      && productBrand === (line.metadata?.productBrand || '')
+    ) return line;
     const net = quoteLineNet({ qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue });
-    return { ...line, unitPrice, description, fgCode, unit, discountAmount: net.discountAmount, lineTotal: net.lineTotal };
+    return {
+      ...line,
+      unitPrice,
+      description,
+      fgCode,
+      unit,
+      metadata,
+      discountAmount: net.discountAmount,
+      lineTotal: net.lineTotal,
+    };
   });
 }
 
@@ -114,7 +143,13 @@ export async function refreshFgLinesForDisplay(supabase, quotes = []) {
   for (const q of targets) {
     q.lines = q.lines.map((l) => {
       const p = l?.productId ? byId.get(l.productId) : null;
-      return p ? { ...l, description: fgLineDescription(p), fgCode: p.fgCode || l.fgCode, unit: p.saleUnit || l.unit || DEFAULT_SALE_UNIT } : l;
+      return p ? {
+        ...l,
+        description: fgLineDescription(p),
+        fgCode: p.fgCode || l.fgCode,
+        unit: p.saleUnit || l.unit || DEFAULT_SALE_UNIT,
+        metadata: { ...(l.metadata || {}), productBrand: fgLineBrand(p) },
+      } : l;
     });
   }
   return quotes;

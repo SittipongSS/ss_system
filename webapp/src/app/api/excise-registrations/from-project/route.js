@@ -3,15 +3,16 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can, inScope, viewScope } from '@/lib/permissions';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 
 export const dynamic = 'force-dynamic';
 
 function productName(product) {
-  return product?.productDescriptionEn || product?.productDescription || product?.fgCode || null;
+  return productDisplayName(product) || product?.fgCode || null;
 }
 
 function brandName(product) {
-  return product?.brandNameEn || product?.brandName || null;
+  return productBrandName(product) || null;
 }
 
 export const POST = withUser(async ({ user, supabase, req }) => {

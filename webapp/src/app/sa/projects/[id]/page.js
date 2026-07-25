@@ -27,6 +27,7 @@ import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ReadableText from "@/components/ui/ReadableText";
 import { productSelectOptions } from "@/components/master/productOption";
+import { productIdentity } from "@/lib/master/productIdentity";
 import { cachedFetchJson } from "@/lib/apiCache";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -800,6 +801,7 @@ export default function ProjectDetailPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {(p.projectProducts || []).map((pp) => {
             const actualProd = pp.product || {};
+            const identity = productIdentity(actualProd);
             return (
               <div key={pp.productId} style={{ display: "flex", flexDirection: "column", gap: "8px", background: "var(--panel-2)", border: "1px solid var(--border)", padding: "10px 12px", borderRadius: "8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
@@ -814,7 +816,7 @@ export default function ProjectDetailPage() {
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                   <div style={{ fontSize: "12px", color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: "150px" }}>
-                    {actualProd.productDescriptionEn || actualProd.productDescription || actualProd.brandNameEn || actualProd.brandName || "-"}
+                    {identity.detail || "-"}
                   </div>
                   <div style={{ display: "flex", gap: "8px", width: "220px", maxWidth: "100%", flexShrink: 0 }}>
                     <input type="text" placeholder="สั่งซื้อ" defaultValue={pp.orderQty || ""} disabled={!canEdit} onBlur={(e) => { if (e.target.value !== (pp.orderQty || "")) updateProductQty(pp.productId, "orderQty", e.target.value); }} className="premium-input w-full text-[12px] h-[30px]" />
