@@ -215,7 +215,9 @@ export default function SalesOrderDetailPage() {
       {role === "admin" && canHardDeleteSalesOrder(order) && (
         <button type="button" className="btn-icon danger" disabled={!!busy} onClick={remove} aria-label="ลบฉบับร่างถาวร" title="ลบฉบับร่างถาวร"><Trash2 size={16} aria-hidden="true" /></button>
       )}
-      <button type="button" className="btn btn-primary" onClick={printDocument}><Printer size={14} /> ออกเอกสาร</button>
+      {/* พิมพ์/ออกเอกสาร = งาน workflow ระดับหน้า → ปุ่ม text แถวเดียวกับย้อนกลับ (ux-ui-rulebook)
+          ใช้ ghost ไม่ใช่ filled: primary สงวนให้ขั้นถัดไปของเอกสาร (ยื่น/อนุมัติ) — filled ตัวเดียวต่อบริบท */}
+      <button type="button" className="btn ghost" onClick={printDocument}><Printer size={15} aria-hidden="true" /> ออกเอกสาร</button>
     </>}>
       <div className={styles.page}>
         <SalesDetailOverview
@@ -272,10 +274,10 @@ export default function SalesOrderDetailPage() {
             {(canEdit || reviewer) && <DetailCard icon={UserRound} eyebrow="ACTIONS" title="จัดการเอกสาร" meta="สิทธิ์เปลี่ยนตามสถานะและบทบาท">
               <div className={styles.actionStack}>
                 {editable && <><button type="button" className="btn" disabled={!!busy} onClick={() => save(false)}><Save size={15} /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกร่าง"}</button><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => save(true)}><Send size={15} /> บันทึกและยื่นอนุมัติ</button></>}
-                {canReviewThis && order.status === "pending_approval" && <><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => review("approve")}><CheckCircle2 size={15} /> อนุมัติและนับ Actual</button><button type="button" className="btn danger" disabled={!!busy} onClick={() => review("reject")}><Undo2 size={15} /> ตีกลับให้แก้ไข</button></>}
+                {canReviewThis && order.status === "pending_approval" && <><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => review("approve")}><CheckCircle2 size={15} /> อนุมัติและนับ Actual</button><button type="button" className="btn action-outline btn-danger" disabled={!!busy} onClick={() => review("reject")}><Undo2 size={15} /> ตีกลับให้แก้ไข</button></>}
                 {canAdminOverride && <><span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span><button type="button" className="btn action-outline btn-warning" disabled={!!busy} onClick={() => setOverrideForm({ reason: "" })}><ShieldAlert size={15} /> อนุมัติแบบ Admin Override</button></>}
                 {reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>}
-                {approved && reviewer && <button type="button" className="btn danger" disabled={!!busy} onClick={openCancel}><XCircle size={15} /> ยกเลิก SO</button>}
+                {approved && reviewer && <button type="button" className="btn action-outline btn-danger" disabled={!!busy} onClick={openCancel}><XCircle size={15} /> ยกเลิก SO</button>}
                 {order.status === "cancelled" && role === "admin" && <button type="button" className="btn" disabled={!!busy} onClick={() => requestAction("restore")}><RotateCcw size={15} /> คืนเป็นฉบับร่าง</button>}
               </div>
             </DetailCard>}
@@ -342,7 +344,7 @@ export default function SalesOrderDetailPage() {
             </label>
             <label style={{ display: "block", fontSize: 13 }}>
               <span style={{ color: "var(--text-2)" }}>หมายเหตุ {cancelForm.code === "other" ? "(บังคับ)" : "(ไม่บังคับ)"}</span>
-              <textarea className="input" rows={2} value={cancelForm.note} onChange={(e) => setCancelForm((f) => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
+              <textarea className="textarea-premium" rows={2} value={cancelForm.note} onChange={(e) => setCancelForm((f) => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
             </label>
             {showReversal && (
               <div className="glass-panel" style={{ padding: "10px 12px", borderColor: "var(--amber)", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -357,13 +359,13 @@ export default function SalesOrderDetailPage() {
                   <input type="radio" name="rev" checked={cancelForm.reverseTo === "lost"} onChange={() => setCancelForm((f) => ({ ...f, reverseTo: "lost" }))} /> ย้อน → ปิดดีลเป็น Lost (ลูกค้าเลิกถาวร)
                 </label>
                 {cancelForm.reverseTo === "lost" && (
-                  <textarea className="input" rows={2} value={cancelForm.lostReason} onChange={(e) => setCancelForm((f) => ({ ...f, lostReason: e.target.value }))} placeholder="เหตุผลที่ดีลไม่สำเร็จ (บังคับ)" />
+                  <textarea className="textarea-premium" rows={2} value={cancelForm.lostReason} onChange={(e) => setCancelForm((f) => ({ ...f, lostReason: e.target.value }))} placeholder="เหตุผลที่ดีลไม่สำเร็จ (บังคับ)" />
                 )}
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button type="button" className="btn ghost" onClick={() => setCancelForm(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn danger" onClick={doCancel} disabled={!!busy || !cancelForm.code}><XCircle size={15} /> ยืนยันยกเลิก SO</button>
+              <button type="button" className="btn btn-danger" onClick={doCancel} disabled={!!busy || !cancelForm.code}><XCircle size={15} /> ยืนยันยกเลิก SO</button>
             </div>
           </div>
         </Modal>
