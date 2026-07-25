@@ -29,7 +29,7 @@ import styles from "./page.module.css";
 
 const STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
-  pending_approval: { label: "รอ AE Supervisor อนุมัติ", color: "var(--amber)", description: "เอกสารถูกล็อกระหว่างรอตรวจ" },
+  pending_approval: { label: "รอ AE Supervisor อนุมัติ", color: "var(--amber)" },
   approved: { label: "อนุมัติแล้ว", color: "var(--green)", description: "ยอดถูกนับเป็น Actual แล้ว" },
   rejected: { label: "ตีกลับให้แก้ไข", color: "var(--red)", description: "แก้ไขตามเหตุผลแล้วส่งอนุมัติใหม่" },
   cancelled: { label: "ยกเลิก", color: "var(--red)", description: "เอกสารนี้ไม่ถูกนับเป็น Actual" },
@@ -364,7 +364,7 @@ export default function SalesOrderDetailPage() {
               )}
             />
 
-            <DetailCard icon={FileCheck2} eyebrow="DOCUMENT CONTROL" title="ตรวจข้อมูลเอกสาร" meta={editable ? "แก้ไขได้ก่อนยื่นอนุมัติ" : "เอกสารถูกล็อกตามสถานะ"}>
+            <DetailCard icon={FileCheck2} eyebrow="DOCUMENT CONTROL" title="ตรวจข้อมูลเอกสาร">
               <div className={styles.formStack}>
                 <label><span>วันที่ SO</span><input className="premium-input" type="date" value={form.orderDate} disabled={!editable} onChange={(event) => updateField("orderDate", event.target.value)} /></label>
                 <label><span>กำหนดชำระ</span><input className="premium-input" type="date" value={form.paymentDueDate} disabled={!editable} onChange={(event) => updateField("paymentDueDate", event.target.value)} /></label>

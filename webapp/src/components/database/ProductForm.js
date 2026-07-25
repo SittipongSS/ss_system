@@ -233,11 +233,7 @@ export default function ProductForm({
                   readOnly
                   className="premium-input w-full font-mono tabular-nums"
                   style={{ color: "var(--text-3)", background: "var(--panel-2)", cursor: "not-allowed" }}
-                  aria-describedby="factory-price-readonly-help"
                 />
-                <span id="factory-price-readonly-help" className="text-xs text-[var(--text-3)] mt-1">
-                  ช่องนี้ดูอย่างเดียว ต้องกด “อัปเดตราคาผลิต” ด้านล่างเพื่อแก้ราคา
-                </span>
               </>
             ) : (
               <MoneyInput name="costPrice" value={form.costPrice} onChange={(v) => onForm({ costPrice: v ?? "" })} className="w-full" />
