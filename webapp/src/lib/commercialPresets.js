@@ -129,6 +129,68 @@ export function installmentPercentTotal(rows = []) {
   return rows.reduce((sum, row) => sum + (Number(row?.percent) || 0), 0);
 }
 
+// ── การนำชุดไปใช้บนใบเสนอราคา ─────────────────────────────────────────────────
+// กติกา (มติ 2026-07-25): เลือกได้ชุดเดียวต่อช่อง เลือกแล้วทับทั้งช่อง · แก้ทับบนใบได้
+// อิสระและมีผลกับใบนั้นใบเดียว (ไม่เขียนกลับคลัง) · จัดการชุดได้ที่หน้าตั้งค่าเท่านั้น
+
+// แปลงชุดการชำระ → ค่าที่ QuotationPaymentTerms กินได้ตรง ๆ.
+// ใช้ type 'installment' ทุกกรณีรวมแถวเดียว 100% — ถ้าแปลงเป็น 'full' แถวงวดจะไม่ถูกเก็บ
+// แล้วเงื่อนไขเริ่มชำระ/กำหนดชำระที่ตั้งไว้ในคลังจะหายเงียบ ๆ. ฟอร์มใบมีแค่
+// label/percent/note จึงพับ trigger + dueRule + note รวมเข้า note ด้วย ' · '
+export function paymentPresetToFormValue(option) {
+  const rows = Array.isArray(option?.installments) ? option.installments : [];
+  if (!option || !rows.length) return null;
+  return {
+    type: 'installment',
+    paymentMethod: option.paymentMethod || '',
+    paymentTerms: option.paymentTerms || '',
+    installments: rows.map((row) => ({
+      label: trimOrNull(row?.label) || '',
+      percent: Number(row?.percent) || 0,
+      note: [row?.trigger, row?.dueRule, row?.note].map((text) => trimOrNull(text)).filter(Boolean).join(' · ') || '',
+    })),
+  };
+}
+
+// แปลงชุดหมายเหตุ → ข้อความในช่องหมายเหตุ
+export function remarksPresetToFormValue(option) {
+  if (!option) return null;
+  return String(option.remarks ?? '');
+}
+
+const sameText = (a, b) => String(a ?? '').trim() === String(b ?? '').trim();
+
+// ค่าปัจจุบันในฟอร์ม "ยังตรงกับชุดที่เลือก" อยู่ไหม — ใช้ทั้งตัดสินป้าย "แก้เพิ่มเติมแล้ว"
+// และตัดสินว่าการเลือกชุดใหม่จะทำของหาย (ต้องถามยืนยัน) หรือทับได้เงียบ ๆ.
+// คิดสดจากการเทียบทุกครั้ง ไม่เก็บธงไว้ที่ไหน — แก้กลับให้ตรงแล้วต้องกลับเป็น true เอง
+export function matchesPaymentPreset(current, option) {
+  const expected = paymentPresetToFormValue(option);
+  if (!expected) return false;
+  const rows = Array.isArray(current?.installments) ? current.installments : [];
+  if (!sameText(current?.paymentMethod, expected.paymentMethod)) return false;
+  if (!sameText(current?.paymentTerms, expected.paymentTerms)) return false;
+  if (rows.length !== expected.installments.length) return false;
+  return expected.installments.every((row, index) => {
+    const actual = rows[index] || {};
+    return sameText(actual.label, row.label)
+      && sameText(actual.note, row.note)
+      && Math.abs((Number(actual.percent) || 0) - row.percent) <= 0.001;
+  });
+}
+
+export function matchesRemarksPreset(current, option) {
+  if (!option) return false;
+  return sameText(current, remarksPresetToFormValue(option));
+}
+
+// ช่องว่าง = ไม่มีอะไรจะเสีย เลือกชุดทับได้เลยไม่ต้องถาม
+export function isEmptyPaymentValue(current) {
+  const rows = Array.isArray(current?.installments) ? current.installments : [];
+  return !String(current?.paymentMethod ?? '').trim()
+    && !String(current?.paymentTerms ?? '').trim()
+    && rows.every((row) => !String(row?.label ?? '').trim() && !String(row?.note ?? '').trim() && !Number(row?.percent));
+}
+
 // สรุปย่อไว้โชว์ในตารางรายการ — ชุดการชำระบอกจำนวนงวด ชุดหมายเหตุบอกความยาวข้อความ
 export function commercialPresetSummary(kind, version) {
   if (!version) return 'ยังไม่มีเวอร์ชันใช้งาน';
