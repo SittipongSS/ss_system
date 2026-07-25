@@ -51,6 +51,8 @@
 
 /* ── แท็บรายการ ───────────────────────────────────────────────────────── */
 .listSummary { color: var(--text-2); font-size: 12.5px; }
+/* ปีเพิ่มขึ้นเรื่อย ๆ ทุกปี — ให้เลื่อนแนวนอนแทนการดันแถวเครื่องมือแตก */
+.yearPicker { max-width: 100%; overflow-x: auto; }
 .yearList { display: flex; flex-direction: column; gap: 16px; }
 .yearPanel { padding: 0; overflow: hidden; }
 .yearHeader { display: flex; align-items: center; gap: 9px; padding: 13px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
