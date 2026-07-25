@@ -261,8 +261,10 @@ export default function SalesOrderDetailPage() {
         {error && <div className={styles.alertError} role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}><span>{error}</span>{errorActionUrl && <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link>}</div>}
         {notice && <div className={styles.alertSuccess} role="status">{notice}</div>}
         {/* รู้ตั้งแต่เปิดหน้าว่าเซ็นไม่ได้ ดีกว่าไปเจอ 409 ตอนกดอนุมัติ */}
+        {/* เตือนล่วงหน้าทั้งผู้ยื่นและผู้อนุมัติ — การกดยื่นจะบันทึกหลักฐานลายเซ็นเช่นกัน
+            (mig 0151+) คนไม่มีลายเซ็นจะยื่นไม่ได้ ต้องรู้ก่อนกดไม่ใช่ไปเจอ 409 */}
         <SignatureReadyNotice
-          active={(canReviewThis && order.status === "pending_approval") || canAdminOverride}
+          active={(canReviewThis && order.status === "pending_approval") || canAdminOverride || editable}
           docLabel="Sale Order นี้"
         />
         {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><p>{order.rejectionReason}</p></div></div>}

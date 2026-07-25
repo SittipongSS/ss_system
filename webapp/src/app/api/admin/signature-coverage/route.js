@@ -22,7 +22,7 @@ export async function GET() {
 
   const supabase = getSupabaseAdmin();
 
-  const [directory, signatures, deals, quotations] = await Promise.all([
+  const [directory, signatures, deals, quotations, draftQuotes, draftOrders] = await Promise.all([
     loadUserDirectory(supabase),
     supabase.from('user_signatures').select('userId, activeVersionId'),
     // limit สูงกว่าจำนวนดีลเปิดจริงมาก — กัน default page size ของ PostgREST ตัดแถว
@@ -33,9 +33,24 @@ export async function GET() {
       .select('id, status, approvalStatus, deal:sales_deals(ownerId, stage)')
       .eq('approvalStatus', 'pending')
       .in('status', APPROVABLE_STATUSES),
+    // เส้นผู้ยื่น: เอกสารที่ "ตัวเองสร้าง" และยังค้างต้องยื่นอนุมัติ — การกดยื่นจะบันทึก
+    // หลักฐานลายเซ็น (mig 0151+) ฉะนั้นคนไม่มีลายเซ็นจะยื่นไม่ได้ ต้องเห็นในรายงานล่วงหน้า
+    // ครอบทั้ง approvalStatus ก่อนและหลังมีขั้นยื่นของ QT (pending / not_submitted)
+    supabase
+      .from('quotations')
+      .select('id, createdBy')
+      .in('approvalStatus', ['pending', 'not_submitted'])
+      .in('status', APPROVABLE_STATUSES)
+      .limit(5000),
+    supabase
+      .from('sales_orders')
+      .select('id, createdBy')
+      .in('status', ['draft', 'rejected'])
+      .limit(5000),
   ]);
 
-  const firstError = signatures.error || deals.error || quotations.error;
+  const firstError = signatures.error || deals.error || quotations.error
+    || draftQuotes.error || draftOrders.error;
   if (firstError) return Response.json({ error: 'โหลดข้อมูลความพร้อมลายเซ็นไม่สำเร็จ' }, { status: 500 });
 
   const activeSignatureUserIds = new Set(
@@ -50,11 +65,18 @@ export async function GET() {
     return deal.ownerId;
   });
 
+  // นับตาม createdBy — ผู้ยื่นตามปกติคือผู้สร้างเอกสาร (ผู้ยื่นตาม scope ทีมนับล่วงหน้าไม่ได้)
+  const submittableCounts = countBy(
+    [...(draftQuotes.data || []), ...(draftOrders.data || [])],
+    (row) => row.createdBy,
+  );
+
   const coverage = buildSignatureCoverage({
     users: [...directory.values()],
     activeSignatureUserIds,
     dealCounts,
     pendingCounts,
+    submittableCounts,
   });
 
   return Response.json(coverage);
