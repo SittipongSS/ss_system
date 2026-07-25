@@ -25,7 +25,7 @@ import {
 } from "@/lib/sales/salesOrderApprovalOverride";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { openSalesOrderPrintWindow, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
+import { openSalesOrderPrintWindowPreferIssued, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
 import { getCompanyProfileForPrint } from "@/lib/companyProfile";
 import styles from "./page.module.css";
 
@@ -183,7 +183,8 @@ export default function SalesOrderDetailPage() {
       ]);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "ไม่สามารถโหลดข้อมูลใบสั่งขายได้");
-      openSalesOrderPrintWindow(data, printWindow, company);
+      // ฉบับตรึงก่อน (approved) — มี company + ลายเซ็นฝังจากตอนอนุมัติ; ไม่มี snapshot → เรนเดอร์สดพร้อม company profile
+      await openSalesOrderPrintWindowPreferIssued(data, printWindow, company);
     } catch (printError) {
       showSalesOrderPrintError(printWindow, printError.message);
     }

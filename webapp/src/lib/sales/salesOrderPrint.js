@@ -50,6 +50,7 @@ export function buildSalesOrderPrintHTML(order, company = null) {
 
   // ลายเซ็นผู้จัดทำ (พนักงานขาย): stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง — ไม่ใช่
   // evidence-backed จึงไม่มี role/เวลา/Evidence (เหมือนช่องผู้เสนอราคาในใบเสนอราคา).
+  // live print โหลดสด (route GET); ฉบับตรึง snapshot ฝังรูปตอนอนุมัติ.
   const proposerSig = order.proposerSignature;
   const proposerEsignature = proposerSig?.imageDataUri
     ? {
@@ -123,4 +124,28 @@ export function openSalesOrderPrintWindow(order, preparedWindow = null, company 
   win.document.write(buildSalesOrderPrintHTML(order, company));
   win.document.close();
   return win;
+}
+
+// พิมพ์โดยเลือกฉบับตรึง (issued snapshot) ก่อนถ้ามี — SO ที่อนุมัติแล้วเล่นฉบับที่ตรึงตอน
+// อนุมัติ (หน้าตา + รูปลายเซ็นคงที่ ไม่เปลี่ยนตามข้อมูลสด); ยังไม่อนุมัติ/ไม่มี snapshot
+// (404) หรือสถานะเปลี่ยนหลังอนุมัติ (409) → เรนเดอร์สดตามปกติ. คู่ขนานกับ QT prefer-issued.
+export async function openSalesOrderPrintWindowPreferIssued(order, preparedWindow = null, company = null) {
+  const win = preparedWindow || prepareSalesOrderPrintWindow();
+  if (!win) return undefined;
+  const id = order?.id;
+  if (!id) return openSalesOrderPrintWindow(order, win, company);
+  try {
+    const res = await fetch(`/api/sales-planning/sales-orders/${encodeURIComponent(id)}/issued?render=latest`, {
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      win.document.open();
+      win.document.write(await res.text());
+      win.document.close();
+      return win;
+    }
+  } catch {
+    // โหลดฉบับตรึงไม่ได้ = ไม่บล็อกการพิมพ์ ตกไปใช้ข้อมูลสดแทน (พร้อม company profile สด)
+  }
+  return openSalesOrderPrintWindow(order, win, company);
 }
