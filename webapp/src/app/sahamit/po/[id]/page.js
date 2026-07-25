@@ -18,6 +18,7 @@ import { useCan } from "@/lib/roleContext";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import Modal from "@/components/Modal";
 import Toast from "@/components/ui/Toast";
+import ReadableText from "@/components/ui/ReadableText";
 
 const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];
 const nf = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -139,7 +140,10 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
             <b>ประวัติการเลื่อนวันคาดการณ์ส่ง:</b>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
               {hist.map((h, i) => (
-                <li key={i}>เดิม {h.expectedDate ? fmtDate(h.expectedDate) : "—"} {h.reason ? `· ${h.reason}` : ""} <span style={{ color: "var(--text-3)" }}>({h.changedAt ? fmtDate(h.changedAt) : ""})</span></li>
+                <li key={i}>
+                  <span>เดิม {h.expectedDate ? fmtDate(h.expectedDate) : "—"} <span style={{ color: "var(--text-3)" }}>({h.changedAt ? fmtDate(h.changedAt) : ""})</span></span>
+                  {h.reason && <ReadableText text={h.reason} lines={3} style={{ marginTop: 2, color: "var(--text-2)" }} />}
+                </li>
               ))}
             </ul>
           </td>
@@ -549,7 +553,9 @@ export default function PoDetailPage() {
             <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
               <div className="form-group" style={{ flex: 1 }}>
                 <label>หมายเหตุ</label>
-                <input className="premium-input" value={h.note || ""} onChange={(e) => setH({ ...h, note: e.target.value })} />
+                {canEdit
+                  ? <textarea className="premium-input" rows={2} value={h.note || ""} onChange={(e) => setH({ ...h, note: e.target.value })} />
+                  : <div className="readable-field"><ReadableText text={h.note} lines={4} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div>}
               </div>
               {canEdit && <button className="btn btn-primary" onClick={saveHeader} disabled={busy}><Save size={14} /> {busy ? "กำลังบันทึก..." : "บันทึก PO"}</button>}
             </div>

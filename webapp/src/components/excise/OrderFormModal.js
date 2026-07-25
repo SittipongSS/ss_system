@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import Modal from "@/components/Modal";
+import ReadableText from "@/components/ui/ReadableText";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DateInput from "@/components/ui/DateInput";
 import { fmtMoney } from "@/lib/format";
@@ -110,7 +111,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
         <div className="drawer-section flex flex-col gap-4">
           {editing && order.status === "rejected" && order.rejectionReason && (
             <div style={{ fontSize: 13, color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">
-              เหตุผลที่ตีกลับ: {order.rejectionReason}
+              <strong>เหตุผลที่ตีกลับ: </strong><ReadableText text={order.rejectionReason} lines={4} />
             </div>
           )}
 
@@ -146,7 +147,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
             </div>
             <div className="form-group">
               <label>หมายเหตุ</label>
-              <input className="premium-input w-full" value={form.remarks}
+              <textarea className="premium-input w-full" rows={3} value={form.remarks}
                 onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} placeholder="ข้อมูลเพิ่มเติม" />
             </div>
           </div>

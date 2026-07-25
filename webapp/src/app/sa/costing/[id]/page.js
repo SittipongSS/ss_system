@@ -11,6 +11,7 @@ import Modal from "@/components/Modal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ReadableText from "@/components/ui/ReadableText";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
@@ -325,12 +326,12 @@ export default function CostingDetailPage() {
           )}
         </div>
         {request.note && (
-          <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-2)" }}>{request.note}</p>
+          <ReadableText text={request.note} lines={4} style={{ marginTop: 12, fontSize: 13, color: "var(--text-2)" }} />
         )}
         {request.status === "cancelled" && request.cancelReason && (
-          <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--red)" }}>
-            เหตุผลที่ยกเลิก: {request.cancelReason}
-          </p>
+          <div style={{ marginTop: 8, fontSize: 13, color: "var(--red)" }}>
+            <strong>เหตุผลที่ยกเลิก: </strong><ReadableText text={request.cancelReason} lines={4} />
+          </div>
         )}
       </div>
 
@@ -382,9 +383,9 @@ export default function CostingDetailPage() {
             </div>
 
             {item.approvalStatus === "returned" && item.returnReason && (
-              <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--red)" }}>
-                ผู้บริหารตีกลับ: {item.returnReason}
-              </p>
+              <div style={{ margin: "0 0 12px", fontSize: 13, color: "var(--red)" }}>
+                <strong>ผู้บริหารตีกลับ: </strong><ReadableText text={item.returnReason} lines={4} />
+              </div>
             )}
 
             <div className="premium-table-wrapper">

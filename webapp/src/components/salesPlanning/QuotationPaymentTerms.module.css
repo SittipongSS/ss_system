@@ -15,8 +15,9 @@
 .installmentOn .toggleTrack > span { transform: translateX(14px); }
 
 .paymentTermsGrid { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(280px, 1.3fr); gap: 16px; }
-.paymentTermsGrid label { display: flex; min-width: 0; flex-direction: column; align-items: stretch; color: var(--text-2); font-size: 12px; font-weight: 650; }
-.paymentTermsGrid label > * { margin-top: 6px; }
+.paymentTermsGrid label, .paymentField { display: flex; min-width: 0; flex-direction: column; align-items: stretch; color: var(--text-2); font-size: 12px; font-weight: 650; }
+.paymentTermsGrid label > *, .paymentField > * { margin-top: 6px; }
+.paymentFieldLabel { margin-top: 0 !important; }
 .paymentTermsGrid input, .paymentTermsGrid textarea { width: 100%; }
 
 .fillTermsButton { align-self: flex-end; padding: 3px 0; border: 0; background: transparent; color: var(--accent); cursor: pointer; font-size: 11px; font-weight: 650; }

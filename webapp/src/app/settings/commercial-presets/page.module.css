@@ -76,6 +76,7 @@
 .preview dl > div:last-child, .detailSection dl > div:last-child { border-bottom: 0; }
 .preview dt, .detailSection dt { color: var(--text-3); font-size: 10.5px; font-weight: 600; }
 .preview dd, .detailSection dd { margin: 0; color: var(--text); font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; }
+.preview dd :global(.readable-text), .detailSection dd :global(.readable-text) { max-inline-size: none; }
 .previewTable { overflow-x: auto; border-top: 1px solid var(--border); }
 .previewTable table { width: 100%; border-collapse: collapse; min-width: 420px; font-size: 11.5px; }
 .previewTable th, .previewTable td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }

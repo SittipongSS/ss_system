@@ -10,6 +10,7 @@ import { Trash2 } from "lucide-react";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import MoneyInput from "@/components/ui/MoneyInput";
+import ReadableText from "@/components/ui/ReadableText";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney } from "@/lib/format";
 import { fgLineDescription } from "@/lib/sales/quoteLines";
@@ -128,25 +129,37 @@ export default function QuotationLineItems({
                         return (
                           <div className={styles.fgInfo} title="ข้อมูลจากฐานข้อมูลสินค้า — แก้ที่ฐานข้อมูลสินค้า">
                             <span className={styles.fgInfoMeta}><strong>{fg.code || "FG"}</strong>{fg.brand && <> · {fg.brand}</>}</span>
-                            <span className={styles.fgInfoName}>{fg.name || "-"}</span>
+                            <div className={styles.fgInfoName}>
+                              {editable ? (fg.name || "-") : <ReadableText text={fg.name} lines={3} empty="-" />}
+                            </div>
                           </div>
                         );
                       })()
                     ) : (
-                      <input
-                        className="premium-input"
-                        value={line.description || ""}
-                        disabled={!editable}
-                        placeholder={line._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"}
-                        onChange={(event) => setLine(index, { description: event.target.value })}
-                      />
+                      editable ? (
+                        <input
+                          className="premium-input"
+                          value={line.description || ""}
+                          placeholder={line._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"}
+                          onChange={(event) => setLine(index, { description: event.target.value })}
+                        />
+                      ) : (
+                        <div className="readable-field is-compact">
+                          <ReadableText text={line.description} lines={3} empty={<span className="readable-field-empty">ไม่มีรายละเอียด</span>} />
+                        </div>
+                      )
                     )}
                     {/* หมายเหตุรายบรรทัด (metadata.note) — โชว์ใต้รายการในใบเสนอราคา */}
                     {editable
                       ? ((line._noteOpen || line.metadata?.note)
                         ? <textarea className="premium-input" rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: { ...(line.metadata || {}), note: event.target.value } })} />
                         : <button type="button" className="linklike" style={{ alignSelf: "flex-start", fontSize: 12 }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
-                      : (line.metadata?.note && <div className={styles.noteReadonly}>หมายเหตุ: {line.metadata.note}</div>)}
+                      : (line.metadata?.note && (
+                        <div className={styles.noteReadonly}>
+                          <strong>หมายเหตุ:</strong>
+                          <ReadableText text={line.metadata.note} lines={3} />
+                        </div>
+                      ))}
                   </div>
                 </td>
                 <td>
