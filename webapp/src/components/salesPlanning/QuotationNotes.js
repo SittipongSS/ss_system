@@ -14,7 +14,6 @@ export default function QuotationNotes({
   presetVersionId = null,
   onPresetVersionIdChange,
   disabled = false,
-  disabledReason = "",
 }) {
   const applyPreset = (option) => {
     if (!option) { onPresetVersionIdChange?.(null); return; }
@@ -34,7 +33,6 @@ export default function QuotationNotes({
           kind="remarks"
           selectedVersionId={presetVersionId}
           disabled={disabled}
-          disabledReason={disabledReason}
           hasContent={!!String(value || "").trim()}
           matchesCurrent={(option) => matchesRemarksPreset(value, option)}
           onApply={applyPreset}

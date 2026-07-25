@@ -84,7 +84,7 @@ export default function LeadDetailPage() {
 
         <DetailPageLayout aside={<LeadSummary lead={lead} />}>
 
-        <DetailCard icon={Contact} eyebrow="Lead information" title="ข้อมูลผู้ติดต่อและความต้องการ" actions={!lead.canEdit ? <span className="ui-badge">ข้อมูลถูกล็อกตามสถานะ/สิทธิ์</span> : null}>
+        <DetailCard icon={Contact} eyebrow="Lead information" title="ข้อมูลผู้ติดต่อและความต้องการ">
           {editing ? <div className={styles.grid}>
             <div className={styles.field}><label>ชื่อลูกค้า / ผู้ติดต่อ *</label><input value={form.contactName} onChange={change("contactName")} /></div>
             <div className={styles.field}><label>บริษัท</label><input value={form.company || ""} onChange={change("company")} /></div>

@@ -496,7 +496,6 @@ export default function WorkflowTemplatesPage() {
         open={previewDrawer}
         onClose={() => setPreviewDrawer(false)}
         title={`Preview ${selectedKey} Timeline`}
-        subtitle="อ่านอย่างเดียว · ยังไม่สร้างงานหรือเปลี่ยนข้อมูล"
         footer={<button type="button" className="btn ghost" onClick={() => setPreviewDrawer(false)}>ปิด Preview</button>}
       >
         <div className={styles.previewBody}>

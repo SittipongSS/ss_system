@@ -125,11 +125,6 @@ export default function QuotationEditorPage() {
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
     && (quote.status === "draft" || isSuperuser(role))));
   const editable = canEditDocument && editMode;
-  const editDisabledReason = canEditDocument && !editMode
-    ? "อยู่ในโหมดอ่านอย่างเดียว — กด “แก้ไขข้อมูล” ในกล่องจัดการเอกสารก่อน"
-    : !canEditDocument
-      ? "เอกสารสถานะนี้ไม่อนุญาตให้แก้ไข"
-      : "";
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: form.discountType || null,
@@ -552,7 +547,6 @@ export default function QuotationEditorPage() {
               <div className={styles.sectionHeading}>
                 <UserRound size={17} aria-hidden="true" />
                 <h2>ข้อมูลลูกค้าในเอกสาร</h2>
-                <span className="ui-badge" style={{ color: "var(--text-3)" }}>อ่านอย่างเดียว</span>
                 <div className="spacer" />
                 {quote.customerId && (
                   <Link href={`/database/customers/${quote.customerId}`} className="btn ghost sm" target="_blank">
@@ -645,7 +639,6 @@ export default function QuotationEditorPage() {
               presetVersionId={notesPresetVersionId}
               onPresetVersionIdChange={(next) => { setNotesPresetVersionId(next); setDirty(true); }}
               disabled={!editable}
-              disabledReason={editDisabledReason}
             />
           </section>
 
@@ -692,13 +685,6 @@ export default function QuotationEditorPage() {
                   docLabel="ใบเสนอราคานี้"
                 />
               </>}
-              footer={quote.status === "closed"
-                ? "ใบนี้ถูกปิดเพราะดีลจบด้วยใบเสนอราคาฉบับอื่น — แก้ไข/ลบไม่ได้"
-                : canEditDocument && !editMode
-                  ? "ขณะนี้เป็นโหมดอ่านอย่างเดียว — กด “แก้ไขข้อมูล” ด้านบนเพื่อแก้เงื่อนไขการชำระ หมายเหตุ และข้อมูลในใบ"
-                  : !canEditDocument
-                    ? "ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่"
-                    : null}
             />
 
             {quote.deal ? (
