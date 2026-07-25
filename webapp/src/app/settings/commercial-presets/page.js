@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Edit3, Eye, FilePlus2, Plus, Send, Trash2, WalletCards } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import { useRole } from "@/lib/roleContext";
+import { accessState } from "@/lib/accessGate";
 import { canManageCommercialPresets } from "@/lib/permissions";
 import {
   COMMERCIAL_PRESET_KINDS,
@@ -271,7 +273,20 @@ export default function CommercialPresetsPage() {
     finally { setBusy(false); }
   };
 
-  if (!canManage) return null;
+  // เดิม return null = จอขาวสนิท ไม่มีทั้งคำอธิบายและทางกลับ
+  const gate = accessState(role, canManage);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
+    return (
+      <AccessDenied
+        icon={<WalletCards size={22} />}
+        title="คลังเงื่อนไขการค้า"
+        message="หน้านี้สำหรับหัวหน้าฝ่ายขายและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+      />
+    );
+  }
+
   const editing = drawer?.mode === "edit" || drawer?.mode === "create";
   const kindLabel = COMMERCIAL_PRESET_KIND_LABELS[kind];
 

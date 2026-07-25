@@ -4,12 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Edit3, Expand, Eye, FileBadge2, FilePlus2, Send, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import { useRole } from "@/lib/roleContext";
+import { accessState } from "@/lib/accessGate";
 import { canManageDocumentStandards } from "@/lib/permissions";
 import {
   DOCUMENT_ACCENT_KEYS,
@@ -219,7 +221,19 @@ export default function DocumentStandardsPage() {
     }
   };
 
-  if (!canManage) return null;
+  // เดิม return null = จอขาวสนิท ไม่มีทั้งคำอธิบายและทางกลับ
+  const gate = accessState(role, canManage);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
+    return (
+      <AccessDenied
+        icon={<FileBadge2 size={22} />}
+        title="มาตรฐานเอกสาร"
+        message="หน้านี้สำหรับหัวหน้าฝ่ายขายและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+      />
+    );
+  }
 
   const selected = drawer?.row;
   const editing = drawer?.mode === "edit";
