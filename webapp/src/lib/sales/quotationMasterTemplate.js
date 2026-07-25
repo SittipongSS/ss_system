@@ -1,7 +1,12 @@
 import { fmtDate } from '@/lib/format';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
-import { formatDocumentStandardEffectiveDate, resolveDocumentAccentKey } from '@/lib/documentStandards';
+import {
+  DEFAULT_NUMBERING_PATTERNS,
+  formatDocumentNumber,
+  formatDocumentStandardEffectiveDate,
+  resolveDocumentAccentKey,
+} from '@/lib/documentStandards';
 
 export const QUOTATION_MASTER_TEMPLATE_VERSIONS = Object.freeze([
   { id: 'v1', label: 'V1', templateVersion: 'quotation-balanced-controlled-v1' },
@@ -40,6 +45,7 @@ const DEFAULT_STANDARD = Object.freeze({
   titleTh: 'ใบเสนอราคา',
   titleEn: 'QUOTATION',
   accentKey: 'terracotta',
+  numberingPattern: DEFAULT_NUMBERING_PATTERNS.quotation,
 });
 
 const DEFAULT_SALES_ORDER_STANDARD = Object.freeze({
@@ -49,7 +55,22 @@ const DEFAULT_SALES_ORDER_STANDARD = Object.freeze({
   titleTh: 'ใบสั่งขาย',
   titleEn: DOCUMENT_FORMS.salesOrder.title,
   accentKey: 'steel',
+  numberingPattern: DEFAULT_NUMBERING_PATTERNS.salesOrder,
 });
+
+// วันที่/เลขรันของเอกสารตัวอย่าง — ตรึงไว้ให้พรีวิวนิ่ง (ตรงกับ 20/07/2569 บนใบ)
+const PREVIEW_NUMBER_DATE = new Date('2026-07-20T12:00:00+07:00');
+const PREVIEW_RUNNING_NO = 28;
+
+// เลขที่บนเอกสารตัวอย่าง = ประกอบจากรูปแบบที่กำลังตั้งจริง — เปลี่ยนรูปแบบในหน้าตั้งค่า
+// แล้วต้องเห็นเลขใหม่บนหัวใบทันที ไม่งั้นช่อง "รูปแบบเลขที่" ก็ยังเป็นช่องที่หลอกตา
+function previewDocumentNumber(standard) {
+  return formatDocumentNumber(standard.numberingPattern, {
+    date: PREVIEW_NUMBER_DATE,
+    running: PREVIEW_RUNNING_NO,
+    revision: 0,
+  });
+}
 
 // รูปลายเซ็นตัวอย่างสำหรับหน้า preview เท่านั้น (SVG ลายมือ จำลอง) — ใบจริงฝัง PNG จริง
 // ที่ผู้อนุมัติอัปโหลด (Phase 5B) ผ่าน options.approverSignatureImage ตอนตรึง snapshot
@@ -153,6 +174,7 @@ export function previewStandardOf(standard, docType = 'quotation') {
     titleTh: String(standard.titleTh || '').trim() || fallback.titleTh,
     titleEn: String(standard.titleEn || '').trim() || fallback.titleEn,
     accentKey: resolveDocumentAccentKey(standard, docType),
+    numberingPattern: String(standard.numberingPattern || '').trim() || fallback.numberingPattern,
   };
 }
 
@@ -522,7 +544,7 @@ function toSalesOrderPreviewModel(model, state, standard) {
     formLine: controlledFormLine(standard),
     document: {
       ...model.document,
-      number: 'SO-26070028-0',
+      number: previewDocumentNumber(standard),
       dateLabel: 'วันที่ SO',
       secondaryLabel: 'กำหนดชำระ',
     },
@@ -617,6 +639,7 @@ export function buildQuotationMasterPreview(
     ],
     document: {
       ...BASE_QUOTE.document,
+      number: previewDocumentNumber(previewStandard),
       state,
       dateLabel: 'วันที่',
       dateValue: BASE_QUOTE.document.issueDate,
