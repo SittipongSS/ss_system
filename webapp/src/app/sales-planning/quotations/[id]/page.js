@@ -549,7 +549,7 @@ export default function QuotationEditorPage() {
               {/* สถานะการอนุมัติ 2 ขั้น (mig 0155): ยังไม่ยื่น → รออนุมัติ → อนุมัติแล้ว */}
               {needsSubmit && (
                 <div className="glass-panel" style={{ padding: "10px 12px", margin: "0 0 10px", borderColor: "var(--text-3)", color: "var(--text-2)", fontSize: 13 }}>
-                  ร่าง — ยังไม่ได้ยื่นอนุมัติ กด &ldquo;ยื่นอนุมัติ&rdquo; เพื่อลงนามผู้เสนอราคาและส่งให้เจ้าของดีลอนุมัติ
+                  ร่าง — กด &ldquo;ยื่นอนุมัติ&rdquo; เพื่อลงนามผู้เสนอราคาและส่งให้เจ้าของดีลอนุมัติ
                 </div>
               )}
               {awaitingApproval && (
