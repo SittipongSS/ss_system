@@ -6,6 +6,7 @@ import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban
 import { ActionButton } from "@/components/ui/ActionButtons";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
+import { DEFAULT_SALE_UNIT, formatVolume } from "@/lib/master/units";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import EditProductModal from "@/components/EditProductModal";
@@ -366,7 +367,13 @@ export default function ProductDetails() {
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.volume} {product.volumeUnit || "ml"}</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{formatVolume(product)}</span>
+              </div>
+              <div>
+                {/* หน่วยขาย = หน่วยที่พิมพ์บนใบเสนอราคา/ใบสั่งขาย (คนละอย่างกับปริมาตรบรรจุ)
+                    เดิมตั้งได้ในฟอร์มแต่ไม่โชว์ที่ไหนเลย ต้องเปิดฟอร์มแก้ถึงจะรู้ว่าตั้งอะไรไว้ */}
+                <span className="text-[var(--text-3)] block mb-1">หน่วยขาย (Sale Unit)</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{product.saleUnit || DEFAULT_SALE_UNIT}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">ชิ้นต่อลัง (Pieces / Case)</span>

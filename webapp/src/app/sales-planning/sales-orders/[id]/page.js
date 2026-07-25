@@ -323,8 +323,10 @@ export default function SalesOrderDetailPage() {
           <DetailCard icon={ClipboardList} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
             <div className={styles.tableWrap}>
               <table className={styles.linesTable}>
-                <thead><tr><th>#</th><th>รหัส / รายละเอียด</th><th className={styles.num}>จำนวน</th><th className={styles.num}>ราคาต่อหน่วย</th><th className={styles.num}>ส่วนลด</th><th className={styles.num}>รวม</th></tr></thead>
-                <tbody>{sortedLines.map((line, index) => <tr key={line.id}><td>{index + 1}</td><td><div className={styles.lineDescription}>{line.fgCode ? <small>{line.fgCode}</small> : null}<strong>{line.description || "-"}</strong></div></td><td className={`${styles.num} mono`}>{line.qty}</td><td className={`${styles.num} mono`}>{fmtMoney(line.unitPrice)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.discountAmount)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.lineTotal)}</td></tr>)}</tbody>
+                {/* คอลัมน์หน่วยแยกจากจำนวน (ไม่ต่อท้ายตัวเลข) — ช่องจำนวนเป็น tabular-nums
+                    ชิดขวา ต่อข้อความแล้วเลขจะเลิกตรงแนว · ลำดับตรงกับใบที่พิมพ์ */}
+                <thead><tr><th>#</th><th>รหัส / รายละเอียด</th><th className={styles.num}>จำนวน</th><th>หน่วย</th><th className={styles.num}>ราคาต่อหน่วย</th><th className={styles.num}>ส่วนลด</th><th className={styles.num}>รวม</th></tr></thead>
+                <tbody>{sortedLines.map((line, index) => <tr key={line.id}><td>{index + 1}</td><td><div className={styles.lineDescription}>{line.fgCode ? <small>{line.fgCode}</small> : null}<strong>{line.description || "-"}</strong></div></td><td className={`${styles.num} mono`}>{line.qty}</td><td>{line.unit || "-"}</td><td className={`${styles.num} mono`}>{fmtMoney(line.unitPrice)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.discountAmount)}</td><td className={`${styles.num} mono`}>{fmtMoney(line.lineTotal)}</td></tr>)}</tbody>
               </table>
             </div>
             <div className={styles.totals}>

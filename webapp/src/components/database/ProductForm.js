@@ -16,6 +16,13 @@ import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { categoryInfo } from "@/lib/master/categoryOf";
 import { brandBoth } from "@/lib/master/brands";
+import {
+  DEFAULT_SALE_UNIT,
+  DEFAULT_VOLUME_UNIT,
+  SALE_UNITS,
+  VOLUME_UNITS,
+  unitOptions,
+} from "@/lib/master/units";
 import { fmtMoney } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
@@ -23,7 +30,7 @@ export const EMPTY_PRODUCT = {
   customerId: "", fgCode: "", productDescription: "", productDescriptionEn: "",
   brandName: "", brandNameEn: "",
   formulaName: "", formulaCode: "", formulaDate: "",
-  volume: "", volumeUnit: "ml", saleUnit: "ชิ้น", piecesPerCase: "", costPrice: "", retailPriceIncVat: "",
+  volume: "", volumeUnit: DEFAULT_VOLUME_UNIT, saleUnit: DEFAULT_SALE_UNIT, piecesPerCase: "", costPrice: "", retailPriceIncVat: "",
 };
 
 // ช่องที่โมดัลแก้ดึงจากสินค้าเดิม (costPrice ไม่อยู่ในนี้ — อัปเดตผ่าน action แยก)
@@ -196,14 +203,10 @@ export default function ProductForm({
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
             <div className="flex gap-2">
               <input type="number" name="volume" value={form.volume} onChange={set("volume")} required min="0.01" step="0.01" className="premium-input flex-1 font-mono" />
-              <Select name="volumeUnit" value={form.volumeUnit || "ml"} onChange={set("volumeUnit")} style={{ width: "80px" }}>
-                <option value="ml">ml</option>
-                <option value="g">g</option>
-                <option value="kg">kg</option>
-                <option value="oz">oz</option>
-                <option value="L">L</option>
-                <option value="pcs">pcs</option>
-                <option value="package">package</option>
+              <Select name="volumeUnit" value={form.volumeUnit || DEFAULT_VOLUME_UNIT} onChange={set("volumeUnit")} style={{ width: "80px" }}>
+                {unitOptions(VOLUME_UNITS, form.volumeUnit).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </Select>
             </div>
           </div>
@@ -214,16 +217,10 @@ export default function ProductForm({
           <div className="form-group">
             {/* หน่วยขาย = หน่วยที่แสดงบนใบเสนอราคา/ใบสั่งขาย (คนละอย่างกับปริมาตรบรรจุ) */}
             <label>หน่วยขาย</label>
-            <Select name="saleUnit" value={form.saleUnit || "ชิ้น"} onChange={set("saleUnit")} className="premium-input w-full">
-              <option value="ชิ้น">ชิ้น</option>
-              <option value="ขวด">ขวด</option>
-              <option value="หลอด">หลอด</option>
-              <option value="กระปุก">กระปุก</option>
-              <option value="ชุด">ชุด</option>
-              <option value="กล่อง">กล่อง</option>
-              <option value="แพ็ค">แพ็ค</option>
-              <option value="โหล">โหล</option>
-              <option value="งาน">งาน</option>
+            <Select name="saleUnit" value={form.saleUnit || DEFAULT_SALE_UNIT} onChange={set("saleUnit")} className="premium-input w-full">
+              {unitOptions(SALE_UNITS, form.saleUnit).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </Select>
           </div>
           <div className="form-group">
