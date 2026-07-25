@@ -15,6 +15,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { ContextualRightRail } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard } from "@/components/ui/DocumentControlPanel";
 import Modal from "@/components/Modal";
+import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationPeopleFields, { quotationPeopleFromMetadata } from "@/components/salesPlanning/QuotationPeopleFields";
@@ -617,14 +618,22 @@ export default function QuotationEditorPage() {
             />
           </section>
 
-          {/* เงื่อนไขการชำระเงิน — รูปแบบเดียวกับหน้าสร้าง + เปิด/ปิดแบ่งชำระ */}
+          {/* งวดการชำระ — แยกจากเทมเพลตและเงื่อนไขการชำระ */}
           <section className={styles.card}>
-            <QuotationPaymentTerms
+            <QuotationInstallments
               value={payment}
               onChange={updatePayment}
               totalAmount={totals.totalAmount}
               disabled={!editable}
-              disabledReason={editDisabledReason}
+            />
+          </section>
+
+          {/* เงื่อนไขการชำระ — เทมเพลตเติมเฉพาะวิธีและข้อความ */}
+          <section className={styles.card}>
+            <QuotationPaymentTerms
+              value={payment}
+              onChange={updatePayment}
+              disabled={!editable}
             />
           </section>
 

@@ -1,6 +1,7 @@
 import { fmtDate } from '@/lib/format';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
+import { paymentScheduleRows } from '@/lib/sales/paymentPlan';
 import {
   DEFAULT_NUMBERING_PATTERNS,
   formatDocumentNumber,
@@ -690,14 +691,15 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     }));
 
   const paymentPlan = quote.paymentPlan || {};
-  const installments = paymentPlan.type === 'installment' && Array.isArray(paymentPlan.installments) && paymentPlan.installments.length
-    ? paymentPlan.installments.map((row) => ({
+  const installments = paymentScheduleRows(paymentPlan)
+    .map((row) => ({
       label: row.label || '',
       note: row.note || '',
       percent: Number(row.percent || 0),
-      amount: Number(row.amount || 0),
-    }))
-    : [{ label: 'ชำระเต็มจำนวน', note: '', percent: 100, amount: Number(quote.totalAmount || 0) }];
+      amount: paymentPlan.type === 'installment'
+        ? Number(row.amount || 0)
+        : Number(quote.totalAmount || 0),
+    }));
 
   const customer = {
     name: quote.customerName || '-',

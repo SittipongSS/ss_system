@@ -43,3 +43,22 @@ test('revision content rejects an invalid installment plan', () => {
   // 1 งวดไม่ผิดกติกาแล้ว (ชำระเต็มจำนวน 100%) — ที่ผิดคือผลรวมไม่ถึง 100
   assert.match(result.error, /รวมต้องเท่ากับ 100/);
 });
+
+test('revision keeps payment terms independent from installment changes', () => {
+  const source = {
+    lines: [],
+    paymentTerms: 'เครดิต 30 วัน',
+    paymentPlan: { type: 'full' },
+  };
+
+  const changedPlan = buildQuotationRevisionContent(source, {
+    paymentPlan: {
+      type: 'installment',
+      installments: [{ label: 'มัดจำ', percent: 50 }, { label: 'งวดสุดท้าย', percent: 50 }],
+    },
+  });
+  assert.equal(changedPlan.paymentTerms, 'เครดิต 30 วัน');
+
+  const clearedTerms = buildQuotationRevisionContent(source, { paymentTerms: '' });
+  assert.equal(clearedTerms.paymentTerms, null);
+});

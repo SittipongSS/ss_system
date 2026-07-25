@@ -15,6 +15,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
+import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationPeopleFields from "@/components/salesPlanning/QuotationPeopleFields";
@@ -395,7 +396,11 @@ function NewQuotationInner() {
           </section>
 
           <section className={styles.card}>
-            <QuotationPaymentTerms value={payment} onChange={setPayment} totalAmount={totals.totalAmount} />
+            <QuotationInstallments value={payment} onChange={setPayment} totalAmount={totals.totalAmount} />
+          </section>
+
+          <section className={styles.card}>
+            <QuotationPaymentTerms value={payment} onChange={setPayment} />
           </section>
 
           <section className={styles.card}>

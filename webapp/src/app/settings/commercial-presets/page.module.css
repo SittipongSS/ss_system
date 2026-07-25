@@ -9,15 +9,6 @@
 .kindTab span { color: var(--text); font-size: 13.5px; font-weight: 700; }
 .kindTab small { margin-top: 2px; color: var(--text-3); font-size: 11.5px; }
 .kindTab.active { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
-/* สวิตช์ "แบ่งชำระเป็นงวด" — ปิด = ตาราง 1 แถว 100%, เปิด = หลายงวด */
-.planToggle { display: inline-flex; align-items: center; gap: 9px; padding: 7px 11px; border: 1px solid var(--border); border-radius: var(--radius-full); color: var(--text-2); background: var(--panel); cursor: pointer; }
-.planToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.planToggle .track { position: relative; width: 34px; height: 19px; border-radius: var(--radius-full); background: var(--panel-3); transition: background 140ms ease; }
-.planToggle .track span { position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: var(--text-3); transition: transform 140ms ease, background 140ms ease; }
-.planToggle.on { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--text); }
-.planToggle.on .track { background: color-mix(in srgb, var(--accent) 55%, transparent); }
-.planToggle.on .track span { transform: translateX(15px); background: #fff; }
-.planToggle b { font-size: 12.5px; font-weight: 700; }
 .notice { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 16px; padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--border)); border-radius: var(--radius-lg); color: var(--text-2); background: var(--amber-soft); }
 .notice svg { flex: 0 0 auto; margin-top: 1px; color: var(--amber); }
 .notice p { margin: 0; font-size: 12.5px; line-height: 1.55; }
@@ -56,16 +47,7 @@
 .formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .full { grid-column: 1 / -1; }
 .help { margin: -5px 0 0; color: var(--text-3); font-size: 11.5px; line-height: 1.5; }
-.sectionTitle { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.sectionTitle p { margin: 2px 0 0; color: var(--text-3); font-size: 11px; }
 .miniEmpty { padding: 18px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius); color: var(--text-3); background: var(--panel); font-size: 11.5px; text-align: center; }
-.installmentList { display: grid; gap: 10px; }
-.installmentCard { padding: 11px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }
-.installmentCard > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
-.installmentCard > header strong { font-size: 12.5px; }
-.total { display: flex; align-items: center; justify-content: space-between; padding: 9px 11px; border-radius: var(--radius); font-variant-numeric: tabular-nums; }
-.valid { color: var(--green); background: var(--green-soft); }
-.invalid { color: var(--red); background: var(--red-soft); }
 .preview { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-sm); }
 .preview > header { display: grid; gap: 3px; padding: 14px; border-top: 4px solid var(--accent); border-bottom: 1px solid var(--border); background: var(--panel-2); }
 .preview > header span { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .04em; }
@@ -77,10 +59,6 @@
 .preview dt, .detailSection dt { color: var(--text-3); font-size: 10.5px; font-weight: 600; }
 .preview dd, .detailSection dd { margin: 0; color: var(--text); font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; }
 .preview dd :global(.readable-text), .detailSection dd :global(.readable-text) { max-inline-size: none; }
-.previewTable { overflow-x: auto; border-top: 1px solid var(--border); }
-.previewTable table { width: 100%; border-collapse: collapse; min-width: 420px; font-size: 11.5px; }
-.previewTable th, .previewTable td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
-.previewTable th { color: var(--text-2); background: var(--panel-2); font-size: 10.5px; }
 .drawerBody { display: grid; gap: 16px; }
 .detailSection { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }
 .detailSection h4 { margin: 0; padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }

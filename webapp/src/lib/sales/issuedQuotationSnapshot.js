@@ -207,7 +207,7 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
     p_document_standard_version_id: evidence.documentStandardVersionId,
     // เวอร์ชันชุดเงื่อนไขการค้าที่ควบคุมใบนี้ (ตรึงตอนสร้าง/แก้ใบใน metadata) — RPC จะ
     // validate ว่ามีจริงถ้าไม่ว่าง (mig 0130); ใบเก่าก่อนฟีเจอร์นี้ = null (ข้ามได้).
-    // คอลัมน์นี้มีช่องเดียว จึงตรึง "ชุดการชำระ" เพราะเป็นเงื่อนไขที่มีผลทางการเงิน
+    // คอลัมน์นี้มีช่องเดียว จึงตรึง "เทมเพลตเงื่อนไขการชำระ" เพราะเป็นเงื่อนไขที่มีผลทางการเงิน
     // ส่วน id ของชุดหมายเหตุติดไปกับ metadata ใน payload ที่ตรึงอยู่แล้ว
     p_commercial_preset_version_id: filledQuote?.metadata?.paymentPresetVersionId
       || filledQuote?.metadata?.commercialPresetVersionId || null,
