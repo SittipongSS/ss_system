@@ -52,8 +52,8 @@ export default function SettingsPage() {
         {
           href: "/settings/commercial-presets",
           icon: WalletCards,
-          title: "Commercial Preset",
-          desc: "จัดการวิธีชำระ เงื่อนไข หมายเหตุ และงวดชำระตามทีมและประเภทดีลแบบมีเวอร์ชัน",
+          title: "คลังเงื่อนไขการค้า",
+          desc: "ชุดการชำระและชุดหมายเหตุที่คนทำใบเสนอราคาเลือกใช้จาก dropdown แบบมีเวอร์ชัน",
           show: canCommercial,
         },
       ],

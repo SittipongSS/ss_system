@@ -5,8 +5,7 @@
 // เลขรันจาก DB, บรรทัด (rollback ถ้าพลาด), ดีล lead/qualified → quotation, audit.
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { dealAuditLabel, dealTypeOf, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
-import { resolvePublishedCommercialPreset } from '@/lib/admin/commercialPresets';
+import { dealAuditLabel, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
 import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
@@ -63,15 +62,6 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   const peoplePick = await validateQuotationPeople(supabase, body.metadata || {}, { require: false });
   if (!peoplePick.ok) throw new QuotationDraftError(peoplePick.error);
 
-  // ตรึงเวอร์ชัน Commercial Preset (Published) ที่ "ควบคุม" ใบนี้ตาม scope ของดีล ณ ตอนสร้าง
-  // — ใช้เป็น commercialPresetVersionId ตอนตรึง issued snapshot (Phase 7B). server เป็น
-  // ผู้ตัดสิน (ไม่เชื่อค่าจาก client) และเป็น best-effort: preset พังต้องไม่ทำให้สร้างใบไม่ได้.
-  const governingPreset = await resolvePublishedCommercialPreset(supabase, {
-    documentKey: 'quotation',
-    teamKey: deal.team,
-    dealType: dealTypeOf(deal),
-  }).catch(() => null);
-
   // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
   const { base, quoteNumber } = await generateQuoteNumber(supabase);
   const quoteId = genId('QT');
@@ -119,8 +109,6 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
         aeOwner: peoplePick.people.aeOwner || null,
         preparedBy: peoplePick.people.preparedBy || null,
         aeSupervisor: peoplePick.people.aeSupervisor || null,
-        // server เป็นผู้ตัดสิน — เขียนทับค่าจาก client เสมอ (forensic ของ snapshot)
-        commercialPresetVersionId: governingPreset?.published?.id || null,
       },
       createdBy: user.id || null,
       createdByName: user.name || null,
