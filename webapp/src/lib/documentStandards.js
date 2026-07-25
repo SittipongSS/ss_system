@@ -1,3 +1,6 @@
+import { cachedFetchJson } from './apiCache';
+import { DOCUMENT_FORMS } from './documentBrand';
+
 export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder']);
 
 export const DOCUMENT_STANDARD_LABELS = Object.freeze({
@@ -5,15 +8,19 @@ export const DOCUMENT_STANDARD_LABELS = Object.freeze({
   salesOrder: 'ใบสั่งขาย',
 });
 
-export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'teal', 'amber', 'green', 'navy']);
+// เปิดให้เลือกเฉพาะสีที่มีเอกสารใช้จริงตอนนี้ (มติ 2026-07-25) — เครื่องยนต์เอกสาร
+// (DOCUMENT_ACCENT_THEMES) รองรับมากกว่านี้ แต่ตัวเลือกที่ไม่มีเอกสารชนิดไหนใช้
+// ก็เป็นปุ่มที่กดแล้วไม่เกิดอะไร · เพิ่มคีย์ที่นี่ตอนมีเอกสารชนิดใหม่จริง
+export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel']);
 
 export const DOCUMENT_ACCENT_LABELS = Object.freeze({
   terracotta: 'Terracotta · ใบเสนอราคา',
-  teal: 'Teal · ใบสั่งขาย',
-  amber: 'Amber · ใบแจ้งหนี้',
-  green: 'Green · ใบเสร็จรับเงิน',
-  navy: 'Navy · มาตรฐานกลาง',
+  steel: 'Steel · ใบสั่งขาย',
 });
+
+// สีตั้งต้นต่อชนิดเอกสาร ใช้ทั้งตอนยังไม่มีมาตรฐานเผยแพร่ และตอนมาตรฐานถือคีย์เก่า
+// ที่เลิกให้เลือกแล้ว (teal/amber/green/navy) — map ที่ resolver ไม่ต้องแตะข้อมูลใน DB
+const DEFAULT_ACCENT_BY_KEY = Object.freeze({ quotation: 'terracotta', salesOrder: 'steel' });
 
 export const DOCUMENT_STANDARD_LIMITS = Object.freeze({
   titleTh: 150,
@@ -117,6 +124,61 @@ export function formatDocumentStandardEffectiveDate(value) {
 export function documentStandardFormLine(version) {
   if (!version) return '-';
   return `${version.formCode}: Rev. No.${version.revision}. ${formatDocumentStandardEffectiveDate(version.effectiveDate)}`;
+}
+
+// ── มาตรฐานที่เผยแพร่ → ค่าที่เอกสารใช้ ────────────────────────────────────────
+// documentBrand.DOCUMENT_FORMS เป็น "ค่าสำรองที่เดียว" เหมือน companyProfile —
+// เอกสารต้องพิมพ์ได้เสมอแม้โหลดมาตรฐานไม่ได้ แต่ถ้ามีมาตรฐานเผยแพร่ต้องใช้ค่านั้น
+
+// แถวเวอร์ชันที่เผยแพร่ → รูป form เดียวกับ DOCUMENT_FORMS ที่ตัวสร้างเอกสารกินอยู่แล้ว
+export function documentStandardToForm(version) {
+  if (!version) return null;
+  const code = String(version.formCode || '').trim();
+  const revision = String(version.revision || '').trim();
+  if (!code || !revision) return null;
+  return {
+    code,
+    revision,
+    effectiveDate: formatDocumentStandardEffectiveDate(version.effectiveDate),
+    title: String(version.titleEn || '').trim() || null,
+  };
+}
+
+// เติมช่องที่ขาดจากค่าสำรองของเอกสารชนิดนั้น — คืนรูป form ที่ใช้ได้เสมอ
+export function resolveDocumentForm(version, documentKey) {
+  const fallback = DOCUMENT_FORMS[documentKey] || DOCUMENT_FORMS.quotation;
+  const form = documentStandardToForm(version);
+  if (!form) return fallback;
+  return {
+    code: form.code,
+    revision: form.revision,
+    effectiveDate: form.effectiveDate !== '-' ? form.effectiveDate : fallback.effectiveDate,
+    title: form.title || fallback.title,
+  };
+}
+
+export function resolveDocumentAccentKey(version, documentKey) {
+  const fallback = DEFAULT_ACCENT_BY_KEY[documentKey] || 'terracotta';
+  const accentKey = String(version?.accentKey || '').trim();
+  return DOCUMENT_ACCENT_KEYS.includes(accentKey) ? accentKey : fallback;
+}
+
+// ชื่อไทยของเอกสารที่พิมพ์บนหัวใบ — มาตรฐานคุมได้ ไม่งั้นใช้ป้ายมาตรฐานของชนิดนั้น
+export function resolveDocumentTitleTh(version, documentKey) {
+  return String(version?.titleTh || '').trim() || DOCUMENT_STANDARD_LABELS[documentKey] || 'เอกสาร';
+}
+
+// ── client only ──────────────────────────────────────────────────────────────
+// ดึงมาตรฐานที่เผยแพร่มาใช้ตอนพิมพ์สด (cache แบบ SWR ผ่าน apiCache) — ล้มเมื่อไร
+// คืน {} ให้ resolveDocumentForm ตกไปใช้ค่าสำรอง เอกสารจะได้พิมพ์ได้เสมอ
+export async function getDocumentStandardsForPrint() {
+  try {
+    const data = await cachedFetchJson('/api/document-standards/active');
+    return data?.standards || {};
+  } catch (error) {
+    console.warn('[documentStandards] โหลด /api/document-standards/active ไม่สำเร็จ — ใช้ค่าสำรองจาก documentBrand', error);
+    return {};
+  }
 }
 
 export function numberingPatternExample(pattern, revision = '0') {

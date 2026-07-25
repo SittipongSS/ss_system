@@ -103,7 +103,7 @@ export function buildIssuedSalesOrderArtifactHtml(order = {}, options = {}) {
     proposerSignature: options.proposerSignatureImage
       ? { imageDataUri: options.proposerSignatureImage, signerName: order.createdByName || '' }
       : null,
-  }, options.company || null);
+  }, options.company || null, options.standard || null);
 }
 
 export function issuedContentFingerprint(payload) {
@@ -123,7 +123,10 @@ export async function captureIssuedSalesOrderSnapshot(supabase, { order, evidenc
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),
   ]);
-  const html = buildIssuedSalesOrderArtifactHtml(order, { company, approverSignatureImage, proposerSignatureImage });
+  // มาตรฐานเอกสารที่ควบคุมใบนี้ = ค่าที่ RPC ตรึงไว้ใน evidence ตอนอนุมัติ (mig 0125)
+  // ไม่ใช่ค่าที่เผยแพร่อยู่ตอนนี้ — ใบที่ออกไปแล้วต้องคงรหัสแบบฟอร์มเดิมเสมอ (ADR 0011)
+  const standard = evidence?.controlledFormSnapshot || null;
+  const html = buildIssuedSalesOrderArtifactHtml(order, { company, standard, approverSignatureImage, proposerSignatureImage });
   const { data, error } = await supabase.rpc('capture_issued_sales_order_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
     p_artifact_id: genId('IDA'),

@@ -128,3 +128,24 @@ test('loadSignatureImageDataUri: downloads PNG → data URI; null on missing/fai
   };
   assert.equal(await loadSignatureImageDataUri(errClient, asset), null);
 });
+
+test('ใบที่ตรึงใช้มาตรฐานเอกสารที่ตรึงไว้ใน evidence ไม่ใช่ค่าสำรอง', () => {
+  // controlledFormSnapshot = ค่าที่ RPC ตรึงตอนอนุมัติ (mig 0125) — ใบที่ออกไปแล้วต้องคง
+  // รหัสแบบฟอร์มเดิมเสมอ แม้มาตรฐานที่เผยแพร่จะถูกแก้ทีหลัง (ADR 0011)
+  const html = buildIssuedQuotationArtifactHtml(baseQuote, {
+    standard: {
+      formCode: 'FM-SA-77',
+      revision: '05',
+      effectiveDate: '2026-01-15',
+      titleTh: 'ใบเสนอราคา (ควบคุม)',
+      titleEn: 'CONTROLLED QUOTATION',
+      accentKey: 'terracotta',
+    },
+  });
+  assert.match(html, /FM-SA-77/);
+  assert.match(html, /Rev\. No\.05/);
+  assert.match(html, /15\/01\/2569/);
+  assert.match(html, /ใบเสนอราคา \(ควบคุม\)/);
+  // ไม่มีมาตรฐานส่งมา → ตกไปใช้ค่าสำรองเดิม เอกสารยังออกได้
+  assert.match(buildIssuedQuotationArtifactHtml(baseQuote), /FM-SA-01/);
+});
