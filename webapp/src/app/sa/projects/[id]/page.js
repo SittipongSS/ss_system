@@ -25,6 +25,7 @@ import SortControl from "@/components/ui/SortControl";
 import StatusSelect, { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import ReadableText from "@/components/ui/ReadableText";
 import { productSelectOptions } from "@/components/master/productOption";
 import { cachedFetchJson } from "@/lib/apiCache";
 import EmptyState from "@/components/ui/EmptyState";
@@ -1153,7 +1154,7 @@ export default function ProjectDetailPage() {
                   const deal = (p.deals || []).find((item) => item.id === task.dealId);
                   const assignee = users.find((user) => user.id === (task.assigneeId || task.ownerId));
                   return <tr key={task.id} className="premium-row">
-                    <td style={{ fontWeight: 700 }}>{task.title}{task.note && <div style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 400, marginTop: 2 }}>{task.note}</div>}</td>
+                    <td style={{ fontWeight: 700 }}>{task.title}{task.note && <ReadableText text={task.note} lines={2} style={{ color: "var(--text-3)", fontSize: 12, fontWeight: 400, marginTop: 2 }} />}</td>
                     <td>{deal ? <Link className="linklike" href={`/sales-planning/deals/${deal.id}`}>{deal.title}</Link> : <span style={{ color: "var(--text-3)" }}>งานเดิมของโครงการ</span>}</td>
                     <td><span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span></td>
                     <td>{assignee?.name || task.assigneeName || task.ownerName || "-"}</td>
@@ -1536,7 +1537,7 @@ export default function ProjectDetailPage() {
                             {task.note && (
                               <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "8px", display: "flex", alignItems: "flex-start", gap: "6px", background: "var(--panel-2)", padding: "6px 8px", borderRadius: "6px" }}>
                                 <span style={{ color: "var(--text-3)", fontWeight: 600, whiteSpace: "nowrap" }}>หมายเหตุ:</span>
-                                <span style={{ flex: 1, whiteSpace: "pre-wrap" }}>{task.note}</span>
+                                <ReadableText text={task.note} lines={4} style={{ flex: 1 }} />
                                 {task.showNoteInPrint && <span title="จะแสดงตอนพิมพ์เอกสาร" style={{ fontSize: "10px", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)", borderRadius: "10px", padding: "1px 7px", display: "inline-flex", alignItems: "center", gap: "3px", whiteSpace: "nowrap" }}>🖨 พิมพ์</span>}
                               </div>
                             )}
@@ -1675,7 +1676,7 @@ export default function ProjectDetailPage() {
                     <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
                       {r.createdAt ? fmtDateTime(r.createdAt) : "-"} · {r.createdByName || "-"}
                     </div>
-                    {r.note && <div style={{ fontSize: "12px", color: "var(--text-3)", whiteSpace: "pre-wrap" }}>{r.note}</div>}
+                    {r.note && <ReadableText text={r.note} lines={4} style={{ fontSize: "12px", color: "var(--text-3)" }} />}
                   </div>
                   {canEdit && (
                     <button className="btn sm" style={{ flexShrink: 0 }} onClick={() => restoreSnapshot(r)} title="ย้อนงานทั้งชุดกลับไปเท่ากับจุดนี้">

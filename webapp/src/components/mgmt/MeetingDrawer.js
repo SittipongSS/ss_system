@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/Modal";
 import DocsPanel from "@/components/mgmt/DocsPanel";
+import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send, ListPlus } from "lucide-react";
 import { MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
 import { fmtDate as formatDate, fmtDateTime } from "@/lib/format";
@@ -106,7 +107,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
         {meeting.summary && (
           <div style={{ fontSize: 13 }}>
             <div style={{ color: "var(--text-3)", fontSize: 12, marginBottom: 4 }}>สรุปการประชุม</div>
-            <div style={{ whiteSpace: "pre-wrap" }}>{meeting.summary}</div>
+            <ReadableText text={meeting.summary} lines={5} />
           </div>
         )}
 
@@ -126,7 +127,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {updates.map((u) => (
                 <div key={u.id} style={{ fontSize: 12.5, borderLeft: "2px solid var(--border)", paddingLeft: 10 }}>
-                  <div style={{ color: "var(--text-2)" }}>{u.body}</div>
+                  <ReadableText text={u.body} lines={4} />
                   <div style={{ color: "var(--text-3)", fontSize: 11, marginTop: 2 }}>{u.authorName || "ระบบ"} · {u.createdAt ? fmtDateTime(u.createdAt) : ""}</div>
                 </div>
               ))}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AlertTriangle, Briefcase, Calendar, Clock, FolderKanban, ListTodo, MessageCircleQuestion, MessageSquare, Pencil, Send, Tag, User } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import ReadableText from "@/components/ui/ReadableText";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
@@ -94,7 +95,7 @@ export default function TaskDetailPage() {
           <div className={styles.grid}>
             <div className={styles.field}><span className={styles.label}>หมวดงาน</span><div className={styles.value}><Tag size={14} /> {task.category || "ไม่ระบุ"}</div></div>
             <div className={styles.field}><span className={styles.label}>ความยาก</span><div className={styles.value}>{DIFFICULTY_LABELS[task.difficulty] || task.difficulty || "-"}</div></div>
-            <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>รายละเอียด / โน้ต</span><div className={styles.value}>{task.note || "ไม่มีรายละเอียดเพิ่มเติม"}</div></div>
+            <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>รายละเอียด / โน้ต</span><ReadableText className={styles.value} text={task.note} lines={5} empty={<div className={styles.value}>ไม่มีรายละเอียดเพิ่มเติม</div>} /></div>
             {/* ไม่มีช่อง "สาเหตุที่ทำเสร็จช้า" ที่นี่ — อยู่ในเธรดอัปเดตงานแล้ว (มติผู้ใช้
                 2026-07-17). ช่องนี้อ่าน task.lateReason ซึ่งเก็บค่าล่าสุดค่าเดียว และ
                 ถูกล้างทิ้งตอนเปิดงานใหม่/ปิดตรงเวลา — เธรดเก็บครบทุกครั้งพร้อมเวลา
@@ -174,7 +175,7 @@ function TaskUpdates({ task, onPosted }) {
                 <strong>{u.authorName || "ระบบ"}</strong>
                 <span>{fmtDateTime(u.createdAt)}</span>
               </div>
-              {u.body && <div className={styles.updateBody}>{u.body}</div>}
+              {u.body && <ReadableText className={styles.updateBody} text={u.body} lines={4} />}
             </li>
           );
         })}

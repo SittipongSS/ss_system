@@ -23,6 +23,7 @@
 .eventBody { padding-bottom: 18px; }
 .eventBody strong { color: var(--text-2); font-size: 13px; }
 .eventBody p { margin: 4px 0 0; color: var(--text-3); font-size: 12px; line-height: 1.5; }
+.eventMeta { margin-top: 4px; color: var(--text-3); font-size: 12px; }
 .empty { padding: 22px; color: var(--text-3); text-align: center; }
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .sidebar { position: static; order: -1; } }
 @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } .card { padding: 15px; } }

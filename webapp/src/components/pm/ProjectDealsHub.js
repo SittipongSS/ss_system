@@ -9,6 +9,7 @@ import Link from "next/link";
 import { ArrowDown, ArrowUp, ExternalLink, FileText, MessageSquare, PackageCheck, Plus, Pencil, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
+import ReadableText from "@/components/ui/ReadableText";
 import Select from "@/components/ui/Select";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
@@ -329,7 +330,7 @@ export function ProjectActivityFeed({ project: p, onChanged }) {
           <div key={it.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
             <span className="ui-badge" style={{ color: it.kind.color, flexShrink: 0 }}>{it.kind.label}</span>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{it.body}</div>
+              <ReadableText text={it.body} lines={4} />
               <div style={{ marginTop: 2, fontSize: 11.5, color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 {it.deal && (
                   <Link prefetch={false} href={`/sa/deals/${it.deal.id}`} className="linklike" style={{ display: "inline-flex", gap: 4, alignItems: "center", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

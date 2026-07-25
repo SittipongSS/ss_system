@@ -12,6 +12,7 @@ import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
+import ReadableText from "@/components/ui/ReadableText";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import Pager from "@/components/excise/Pager";
 import { usePagination } from "@/lib/usePagination";
@@ -763,7 +764,7 @@ export default function TasksPage() {
                           {t.urgent && <Flame size={13} color="var(--red)" style={{ flexShrink: 0, marginTop: "2px" }} />}
                           <span style={{ flex: 1 }}>{t.title}</span>
                         </div>
-                        {t.note && <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px" }}>{t.note}</div>}
+                        {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px" }} />}
                       </div>
                     </td>
                     {scope === "mine" && <td>{relationshipBadge(t)}</td>}
@@ -815,7 +816,7 @@ export default function TasksPage() {
                       {t.urgent && <Flame size={13} color="var(--red)" />}
                       {t.title}
                     </div>
-                    {t.note && <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{t.note}</div>}
+                    {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }} />}
                   </div>
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
                     {proxyActions(t)}
