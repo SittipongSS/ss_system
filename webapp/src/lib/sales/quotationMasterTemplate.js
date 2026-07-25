@@ -140,6 +140,7 @@ function lineAt(index, overrides = {}) {
   return {
     id: `preview-line-${index + 1}`,
     fgCode: overrides.fgCode ?? `FG-PV-${String(index + 1).padStart(3, '0')}`,
+    brand: overrides.brand ?? 'SCENT AND SENSE',
     description: overrides.description ?? PRODUCT_NAMES[index % PRODUCT_NAMES.length],
     note: overrides.note ?? (index % 5 === 0 ? 'กลิ่น Signature Bloom · บรรจุตามมาตรฐานที่ตกลง' : ''),
     qty,
@@ -192,10 +193,20 @@ export function allocateInstallmentAmounts(total, installments = []) {
   });
 }
 
+function estimatedTextLines(value, charsPerLine) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+}
+
 function rowUnits(line) {
-  const copy = `${line.fgCode || ''} ${line.description || ''}`.trim();
-  const note = line.note || '';
-  return Math.max(1, Math.ceil(copy.length / 48)) + (note ? Math.max(1, Math.ceil(note.length / 54)) : 0);
+  const meta = [line.fgCode, line.brand].filter(Boolean).join(' · ');
+  const metaLines = meta ? estimatedTextLines(meta, 54) : 0;
+  const detailLines = estimatedTextLines(line.description, 48);
+  // แถวพื้นฐานรองรับโครงสร้าง 2 ชั้นอยู่แล้ว จึงหักหนึ่งหน่วยก่อนคิดความสูงเพิ่ม.
+  const identityLines = Math.max(1, metaLines + detailLines - 1);
+  const noteLines = line.note ? estimatedTextLines(line.note, 54) : 0;
+  return identityLines + noteLines;
 }
 
 function pageUnits(lines = []) {
@@ -257,14 +268,11 @@ const V4_CONTINUATION_CAPACITY = V4_PAGE_UNITS - V4_BANNER - V4_THEAD - V4_SAFET
 // ความสูงกลุ่มท้ายเอกสาร (งวดชำระ + เงื่อนไข + ลงชื่อ) — กล่องวิธีชำระกับเงื่อนไข
 // อยู่ข้างกันจึงคิดตามกล่องที่สูงกว่า หมายเหตุเต็มแถวคิดแยก
 function v4GroupUnits({ installments, paymentMethod, paymentTerms, remarks }) {
-  const estimatedLines = (value, charsPerLine) => String(value || '')
-    .split(/\r?\n/)
-    .reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
   // ค่าต่อบรรทัดสอดคล้องกับสัดส่วนคอลัมน์ .85/1.15 และ remarks กว้างไม่เกิน 168mm
   // ต้องนับ newline จากผู้ใช้เป็นบรรทัดจริง เพราะ CSS ใช้ white-space: pre-wrap.
-  const methodLines = estimatedLines(paymentMethod, 45);
-  const termsLines = estimatedLines(paymentTerms, 62);
-  const remarksLines = estimatedLines(remarks, 112);
+  const methodLines = estimatedTextLines(paymentMethod, 45);
+  const termsLines = estimatedTextLines(paymentTerms, 62);
+  const remarksLines = estimatedTextLines(remarks, 112);
   return (installments.length ? V4_INSTALLMENT_BASE + V4_INSTALLMENT_ROW * installments.length : 0)
     + V4_TERMS_BASE + Math.max(methodLines, termsLines) + remarksLines
     + V4_SIGNATURES;
@@ -687,6 +695,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     .map((line) => ({
       id: line.id,
       fgCode: line.fgCode || '',
+      brand: line.metadata?.productBrand || line.brand || '',
       description: line.description || '',
       note: line.metadata?.note || line.note || '',
       qty: Number(line.qty || 0),

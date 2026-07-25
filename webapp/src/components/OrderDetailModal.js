@@ -5,6 +5,7 @@ import OrderStatusPill from "@/components/OrderStatusPill";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import ReadableText from "@/components/ui/ReadableText";
 import { useCan } from "@/lib/roleContext";
+import { productDisplayName } from "@/lib/master/productIdentity";
 
 // Read-only detail of one PO (orders row) and its line items.
 // `order` is expected to carry `items: [{ ..., product }]`.
@@ -142,7 +143,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
                       {it.product?.fgCode || "-"}
                     </td>
                     <td className="text-xs text-[var(--text-2)]">
-                      <ReadableText text={it.product?.productDescriptionEn || it.product?.productDescription} lines={3} empty="-" />
+                      <ReadableText text={productDisplayName(it.product)} lines={3} empty="-" />
                     </td>
                     <td className="text-center font-mono font-semibold">{it.quantity}</td>
                     <td className="num font-mono font-bold text-[var(--text)]">

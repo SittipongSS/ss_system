@@ -5,7 +5,7 @@
 
 import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from './weekGrid';
 import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
-import { brandLabel } from '@/lib/master/brands';
+import { productIdentity } from '@/lib/master/productIdentity';
 import { entityCodeDisplay } from '@/lib/entityCode';
 import { DOCUMENT_FORMS, SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
@@ -212,8 +212,10 @@ export function buildGanttPrintHTML(project, company) {
           ${(project.projectProducts || []).length > 0 ? `<span class="fg-list">${(project.projectProducts || []).map(pp => {
             const prod = pp.product || {};
             const cat = pp.categoryLabel || '';
+            const identity = productIdentity(prod, { fallback: 'ไม่มีชื่อสินค้า' });
             return `<span class="fg-item">
-              <span class="fg-name">${esc(prod.fgCode || '')} — ${esc(prod.productDescriptionEn || prod.productDescription || brandLabel(prod.brandName, prod.brandNameEn) || 'ไม่มีชื่อสินค้า')} ${prod.volume ? `(${esc(prod.volume)} ${esc(prod.volumeUnit || 'ml')})` : ''}</span>
+              ${identity.meta ? `<span class="fg-meta">${esc(identity.meta)}</span>` : ''}
+              <span class="fg-name">${esc(identity.detail || identity.text)}</span>
               ${cat ? `<span class="fg-cat">${esc(cat)}</span>` : ''}
               <span class="fg-qty">สั่งซื้อ: ${esc(pp.orderQty || '-')} | ผลิต: ${esc(pp.productionQty || '-')}</span>
             </span>`;
@@ -319,6 +321,7 @@ export function buildGanttPrintHTML(project, company) {
   .hrow .v { font-weight: 600; color: #000; }
   .fg-list { display: flex; flex-direction: column; gap: 3px; }
   .fg-item { display: flex; flex-direction: column; padding-left: 6px; border-left: 2px solid #c17a52; }
+  .fg-item .fg-meta { color: #5f6774; font-size: 8.5px; font-weight: 600; }
   .fg-item .fg-name { font-weight: 600; font-size: 9.5px; color: #000; }
   .fg-item .fg-cat { font-size: 8.5px; font-weight: 600; color: #c17a52; }
   .fg-item .fg-qty { font-size: 8.5px; color: #000; }

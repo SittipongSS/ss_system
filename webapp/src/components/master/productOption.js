@@ -1,21 +1,25 @@
-// มาตรฐาน dropdown สินค้าทั้งระบบ (มติผู้ใช้ 2026-07-15):
-// รหัส (ตัวหนา) · แบรนด์ · ชื่อสินค้า · ปริมาตร
+import { createElement } from "react";
+import { productIdentity } from "@/lib/master/productIdentity";
+
+// มาตรฐาน dropdown สินค้าทั้งระบบ:
+// รหัส · แบรนด์ (รอง) / ชื่อสินค้า · ปริมาตร (หลัก)
 // ใช้ได้ทั้ง product master (/api/products: productDescription/brandName/volume)
 // และ shape อื่นที่มี fgCode+name (เช่น /api/sahamit/products, ทะเบียนสรรพสามิต).
 
 export function productOptionDisplay(p) {
-  const code = p?.fgCode || "";
-  const brand = p?.brandName || p?.brandNameEn || "";
-  const name = p?.productDescription || p?.productDescriptionEn || p?.name || "";
-  const volume = p?.volume ? `${p.volume} ${p.volumeUnit || "ml"}` : "";
-  const rest = [brand, name, volume].filter(Boolean).join(" · ");
+  const identity = productIdentity(p);
   return {
-    // สำหรับ native <option> / ที่ทำตัวหนาไม่ได้
-    text: [code, rest].filter(Boolean).join(" · ") || "-",
-    search: [code, p?.brandName, p?.brandNameEn, p?.productDescription, p?.productDescriptionEn, p?.name, volume]
-      .filter(Boolean).join(" "),
-    // สำหรับ SearchableSelect (option.render) — รหัสตัวหนา
-    render: code ? (<><strong>{code}</strong>{rest ? <> · {rest}</> : null}</>) : (rest || "-"),
+    // native <option>, trigger และ aria ใช้บรรทัดเดียว; menu ที่รองรับ render ใช้ 2 ชั้น.
+    text: identity.text,
+    search: identity.search,
+    render: createElement(
+      "span",
+      { className: "product-option-label" },
+      identity.meta
+        ? createElement("span", { className: "product-option-meta" }, identity.meta)
+        : null,
+      createElement("span", { className: "product-option-name" }, identity.detail || "-"),
+    ),
   };
 }
 

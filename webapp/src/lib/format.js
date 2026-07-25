@@ -1,4 +1,8 @@
-import { brandLabel } from '@/lib/master/brands';
+import {
+  productBrandName,
+  productDisplayName,
+  productVolumeLabel,
+} from '@/lib/master/productIdentity';
 
 // Shared formatting helpers — single source of truth for money/date display
 // so every page renders THB and dates identically.
@@ -170,22 +174,15 @@ export const fmtName = (input) => {
   return abbreviateFullName(input.name) || String(input.email || "").trim();
 };
 
-// ชื่อสินค้าสำหรับแสดงผลระบบทั่วไป — อังกฤษก่อน ถ้าไม่มีค่อยไทย (migration 0059).
-export const productName = (p) => (p?.productDescriptionEn || p?.productDescription || "").trim();
-
-// ชื่อสินค้าสำหรับ "หน้า /database" — โชว์ทั้งสองภาษา EN · TH (มีอย่างเดียว → อันนั้น).
-export const productNameBoth = (p) => {
-  const e = (p?.productDescriptionEn || "").trim();
-  const t = (p?.productDescription || "").trim();
-  if (e && t) return `${e} · ${t}`;
-  return e || t;
-};
+// Compatibility exports ทั้งระบบใช้กฎเดียว: ชื่อสินค้า TH ก่อน แล้วค่อย EN.
+export const productName = productDisplayName;
+export const productNameBoth = productDisplayName;
 
 // "แบรนด์ · ขนาด" hint for product pickers so lookalike SKUs (same product,
 // different pack size / brand line) are easy to tell apart. Keeps volume 0
 // (a real size) — only null/undefined/"" is treated as missing.
 export const productMeta = (p) =>
-  [brandLabel(p?.brandName, p?.brandNameEn), p?.volume != null && p?.volume !== "" ? `${p.volume}${p?.volumeUnit || ""}` : null]
+  [productBrandName(p), productVolumeLabel(p)]
     .filter(Boolean)
     .join(" · ");
 

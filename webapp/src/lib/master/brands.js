@@ -48,11 +48,11 @@ export function brandThList(brandsArrays) {
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
 }
 
-// กฎแสดงผลแบรนด์ทั้งระบบ: EN · TH. ถ้ามีภาษาเดียวจะแสดงเฉพาะภาษาที่มี.
+// กฎแสดงผลแบรนด์ทั้งระบบ: ชื่อทางการ EN ก่อน ถ้าไม่มีค่อย TH.
+// ทั้งสองภาษายังอยู่ใน search ของตัวเลือก แต่ไม่แสดงซ้ำให้หน้าจอรก.
 export function brandLabel(th, en) {
   const t = (th || "").trim();
   const e = (en || "").trim();
-  if (t && e) return `${e} · ${t}`;
   return e || t;
 }
 
@@ -61,8 +61,7 @@ export function brandLabelOf(b) {
   return brandLabel(brandTh(b), brandEn(b));
 }
 
-// ป้ายชื่อแบรนด์สำหรับ "หน้า /database" โดยเฉพาะ: โชว์ทั้งสองภาษา EN · TH
-// (มีทั้งคู่ → "EN · TH", มีอย่างเดียว → อันนั้น).
+// ชื่อเดิมคงไว้เพื่อ compatibility กับจุดเรียกเก่า แต่ใช้กฎภาษาเดียวชุดกลาง.
 export function brandBoth(th, en) {
   return brandLabel(th, en);
 }
@@ -70,8 +69,7 @@ export function brandBothOf(b) {
   return brandBoth(brandTh(b), brandEn(b));
 }
 
-// Dropdown options keep the legacy stored value (TH first, EN fallback) while
-// consistently showing both languages to the user.
+// Dropdown เก็บ legacy value เดิม แต่แสดงภาษาเดียวและค้นได้ทั้ง TH/EN.
 export function brandSelectOptions(brands) {
   return normalizeBrands(brands).map((brand) => ({
     value: brand.th || brand.en,
@@ -80,8 +78,7 @@ export function brandSelectOptions(brands) {
   }));
 }
 
-// Resolve a legacy stored value (often TH-only) against a customer's brand
-// master before displaying it, so old deals/projects also render EN · TH.
+// Resolve legacy value (often TH-only) against customer brand master.
 export function brandDisplayFromList(brands, value) {
   const text = String(value || "").trim();
   if (!text) return "";

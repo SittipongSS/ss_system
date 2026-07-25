@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enforceMasterPrices, fgLineDescription, normalizeManualLines, refreshFgLinesForDisplay } from './quoteLines.js';
+import {
+  enforceMasterPrices,
+  fgLineBrand,
+  fgLineDescription,
+  normalizeManualLines,
+  refreshFgLinesForDisplay,
+} from './quoteLines.js';
 
 // stub supabase: คืนราคา master ตาม map ที่กำหนด
 const fakeSupabase = (products) => ({
@@ -44,14 +50,15 @@ test('manual lines (no productId) pass through untouched', async () => {
   assert.equal(lines[0].unitPrice, 500);
 });
 
-test('FG line description/code are refreshed from master (brand · name · volume)', async () => {
+test('FG line identity is refreshed from master without duplicating brand in description', async () => {
   const master = [{
-    id: 'P1', fgCode: 'FG-001', brandName: 'แบรนด์เอ', productDescription: 'น้ำหอมส้ม',
+    id: 'P1', fgCode: 'FG-001', brandName: 'แบรนด์เอ', brandNameEn: 'BRAND A', productDescription: 'น้ำหอมส้ม',
     volume: 50, volumeUnit: 'ml', costPrice: 150,
   }];
   const lines = await enforceMasterPrices(fakeSupabase(master), [fgLine({ description: 'ชื่อเก่า' })]);
-  assert.equal(lines[0].description, 'แบรนด์เอ · น้ำหอมส้ม · 50 ml');
+  assert.equal(lines[0].description, 'น้ำหอมส้ม · 50 ml');
   assert.equal(lines[0].fgCode, 'FG-001');
+  assert.equal(lines[0].metadata.productBrand, 'BRAND A');
 });
 
 test('master with no factory price keeps previously saved price — never zeroes the quote', async () => {
@@ -94,27 +101,29 @@ test('no FG lines → no products query needed', async () => {
 });
 
 test('refreshFgLinesForDisplay updates editable quotes only, final quotes stay frozen', async () => {
-  const master = [{ id: 'P1', fgCode: 'FG-001', brandName: 'แบรนด์เอ', productDescription: 'น้ำหอมส้ม', volume: 50, volumeUnit: 'ml' }];
+  const master = [{ id: 'P1', fgCode: 'FG-001', brandName: 'แบรนด์เอ', brandNameEn: 'BRAND A', productDescription: 'น้ำหอมส้ม', volume: 50, volumeUnit: 'ml' }];
   const mkQuote = (status) => ({ status, lines: [{ productId: 'P1', description: 'ชื่อเก่า', fgCode: 'FG-001' }] });
   const draft = mkQuote('draft');
   const accepted = mkQuote('accepted');
   const closed = mkQuote('closed');
   await refreshFgLinesForDisplay(fakeSupabase(master), [draft, accepted, closed]);
-  assert.equal(draft.lines[0].description, 'แบรนด์เอ · น้ำหอมส้ม · 50 ml');
+  assert.equal(draft.lines[0].description, 'น้ำหอมส้ม · 50 ml');
+  assert.equal(draft.lines[0].metadata.productBrand, 'BRAND A');
   assert.equal(accepted.lines[0].description, 'ชื่อเก่า'); // หลักฐาน ณ วันปิด
+  assert.equal(accepted.lines[0].metadata, undefined);
   assert.equal(closed.lines[0].description, 'ชื่อเก่า');
 });
 
-test('fgLineDescription composes brand · name · volume', () => {
+test('FG identity separates preferred brand from product name and volume', () => {
   assert.equal(
     fgLineDescription({ brandName: 'แบรนด์เอ', productDescription: 'น้ำหอมส้ม', volume: 50, volumeUnit: 'ml' }),
-    'แบรนด์เอ · น้ำหอมส้ม · 50 ml',
+    'น้ำหอมส้ม · 50 ml',
   );
-  // แบรนด์ EN-only + ไม่มีปริมาตร
   assert.equal(
     fgLineDescription({ brandNameEn: 'Brand B', productDescriptionEn: 'Citrus' }),
-    'Brand B · Citrus',
+    'Citrus',
   );
+  assert.equal(fgLineBrand({ brandName: 'แบรนด์บี', brandNameEn: 'Brand B' }), 'Brand B');
   // ไม่มีข้อมูลเลย → fallback productLabel (fgCode/สินค้า)
   assert.equal(fgLineDescription({ fgCode: 'FG-9' }), 'FG-9');
   assert.equal(fgLineDescription({}), 'สินค้า');

@@ -21,6 +21,7 @@ import Toast from "@/components/ui/Toast";
 import ConfirmModal from "@/components/tax/ConfirmModal";
 import { brandBothOf, brandBoth } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
+import { productDisplayName } from "@/lib/master/productIdentity";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import { apiCache } from "@/lib/apiCache";
@@ -414,7 +415,7 @@ export default function CustomerDetails() {
                     <div key={r.id} onClick={() => router.push(`/tax/registrations/${r.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold font-mono text-sm text-[var(--text)]">{r.fgCode}</div>
-                        <div className="text-[11px] text-[var(--text-3)] truncate">{r.productName} · {brandBoth(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName)}</div>
+                        <div className="text-[11px] text-[var(--text-3)] truncate">{productDisplayName(r)} · {brandBoth(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName)}</div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         {r.approvalNumber && <span className="font-mono text-[11px] text-[var(--text-3)]">{r.approvalNumber}</span>}

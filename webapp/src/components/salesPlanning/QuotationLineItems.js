@@ -13,7 +13,8 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import ReadableText from "@/components/ui/ReadableText";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney } from "@/lib/format";
-import { fgLineDescription } from "@/lib/sales/quoteLines";
+import { fgLineBrand, fgLineDescription } from "@/lib/sales/quoteLines";
+import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
@@ -38,7 +39,7 @@ export default function QuotationLineItems({
   onDiscountChange,
   onVatRateChange,
 }) {
-  // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส (ตัวหนา) · แบรนด์ · ชื่อสินค้า · ปริมาตร
+  // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส · แบรนด์ / ชื่อสินค้า · ปริมาตร
   const productOptions = useMemo(() => productSelectOptions(products), [products]);
 
   const totals = useMemo(() => quoteTotals(lines, {
@@ -57,15 +58,8 @@ export default function QuotationLineItems({
   // สินค้าหายจาก master → โชว์ค่าที่ snapshot ไว้ในใบ (description เดิม)
   const fgDisplayFor = (line) => {
     const product = line.productId ? products.find((item) => item.id === line.productId) : null;
-    if (!product) return { code: line.fgCode || "", brand: "", name: line.description || "" };
-    return {
-      code: product.fgCode || line.fgCode || "",
-      brand: product.brandName || product.brandNameEn || "",
-      name: [
-        product.productDescription || product.productDescriptionEn || "",
-        product.volume ? `${product.volume} ${product.volumeUnit || "ml"}` : "",
-      ].filter(Boolean).join(" · "),
-    };
+    const identity = productIdentity(product || line);
+    return { code: identity.code, brand: identity.brand, name: identity.detail };
   };
   // ราคาขายในใบ = ราคาผลิต (costPrice) ทั้งระบบ (มติ 2026-07-19) — ตรงกับที่
   // server enforce ตอนบันทึก; retailPriceIncVat มีไว้คำนวณสรรพสามิตเท่านั้น
@@ -80,8 +74,9 @@ export default function QuotationLineItems({
     setLine(index, {
       productId: product.id,
       fgCode: product.fgCode || null,
-      // คำอธิบายมาตรฐาน แบรนด์ · ชื่อสินค้า · ปริมาตร (รหัสแสดงเป็นป้าย FG แยก)
+      // คำอธิบายหลักเก็บแยกจากรหัส/แบรนด์ เพื่อให้ทุกจุดจัดลำดับชั้นเหมือนกัน
       description: fgLineDescription(product),
+      metadata: { ...(lines[index]?.metadata || {}), productBrand: fgLineBrand(product) },
       // หน่วยขายผูกกับสินค้า (มติ 2026-07-23) — server enforce ทับด้วย master.saleUnit ตอนบันทึก
       unit: product.saleUnit || "ชิ้น",
       unitPrice: Number(product.costPrice || 0),

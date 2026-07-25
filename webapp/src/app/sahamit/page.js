@@ -15,6 +15,7 @@ import FcRoundsView from "@/components/sahamit/FcRoundsView";
 import FcVsPoView from "@/components/sahamit/FcVsPoView";
 import PoVsFcView from "@/components/sahamit/PoVsFcView";
 import GrowthView from "@/components/sahamit/GrowthView";
+import { productSelectOptions } from "@/components/master/productOption";
 
 // SAHAMIT command center — ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109), เฉพาะทีม Key Account.
 // แดชบอร์ดติดตาม FC/PO + การเติบโต. ทุกตัวเลข/กราฟต่อจาก peak engine เดิม
@@ -79,7 +80,7 @@ export default function SahamitOverview() {
     { key: "vol", label: "ปริมาตร", icon: Ruler, selected: vols, onChange: setVols,
       options: volOpts.map((v) => ({ value: String(v), label: `${v}${volUnitOf.get(String(v)) || ""}` })) },
     { key: "sku", label: "สินค้า", icon: Package, selected: skus, onChange: setSkus, searchable: true,
-      options: (products || []).map((p) => ({ value: p.fgCode, label: p.name || p.fgCode, search: `${p.name || ""} ${p.productDescriptionEn || ""} ${p.fgCode}` })) },
+      options: productSelectOptions(products, (p) => p.fgCode) },
     { key: "year", label: "ปี", icon: CalendarRange, selected: years, onChange: setYears,
       options: yrOpts.map((y) => ({ value: y, label: y })) },
   ], [catOpts, volOpts, yrOpts, volUnitOf, products, cats, vols, skus, years]);

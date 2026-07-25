@@ -19,6 +19,7 @@ import StartFilingDialog from "@/components/excise/StartFilingDialog";
 import FileTaxDialog from "@/components/excise/FileTaxDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { openBillPrintWindow } from "@/lib/tax/billPrint";
+import { productDisplayName } from "@/lib/master/productIdentity";
 
 const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
 const ORDER = ["pending", "received", "filing", "complete"];
@@ -153,7 +154,7 @@ export default function FilingDetailPage() {
                     <tr key={it.id} style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "8px 0", verticalAlign: "top" }}>
                         <div className="font-mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.fgCode || "-"}</div>
-                        <div>{p.productDescriptionEn || p.productDescription || p.productName || ""}</div>
+                        <div>{productDisplayName(p)}</div>
                       </td>
                       <td className="font-mono" style={{ padding: "8px", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{(it.quantity || 0).toLocaleString("th-TH")}</td>
                       <td className="font-mono" style={{ padding: "8px 0", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmtMoney(it.totalTax || 0)}</td>

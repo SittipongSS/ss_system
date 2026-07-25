@@ -45,9 +45,23 @@ test('V4 doc: ข้อความยาวในเอกสารอ่าน
   const html = buildQuotationMasterHTML(q, {});
   assert.match(html, /\.termsGrid p \{[^}]*font-size: 8\.5pt;[^}]*line-height: 1\.65;[^}]*white-space: pre-wrap;/);
   assert.match(html, /\.termsGrid h2 span \{[^}]*display: inline;[^}]*white-space: nowrap;/);
-  assert.match(html, /\.itemTable strong \{[^}]*white-space: pre-wrap;/);
+  assert.match(html, /\.itemName \{[^}]*white-space: pre-wrap;/);
   assert.ok(html.includes('เงื่อนไขข้อแรก\nเงื่อนไขข้อที่สอง'), 'ไม่ยุบ newline ในหมายเหตุ');
   assert.ok(html.includes('หัวข้อสินค้า\nรายละเอียดบรรทัดถัดไป'), 'ไม่ยุบ newline ในรายละเอียดสินค้า');
+});
+
+test('V4 doc: รายการสินค้าแสดง FG · แบรนด์ ก่อนชื่อสินค้า · ขนาด', () => {
+  const line = lineOf('1', {
+    description: 'สินค้าเซนท์ แอนด์ เซนส์ · 30 ml',
+    metadata: { productBrand: 'SCENT AND SENSE' },
+  });
+  const html = buildQuotationMasterHTML(baseQuote([line]), {});
+  const metaIndex = html.indexOf('FG-1 · SCENT AND SENSE');
+  const nameIndex = html.indexOf('สินค้าเซนท์ แอนด์ เซนส์ · 30 ml');
+  assert.ok(metaIndex >= 0, 'มี FG และแบรนด์ภาษาเดียว');
+  assert.ok(nameIndex > metaIndex, 'ชื่อสินค้าและขนาดอยู่ลำดับถัดจาก FG/แบรนด์');
+  assert.match(html, /class="itemIdentity"/);
+  assert.match(html, /class="itemName"/);
 });
 
 test('V4 doc: บล็อกลูกค้า — โชว์เลขภาษี + ที่อยู่จัดส่ง, ไม่โชว์สาขา', () => {

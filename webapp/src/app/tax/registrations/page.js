@@ -12,9 +12,11 @@ import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
 import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import { brandLabel } from "@/lib/master/brands";
+import { productDisplayName } from "@/lib/master/productIdentity";
 
 const taxPerUnit = (r) => (r.isExciseTaxable === false ? 0 : (r.exciseTax || 0) + (r.localTax || 0));
 const registrationBrand = (r) => brandLabel(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName);
+const registrationProduct = (r) => productDisplayName(r);
 
 export default function RegistrationsPage() {
   const role = useRole();
@@ -66,7 +68,7 @@ export default function RegistrationsPage() {
       render: (r) => (
         <div>
           <div className="font-semibold font-mono">{r.fgCode}</div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.productName} ({registrationBrand(r) || "-"})</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)" }}>{registrationProduct(r)} ({registrationBrand(r) || "-"})</div>
         </div>
       ),
     },
@@ -85,7 +87,7 @@ export default function RegistrationsPage() {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-semibold font-mono text-sm">{r.fgCode}</div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }} className="truncate">{r.productName} ({registrationBrand(r) || "-"})</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)" }} className="truncate">{registrationProduct(r)} ({registrationBrand(r) || "-"})</div>
         </div>
         <StatusBadge status={r.status} />
       </div>

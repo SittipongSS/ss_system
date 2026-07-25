@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { chatCard, sendChatNow } from '@/lib/chat';
+import { productDisplayName } from '@/lib/master/productIdentity';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -40,7 +41,7 @@ async function approvalsDigest(supabase) {
     subtitle: `รวม ${total} รายการ`,
     rows: [
       c.length ? { label: `ลูกค้ารออนุมัติ (${c.length})`, value: sample(c, (x) => x.name) } : null,
-      p.length ? { label: `สินค้ารออนุมัติ (${p.length})`, value: sample(p, (x) => x.productDescriptionEn || x.productDescription || x.fgCode) } : null,
+      p.length ? { label: `สินค้ารออนุมัติ (${p.length})`, value: sample(p, (x) => productDisplayName(x) || x.fgCode) } : null,
     ].filter(Boolean),
     linkPath: '/home',
     linkLabel: 'เข้าระบบ',

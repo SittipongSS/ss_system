@@ -5,6 +5,7 @@ import { purgeAttachments } from '@/lib/master/attachments';
 import { registrationDeleteBlock } from '@/lib/deletion';
 import { registrationRequirements } from '@/lib/tax/requirements';
 import { recordAudit } from '@/lib/audit';
+import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,8 +96,8 @@ export async function PATCH(request, { params }) {
     updated.productId = product.id;
     updated.customerId = customer.id;
     updated.fgCode = product.fgCode;
-    updated.productName = product.productDescriptionEn || product.productDescription;
-    updated.brandName = product.brandNameEn || product.brandName;
+    updated.productName = productDisplayName(product);
+    updated.brandName = productBrandName(product);
     updated.customerName = customer.name;
     updated.taxId = customer.taxId;
     // Keep the both-language snapshot in metadata in sync with the newly selected

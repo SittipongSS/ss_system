@@ -67,19 +67,22 @@ function partyGrid(model) {
 }
 
 function itemTable(lines, startIndex) {
-  const rows = lines.map((line, index) => `
+  const rows = lines.map((line, index) => {
+    const identityMeta = [line.fgCode, line.brand].filter(Boolean).map(esc).join(' · ');
+    return `
         <tr>
           <td class="center">${startIndex + index + 1}</td>
           <td>
-            <strong>${val(line.description)}</strong>
-            <span class="itemCode">${esc(line.fgCode || '')}</span>
+            ${identityMeta ? `<span class="itemIdentity">${identityMeta}</span>` : ''}
+            <strong class="itemName">${val(line.description)}</strong>
             ${line.note ? `<span class="itemNote">${esc(line.note)}</span>` : ''}
           </td>
           <td class="number">${Number(line.qty || 0).toLocaleString('th-TH')}</td>
           <td class="center">${val(line.unit)}</td>
           <td class="number">${money(line.unitPrice)}</td>
           <td class="number">${money(line.lineTotal)}</td>
-        </tr>`).join('');
+        </tr>`;
+  }).join('');
   return `
     <table class="itemTable">
       <thead>
@@ -311,8 +314,8 @@ const DOCUMENT_CSS = `
   .itemTable td:nth-child(3) { width: 17mm; }
   .itemTable td:nth-child(4) { width: 13mm; }
   .itemTable td:nth-child(5), .itemTable td:nth-child(6) { width: 23mm; }
-  .itemTable strong { display: block; font-weight: 500; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .itemCode { display: inline-block; margin-top: .7mm; color: var(--doc-navy); font-size: 7.6pt; font-weight: 600; }
+  .itemIdentity { display: block; color: var(--doc-navy); font-size: 7.6pt; font-weight: 600; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .itemName { display: block; margin-top: .35mm; color: var(--doc-text); font-weight: 500; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .itemNote { display: block; margin-top: .7mm; color: var(--doc-muted); font-size: 8pt; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center { text-align: center; }
   .number { text-align: right; white-space: nowrap; }

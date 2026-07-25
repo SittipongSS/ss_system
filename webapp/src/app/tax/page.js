@@ -10,6 +10,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import KpiCard from "@/components/ui/KpiCard";
 import WorkQueue from "@/components/excise/WorkQueue";
 import { RegsDonutChart, OrdersComposedChart } from "@/components/excise/TaxDashboardCharts";
+import { productDisplayName } from "@/lib/master/productIdentity";
 
 // Helper for date filtering
 function isWithinRange(dateStr, range) {
@@ -79,9 +80,9 @@ export default function TaxDashboard() {
   const queue = [];
   if (canSA) {
     regs.filter((x) => x.status === "draft").forEach((x) =>
-      queue.push({ id: `rd-${x.id}`, status: "draft", title: `${x.fgCode} · ${x.productName}`, subtitle: `${x.customerName || "-"} — แนบเอกสารแล้วยื่นขึ้นทะเบียน`, cta: "แนบ/ยื่น", onClick: () => goReg("draft") }));
+      queue.push({ id: `rd-${x.id}`, status: "draft", title: `${x.fgCode} · ${productDisplayName(x)}`, subtitle: `${x.customerName || "-"} — แนบเอกสารแล้วยื่นขึ้นทะเบียน`, cta: "แนบ/ยื่น", onClick: () => goReg("draft") }));
     regs.filter((x) => x.status === "rejected").forEach((x) =>
-      queue.push({ id: `r-${x.id}`, status: "rejected", title: `${x.fgCode} · ${x.productName}`, subtitle: `${x.customerName || "-"} — ${x.rejectionReason || "ตีกลับให้แก้ไข"}`, cta: "แก้ไข", onClick: () => goReg("rejected") }));
+      queue.push({ id: `r-${x.id}`, status: "rejected", title: `${x.fgCode} · ${productDisplayName(x)}`, subtitle: `${x.customerName || "-"} — ${x.rejectionReason || "ตีกลับให้แก้ไข"}`, cta: "แก้ไข", onClick: () => goReg("rejected") }));
     orders.filter((x) => x.status === "pending").forEach((x) =>
       queue.push({ id: `o-${x.id}`, status: "pending", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: itemsLine(x), cta: "รับเงิน", onClick: () => goFil("pending") }));
     orders.filter((x) => x.status === "rejected").forEach((x) =>
@@ -89,7 +90,7 @@ export default function TaxDashboard() {
   }
   if (canLG) {
     regs.filter((x) => x.status === "pending_legal").forEach((x) =>
-      queue.push({ id: `rl-${x.id}`, status: "pending_legal", title: `${x.fgCode} · ${x.productName}`, subtitle: `${x.customerName || "-"} — รอตรวจขึ้นทะเบียน`, cta: "ตรวจอนุมัติ", onClick: () => goReg("pending_legal") }));
+      queue.push({ id: `rl-${x.id}`, status: "pending_legal", title: `${x.fgCode} · ${productDisplayName(x)}`, subtitle: `${x.customerName || "-"} — รอตรวจขึ้นทะเบียน`, cta: "ตรวจอนุมัติ", onClick: () => goReg("pending_legal") }));
     orders.filter((x) => x.status === "received").forEach((x) =>
       queue.push({ id: `or-${x.id}`, status: "received", title: `${x.quotationRef} · ${x.customerName || "-"}`, subtitle: `${itemsLine(x)} — รอยื่นกรมสรรพสามิต`, cta: "ไปยื่น", onClick: () => goFil("received") }));
     orders.filter((x) => x.status === "filing").forEach((x) =>

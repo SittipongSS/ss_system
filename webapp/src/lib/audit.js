@@ -13,6 +13,7 @@
 //   await recordAudit({ user, action: 'update', entityType: 'customer',
 //                       entityId: id, before, after: updated, request });
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { productDisplayName } from '@/lib/master/productIdentity';
 
 // Fields ที่ไม่ถือว่าเป็น "การเปลี่ยนแปลงที่มีความหมาย" ในการ diff (timestamp ระบบ).
 const NOISE_KEYS = new Set(['updatedAt', 'createdAt']);
@@ -102,7 +103,7 @@ export function userAuditSnapshot(u) {
 // คำอธิบายเริ่มต้น (ใช้ชื่อ entity ที่อ่านง่ายถ้ามี).
 function defaultSummary({ action, entityType, after, before }) {
   const rec = after || before || {};
-  const label = rec.name || rec.productDescriptionEn || rec.productDescription || rec.quotationRef || rec.id || '';
+  const label = rec.name || productDisplayName(rec) || rec.quotationRef || rec.id || '';
   const verb = action === 'create' ? 'สร้าง' : action === 'delete' ? 'ลบ' : 'แก้ไข';
   return `${verb}${entityType}${label ? ` ${label}` : ''}`.trim();
 }

@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canDeleteRecord, viewScopeUser } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
+import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 // ?slim=1: เฉพาะคอลัมน์ที่จอสรุป (/tax) ใช้ — ตัด snapshot ภาษี/metadata/เอกสาร
 // ออกจาก payload (ลด traffic); โหมดเต็มพฤติกรรมเดิม.
 const REGISTRATION_SELECT_SLIM =
-  'id, status, createdAt, fgCode, productName, customerName, rejectionReason, team, ownerId';
+  'id, status, createdAt, fgCode, productName, customerName, rejectionReason, team, ownerId, metadata';
 
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
@@ -80,8 +81,8 @@ export async function POST(request) {
     customerId: customer.id,
     projectId: body.projectId || null,
     fgCode: product.fgCode,
-    productName: product.productDescriptionEn || product.productDescription,
-    brandName: product.brandNameEn || product.brandName,
+    productName: productDisplayName(product),
+    brandName: productBrandName(product),
     customerName: customer.name,
     taxId: customer.taxId,
     isExciseTaxable,
@@ -94,9 +95,7 @@ export async function POST(request) {
     team: user?.team ?? null,
     ownerId: user?.id ?? null,
     assignee: body.assignee || user?.name || 'Sales',
-    // Both-language snapshot in metadata (no dedicated column) so tax/registrations
-    // search matches TH *and* EN — productName/brandName above are EN-first, so the
-    // Thai name would otherwise be unsearchable once an EN name exists.
+    // เก็บ snapshot ทั้งสองภาษาไว้สำหรับค้นหา แม้ป้ายที่แสดงจะใช้ภาษาเดียว.
     metadata: {
       productNameTh: product.productDescription || null,
       productNameEn: product.productDescriptionEn || null,

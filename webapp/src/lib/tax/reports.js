@@ -17,6 +17,7 @@ import { ORDER_SELECT } from '@/lib/tax/orders';
 import { statusMeta } from '@/lib/excise/workflow';
 import { TEAM_LABELS } from '@/lib/permissions';
 import { brandLabel } from '@/lib/master/brands';
+import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 
 const inRange = (value, from, to) => {
   if (!value) return false;
@@ -90,7 +91,10 @@ export async function registrationReport(filter = {}) {
     const exVat = p.retailPriceExVat != null ? p.retailPriceExVat : (p.retailPriceIncVat ? p.retailPriceIncVat / 1.07 : 0);
     const row = {
       id: r.id,
-      product: [r.fgCode || '-', r.productName || '', r.brandName || ''].filter(Boolean).join('\n'),
+      product: [
+        [r.fgCode || '-', productBrandName(r)].filter(Boolean).join(' · '),
+        productDisplayName(r),
+      ].filter(Boolean).join('\n'),
       size: p.volume != null ? `${p.volume} ${p.volumeUnit || 'ml'}` : '-',
       customer: two(r.customerName || '-', r.taxId || '-'),
       retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
@@ -150,7 +154,10 @@ export async function filingReport(filter = {}) {
         id: it.id,
         quotationRef: o.quotationRef,
         taxInvoiceNumber: o.taxInvoiceNumber || '-',
-        product: [p.fgCode || it.registration?.fgCode || '-', p.productDescriptionEn || p.productDescription || it.registration?.productName || '', brandLabel(p.brandName, p.brandNameEn)].filter(Boolean).join('\n'),
+        product: [
+          [p.fgCode || it.registration?.fgCode || '-', brandLabel(p.brandName, p.brandNameEn)].filter(Boolean).join(' · '),
+          productDisplayName(p) || it.registration?.productName || '',
+        ].filter(Boolean).join('\n'),
         retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
         deliveryDate: o.deliveryDate && /^\d{4}-\d{2}-\d{2}/.test(o.deliveryDate) ? o.deliveryDate : null,
         qty: Number(it.quantity) || 0,
