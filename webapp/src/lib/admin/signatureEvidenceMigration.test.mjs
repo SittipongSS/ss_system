@@ -22,6 +22,16 @@ const signingRoleMigration = readFileSync(
   'utf8',
 );
 
+const soSubmitMigration = readFileSync(
+  new URL('../../../supabase/migrations/0153_submit_sales_order_evidence.sql', import.meta.url),
+  'utf8',
+);
+
+const qtSubmitMigration = readFileSync(
+  new URL('../../../supabase/migrations/0155_quotation_submit_step.sql', import.meta.url),
+  'utf8',
+);
+
 test('signature evidence migration keeps evidence append-only and does not backfill approvals', () => {
   assert.match(migration, /BEFORE UPDATE OR DELETE ON public\.document_signature_evidence/);
   assert.doesNotMatch(migration, /INSERT INTO public\.document_signature_evidence\s+SELECT/i);
@@ -96,6 +106,34 @@ test('capture RPC records the signing role and keeps every existing pin', () => 
   assert.match(signingRoleMigration, /v_standard\."publishedVersionId"/);
   assert.match(signingRoleMigration, /signature_evidence_signature_required/);
   assert.match(signingRoleMigration, /signature_evidence_standard_required/);
+});
+
+test('การยื่นทั้งสองเอกสารลงนามบทบาท proposer ในทรานแซกชันเดียวกับการเปลี่ยนสถานะ', () => {
+  for (const sql of [soSubmitMigration, qtSubmitMigration]) {
+    assert.match(sql, /public\.capture_document_signature_evidence\(/);
+    assert.match(sql, /'proposer'\s*\n?\s*\)/);
+    assert.match(sql, /"proposerSignatureEvidenceId" = v_evidence\.id/);
+    // optimistic guard: กันแก้เนื้อหาจากอีกหน้าต่างแล้วยื่นทับ (หลักฐานผูก fingerprint ผิด)
+    assert.match(sql, /"updatedAt" IS DISTINCT FROM p_expected_updated_at/);
+    assert.match(sql, /signature_evidence_submit_state_invalid/);
+    // ต้องคืนทั้งเอกสารและหลักฐานให้เข้ากับ approveWithEvidence pattern
+    assert.match(sql, /'document', to_jsonb/);
+    assert.match(sql, /'evidence', to_jsonb/);
+  }
+});
+
+test('ขั้นยื่นของใบเสนอราคาเพิ่มสถานะใหม่ + เด้งใบที่ค้างรออนุมัติกลับเป็นร่าง', () => {
+  // มติผู้ใช้ข้อ 6: ใบที่ค้าง pending → not_submitted (เซลต้องยื่นใหม่)
+  assert.match(qtSubmitMigration, /CHECK \("approvalStatus" IN \('not_required', 'not_submitted', 'pending', 'approved', 'rejected'\)\)/);
+  assert.match(qtSubmitMigration, /ALTER COLUMN "approvalStatus" SET DEFAULT 'not_submitted'/);
+  assert.match(qtSubmitMigration, /SET "approvalStatus" = 'not_submitted'[\s\S]*WHERE "approvalStatus" = 'pending'/);
+  // ยื่นได้เฉพาะใบที่ยังไม่ยื่น — ใบ not_required (grandfather) ต้องไม่ถูกดึงเข้า flow
+  assert.match(qtSubmitMigration, /v_quote\."approvalStatus" <> 'not_submitted'/);
+  // reuse คอลัมน์ที่ตายอยู่แทนการเพิ่มคอลัมน์ใหม่
+  assert.match(qtSubmitMigration, /"approvalRequestedAt" = v_now/);
+  assert.match(qtSubmitMigration, /"approvalRequestedBy" = p_actor_id/);
+  // ห้ามฝังการยื่นไว้ใน save_quotation_content (ถูกเรียกทุกครั้งที่บันทึก = หลักฐานซ้ำ)
+  assert.doesNotMatch(qtSubmitMigration, /CREATE OR REPLACE FUNCTION public\.save_quotation_content/);
 });
 
 test('pointer cleanup keeps proposer evidence through submitted and approved states only', () => {

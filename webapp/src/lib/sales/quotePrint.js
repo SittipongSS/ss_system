@@ -43,11 +43,18 @@ export function openQuotePrintWindow(quote, preparedWindow = null, company = nul
   // Phase 7C (Direction B): ใบเสนอราคาที่ยังไม่ตรึง snapshot ก็ต้องพิมพ์ด้วยหน้าตา V4
   // (เครื่องยนต์เดียวกับฉบับที่ตรึง) เพื่อให้ทุกใบหน้าตาเดียวกัน
   // company/standard = บล็อกบริษัท + มาตรฐานเอกสารที่เผยแพร่ (ไม่ส่ง → builder fallback)
+  // ลายเซ็นผู้เสนอราคา: server ฝังรูป+วันที่+Evidence มาให้จากหลักฐานที่ตรึงตอนยื่น
+  // (mig 0155, API detail) — ใบที่ยังไม่ยื่นไม่มีค่านี้ → ช่องเซ็นเปล่าเหมือนเดิม
+  const proposer = quote?.proposerSignature;
   win.document.write(buildQuotationMasterHTML(quote, {
     company,
     form: resolveDocumentForm(standard, 'quotation'),
     accentKey: resolveDocumentAccentKey(standard, 'quotation'),
     documentTitleTh: resolveDocumentTitleTh(standard, 'quotation'),
+    proposerSignatureImage: proposer?.imageDataUri || null,
+    proposerEvidence: proposer?.imageDataUri
+      ? { id: proposer.evidenceId, signerName: proposer.signerName, signedAt: proposer.signedAt }
+      : null,
   }));
   win.document.close();
   return win;

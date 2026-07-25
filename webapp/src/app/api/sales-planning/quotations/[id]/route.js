@@ -16,6 +16,8 @@ import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +48,28 @@ async function loadQuote(supabase, id) {
 // สถานะที่ยังแก้เนื้อหาได้ — accepted/revised/cancelled = read-only (หลักฐานการค้า)
 const EDITABLE_STATUSES = new Set(['draft', 'sent', 'rejected']);
 
+// ลายเซ็นผู้เสนอราคาสำหรับพิมพ์สด: อ่านจากหลักฐานที่ตรึงตอนยื่น (mig 0155) แล้วโหลดไฟล์รูป
+// จาก bucket ส่วนตัวด้วย service-role (RLS บล็อก client) ฝังเป็น data URI — ใบที่ยังไม่ยื่น/
+// ไม่มีหลักฐาน (grandfather) คืน null แล้วเอกสารหล่นไปช่องเซ็นเปล่าเหมือนเดิม.
+// ฉบับตรึง snapshot มีเส้นทางของตัวเอง (captureIssuedQuotationSnapshot) ไม่ผ่านทางนี้
+async function loadProposerSignature(supabase, quote) {
+  if (!quote?.proposerSignatureEvidenceId) return null;
+  const { data: ev } = await supabase
+    .from('document_signature_evidence')
+    .select('id, signerName, signedAt, signatureAssetSnapshot')
+    .eq('id', quote.proposerSignatureEvidenceId)
+    .maybeSingle();
+  if (!ev?.signatureAssetSnapshot) return null;
+  const imageDataUri = await loadSignatureImageDataUri(getSupabaseAdmin(), ev.signatureAssetSnapshot);
+  if (!imageDataUri) return null;
+  return {
+    imageDataUri,
+    signerName: ev.signerName || quote.createdByName || '',
+    signedAt: ev.signedAt || quote.approvalRequestedAt || null,
+    evidenceId: ev.id,
+  };
+}
+
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
@@ -66,8 +90,19 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .eq('baseNumber', baseNumber)
     .order('revisionNo', { ascending: false });
   if (revisionError) return fail(revisionError.message, 500);
+  // รูปลายเซ็นผู้เสนอราคา (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังพิมพ์ได้ ตกช่องเซ็นเปล่า)
+  let proposerSignature = null;
+  if (!user.devBypass) {
+    try { proposerSignature = await loadProposerSignature(supabase, filledQuote); }
+    catch { proposerSignature = null; }
+  }
   // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
-  return ok({ ...filledQuote, revisionHistory: revisionHistory || [], canApprove: canApproveQuotation(user, filledQuote.deal) });
+  return ok({
+    ...filledQuote,
+    revisionHistory: revisionHistory || [],
+    canApprove: canApproveQuotation(user, filledQuote.deal),
+    proposerSignature,
+  });
 });
 
 // PATCH — แก้เนื้อหาใบ (lines/ส่วนลด/VAT/เงื่อนไขชำระ/หมายเหตุ/วันหมดอายุ/สถานะ draft↔sent)
@@ -184,12 +219,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // Editing document content after it was sent creates a new draft state.
   const contentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
     || 'notes' in body || 'quoteDate' in body || 'validUntil' in body;
-  // แก้เนื้อหาที่กระทบเอกสาร/ยอด → ต้องอนุมัติใหม่ (มติ 2026-07-18): ล้างการอนุมัติเดิม
-  // กลับเป็น 'pending' + ตัด fingerprint/ผู้อนุมัติ. ใบ grandfather (not_required) ก็ถูก
-  // ดันเข้าสู่ระบบอนุมัติเมื่อถูกแก้เนื้อหา (สอดคล้องกับใบใหม่). ยกเว้น: ไม่แตะสถานะอนุมัติ
-  // เมื่อแก้เฉพาะช่องที่ไม่ใช่เนื้อหา (ผู้รับผิดชอบ ฯลฯ).
+  // แก้เนื้อหาที่กระทบเอกสาร/ยอด → ต้องยื่นและอนุมัติใหม่ (มติ 2026-07-18 + ข้อ 7 ของ
+  // มติ 2026-07-25): ล้างการอนุมัติเดิม กลับเป็น **'not_submitted' = ร่างที่ต้องยื่นใหม่**
+  // ไม่ใช่ 'pending' — หลักฐานการยื่นรอบก่อนผูกกับ fingerprint ของเนื้อหาที่เปลี่ยนไปแล้ว
+  // จึงสิ้นผล (trigger 0151 ล้าง proposer pointer ให้เองที่ระดับ DB).
+  // ใบ grandfather (not_required) ก็ถูกดันเข้าสู่ระบบอนุมัติเมื่อถูกแก้เนื้อหา (สอดคล้องกับ
+  // ใบใหม่). ยกเว้น: ไม่แตะสถานะอนุมัติเมื่อแก้เฉพาะช่องที่ไม่ใช่เนื้อหา (ผู้รับผิดชอบ ฯลฯ).
   if (contentChanged) {
-    patch.approvalStatus = 'pending';
+    patch.approvalStatus = 'not_submitted';
     patch.approvalFingerprint = null;
     patch.approvedAt = null;
     patch.approvedBy = null;
@@ -218,6 +255,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       currentFingerprint: quotationApprovalFingerprint(finalQuote, finalLines),
     });
     if (!readiness.ok) {
+      // แยกข้อความ 2 ขั้น (mig 0155): ยังไม่ยื่น ≠ ยื่นแล้วรอเจ้าของดีล — ผู้ใช้ต้องรู้ว่า
+      // ต้องกดปุ่มไหนต่อ ไม่ใช่รอเฉย ๆ
+      if (effApprovalStatus === 'not_submitted') {
+        return badRequest('ใบเสนอราคานี้ยังไม่ได้ยื่นอนุมัติ — กด "ยื่นอนุมัติ" ก่อนจึงจะส่งลูกค้าได้');
+      }
       return badRequest(effApprovalStatus === 'pending'
         ? 'ใบเสนอราคานี้ยังไม่ได้รับการอนุมัติจากเจ้าของดีล — อนุมัติก่อนจึงจะส่งลูกค้าได้'
         : readiness.error);

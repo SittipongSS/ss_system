@@ -126,6 +126,44 @@ test('capture เติมข้อมูลลูกค้าที่ว่า
   assert.match(sink.args.p_artifact_html, /คุณบี/);
 });
 
+test('capture ใช้หลักฐานการยื่นที่ตรึงไว้ → ใบตรึงมีวันที่ + Evidence ของผู้เสนอราคา', async () => {
+  // mig 0155: การยื่น = ลงนามผู้เสนอราคา → ฉบับตรึงต้องฝังรูปเวอร์ชันที่ลงนามจริง
+  // (ไม่ใช่ลายเซ็นสดที่อาจถูกเปลี่ยนภายหลัง) พร้อมวันที่และ Evidence id
+  const sink = {};
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const client = {
+    from(table) {
+      const q = {
+        select: () => q,
+        eq: () => q,
+        maybeSingle: async () => ({
+          data: table === 'document_signature_evidence'
+            ? {
+              id: 'DSE-SUBMIT',
+              signerName: 'ผู้ยื่นจริง',
+              signedAt: '2026-07-26T04:00:00.000Z',
+              signatureAssetSnapshot: { storageBucket: 'sig', storagePath: 'p.png', mimeType: 'image/png' },
+            }
+            : null,
+        }),
+      };
+      return q;
+    },
+    storage: {
+      from: () => ({ download: async () => ({ data: { arrayBuffer: async () => png.buffer }, error: null }) }),
+    },
+    async rpc(name, args) { sink.args = args; return { data: {}, error: null }; },
+  };
+  await captureIssuedQuotationSnapshot(client, {
+    quote: { ...baseQuote, proposerSignatureEvidenceId: 'DSE-SUBMIT' },
+    evidence,
+    user: { id: 'U1' },
+  });
+  assert.match(sink.args.p_artifact_html, /ผู้ยื่นจริง/);
+  assert.match(sink.args.p_artifact_html, /Evidence DSE-SUBMIT/);
+  assert.match(sink.args.p_artifact_html, /26\/07\/2026/);
+});
+
 test('capture ไม่ทับค่าที่ตรึงไว้แล้วด้วยทะเบียนลูกค้าปัจจุบัน', async () => {
   const sink = {};
   const client = captureClient({ taxId: 'ใหม่', contacts: [{ name: 'คนใหม่', phone: '099' }] }, sink);
@@ -140,7 +178,7 @@ test('capture ไม่ทับค่าที่ตรึงไว้แล้
 });
 
 test('layout version is tagged for regeneration tracking', () => {
-  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.1');
+  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.2');
 });
 
 test('artifact embeds approver signature image when provided', () => {

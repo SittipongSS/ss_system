@@ -105,6 +105,29 @@ test('V4 doc: ฉบับร่าง (pending) ขึ้นลายน้ำ 
   assert.match(html, /class="watermark">ฉบับร่าง/);
 });
 
+test('V4 doc: ใบที่ยังไม่ยื่น (not_submitted) ก็เป็นฉบับร่าง + ไม่โชว์ช่องผู้อนุมัติ', () => {
+  // mig 0155 เพิ่มสถานะก่อน pending — ถ้า renderer ไม่รู้จัก ใบที่ยังไม่ยื่นจะพิมพ์ออกมา
+  // เหมือนใบสมบูรณ์ (ไม่มีลายน้ำ) และโชว์ชื่อผู้อนุมัติที่ค้างจากรอบก่อน
+  const q = { ...baseQuote([lineOf('1')]), approvalStatus: 'not_submitted', approvedByName: 'ค้างจากรอบก่อน' };
+  const html = buildQuotationMasterHTML(q, {});
+  assert.match(html, /class="watermark">ฉบับร่าง/);
+  assert.ok(!html.includes('ค้างจากรอบก่อน'), 'ยังไม่ยื่น = ยังไม่มีผู้อนุมัติบนเอกสาร');
+});
+
+test('V4 doc: ช่องผู้เสนอราคาได้วันที่ + Evidence จากหลักฐานการยื่น', () => {
+  const png = 'data:image/png;base64,UFJPUA==';
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {
+    proposerSignatureImage: png,
+    proposerEvidence: { id: 'DSE-9', signerName: 'ผู้ยื่นจริง', signedAt: '2026-07-26T04:00:00.000Z' },
+  });
+  assert.match(html, /ผู้ยื่นจริง/);
+  assert.match(html, /DSE-9/);
+  assert.match(html, /26\/07\/2026/);
+  // ไม่มีหลักฐาน (ใบเก่า) → stamp เชิงภาพ ไม่มี Evidence
+  const legacy = buildQuotationMasterHTML(baseQuote([lineOf('1')]), { proposerSignatureImage: png });
+  assert.doesNotMatch(legacy, /DSE-9/);
+});
+
 test('V4 doc: override ลายน้ำ (เช่น ยกเลิก) ผ่าน options', () => {
   const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), { watermark: 'ยกเลิก' });
   assert.match(html, /class="watermark">ยกเลิก/);

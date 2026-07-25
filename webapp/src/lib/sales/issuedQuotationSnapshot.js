@@ -23,7 +23,9 @@ import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh }
 // artifact ฝังฟอนต์เป็น base64 + ฝังรูปลายเซ็นผู้อนุมัติ/ผู้เสนอราคา + accent เป็น
 // inline style — snapshot ที่ tag 'quote-master-v4' อาจมาจาก generator รุ่นใดรุ่นหนึ่ง
 // ในช่วงนั้น (tag ไม่เคยขยับตามสัญญาไว้ข้างบน)
-export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.1';
+// v4.2 = ช่องผู้เสนอราคาเป็น evidence-backed (วันที่ลงนาม + Evidence id ฝังในใบตรึง, mig 0155)
+//        + ข้อมูลลูกค้าที่ว่างถูกเติมจากทะเบียนก่อนตรึง (#710)
+export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.2';
 export const ISSUED_QUOTATION_LOCALE = 'th-TH';
 
 const trimOrNull = (value) => {
@@ -106,6 +108,8 @@ export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
       documentTitleTh: resolveDocumentTitleTh(options.standard, 'quotation'),
       approverSignatureImage: options.approverSignatureImage || null,
       proposerSignatureImage: options.proposerSignatureImage || null,
+      // มีหลักฐานการยื่น (mig 0155) → ฝังวันที่ลงนาม + Evidence id ของผู้เสนอราคาลงในใบตรึง
+      proposerEvidence: options.proposerEvidence || null,
     },
   );
 }
@@ -164,8 +168,23 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
   const filledQuote = await fillCustomerSnapshotFromMaster(supabase, quote);
   const payload = buildIssuedQuotationPayload(filledQuote, evidence, company);
   // ฝังรูปลายเซ็นลงในใบตรึง (self-contained เหมือนฟอนต์) — ผู้อนุมัติ = evidence-backed
-  // (path ตรึงใน evidence); ผู้เสนอราคา = stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง
-  const proposerAsset = await loadActiveSignatureAsset(supabase, filledQuote.createdBy);
+  // (path ตรึงใน evidence); ผู้เสนอราคา = evidence ที่ตรึงตอน "ยื่น" (mig 0155) ถ้ามี →
+  // ได้รูปเวอร์ชันที่ลงนามจริง + วันที่ + Evidence id; ใบที่ยื่นก่อนมีหลักฐาน (หรือ
+  // grandfather not_required) fallback เป็นลายเซ็น active เดิม = stamp เชิงภาพไม่มีวันที่
+  let proposerAsset = null;
+  let proposerEvidence = null;
+  if (filledQuote.proposerSignatureEvidenceId) {
+    const { data: ev } = await supabase
+      .from('document_signature_evidence')
+      .select('id, signerName, signedAt, signatureAssetSnapshot')
+      .eq('id', filledQuote.proposerSignatureEvidenceId)
+      .maybeSingle();
+    if (ev?.signatureAssetSnapshot) {
+      proposerAsset = ev.signatureAssetSnapshot;
+      proposerEvidence = ev;
+    }
+  }
+  if (!proposerAsset) proposerAsset = await loadActiveSignatureAsset(supabase, filledQuote.createdBy);
   const [approverSignatureImage, proposerSignatureImage] = await Promise.all([
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),
@@ -175,6 +194,7 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
     standard: evidence?.controlledFormSnapshot || null,
     approverSignatureImage,
     proposerSignatureImage,
+    proposerEvidence,
   });
   const { data, error } = await supabase.rpc('capture_issued_quotation_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
