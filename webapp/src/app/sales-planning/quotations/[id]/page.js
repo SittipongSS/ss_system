@@ -1,5 +1,4 @@
 "use client";
-import Select from "@/components/ui/Select";
 
 // Editor ใบเสนอราคา FM-SA-01 (/sa/quotations/[id] — เฟส D):
 // แก้รายการ+ส่วนลดรายบรรทัด · ส่วนลดท้ายใบ · VAT · เงื่อนไขชำระ · หมายเหตุ (เลือกจาก
@@ -26,7 +25,7 @@ import { UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason, una
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
-import { canReviewSalesForecast, DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
+import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
@@ -45,24 +44,20 @@ export default function QuotationEditorPage() {
   const editMode = searchParams.get("edit") === "1";
   const canEditCap = useCan("salesplan:edit");
   const role = useRole();
-  const isReviewer = canReviewSalesForecast({ role });
 
   const [quote, setQuote] = useState(null);
   const [lines, setLines] = useState([]);
   const [form, setForm] = useState({ quoteDate: "", validUntil: "", validityDays: "", notes: "", discountType: "", discountValue: "", vatRate: 0 });
-  const [templates, setTemplates] = useState([]);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [errorActionUrl, setErrorActionUrl] = useState("");
-  const [tplOpen, setTplOpen] = useState(false);
   const [saveChoiceOpen, setSaveChoiceOpen] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [wonOpen, setWonOpen] = useState(false);
   // ย้อนการรับ (มติ 2026-07-21): null = ปิด; { reason } = เปิดฟอร์มเหตุผลบังคับ
   const [unacceptForm, setUnacceptForm] = useState(null);
-  const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
   const [products, setProducts] = useState([]);
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [], presetVersionId: null });
   const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
@@ -111,7 +106,6 @@ export default function QuotationEditorPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    fetch("/api/sales-planning/quote-note-templates").then((r) => (r.ok ? r.json() : [])).then((d) => setTemplates(Array.isArray(d) ? d : [])).catch(() => {});
     cachedFetchJson("/api/products").then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
@@ -350,10 +344,7 @@ export default function QuotationEditorPage() {
     router.replace(`/sa/quotations/${id}`);
   };
 
-  // template หมายเหตุ: กรองตามประเภทดีล + general
   const dealType = quote?.deal ? dealTypeOf(quote.deal) : null;
-  const visibleTemplates = templates.filter((t) => t.active && (t.serviceType === "general" || !dealType || t.serviceType === dealType));
-  const applyTemplate = (tpl) => setF({ notes: form.notes ? `${form.notes}\n${tpl.body}` : tpl.body });
 
   const statusMeta = {
     draft: { label: "ฉบับร่าง", color: "var(--text-3)" },
@@ -364,35 +355,6 @@ export default function QuotationEditorPage() {
     revised: { label: "มีฉบับแก้ไขใหม่", color: "var(--amber)" },
     closed: { label: "ปิด (ดีลจบด้วยใบอื่น)", color: "var(--text-3)" },
   }[quote?.status] || { label: quote?.status || "-", color: "var(--text-3)" };
-  const saveTemplate = async () => {
-    if (!tplForm.title.trim() || !tplForm.body.trim()) return;
-    const res = await fetch("/api/sales-planning/quote-note-templates", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(tplForm),
-    });
-    if (res.ok) {
-      setTplForm({ serviceType: "general", title: "", body: "" });
-      const d = await fetch("/api/sales-planning/quote-note-templates").then((r) => r.json()).catch(() => []);
-      setTemplates(Array.isArray(d) ? d : []);
-    } else setError((await res.json().catch(() => ({}))).error || "บันทึก template ไม่สำเร็จ");
-  };
-  const deleteTemplate = (tpl) => {
-    setConfirmState({
-      title: "ลบ Template หมายเหตุ",
-      description: `ต้องการลบ “${tpl.title}” ใช่หรือไม่`,
-      detail: "Template จะหายจากตัวเลือกของใบเสนอราคาทุกฉบับ แต่ข้อความที่นำไปใช้แล้วจะไม่ถูกลบ",
-      confirmLabel: "ลบ Template",
-      tone: "danger",
-      action: async () => {
-        const res = await fetch(`/api/sales-planning/quote-note-templates/${tpl.id}`, { method: "DELETE" });
-        if (!res.ok) {
-          setError((await res.json().catch(() => ({}))).error || "ลบ template ไม่สำเร็จ");
-          return false;
-        }
-        setTemplates((prev) => prev.filter((t) => t.id !== tpl.id));
-        return true;
-      },
-    });
-  };
 
   return (
     <Workspace
@@ -546,17 +508,6 @@ export default function QuotationEditorPage() {
               onPresetVersionIdChange={(next) => { setNotesPresetVersionId(next); setDirty(true); }}
               disabled={!editable}
             />
-            {/* template หมายเหตุชุดเดิม (mig 0092) — กำลังย้ายเข้าคลังเงื่อนไขการค้า จะถอดออกทั้งบล็อก
-                พร้อม API เมื่อ migration ย้ายข้อมูลเสร็จ */}
-            {(editable || isReviewer) && (
-              <div className={styles.legacyTemplates}>
-                <span>template ชุดเดิม</span>
-                {editable && visibleTemplates.map((t) => (
-                  <button key={t.id} type="button" className="btn ghost sm" onClick={() => applyTemplate(t)} title={t.body}>+ {t.title}</button>
-                ))}
-                {isReviewer && <button type="button" className="btn ghost sm" onClick={() => setTplOpen(true)}>จัดการ template</button>}
-              </div>
-            )}
           </section>
 
           {editable && (
@@ -762,43 +713,6 @@ export default function QuotationEditorPage() {
         </div>
       </Modal>
 
-      {/* จัดการ template หมายเหตุ (supervisor) */}
-      <Modal open={tplOpen} onClose={() => setTplOpen(false)} title="Template หมายเหตุ (ต่อประเภทบริการ)" size="lg">
-        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div className="premium-glass-table table-responsive">
-            <table className="w-full text-sm">
-              <thead><tr><th>ประเภท</th><th>ชื่อ</th><th>เนื้อหา</th><th></th></tr></thead>
-              <tbody>
-                {templates.map((t) => (
-                  <tr key={t.id} className="premium-row">
-                    <td><span className="ui-badge">{t.serviceType}</span></td>
-                    <td>{t.title}</td>
-                    <td style={{ fontSize: 12.5, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{t.body}</td>
-                    <td><button type="button" className="btn-icon danger" onClick={() => deleteTemplate(t)} aria-label={`ลบ ${t.title}`}><Trash2 size={14} aria-hidden="true" /></button></td>
-                  </tr>
-                ))}
-                {!templates.length && <tr><td colSpan={4} style={{ padding: 18, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มี template</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          <div className="form-grid" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-            <label>ประเภทบริการ
-              <Select className="premium-select" value={tplForm.serviceType} onChange={(e) => setTplForm({ ...tplForm, serviceType: e.target.value })}>
-                {["general", "SCENT", "NPD", "RE-ORDER", "diffuser", "workshop"].map((s) => <option key={s} value={s}>{s}</option>)}
-              </Select>
-            </label>
-            <label>ชื่อ template
-              <input className="premium-input" value={tplForm.title} onChange={(e) => setTplForm({ ...tplForm, title: e.target.value })} />
-            </label>
-            <label style={{ gridColumn: "1 / -1" }}>เนื้อหา
-              <textarea className="premium-input" rows={3} value={tplForm.body} onChange={(e) => setTplForm({ ...tplForm, body: e.target.value })} />
-            </label>
-            <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
-              <button type="button" className="btn btn-primary" onClick={saveTemplate} disabled={!tplForm.title.trim() || !tplForm.body.trim()}><Plus size={14} aria-hidden="true" /> เพิ่ม template</button>
-            </div>
-          </div>
-        </div>
-      </Modal>
       <ConfirmDialog
         open={!!confirmState}
         title={confirmState?.title}
