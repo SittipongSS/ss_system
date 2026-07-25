@@ -2,9 +2,14 @@
 // (quotationMasterDocument) ตัวเดียวกับใบเสนอราคา ผ่าน options เฉพาะ SO
 // (ฟอร์ม/เลข/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม) — หน้าตาเดียวกัน ไม่มี CSS ซ้ำ.
 import { fmtDate } from '@/lib/format';
-import { DOCUMENT_FORMS } from '@/lib/documentBrand';
 import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
 import { prepareQuotePrintWindow, showQuotePrintError } from '@/lib/sales/quotePrint';
+import {
+  getDocumentStandardsForPrint,
+  resolveDocumentAccentKey,
+  resolveDocumentForm,
+  resolveDocumentTitleTh,
+} from '@/lib/documentStandards';
 
 const STATUS_LABELS = {
   draft: 'ฉบับร่าง',
@@ -22,7 +27,9 @@ export function showSalesOrderPrintError(printWindow, message = 'ไม่สา
   return showQuotePrintError(printWindow, message, 'ใบสั่งขาย');
 }
 
-export function buildSalesOrderPrintHTML(order, company = null) {
+// standard = เวอร์ชันมาตรฐานเอกสารที่เผยแพร่ (ชนิด salesOrder) — ฝั่ง client ดึงสดจาก API,
+// ฝั่ง server ตอนตรึง snapshot ส่งค่าที่ตรึงไว้ใน evidence มา; ไม่ส่ง = ใช้ค่าสำรอง
+export function buildSalesOrderPrintHTML(order, company = null, standard = null) {
   const quotation = order.quotation || {};
   const taxableAmount = Math.max(0, Number(order.totalAmount || 0) - Number(order.vatAmount || 0));
   // อัตรา VAT คิดย้อนจากยอดเงิน (ปัดเป็นสตางค์แล้ว) — ปัด 2 ตำแหน่งกัน float noise
@@ -86,10 +93,12 @@ export function buildSalesOrderPrintHTML(order, company = null) {
 
   return buildQuotationMasterHTML(printable, {
     company,
-    form: DOCUMENT_FORMS.salesOrder,
-    documentTitleTh: 'ใบสั่งขาย',
+    // มาตรฐานเอกสารที่เผยแพร่คุมรหัสแบบฟอร์ม/Revision/ชื่อเอกสาร/สี — ไม่มีก็ตกไปใช้
+    // ค่าสำรอง (ใบสั่งขาย = Steel Blue ตามมติผู้ใช้ 2026-07-21; ใบเสนอราคา = Terracotta)
+    form: resolveDocumentForm(standard, 'salesOrder'),
+    documentTitleTh: resolveDocumentTitleTh(standard, 'salesOrder'),
     documentLabel: 'ใบสั่งขาย',
-    accentKey: 'steel', // ใบสั่งขาย = Steel Blue (มติผู้ใช้ 2026-07-21); ใบเสนอราคา = Terracotta
+    accentKey: resolveDocumentAccentKey(standard, 'salesOrder'),
     documentNumber: order.orderNumber,
     dateLabel: 'วันที่ SO',
     dateValue: order.orderDate ? fmtDate(order.orderDate) : '-',
@@ -117,13 +126,19 @@ export function buildSalesOrderPrintHTML(order, company = null) {
   });
 }
 
-export function openSalesOrderPrintWindow(order, preparedWindow = null, company = null) {
+export function openSalesOrderPrintWindow(order, preparedWindow = null, company = null, standard = null) {
   const win = preparedWindow || prepareSalesOrderPrintWindow();
   if (!win) return;
   win.document.open();
-  win.document.write(buildSalesOrderPrintHTML(order, company));
+  win.document.write(buildSalesOrderPrintHTML(order, company, standard));
   win.document.close();
   return win;
+}
+
+// มาตรฐานเอกสารของใบสั่งขายสำหรับการเรนเดอร์สด (มีค่าสำรองในตัว ล้มแล้วยังพิมพ์ได้)
+async function liveSalesOrderStandard() {
+  const standards = await getDocumentStandardsForPrint();
+  return standards?.salesOrder || null;
 }
 
 // พิมพ์โดยเลือกฉบับตรึง (issued snapshot) ก่อนถ้ามี — SO ที่อนุมัติแล้วเล่นฉบับที่ตรึงตอน
@@ -133,7 +148,7 @@ export async function openSalesOrderPrintWindowPreferIssued(order, preparedWindo
   const win = preparedWindow || prepareSalesOrderPrintWindow();
   if (!win) return undefined;
   const id = order?.id;
-  if (!id) return openSalesOrderPrintWindow(order, win, company);
+  if (!id) return openSalesOrderPrintWindow(order, win, company, await liveSalesOrderStandard());
   try {
     const res = await fetch(`/api/sales-planning/sales-orders/${encodeURIComponent(id)}/issued?render=latest`, {
       cache: 'no-store',
@@ -147,5 +162,5 @@ export async function openSalesOrderPrintWindowPreferIssued(order, preparedWindo
   } catch {
     // โหลดฉบับตรึงไม่ได้ = ไม่บล็อกการพิมพ์ ตกไปใช้ข้อมูลสดแทน (พร้อม company profile สด)
   }
-  return openSalesOrderPrintWindow(order, win, company);
+  return openSalesOrderPrintWindow(order, win, company, await liveSalesOrderStandard());
 }

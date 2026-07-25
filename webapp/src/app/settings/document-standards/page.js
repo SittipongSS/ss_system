@@ -20,6 +20,7 @@ import {
   formatDocumentStandardEffectiveDate,
   hasDocumentStandardChangeNote,
   numberingPatternExample,
+  resolveDocumentAccentKey,
 } from "@/lib/documentStandards";
 import base from "../company/page.module.css";
 import styles from "./page.module.css";
@@ -46,7 +47,12 @@ function StatusBadge({ status }) {
 }
 
 function versionForm(row) {
-  return Object.fromEntries(Object.keys(EMPTY_FORM).map((key) => [key, row?.[key] ?? EMPTY_FORM[key]]));
+  const form = Object.fromEntries(Object.keys(EMPTY_FORM).map((key) => [key, row?.[key] ?? EMPTY_FORM[key]]));
+  // มาตรฐานเวอร์ชันเก่าอาจถือ accent ที่เลิกให้เลือกแล้ว (teal/amber/green/navy) — ถ้าปล่อย
+  // ค่านั้นค้างในฟอร์ม dropdown จะไม่มีตัวเลือกตรงกัน แล้วกดบันทึกจะโดนตีกลับว่า Accent
+  // ไม่ถูกต้องโดยผู้ใช้ไม่รู้ว่าต้องแก้อะไร
+  form.accentKey = resolveDocumentAccentKey(row, row?.documentKey);
+  return form;
 }
 
 function AccentMark({ accentKey, label = true }) {

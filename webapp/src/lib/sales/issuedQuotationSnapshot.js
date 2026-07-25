@@ -12,6 +12,7 @@ import { documentApprovalFingerprint } from '@/lib/documentApproval';
 import { quotationApprovalContent } from '@/lib/sales/quotationApprovalFingerprint';
 import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
+import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh } from '@/lib/documentStandards';
 
 // Bump when the payload shape or the rendered artifact structure changes so old
 // snapshots stay identifiable by the generator that produced them.
@@ -97,6 +98,11 @@ export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
     {
       watermark: '',
       company: options.company || null,
+      // มาตรฐานเอกสารที่ตรึงไว้ใน evidence ตอนอนุมัติ — ใบที่ออกไปแล้วต้องคงรหัสแบบฟอร์ม
+      // เดิมเสมอ ไม่วิ่งตามมาตรฐานที่เผยแพร่ทีหลัง (ADR 0011)
+      form: resolveDocumentForm(options.standard, 'quotation'),
+      accentKey: resolveDocumentAccentKey(options.standard, 'quotation'),
+      documentTitleTh: resolveDocumentTitleTh(options.standard, 'quotation'),
       approverSignatureImage: options.approverSignatureImage || null,
       proposerSignatureImage: options.proposerSignatureImage || null,
     },
@@ -157,7 +163,12 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),
   ]);
-  const html = buildIssuedQuotationArtifactHtml(quote, { company, approverSignatureImage, proposerSignatureImage });
+  const html = buildIssuedQuotationArtifactHtml(quote, {
+    company,
+    standard: evidence?.controlledFormSnapshot || null,
+    approverSignatureImage,
+    proposerSignatureImage,
+  });
   const { data, error } = await supabase.rpc('capture_issued_quotation_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
     p_artifact_id: genId('IDA'),

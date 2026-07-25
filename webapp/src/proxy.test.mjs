@@ -110,6 +110,18 @@ test('บล็อกข้อมูลบริษัทที่เผยแ�
   }
 });
 
+test('มาตรฐานเอกสารที่เผยแพร่อ่านได้ทุก role — เอกสารที่พิมพ์สดต้องได้รหัสแบบฟอร์มจริง', () => {
+  // /api/document-standards/active = ค่าที่พิมพ์บนใบถึงลูกค้า (formCode/Revision/accent)
+  // ต้องเปิดอ่านให้คนออกเอกสาร ไม่งั้นใบร่างจะตกไปใช้ค่าสำรองใน documentBrand เงียบ ๆ
+  // แบบเดียวกับที่ /api/company-profile เคยหลุด (PR #694)
+  for (const role of ['ae_supervisor', 'ae', 'ac', 'rd', 'legal', 'secretary', 'pc', 'sa']) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/document-standards/active', 'GET', true), false, `${role} อ่านมาตรฐานไม่ได้`);
+  }
+  // หน้าจัดการ (เห็นร่าง + ประวัติ) ยังเป็นของหัวหน้าฝ่ายขาย/แอดมินตามเดิม
+  assert.equal(lockedOut({ role: 'ae', extraCaps: [] }, '/settings/document-standards', 'GET', false), true);
+});
+
 test('secretary/marketing เปิดหน้ารายการสินค้าและอ่าน API สินค้าได้ (มติ 2026-07-20)', () => {
   // ทั้งสอง role ได้ products:view อ่านอย่างเดียว — ชั้น lockdown ต้องไม่บล็อก
   for (const role of ['secretary', 'marketing']) {

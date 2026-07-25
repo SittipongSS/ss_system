@@ -4,6 +4,12 @@
 // helper จัดการหน้าต่างพิมพ์ (เปิดแท็บระหว่าง click, เขียน HTML, แจ้ง error).
 import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
 import { getCompanyProfileForPrint } from '@/lib/companyProfile';
+import {
+  getDocumentStandardsForPrint,
+  resolveDocumentAccentKey,
+  resolveDocumentForm,
+  resolveDocumentTitleTh,
+} from '@/lib/documentStandards';
 
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -30,16 +36,30 @@ export function showQuotePrintError(printWindow, message = 'ไม่สาม�
   printWindow.document.close();
 }
 
-export function openQuotePrintWindow(quote, preparedWindow = null, company = null) {
+export function openQuotePrintWindow(quote, preparedWindow = null, company = null, standard = null) {
   const win = preparedWindow || prepareQuotePrintWindow();
   if (!win) return;
   win.document.open();
   // Phase 7C (Direction B): ใบเสนอราคาที่ยังไม่ตรึง snapshot ก็ต้องพิมพ์ด้วยหน้าตา V4
   // (เครื่องยนต์เดียวกับฉบับที่ตรึง) เพื่อให้ทุกใบหน้าตาเดียวกัน
-  // company = บล็อกบริษัทที่เผยแพร่ (ไม่ส่ง → builder fallback เป็น constants)
-  win.document.write(buildQuotationMasterHTML(quote, { company }));
+  // company/standard = บล็อกบริษัท + มาตรฐานเอกสารที่เผยแพร่ (ไม่ส่ง → builder fallback)
+  win.document.write(buildQuotationMasterHTML(quote, {
+    company,
+    form: resolveDocumentForm(standard, 'quotation'),
+    accentKey: resolveDocumentAccentKey(standard, 'quotation'),
+    documentTitleTh: resolveDocumentTitleTh(standard, 'quotation'),
+  }));
   win.document.close();
   return win;
+}
+
+// บริษัท + มาตรฐานเอกสาร ดึงคู่กันเสมอตอนสร้างเอกสารสด — ทั้งคู่มีค่าสำรองในตัวเอง
+async function livePrintContext() {
+  const [company, standards] = await Promise.all([
+    getCompanyProfileForPrint(),
+    getDocumentStandardsForPrint(),
+  ]);
+  return { company, standard: standards?.quotation || null };
 }
 
 function writeToPrintWindow(win, html) {
@@ -59,8 +79,11 @@ export async function openQuotePrintWindowPreferIssued(quote, preparedWindow = n
   const win = preparedWindow || prepareQuotePrintWindow();
   if (!win) return undefined;
   const id = quote?.id;
-  // สร้างสด: ดึงบล็อกบริษัทที่เผยแพร่มาใส่ (window เปิดแล้วจาก prepare — await ตรงนี้ปลอดภัย)
-  if (!id) return openQuotePrintWindow(quote, win, await getCompanyProfileForPrint());
+  // สร้างสด: ดึงบริษัท + มาตรฐานที่เผยแพร่มาใส่ (window เปิดแล้วจาก prepare — await ตรงนี้ปลอดภัย)
+  if (!id) {
+    const { company, standard } = await livePrintContext();
+    return openQuotePrintWindow(quote, win, company, standard);
+  }
   try {
     const res = await fetch(`/api/sales-planning/quotations/${encodeURIComponent(id)}/issued?render=latest`, {
       cache: 'no-store',
@@ -71,5 +94,6 @@ export async function openQuotePrintWindowPreferIssued(quote, preparedWindow = n
   } catch {
     // โหลดฉบับตรึงไม่ได้ = ไม่บล็อกการพิมพ์ ตกไปใช้ข้อมูลสดแทน
   }
-  return openQuotePrintWindow(quote, win, await getCompanyProfileForPrint());
+  const { company, standard } = await livePrintContext();
+  return openQuotePrintWindow(quote, win, company, standard);
 }
