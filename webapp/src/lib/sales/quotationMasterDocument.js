@@ -289,12 +289,12 @@ const DOCUMENT_CSS = `
   .partyGrid > div { min-width: 0; padding: 3mm 3.5mm; background: var(--doc-neutral-soft); border-left: 1.5px solid var(--doc-line-strong); }
   .partyGrid h2, .installmentSection h2, .termsGrid h2 { margin: 0 0 1.5mm; color: var(--doc-navy); font-size: 8.7pt; text-transform: none; }
   .partyGrid h2 span, .installmentSection h2 span, .termsGrid h2 span { color: var(--doc-muted); font-size: 7.2pt; font-weight: 500; }
-  .partyGrid strong { display: block; font-size: 9.4pt; }
-  .partyGrid p { margin: .8mm 0; color: var(--doc-muted); font-size: 8pt; }
+  .partyGrid strong { display: block; font-size: 9.4pt; line-height: 1.5; overflow-wrap: anywhere; }
+  .partyGrid p { margin: .8mm 0; color: var(--doc-muted); font-size: 8pt; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
   .partyGrid dl { margin: 1.2mm 0 0; }
   .partyGrid dl div { display: grid; grid-template-columns: 24mm 1fr; gap: 2mm; margin-top: .5mm; }
   .partyGrid dt { color: var(--doc-muted); font-size: 7.7pt; }
-  .partyGrid dd { min-width: 0; margin: 0; font-size: 8pt; }
+  .partyGrid dd { min-width: 0; margin: 0; font-size: 8pt; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .continuation { margin: 3mm 0 1.8mm; color: var(--doc-muted); font-size: 8pt; font-weight: 600; }
   .sectionLead { display: flex; align-items: end; justify-content: space-between; gap: 6mm;
     margin-top: 6mm; padding-bottom: 2.2mm; border-bottom: 1.3px solid var(--doc-navy); }
@@ -311,9 +311,9 @@ const DOCUMENT_CSS = `
   .itemTable td:nth-child(3) { width: 17mm; }
   .itemTable td:nth-child(4) { width: 13mm; }
   .itemTable td:nth-child(5), .itemTable td:nth-child(6) { width: 23mm; }
-  .itemTable strong { display: block; font-weight: 500; }
+  .itemTable strong { display: block; font-weight: 500; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .itemCode { display: inline-block; margin-top: .7mm; color: var(--doc-navy); font-size: 7.6pt; font-weight: 600; }
-  .itemNote { display: block; margin-top: .5mm; color: var(--doc-muted); font-size: 7.7pt; }
+  .itemNote { display: block; margin-top: .7mm; color: var(--doc-muted); font-size: 8pt; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center { text-align: center; }
   .number { text-align: right; white-space: nowrap; }
   .totals { width: 74mm; margin: 3.5mm 0 0 auto; border-top: 1.3px solid var(--doc-navy); }
@@ -338,11 +338,14 @@ const DOCUMENT_CSS = `
   .installmentTable th:first-child, .installmentTable td:first-child { width: auto; }
   .installmentTable th:nth-child(2), .installmentTable td:nth-child(2) { width: 18mm; white-space: nowrap; }
   .installmentTable th:nth-child(3), .installmentTable td:nth-child(3) { width: 34mm; white-space: nowrap; }
-  .installmentTable span { display: block; color: var(--doc-muted); font-size: 7pt; }
-  .termsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5mm; margin-top: 3mm; break-inside: avoid; }
-  .termsGrid > div { padding: 2.2mm 2.6mm; background: var(--doc-neutral-soft); border-top: 1px solid var(--doc-line-strong); }
-  .termsGrid p { margin: 0; color: var(--doc-text); font-size: 7.8pt; }
+  .installmentTable span { display: block; color: var(--doc-muted); font-size: 7.2pt; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .termsGrid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 3mm; margin-top: 3mm; break-inside: avoid; }
+  .termsGrid > div { min-width: 0; padding: 2.8mm 3mm; background: var(--doc-neutral-soft); border-top: 1px solid var(--doc-line-strong); }
+  .termsGrid h2 { margin-bottom: 2mm; font-size: 9pt; line-height: 1.25; }
+  .termsGrid h2 span { display: inline; font-size: 6.9pt; line-height: 1.2; letter-spacing: .04em; white-space: nowrap; }
+  .termsGrid p { margin: 0; color: var(--doc-text); font-size: 8.5pt; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
   .termsGrid .remarks { grid-column: 1 / -1; }
+  .termsGrid .remarks p { max-width: 168mm; }
   .signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-top: auto; padding-top: 3mm; break-inside: avoid; }
   .signatures > div { min-height: 31mm; padding: 2mm; text-align: center; border: 1px solid var(--doc-line-strong); }
   .signatures h2 { margin: 0; color: var(--doc-navy); font-size: 8pt; }
