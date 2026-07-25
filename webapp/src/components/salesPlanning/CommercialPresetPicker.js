@@ -23,22 +23,32 @@ export default function CommercialPresetPicker({
 }) {
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
   const [pending, setPending] = useState(null); // ชุดที่รอยืนยันทับ
   const label = COMMERCIAL_PRESET_KIND_LABELS[kind] || "ชุดเงื่อนไข";
 
   useEffect(() => {
     let alive = true;
     (async () => {
+      setLoading(true);
+      setLoadError("");
       try {
         const response = await fetch(`/api/commercial-presets/options?kind=${kind}`, { cache: "no-store" });
         const payload = await response.json().catch(() => ({}));
-        if (alive && response.ok) setOptions(Array.isArray(payload.options) ? payload.options : []);
+        if (!response.ok) throw new Error(payload.error || `โหลด${label}ไม่สำเร็จ`);
+        if (alive) setOptions(Array.isArray(payload.options) ? payload.options : []);
+      } catch (error) {
+        if (alive) {
+          setOptions([]);
+          setLoadError(error.message || `โหลด${label}ไม่สำเร็จ`);
+        }
       } finally {
         if (alive) setLoading(false);
       }
     })();
     return () => { alive = false; };
-  }, [kind]);
+  }, [kind, label, retryKey]);
 
   const selected = options.find((option) => option.versionId === selectedVersionId) || null;
   // ป้ายขึ้นเฉพาะเมื่อรู้จักชุดที่เลือกและเนื้อหาไม่ตรงกันแล้ว
@@ -68,14 +78,20 @@ export default function CommercialPresetPicker({
           disabled={disabled || loading || !options.length}
           onChange={(event) => pick(event.target.value)}
         >
-          <option value="">{loading ? "กำลังโหลด…" : "ไม่ใช้ชุด — กรอกเอง"}</option>
+          <option value="">{loading ? "กำลังโหลด…" : loadError ? "โหลดชุดไม่สำเร็จ" : "ไม่ใช้ชุด — กรอกเอง"}</option>
           {options.map((option) => (
             <option key={option.versionId} value={option.versionId}>{option.title}</option>
           ))}
         </select>
       </label>
       {edited && <span className={styles.edited}>แก้เพิ่มเติมแล้ว</span>}
-      {!loading && !options.length && (
+      {!loading && loadError && (
+        <span className={styles.loadError} role="alert">
+          {loadError}
+          <button type="button" className="btn ghost sm" onClick={() => setRetryKey((value) => value + 1)}>ลองใหม่</button>
+        </span>
+      )}
+      {!loading && !loadError && !options.length && (
         <span className={styles.empty}>ยังไม่มี{label}ที่เผยแพร่ — ตั้งได้ที่หน้าตั้งค่า &gt; คลังเงื่อนไขการค้า</span>
       )}
 

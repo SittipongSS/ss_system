@@ -199,3 +199,48 @@ export function commercialPresetSummary(kind, version) {
   const plan = isFullPaymentPlan(rows) ? 'ชำระเต็มจำนวน' : `แบ่ง ${rows.length} งวด`;
   return `${version.paymentMethod || 'ยังไม่ระบุวิธีชำระ'} · ${plan}`;
 }
+
+// Dropdown บนใบต้องอ่านได้ทั้ง schema ปัจจุบัน (root มี kind จาก migration 0149)
+// และ schema 0128 เดิมที่ 1 published version เก็บ payment + remarks รวมกัน.
+// Migration 0149 เคยหยุดเมื่อพบข้อมูลเดิม ดังนั้น consumer ห้ามผูกกับคอลัมน์ kind
+// ที่ฐานเก่าไม่มี; แยกชนิดจากเนื้อหาของ published version แทนได้โดยไม่แก้หลักฐานเดิม.
+export function publishedCommercialPresetOptions(roots = [], versions = [], kind) {
+  if (!COMMERCIAL_PRESET_KINDS.includes(kind)) return [];
+  const versionById = new Map(
+    (Array.isArray(versions) ? versions : [])
+      .filter((version) => version?.status === 'published')
+      .map((version) => [version.id, version]),
+  );
+
+  return (Array.isArray(roots) ? roots : [])
+    .flatMap((root) => {
+      const version = versionById.get(root?.publishedVersionId);
+      if (!version) return [];
+
+      if (root.kind && root.kind !== kind) return [];
+      if (!root.kind) {
+        const supportsPayment = Boolean(
+          String(version.paymentMethod || '').trim()
+          || String(version.paymentTerms || '').trim()
+          || (Array.isArray(version.installments) && version.installments.length),
+        );
+        const supportsRemarks = Boolean(String(version.remarks || '').trim());
+        if ((kind === 'payment' && !supportsPayment) || (kind === 'remarks' && !supportsRemarks)) return [];
+      }
+
+      const base = {
+        presetId: root.id,
+        versionId: version.id,
+        title: version.title,
+      };
+      return [kind === 'payment'
+        ? {
+          ...base,
+          paymentMethod: version.paymentMethod || '',
+          paymentTerms: version.paymentTerms || '',
+          installments: Array.isArray(version.installments) ? version.installments : [],
+        }
+        : { ...base, remarks: version.remarks || '' }];
+    })
+    .sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'th'));
+}
