@@ -7,10 +7,13 @@ import {
   normalizeAdminOverrideReason,
 } from './salesOrderApprovalOverride.js';
 
-test('admin override reason is trimmed, whitespace-normalized and bounded', () => {
+test('admin override reason is optional, trimmed and capped at the max length', () => {
   assert.equal(normalizeAdminOverrideReason('  ไม่มีผู้ตรวจสอบ   คนที่สอง  '), 'ไม่มีผู้ตรวจสอบ คนที่สอง');
-  assert.match(adminOverrideReasonError('สั้น'), /อย่างน้อย 10/);
+  // มติ 2026-07-25: เหตุผลไม่บังคับแล้ว — ว่างหรือสั้นก็อนุมัติผ่าน (กล่องยืนยันแทน)
+  assert.equal(adminOverrideReasonError(''), '');
+  assert.equal(adminOverrideReasonError('สั้น'), '');
   assert.equal(adminOverrideReasonError('ยังไม่มีผู้ตรวจสอบคนที่สอง'), '');
+  // ยังตัดความยาวสูงสุด ให้ตรงกับ CHECK ระดับ DB (mig 0150)
   assert.match(adminOverrideReasonError('ก'.repeat(ADMIN_OVERRIDE_REASON_MAX + 1)), /ไม่เกิน 500/);
 });
 

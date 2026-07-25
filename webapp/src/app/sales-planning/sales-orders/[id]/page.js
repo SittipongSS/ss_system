@@ -17,12 +17,7 @@ import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import { SALES_ORDER_CANCEL_REASONS, canHardDeleteSalesOrder, cancelReasonLabel, isCustomerCancelReason } from "@/lib/sales/salesOrderWorkflow";
-import {
-  ADMIN_OVERRIDE_REASON_MAX,
-  adminOverrideReasonError,
-  isSalesOrderSelfApproval,
-  normalizeAdminOverrideReason,
-} from "@/lib/sales/salesOrderApprovalOverride";
+import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openSalesOrderPrintWindowPreferIssued, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
@@ -122,21 +117,20 @@ export default function SalesOrderDetailPage() {
 
   async function review(action) {
     if (action === "approve") {
-      if (!window.confirm("อนุมัติ SO ใบนี้? ยอด Actual จะถูกนับเข้าระบบทันที")) return;
-      const note = window.prompt("หมายเหตุการอนุมัติ (ไม่บังคับ)") || "";
-      await requestAction("approve", { note });
+      // ยืนยันครั้งเดียวจบ (มติ 2026-07-25) — เดิมเด้ง 2 ชั้น (ยืนยัน + ถามหมายเหตุ);
+      // API ยังรับ note ได้ถ้าอนาคตต้องการ แต่ไม่ถามผู้ใช้แล้ว
+      if (!window.confirm(`ยืนยันอนุมัติใบสั่งขาย ${order.orderNumber}? ยอด Actual จะถูกนับเข้าระบบทันที`)) return;
+      await requestAction("approve");
       return;
     }
     const reason = window.prompt("เหตุผลที่ตีกลับให้ผู้จัดทำแก้ไข")?.trim() || "";
     if (reason) await requestAction("reject", { reason });
   }
 
+  // เหตุผล override เป็น optional แล้ว (มติ 2026-07-25) — โมดัลเหลือหน้าที่ "ยืนยัน" อย่างเดียว
+  // ระบบยังบันทึกหลักฐานว่าใครอนุมัติใบตัวเองเมื่อไหร่ (approvalMode=admin_override + contextSnapshot)
   async function approveWithAdminOverride() {
-    const reasonError = adminOverrideReasonError(overrideForm?.reason);
-    if (reasonError) return;
-    const ok = await requestAction("approve", {
-      overrideReason: normalizeAdminOverrideReason(overrideForm.reason),
-    });
+    const ok = await requestAction("approve", { overrideReason: "" });
     if (ok) setOverrideForm(null);
   }
 
@@ -204,7 +198,6 @@ export default function SalesOrderDetailPage() {
   const ownSalesOrder = isSalesOrderSelfApproval(order, order.meId);
   const canReviewThis = reviewer && !ownSalesOrder;
   const canAdminOverride = role === "admin" && ownSalesOrder && order.status === "pending_approval";
-  const overrideReasonValidation = overrideForm ? adminOverrideReasonError(overrideForm.reason) : "";
   const editable = canEdit && ["draft", "rejected"].includes(order.status);
   const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
   const workflowIndex = order.status === "approved" ? 3 : order.status === "pending_approval" ? 1 : 0;
@@ -325,29 +318,12 @@ export default function SalesOrderDetailPage() {
               <ShieldAlert size={20} color="var(--amber)" aria-hidden="true" />
               <div style={{ color: "var(--text-2)", fontSize: 13 }}>
                 <strong style={{ color: "var(--text)" }}>กรณีพิเศษเมื่อยังไม่มีผู้ตรวจสอบคนที่สอง</strong>
-                <p style={{ margin: "4px 0 0" }}>การอนุมัตินี้จะนับ Actual {fmtMoney(order.actualAmount)} ทันที และบันทึกเหตุผลไว้กับหลักฐานลายเซ็นถาวร</p>
+                <p style={{ margin: "4px 0 0" }}>คุณเป็นผู้สร้างหรือผู้ยื่นใบนี้ — การอนุมัติจะนับ Actual {fmtMoney(order.actualAmount)} ทันที และบันทึกไว้กับหลักฐานลายเซ็นถาวรว่าเป็นการอนุมัติแบบ Admin Override</p>
               </div>
             </div>
-            <label className="form-group" htmlFor="admin-override-reason">
-              <span>เหตุผลที่ต้องใช้ Admin Override</span>
-              <textarea
-                id="admin-override-reason"
-                className="textarea-premium"
-                rows={4}
-                required
-                maxLength={ADMIN_OVERRIDE_REASON_MAX}
-                value={overrideForm.reason}
-                onChange={(event) => setOverrideForm({ reason: event.target.value })}
-                aria-describedby="admin-override-help"
-                placeholder="เช่น ขณะนี้องค์กรยังไม่มีผู้ตรวจสอบคนที่สอง และต้องดำเนินเอกสารเพื่อเริ่มงาน"
-              />
-              <small id="admin-override-help" style={{ color: overrideForm.reason && overrideReasonValidation ? "var(--red)" : "var(--text-3)" }}>
-                {overrideForm.reason && overrideReasonValidation ? overrideReasonValidation : `บังคับอย่างน้อย 10 ตัวอักษร · ${overrideForm.reason.length}/${ADMIN_OVERRIDE_REASON_MAX}`}
-              </small>
-            </label>
             <div className="action-bar" style={{ marginTop: 0 }}>
               <button type="button" className="btn ghost" onClick={() => setOverrideForm(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-warning" onClick={approveWithAdminOverride} disabled={!!busy || !!overrideReasonValidation}><ShieldAlert size={15} /> {busy === "approve" ? "กำลังอนุมัติ…" : "ยืนยัน Override และนับ Actual"}</button>
+              <button type="button" className="btn btn-warning" onClick={approveWithAdminOverride} disabled={!!busy}><ShieldAlert size={15} /> {busy === "approve" ? "กำลังอนุมัติ…" : "ยืนยัน Override และนับ Actual"}</button>
             </div>
           </div>
         </Modal>

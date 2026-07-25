@@ -191,6 +191,9 @@ export default function QuotationEditorPage() {
   // เพราะ fingerprint อนุมัติจะ snapshot เนื้อหาที่บันทึกแล้ว.
   const approve = async () => {
     if (dirty) { setError("บันทึกการแก้ไขก่อนอนุมัติ"); return; }
+    // ยืนยันก่อนอนุมัติ (มติ 2026-07-25) — เดิมกดปุ่มแล้วอนุมัติทันที กดพลาดแล้วถอยไม่ได้
+    // (ใบสั่งขายมีกล่องยืนยันอยู่แล้ว) — ไม่ถามหมายเหตุ ตามมติเดียวกัน
+    if (!window.confirm(`ยืนยันอนุมัติใบเสนอราคา ${quote.quoteNumber}? หลังอนุมัติจะส่งลูกค้าได้ และถ้าแก้เนื้อหาภายหลังต้องอนุมัติใหม่`)) return;
     const data = await act("approve", `/api/sales-planning/quotations/${id}/approval`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
     });
