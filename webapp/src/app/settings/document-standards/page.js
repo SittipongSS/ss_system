@@ -102,7 +102,7 @@ function DocumentStandardFields({ form, setForm }) {
       <section className={base.formSection}>
         <h4>รูปแบบเลขที่เอกสาร</h4>
         <label>Numbering pattern <b>*</b><input className="premium-input mono" value={form.numberingPattern} onChange={(event) => update("numberingPattern", event.target.value)} required maxLength={120} placeholder="QT-{YY}{MM}{RUNNING:4}-{REVISION}" /></label>
-        <p className={styles.fieldHelp}>Token ที่รองรับ: {"{YY}"}, {"{YYYY}"}, {"{MM}"}, {"{DD}"}, {"{RUNNING:3/4/5}"} และ {"{REVISION}"} · {"{REVISION}"} คือฉบับแก้ไขของเลขที่เอกสาร ไม่ใช่ Revision ของรหัสแบบฟอร์ม · รอบนี้ใช้เพื่อกำหนดมาตรฐานและ Preview ยังไม่เปลี่ยนระบบออกเลข Production</p>
+        <p className={styles.fieldHelp}>Token ที่รองรับ: {"{YY}"}, {"{YYYY}"}, {"{MM}"}, {"{DD}"}, {"{RUNNING:3/4/5}"} และ {"{REVISION}"} · {"{REVISION}"} คือฉบับแก้ไขของเลขที่เอกสาร ไม่ใช่ Revision ของรหัสแบบฟอร์ม จึงต้องปิดท้ายเสมอ · ต้องมี {"{MM}"} และ {"{YY}"}/{"{YYYY}"} เพราะเลขรันรีเซ็ตทุกเดือน · <strong>เผยแพร่แล้วมีผลกับใบที่ออกใหม่เท่านั้น เลขของใบเดิมไม่ถูกเขียนทับ</strong></p>
         <div className={styles.numberExample}><span>ตัวอย่าง</span><strong className="mono">{numberingPatternExample(form.numberingPattern, "0") || "-"}</strong></div>
       </section>
       <section className={base.formSection}>

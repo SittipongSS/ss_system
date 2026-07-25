@@ -1,8 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_NUMBERING_PATTERNS,
   DOCUMENT_ACCENT_KEYS,
+  documentNumberParts,
   documentStandardFormLine,
+  formatDocumentNumber,
+  revisionSeparatorOf,
   documentStandardToForm,
   formatDocumentStandardEffectiveDate,
   normalizeDocumentStandardInput,
@@ -53,6 +57,17 @@ test('rejects invalid form identity, date, accent and numbering tokens', () => {
 test('numbering patterns require an approved running token', () => {
   assert.equal(validateNumberingPattern('QT-{YY}{MM}').ok, false);
   assert.equal(validateNumberingPattern('QT-{YY}{MM}{RUNNING:4}-{REVISION}').ok, true);
+});
+
+test('numbering patterns must end with {REVISION} so the base number stays separable', () => {
+  assert.match(validateNumberingPattern('QT-{YY}{MM}-{REVISION}-{RUNNING:4}').error, /ปิดท้ายด้วย/);
+  assert.match(validateNumberingPattern('QT-{YY}{MM}{RUNNING:4}').error, /ปิดท้ายด้วย/);
+});
+
+test('numbering patterns must carry month and year because the counter resets monthly', () => {
+  assert.match(validateNumberingPattern('QT-{YY}{RUNNING:4}-{REVISION}').error, /ตัวนับเลขรันรีเซ็ตทุกเดือน/);
+  assert.match(validateNumberingPattern('QT-{MM}{RUNNING:4}-{REVISION}').error, /ตัวนับเลขรันรีเซ็ตทุกเดือน/);
+  assert.equal(validateNumberingPattern('QT-{YYYY}{MM}{RUNNING:5}.{REVISION}').ok, true);
 });
 
 test('builds stable preview and controlled form line', () => {
@@ -122,4 +137,72 @@ test('ชื่อไทยบนหัวเอกสาร: มาตรฐา
   assert.equal(resolveDocumentTitleTh(publishedQuotation, 'quotation'), 'ใบเสนอราคา (ฉบับใหม่)');
   assert.equal(resolveDocumentTitleTh(null, 'salesOrder'), 'ใบสั่งขาย');
   assert.equal(resolveDocumentTitleTh({ titleTh: '  ' }, 'quotation'), 'ใบเสนอราคา');
+});
+
+// ── รูปแบบเลขที่ → เลขเอกสารจริง ─────────────────────────────────────────────
+
+const JULY_2026 = new Date('2026-07-20T12:00:00+07:00');
+
+test('เลขที่ที่ประกอบจากรูปแบบตั้งต้น ต้องเท่ากับสตริงที่ระบบเคยต่อเองเป๊ะ ๆ', () => {
+  // กันงานนี้เปลี่ยนเลขของใบที่ออกใหม่โดยไม่ตั้งใจ — รูปแบบตั้งต้น = พฤติกรรมเดิม
+  assert.equal(
+    formatDocumentNumber(DEFAULT_NUMBERING_PATTERNS.quotation, { date: JULY_2026, running: 1, revision: 0 }),
+    'QT-26070001-0',
+  );
+  assert.equal(
+    formatDocumentNumber(DEFAULT_NUMBERING_PATTERNS.salesOrder, { date: JULY_2026, running: 28, revision: 0 }),
+    'SO-26070028-0',
+  );
+});
+
+test('แทน token ครบทุกตัว และเลขรัน pad อย่างเดียว ห้ามตัด', () => {
+  assert.equal(
+    formatDocumentNumber('{YYYY}{YY}{MM}{DD}-{RUNNING:5}.{REVISION}', { date: JULY_2026, running: 7, revision: 3 }),
+    '2026260720-00007.3',
+  );
+  // เลขรันยาวเกินความกว้าง = เลขต้องยาวขึ้น ไม่ใช่ถูกตัดจนไปซ้ำกับใบอื่น
+  assert.equal(formatDocumentNumber('X{RUNNING:3}', { running: 12345, date: JULY_2026 }), 'X12345');
+  // token ที่ไม่รู้จักปล่อยไว้ ดีกว่าออกเลขไม่ได้
+  assert.equal(formatDocumentNumber('X{TEAM}{RUNNING:3}', { running: 1, date: JULY_2026 }), 'X{TEAM}001');
+});
+
+test('เดือน/ปีของเลขที่ยึดเวลาไทย ไม่ใช่เวลาเครื่อง', () => {
+  // 2026-07-31 19:00 UTC = 1 ส.ค. 02:00 ที่กรุงเทพ → ต้องเป็นเดือน 08
+  assert.equal(
+    formatDocumentNumber('{YY}{MM}{RUNNING:3}-{REVISION}', { date: new Date('2026-07-31T19:00:00Z'), running: 1 }),
+    '2608001-0',
+  );
+});
+
+test('แยกเลขฐานกับตัวคั่นจากรูปแบบ', () => {
+  assert.deepEqual(
+    documentNumberParts(DEFAULT_NUMBERING_PATTERNS.quotation, { date: JULY_2026, running: 28 }),
+    { base: 'QT-26070028', separator: '-' },
+  );
+  assert.deepEqual(
+    documentNumberParts('QT-{YY}{MM}{RUNNING:4}.{REVISION}', { date: JULY_2026, running: 2 }),
+    { base: 'QT-26070002', separator: '.' },
+  );
+  // รูปแบบที่ติดเลขฉบับแก้ไขไว้เลย (ไม่มีตัวคั่น)
+  assert.deepEqual(
+    documentNumberParts('QT-{YY}{MM}{RUNNING:4}{REVISION}', { date: JULY_2026, running: 2 }),
+    { base: 'QT-26070002', separator: '' },
+  );
+});
+
+test('รูปแบบที่ไม่มี {REVISION} ต้องยังออกเลขได้ (มาตรฐานที่เผยแพร่ไว้ก่อนกฎใหม่แก้ย้อนหลังไม่ได้)', () => {
+  assert.deepEqual(
+    documentNumberParts('QT-{YY}{MM}{RUNNING:4}', { date: JULY_2026, running: 9 }),
+    { base: 'QT-26070009', separator: '-' },
+  );
+  assert.deepEqual(documentNumberParts('', { date: JULY_2026, running: 1 }), { base: '', separator: '-' });
+});
+
+test('ฉบับแก้ไขต่อเลขด้วยตัวคั่นของใบต้นทางเอง ไม่ใช่ของรูปแบบปัจจุบัน', () => {
+  assert.equal(revisionSeparatorOf('QT-26070028-0', 'QT-26070028'), '-');
+  assert.equal(revisionSeparatorOf('QT-26070028.2', 'QT-26070028'), '.');
+  assert.equal(revisionSeparatorOf('QT-260700280', 'QT-26070028'), '');
+  // ใบเก่าที่เลขไม่เข้ารูป/ไม่มีเลขฐาน → ตกกลับตัวคั่นเดิมของระบบ
+  assert.equal(revisionSeparatorOf('LEGACY-001', 'QT-26070028'), '-');
+  assert.equal(revisionSeparatorOf('QT-26070028', ''), '-');
 });
