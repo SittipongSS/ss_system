@@ -13,15 +13,16 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney } from "@/lib/format";
 import { fgLineDescription } from "@/lib/sales/quoteLines";
+import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 
 export const newProductLine = () => ({
-  _lineKind: "product", productId: null, fgCode: null, description: "", qty: 1, unit: "ชิ้น", unitPrice: 0,
+  _lineKind: "product", productId: null, fgCode: null, description: "", qty: 1, unit: DEFAULT_SALE_UNIT, unitPrice: 0,
   discountType: null, discountValue: 0, source: "manual",
 });
 export const newManualLine = () => ({
-  _lineKind: "manual", productId: null, fgCode: null, description: "", qty: 1, unit: "ชิ้น", unitPrice: 0,
+  _lineKind: "manual", productId: null, fgCode: null, description: "", qty: 1, unit: DEFAULT_SALE_UNIT, unitPrice: 0,
   discountType: null, discountValue: 0, source: "manual",
 });
 
@@ -150,8 +151,26 @@ export default function QuotationLineItems({
                 </td>
                 <td>
                   <MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} />
-                  {/* หน่วยขาย = read-only จากฐานข้อมูลสินค้า (ล็อกเหมือนราคา) */}
-                  {line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>}
+                  {/* บรรทัดที่ผูกสินค้า: หน่วยล็อกตามฐานข้อมูลสินค้า (เหมือนราคา — มติ 2026-07-23)
+                      บรรทัดที่พิมพ์เอง (ค่าบริการ ฯลฯ) ไม่มี master ให้ผูก จึงเลือกเองได้
+                      นับ _lineKind ด้วย เพราะแถวสินค้าที่ยังไม่ได้เลือกสินค้ายังไม่มี productId —
+                      ถ้าไม่นับ จะให้เลือกหน่วยแล้วโดน master ทับทิ้งตอนเลือกสินค้า */}
+                  {(line.productId || line.fgCode || line._lineKind === "product")
+                    ? (line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>)
+                    : (editable
+                      ? (
+                        <Select
+                          className="premium-select"
+                          value={line.unit || DEFAULT_SALE_UNIT}
+                          onChange={(event) => setLine(index, { unit: event.target.value })}
+                          aria-label={`หน่วย รายการ ${index + 1}`}
+                        >
+                          {unitOptions(SALE_UNITS, line.unit).map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </Select>
+                      )
+                      : (line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>))}
                 </td>
                 <td>
                   <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />

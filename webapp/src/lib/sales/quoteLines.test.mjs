@@ -119,3 +119,26 @@ test('fgLineDescription composes brand · name · volume', () => {
   assert.equal(fgLineDescription({ fgCode: 'FG-9' }), 'FG-9');
   assert.equal(fgLineDescription({}), 'สินค้า');
 });
+
+// ── หน่วยขาย ────────────────────────────────────────────────────────────────
+
+test('บรรทัดที่พิมพ์เองเก็บหน่วยที่ผู้ใช้เลือก (ไม่มี master ให้ผูก)', () => {
+  const [line] = normalizeManualLines([{ description: 'ค่าออกแบบ', qty: 1, unitPrice: 5000, unit: 'งาน' }]);
+  assert.equal(line.unit, 'งาน');
+});
+
+test('หน่วยที่ไม่ได้ระบุ/ยาวผิดปกติจาก client ถูกกันไว้ที่ server', () => {
+  assert.equal(normalizeManualLines([{ description: 'ค่าบริการ', qty: 1 }])[0].unit, 'ชิ้น');
+  assert.equal(normalizeManualLines([{ description: 'ค่าบริการ', qty: 1, unit: '   ' }])[0].unit, 'ชิ้น');
+  // คอลัมน์หน่วยบนเอกสาร A4 แคบ — ค่ายาวผิดปกติต้องไม่ดันตารางเสียรูป
+  assert.equal(normalizeManualLines([{ description: 'ค่าบริการ', qty: 1, unit: 'ก'.repeat(90) }])[0].unit.length, 20);
+});
+
+test('บรรทัดที่ผูกสินค้ายังถูกทับด้วยหน่วยจาก master เสมอ (กติกาเดิม 2026-07-23)', async () => {
+  // ผู้ใช้/client ส่งหน่วยอะไรมาก็ไม่มีผลกับบรรทัด FG — ผูกกับฐานข้อมูลสินค้าเหมือนราคา
+  const lines = await enforceMasterPrices(
+    fakeSupabase([{ id: 'P1', costPrice: 100, saleUnit: 'ขวด' }]),
+    [fgLine({ unit: 'งาน' })],
+  );
+  assert.equal(lines[0].unit, 'ขวด');
+});

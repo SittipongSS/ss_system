@@ -2,6 +2,7 @@
 // และ route แก้ไข (quotations/[id]): normalize บรรทัดจาก client + seed จาก FG ของโครงการ.
 import { genId } from '@/lib/id';
 import { quoteLineNet, toMoney } from '@/lib/salesPlanning';
+import { DEFAULT_SALE_UNIT, saleUnitOf } from '@/lib/master/units';
 
 export function productLabel(product) {
   return product?.productDescription || product?.productDescriptionEn || product?.fgCode || 'สินค้า';
@@ -40,7 +41,7 @@ export async function seedLinesFromProject(supabase, deal) {
       fgCode: row.product?.fgCode || null,
       description: fgLineDescription(row.product),
       qty,
-      unit: row.product?.saleUnit || 'ชิ้น',
+      unit: row.product?.saleUnit || DEFAULT_SALE_UNIT,
       unitPrice,
       discountType: null,
       discountValue: 0,
@@ -88,7 +89,7 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
     const description = master ? fgLineDescription(master) : (prev?.description || line.description);
     const fgCode = master ? (master.fgCode || null) : (prev?.fgCode ?? line.fgCode);
     // หน่วยผูก master เช่นกัน (มติ 2026-07-23) — freeze จากสินค้าตอนบันทึก; สินค้าถูกลบ = คงเดิม
-    const unit = master ? (master.saleUnit || 'ชิ้น') : (prev?.unit ?? line.unit ?? 'ชิ้น');
+    const unit = master ? (master.saleUnit || DEFAULT_SALE_UNIT) : (prev?.unit ?? line.unit ?? DEFAULT_SALE_UNIT);
     if (unitPrice === line.unitPrice && description === line.description && fgCode === line.fgCode && unit === line.unit) return line;
     const net = quoteLineNet({ qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue });
     return { ...line, unitPrice, description, fgCode, unit, discountAmount: net.discountAmount, lineTotal: net.lineTotal };
@@ -113,7 +114,7 @@ export async function refreshFgLinesForDisplay(supabase, quotes = []) {
   for (const q of targets) {
     q.lines = q.lines.map((l) => {
       const p = l?.productId ? byId.get(l.productId) : null;
-      return p ? { ...l, description: fgLineDescription(p), fgCode: p.fgCode || l.fgCode, unit: p.saleUnit || l.unit || 'ชิ้น' } : l;
+      return p ? { ...l, description: fgLineDescription(p), fgCode: p.fgCode || l.fgCode, unit: p.saleUnit || l.unit || DEFAULT_SALE_UNIT } : l;
     });
   }
   return quotes;
@@ -135,7 +136,10 @@ export function normalizeManualLines(lines = []) {
         fgCode: line.fgCode || null,
         description: line.description || line.fgCode || `รายการ ${index + 1}`,
         qty,
-        unit: line.unit || 'ชิ้น',
+        // บรรทัดที่พิมพ์เองเลือกหน่วยเองได้ (บรรทัดที่ผูกสินค้าถูก enforceMasterPrices ทับ
+        // ด้วย master.saleUnit ทีหลังอยู่แล้ว) — clamp กันค่ายาวผิดปกติจาก client ไปดัน
+        // คอลัมน์หน่วยบนเอกสาร A4 เสียรูป
+        unit: saleUnitOf(line.unit),
         unitPrice,
         discountType,
         discountValue,
