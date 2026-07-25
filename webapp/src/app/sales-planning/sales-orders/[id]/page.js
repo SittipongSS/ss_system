@@ -162,6 +162,25 @@ export default function SalesOrderDetailPage() {
     router.push("/sa/sales-orders");
   }
 
+  // บังคับลบ (break-glass ผู้ดูแลระบบ, mig 0152): ใบที่มีหลักฐานลายเซ็น/ฉบับตรึงลบทางปกติไม่ได้
+  // ขั้นตอน: ขอพรีวิวว่าจะทำลายอะไร → ให้ยืนยันโดยเห็นรายการจริง → ค่อยลบ
+  async function forceRemove() {
+    setBusy("delete");
+    setError("");
+    const preview = await fetch(`/api/sales-planning/sales-orders/${id}?dryRun=1`, { method: "DELETE" })
+      .then((r) => r.json()).catch(() => null);
+    setBusy("");
+    if (!preview) { setError("ขอพรีวิวการลบไม่สำเร็จ"); return; }
+    const lines = (preview.cascade || []).map((c) => `· ${c.label}: ${c.count}`).join("\n");
+    const notes = (preview.notes || []).join("\n");
+    if (!window.confirm(`บังคับลบ SO ${order.orderNumber} ถาวร?\n\nสิ่งที่จะถูกทำลาย:\n${lines || "· (ไม่มีข้อมูลพ่วง)"}\n\n${notes}\n\nยืนยันเพื่อลบ`)) return;
+    setBusy("delete");
+    const res = await fetch(`/api/sales-planning/sales-orders/${id}?force=1`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setBusy(""); setError(data.error || "บังคับลบ Sale Order ไม่สำเร็จ"); return; }
+    router.push("/sa/sales-orders");
+  }
+
   async function printDocument() {
     const printWindow = prepareSalesOrderPrintWindow();
     if (!printWindow) return;
@@ -214,6 +233,10 @@ export default function SalesOrderDetailPage() {
       {/* ลบถาวร = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header */}
       {role === "admin" && canHardDeleteSalesOrder(order) && (
         <button type="button" className="btn-icon danger" disabled={!!busy} onClick={remove} aria-label="ลบฉบับร่างถาวร" title="ลบฉบับร่างถาวร"><Trash2 size={16} aria-hidden="true" /></button>
+      )}
+      {/* บังคับลบ: เฉพาะ admin และเฉพาะใบที่ลบทางปกติไม่ได้ (มีหลักฐาน/ผ่าน workflow แล้ว) */}
+      {role === "admin" && !canHardDeleteSalesOrder(order) && (
+        <button type="button" className="btn-icon danger" disabled={!!busy} onClick={forceRemove} aria-label="บังคับลบพร้อมหลักฐาน" title="บังคับลบพร้อมหลักฐาน (ผู้ดูแลระบบ)"><ShieldAlert size={16} aria-hidden="true" /></button>
       )}
       {/* พิมพ์/ออกเอกสาร = งาน workflow ระดับหน้า → ปุ่ม text แถวเดียวกับย้อนกลับ (ux-ui-rulebook)
           ใช้ ghost ไม่ใช่ filled: primary สงวนให้ขั้นถัดไปของเอกสาร (ยื่น/อนุมัติ) — filled ตัวเดียวต่อบริบท */}

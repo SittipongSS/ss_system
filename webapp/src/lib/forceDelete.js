@@ -125,20 +125,45 @@ export async function forceDeleteProjectExcise(supabase, projectId) {
 // .quotationId เป็น ON DELETE CASCADE → Sale Order (แหล่งยอด Actual) หายตามทันที
 // ที่ระดับ DB — โชว์ให้ผู้ดูแลเห็นชัดก่อน.
 export async function quotationForcePreview(supabase, quote) {
-  const [salesOrders, evidence] = await Promise.all([
+  const [salesOrders, evidence, issued] = await Promise.all([
     countBy(supabase, 'sales_orders', 'quotationId', quote.id),
     countBy(supabase, 'document_signature_evidence', 'quotationId', quote.id),
+    countBy(supabase, 'issued_documents', 'quotationId', quote.id),
   ]);
   const cascade = [
     line('ใบสั่งขาย (Sale Order) ที่อ้างใบนี้ — แหล่งยอด Actual', salesOrders),
+    line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
+    line('เอกสารฉบับตรึงที่ออกจริง + ไฟล์ PDF ถาวร', issued),
   ].filter((r) => r.count > 0);
   const notes = [];
-  // หลักฐานลายเซ็น immutable → ลบถาวรไม่ได้แม้ force (Decision 0008). เตือนก่อนกด
-  // ให้ตรงกับที่ DELETE จะตอบ 409 จริง — พรีวิว = สิ่งที่จะเกิดจริง.
-  const blocked = evidence > 0 || Boolean(quote.signatureEvidenceId);
-  if (blocked) notes.push('⚠️ ใบนี้มีหลักฐานลายเซ็น — ลบถาวรไม่ได้แม้บังคับลบ ต้องใช้ “ยกเลิก” แทน');
+  // ตั้งแต่ mig 0152 ผู้ดูแลระบบลบเอกสารที่มีหลักฐานได้ (break-glass) — พรีวิวจึงเลิกบอกว่า
+  // blocked แต่ต้องเตือนให้ชัดว่าจะทำลายหลักฐานถาวร (พรีวิว = สิ่งที่จะเกิดจริง)
+  if (evidence > 0 || Boolean(quote.signatureEvidenceId) || issued > 0) {
+    notes.push('⚠️ ใบนี้มีหลักฐานลายเซ็น/ฉบับตรึง — บังคับลบจะทำลายหลักฐานถาวร กู้คืนไม่ได้ ปกติควรใช้ “ยกเลิก”/“ย้อนการรับ” แทน');
+  }
   if (quote.status === 'accepted') notes.push('ใบนี้ถูกรับแล้ว (accepted) = แหล่งยอด Actual ของดีล');
-  return { cascade, notes, blocked };
+  return { cascade, notes, blocked: false };
+}
+
+// พรีวิวการลบใบสั่งขายหนึ่งใบ (ของใหม่ — เดิม SO ไม่มีเส้นทาง force เลย).
+// sales_order_lines เป็น FK CASCADE จึงไม่ต้องนับ; ที่ต้องเตือนคือหลักฐาน+ฉบับตรึง
+export async function salesOrderForcePreview(supabase, order) {
+  const [evidence, issued] = await Promise.all([
+    countBy(supabase, 'document_signature_evidence', 'salesOrderId', order.id),
+    countBy(supabase, 'issued_documents', 'salesOrderId', order.id),
+  ]);
+  const cascade = [
+    line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
+    line('เอกสารฉบับตรึงที่ออกจริง + ไฟล์ PDF ถาวร', issued),
+  ].filter((r) => r.count > 0);
+  const notes = [];
+  if (evidence > 0 || issued > 0) {
+    notes.push('⚠️ ใบนี้มีหลักฐานลายเซ็น/ฉบับตรึง — บังคับลบจะทำลายหลักฐานถาวร กู้คืนไม่ได้');
+  }
+  if (order.status === 'approved') {
+    notes.push('ใบนี้อนุมัติแล้ว = แหล่งยอด Actual ของดีล — ปกติควรใช้ “ยกเลิก SO” แทน');
+  }
+  return { cascade, notes, blocked: false };
 }
 
 // เก็บกวาด logical ref ของใบเสนอราคาที่ไม่มี FK: metadata.acceptedQuotationId ของ

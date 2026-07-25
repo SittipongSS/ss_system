@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isForceRequest, isDryRun, canForceDelete,
-  dealForcePreview, cleanupDealOrphans, quotationForcePreview,
+  dealForcePreview, cleanupDealOrphans, quotationForcePreview, salesOrderForcePreview,
 } from './forceDelete.js';
 
 test('isForceRequest / isDryRun: อ่าน query flag', () => {
@@ -80,6 +80,31 @@ test('quotationForcePreview: โชว์ Sale Order ที่จะ cascade + n
   assert.equal(cascade.length, 1);
   assert.ok(cascade[0].label.includes('Sale Order'));
   assert.equal(notes.length, 1);
+});
+
+test('quotationForcePreview: ใบที่มีหลักฐาน/ฉบับตรึงไม่ blocked แล้ว แต่ต้องเตือนว่าทำลายถาวร', async () => {
+  const supabase = stubCount({
+    'document_signature_evidence:quotationId': 2,
+    'issued_documents:quotationId': 1,
+  });
+  const { cascade, notes, blocked } = await quotationForcePreview(supabase, { id: 'Q1', status: 'sent' });
+  // mig 0152 เปิดทาง break-glass → พรีวิวต้องไม่บอกว่าลบไม่ได้
+  assert.equal(blocked, false);
+  assert.ok(cascade.some((c) => c.label.includes('หลักฐานลายเซ็น') && c.count === 2));
+  assert.ok(cascade.some((c) => c.label.includes('ฉบับตรึง') && c.count === 1));
+  assert.ok(notes.some((n) => n.includes('ทำลายหลักฐานถาวร')));
+});
+
+test('salesOrderForcePreview: นับหลักฐาน+ฉบับตรึง และเตือนใบที่อนุมัติแล้ว', async () => {
+  const supabase = stubCount({
+    'document_signature_evidence:salesOrderId': 1,
+    'issued_documents:salesOrderId': 1,
+  });
+  const { cascade, notes, blocked } = await salesOrderForcePreview(supabase, { id: 'SO1', status: 'approved' });
+  assert.equal(blocked, false);
+  assert.equal(cascade.length, 2);
+  assert.ok(notes.some((n) => n.includes('ทำลายหลักฐานถาวร')));
+  assert.ok(notes.some((n) => n.includes('Actual')));
 });
 
 test('cleanupDealOrphans: ลบ message+task+inquiry ของดีล และปลด parentDealId', async () => {

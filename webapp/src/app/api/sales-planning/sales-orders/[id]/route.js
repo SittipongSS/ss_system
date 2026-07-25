@@ -18,6 +18,7 @@ import { captureIssuedSalesOrderSnapshot } from '@/lib/sales/issuedSalesOrderSna
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { isDryRun, isForceRequest, salesOrderForcePreview } from '@/lib/forceDelete';
 import { sendChat, chatCard } from '@/lib/chat';
 import { fmtMoney } from '@/lib/format';
 
@@ -393,7 +394,16 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   try { before = await loadOrder(supabase, id); }
   catch (error) { return fail(`โหลด Sale Order ไม่สำเร็จ: ${error.message}`, 500); }
   if (!before) return notFound('ไม่พบ Sale Order');
-  if (!canHardDeleteSalesOrder(before)) {
+
+  // ?dryRun=1 = พรีวิวว่าจะทำลายอะไร (หลักฐาน/ฉบับตรึง) — ใช้เส้นทางเดียวกับตอนลบจริง
+  if (isDryRun(req)) {
+    const preview = await salesOrderForcePreview(supabase, before);
+    return ok({ dryRun: true, ...preview });
+  }
+  // ?force=1 = break-glass ผู้ดูแลระบบ (mig 0152) ลบใบที่มีหลักฐาน/ฉบับตรึงได้ — มติผู้ใช้
+  // 2026-07-25; เส้นทางปกติยังยอมเฉพาะร่างที่ไม่เคยเข้า workflow เหมือนเดิม
+  const force = isForceRequest(req);
+  if (!force && !canHardDeleteSalesOrder(before)) {
     return fail(
       before.hasSignatureEvidence || before.signatureEvidenceId
         ? 'ลบถาวรไม่ได้: SO นี้มี Signature Evidence และต้องเก็บเป็นหลักฐาน — กรุณาใช้ “ยกเลิก SO” แทน'
@@ -401,8 +411,16 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       409,
     );
   }
-  const { error } = await supabase.from('sales_orders').delete().eq('id', id);
+  const { error } = force
+    ? await supabase.rpc('force_delete_sales_order', { p_id: id })
+    : await supabase.from('sales_orders').delete().eq('id', id);
   if (error) return fail(error.message, 500);
-  await recordAudit({ user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null, summary: `delete ${before.orderNumber}`, request: req });
-  return ok({ deleted: true });
+  await recordAudit({
+    user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null,
+    summary: force
+      ? `delete ${before.orderNumber} (บังคับลบพร้อมหลักฐาน/ฉบับตรึง — สิทธิ์ผู้ดูแลระบบ)`
+      : `delete ${before.orderNumber}`,
+    request: req,
+  });
+  return ok({ deleted: true, forced: force });
 });
