@@ -91,3 +91,18 @@ sa/projects, deals, leads, sales-orders) — **QT เป็นหน้ารา
 - ปุ่มลบ/บังคับลบมี dry-run preview อยู่แล้ว — ห้ามลดเป็น confirm ธรรมดา
 - `SignatureReadyNotice` ต้องยังเตือน**ทั้งผู้ยื่นและผู้อนุมัติ** (PR #706/#713)
 - filled action ไม่เกิน 1 ปุ่มต่อบริบท (rulebook :9)
+
+## งานที่จะมาแตะหน้า SO นี้ในอนาคต (เผื่อที่ไว้ตอน rewrite)
+
+**Excise Filing v2** (`docs/excise-filing-plan.md`, PR #647) จะเพิ่ม **entity-action ใหม่บนหน้า SO
+detail**: ปุ่ม **"สร้างการยื่นชำระ"** (โผล่เมื่อ SO `approved` + ยังไม่มีใบยื่น) + ตัวแสดง
+**สถานะการยื่นภาษี** ของ SO นั้น (ลิงก์ไป `/tax/filings/[id]` เมื่อสร้างแล้ว)
+
+- SO ↔ ระบบภาษี**แตะกันจุดเดียวคือการยื่นชำระ** — การขึ้นทะเบียนไม่เกี่ยว (อยู่ขั้นฐานข้อมูล
+  สินค้า, [[excise-product-link]])
+- ปุ่มนี้ต้องจัดเป็น **entity-action ตาม page-header standard** (ขวาบนนอกการ์ด) เหมือน action
+  อื่นของ SO — rewrite ควรเผื่อช่องไว้ ไม่ต้อง implement (คนละ PR/คนละ worktree)
+- ⚠️ ปุ่มนี้เป็นของ**โมดูลภาษี** (`sales:act`) ไม่ใช่ salesplan — ยิง endpoint ของภาษี ห้ามเขียน
+  ตาราง orders ตรงจากหน้า SO (BOUNDARY_MAP: write ห้ามข้ามโมดูล)
+- ยังไม่เริ่มโค้ด: ถ้า rewrite เสร็จก่อน filing v2 แค่เผื่อโครง; ถ้า filing v2 มาก่อน ให้ยึด
+  design system กลางที่ rewrite วางไว้
