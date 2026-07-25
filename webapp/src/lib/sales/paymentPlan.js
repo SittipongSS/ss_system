@@ -1,6 +1,5 @@
-// เงื่อนไขการชำระเงินใบเสนอราคา (QT create page): เต็มจำนวน / แบ่งงวด.
-// pure ทั้งหมด (คำนวณ + validate + สรุปข้อความ) — ใช้ทั้ง client (ปุ่มคำนวณ) และ
-// server (validate ก่อน insert). ไม่มี side-effect / ไม่แตะ DB.
+// งวดการชำระใบเสนอราคา: เต็มจำนวน / แบ่งงวด.
+// pure ทั้งหมด (แถวแสดงผล + คำนวณ + validate) ใช้ทั้ง client และ server.
 
 export const MAX_INSTALLMENTS = 6;
 const EPS = 0.01; // เพดานคลาดเคลื่อน % รวม
@@ -45,13 +44,20 @@ export function computeInstallments(total, installments) {
   });
 }
 
+// ตารางแสดงเสมอ: ปิดแบ่งงวด = แถวชำระเต็มจำนวน 100% เพียงแถวเดียว
+export function paymentScheduleRows(plan) {
+  if (plan?.type === 'installment') {
+    return Array.isArray(plan.installments) ? plan.installments : [];
+  }
+  return [{ label: 'ชำระเต็มจำนวน', percent: 100, note: '' }];
+}
+
 // ตรวจความถูกต้องของแผน — คืน { ok, error }
 export function validatePaymentPlan(plan) {
   if (!plan || plan.type === 'full') return { ok: true, error: null };
   if (plan.type !== 'installment') return { ok: false, error: 'ประเภทการชำระไม่ถูกต้อง' };
   const rows = Array.isArray(plan.installments) ? plan.installments : [];
-  // ยอมรับ 1 งวดได้ (ชำระเต็มจำนวน 100%) — ชุดการชำระในคลังมีตารางงวดเสมอ และแถวเดียว
-  // ก็ยังพา "เงื่อนไขเริ่มชำระ/กำหนดชำระ" ไปโผล่บนเอกสารได้ ต่างจาก type:'full' ที่ไม่เก็บแถว
+  // ยอมรับ 1 งวด 100% เพื่อรองรับข้อมูลเดิม แม้ UI ใหม่จะใช้ type:'full' แสดงแถวเต็มจำนวน
   if (rows.length < 1) return { ok: false, error: 'แบ่งงวดต้องมีอย่างน้อย 1 งวด' };
   if (rows.length > MAX_INSTALLMENTS) return { ok: false, error: `แบ่งงวดได้ไม่เกิน ${MAX_INSTALLMENTS} งวด` };
   const sum = rows.reduce((s, r) => s + pct(r.percent), 0);
@@ -60,7 +66,7 @@ export function validatePaymentPlan(plan) {
   return { ok: true, error: null };
 }
 
-// sanitize แผนจาก body ให้พร้อมเก็บ DB (คืน null ถ้าไม่ระบุ/เต็มจำนวน)
+// sanitize แผนจาก body ให้พร้อมเก็บ DB
 export function normalizePaymentPlan(raw, total) {
   const paymentMethod = String(raw?.paymentMethod || '').trim() || null;
   if (!raw || raw.type === 'full') return { type: 'full', ...(paymentMethod ? { paymentMethod } : {}) };
@@ -73,19 +79,4 @@ export function normalizePaymentPlan(raw, total) {
     note: r.note.trim() || null,
   }));
   return { type: 'installment', ...(paymentMethod ? { paymentMethod } : {}), installments };
-}
-
-// สรุปเป็นข้อความไทยสำหรับช่อง paymentTerms (พิมพ์บนเอกสาร) — แก้ทับได้
-export function paymentPlanSummary(plan, total) {
-  if (!plan || plan.type === 'full') return 'ชำระเต็มจำนวน';
-  const rows = computeInstallments(total, plan.installments);
-  return rows
-    .map((r) => {
-      const p = Math.round(r.percent * 100) / 100;
-      const amt = r.amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const label = r.label.trim() || `งวดที่ ${r.no}`;
-      const note = r.note.trim() ? ` (${r.note.trim()})` : '';
-      return `${label} ${p}% = ${amt} บาท${note}`;
-    })
-    .join(' · ');
 }

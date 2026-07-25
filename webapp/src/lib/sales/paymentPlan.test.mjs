@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
-  evenPercents, computeInstallments, validatePaymentPlan, normalizePaymentPlan, paymentPlanSummary,
+  evenPercents, computeInstallments, paymentScheduleRows, validatePaymentPlan, normalizePaymentPlan,
 } from './paymentPlan.js';
 
 test('evenPercents: รวมได้ 100 พอดี (เศษไปงวดสุดท้าย)', () => {
@@ -27,8 +27,7 @@ test('validatePaymentPlan: full ผ่านเสมอ / installment ต้อ
   assert.equal(validatePaymentPlan({ type: 'full' }).ok, true);
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: 50 }, { percent: 50 }] }).ok, true);
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: 50 }, { percent: 40 }] }).ok, false); // รวม 90
-  // 1 งวด 100% ใช้ได้แล้ว — ชุดการชำระแบบ "ชำระเต็มจำนวน" ในคลังมาในรูปนี้ และแถวเดียว
-  // ยังพาเงื่อนไขเริ่มชำระ/กำหนดชำระไปโผล่บนเอกสารได้ ต่างจาก type:'full' ที่ไม่เก็บแถว
+  // ยอมรับข้อมูลเดิมที่เก็บ 1 งวด 100%
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: 100 }] }).ok, true);
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [] }).ok, false); // ไม่มีงวดเลย
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: -10 }, { percent: 110 }] }).ok, false); // ติดลบ
@@ -56,9 +55,13 @@ test('normalizePaymentPlan: preserves a trimmed payment method', () => {
   assert.equal(plan.paymentMethod, 'เช็ค');
 });
 
-test('paymentPlanSummary: ข้อความไทยสำหรับ paymentTerms', () => {
-  assert.equal(paymentPlanSummary({ type: 'full' }), 'ชำระเต็มจำนวน');
-  const s = paymentPlanSummary({ type: 'installment', installments: [{ percent: 50, label: 'มัดจำ', note: 'ก่อนเริ่มงาน' }, { percent: 50, label: 'งวดสุดท้าย' }] }, 1000);
-  assert.match(s, /มัดจำ 50% = 500\.00 บาท \(ก่อนเริ่มงาน\)/);
-  assert.match(s, /งวดสุดท้าย 50% = 500\.00 บาท/);
+test('paymentScheduleRows: ปิดแบ่งงวดแสดง 1 แถว 100% และเปิดใช้แถวจริง', () => {
+  assert.deepEqual(paymentScheduleRows({ type: 'full' }), [
+    { label: 'ชำระเต็มจำนวน', percent: 100, note: '' },
+  ]);
+  assert.deepEqual(paymentScheduleRows(null), [
+    { label: 'ชำระเต็มจำนวน', percent: 100, note: '' },
+  ]);
+  const installments = [{ label: 'มัดจำ', percent: 50 }, { label: 'งวดสุดท้าย', percent: 50 }];
+  assert.equal(paymentScheduleRows({ type: 'installment', installments }), installments);
 });

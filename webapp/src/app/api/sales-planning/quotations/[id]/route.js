@@ -10,7 +10,7 @@ import {
   quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
 import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
-import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
+import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
@@ -208,12 +208,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const grand = 'totalAmount' in patch ? patch.totalAmount : before.totalAmount;
     const plan = normalizePaymentPlan(body.paymentPlan, grand);
     patch.paymentPlan = plan;
-    if (!('paymentTerms' in body)) patch.paymentTerms = paymentPlanSummary(plan, grand);
   } else if ('totalAmount' in patch && before.paymentPlan?.type === 'installment') {
     // ยอดเปลี่ยนแต่ไม่ได้ส่งแผนมา → คิดยอดงวดใหม่ตามสัดส่วน % เดิม
     const plan = normalizePaymentPlan(before.paymentPlan, patch.totalAmount);
     patch.paymentPlan = plan;
-    if (!('paymentTerms' in body)) patch.paymentTerms = paymentPlanSummary(plan, patch.totalAmount);
   }
 
   // Editing document content after it was sent creates a new draft state.

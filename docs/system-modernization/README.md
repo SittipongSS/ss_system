@@ -109,5 +109,6 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
 - [Decision 0010 — Versioned Commercial Presets before document consumers](./decisions/0010-versioned-commercial-presets.md)
 - [Decision 0011 — Immutable issued document snapshot before print replacement](./decisions/0011-issued-document-snapshot.md)
 - [Decision 0012 — Settings lifecycle standard](./decisions/0012-settings-lifecycle-standard.md)
+- [Decision 0013 — แยกเทมเพลตเงื่อนไขการชำระออกจากงวดการชำระ](./decisions/0013-separate-payment-terms-and-installments.md)
 - [Permission action inventory](./permission-action-inventory.md)
 - [Release checklist](./release-checklist.md)
