@@ -1,8 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canUser } from '@/lib/permissions';
 import { loadUserDirectory } from '@/lib/usersRepo';
-import { buildSignatureCoverage } from '@/lib/admin/signatureCoverage';
+import { buildSignatureCoverage, canViewSignatureCoverage } from '@/lib/admin/signatureCoverage';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,11 +13,14 @@ const APPROVABLE_STATUSES = ['draft', 'sent', 'rejected'];
 // GET /api/admin/signature-coverage — Phase 5B readiness: ใครยังไม่มีลายเซ็น
 // อิเล็กทรอนิกส์ทั้งที่ต้องอนุมัติเอกสาร (mig 0125). อ่านอย่างเดียวล้วน — ลายเซ็นเป็น
 // ของส่วนตัว เจ้าตัวต้องอัปเองที่ /account เท่านั้น (ADR 0006) รายงานนี้แค่ชี้เป้า
-// gate ด้วย users:view (cap เดิม อ่านอย่างเดียว) เหมือน GET /api/users
+// gate เดียวกับ GET /api/users ผ่าน canViewSignatureCoverage (users:manage หรือ grant
+// users:view) — เช็ค users:view ตัวเดียวไม่ได้ เพราะไม่มี role ไหนถือ cap นั้นเลย
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
-  if (!canUser(user, 'users:view')) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!canViewSignatureCoverage(user)) {
+    return Response.json({ error: 'ไม่มีสิทธิ์ดูรายงานความพร้อมลายเซ็น' }, { status: 403 });
+  }
 
   const supabase = getSupabaseAdmin();
 
@@ -32,14 +34,18 @@ export async function GET() {
       .from('quotations')
       .select('id, status, approvalStatus, deal:sales_deals(ownerId, stage)')
       .eq('approvalStatus', 'pending')
-      .in('status', APPROVABLE_STATUSES),
+      .in('status', APPROVABLE_STATUSES)
+      .limit(5000),
     // เส้นผู้ยื่น: เอกสารที่ "ตัวเองสร้าง" และยังค้างต้องยื่นอนุมัติ — การกดยื่นจะบันทึก
     // หลักฐานลายเซ็น (mig 0151+) ฉะนั้นคนไม่มีลายเซ็นจะยื่นไม่ได้ ต้องเห็นในรายงานล่วงหน้า
-    // ครอบทั้ง approvalStatus ก่อนและหลังมีขั้นยื่นของ QT (pending / not_submitted)
+    //
+    // เฉพาะ not_submitted เท่านั้น: ตั้งแต่ mig 0156 ที่ QT มีขั้นยื่น 'pending' แปลว่า
+    // "ยื่นไปแล้ว รออนุมัติ" (submit route ปฏิเสธด้วยเหตุผลนี้ตรง ๆ) — นับรวมเมื่อไร
+    // ใบเดียวจะถูกนับสองรอบ คือของเจ้าของดีลในช่อง "ใบรออนุมัติ" และของผู้สร้างที่นี่
     supabase
       .from('quotations')
       .select('id, createdBy')
-      .in('approvalStatus', ['pending', 'not_submitted'])
+      .eq('approvalStatus', 'not_submitted')
       .in('status', APPROVABLE_STATUSES)
       .limit(5000),
     supabase

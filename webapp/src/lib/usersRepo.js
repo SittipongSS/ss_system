@@ -20,6 +20,10 @@ export async function loadUserDirectory(supabase) {
         role,
         team: u.app_metadata?.team || null,
         department: u.app_metadata?.department || null, // ใช้กรองคนฝ่าย (rd-kpi)
+        // บัญชีถูกปิด = ban ที่ Supabase auth (สูตรเดียวกับ GET /api/users) — ผู้เรียกที่
+        // ต้องการเฉพาะคนที่ยังทำงานอยู่ต้องกรองเอง (loader ไม่กรองให้ เพราะบางที่ยังต้อง
+        // เห็นคนที่ปิดบัญชีแล้ว เช่นการโอนงานต่อ)
+        disabled: !!u.banned_until && new Date(u.banned_until) > new Date(),
       });
     }
     page++;
