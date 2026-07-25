@@ -9,7 +9,6 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, FileText, MapPin, Pencil, Plus, Printer, Save, Send, Trash2, Undo2, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
-import FormActions from "@/components/ui/FormActions";
 import DateInput from "@/components/ui/DateInput";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -381,6 +380,9 @@ export default function QuotationEditorPage() {
               <Trash2 size={16} aria-hidden="true" />
             </button>
           )}
+          {/* พิมพ์/ออกเอกสาร = งาน workflow ระดับหน้า → ปุ่ม text แถวเดียวกับย้อนกลับ (ux-ui-rulebook)
+              ตำแหน่ง+ชื่อ+โทน ตรงกับใบสั่งขาย เพื่อให้หาปุ่มเจอที่เดิมทุกเอกสาร */}
+          {!editMode && <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={15} aria-hidden="true" /> ออกเอกสาร</button>}
           {editable && <button type="button" className="btn ghost" onClick={leaveEditMode} disabled={!!busy}>ยกเลิกแก้ไข</button>}
           {editable && <button type="button" className="btn btn-primary" onClick={() => setSaveChoiceOpen(true)} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {["save", "revise"].includes(busy) ? "กำลังบันทึก…" : "บันทึก"}</button>}
         </div>
@@ -513,14 +515,6 @@ export default function QuotationEditorPage() {
             />
           </section>
 
-          {editable && (
-            <FormActions
-              dirty={dirty}
-              saving={["save", "revise"].includes(busy)}
-              error={!!error}
-              onSave={() => setSaveChoiceOpen(true)}
-            />
-          )}
           </div>
 
           <aside className={styles.sidebar} aria-label="สรุปและคำสั่งใบเสนอราคา">
@@ -561,8 +555,9 @@ export default function QuotationEditorPage() {
                   <button type="button" className="btn btn-primary" onClick={approve} disabled={!!busy || dirty} title={dirty ? "บันทึกก่อนอนุมัติ" : "อนุมัติใบเสนอราคานี้ (เจ้าของดีล)"}><CheckCircle2 size={15} aria-hidden="true" /> อนุมัติ</button>
                 )}
                 {editable && quote.status === "draft" && !needsApproval && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}
-                {["sent", "draft"].includes(quote.status) && canEditCap && !needsApproval && <button type="button" className="btn btn-primary" onClick={doAccept} disabled={!!busy} title="ปิด Won ผ่านใบเสนอราคานี้"><CheckCircle2 size={15} aria-hidden="true" /> Won</button>}
-                <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={15} aria-hidden="true" /> พิมพ์ / PDF</button>
+                {/* Won = ทางลัดปิดดีล ไม่ใช่ขั้นถัดไปตามธรรมชาติ → outlined; primary สงวนให้
+                    "อนุมัติ"/"ส่งให้ลูกค้า" ซึ่งเป็นขั้นถัดไปจริง (filled ตัวเดียวต่อบริบท) */}
+                {["sent", "draft"].includes(quote.status) && canEditCap && !needsApproval && <button type="button" className="btn action-outline btn-primary" onClick={doAccept} disabled={!!busy} title="ปิด Won ผ่านใบเสนอราคานี้"><CheckCircle2 size={15} aria-hidden="true" /> Won</button>}
                 {/* PDF ถาวรจากฉบับที่ตรึงตอนอนุมัติ (Phase 7C) — โชว์เฉพาะใบที่อนุมัติแล้ว */}
                 {quote.approvalStatus === "approved" && (
                   <a className="btn ghost" href={`/api/sales-planning/quotations/${quote.id}/issued/pdf?render=latest`} target="_blank" rel="noopener noreferrer"><FileText size={15} aria-hidden="true" /> ดาวน์โหลด PDF</a>
@@ -691,7 +686,7 @@ export default function QuotationEditorPage() {
             </label>
             <div className="action-bar" style={{ marginTop: 0 }}>
               <button type="button" className="btn ghost" onClick={() => setUnacceptForm(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn danger" onClick={doUnaccept} disabled={!!busy || !!unacceptReasonValidation}>
+              <button type="button" className="btn btn-danger" onClick={doUnaccept} disabled={!!busy || !!unacceptReasonValidation}>
                 <Undo2 size={15} aria-hidden="true" /> {busy === "unaccept" ? "กำลังย้อน…" : "ยืนยันย้อนการรับ"}
               </button>
             </div>
