@@ -9,11 +9,15 @@ import { Signature, AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-reac
 import { useCan, useRole } from "@/lib/roleContext";
 import { can, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
 import { isGoLiveReady } from "@/lib/admin/signatureCoverage";
+import { accessState } from "@/lib/accessGate";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import AccessDenied from "@/components/ui/AccessDenied";
 import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
+
+const BACK_TO_SETTINGS = { href: "/settings", label: "กลับหน้าตั้งค่า" };
 
 const FILTERS = [
   { v: "all", label: "ทั้งหมด" },
@@ -82,21 +86,23 @@ export default function SignatureCoveragePage() {
     hasSignature: (r) => (r.hasSignature ? 1 : 0),
   });
 
-  if (!canView) {
+  const gate = accessState(role, canView);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
     return (
-      <div className="premium-header">
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><Signature size={22} /></span> ความพร้อมลายเซ็น</h1>
-          <p>คุณไม่มีสิทธิ์เข้าถึงรายงานนี้ (เฉพาะผู้ดูแลระบบ)</p>
-        </div>
-      </div>
+      <AccessDenied
+        icon={<Signature size={22} />}
+        title="ความพร้อมลายเซ็น"
+        message="รายงานนี้สำหรับผู้ดูแลระบบเท่านั้น"
+        back={BACK_TO_SETTINGS}
+      />
     );
   }
 
   const ready = isGoLiveReady(summary);
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
+    <Workspace hideHeader back={BACK_TO_SETTINGS}>
       <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div className="header-content">
           <h1><span className="premium-header-icon"><Signature size={22} /></span> ความพร้อมลายเซ็น</h1>

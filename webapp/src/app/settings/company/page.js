@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Building2, Edit3, Send, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import AccessDenied from "@/components/ui/AccessDenied";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
+import { accessState } from "@/lib/accessGate";
 import { hasPublishableChangeNote, organizationSettingStatusLabel } from "@/lib/organizationSettings";
 import styles from "./page.module.css";
 
@@ -39,6 +41,7 @@ function versionForm(row) {
 }
 
 export default function CompanySettingsPage() {
+  const role = useRole();
   const canManage = useCan("master:manage");
   const [data, setData] = useState({ published: null, draft: null, versions: [] });
   const [loading, setLoading] = useState(true);
@@ -194,7 +197,19 @@ export default function CompanySettingsPage() {
     }
   };
 
-  if (!canManage) return null;
+  // เดิม return null = จอขาวสนิท ไม่มีทั้งคำอธิบายและทางกลับ
+  const gate = accessState(role, canManage);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
+    return (
+      <AccessDenied
+        icon={<Building2 size={22} />}
+        title="ข้อมูลบริษัท"
+        message="หน้านี้สำหรับผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+      />
+    );
+  }
 
   return (
     <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>

@@ -4,7 +4,9 @@ import Workspace from "@/components/ui/Workspace";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { useEffect, useMemo, useState } from "react";
 import { History, Search, Eye } from "lucide-react";
-import { useCan } from "@/lib/roleContext";
+import AccessDenied from "@/components/ui/AccessDenied";
+import { useCan, useRole } from "@/lib/roleContext";
+import { accessState } from "@/lib/accessGate";
 import { ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
 import { fmtDateTime } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
@@ -35,6 +37,7 @@ function showVal(v) {
 }
 
 export default function AuditLogPage() {
+  const role = useRole();
   const canView = useCan("audit:view");
 
   const [rows, setRows] = useState([]);
@@ -88,14 +91,16 @@ export default function AuditLogPage() {
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, { resetKey: `${rows.length}|${sort.sortKey}|${sort.sortDir}` });
 
-  if (!canView) {
+  const gate = accessState(role, canView);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
     return (
-      <div className="premium-header">
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><History size={22} /></span> บันทึกการใช้งาน</h1>
-          <p>คุณไม่มีสิทธิ์เข้าถึงบันทึกการใช้งาน (เฉพาะผู้ดูแลระบบ)</p>
-        </div>
-      </div>
+      <AccessDenied
+        icon={<History size={22} />}
+        title="บันทึกการใช้งาน"
+        message="บันทึกการใช้งานเปิดให้ผู้ดูแลระบบและผู้ที่ได้รับสิทธิ์ดูเท่านั้น"
+        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+      />
     );
   }
 
