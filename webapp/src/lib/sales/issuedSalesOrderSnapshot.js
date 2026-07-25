@@ -17,7 +17,8 @@ import {
 } from '@/lib/sales/issuedQuotationSnapshot';
 
 // bump เมื่อ payload/artifact เปลี่ยนโครง เพื่อให้ระบุ generator ที่สร้าง snapshot เดิมได้
-export const ISSUED_SALES_ORDER_LAYOUT_VERSION = 'so-master-v4.1';
+// v4.2 = ช่องผู้จัดทำเป็น evidence-backed (วันที่ลงนาม + Evidence id ฝังในใบตรึง, mig 0153)
+export const ISSUED_SALES_ORDER_LAYOUT_VERSION = 'so-master-v4.2';
 export const ISSUED_SALES_ORDER_LOCALE = 'th-TH';
 
 const trimOrNull = (value) => {
@@ -100,8 +101,14 @@ export function buildIssuedSalesOrderArtifactHtml(order = {}, options = {}) {
         evidenceId: order.signatureEvidenceId || '',
       }
       : null,
+    // มีหลักฐานการยื่น (mig 0153) → ฝังวันที่ลงนาม + Evidence id ลงในใบตรึงด้วย
     proposerSignature: options.proposerSignatureImage
-      ? { imageDataUri: options.proposerSignatureImage, signerName: order.createdByName || '' }
+      ? {
+        imageDataUri: options.proposerSignatureImage,
+        signerName: options.proposerEvidence?.signerName || order.createdByName || '',
+        signedAt: options.proposerEvidence?.signedAt || null,
+        evidenceId: options.proposerEvidence?.id || '',
+      }
       : null,
   }, options.company || null, options.standard || null);
 }
@@ -117,8 +124,24 @@ export function artifactSha256(html) {
 // ตรึง snapshot + artifact ผ่าน RPC atomic idempotent. เนื้อหาเดิมคืนของเดิม ไม่ซ้ำ.
 export async function captureIssuedSalesOrderSnapshot(supabase, { order, evidence, user, company }) {
   const payload = buildIssuedSalesOrderPayload(order, company);
-  // ผู้อนุมัติ = รูปจาก evidence (path ตรึงตอนอนุมัติ); ผู้จัดทำ = รูป active ของผู้สร้าง SO
-  const proposerAsset = await loadActiveSignatureAsset(supabase, order.createdBy);
+  // ผู้อนุมัติ = รูปจาก evidence ที่ตรึงตอนอนุมัติ
+  // ผู้จัดทำ = รูปจาก evidence ที่ตรึงตอน "ยื่น" (mig 0153) ถ้ามี — ตรึงเวอร์ชันลายเซ็นจริง
+  //           ทำให้ reprint คงรูปเดิมแม้เจ้าตัวเปลี่ยนลายเซ็นภายหลัง; ใบเก่าที่ยื่นก่อนมี
+  //           หลักฐานผู้จัดทำ fallback เป็นลายเซ็น active เดิม (stamp เชิงภาพ ไม่มีวันที่)
+  let proposerAsset = null;
+  let proposerEvidence = null;
+  if (order.proposerSignatureEvidenceId) {
+    const { data: ev } = await supabase
+      .from('document_signature_evidence')
+      .select('id, signerName, signedAt, signatureAssetSnapshot')
+      .eq('id', order.proposerSignatureEvidenceId)
+      .maybeSingle();
+    if (ev?.signatureAssetSnapshot) {
+      proposerAsset = ev.signatureAssetSnapshot;
+      proposerEvidence = ev;
+    }
+  }
+  if (!proposerAsset) proposerAsset = await loadActiveSignatureAsset(supabase, order.createdBy);
   const [approverSignatureImage, proposerSignatureImage] = await Promise.all([
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),
@@ -126,7 +149,9 @@ export async function captureIssuedSalesOrderSnapshot(supabase, { order, evidenc
   // มาตรฐานเอกสารที่ควบคุมใบนี้ = ค่าที่ RPC ตรึงไว้ใน evidence ตอนอนุมัติ (mig 0125)
   // ไม่ใช่ค่าที่เผยแพร่อยู่ตอนนี้ — ใบที่ออกไปแล้วต้องคงรหัสแบบฟอร์มเดิมเสมอ (ADR 0011)
   const standard = evidence?.controlledFormSnapshot || null;
-  const html = buildIssuedSalesOrderArtifactHtml(order, { company, standard, approverSignatureImage, proposerSignatureImage });
+  const html = buildIssuedSalesOrderArtifactHtml(order, {
+    company, standard, approverSignatureImage, proposerSignatureImage, proposerEvidence,
+  });
   const { data, error } = await supabase.rpc('capture_issued_sales_order_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
     p_artifact_id: genId('IDA'),

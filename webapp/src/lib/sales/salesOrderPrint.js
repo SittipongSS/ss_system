@@ -58,12 +58,16 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
   // ลายเซ็นผู้จัดทำ (พนักงานขาย): stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง — ไม่ใช่
   // evidence-backed จึงไม่มี role/เวลา/Evidence (เหมือนช่องผู้เสนอราคาในใบเสนอราคา).
   // live print โหลดสด (route GET); ฉบับตรึง snapshot ฝังรูปตอนอนุมัติ.
+  // ใบที่ยื่นตั้งแต่ mig 0153 มีหลักฐานการลงนามของผู้จัดทำ → โชว์วันที่ + Evidence เหมือน
+  // ช่องผู้อนุมัติ; ใบเก่าไม่มี (stamp เชิงภาพ) → signBox จะข้าม 2 บรรทัดนั้นให้เอง
   const proposerSig = order.proposerSignature;
   const proposerEsignature = proposerSig?.imageDataUri
     ? {
       imageDataUri: proposerSig.imageDataUri,
       signerName: proposerSig.signerName || order.createdByName || '',
       signerRole: '',
+      signedAt: proposerSig.signedAt ? fmtDate(proposerSig.signedAt) : '',
+      evidenceId: proposerSig.evidenceId || '',
     }
     : null;
 
