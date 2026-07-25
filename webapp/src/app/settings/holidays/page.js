@@ -11,7 +11,7 @@ import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import Toast from "@/components/ui/Toast";
 import { useCan } from "@/lib/roleContext";
-import { missingHolidayYears } from "@/lib/master/holidayCoverage";
+import { defaultHolidayYear, missingHolidayYears } from "@/lib/master/holidayCoverage";
 import styles from "./page.module.css";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
@@ -39,6 +39,8 @@ export default function HolidaysPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState("calendar"); // calendar | list
+  // ปีที่แท็บรายการกำลังโชว์: null = ยังไม่เลือกเอง (ใช้ปีตั้งต้น) · "all" = ทุกปี
+  const [listYear, setListYear] = useState(null);
   // ฟอร์มเพิ่ม: null = ปิด; { date, name, lockDate } = เปิด Modal
   const [addForm, setAddForm] = useState(null);
   // การลบผ่าน dialog ยืนยัน: { date, name }
@@ -82,6 +84,13 @@ export default function HolidaysPage() {
       .map(([year, items]) => [year, items.slice().sort((a, b) => a.date.localeCompare(b.date))])
       .sort((a, b) => b[0].localeCompare(a[0]));
   }, [holidays]);
+
+  // ปีที่โชว์อยู่จริง — ยังไม่ได้เลือกเอง = ปีปัจจุบัน (ถอยไปปีล่าสุดที่มีข้อมูลถ้าปีนี้ยังว่าง)
+  const activeYear = listYear ?? defaultHolidayYear(holidays, now);
+  const visibleYears = useMemo(
+    () => (activeYear === "all" ? byYear : byYear.filter(([year]) => year === activeYear)),
+    [byYear, activeYear],
+  );
 
   // ปีที่ยังไม่มีวันหยุดเลยทั้งที่ควรมีแล้ว → ไทม์ไลน์ที่ข้ามไปปีนั้นจะนับวันหยุดเป็นวันทำการ
   const missingYears = useMemo(
@@ -279,8 +288,26 @@ export default function HolidaysPage() {
         </EmptyState>
       ) : (
         <>
-          {/* ปุ่มเพิ่มขวาสุดของแถบเครื่องมือ ตามกติกา Page Header — filled ตัวเดียวของหน้า */}
+          {/* เลือกปีที่โชว์ (ตั้งต้นปีปัจจุบัน) · ปุ่มเพิ่มขวาสุดตามกติกา Page Header */}
           <div className="toolbar">
+            <div className={`segmented ${styles.yearPicker}`} role="group" aria-label="เลือกปีที่แสดง">
+              {byYear.map(([year]) => (
+                <button
+                  key={year}
+                  type="button"
+                  className={activeYear === year ? "active" : ""}
+                  aria-pressed={activeYear === year}
+                  onClick={() => setListYear(year)}
+                >
+                  {year}
+                </button>
+              ))}
+              {byYear.length > 1 && (
+                <button type="button" className={activeYear === "all" ? "active" : ""} aria-pressed={activeYear === "all"} onClick={() => setListYear("all")}>
+                  ทุกปี
+                </button>
+              )}
+            </div>
             <span className={styles.listSummary}>ทั้งหมด {holidays.length} วัน · {byYear.length} ปี</span>
             <span className="spacer" />
             {canManage && (
@@ -289,7 +316,7 @@ export default function HolidaysPage() {
           </div>
 
           <div className={styles.yearList}>
-            {byYear.map(([year, items]) => (
+            {visibleYears.map(([year, items]) => (
               <section key={year} className={`glass-panel ${styles.yearPanel}`} aria-labelledby={`holiday-year-${year}`}>
                 <header className={styles.yearHeader}>
                   <h2 id={`holiday-year-${year}`}>ปี {year}</h2>

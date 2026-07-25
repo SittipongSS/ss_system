@@ -24,6 +24,20 @@ export function hasHolidaysForYear(holidays, year) {
   return (holidayYearCounts(holidays).get(String(year)) || 0) > 0;
 }
 
+// ปีที่มีวันหยุดอยู่จริง เรียงปีล่าสุดก่อน (แท็บรายการโชว์ปีที่ใช้งานอยู่ก่อนปีที่ผ่านไปแล้ว)
+export function holidayYears(holidays = []) {
+  return [...holidayYearCounts(holidays).keys()].sort((a, b) => b.localeCompare(a));
+}
+
+// ปีที่ควรเปิดค้างไว้ตอนเข้าแท็บรายการ: ปีปัจจุบันถ้ามีข้อมูล ไม่งั้นถอยไปปีล่าสุดที่มี
+// (เปิดมาเจอปีว่างเปล่าทั้งที่ระบบมีข้อมูลปีอื่นอยู่ = เข้าใจผิดว่าไม่มีอะไรเลย)
+export function defaultHolidayYear(holidays = [], today = new Date()) {
+  const years = holidayYears(holidays);
+  if (!years.length) return null;
+  const current = String(today.getFullYear());
+  return years.includes(current) ? current : years[0];
+}
+
 // ปีที่ "ควรมีข้อมูลแล้วแต่ยังว่าง" — คืนเรียงจากน้อยไปมาก (ปกติมีไม่เกิน 2 ปี)
 //   · ปีหน้า: เตือนเมื่อเข้าไตรมาส 4 แล้วเท่านั้น (ต้นปีเตือนก็เป็นเสียงรบกวนเปล่า ๆ)
 //   · ปีที่ผู้ใช้กำลังเลื่อนปฏิทินไปดู: เตือนทันทีถ้าว่าง — ช่วยอธิบายว่าทำไมเดือนนั้นโล่ง

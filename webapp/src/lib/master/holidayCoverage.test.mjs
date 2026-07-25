@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  defaultHolidayYear,
   hasHolidaysForYear,
   holidayYearCounts,
+  holidayYears,
   missingHolidayYears,
 } from './holidayCoverage.js';
 
@@ -18,6 +20,23 @@ test('นับวันหยุดแยกตามปี และข้า�
   assert.equal(counts.size, 1);
   assert.equal(hasHolidaysForYear(holidays2026, 2026), true);
   assert.equal(hasHolidaysForYear(holidays2026, 2027), false);
+});
+
+test('รายชื่อปีที่มีข้อมูล เรียงปีล่าสุดก่อน', () => {
+  const holidays = [...holidays2026, { date: '2025-12-05' }, { date: '2027-01-01' }];
+  assert.deepEqual(holidayYears(holidays), ['2027', '2026', '2025']);
+  assert.deepEqual(holidayYears([]), []);
+});
+
+test('ปีตั้งต้นของแท็บรายการ = ปีปัจจุบันเมื่อมีข้อมูล', () => {
+  const holidays = [...holidays2026, { date: '2025-12-05' }];
+  assert.equal(defaultHolidayYear(holidays, new Date('2026-07-25T00:00:00')), '2026');
+});
+
+test('ปีตั้งต้น: ปีปัจจุบันยังไม่มีข้อมูล → ถอยไปปีล่าสุดที่มี ไม่ใช่โชว์ปีว่าง', () => {
+  const holidays = [{ date: '2025-12-05' }, { date: '2024-01-01' }];
+  assert.equal(defaultHolidayYear(holidays, new Date('2026-07-25T00:00:00')), '2025');
+  assert.equal(defaultHolidayYear([], new Date('2026-07-25T00:00:00')), null);
 });
 
 test('ปีหน้ามีข้อมูลแล้ว → ไม่เตือน แม้อยู่ปลายปี', () => {
