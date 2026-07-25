@@ -80,6 +80,30 @@ export async function loadCommercialPresetKindByVersion(supabase, versionId) {
   return root.kind || null;
 }
 
+// ตรวจว่า versionId ที่ client อ้างว่าใช้ "มีจริง + เผยแพร่อยู่ + เป็นคลังชนิดที่ถูกต้อง"
+// ก่อนยอมตรึงเป็นหลักฐานในใบ — ไม่เชื่อค่าจาก body ตรง ๆ เพราะ metadata ของใบเขียนได้จาก
+// client. คืน null เมื่อไม่ผ่าน (ให้ผู้เรียกเก็บ null ไม่ใช่ทำให้บันทึกใบล้ม)
+export async function resolvePinnedPresetVersionId(supabase, versionId, kind) {
+  const id = String(versionId || '').trim();
+  if (!id) return null;
+  const { data: version, error } = await supabase
+    .from('commercial_preset_versions').select('id, presetId, status').eq('id', id).maybeSingle();
+  if (error || !version || version.status !== 'published') return null;
+  const { data: root, error: rootError } = await supabase
+    .from('commercial_presets').select('kind').eq('id', version.presetId).maybeSingle();
+  if (rootError || root?.kind !== kind) return null;
+  return version.id;
+}
+
+// ตรวจทั้งสองคีย์ในคราวเดียวจาก metadata ที่ client ส่งมา → { payment, remarks } (null ได้)
+export async function resolvePinnedPresetVersionIds(supabase, metadata = {}) {
+  const [payment, remarks] = await Promise.all([
+    resolvePinnedPresetVersionId(supabase, metadata.paymentPresetVersionId, 'payment'),
+    resolvePinnedPresetVersionId(supabase, metadata.remarksPresetVersionId, 'remarks'),
+  ]);
+  return { payment, remarks };
+}
+
 export async function createCommercialPreset(supabase, input, user) {
   const token = randomUUID();
   const { data, error } = await supabase.rpc('create_commercial_preset_with_draft', {

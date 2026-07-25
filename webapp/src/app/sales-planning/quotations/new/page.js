@@ -13,6 +13,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
+import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationPeopleFields from "@/components/salesPlanning/QuotationPeopleFields";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import { useCan } from "@/lib/roleContext";
@@ -55,6 +56,7 @@ function NewQuotationInner() {
   const [vatRate, setVatRate] = useState(7);
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
   const [notes, setNotes] = useState("");
+  const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
   // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
   const [people, setPeople] = useState({ aeOwner: "", preparedBy: "", aeSupervisor: "" });
 
@@ -216,7 +218,12 @@ function NewQuotationInner() {
           paymentTerms: payment.paymentTerms,
           notes,
           paymentPlan,
-          metadata: { ...people },
+          // ชุดเงื่อนไขการค้าที่หยิบมาเป็นค่าตั้งต้น — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
+          metadata: {
+            ...people,
+            paymentPresetVersionId: payment.presetVersionId || null,
+            remarksPresetVersionId: notesPresetVersionId || null,
+          },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -231,7 +238,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, people, router]);
+  }, [dealId, contactIndex, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, notesPresetVersionId, people, router]);
 
   if (!canEdit) {
     return (
@@ -329,7 +336,14 @@ function NewQuotationInner() {
             <QuotationPaymentTerms value={payment} onChange={setPayment} totalAmount={totals.totalAmount} />
           </section>
 
-          <section className={styles.card}><div className={styles.sectionHeading}><FileText size={17} /><h2>หมายเหตุ</h2></div><textarea className="premium-input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="หมายเหตุที่ต้องการแสดงในใบเสนอราคา" /></section>
+          <section className={styles.card}>
+            <QuotationNotes
+              value={notes}
+              onChange={setNotes}
+              presetVersionId={notesPresetVersionId}
+              onPresetVersionIdChange={setNotesPresetVersionId}
+            />
+          </section>
         </div>
 
         <aside className={styles.sidebar}>

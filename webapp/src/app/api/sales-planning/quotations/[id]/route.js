@@ -14,6 +14,7 @@ import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 
 export const dynamic = 'force-dynamic';
@@ -115,13 +116,26 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     };
     const peoplePick = await validateQuotationPeople(supabase, effectivePeople, { require: willSend });
     if (!peoplePick.ok) return badRequest(peoplePick.error);
-    const { aeOwner: _o, preparedBy: _p, aeSupervisor: _s, ...editableMeta } = src;
+    const {
+      aeOwner: _o, preparedBy: _p, aeSupervisor: _s,
+      // ชุดเงื่อนไขการค้าเป็นหลักฐาน — ห้ามรับค่าจาก client ตรง ๆ ต้องผ่านการตรวจก่อน
+      paymentPresetVersionId: _pay, remarksPresetVersionId: _rem,
+      ...editableMeta
+    } = src;
+    const pinnedPresets = hasMetaPatch
+      ? await resolvePinnedPresetVersionIds(supabase, src)
+      : {
+        payment: before.metadata?.paymentPresetVersionId || null,
+        remarks: before.metadata?.remarksPresetVersionId || null,
+      };
     patch.metadata = {
       ...(before.metadata || {}),
       ...editableMeta,
       aeOwner: peoplePick.people.aeOwner || null,
       preparedBy: peoplePick.people.preparedBy || null,
       aeSupervisor: peoplePick.people.aeSupervisor || null,
+      paymentPresetVersionId: pinnedPresets.payment,
+      remarksPresetVersionId: pinnedPresets.remarks,
     };
   }
   if ('status' in body) {

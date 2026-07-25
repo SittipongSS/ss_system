@@ -50,7 +50,9 @@ export function validatePaymentPlan(plan) {
   if (!plan || plan.type === 'full') return { ok: true, error: null };
   if (plan.type !== 'installment') return { ok: false, error: 'ประเภทการชำระไม่ถูกต้อง' };
   const rows = Array.isArray(plan.installments) ? plan.installments : [];
-  if (rows.length < 2) return { ok: false, error: 'แบ่งงวดต้องมีอย่างน้อย 2 งวด' };
+  // ยอมรับ 1 งวดได้ (ชำระเต็มจำนวน 100%) — ชุดการชำระในคลังมีตารางงวดเสมอ และแถวเดียว
+  // ก็ยังพา "เงื่อนไขเริ่มชำระ/กำหนดชำระ" ไปโผล่บนเอกสารได้ ต่างจาก type:'full' ที่ไม่เก็บแถว
+  if (rows.length < 1) return { ok: false, error: 'แบ่งงวดต้องมีอย่างน้อย 1 งวด' };
   if (rows.length > MAX_INSTALLMENTS) return { ok: false, error: `แบ่งงวดได้ไม่เกิน ${MAX_INSTALLMENTS} งวด` };
   const sum = rows.reduce((s, r) => s + pct(r.percent), 0);
   if (rows.some((r) => pct(r.percent) < 0)) return { ok: false, error: 'เปอร์เซ็นต์ต้องไม่ติดลบ' };

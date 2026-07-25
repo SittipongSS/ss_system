@@ -198,6 +198,22 @@
   flex-wrap: wrap;
 }
 
+/* template หมายเหตุชุดเดิม (mig 0092) — บล็อกชั่วคราวจนกว่าจะย้ายเข้าคลังเงื่อนไขการค้าเสร็จ */
+.legacyTemplates {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  flex-wrap: wrap;
+}
+
+.legacyTemplates > span {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
 .sectionHeading h2 {
   margin: 0;
   color: var(--text);

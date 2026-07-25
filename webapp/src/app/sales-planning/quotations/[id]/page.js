@@ -16,6 +16,7 @@ import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
+import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationPeopleFields, { quotationPeopleFromMetadata } from "@/components/salesPlanning/QuotationPeopleFields";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
@@ -63,7 +64,8 @@ export default function QuotationEditorPage() {
   const [unacceptForm, setUnacceptForm] = useState(null);
   const [tplForm, setTplForm] = useState({ serviceType: "general", title: "", body: "" });
   const [products, setProducts] = useState([]);
-  const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
+  const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [], presetVersionId: null });
+  const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
   // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
   const [people, setPeople] = useState({ aeOwner: "", preparedBy: "", aeSupervisor: "" });
 
@@ -97,7 +99,9 @@ export default function QuotationEditorPage() {
         installments: pp?.type === "installment" && Array.isArray(pp.installments)
           ? pp.installments.map((r) => ({ label: r.label || "", percent: r.percent ?? 0, note: r.note || "" }))
           : [],
+        presetVersionId: q.metadata?.paymentPresetVersionId || null,
       });
+      setNotesPresetVersionId(q.metadata?.remarksPresetVersionId || null);
       setPeople(quotationPeopleFromMetadata(q.metadata));
       setDirty(false);
     } catch (e) {
@@ -155,7 +159,12 @@ export default function QuotationEditorPage() {
     discountValue: form.discountValue || 0,
     vatRate: form.vatRate,
     paymentPlan: paymentPlanPayload(),
-    metadata: { ...people },
+    // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
+    metadata: {
+      ...people,
+      paymentPresetVersionId: payment.presetVersionId || null,
+      remarksPresetVersionId: notesPresetVersionId || null,
+    },
     ...extra,
   });
 
@@ -528,18 +537,26 @@ export default function QuotationEditorPage() {
             <QuotationPaymentTerms value={payment} onChange={updatePayment} totalAmount={totals.totalAmount} disabled={!editable} />
           </section>
 
-          {/* หมายเหตุ + template */}
+          {/* หมายเหตุ — การ์ดตัวเดียวกับหน้าสร้างใบ (กฎ AGENTS.md) */}
           <section className={styles.card}>
-            <div className={styles.sectionHeading}>
-              <FileText size={17} aria-hidden="true" />
-              <h2>หมายเหตุ</h2>
-              <div className="spacer" />
-              {editable && visibleTemplates.map((t) => (
-                <button key={t.id} type="button" className="btn ghost sm" onClick={() => applyTemplate(t)} title={t.body}>+ {t.title}</button>
-              ))}
-              {isReviewer && <button type="button" className="btn ghost sm" onClick={() => setTplOpen(true)}>จัดการ template</button>}
-            </div>
-            <textarea className="premium-input" rows={4} value={form.notes} disabled={!editable} placeholder="หมายเหตุที่ต้องการแสดงในใบเสนอราคา" onChange={(e) => setF({ notes: e.target.value })} style={{ width: "100%" }} />
+            <QuotationNotes
+              value={form.notes}
+              onChange={(next) => setF({ notes: next })}
+              presetVersionId={notesPresetVersionId}
+              onPresetVersionIdChange={(next) => { setNotesPresetVersionId(next); setDirty(true); }}
+              disabled={!editable}
+            />
+            {/* template หมายเหตุชุดเดิม (mig 0092) — กำลังย้ายเข้าคลังเงื่อนไขการค้า จะถอดออกทั้งบล็อก
+                พร้อม API เมื่อ migration ย้ายข้อมูลเสร็จ */}
+            {(editable || isReviewer) && (
+              <div className={styles.legacyTemplates}>
+                <span>template ชุดเดิม</span>
+                {editable && visibleTemplates.map((t) => (
+                  <button key={t.id} type="button" className="btn ghost sm" onClick={() => applyTemplate(t)} title={t.body}>+ {t.title}</button>
+                ))}
+                {isReviewer && <button type="button" className="btn ghost sm" onClick={() => setTplOpen(true)}>จัดการ template</button>}
+              </div>
+            )}
           </section>
 
           {editable && (

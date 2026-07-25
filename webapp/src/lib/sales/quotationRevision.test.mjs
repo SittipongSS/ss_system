@@ -40,5 +40,6 @@ test('revision content rejects an invalid installment plan', () => {
     paymentPlan: { type: 'installment', installments: [{ percent: 90 }] },
   });
   assert.equal(result.ok, false);
-  assert.match(result.error, /อย่างน้อย 2 งวด/);
+  // 1 งวดไม่ผิดกติกาแล้ว (ชำระเต็มจำนวน 100%) — ที่ผิดคือผลรวมไม่ถึง 100
+  assert.match(result.error, /รวมต้องเท่ากับ 100/);
 });

@@ -6,6 +6,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { dealAuditLabel, generateQuoteNumber, quoteTotals, toMoney } from '@/lib/salesPlanning';
+import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan, paymentPlanSummary } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
@@ -62,6 +63,9 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   const peoplePick = await validateQuotationPeople(supabase, body.metadata || {}, { require: false });
   if (!peoplePick.ok) throw new QuotationDraftError(peoplePick.error);
 
+  // ชุดเงื่อนไขการค้าที่คนทำใบเลือก — ตรวจฝั่ง server ก่อนตรึง (client ส่งอะไรมาก็ได้)
+  const pinnedPresets = await resolvePinnedPresetVersionIds(supabase, body.metadata || {});
+
   // เลขรันจาก DB (atomic ต่อเดือน — mig 0092): QT-YYMMXXXX-0
   const { base, quoteNumber } = await generateQuoteNumber(supabase);
   const quoteId = genId('QT');
@@ -104,11 +108,14 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       approvedByName: null,
       notes: body.notes || null,
       // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ = ผู้ใช้จริง+role ตรง)
+      // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจเองว่ามีจริง+เผยแพร่+ชนิดตรง
       metadata: {
         ...(body.metadata || {}),
         aeOwner: peoplePick.people.aeOwner || null,
         preparedBy: peoplePick.people.preparedBy || null,
         aeSupervisor: peoplePick.people.aeSupervisor || null,
+        paymentPresetVersionId: pinnedPresets.payment,
+        remarksPresetVersionId: pinnedPresets.remarks,
       },
       createdBy: user.id || null,
       createdByName: user.name || null,

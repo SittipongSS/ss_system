@@ -7,7 +7,13 @@ import {
   evenPercents,
   paymentPlanSummary,
 } from "@/lib/sales/paymentPlan";
+import {
+  isEmptyPaymentValue,
+  matchesPaymentPreset,
+  paymentPresetToFormValue,
+} from "@/lib/commercialPresets";
 import { fmtMoney } from "@/lib/format";
+import CommercialPresetPicker from "./CommercialPresetPicker";
 import styles from "./QuotationPaymentTerms.module.css";
 
 const DEFAULT_INSTALLMENTS = () => evenPercents(2).map((percent, index) => ({
@@ -22,6 +28,8 @@ export default function QuotationPaymentTerms({ value, onChange, totalAmount, di
     paymentMethod: value?.paymentMethod || "",
     paymentTerms: value?.paymentTerms || "",
     installments: Array.isArray(value?.installments) ? value.installments : [],
+    // เวอร์ชันชุดการชำระที่หยิบมาเป็นค่าตั้งต้นของใบนี้ (ตรึงเป็นหลักฐานตอนบันทึก)
+    presetVersionId: value?.presetVersionId || null,
   };
   const pctSum = Math.round(payment.installments.reduce((sum, row) => sum + (Number(row.percent) || 0), 0) * 100) / 100;
   const amounts = computeInstallments(totalAmount, payment.installments);
@@ -36,7 +44,8 @@ export default function QuotationPaymentTerms({ value, onChange, totalAmount, di
     const type = payment.type === "installment" ? "full" : "installment";
     update({
       type,
-      installments: type === "installment" && payment.installments.length < 2
+      // มีแถวอยู่แล้วให้คงไว้ (รวมกรณี 1 แถว 100% ที่มาจากชุดในคลัง) — เริ่มจากศูนย์ค่อยแจก 2 งวด
+      installments: type === "installment" && payment.installments.length < 1
         ? DEFAULT_INSTALLMENTS()
         : payment.installments,
     });
@@ -52,12 +61,19 @@ export default function QuotationPaymentTerms({ value, onChange, totalAmount, di
       : payment.installments.filter((_, rowIndex) => rowIndex !== index),
   });
   const recalcEven = () => {
-    const percents = evenPercents(payment.installments.length);
+    // evenPercents ตั้งขั้นต่ำไว้ 2 งวด — งวดเดียวต้องเป็น 100% ไม่ใช่ 50%
+    const percents = payment.installments.length === 1 ? [100] : evenPercents(payment.installments.length);
     update({ installments: payment.installments.map((row, index) => ({ ...row, percent: percents[index] })) });
   };
   const fillTerms = () => update({
     paymentTerms: paymentPlanSummary({ type: "installment", installments: payment.installments }, totalAmount),
   });
+  // เลือกชุดจากคลัง = ทับทั้งการ์ด (วิธีชำระ + ข้อความเงื่อนไข + ตารางงวด) แล้วแก้ต่อได้
+  const applyPreset = (option) => {
+    const next = paymentPresetToFormValue(option);
+    if (!next) { update({ presetVersionId: null }); return; }
+    update({ ...next, presetVersionId: option.versionId });
+  };
 
   return (
     <>
@@ -67,6 +83,14 @@ export default function QuotationPaymentTerms({ value, onChange, totalAmount, di
           <h2>เงื่อนไขการชำระเงิน</h2>
         </div>
         <div className="spacer" />
+        <CommercialPresetPicker
+          kind="payment"
+          selectedVersionId={payment.presetVersionId}
+          disabled={disabled}
+          hasContent={!isEmptyPaymentValue(payment)}
+          matchesCurrent={(option) => matchesPaymentPreset(payment, option)}
+          onApply={applyPreset}
+        />
         <button
           type="button"
           role="switch"
@@ -76,7 +100,8 @@ export default function QuotationPaymentTerms({ value, onChange, totalAmount, di
           onClick={switchType}
         >
           <span className={styles.toggleTrack}><span /></span>
-          <span><strong>แบ่งชำระเป็นงวด</strong><small>{payment.type === "installment" ? "เปิดใช้งาน" : "ชำระเต็มจำนวน"}</small></span>
+          {/* ชุดการชำระแบบเต็มจำนวนจากคลังมาเป็นตาราง 1 งวด 100% — ป้ายต้องไม่อ่านว่า "แบ่งงวด" */}
+          <span><strong>แบ่งชำระเป็นงวด</strong><small>{payment.type !== "installment" ? "ชำระเต็มจำนวน" : payment.installments.length === 1 ? "งวดเดียว (เต็มจำนวน)" : "เปิดใช้งาน"}</small></span>
         </button>
       </div>
 

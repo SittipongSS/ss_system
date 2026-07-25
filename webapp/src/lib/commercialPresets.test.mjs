@@ -4,11 +4,16 @@ import {
   COMMERCIAL_PRESET_LIMITS,
   commercialPresetSummary,
   fullPaymentInstallment,
+  isEmptyPaymentValue,
   isFullPaymentPlan,
+  matchesPaymentPreset,
+  matchesRemarksPreset,
   normalizeCommercialPresetInput,
   normalizeCommercialPresetKind,
+  paymentPresetToFormValue,
+  remarksPresetToFormValue,
 } from './commercialPresets.js';
-import { MAX_INSTALLMENTS } from './sales/paymentPlan.js';
+import { MAX_INSTALLMENTS, validatePaymentPlan } from './sales/paymentPlan.js';
 
 const paymentInput = {
   title: 'โอน · เครดิต 30 วัน',
@@ -90,6 +95,89 @@ test('isFullPaymentPlan: จริงเฉพาะแถวเดียว 100
   assert.equal(isFullPaymentPlan([{ percent: 50 }, { percent: 50 }]), false);
   assert.equal(isFullPaymentPlan([]), false);
   assert.equal(isFullPaymentPlan(null), false);
+});
+
+// ── การนำชุดไปใช้บนใบเสนอราคา ─────────────────────────────────────────────────
+
+const PAYMENT_OPTION = Object.freeze({
+  versionId: 'ver-pay-1',
+  title: 'โอน · มัดจำ 50%',
+  paymentMethod: 'โอนเงินเข้าบัญชีบริษัท',
+  paymentTerms: 'เครดิต 30 วัน',
+  installments: [
+    { label: 'มัดจำ', percent: 50, trigger: 'เมื่ออนุมัติใบเสนอราคา', dueRule: 'ภายใน 7 วัน', note: '' },
+    { label: 'ส่วนที่เหลือ', percent: 50, trigger: '', dueRule: '', note: 'ก่อนส่งมอบ' },
+  ],
+});
+
+const FULL_OPTION = Object.freeze({
+  versionId: 'ver-pay-full',
+  title: 'โอน · เต็มจำนวน',
+  paymentMethod: 'โอนเงินเข้าบัญชีบริษัท',
+  paymentTerms: '',
+  installments: [{ label: 'ชำระเต็มจำนวน', percent: 100, trigger: 'เมื่อยืนยันคำสั่งซื้อ', dueRule: 'ภายใน 7 วัน', note: '' }],
+});
+
+test('ชุดการชำระ → ฟอร์ม: ใช้ installment ทุกกรณี แม้แถวเดียว 100%', () => {
+  const full = paymentPresetToFormValue(FULL_OPTION);
+  // ถ้าแปลงเป็น type 'full' แถวงวดจะไม่ถูกเก็บ แล้วเงื่อนไข/กำหนดชำระจะหายจากเอกสาร
+  assert.equal(full.type, 'installment');
+  assert.equal(full.installments.length, 1);
+  assert.equal(full.installments[0].percent, 100);
+  assert.equal(full.installments[0].note, 'เมื่อยืนยันคำสั่งซื้อ · ภายใน 7 วัน');
+  // แผน 1 งวดต้องผ่าน validate ของฟอร์มใบด้วย ไม่งั้นเลือกชุดแล้วบันทึกไม่ได้
+  assert.equal(validatePaymentPlan(full).ok, true);
+});
+
+test('ชุดการชำระ → ฟอร์ม: หลายงวดครบทุกแถว + พับ trigger/dueRule/note เข้า note', () => {
+  const value = paymentPresetToFormValue(PAYMENT_OPTION);
+  assert.equal(value.paymentMethod, 'โอนเงินเข้าบัญชีบริษัท');
+  assert.equal(value.paymentTerms, 'เครดิต 30 วัน');
+  assert.deepEqual(value.installments.map((row) => row.percent), [50, 50]);
+  assert.equal(value.installments[0].note, 'เมื่ออนุมัติใบเสนอราคา · ภายใน 7 วัน');
+  assert.equal(value.installments[1].note, 'ก่อนส่งมอบ');
+  assert.equal(validatePaymentPlan(value).ok, true);
+});
+
+test('ชุดการชำระ → ฟอร์ม: ไม่มีชุด/ไม่มีงวด → null', () => {
+  assert.equal(paymentPresetToFormValue(null), null);
+  assert.equal(paymentPresetToFormValue({ versionId: 'x', installments: [] }), null);
+});
+
+test('เทียบชุดการชำระ: ตรงตอนเพิ่งเลือก, ต่างเมื่อแก้, กลับมาตรงเมื่อแก้คืน', () => {
+  const applied = paymentPresetToFormValue(PAYMENT_OPTION);
+  assert.equal(matchesPaymentPreset(applied, PAYMENT_OPTION), true);
+
+  const edited = { ...applied, paymentTerms: 'เครดิต 45 วัน' };
+  assert.equal(matchesPaymentPreset(edited, PAYMENT_OPTION), false);
+  // แก้กลับให้ตรง → ต้องกลับเป็น true เอง (ป้าย "แก้เพิ่มเติมแล้ว" ต้องไม่ค้าง)
+  assert.equal(matchesPaymentPreset({ ...edited, paymentTerms: 'เครดิต 30 วัน' }, PAYMENT_OPTION), true);
+
+  // แก้ในตารางงวดก็ต้องจับได้ (จำนวนแถว / %/ ข้อความ)
+  assert.equal(matchesPaymentPreset({ ...applied, installments: [applied.installments[0]] }, PAYMENT_OPTION), false);
+  assert.equal(matchesPaymentPreset({
+    ...applied,
+    installments: [{ ...applied.installments[0], percent: 60 }, applied.installments[1]],
+  }, PAYMENT_OPTION), false);
+  assert.equal(matchesPaymentPreset(null, PAYMENT_OPTION), false);
+  assert.equal(matchesPaymentPreset(applied, null), false);
+});
+
+test('เทียบชุดหมายเหตุ: เทียบข้อความแบบตัดช่องว่างหัวท้าย', () => {
+  const option = { versionId: 'ver-rm-1', title: 'หมายเหตุ SCENT', remarks: 'ราคานี้ไม่รวมค่าขนส่ง' };
+  assert.equal(remarksPresetToFormValue(option), 'ราคานี้ไม่รวมค่าขนส่ง');
+  assert.equal(matchesRemarksPreset('ราคานี้ไม่รวมค่าขนส่ง', option), true);
+  assert.equal(matchesRemarksPreset('  ราคานี้ไม่รวมค่าขนส่ง  ', option), true);
+  assert.equal(matchesRemarksPreset('ราคานี้ไม่รวมค่าขนส่ง และค่าติดตั้ง', option), false);
+  assert.equal(matchesRemarksPreset('', option), false);
+  assert.equal(matchesRemarksPreset('อะไรก็ตาม', null), false);
+});
+
+test('ช่องว่าง = ไม่มีของจะเสีย (เลือกชุดทับได้เลยไม่ต้องถาม)', () => {
+  assert.equal(isEmptyPaymentValue({ type: 'full', paymentMethod: '', paymentTerms: '', installments: [] }), true);
+  assert.equal(isEmptyPaymentValue({ paymentMethod: '  ', installments: [{ label: '', note: '', percent: 0 }] }), true);
+  assert.equal(isEmptyPaymentValue({ paymentMethod: 'โอน', installments: [] }), false);
+  assert.equal(isEmptyPaymentValue(paymentPresetToFormValue(PAYMENT_OPTION)), false);
 });
 
 test('สรุปในตาราง: แยกข้อความตามชนิดคลัง', () => {
