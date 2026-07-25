@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lockedOut } from './proxy.js';
+import { apiWriteAllowed, lockedOut } from './proxy.js';
 
 test('every signed-in role can open its own account page', () => {
   const roles = ['ae', 'ac', 'rd', 'legal', 'staff', 'viewer', 'secretary'];
@@ -130,4 +130,22 @@ test('secretary/marketing เปิดหน้ารายการสินค
     assert.equal(lockedOut(user, '/api/products', 'GET', true), false, `${role} api`);
     assert.equal(lockedOut(user, '/api/master/products', 'GET', true), false, `${role} api alias`);
   }
+});
+
+test('ทะเบียนวัสดุ: RD/PC เขียนได้ทั้งที่ไม่มี costing:edit (regression บั๊ก 403)', () => {
+  // บั๊กเดิม: /api/sa/materials กั้นด้วย costing:edit อย่างเดียว แต่ RD/PC ถือแค่
+  // costing:quote → กด "แก้ราคา" ในทะเบียนแล้ว 403 ทุกครั้ง ทั้งที่เป็นเจ้าของราคา
+  for (const role of ['rd', 'staff']) {
+    assert.equal(apiWriteAllowed('POST', '/api/sa/materials', role, []), true, `${role} เพิ่มวัสดุ`);
+    assert.equal(apiWriteAllowed('POST', '/api/sa/materials/MAT-1/revisions', role, []), true, `${role} ออกราคา`);
+    assert.equal(apiWriteAllowed('PATCH', '/api/sa/materials/MAT-1', role, []), true, `${role} รับวัสดุร่าง`);
+  }
+  // ฝ่ายขายยังเปิดคำขอ/เสนอวัสดุร่างได้เหมือนเดิม (costing:edit)
+  assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'ae', []), true);
+  // role ที่ไม่เกี่ยวกับระบบขอราคาเลยยังเข้าไม่ได้
+  for (const role of ['secretary', 'marketing', 'viewer']) {
+    assert.equal(apiWriteAllowed('POST', '/api/sa/materials', role, []), false, `${role} ต้องไม่ผ่าน`);
+  }
+  // อ่านไม่ถูกกั้นที่ชั้นนี้ (ด่านจริงคือ canViewCosting ใน handler)
+  assert.equal(apiWriteAllowed('GET', '/api/sa/materials', 'viewer', []), true);
 });

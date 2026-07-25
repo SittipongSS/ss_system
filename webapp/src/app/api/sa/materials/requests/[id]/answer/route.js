@@ -6,7 +6,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewCosting } from '@/lib/permissions';
 import { canQuoteMaterial, normalizeQuotedPrice } from '@/lib/materialPrices';
-import { appendMaterialRevision, findMaterialRequest } from '@/lib/materialPricesAdmin';
+import { appendMaterialRevision, ensureMaterial, findMaterialRequest } from '@/lib/materialPricesAdmin';
 import { chatCard, sendChat } from '@/lib/chat';
 import { recordAudit } from '@/lib/audit';
 
@@ -47,16 +47,21 @@ export async function PATCH(request, { params }) {
 
   const nowIso = new Date().toISOString();
   for (const { item, price } of validated) {
-    // สร้าง/หาวัสดุในคลัง + เพิ่มรุ่นราคา — ราคาเฉพาะลูกค้าถ้าใบระบุลูกค้า
+    // หาวัสดุตัวเดิมในทะเบียนก่อนเสมอ (0157) — ของเดิม insert ตรงทุกครั้ง ทำให้
+    // ตอบคำขอซ้ำ = เกิดวัสดุตัวใหม่ ไม่เคยเป็น rev.2
+    const { material } = item.materialId
+      ? { material: { id: item.materialId } }
+      : await ensureMaterial(supabase, {
+        kind: item.kind,
+        label: item.label,
+        customerId: before.customerId || null,
+        customerName: before.customerName || null,
+        user,
+      });
     const { revision } = await appendMaterialRevision(supabase, {
-      materialId: item.materialId || null,
+      materialId: material.id,
       kind: item.kind,
-      label: item.label,
-      sourceDept: item.sourceDept,
-      customerId: before.customerId || null,
-      customerName: before.customerName || null,
       price,
-      sourceRequestId: id,
       user,
     });
     const { error } = await supabase.from('material_price_request_items').update({
