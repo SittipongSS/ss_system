@@ -7,11 +7,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, FileText, MapPin, Pencil, Plus, Printer, Save, Send, Trash2, Undo2, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Pencil, Plus, Trash2, Undo2, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { ContextualRightRail } from "@/components/ui/DetailPage";
+import { DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard } from "@/components/ui/DocumentControlPanel";
 import Modal from "@/components/Modal";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
@@ -19,6 +21,7 @@ import QuotationPeopleFields, { quotationPeopleFromMetadata } from "@/components
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
+import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import { UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from "@/lib/sales/quotationUnaccept";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -31,6 +34,7 @@ import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePri
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
@@ -192,26 +196,40 @@ export default function QuotationEditorPage() {
 
   // ยื่นอนุมัติ (ผู้จัดทำ) — not_submitted → pending + ลงนามผู้เสนอราคา (mig 0155).
   // ต้องบันทึกก่อนเหมือนการอนุมัติ เพราะหลักฐานผูก fingerprint ของเนื้อหาที่บันทึกแล้ว
-  const submitForApproval = async () => {
+  const submitForApproval = () => {
     if (dirty) { setError("บันทึกการแก้ไขก่อนยื่นอนุมัติ"); return; }
-    if (!window.confirm(`ยืนยันยื่นอนุมัติใบเสนอราคา ${quote.quoteNumber}?\n\nการยื่นถือเป็นการลงนามของผู้เสนอราคา — ระบบจะบันทึกลายเซ็นและวันที่ลงบนเอกสาร ถ้าแก้เนื้อหาภายหลังต้องยื่นใหม่`)) return;
-    const data = await act("submit", `/api/sales-planning/quotations/${id}/submit`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    setConfirmState({
+      title: "ยื่นอนุมัติใบเสนอราคา",
+      description: `ยืนยันยื่นอนุมัติ ${quote.quoteNumber} หรือไม่`,
+      detail: "การยื่นถือเป็นการลงนามของผู้เสนอราคา ระบบจะบันทึกลายเซ็นและวันที่บนเอกสาร หากแก้เนื้อหาภายหลังต้องยื่นใหม่",
+      confirmLabel: "ยื่นอนุมัติ",
+      action: async () => {
+        const data = await act("submit", `/api/sales-planning/quotations/${id}/submit`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+        });
+        if (data) await load();
+        return !!data;
+      },
     });
-    if (data) await load();
   };
 
   // อนุมัติใบ (เจ้าของดีล/superuser) — pending → approved. ต้องบันทึกก่อน (ไม่ค้าง dirty)
   // เพราะ fingerprint อนุมัติจะ snapshot เนื้อหาที่บันทึกแล้ว.
-  const approve = async () => {
+  const approve = () => {
     if (dirty) { setError("บันทึกการแก้ไขก่อนอนุมัติ"); return; }
-    // ยืนยันก่อนอนุมัติ (มติ 2026-07-25) — เดิมกดปุ่มแล้วอนุมัติทันที กดพลาดแล้วถอยไม่ได้
-    // (ใบสั่งขายมีกล่องยืนยันอยู่แล้ว) — ไม่ถามหมายเหตุ ตามมติเดียวกัน
-    if (!window.confirm(`ยืนยันอนุมัติใบเสนอราคา ${quote.quoteNumber}? หลังอนุมัติจะส่งลูกค้าได้ และถ้าแก้เนื้อหาภายหลังต้องอนุมัติใหม่`)) return;
-    const data = await act("approve", `/api/sales-planning/quotations/${id}/approval`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    setConfirmState({
+      title: "อนุมัติใบเสนอราคา",
+      description: `ยืนยันอนุมัติ ${quote.quoteNumber} หรือไม่`,
+      detail: "หลังอนุมัติจะส่งลูกค้าได้ และหากแก้เนื้อหาภายหลังต้องยื่นอนุมัติใหม่",
+      confirmLabel: "อนุมัติ",
+      action: async () => {
+        const data = await act("approve", `/api/sales-planning/quotations/${id}/approval`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+        });
+        if (data) await load();
+        return !!data;
+      },
     });
-    if (data) await load();
   };
 
   const act = async (label, url, opts = { method: "POST" }) => {
@@ -356,9 +374,23 @@ export default function QuotationEditorPage() {
     }
   };
   const leaveEditMode = () => {
-    if (dirty && !window.confirm("ยกเลิกการแก้ไขและทิ้งข้อมูลที่ยังไม่ได้บันทึก?")) return;
-    if (dirty) load();
-    router.replace(`/sa/quotations/${id}`);
+    const leave = async () => {
+      if (dirty) await load();
+      router.replace(`/sa/quotations/${id}`);
+      return true;
+    };
+    if (!dirty) {
+      leave();
+      return;
+    }
+    setConfirmState({
+      title: "ยกเลิกการแก้ไข",
+      description: "ต้องการทิ้งข้อมูลที่ยังไม่ได้บันทึกหรือไม่",
+      detail: "การเปลี่ยนแปลงในหน้านี้จะไม่ถูกบันทึก",
+      confirmLabel: "ทิ้งการเปลี่ยนแปลง",
+      tone: "danger",
+      action: leave,
+    });
   };
 
   const dealType = quote?.deal ? dealTypeOf(quote.deal) : null;
@@ -372,34 +404,111 @@ export default function QuotationEditorPage() {
     revised: { label: "มีฉบับแก้ไขใหม่", color: "var(--amber)" },
     closed: { label: "ปิด (ดีลจบด้วยใบอื่น)", color: "var(--text-3)" },
   }[quote?.status] || { label: quote?.status || "-", color: "var(--text-3)" };
+  const approvalWorkflowIndex = ["approved", "not_required"].includes(quote?.approvalStatus)
+    ? 3
+    : awaitingApproval
+      ? 1
+      : 0;
+  const approvalWorkflowSteps = quote?.approvalStatus === "not_required"
+    ? [{ id: "legacy", label: "เอกสารเดิม", hint: "ไม่อยู่ใน workflow อนุมัติแบบใหม่", state: "done" }]
+    : workflowStepsFromIndex([
+        { id: "prepare", label: "จัดทำเอกสาร", hint: quote?.createdByName || people.preparedBy || "ผู้จัดทำ" },
+        { id: "submit", label: "ยื่นอนุมัติ", hint: quote?.approvalRequestedByName || "รอผู้จัดทำ" },
+        { id: "approve", label: "เจ้าของดีลอนุมัติ", hint: quote?.approvedByName || "รออนุมัติ" },
+      ], approvalWorkflowIndex);
+  const controlDescription = needsSubmit
+    ? "บันทึกข้อมูลให้เรียบร้อย แล้วจึงยื่นอนุมัติ"
+    : awaitingApproval
+      ? "รอเจ้าของดีลตรวจและอนุมัติเอกสาร"
+      : quote?.approvalStatus === "approved"
+        ? "ผ่านการอนุมัติและพร้อมดำเนินการขั้นถัดไป"
+        : "เอกสารนี้ไม่ต้องผ่านการอนุมัติแบบใหม่";
+  const primaryAction = editable
+    ? {
+        id: "save",
+        kind: "save",
+        label: ["save", "revise"].includes(busy) ? "กำลังบันทึก…" : "บันทึก",
+        disabled: !dirty,
+        disabledReason: !dirty ? "ยังไม่มีข้อมูลที่เปลี่ยนแปลง" : undefined,
+        onClick: () => setSaveChoiceOpen(true),
+      }
+    : needsSubmit && canEditDocument
+      ? {
+          id: "submit",
+          kind: "submit",
+          label: "ยื่นอนุมัติ",
+          disabled: dirty,
+          disabledReason: dirty ? "บันทึกการแก้ไขก่อนยื่นอนุมัติ" : undefined,
+          onClick: submitForApproval,
+        }
+      : awaitingApproval && quote?.canApprove && ["draft", "sent", "rejected"].includes(quote?.status)
+        ? {
+            id: "approve",
+            kind: "approve",
+            label: "อนุมัติ",
+            disabled: dirty,
+            disabledReason: dirty ? "บันทึกการแก้ไขก่อนอนุมัติ" : undefined,
+            onClick: approve,
+          }
+        : null;
+  const secondaryActions = [
+    { id: "leave-edit", kind: "cancel", label: "ยกเลิกแก้ไข", variant: "ghost", visible: editable, onClick: leaveEditMode },
+    {
+      id: "send-customer",
+      kind: "submit",
+      label: "ส่งให้ลูกค้า",
+      variant: "outline",
+      visible: editable && quote?.status === "draft" && !needsApproval,
+      onClick: async () => { await save({ status: "sent" }); },
+    },
+    {
+      id: "won",
+      kind: "approve",
+      label: "Won",
+      variant: "outline",
+      visible: ["sent", "draft"].includes(quote?.status) && canEditCap && !needsApproval,
+      disabled: dirty,
+      disabledReason: dirty ? "บันทึกการแก้ไขก่อนปิด Won" : undefined,
+      title: "ปิด Won ผ่านใบเสนอราคานี้",
+      onClick: doAccept,
+    },
+    { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", visible: !editMode, onClick: doPrint },
+    {
+      id: "download",
+      kind: "download",
+      label: "ดาวน์โหลด PDF",
+      variant: "ghost",
+      visible: quote?.approvalStatus === "approved",
+      href: quote ? `/api/sales-planning/quotations/${quote.id}/issued/pdf?render=latest` : undefined,
+      external: true,
+    },
+  ];
+  const dangerActions = [
+    {
+      id: "unaccept",
+      kind: "reject",
+      label: "ย้อนการรับ",
+      visible: canUnaccept && !editMode,
+      title: "ย้อนการรับใบเสนอราคา (หัวหน้าทีม/แอดมิน)",
+      onClick: () => setUnacceptForm({ reason: "" }),
+    },
+  ];
 
   return (
     <Workspace
       back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
       backActions={quote && (
         <div className={styles.headerActions}>
-          {editable && <SaveStatus status={error ? "error" : ["save", "revise"].includes(busy) ? "saving" : dirty ? "dirty" : "saved"} />}
           {canEditDocument && !editMode && (
             <Link href={`/sa/quotations/${id}?edit=1`} className="btn-icon" aria-label="แก้ไขใบเสนอราคา" title="แก้ไข">
               <Pencil size={16} aria-hidden="true" />
             </Link>
-          )}
-          {/* action ระดับ entity อยู่ขวาบนนอกการ์ด ตามกติกา Page Header */}
-          {canUnaccept && !editMode && (
-            <button type="button" className="btn ghost" onClick={() => setUnacceptForm({ reason: "" })} disabled={!!busy} title="ย้อนการรับใบเสนอราคา (หัวหน้าทีม/แอดมิน)">
-              <Undo2 size={14} aria-hidden="true" /> ย้อนการรับ
-            </button>
           )}
           {canDeleteDocument && !editMode && (
             <button type="button" className="btn-icon danger" onClick={doDelete} disabled={!!busy} aria-label="ลบใบเสนอราคา" title="ลบ">
               <Trash2 size={16} aria-hidden="true" />
             </button>
           )}
-          {/* พิมพ์/ออกเอกสาร = งาน workflow ระดับหน้า → ปุ่ม text แถวเดียวกับย้อนกลับ (ux-ui-rulebook)
-              ตำแหน่ง+ชื่อ+โทน ตรงกับใบสั่งขาย เพื่อให้หาปุ่มเจอที่เดิมทุกเอกสาร */}
-          {!editMode && <button type="button" className="btn ghost" onClick={doPrint} disabled={!!busy}><Printer size={15} aria-hidden="true" /> ออกเอกสาร</button>}
-          {editable && <button type="button" className="btn ghost" onClick={leaveEditMode} disabled={!!busy}>ยกเลิกแก้ไข</button>}
-          {editable && <button type="button" className="btn btn-primary" onClick={() => setSaveChoiceOpen(true)} disabled={!!busy || !dirty}><Save size={14} aria-hidden="true" /> {["save", "revise"].includes(busy) ? "กำลังบันทึก…" : "บันทึก"}</button>}
         </div>
       )}
       hideHeader
@@ -414,33 +523,20 @@ export default function QuotationEditorPage() {
       {quote && (
         <div className={styles.detailLayout}>
           <div className={styles.documentColumn}>
-          {/* สถานะ + อนุมัติ */}
-          <section className={`${styles.card} ${styles.overviewCard}`}>
-            <div className={styles.overviewHeading}>
-              <div>
-                <div className={styles.overviewEyebrowRow}>
-                  <span className={styles.eyebrow}>FM-SA-01 · QUOTATION</span>
-                  <span className={styles.cardQuoteNumber}>เลขที่ใบเสนอราคา <strong>{quote.quoteNumber}</strong></span>
-                </div>
-                <h2>{quote.customerName || "ไม่ระบุลูกค้า"}</h2>
-                <p>
-                  <span>โครงการ: {quote.deal?.project?.name || quote.deal?.project?.code || "ไม่ระบุ"}</span>
-                  <span>ดีล: {quote.deal?.title || "ไม่ระบุ"}</span>
-                  <span>ประเภทดีล: {dealType} · {DEAL_TYPE_LABELS[dealType]}</span>
-                  {quote.revisionNo > 0 && <span>Revision {quote.revisionNo}</span>}
-                </p>
-              </div>
-              <div className={styles.badgeRow}>
-                <span className={styles.stateBadge} style={{ "--state-color": statusMeta.color }}>{statusMeta.label}</span>
-              </div>
-            </div>
-            <div className={styles.quickFacts}>
-              <div><CalendarDays size={16} /><span><small>วันที่ออกใบ</small>{form.quoteDate ? fmtDate(form.quoteDate) : "-"}</span></div>
-              <div><CalendarDays size={16} /><span><small>ยืนราคาถึง</small>{form.validUntil ? fmtDate(form.validUntil) : "ไม่ระบุ"}</span></div>
-              <div><CircleDollarSign size={16} /><span><small>ภาษี</small>{form.vatRate > 0 ? `+ VAT ${form.vatRate}%` : "รวม VAT แล้ว"}</span></div>
-              <div><ClipboardList size={16} /><span><small>รายการ</small>{lines.length} รายการ</span></div>
-            </div>
-          </section>
+          <SalesDetailOverview
+            eyebrow="FM-SA-01 · QUOTATION"
+            title={quote.quoteNumber}
+            description={`${quote.customerName || "ไม่ระบุลูกค้า"} · โครงการ ${quote.deal?.project?.name || quote.deal?.project?.code || "ไม่ระบุ"} · ดีล ${quote.deal?.title || "ไม่ระบุ"}`}
+            badges={<><SalesStateBadge label={statusMeta.label} color={statusMeta.color} />{quote.revisionNo > 0 ? <span className="ui-badge">Revision {quote.revisionNo}</span> : null}</>}
+            facts={[
+              { icon: CalendarDays, label: "วันที่ออกใบ", value: form.quoteDate ? fmtDate(form.quoteDate) : "-" },
+              { icon: CalendarDays, label: "ยืนราคาถึง", value: form.validUntil ? fmtDate(form.validUntil) : "ไม่ระบุ" },
+              { icon: CircleDollarSign, label: "ภาษี", value: form.vatRate > 0 ? `+ VAT ${form.vatRate}%` : "รวม VAT แล้ว" },
+              { icon: ClipboardList, label: "รายการ", value: `${lines.length} รายการ` },
+            ]}
+          >
+            <span>ประเภทดีล: {dealType} · {DEAL_TYPE_LABELS[dealType]}</span>
+          </SalesDetailOverview>
 
           {/* ข้อมูลลูกค้าที่แช่แข็งบนใบ (Q3) — อ่านอย่างเดียว แก้ที่ฐานข้อมูลลูกค้า */}
           {(quote.billingAddress || quote.contactName || quote.shippingAddress) && (
@@ -532,75 +628,65 @@ export default function QuotationEditorPage() {
 
           </div>
 
-          <aside className={styles.sidebar} aria-label="สรุปและคำสั่งใบเสนอราคา">
-            <section className={`${styles.card} ${styles.summaryCard}`}>
-              <div className={styles.summaryLabel}>ยอดสุทธิใบเสนอราคา</div>
-              <div className={styles.totalAmount}>{money(totals.totalAmount)}</div>
-              <div className={styles.totalRows}>
-                <div><span>รวมรายการ</span><strong>{money(totals.subtotal)}</strong></div>
-                <div><span>ส่วนลด</span><strong>{totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-"}</strong></div>
-                {form.vatRate > 0 && <div><span>VAT {form.vatRate}%</span><strong>{money(totals.vatAmount)}</strong></div>}
-              </div>
+          <ContextualRightRail className={styles.sidebar} label="สรุปและจัดการใบเสนอราคา">
+            <DocumentSummaryCard
+              title="ยอดสุทธิใบเสนอราคา"
+              total={money(totals.totalAmount)}
+              status={statusMeta.label}
+              statusColor={statusMeta.color}
+              rows={[
+                { id: "subtotal", label: "รวมรายการ", value: money(totals.subtotal) },
+                { id: "discount", label: "ส่วนลด", value: totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-" },
+                ...(form.vatRate > 0 ? [{ id: "vat", label: `VAT ${form.vatRate}%`, value: money(totals.vatAmount) }] : []),
+              ]}
+            />
 
-              <div className={styles.workflowStatus}>
-                <span className={styles.statusDot} style={{ "--state-color": statusMeta.color }} />
-                <div><small>สถานะเอกสาร</small><strong>{statusMeta.label}</strong></div>
-              </div>
-              {/* สถานะการอนุมัติ 2 ขั้น (mig 0155): ยังไม่ยื่น → รออนุมัติ → อนุมัติแล้ว */}
-              {needsSubmit && (
-                <div className="glass-panel" style={{ padding: "10px 12px", margin: "0 0 10px", borderColor: "var(--text-3)", color: "var(--text-2)", fontSize: 13 }}>
-                  ร่าง — กด &ldquo;ยื่นอนุมัติ&rdquo; เพื่อลงนามผู้เสนอราคาและส่งให้เจ้าของดีลอนุมัติ
-                </div>
-              )}
-              {awaitingApproval && (
-                <div className="glass-panel" style={{ padding: "10px 12px", margin: "0 0 10px", borderColor: "var(--amber)", color: "var(--amber)", fontSize: 13 }}>
-                  รออนุมัติจากเจ้าของดีล — ยังส่งลูกค้า/ปิด Won ไม่ได้จนกว่าจะอนุมัติ
-                  {quote.approvalRequestedByName ? ` (ยื่นโดย ${quote.approvalRequestedByName})` : ""}
-                </div>
-              )}
-              {quote.approvalStatus === "approved" && quote.approvedByName && (
-                <div style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--green)" }}>
-                  อนุมัติแล้วโดย {quote.approvedByName}
-                </div>
-              )}
-              {(quote.proposerSignatureEvidenceId || quote.signatureEvidenceId) && (
-                <div style={{ margin: "0 0 10px", display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {quote.proposerSignatureEvidenceId && (
-                    <span className="ui-badge" style={{ color: "var(--teal)" }}>ลงนามผู้เสนอราคาแล้ว</span>
-                  )}
-                  {quote.signatureEvidenceId && (
-                    <span className="ui-badge" style={{ color: "var(--green)" }}>บันทึกหลักฐานลายเซ็นแล้ว</span>
-                  )}
-                </div>
-              )}
-              {/* รู้ตั้งแต่เปิดหน้าว่าเซ็นไม่ได้ ดีกว่าไปเจอ 409 ตอนกดยื่น/อนุมัติ — ตั้งแต่
-                  mig 0155 การยื่นก็ต้องมีลายเซ็น จึงเตือนผู้ยื่น (คนที่แก้ใบได้) ด้วย */}
-              <SignatureReadyNotice
-                active={["draft", "sent", "rejected"].includes(quote.status)
-                  && ((needsSubmit && canEditDocument) || (awaitingApproval && !!quote.canApprove))}
-                docLabel="ใบเสนอราคานี้"
-              />
-              <div className={styles.workflowActions}>
-                {needsSubmit && canEditDocument && (
-                  <button type="button" className="btn btn-primary" onClick={submitForApproval} disabled={!!busy || dirty} title={dirty ? "บันทึกก่อนยื่นอนุมัติ" : "ยื่นให้เจ้าของดีลอนุมัติ (ถือเป็นการลงนามผู้เสนอราคา)"}><Send size={15} aria-hidden="true" /> ยื่นอนุมัติ</button>
-                )}
-                {awaitingApproval && quote.canApprove && ["draft", "sent", "rejected"].includes(quote.status) && (
-                  <button type="button" className="btn btn-primary" onClick={approve} disabled={!!busy || dirty} title={dirty ? "บันทึกก่อนอนุมัติ" : "อนุมัติใบเสนอราคานี้ (เจ้าของดีล)"}><CheckCircle2 size={15} aria-hidden="true" /> อนุมัติ</button>
-                )}
-                {editable && quote.status === "draft" && !needsApproval && <button type="button" className="btn btn-primary" onClick={async () => { if (await save({ status: "sent" })) {} }} disabled={!!busy}><Send size={15} aria-hidden="true" /> ส่งให้ลูกค้า</button>}
-                {/* Won = ทางลัดปิดดีล ไม่ใช่ขั้นถัดไปตามธรรมชาติ → outlined; primary สงวนให้
-                    "อนุมัติ"/"ส่งให้ลูกค้า" ซึ่งเป็นขั้นถัดไปจริง (filled ตัวเดียวต่อบริบท) */}
-                {["sent", "draft"].includes(quote.status) && canEditCap && !needsApproval && <button type="button" className="btn action-outline btn-primary" onClick={doAccept} disabled={!!busy} title="ปิด Won ผ่านใบเสนอราคานี้"><CheckCircle2 size={15} aria-hidden="true" /> Won</button>}
-                {/* PDF ถาวรจากฉบับที่ตรึงตอนอนุมัติ (Phase 7C) — โชว์เฉพาะใบที่อนุมัติแล้ว */}
-                {quote.approvalStatus === "approved" && (
-                  <a className="btn ghost" href={`/api/sales-planning/quotations/${quote.id}/issued/pdf?render=latest`} target="_blank" rel="noopener noreferrer"><FileText size={15} aria-hidden="true" /> ดาวน์โหลด PDF</a>
-                )}
-              </div>
+            <DocumentControlCard
+              status={statusMeta.label}
+              statusColor={statusMeta.color}
+              statusDescription={controlDescription}
+              workflowSteps={approvalWorkflowSteps}
+              primaryAction={primaryAction}
+              secondaryActions={secondaryActions}
+              dangerActions={dangerActions}
+              busy={!!busy}
+              notices={<>
+                {editable ? <SaveStatus status={error ? "error" : ["save", "revise"].includes(busy) ? "saving" : dirty ? "dirty" : "saved"} /> : null}
+                {needsSubmit ? <span className="ui-badge" style={{ color: "var(--text-2)" }}>รอผู้จัดทำยื่นอนุมัติ</span> : null}
+                {awaitingApproval ? <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>รอเจ้าของดีลอนุมัติ{quote.approvalRequestedByName ? ` · ยื่นโดย ${quote.approvalRequestedByName}` : ""}</span> : null}
+                {quote.approvalStatus === "approved" && quote.approvedByName ? <span className="ui-badge" style={{ color: "var(--green)", background: "var(--green-soft)" }}>อนุมัติโดย {quote.approvedByName}</span> : null}
+              </>}
+              evidence={<>
+                {(quote.proposerSignatureEvidenceId || quote.signatureEvidenceId) ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {quote.proposerSignatureEvidenceId ? <span className="ui-badge" style={{ color: "var(--teal)" }}>ลงนามผู้เสนอราคาแล้ว</span> : null}
+                    {quote.signatureEvidenceId ? <span className="ui-badge" style={{ color: "var(--green)" }}>บันทึกหลักฐานลายเซ็นแล้ว</span> : null}
+                  </div>
+                ) : null}
+                <SignatureReadyNotice
+                  active={["draft", "sent", "rejected"].includes(quote.status)
+                    && ((needsSubmit && canEditDocument) || (awaitingApproval && !!quote.canApprove))}
+                  docLabel="ใบเสนอราคานี้"
+                />
+              </>}
+              footer={quote.status === "closed"
+                ? "ใบนี้ถูกปิดเพราะดีลจบด้วยใบเสนอราคาฉบับอื่น — แก้ไข/ลบไม่ได้"
+                : !editable
+                  ? "ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่"
+                  : null}
+            />
 
-              {quote.deal && <Link href={`/sa/deals/${quote.deal.id}`} className={styles.relatedLink}>เปิดดีลที่เกี่ยวข้อง <span>→</span></Link>}
-              {!editable && quote.status !== "closed" && <p className={styles.lockedNote}>ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่</p>}
-              {quote.status === "closed" && <p className={styles.lockedNote}>ใบนี้ถูกปิดเพราะดีลจบด้วยใบเสนอราคาฉบับอื่น — แก้ไข/ลบไม่ได้</p>}
-            </section>
+            {quote.deal ? (
+              <RelatedDocumentCard
+                icon={Building2}
+                eyebrow="RELATED DEAL"
+                title={quote.deal.title || "ดีลที่เกี่ยวข้อง"}
+                meta="เอกสารต้นทางของใบเสนอราคา"
+                actions={<Link href={`/sa/deals/${quote.deal.id}`} className="btn ghost sm">เปิดดีล <ExternalLink size={13} /></Link>}
+              >
+                โครงการ {quote.deal.project?.name || quote.deal.project?.code || "ไม่ระบุ"}
+              </RelatedDocumentCard>
+            ) : null}
 
             {/* หลักฐานการปิด Won (mig 0102) — โชว์บนใบที่ accept แล้ว */}
             {quote.status === "accepted" && Array.isArray(quote.wonAttachments) && quote.wonAttachments.length > 0 && (
@@ -627,26 +713,31 @@ export default function QuotationEditorPage() {
             )}
 
             {quote.salesOrder && (
-              <section className={styles.card}>
-                <div className={styles.sectionHeading}>
-                  <ClipboardList size={17} aria-hidden="true" />
-                  <h2>Sale Order</h2>
-                </div>
+              <RelatedDocumentCard
+                icon={ClipboardList}
+                eyebrow="DOWNSTREAM DOCUMENT"
+                title="Sale Order"
+                meta="เอกสารปลายทางจากใบเสนอราคานี้"
+                actions={<Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด SO</Link>}
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="linklike mono" style={{ fontWeight: 700 }}>{quote.salesOrder.orderNumber}</Link>
                   <span className="ui-badge" style={{ color: quote.salesOrder.status === "approved" ? "var(--green)" : quote.salesOrder.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[quote.salesOrder.status] || quote.salesOrder.status}</span>
                   <span style={{ color: "var(--text-2)" }}>Actual ก่อน VAT {fmtMoney(quote.salesOrder.status === "approved" ? quote.salesOrder.actualAmount : 0)}</span>
-                  <Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด SO</Link>
                 </div>
-              </section>
+              </RelatedDocumentCard>
             )}
 
             {quote.status === "accepted" && !quote.salesOrder && canEditCap && (
-              <section className={styles.card}>
-                <div className={styles.sectionHeading}><ClipboardList size={17} aria-hidden="true" /><h2>Sale Order</h2></div>
+              <RelatedDocumentCard
+                icon={ClipboardList}
+                eyebrow="DOWNSTREAM DOCUMENT"
+                title="Sale Order"
+                meta="ยังไม่ได้สร้างเอกสารปลายทาง"
+                actions={<button type="button" className="btn btn-primary" onClick={createSalesOrder} disabled={!!busy}><Plus size={14} /> {busy === "sales-order" ? "กำลังสร้าง…" : "สร้างร่าง Sale Order"}</button>}
+              >
                 <p style={{ color: "var(--text-2)", marginTop: 0 }}>สร้างร่าง SO จาก QT ใบนี้เพื่อตรวจสอบข้อมูลและยื่นให้ AE Supervisor อนุมัติ</p>
-                <button type="button" className="btn btn-primary" onClick={createSalesOrder} disabled={!!busy}><Plus size={14} /> {busy === "sales-order" ? "กำลังสร้าง…" : "สร้างร่าง Sale Order"}</button>
-              </section>
+              </RelatedDocumentCard>
             )}
             {quote.revisionHistory?.length > 1 && (
               <section className={styles.card}>
@@ -676,7 +767,7 @@ export default function QuotationEditorPage() {
                 </div>
               </section>
             )}
-          </aside>
+          </ContextualRightRail>
         </div>
       )}
 

@@ -1,8 +1,23 @@
 # เฟสสุดท้าย: rewrite หน้าใบเสนอราคา + ใบสั่งขาย ให้เป็น design system เดียว
 
-> สถานะ: **ยังไม่เริ่ม** — เอกสารส่งมอบงาน (สำรวจโค้ดจริงบน main แล้ว ณ 2026-07-26, commit `323dc470`)
+> สถานะ: **implementation รอบแรกเสร็จและผ่านการตรวจ** — Contextual Right Rail +
+> Document Control ใช้กับ QT/SO detail และ QT create แล้ว (2026-07-26)
 > มติผู้ใช้ 2026-07-25: *"rewrite QT กับ SO ต้องไปควบคู่กัน เพราะเป็นส่วนที่เกี่ยวเนื่องกัน
 > และมันควรเป็น design system เดียว"*
+
+### Implementation checkpoint — 2026-07-26
+
+- ✅ เพิ่ม `ContextualRightRail`, `DocumentSummaryCard`, `DocumentControlCard`,
+  `RelatedDocumentCard` และ `WorkflowRail` กลาง
+- ✅ QT/SO ใช้ action model และตำแหน่งปุ่มชุดเดียวกัน โดย business rule/API ยังอยู่ที่แต่ละหน้า
+- ✅ ย้าย browser confirm/prompt ของ QT/SO เป็น `ConfirmDialog`/`Modal`
+- ✅ QT ใช้ `SalesDetailOverview` กลางและลบ CSS overview/sidebar ที่ซ้ำ
+- ✅ QT create ใช้ `DetailPageLayout` + overview/summary/control card กลาง พร้อม
+  `DocumentReadinessList`; ปุ่มบันทึก/ยกเลิกอยู่ในกลุ่มจัดการเอกสาร
+- ✅ unit tests 733 รายการ, targeted lint และ production build ผ่าน
+- ✅ ตรวจ QT/SO shared components ด้วยข้อมูล QA ชั่วคราว และตรวจหน้า QT create จริงทั้ง
+  desktop/mobile + light/dark; ไม่มี horizontal overflow หรือ console error
+- ⏳ acceptance matrix ทุก role/status กับข้อมูลจริงยังต้องตรวจใน staging ที่มี Supabase env
 
 ## ที่มา
 
@@ -60,10 +75,104 @@ sa/projects, deals, leads, sales-orders) — **QT เป็นหน้ารา
 - loading state โชว์ `premium-header` ตอนโหลด แต่ `hideHeader` ตอนโหลดเสร็จ
   (หน้ากระพริบเปลี่ยนโครง)
 
+## มติ UX เพิ่มเติม: Contextual Right Rail
+
+ใช้รูปแบบ **Contextual Right Rail** เป็นโครงกลางของหน้า create/edit/detail ที่มีการตัดสินใจ
+เกี่ยวกับเอกสาร โดย desktop แสดงเป็นคอลัมน์ขวาแบบ sticky และหน้าจอแคบเปลี่ยนเป็นการ์ดเต็มความกว้าง
+ใน document flow ปกติ ไม่ใช่ navigation sidebar, drawer หรือ FAB
+
+Right rail เป็นพื้นที่ประกอบ component ตามบริบท ไม่ใช่การ์ดใหญ่ใบเดียว:
+
+```text
+ContextualRightRail
+├── DocumentSummaryCard       ยอดรวม/ข้อมูลสำคัญ
+├── DocumentControlCard       สถานะ ความพร้อม และ action ของเอกสารปัจจุบัน
+└── RelatedDocumentCard       เอกสารต้นทาง/ปลายทางที่เกี่ยวข้อง
+```
+
+หน้าไม่จำเป็นต้องแสดงครบทุก card แต่ตำแหน่งและลำดับต้องเหมือนกันทั้ง QT และ SO เมื่อมีความหมายเดียวกัน
+
+### ขอบเขตความรับผิดชอบ
+
+- `ContextualRightRail` รับผิดชอบเฉพาะ layout, sticky behavior, spacing และ responsive order
+- `DocumentSummaryCard` แสดงยอดรวม/quick facts ด้วยตัวเลขแบบ tabular; ไม่มี workflow logic
+- `DocumentControlCard` แสดงสถานะ คำอธิบาย `WorkflowRail`, readiness/evidence และกลุ่มปุ่ม
+- `RelatedDocumentCard` แสดงความสัมพันธ์และการสร้าง/เปิดเอกสารถัดไป
+- QT/SO page หรือ pure adapter ของแต่ละเอกสารเป็นผู้คำนวณ permission, visibility, disabled state,
+  disabled reason และ callback/API; component กลาง **ห้าม** branch ด้วย `documentType`
+- modal ยืนยัน, modal ใส่เหตุผล, dry-run preview และ async state ยังเป็นของหน้า/feature hook
+  แล้วส่ง callback และ busy state เข้ามา
+- ใช้ `ActionButtons.js`, `Toast`, `Skeleton`, `EmptyState` และ token/class ใน `globals.css`
+  ก่อนสร้างของใหม่
+
+ตัวอย่าง contract ที่ต้องการ:
+
+```jsx
+<DocumentControlCard
+  status={status}
+  statusDescription={statusDescription}
+  workflowSteps={workflowSteps}
+  checklist={checklist}
+  notices={notices}
+  primaryAction={primaryAction}
+  secondaryActions={secondaryActions}
+  dangerActions={dangerActions}
+  busy={busy}
+/>
+```
+
+action descriptor ขั้นต่ำประกอบด้วย `id`, `label`, `kind`, `visible`, `disabled`,
+`disabledReason`, `busy` และ `onClick` โดยมี filled primary ได้สูงสุดหนึ่ง action ต่อบริบท
+
+### ตำแหน่งปุ่มมาตรฐาน
+
+| ตำแหน่ง | หน้าที่ |
+|---|---|
+| Page header | ย้อนกลับ + entity utility เช่น แก้ไข, ลบ/บังคับลบ |
+| `DocumentControlCard` | บันทึก, ยื่น, อนุมัติ, ตีกลับ, เปลี่ยนสถานะ, ยกเลิก/คืนสถานะ, override, ออกเอกสาร/PDF |
+| `RelatedDocumentCard` | สร้าง/เปิด SO จาก QT และสร้าง/เปิดรายการยื่นชำระจาก SO |
+
+ห้ามแสดง action เดียวกันซ้ำทั้ง header และ right rail และห้ามนำการสร้างเอกสารปลายทางมาปนกับ
+lifecycle ของเอกสารปัจจุบัน
+
+### Action ตามบริบทของ QT และ SO
+
+| บริบท | QT | SO |
+|---|---|---|
+| Create/Edit | บันทึก, ยกเลิกการแก้ไข | บันทึกร่าง, บันทึกและยื่น, ยกเลิก |
+| Ready to submit | ยื่นอนุมัติ | ยื่นอนุมัติ |
+| Pending review | อนุมัติ, ตีกลับ | อนุมัติและนับ Actual, ตีกลับ, Admin Override ตามสิทธิ์ |
+| Approved/active | ส่งให้ลูกค้า, Won, ย้อนการรับตามเงื่อนไข | ยกเลิก SO/คืนเป็นร่างตามเงื่อนไข |
+| Document output | ออกเอกสาร/ดาวน์โหลด PDF | ออกเอกสาร/ดาวน์โหลด PDF |
+| Related process | สร้าง/เปิด SO ใน `RelatedDocumentCard` | สร้าง/เปิดการยื่นชำระใน `RelatedDocumentCard` |
+
+ตารางนี้ระบุตำแหน่งและลำดับชั้นของปุ่มเท่านั้น เงื่อนไขจริงต้อง reuse predicate/permission
+เดิมของแต่ละหน้า ห้ามเขียน business rule ชุดใหม่จากตารางนี้
+
+### State และ responsive behavior
+
+- action ที่ผู้ใช้ไม่มีสิทธิ์ให้ซ่อน; action ที่ยังทำไม่ได้เพราะข้อมูลไม่พร้อมให้ disabled พร้อมเหตุผล
+- async action ล็อก action group ป้องกันกดซ้ำ และแจ้งผลผ่าน `Toast`
+- ไม่มี auto-save; ทุกโหมดแก้ไขต้องมีปุ่มบันทึกและขั้นยืนยันตามกติกาของระบบ
+- desktop ใช้ sticky right rail; หน้าจอแคบเปลี่ยนเป็น full-width card โดยไม่ render ปุ่มซ้ำ
+- mobile touch target อย่างน้อย 40px และ primary action เต็มความกว้างเมื่อพื้นที่ไม่พอ
+- ใช้ surface/token เดิม รองรับ light/dark และไม่ hard-code สี เงา radius หรือ breakpoint ใหม่
+
+### การขยายไปทั้งระบบ
+
+เฟสนี้สร้าง primitive ให้ reuse ได้ทั้งระบบ แต่ migration ในเฟสเดียวกันจำกัดที่ QT และ SO ก่อน
+เมื่อผ่าน visual/behavior QA แล้วจึงทยอยใช้ `ContextualRightRail` กับหน้าเอกสารอื่น เช่น
+ใบเสนอราคาผลิต และใช้แนวคิดเดียวกันกับ Deal/Project ผ่าน control card เฉพาะ domain
+โดยไม่ยัด business logic ทุกโมดูลเข้า `DocumentControlCard`
+
 ## ของร่วมที่ควรยกเป็น component เดียว
 
 | ของ | ตอนนี้อยู่ที่ | หมายเหตุ |
 |---|---|---|
+| `ContextualRightRail` | QT create มีแนวคิดนี้แล้ว · detail ยังไม่เป็นมาตรฐาน | เป็น layout primitive ที่ประกอบ summary/control/related cards |
+| `DocumentControlCard` | ปุ่มกระจายอยู่ใน header/card/inline ทั้ง QT และ SO | เป็น renderer กลาง; business rule ยังอยู่ที่ feature |
+| `DocumentSummaryCard` | QT create มี summary card · detail ใช้คนละรูปแบบ | รองรับยอดรวม/quick facts โดยไม่ผูกชนิดเอกสาร |
+| `RelatedDocumentCard` | QT→SO และ SO→Filing อยู่คนละตำแหน่ง | แยก downstream process ออกจาก current-document workflow |
 | `WorkflowRail` | SO เขียนเอง · QT ไม่มี | ทั้งสองใบมี flow 3 ขั้นเหมือนกันแล้ว |
 | ตารางรายการ read-only | SO เขียนเอง · QT ใช้ `QuotationLineItems` (แก้ได้) | เพิ่ม prop โหมด |
 | โมดัลยืนยัน + ช่องเหตุผล | QT `unaccept` ≈ SO `override`/`reject` | เขียนซ้ำเกือบบรรทัดต่อบรรทัด |
@@ -72,14 +181,18 @@ sa/projects, deals, leads, sales-orders) — **QT เป็นหน้ารา
 
 ## ลำดับที่แนะนำ
 
-1. ยก `WorkflowRail` + ตาราง read-only + โมดัลยืนยัน + alert utility ออกมาก่อน
+1. ยก `ContextualRightRail` + `DocumentSummaryCard` + `DocumentControlCard` +
+   `RelatedDocumentCard` + `WorkflowRail` + ตาราง read-only + โมดัลยืนยัน + alert utility ออกมาก่อน
    (ยังไม่แตะหน้า — commit นี้ทดสอบได้ด้วย unit test)
-2. เปลี่ยน SO มาใช้ของกลางที่ยกออกมา (พฤติกรรมต้องไม่เปลี่ยน)
-3. เปลี่ยน QT: ใช้ `SalesDetailOverview` + ของกลางชุดเดียวกัน แล้ว **ลบ CSS ที่ก๊อปมา
+2. สร้าง pure adapter/action model ของ QT และ SO จาก predicate/permission เดิม
+   โดยยังไม่ย้าย API หรือ business rule เข้า component กลาง
+3. เปลี่ยน SO มาใช้ของกลางที่ยกออกมา (พฤติกรรมต้องไม่เปลี่ยน)
+4. เปลี่ยน QT: ใช้ `SalesDetailOverview` + ของกลางชุดเดียวกัน แล้ว **ลบ CSS ที่ก๊อปมา
    ~250 บรรทัด**
-4. เทียบสองหน้าเคียงกัน desktop + mobile และ light + dark → ปุ่มความหมายเดียวกันต้องอยู่
+5. เทียบสองหน้าเคียงกัน desktop + mobile และ light + dark → ปุ่มความหมายเดียวกันต้องอยู่
    ตำแหน่งเดียวกัน ชื่อเดียวกัน สไตล์เดียวกัน
-5. ตรวจตาม Review checklist ท้าย `ux-ui-rulebook.md`
+6. ทดสอบทุก role/status รวม disabled reason, modal, dry-run, loading และ error/success feedback
+7. ตรวจตาม Review checklist ท้าย `ux-ui-rulebook.md`
 
 ## ห้ามทำให้พังโดยไม่รู้ตัว
 

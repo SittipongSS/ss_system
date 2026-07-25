@@ -4,15 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  BadgeCheck, Building2, CalendarDays, CheckCircle2, CircleDollarSign,
-  ClipboardList, ExternalLink, FileCheck2, FileText, FolderKanban,
-  Printer, RotateCcw, Save, Send, ShieldAlert, Trash2, Undo2, UserRound, XCircle,
+  BadgeCheck, Building2, CalendarDays, CircleDollarSign, ClipboardList,
+  ExternalLink, FileCheck2, FileText, FolderKanban, ShieldAlert, Trash2,
+  Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview, { SalesStateBadge } from "@/components/salesPlanning/SalesDetailOverview";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -22,6 +24,7 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openSalesOrderPrintWindowPreferIssued, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
 import { getCompanyProfileForPrint } from "@/lib/companyProfile";
+import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import styles from "./page.module.css";
 
 const STATUS = {
@@ -56,6 +59,9 @@ export default function SalesOrderDetailPage() {
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState("idle");
   const [overrideForm, setOverrideForm] = useState(null);
+  const [rejectForm, setRejectForm] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   useUnsavedChanges(dirty);
 
   const load = useCallback(async () => {
@@ -110,21 +116,46 @@ export default function SalesOrderDetailPage() {
   async function save(submitAfter = false) {
     const saved = await requestAction("save", form);
     if (!saved || !submitAfter) return;
-    if (window.confirm("ยืนยันยื่น SO ให้ AE Supervisor ตรวจอนุมัติ? หลังยื่นแล้วจะแก้ไขไม่ได้จนกว่าจะถูกตีกลับ")) {
-      await requestAction("submit");
-    }
+    setConfirmState({
+      title: "ยื่นอนุมัติ Sale Order",
+      description: `ยืนยันยื่น ${order.orderNumber} ให้ AE Supervisor ตรวจอนุมัติหรือไม่`,
+      detail: "หลังยื่นแล้วเอกสารจะถูกล็อกจนกว่าจะอนุมัติหรือถูกตีกลับ",
+      confirmLabel: "ยื่นอนุมัติ",
+      action: () => requestAction("submit"),
+    });
   }
 
   async function review(action) {
     if (action === "approve") {
-      // ยืนยันครั้งเดียวจบ (มติ 2026-07-25) — เดิมเด้ง 2 ชั้น (ยืนยัน + ถามหมายเหตุ);
-      // API ยังรับ note ได้ถ้าอนาคตต้องการ แต่ไม่ถามผู้ใช้แล้ว
-      if (!window.confirm(`ยืนยันอนุมัติใบสั่งขาย ${order.orderNumber}? ยอด Actual จะถูกนับเข้าระบบทันที`)) return;
-      await requestAction("approve");
+      setConfirmState({
+        title: "อนุมัติ Sale Order",
+        description: `ยืนยันอนุมัติใบสั่งขาย ${order.orderNumber} หรือไม่`,
+        detail: `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนับเข้าระบบทันที`,
+        confirmLabel: "อนุมัติและนับ Actual",
+        action: () => requestAction("approve"),
+      });
       return;
     }
-    const reason = window.prompt("เหตุผลที่ตีกลับให้ผู้จัดทำแก้ไข")?.trim() || "";
-    if (reason) await requestAction("reject", { reason });
+    setRejectForm({ reason: "" });
+  }
+
+  async function submitReject() {
+    const reason = rejectForm?.reason.trim();
+    if (!reason) return;
+    const ok = await requestAction("reject", { reason });
+    if (ok) setRejectForm(null);
+  }
+
+  async function runConfirmed() {
+    const action = confirmState?.action;
+    if (!action) return;
+    setConfirmBusy(true);
+    try {
+      const completed = await action();
+      if (completed !== false) setConfirmState(null);
+    } finally {
+      setConfirmBusy(false);
+    }
   }
 
   // เหตุผล override เป็น optional แล้ว (มติ 2026-07-25) — โมดัลเหลือหน้าที่ "ยืนยัน" อย่างเดียว
@@ -152,14 +183,25 @@ export default function SalesOrderDetailPage() {
     if (ok) setCancelForm(null);
   }
 
-  async function remove() {
-    if (!window.confirm("ลบ SO ฉบับร่างนี้ถาวร? การลบไม่สามารถย้อนกลับได้")) return;
+  async function deleteOrder(url) {
     setBusy("delete");
     setError("");
-    const res = await fetch(`/api/sales-planning/sales-orders/${id}`, { method: "DELETE" });
+    const res = await fetch(url, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) { setBusy(""); setError(data.error || "ลบ Sale Order ไม่สำเร็จ"); return; }
+    if (!res.ok) { setBusy(""); setError(data.error || "ลบ Sale Order ไม่สำเร็จ"); return false; }
     router.push("/sa/sales-orders");
+    return true;
+  }
+
+  function remove() {
+    setConfirmState({
+      title: "ลบ Sale Order ฉบับร่าง",
+      description: `ต้องการลบ ${order.orderNumber} ถาวรหรือไม่`,
+      detail: "การลบไม่สามารถย้อนกลับได้",
+      confirmLabel: "ลบฉบับร่าง",
+      tone: "danger",
+      action: () => deleteOrder(`/api/sales-planning/sales-orders/${id}`),
+    });
   }
 
   // บังคับลบ (break-glass ผู้ดูแลระบบ, mig 0152): ใบที่มีหลักฐานลายเซ็น/ฉบับตรึงลบทางปกติไม่ได้
@@ -173,12 +215,14 @@ export default function SalesOrderDetailPage() {
     if (!preview) { setError("ขอพรีวิวการลบไม่สำเร็จ"); return; }
     const lines = (preview.cascade || []).map((c) => `· ${c.label}: ${c.count}`).join("\n");
     const notes = (preview.notes || []).join("\n");
-    if (!window.confirm(`บังคับลบ SO ${order.orderNumber} ถาวร?\n\nสิ่งที่จะถูกทำลาย:\n${lines || "· (ไม่มีข้อมูลพ่วง)"}\n\n${notes}\n\nยืนยันเพื่อลบ`)) return;
-    setBusy("delete");
-    const res = await fetch(`/api/sales-planning/sales-orders/${id}?force=1`, { method: "DELETE" });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { setBusy(""); setError(data.error || "บังคับลบ Sale Order ไม่สำเร็จ"); return; }
-    router.push("/sa/sales-orders");
+    setConfirmState({
+      title: "บังคับลบ Sale Order พร้อมหลักฐาน",
+      description: `ต้องการบังคับลบ ${order.orderNumber} ถาวรหรือไม่`,
+      detail: <span style={{ whiteSpace: "pre-line" }}>สิ่งที่จะถูกทำลาย:{"\n"}{lines || "· (ไม่มีข้อมูลพ่วง)"}{notes ? `\n\n${notes}` : ""}</span>,
+      confirmLabel: "ยืนยันบังคับลบ",
+      tone: "danger",
+      action: () => deleteOrder(`/api/sales-planning/sales-orders/${id}?force=1`),
+    });
   }
 
   async function printDocument() {
@@ -226,6 +270,22 @@ export default function SalesOrderDetailPage() {
     { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName ? `${order.approvedByName}${order.approvalMode === "admin_override" ? " · Admin Override" : ""}` : "รอตรวจ" },
     { label: "นับ Actual", hint: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
   ];
+  const workflowSteps = workflowStepsFromIndex(workflow, workflowIndex, order.status === "cancelled");
+  const primaryAction = editable
+    ? { id: "save-submit", kind: "submit", label: "บันทึกและยื่นอนุมัติ", onClick: () => save(true) }
+    : canReviewThis && order.status === "pending_approval"
+      ? { id: "approve", kind: "approve", label: "อนุมัติและนับ Actual", onClick: () => review("approve") }
+      : null;
+  const secondaryActions = [
+    { id: "save", kind: "save", label: busy === "save" ? "กำลังบันทึก…" : "บันทึกร่าง", variant: "outline", visible: editable, onClick: () => save(false) },
+    { id: "override", kind: "approve", label: "อนุมัติแบบ Admin Override", variant: "outline", visible: canAdminOverride, onClick: () => setOverrideForm({ reason: "" }) },
+    { id: "restore", kind: "restore", visible: order.status === "cancelled" && role === "admin", onClick: () => requestAction("restore") },
+    { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", disabled: dirty, disabledReason: dirty ? "บันทึกข้อมูลล่าสุดก่อนออกเอกสาร" : undefined, onClick: printDocument },
+  ];
+  const dangerActions = [
+    { id: "reject", kind: "reject", label: "ตีกลับให้แก้ไข", visible: canReviewThis && order.status === "pending_approval", onClick: () => review("reject") },
+    { id: "cancel", kind: "cancel", label: "ยกเลิก SO", visible: approved && reviewer, onClick: openCancel },
+  ];
 
   return (
     <Workspace hideHeader back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} backActions={<>
@@ -238,9 +298,6 @@ export default function SalesOrderDetailPage() {
       {role === "admin" && !canHardDeleteSalesOrder(order) && (
         <button type="button" className="btn-icon danger" disabled={!!busy} onClick={forceRemove} aria-label="บังคับลบพร้อมหลักฐาน" title="บังคับลบพร้อมหลักฐาน (ผู้ดูแลระบบ)"><ShieldAlert size={16} aria-hidden="true" /></button>
       )}
-      {/* พิมพ์/ออกเอกสาร = งาน workflow ระดับหน้า → ปุ่ม text แถวเดียวกับย้อนกลับ (ux-ui-rulebook)
-          ใช้ ghost ไม่ใช่ filled: primary สงวนให้ขั้นถัดไปของเอกสาร (ยื่น/อนุมัติ) — filled ตัวเดียวต่อบริบท */}
-      <button type="button" className="btn ghost" onClick={printDocument}><Printer size={15} aria-hidden="true" /> ออกเอกสาร</button>
     </>}>
       <div className={styles.page}>
         <SalesDetailOverview
@@ -260,24 +317,7 @@ export default function SalesOrderDetailPage() {
 
         {error && <div className={styles.alertError} role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}><span>{error}</span>{errorActionUrl && <Link href={errorActionUrl} className="btn ghost sm">ไปบัญชีของฉัน</Link>}</div>}
         {notice && <div className={styles.alertSuccess} role="status">{notice}</div>}
-        {/* รู้ตั้งแต่เปิดหน้าว่าเซ็นไม่ได้ ดีกว่าไปเจอ 409 ตอนกดอนุมัติ */}
-        {/* เตือนล่วงหน้าทั้งผู้ยื่นและผู้อนุมัติ — การกดยื่นจะบันทึกหลักฐานลายเซ็นเช่นกัน
-            (mig 0151+) คนไม่มีลายเซ็นจะยื่นไม่ได้ ต้องรู้ก่อนกดไม่ใช่ไปเจอ 409 */}
-        <SignatureReadyNotice
-          active={(canReviewThis && order.status === "pending_approval") || canAdminOverride || editable}
-          docLabel="Sale Order นี้"
-        />
         {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><p>{order.rejectionReason}</p></div></div>}
-
-        <section className={styles.workflowCard} aria-label="สถานะการอนุมัติ Sale Order">
-          <div className={styles.workflowHeader}><div><small>APPROVAL WORKFLOW</small><h2>เส้นทางเอกสาร</h2></div><span>{status.label}</span></div>
-          <div className={styles.workflowRail}>
-            {workflow.map((step, index) => {
-              const state = order.status === "cancelled" ? "cancelled" : index < workflowIndex ? "done" : index === workflowIndex ? "current" : "pending";
-              return <div key={step.label} className={`${styles.workflowStep} ${styles[state]}`}><span className={styles.stepMarker}>{state === "done" ? <CheckCircle2 size={16} /> : index + 1}</span><div><strong>{step.label}</strong><small>{step.hint}</small></div></div>;
-            })}
-          </div>
-        </section>
 
         <ContextGrid>
           <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={order.customerName || "-"} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "สถานะ SO", value: status.label }]} />
@@ -287,7 +327,43 @@ export default function SalesOrderDetailPage() {
         </ContextGrid>
 
         <DetailPageLayout
+          asideLabel="สรุปและจัดการ Sale Order"
           aside={<>
+            <DocumentSummaryCard
+              title="ยอดสุทธิ Sale Order"
+              total={fmtMoney(order.totalAmount)}
+              status={status.label}
+              statusColor={status.color}
+              rows={[
+                { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
+                { id: "discount", label: "ส่วนลดท้ายใบ", value: fmtMoney(order.discountAmount) },
+                { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
+                { id: "actual", label: "Actual ก่อน VAT", value: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
+              ]}
+            />
+
+            <DocumentControlCard
+              status={status.label}
+              statusColor={status.color}
+              statusDescription={status.description}
+              workflowSteps={workflowSteps}
+              primaryAction={primaryAction}
+              secondaryActions={secondaryActions}
+              dangerActions={dangerActions}
+              busy={!!busy}
+              notices={canAdminOverride
+                ? <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span>
+                : reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval"
+                  ? <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>
+                  : null}
+              evidence={(
+                <SignatureReadyNotice
+                  active={(canReviewThis && order.status === "pending_approval") || canAdminOverride || editable}
+                  docLabel="Sale Order นี้"
+                />
+              )}
+            />
+
             <DetailCard icon={FileCheck2} eyebrow="DOCUMENT CONTROL" title="ตรวจข้อมูลเอกสาร" meta={editable ? "แก้ไขได้ก่อนยื่นอนุมัติ" : "เอกสารถูกล็อกตามสถานะ"}>
               <div className={styles.formStack}>
                 <label><span>วันที่ SO</span><input className="premium-input" type="date" value={form.orderDate} disabled={!editable} onChange={(event) => updateField("orderDate", event.target.value)} /></label>
@@ -295,17 +371,6 @@ export default function SalesOrderDetailPage() {
                 <label><span>หมายเหตุ</span><textarea className="premium-input" rows={4} value={form.notes} disabled={!editable} onChange={(event) => updateField("notes", event.target.value)} /></label>
               </div>
             </DetailCard>
-
-            {(canEdit || reviewer) && <DetailCard icon={UserRound} eyebrow="ACTIONS" title="จัดการเอกสาร" meta="สิทธิ์เปลี่ยนตามสถานะและบทบาท">
-              <div className={styles.actionStack}>
-                {editable && <><button type="button" className="btn" disabled={!!busy} onClick={() => save(false)}><Save size={15} /> {busy === "save" ? "กำลังบันทึก…" : "บันทึกร่าง"}</button><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => save(true)}><Send size={15} /> บันทึกและยื่นอนุมัติ</button></>}
-                {canReviewThis && order.status === "pending_approval" && <><button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => review("approve")}><CheckCircle2 size={15} /> อนุมัติและนับ Actual</button><button type="button" className="btn action-outline btn-danger" disabled={!!busy} onClick={() => review("reject")}><Undo2 size={15} /> ตีกลับให้แก้ไข</button></>}
-                {canAdminOverride && <><span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span><button type="button" className="btn action-outline btn-warning" disabled={!!busy} onClick={() => setOverrideForm({ reason: "" })}><ShieldAlert size={15} /> อนุมัติแบบ Admin Override</button></>}
-                {reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval" && <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>}
-                {approved && reviewer && <button type="button" className="btn action-outline btn-danger" disabled={!!busy} onClick={openCancel}><XCircle size={15} /> ยกเลิก SO</button>}
-                {order.status === "cancelled" && role === "admin" && <button type="button" className="btn" disabled={!!busy} onClick={() => requestAction("restore")}><RotateCcw size={15} /> คืนเป็นฉบับร่าง</button>}
-              </div>
-            </DetailCard>}
 
             <DetailCard icon={ClipboardList} eyebrow="DOCUMENT INFO" title="ข้อมูลควบคุม">
               <dl className={styles.auditList}>
@@ -358,6 +423,30 @@ export default function SalesOrderDetailPage() {
         </Modal>
       )}
 
+      {rejectForm && (
+        <Modal open onClose={() => setRejectForm(null)} title="ตีกลับให้ผู้จัดทำแก้ไข" size="sm" dismissible={!busy}>
+          <div className="drawer-section" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <label className="form-group">
+              <span>เหตุผลที่ตีกลับ *</span>
+              <textarea
+                className="textarea-premium"
+                rows={4}
+                value={rejectForm.reason}
+                onChange={(event) => setRejectForm({ reason: event.target.value })}
+                placeholder="ระบุสิ่งที่ต้องแก้ไข"
+                autoFocus
+              />
+            </label>
+            <div className="action-bar" style={{ marginTop: 0 }}>
+              <button type="button" className="btn ghost" onClick={() => setRejectForm(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn btn-danger" onClick={submitReject} disabled={!!busy || !rejectForm.reason.trim()}>
+                <Undo2 size={15} /> {busy === "reject" ? "กำลังตีกลับ…" : "ยืนยันตีกลับ"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {cancelForm && (
         <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก Sale Order" size="sm" dismissible={!busy}>
           <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -397,6 +486,18 @@ export default function SalesOrderDetailPage() {
           </div>
         </Modal>
       )}
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title={confirmState?.title}
+        description={confirmState?.description}
+        detail={confirmState?.detail}
+        confirmLabel={confirmState?.confirmLabel}
+        tone={confirmState?.tone}
+        busy={confirmBusy}
+        onConfirm={runConfirmed}
+        onClose={() => { if (!confirmBusy) setConfirmState(null); }}
+      />
     </Workspace>
   );
 }
