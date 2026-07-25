@@ -9,7 +9,7 @@ import { canViewCosting } from '@/lib/permissions';
 import { canQuoteMaterial, normalizeQuotedPrice } from '@/lib/materialPrices';
 import { componentFillFromRevision } from '@/lib/costingLibrary';
 import { findCostingRequest } from '@/lib/costingAdmin';
-import { appendMaterialRevision } from '@/lib/materialPricesAdmin';
+import { appendMaterialRevision, ensureMaterial } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -42,14 +42,19 @@ export async function PATCH(request, { params }) {
   const { value, error: priceError } = normalizeQuotedPrice(component.kind, rawPrice);
   if (priceError) return Response.json({ error: priceError }, { status: 400 });
 
-  // ออก rev ใหม่ในคลัง (ต่ออายุ) — ผูกวัสดุเดิมถ้าบรรทัดเคยอ้างไว้
+  // ออก rev ใหม่ในทะเบียน (ต่ออายุ) — หาวัสดุตัวเดิมก่อนเสมอ ไม่สร้างซ้ำ (0157)
+  const { material } = component.materialId
+    ? { material: { id: component.materialId } }
+    : await ensureMaterial(supabase, {
+      kind: component.kind,
+      label: component.label,
+      customerId: before.customerId || null,
+      customerName: before.customerName || null,
+      user,
+    });
   const { revision } = await appendMaterialRevision(supabase, {
-    materialId: component.materialId || null,
+    materialId: material.id,
     kind: component.kind,
-    label: component.label,
-    sourceDept: component.sourceDept,
-    customerId: before.customerId || null,
-    customerName: before.customerName || null,
     price: value,
     note: `ยืนยันจากใบขอราคาผลิต ${before.docNo || id}`,
     user,

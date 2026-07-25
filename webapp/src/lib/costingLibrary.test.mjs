@@ -7,10 +7,15 @@ import {
   libraryPricingBlocker,
 } from './costingLibrary.js';
 
+// ราคาอยู่ที่ชั้นจำนวน (0157) ไม่ได้อยู่บนตัว revision แล้ว
 const materials = [
   {
-    id: 'm1', kind: 'PM', label: 'ขวดแก้ว 50ml', customerId: null, isHidden: false,
-    revisions: [{ id: 'r1', revisionNo: 1, unitBasis: 'per_piece', pricePerUnit: 10, quotedAt: '2026-05-01T00:00:00Z' }],
+    id: 'm1', kind: 'PM', label: 'ขวดแก้ว 50ml', customerId: null, status: 'active',
+    revisions: [{
+      id: 'r1', revisionNo: 1, materialId: 'm1', unitBasis: 'per_piece',
+      quotedAt: '2026-05-01T00:00:00Z',
+      tiers: [{ id: 'r1t0', qty: null, pricePerUnit: 10 }],
+    }],
   },
 ];
 const today = '2026-07-15'; // ก่อน m1 หมดอายุ (2026-07-30)
@@ -41,7 +46,7 @@ test('สถานะบรรทัด: internal / ready / expired / missing / 
 });
 
 test('ค่าที่เขียนลงบรรทัดเมื่อดึงราคา: snapshot + ตัวชี้คลัง', () => {
-  const rev = { id: 'r1', materialId: 'm1', unitBasis: 'per_piece', pricePerUnit: 10 };
+  const rev = materials[0].revisions[0];
   assert.deepEqual(componentFillFromRevision(rev), {
     pricePerUnit: 10, pricePerKg: null,
     materialId: 'm1', materialRevisionId: 'r1',
@@ -51,11 +56,14 @@ test('ค่าที่เขียนลงบรรทัดเมื่อ�
   assert.equal(componentFillFromRevision(rev, { confirmed: true }).priceSource, 'confirmed');
   assert.equal(componentFillFromRevision(rev, { confirmed: true }).confirmStatus, 'confirmed');
   // per_kg ลงช่อง pricePerKg
-  const revKg = { id: 'r2', materialId: 'm2', unitBasis: 'per_kg', pricePerKg: 1200 };
+  const revKg = {
+    id: 'r2', materialId: 'm2', unitBasis: 'per_kg',
+    tiers: [{ id: 'r2t0', qty: null, pricePerKg: 1200 }],
+  };
   assert.equal(componentFillFromRevision(revKg).pricePerKg, 1200);
   assert.equal(componentFillFromRevision(revKg).pricePerUnit, null);
-  // ไม่มีราคา → null (ไม่เขียนอะไร)
-  assert.equal(componentFillFromRevision({ unitBasis: 'per_kg', pricePerKg: null }), null);
+  // ไม่มีชั้นราคา → null (ไม่เขียนอะไร)
+  assert.equal(componentFillFromRevision({ unitBasis: 'per_kg', tiers: [] }), null);
 });
 
 test('ด่านส่งผู้บริหาร: บรรทัดยังไม่ดึงราคา / คลังไม่มี / รอยืนยัน', () => {

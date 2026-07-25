@@ -207,7 +207,7 @@ export function lockedOut(user, path, method, isApi) {
 // Row-level scope (own team / own record) is enforced inside the route
 // handlers, which can see the target record's team + ownerId — the proxy
 // only sees method + path.
-function apiWriteAllowed(method, path, role, extraCaps) {
+export function apiWriteAllowed(method, path, role, extraCaps) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true; // reads ok
   path = normalizeMaster(path); // /api/master/X gated identically to /api/X
   // mgmt access may be a per-user grant (app_metadata.extraCaps), not just the
@@ -257,12 +257,13 @@ function apiWriteAllowed(method, path, role, extraCaps) {
     if (/\/confirm-price$/.test(path)) return can(role, 'costing:quote');
     return can(role, 'costing:edit');
   }
-  // คลังราคาวัสดุ + ใบขอราคาวัสดุ (mig 0143) — เซลเปิดใบถาม (costing:edit),
-  // RD/PC ตอบราคา/แก้ราคาในคลัง (costing:quote). สิทธิ์รายแถว (ฝ่ายเจ้าของบรรทัด
-  // ผ่าน sourceDept) บังคับใน handler. เส้น /answer = ตอบราคา, ที่เหลือ = เปิด/แก้ใบ
+  // ทะเบียนวัสดุ + คำขอราคาวัสดุ (mig 0143 + 0157) — สองฝ่ายใช้เส้นเดียวกันคนละ
+  // จุดประสงค์: เซลเปิดคำขอ/เสนอวัสดุร่าง (costing:edit) · RD/PC รับวัสดุและใส่ราคา
+  // (costing:quote) → ต้องปล่อยผ่าน **ทั้งสอง cap** ไม่งั้น RD/PC ที่ไม่มี costing:edit
+  // จะโดน 403 ทุกครั้งที่กดแก้ราคา (บั๊กเดิม) ส่วน handler เป็นด่านจริง: มันรู้ว่า
+  // วัสดุตัวนั้นเป็นของฝ่ายไหน (sourceDept) ซึ่ง proxy มองไม่เห็น
   if (path.startsWith('/api/sa/materials')) {
-    if (/\/(answer|revise)$/.test(path)) return can(role, 'costing:quote');
-    return can(role, 'costing:edit');
+    return can(role, 'costing:edit') || can(role, 'costing:quote');
   }
   // แม่แบบต้นทุนต่อประเภทสินค้า — ข้อมูลหลักของระบบ ผู้ดูแลระบบเท่านั้น
   // (มติ 2026-07-22: ผู้บริหารมีหน้าที่อนุมัติ ไม่ได้ดูแล master data)
