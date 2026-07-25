@@ -9,6 +9,7 @@ import {
 } from '@/lib/admin/signatureEvidence';
 import { captureIssuedQuotationSnapshot } from '@/lib/sales/issuedQuotationSnapshot';
 import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
+import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,11 +79,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // snapshot must not roll it back and can be regenerated (RPC is idempotent).
   let snap = null;
   try {
+    // ข้อมูลบริษัทที่เผยแพร่ ณ เวลาอนุมัติ — ตรึงลง snapshot ให้ reprint ตรงเดิมเสมอ
+    const company = await getPublishedCompanyProfile(supabase);
     const snapshotQuote = { ...quote, ...data, lines: quote.lines, deal: quote.deal };
     snap = await captureIssuedQuotationSnapshot(supabase, {
       quote: snapshotQuote,
       evidence: result.evidence,
       user,
+      company,
     });
   } catch (snapshotError) {
     console.error('issued quotation snapshot capture failed', id, snapshotError);

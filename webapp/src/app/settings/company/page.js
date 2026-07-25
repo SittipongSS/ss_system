@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Building2, Edit3, Eye, FilePlus2, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, Building2, Edit3, Send, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -28,11 +28,10 @@ const EMPTY_FORM = {
 
 const dateTime = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" });
 const formatDate = (value) => value ? dateTime.format(new Date(value)) : "-";
-const actorOf = (row) => row?.publishedByName || row?.archivedByName || row?.updatedByName || row?.createdByName || "ระบบ";
-const statusClass = (status) => status === "published" ? styles.published : status === "draft" ? styles.draft : styles.archived;
 
 function StatusBadge({ status }) {
-  return <span className={`${styles.badge} ${statusClass(status)}`}>{organizationSettingStatusLabel(status)}</span>;
+  const tone = status === "published" ? styles.published : status === "archived" ? styles.archived : styles.draft;
+  return <span className={`${styles.badge} ${tone}`}>{organizationSettingStatusLabel(status)}</span>;
 }
 
 function versionForm(row) {
@@ -72,7 +71,6 @@ export default function CompanySettingsPage() {
     return [row?.phone, row?.email, row?.lineId, row?.website].filter(Boolean).join(" · ") || "-";
   }, [data.published]);
 
-  const openView = (row) => setDrawer({ mode: "view", row });
   const openEdit = (row = data.draft) => {
     if (!row) return;
     setForm(versionForm(row));
@@ -86,13 +84,16 @@ export default function CompanySettingsPage() {
     return payload;
   };
 
-  const createDraft = async () => {
+  // ปุ่มเดียวจบ: มีร่างอยู่แล้ว → เปิดแก้ต่อ; ยังไม่มี → สร้างร่างเบื้องหลังแล้วเปิดแก้ทันที
+  // (กลไก version/ร่างถูกซ่อนจากผู้ใช้ — เห็นแค่ "แก้ไข")
+  const startEdit = async () => {
+    if (data.draft) { openEdit(data.draft); return; }
     setBusy(true);
     try {
-      const draft = await request("/api/organization-settings/draft", { method: "POST" }, "สร้างฉบับร่างไม่สำเร็จ");
-      setToast({ kind: "success", msg: `สร้าง Version ${draft.versionNumber} ฉบับร่างแล้ว` });
+      const draft = await request("/api/organization-settings/draft", { method: "POST" }, "เริ่มแก้ไขไม่สำเร็จ");
       await load();
-      openEdit(draft);
+      setForm(versionForm(draft));
+      setDrawer({ mode: "edit", row: draft });
     } catch (requestError) {
       setToast({ kind: "error", msg: requestError.message });
     } finally {
@@ -100,19 +101,25 @@ export default function CompanySettingsPage() {
     }
   };
 
-  const saveDraft = async (event) => {
-    event.preventDefault();
+  const patchDraft = (row) => request(
+    `/api/organization-settings/draft/${row.id}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...form, expectedUpdatedAt: row.updatedAt }),
+    },
+    "บันทึกฉบับร่างไม่สำเร็จ",
+  );
+
+  // "เก็บร่างไว้ก่อน" — บันทึกเฉย ๆ ยังไม่เผยแพร่
+  const saveDraft = async () => {
     const row = drawer?.row;
     if (!row) return;
     setBusy(true);
     try {
-      const saved = await request(`/api/organization-settings/draft/${row.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, expectedUpdatedAt: row.updatedAt }),
-      }, "บันทึกฉบับร่างไม่สำเร็จ");
+      const saved = await patchDraft(row);
       setDrawer(null);
-      setToast({ kind: "success", msg: `บันทึก Version ${saved.versionNumber} ฉบับร่างแล้ว` });
+      setToast({ kind: "success", msg: `เก็บร่าง Version ${saved.versionNumber} ไว้แล้ว (ยังไม่เผยแพร่)` });
       await load();
     } catch (requestError) {
       setToast({ kind: "error", msg: requestError.message });
@@ -121,6 +128,38 @@ export default function CompanySettingsPage() {
     }
   };
 
+  // "เผยแพร่การเปลี่ยนแปลง" — บันทึกร่าง แล้วเผยแพร่ต่อเนื่องในจังหวะเดียว
+  const saveAndPublish = async (event) => {
+    event.preventDefault();
+    const row = drawer?.row;
+    if (!row) return;
+    if (!String(form.changeNote || "").trim()) {
+      setToast({ kind: "error", msg: "กรุณาระบุหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const saved = await patchDraft(row);
+      await request(
+        `/api/organization-settings/draft/${row.id}/publish`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expectedUpdatedAt: saved.updatedAt }),
+        },
+        "เผยแพร่ข้อมูลบริษัทไม่สำเร็จ",
+      );
+      setDrawer(null);
+      setToast({ kind: "success", msg: `เผยแพร่ Version ${saved.versionNumber} แล้ว` });
+      await load();
+    } catch (requestError) {
+      setToast({ kind: "error", msg: requestError.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // เผยแพร่/ยกเลิก จากแบนเนอร์ร่างค้าง (ร่างถูกบันทึกไว้แล้ว)
   const transitionDraft = async () => {
     const row = data.draft;
     if (!row || !confirm) return;
@@ -131,12 +170,11 @@ export default function CompanySettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expectedUpdatedAt: row.updatedAt }),
-      }, action === "publish" ? "เผยแพร่ข้อมูลบริษัทไม่สำเร็จ" : "ยกเลิกฉบับร่างไม่สำเร็จ");
+      }, action === "publish" ? "เผยแพร่ข้อมูลบริษัทไม่สำเร็จ" : "ยกเลิกการแก้ไขไม่สำเร็จ");
       setConfirm(null);
-      setDrawer(null);
       setToast({
         kind: "success",
-        msg: action === "publish" ? `เผยแพร่ Version ${row.versionNumber} แล้ว` : `ยกเลิก Version ${row.versionNumber} แล้ว (ลบร่างถาวร)`,
+        msg: action === "publish" ? `เผยแพร่ Version ${row.versionNumber} แล้ว` : `ยกเลิกการแก้ไข Version ${row.versionNumber} แล้ว`,
       });
       await load();
     } catch (requestError) {
@@ -148,15 +186,20 @@ export default function CompanySettingsPage() {
 
   if (!canManage) return null;
 
-  const selected = drawer?.row;
-  const editing = drawer?.mode === "edit";
-
   return (
     <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
       <header className="premium-header">
         <div className="header-content">
           <h1><span className="premium-header-icon"><Building2 size={22} /></span> ข้อมูลบริษัท</h1>
-          <p>จัดการข้อมูลนิติบุคคลแบบมีเวอร์ชัน การเผยแพร่จะไม่แก้ข้อมูลย้อนหลังของเวอร์ชันเดิม</p>
+          <p>จัดการข้อมูลนิติบุคคลที่ใช้บนเอกสารทั้งระบบ การเผยแพร่จะไม่แก้ข้อมูลย้อนหลังของใบที่ออกไปแล้ว</p>
+        </div>
+        {/* action entity อยู่ขวาบนของเฮดเดอร์ (ตามกติกา Page Header) */}
+        <div className={styles.headerActions}>
+          {!loading && !error && data.published && !data.draft && (
+            <button type="button" className="btn btn-accent" onClick={startEdit} disabled={busy}>
+              <Edit3 size={16} /> แก้ไขข้อมูลบริษัท
+            </button>
+          )}
         </div>
       </header>
 
@@ -170,14 +213,7 @@ export default function CompanySettingsPage() {
         </section>
       ) : !data.published ? (
         <EmptyState icon={Building2}>
-          ยังไม่มีข้อมูลบริษัทเวอร์ชันที่เผยแพร่
-          {!data.draft && (
-            <div style={{ marginTop: 10 }}>
-              <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}>
-                <FilePlus2 size={16} /> สร้างฉบับร่าง
-              </button>
-            </div>
-          )}
+          ไม่พบข้อมูลบริษัทเวอร์ชันที่เผยแพร่ — ข้อมูลตั้งต้นอาจยังไม่ถูกติดตั้ง กรุณาติดต่อผู้ดูแลระบบ
         </EmptyState>
       ) : (
         <div className={styles.layout}>
@@ -197,15 +233,15 @@ export default function CompanySettingsPage() {
           </section>
 
           {data.draft && (
-            <section className={`glass-panel ${styles.draftPanel}`} aria-label="ฉบับร่างที่กำลังแก้ไข">
+            <section className={`glass-panel ${styles.draftPanel}`} aria-label="การแก้ไขที่ยังไม่เผยแพร่">
               <Edit3 size={20} aria-hidden="true" />
               <div className={styles.draftCopy}>
-                <strong>Version {data.draft.versionNumber} กำลังเป็นฉบับร่าง</strong>
+                <strong>มีการแก้ไขที่ยังไม่เผยแพร่</strong>
                 <p>บันทึกล่าสุด {formatDate(data.draft.updatedAt)} · ข้อมูลยังไม่มีผลจนกว่าจะยืนยันเผยแพร่</p>
               </div>
               <div className={styles.draftActions}>
                 <button type="button" className="btn ghost" onClick={() => setConfirm({ action: "discard" })} disabled={busy}>
-                  <Trash2 size={15} /> ยกเลิกร่าง
+                  <Trash2 size={15} /> ยกเลิกการแก้ไข
                 </button>
                 <button
                   type="button"
@@ -217,53 +253,11 @@ export default function CompanySettingsPage() {
                   <Send size={15} /> เผยแพร่
                 </button>
                 <button type="button" className="btn btn-accent" onClick={() => openEdit()} disabled={busy}>
-                  <Edit3 size={15} /> แก้ไขฉบับร่าง
+                  <Edit3 size={15} /> แก้ต่อ
                 </button>
               </div>
             </section>
           )}
-
-          <section className={`glass-panel ${styles.historyPanel}`} aria-labelledby="version-history-title">
-            {/* ปุ่มสร้างฉบับร่าง = ปุ่มเพิ่มของเนื้อหาเวอร์ชัน — อยู่ขวาสุดของ card header ตามกติกา Page Header */}
-            <header className={styles.panelHeader} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <h2 id="version-history-title">ประวัติเวอร์ชัน</h2>
-                <p>เวอร์ชันที่เผยแพร่แล้วลบไม่ได้ — เมื่อถูกแทนที่จะถูกซ่อนและดูย้อนหลังได้ที่นี่</p>
-              </div>
-              {!data.draft && (
-                <button type="button" className="btn btn-accent" onClick={createDraft} disabled={busy}>
-                  <FilePlus2 size={16} /> สร้างฉบับร่าง
-                </button>
-              )}
-            </header>
-            <div className={`premium-table-wrapper ${styles.historyTable}`}>
-              <table className="premium-table">
-                <thead><tr><th>Version</th><th>สถานะ</th><th>หมายเหตุ</th><th>ผู้ดำเนินการ</th><th>วันที่</th><th aria-label="การทำงาน" /></tr></thead>
-                <tbody>
-                  {data.versions.map((row) => (
-                    <tr key={row.id}>
-                      <td><strong>Version {row.versionNumber}</strong><small>{row.id}</small></td>
-                      <td><StatusBadge status={row.status} /></td>
-                      <td>{row.changeNote || "-"}</td>
-                      <td>{actorOf(row)}</td>
-                      <td>{formatDate(row.publishedAt || row.archivedAt || row.updatedAt)}</td>
-                      <td><button type="button" className="btn ghost sm" onClick={() => openView(row)}><Eye size={14} /> ดูรายละเอียด</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className={styles.historyCards}>
-              {data.versions.map((row) => (
-                <article key={row.id} className={styles.card}>
-                  <div className={styles.cardHead}><strong>Version {row.versionNumber}</strong><StatusBadge status={row.status} /></div>
-                  <p>{row.changeNote || "ไม่มีหมายเหตุ"}</p>
-                  <small>{actorOf(row)} · {formatDate(row.publishedAt || row.archivedAt || row.updatedAt)}</small>
-                  <button type="button" className="btn ghost" onClick={() => openView(row)}><Eye size={15} /> ดูรายละเอียด</button>
-                </article>
-              ))}
-            </div>
-          </section>
         </div>
       )}
 
@@ -271,92 +265,60 @@ export default function CompanySettingsPage() {
         open={!!drawer}
         onClose={() => !busy && setDrawer(null)}
         closeOnOverlay={false}
-        title={editing ? `แก้ไข Version ${selected?.versionNumber}` : `ข้อมูลบริษัท Version ${selected?.versionNumber || "-"}`}
-        subtitle={editing ? "บันทึกฉบับร่างก่อนเผยแพร่ ไม่มี Auto-save" : "เวอร์ชันที่เผยแพร่หรือซ่อนแล้วจะแก้ไขไม่ได้"}
-        badge={selected ? <StatusBadge status={selected.status} /> : null}
-        footer={editing ? (
+        title="แก้ไขข้อมูลบริษัท"
+        subtitle="เก็บร่างไว้ก่อน หรือเผยแพร่ให้มีผลทันที — ไม่มี Auto-save"
+        badge={<StatusBadge status="draft" />}
+        footer={(
           <>
             <button type="button" className="btn ghost" onClick={() => setDrawer(null)} disabled={busy}>ยกเลิก</button>
+            <button type="button" className="btn" onClick={saveDraft} disabled={busy}>
+              {busy ? "กำลังบันทึก…" : "เก็บร่างไว้ก่อน"}
+            </button>
             <button type="submit" form="company-settings-form" className="btn btn-accent" disabled={busy}>
-              {busy ? "กำลังบันทึก…" : "บันทึกฉบับร่าง"}
+              {busy ? "กำลังดำเนินการ…" : "เผยแพร่การเปลี่ยนแปลง"}
             </button>
           </>
-        ) : <button type="button" className="btn" onClick={() => setDrawer(null)}>ปิด</button>}
+        )}
       >
-        {editing ? (
-          <form id="company-settings-form" className={styles.form} onSubmit={saveDraft}>
-            <p className={styles.note}>การบันทึกจะอัปเดตเฉพาะฉบับร่าง ข้อมูลที่ใช้งานอยู่จะไม่เปลี่ยนจนกว่าจะยืนยันเผยแพร่</p>
-            <section className={styles.formSection}>
-              <h4>ข้อมูลนิติบุคคล</h4>
-              <div className={styles.formGrid}>
-                <label className={styles.full}>ชื่อนิติบุคคลภาษาไทย <b>*</b><input className="premium-input" value={form.legalNameTh} onChange={(event) => setForm({ ...form, legalNameTh: event.target.value })} required maxLength={200} /></label>
-                <label className={styles.full}>ชื่อนิติบุคคลภาษาอังกฤษ<input className="premium-input" value={form.legalNameEn} onChange={(event) => setForm({ ...form, legalNameEn: event.target.value })} maxLength={200} /></label>
-                <label>เลขประจำตัวผู้เสียภาษี <b>*</b><input className="premium-input" inputMode="numeric" value={form.taxId} onChange={(event) => setForm({ ...form, taxId: event.target.value })} required maxLength={17} /></label>
-                <label>รหัสสาขา <b>*</b><input className="premium-input" inputMode="numeric" value={form.branchCode} onChange={(event) => setForm({ ...form, branchCode: event.target.value })} required maxLength={5} /></label>
-              </div>
-            </section>
-            <section className={styles.formSection}>
-              <h4>ที่อยู่จดทะเบียน</h4>
-              <div className={styles.formGrid}>
-                <label className={styles.full}>ที่อยู่ภาษาไทย <b>*</b><textarea className="premium-input" value={form.registeredAddressTh} onChange={(event) => setForm({ ...form, registeredAddressTh: event.target.value })} required maxLength={1000} /></label>
-                <label className={styles.full}>ที่อยู่ภาษาอังกฤษ<textarea className="premium-input" value={form.registeredAddressEn} onChange={(event) => setForm({ ...form, registeredAddressEn: event.target.value })} maxLength={1000} /></label>
-              </div>
-            </section>
-            <section className={styles.formSection}>
-              <h4>ช่องทางติดต่อ</h4>
-              <div className={styles.formGrid}>
-                <label>โทรศัพท์<input className="premium-input" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} maxLength={50} /></label>
-                <label>อีเมล<input className="premium-input" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} maxLength={254} /></label>
-                <label>Line ID<input className="premium-input" value={form.lineId} onChange={(event) => setForm({ ...form, lineId: event.target.value })} maxLength={100} /></label>
-                <label>เว็บไซต์<input className="premium-input" value={form.website} onChange={(event) => setForm({ ...form, website: event.target.value })} maxLength={255} /></label>
-              </div>
-            </section>
-            <section className={styles.formSection}>
-              <h4>หลักฐานการเปลี่ยนแปลง</h4>
-              <label>หมายเหตุการเปลี่ยนแปลง <b>*</b><textarea className="premium-input" value={form.changeNote} onChange={(event) => setForm({ ...form, changeNote: event.target.value })} required maxLength={500} placeholder="ระบุเหตุผลหรือรายการข้อมูลที่เปลี่ยน" /></label>
-            </section>
-          </form>
-        ) : selected ? (
-          <div className={styles.drawerBody}>
-            <section className={styles.drawerSection}>
-              <h4>ข้อมูลนิติบุคคล</h4>
-              <div className={styles.detailGrid}>
-                <div className={styles.full}><span>ชื่อภาษาไทย</span><strong>{selected.legalNameTh}</strong></div>
-                <div className={styles.full}><span>ชื่อภาษาอังกฤษ</span><strong>{selected.legalNameEn || "-"}</strong></div>
-                <div><span>เลขผู้เสียภาษี</span><strong>{selected.taxId}</strong></div>
-                <div><span>รหัสสาขา</span><strong>{selected.branchCode}</strong></div>
-              </div>
-            </section>
-            <section className={styles.drawerSection}>
-              <h4>ที่อยู่และการติดต่อ</h4>
-              <div className={styles.detailGrid}>
-                <div className={styles.full}><span>ที่อยู่ภาษาไทย</span><strong>{selected.registeredAddressTh}</strong></div>
-                <div className={styles.full}><span>ที่อยู่ภาษาอังกฤษ</span><strong>{selected.registeredAddressEn || "-"}</strong></div>
-                <div><span>โทรศัพท์</span><strong>{selected.phone || "-"}</strong></div>
-                <div><span>อีเมล</span><strong>{selected.email || "-"}</strong></div>
-                <div><span>Line ID</span><strong>{selected.lineId || "-"}</strong></div>
-                <div><span>เว็บไซต์</span><strong>{selected.website || "-"}</strong></div>
-              </div>
-            </section>
-            <section className={styles.drawerSection}>
-              <h4>ประวัติเวอร์ชัน</h4>
-              <div className={styles.detailGrid}>
-                <div className={styles.full}><span>หมายเหตุ</span><strong>{selected.changeNote || "-"}</strong></div>
-                <div><span>สร้างโดย</span><strong>{selected.createdByName || "ระบบ"}</strong></div>
-                <div><span>สร้างเมื่อ</span><strong>{formatDate(selected.createdAt)}</strong></div>
-                <div><span>ดำเนินการล่าสุดโดย</span><strong>{actorOf(selected)}</strong></div>
-                <div><span>เวลาล่าสุด</span><strong>{formatDate(selected.publishedAt || selected.archivedAt || selected.updatedAt)}</strong></div>
-              </div>
-            </section>
-          </div>
-        ) : null}
+        <form id="company-settings-form" className={styles.form} onSubmit={saveAndPublish}>
+          <p className={styles.note}>“เก็บร่างไว้ก่อน” จะยังไม่เปลี่ยนข้อมูลที่ใช้งานอยู่ · “เผยแพร่การเปลี่ยนแปลง” จะทำให้ข้อมูลใหม่มีผลทันทีและต้องระบุหมายเหตุ</p>
+          <section className={styles.formSection}>
+            <h4>ข้อมูลนิติบุคคล</h4>
+            <div className={styles.formGrid}>
+              <label className={styles.full}>ชื่อนิติบุคคลภาษาไทย <b>*</b><input className="premium-input" value={form.legalNameTh} onChange={(event) => setForm({ ...form, legalNameTh: event.target.value })} required maxLength={200} /></label>
+              <label className={styles.full}>ชื่อนิติบุคคลภาษาอังกฤษ<input className="premium-input" value={form.legalNameEn} onChange={(event) => setForm({ ...form, legalNameEn: event.target.value })} maxLength={200} /></label>
+              <label>เลขประจำตัวผู้เสียภาษี <b>*</b><input className="premium-input" inputMode="numeric" value={form.taxId} onChange={(event) => setForm({ ...form, taxId: event.target.value })} required maxLength={17} /></label>
+              <label>รหัสสาขา <b>*</b><input className="premium-input" inputMode="numeric" value={form.branchCode} onChange={(event) => setForm({ ...form, branchCode: event.target.value })} required maxLength={5} /></label>
+            </div>
+          </section>
+          <section className={styles.formSection}>
+            <h4>ที่อยู่จดทะเบียน</h4>
+            <div className={styles.formGrid}>
+              <label className={styles.full}>ที่อยู่ภาษาไทย <b>*</b><textarea className="premium-input" value={form.registeredAddressTh} onChange={(event) => setForm({ ...form, registeredAddressTh: event.target.value })} required maxLength={1000} /></label>
+              <label className={styles.full}>ที่อยู่ภาษาอังกฤษ<textarea className="premium-input" value={form.registeredAddressEn} onChange={(event) => setForm({ ...form, registeredAddressEn: event.target.value })} maxLength={1000} /></label>
+            </div>
+          </section>
+          <section className={styles.formSection}>
+            <h4>ช่องทางติดต่อ</h4>
+            <div className={styles.formGrid}>
+              <label>โทรศัพท์<input className="premium-input" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} maxLength={50} /></label>
+              <label>อีเมล<input className="premium-input" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} maxLength={254} /></label>
+              <label>Line ID<input className="premium-input" value={form.lineId} onChange={(event) => setForm({ ...form, lineId: event.target.value })} maxLength={100} /></label>
+              <label>เว็บไซต์<input className="premium-input" value={form.website} onChange={(event) => setForm({ ...form, website: event.target.value })} maxLength={255} /></label>
+            </div>
+          </section>
+          <section className={styles.formSection}>
+            <h4>หลักฐานการเปลี่ยนแปลง</h4>
+            <label>หมายเหตุการเปลี่ยนแปลง <b>*</b><textarea className="premium-input" value={form.changeNote} onChange={(event) => setForm({ ...form, changeNote: event.target.value })} required maxLength={500} placeholder="ระบุเหตุผลหรือรายการข้อมูลที่เปลี่ยน (จำเป็นก่อนเผยแพร่)" /></label>
+          </section>
+        </form>
       </RecordDrawer>
 
       <ConfirmDialog
         open={confirm?.action === "publish"}
         title="ยืนยันเผยแพร่ข้อมูลบริษัท"
         description={`Version ${data.draft?.versionNumber || "-"} จะเป็นข้อมูลบริษัทเวอร์ชันที่ใช้งานอยู่`}
-        detail="เวอร์ชันที่เผยแพร่อยู่เดิมจะถูกซ่อน (ดูย้อนหลังได้ในประวัติเวอร์ชัน)"
+        detail="เอกสารที่ออกใหม่จะใช้ข้อมูลชุดนี้ · ใบที่ออกไปแล้วยังคงข้อมูลเดิม"
         confirmLabel="เผยแพร่เวอร์ชัน"
         busy={busy}
         onClose={() => setConfirm(null)}
@@ -364,10 +326,10 @@ export default function CompanySettingsPage() {
       />
       <ConfirmDialog
         open={confirm?.action === "discard"}
-        title="ยกเลิกฉบับร่าง"
+        title="ยกเลิกการแก้ไข"
         description={`Version ${data.draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`}
-        detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง"
-        confirmLabel="ยกเลิกร่างถาวร"
+        detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และข้อมูลที่ใช้งานอยู่จะไม่เปลี่ยนแปลง"
+        confirmLabel="ยกเลิกการแก้ไข"
         tone="danger"
         busy={busy}
         onClose={() => setConfirm(null)}

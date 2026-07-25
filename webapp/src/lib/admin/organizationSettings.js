@@ -1,5 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
+import { mapPublishedCompany, resolveCompanyBlock } from '@/lib/companyProfile';
 
 export class OrganizationSettingsError extends Error {
   constructor(message, status = 500, code = 'organization_settings_error') {
@@ -49,6 +50,19 @@ export async function loadOrganizationSettingsAdmin(supabase) {
     draft: versions.find((row) => row.status === 'draft') || null,
     versions,
   };
+}
+
+// โหลดบล็อกบริษัทที่เผยแพร่ (แถวเดียว) สำหรับฝังในเอกสาร — มี unique partial index
+// การันตี published ได้ไม่เกิน 1 แถว; ไม่พบ published → คืน fallback constants ล้วน
+export async function getPublishedCompanyProfile(supabase) {
+  const { data, error } = await supabase
+    .from('organization_setting_versions')
+    .select('legalNameTh,legalNameEn,taxId,branchCode,registeredAddressTh,registeredAddressEn,phone,email,lineId,website')
+    .eq('organizationId', 'primary')
+    .eq('status', 'published')
+    .maybeSingle();
+  if (error) throw mappedError(error);
+  return resolveCompanyBlock(mapPublishedCompany(data));
 }
 
 export async function createOrganizationSettingsDraft(supabase, user) {

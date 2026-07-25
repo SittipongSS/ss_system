@@ -1,11 +1,11 @@
-import { COMPANY_LEGAL_NAME, SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
+import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
+import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 
 // Print-ready A4 (landscape) document for an excise report (the uniform shape
 // from lib/tax/reports.js). Shares the visual language + logo of the billing
 // document (ISO style): IBM Plex Sans Thai (loaded via Google Fonts so the
 // about:blank print window renders the loopless font), navy + terracotta,
 // brand + doc-title header. `multiline` cells ("main\nsub") render as two lines.
-const COMPANY = COMPANY_LEGAL_NAME;
 const LOGO_URL = SYSTEM_DOCUMENT_LOGO_URL;
 
 const esc = (s) => String(s ?? "")
@@ -49,7 +49,8 @@ export function paginateReportRows(rows = [], rowsPerPage = 18) {
   return pages;
 }
 
-export function buildReportPrintHTML(report, meta = {}) {
+export function buildReportPrintHTML(report, meta = {}, company) {
+  const co = resolveCompanyBlock(company);
   const cols = report.columns || [];
   const head = cols.map((c) => `<th style="text-align:${align(c)}">${esc(c.label)}</th>`).join("");
   const bodyForRows = (rows) => rows.length
@@ -78,7 +79,7 @@ export function buildReportPrintHTML(report, meta = {}) {
     <div class="doc-top">
       <div class="brand">
         <div class="logo-wrap"><img src="${LOGO_URL}" alt="S&amp;S"/></div>
-        <div><h2>${esc(COMPANY)}</h2></div>
+        <div><h2>${esc(co.legalNameTh)}</h2></div>
       </div>
       <div class="doc-title">
         <div class="big">REPORT</div>
@@ -90,7 +91,7 @@ export function buildReportPrintHTML(report, meta = {}) {
       <thead><tr>${head}</tr></thead>
       <tbody>${bodyForRows(rows)}${pageIndex === pages.length - 1 ? summaryRow : ""}</tbody>
     </table>
-    <div class="gen">พิมพ์เมื่อ ${printedAt} · ${esc(COMPANY)}</div>
+    <div class="gen">พิมพ์เมื่อ ${printedAt} · ${esc(co.legalNameTh)}</div>
     <div class="page-number">หน้า ${pageIndex + 1} / ${pages.length}</div>
   </main>`).join("");
 
@@ -140,10 +141,15 @@ export function buildReportPrintHTML(report, meta = {}) {
 </body></html>`;
 }
 
-export function openReportPrintWindow(report, meta = {}) {
-  const html = buildReportPrintHTML(report, meta);
+export async function openReportPrintWindow(report, meta = {}) {
+  // เปิดหน้าต่างก่อน (ยังไม่ await) กัน popup blocker แล้วค่อยดึงข้อมูลบริษัทที่เผยแพร่
   const w = window.open("", "_blank");
   if (!w) { alert("ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้"); return; }
+  w.document.open();
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>REPORT</title></head><body style="font-family:sans-serif;padding:24px;color:#334">กำลังเตรียมเอกสาร…</body></html>');
+  w.document.close();
+  const company = await getCompanyProfileForPrint();
+  const html = buildReportPrintHTML(report, meta, company);
   w.document.open();
   w.document.write(html);
   w.document.close();

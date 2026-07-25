@@ -1,12 +1,5 @@
-import {
-  COMPANY_ADDRESS,
-  COMPANY_LEGAL_NAME,
-  COMPANY_LINE,
-  COMPANY_OFFICE_TEL,
-  COMPANY_TAX_ID,
-  COMPANY_WEBSITE,
-  SYSTEM_DOCUMENT_LOGO_URL,
-} from '@/lib/documentBrand';
+import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
+import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 
 // Print-ready A4 (portrait) excise-tax BILLING document for a customer, built
 // from a filing order (+ the customer record). Bills the EXCISE TAX ONLY
@@ -14,7 +7,6 @@ import {
 // price — plus VAT 7% on the billed tax. Visual format mirrors the Project
 // Timeline document (lib/pm/ganttPrint.js): same fonts, colours, logo, layout.
 
-export const COMPANY = COMPANY_LEGAL_NAME;
 const LOGO_URL = SYSTEM_DOCUMENT_LOGO_URL;
 const VAT_RATE = 0.07;
 
@@ -43,7 +35,8 @@ export function paginateBillLines(lines = []) {
   return pages;
 }
 
-export function buildBillPrintHTML(order, customer = {}) {
+export function buildBillPrintHTML(order, customer = {}, company) {
+  const co = resolveCompanyBlock(company);
   const items = order.items || [];
   const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;   // round to 2 decimals
   // Tax-only: per line we bill the snapshot excise + local tax (already computed
@@ -94,11 +87,11 @@ export function buildBillPrintHTML(order, customer = {}) {
       <div class="brand">
         <div class="logo-wrap"><img class="logo-img" src="${LOGO_URL}" alt="S&amp;S"/></div>
         <div>
-          <h2>${esc(COMPANY)}</h2>
+          <h2>${esc(co.legalNameTh)}</h2>
           <div class="company-info">
-            <div>${esc(COMPANY_ADDRESS)}</div>
-            <div>เลขประจำตัวผู้เสียภาษี ${esc(COMPANY_TAX_ID)}</div>
-            <div>โทร ${esc(COMPANY_OFFICE_TEL)} · Line ${esc(COMPANY_LINE)} · ${esc(COMPANY_WEBSITE)}</div>
+            <div>${esc(co.address)}</div>
+            <div>เลขประจำตัวผู้เสียภาษี ${esc(co.taxId)}</div>
+            <div>โทร ${esc(co.phone)} · Line ${esc(co.line)} · ${esc(co.website)}</div>
           </div>
         </div>
       </div>
@@ -230,10 +223,16 @@ export function buildBillPrintHTML(order, customer = {}) {
 </body></html>`;
 }
 
-export function openBillPrintWindow(order, customer = {}) {
-  const html = buildBillPrintHTML(order, customer);
+export async function openBillPrintWindow(order, customer = {}) {
+  // เปิดหน้าต่างก่อน (ยังไม่ await) เพื่อไม่ให้ popup blocker บล็อก แล้วค่อยดึงข้อมูล
+  // บริษัทที่เผยแพร่มาประกอบเอกสาร
   const w = window.open("", "_blank");
   if (!w) { alert("ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup สำหรับเว็บไซต์นี้"); return; }
+  w.document.open();
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>ใบแจ้งชำระภาษี</title></head><body style="font-family:sans-serif;padding:24px;color:#334">กำลังเตรียมเอกสาร…</body></html>');
+  w.document.close();
+  const company = await getCompanyProfileForPrint();
+  const html = buildBillPrintHTML(order, customer, company);
   w.document.open();
   w.document.write(html);
   w.document.close();
