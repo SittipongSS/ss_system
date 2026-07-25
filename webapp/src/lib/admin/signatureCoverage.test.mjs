@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildSignatureCoverage,
+  canViewSignatureCoverage,
   coverageSeverity,
   isGoLiveReady,
   isSignatureCohortRole,
@@ -111,4 +112,34 @@ test('go-live เขียวเมื่อคนที่ต้องมีม
   assert.equal(isGoLiveReady({ required: 3, requiredReady: 2 }), false);
   // ไม่มีใครใน cohort เลย = ข้อมูลผิดปกติ ไม่ใช่ "พร้อม"
   assert.equal(isGoLiveReady({ required: 0, requiredReady: 0 }), false);
+});
+
+// ── ด่านสิทธิ์ ───────────────────────────────────────────────────────────────
+
+test('แอดมินเปิดรายงานได้ — regression: users:view ไม่มี role ไหนถือเลย', () => {
+  // บั๊กจริง: route เช็คแค่ canUser(user,'users:view') → แอดมินโดน 403 ทุกครั้ง
+  // เพราะ users:view อยู่ใน GRANTABLE_CAPS อย่างเดียว ไม่มีใครได้มาจาก role
+  assert.equal(canViewSignatureCoverage({ role: 'admin' }), true);
+  assert.equal(canViewSignatureCoverage({ role: 'admin', extraCaps: [] }), true);
+});
+
+test('ผู้ได้รับ grant users:view เปิดได้ ส่วน role อื่นเปิดไม่ได้', () => {
+  assert.equal(canViewSignatureCoverage({ role: 'ae_supervisor', extraCaps: ['users:view'] }), true);
+  assert.equal(canViewSignatureCoverage({ role: 'ae_supervisor', extraCaps: [] }), false);
+  assert.equal(canViewSignatureCoverage({ role: 'ae' }), false);
+  assert.equal(canViewSignatureCoverage(null), false);
+});
+
+// ── บัญชีที่ถูกปิด ───────────────────────────────────────────────────────────
+
+test('คนที่ถูกปิดบัญชีไม่นับใน cohort — ล็อกอินไม่ได้ก็อัปลายเซ็นไม่ได้', () => {
+  // ถ้ายังนับ คนลาออกจะค้างเป็น "ต้องมีลายเซ็น" ถาวร แล้วไฟเขียว go-live ไม่มีวันขึ้น
+  const result = build([
+    { id: 'u1', name: 'แอดมินที่ทำงานอยู่', role: 'admin' },
+    { id: 'u2', name: 'หัวหน้าที่ลาออกแล้ว', role: 'ae_supervisor', disabled: true },
+  ], { signed: ['u1'] });
+  assert.deepEqual(result.rows.map((r) => r.id), ['u1']);
+  assert.equal(result.summary.cohort, 1);
+  assert.equal(result.summary.required, 1);
+  assert.equal(isGoLiveReady(result.summary), true);
 });

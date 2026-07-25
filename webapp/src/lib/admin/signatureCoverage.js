@@ -13,7 +13,20 @@
 // เดิมตัด ac ออกเพราะด่านลายเซ็นมีแค่ตอนอนุมัติ — เจตนานั้นหมดอายุเมื่อการกดยื่นกลายเป็น
 // explicit signing action; AC เป็นกลุ่มที่ยื่น SO บ่อยสุด ถ้าไม่อยู่ในรายงานจะถูกบล็อกเงียบ
 
+import { can, canUser } from '@/lib/permissions';
+
 export const SIGNATURE_COHORT_ROLES = ['admin', 'ae_supervisor', 'senior_ae', 'ae', 'ac'];
+
+// ใครเปิดรายงานนี้ได้ — กติกาเดียวกับ GET /api/users: ผู้ดูแลระบบ (role cap users:manage)
+// หรือผู้ได้รับ grant users:view รายคน
+//
+// ⚠️ ต้องรวม users:manage ด้วยเสมอ: `users:view` อยู่ใน GRANTABLE_CAPS อย่างเดียว —
+// **ไม่มี role ไหนถือ แม้แต่ admin** เช็คแค่ users:view ตัวเดียวเมื่อไร แอดมินจะโดน 403
+// (บั๊กจริงที่เคยทำให้หน้านี้เปิดไม่ได้เลยทุกคน) · ทั้ง route และหน้าเรียกตัวนี้ตัวเดียว
+// เพื่อไม่ให้สองฝั่งเขียนกติกาแยกกันแล้วเพี้ยนหากันอีก
+export function canViewSignatureCoverage(user) {
+  return canUser(user, 'users:view') || can(user?.role, 'users:manage');
+}
 
 // role ที่อนุมัติได้เสมอไม่ว่าจะถือดีลหรือไม่ — ขาดลายเซ็นเมื่อไหร่คือความเสี่ยงทันที
 const ALWAYS_APPROVER_ROLES = ['admin', 'ae_supervisor'];
@@ -50,7 +63,9 @@ export function buildSignatureCoverage({
   users, activeSignatureUserIds, dealCounts, pendingCounts, submittableCounts,
 }) {
   const rows = users
-    .filter((user) => isSignatureCohortRole(user.role))
+    // บัญชีที่ถูกปิด (ban) ล็อกอินไม่ได้ จึงอัปลายเซ็นไม่ได้และเซ็นอะไรไม่ได้ — ถ้ายังนับอยู่
+    // คนที่ลาออกไปแล้วจะค้างเป็น "ต้องมีลายเซ็น" ถาวร แล้วไฟเขียว go-live ไม่มีวันขึ้น
+    .filter((user) => isSignatureCohortRole(user.role) && !user.disabled)
     .map((user) => {
       const openDeals = dealCounts.get(user.id) || 0;
       const pendingQuotations = pendingCounts.get(user.id) || 0;
@@ -96,6 +111,8 @@ function sortByUrgency(a, b) {
 }
 
 // go-live ผ่านเมื่อทุกคนที่ "ต้องมี" มีครบ — ใช้เป็นไฟเขียวบนหัวรายงาน
+// required = 0 คืน false โดยเจตนา (ไม่มีใครใน cohort เลย = ข้อมูลผิดปกติ ไม่ใช่ "พร้อม")
+// — ป้ายบนหัวหน้าต้องแยกเคสนี้ออกเอง ไม่งั้นจะขึ้น "ยังขาด 0 คน" ซึ่งอ่านแล้วขัดกัน
 export function isGoLiveReady(summary) {
   return summary.required > 0 && summary.requiredReady === summary.required;
 }
