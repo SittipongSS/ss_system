@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Pencil, Plus, Trash2, Undo2, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Plus, Undo2, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -124,6 +124,11 @@ export default function QuotationEditorPage() {
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap && quote.status !== "accepted"
     && (quote.status === "draft" || isSuperuser(role))));
   const editable = canEditDocument && editMode;
+  const editDisabledReason = canEditDocument && !editMode
+    ? "อยู่ในโหมดอ่านอย่างเดียว — กด “แก้ไขข้อมูล” ในกล่องจัดการเอกสารก่อน"
+    : !canEditDocument
+      ? "เอกสารสถานะนี้ไม่อนุญาตให้แก้ไข"
+      : "";
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: form.discountType || null,
@@ -452,6 +457,14 @@ export default function QuotationEditorPage() {
           }
         : null;
   const secondaryActions = [
+    {
+      id: "edit",
+      kind: "edit",
+      label: "แก้ไขข้อมูล",
+      variant: "outline",
+      visible: canEditDocument && !editMode,
+      href: `/sa/quotations/${id}?edit=1`,
+    },
     { id: "leave-edit", kind: "cancel", label: "ยกเลิกแก้ไข", variant: "ghost", visible: editable, onClick: leaveEditMode },
     {
       id: "send-customer",
@@ -485,6 +498,13 @@ export default function QuotationEditorPage() {
   ];
   const dangerActions = [
     {
+      id: "delete",
+      kind: "delete",
+      label: "ลบใบเสนอราคา",
+      visible: canDeleteDocument && !editMode,
+      onClick: doDelete,
+    },
+    {
       id: "unaccept",
       kind: "reject",
       label: "ย้อนการรับ",
@@ -497,20 +517,6 @@ export default function QuotationEditorPage() {
   return (
     <Workspace
       back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
-      backActions={quote && (
-        <div className={styles.headerActions}>
-          {canEditDocument && !editMode && (
-            <Link href={`/sa/quotations/${id}?edit=1`} className="btn-icon" aria-label="แก้ไขใบเสนอราคา" title="แก้ไข">
-              <Pencil size={16} aria-hidden="true" />
-            </Link>
-          )}
-          {canDeleteDocument && !editMode && (
-            <button type="button" className="btn-icon danger" onClick={doDelete} disabled={!!busy} aria-label="ลบใบเสนอราคา" title="ลบ">
-              <Trash2 size={16} aria-hidden="true" />
-            </button>
-          )}
-        </div>
-      )}
       hideHeader
     >
       {error && (
@@ -612,7 +618,13 @@ export default function QuotationEditorPage() {
 
           {/* เงื่อนไขการชำระเงิน — รูปแบบเดียวกับหน้าสร้าง + เปิด/ปิดแบ่งชำระ */}
           <section className={styles.card}>
-            <QuotationPaymentTerms value={payment} onChange={updatePayment} totalAmount={totals.totalAmount} disabled={!editable} />
+            <QuotationPaymentTerms
+              value={payment}
+              onChange={updatePayment}
+              totalAmount={totals.totalAmount}
+              disabled={!editable}
+              disabledReason={editDisabledReason}
+            />
           </section>
 
           {/* หมายเหตุ — การ์ดตัวเดียวกับหน้าสร้างใบ (กฎ AGENTS.md) */}
@@ -623,6 +635,7 @@ export default function QuotationEditorPage() {
               presetVersionId={notesPresetVersionId}
               onPresetVersionIdChange={(next) => { setNotesPresetVersionId(next); setDirty(true); }}
               disabled={!editable}
+              disabledReason={editDisabledReason}
             />
           </section>
 
@@ -671,9 +684,11 @@ export default function QuotationEditorPage() {
               </>}
               footer={quote.status === "closed"
                 ? "ใบนี้ถูกปิดเพราะดีลจบด้วยใบเสนอราคาฉบับอื่น — แก้ไข/ลบไม่ได้"
-                : !editable
-                  ? "ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่"
-                  : null}
+                : canEditDocument && !editMode
+                  ? "ขณะนี้เป็นโหมดอ่านอย่างเดียว — กด “แก้ไขข้อมูล” ด้านบนเพื่อแก้เงื่อนไขการชำระ หมายเหตุ และข้อมูลในใบ"
+                  : !canEditDocument
+                    ? "ใบนี้แก้ไขไม่ได้ หากต้องเปลี่ยนข้อมูลให้สร้างฉบับแก้ไขใหม่"
+                    : null}
             />
 
             {quote.deal ? (

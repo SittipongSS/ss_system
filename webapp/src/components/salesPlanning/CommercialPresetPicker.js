@@ -8,6 +8,7 @@
 //   · ป้าย "แก้เพิ่มเติมแล้ว" คิดสดจากการเทียบค่าทุกครั้ง ไม่เก็บธง — แก้กลับให้ตรงแล้วหายเอง
 //   · เลือกชุดใหม่ตอนมีของจะเสีย → ถามยืนยันก่อนทับ; ช่องว่าง/ยังตรงกับชุดเดิม → ทับเงียบ ๆ
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Library } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { COMMERCIAL_PRESET_KIND_LABELS } from "@/lib/commercialPresets";
@@ -20,6 +21,7 @@ export default function CommercialPresetPicker({
   matchesCurrent,
   hasContent = false,
   disabled = false,
+  disabledReason = "",
 }) {
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +87,9 @@ export default function CommercialPresetPicker({
         </select>
       </label>
       {edited && <span className={styles.edited}>แก้เพิ่มเติมแล้ว</span>}
+      {disabled && disabledReason && (
+        <span className={styles.disabledHint}>{disabledReason}</span>
+      )}
       {!loading && loadError && (
         <span className={styles.loadError} role="alert">
           {loadError}
@@ -92,7 +97,10 @@ export default function CommercialPresetPicker({
         </span>
       )}
       {!loading && !loadError && !options.length && (
-        <span className={styles.empty}>ยังไม่มี{label}ที่เผยแพร่ — ตั้งได้ที่หน้าตั้งค่า &gt; คลังเงื่อนไขการค้า</span>
+        <span className={styles.empty}>
+          ยังไม่มี{label}ที่เผยแพร่ — ฉบับร่างจะยังเลือกไม่ได้
+          <Link href="/settings/commercial-presets">ไปที่คลังเงื่อนไขการค้า</Link>
+        </span>
       )}
 
       <ConfirmDialog
