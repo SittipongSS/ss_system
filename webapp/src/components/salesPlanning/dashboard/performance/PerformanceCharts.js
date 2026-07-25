@@ -146,7 +146,7 @@ function SignedBarChart({ data, height = 260, onHover, onLeave }) {
             </g>
           );
         })}
-        {!hasData && <text x={W / 2} y={H / 2} textAnchor="middle" fontSize="13" fill="var(--text-3)">ไม่มียอดปีก่อนให้เทียบ — กรอกได้ที่หน้า "ยอดขายรายเดือนปีก่อน"</text>}
+        {!hasData && <text x={W / 2} y={H / 2} textAnchor="middle" fontSize="13" fill="var(--text-3)">ไม่มียอดปีก่อนให้เทียบ — กรอกได้ที่ปุ่ม "ยอดขายย้อนหลัง" ในหน้าวางเป้า</text>}
       </svg>
     </div>
   );
