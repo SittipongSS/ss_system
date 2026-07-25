@@ -44,7 +44,7 @@ test('V4 doc: ข้อความยาวในเอกสารอ่าน
   };
   const html = buildQuotationMasterHTML(q, {});
   assert.match(html, /\.termsGrid p \{[^}]*font-size: 8\.5pt;[^}]*line-height: 1\.65;[^}]*white-space: pre-wrap;/);
-  assert.match(html, /\.termsGrid h2 span \{[^}]*display: block;/);
+  assert.match(html, /\.termsGrid h2 span \{[^}]*display: inline;[^}]*white-space: nowrap;/);
   assert.match(html, /\.itemTable strong \{[^}]*white-space: pre-wrap;/);
   assert.ok(html.includes('เงื่อนไขข้อแรก\nเงื่อนไขข้อที่สอง'), 'ไม่ยุบ newline ในหมายเหตุ');
   assert.ok(html.includes('หัวข้อสินค้า\nรายละเอียดบรรทัดถัดไป'), 'ไม่ยุบ newline ในรายละเอียดสินค้า');

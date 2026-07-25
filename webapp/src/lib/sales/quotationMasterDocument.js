@@ -342,7 +342,7 @@ const DOCUMENT_CSS = `
   .termsGrid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 3mm; margin-top: 3mm; break-inside: avoid; }
   .termsGrid > div { min-width: 0; padding: 2.8mm 3mm; background: var(--doc-neutral-soft); border-top: 1px solid var(--doc-line-strong); }
   .termsGrid h2 { margin-bottom: 2mm; font-size: 9pt; line-height: 1.25; }
-  .termsGrid h2 span { display: block; margin-top: .35mm; font-size: 6.9pt; line-height: 1.2; letter-spacing: .04em; }
+  .termsGrid h2 span { display: inline; font-size: 6.9pt; line-height: 1.2; letter-spacing: .04em; white-space: nowrap; }
   .termsGrid p { margin: 0; color: var(--doc-text); font-size: 8.5pt; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
   .termsGrid .remarks { grid-column: 1 / -1; }
   .termsGrid .remarks p { max-width: 168mm; }
