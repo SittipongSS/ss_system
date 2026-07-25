@@ -22,7 +22,7 @@ export function showSalesOrderPrintError(printWindow, message = 'ไม่สา
   return showQuotePrintError(printWindow, message, 'ใบสั่งขาย');
 }
 
-export function buildSalesOrderPrintHTML(order) {
+export function buildSalesOrderPrintHTML(order, company = null) {
   const quotation = order.quotation || {};
   const taxableAmount = Math.max(0, Number(order.totalAmount || 0) - Number(order.vatAmount || 0));
   // อัตรา VAT คิดย้อนจากยอดเงิน (ปัดเป็นสตางค์แล้ว) — ปัด 2 ตำแหน่งกัน float noise
@@ -48,11 +48,16 @@ export function buildSalesOrderPrintHTML(order) {
     }
     : null;
 
-  // ลายเซ็นผู้จัดทำ (ผู้เสนอราคา) — ใช้ตอนตรึง snapshot (ฝังรูป active signature ของผู้สร้าง);
-  // live print ไม่ส่งมา → หล่นไปช่องชื่อเปล่าเดิม. stamp เชิงภาพ ไม่มี evidence
+  // ลายเซ็นผู้จัดทำ (พนักงานขาย): stamp เชิงภาพจากลายเซ็น active ของผู้สร้าง — ไม่ใช่
+  // evidence-backed จึงไม่มี role/เวลา/Evidence (เหมือนช่องผู้เสนอราคาในใบเสนอราคา).
+  // live print โหลดสด (route GET); ฉบับตรึง snapshot ฝังรูปตอนอนุมัติ.
   const proposerSig = order.proposerSignature;
   const proposerEsignature = proposerSig?.imageDataUri
-    ? { imageDataUri: proposerSig.imageDataUri, signerName: order.createdByName || '', signerRole: '' }
+    ? {
+      imageDataUri: proposerSig.imageDataUri,
+      signerName: proposerSig.signerName || order.createdByName || '',
+      signerRole: '',
+    }
     : null;
 
   // แมป order → รูป quote ที่ model builder V4 รับ (ข้อมูลลูกค้ามาจาก snapshot ในใบเสนอราคาที่ผูก)
@@ -80,6 +85,7 @@ export function buildSalesOrderPrintHTML(order) {
   };
 
   return buildQuotationMasterHTML(printable, {
+    company,
     form: DOCUMENT_FORMS.salesOrder,
     documentTitleTh: 'ใบสั่งขาย',
     documentLabel: 'ใบสั่งขาย',
@@ -111,11 +117,11 @@ export function buildSalesOrderPrintHTML(order) {
   });
 }
 
-export function openSalesOrderPrintWindow(order, preparedWindow = null) {
+export function openSalesOrderPrintWindow(order, preparedWindow = null, company = null) {
   const win = preparedWindow || prepareSalesOrderPrintWindow();
   if (!win) return;
   win.document.open();
-  win.document.write(buildSalesOrderPrintHTML(order));
+  win.document.write(buildSalesOrderPrintHTML(order, company));
   win.document.close();
   return win;
 }
@@ -123,11 +129,11 @@ export function openSalesOrderPrintWindow(order, preparedWindow = null) {
 // พิมพ์โดยเลือกฉบับตรึง (issued snapshot) ก่อนถ้ามี — SO ที่อนุมัติแล้วเล่นฉบับที่ตรึงตอน
 // อนุมัติ (หน้าตา + รูปลายเซ็นคงที่ ไม่เปลี่ยนตามข้อมูลสด); ยังไม่อนุมัติ/ไม่มี snapshot
 // (404) หรือสถานะเปลี่ยนหลังอนุมัติ (409) → เรนเดอร์สดตามปกติ. คู่ขนานกับ QT prefer-issued.
-export async function openSalesOrderPrintWindowPreferIssued(order, preparedWindow = null) {
+export async function openSalesOrderPrintWindowPreferIssued(order, preparedWindow = null, company = null) {
   const win = preparedWindow || prepareSalesOrderPrintWindow();
   if (!win) return undefined;
   const id = order?.id;
-  if (!id) return openSalesOrderPrintWindow(order, win);
+  if (!id) return openSalesOrderPrintWindow(order, win, company);
   try {
     const res = await fetch(`/api/sales-planning/sales-orders/${encodeURIComponent(id)}/issued?render=latest`, {
       cache: 'no-store',
@@ -139,7 +145,7 @@ export async function openSalesOrderPrintWindowPreferIssued(order, preparedWindo
       return win;
     }
   } catch {
-    // โหลดฉบับตรึงไม่ได้ = ไม่บล็อกการพิมพ์ ตกไปใช้ข้อมูลสดแทน
+    // โหลดฉบับตรึงไม่ได้ = ไม่บล็อกการพิมพ์ ตกไปใช้ข้อมูลสดแทน (พร้อม company profile สด)
   }
-  return openSalesOrderPrintWindow(order, win);
+  return openSalesOrderPrintWindow(order, win, company);
 }

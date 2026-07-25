@@ -45,8 +45,10 @@ export function normalizeOrganizationSettingsInput(input = {}) {
 
   value.taxId = String(input.taxId ?? '').replace(/\D/g, '');
   value.branchCode = String(input.branchCode ?? '').replace(/\D/g, '');
-  if (!/^\d{13}$/.test(value.taxId)) errors.push('เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก');
-  if (!/^\d{5}$/.test(value.branchCode)) errors.push('รหัสสาขาต้องเป็นตัวเลข 5 หลัก');
+  // เช็ครูปแบบเฉพาะเมื่อมีค่า — ค่าว่างมี error "กรุณาระบุ..." จาก required loop แล้ว
+  // (ไม่งั้นช่องว่างจะได้ error ซ้อนสองข้อความ)
+  if (value.taxId && !/^\d{13}$/.test(value.taxId)) errors.push('เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก');
+  if (value.branchCode && !/^\d{5}$/.test(value.branchCode)) errors.push('รหัสสาขาต้องเป็นตัวเลข 5 หลัก');
 
   if (value.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email)) {
     errors.push('รูปแบบอีเมลไม่ถูกต้อง');

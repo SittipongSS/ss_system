@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { genId } from '@/lib/id';
 import { documentApprovalFingerprint } from '@/lib/documentApproval';
 import { buildSalesOrderPrintHTML } from '@/lib/sales/salesOrderPrint';
+import { resolveCompanyBlock } from '@/lib/companyProfile';
 import {
   loadSignatureImageDataUri,
   loadActiveSignatureAsset,
@@ -25,9 +26,11 @@ const trimOrNull = (value) => {
 };
 
 // payload structured เบื้องหลัง artifact — เปลี่ยนที่นี่ = fingerprint เปลี่ยน = ออกฉบับใหม่
-export function buildIssuedSalesOrderPayload(order = {}) {
+// company = บล็อกบริษัทที่เผยแพร่ ณ เวลาอนุมัติ (ตรึงให้ reprint ตรงเดิม); ไม่ส่ง → fallback
+export function buildIssuedSalesOrderPayload(order = {}, company) {
   const lines = Array.isArray(order.lines) ? order.lines : [];
   const q = order.quotation || {};
+  const co = resolveCompanyBlock(company);
   return {
     document: {
       orderNumber: trimOrNull(order.orderNumber),
@@ -70,6 +73,15 @@ export function buildIssuedSalesOrderPayload(order = {}) {
       approvedAt: order.approvedAt || null,
       proposer: trimOrNull(order.createdByName),
     },
+    // บริษัทที่เผยแพร่ ณ เวลาอนุมัติ — คนละชุด = คนละ issue (เหมือน QT)
+    company: {
+      legalName: co.legalNameTh,
+      address: co.address,
+      taxId: co.taxId,
+      officeTel: co.phone,
+      line: co.line,
+      website: co.website,
+    },
   };
 }
 
@@ -89,9 +101,9 @@ export function buildIssuedSalesOrderArtifactHtml(order = {}, options = {}) {
       }
       : null,
     proposerSignature: options.proposerSignatureImage
-      ? { imageDataUri: options.proposerSignatureImage }
+      ? { imageDataUri: options.proposerSignatureImage, signerName: order.createdByName || '' }
       : null,
-  });
+  }, options.company || null);
 }
 
 export function issuedContentFingerprint(payload) {
@@ -103,15 +115,15 @@ export function artifactSha256(html) {
 }
 
 // ตรึง snapshot + artifact ผ่าน RPC atomic idempotent. เนื้อหาเดิมคืนของเดิม ไม่ซ้ำ.
-export async function captureIssuedSalesOrderSnapshot(supabase, { order, evidence, user }) {
-  const payload = buildIssuedSalesOrderPayload(order);
+export async function captureIssuedSalesOrderSnapshot(supabase, { order, evidence, user, company }) {
+  const payload = buildIssuedSalesOrderPayload(order, company);
   // ผู้อนุมัติ = รูปจาก evidence (path ตรึงตอนอนุมัติ); ผู้จัดทำ = รูป active ของผู้สร้าง SO
   const proposerAsset = await loadActiveSignatureAsset(supabase, order.createdBy);
   const [approverSignatureImage, proposerSignatureImage] = await Promise.all([
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),
   ]);
-  const html = buildIssuedSalesOrderArtifactHtml(order, { approverSignatureImage, proposerSignatureImage });
+  const html = buildIssuedSalesOrderArtifactHtml(order, { company, approverSignatureImage, proposerSignatureImage });
   const { data, error } = await supabase.rpc('capture_issued_sales_order_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),
     p_artifact_id: genId('IDA'),

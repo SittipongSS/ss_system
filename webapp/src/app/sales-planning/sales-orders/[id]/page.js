@@ -26,6 +26,7 @@ import {
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openSalesOrderPrintWindowPreferIssued, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
+import { getCompanyProfileForPrint } from "@/lib/companyProfile";
 import styles from "./page.module.css";
 
 const STATUS = {
@@ -176,10 +177,14 @@ export default function SalesOrderDetailPage() {
       return;
     }
     try {
-      const res = await fetch(`/api/sales-planning/sales-orders/${id}`);
+      const [res, company] = await Promise.all([
+        fetch(`/api/sales-planning/sales-orders/${id}`),
+        getCompanyProfileForPrint(),
+      ]);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "ไม่สามารถโหลดข้อมูลใบสั่งขายได้");
-      await openSalesOrderPrintWindowPreferIssued(data, printWindow);
+      // ฉบับตรึงก่อน (approved) — มี company + ลายเซ็นฝังจากตอนอนุมัติ; ไม่มี snapshot → เรนเดอร์สดพร้อม company profile
+      await openSalesOrderPrintWindowPreferIssued(data, printWindow, company);
     } catch (printError) {
       showSalesOrderPrintError(printWindow, printError.message);
     }
