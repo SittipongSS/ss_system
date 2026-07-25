@@ -101,15 +101,22 @@ export default function CompanySettingsPage() {
     }
   };
 
-  const patchDraft = (row) => request(
-    `/api/organization-settings/draft/${row.id}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, expectedUpdatedAt: row.updatedAt }),
-    },
-    "บันทึกฉบับร่างไม่สำเร็จ",
-  );
+  // บันทึกร่าง แล้ว "เลื่อน" แถวใน drawer ไปเป็นแถวที่เพิ่งบันทึกทันที — expectedUpdatedAt
+  // ของครั้งถัดไปต้องเป็นค่าล่าสุดเสมอ ไม่งั้นถ้าจังหวะเผยแพร่ล้มหลังบันทึกผ่านแล้ว
+  // การกดซ้ำจะชน 409 draft_stale ตลอดจนกว่าจะปิด drawer เปิดใหม่
+  const patchDraft = async (row) => {
+    const saved = await request(
+      `/api/organization-settings/draft/${row.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, expectedUpdatedAt: row.updatedAt }),
+      },
+      "บันทึกฉบับร่างไม่สำเร็จ",
+    );
+    setDrawer((current) => current ? { ...current, row: saved } : current);
+    return saved;
+  };
 
   // "เก็บร่างไว้ก่อน" — บันทึกเฉย ๆ ยังไม่เผยแพร่
   const saveDraft = async () => {
@@ -154,6 +161,9 @@ export default function CompanySettingsPage() {
       await load();
     } catch (requestError) {
       setToast({ kind: "error", msg: requestError.message });
+      // อาจล้มหลังบันทึกร่างผ่านไปแล้ว — โหลดใหม่ให้แบนเนอร์ร่างค้างและกล่องยืนยัน
+      // (ที่อ่านจาก data.draft) เห็นสถานะจริง ไม่ใช่ของก่อนกดเผยแพร่
+      await load();
     } finally {
       setBusy(false);
     }

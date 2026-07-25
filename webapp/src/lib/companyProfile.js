@@ -68,7 +68,11 @@ export async function getCompanyProfileForPrint() {
   try {
     const data = await cachedFetchJson('/api/company-profile');
     return resolveCompanyBlock(data?.company || null);
-  } catch {
+  } catch (error) {
+    // ล้มแล้วยัง print ได้ด้วย fallback เหมือนเดิม แต่ต้องส่งเสียง — การกลืน error เงียบ
+    // ตรงนี้คือเหตุที่ 403 จากด่าน proxy รอดมาถึง prod โดยไม่มีใครเห็น (ใบทุกใบของ AE
+    // ตกไปใช้ constant สำรองแทนข้อมูลบริษัทที่เผยแพร่)
+    console.warn('[companyProfile] โหลด /api/company-profile ไม่สำเร็จ — ใช้ค่าสำรองจาก documentBrand', error);
     return resolveCompanyBlock(null);
   }
 }

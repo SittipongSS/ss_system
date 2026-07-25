@@ -164,7 +164,10 @@ const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/sa', '/api/customers',
 // APIs a non-admin may READ (GET) — PM forms/timeline need this master data;
 // managing the registries now lives in the (open) database system above; the tax
 // tracks + reports power the (open) excise system.
-const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit'];
+// /api/company-profile = บล็อกบริษัทที่เผยแพร่ ซึ่งพิมพ์อยู่บนเอกสารถึงลูกค้าอยู่แล้ว
+// ทุกคนที่ล็อกอินจึงอ่านได้ (ไม่งั้นใบที่ AE พิมพ์จะตกไปใช้ constant สำรองเงียบ ๆ) —
+// ทางเขียนยังอยู่ที่ /api/organization-settings ซึ่ง gate ด้วย master:manage ตามเดิม
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile'];
 
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).
