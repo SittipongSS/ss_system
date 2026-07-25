@@ -273,7 +273,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     .limit(1)
     .maybeSingle();
   if (evidenceError) return fail(evidenceError.message, 500);
-  if (evidence?.id || before.signatureEvidenceId) {
+  const hasEvidence = Boolean(evidence?.id || before.signatureEvidenceId);
+  // path ปกติยังห้ามลบเด็ดขาด (แปลง FK RESTRICT เป็นข้อความแนะนำ ไม่ให้ raw error หลุด);
+  // ?force=1 ของผู้ดูแลระบบผ่านได้แล้ว (mig 0152 break-glass) — มติผู้ใช้ 2026-07-25
+  if (hasEvidence && !force) {
     return fail('ลบถาวรไม่ได้: ใบเสนอราคานี้มีหลักฐานลายเซ็นและต้องเก็บเป็นหลักฐาน — ออก Revise แทน; ใบที่รับ (Won) แล้วให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา', 409);
   }
 
@@ -296,7 +299,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // sales_orders.quotationId เป็น ON DELETE CASCADE จึงหายเองที่ระดับ DB.
   if (force) await cleanupQuotationOrphans(supabase, before);
 
-  const { error } = await supabase.from('quotations').delete().eq('id', id);
+  // ใบที่มีหลักฐาน/ฉบับตรึงต้องลบผ่าน RPC break-glass (mig 0152) — มันตั้ง session flag ให้
+  // guard ยอม DELETE แล้วเก็บกวาดตามลำดับ FK: SO ลูก (ซึ่ง cascade เองไม่ได้เพราะลูกของมัน
+  // เป็น RESTRICT) → ฉบับตรึง+ไฟล์แนบ → หลักฐาน → ตัวใบ. เส้นทางปกติยังลบตรงเหมือนเดิม
+  const { error } = hasEvidence
+    ? await supabase.rpc('force_delete_quotation', { p_id: id })
+    : await supabase.from('quotations').delete().eq('id', id);
   if (error) return fail(error.message, 500);
   const summary = force
     ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — บังคับลบ สิทธิ์ผู้ดูแลระบบ)`

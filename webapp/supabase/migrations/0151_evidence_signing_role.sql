@@ -109,10 +109,13 @@ $$;
 -- signature เปลี่ยน (11 → 12 params) จึงต้อง DROP ก่อน (แพตเทิร์นเดียวกับ 0127:84-89).
 -- ใส่ DEFAULT 'approver' ไว้เพื่อให้ผู้เรียกเดิม 3 จุด (approve_quotation_* / approve_sales_order_*
 -- ที่ส่ง 11 args) ทำงานต่อได้ทันทีโดยไม่ต้อง recreate — ลดพื้นที่ผิดพลาดของ migration นี้
+-- ⚠️ ต้องเป็น DROP (เวอร์ชัน 11 params) + CREATE OR REPLACE (เวอร์ชัน 12 params):
+--    CREATE เปล่าจะพังตอนรันซ้ำ ("already exists with same argument types") เพราะรอบสอง
+--    ไม่มี 11-param ให้ DROP แล้ว แต่ 12-param มีอยู่ → OR REPLACE ทำให้รันซ้ำได้จริง
 DROP FUNCTION IF EXISTS public.capture_document_signature_evidence(
   text, text, text, text, text, text, text, text, text, text, timestamptz);
 
-CREATE FUNCTION public.capture_document_signature_evidence(
+CREATE OR REPLACE FUNCTION public.capture_document_signature_evidence(
   p_evidence_id text,
   p_document_type text,
   p_document_id text,
