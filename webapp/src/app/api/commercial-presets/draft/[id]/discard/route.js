@@ -17,8 +17,8 @@ export async function POST(request, context) {
       user, action: 'delete', entityType: 'commercial_preset_version', entityId: id,
       before: discarded, after: null,
       summary: presetDeleted
-        ? `ยกเลิก Commercial Preset “${discarded.title}” ฉบับร่าง Version ${discarded.versionNumber} (ลบ preset ที่ไม่เคยเผยแพร่ทั้งตัว)`
-        : `ยกเลิก Commercial Preset “${discarded.title}” ฉบับร่าง Version ${discarded.versionNumber} (ลบถาวร)`,
+        ? `ยกเลิกชุดเงื่อนไขการค้า“${discarded.title}” ฉบับร่าง Version ${discarded.versionNumber} (ลบ preset ที่ไม่เคยเผยแพร่ทั้งตัว)`
+        : `ยกเลิกชุดเงื่อนไขการค้า“${discarded.title}” ฉบับร่าง Version ${discarded.versionNumber} (ลบถาวร)`,
       request,
     });
     return Response.json({ ...discarded, presetDeleted });

@@ -11,7 +11,7 @@ export async function POST(request, context) {
   try {
     const { id } = await context.params;
     const draft = await createCommercialPresetDraft(getSupabaseAdmin(), id, user);
-    await recordAudit({ user, action: 'create', entityType: 'commercial_preset_version', entityId: draft.id, after: draft, summary: `สร้าง Commercial Preset “${draft.title}” Version ${draft.versionNumber} ฉบับร่าง`, request });
+    await recordAudit({ user, action: 'create', entityType: 'commercial_preset_version', entityId: draft.id, after: draft, summary: `สร้างชุดเงื่อนไขการค้า“${draft.title}” Version ${draft.versionNumber} ฉบับร่าง`, request });
     return Response.json(draft, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof CommercialPresetError ? error.message : 'สร้างฉบับร่างไม่สำเร็จ' }, { status: error instanceof CommercialPresetError ? error.status : 500 });

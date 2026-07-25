@@ -1,118 +1,107 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  commercialPresetScopeLabel,
-  commercialPresetToQuotationDefaults,
+  COMMERCIAL_PRESET_LIMITS,
+  commercialPresetSummary,
+  fullPaymentInstallment,
+  isFullPaymentPlan,
   normalizeCommercialPresetInput,
-  resolveCommercialPreset,
+  normalizeCommercialPresetKind,
 } from './commercialPresets.js';
+import { MAX_INSTALLMENTS } from './sales/paymentPlan.js';
 
-const valid = {
-  documentKey: 'quotation',
-  teamKey: 'odm',
-  dealType: 'scent',
-  serviceType: '',
-  priority: 10,
-  title: 'เงื่อนไขงานกลิ่น ODM',
+const paymentInput = {
+  title: 'โอน · เครดิต 30 วัน',
   paymentMethod: 'โอนเงินเข้าบัญชีบริษัท',
-  paymentTerms: 'เครดิต 30 วัน',
-  remarks: 'ราคานี้ไม่รวมค่าขนส่ง',
+  paymentTerms: 'เครดิต 30 วันนับจากวันส่งมอบ',
   installments: [
     { label: 'มัดจำ', percent: 50, trigger: 'เมื่ออนุมัติใบเสนอราคา', dueRule: 'ภายใน 7 วัน', note: '' },
-    { label: 'ส่วนที่เหลือ', percent: 50, trigger: 'ก่อนส่งมอบ', dueRule: 'ก่อนส่งสินค้า', note: '' },
+    { label: 'ส่วนที่เหลือ', percent: 50, trigger: 'ก่อนส่งมอบ', dueRule: '', note: '' },
   ],
-  changeNote: 'กำหนดเงื่อนไขเริ่มต้น',
+  changeNote: 'ตั้งชุดเริ่มต้น',
 };
 
-test('normalizes scope and installment content', () => {
-  const result = normalizeCommercialPresetInput(valid, { includeScope: true });
+test('kind: รับเฉพาะ payment/remarks และเติม documentKey ให้เอง', () => {
+  assert.deepEqual(normalizeCommercialPresetKind({ kind: 'payment' }).value, { documentKey: 'quotation', kind: 'payment' });
+  assert.deepEqual(normalizeCommercialPresetKind({ kind: 'remarks' }).errors, []);
+  assert.match(normalizeCommercialPresetKind({ kind: 'scope' }).errors.join(' '), /ชนิดคลังไม่ถูกต้อง/);
+  assert.match(normalizeCommercialPresetKind({ kind: 'payment', documentKey: 'salesOrder' }).errors.join(' '), /ชนิดเอกสารไม่ถูกต้อง/);
+});
+
+test('ชุดการชำระ: normalize เนื้อหาครบและตัดช่องของอีกคลังทิ้ง', () => {
+  const result = normalizeCommercialPresetInput({ ...paymentInput, remarks: 'ไม่ควรติดมา' }, { kind: 'payment' });
   assert.deepEqual(result.errors, []);
-  assert.equal(result.value.teamKey, 'ODM');
-  assert.equal(result.value.dealType, 'SCENT');
+  assert.equal(result.value.paymentMethod, 'โอนเงินเข้าบัญชีบริษัท');
+  assert.equal(result.value.installments.length, 2);
   assert.equal(result.value.installments[0].note, null);
+  // ช่องของคลังหมายเหตุต้องไม่ปนเข้ามา
+  assert.equal(result.value.remarks, null);
 });
 
-test('rejects invalid scope and installment totals', () => {
+test('ชุดหมายเหตุ: บังคับข้อความ และไม่เก็บข้อมูลการชำระ', () => {
+  const ok = normalizeCommercialPresetInput({ title: 'หมายเหตุ SCENT', remarks: 'ราคานี้ไม่รวมค่าขนส่ง', ...paymentInput, kind: undefined }, { kind: 'remarks' });
+  assert.deepEqual(ok.errors, []);
+  assert.equal(ok.value.remarks, 'ราคานี้ไม่รวมค่าขนส่ง');
+  assert.equal(ok.value.paymentMethod, null);
+  assert.equal(ok.value.paymentTerms, null);
+  assert.deepEqual(ok.value.installments, []);
+
+  const missing = normalizeCommercialPresetInput({ title: 'หมายเหตุ NPD' }, { kind: 'remarks' });
+  assert.match(missing.errors.join(' | '), /กรุณาระบุรายละเอียดหมายเหตุ/);
+});
+
+test('ชุดการชำระ: ต้องมีชื่อชุดและวิธีชำระเสมอ', () => {
+  const result = normalizeCommercialPresetInput({ installments: [fullPaymentInstallment()] }, { kind: 'payment' });
+  assert.match(result.errors.join(' | '), /กรุณาระบุชื่อชุด/);
+  assert.match(result.errors.join(' | '), /กรุณาระบุวิธีชำระเงิน/);
+});
+
+test('ตารางงวด: ชำระเต็มจำนวน = 1 แถว 100% ผ่านได้', () => {
   const result = normalizeCommercialPresetInput({
-    ...valid,
-    teamKey: 'UNKNOWN',
-    installments: [{ label: 'มัดจำ', percent: 40 }],
-  }, { includeScope: true });
-  assert.match(result.errors.join(' | '), /ทีมไม่ถูกต้อง/);
-  assert.match(result.errors.join(' | '), /รวมต้องเท่ากับ 100/);
+    ...paymentInput,
+    installments: [fullPaymentInstallment()],
+  }, { kind: 'payment' });
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.value.installments.length, 1);
+  assert.equal(result.value.installments[0].percent, 100);
+  assert.ok(isFullPaymentPlan(result.value.installments));
 });
 
-test('resolver prefers the most specific published preset', () => {
-  const candidates = [
-    { id: 'general', presetKey: 'general', documentKey: 'quotation', priority: 0, published: { id: 'v1' } },
-    { id: 'team', presetKey: 'team', documentKey: 'quotation', teamKey: 'ODM', priority: 0, published: { id: 'v2' } },
-    { id: 'exact', presetKey: 'exact', documentKey: 'quotation', teamKey: 'ODM', dealType: 'SCENT', priority: 99, published: { id: 'v3' } },
-  ];
-  assert.equal(resolveCommercialPreset(candidates, { documentKey: 'quotation', teamKey: 'ODM', dealType: 'SCENT' }).id, 'exact');
-  assert.equal(resolveCommercialPreset(candidates, { documentKey: 'quotation', teamKey: 'ODM', dealType: 'NPD' }).id, 'team');
-  assert.equal(resolveCommercialPreset(candidates, { documentKey: 'quotation', teamKey: 'KA' }).id, 'general');
+test('ตารางงวด: ห้ามว่าง และผลรวมต้องเท่ากับ 100', () => {
+  const empty = normalizeCommercialPresetInput({ ...paymentInput, installments: [] }, { kind: 'payment' });
+  assert.match(empty.errors.join(' | '), /อย่างน้อย 1 งวด/);
+
+  const short = normalizeCommercialPresetInput({ ...paymentInput, installments: [{ label: 'มัดจำ', percent: 40 }] }, { kind: 'payment' });
+  assert.match(short.errors.join(' | '), /รวมต้องเท่ากับ 100/);
 });
 
-test('resolver tie-break is deterministic by priority then preset key', () => {
-  const candidates = [
-    { id: 'b', presetKey: 'b', documentKey: 'quotation', dealType: 'NPD', priority: 5, published: { id: 'v1' } },
-    { id: 'a', presetKey: 'a', documentKey: 'quotation', dealType: 'NPD', priority: 5, published: { id: 'v2' } },
-    { id: 'higher', presetKey: 'z', documentKey: 'quotation', dealType: 'NPD', priority: 10, published: { id: 'v3' } },
-  ];
-  assert.equal(resolveCommercialPreset(candidates, { documentKey: 'quotation', dealType: 'NPD' }).id, 'a');
-  assert.equal(resolveCommercialPreset(candidates, { documentKey: 'salesOrder', dealType: 'NPD' }), null);
+test('เพดานงวดของคลังต้องเท่ากับที่ฟอร์มใบเสนอราคารับไหว', () => {
+  assert.equal(COMMERCIAL_PRESET_LIMITS.installmentCount, MAX_INSTALLMENTS);
+  const rows = Array.from({ length: MAX_INSTALLMENTS + 1 }, (_, index) => ({
+    label: `งวด ${index + 1}`,
+    percent: 100 / (MAX_INSTALLMENTS + 1),
+  }));
+  const result = normalizeCommercialPresetInput({ ...paymentInput, installments: rows }, { kind: 'payment' });
+  assert.match(result.errors.join(' | '), new RegExp(`ไม่เกิน ${MAX_INSTALLMENTS} งวด`));
 });
 
-test('team default wins a same-specificity deal default before priority tie-break', () => {
-  const candidates = [
-    { id: 'deal', presetKey: 'deal', documentKey: 'quotation', dealType: 'NPD', priority: 0, published: { id: 'v1' } },
-    { id: 'team', presetKey: 'team', documentKey: 'quotation', teamKey: 'ODM', priority: 999, published: { id: 'v2' } },
-  ];
-  assert.equal(resolveCommercialPreset(candidates, { documentKey: 'quotation', teamKey: 'ODM', dealType: 'NPD' }).id, 'team');
+test('isFullPaymentPlan: จริงเฉพาะแถวเดียว 100%', () => {
+  assert.ok(isFullPaymentPlan([{ percent: 100 }]));
+  assert.equal(isFullPaymentPlan([{ percent: 50 }, { percent: 50 }]), false);
+  assert.equal(isFullPaymentPlan([]), false);
+  assert.equal(isFullPaymentPlan(null), false);
 });
 
-test('scope label is Thai-first and explains defaults', () => {
-  assert.equal(commercialPresetScopeLabel({ documentKey: 'quotation', teamKey: null }), 'ใบเสนอราคา · ทุกทีม · ค่าเริ่มต้น');
-});
-
-test('quotation defaults: null when unresolved or without a published version', () => {
-  assert.equal(commercialPresetToQuotationDefaults(null), null);
-  assert.equal(commercialPresetToQuotationDefaults({ id: 'x', published: null }), null);
-});
-
-test('quotation defaults map published content and fold installment rules into note', () => {
-  const resolved = {
-    id: 'preset-odm',
-    published: {
-      id: 'ver-2',
-      title: 'เงื่อนไขงานกลิ่น ODM',
-      paymentMethod: 'โอนเงินเข้าบัญชีบริษัท',
-      paymentTerms: 'เครดิต 30 วัน',
-      remarks: 'ราคานี้ไม่รวมค่าขนส่ง',
-      installments: [
-        { label: 'มัดจำ', percent: 50, trigger: 'เมื่ออนุมัติใบเสนอราคา', dueRule: 'ภายใน 7 วัน', note: '' },
-        { label: 'ส่วนที่เหลือ', percent: 50, trigger: '', dueRule: '', note: 'ก่อนส่งมอบ' },
-      ],
-    },
-  };
-  const defaults = commercialPresetToQuotationDefaults(resolved);
-  assert.equal(defaults.versionId, 'ver-2');
-  assert.equal(defaults.title, 'เงื่อนไขงานกลิ่น ODM');
-  assert.equal(defaults.paymentMethod, 'โอนเงินเข้าบัญชีบริษัท');
-  assert.equal(defaults.remarks, 'ราคานี้ไม่รวมค่าขนส่ง');
-  assert.equal(defaults.installments.length, 2);
-  // trigger + dueRule + note พับรวมด้วย ' · ' (ข้ามค่าว่าง)
-  assert.equal(defaults.installments[0].note, 'เมื่ออนุมัติใบเสนอราคา · ภายใน 7 วัน');
-  assert.equal(defaults.installments[1].note, 'ก่อนส่งมอบ');
-  assert.deepEqual(defaults.installments.map((row) => row.percent), [50, 50]);
-});
-
-test('quotation defaults tolerate missing optional content fields', () => {
-  const defaults = commercialPresetToQuotationDefaults({ id: 'p', published: { id: 'v', title: null } });
-  assert.equal(defaults.versionId, 'v');
-  assert.equal(defaults.title, null);
-  assert.equal(defaults.paymentMethod, '');
-  assert.equal(defaults.paymentTerms, '');
-  assert.equal(defaults.remarks, '');
-  assert.deepEqual(defaults.installments, []);
+test('สรุปในตาราง: แยกข้อความตามชนิดคลัง', () => {
+  assert.equal(commercialPresetSummary('payment', null), 'ยังไม่มีเวอร์ชันใช้งาน');
+  assert.equal(
+    commercialPresetSummary('payment', { paymentMethod: 'โอน', installments: [{ percent: 100 }] }),
+    'โอน · ชำระเต็มจำนวน',
+  );
+  assert.equal(
+    commercialPresetSummary('payment', { paymentMethod: 'โอน', installments: [{ percent: 50 }, { percent: 50 }] }),
+    'โอน · แบ่ง 2 งวด',
+  );
+  assert.equal(commercialPresetSummary('remarks', { remarks: 'บรรทัดแรก\nบรรทัดสอง' }), 'บรรทัดแรก');
+  assert.equal(commercialPresetSummary('remarks', { remarks: '' }), 'ยังไม่ระบุหมายเหตุ');
 });
