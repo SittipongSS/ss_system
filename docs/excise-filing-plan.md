@@ -54,6 +54,7 @@ resolver ตัวนี้ใช้ร่วมทั้ง 2 entry point:
 ## 4. จุดเสี่ยง / ต้องระวัง
 
 - **สองโลก permission ตัดกัน**: SO เขียนด้วย `salesplan:*`/AE-Supervisor; filing เขียนด้วย `sales:act`/`legal:approve`. ใบยื่นเป็นของโมดูลภาษี (อ่าน SO ข้ามโมดูล) ตาม BOUNDARY_MAP — **ห้ามให้ปุ่มบนหน้า SO เขียนตาราง orders ตรง ๆ** ต้องยิง endpoint ของโมดูลภาษี
+- **ปุ่ม "สร้างการยื่นชำระ" ลงบนหน้า SO detail** ซึ่งกำลังถูก rewrite (`docs/system-modernization/qt-so-unified-detail-page.md`) — จัดเป็น entity-action ตาม page-header standard ให้เข้ากับ design system กลางที่ rewrite วางไว้ (โน้ตไว้ในสเปกนั้นแล้ว)
 - **SO line ไม่มีช่องภาษี** → ภาษีมาจาก `products.exciseTax/localTax` (ตัวสินค้า) snapshot ตอนสร้าง; สินค้าที่ `isExciseTaxable=false` (ยกเว้นรายตัว) → ภาษี 0 ไม่เข้าใบยื่น
 - **SO ถูกยกเลิก/Won-reversal หลังสร้างใบยื่นแล้ว**: ต้องกันหรือเตือน (ใบยื่นอ้าง SO ที่ถูกถอน) — เคาะตอน PR2
 - **ยอดเก็บ vs ยอดยื่นจริง**: มติ 2 = เก็บ = excise+local; แต่ยอดที่ LG ยื่นจริงอาจต่างจากยอดสรุป (ปรับที่กรม) — เก็บทั้ง `amountToCollect` (ตอนสร้าง) และ `exciseTaxPaidAmount` (ตอน complete) แยกกัน ไม่ทับกัน
