@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { AlertTriangle, CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DateInput from "@/components/ui/DateInput";
+import Select from "@/components/ui/Select";
 import Modal from "@/components/Modal";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -288,27 +289,18 @@ export default function HolidaysPage() {
         </EmptyState>
       ) : (
         <>
-          {/* เลือกปีที่โชว์ (ตั้งต้นปีปัจจุบัน) · ปุ่มเพิ่มขวาสุดตามกติกา Page Header */}
+          {/* เลือกปีที่โชว์ (ตั้งต้นปีปัจจุบัน) · ปุ่มเพิ่มขวาสุดตามกติกา Page Header
+              ใช้ dropdown ไม่ใช่ปุ่มเรียง เพราะจำนวนปีโตขึ้นทุกปี — ตัวเลือกที่กว้างขึ้น
+              เรื่อย ๆ จะเบียดแถวเครื่องมือแตกในอีกไม่กี่ปี */}
           <div className="toolbar">
-            <div className={`segmented ${styles.yearPicker}`} role="group" aria-label="เลือกปีที่แสดง">
-              {byYear.map(([year]) => (
-                <button
-                  key={year}
-                  type="button"
-                  className={activeYear === year ? "active" : ""}
-                  aria-pressed={activeYear === year}
-                  onClick={() => setListYear(year)}
-                >
-                  {year}
-                </button>
+            <span className="toolbar-label">ปี</span>
+            <Select value={activeYear || ""} onChange={(event) => setListYear(event.target.value)} aria-label="เลือกปีที่แสดง" className={styles.yearPicker}>
+              {byYear.map(([year, items]) => (
+                <option key={year} value={year}>{year} ({items.length} วัน)</option>
               ))}
-              {byYear.length > 1 && (
-                <button type="button" className={activeYear === "all" ? "active" : ""} aria-pressed={activeYear === "all"} onClick={() => setListYear("all")}>
-                  ทุกปี
-                </button>
-              )}
-            </div>
-            <span className={styles.listSummary}>ทั้งหมด {holidays.length} วัน · {byYear.length} ปี</span>
+              {byYear.length > 1 && <option value="all">ทุกปี ({holidays.length} วัน)</option>}
+            </Select>
+            <span className={styles.listSummary}>{byYear.length} ปีในระบบ</span>
             <span className="spacer" />
             {canManage && (
               <button type="button" className="btn btn-accent" onClick={openAdd}><Plus size={16} /> เพิ่มวันหยุด</button>
