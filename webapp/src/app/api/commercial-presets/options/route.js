@@ -6,7 +6,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { canEditSalesPlanning } from '@/lib/salesPlanning';
 import { COMMERCIAL_PRESET_KINDS } from '@/lib/commercialPresets';
-import { loadCommercialPresetsAdmin, CommercialPresetError } from '@/lib/admin/commercialPresets';
+import { loadPublishedCommercialPresetOptions, CommercialPresetError } from '@/lib/admin/commercialPresets';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,22 +21,7 @@ export async function GET(request) {
   }
 
   try {
-    const presets = await loadCommercialPresetsAdmin(getSupabaseAdmin(), kind);
-    const options = presets
-      .filter((preset) => preset.published)
-      .map((preset) => {
-        const version = preset.published;
-        const base = { presetId: preset.id, versionId: version.id, title: version.title };
-        return kind === 'payment'
-          ? {
-            ...base,
-            paymentMethod: version.paymentMethod || '',
-            paymentTerms: version.paymentTerms || '',
-            installments: Array.isArray(version.installments) ? version.installments : [],
-          }
-          : { ...base, remarks: version.remarks || '' };
-      })
-      .sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'th'));
+    const options = await loadPublishedCommercialPresetOptions(getSupabaseAdmin(), kind);
     return Response.json({ options });
   } catch (error) {
     const known = error instanceof CommercialPresetError;

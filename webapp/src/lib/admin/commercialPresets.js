@@ -1,5 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
+import { publishedCommercialPresetOptions } from '@/lib/commercialPresets';
 
 export class CommercialPresetError extends Error {
   constructor(message, status = 500, code = 'commercial_preset_error') {
@@ -63,6 +64,20 @@ export async function loadCommercialPresetsAdmin(supabase, kind) {
       versions: history,
     };
   });
+}
+
+// Consumer loader intentionally does not filter roots by `kind` in SQL.
+// Some databases still have the combined 0128 schema because migration 0149
+// correctly refused to destroy existing presets; selecting `kind` there returns
+// a database error and made both quotation dropdowns look empty.
+export async function loadPublishedCommercialPresetOptions(supabase, kind) {
+  const [rootsResult, versionsResult] = await Promise.all([
+    supabase.from('commercial_presets').select('*').order('presetKey'),
+    supabase.from('commercial_preset_versions').select('*').eq('status', 'published').order('versionNumber', { ascending: false }),
+  ]);
+  if (rootsResult.error) throw mappedError(rootsResult.error);
+  if (versionsResult.error) throw mappedError(versionsResult.error);
+  return publishedCommercialPresetOptions(rootsResult.data, versionsResult.data, kind);
 }
 
 // kind เป็น identity ของ preset (แก้ไม่ได้) — เนื้อหาที่ยอมรับตอนบันทึกร่างจึงต้อง

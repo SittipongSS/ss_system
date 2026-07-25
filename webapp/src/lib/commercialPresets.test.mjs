@@ -11,6 +11,7 @@ import {
   normalizeCommercialPresetInput,
   normalizeCommercialPresetKind,
   paymentPresetToFormValue,
+  publishedCommercialPresetOptions,
   remarksPresetToFormValue,
 } from './commercialPresets.js';
 import { MAX_INSTALLMENTS, validatePaymentPlan } from './sales/paymentPlan.js';
@@ -192,4 +193,38 @@ test('สรุปในตาราง: แยกข้อความตาม
   );
   assert.equal(commercialPresetSummary('remarks', { remarks: 'บรรทัดแรก\nบรรทัดสอง' }), 'บรรทัดแรก');
   assert.equal(commercialPresetSummary('remarks', { remarks: '' }), 'ยังไม่ระบุหมายเหตุ');
+});
+
+test('dropdown อ่านคลัง schema ใหม่โดยแยก payment/remarks ตาม kind', () => {
+  const roots = [
+    { id: 'pay', kind: 'payment', publishedVersionId: 'pay-v1' },
+    { id: 'remarks', kind: 'remarks', publishedVersionId: 'remarks-v1' },
+  ];
+  const versions = [
+    { id: 'pay-v1', status: 'published', title: 'โอนเต็มจำนวน', paymentMethod: 'โอน', installments: [{ label: 'เต็มจำนวน', percent: 100 }] },
+    { id: 'remarks-v1', status: 'published', title: 'หมายเหตุทั่วไป', remarks: 'ไม่รวมค่าขนส่ง' },
+  ];
+
+  assert.deepEqual(publishedCommercialPresetOptions(roots, versions, 'payment').map((row) => row.versionId), ['pay-v1']);
+  assert.deepEqual(publishedCommercialPresetOptions(roots, versions, 'remarks').map((row) => row.versionId), ['remarks-v1']);
+});
+
+test('dropdown อ่าน schema 0128 เดิมและแยกเนื้อหาที่รวมอยู่ใน published version เดียว', () => {
+  const roots = [{ id: 'legacy', publishedVersionId: 'legacy-v1' }];
+  const versions = [{
+    id: 'legacy-v1',
+    status: 'published',
+    title: 'เงื่อนไขมาตรฐาน',
+    paymentMethod: 'โอน',
+    paymentTerms: 'เครดิต 30 วัน',
+    installments: [{ label: 'เต็มจำนวน', percent: 100 }],
+    remarks: 'ไม่รวมค่าขนส่ง',
+  }];
+
+  const payment = publishedCommercialPresetOptions(roots, versions, 'payment');
+  const remarks = publishedCommercialPresetOptions(roots, versions, 'remarks');
+  assert.equal(payment[0].paymentMethod, 'โอน');
+  assert.equal(payment[0].installments.length, 1);
+  assert.equal(remarks[0].remarks, 'ไม่รวมค่าขนส่ง');
+  assert.deepEqual(publishedCommercialPresetOptions(roots, [{ ...versions[0], status: 'draft' }], 'payment'), []);
 });
