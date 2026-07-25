@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { FileText, Palette, Printer, ShieldCheck } from 'lucide-react';
 import Workspace from '@/components/ui/Workspace';
 import {
@@ -15,7 +16,9 @@ import styles from './page.module.css';
 // (quotationMasterDocument = Quotation Master V4) ใน iframe จึงตรงกับใบที่พิมพ์/ตรึง 100%.
 // fixture model มาจาก buildQuotationMasterPreview (คณิต+จัดหน้า V4 ชุดเดียวกับใบจริง).
 export default function QuotationMasterPreviewPage() {
-  const [docType, setDocType] = useState('quotation');
+  // ?doc=salesOrder — เปิดจากปุ่ม "เปิดเต็มจอ" บนหน้ามาตรฐานเอกสารให้ตรงชนิดที่ดูอยู่
+  const searchParams = useSearchParams();
+  const [docType, setDocType] = useState(() => (searchParams.get('doc') === 'salesOrder' ? 'salesOrder' : 'quotation'));
   const [scenarioId, setScenarioId] = useState('standard');
   const [documentState, setDocumentState] = useState('approved');
   const [grayscale, setGrayscale] = useState(false);
@@ -59,7 +62,7 @@ export default function QuotationMasterPreviewPage() {
       <div className={styles.screenOnly}>
         <Workspace
           hideHeader
-          back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
+          back={{ href: "/settings/document-standards", label: "กลับหน้ามาตรฐานเอกสาร" }}
           backActions={<button type="button" className="btn btn-accent" onClick={printPreview}><Printer size={16} /> พิมพ์ / Save PDF</button>}
         />
       </div>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Edit3, Eye, FileBadge2, FilePlus2, Send, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Edit3, Expand, Eye, FileBadge2, FilePlus2, Send, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -22,6 +23,8 @@ import {
   numberingPatternExample,
   resolveDocumentAccentKey,
 } from "@/lib/documentStandards";
+import { buildQuotationMasterPreview } from "@/lib/sales/quotationMasterTemplate";
+import { renderQuotationMasterDocumentHTML } from "@/lib/sales/quotationMasterDocument";
 import base from "../company/page.module.css";
 import styles from "./page.module.css";
 
@@ -64,18 +67,20 @@ function AccentMark({ accentKey, label = true }) {
   );
 }
 
-function StandardPreview({ row, compact = false }) {
-  if (!row) return null;
+// พรีวิวเอกสารจริง — เรนเดอร์ด้วยเครื่องยนต์ตัวเดียวกับที่พิมพ์/ตรึง (ไม่ใช่กล่อง CSS
+// จำลองแบบเดิมที่โชว์คนละสีคนละสัดส่วนกับใบจริง) ป้อนค่าจาก "ร่างที่กำลังแก้" เข้าไป
+// จึงเห็นผลของสิ่งที่พิมพ์อยู่ทันที
+function LiveDocumentPreview({ documentKey, standard, className = "" }) {
+  const html = useMemo(() => {
+    const model = buildQuotationMasterPreview("standard", "approved", "v4", documentKey, { standard });
+    return renderQuotationMasterDocumentHTML(model, { toolbar: false });
+  }, [documentKey, standard]);
   return (
-    <div className={`${styles.preview} ${styles[row.accentKey] || styles.terracotta} ${compact ? styles.previewCompact : ""}`.trim()}>
-      <div className={styles.previewTop}>
-        <span>Scent &amp; Sense</span>
-        <span>{documentStandardFormLine(row)}</span>
-      </div>
-      <strong>{row.titleTh}</strong>
-      <small>{row.titleEn || "-"}</small>
-      <div className={styles.previewNumber}>{numberingPatternExample(row.numberingPattern, "0")}</div>
-    </div>
+    <iframe
+      className={`${styles.livePreview} ${className}`.trim()}
+      title={`ตัวอย่าง${DOCUMENT_STANDARD_LABELS[documentKey] || "เอกสาร"}`}
+      srcDoc={html}
+    />
   );
 }
 
@@ -248,23 +253,23 @@ export default function DocumentStandardsPage() {
       ) : !published ? (
         <EmptyState icon={FileBadge2}>ยังไม่มีมาตรฐานเอกสารเวอร์ชันที่เผยแพร่</EmptyState>
       ) : (
-        <div className={base.layout}>
-          <section className={`glass-panel ${base.publishedPanel} ${styles.publishedPanel}`} aria-labelledby="published-standard-title">
-            <div className={base.identity}>
-              <span className={base.eyebrow}>VERSION {published.versionNumber} · ใช้งานอยู่</span>
-              <h2 id="published-standard-title">{published.titleTh}</h2>
-              <p className={base.english}>{published.titleEn || "-"}</p>
-              <AccentMark accentKey={published.accentKey} />
-            </div>
-            <div className={base.metaGrid}>
-              <div><span>รหัสแบบฟอร์ม</span><strong className="mono">{published.formCode}</strong></div>
-              <div><span>Revision</span><strong className="mono">{published.revision}</strong></div>
-              <div><span>วันที่มีผล</span><strong>{formatEffectiveDate(published.effectiveDate)}</strong></div>
-              <div><span>เลขที่ตัวอย่าง</span><strong className="mono">{numberingPatternExample(published.numberingPattern, "0")}</strong></div>
-              <div className={base.full}><span>เผยแพร่เมื่อ</span><strong>{formatDateTime(published.publishedAt)}</strong></div>
-            </div>
-            <StandardPreview row={published} compact />
-          </section>
+        <div className={styles.workspace}>
+          <div className={base.layout}>
+            <section className={`glass-panel ${base.publishedPanel} ${styles.publishedPanel}`} aria-labelledby="published-standard-title">
+              <div className={base.identity}>
+                <span className={base.eyebrow}>VERSION {published.versionNumber} · ใช้งานอยู่</span>
+                <h2 id="published-standard-title">{published.titleTh}</h2>
+                <p className={base.english}>{published.titleEn || "-"}</p>
+                <AccentMark accentKey={published.accentKey} />
+              </div>
+              <div className={base.metaGrid}>
+                <div><span>รหัสแบบฟอร์ม</span><strong className="mono">{published.formCode}</strong></div>
+                <div><span>Revision</span><strong className="mono">{published.revision}</strong></div>
+                <div><span>วันที่มีผล</span><strong>{formatEffectiveDate(published.effectiveDate)}</strong></div>
+                <div><span>เลขที่ตัวอย่าง</span><strong className="mono">{numberingPatternExample(published.numberingPattern, "0")}</strong></div>
+                <div className={base.full}><span>เผยแพร่เมื่อ</span><strong>{formatDateTime(published.publishedAt)}</strong></div>
+              </div>
+            </section>
 
           {draft && (
             <section className={`glass-panel ${base.draftPanel}`} aria-label="ฉบับร่างที่กำลังแก้ไข">
@@ -292,20 +297,36 @@ export default function DocumentStandardsPage() {
               </tbody></table>
             </div>
             <div className={base.historyCards}>{versions.map((row) => <article key={row.id} className={base.card}><div className={base.cardHead}><strong>Version {row.versionNumber} · {row.formCode}</strong><StatusBadge status={row.status} /></div><p>{row.changeNote || "ไม่มีหมายเหตุ"}</p><small>{actorOf(row)} · {formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</small><button type="button" className="btn ghost" onClick={() => openView(row)}><Eye size={15} /> ดูรายละเอียด</button></article>)}</div>
-          </section>
+            </section>
+          </div>
+
+          {/* พรีวิวเอกสารจริงคู่กับค่าที่กำลังตั้ง — ร่างมาก่อนเสมอเพราะเป็นสิ่งที่กำลังแก้ */}
+          <aside className={`glass-panel ${styles.previewPanel}`} aria-labelledby="live-preview-title">
+            <header className={styles.previewHeader}>
+              <div>
+                <h2 id="live-preview-title">ตัวอย่างเอกสารจริง</h2>
+                <p>{draft ? `กำลังแสดงฉบับร่าง Version ${draft.versionNumber}` : `กำลังแสดงฉบับที่เผยแพร่ Version ${published.versionNumber}`} · เรนเดอร์ด้วยเครื่องยนต์เดียวกับที่พิมพ์</p>
+              </div>
+              <Link className="btn ghost sm" href={`/settings/document-standards/quotation-preview?doc=${selectedKey}`}>
+                <Expand size={14} /> เปิดเต็มจอ
+              </Link>
+            </header>
+            <LiveDocumentPreview documentKey={selectedKey} standard={draft || published} />
+          </aside>
         </div>
       )}
 
       <RecordDrawer open={!!drawer} onClose={() => !busy && setDrawer(null)} closeOnOverlay={false} title={editing ? `แก้ไข Version ${selected?.versionNumber}` : `${selected?.titleTh || "มาตรฐานเอกสาร"} Version ${selected?.versionNumber || "-"}`} subtitle={editing ? "บันทึกฉบับร่างก่อนเผยแพร่ ไม่มี Auto-save" : "เวอร์ชันที่เผยแพร่หรือซ่อนแล้วจะแก้ไขไม่ได้"} badge={selected ? <StatusBadge status={selected.status} /> : null} footer={editing ? <><button type="button" className="btn ghost" onClick={() => setDrawer(null)} disabled={busy}>ยกเลิก</button><button type="submit" form="document-standard-form" className="btn btn-accent" disabled={busy}>{busy ? "กำลังบันทึก…" : "บันทึกฉบับร่าง"}</button></> : <button type="button" className="btn" onClick={() => setDrawer(null)}>ปิด</button>}>
         {editing ? (
           <form id="document-standard-form" className={base.form} onSubmit={saveDraft}>
-            <p className={base.note}>การบันทึกเปลี่ยนเฉพาะฉบับร่าง ส่วน Production Print ยังใช้ค่าปัจจุบันจนถึง Phase 7</p>
-            <StandardPreview row={form} compact />
+            <p className={base.note}>การบันทึกเปลี่ยนเฉพาะฉบับร่าง — ค่าจะมีผลกับเอกสารที่ออกใหม่เมื่อกดเผยแพร่ ส่วนใบที่ออกไปแล้วคงรหัสแบบฟอร์มเดิม</p>
+            {/* พรีวิวตามสิ่งที่กำลังพิมพ์ในฟอร์ม (ไม่ใช่ค่าที่บันทึกไว้) */}
+            <LiveDocumentPreview documentKey={selectedKey} standard={form} className={styles.previewInDrawer} />
             <DocumentStandardFields form={form} setForm={setForm} />
           </form>
         ) : selected ? (
           <div className={base.drawerBody}>
-            <StandardPreview row={selected} />
+            <LiveDocumentPreview documentKey={selected.documentKey || selectedKey} standard={selected} className={styles.previewInDrawer} />
             <section className={base.drawerSection}><h4>ตัวตนของเอกสารควบคุม</h4><div className={base.detailGrid}><div className={base.full}><span>ชื่อภาษาไทย</span><strong>{selected.titleTh}</strong></div><div className={base.full}><span>ชื่อภาษาอังกฤษ</span><strong>{selected.titleEn || "-"}</strong></div><div><span>รหัสแบบฟอร์ม</span><strong className="mono">{selected.formCode}</strong></div><div><span>Revision</span><strong className="mono">{selected.revision}</strong></div><div><span>วันที่มีผล</span><strong>{formatEffectiveDate(selected.effectiveDate)}</strong></div><div><span>สี Accent</span><strong><AccentMark accentKey={selected.accentKey} /></strong></div></div></section>
             <section className={base.drawerSection}><h4>เลขที่เอกสาร</h4><div className={base.detailGrid}><div className={base.full}><span>Numbering pattern</span><strong className="mono">{selected.numberingPattern}</strong></div><div className={base.full}><span>ตัวอย่าง</span><strong className="mono">{numberingPatternExample(selected.numberingPattern, "0")}</strong></div></div></section>
             <section className={base.drawerSection}><h4>ประวัติเวอร์ชัน</h4><div className={base.detailGrid}><div className={base.full}><span>หมายเหตุ</span><strong>{selected.changeNote || "-"}</strong></div><div><span>สร้างโดย</span><strong>{selected.createdByName || "ระบบ"}</strong></div><div><span>สร้างเมื่อ</span><strong>{formatDateTime(selected.createdAt)}</strong></div><div><span>ดำเนินการล่าสุดโดย</span><strong>{actorOf(selected)}</strong></div><div><span>เวลาล่าสุด</span><strong>{formatDateTime(selected.publishedAt || selected.archivedAt || selected.updatedAt)}</strong></div></div></section>
